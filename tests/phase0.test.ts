@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { withDatabase } from "../src/db/connection.js";
 import {
   buildStatusReportData,
+  buildWeeklyReviewData,
   completeMilestone,
   completeWorkItem,
   countRows,
@@ -27,6 +28,7 @@ import {
 } from "../src/db/repositories.js";
 import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../src/markdown/missionLog.js";
 import { writeStatusReport } from "../src/markdown/statusReport.js";
+import { writeWeeklyReviewReport } from "../src/markdown/weeklyReview.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
 
@@ -440,6 +442,114 @@ describe("Phase 0 data operations", () => {
     expect(report).toContain("### Ready");
     expect(report).toContain("artifacts/implementation-summary.md");
     expect(report).toContain("Context: Blocked dependency waiting on an external decision.");
+  });
+
+  it("builds and writes a deterministic weekly review from SQLite state", () => {
+    const workspace = initializedWorkspace();
+    const created = createExampleProject(workspace);
+
+    withDatabase(workspace, (db) => {
+      completeWorkItem(db, created.workItem.id);
+      db.prepare("UPDATE work_items SET updated_at = ? WHERE id = ?").run(
+        "2026-06-07T12:00:00.000Z",
+        created.workItem.id
+      );
+      db.prepare("UPDATE artifacts SET updated_at = ?, status = ?, path = ? WHERE id = ?").run(
+        "2026-06-08T12:00:00.000Z",
+        "ready",
+        "artifacts/implementation-summary.md",
+        created.artifact?.id
+      );
+
+      const oldWork = createWorkItemWithOptionalArtifact(db, {
+        title: "Old completed work",
+        rawInput: "Old completed work",
+        queue: "work_queue",
+        workClassification: "codex",
+        nextAction: "This should stay outside the weekly review"
+      });
+      completeWorkItem(db, oldWork.workItem.id);
+      db.prepare("UPDATE work_items SET updated_at = ? WHERE id = ?").run(
+        "2026-05-01T12:00:00.000Z",
+        oldWork.workItem.id
+      );
+
+      createWorkItemWithOptionalArtifact(db, {
+        title: "Needs a Mark decision",
+        rawInput: "Needs a Mark decision",
+        queue: "needs_mark",
+        workClassification: "needs_mark",
+        nextAction: "Choose whether to proceed"
+      });
+      createWorkItemWithOptionalArtifact(db, {
+        title: "Blocked dependency",
+        rawInput: "Blocked dependency waiting on an external decision",
+        queue: "blocked",
+        workClassification: "blocked",
+        nextAction: "Wait for the external decision"
+      });
+      createWorkItemWithOptionalArtifact(db, {
+        title: "Autonomous local script",
+        rawInput: "Autonomous local script",
+        queue: "work_queue",
+        workClassification: "autonomous",
+        nextAction: "Run the local script"
+      });
+      createWorkItemWithOptionalArtifact(db, {
+        title: "Codex implementation",
+        rawInput: "Codex implementation",
+        queue: "work_queue",
+        workClassification: "codex",
+        nextAction: "Implement the CLI slice"
+      });
+
+      const log = createMissionLog(db, {
+        id: "log_weeklyreview00001",
+        projectId: created.project.id,
+        milestoneId: created.milestone.id,
+        workPerformed: "Implemented weekly review.",
+        result: "Weekly review report is generated.",
+        nextAction: "Run smoke coverage.",
+        artifactImpact: "Created reports/weekly/2026-06-09.md.",
+        markdownPath: "mission_logs/2026/06/2026-06-07-example-project.md"
+      });
+      db.prepare("UPDATE mission_logs SET created_at = ?, updated_at = ? WHERE id = ?").run(
+        "2026-06-07T13:00:00.000Z",
+        "2026-06-07T13:00:00.000Z",
+        log.id
+      );
+    });
+
+    const reportPath = withDatabase(workspace, (db) => {
+      const data = buildWeeklyReviewData(db, workspace, { since: "2026-06-03", until: "2026-06-09" });
+      expect(data.completedWorkItems.map((item) => item.title)).toContain("Run the first smoke test");
+      expect(data.completedWorkItems.map((item) => item.title)).not.toContain("Old completed work");
+      expect(data.missionLogs).toHaveLength(1);
+      expect(data.needsMarkItems.map((item) => item.title)).toContain("Needs a Mark decision");
+      expect(data.blockedItems.map((item) => item.title)).toContain("Blocked dependency");
+      expect(data.autonomousItems.map((item) => item.title)).toContain("Autonomous local script");
+      expect(data.codexItems.map((item) => item.title)).toContain("Codex implementation");
+      expect(data.artifactItems.map((item) => item.title)).toContain("Implementation summary");
+      expect(data.projectsWithoutOpenNextActions.map((project) => project.name)).toContain("Example Project");
+      expect(data.suggestedNextActions.length).toBeGreaterThan(0);
+      return writeWeeklyReviewReport(workspace, data);
+    });
+
+    expect(reportPath).toBe(path.join(workspace, "reports", "weekly", "2026-06-09.md"));
+    const report = readFileSync(reportPath, "utf8");
+    expect(report).toContain("# Arcadia Weekly Review");
+    expect(report).toContain("Review window: 2026-06-03 to 2026-06-09");
+    expect(report).toContain("## Completed Work");
+    expect(report).toContain("Run the first smoke test");
+    expect(report).not.toContain("Old completed work");
+    expect(report).toContain("## Mission Logs Created");
+    expect(report).toContain("Weekly review report is generated.");
+    expect(report).toContain("## Needs Mark Items");
+    expect(report).toContain("## Active Codex/Autonomous Work");
+    expect(report).toContain("## Artifact Changes Or Upcoming Artifacts");
+    expect(report).toContain("artifacts/implementation-summary.md");
+    expect(report).toContain("## Projects Without Open Next Actions");
+    expect(report).toContain("## Suggested Next Actions");
   });
 
   it("rejects invalid enum values before writing", () => {

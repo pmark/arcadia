@@ -4,6 +4,7 @@ import { runArtifactUpdateCommand } from "../src/commands/artifact.js";
 import { runInboxImportCommand } from "../src/commands/inbox.js";
 import { runMilestoneCompleteCommand, runMilestoneCreateCommand } from "../src/commands/milestone.js";
 import { runProjectUpdateCommand } from "../src/commands/project.js";
+import { runReviewWeeklyCommand } from "../src/commands/review.js";
 import { runWorkDoneCommand, runWorkUpdateCommand } from "../src/commands/work.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
@@ -126,9 +127,16 @@ const missionLog = withDatabase(workspace, (db) =>
 writeMissionLogMarkdown(workspace, { missionLog, project: created.project, milestone: created.milestone });
 
 const reportPath = withDatabase(workspace, (db) => writeStatusReport(workspace, buildStatusReportData(db, workspace)));
+const weeklyReview = runReviewWeeklyCommand({ workspace });
 const paths = getWorkspacePaths(workspace);
 
-const expectedFiles = [paths.configFile, paths.databaseFile, reportPath, path.join(paths.root, markdownPath)];
+const expectedFiles = [
+  paths.configFile,
+  paths.databaseFile,
+  reportPath,
+  weeklyReview.data.reportPath,
+  path.join(paths.root, markdownPath)
+];
 for (const file of expectedFiles) {
   if (!existsSync(file)) {
     throw new Error(`Smoke test expected file does not exist: ${file}`);

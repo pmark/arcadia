@@ -30,7 +30,9 @@ import type {
   Project,
   ProjectSummary,
   QueueGroups,
+  SuggestedNextAction,
   StatusReportData,
+  WeeklyReviewData,
   UpdateArtifactInput,
   UpdateWorkItemInput,
   WorkItem,
@@ -657,6 +659,49 @@ export function buildStatusReportData(db: Database.Database, workspacePath: stri
   };
 }
 
+export function buildWeeklyReviewData(
+  db: Database.Database,
+  workspacePath: string,
+  window: { since: string; until: string }
+): WeeklyReviewData {
+  const completedWorkItems = listCompletedWorkItemsInWindow(db, window);
+  const missionLogs = listMissionLogsInWindow(db, window);
+  const blockedItems = listOpenWorkItems(
+    db,
+    "wi.queue = 'blocked' OR wi.work_classification = 'blocked' OR wi.status = 'blocked'"
+  );
+  const needsMarkItems = listOpenWorkItems(db, "wi.queue = 'needs_mark' OR wi.work_classification = 'needs_mark'");
+  const autonomousItems = listOpenWorkItems(
+    db,
+    "wi.work_classification = 'autonomous' AND wi.queue != 'blocked'"
+  );
+  const codexItems = listOpenWorkItems(db, "wi.work_classification = 'codex' AND wi.queue != 'blocked'");
+  const artifactItems = listArtifactChangesOrUpcoming(db, window);
+  const projectsWithoutOpenNextActions = listProjectsWithoutOpenNextActions(db);
+
+  return {
+    workspacePath,
+    generatedAt: nowIso(),
+    window,
+    completedWorkItems,
+    missionLogs,
+    blockedItems,
+    needsMarkItems,
+    autonomousItems,
+    codexItems,
+    artifactItems,
+    projectsWithoutOpenNextActions,
+    suggestedNextActions: buildSuggestedNextActions({
+      projectsWithoutOpenNextActions,
+      needsMarkItems,
+      blockedItems,
+      codexItems,
+      autonomousItems,
+      artifactItems
+    })
+  };
+}
+
 export function countRows(db: Database.Database, table: string): number {
   if (!["projects", "milestones", "work_items", "mission_logs", "artifacts"].includes(table)) {
     throw new Error(`Unsupported table: ${table}`);
@@ -664,4 +709,171 @@ export function countRows(db: Database.Database, table: string): number {
 
   const row = db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number };
   return row.count;
+}
+
+function listCompletedWorkItemsInWindow(
+  db: Database.Database,
+  window: { since: string; until: string }
+): WorkItemSummary[] {
+  return db
+    .prepare(
+      `SELECT
+        wi.*,
+        p.name AS project_name,
+        m.title AS milestone_title
+      FROM work_items wi
+      LEFT JOIN projects p ON p.id = wi.project_id
+      LEFT JOIN milestones m ON m.id = wi.milestone_id
+      WHERE wi.status = 'done'
+        AND substr(wi.updated_at, 1, 10) >= @since
+        AND substr(wi.updated_at, 1, 10) <= @until
+      ORDER BY wi.updated_at DESC, wi.created_at DESC, wi.id ASC`
+    )
+    .all(window) as WorkItemSummary[];
+}
+
+function listMissionLogsInWindow(
+  db: Database.Database,
+  window: { since: string; until: string }
+): MissionLogSummary[] {
+  return db
+    .prepare(
+      `SELECT
+        ml.*,
+        p.name AS project_name,
+        m.title AS milestone_title
+      FROM mission_logs ml
+      LEFT JOIN projects p ON p.id = ml.project_id
+      LEFT JOIN milestones m ON m.id = ml.milestone_id
+      WHERE substr(ml.created_at, 1, 10) >= @since
+        AND substr(ml.created_at, 1, 10) <= @until
+      ORDER BY ml.created_at DESC, ml.id ASC`
+    )
+    .all(window) as MissionLogSummary[];
+}
+
+function listArtifactChangesOrUpcoming(
+  db: Database.Database,
+  window: { since: string; until: string }
+): ArtifactSummary[] {
+  return db
+    .prepare(
+      `SELECT
+        a.*,
+        p.name AS project_name,
+        wi.title AS work_item_title
+      FROM artifacts a
+      LEFT JOIN projects p ON p.id = a.project_id
+      LEFT JOIN work_items wi ON wi.id = a.work_item_id
+      WHERE a.status IN ('planned', 'drafted', 'ready')
+        OR (
+          substr(a.created_at, 1, 10) >= @since
+          AND substr(a.created_at, 1, 10) <= @until
+        )
+        OR (
+          substr(a.updated_at, 1, 10) >= @since
+          AND substr(a.updated_at, 1, 10) <= @until
+        )
+      ORDER BY a.updated_at DESC, a.created_at DESC, a.id ASC`
+    )
+    .all(window) as ArtifactSummary[];
+}
+
+function listProjectsWithoutOpenNextActions(db: Database.Database): ProjectSummary[] {
+  return db
+    .prepare(
+      `SELECT
+        p.*,
+        (
+          SELECT m.title
+          FROM milestones m
+          WHERE m.project_id = p.id AND m.status = 'active'
+          ORDER BY m.created_at DESC
+          LIMIT 1
+        ) AS current_milestone,
+        (
+          SELECT m.id
+          FROM milestones m
+          WHERE m.project_id = p.id AND m.status = 'active'
+          ORDER BY m.created_at DESC
+          LIMIT 1
+        ) AS current_milestone_id,
+        NULL AS next_action,
+        NULL AS work_classification,
+        NULL AS expected_artifact
+      FROM projects p
+      WHERE p.status != 'completed'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM work_items wi
+          WHERE wi.project_id = p.id AND wi.status != 'done'
+        )
+      ORDER BY p.created_at DESC, p.id ASC`
+    )
+    .all() as ProjectSummary[];
+}
+
+function buildSuggestedNextActions(input: {
+  projectsWithoutOpenNextActions: ProjectSummary[];
+  needsMarkItems: WorkItemSummary[];
+  blockedItems: WorkItemSummary[];
+  codexItems: WorkItemSummary[];
+  autonomousItems: WorkItemSummary[];
+  artifactItems: ArtifactSummary[];
+}): SuggestedNextAction[] {
+  const suggestions: SuggestedNextAction[] = [];
+  const seenWorkItems = new Set<string>();
+
+  for (const project of input.projectsWithoutOpenNextActions) {
+    suggestions.push({
+      sourceType: "project",
+      sourceId: project.id,
+      title: project.name,
+      nextAction: `Define an open next action for ${project.name}.`
+    });
+  }
+
+  for (const item of input.needsMarkItems) {
+    seenWorkItems.add(item.id);
+    suggestions.push(workItemSuggestion(item, "Needs Mark"));
+  }
+
+  for (const item of input.blockedItems) {
+    if (seenWorkItems.has(item.id)) {
+      continue;
+    }
+    seenWorkItems.add(item.id);
+    suggestions.push(workItemSuggestion(item, "Blocked"));
+  }
+
+  for (const item of [...input.codexItems, ...input.autonomousItems]) {
+    if (seenWorkItems.has(item.id)) {
+      continue;
+    }
+    seenWorkItems.add(item.id);
+    suggestions.push(workItemSuggestion(item, "Open"));
+  }
+
+  for (const artifact of input.artifactItems) {
+    if (artifact.status === "published") {
+      continue;
+    }
+    suggestions.push({
+      sourceType: "artifact",
+      sourceId: artifact.id,
+      title: artifact.title,
+      nextAction: `Advance artifact "${artifact.title}" from ${artifact.status}.`
+    });
+  }
+
+  return suggestions;
+}
+
+function workItemSuggestion(item: WorkItemSummary, prefix: string): SuggestedNextAction {
+  return {
+    sourceType: "work_item",
+    sourceId: item.id,
+    title: item.title,
+    nextAction: `${prefix}: ${item.next_action}`
+  };
 }

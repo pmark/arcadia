@@ -113,6 +113,33 @@ export interface StatusReportData {
   artifactsByStatus: ArtifactGroups;
 }
 
+export interface ReviewWindow {
+  since: string;
+  until: string;
+}
+
+export interface SuggestedNextAction {
+  sourceType: "project" | "work_item" | "artifact";
+  sourceId: string;
+  title: string;
+  nextAction: string;
+}
+
+export interface WeeklyReviewData {
+  workspacePath: string;
+  generatedAt: string;
+  window: ReviewWindow;
+  completedWorkItems: WorkItemSummary[];
+  missionLogs: MissionLogSummary[];
+  blockedItems: WorkItemSummary[];
+  needsMarkItems: WorkItemSummary[];
+  autonomousItems: WorkItemSummary[];
+  codexItems: WorkItemSummary[];
+  artifactItems: ArtifactSummary[];
+  projectsWithoutOpenNextActions: ProjectSummary[];
+  suggestedNextActions: SuggestedNextAction[];
+}
+
 export interface CreateProjectInput {
   name: string;
   mission: string;

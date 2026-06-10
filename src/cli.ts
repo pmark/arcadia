@@ -27,6 +27,7 @@ import {
 } from "./commands/project.js";
 import { renderQueueSuccess, runQueueCommand } from "./commands/queue.js";
 import { renderReportStatusSuccess, runReportStatusCommand } from "./commands/report.js";
+import { renderReviewWeeklySuccess, runReviewWeeklyCommand } from "./commands/review.js";
 import { renderStatusSuccess, runStatusCommand } from "./commands/status.js";
 import {
   renderWorkDoneSuccess,
@@ -271,6 +272,18 @@ export function buildProgram(): Command {
     runCliAction("report.status", options, () => runReportStatusCommand(options), renderReportStatusSuccess)
   );
 
+  const review = program.command("review").description("Review commands");
+  addJsonOption(
+    review
+      .command("weekly")
+      .description("Write a deterministic weekly review report")
+      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--since <YYYY-MM-DD>", "Inclusive review start date")
+      .option("--until <YYYY-MM-DD>", "Inclusive review end date")
+  ).action((options: { workspace: string; since?: string; until?: string; json?: boolean }) =>
+    runCliAction("review.weekly", options, () => runReviewWeeklyCommand(options), renderReviewWeeklySuccess)
+  );
+
   return program;
 }
 
@@ -347,6 +360,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "report" && second === "status") {
     return "report.status";
+  }
+
+  if (first === "review" && second === "weekly") {
+    return "review.weekly";
   }
 
   return first ?? "unknown";

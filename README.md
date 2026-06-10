@@ -119,6 +119,13 @@ pnpm arcadia status --workspace ./tmp/demo-workspace
 pnpm arcadia report status --workspace ./tmp/demo-workspace
 ```
 
+Generate a deterministic weekly review:
+
+```sh
+pnpm arcadia review weekly --workspace ./tmp/demo-workspace
+pnpm arcadia review weekly --workspace ./tmp/demo-workspace --since 2026-06-03 --until 2026-06-09 --json
+```
+
 Run the non-interactive smoke path:
 
 ```sh
@@ -144,6 +151,7 @@ pnpm smoke
 - `arcadia artifact update --workspace <path> <artifact-id> [--status <status>] [--path <path>]` updates artifact status or path.
 - `arcadia log create --workspace <path>` records a mission log in SQLite and writes Markdown under `mission_logs/YYYY/MM/`.
 - `arcadia report status --workspace <path>` writes the full Markdown status report.
+- `arcadia review weekly --workspace <path> [--since <YYYY-MM-DD>] [--until <YYYY-MM-DD>]` writes a deterministic weekly review to `reports/weekly/YYYY-MM-DD.md`. If dates are omitted, Arcadia uses the seven calendar days ending today.
 
 ## Workspace Data
 
@@ -163,9 +171,9 @@ SQLite is authoritative. Markdown files are generated narrative artifacts.
 
 Keep private workspaces separate from Arcadia Core. Do not commit personal workspace data unless you intentionally choose to.
 
-## Not In Phase 0
+## Current Boundaries
 
-Arcadia Phase 0 does not include a dashboard, daemon, cloud sync, authentication, AI classification, automatic Codex dispatch, plugin marketplace, advanced scheduling, local model integration, or a web app.
+Arcadia Core does not include a dashboard, daemon, cloud sync, authentication, AI classification, automatic Codex dispatch, plugin marketplace, advanced scheduling, local model integration, or a web app.
 
 ## License
 

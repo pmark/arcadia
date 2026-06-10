@@ -252,6 +252,22 @@ Expected output location:
 
 `~/ArcadiaWorkspace/reports/status.md`
 
+## Generate a Weekly Review
+
+Run:
+
+`pnpm arcadia review weekly --workspace ~/ArcadiaWorkspace`
+
+Arcadia uses the last seven calendar days by default and writes:
+
+`~/ArcadiaWorkspace/reports/weekly/YYYY-MM-DD.md`
+
+Use an explicit inclusive date window when a script or review ritual needs a stable range:
+
+`pnpm arcadia review weekly --workspace ~/ArcadiaWorkspace --since 2026-06-03 --until 2026-06-09 --json`
+
+The weekly review is generated from SQLite only. It includes completed work, mission logs created during the window, blocked work, Needs Mark items, active Codex/autonomous work, artifact changes or upcoming artifacts, projects without open next actions, and deterministic suggested next actions.
+
 ## Generate a Mission Log
 
 Mission logs record meaningful progress.

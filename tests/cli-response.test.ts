@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -45,6 +45,43 @@ describe("CLI response contract", () => {
     expect(json.data.projectCount).toBe(0);
     expect(json.data.reportPath).toBe(path.join(path.resolve(workspace), "reports", "status.md"));
     expect(json.artifacts).toContain(path.join(path.resolve(workspace), "reports", "status.md"));
+  });
+
+  it("emits JSON success for weekly review and generated report artifacts", () => {
+    const workspace = initializedWorkspace();
+    const created = createProject(workspace);
+    withDatabase(workspace, (db) => {
+      db.prepare("UPDATE work_items SET status = ?, updated_at = ? WHERE id = ?").run(
+        "done",
+        "2026-06-07T12:00:00.000Z",
+        created.workItem.id
+      );
+    });
+
+    const result = runCli([
+      "review",
+      "weekly",
+      "--workspace",
+      workspace,
+      "--since",
+      "2026-06-03",
+      "--until",
+      "2026-06-09",
+      "--json"
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const json = parseJson(result.stdout);
+    const reportPath = path.join(path.resolve(workspace), "reports", "weekly", "2026-06-09.md");
+    expect(json.ok).toBe(true);
+    expect(json.command).toBe("review.weekly");
+    expect(json.workspace).toBe(path.resolve(workspace));
+    expect(json.data.window).toEqual({ since: "2026-06-03", until: "2026-06-09" });
+    expect(json.data.reportPath).toBe(reportPath);
+    expect(json.data.counts.completedWork).toBe(1);
+    expect(json.artifacts).toContain(reportPath);
+    expect(readFileSync(reportPath, "utf8")).toContain("Review window: 2026-06-03 to 2026-06-09");
   });
 
   it("emits JSON success for project list", () => {
@@ -339,6 +376,50 @@ describe("CLI response contract", () => {
     expect(json.error.message).toContain("Queue must be one of");
   });
 
+  it("emits stable JSON for weekly review date validation errors", () => {
+    const workspace = initializedWorkspace();
+    const result = runCli([
+      "review",
+      "weekly",
+      "--workspace",
+      workspace,
+      "--since",
+      "2026-06-10",
+      "--until",
+      "2026-06-09",
+      "--json"
+    ]);
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe("");
+    const json = parseJson(result.stderr);
+    expect(json.ok).toBe(false);
+    expect(json.command).toBe("review.weekly");
+    expect(json.error.code).toBe("VALIDATION_ERROR");
+    expect(json.error.message).toBe("Review window since date must be on or before until date.");
+    expect(json.error.details).toEqual({ since: "2026-06-10", until: "2026-06-09" });
+  });
+
+  it("emits stable JSON for malformed weekly review dates", () => {
+    const workspace = initializedWorkspace();
+    const result = runCli([
+      "review",
+      "weekly",
+      "--workspace",
+      workspace,
+      "--since",
+      "2026-02-30",
+      "--json"
+    ]);
+
+    expect(result.status).toBe(2);
+    const json = parseJson(result.stderr);
+    expect(json.ok).toBe(false);
+    expect(json.command).toBe("review.weekly");
+    expect(json.error.code).toBe("VALIDATION_ERROR");
+    expect(json.error.details).toEqual({ field: "since", value: "2026-02-30" });
+  });
+
   it("emits stable JSON for inbox import missing project references", () => {
     const workspace = initializedWorkspace();
     const result = runCli([
@@ -630,6 +711,19 @@ describe("CLI response contract", () => {
     expect(json.error.message).toBe("Workspace not found.");
   });
 
+  it("emits stable JSON for weekly review missing workspaces", () => {
+    const missingWorkspace = path.join(tmpdir(), `arcadia-missing-review-${Date.now()}`);
+    const result = runCli(["review", "weekly", "--workspace", missingWorkspace, "--json"]);
+
+    expect(result.status).toBe(3);
+    expect(result.stdout).toBe("");
+    const json = parseJson(result.stderr);
+    expect(json.ok).toBe(false);
+    expect(json.command).toBe("review.weekly");
+    expect(json.workspace).toBe(path.resolve(missingWorkspace));
+    expect(json.error.code).toBe("WORKSPACE_NOT_FOUND");
+  });
+
   it("emits stable JSON for uninitialized databases", () => {
     const workspace = createTempWorkspacePath();
     mkdirSync(workspace, { recursive: true });
@@ -641,6 +735,18 @@ describe("CLI response contract", () => {
     expect(json.command).toBe("work.list");
     expect(json.error.code).toBe("DATABASE_NOT_INITIALIZED");
     expect(json.error.message).toBe("Arcadia database is not initialized.");
+  });
+
+  it("emits stable JSON for weekly review uninitialized databases", () => {
+    const workspace = createTempWorkspacePath();
+    mkdirSync(workspace, { recursive: true });
+    const result = runCli(["review", "weekly", "--workspace", workspace, "--json"]);
+
+    expect(result.status).toBe(3);
+    const json = parseJson(result.stderr);
+    expect(json.ok).toBe(false);
+    expect(json.command).toBe("review.weekly");
+    expect(json.error.code).toBe("DATABASE_NOT_INITIALIZED");
   });
 
   it("emits stable human errors without stack traces", () => {
