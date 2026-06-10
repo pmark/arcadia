@@ -5,13 +5,16 @@ import { afterEach, describe, expect, it } from "vitest";
 import { withDatabase } from "../src/db/connection.js";
 import {
   buildStatusReportData,
+  completeWorkItem,
   countRows,
   createMissionLog,
   createProjectWithInitialWork,
   createWorkItemWithOptionalArtifact,
-  getProject,
+  getWorkItem,
+  listWorkItems,
   listMilestonesForProject,
-  listQueueGroups
+  listQueueGroups,
+  updateWorkItem
 } from "../src/db/repositories.js";
 import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../src/markdown/missionLog.js";
 import { writeStatusReport } from "../src/markdown/statusReport.js";
@@ -141,6 +144,66 @@ describe("Phase 0 data operations", () => {
       expect(groups.work_queue).toHaveLength(1);
       expect(groups.needs_mark).toHaveLength(1);
       expect(groups.blocked).toHaveLength(1);
+    });
+  });
+
+  it("lists, updates, and completes work items", () => {
+    const workspace = initializedWorkspace();
+
+    withDatabase(workspace, (db) => {
+      const created = createWorkItemWithOptionalArtifact(db, {
+        title: "Move work forward",
+        rawInput: "Move work forward",
+        queue: "inbox",
+        workClassification: "autonomous",
+        nextAction: "Clarify the task"
+      });
+
+      expect(listWorkItems(db)).toHaveLength(1);
+
+      const updated = updateWorkItem(db, created.workItem.id, {
+        queue: "work_queue",
+        workClassification: "codex",
+        nextAction: "Implement the task",
+        status: "in_progress"
+      });
+
+      expect(updated?.queue).toBe("work_queue");
+      expect(updated?.work_classification).toBe("codex");
+      expect(updated?.next_action).toBe("Implement the task");
+      expect(updated?.status).toBe("in_progress");
+
+      const completed = completeWorkItem(db, created.workItem.id);
+      expect(completed?.status).toBe("done");
+      expect(getWorkItem(db, created.workItem.id)?.status).toBe("done");
+    });
+  });
+
+  it("returns null when updating or completing a missing work item", () => {
+    const workspace = initializedWorkspace();
+
+    withDatabase(workspace, (db) => {
+      expect(updateWorkItem(db, "work_missing", { status: "in_progress" })).toBeNull();
+      expect(completeWorkItem(db, "work_missing")).toBeNull();
+    });
+  });
+
+  it("rejects invalid work item updates before writing", () => {
+    const workspace = initializedWorkspace();
+
+    withDatabase(workspace, (db) => {
+      const created = createWorkItemWithOptionalArtifact(db, {
+        title: "Keep valid state",
+        rawInput: "Keep valid state",
+        queue: "work_queue",
+        workClassification: "codex",
+        nextAction: "Stay valid"
+      });
+
+      expect(() => updateWorkItem(db, created.workItem.id, { status: "invalid_status" })).toThrow(
+        "Work item status must be one of"
+      );
+      expect(getWorkItem(db, created.workItem.id)?.status).toBe("open");
     });
   });
 

@@ -71,6 +71,12 @@ Add manually classified work:
 pnpm arcadia inbox add --workspace ./tmp/demo-workspace
 ```
 
+Import manually classified work from a script:
+
+```sh
+pnpm arcadia inbox import --workspace ./tmp/demo-workspace --title "Run local check" --input "Run local check" --queue work_queue --classification autonomous --next-action "Run the script" --json
+```
+
 View queues:
 
 ```sh
@@ -103,6 +109,7 @@ pnpm smoke
 - `arcadia project create --workspace <path>` interactively creates one project, milestone, initial work item, and optional artifact record.
 - `arcadia project list --workspace <path>` lists projects with status, milestone, next action, and work classification.
 - `arcadia inbox add --workspace <path>` interactively adds manually classified work.
+- `arcadia inbox import --workspace <path> --title <title> --input <text> --queue <queue> --classification <classification> --next-action <action>` adds manually classified work without prompts.
 - `arcadia queue --workspace <path>` shows Inbox, Work Queue, Needs Mark, and Blocked items.
 - `arcadia log create --workspace <path>` records a mission log in SQLite and writes Markdown under `mission_logs/YYYY/MM/`.
 - `arcadia report status --workspace <path>` writes the full Markdown status report.

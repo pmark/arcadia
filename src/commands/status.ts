@@ -1,35 +1,81 @@
+import type { CommandSuccess } from "../cli/response.js";
+import { createSuccess } from "../cli/response.js";
+import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import { buildStatusReportData } from "../db/repositories.js";
 import { writeStatusReport } from "../markdown/statusReport.js";
-import { resolveWorkspacePath } from "../workspace/paths.js";
 
-export function runStatusCommand(options: { workspace: string }): void {
-  const workspacePath = resolveWorkspacePath(options.workspace);
+export interface StatusCommandData {
+  projectCount: number;
+  needsMarkCount: number;
+  autonomousCount: number;
+  codexCount: number;
+  blockedCount: number;
+  recentMissionLogCount: number;
+  reportPath: string;
+  projects: Array<{
+    name: string;
+    status: string;
+    currentMilestone: string | null;
+    nextAction: string | null;
+    workClassification: string | null;
+  }>;
+}
+
+export function runStatusCommand(options: { workspace: string }): CommandSuccess<StatusCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const { data, reportPath } = withDatabase(workspacePath, (db) => {
     const reportData = buildStatusReportData(db, workspacePath);
     const writtenReportPath = writeStatusReport(workspacePath, reportData);
     return { data: reportData, reportPath: writtenReportPath };
   });
 
-  console.log("Arcadia Status");
-  console.log(`Workspace: ${workspacePath}`);
-  console.log(`Projects: ${data.projects.length}`);
+  return createSuccess({
+    command: "status",
+    workspace: workspacePath,
+    data: {
+      projectCount: data.projects.length,
+      needsMarkCount: data.needsMarkItems.length,
+      autonomousCount: data.autonomousItems.length,
+      codexCount: data.codexItems.length,
+      blockedCount: data.blockedItems.length,
+      recentMissionLogCount: data.recentMissionLogs.length,
+      reportPath,
+      projects: data.projects.map((project) => ({
+        name: project.name,
+        status: project.status,
+        currentMilestone: project.current_milestone,
+        nextAction: project.next_action,
+        workClassification: project.work_classification
+      }))
+    },
+    artifacts: [reportPath]
+  });
+}
 
-  if (data.projects.length === 0) {
-    console.log("- No projects yet.");
+export function renderStatusSuccess(response: CommandSuccess<StatusCommandData>): string[] {
+  const lines = [
+    "Arcadia Status",
+    `Workspace: ${response.workspace ?? ""}`,
+    `Projects: ${response.data.projectCount}`
+  ];
+
+  if (response.data.projects.length === 0) {
+    lines.push("- No projects yet.");
   } else {
-    for (const project of data.projects) {
-      console.log(`- ${project.name} (${project.status})`);
-      console.log(`  Milestone: ${project.current_milestone ?? "None"}`);
-      console.log(`  Next action: ${project.next_action ?? "None"}`);
-      console.log(`  Work classification: ${project.work_classification ?? "None"}`);
+    for (const project of response.data.projects) {
+      lines.push(`- ${project.name} (${project.status})`);
+      lines.push(`  Milestone: ${project.currentMilestone ?? "None"}`);
+      lines.push(`  Next action: ${project.nextAction ?? "None"}`);
+      lines.push(`  Work classification: ${project.workClassification ?? "None"}`);
     }
   }
 
-  console.log(`Needs Mark: ${data.needsMarkItems.length}`);
-  console.log(`Autonomous: ${data.autonomousItems.length}`);
-  console.log(`Codex: ${data.codexItems.length}`);
-  console.log(`Blocked: ${data.blockedItems.length}`);
-  console.log(`Recent mission logs: ${data.recentMissionLogs.length}`);
-  console.log(`Report: ${reportPath}`);
+  lines.push(`Needs Mark: ${response.data.needsMarkCount}`);
+  lines.push(`Autonomous: ${response.data.autonomousCount}`);
+  lines.push(`Codex: ${response.data.codexCount}`);
+  lines.push(`Blocked: ${response.data.blockedCount}`);
+  lines.push(`Recent mission logs: ${response.data.recentMissionLogCount}`);
+  lines.push(`Report: ${response.data.reportPath}`);
+  return lines;
 }

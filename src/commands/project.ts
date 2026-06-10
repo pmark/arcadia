@@ -1,6 +1,10 @@
+import type { CommandSuccess } from "../cli/response.js";
+import { createSuccess } from "../cli/response.js";
+import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import { createProjectWithInitialWork, listProjectSummaries } from "../db/repositories.js";
 import { WORK_CLASSIFICATION_LABELS } from "../domain/constants.js";
+import type { ProjectSummary } from "../domain/types.js";
 import { promptForProjectCreate } from "../prompts/index.js";
 import { resolveWorkspacePath } from "../workspace/paths.js";
 
@@ -14,22 +18,36 @@ export async function runProjectCreateCommand(options: { workspace: string }): P
   console.log(`Next action: ${result.workItem.next_action}`);
 }
 
-export function runProjectListCommand(options: { workspace: string }): void {
-  const workspacePath = resolveWorkspacePath(options.workspace);
+export interface ProjectListCommandData {
+  projects: ProjectSummary[];
+}
+
+export function runProjectListCommand(options: { workspace: string }): CommandSuccess<ProjectListCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const projects = withDatabase(workspacePath, listProjectSummaries);
 
-  if (projects.length === 0) {
-    console.log("No projects yet.");
-    return;
+  return createSuccess({
+    command: "project.list",
+    workspace: workspacePath,
+    data: { projects }
+  });
+}
+
+export function renderProjectListSuccess(response: CommandSuccess<ProjectListCommandData>): string[] {
+  if (response.data.projects.length === 0) {
+    return ["No projects yet."];
   }
 
-  for (const project of projects) {
+  const lines: string[] = [];
+  for (const project of response.data.projects) {
     const classification = project.work_classification
       ? WORK_CLASSIFICATION_LABELS[project.work_classification]
       : "Unclassified";
-    console.log(`${project.name} (${project.status})`);
-    console.log(`  Milestone: ${project.current_milestone ?? "None"}`);
-    console.log(`  Next action: ${project.next_action ?? "None"}`);
-    console.log(`  Work classification: ${classification}`);
+    lines.push(`${project.name} (${project.status})`);
+    lines.push(`  Milestone: ${project.current_milestone ?? "None"}`);
+    lines.push(`  Next action: ${project.next_action ?? "None"}`);
+    lines.push(`  Work classification: ${classification}`);
   }
+
+  return lines;
 }

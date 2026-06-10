@@ -1,11 +1,12 @@
 import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
+import { runInboxImportCommand } from "../src/commands/inbox.js";
+import { runWorkDoneCommand, runWorkUpdateCommand } from "../src/commands/work.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
   buildStatusReportData,
   createMissionLog,
-  createProjectWithInitialWork,
-  createWorkItemWithOptionalArtifact
+  createProjectWithInitialWork
 } from "../src/db/repositories.js";
 import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../src/markdown/missionLog.js";
 import { writeStatusReport } from "../src/markdown/statusReport.js";
@@ -30,18 +31,39 @@ const created = withDatabase(workspace, (db) =>
   })
 );
 
-withDatabase(workspace, (db) =>
-  createWorkItemWithOptionalArtifact(db, {
-    projectId: created.project.id,
-    milestoneId: created.milestone.id,
-    title: "Review the generated report",
-    rawInput: "Review the generated report",
-    queue: "needs_mark",
-    workClassification: "needs_mark",
-    nextAction: "Confirm the report has the expected sections",
-    expectedArtifact: "Review note"
-  })
-);
+const imported = runInboxImportCommand({
+  workspace,
+  project: created.project.id,
+  milestone: created.milestone.id,
+  title: "Review the generated report",
+  input: "Review the generated report",
+  queue: "needs_mark",
+  classification: "needs_mark",
+  nextAction: "Confirm the report has the expected sections",
+  expectedArtifact: "Review note"
+});
+
+const updated = runWorkUpdateCommand({
+  workspace,
+  workId: imported.data.workItem.id,
+  queue: "work_queue",
+  classification: "codex",
+  nextAction: "Implement the report review follow-up",
+  status: "in_progress"
+});
+
+if (updated.data.workItem.status !== "in_progress" || updated.data.workItem.queue !== "work_queue") {
+  throw new Error("Smoke test expected imported work item to be updated.");
+}
+
+const completed = runWorkDoneCommand({
+  workspace,
+  workId: imported.data.workItem.id
+});
+
+if (completed.data.workItem.status !== "done") {
+  throw new Error("Smoke test expected imported work item to be completed.");
+}
 
 const logId = createId("missionLog");
 const markdownPath = buildMissionLogRelativePath(workspace, created.project.name, logId);

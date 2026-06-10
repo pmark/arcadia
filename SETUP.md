@@ -169,6 +169,10 @@ Example:
 
 `pnpm arcadia inbox add --workspace ~/ArcadiaWorkspace`
 
+Script-friendly example:
+
+`pnpm arcadia inbox import --workspace ~/ArcadiaWorkspace --title "Run local check" --input "Run local check" --queue work_queue --classification autonomous --next-action "Run the script" --json`
+
 The command should accept raw input such as:
 
 - A project idea

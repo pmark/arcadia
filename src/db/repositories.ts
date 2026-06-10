@@ -30,6 +30,7 @@ import type {
   ProjectSummary,
   QueueGroups,
   StatusReportData,
+  UpdateWorkItemInput,
   WorkItem,
   WorkItemSummary
 } from "../domain/types.js";
@@ -292,6 +293,10 @@ export function getProject(db: Database.Database, id: string): Project | null {
   return (db.prepare("SELECT * FROM projects WHERE id = ?").get(id) as Project | undefined) ?? null;
 }
 
+export function getMilestone(db: Database.Database, id: string): Milestone | null {
+  return (db.prepare("SELECT * FROM milestones WHERE id = ?").get(id) as Milestone | undefined) ?? null;
+}
+
 export function listMilestonesForProject(db: Database.Database, projectId: string): Milestone[] {
   return db
     .prepare("SELECT * FROM milestones WHERE project_id = ? ORDER BY status = 'active' DESC, created_at DESC")
@@ -375,6 +380,85 @@ export function listQueueGroups(db: Database.Database): QueueGroups {
     needs_mark: listOpenWorkItems(db, "wi.queue = ?", ["needs_mark"]),
     blocked: listOpenWorkItems(db, "wi.queue = ?", ["blocked"])
   };
+}
+
+export function listWorkItems(db: Database.Database): WorkItemSummary[] {
+  return db
+    .prepare(
+      `SELECT
+        wi.*,
+        p.name AS project_name,
+        m.title AS milestone_title
+      FROM work_items wi
+      LEFT JOIN projects p ON p.id = wi.project_id
+      LEFT JOIN milestones m ON m.id = wi.milestone_id
+      ORDER BY wi.status = 'done' ASC, wi.updated_at DESC, wi.created_at DESC`
+    )
+    .all() as WorkItemSummary[];
+}
+
+export function getWorkItem(db: Database.Database, id: string): WorkItemSummary | null {
+  return (
+    (db
+      .prepare(
+        `SELECT
+          wi.*,
+          p.name AS project_name,
+          m.title AS milestone_title
+        FROM work_items wi
+        LEFT JOIN projects p ON p.id = wi.project_id
+        LEFT JOIN milestones m ON m.id = wi.milestone_id
+        WHERE wi.id = ?`
+      )
+      .get(id) as WorkItemSummary | undefined) ?? null
+  );
+}
+
+export function updateWorkItem(
+  db: Database.Database,
+  id: string,
+  input: UpdateWorkItemInput
+): WorkItemSummary | null {
+  const updates: string[] = [];
+  const parameters: Record<string, string> = { id };
+
+  if (input.queue !== undefined) {
+    parameters.queue = validateQueue(input.queue);
+    updates.push("queue = @queue");
+  }
+
+  if (input.workClassification !== undefined) {
+    parameters.work_classification = validateWorkClassification(input.workClassification);
+    updates.push("work_classification = @work_classification");
+  }
+
+  if (input.nextAction !== undefined) {
+    parameters.next_action = required(input.nextAction, "Next action");
+    updates.push("next_action = @next_action");
+  }
+
+  if (input.status !== undefined) {
+    parameters.status = validateWorkItemStatus(input.status);
+    updates.push("status = @status");
+  }
+
+  if (updates.length === 0) {
+    throw new Error("At least one work item field is required");
+  }
+
+  if (!getWorkItem(db, id)) {
+    return null;
+  }
+
+  parameters.updated_at = nowIso();
+  updates.push("updated_at = @updated_at");
+
+  db.prepare(`UPDATE work_items SET ${updates.join(", ")} WHERE id = @id`).run(parameters);
+  return getWorkItem(db, id);
+}
+
+export function completeWorkItem(db: Database.Database, id: string): WorkItemSummary | null {
+  return updateWorkItem(db, id, { status: "done" });
 }
 
 export function listRecentMissionLogs(db: Database.Database, limit = 10): MissionLogSummary[] {

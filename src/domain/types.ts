@@ -131,6 +131,13 @@ export interface CreateWorkItemInput {
   status?: WorkItemStatus;
 }
 
+export interface UpdateWorkItemInput {
+  queue?: string;
+  workClassification?: string;
+  nextAction?: string;
+  status?: string;
+}
+
 export interface CreateMissionLogInput {
   id?: string;
   projectId?: string | null;
