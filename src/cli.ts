@@ -9,6 +9,7 @@ import {
   runArtifactListCommand,
   runArtifactUpdateCommand
 } from "./commands/artifact.js";
+import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
 import { renderCaptureSuccess, runCaptureCommand } from "./commands/capture.js";
 import { renderInboxImportSuccess, runInboxAddCommand, runInboxImportCommand } from "./commands/inbox.js";
 import { renderInitSuccess, runInitCommand } from "./commands/init.js";
@@ -89,7 +90,24 @@ export function buildProgram(): Command {
 
   addJsonOption(
     program
-      .command("capture")
+      .command("ask")
+      .description("Resolve natural language intent into an auditable work item and execution plan")
+      .argument("<request>", "Natural-language request")
+      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--project <project-id>", "Optional project id")
+      .option("--milestone <milestone-id>", "Optional milestone id")
+      .option("--run-safe", "Immediately run deterministic safe steps")
+  ).action((request: string, options: {
+    workspace: string;
+    project?: string;
+    milestone?: string;
+    runSafe?: boolean;
+    json?: boolean;
+  }) => runCliAction("ask", options, () => runAskCommand({ ...options, request }), renderAskSuccess));
+
+  addJsonOption(
+    program
+    .command("capture")
       .description("Capture executable intent as a structured work item")
       .requiredOption("--workspace <path>", "Workspace path")
       .requiredOption("--text <intent>", "Natural-language intent")
@@ -263,7 +281,17 @@ export function buildProgram(): Command {
       .argument("<work-id>", "Work item id")
       .requiredOption("--workspace <path>", "Workspace path")
       .option("--plan <plan-id>", "Optional execution plan id")
-  ).action((workId: string, options: { workspace: string; plan?: string; json?: boolean }) =>
+      .option("--allow-codex-planning", "Allow approved Codex planning steps to run")
+      .option("--allow-codex-build", "Allow approved Codex build steps to run")
+      .option("--agent-profile <name>", "Coding agent profile name")
+  ).action((workId: string, options: {
+    workspace: string;
+    plan?: string;
+    allowCodexPlanning?: boolean;
+    allowCodexBuild?: boolean;
+    agentProfile?: string;
+    json?: boolean;
+  }) =>
     runCliAction("work.run", options, () => runWorkRunCommand({ ...options, workId }), renderWorkRunSuccess)
   );
 
@@ -410,6 +438,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "capture") {
     return "capture";
+  }
+
+  if (first === "ask") {
+    return "ask";
   }
 
   if (first === "work" && ["list", "update", "done", "plan", "run"].includes(second ?? "")) {

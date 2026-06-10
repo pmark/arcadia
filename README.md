@@ -4,7 +4,7 @@ Arcadia is a local-first project operating system for people juggling multiple c
 
 Arcadia Core is the open source CLI, schema, and reporting engine. Your Arcadia workspace is private operational data.
 
-Phase 0 is intentionally small: initialize a workspace, create projects, classify work, view queues, record mission logs, and generate Markdown status reports. Phase 2 adds a single-work-item execution loop: capture intent, plan work, run deterministic safe steps, and review run records.
+Phase 0 is intentionally small: initialize a workspace, create projects, classify work, view queues, record mission logs, and generate Markdown status reports. Phase 2 adds a single-work-item execution loop: capture intent, plan work, run deterministic safe steps, and review run records. Phase 3 adds deterministic natural-language intent resolution with `arcadia ask`.
 
 ## Principles
 
@@ -83,6 +83,12 @@ Capture executable intent:
 pnpm arcadia capture --workspace ./tmp/demo-workspace --text "Generate status report" --json
 ```
 
+Resolve natural-language intent into an auditable work item and plan:
+
+```sh
+pnpm arcadia ask --workspace ./tmp/demo-workspace "Create a new blog site named MartianRover Field Notes." --json
+```
+
 View queues:
 
 ```sh
@@ -143,6 +149,7 @@ pnpm smoke
 
 - `arcadia init <workspace>` creates workspace folders, `config/arcadia.json`, `database/arcadia.sqlite3`, and applies the initial schema.
 - `arcadia status --workspace <path>` prints a concise summary and writes `reports/status.md`.
+- `arcadia ask --workspace <path> <request> [--project <project-id>] [--milestone <milestone-id>] [--run-safe]` resolves natural-language intent into an auditable work item and execution plan.
 - `arcadia capture --workspace <path> --text <intent> [--project <project-id>] [--milestone <milestone-id>] [--expected-artifact <artifact>]` captures natural-language intent as structured work.
 - `arcadia project create --workspace <path>` interactively creates one project, milestone, initial work item, and optional artifact record.
 - `arcadia project list --workspace <path>` lists projects with status, milestone, next action, and work classification.
@@ -154,7 +161,7 @@ pnpm smoke
 - `arcadia work update --workspace <path> <work-id> [--queue <queue>] [--classification <classification>] [--next-action <action>] [--status <status>]` updates a work item.
 - `arcadia work done --workspace <path> <work-id>` marks a work item complete.
 - `arcadia work plan --workspace <path> <work-id>` creates an observable execution plan for a work item.
-- `arcadia work run --workspace <path> <work-id> [--plan <plan-id>]` runs only deterministic safe steps and records the outcome.
+- `arcadia work run --workspace <path> <work-id> [--plan <plan-id>] [--allow-codex-planning] [--allow-codex-build] [--agent-profile <name>]` runs deterministic safe steps by default, and runs Codex steps only with explicit allow flags.
 - `arcadia run show --workspace <path> <run-id>` shows the run audit trail and Needs Mark items.
 - `arcadia milestone create --workspace <path> <project-id> --title <title>` creates a milestone.
 - `arcadia milestone complete --workspace <path> <milestone-id>` marks a milestone complete.
@@ -178,9 +185,15 @@ pnpm smoke
 - `reports/`
 - `inbox/`
 
+Phase 3 also creates inspectable registries in `config/`:
+
+- `intent-registry.json`
+- `template-registry.json`
+- `coding-agent-profiles.json`
+
 SQLite is authoritative. Markdown files are generated narrative artifacts.
 
-For copy-paste examples of common workflows, see [docs/COMMANDS.md](docs/COMMANDS.md). For Phase 2 scope and behavior, see [docs/PHASE_2.md](docs/PHASE_2.md).
+For copy-paste examples of common workflows, see [docs/COMMANDS.md](docs/COMMANDS.md). For Phase 2 scope and behavior, see [docs/PHASE_2.md](docs/PHASE_2.md). For Phase 3 scope and behavior, see [docs/phase-3-natural-language-intent.md](docs/phase-3-natural-language-intent.md).
 
 Keep private workspaces separate from Arcadia Core. Do not commit personal workspace data unless you intentionally choose to.
 

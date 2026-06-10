@@ -1,0 +1,216 @@
+{
+  "version": 1,
+  "intents": [
+    {
+      "id": "create_project",
+      "aliases": ["create project", "new project"],
+      "examples": ["Create a new project named Example"],
+      "outputKind": "execution_plan",
+      "workClassification": "codex",
+      "nextAction": "Create a reviewable project creation plan.",
+      "skillSequence": [
+        {
+          "skillName": "codex_planning",
+          "title": "Prepare Codex planning packet",
+          "executorType": "codex_planning",
+          "safeToRun": false,
+          "needsMark": "Codex planning requires explicit review before execution."
+        }
+      ],
+      "approvalGates": []
+    },
+    {
+      "id": "create_site",
+      "aliases": ["create site", "new site", "create website"],
+      "examples": ["Create a new site named Example"],
+      "outputKind": "execution_plan",
+      "workClassification": "codex",
+      "nextAction": "Create a reviewable site creation plan.",
+      "skillSequence": [
+        {
+          "skillName": "codex_planning",
+          "title": "Prepare Codex planning packet",
+          "executorType": "codex_planning",
+          "safeToRun": false,
+          "needsMark": "Codex planning requires explicit review before execution."
+        }
+      ],
+      "approvalGates": ["external_deployment"]
+    },
+    {
+      "id": "create_astro_blog",
+      "aliases": [
+        "create a new blog site",
+        "create a new astro blog",
+        "astro blog",
+        "field notes template"
+      ],
+      "examples": [
+        "Create a new blog site named MartianRover Field Notes.",
+        "Create a new Astro blog using the default Field Notes template and Cloudflare deployment configuration."
+      ],
+      "outputKind": "codex_build_packet",
+      "templateRefs": ["astro_field_notes_cloudflare"],
+      "workClassification": "codex",
+      "nextAction": "Review the Astro Field Notes site build packet and approve Codex build if appropriate.",
+      "expectedArtifact": "Astro Field Notes site build packet",
+      "skillSequence": [
+        {
+          "skillName": "codex_build",
+          "title": "Prepare Codex build packet for Astro Field Notes site",
+          "executorType": "codex_build",
+          "safeToRun": false,
+          "needsMark": "Codex build requires explicit approval before repository changes."
+        }
+      ],
+      "approvalGates": ["external_deployment", "destructive_filesystem_changes"]
+    },
+    {
+      "id": "prepare_blog_update",
+      "aliases": [
+        "prepare a weekly update",
+        "weekly martian rover labs update",
+        "prepare a weekly martian rover labs update",
+        "recent mission logs"
+      ],
+      "examples": ["Prepare a weekly Martian Rover Labs update from recent mission logs."],
+      "outputKind": "draft_artifact",
+      "workClassification": "autonomous",
+      "nextAction": "Generate a local weekly update draft from recent mission logs.",
+      "expectedArtifact": "Weekly update draft",
+      "skillSequence": [
+        {
+          "skillName": "prepare_weekly_update_draft",
+          "title": "Prepare weekly update draft",
+          "command": "arcadia review weekly",
+          "executorType": "deterministic",
+          "safeToRun": true
+        }
+      ],
+      "approvalGates": ["publication"]
+    },
+    {
+      "id": "process_analytics_data",
+      "aliases": [
+        "posthog",
+        "analytics report api",
+        "analytics data",
+        "midi opener analytics"
+      ],
+      "examples": [
+        "I need MIDI Opener app analytics data downloaded from PostHog and Apple's Analytics Report API and processed for the Field Notes blog."
+      ],
+      "outputKind": "codex_planning_packet",
+      "workClassification": "codex",
+      "nextAction": "Review credential gates and Codex planning packet before any analytics access.",
+      "expectedArtifact": "Analytics pipeline planning packet",
+      "skillSequence": [
+        {
+          "skillName": "generate_specification_artifact",
+          "title": "Draft analytics pipeline specification",
+          "command": "arcadia run generate-specification",
+          "executorType": "deterministic",
+          "safeToRun": true
+        },
+        {
+          "skillName": "codex_planning",
+          "title": "Prepare Codex planning packet for analytics pipeline",
+          "executorType": "codex_planning",
+          "safeToRun": false,
+          "needsMark": "Codex planning requires review before credentialed analytics work."
+        }
+      ],
+      "approvalGates": ["credentials_required", "production_data_access"]
+    },
+    {
+      "id": "validate_repo",
+      "aliases": ["validate repo", "validate repository", "verify repository", "verify workspace"],
+      "examples": ["Validate this repository."],
+      "outputKind": "execution_plan",
+      "workClassification": "autonomous",
+      "nextAction": "Validate the workspace and repository.",
+      "skillSequence": [
+        {
+          "skillName": "validate_workspace_repository",
+          "title": "Validate workspace and repository",
+          "command": "arcadia run validate-workspace",
+          "executorType": "deterministic",
+          "safeToRun": true
+        }
+      ],
+      "approvalGates": []
+    },
+    {
+      "id": "progress_safe_work",
+      "aliases": ["progress all safe work", "run safe work", "progress safe work"],
+      "examples": ["Progress all safe work."],
+      "outputKind": "needs_mark",
+      "workClassification": "needs_mark",
+      "nextAction": "Mark must approve the first portfolio-wide safe-work progression implementation.",
+      "skillSequence": [
+        {
+          "skillName": "needs_mark_decision",
+          "title": "Surface portfolio-wide progression decision",
+          "executorType": "mark",
+          "safeToRun": false,
+          "needsMark": "Portfolio-wide progress-safe is not implemented yet."
+        }
+      ],
+      "approvalGates": []
+    },
+    {
+      "id": "generate_spec",
+      "aliases": ["generate spec", "write spec", "specification"],
+      "examples": ["Generate a spec for this work."],
+      "outputKind": "draft_artifact",
+      "workClassification": "autonomous",
+      "nextAction": "Generate a specification artifact from captured intent.",
+      "skillSequence": [
+        {
+          "skillName": "generate_specification_artifact",
+          "title": "Generate specification artifact",
+          "command": "arcadia run generate-specification",
+          "executorType": "deterministic",
+          "safeToRun": true
+        }
+      ],
+      "approvalGates": []
+    },
+    {
+      "id": "codex_plan",
+      "aliases": ["codex plan", "plan with codex"],
+      "examples": ["Use Codex to plan this implementation."],
+      "outputKind": "codex_planning_packet",
+      "workClassification": "codex",
+      "nextAction": "Review the Codex planning packet.",
+      "skillSequence": [
+        {
+          "skillName": "codex_planning",
+          "title": "Prepare Codex planning packet",
+          "executorType": "codex_planning",
+          "safeToRun": false,
+          "needsMark": "Codex planning requires explicit review before execution."
+        }
+      ],
+      "approvalGates": []
+    },
+    {
+      "id": "codex_build",
+      "aliases": ["codex build", "build with codex", "implement with codex"],
+      "examples": ["Use Codex to build this feature."],
+      "outputKind": "codex_build_packet",
+      "workClassification": "codex",
+      "nextAction": "Review the Codex build packet and approve repository changes if appropriate.",
+      "skillSequence": [
+        {
+          "skillName": "codex_build",
+          "title": "Prepare Codex build packet",
+          "executorType": "codex_build",
+          "safeToRun": false,
+          "needsMark": "Codex build requires explicit approval before repository changes."
+        }
+      ],
+      "approvalGates": ["destructive_filesystem_changes"]
+    }
+  ]
+}

@@ -1,6 +1,11 @@
 import type Database from "better-sqlite3";
 import {
   ARTIFACT_STATUSES,
+  APPROVAL_GATE_STATUSES,
+  APPROVAL_GATE_TYPES,
+  ASK_REQUEST_STATUSES,
+  CODEX_INVOCATION_PURPOSES,
+  CODEX_INVOCATION_STATUSES,
   EXECUTION_PLAN_STATUSES,
   EXECUTION_RUN_STATUSES,
   EXECUTION_STEP_STATUSES,
@@ -13,6 +18,11 @@ import {
   assertAllowedValue,
   queueForWorkClassification,
   type ArtifactStatus,
+  type ApprovalGateStatus,
+  type ApprovalGateType,
+  type AskRequestStatus,
+  type CodexInvocationPurpose,
+  type CodexInvocationStatus,
   type ExecutionPlanStatus,
   type ExecutionRunStatus,
   type ExecutionStepStatus,
@@ -27,7 +37,14 @@ import type {
   Artifact,
   ArtifactGroups,
   ArtifactSummary,
+  ApprovalGate,
+  AskRequest,
+  AskRequestSummary,
+  CodexInvocation,
+  CreateApprovalGateInput,
   CreateArtifactInput,
+  CreateAskRequestInput,
+  CreateCodexInvocationInput,
   CreateMissionLogInput,
   CreateProjectInput,
   CreateWorkItemInput,
@@ -102,6 +119,31 @@ function validateWorkItemStatus(value: string): WorkItemStatus {
 
 function validateArtifactStatus(value: string): ArtifactStatus {
   assertAllowedValue("Artifact status", value, ARTIFACT_STATUSES);
+  return value;
+}
+
+function validateAskRequestStatus(value: string): AskRequestStatus {
+  assertAllowedValue("Ask request status", value, ASK_REQUEST_STATUSES);
+  return value;
+}
+
+function validateApprovalGateType(value: string): ApprovalGateType {
+  assertAllowedValue("Approval gate type", value, APPROVAL_GATE_TYPES);
+  return value;
+}
+
+function validateApprovalGateStatus(value: string): ApprovalGateStatus {
+  assertAllowedValue("Approval gate status", value, APPROVAL_GATE_STATUSES);
+  return value;
+}
+
+function validateCodexInvocationPurpose(value: string): CodexInvocationPurpose {
+  assertAllowedValue("Codex invocation purpose", value, CODEX_INVOCATION_PURPOSES);
+  return value;
+}
+
+function validateCodexInvocationStatus(value: string): CodexInvocationStatus {
+  assertAllowedValue("Codex invocation status", value, CODEX_INVOCATION_STATUSES);
   return value;
 }
 
@@ -825,6 +867,166 @@ export function createArtifactRecord(db: Database.Database, input: CreateArtifac
   return insertArtifact(db, input, nowIso());
 }
 
+export function createAskRequest(db: Database.Database, input: CreateAskRequestInput): AskRequestSummary {
+  const timestamp = nowIso();
+  const askRequest: AskRequest = {
+    id: input.id ?? createId("askRequest"),
+    raw_request: required(input.rawRequest, "Ask request"),
+    resolved_intent: required(input.resolvedIntent, "Resolved intent"),
+    registry_version: input.registryVersion,
+    output_kind: required(input.outputKind, "Output kind"),
+    work_item_id: input.workItemId ?? null,
+    plan_id: input.planId ?? null,
+    prompt_packet_path: nullable(input.promptPacketPath),
+    status: validateAskRequestStatus(input.status),
+    created_at: timestamp,
+    updated_at: timestamp
+  };
+
+  db.prepare(
+    `INSERT INTO ask_requests (
+      id, raw_request, resolved_intent, registry_version, output_kind, work_item_id,
+      plan_id, prompt_packet_path, status, created_at, updated_at
+    ) VALUES (
+      @id, @raw_request, @resolved_intent, @registry_version, @output_kind, @work_item_id,
+      @plan_id, @prompt_packet_path, @status, @created_at, @updated_at
+    )`
+  ).run(askRequest);
+
+  const created = getAskRequest(db, askRequest.id);
+  if (!created) {
+    throw new Error(`Ask request could not be created: ${askRequest.id}`);
+  }
+
+  return created;
+}
+
+export function getAskRequest(db: Database.Database, id: string): AskRequestSummary | null {
+  return (
+    (db
+      .prepare(
+        `SELECT
+          ar.*,
+          wi.title AS work_item_title,
+          ep.summary AS plan_summary
+        FROM ask_requests ar
+        LEFT JOIN work_items wi ON wi.id = ar.work_item_id
+        LEFT JOIN execution_plans ep ON ep.id = ar.plan_id
+        WHERE ar.id = ?`
+      )
+      .get(id) as AskRequestSummary | undefined) ?? null
+  );
+}
+
+export function createApprovalGate(db: Database.Database, input: CreateApprovalGateInput): ApprovalGate {
+  const timestamp = nowIso();
+  const gate: ApprovalGate = {
+    id: createId("approvalGate"),
+    gate_type: validateApprovalGateType(input.gateType),
+    reason: required(input.reason, "Approval gate reason"),
+    work_item_id: input.workItemId ?? null,
+    plan_id: input.planId ?? null,
+    plan_step_id: input.planStepId ?? null,
+    status: validateApprovalGateStatus(input.status ?? "pending"),
+    created_at: timestamp,
+    updated_at: timestamp
+  };
+
+  db.prepare(
+    `INSERT INTO approval_gates (
+      id, gate_type, reason, work_item_id, plan_id, plan_step_id, status, created_at, updated_at
+    ) VALUES (
+      @id, @gate_type, @reason, @work_item_id, @plan_id, @plan_step_id, @status, @created_at, @updated_at
+    )`
+  ).run(gate);
+
+  return gate;
+}
+
+export function listApprovalGatesForWorkItem(db: Database.Database, workItemId: string): ApprovalGate[] {
+  return db
+    .prepare("SELECT * FROM approval_gates WHERE work_item_id = ? ORDER BY created_at ASC, id ASC")
+    .all(workItemId) as ApprovalGate[];
+}
+
+export function createCodexInvocation(
+  db: Database.Database,
+  input: CreateCodexInvocationInput
+): CodexInvocation {
+  const timestamp = nowIso();
+  const invocation: CodexInvocation = {
+    id: input.id ?? createId("codexInvocation"),
+    purpose: validateCodexInvocationPurpose(input.purpose),
+    agent_profile: required(input.agentProfile, "Agent profile"),
+    workspace_scope: required(input.workspaceScope, "Workspace scope"),
+    command: required(input.command, "Codex command"),
+    prompt_path: required(input.promptPath, "Codex prompt path"),
+    jsonl_output_path: required(input.jsonlOutputPath, "Codex JSONL output path"),
+    final_message_path: required(input.finalMessagePath, "Codex final message path"),
+    status: validateCodexInvocationStatus(input.status ?? "packet_created"),
+    work_item_id: input.workItemId ?? null,
+    plan_id: input.planId ?? null,
+    plan_step_id: input.planStepId ?? null,
+    run_id: input.runId ?? null,
+    created_at: timestamp,
+    updated_at: timestamp
+  };
+
+  db.prepare(
+    `INSERT INTO codex_invocations (
+      id, purpose, agent_profile, workspace_scope, command, prompt_path, jsonl_output_path,
+      final_message_path, status, work_item_id, plan_id, plan_step_id, run_id, created_at, updated_at
+    ) VALUES (
+      @id, @purpose, @agent_profile, @workspace_scope, @command, @prompt_path, @jsonl_output_path,
+      @final_message_path, @status, @work_item_id, @plan_id, @plan_step_id, @run_id, @created_at, @updated_at
+    )`
+  ).run(invocation);
+
+  return invocation;
+}
+
+export function listCodexInvocationsForWorkItem(db: Database.Database, workItemId: string): CodexInvocation[] {
+  return db
+    .prepare("SELECT * FROM codex_invocations WHERE work_item_id = ? ORDER BY created_at ASC, id ASC")
+    .all(workItemId) as CodexInvocation[];
+}
+
+export function getCodexInvocationForPlan(
+  db: Database.Database,
+  input: { workItemId: string; planId: string; purpose: string }
+): CodexInvocation | null {
+  const purpose = validateCodexInvocationPurpose(input.purpose);
+  return (
+    (db
+      .prepare(
+        `SELECT * FROM codex_invocations
+         WHERE work_item_id = @workItemId AND plan_id = @planId AND purpose = @purpose
+         ORDER BY created_at ASC
+         LIMIT 1`
+      )
+      .get({ ...input, purpose }) as CodexInvocation | undefined) ?? null
+  );
+}
+
+export function updateCodexInvocationStatus(
+  db: Database.Database,
+  id: string,
+  status: string
+): CodexInvocation | null {
+  const invocationStatus = validateCodexInvocationStatus(status);
+  const existing = db.prepare("SELECT * FROM codex_invocations WHERE id = ?").get(id) as CodexInvocation | undefined;
+  if (!existing) {
+    return null;
+  }
+
+  db.prepare("UPDATE codex_invocations SET status = ?, updated_at = ? WHERE id = ?").run(
+    invocationStatus,
+    nowIso(),
+    id
+  );
+  return db.prepare("SELECT * FROM codex_invocations WHERE id = ?").get(id) as CodexInvocation;
+}
+
 export function createExecutionRun(db: Database.Database, input: CreateExecutionRunInput): ExecutionRunSummary | null {
   if (!getWorkItem(db, input.workItemId) || !getExecutionPlan(db, input.planId)) {
     return null;
@@ -1068,7 +1270,10 @@ export function countRows(db: Database.Database, table: string): number {
       "execution_plan_steps",
       "execution_runs",
       "execution_run_steps",
-      "run_artifacts"
+      "run_artifacts",
+      "ask_requests",
+      "approval_gates",
+      "codex_invocations"
     ].includes(table)
   ) {
     throw new Error(`Unsupported table: ${table}`);

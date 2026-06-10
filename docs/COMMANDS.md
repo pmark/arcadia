@@ -34,6 +34,29 @@ pnpm arcadia capture \
   --json
 ```
 
+## Ask Natural Language
+
+Use `ask` when you want Arcadia to resolve a natural-language request through Phase 3 intent registries, create an audit record, create a work item, and create an execution plan.
+
+```sh
+pnpm arcadia ask \
+  --workspace "$WORKSPACE" \
+  "Create a new blog site named MartianRover Field Notes." \
+  --json
+```
+
+When a request needs Codex, Arcadia writes a prompt packet under `prompts/codex/<invocation-id>/` and records the invocation. It does not invoke Codex, deploy, publish, use credentials, or make unsafe changes by default.
+
+Run deterministic safe steps immediately:
+
+```sh
+pnpm arcadia ask \
+  --workspace "$WORKSPACE" \
+  "Prepare a weekly Martian Rover Labs update from recent mission logs." \
+  --run-safe \
+  --json
+```
+
 Attach captured work to project context when known:
 
 ```sh
@@ -76,6 +99,19 @@ pnpm arcadia work run work_example \
 ```
 
 Arcadia executes only deterministic safe steps. Codex, publishing, destructive, unclear, or Mark-required steps pause as `needs_mark`.
+
+Explicitly approved Codex steps can be run through configured coding-agent profiles:
+
+```sh
+pnpm arcadia work run work_example \
+  --workspace "$WORKSPACE" \
+  --plan plan_example \
+  --allow-codex-planning \
+  --agent-profile codex_planning \
+  --json
+```
+
+`--allow-codex-build` is separate from `--allow-codex-planning`. Arcadia refuses `danger-full-access` profiles in managed runs.
 
 ## Review A Run
 
@@ -130,4 +166,3 @@ Mark work done:
 ```sh
 pnpm arcadia work done work_example --workspace "$WORKSPACE" --json
 ```
-

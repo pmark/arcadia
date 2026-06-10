@@ -11,7 +11,10 @@ const PREFIXES = {
   executionStep: "step",
   executionRun: "run",
   executionRunStep: "rstep",
-  runArtifact: "rart"
+  runArtifact: "rart",
+  askRequest: "ask",
+  approvalGate: "gate",
+  codexInvocation: "codex"
 } as const;
 
 export type IdKind = keyof typeof PREFIXES;

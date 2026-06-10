@@ -58,6 +58,13 @@ export const BUILT_IN_SKILLS: BuiltInSkill[] = [
     safeToRun: true
   },
   {
+    name: "prepare_weekly_update_draft",
+    title: "Prepare weekly update draft",
+    description: "Write a local weekly update draft from recent mission logs and work state.",
+    executorType: "deterministic",
+    safeToRun: true
+  },
+  {
     name: "generate_specification_artifact",
     title: "Generate specification artifact",
     description: "Create a local Markdown specification artifact from captured intent.",
@@ -240,6 +247,8 @@ function nextActionForSkill(skillName: string): string {
       return "Generate the deterministic weekly review.";
     case "prepare_publication_packet":
       return "Prepare a local publication packet for Mark to review.";
+    case "prepare_weekly_update_draft":
+      return "Prepare a local weekly update draft from recent mission logs.";
     case "generate_specification_artifact":
       return "Generate a specification artifact from captured intent.";
     default:
@@ -257,6 +266,8 @@ function commandForSkill(skillName: string): string | null {
       return "arcadia review weekly";
     case "prepare_publication_packet":
       return "arcadia run prepare-publication-packet";
+    case "prepare_weekly_update_draft":
+      return "arcadia review weekly";
     case "generate_specification_artifact":
       return "arcadia run generate-specification";
     default:

@@ -1,6 +1,7 @@
 import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { runArtifactUpdateCommand } from "../src/commands/artifact.js";
+import { runAskCommand } from "../src/commands/ask.js";
 import { runCaptureCommand } from "../src/commands/capture.js";
 import { runInboxImportCommand } from "../src/commands/inbox.js";
 import { runMilestoneCompleteCommand, runMilestoneCreateCommand } from "../src/commands/milestone.js";
@@ -150,14 +151,36 @@ const shownRun = runRunShowCommand({
 if (shownRun.data.run.status !== "completed") {
   throw new Error("Smoke test expected deterministic execution run to complete.");
 }
+
+const asked = runAskCommand({
+  workspace,
+  request: "Prepare a weekly Martian Rover Labs update from recent mission logs.",
+  runSafe: true
+});
+if (asked.data.resolvedIntent.intentId !== "prepare_blog_update" || asked.data.run?.status !== "completed") {
+  throw new Error("Smoke test expected Phase 3 ask run-safe flow to complete.");
+}
+
+const codexAsk = runAskCommand({
+  workspace,
+  request: "Create a new blog site named MartianRover Field Notes."
+});
+if (codexAsk.data.codexInvocations.length !== 1) {
+  throw new Error("Smoke test expected Phase 3 ask to create a Codex packet.");
+}
 const paths = getWorkspacePaths(workspace);
 
 const expectedFiles = [
   paths.configFile,
+  paths.intentRegistry,
+  paths.templateRegistry,
+  paths.codingAgentProfiles,
   paths.databaseFile,
   reportPath,
   weeklyReview.data.reportPath,
   path.join(paths.root, executionRun.data.missionLogPath ?? ""),
+  path.join(paths.root, asked.data.run?.mission_log_path ?? ""),
+  path.join(paths.root, codexAsk.data.codexInvocations[0]?.prompt_path ?? ""),
   path.join(paths.root, markdownPath)
 ];
 for (const file of expectedFiles) {

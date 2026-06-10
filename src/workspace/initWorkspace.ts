@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { WORKSPACE_FOLDERS } from "../domain/constants.js";
 import { openDatabase } from "../db/connection.js";
 import { applyInitialSchema } from "../db/schema.js";
+import { getDefaultRegistryPath } from "../intent/registries.js";
 import { getWorkspacePaths } from "./paths.js";
 
 export interface InitWorkspaceResult {
@@ -31,6 +32,10 @@ export function initWorkspace(workspace: string): InitWorkspaceResult {
     writeFileSync(paths.configFile, `${JSON.stringify(config, null, 2)}\n`, "utf8");
   }
 
+  copyRegistryIfMissing("intent-registry.json", paths.intentRegistry);
+  copyRegistryIfMissing("template-registry.json", paths.templateRegistry);
+  copyRegistryIfMissing("coding-agent-profiles.json", paths.codingAgentProfiles);
+
   const db: Database.Database = openDatabase(paths.root);
   try {
     applyInitialSchema(db);
@@ -44,6 +49,14 @@ export function initWorkspace(workspace: string): InitWorkspaceResult {
     configPath: paths.configFile,
     createdConfig
   };
+}
+
+function copyRegistryIfMissing(fileName: string, destination: string): void {
+  if (existsSync(destination)) {
+    return;
+  }
+
+  copyFileSync(getDefaultRegistryPath(fileName), destination);
 }
 
 function folderToPathKey(folder: (typeof WORKSPACE_FOLDERS)[number]): keyof ReturnType<typeof getWorkspacePaths> {

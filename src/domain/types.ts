@@ -1,5 +1,10 @@
 import type {
   ArtifactStatus,
+  ApprovalGateStatus,
+  ApprovalGateType,
+  AskRequestStatus,
+  CodexInvocationPurpose,
+  CodexInvocationStatus,
   ExecutionPlanStatus,
   ExecutionRunStatus,
   ExecutionStepStatus,
@@ -136,6 +141,50 @@ export interface RunArtifact {
   created_at: string;
 }
 
+export interface AskRequest {
+  id: string;
+  raw_request: string;
+  resolved_intent: string;
+  registry_version: number;
+  output_kind: string;
+  work_item_id: string | null;
+  plan_id: string | null;
+  prompt_packet_path: string | null;
+  status: AskRequestStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApprovalGate {
+  id: string;
+  gate_type: ApprovalGateType;
+  reason: string;
+  work_item_id: string | null;
+  plan_id: string | null;
+  plan_step_id: string | null;
+  status: ApprovalGateStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CodexInvocation {
+  id: string;
+  purpose: CodexInvocationPurpose;
+  agent_profile: string;
+  workspace_scope: string;
+  command: string;
+  prompt_path: string;
+  jsonl_output_path: string;
+  final_message_path: string;
+  status: CodexInvocationStatus;
+  work_item_id: string | null;
+  plan_id: string | null;
+  plan_step_id: string | null;
+  run_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ProjectSummary extends Project {
   current_milestone: string | null;
   current_milestone_id: string | null;
@@ -178,6 +227,11 @@ export interface MissionLogSummary extends MissionLog {
 export interface ArtifactSummary extends Artifact {
   project_name: string | null;
   work_item_title: string | null;
+}
+
+export interface AskRequestSummary extends AskRequest {
+  work_item_title: string | null;
+  plan_summary: string | null;
 }
 
 export interface QueueGroups {
@@ -284,6 +338,43 @@ export interface CreateArtifactInput {
   artifactType: string;
   status?: ArtifactStatus;
   path?: string | null;
+}
+
+export interface CreateAskRequestInput {
+  id?: string;
+  rawRequest: string;
+  resolvedIntent: string;
+  registryVersion: number;
+  outputKind: string;
+  workItemId?: string | null;
+  planId?: string | null;
+  promptPacketPath?: string | null;
+  status: AskRequestStatus;
+}
+
+export interface CreateApprovalGateInput {
+  gateType: ApprovalGateType;
+  reason: string;
+  workItemId?: string | null;
+  planId?: string | null;
+  planStepId?: string | null;
+  status?: ApprovalGateStatus;
+}
+
+export interface CreateCodexInvocationInput {
+  id?: string;
+  purpose: CodexInvocationPurpose;
+  agentProfile: string;
+  workspaceScope: string;
+  command: string;
+  promptPath: string;
+  jsonlOutputPath: string;
+  finalMessagePath: string;
+  status?: CodexInvocationStatus;
+  workItemId?: string | null;
+  planId?: string | null;
+  planStepId?: string | null;
+  runId?: string | null;
 }
 
 export interface CreatedProjectBundle {

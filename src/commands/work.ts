@@ -18,6 +18,7 @@ import {
 import type { ExecutionPlanSummary, ExecutionRunSummary, WorkItemSummary } from "../domain/types.js";
 import { ensureBuiltInSkills, planStepsForWorkItem } from "../execution/skills.js";
 import { executePlan, resolvePlanForRun } from "../execution/runner.js";
+import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 
 export interface WorkListCommandData {
   workItems: WorkItemSummary[];
@@ -135,8 +136,17 @@ export function runWorkRunCommand(options: {
   workspace: string;
   workId: string;
   plan?: string;
+  allowCodexPlanning?: boolean;
+  allowCodexBuild?: boolean;
+  agentProfile?: string;
 }): CommandSuccess<WorkRunCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const registries = options.allowCodexPlanning || options.allowCodexBuild
+    ? loadPhase3Registries(workspacePath)
+    : null;
+  if (registries) {
+    validatePhase3Registries(registries);
+  }
   const result = withDatabase(workspacePath, (db) => {
     ensureBuiltInSkills(db);
     const workItem = getWorkItem(db, options.workId);
@@ -157,7 +167,12 @@ export function runWorkRunCommand(options: {
       return { missingPlan: true as const };
     }
 
-    return executePlan(db, workspacePath, plan);
+    return executePlan(db, workspacePath, plan, {
+      allowCodexPlanning: options.allowCodexPlanning,
+      allowCodexBuild: options.allowCodexBuild,
+      agentProfile: options.agentProfile,
+      codingAgentProfiles: registries?.codingAgents.profiles
+    });
   });
 
   if ("missingWorkItem" in result) {

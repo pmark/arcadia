@@ -142,6 +142,70 @@ CREATE TABLE IF NOT EXISTS run_artifacts (
   FOREIGN KEY (artifact_id) REFERENCES artifacts(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS ask_requests (
+  id TEXT PRIMARY KEY,
+  raw_request TEXT NOT NULL,
+  resolved_intent TEXT NOT NULL,
+  registry_version INTEGER NOT NULL,
+  output_kind TEXT NOT NULL,
+  work_item_id TEXT,
+  plan_id TEXT,
+  prompt_packet_path TEXT,
+  status TEXT NOT NULL CHECK (status IN ('planned', 'needs_mark', 'failed')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE SET NULL,
+  FOREIGN KEY (plan_id) REFERENCES execution_plans(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS approval_gates (
+  id TEXT PRIMARY KEY,
+  gate_type TEXT NOT NULL CHECK (
+    gate_type IN (
+      'credentials_required',
+      'external_deployment',
+      'publication',
+      'destructive_filesystem_changes',
+      'production_data_access',
+      'financial_action',
+      'merge_to_main',
+      'send_email_or_messages'
+    )
+  ),
+  reason TEXT NOT NULL,
+  work_item_id TEXT,
+  plan_id TEXT,
+  plan_step_id TEXT,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'resolved')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE CASCADE,
+  FOREIGN KEY (plan_id) REFERENCES execution_plans(id) ON DELETE CASCADE,
+  FOREIGN KEY (plan_step_id) REFERENCES execution_plan_steps(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS codex_invocations (
+  id TEXT PRIMARY KEY,
+  purpose TEXT NOT NULL CHECK (purpose IN ('planning', 'build')),
+  agent_profile TEXT NOT NULL,
+  workspace_scope TEXT NOT NULL,
+  command TEXT NOT NULL,
+  prompt_path TEXT NOT NULL,
+  jsonl_output_path TEXT NOT NULL,
+  final_message_path TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('packet_created', 'running', 'completed', 'failed')),
+  work_item_id TEXT,
+  plan_id TEXT,
+  plan_step_id TEXT,
+  run_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE SET NULL,
+  FOREIGN KEY (plan_id) REFERENCES execution_plans(id) ON DELETE SET NULL,
+  FOREIGN KEY (plan_step_id) REFERENCES execution_plan_steps(id) ON DELETE SET NULL,
+  FOREIGN KEY (run_id) REFERENCES execution_runs(id) ON DELETE SET NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_milestones_project_id ON milestones(project_id);
 CREATE INDEX IF NOT EXISTS idx_work_items_project_id ON work_items(project_id);
 CREATE INDEX IF NOT EXISTS idx_work_items_queue ON work_items(queue);
@@ -154,5 +218,11 @@ CREATE INDEX IF NOT EXISTS idx_execution_runs_work_item_id ON execution_runs(wor
 CREATE INDEX IF NOT EXISTS idx_execution_runs_plan_id ON execution_runs(plan_id);
 CREATE INDEX IF NOT EXISTS idx_execution_run_steps_run_id ON execution_run_steps(run_id);
 CREATE INDEX IF NOT EXISTS idx_run_artifacts_run_id ON run_artifacts(run_id);
+CREATE INDEX IF NOT EXISTS idx_ask_requests_work_item_id ON ask_requests(work_item_id);
+CREATE INDEX IF NOT EXISTS idx_ask_requests_plan_id ON ask_requests(plan_id);
+CREATE INDEX IF NOT EXISTS idx_approval_gates_work_item_id ON approval_gates(work_item_id);
+CREATE INDEX IF NOT EXISTS idx_approval_gates_status ON approval_gates(status);
+CREATE INDEX IF NOT EXISTS idx_codex_invocations_work_item_id ON codex_invocations(work_item_id);
+CREATE INDEX IF NOT EXISTS idx_codex_invocations_plan_id ON codex_invocations(plan_id);
 
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;

@@ -20,6 +20,20 @@ export const EXECUTOR_TYPES = ["deterministic", "codex_planning", "codex_build",
 export const EXECUTION_PLAN_STATUSES = ["planned", "running", "completed", "needs_mark", "failed"] as const;
 export const EXECUTION_RUN_STATUSES = ["running", "completed", "needs_mark", "failed"] as const;
 export const EXECUTION_STEP_STATUSES = ["pending", "running", "completed", "needs_mark", "failed", "skipped"] as const;
+export const ASK_REQUEST_STATUSES = ["planned", "needs_mark", "failed"] as const;
+export const APPROVAL_GATE_TYPES = [
+  "credentials_required",
+  "external_deployment",
+  "publication",
+  "destructive_filesystem_changes",
+  "production_data_access",
+  "financial_action",
+  "merge_to_main",
+  "send_email_or_messages"
+] as const;
+export const APPROVAL_GATE_STATUSES = ["pending", "approved", "rejected", "resolved"] as const;
+export const CODEX_INVOCATION_PURPOSES = ["planning", "build"] as const;
+export const CODEX_INVOCATION_STATUSES = ["packet_created", "running", "completed", "failed"] as const;
 
 export const QUEUE_LABELS: Record<QueueName, string> = {
   inbox: "Inbox",
@@ -45,6 +59,11 @@ export type ExecutorType = (typeof EXECUTOR_TYPES)[number];
 export type ExecutionPlanStatus = (typeof EXECUTION_PLAN_STATUSES)[number];
 export type ExecutionRunStatus = (typeof EXECUTION_RUN_STATUSES)[number];
 export type ExecutionStepStatus = (typeof EXECUTION_STEP_STATUSES)[number];
+export type AskRequestStatus = (typeof ASK_REQUEST_STATUSES)[number];
+export type ApprovalGateType = (typeof APPROVAL_GATE_TYPES)[number];
+export type ApprovalGateStatus = (typeof APPROVAL_GATE_STATUSES)[number];
+export type CodexInvocationPurpose = (typeof CODEX_INVOCATION_PURPOSES)[number];
+export type CodexInvocationStatus = (typeof CODEX_INVOCATION_STATUSES)[number];
 
 export function assertAllowedValue<T extends string>(
   label: string,

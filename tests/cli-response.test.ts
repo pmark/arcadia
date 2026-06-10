@@ -267,6 +267,30 @@ describe("CLI response contract", () => {
     expect(showJson.data.needsMark).toEqual([]);
   });
 
+  it("asks natural language intent with JSON output", () => {
+    const workspace = initializedWorkspace();
+
+    const result = runCli([
+      "ask",
+      "Create a new blog site named MartianRover Field Notes.",
+      "--workspace",
+      workspace,
+      "--json"
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const json = parseJson(result.stdout);
+    expect(json.ok).toBe(true);
+    expect(json.command).toBe("ask");
+    expect(json.data.resolvedIntent.intentId).toBe("create_astro_blog");
+    expect(json.data.workItem.id).toMatch(/^work_/);
+    expect(json.data.plan.id).toMatch(/^plan_/);
+    expect(json.data.codexInvocations).toHaveLength(1);
+    expect(json.data.approvalGates.map((gate: { gate_type: string }) => gate.gate_type)).toContain("external_deployment");
+    expect(existsSync(path.join(workspace, json.data.codexInvocations[0].prompt_path))).toBe(true);
+  });
+
   it("pauses captured ambiguous work as Needs Mark", () => {
     const workspace = initializedWorkspace();
 

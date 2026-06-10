@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "profiles": [
+    {
+      "name": "codex_planning",
+      "provider": "codex-cli",
+      "package": "@openai/codex",
+      "command": "codex",
+      "purpose": "planning",
+      "sandbox": "read-only",
+      "args": ["exec", "--json", "--sandbox", "read-only"]
+    },
+    {
+      "name": "codex_build",
+      "provider": "codex-cli",
+      "package": "@openai/codex",
+      "command": "codex",
+      "purpose": "build",
+      "sandbox": "workspace-write",
+      "args": ["exec", "--json", "--sandbox", "workspace-write"]
+    }
+  ]
+}

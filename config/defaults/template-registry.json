@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "id": "astro_field_notes_cloudflare",
+      "title": "Astro Field Notes Blog",
+      "description": "A default Field Notes-style Astro blog site with Cloudflare deployment metadata.",
+      "projectType": "astro_blog",
+      "defaults": {
+        "templateName": "Field Notes",
+        "deploymentTarget": "Cloudflare",
+        "contentModel": "chronological notes and updates",
+        "siteNameSlot": "projectName"
+      },
+      "skills": {
+        "scaffold": "codex_build",
+        "plan": "codex_planning"
+      },
+      "approvalGates": ["external_deployment"]
+    }
+  ]
+}
