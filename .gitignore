@@ -1,0 +1,101 @@
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor settings
+.vscode/
+.idea/
+.swp
+.swo
+*~
+
+# Python
+pycache/
+.py[cod]
+.pyo
+.pyd
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+pnpm-debug.log
+
+# Build outputs
+dist/
+build/
+out/
+coverage/
+
+# Environment and secrets
+.env
+.env.
+!.env.example
+.pem
+.key
+.crt
+secrets/
+credentials/
+
+# SQLite operational state
+database/.db
+database/.db-
+database/.sqlite
+database/.sqlite3
+database/.sqlite3-
+
+# User workspace configuration
+config/local.*
+config/private.*
+config/secrets.*
+
+# Generated artifacts
+artifacts/generated/
+artifacts/exports/
+artifacts/tmp/
+
+# Temporary files
+tmp/
+temp/
+.cache/
+logs/
+
+# Local AI model files
+models/
+*.gguf
+
+# Workspace-specific prompts and instructions
+prompts/private/
+skills/private/
+
+# User mission data
+mission_logs/private/
+
+# Local backups
+backups/
+.bak
+
+# Testing artifacts
+playwright-report/
+test-results/
+
+# Archives
+.zip
+.tar
+.gz
+
+# Arcadia examples should remain committed
+!examples/
+
+# Arcadia templates should remain committed
+!templates/
