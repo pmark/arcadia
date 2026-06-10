@@ -1,0 +1,32 @@
+{
+  "name": "arcadia-core",
+  "version": "0.1.0",
+  "description": "Local-first project operating system CLI for creative and software work.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "arcadia": "dist/src/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "arcadia": "tsx src/cli.ts",
+    "smoke": "tsx scripts/smoke.ts"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.5.1",
+    "better-sqlite3": "^12.10.0",
+    "commander": "^15.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.10.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.5.1"
+}

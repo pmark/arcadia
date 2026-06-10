@@ -70,6 +70,10 @@ Run the CLI locally:
 
 `pnpm arcadia --help`
 
+Run the Phase 0 smoke test:
+
+`pnpm smoke`
+
 ## Create a Workspace
 
 A workspace is where your actual operating state lives.
@@ -98,9 +102,9 @@ Your workspace can contain private information.
 
 Arcadia uses SQLite as the operational source of truth.
 
-Expected command:
+In Phase 0, database initialization is folded into workspace initialization:
 
-`pnpm arcadia db init --workspace ~/ArcadiaWorkspace`
+`pnpm arcadia init ~/ArcadiaWorkspace`
 
 This should create:
 
@@ -115,6 +119,8 @@ The database should track:
 - Artifacts
 - Queues
 - Work classifications
+
+There is no separate `db init` command in Phase 0.
 
 ## Verify Installation
 
@@ -346,16 +352,13 @@ Workspace-specific configuration should live in:
 
 Secrets should never be committed.
 
-Expected files:
+Phase 0 writes:
 
-- `config/arcadia.yml`
-- `config/models.yml`
-- `config/agents.yml`
-- `.env`
+- `config/arcadia.json`
 
-A safe example file should be committed as:
+Future versions may add model, agent, and environment configuration files. Secrets should never be committed.
 
-`.env.example`
+If environment files are introduced later, a safe example should be committed as `.env.example`.
 
 ## Git Setup
 

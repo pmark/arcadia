@@ -48,11 +48,13 @@ secrets/
 credentials/
 
 # SQLite operational state
-database/.db
-database/.db-
-database/.sqlite
-database/.sqlite3
-database/.sqlite3-
+database/*.db
+database/*.db-*
+database/*.sqlite
+database/*.sqlite-*
+database/*.sqlite3
+database/*.sqlite3-*
+!database/schema.sql
 
 # User workspace configuration
 config/local.*

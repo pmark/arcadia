@@ -1,32 +1,12 @@
 # Arcadia
 
-Arcadia is a local first project operating system for people juggling multiple creative, technical, and entrepreneurial efforts at the same time.
+Arcadia is a local-first project operating system for people juggling multiple creative, technical, and entrepreneurial efforts at the same time.
 
-There are already many excellent tools for task management, note taking, issue tracking, and project planning. Arcadia is not trying to replace them all.
+Arcadia Core is the open source CLI, schema, and reporting engine. Your Arcadia workspace is private operational data.
 
-Arcadia exists because I wanted a simple way to answer a handful of questions about the work I care about:
-
-- What projects am I actively working on?
-- What is the current status of each project?
-- What milestone am I pursuing right now?
-- What is the next concrete action?
-- What work can be delegated to scripts, coding agents, or AI?
-- What work actually requires my judgment?
-- What progress has been made recently?
-
-Arcadia treats projects as ongoing missions rather than collections of disconnected tasks.
-
-Projects generate mission logs.
-
-Mission logs generate artifacts.
-
-Artifacts demonstrate progress.
-
-The goal is not to optimize every minute of every day. The goal is to reduce cognitive overhead so that meaningful work can continue moving forward, even when time and attention are limited.
+Phase 0 is intentionally small: initialize a workspace, create projects, classify work, view queues, record mission logs, and generate Markdown status reports.
 
 ## Principles
-
-Arcadia is guided by a few practical principles:
 
 - Local first whenever possible.
 - Use the simplest solution that works.
@@ -37,63 +17,117 @@ Arcadia is guided by a few practical principles:
 - Avoid over-engineering.
 - Optimize for sustained progress rather than perfect planning.
 
-## What Arcadia Does
+## Requirements
 
-Arcadia helps maintain visibility across a portfolio of projects by tracking:
+- Node.js 20 or newer
+- pnpm
+- A terminal
 
-- Projects
-- Milestones
-- Work items
-- Mission logs
-- Artifacts
-- Work queues
-- Human dependencies
+SQLite is embedded through `better-sqlite3`; no separate database server is required.
 
-Arcadia distinguishes between different kinds of work:
+## Development Setup
 
-- Autonomous work that scripts or automation can perform.
-- Codex work that requires implementation or repository changes.
-- Human work that requires judgment, credentials, or taste.
-- Blocked work that depends on something else happening first.
+Install dependencies:
 
-Arcadia also provides a structured path from idea to implementation using lightweight specifications and planning workflows when they are actually useful.
+```sh
+pnpm install
+```
 
-## What Arcadia Is Not
+Build the CLI:
 
-Arcadia is not a replacement for every productivity tool.
+```sh
+pnpm build
+```
 
-It is not an autonomous AI employee.
+Run tests:
 
-It is not a complex project management framework.
+```sh
+pnpm test
+```
 
-It is not intended to impose a methodology on everyone.
+Show CLI help:
 
-It is simply an opinionated system designed around one person's experience balancing software development, creative projects, family life, and limited time.
+```sh
+pnpm arcadia --help
+```
 
-## Why Open Source?
+## Quick Start
 
-Arcadia is open source because I suspect I am not the only person trying to figure out how to work effectively alongside increasingly capable AI systems without introducing unnecessary complexity.
+Initialize a private workspace:
 
-If this approach resonates with others, I hope the project evolves through shared experimentation and practical contributions.
+```sh
+pnpm arcadia init ./tmp/demo-workspace
+```
 
-If not, it will still have solved an important problem for at least one person.
+Create a project:
 
-Either outcome is a success.
+```sh
+pnpm arcadia project create --workspace ./tmp/demo-workspace
+```
 
-## Status
+Add manually classified work:
 
-Arcadia is under active development.
+```sh
+pnpm arcadia inbox add --workspace ./tmp/demo-workspace
+```
 
-The current focus is establishing the smallest useful operating loop:
+View queues:
 
-1. Capture input.
-2. Classify work.
-3. Update project state.
-4. Route work appropriately.
-5. Record meaningful progress.
-6. Generate artifacts that demonstrate forward movement.
+```sh
+pnpm arcadia queue --workspace ./tmp/demo-workspace
+```
 
-Everything else is secondary.
+Create a mission log:
+
+```sh
+pnpm arcadia log create --workspace ./tmp/demo-workspace
+```
+
+Generate status:
+
+```sh
+pnpm arcadia status --workspace ./tmp/demo-workspace
+pnpm arcadia report status --workspace ./tmp/demo-workspace
+```
+
+Run the non-interactive smoke path:
+
+```sh
+pnpm smoke
+```
+
+## Commands
+
+- `arcadia init <workspace>` creates workspace folders, `config/arcadia.json`, `database/arcadia.sqlite3`, and applies the initial schema.
+- `arcadia status --workspace <path>` prints a concise summary and writes `reports/status.md`.
+- `arcadia project create --workspace <path>` interactively creates one project, milestone, initial work item, and optional artifact record.
+- `arcadia project list --workspace <path>` lists projects with status, milestone, next action, and work classification.
+- `arcadia inbox add --workspace <path>` interactively adds manually classified work.
+- `arcadia queue --workspace <path>` shows Inbox, Work Queue, Needs Mark, and Blocked items.
+- `arcadia log create --workspace <path>` records a mission log in SQLite and writes Markdown under `mission_logs/YYYY/MM/`.
+- `arcadia report status --workspace <path>` writes the full Markdown status report.
+
+## Workspace Data
+
+`arcadia init` creates:
+
+- `projects/`
+- `mission_logs/`
+- `artifacts/`
+- `skills/`
+- `prompts/`
+- `config/`
+- `database/`
+- `reports/`
+- `inbox/`
+
+SQLite is authoritative. Markdown files are generated narrative artifacts.
+
+Keep private workspaces separate from Arcadia Core. Do not commit personal workspace data unless you intentionally choose to.
+
+## Not In Phase 0
+
+Arcadia Phase 0 does not include a dashboard, daemon, cloud sync, authentication, AI classification, automatic Codex dispatch, plugin marketplace, advanced scheduling, local model integration, or a web app.
 
 ## License
 
