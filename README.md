@@ -83,6 +83,29 @@ View queues:
 pnpm arcadia queue --workspace ./tmp/demo-workspace
 ```
 
+List and update work:
+
+```sh
+pnpm arcadia work list --workspace ./tmp/demo-workspace
+pnpm arcadia work update --workspace ./tmp/demo-workspace <work-id> --status in_progress --json
+pnpm arcadia work done --workspace ./tmp/demo-workspace <work-id> --json
+```
+
+Update project and milestone state:
+
+```sh
+pnpm arcadia project update --workspace ./tmp/demo-workspace <project-id> --status paused --json
+pnpm arcadia milestone create --workspace ./tmp/demo-workspace <project-id> --title "Next milestone" --json
+pnpm arcadia milestone complete --workspace ./tmp/demo-workspace <milestone-id> --json
+```
+
+List and update artifacts:
+
+```sh
+pnpm arcadia artifact list --workspace ./tmp/demo-workspace --json
+pnpm arcadia artifact update --workspace ./tmp/demo-workspace <artifact-id> --status ready --path artifacts/output.md --json
+```
+
 Create a mission log:
 
 ```sh
@@ -108,9 +131,17 @@ pnpm smoke
 - `arcadia status --workspace <path>` prints a concise summary and writes `reports/status.md`.
 - `arcadia project create --workspace <path>` interactively creates one project, milestone, initial work item, and optional artifact record.
 - `arcadia project list --workspace <path>` lists projects with status, milestone, next action, and work classification.
+- `arcadia project update --workspace <path> <project-id> --status <status>` updates project status.
 - `arcadia inbox add --workspace <path>` interactively adds manually classified work.
 - `arcadia inbox import --workspace <path> --title <title> --input <text> --queue <queue> --classification <classification> --next-action <action>` adds manually classified work without prompts.
 - `arcadia queue --workspace <path>` shows Inbox, Work Queue, Needs Mark, and Blocked items.
+- `arcadia work list --workspace <path>` lists work items.
+- `arcadia work update --workspace <path> <work-id> [--queue <queue>] [--classification <classification>] [--next-action <action>] [--status <status>]` updates a work item.
+- `arcadia work done --workspace <path> <work-id>` marks a work item complete.
+- `arcadia milestone create --workspace <path> <project-id> --title <title>` creates a milestone.
+- `arcadia milestone complete --workspace <path> <milestone-id>` marks a milestone complete.
+- `arcadia artifact list --workspace <path>` lists artifacts.
+- `arcadia artifact update --workspace <path> <artifact-id> [--status <status>] [--path <path>]` updates artifact status or path.
 - `arcadia log create --workspace <path>` records a mission log in SQLite and writes Markdown under `mission_logs/YYYY/MM/`.
 - `arcadia report status --workspace <path>` writes the full Markdown status report.
 

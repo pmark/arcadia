@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
+import { withDatabase } from "../src/db/connection.js";
+import { createProjectWithInitialWork } from "../src/db/repositories.js";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const tsxBin = path.join(repoRoot, "node_modules", ".bin", "tsx");
@@ -55,6 +57,75 @@ describe("CLI response contract", () => {
     expect(json.command).toBe("project.list");
     expect(json.workspace).toBe(path.resolve(workspace));
     expect(json.data.projects).toEqual([]);
+  });
+
+  it("updates project status with JSON output", () => {
+    const workspace = initializedWorkspace();
+    const created = createProject(workspace);
+
+    const result = runCli([
+      "project",
+      "update",
+      created.project.id,
+      "--workspace",
+      workspace,
+      "--status",
+      "paused",
+      "--json"
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const json = parseJson(result.stdout);
+    expect(json.ok).toBe(true);
+    expect(json.command).toBe("project.update");
+    expect(json.workspace).toBe(path.resolve(workspace));
+    expect(json.data.updated).toEqual(["status"]);
+    expect(json.data.project.id).toBe(created.project.id);
+    expect(json.data.project.status).toBe("paused");
+  });
+
+  it("creates and completes milestones with JSON output", () => {
+    const workspace = initializedWorkspace();
+    const created = createProject(workspace);
+
+    const createResult = runCli([
+      "milestone",
+      "create",
+      created.project.id,
+      "--workspace",
+      workspace,
+      "--title",
+      "Ship the next slice",
+      "--json"
+    ]);
+
+    expect(createResult.status).toBe(0);
+    expect(createResult.stderr).toBe("");
+    const createJson = parseJson(createResult.stdout);
+    expect(createJson.ok).toBe(true);
+    expect(createJson.command).toBe("milestone.create");
+    expect(createJson.data.milestone.id).toMatch(/^ms_/);
+    expect(createJson.data.milestone.project_id).toBe(created.project.id);
+    expect(createJson.data.milestone.title).toBe("Ship the next slice");
+    expect(createJson.data.milestone.status).toBe("active");
+
+    const completeResult = runCli([
+      "milestone",
+      "complete",
+      createJson.data.milestone.id,
+      "--workspace",
+      workspace,
+      "--json"
+    ]);
+
+    expect(completeResult.status).toBe(0);
+    expect(completeResult.stderr).toBe("");
+    const completeJson = parseJson(completeResult.stdout);
+    expect(completeJson.ok).toBe(true);
+    expect(completeJson.command).toBe("milestone.complete");
+    expect(completeJson.data.milestone.id).toBe(createJson.data.milestone.id);
+    expect(completeJson.data.milestone.status).toBe("completed");
   });
 
   it("emits JSON success for queue groups", () => {
@@ -110,6 +181,53 @@ describe("CLI response contract", () => {
     const queueJson = parseJson(queueResult.stdout);
     expect(queueJson.data.queues.work_queue).toHaveLength(1);
     expect(queueJson.data.queues.work_queue[0].title).toBe("Capture scripted work");
+  });
+
+  it("lists artifacts with JSON output", () => {
+    const workspace = initializedWorkspace();
+    createProject(workspace);
+
+    const result = runCli(["artifact", "list", "--workspace", workspace, "--json"]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const json = parseJson(result.stdout);
+    expect(json.ok).toBe(true);
+    expect(json.command).toBe("artifact.list");
+    expect(json.workspace).toBe(path.resolve(workspace));
+    expect(json.data.artifacts).toHaveLength(1);
+    expect(json.data.artifacts[0].title).toBe("CLI Fixture Artifact");
+    expect(json.data.artifacts[0].status).toBe("planned");
+  });
+
+  it("updates artifacts with JSON output", () => {
+    const workspace = initializedWorkspace();
+    const created = createProject(workspace);
+    const artifactId = created.artifact?.id;
+    expect(artifactId).toBeTruthy();
+
+    const result = runCli([
+      "artifact",
+      "update",
+      artifactId,
+      "--workspace",
+      workspace,
+      "--status",
+      "ready",
+      "--path",
+      "artifacts/cli-fixture.md",
+      "--json"
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const json = parseJson(result.stdout);
+    expect(json.ok).toBe(true);
+    expect(json.command).toBe("artifact.update");
+    expect(json.data.updated).toEqual(["status", "path"]);
+    expect(json.data.artifact.id).toBe(artifactId);
+    expect(json.data.artifact.status).toBe("ready");
+    expect(json.data.artifact.path).toBe("artifacts/cli-fixture.md");
   });
 
   it("lists work items with JSON output", () => {
@@ -249,6 +367,147 @@ describe("CLI response contract", () => {
     expect(json.command).toBe("inbox.import");
     expect(json.error.code).toBe("PROJECT_NOT_FOUND");
     expect(json.error.details.projectId).toBe("proj_missing");
+  });
+
+  it("emits stable JSON for project update validation errors", () => {
+    const workspace = initializedWorkspace();
+    const created = createProject(workspace);
+
+    const result = runCli([
+      "project",
+      "update",
+      created.project.id,
+      "--workspace",
+      workspace,
+      "--status",
+      "not_a_status",
+      "--json"
+    ]);
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe("");
+    const json = parseJson(result.stderr);
+    expect(json.ok).toBe(false);
+    expect(json.command).toBe("project.update");
+    expect(json.error.code).toBe("VALIDATION_ERROR");
+    expect(json.error.message).toContain("Project status must be one of");
+  });
+
+  it("emits stable JSON for missing project updates", () => {
+    const workspace = initializedWorkspace();
+    const result = runCli([
+      "project",
+      "update",
+      "proj_missing",
+      "--workspace",
+      workspace,
+      "--status",
+      "paused",
+      "--json"
+    ]);
+
+    expect(result.status).toBe(3);
+    const json = parseJson(result.stderr);
+    expect(json.ok).toBe(false);
+    expect(json.command).toBe("project.update");
+    expect(json.error.code).toBe("PROJECT_NOT_FOUND");
+    expect(json.error.details.projectId).toBe("proj_missing");
+  });
+
+  it("emits stable JSON for missing milestone create project references", () => {
+    const workspace = initializedWorkspace();
+    const result = runCli([
+      "milestone",
+      "create",
+      "proj_missing",
+      "--workspace",
+      workspace,
+      "--title",
+      "Missing parent",
+      "--json"
+    ]);
+
+    expect(result.status).toBe(3);
+    const json = parseJson(result.stderr);
+    expect(json.ok).toBe(false);
+    expect(json.command).toBe("milestone.create");
+    expect(json.error.code).toBe("PROJECT_NOT_FOUND");
+    expect(json.error.details.projectId).toBe("proj_missing");
+  });
+
+  it("emits stable JSON for missing milestone completion", () => {
+    const workspace = initializedWorkspace();
+    const result = runCli(["milestone", "complete", "ms_missing", "--workspace", workspace, "--json"]);
+
+    expect(result.status).toBe(3);
+    const json = parseJson(result.stderr);
+    expect(json.ok).toBe(false);
+    expect(json.command).toBe("milestone.complete");
+    expect(json.error.code).toBe("MILESTONE_NOT_FOUND");
+    expect(json.error.details.milestoneId).toBe("ms_missing");
+  });
+
+  it("emits stable JSON for artifact update validation errors", () => {
+    const workspace = initializedWorkspace();
+    const created = createProject(workspace);
+    const artifactId = created.artifact?.id;
+    expect(artifactId).toBeTruthy();
+
+    const result = runCli([
+      "artifact",
+      "update",
+      artifactId,
+      "--workspace",
+      workspace,
+      "--status",
+      "not_a_status",
+      "--json"
+    ]);
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe("");
+    const json = parseJson(result.stderr);
+    expect(json.ok).toBe(false);
+    expect(json.command).toBe("artifact.update");
+    expect(json.error.code).toBe("VALIDATION_ERROR");
+    expect(json.error.message).toContain("Artifact status must be one of");
+  });
+
+  it("emits stable JSON when artifact update has no fields", () => {
+    const workspace = initializedWorkspace();
+    const created = createProject(workspace);
+    const artifactId = created.artifact?.id;
+    expect(artifactId).toBeTruthy();
+
+    const result = runCli(["artifact", "update", artifactId, "--workspace", workspace, "--json"]);
+
+    expect(result.status).toBe(2);
+    const json = parseJson(result.stderr);
+    expect(json.ok).toBe(false);
+    expect(json.command).toBe("artifact.update");
+    expect(json.error.code).toBe("VALIDATION_ERROR");
+    expect(json.error.details.fields).toEqual(["status", "path"]);
+  });
+
+  it("emits stable JSON for missing artifact updates", () => {
+    const workspace = initializedWorkspace();
+    const result = runCli([
+      "artifact",
+      "update",
+      "art_missing",
+      "--workspace",
+      workspace,
+      "--status",
+      "ready",
+      "--json"
+    ]);
+
+    expect(result.status).toBe(3);
+    const json = parseJson(result.stderr);
+    expect(json.ok).toBe(false);
+    expect(json.command).toBe("artifact.update");
+    expect(json.error.code).toBe("ARTIFACT_NOT_FOUND");
+    expect(json.error.details.artifactId).toBe("art_missing");
   });
 
   it("emits stable JSON for work update validation errors", () => {
@@ -417,6 +676,20 @@ function initializedWorkspace(): string {
   const result = runCli(["init", workspace]);
   expect(result.status).toBe(0);
   return workspace;
+}
+
+function createProject(workspace: string) {
+  return withDatabase(workspace, (db) =>
+    createProjectWithInitialWork(db, {
+      name: "CLI Fixture Project",
+      mission: "Support CLI tests.",
+      status: "active",
+      currentMilestone: "Initial milestone",
+      nextAction: "Exercise the CLI",
+      expectedArtifact: "CLI Fixture Artifact",
+      workClassification: "codex"
+    })
+  );
 }
 
 function importWorkItem(

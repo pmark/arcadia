@@ -63,6 +63,10 @@ export function workItemNotFound(workItemId: string): ArcadiaError {
   return new ArcadiaError("WORK_ITEM_NOT_FOUND", "Work item not found.", 3, { workItemId });
 }
 
+export function artifactNotFound(artifactId: string): ArcadiaError {
+  return new ArcadiaError("ARTIFACT_NOT_FOUND", "Artifact not found.", 3, { artifactId });
+}
+
 export function normalizeError(error: unknown): ArcadiaError {
   if (error instanceof ArcadiaError) {
     return error;

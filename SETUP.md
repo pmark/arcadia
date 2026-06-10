@@ -197,6 +197,38 @@ And one work class:
 - Needs Mark
 - Blocked
 
+## Update Work
+
+List work:
+
+`pnpm arcadia work list --workspace ~/ArcadiaWorkspace`
+
+Move or edit work:
+
+`pnpm arcadia work update --workspace ~/ArcadiaWorkspace <work-id> --queue work_queue --classification codex --next-action "Implement the next slice" --status in_progress --json`
+
+Complete work:
+
+`pnpm arcadia work done --workspace ~/ArcadiaWorkspace <work-id> --json`
+
+## Update Project, Milestone, and Artifact State
+
+Update a project status:
+
+`pnpm arcadia project update --workspace ~/ArcadiaWorkspace <project-id> --status paused --json`
+
+Create and complete milestones:
+
+`pnpm arcadia milestone create --workspace ~/ArcadiaWorkspace <project-id> --title "Next milestone" --json`
+
+`pnpm arcadia milestone complete --workspace ~/ArcadiaWorkspace <milestone-id> --json`
+
+List and update artifacts:
+
+`pnpm arcadia artifact list --workspace ~/ArcadiaWorkspace --json`
+
+`pnpm arcadia artifact update --workspace ~/ArcadiaWorkspace <artifact-id> --status ready --path artifacts/output.md --json`
+
 ## Generate a Status Report
 
 Run:
@@ -208,11 +240,13 @@ This should generate a Markdown report showing:
 - Active projects
 - Current milestones
 - Next actions
-- Needs Mark items
-- Agent-ready work
+- Work items grouped by queue
+- Work items grouped by classification
 - Blocked work
+- Recently completed work
 - Recent mission logs
-- Upcoming artifacts
+- Artifacts grouped by status
+- Projects with no open next action
 
 Expected output location:
 

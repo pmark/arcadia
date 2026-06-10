@@ -1,10 +1,13 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { QUEUE_LABELS, WORK_CLASSIFICATION_LABELS } from "../domain/constants.js";
+import { ARTIFACT_STATUSES, QUEUE_LABELS, WORK_CLASSIFICATION_LABELS } from "../domain/constants.js";
+import type { ArtifactStatus, QueueName } from "../domain/constants.js";
 import type {
   ArtifactSummary,
+  ArtifactGroups,
   MissionLogSummary,
   ProjectSummary,
+  QueueGroups,
   StatusReportData,
   WorkItemSummary
 } from "../domain/types.js";
@@ -31,29 +34,43 @@ export function renderStatusReport(data: StatusReportData): string {
   lines.push("");
   lines.push(renderNextActions(data.projects));
   lines.push("");
-  lines.push("## Needs Mark");
+  lines.push("## Projects Without Open Next Action");
+  lines.push("");
+  lines.push(renderProjectsWithoutNextAction(data.projects));
+  lines.push("");
+  lines.push("## Work By Queue");
+  lines.push("");
+  lines.push(renderQueueGroups(data.queues));
+  lines.push("");
+  lines.push("## Work By Classification");
+  lines.push("");
+  lines.push("### Needs Mark");
   lines.push("");
   lines.push(renderWorkItems(data.needsMarkItems));
   lines.push("");
-  lines.push("## Autonomous Work");
+  lines.push("### Autonomous Work");
   lines.push("");
   lines.push(renderWorkItems(data.autonomousItems));
   lines.push("");
-  lines.push("## Codex Work");
+  lines.push("### Codex Work");
   lines.push("");
   lines.push(renderWorkItems(data.codexItems));
   lines.push("");
   lines.push("## Blocked Work");
   lines.push("");
-  lines.push(renderWorkItems(data.blockedItems));
+  lines.push(renderBlockedWorkItems(data.blockedItems));
+  lines.push("");
+  lines.push("## Recently Completed Work");
+  lines.push("");
+  lines.push(renderWorkItems(data.recentlyCompletedWorkItems));
   lines.push("");
   lines.push("## Recent Mission Logs");
   lines.push("");
   lines.push(renderMissionLogs(data.recentMissionLogs));
   lines.push("");
-  lines.push("## Upcoming Artifacts");
+  lines.push("## Artifacts By Status");
   lines.push("");
-  lines.push(renderArtifacts(data.upcomingArtifacts));
+  lines.push(renderArtifactGroups(data.artifactsByStatus));
   lines.push("");
   lines.push("## Queue Counts");
   lines.push("");
@@ -108,6 +125,27 @@ function renderNextActions(projects: ProjectSummary[]): string {
   return withActions.map((project) => `- **${project.name}**: ${project.next_action}`).join("\n");
 }
 
+function renderProjectsWithoutNextAction(projects: ProjectSummary[]): string {
+  const withoutActions = projects.filter((project) => !project.next_action);
+  if (withoutActions.length === 0) {
+    return "_Every project has an open next action._";
+  }
+
+  return withoutActions
+    .map((project) => {
+      const milestone = project.current_milestone ?? "No active milestone";
+      return `- **${project.name}** (${project.status}) - ${milestone}`;
+    })
+    .join("\n");
+}
+
+function renderQueueGroups(queues: QueueGroups): string {
+  const orderedQueues: QueueName[] = ["inbox", "work_queue", "needs_mark", "blocked"];
+  return orderedQueues
+    .map((queue) => [`### ${QUEUE_LABELS[queue]}`, "", renderWorkItems(queues[queue])].join("\n"))
+    .join("\n\n");
+}
+
 function renderWorkItems(items: WorkItemSummary[]): string {
   if (items.length === 0) {
     return "_None._";
@@ -118,6 +156,20 @@ function renderWorkItems(items: WorkItemSummary[]): string {
       const project = item.project_name ? ` [${item.project_name}]` : "";
       const nextAction = item.next_action ? ` Next: ${item.next_action}.` : "";
       return `- **${item.title}**${project} (${WORK_CLASSIFICATION_LABELS[item.work_classification]}, ${item.status}).${nextAction}`;
+    })
+    .join("\n");
+}
+
+function renderBlockedWorkItems(items: WorkItemSummary[]): string {
+  if (items.length === 0) {
+    return "_None._";
+  }
+
+  return items
+    .map((item) => {
+      const project = item.project_name ? ` [${item.project_name}]` : "";
+      const context = item.raw_input && item.raw_input !== item.title ? ` Context: ${item.raw_input}.` : "";
+      return `- **${item.title}**${project} (${WORK_CLASSIFICATION_LABELS[item.work_classification]}, ${item.status}). Next: ${item.next_action}.${context}`;
     })
     .join("\n");
 }
@@ -137,13 +189,28 @@ function renderMissionLogs(logs: MissionLogSummary[]): string {
 
 function renderArtifacts(artifacts: ArtifactSummary[]): string {
   if (artifacts.length === 0) {
-    return "_No upcoming artifacts._";
+    return "_No artifacts._";
   }
 
   return artifacts
     .map((artifact) => {
       const project = artifact.project_name ? ` [${artifact.project_name}]` : "";
-      return `- **${artifact.title}**${project} (${artifact.status})`;
+      const artifactPath = artifact.path ? ` - ${artifact.path}` : "";
+      return `- **${artifact.title}**${project} (${artifact.status})${artifactPath}`;
     })
     .join("\n");
+}
+
+function renderArtifactGroups(groups: ArtifactGroups): string {
+  return ARTIFACT_STATUSES.map((status) => {
+    const heading = artifactStatusHeading(status);
+    return [`### ${heading}`, "", renderArtifacts(groups[status])].join("\n");
+  }).join("\n\n");
+}
+
+function artifactStatusHeading(status: ArtifactStatus): string {
+  return status
+    .split("_")
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
 }

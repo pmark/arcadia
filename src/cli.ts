@@ -3,10 +3,28 @@ import { realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
+import {
+  renderArtifactListSuccess,
+  renderArtifactUpdateSuccess,
+  runArtifactListCommand,
+  runArtifactUpdateCommand
+} from "./commands/artifact.js";
 import { renderInboxImportSuccess, runInboxAddCommand, runInboxImportCommand } from "./commands/inbox.js";
 import { renderInitSuccess, runInitCommand } from "./commands/init.js";
 import { runLogCreateCommand } from "./commands/log.js";
-import { renderProjectListSuccess, runProjectCreateCommand, runProjectListCommand } from "./commands/project.js";
+import {
+  renderMilestoneCompleteSuccess,
+  renderMilestoneCreateSuccess,
+  runMilestoneCompleteCommand,
+  runMilestoneCreateCommand
+} from "./commands/milestone.js";
+import {
+  renderProjectListSuccess,
+  renderProjectUpdateSuccess,
+  runProjectCreateCommand,
+  runProjectListCommand,
+  runProjectUpdateCommand
+} from "./commands/project.js";
 import { renderQueueSuccess, runQueueCommand } from "./commands/queue.js";
 import { renderReportStatusSuccess, runReportStatusCommand } from "./commands/report.js";
 import { renderStatusSuccess, runStatusCommand } from "./commands/status.js";
@@ -76,6 +94,21 @@ export function buildProgram(): Command {
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("project.list", options, () => runProjectListCommand(options), renderProjectListSuccess)
   );
+  addJsonOption(
+    project
+      .command("update")
+      .description("Update project status")
+      .argument("<project-id>", "Project id")
+      .requiredOption("--workspace <path>", "Workspace path")
+      .requiredOption("--status <status>", "Status: active, paused, incubating, completed")
+  ).action((projectId: string, options: { workspace: string; status: string; json?: boolean }) =>
+    runCliAction(
+      "project.update",
+      options,
+      () => runProjectUpdateCommand({ ...options, projectId }),
+      renderProjectUpdateSuccess
+    )
+  );
 
   const inbox = program.command("inbox").description("Inbox commands");
   inbox
@@ -118,6 +151,32 @@ export function buildProgram(): Command {
       .requiredOption("--workspace <path>", "Workspace path")
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("queue", options, () => runQueueCommand(options), renderQueueSuccess)
+  );
+
+  const artifact = program.command("artifact").description("Artifact commands");
+  addJsonOption(
+    artifact
+      .command("list")
+      .description("List artifacts")
+      .requiredOption("--workspace <path>", "Workspace path")
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("artifact.list", options, () => runArtifactListCommand(options), renderArtifactListSuccess)
+  );
+  addJsonOption(
+    artifact
+      .command("update")
+      .description("Update artifact status or path")
+      .argument("<artifact-id>", "Artifact id")
+      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--status <status>", "Status: planned, drafted, ready, published")
+      .option("--path <path>", "Artifact path")
+  ).action((artifactId: string, options: { workspace: string; status?: string; path?: string; json?: boolean }) =>
+    runCliAction(
+      "artifact.update",
+      options,
+      () => runArtifactUpdateCommand({ ...options, artifactId }),
+      renderArtifactUpdateSuccess
+    )
   );
 
   const work = program.command("work").description("Work item commands");
@@ -170,6 +229,37 @@ export function buildProgram(): Command {
     .description("Interactively create a mission log")
     .requiredOption("--workspace <path>", "Workspace path")
     .action((options: { workspace: string }) => runLogCreateCommand(options));
+
+  const milestone = program.command("milestone").description("Milestone commands");
+  addJsonOption(
+    milestone
+      .command("create")
+      .description("Create a milestone for a project")
+      .argument("<project-id>", "Project id")
+      .requiredOption("--workspace <path>", "Workspace path")
+      .requiredOption("--title <title>", "Milestone title")
+  ).action((projectId: string, options: { workspace: string; title: string; json?: boolean }) =>
+    runCliAction(
+      "milestone.create",
+      options,
+      () => runMilestoneCreateCommand({ ...options, projectId }),
+      renderMilestoneCreateSuccess
+    )
+  );
+  addJsonOption(
+    milestone
+      .command("complete")
+      .description("Mark a milestone complete")
+      .argument("<milestone-id>", "Milestone id")
+      .requiredOption("--workspace <path>", "Workspace path")
+  ).action((milestoneId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "milestone.complete",
+      options,
+      () => runMilestoneCompleteCommand({ ...options, milestoneId }),
+      renderMilestoneCompleteSuccess
+    )
+  );
 
   const report = program.command("report").description("Report commands");
   addJsonOption(
@@ -235,8 +325,20 @@ function commandNameFromArgv(argv: string[]): string {
     return "project.list";
   }
 
+  if (first === "project" && second === "update") {
+    return "project.update";
+  }
+
   if (first === "inbox" && second === "import") {
     return "inbox.import";
+  }
+
+  if (first === "milestone" && ["create", "complete"].includes(second ?? "")) {
+    return `milestone.${second}`;
+  }
+
+  if (first === "artifact" && ["list", "update"].includes(second ?? "")) {
+    return `artifact.${second}`;
   }
 
   if (first === "work" && ["list", "update", "done"].includes(second ?? "")) {

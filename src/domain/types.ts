@@ -96,6 +96,8 @@ export interface QueueGroups {
   blocked: WorkItemSummary[];
 }
 
+export type ArtifactGroups = Record<ArtifactStatus, ArtifactSummary[]>;
+
 export interface StatusReportData {
   workspacePath: string;
   generatedAt: string;
@@ -105,8 +107,10 @@ export interface StatusReportData {
   autonomousItems: WorkItemSummary[];
   codexItems: WorkItemSummary[];
   blockedItems: WorkItemSummary[];
+  recentlyCompletedWorkItems: WorkItemSummary[];
   recentMissionLogs: MissionLogSummary[];
   upcomingArtifacts: ArtifactSummary[];
+  artifactsByStatus: ArtifactGroups;
 }
 
 export interface CreateProjectInput {
@@ -136,6 +140,11 @@ export interface UpdateWorkItemInput {
   workClassification?: string;
   nextAction?: string;
   status?: string;
+}
+
+export interface UpdateArtifactInput {
+  status?: string;
+  path?: string | null;
 }
 
 export interface CreateMissionLogInput {

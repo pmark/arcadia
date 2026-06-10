@@ -17,6 +17,7 @@ import {
 } from "../domain/constants.js";
 import type {
   Artifact,
+  ArtifactGroups,
   ArtifactSummary,
   CreateArtifactInput,
   CreateMissionLogInput,
@@ -30,6 +31,7 @@ import type {
   ProjectSummary,
   QueueGroups,
   StatusReportData,
+  UpdateArtifactInput,
   UpdateWorkItemInput,
   WorkItem,
   WorkItemSummary
@@ -293,8 +295,49 @@ export function getProject(db: Database.Database, id: string): Project | null {
   return (db.prepare("SELECT * FROM projects WHERE id = ?").get(id) as Project | undefined) ?? null;
 }
 
+export function updateProjectStatus(db: Database.Database, id: string, status: string): Project | null {
+  const projectStatus = validateProjectStatus(status);
+
+  if (!getProject(db, id)) {
+    return null;
+  }
+
+  db.prepare("UPDATE projects SET status = ?, updated_at = ? WHERE id = ?").run(projectStatus, nowIso(), id);
+  return getProject(db, id);
+}
+
 export function getMilestone(db: Database.Database, id: string): Milestone | null {
   return (db.prepare("SELECT * FROM milestones WHERE id = ?").get(id) as Milestone | undefined) ?? null;
+}
+
+export function createMilestoneForProject(
+  db: Database.Database,
+  projectId: string,
+  title: string,
+  status = "active"
+): Milestone | null {
+  const milestoneStatus = validateMilestoneStatus(status);
+
+  if (!getProject(db, projectId)) {
+    return null;
+  }
+
+  return insertMilestone(db, projectId, title, milestoneStatus, nowIso());
+}
+
+export function updateMilestoneStatus(db: Database.Database, id: string, status: string): Milestone | null {
+  const milestoneStatus = validateMilestoneStatus(status);
+
+  if (!getMilestone(db, id)) {
+    return null;
+  }
+
+  db.prepare("UPDATE milestones SET status = ?, updated_at = ? WHERE id = ?").run(milestoneStatus, nowIso(), id);
+  return getMilestone(db, id);
+}
+
+export function completeMilestone(db: Database.Database, id: string): Milestone | null {
+  return updateMilestoneStatus(db, id, "completed");
 }
 
 export function listMilestonesForProject(db: Database.Database, projectId: string): Milestone[] {
@@ -382,6 +425,23 @@ export function listQueueGroups(db: Database.Database): QueueGroups {
   };
 }
 
+export function listRecentlyCompletedWorkItems(db: Database.Database, limit = 10): WorkItemSummary[] {
+  return db
+    .prepare(
+      `SELECT
+        wi.*,
+        p.name AS project_name,
+        m.title AS milestone_title
+      FROM work_items wi
+      LEFT JOIN projects p ON p.id = wi.project_id
+      LEFT JOIN milestones m ON m.id = wi.milestone_id
+      WHERE wi.status = 'done'
+      ORDER BY wi.updated_at DESC, wi.created_at DESC
+      LIMIT ?`
+    )
+    .all(limit) as WorkItemSummary[];
+}
+
 export function listWorkItems(db: Database.Database): WorkItemSummary[] {
   return db
     .prepare(
@@ -461,6 +521,86 @@ export function completeWorkItem(db: Database.Database, id: string): WorkItemSum
   return updateWorkItem(db, id, { status: "done" });
 }
 
+export function listArtifacts(db: Database.Database): ArtifactSummary[] {
+  return db
+    .prepare(
+      `SELECT
+        a.*,
+        p.name AS project_name,
+        wi.title AS work_item_title
+      FROM artifacts a
+      LEFT JOIN projects p ON p.id = a.project_id
+      LEFT JOIN work_items wi ON wi.id = a.work_item_id
+      ORDER BY a.updated_at DESC, a.created_at DESC`
+    )
+    .all() as ArtifactSummary[];
+}
+
+export function getArtifact(db: Database.Database, id: string): ArtifactSummary | null {
+  return (
+    (db
+      .prepare(
+        `SELECT
+          a.*,
+          p.name AS project_name,
+          wi.title AS work_item_title
+        FROM artifacts a
+        LEFT JOIN projects p ON p.id = a.project_id
+        LEFT JOIN work_items wi ON wi.id = a.work_item_id
+        WHERE a.id = ?`
+      )
+      .get(id) as ArtifactSummary | undefined) ?? null
+  );
+}
+
+export function updateArtifact(
+  db: Database.Database,
+  id: string,
+  input: UpdateArtifactInput
+): ArtifactSummary | null {
+  const updates: string[] = [];
+  const parameters: Record<string, string | null> = { id };
+
+  if (input.status !== undefined) {
+    parameters.status = validateArtifactStatus(input.status);
+    updates.push("status = @status");
+  }
+
+  if (input.path !== undefined) {
+    parameters.path = nullable(input.path);
+    updates.push("path = @path");
+  }
+
+  if (updates.length === 0) {
+    throw new Error("At least one artifact field is required");
+  }
+
+  if (!getArtifact(db, id)) {
+    return null;
+  }
+
+  parameters.updated_at = nowIso();
+  updates.push("updated_at = @updated_at");
+
+  db.prepare(`UPDATE artifacts SET ${updates.join(", ")} WHERE id = @id`).run(parameters);
+  return getArtifact(db, id);
+}
+
+export function listArtifactsByStatus(db: Database.Database): ArtifactGroups {
+  const groups: ArtifactGroups = {
+    planned: [],
+    drafted: [],
+    ready: [],
+    published: []
+  };
+
+  for (const artifact of listArtifacts(db)) {
+    groups[artifact.status].push(artifact);
+  }
+
+  return groups;
+}
+
 export function listRecentMissionLogs(db: Database.Database, limit = 10): MissionLogSummary[] {
   return db
     .prepare(
@@ -510,8 +650,10 @@ export function buildStatusReportData(db: Database.Database, workspacePath: stri
       db,
       "wi.queue = 'blocked' OR wi.work_classification = 'blocked' OR wi.status = 'blocked'"
     ),
+    recentlyCompletedWorkItems: listRecentlyCompletedWorkItems(db),
     recentMissionLogs: listRecentMissionLogs(db),
-    upcomingArtifacts: listUpcomingArtifacts(db)
+    upcomingArtifacts: listUpcomingArtifacts(db),
+    artifactsByStatus: listArtifactsByStatus(db)
   };
 }
 

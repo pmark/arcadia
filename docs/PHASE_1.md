@@ -6,11 +6,11 @@ The focus is not expansion into a dashboard or automation system. The focus is r
 
 ## Current Milestone
 
-Phase 1: Capture, Update, and Review Loop.
+Phase 1: Capture, Update, and Review Loop. Complete.
 
 ## Next Action
 
-Add project and milestone update commands.
+Start the next recommended feature: deterministic weekly review command.
 
 ## Work Classification
 
@@ -33,10 +33,11 @@ Codex.
 - [x] CLI-level JSON and failure tests for existing non-interactive commands
 - [x] Non-interactive inbox capture command
 - [x] Work item update commands
-- [ ] Project and milestone update commands
-- [ ] Artifact status commands
-- [ ] Expanded status report sections
-- [x] Expanded smoke coverage for inbox import, work update, and work completion
+- [x] Project and milestone update commands
+- [x] Artifact status commands
+- [x] Expanded status report sections
+- [x] Expanded smoke coverage for inbox import, work update, work completion, project update, milestone completion, and artifact update
+- [x] Updated CLI documentation
 
 ## Goals
 
@@ -217,3 +218,13 @@ Add a deterministic weekly review command that summarizes recent mission logs, c
 Implemented `arcadia inbox import` as the first script-facing Phase 1 workflow command. It supports stable JSON success and failure responses, validates queue and classification values, rejects missing workspace/database/project/milestone references with stable error codes, and is covered by CLI subprocess tests plus the smoke script.
 
 Implemented `arcadia work list`, `arcadia work update`, and `arcadia work done`. Work lifecycle commands use the shared CLI response/error contract, validate enum values before SQLite updates, return `WORK_ITEM_NOT_FOUND` for missing work items, and are covered by repository tests, CLI subprocess tests, and smoke coverage for update and completion.
+
+Implemented `arcadia project update`, `arcadia milestone create`, and `arcadia milestone complete`. Project and milestone lifecycle commands use stable JSON success and failure shapes, validate status values before SQLite updates, return stable missing-record errors, and are covered by repository tests, CLI subprocess tests, and smoke coverage.
+
+Implemented `arcadia artifact list` and `arcadia artifact update`. Artifact commands use stable JSON success and failure shapes, validate status values before SQLite updates, return `ARTIFACT_NOT_FOUND` for missing artifacts, and are covered by repository tests, CLI subprocess tests, and smoke coverage.
+
+Expanded `reports/status.md` generation with detailed work grouped by queue, work grouped by classification, projects without open next actions, blocked work context, recently completed work, and artifacts grouped by status. The report remains generated directly from SQLite.
+
+Updated README and SETUP command documentation for the Phase 1 script-friendly lifecycle commands and expanded status report contents.
+
+Final verification passed with `pnpm install`, `pnpm build`, `pnpm test`, `pnpm arcadia --help`, and `pnpm smoke`.

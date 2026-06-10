@@ -1,10 +1,11 @@
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
+import { projectNotFound } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
-import { createProjectWithInitialWork, listProjectSummaries } from "../db/repositories.js";
+import { createProjectWithInitialWork, listProjectSummaries, updateProjectStatus } from "../db/repositories.js";
 import { WORK_CLASSIFICATION_LABELS } from "../domain/constants.js";
-import type { ProjectSummary } from "../domain/types.js";
+import type { Project, ProjectSummary } from "../domain/types.js";
 import { promptForProjectCreate } from "../prompts/index.js";
 import { resolveWorkspacePath } from "../workspace/paths.js";
 
@@ -22,6 +23,11 @@ export interface ProjectListCommandData {
   projects: ProjectSummary[];
 }
 
+export interface ProjectUpdateCommandData {
+  project: Project;
+  updated: string[];
+}
+
 export function runProjectListCommand(options: { workspace: string }): CommandSuccess<ProjectListCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const projects = withDatabase(workspacePath, listProjectSummaries);
@@ -30,6 +36,25 @@ export function runProjectListCommand(options: { workspace: string }): CommandSu
     command: "project.list",
     workspace: workspacePath,
     data: { projects }
+  });
+}
+
+export function runProjectUpdateCommand(options: {
+  workspace: string;
+  projectId: string;
+  status: string;
+}): CommandSuccess<ProjectUpdateCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const project = withDatabase(workspacePath, (db) => updateProjectStatus(db, options.projectId, options.status));
+
+  if (!project) {
+    throw projectNotFound(options.projectId);
+  }
+
+  return createSuccess({
+    command: "project.update",
+    workspace: workspacePath,
+    data: { project, updated: ["status"] }
   });
 }
 
@@ -50,4 +75,12 @@ export function renderProjectListSuccess(response: CommandSuccess<ProjectListCom
   }
 
   return lines;
+}
+
+export function renderProjectUpdateSuccess(response: CommandSuccess<ProjectUpdateCommandData>): string[] {
+  return [
+    `Updated project: ${response.data.project.name}`,
+    `ID: ${response.data.project.id}`,
+    `Status: ${response.data.project.status}`
+  ];
 }

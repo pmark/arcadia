@@ -1,6 +1,9 @@
 import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
+import { runArtifactUpdateCommand } from "../src/commands/artifact.js";
 import { runInboxImportCommand } from "../src/commands/inbox.js";
+import { runMilestoneCompleteCommand, runMilestoneCreateCommand } from "../src/commands/milestone.js";
+import { runProjectUpdateCommand } from "../src/commands/project.js";
 import { runWorkDoneCommand, runWorkUpdateCommand } from "../src/commands/work.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
@@ -30,6 +33,46 @@ const created = withDatabase(workspace, (db) =>
     workClassification: "codex"
   })
 );
+
+const projectUpdate = runProjectUpdateCommand({
+  workspace,
+  projectId: created.project.id,
+  status: "paused"
+});
+
+if (projectUpdate.data.project.status !== "paused") {
+  throw new Error("Smoke test expected project status to be updated.");
+}
+
+const nextMilestone = runMilestoneCreateCommand({
+  workspace,
+  projectId: created.project.id,
+  title: "Review lifecycle commands"
+});
+
+const completedMilestone = runMilestoneCompleteCommand({
+  workspace,
+  milestoneId: nextMilestone.data.milestone.id
+});
+
+if (completedMilestone.data.milestone.status !== "completed") {
+  throw new Error("Smoke test expected milestone to be completed.");
+}
+
+if (!created.artifact) {
+  throw new Error("Smoke test expected initial project artifact.");
+}
+
+const updatedArtifact = runArtifactUpdateCommand({
+  workspace,
+  artifactId: created.artifact.id,
+  status: "ready",
+  path: "artifacts/smoke-test-report.md"
+});
+
+if (updatedArtifact.data.artifact.status !== "ready" || updatedArtifact.data.artifact.path !== "artifacts/smoke-test-report.md") {
+  throw new Error("Smoke test expected artifact to be updated.");
+}
 
 const imported = runInboxImportCommand({
   workspace,

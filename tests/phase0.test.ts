@@ -5,15 +5,24 @@ import { afterEach, describe, expect, it } from "vitest";
 import { withDatabase } from "../src/db/connection.js";
 import {
   buildStatusReportData,
+  completeMilestone,
   completeWorkItem,
   countRows,
+  createMilestoneForProject,
   createMissionLog,
   createProjectWithInitialWork,
   createWorkItemWithOptionalArtifact,
+  getArtifact,
+  getMilestone,
+  getProject,
   getWorkItem,
+  listArtifacts,
   listWorkItems,
   listMilestonesForProject,
   listQueueGroups,
+  updateArtifact,
+  updateMilestoneStatus,
+  updateProjectStatus,
   updateWorkItem
 } from "../src/db/repositories.js";
 import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../src/markdown/missionLog.js";
@@ -207,6 +216,126 @@ describe("Phase 0 data operations", () => {
     });
   });
 
+  it("updates project status and creates and completes milestones", () => {
+    const workspace = initializedWorkspace();
+
+    withDatabase(workspace, (db) => {
+      const created = createProjectWithInitialWork(db, {
+        name: "Stateful Project",
+        mission: "Exercise project lifecycle.",
+        status: "active",
+        currentMilestone: "Start",
+        nextAction: "Move project",
+        workClassification: "codex"
+      });
+
+      const updatedProject = updateProjectStatus(db, created.project.id, "paused");
+      expect(updatedProject?.status).toBe("paused");
+      expect(getProject(db, created.project.id)?.status).toBe("paused");
+
+      const milestone = createMilestoneForProject(db, created.project.id, "Second milestone");
+      expect(milestone?.id).toMatch(/^ms_/);
+      expect(milestone?.status).toBe("active");
+
+      const completedMilestone = completeMilestone(db, milestone?.id ?? "");
+      expect(completedMilestone?.status).toBe("completed");
+      expect(getMilestone(db, milestone?.id ?? "")?.status).toBe("completed");
+    });
+  });
+
+  it("returns null for missing project and milestone lifecycle targets", () => {
+    const workspace = initializedWorkspace();
+
+    withDatabase(workspace, (db) => {
+      expect(updateProjectStatus(db, "proj_missing", "paused")).toBeNull();
+      expect(createMilestoneForProject(db, "proj_missing", "Missing project milestone")).toBeNull();
+      expect(updateMilestoneStatus(db, "ms_missing", "completed")).toBeNull();
+      expect(completeMilestone(db, "ms_missing")).toBeNull();
+    });
+  });
+
+  it("rejects invalid project and milestone status before writing", () => {
+    const workspace = initializedWorkspace();
+
+    withDatabase(workspace, (db) => {
+      const created = createProjectWithInitialWork(db, {
+        name: "Validation Project",
+        mission: "Keep statuses valid.",
+        status: "active",
+        currentMilestone: "Start",
+        nextAction: "Validate statuses",
+        workClassification: "codex"
+      });
+
+      expect(() => updateProjectStatus(db, created.project.id, "invalid_status")).toThrow(
+        "Project status must be one of"
+      );
+      expect(() => updateMilestoneStatus(db, created.milestone.id, "invalid_status")).toThrow(
+        "Milestone status must be one of"
+      );
+      expect(getProject(db, created.project.id)?.status).toBe("active");
+      expect(getMilestone(db, created.milestone.id)?.status).toBe("active");
+    });
+  });
+
+  it("lists and updates artifacts", () => {
+    const workspace = initializedWorkspace();
+
+    withDatabase(workspace, (db) => {
+      const created = createProjectWithInitialWork(db, {
+        name: "Artifact Project",
+        mission: "Exercise artifact lifecycle.",
+        status: "active",
+        currentMilestone: "Start",
+        nextAction: "Create an artifact",
+        expectedArtifact: "Artifact draft",
+        workClassification: "codex"
+      });
+
+      expect(listArtifacts(db)).toHaveLength(1);
+
+      const artifactId = created.artifact?.id ?? "";
+      const updated = updateArtifact(db, artifactId, {
+        status: "ready",
+        path: "artifacts/artifact-draft.md"
+      });
+
+      expect(updated?.status).toBe("ready");
+      expect(updated?.path).toBe("artifacts/artifact-draft.md");
+      expect(getArtifact(db, artifactId)?.status).toBe("ready");
+    });
+  });
+
+  it("returns null for missing artifact updates", () => {
+    const workspace = initializedWorkspace();
+
+    withDatabase(workspace, (db) => {
+      expect(updateArtifact(db, "art_missing", { status: "ready" })).toBeNull();
+    });
+  });
+
+  it("rejects invalid artifact status before writing", () => {
+    const workspace = initializedWorkspace();
+
+    withDatabase(workspace, (db) => {
+      const created = createProjectWithInitialWork(db, {
+        name: "Artifact Validation Project",
+        mission: "Keep artifact statuses valid.",
+        status: "active",
+        currentMilestone: "Start",
+        nextAction: "Validate artifact",
+        expectedArtifact: "Validated artifact",
+        workClassification: "codex"
+      });
+
+      const artifactId = created.artifact?.id ?? "";
+      expect(() => updateArtifact(db, artifactId, { status: "invalid_status" })).toThrow(
+        "Artifact status must be one of"
+      );
+      expect(getArtifact(db, artifactId)?.status).toBe("planned");
+    });
+  });
+
   it("stores a mission log and writes Markdown", () => {
     const workspace = initializedWorkspace();
     const created = createExampleProject(workspace);
@@ -276,6 +405,41 @@ describe("Phase 0 data operations", () => {
     expect(report).toContain("Example Project");
     expect(report).toContain("Run the first smoke test");
     expect(report).toContain("Codex Work");
+  });
+
+  it("writes expanded status report sections from SQLite state", () => {
+    const workspace = initializedWorkspace();
+    const created = createExampleProject(workspace);
+
+    withDatabase(workspace, (db) => {
+      completeWorkItem(db, created.workItem.id);
+      updateArtifact(db, created.artifact?.id ?? "", {
+        status: "ready",
+        path: "artifacts/implementation-summary.md"
+      });
+      createWorkItemWithOptionalArtifact(db, {
+        title: "Blocked dependency",
+        rawInput: "Blocked dependency waiting on an external decision",
+        queue: "blocked",
+        workClassification: "blocked",
+        nextAction: "Wait for the external decision"
+      });
+    });
+
+    const reportPath = withDatabase(workspace, (db) => writeStatusReport(workspace, buildStatusReportData(db, workspace)));
+    const report = readFileSync(reportPath, "utf8");
+
+    expect(report).toContain("## Work By Queue");
+    expect(report).toContain("### Blocked");
+    expect(report).toContain("## Work By Classification");
+    expect(report).toContain("## Projects Without Open Next Action");
+    expect(report).toContain("Example Project");
+    expect(report).toContain("## Recently Completed Work");
+    expect(report).toContain("Run the first smoke test");
+    expect(report).toContain("## Artifacts By Status");
+    expect(report).toContain("### Ready");
+    expect(report).toContain("artifacts/implementation-summary.md");
+    expect(report).toContain("Context: Blocked dependency waiting on an external decision.");
   });
 
   it("rejects invalid enum values before writing", () => {
