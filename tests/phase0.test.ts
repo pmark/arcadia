@@ -13,7 +13,11 @@ import {
   createMissionLog,
   createProjectWithInitialWork,
   createWorkItemWithOptionalArtifact,
+  createExecutionPlan,
+  createExecutionRun,
   getArtifact,
+  getExecutionPlan,
+  getExecutionRun,
   getMilestone,
   getProject,
   getWorkItem,
@@ -26,6 +30,7 @@ import {
   updateProjectStatus,
   updateWorkItem
 } from "../src/db/repositories.js";
+import { ensureBuiltInSkills, planStepsForWorkItem } from "../src/execution/skills.js";
 import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../src/markdown/missionLog.js";
 import { writeStatusReport } from "../src/markdown/statusReport.js";
 import { writeWeeklyReviewReport } from "../src/markdown/weeklyReview.js";
@@ -215,6 +220,55 @@ describe("Phase 0 data operations", () => {
         "Work item status must be one of"
       );
       expect(getWorkItem(db, created.workItem.id)?.status).toBe("open");
+    });
+  });
+
+  it("stores execution skills, plans, runs, and run artifacts", () => {
+    const workspace = initializedWorkspace();
+
+    withDatabase(workspace, (db) => {
+      ensureBuiltInSkills(db);
+      const created = createWorkItemWithOptionalArtifact(db, {
+        title: "Generate status report",
+        rawInput: "Generate status report",
+        queue: "work_queue",
+        workClassification: "autonomous",
+        nextAction: "Generate the deterministic status report."
+      });
+      const workItem = getWorkItem(db, created.workItem.id);
+      expect(workItem).not.toBeNull();
+
+      const plan = createExecutionPlan(db, {
+        workItemId: created.workItem.id,
+        summary: "Plan status report generation.",
+        steps: planStepsForWorkItem(workItem!)
+      });
+
+      expect(plan?.id).toMatch(/^plan_/);
+      expect(plan?.steps).toHaveLength(2);
+      expect(getExecutionPlan(db, plan!.id)?.steps[0].skill_name).toBe("generate_status_report");
+
+      const run = createExecutionRun(db, {
+        workItemId: created.workItem.id,
+        planId: plan!.id,
+        status: "completed",
+        summary: "Completed deterministic execution.",
+        steps: [
+          {
+            planStepId: plan!.steps[0].id,
+            status: "completed",
+            command: plan!.steps[0].command,
+            output: "Status report written.",
+            error: null,
+            artifactPath: null
+          }
+        ]
+      });
+
+      expect(run?.id).toMatch(/^run_/);
+      expect(getExecutionRun(db, run!.id)?.steps[0].status).toBe("completed");
+      expect(countRows(db, "execution_plans")).toBe(1);
+      expect(countRows(db, "execution_runs")).toBe(1);
     });
   });
 

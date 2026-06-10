@@ -4,7 +4,7 @@ Arcadia is a local-first project operating system for people juggling multiple c
 
 Arcadia Core is the open source CLI, schema, and reporting engine. Your Arcadia workspace is private operational data.
 
-Phase 0 is intentionally small: initialize a workspace, create projects, classify work, view queues, record mission logs, and generate Markdown status reports.
+Phase 0 is intentionally small: initialize a workspace, create projects, classify work, view queues, record mission logs, and generate Markdown status reports. Phase 2 adds a single-work-item execution loop: capture intent, plan work, run deterministic safe steps, and review run records.
 
 ## Principles
 
@@ -77,6 +77,12 @@ Import manually classified work from a script:
 pnpm arcadia inbox import --workspace ./tmp/demo-workspace --title "Run local check" --input "Run local check" --queue work_queue --classification autonomous --next-action "Run the script" --json
 ```
 
+Capture executable intent:
+
+```sh
+pnpm arcadia capture --workspace ./tmp/demo-workspace --text "Generate status report" --json
+```
+
 View queues:
 
 ```sh
@@ -89,6 +95,9 @@ List and update work:
 pnpm arcadia work list --workspace ./tmp/demo-workspace
 pnpm arcadia work update --workspace ./tmp/demo-workspace <work-id> --status in_progress --json
 pnpm arcadia work done --workspace ./tmp/demo-workspace <work-id> --json
+pnpm arcadia work plan --workspace ./tmp/demo-workspace <work-id> --json
+pnpm arcadia work run --workspace ./tmp/demo-workspace <work-id> --json
+pnpm arcadia run show --workspace ./tmp/demo-workspace <run-id> --json
 ```
 
 Update project and milestone state:
@@ -117,8 +126,6 @@ Generate status:
 ```sh
 pnpm arcadia status --workspace ./tmp/demo-workspace
 pnpm arcadia report status --workspace ./tmp/demo-workspace
-```
-
 Generate a deterministic weekly review:
 
 ```sh
@@ -136,6 +143,7 @@ pnpm smoke
 
 - `arcadia init <workspace>` creates workspace folders, `config/arcadia.json`, `database/arcadia.sqlite3`, and applies the initial schema.
 - `arcadia status --workspace <path>` prints a concise summary and writes `reports/status.md`.
+- `arcadia capture --workspace <path> --text <intent> [--project <project-id>] [--milestone <milestone-id>] [--expected-artifact <artifact>]` captures natural-language intent as structured work.
 - `arcadia project create --workspace <path>` interactively creates one project, milestone, initial work item, and optional artifact record.
 - `arcadia project list --workspace <path>` lists projects with status, milestone, next action, and work classification.
 - `arcadia project update --workspace <path> <project-id> --status <status>` updates project status.
@@ -145,6 +153,9 @@ pnpm smoke
 - `arcadia work list --workspace <path>` lists work items.
 - `arcadia work update --workspace <path> <work-id> [--queue <queue>] [--classification <classification>] [--next-action <action>] [--status <status>]` updates a work item.
 - `arcadia work done --workspace <path> <work-id>` marks a work item complete.
+- `arcadia work plan --workspace <path> <work-id>` creates an observable execution plan for a work item.
+- `arcadia work run --workspace <path> <work-id> [--plan <plan-id>]` runs only deterministic safe steps and records the outcome.
+- `arcadia run show --workspace <path> <run-id>` shows the run audit trail and Needs Mark items.
 - `arcadia milestone create --workspace <path> <project-id> --title <title>` creates a milestone.
 - `arcadia milestone complete --workspace <path> <milestone-id>` marks a milestone complete.
 - `arcadia artifact list --workspace <path>` lists artifacts.
@@ -168,6 +179,8 @@ pnpm smoke
 - `inbox/`
 
 SQLite is authoritative. Markdown files are generated narrative artifacts.
+
+For copy-paste examples of common workflows, see [docs/COMMANDS.md](docs/COMMANDS.md). For Phase 2 scope and behavior, see [docs/PHASE_2.md](docs/PHASE_2.md).
 
 Keep private workspaces separate from Arcadia Core. Do not commit personal workspace data unless you intentionally choose to.
 

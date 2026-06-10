@@ -1,11 +1,13 @@
 import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { runArtifactUpdateCommand } from "../src/commands/artifact.js";
+import { runCaptureCommand } from "../src/commands/capture.js";
 import { runInboxImportCommand } from "../src/commands/inbox.js";
 import { runMilestoneCompleteCommand, runMilestoneCreateCommand } from "../src/commands/milestone.js";
 import { runProjectUpdateCommand } from "../src/commands/project.js";
 import { runReviewWeeklyCommand } from "../src/commands/review.js";
-import { runWorkDoneCommand, runWorkUpdateCommand } from "../src/commands/work.js";
+import { runWorkDoneCommand, runWorkPlanCommand, runWorkRunCommand, runWorkUpdateCommand } from "../src/commands/work.js";
+import { runRunShowCommand } from "../src/commands/run.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
   buildStatusReportData,
@@ -128,6 +130,26 @@ writeMissionLogMarkdown(workspace, { missionLog, project: created.project, miles
 
 const reportPath = withDatabase(workspace, (db) => writeStatusReport(workspace, buildStatusReportData(db, workspace)));
 const weeklyReview = runReviewWeeklyCommand({ workspace });
+const captured = runCaptureCommand({
+  workspace,
+  text: "Generate status report"
+});
+const executionPlan = runWorkPlanCommand({
+  workspace,
+  workId: captured.data.workItem.id
+});
+const executionRun = runWorkRunCommand({
+  workspace,
+  workId: captured.data.workItem.id,
+  plan: executionPlan.data.plan.id
+});
+const shownRun = runRunShowCommand({
+  workspace,
+  runId: executionRun.data.run.id
+});
+if (shownRun.data.run.status !== "completed") {
+  throw new Error("Smoke test expected deterministic execution run to complete.");
+}
 const paths = getWorkspacePaths(workspace);
 
 const expectedFiles = [
@@ -135,6 +157,7 @@ const expectedFiles = [
   paths.databaseFile,
   reportPath,
   weeklyReview.data.reportPath,
+  path.join(paths.root, executionRun.data.missionLogPath ?? ""),
   path.join(paths.root, markdownPath)
 ];
 for (const file of expectedFiles) {

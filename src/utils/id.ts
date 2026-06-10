@@ -5,7 +5,13 @@ const PREFIXES = {
   milestone: "ms",
   workItem: "work",
   missionLog: "log",
-  artifact: "art"
+  artifact: "art",
+  skill: "skill",
+  executionPlan: "plan",
+  executionStep: "step",
+  executionRun: "run",
+  executionRunStep: "rstep",
+  runArtifact: "rart"
 } as const;
 
 export type IdKind = keyof typeof PREFIXES;

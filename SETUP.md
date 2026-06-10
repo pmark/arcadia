@@ -173,6 +173,10 @@ Script-friendly example:
 
 `pnpm arcadia inbox import --workspace ~/ArcadiaWorkspace --title "Run local check" --input "Run local check" --queue work_queue --classification autonomous --next-action "Run the script" --json`
 
+Phase 2 intent capture example:
+
+`pnpm arcadia capture --workspace ~/ArcadiaWorkspace --text "Generate status report" --json`
+
 The command should accept raw input such as:
 
 - A project idea
@@ -196,6 +200,20 @@ And one work class:
 - Codex
 - Needs Mark
 - Blocked
+
+## Execute Safe Work
+
+Use the Phase 2 execution loop for one work item at a time:
+
+`pnpm arcadia work plan --workspace ~/ArcadiaWorkspace <work-id> --json`
+
+`pnpm arcadia work run --workspace ~/ArcadiaWorkspace <work-id> --plan <plan-id> --json`
+
+`pnpm arcadia run show --workspace ~/ArcadiaWorkspace <run-id> --json`
+
+Arcadia runs deterministic safe steps automatically. Anything requiring Mark, Codex, publication approval, destructive changes, or missing information pauses as Needs Mark.
+
+For copy-paste examples of common actions, see `docs/COMMANDS.md`.
 
 ## Update Work
 

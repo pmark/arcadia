@@ -10,6 +10,8 @@ export type ArcadiaErrorCode =
   | "MILESTONE_NOT_FOUND"
   | "WORK_ITEM_NOT_FOUND"
   | "ARTIFACT_NOT_FOUND"
+  | "EXECUTION_PLAN_NOT_FOUND"
+  | "EXECUTION_RUN_NOT_FOUND"
   | "SQLITE_ERROR"
   | "UNEXPECTED_ERROR";
 
@@ -65,6 +67,14 @@ export function workItemNotFound(workItemId: string): ArcadiaError {
 
 export function artifactNotFound(artifactId: string): ArcadiaError {
   return new ArcadiaError("ARTIFACT_NOT_FOUND", "Artifact not found.", 3, { artifactId });
+}
+
+export function executionPlanNotFound(planId: string): ArcadiaError {
+  return new ArcadiaError("EXECUTION_PLAN_NOT_FOUND", "Execution plan not found.", 3, { planId });
+}
+
+export function executionRunNotFound(runId: string): ArcadiaError {
+  return new ArcadiaError("EXECUTION_RUN_NOT_FOUND", "Execution run not found.", 3, { runId });
 }
 
 export function normalizeError(error: unknown): ArcadiaError {

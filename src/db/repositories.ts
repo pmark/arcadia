@@ -1,6 +1,10 @@
 import type Database from "better-sqlite3";
 import {
   ARTIFACT_STATUSES,
+  EXECUTION_PLAN_STATUSES,
+  EXECUTION_RUN_STATUSES,
+  EXECUTION_STEP_STATUSES,
+  EXECUTOR_TYPES,
   MILESTONE_STATUSES,
   PROJECT_STATUSES,
   QUEUES,
@@ -9,6 +13,10 @@ import {
   assertAllowedValue,
   queueForWorkClassification,
   type ArtifactStatus,
+  type ExecutionPlanStatus,
+  type ExecutionRunStatus,
+  type ExecutionStepStatus,
+  type ExecutorType,
   type MilestoneStatus,
   type ProjectStatus,
   type QueueName,
@@ -24,12 +32,20 @@ import type {
   CreateProjectInput,
   CreateWorkItemInput,
   CreatedProjectBundle,
+  ExecutionPlan,
+  ExecutionPlanStep,
+  ExecutionPlanStepSummary,
+  ExecutionPlanSummary,
+  ExecutionRun,
+  ExecutionRunStep,
+  ExecutionRunSummary,
   Milestone,
   MissionLog,
   MissionLogSummary,
   Project,
   ProjectSummary,
   QueueGroups,
+  SkillDefinition,
   SuggestedNextAction,
   StatusReportData,
   WeeklyReviewData,
@@ -86,6 +102,26 @@ function validateWorkItemStatus(value: string): WorkItemStatus {
 
 function validateArtifactStatus(value: string): ArtifactStatus {
   assertAllowedValue("Artifact status", value, ARTIFACT_STATUSES);
+  return value;
+}
+
+function validateExecutorType(value: string): ExecutorType {
+  assertAllowedValue("Executor type", value, EXECUTOR_TYPES);
+  return value;
+}
+
+function validateExecutionPlanStatus(value: string): ExecutionPlanStatus {
+  assertAllowedValue("Execution plan status", value, EXECUTION_PLAN_STATUSES);
+  return value;
+}
+
+function validateExecutionRunStatus(value: string): ExecutionRunStatus {
+  assertAllowedValue("Execution run status", value, EXECUTION_RUN_STATUSES);
+  return value;
+}
+
+function validateExecutionStepStatus(value: string): ExecutionStepStatus {
+  assertAllowedValue("Execution step status", value, EXECUTION_STEP_STATUSES);
   return value;
 }
 
@@ -619,6 +655,323 @@ export function listRecentMissionLogs(db: Database.Database, limit = 10): Missio
     .all(limit) as MissionLogSummary[];
 }
 
+export interface UpsertSkillDefinitionInput {
+  name: string;
+  title: string;
+  description: string;
+  executorType: string;
+  safeToRun: boolean;
+}
+
+export interface CreateExecutionPlanInput {
+  workItemId: string;
+  summary: string;
+  steps: Array<{
+    skillName: string;
+    title: string;
+    command?: string | null;
+    executorType: string;
+    safeToRun: boolean;
+    needsMark?: string | null;
+  }>;
+}
+
+export interface CreateExecutionRunInput {
+  workItemId: string;
+  planId: string;
+  status: string;
+  summary: string;
+  missionLogId?: string | null;
+  steps: Array<{
+    planStepId: string;
+    status: string;
+    command?: string | null;
+    output?: string | null;
+    error?: string | null;
+    artifactPath?: string | null;
+  }>;
+  artifactIds?: string[];
+}
+
+export function upsertSkillDefinition(db: Database.Database, input: UpsertSkillDefinitionInput): SkillDefinition {
+  const timestamp = nowIso();
+  const existing = getSkillDefinitionByName(db, input.name);
+  const values = {
+    id: existing?.id ?? createId("skill"),
+    name: required(input.name, "Skill name"),
+    title: required(input.title, "Skill title"),
+    description: required(input.description, "Skill description"),
+    executor_type: validateExecutorType(input.executorType),
+    safe_to_run: input.safeToRun ? 1 : 0,
+    created_at: existing?.created_at ?? timestamp,
+    updated_at: timestamp
+  };
+
+  db.prepare(
+    `INSERT INTO skill_definitions (
+      id, name, title, description, executor_type, safe_to_run, created_at, updated_at
+    ) VALUES (
+      @id, @name, @title, @description, @executor_type, @safe_to_run, @created_at, @updated_at
+    )
+    ON CONFLICT(name) DO UPDATE SET
+      title = excluded.title,
+      description = excluded.description,
+      executor_type = excluded.executor_type,
+      safe_to_run = excluded.safe_to_run,
+      updated_at = excluded.updated_at`
+  ).run(values);
+
+  return getSkillDefinitionByName(db, input.name) as SkillDefinition;
+}
+
+export function getSkillDefinitionByName(db: Database.Database, name: string): SkillDefinition | null {
+  return (db.prepare("SELECT * FROM skill_definitions WHERE name = ?").get(name) as SkillDefinition | undefined) ?? null;
+}
+
+export function createExecutionPlan(db: Database.Database, input: CreateExecutionPlanInput): ExecutionPlanSummary | null {
+  if (!getWorkItem(db, input.workItemId)) {
+    return null;
+  }
+
+  const transaction = db.transaction(() => {
+    const timestamp = nowIso();
+    const plan: ExecutionPlan = {
+      id: createId("executionPlan"),
+      work_item_id: input.workItemId,
+      status: validateExecutionPlanStatus("planned"),
+      summary: required(input.summary, "Execution plan summary"),
+      created_at: timestamp,
+      updated_at: timestamp
+    };
+
+    db.prepare(
+      `INSERT INTO execution_plans (id, work_item_id, status, summary, created_at, updated_at)
+       VALUES (@id, @work_item_id, @status, @summary, @created_at, @updated_at)`
+    ).run(plan);
+
+    for (const [index, step] of input.steps.entries()) {
+      const skill = getSkillDefinitionByName(db, step.skillName);
+      if (!skill) {
+        throw new Error(`Skill is required: ${step.skillName}`);
+      }
+
+      const planStep: ExecutionPlanStep = {
+        id: createId("executionStep"),
+        plan_id: plan.id,
+        skill_id: skill.id,
+        position: index + 1,
+        title: required(step.title, "Execution step title"),
+        command: nullable(step.command),
+        executor_type: validateExecutorType(step.executorType),
+        safe_to_run: step.safeToRun ? 1 : 0,
+        status: validateExecutionStepStatus("pending"),
+        needs_mark: nullable(step.needsMark),
+        created_at: timestamp,
+        updated_at: timestamp
+      };
+
+      db.prepare(
+        `INSERT INTO execution_plan_steps (
+          id, plan_id, skill_id, position, title, command, executor_type, safe_to_run,
+          status, needs_mark, created_at, updated_at
+        ) VALUES (
+          @id, @plan_id, @skill_id, @position, @title, @command, @executor_type, @safe_to_run,
+          @status, @needs_mark, @created_at, @updated_at
+        )`
+      ).run(planStep);
+    }
+
+    return getExecutionPlan(db, plan.id) as ExecutionPlanSummary;
+  });
+
+  return transaction();
+}
+
+export function getExecutionPlan(db: Database.Database, id: string): ExecutionPlanSummary | null {
+  const plan = (db.prepare("SELECT * FROM execution_plans WHERE id = ?").get(id) as ExecutionPlan | undefined) ?? null;
+  if (!plan) {
+    return null;
+  }
+
+  return { ...plan, steps: listExecutionPlanSteps(db, id) };
+}
+
+export function getLatestExecutionPlanForWorkItem(
+  db: Database.Database,
+  workItemId: string
+): ExecutionPlanSummary | null {
+  const row = db
+    .prepare("SELECT id FROM execution_plans WHERE work_item_id = ? ORDER BY created_at DESC LIMIT 1")
+    .get(workItemId) as { id: string } | undefined;
+
+  return row ? getExecutionPlan(db, row.id) : null;
+}
+
+export function listExecutionPlanSteps(db: Database.Database, planId: string): ExecutionPlanStepSummary[] {
+  return db
+    .prepare(
+      `SELECT
+        eps.*,
+        sd.name AS skill_name
+      FROM execution_plan_steps eps
+      JOIN skill_definitions sd ON sd.id = eps.skill_id
+      WHERE eps.plan_id = ?
+      ORDER BY eps.position ASC`
+    )
+    .all(planId) as ExecutionPlanStepSummary[];
+}
+
+export function createArtifactRecord(db: Database.Database, input: CreateArtifactInput): Artifact {
+  return insertArtifact(db, input, nowIso());
+}
+
+export function createExecutionRun(db: Database.Database, input: CreateExecutionRunInput): ExecutionRunSummary | null {
+  if (!getWorkItem(db, input.workItemId) || !getExecutionPlan(db, input.planId)) {
+    return null;
+  }
+
+  const transaction = db.transaction(() => {
+    const timestamp = nowIso();
+    const run: ExecutionRun = {
+      id: createId("executionRun"),
+      work_item_id: input.workItemId,
+      plan_id: input.planId,
+      status: validateExecutionRunStatus(input.status),
+      summary: required(input.summary, "Execution run summary"),
+      mission_log_id: input.missionLogId ?? null,
+      created_at: timestamp,
+      updated_at: timestamp
+    };
+
+    db.prepare(
+      `INSERT INTO execution_runs (
+        id, work_item_id, plan_id, status, summary, mission_log_id, created_at, updated_at
+      ) VALUES (
+        @id, @work_item_id, @plan_id, @status, @summary, @mission_log_id, @created_at, @updated_at
+      )`
+    ).run(run);
+
+    for (const step of input.steps) {
+      const runStep: ExecutionRunStep = {
+        id: createId("executionRunStep"),
+        run_id: run.id,
+        plan_step_id: step.planStepId,
+        status: validateExecutionStepStatus(step.status),
+        command: nullable(step.command),
+        output: nullable(step.output),
+        error: nullable(step.error),
+        artifact_path: nullable(step.artifactPath),
+        created_at: timestamp,
+        updated_at: timestamp
+      };
+
+      db.prepare(
+        `INSERT INTO execution_run_steps (
+          id, run_id, plan_step_id, status, command, output, error, artifact_path, created_at, updated_at
+        ) VALUES (
+          @id, @run_id, @plan_step_id, @status, @command, @output, @error, @artifact_path, @created_at, @updated_at
+        )`
+      ).run(runStep);
+
+      db.prepare("UPDATE execution_plan_steps SET status = ?, updated_at = ? WHERE id = ?").run(
+        runStep.status,
+        timestamp,
+        runStep.plan_step_id
+      );
+    }
+
+    db.prepare("UPDATE execution_plans SET status = ?, updated_at = ? WHERE id = ?").run(
+      run.status === "completed" ? "completed" : run.status,
+      timestamp,
+      run.plan_id
+    );
+
+    for (const artifactId of input.artifactIds ?? []) {
+      db.prepare(
+        `INSERT INTO run_artifacts (id, run_id, artifact_id, created_at)
+         VALUES (@id, @run_id, @artifact_id, @created_at)`
+      ).run({
+        id: createId("runArtifact"),
+        run_id: run.id,
+        artifact_id: artifactId,
+        created_at: timestamp
+      });
+    }
+
+    return getExecutionRun(db, run.id) as ExecutionRunSummary;
+  });
+
+  return transaction();
+}
+
+export function attachMissionLogToExecutionRun(
+  db: Database.Database,
+  runId: string,
+  missionLogId: string
+): ExecutionRunSummary | null {
+  if (!getExecutionRun(db, runId)) {
+    return null;
+  }
+
+  db.prepare("UPDATE execution_runs SET mission_log_id = ?, updated_at = ? WHERE id = ?").run(
+    missionLogId,
+    nowIso(),
+    runId
+  );
+  return getExecutionRun(db, runId);
+}
+
+export function getExecutionRun(db: Database.Database, id: string): ExecutionRunSummary | null {
+  const run = db
+    .prepare(
+      `SELECT
+        er.*,
+        wi.title AS work_item_title,
+        ep.summary AS plan_summary,
+        ml.markdown_path AS mission_log_path
+      FROM execution_runs er
+      JOIN work_items wi ON wi.id = er.work_item_id
+      JOIN execution_plans ep ON ep.id = er.plan_id
+      LEFT JOIN mission_logs ml ON ml.id = er.mission_log_id
+      WHERE er.id = ?`
+    )
+    .get(id) as Omit<ExecutionRunSummary, "steps" | "artifacts"> | undefined;
+
+  if (!run) {
+    return null;
+  }
+
+  const steps = db
+    .prepare(
+      `SELECT
+        ers.*,
+        eps.title AS plan_step_title,
+        eps.executor_type AS executor_type
+      FROM execution_run_steps ers
+      JOIN execution_plan_steps eps ON eps.id = ers.plan_step_id
+      WHERE ers.run_id = ?
+      ORDER BY ers.created_at ASC, ers.id ASC`
+    )
+    .all(id) as ExecutionRunSummary["steps"];
+
+  const artifacts = db
+    .prepare(
+      `SELECT
+        a.*,
+        p.name AS project_name,
+        wi.title AS work_item_title
+      FROM run_artifacts ra
+      JOIN artifacts a ON a.id = ra.artifact_id
+      LEFT JOIN projects p ON p.id = a.project_id
+      LEFT JOIN work_items wi ON wi.id = a.work_item_id
+      WHERE ra.run_id = ?
+      ORDER BY ra.created_at ASC`
+    )
+    .all(id) as ExecutionRunSummary["artifacts"];
+
+  return { ...run, steps, artifacts };
+}
+
 export function listUpcomingArtifacts(db: Database.Database, limit = 20): ArtifactSummary[] {
   return db
     .prepare(
@@ -703,7 +1056,21 @@ export function buildWeeklyReviewData(
 }
 
 export function countRows(db: Database.Database, table: string): number {
-  if (!["projects", "milestones", "work_items", "mission_logs", "artifacts"].includes(table)) {
+  if (
+    ![
+      "projects",
+      "milestones",
+      "work_items",
+      "mission_logs",
+      "artifacts",
+      "skill_definitions",
+      "execution_plans",
+      "execution_plan_steps",
+      "execution_runs",
+      "execution_run_steps",
+      "run_artifacts"
+    ].includes(table)
+  ) {
     throw new Error(`Unsupported table: ${table}`);
   }
 

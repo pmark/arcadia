@@ -9,6 +9,7 @@ import {
   runArtifactListCommand,
   runArtifactUpdateCommand
 } from "./commands/artifact.js";
+import { renderCaptureSuccess, runCaptureCommand } from "./commands/capture.js";
 import { renderInboxImportSuccess, runInboxAddCommand, runInboxImportCommand } from "./commands/inbox.js";
 import { renderInitSuccess, runInitCommand } from "./commands/init.js";
 import { runLogCreateCommand } from "./commands/log.js";
@@ -28,13 +29,18 @@ import {
 import { renderQueueSuccess, runQueueCommand } from "./commands/queue.js";
 import { renderReportStatusSuccess, runReportStatusCommand } from "./commands/report.js";
 import { renderReviewWeeklySuccess, runReviewWeeklyCommand } from "./commands/review.js";
+import { renderRunShowSuccess, runRunShowCommand } from "./commands/run.js";
 import { renderStatusSuccess, runStatusCommand } from "./commands/status.js";
 import {
   renderWorkDoneSuccess,
   renderWorkListSuccess,
+  renderWorkPlanSuccess,
+  renderWorkRunSuccess,
   renderWorkUpdateSuccess,
   runWorkDoneCommand,
   runWorkListCommand,
+  runWorkPlanCommand,
+  runWorkRunCommand,
   runWorkUpdateCommand
 } from "./commands/work.js";
 import { normalizeError } from "./cli/errors.js";
@@ -80,6 +86,24 @@ export function buildProgram(): Command {
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("status", options, () => runStatusCommand(options), renderStatusSuccess)
   );
+
+  addJsonOption(
+    program
+      .command("capture")
+      .description("Capture executable intent as a structured work item")
+      .requiredOption("--workspace <path>", "Workspace path")
+      .requiredOption("--text <intent>", "Natural-language intent")
+      .option("--project <project-id>", "Optional project id")
+      .option("--milestone <milestone-id>", "Optional milestone id")
+      .option("--expected-artifact <artifact>", "Optional expected artifact")
+  ).action((options: {
+    workspace: string;
+    text: string;
+    project?: string;
+    milestone?: string;
+    expectedArtifact?: string;
+    json?: boolean;
+  }) => runCliAction("capture", options, () => runCaptureCommand(options), renderCaptureSuccess));
 
   const project = program.command("project").description("Project commands");
   project
@@ -223,6 +247,36 @@ export function buildProgram(): Command {
   ).action((workId: string, options: { workspace: string; json?: boolean }) =>
     runCliAction("work.done", options, () => runWorkDoneCommand({ ...options, workId }), renderWorkDoneSuccess)
   );
+  addJsonOption(
+    work
+      .command("plan")
+      .description("Create an execution plan for a work item")
+      .argument("<work-id>", "Work item id")
+      .requiredOption("--workspace <path>", "Workspace path")
+  ).action((workId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction("work.plan", options, () => runWorkPlanCommand({ ...options, workId }), renderWorkPlanSuccess)
+  );
+  addJsonOption(
+    work
+      .command("run")
+      .description("Execute safe deterministic steps for a work item")
+      .argument("<work-id>", "Work item id")
+      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--plan <plan-id>", "Optional execution plan id")
+  ).action((workId: string, options: { workspace: string; plan?: string; json?: boolean }) =>
+    runCliAction("work.run", options, () => runWorkRunCommand({ ...options, workId }), renderWorkRunSuccess)
+  );
+
+  const run = program.command("run").description("Execution run commands");
+  addJsonOption(
+    run
+      .command("show")
+      .description("Show an execution run audit trail")
+      .argument("<run-id>", "Run id")
+      .requiredOption("--workspace <path>", "Workspace path")
+  ).action((runId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction("run.show", options, () => runRunShowCommand({ ...options, runId }), renderRunShowSuccess)
+  );
 
   const log = program.command("log").description("Mission log commands");
   log
@@ -354,8 +408,16 @@ function commandNameFromArgv(argv: string[]): string {
     return `artifact.${second}`;
   }
 
-  if (first === "work" && ["list", "update", "done"].includes(second ?? "")) {
+  if (first === "capture") {
+    return "capture";
+  }
+
+  if (first === "work" && ["list", "update", "done", "plan", "run"].includes(second ?? "")) {
     return `work.${second}`;
+  }
+
+  if (first === "run" && second === "show") {
+    return "run.show";
   }
 
   if (first === "report" && second === "status") {

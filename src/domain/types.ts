@@ -1,5 +1,9 @@
 import type {
   ArtifactStatus,
+  ExecutionPlanStatus,
+  ExecutionRunStatus,
+  ExecutionStepStatus,
+  ExecutorType,
   MilestoneStatus,
   ProjectStatus,
   QueueName,
@@ -66,6 +70,72 @@ export interface Artifact {
   updated_at: string;
 }
 
+export interface SkillDefinition {
+  id: string;
+  name: string;
+  title: string;
+  description: string;
+  executor_type: ExecutorType;
+  safe_to_run: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExecutionPlan {
+  id: string;
+  work_item_id: string;
+  status: ExecutionPlanStatus;
+  summary: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExecutionPlanStep {
+  id: string;
+  plan_id: string;
+  skill_id: string;
+  position: number;
+  title: string;
+  command: string | null;
+  executor_type: ExecutorType;
+  safe_to_run: number;
+  status: ExecutionStepStatus;
+  needs_mark: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExecutionRun {
+  id: string;
+  work_item_id: string;
+  plan_id: string;
+  status: ExecutionRunStatus;
+  summary: string;
+  mission_log_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExecutionRunStep {
+  id: string;
+  run_id: string;
+  plan_step_id: string;
+  status: ExecutionStepStatus;
+  command: string | null;
+  output: string | null;
+  error: string | null;
+  artifact_path: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RunArtifact {
+  id: string;
+  run_id: string;
+  artifact_id: string;
+  created_at: string;
+}
+
 export interface ProjectSummary extends Project {
   current_milestone: string | null;
   current_milestone_id: string | null;
@@ -77,6 +147,27 @@ export interface ProjectSummary extends Project {
 export interface WorkItemSummary extends WorkItem {
   project_name: string | null;
   milestone_title: string | null;
+}
+
+export interface ExecutionPlanStepSummary extends ExecutionPlanStep {
+  skill_name: string;
+}
+
+export interface ExecutionPlanSummary extends ExecutionPlan {
+  steps: ExecutionPlanStepSummary[];
+}
+
+export interface ExecutionRunStepSummary extends ExecutionRunStep {
+  plan_step_title: string;
+  executor_type: ExecutorType;
+}
+
+export interface ExecutionRunSummary extends ExecutionRun {
+  work_item_title: string;
+  plan_summary: string;
+  mission_log_path: string | null;
+  steps: ExecutionRunStepSummary[];
+  artifacts: ArtifactSummary[];
 }
 
 export interface MissionLogSummary extends MissionLog {

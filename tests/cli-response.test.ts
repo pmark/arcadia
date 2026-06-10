@@ -220,6 +220,76 @@ describe("CLI response contract", () => {
     expect(queueJson.data.queues.work_queue[0].title).toBe("Capture scripted work");
   });
 
+  it("captures, plans, runs, and shows deterministic execution work", () => {
+    const workspace = initializedWorkspace();
+
+    const captureResult = runCli([
+      "capture",
+      "--workspace",
+      workspace,
+      "--text",
+      "Generate status report",
+      "--json"
+    ]);
+    expect(captureResult.status).toBe(0);
+    expect(captureResult.stderr).toBe("");
+    const captureJson = parseJson(captureResult.stdout);
+    expect(captureJson.ok).toBe(true);
+    expect(captureJson.command).toBe("capture");
+    expect(captureJson.data.workItem.queue).toBe("work_queue");
+    expect(captureJson.data.workItem.work_classification).toBe("autonomous");
+    expect(captureJson.data.matchedSkillName).toBe("generate_status_report");
+
+    const workId = captureJson.data.workItem.id;
+    const planResult = runCli(["work", "plan", workId, "--workspace", workspace, "--json"]);
+    expect(planResult.status).toBe(0);
+    const planJson = parseJson(planResult.stdout);
+    expect(planJson.ok).toBe(true);
+    expect(planJson.command).toBe("work.plan");
+    expect(planJson.data.plan.steps[0].skill_name).toBe("generate_status_report");
+
+    const runResult = runCli(["work", "run", workId, "--workspace", workspace, "--plan", planJson.data.plan.id, "--json"]);
+    expect(runResult.status).toBe(0);
+    const runJson = parseJson(runResult.stdout);
+    expect(runJson.ok).toBe(true);
+    expect(runJson.command).toBe("work.run");
+    expect(runJson.data.run.status).toBe("completed");
+    expect(runJson.data.missionLogPath).toMatch(/^mission_logs\//);
+    expect(existsSync(path.join(workspace, runJson.data.missionLogPath))).toBe(true);
+    expect(existsSync(path.join(workspace, "reports", "status.md"))).toBe(true);
+
+    const showResult = runCli(["run", "show", runJson.data.run.id, "--workspace", workspace, "--json"]);
+    expect(showResult.status).toBe(0);
+    const showJson = parseJson(showResult.stdout);
+    expect(showJson.ok).toBe(true);
+    expect(showJson.command).toBe("run.show");
+    expect(showJson.data.run.id).toBe(runJson.data.run.id);
+    expect(showJson.data.needsMark).toEqual([]);
+  });
+
+  it("pauses captured ambiguous work as Needs Mark", () => {
+    const workspace = initializedWorkspace();
+
+    const captureResult = runCli([
+      "capture",
+      "--workspace",
+      workspace,
+      "--text",
+      "Improve Rebuster candidate review flow",
+      "--json"
+    ]);
+    expect(captureResult.status).toBe(0);
+    const captureJson = parseJson(captureResult.stdout);
+    expect(captureJson.data.workItem.queue).toBe("needs_mark");
+    expect(captureJson.data.workItem.work_classification).toBe("needs_mark");
+
+    const runResult = runCli(["work", "run", captureJson.data.workItem.id, "--workspace", workspace, "--json"]);
+    expect(runResult.status).toBe(0);
+    const runJson = parseJson(runResult.stdout);
+    expect(runJson.data.run.status).toBe("needs_mark");
+    expect(runJson.data.run.steps[0].status).toBe("needs_mark");
+  });
+
   it("lists artifacts with JSON output", () => {
     const workspace = initializedWorkspace();
     createProject(workspace);
