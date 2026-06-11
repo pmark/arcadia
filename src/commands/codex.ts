@@ -192,6 +192,7 @@ function createCodexTaskMissionLog(workspace: string, db: Database.Database, tas
       id: task.project_id,
       name: task.project_name ?? "Codex",
       mission: "",
+      goal: null,
       status: "active",
       created_at: task.created_at,
       updated_at: task.updated_at

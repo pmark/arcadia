@@ -73,6 +73,8 @@ import type {
   SuggestedNextAction,
   StatusReportData,
   UpsertProjectMetadataInput,
+  UpsertProjectInput,
+  UpdateProjectInput,
   WeeklyReviewData,
   UpdateArtifactInput,
   UpdateWorkItemInput,
@@ -212,14 +214,15 @@ function insertProject(db: Database.Database, input: CreateProjectInput, timesta
     id: createId("project"),
     name: required(input.name, "Project name"),
     mission: required(input.mission, "Mission"),
+    goal: nullable(input.goal),
     status: validateProjectStatus(input.status),
     created_at: timestamp,
     updated_at: timestamp
   };
 
   db.prepare(
-    `INSERT INTO projects (id, name, mission, status, created_at, updated_at)
-     VALUES (@id, @name, @mission, @status, @created_at, @updated_at)`
+    `INSERT INTO projects (id, name, mission, goal, status, created_at, updated_at)
+     VALUES (@id, @name, @mission, @goal, @status, @created_at, @updated_at)`
   ).run(project);
 
   return project;
@@ -415,6 +418,35 @@ export function getProject(db: Database.Database, id: string): Project | null {
   return (db.prepare("SELECT * FROM projects WHERE id = ?").get(id) as Project | undefined) ?? null;
 }
 
+export function upsertProject(db: Database.Database, input: UpsertProjectInput): Project {
+  const timestamp = nowIso();
+  const existing = input.id
+    ? getProject(db, input.id)
+    : listProjects(db).find((project) => project.name.toLowerCase() === input.name.trim().toLowerCase()) ?? null;
+  const project: Project = {
+    id: existing?.id ?? input.id ?? createId("project"),
+    name: required(input.name, "Project name"),
+    mission: required(input.mission, "Mission"),
+    goal: nullable(input.goal),
+    status: validateProjectStatus(input.status),
+    created_at: existing?.created_at ?? timestamp,
+    updated_at: timestamp
+  };
+
+  db.prepare(
+    `INSERT INTO projects (id, name, mission, goal, status, created_at, updated_at)
+     VALUES (@id, @name, @mission, @goal, @status, @created_at, @updated_at)
+     ON CONFLICT(id) DO UPDATE SET
+       name = excluded.name,
+       mission = excluded.mission,
+       goal = excluded.goal,
+       status = excluded.status,
+       updated_at = excluded.updated_at`
+  ).run(project);
+
+  return getProject(db, project.id) as Project;
+}
+
 export function upsertProjectMetadata(
   db: Database.Database,
   input: UpsertProjectMetadataInput
@@ -521,15 +553,40 @@ export function resolveProjectContextFromRequest(db: Database.Database, request:
   };
 }
 
-export function updateProjectStatus(db: Database.Database, id: string, status: string): Project | null {
-  const projectStatus = validateProjectStatus(status);
-
+export function updateProject(db: Database.Database, id: string, input: UpdateProjectInput): Project | null {
   if (!getProject(db, id)) {
     return null;
   }
 
-  db.prepare("UPDATE projects SET status = ?, updated_at = ? WHERE id = ?").run(projectStatus, nowIso(), id);
+  const updates: string[] = [];
+  const parameters: Record<string, string | null> = { id, updated_at: nowIso() };
+
+  if (input.status !== undefined) {
+    parameters.status = validateProjectStatus(input.status);
+    updates.push("status = @status");
+  }
+
+  if (input.mission !== undefined) {
+    parameters.mission = required(input.mission, "Mission");
+    updates.push("mission = @mission");
+  }
+
+  if (input.goal !== undefined) {
+    parameters.goal = nullable(input.goal);
+    updates.push("goal = @goal");
+  }
+
+  if (updates.length === 0) {
+    return getProject(db, id);
+  }
+
+  updates.push("updated_at = @updated_at");
+  db.prepare(`UPDATE projects SET ${updates.join(", ")} WHERE id = @id`).run(parameters);
   return getProject(db, id);
+}
+
+export function updateProjectStatus(db: Database.Database, id: string, status: string): Project | null {
+  return updateProject(db, id, { status: validateProjectStatus(status) });
 }
 
 export function getMilestone(db: Database.Database, id: string): Milestone | null {

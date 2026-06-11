@@ -37,6 +37,7 @@ export interface DashboardProject {
   id: string;
   name: string;
   mission: string;
+  goal: string | null;
   status: string;
   statusLabel: string;
   currentMilestone: string | null;
@@ -123,6 +124,7 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
       id: project.id,
       name: project.name,
       mission: project.mission,
+      goal: project.goal,
       status: project.status,
       statusLabel: labelStatus(project.status),
       currentMilestone: project.current_milestone,

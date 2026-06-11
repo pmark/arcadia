@@ -102,6 +102,7 @@ export function ProjectCard({ project }: { project: DashboardProject }) {
         <StatusBadge status={project.status} label={project.statusLabel} />
       </div>
       <dl className="mt-4 grid gap-3 text-sm">
+        <Field label="Goal" value={project.goal ?? "None"} />
         <Field label="Current Milestone" value={project.currentMilestone ?? "None"} />
         <Field label="Next Action" value={project.nextAction ?? "None"} />
         <Field label="Last Artifact" value={project.lastArtifact?.title ?? "None"} />

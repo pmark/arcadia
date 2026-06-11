@@ -34,6 +34,7 @@ export interface DashboardProject {
   id: string;
   name: string;
   mission: string;
+  goal: string | null;
   status: string;
   statusLabel: string;
   currentMilestone: string | null;

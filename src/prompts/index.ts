@@ -17,6 +17,7 @@ export async function promptForProjectCreate(): Promise<CreateProjectInput> {
   const input: CreateProjectInput = {
     name: await promptRequiredText("Project name"),
     mission: await promptRequiredText("Mission"),
+    goal: await promptOptionalText("Goal"),
     status: await promptProjectStatus("Status"),
     currentMilestone: await promptRequiredText("Current milestone"),
     nextAction: await promptRequiredText("Next action"),

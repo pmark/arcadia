@@ -1,6 +1,7 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { withDatabase } from "../src/db/connection.js";
 import {
@@ -82,6 +83,7 @@ describe("Phase 0 data operations", () => {
       createProjectWithInitialWork(db, {
         name: "Example Project",
         mission: "Demonstrate Phase 0",
+        goal: "Persist project goals.",
         status: "active",
         currentMilestone: "Create a working CLI",
         nextAction: "Run the first smoke test",
@@ -94,12 +96,43 @@ describe("Phase 0 data operations", () => {
     expect(created.milestone.id).toMatch(/^ms_/);
     expect(created.workItem.id).toMatch(/^work_/);
     expect(created.artifact?.id).toMatch(/^art_/);
+    expect(created.project.goal).toBe("Persist project goals.");
 
     withDatabase(workspace, (db) => {
       expect(countRows(db, "projects")).toBe(1);
+      expect(getProject(db, created.project.id)?.goal).toBe("Persist project goals.");
       expect(countRows(db, "milestones")).toBe(1);
       expect(countRows(db, "work_items")).toBe(1);
       expect(countRows(db, "artifacts")).toBe(1);
+    });
+  });
+
+  it("migrates existing workspaces without project goals", () => {
+    const workspace = createTempWorkspace();
+    const paths = getWorkspacePaths(workspace);
+    mkdirSync(paths.database, { recursive: true });
+    mkdirSync(paths.config, { recursive: true });
+    writeFileSync(paths.configFile, "{}\n", "utf8");
+    const legacy = new Database(paths.databaseFile);
+    legacy.exec(`
+      CREATE TABLE projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        mission TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('active', 'paused', 'incubating', 'completed')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO projects (id, name, mission, status, created_at, updated_at)
+      VALUES ('proj_legacy', 'Legacy', 'Keep old workspaces loading.', 'active', '2026-06-11T00:00:00.000Z', '2026-06-11T00:00:00.000Z');
+    `);
+    legacy.close();
+
+    withDatabase(workspace, (db) => {
+      expect(getProject(db, "proj_legacy")?.goal).toBeNull();
+      expect(
+        db.prepare("SELECT name FROM pragma_table_info('projects') WHERE name = 'goal'").get()
+      ).toMatchObject({ name: "goal" });
     });
   });
 

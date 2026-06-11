@@ -98,11 +98,12 @@ function renderProjectList(projects: ProjectSummary[]): string {
   return projects
     .map((project) => {
       const milestone = project.current_milestone ?? "No active milestone";
+      const goal = project.goal ?? "No goal recorded";
       const nextAction = project.next_action ?? "No next action recorded";
       const classification = project.work_classification
         ? WORK_CLASSIFICATION_LABELS[project.work_classification]
         : "Unclassified";
-      return `- **${project.name}** (${project.status}) - ${milestone}; next: ${nextAction}; work: ${classification}`;
+      return `- **${project.name}** (${project.status}) - goal: ${goal}; milestone: ${milestone}; next: ${nextAction}; work: ${classification}`;
     })
     .join("\n");
 }

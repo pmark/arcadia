@@ -20,6 +20,7 @@ export interface Project {
   id: string;
   name: string;
   mission: string;
+  goal: string | null;
   status: ProjectStatus;
   created_at: string;
   updated_at: string;
@@ -331,11 +332,22 @@ export interface WeeklyReviewData {
 export interface CreateProjectInput {
   name: string;
   mission: string;
+  goal?: string;
   status: ProjectStatus;
   currentMilestone: string;
   nextAction: string;
   expectedArtifact?: string;
   workClassification: WorkClassification;
+}
+
+export interface UpsertProjectInput extends CreateProjectInput {
+  id?: string;
+}
+
+export interface UpdateProjectInput {
+  status?: ProjectStatus;
+  mission?: string;
+  goal?: string | null;
 }
 
 export interface UpsertProjectMetadataInput {

@@ -24,4 +24,16 @@ export function readInitialSchema(): string {
 
 export function applyInitialSchema(db: Database.Database): void {
   db.exec(readInitialSchema());
+  applyMigrations(db);
+}
+
+export function applyMigrations(db: Database.Database): void {
+  ensureProjectGoalColumn(db);
+}
+
+function ensureProjectGoalColumn(db: Database.Database): void {
+  const columns = db.prepare("PRAGMA table_info(projects)").all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === "goal")) {
+    db.prepare("ALTER TABLE projects ADD COLUMN goal TEXT").run();
+  }
 }

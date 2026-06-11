@@ -8,7 +8,7 @@ import {
   getProjectMetadata,
   listProjects,
   listProjectSummaries,
-  updateProjectStatus,
+  updateProject,
   upsertProjectMetadata
 } from "../db/repositories.js";
 import { WORK_CLASSIFICATION_LABELS, type ProjectStatus, type WorkClassification } from "../domain/constants.js";
@@ -28,6 +28,10 @@ export async function runProjectCreateCommand(options: { workspace: string }): P
 
 export interface ProjectListCommandData {
   projects: ProjectSummary[];
+}
+
+export interface ProjectShowCommandData {
+  project: ProjectSummary;
 }
 
 export interface ProjectImportCommandData {
@@ -56,11 +60,32 @@ export function runProjectListCommand(options: { workspace: string }): CommandSu
   });
 }
 
+export function runProjectShowCommand(options: {
+  workspace: string;
+  projectId: string;
+}): CommandSuccess<ProjectShowCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const project = withDatabase(workspacePath, (db) =>
+    listProjectSummaries(db).find((candidate) => candidate.id === options.projectId) ?? null
+  );
+
+  if (!project) {
+    throw projectNotFound(options.projectId);
+  }
+
+  return createSuccess({
+    command: "project.show",
+    workspace: workspacePath,
+    data: { project }
+  });
+}
+
 export function runProjectImportCommand(options: {
   workspace: string;
   name: string;
   mission: string;
   status: string;
+  goal?: string;
   milestone: string;
   nextAction: string;
   classification: string;
@@ -76,6 +101,7 @@ export function runProjectImportCommand(options: {
     return createProjectWithInitialWork(db, {
       name: options.name,
       mission: options.mission,
+      goal: options.goal,
       status: options.status as ProjectStatus,
       currentMilestone: options.milestone,
       nextAction: options.nextAction,
@@ -98,10 +124,31 @@ export function runProjectImportCommand(options: {
 export function runProjectUpdateCommand(options: {
   workspace: string;
   projectId: string;
-  status: string;
+  status?: string;
+  mission?: string;
+  goal?: string;
 }): CommandSuccess<ProjectUpdateCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const project = withDatabase(workspacePath, (db) => updateProjectStatus(db, options.projectId, options.status));
+  const updated: string[] = [];
+  if (options.status !== undefined) {
+    updated.push("status");
+  }
+  if (options.mission !== undefined) {
+    updated.push("mission");
+  }
+  if (options.goal !== undefined) {
+    updated.push("goal");
+  }
+  if (updated.length === 0) {
+    throw validationError("At least one project field is required.", { fields: ["status", "mission", "goal"] });
+  }
+  const project = withDatabase(workspacePath, (db) =>
+    updateProject(db, options.projectId, {
+      status: options.status as ProjectStatus | undefined,
+      mission: options.mission,
+      goal: options.goal
+    })
+  );
 
   if (!project) {
     throw projectNotFound(options.projectId);
@@ -110,7 +157,7 @@ export function runProjectUpdateCommand(options: {
   return createSuccess({
     command: "project.update",
     workspace: workspacePath,
-    data: { project, updated: ["status"] }
+    data: { project, updated }
   });
 }
 
@@ -158,6 +205,8 @@ export function renderProjectListSuccess(response: CommandSuccess<ProjectListCom
       ? WORK_CLASSIFICATION_LABELS[project.work_classification]
       : "Unclassified";
     lines.push(`${project.name} (${project.status})`);
+    lines.push(`  Mission: ${project.mission}`);
+    lines.push(`  Goal: ${project.goal ?? "None"}`);
     lines.push(`  Milestone: ${project.current_milestone ?? "None"}`);
     lines.push(`  Next action: ${project.next_action ?? "None"}`);
     lines.push(`  Work classification: ${classification}`);
@@ -166,10 +215,30 @@ export function renderProjectListSuccess(response: CommandSuccess<ProjectListCom
   return lines;
 }
 
+export function renderProjectShowSuccess(response: CommandSuccess<ProjectShowCommandData>): string[] {
+  const project = response.data.project;
+  const classification = project.work_classification
+    ? WORK_CLASSIFICATION_LABELS[project.work_classification]
+    : "Unclassified";
+
+  return [
+    `Project: ${project.name}`,
+    `ID: ${project.id}`,
+    `Status: ${project.status}`,
+    `Mission: ${project.mission}`,
+    `Goal: ${project.goal ?? "None"}`,
+    `Current milestone: ${project.current_milestone ?? "None"}`,
+    `Next action: ${project.next_action ?? "None"}`,
+    `Work classification: ${classification}`,
+    `Expected artifact: ${project.expected_artifact ?? "None"}`
+  ];
+}
+
 export function renderProjectImportSuccess(response: CommandSuccess<ProjectImportCommandData>): string[] {
   return [
     `Created project: ${response.data.project.name}`,
     `Project: ${response.data.project.id}`,
+    `Goal: ${response.data.project.goal ?? "None"}`,
     `Milestone: ${response.data.milestone.title}`,
     `Work item: ${response.data.workItem.id}`
   ];
@@ -179,6 +248,8 @@ export function renderProjectUpdateSuccess(response: CommandSuccess<ProjectUpdat
   return [
     `Updated project: ${response.data.project.name}`,
     `ID: ${response.data.project.id}`,
+    `Mission: ${response.data.project.mission}`,
+    `Goal: ${response.data.project.goal ?? "None"}`,
     `Status: ${response.data.project.status}`
   ];
 }

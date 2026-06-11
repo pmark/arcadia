@@ -203,6 +203,7 @@ describe("arcadia ask command", () => {
       const created = createProjectWithInitialWork(db, {
         name: "Rebuster",
         mission: "Help users turn product evidence into better shipping decisions.",
+        goal: "Ship Pinterest publishing support.",
         status: "active",
         currentMilestone: "Pinterest publishing support",
         nextAction: "Define Pinterest posting support boundaries.",
@@ -241,6 +242,7 @@ describe("arcadia ask command", () => {
     const prompt = readFileSync(path.join(workspace, result.data.codexInvocations[0].prompt_path), "utf8");
     expect(prompt).toContain("## Target Project Context");
     expect(prompt).toContain("Project: Rebuster");
+    expect(prompt).toContain("Goal: Ship Pinterest publishing support.");
     expect(prompt).toContain("Active milestone: Pinterest publishing support");
     expect(prompt).toContain("Work item milestone: Pinterest publishing support");
     expect(prompt).toContain("Target repository: /Users/pmark/Dev/MR/Rebuster/rebuster");

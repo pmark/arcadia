@@ -58,6 +58,7 @@ database/*.sqlite3-*
 !database/schema.sql
 
 # User workspace configuration
+.arcadia-workspace/
 config/local.*
 config/private.*
 config/secrets.*

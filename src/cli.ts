@@ -19,6 +19,12 @@ import {
   runCodexSyncCommand
 } from "./commands/codex.js";
 import { renderDashboardSnapshotSuccess, runDashboardSnapshotCommand } from "./commands/dashboard.js";
+import {
+  renderDogfoodAskSuccess,
+  renderDogfoodInitSuccess,
+  runDogfoodAskCommand,
+  runDogfoodInitCommand
+} from "./commands/dogfood.js";
 import { renderInboxImportSuccess, runInboxAddCommand, runInboxImportCommand } from "./commands/inbox.js";
 import { renderInitSuccess, runInitCommand } from "./commands/init.js";
 import { renderIngressProcessSuccess, runIngressProcessCommand } from "./commands/ingress.js";
@@ -35,11 +41,13 @@ import {
   renderProjectImportSuccess,
   renderProjectListSuccess,
   renderProjectMetadataSuccess,
+  renderProjectShowSuccess,
   renderProjectUpdateSuccess,
   runProjectCreateCommand,
   runProjectImportCommand,
   runProjectListCommand,
   runProjectMetadataCommand,
+  runProjectShowCommand,
   runProjectUpdateCommand
 } from "./commands/project.js";
 import { renderQueueSuccess, runQueueCommand } from "./commands/queue.js";
@@ -92,6 +100,29 @@ export function buildProgram(): Command {
       .argument("<workspace>", "Workspace path")
   ).action((workspace: string, options: { json?: boolean }) =>
     runCliAction("init", options, () => runInitCommand(workspace), renderInitSuccess)
+  );
+
+  const dogfood = program.command("dogfood").description("Arcadia dogfooding workspace commands");
+  addJsonOption(
+    dogfood
+      .command("init")
+      .description("Initialize the repo-local Arcadia dogfooding workspace")
+  ).action((options: { json?: boolean }) =>
+    runCliAction("dogfood.init", options, () => runDogfoodInitCommand(), renderDogfoodInitSuccess)
+  );
+  addJsonOption(
+    dogfood
+      .command("ask")
+      .description("Issue a request through arcadia ask using the dogfooding workspace")
+      .argument("<request>", "Natural-language request")
+      .option("--run-safe", "Immediately run deterministic safe steps")
+  ).action((request: string, options: { runSafe?: boolean; json?: boolean }) =>
+    runCliAction(
+      "dogfood.ask",
+      options,
+      () => runDogfoodAskCommand({ request, runSafe: options.runSafe }),
+      renderDogfoodAskSuccess
+    )
   );
 
   addJsonOption(
@@ -154,11 +185,26 @@ export function buildProgram(): Command {
   );
   addJsonOption(
     project
+      .command("show")
+      .description("Show project details")
+      .argument("<project-id>", "Project id")
+      .requiredOption("--workspace <path>", "Workspace path")
+  ).action((projectId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "project.show",
+      options,
+      () => runProjectShowCommand({ ...options, projectId }),
+      renderProjectShowSuccess
+    )
+  );
+  addJsonOption(
+    project
       .command("import")
       .description("Create a project without prompts")
       .requiredOption("--workspace <path>", "Workspace path")
       .requiredOption("--name <name>", "Project name")
       .requiredOption("--mission <mission>", "Project mission")
+      .option("--goal <goal>", "Project goal")
       .requiredOption("--milestone <milestone>", "Initial active milestone")
       .requiredOption("--next-action <action>", "Initial next action")
       .requiredOption("--classification <classification>", "Work classification: autonomous, codex, needs_mark, blocked")
@@ -168,6 +214,7 @@ export function buildProgram(): Command {
     workspace: string;
     name: string;
     mission: string;
+    goal?: string;
     milestone: string;
     nextAction: string;
     classification: string;
@@ -180,11 +227,19 @@ export function buildProgram(): Command {
   addJsonOption(
     project
       .command("update")
-      .description("Update project status")
+      .description("Update project fields")
       .argument("<project-id>", "Project id")
       .requiredOption("--workspace <path>", "Workspace path")
-      .requiredOption("--status <status>", "Status: active, paused, incubating, completed")
-  ).action((projectId: string, options: { workspace: string; status: string; json?: boolean }) =>
+      .option("--status <status>", "Status: active, paused, incubating, completed")
+      .option("--mission <mission>", "Project mission")
+      .option("--goal <goal>", "Project goal")
+  ).action((projectId: string, options: {
+    workspace: string;
+    status?: string;
+    mission?: string;
+    goal?: string;
+    json?: boolean;
+  }) =>
     runCliAction(
       "project.update",
       options,

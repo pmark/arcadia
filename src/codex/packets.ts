@@ -63,6 +63,7 @@ export function createCodexPacket(input: {
               id: input.projectContext.project.id,
               name: input.projectContext.project.name,
               status: input.projectContext.project.status,
+              goal: input.projectContext.project.goal,
               repoPath: input.projectContext.metadata?.repo_path ?? null,
               activeMilestone: input.projectContext.activeMilestone
                 ? {
@@ -203,6 +204,7 @@ function renderProjectContext(projectContext: ProjectContext | null, workItem: W
     `- Project: ${projectContext.project.name} (${projectContext.project.id})`,
     `- Project status: ${projectContext.project.status}`,
     `- Mission: ${projectContext.project.mission}`,
+    `- Goal: ${projectContext.project.goal ?? "None"}`,
     `- Active milestone: ${projectContext.activeMilestone?.title ?? "None"} (${projectContext.activeMilestone?.id ?? "none"})`,
     `- Work item milestone: ${workItem.milestone_title ?? "None"} (${workItem.milestone_id ?? "none"})`,
     `- Target repository: ${metadata?.repo_path ?? "Workspace scope"}`,

@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   mission TEXT NOT NULL,
+  goal TEXT,
   status TEXT NOT NULL CHECK (status IN ('active', 'paused', 'incubating', 'completed')),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
