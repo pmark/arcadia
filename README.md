@@ -89,6 +89,14 @@ Resolve natural-language intent into an auditable work item and plan:
 pnpm arcadia ask --workspace ./tmp/demo-workspace "Create a new blog site named MartianRover Field Notes." --json
 ```
 
+Process Apple Shortcut ingress files:
+
+```sh
+pnpm arcadia ingress process --workspace ./tmp/demo-workspace --source iCloudIdeas --json
+pnpm arcadia ingress process --workspace ./tmp/demo-workspace --source iCloudIdeas --run-safe --json
+pnpm arcadia ingress process --workspace ./tmp/demo-workspace --source iCloudIdeas --dry-run
+```
+
 View queues:
 
 ```sh
@@ -132,6 +140,8 @@ Generate status:
 ```sh
 pnpm arcadia status --workspace ./tmp/demo-workspace
 pnpm arcadia report status --workspace ./tmp/demo-workspace
+```
+
 Generate a deterministic weekly review:
 
 ```sh
@@ -150,6 +160,7 @@ pnpm smoke
 - `arcadia init <workspace>` creates workspace folders, `config/arcadia.json`, `database/arcadia.sqlite3`, and applies the initial schema.
 - `arcadia status --workspace <path>` prints a concise summary and writes `reports/status.md`.
 - `arcadia ask --workspace <path> <request> [--project <project-id>] [--milestone <milestone-id>] [--run-safe]` resolves natural-language intent into an auditable work item and execution plan.
+- `arcadia ingress process --workspace <path> [--source iCloudIdeas] [--run-safe] [--dry-run]` processes local text request files from `~/ArcadiaIngress/<source>/In/`.
 - `arcadia capture --workspace <path> --text <intent> [--project <project-id>] [--milestone <milestone-id>] [--expected-artifact <artifact>]` captures natural-language intent as structured work.
 - `arcadia project create --workspace <path>` interactively creates one project, milestone, initial work item, and optional artifact record.
 - `arcadia project list --workspace <path>` lists projects with status, milestone, next action, and work classification.
@@ -170,6 +181,36 @@ pnpm smoke
 - `arcadia log create --workspace <path>` records a mission log in SQLite and writes Markdown under `mission_logs/YYYY/MM/`.
 - `arcadia report status --workspace <path>` writes the full Markdown status report.
 - `arcadia review weekly --workspace <path> [--since <YYYY-MM-DD>] [--until <YYYY-MM-DD>]` writes a deterministic weekly review to `reports/weekly/YYYY-MM-DD.md`. If dates are omitted, Arcadia uses the seven calendar days ending today.
+
+## Local File Ingress
+
+Apple Shortcuts can hand work to Arcadia by writing a plain text file into:
+
+```text
+~/ArcadiaIngress/iCloudIdeas/In/YYYYMMDD-HHMMSS.txt
+```
+
+The file contents are the natural-language request. Process pending files once:
+
+```sh
+pnpm arcadia ingress process --workspace "$WORKSPACE" --source iCloudIdeas
+```
+
+Run deterministic safe steps immediately for matching requests:
+
+```sh
+pnpm arcadia ingress process --workspace "$WORKSPACE" --source iCloudIdeas --run-safe
+```
+
+Preview pending files without moving files or executing work:
+
+```sh
+pnpm arcadia ingress process --workspace "$WORKSPACE" --source iCloudIdeas --dry-run
+```
+
+Processed files move to `~/ArcadiaIngress/iCloudIdeas/Done/` with a `.response.json` sidecar. Failed files move to `~/ArcadiaIngress/iCloudIdeas/Failed/` with a `.error.json` sidecar. Arcadia records an ingress mission log for every non-empty processed request.
+
+Watch mode is intentionally not implemented. For periodic processing, configure macOS `launchd` to run the `ingress process` command on an interval.
 
 ## Workspace Data
 

@@ -13,6 +13,7 @@ import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
 import { renderCaptureSuccess, runCaptureCommand } from "./commands/capture.js";
 import { renderInboxImportSuccess, runInboxAddCommand, runInboxImportCommand } from "./commands/inbox.js";
 import { renderInitSuccess, runInitCommand } from "./commands/init.js";
+import { renderIngressProcessSuccess, runIngressProcessCommand } from "./commands/ingress.js";
 import { runLogCreateCommand } from "./commands/log.js";
 import {
   renderMilestoneCompleteSuccess,
@@ -195,6 +196,23 @@ export function buildProgram(): Command {
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("queue", options, () => runQueueCommand(options), renderQueueSuccess)
   );
+
+  const ingress = program.command("ingress").description("Local file ingress commands");
+  addJsonOption(
+    ingress
+      .command("process")
+      .description("Process local ingress request files")
+      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--source <name>", "Ingress source folder", "iCloudIdeas")
+      .option("--run-safe", "Immediately run deterministic safe steps")
+      .option("--dry-run", "Report files that would be processed without changing files")
+  ).action((options: {
+    workspace: string;
+    source?: string;
+    runSafe?: boolean;
+    dryRun?: boolean;
+    json?: boolean;
+  }) => runCliAction("ingress.process", options, () => runIngressProcessCommand(options), renderIngressProcessSuccess));
 
   const artifact = program.command("artifact").description("Artifact commands");
   addJsonOption(
@@ -442,6 +460,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "ask") {
     return "ask";
+  }
+
+  if (first === "ingress" && second === "process") {
+    return "ingress.process";
   }
 
   if (first === "work" && ["list", "update", "done", "plan", "run"].includes(second ?? "")) {

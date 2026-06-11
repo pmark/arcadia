@@ -291,6 +291,29 @@ describe("CLI response contract", () => {
     expect(existsSync(path.join(workspace, json.data.codexInvocations[0].prompt_path))).toBe(true);
   });
 
+  it("emits JSON success for ingress dry-run", () => {
+    const workspace = initializedWorkspace();
+    const result = runCli([
+      "ingress",
+      "process",
+      "--workspace",
+      workspace,
+      "--source",
+      `cliDryRun${Date.now()}`,
+      "--dry-run",
+      "--json"
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const json = parseJson(result.stdout);
+    expect(json.ok).toBe(true);
+    expect(json.command).toBe("ingress.process");
+    expect(json.workspace).toBe(path.resolve(workspace));
+    expect(json.data.dryRun).toBe(true);
+    expect(json.data.counts.discovered).toBe(0);
+  });
+
   it("pauses captured ambiguous work as Needs Mark", () => {
     const workspace = initializedWorkspace();
 

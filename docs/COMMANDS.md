@@ -57,6 +57,44 @@ pnpm arcadia ask \
   --json
 ```
 
+## Process Local Ingress Files
+
+Apple Shortcuts can create Arcadia requests by writing plain text files to:
+
+```text
+~/ArcadiaIngress/iCloudIdeas/In/YYYYMMDD-HHMMSS.txt
+```
+
+The file contents are treated as the natural-language request. Process pending files once:
+
+```sh
+pnpm arcadia ingress process \
+  --workspace "$WORKSPACE" \
+  --source iCloudIdeas
+```
+
+Run deterministic safe steps for matching requests:
+
+```sh
+pnpm arcadia ingress process \
+  --workspace "$WORKSPACE" \
+  --source iCloudIdeas \
+  --run-safe
+```
+
+Preview pending files without moving files or executing work:
+
+```sh
+pnpm arcadia ingress process \
+  --workspace "$WORKSPACE" \
+  --source iCloudIdeas \
+  --dry-run
+```
+
+Arcadia processes `.txt` files oldest first. Successful and empty files move to `~/ArcadiaIngress/iCloudIdeas/Done/`; failed files move to `~/ArcadiaIngress/iCloudIdeas/Failed/`. Each moved file gets a readable JSON sidecar, and every non-empty processed request gets an ingress mission log.
+
+Watch mode is intentionally not implemented. For periodic processing, configure macOS `launchd` to run `arcadia ingress process` on an interval.
+
 Attach captured work to project context when known:
 
 ```sh
