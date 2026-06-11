@@ -4,18 +4,29 @@ import path from "node:path";
 import type { ChatInputCommandInteraction } from "discord.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { ArcadiaCli, buildCliInvocation } from "../apps/discord-bot/src/arcadia/cli.js";
-import type { ExecutionRun, Milestone, WorkItem } from "../apps/discord-bot/src/arcadia/types.js";
+import type { ArcadiaJsonSuccess, ExecutionRun, Milestone, RunShowData, WorkItem } from "../apps/discord-bot/src/arcadia/types.js";
 import { loadConfig } from "../apps/discord-bot/src/config.js";
 import { handleArcadiaInteraction } from "../apps/discord-bot/src/events/interactionCreate.js";
 import { formatRequiresReview } from "../apps/discord-bot/src/formatters/requiresReviewFormatter.js";
-import { formatRuns } from "../apps/discord-bot/src/formatters/runFormatter.js";
+import { formatRunDetail, formatRuns } from "../apps/discord-bot/src/formatters/runFormatter.js";
 import { formatStatus } from "../apps/discord-bot/src/formatters/statusFormatter.js";
 import { evaluateNotifications } from "../apps/discord-bot/src/notifications/poller.js";
 import {
+  discordSubmissionStatePath,
+  loadDiscordSubmissionState,
   loadNotificationState,
+  recordDiscordSubmission,
   saveNotificationState,
   type NotificationState
 } from "../apps/discord-bot/src/notifications/state.js";
+import { withDatabase } from "../src/db/connection.js";
+import {
+  createProjectWithInitialWork,
+  listApprovalGatesForWorkItem,
+  listCodexInvocationsForWorkItem,
+  upsertProjectMetadata
+} from "../src/db/repositories.js";
+import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const tempDirs: string[] = [];
 
@@ -54,6 +65,27 @@ describe("discord bot CLI adapter", () => {
     expect(invocation.command).toBe("/usr/local/bin/arcadia");
     expect(invocation.args).toEqual(["status", "--json"]);
   });
+
+  it("invokes arcadia run show with the configured workspace", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-discord-workspace-"));
+    tempDirs.push(workspace);
+    const cliPath = path.join(workspace, "fake-arcadia-run.mjs");
+    const argvPath = path.join(workspace, "argv.json");
+    writeFileSync(cliPath, fakeArcadiaRunShowCliScript(argvPath));
+    chmodSync(cliPath, 0o755);
+
+    const response = await new ArcadiaCli({ workspace, cliPath }).run("run_1");
+
+    expect(response.data.run.id).toBe("run_1");
+    expect(JSON.parse(readFileSync(argvPath, "utf8"))).toEqual([
+      "run",
+      "show",
+      "run_1",
+      "--workspace",
+      workspace,
+      "--json"
+    ]);
+  });
 });
 
 describe("discord bot request command", () => {
@@ -79,6 +111,10 @@ describe("discord bot request command", () => {
           expect(name).toBe("text");
           expect(required).toBe(true);
           return request;
+        },
+        getBoolean: (name: string) => {
+          expect(name).toBe("run-safe");
+          return false;
         }
       },
       deferReply: async () => {
@@ -111,11 +147,211 @@ describe("discord bot request command", () => {
     expect(reply).toContain("Ask: `ask_1`");
     expect(reply).toContain("Work item: `work_1`");
     expect(reply).toContain("Plan: `plan_1`");
+    expect(reply).toContain("Run: Not run");
     expect(reply).toContain("Project: Rebuster");
     expect(reply).toContain("Active milestone: Pinterest publishing support");
     expect(reply).toContain("Approval gates: 3 (credentials_required, publication, send_email_or_messages)");
     expect(reply).toContain("Codex packet: prompts/codex/codex_1/prompt.md");
     expect(reply).toContain("Repo scope: /Users/pmark/Dev/MR/Rebuster/rebuster");
+    await expect(loadDiscordSubmissionState(discordSubmissionStatePath(workspace))).resolves.toMatchObject({
+      submittedAskIds: ["ask_1"],
+      submittedWorkItemIds: ["work_1"],
+      submittedRunIds: []
+    });
+  });
+
+  it("can run deterministic safe steps when requested from Discord", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-discord-workspace-"));
+    tempDirs.push(workspace);
+    const cliPath = path.join(workspace, "fake-arcadia.mjs");
+    const argvPath = path.join(workspace, "argv.json");
+    const request = "Prepare a weekly Martian Rover Labs update from recent mission logs.";
+    writeFileSync(cliPath, fakeArcadiaCliScript(argvPath));
+    chmodSync(cliPath, 0o755);
+    const cli = new ArcadiaCli({ workspace, cliPath });
+    let reply = "";
+
+    const interaction = {
+      commandName: "arcadia",
+      guildId: "guild",
+      channelId: "channel",
+      options: {
+        getSubcommand: () => "request",
+        getString: () => request,
+        getBoolean: (name: string) => {
+          expect(name).toBe("run-safe");
+          return true;
+        }
+      },
+      deferReply: async () => {},
+      editReply: async (payload: { content: string }) => {
+        reply = payload.content;
+      }
+    } as unknown as ChatInputCommandInteraction;
+
+    await handleArcadiaInteraction(interaction, {
+      arcadiaWorkspace: workspace,
+      discordBotToken: "token",
+      discordClientId: "client",
+      discordGuildId: "guild",
+      discordChannelId: "channel",
+      arcadiaCliPath: cliPath,
+      pollIntervalSeconds: 60
+    }, cli);
+
+    expect(JSON.parse(readFileSync(argvPath, "utf8"))).toEqual([
+      "ask",
+      "--workspace",
+      workspace,
+      request,
+      "--run-safe",
+      "--json"
+    ]);
+    expect(reply).toContain("Run: `run_1` completed");
+    expect(reply).toContain("Run detail: /arcadia run id:run_1");
+    await expect(loadDiscordSubmissionState(discordSubmissionStatePath(workspace))).resolves.toMatchObject({
+      submittedAskIds: ["ask_1"],
+      submittedWorkItemIds: ["work_1"],
+      submittedRunIds: ["run_1"]
+    });
+  });
+});
+
+describe("discord bot run command", () => {
+  it("shows one run with mission log, artifacts, and review reason", async () => {
+    let requestedRunId = "";
+    let reply = "";
+    const cli = {
+      run: async (runId: string): Promise<ArcadiaJsonSuccess<RunShowData>> => {
+        requestedRunId = runId;
+        return runShowResponse({
+          ...sampleRun(),
+          status: "needs_mark"
+        }, ["Approval required"]);
+      }
+    } as unknown as ArcadiaCli;
+    const interaction = {
+      commandName: "arcadia",
+      guildId: "guild",
+      channelId: "channel",
+      options: {
+        getSubcommand: () => "run",
+        getString: (name: string, required: boolean) => {
+          expect(name).toBe("id");
+          expect(required).toBe(true);
+          return "run_1";
+        }
+      },
+      deferReply: async () => {},
+      editReply: async (payload: { content: string }) => {
+        reply = payload.content;
+      }
+    } as unknown as ChatInputCommandInteraction;
+
+    await handleArcadiaInteraction(interaction, {
+      arcadiaWorkspace: "/tmp/workspace",
+      discordBotToken: "token",
+      discordClientId: "client",
+      discordGuildId: "guild",
+      discordChannelId: "channel",
+      arcadiaCliPath: null,
+      pollIntervalSeconds: 60
+    }, cli);
+
+    expect(requestedRunId).toBe("run_1");
+    expect(reply).toContain("**Arcadia run detail**");
+    expect(reply).toContain("Run: `run_1`");
+    expect(reply).toContain("Status: Requires Review");
+    expect(reply).toContain("Mission log: mission_logs/run.md");
+    expect(reply).toContain("Artifacts: Static Images (artifacts/static.md)");
+    expect(reply).toContain("Reason: Approval required");
+    expect(reply).not.toContain("needs_mark");
+  });
+});
+
+describe("discord bot end-to-end fixture", () => {
+  it("submits the Rebuster request, verifies packet context, runs safe work, and evaluates notifications", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-discord-e2e-"));
+    tempDirs.push(workspace);
+    initWorkspace(workspace);
+    withDatabase(workspace, (db) => {
+      const created = createProjectWithInitialWork(db, {
+        name: "Rebuster",
+        mission: "Help users turn product evidence into better shipping decisions.",
+        status: "active",
+        currentMilestone: "Pinterest publishing support",
+        nextAction: "Define Pinterest posting support boundaries.",
+        expectedArtifact: "Pinterest implementation plan",
+        workClassification: "codex"
+      });
+      upsertProjectMetadata(db, {
+        projectId: created.project.id,
+        aliases: ["Rebuster", "rebuster app"],
+        repoPath: "/Users/pmark/Dev/MR/Rebuster/rebuster",
+        statusSummary: "Active product repository with posting automation work in scope.",
+        validationCommands: ["pnpm test", "pnpm lint"]
+      });
+    });
+    const cli = new ArcadiaCli({ workspace, cliPath: null, timeoutMs: 60_000 });
+
+    const rebusterReply = await invokeArcadiaInteraction(cli, workspace, {
+      subcommand: "request",
+      text: "Build Pinterest posting support for Rebuster.",
+      runSafe: true
+    });
+
+    const rebusterWorkId = extractBacktickedValue(rebusterReply, "Work item");
+    const rebusterRunId = extractBacktickedValue(rebusterReply, "Run");
+    expect(rebusterReply).toContain("Project: Rebuster");
+    expect(rebusterReply).toContain("Active milestone: Pinterest publishing support");
+    expect(rebusterReply).toContain("Approval gates: 3 (credentials_required, publication, send_email_or_messages)");
+    expect(rebusterReply).toContain("Repo scope: /Users/pmark/Dev/MR/Rebuster/rebuster");
+    expect(rebusterReply).toContain("Run detail: /arcadia run id:");
+
+    const packet = withDatabase(workspace, (db) => {
+      const gates = listApprovalGatesForWorkItem(db, rebusterWorkId);
+      const invocation = listCodexInvocationsForWorkItem(db, rebusterWorkId)[0];
+      return { gates, invocation };
+    });
+    expect(new Set(packet.gates.map((gate) => gate.gate_type))).toEqual(
+      new Set(["credentials_required", "publication", "send_email_or_messages"])
+    );
+    const prompt = readFileSync(path.join(workspace, packet.invocation.prompt_path), "utf8");
+    expect(prompt).toContain("Target repository: /Users/pmark/Dev/MR/Rebuster/rebuster");
+    expect(prompt).toContain("Active milestone: Pinterest publishing support");
+    expect(prompt).toContain("Validation commands: pnpm test && pnpm lint");
+    expect(prompt).toContain("credential access, publication, and social posting/messaging require explicit approval");
+
+    const weeklyReply = await invokeArcadiaInteraction(cli, workspace, {
+      subcommand: "request",
+      text: "Prepare a weekly Martian Rover Labs update from recent mission logs.",
+      runSafe: true
+    });
+    const weeklyRunId = extractBacktickedValue(weeklyReply, "Run");
+    expect(weeklyReply).toContain("Run detail: /arcadia run id:");
+
+    const submissions = await loadDiscordSubmissionState(discordSubmissionStatePath(workspace));
+    expect(submissions.submittedRunIds).toEqual(expect.arrayContaining([rebusterRunId, weeklyRunId]));
+
+    const [status, runs] = await Promise.all([cli.status(), cli.runs(10)]);
+    const evaluation = evaluateNotifications({
+      requiresReviewCount: status.data.requiresReviewCount,
+      runs: runs.data.runs,
+      completedMilestones: []
+    }, {
+      initializedAt: "2026-06-10T12:00:00.000Z",
+      lastRequiresReviewCount: 0,
+      notifiedRunIds: [],
+      notifiedMilestoneIds: []
+    }, "2026-06-10T12:05:00.000Z", submissions);
+
+    expect(evaluation.messages.map((message) => message.key)).toEqual(expect.arrayContaining([
+      `run:${rebusterRunId}`,
+      `run:${weeklyRunId}`,
+      "requires-review:transition"
+    ]));
+    expect(evaluation.messages.map((message) => message.content).join("\n")).toContain("**Arcadia run completed**");
+    expect(evaluation.messages.map((message) => message.content).join("\n")).toContain("**Arcadia progress update**");
   });
 });
 
@@ -155,6 +391,16 @@ describe("discord bot formatters", () => {
     expect(output).toContain("Requires Review");
     expect(output).not.toContain("needs_mark");
     expect(output).not.toContain("Needs Mark");
+  });
+
+  it("formats detailed run status for remote review", () => {
+    const output = formatRunDetail(runShowResponse({ ...sampleRun(), status: "failed" }, []).data);
+
+    expect(output).toContain("Status: failed");
+    expect(output).toContain("Mission log: mission_logs/run.md");
+    expect(output).toContain("Artifacts: Static Images (artifacts/static.md)");
+    expect(output).toContain("Blocking step: Approve Static Images");
+    expect(output).toContain("Final reporting depends on completed validation artifacts.");
   });
 });
 
@@ -197,6 +443,53 @@ describe("discord bot notifications", () => {
     expect(second.messages).toEqual([]);
   });
 
+  it("suppresses routine completed runs that did not originate from Discord", () => {
+    const previous: NotificationState = {
+      initializedAt: "2026-06-10T12:00:00.000Z",
+      lastRequiresReviewCount: 0,
+      notifiedRunIds: [],
+      notifiedMilestoneIds: []
+    };
+    const evaluation = evaluateNotifications({
+      requiresReviewCount: 0,
+      runs: [{ ...sampleRun(), status: "completed" }],
+      completedMilestones: []
+    }, previous);
+
+    expect(evaluation.messages).toEqual([]);
+    expect(evaluation.nextState.notifiedRunIds).toEqual([]);
+  });
+
+  it("posts completed runs once when they originated from Discord", () => {
+    const previous: NotificationState = {
+      initializedAt: "2026-06-10T12:00:00.000Z",
+      lastRequiresReviewCount: 0,
+      notifiedRunIds: [],
+      notifiedMilestoneIds: []
+    };
+    const submissions = {
+      submittedAskIds: ["ask_1"],
+      submittedWorkItemIds: ["work_1"],
+      submittedRunIds: [],
+      updatedAt: "2026-06-10T12:00:00.000Z"
+    };
+    const snapshot = {
+      requiresReviewCount: 0,
+      runs: [{ ...sampleRun(), status: "completed" }],
+      completedMilestones: []
+    };
+
+    const first = evaluateNotifications(snapshot, previous, "2026-06-10T12:05:00.000Z", submissions);
+    const second = evaluateNotifications(snapshot, first.nextState, "2026-06-10T12:06:00.000Z", submissions);
+
+    expect(first.messages).toHaveLength(1);
+    expect(first.messages[0].key).toBe("run:run_1");
+    expect(first.messages[0].content).toContain("**Arcadia run completed**");
+    expect(first.messages[0].content).toContain("Run detail: /arcadia run id:run_1");
+    expect(first.nextState.notifiedRunIds).toEqual(["run_1"]);
+    expect(second.messages).toEqual([]);
+  });
+
   it("persists notification state atomically", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "arcadia-discord-state-"));
     tempDirs.push(dir);
@@ -212,7 +505,71 @@ describe("discord bot notifications", () => {
 
     await expect(loadNotificationState(filePath)).resolves.toEqual(state);
   });
+
+  it("records Discord submissions separately from notification initialization", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "arcadia-discord-state-"));
+    tempDirs.push(dir);
+    const filePath = path.join(dir, "submissions.json");
+
+    await recordDiscordSubmission(filePath, { askId: "ask_1", workItemId: "work_1", runId: null });
+    await recordDiscordSubmission(filePath, { askId: "ask_1", workItemId: "work_1", runId: "run_1" });
+
+    await expect(loadDiscordSubmissionState(filePath)).resolves.toMatchObject({
+      submittedAskIds: ["ask_1"],
+      submittedWorkItemIds: ["work_1"],
+      submittedRunIds: ["run_1"]
+    });
+  });
 });
+
+async function invokeArcadiaInteraction(
+  cli: ArcadiaCli,
+  workspace: string,
+  options: { subcommand: "request"; text: string; runSafe: boolean }
+): Promise<string> {
+  let reply = "";
+  const interaction = {
+    commandName: "arcadia",
+    guildId: "guild",
+    channelId: "channel",
+    options: {
+      getSubcommand: () => options.subcommand,
+      getString: (name: string, required: boolean) => {
+        expect(name).toBe("text");
+        expect(required).toBe(true);
+        return options.text;
+      },
+      getBoolean: (name: string) => {
+        expect(name).toBe("run-safe");
+        return options.runSafe;
+      }
+    },
+    deferReply: async () => {},
+    editReply: async (payload: { content: string }) => {
+      reply = payload.content;
+    }
+  } as unknown as ChatInputCommandInteraction;
+
+  await handleArcadiaInteraction(interaction, {
+    arcadiaWorkspace: workspace,
+    discordBotToken: "token",
+    discordClientId: "client",
+    discordGuildId: "guild",
+    discordChannelId: "channel",
+    arcadiaCliPath: null,
+    pollIntervalSeconds: 60
+  }, cli);
+
+  return reply;
+}
+
+function extractBacktickedValue(output: string, label: string): string {
+  const match = new RegExp(`${label}: \`([^\`]+)\``).exec(output);
+  if (!match?.[1]) {
+    throw new Error(`Expected ${label} in output: ${output}`);
+  }
+  return match[1];
+}
 
 function sampleWorkItem(): WorkItem {
   return {
@@ -232,6 +589,7 @@ function sampleWorkItem(): WorkItem {
 function sampleRun(): ExecutionRun {
   return {
     id: "run_1",
+    work_item_id: "work_1",
     status: "completed",
     summary: "Run summary",
     work_item_title: "Add Pinterest publishing support",
@@ -263,6 +621,20 @@ function sampleMilestone(): Milestone {
   };
 }
 
+function runShowResponse(run: ExecutionRun, needsMark: string[]): ArcadiaJsonSuccess<RunShowData> {
+  return {
+    ok: true,
+    command: "run.show",
+    workspace: "/tmp/workspace",
+    data: { run, needsMark },
+    artifacts: [
+      ...(run.mission_log_path ? [run.mission_log_path] : []),
+      ...run.artifacts.flatMap((artifact) => artifact.path ? [artifact.path] : [])
+    ],
+    warnings: []
+  };
+}
+
 function fakeArcadiaCliScript(argvPath: string): string {
   return `#!/usr/bin/env node
 import { writeFileSync } from "node:fs";
@@ -271,6 +643,7 @@ const args = process.argv.slice(2);
 writeFileSync(${JSON.stringify(argvPath)}, JSON.stringify(args));
 const workspace = args[args.indexOf("--workspace") + 1];
 const request = args[args.indexOf("--workspace") + 2];
+const runSafe = args.includes("--run-safe");
 
 process.stdout.write(JSON.stringify({
   ok: true,
@@ -336,7 +709,52 @@ process.stdout.write(JSON.stringify({
       prompt_path: "prompts/codex/codex_1/prompt.md",
       status: "packet_created"
     }],
-    run: null
+    run: runSafe ? {
+      id: "run_1",
+      work_item_id: "work_1",
+      status: "completed",
+      summary: "Run summary",
+      work_item_title: request,
+      plan_summary: "Intent plan.",
+      mission_log_path: "mission_logs/run.md",
+      created_at: "2026-06-10T12:00:00.000Z",
+      updated_at: "2026-06-10T12:00:00.000Z",
+      steps: [],
+      artifacts: []
+    } : null
+  },
+  artifacts: [],
+  warnings: []
+}));
+`;
+}
+
+function fakeArcadiaRunShowCliScript(argvPath: string): string {
+  return `#!/usr/bin/env node
+import { writeFileSync } from "node:fs";
+
+const args = process.argv.slice(2);
+writeFileSync(${JSON.stringify(argvPath)}, JSON.stringify(args));
+
+process.stdout.write(JSON.stringify({
+  ok: true,
+  command: "run.show",
+  workspace: args[args.indexOf("--workspace") + 1],
+  data: {
+    run: {
+      id: "run_1",
+      work_item_id: "work_1",
+      status: "completed",
+      summary: "Run summary",
+      work_item_title: "Add Pinterest publishing support",
+      plan_summary: "Plan summary",
+      mission_log_path: "mission_logs/run.md",
+      created_at: "2026-06-10T12:00:00.000Z",
+      updated_at: "2026-06-10T12:00:00.000Z",
+      steps: [],
+      artifacts: []
+    },
+    needsMark: []
   },
   artifacts: [],
   warnings: []

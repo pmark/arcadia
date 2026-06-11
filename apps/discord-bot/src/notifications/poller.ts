@@ -5,12 +5,15 @@ import type { BotConfig } from "../config.js";
 import { formatMilestoneCompletedNotification } from "../formatters/milestoneFormatter.js";
 import type { LogLevel } from "../logging.js";
 import { requiresReviewTransitionMessage } from "./requiresReview.js";
-import { runRequiresReviewMessage } from "./runCompleted.js";
+import { runCompletedMessage, runRequiresReviewMessage } from "./runCompleted.js";
 import { runFailedMessage } from "./runFailed.js";
 import {
+  discordSubmissionStatePath,
+  loadDiscordSubmissionState,
   loadNotificationState,
   notificationStatePath,
   saveNotificationState,
+  type DiscordSubmissionState,
   type NotificationState
 } from "./state.js";
 
@@ -47,10 +50,14 @@ export async function loadNotificationSnapshot(cli: ArcadiaCli): Promise<Notific
 export function evaluateNotifications(
   snapshot: NotificationSnapshot,
   previous: NotificationState | null,
-  now = new Date().toISOString()
+  now = new Date().toISOString(),
+  submissions: DiscordSubmissionState = emptyDiscordSubmissionState(now)
 ): NotificationEvaluation {
   const notableRunIds = snapshot.runs
     .filter((run) => run.status === "failed" || run.status === "needs_mark")
+    .map((run) => run.id);
+  const completedDiscordRunIds = snapshot.runs
+    .filter((run) => run.status === "completed" && isDiscordSubmittedRun(run, submissions))
     .map((run) => run.id);
   const completedMilestoneIds = snapshot.completedMilestones.map((milestone) => milestone.id);
 
@@ -60,7 +67,7 @@ export function evaluateNotifications(
       nextState: {
         initializedAt: now,
         lastRequiresReviewCount: snapshot.requiresReviewCount,
-        notifiedRunIds: notableRunIds,
+        notifiedRunIds: Array.from(new Set([...notableRunIds, ...completedDiscordRunIds])),
         notifiedMilestoneIds: completedMilestoneIds
       }
     };
@@ -79,6 +86,8 @@ export function evaluateNotifications(
       messages.push({ key: `run:${run.id}`, content: runFailedMessage(run) });
     } else if (run.status === "needs_mark") {
       messages.push({ key: `run:${run.id}`, content: runRequiresReviewMessage(run) });
+    } else if (run.status === "completed" && isDiscordSubmittedRun(run, submissions)) {
+      messages.push({ key: `run:${run.id}`, content: runCompletedMessage(run) });
     }
   }
 
@@ -103,7 +112,7 @@ export function evaluateNotifications(
     nextState: {
       initializedAt: previous.initializedAt,
       lastRequiresReviewCount: snapshot.requiresReviewCount,
-      notifiedRunIds: Array.from(new Set([...previous.notifiedRunIds, ...notableRunIds])),
+      notifiedRunIds: Array.from(new Set([...previous.notifiedRunIds, ...notableRunIds, ...completedDiscordRunIds])),
       notifiedMilestoneIds: Array.from(new Set([...previous.notifiedMilestoneIds, ...completedMilestoneIds]))
     }
   };
@@ -118,11 +127,13 @@ export function startNotificationPoller(
   const tick = async (): Promise<void> => {
     try {
       const statePath = notificationStatePath(config.arcadiaWorkspace);
-      const [previous, snapshot] = await Promise.all([
+      const submissionPath = discordSubmissionStatePath(config.arcadiaWorkspace);
+      const [previous, snapshot, submissions] = await Promise.all([
         loadNotificationState(statePath),
-        loadNotificationSnapshot(cli)
+        loadNotificationSnapshot(cli),
+        loadDiscordSubmissionState(submissionPath)
       ]);
-      const evaluation = evaluateNotifications(snapshot, previous);
+      const evaluation = evaluateNotifications(snapshot, previous, new Date().toISOString(), submissions);
 
       for (const message of evaluation.messages) {
         await sendToConfiguredChannel(client, config.discordChannelId, message.content);
@@ -149,4 +160,20 @@ async function sendToConfiguredChannel(client: Client, channelId: string, conten
   }
 
   await channel.send({ content });
+}
+
+function isDiscordSubmittedRun(run: ExecutionRun, submissions: DiscordSubmissionState): boolean {
+  return (
+    submissions.submittedRunIds.includes(run.id) ||
+    (typeof run.work_item_id === "string" && submissions.submittedWorkItemIds.includes(run.work_item_id))
+  );
+}
+
+function emptyDiscordSubmissionState(now: string): DiscordSubmissionState {
+  return {
+    submittedAskIds: [],
+    submittedWorkItemIds: [],
+    submittedRunIds: [],
+    updatedAt: now
+  };
 }

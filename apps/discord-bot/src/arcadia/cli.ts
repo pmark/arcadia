@@ -8,6 +8,7 @@ import type {
   MilestoneListData,
   QueueData,
   RunListData,
+  RunShowData,
   StatusData
 } from "./types.js";
 
@@ -24,6 +25,10 @@ export interface CliInvocation {
   args: string[];
 }
 
+export interface AskCliOptions {
+  runSafe?: boolean;
+}
+
 export class ArcadiaCli {
   constructor(private readonly options: ArcadiaCliOptions) {}
 
@@ -35,8 +40,15 @@ export class ArcadiaCli {
     return this.runJson<QueueData>(["queue", "--workspace", this.options.workspace, "--json"]);
   }
 
-  ask(request: string): Promise<ArcadiaJsonSuccess<AskData>> {
-    return this.runJson<AskData>(["ask", "--workspace", this.options.workspace, request, "--json"]);
+  ask(request: string, askOptions: AskCliOptions = {}): Promise<ArcadiaJsonSuccess<AskData>> {
+    return this.runJson<AskData>([
+      "ask",
+      "--workspace",
+      this.options.workspace,
+      request,
+      ...(askOptions.runSafe ? ["--run-safe"] : []),
+      "--json"
+    ]);
   }
 
   runs(limit = 10): Promise<ArcadiaJsonSuccess<RunListData>> {
@@ -49,6 +61,10 @@ export class ArcadiaCli {
       String(limit),
       "--json"
     ]);
+  }
+
+  run(runId: string): Promise<ArcadiaJsonSuccess<RunShowData>> {
+    return this.runJson<RunShowData>(["run", "show", runId, "--workspace", this.options.workspace, "--json"]);
   }
 
   milestones(status = "completed", limit = 20): Promise<ArcadiaJsonSuccess<MilestoneListData>> {

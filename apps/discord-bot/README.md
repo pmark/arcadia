@@ -55,9 +55,10 @@ pnpm --filter arcadia-discord-bot start
 ## Slash Commands
 
 - `/arcadia status` shows active projects, running work, queued work, Requires Review count, and recent artifacts.
-- `/arcadia request text:<request>` submits a natural-language request through `arcadia ask`.
+- `/arcadia request text:<request> run-safe:<true|false>` submits a natural-language request through `arcadia ask`; `run-safe:true` immediately runs deterministic safe steps.
 - `/arcadia requires-review` shows the current Requires Review queue.
 - `/arcadia runs` shows recent execution runs.
+- `/arcadia run id:<run-id>` shows one run with mission log, artifacts, Requires Review items, and failure or blocking reason.
 
 Commands only respond in the configured guild and channel.
 
@@ -67,6 +68,7 @@ The bot polls Arcadia and notifies the configured channel when:
 
 - a run fails,
 - a run pauses with Requires Review,
+- a Discord-submitted run completes,
 - the Requires Review count transitions from `0` to a positive number,
 - a milestone is completed.
 
@@ -76,6 +78,12 @@ Notification state is stored at:
 
 ```text
 ARCADIA_WORKSPACE/database/discord-notifications.json
+```
+
+Discord-submitted ask/work/run correlation is stored separately at:
+
+```text
+ARCADIA_WORKSPACE/database/discord-submissions.json
 ```
 
 The first startup initializes this state silently so old workspace history is not replayed into Discord. Future notable events are posted once.

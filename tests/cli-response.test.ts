@@ -4,7 +4,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 import { withDatabase } from "../src/db/connection.js";
-import { createProjectWithInitialWork } from "../src/db/repositories.js";
+import { createProjectWithInitialWork, getProjectMetadata } from "../src/db/repositories.js";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const tsxBin = path.join(repoRoot, "node_modules", ".bin", "tsx");
@@ -103,6 +103,40 @@ describe("CLI response contract", () => {
     expect(json.data.projects).toEqual([]);
   });
 
+  it("imports projects with JSON output", () => {
+    const workspace = initializedWorkspace();
+
+    const result = runCli([
+      "project",
+      "import",
+      "--workspace",
+      workspace,
+      "--name",
+      "Rebuster",
+      "--mission",
+      "Help users turn product evidence into better shipping decisions.",
+      "--milestone",
+      "Pinterest publishing support",
+      "--next-action",
+      "Define Pinterest posting support boundaries.",
+      "--classification",
+      "codex",
+      "--expected-artifact",
+      "Pinterest implementation plan",
+      "--json"
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const json = parseJson(result.stdout);
+    expect(json.ok).toBe(true);
+    expect(json.command).toBe("project.import");
+    expect(json.data.project.name).toBe("Rebuster");
+    expect(json.data.project.status).toBe("active");
+    expect(json.data.milestone.title).toBe("Pinterest publishing support");
+    expect(json.data.workItem.next_action).toBe("Define Pinterest posting support boundaries.");
+  });
+
   it("updates project status with JSON output", () => {
     const workspace = initializedWorkspace();
     const created = createProject(workspace);
@@ -127,6 +161,45 @@ describe("CLI response contract", () => {
     expect(json.data.updated).toEqual(["status"]);
     expect(json.data.project.id).toBe(created.project.id);
     expect(json.data.project.status).toBe("paused");
+  });
+
+  it("upserts project metadata with JSON output", () => {
+    const workspace = initializedWorkspace();
+    const created = createProject(workspace);
+
+    const result = runCli([
+      "project",
+      "metadata",
+      created.project.id,
+      "--workspace",
+      workspace,
+      "--alias",
+      "Rebuster",
+      "--alias",
+      "rebuster app",
+      "--repo-path",
+      "/Users/pmark/Dev/MR/Rebuster/rebuster",
+      "--status-summary",
+      "Active product repository with posting automation work in scope.",
+      "--validation-command",
+      "pnpm test",
+      "--validation-command",
+      "pnpm lint",
+      "--json"
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const json = parseJson(result.stdout);
+    expect(json.ok).toBe(true);
+    expect(json.command).toBe("project.metadata");
+    expect(json.data.metadata.project_id).toBe(created.project.id);
+    expect(JSON.parse(json.data.metadata.aliases)).toEqual(["Rebuster", "rebuster app"]);
+    expect(json.data.metadata.repo_path).toBe("/Users/pmark/Dev/MR/Rebuster/rebuster");
+    expect(JSON.parse(json.data.metadata.validation_commands)).toEqual(["pnpm test", "pnpm lint"]);
+
+    const metadata = withDatabase(workspace, (db) => getProjectMetadata(db, created.project.id));
+    expect(metadata?.status_summary).toBe("Active product repository with posting automation work in scope.");
   });
 
   it("creates and completes milestones with JSON output", () => {
@@ -651,6 +724,36 @@ describe("CLI response contract", () => {
     expect(json.command).toBe("project.update");
     expect(json.error.code).toBe("VALIDATION_ERROR");
     expect(json.error.message).toContain("Project status must be one of");
+  });
+
+  it("emits stable JSON for duplicate project imports", () => {
+    const workspace = initializedWorkspace();
+    createProject(workspace);
+
+    const result = runCli([
+      "project",
+      "import",
+      "--workspace",
+      workspace,
+      "--name",
+      "CLI Fixture Project",
+      "--mission",
+      "Support CLI tests.",
+      "--milestone",
+      "Initial milestone",
+      "--next-action",
+      "Exercise the CLI",
+      "--classification",
+      "codex",
+      "--json"
+    ]);
+
+    expect(result.status).toBe(2);
+    const json = parseJson(result.stderr);
+    expect(json.ok).toBe(false);
+    expect(json.command).toBe("project.import");
+    expect(json.error.code).toBe("VALIDATION_ERROR");
+    expect(json.error.message).toBe("Project already exists.");
   });
 
   it("emits stable JSON for missing project updates", () => {

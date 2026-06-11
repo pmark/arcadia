@@ -3,7 +3,7 @@ import type { ArcadiaCli } from "../arcadia/cli.js";
 import type { BotConfig } from "../config.js";
 import { requestCommand } from "../commands/request.js";
 import { requiresReviewCommand } from "../commands/requiresReview.js";
-import { runsCommand } from "../commands/runs.js";
+import { runCommand, runsCommand } from "../commands/runs.js";
 import { statusCommand } from "../commands/status.js";
 
 export async function handleArcadiaInteraction(
@@ -27,7 +27,7 @@ export async function handleArcadiaInteraction(
 
   try {
     const subcommand = interaction.options.getSubcommand();
-    const content = await runSubcommand(interaction, subcommand, cli);
+    const content = await runSubcommand(interaction, subcommand, cli, config);
     await interaction.editReply({ content });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -42,14 +42,20 @@ function isAllowedLocation(interaction: ChatInputCommandInteraction, config: Bot
 function runSubcommand(
   interaction: ChatInputCommandInteraction,
   subcommand: string,
-  cli: ArcadiaCli
+  cli: ArcadiaCli,
+  config: BotConfig
 ): Promise<string> {
   if (subcommand === "status") {
     return statusCommand(cli);
   }
 
   if (subcommand === "request") {
-    return requestCommand(cli, interaction.options.getString("text", true));
+    return requestCommand(
+      cli,
+      config.arcadiaWorkspace,
+      interaction.options.getString("text", true),
+      interaction.options.getBoolean("run-safe") ?? false
+    );
   }
 
   if (subcommand === "requires-review") {
@@ -58,6 +64,10 @@ function runSubcommand(
 
   if (subcommand === "runs") {
     return runsCommand(cli);
+  }
+
+  if (subcommand === "run") {
+    return runCommand(cli, interaction.options.getString("id", true));
   }
 
   return Promise.resolve("Unknown Arcadia command.");

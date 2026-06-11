@@ -25,11 +25,27 @@ export function buildArcadiaCommand() {
             .setDescription("Natural-language request")
             .setRequired(true)
         )
+        .addBooleanOption((option) =>
+          option
+            .setName("run-safe")
+            .setDescription("Immediately run deterministic safe steps after creating the request")
+        )
     )
     .addSubcommand((subcommand) =>
       subcommand
         .setName("runs")
         .setDescription("Show recent Arcadia execution runs")
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("run")
+        .setDescription("Show one Arcadia execution run")
+        .addStringOption((option) =>
+          option
+            .setName("id")
+            .setDescription("Execution run id")
+            .setRequired(true)
+        )
     )
     .toJSON();
 }

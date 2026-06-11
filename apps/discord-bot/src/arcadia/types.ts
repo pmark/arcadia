@@ -55,6 +55,8 @@ export interface ExecutionRunStep {
 
 export interface ExecutionRun {
   id: string;
+  work_item_id?: string;
+  plan_id?: string;
   status: string;
   summary: string;
   work_item_title: string;
@@ -68,6 +70,11 @@ export interface ExecutionRun {
 
 export interface RunListData {
   runs: ExecutionRun[];
+}
+
+export interface RunShowData {
+  run: ExecutionRun;
+  needsMark: string[];
 }
 
 export interface Milestone {

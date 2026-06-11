@@ -55,7 +55,7 @@ pnpm arcadia --help
 
 Arcadia includes a lightweight Discord adapter in `apps/discord-bot`.
 
-The bot can show concise status, submit requests through `arcadia ask`, show Requires Review items, show recent runs, and post meaningful execution notifications. It does not approve work, review artifacts, publish, deploy, or spend money.
+The bot can show concise status, submit requests through `arcadia ask`, optionally run deterministic safe request steps, show Requires Review items, list recent runs, inspect a single run, and post meaningful execution notifications including Discord-origin safe completions. It does not approve work, review artifacts, publish, deploy, or spend money.
 
 See `apps/discord-bot/README.md` for environment variables, slash command registration, local run commands, and notification deduplication behavior.
 
@@ -186,7 +186,9 @@ pnpm smoke
 - `arcadia capture --workspace <path> --text <intent> [--project <project-id>] [--milestone <milestone-id>] [--expected-artifact <artifact>]` captures natural-language intent as structured work.
 - `arcadia project create --workspace <path>` interactively creates one project, milestone, initial work item, and optional artifact record.
 - `arcadia project list --workspace <path>` lists projects with status, milestone, next action, and work classification.
+- `arcadia project import --workspace <path> --name <name> --mission <mission> --milestone <milestone> --next-action <action> --classification <classification>` creates a project, active milestone, and initial work item without prompts.
 - `arcadia project update --workspace <path> <project-id> --status <status>` updates project status.
+- `arcadia project metadata --workspace <path> <project-id> [--alias <alias>] [--repo-path <path>] [--status-summary <summary>] [--validation-command <command>]` upserts deterministic project metadata for request routing and Codex packet context.
 - `arcadia inbox add --workspace <path>` interactively adds manually classified work.
 - `arcadia inbox import --workspace <path> --title <title> --input <text> --queue <queue> --classification <classification> --next-action <action>` adds manually classified work without prompts.
 - `arcadia queue --workspace <path>` shows Inbox, Work Queue, Needs Mark, and Blocked items.

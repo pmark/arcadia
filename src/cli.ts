@@ -25,10 +25,14 @@ import {
   runMilestoneListCommand
 } from "./commands/milestone.js";
 import {
+  renderProjectImportSuccess,
   renderProjectListSuccess,
+  renderProjectMetadataSuccess,
   renderProjectUpdateSuccess,
   runProjectCreateCommand,
+  runProjectImportCommand,
   runProjectListCommand,
+  runProjectMetadataCommand,
   runProjectUpdateCommand
 } from "./commands/project.js";
 import { renderQueueSuccess, runQueueCommand } from "./commands/queue.js";
@@ -143,6 +147,31 @@ export function buildProgram(): Command {
   );
   addJsonOption(
     project
+      .command("import")
+      .description("Create a project without prompts")
+      .requiredOption("--workspace <path>", "Workspace path")
+      .requiredOption("--name <name>", "Project name")
+      .requiredOption("--mission <mission>", "Project mission")
+      .requiredOption("--milestone <milestone>", "Initial active milestone")
+      .requiredOption("--next-action <action>", "Initial next action")
+      .requiredOption("--classification <classification>", "Work classification: autonomous, codex, needs_mark, blocked")
+      .option("--status <status>", "Project status: active, paused, incubating, completed", "active")
+      .option("--expected-artifact <artifact>", "Initial expected artifact")
+  ).action((options: {
+    workspace: string;
+    name: string;
+    mission: string;
+    milestone: string;
+    nextAction: string;
+    classification: string;
+    status: string;
+    expectedArtifact?: string;
+    json?: boolean;
+  }) =>
+    runCliAction("project.import", options, () => runProjectImportCommand(options), renderProjectImportSuccess)
+  );
+  addJsonOption(
+    project
       .command("update")
       .description("Update project status")
       .argument("<project-id>", "Project id")
@@ -154,6 +183,38 @@ export function buildProgram(): Command {
       options,
       () => runProjectUpdateCommand({ ...options, projectId }),
       renderProjectUpdateSuccess
+    )
+  );
+  addJsonOption(
+    project
+      .command("metadata")
+      .description("Upsert deterministic project metadata")
+      .argument("<project-id>", "Project id")
+      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--alias <alias>", "Project alias; repeat for multiple aliases", collectValues, undefined)
+      .option("--repo-path <path>", "Target repository path")
+      .option("--status-summary <summary>", "Project status summary")
+      .option("--validation-command <command>", "Validation command; repeat for multiple commands", collectValues, undefined)
+  ).action((projectId: string, options: {
+    workspace: string;
+    alias?: string[];
+    repoPath?: string;
+    statusSummary?: string;
+    validationCommand?: string[];
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "project.metadata",
+      options,
+      () => runProjectMetadataCommand({
+        workspace: options.workspace,
+        projectId,
+        aliases: options.alias,
+        repoPath: options.repoPath,
+        statusSummary: options.statusSummary,
+        validationCommands: options.validationCommand
+      }),
+      renderProjectMetadataSuccess
     )
   );
 
@@ -475,8 +536,16 @@ function commandNameFromArgv(argv: string[]): string {
     return "project.list";
   }
 
+  if (first === "project" && second === "import") {
+    return "project.import";
+  }
+
   if (first === "project" && second === "update") {
     return "project.update";
+  }
+
+  if (first === "project" && second === "metadata") {
+    return "project.metadata";
   }
 
   if (first === "inbox" && second === "import") {
@@ -533,4 +602,8 @@ function workspaceFromArgv(argv: string[]): string | undefined {
   }
 
   return path.resolve(argv[index + 1]);
+}
+
+function collectValues(value: string, previous: string[] = []): string[] {
+  return [...previous, value];
 }

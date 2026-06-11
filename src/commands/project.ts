@@ -1,11 +1,18 @@
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
-import { projectNotFound } from "../cli/errors.js";
+import { projectNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
-import { createProjectWithInitialWork, listProjectSummaries, updateProjectStatus } from "../db/repositories.js";
-import { WORK_CLASSIFICATION_LABELS } from "../domain/constants.js";
-import type { Project, ProjectSummary } from "../domain/types.js";
+import {
+  createProjectWithInitialWork,
+  getProjectMetadata,
+  listProjects,
+  listProjectSummaries,
+  updateProjectStatus,
+  upsertProjectMetadata
+} from "../db/repositories.js";
+import { WORK_CLASSIFICATION_LABELS, type ProjectStatus, type WorkClassification } from "../domain/constants.js";
+import type { CreatedProjectBundle, Project, ProjectMetadata, ProjectSummary } from "../domain/types.js";
 import { promptForProjectCreate } from "../prompts/index.js";
 import { resolveWorkspacePath } from "../workspace/paths.js";
 
@@ -23,9 +30,19 @@ export interface ProjectListCommandData {
   projects: ProjectSummary[];
 }
 
+export interface ProjectImportCommandData {
+  project: CreatedProjectBundle["project"];
+  milestone: CreatedProjectBundle["milestone"];
+  workItem: CreatedProjectBundle["workItem"];
+}
+
 export interface ProjectUpdateCommandData {
   project: Project;
   updated: string[];
+}
+
+export interface ProjectMetadataCommandData {
+  metadata: ProjectMetadata;
 }
 
 export function runProjectListCommand(options: { workspace: string }): CommandSuccess<ProjectListCommandData> {
@@ -36,6 +53,45 @@ export function runProjectListCommand(options: { workspace: string }): CommandSu
     command: "project.list",
     workspace: workspacePath,
     data: { projects }
+  });
+}
+
+export function runProjectImportCommand(options: {
+  workspace: string;
+  name: string;
+  mission: string;
+  status: string;
+  milestone: string;
+  nextAction: string;
+  classification: string;
+  expectedArtifact?: string;
+}): CommandSuccess<ProjectImportCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const created = withDatabase(workspacePath, (db) => {
+    const existing = listProjects(db).find((project) => project.name.toLowerCase() === options.name.trim().toLowerCase());
+    if (existing) {
+      throw validationError("Project already exists.", { projectId: existing.id, name: existing.name });
+    }
+
+    return createProjectWithInitialWork(db, {
+      name: options.name,
+      mission: options.mission,
+      status: options.status as ProjectStatus,
+      currentMilestone: options.milestone,
+      nextAction: options.nextAction,
+      expectedArtifact: options.expectedArtifact,
+      workClassification: options.classification as WorkClassification
+    });
+  });
+
+  return createSuccess({
+    command: "project.import",
+    workspace: workspacePath,
+    data: {
+      project: created.project,
+      milestone: created.milestone,
+      workItem: created.workItem
+    }
   });
 }
 
@@ -58,6 +114,39 @@ export function runProjectUpdateCommand(options: {
   });
 }
 
+export function runProjectMetadataCommand(options: {
+  workspace: string;
+  projectId: string;
+  aliases?: string[];
+  repoPath?: string;
+  statusSummary?: string;
+  validationCommands?: string[];
+}): CommandSuccess<ProjectMetadataCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const metadata = withDatabase(workspacePath, (db) => {
+    const existing = getProjectMetadata(db, options.projectId);
+    const updated = upsertProjectMetadata(db, {
+      projectId: options.projectId,
+      aliases: options.aliases ?? decodeStringArray(existing?.aliases),
+      repoPath: options.repoPath ?? existing?.repo_path ?? null,
+      statusSummary: options.statusSummary ?? existing?.status_summary ?? null,
+      validationCommands: options.validationCommands ?? decodeStringArray(existing?.validation_commands)
+    });
+
+    return updated;
+  });
+
+  if (!metadata) {
+    throw projectNotFound(options.projectId);
+  }
+
+  return createSuccess({
+    command: "project.metadata",
+    workspace: workspacePath,
+    data: { metadata }
+  });
+}
+
 export function renderProjectListSuccess(response: CommandSuccess<ProjectListCommandData>): string[] {
   if (response.data.projects.length === 0) {
     return ["No projects yet."];
@@ -77,10 +166,39 @@ export function renderProjectListSuccess(response: CommandSuccess<ProjectListCom
   return lines;
 }
 
+export function renderProjectImportSuccess(response: CommandSuccess<ProjectImportCommandData>): string[] {
+  return [
+    `Created project: ${response.data.project.name}`,
+    `Project: ${response.data.project.id}`,
+    `Milestone: ${response.data.milestone.title}`,
+    `Work item: ${response.data.workItem.id}`
+  ];
+}
+
 export function renderProjectUpdateSuccess(response: CommandSuccess<ProjectUpdateCommandData>): string[] {
   return [
     `Updated project: ${response.data.project.name}`,
     `ID: ${response.data.project.id}`,
     `Status: ${response.data.project.status}`
   ];
+}
+
+export function renderProjectMetadataSuccess(response: CommandSuccess<ProjectMetadataCommandData>): string[] {
+  return [
+    `Updated project metadata: ${response.data.metadata.project_id}`,
+    `Aliases: ${decodeStringArray(response.data.metadata.aliases).join(", ") || "None"}`,
+    `Repository: ${response.data.metadata.repo_path ?? "None"}`,
+    `Validation: ${decodeStringArray(response.data.metadata.validation_commands).join(", ") || "None"}`
+  ];
+}
+
+function decodeStringArray(raw: string | null | undefined): string[] {
+  if (!raw) {
+    return [];
+  }
+
+  const parsed = JSON.parse(raw) as unknown;
+  return Array.isArray(parsed)
+    ? parsed.filter((value): value is string => typeof value === "string").map((value) => value.trim()).filter(Boolean)
+    : [];
 }
