@@ -205,6 +205,29 @@ export interface CodexInvocation {
   updated_at: string;
 }
 
+export interface CodexTask {
+  id: string;
+  source: string;
+  source_task_id: string;
+  title: string;
+  status: string;
+  url: string | null;
+  summary: string | null;
+  codex_updated_at: string | null;
+  project_id: string | null;
+  milestone_id: string | null;
+  mission_log_id: string | null;
+  last_observed_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CodexTaskSummary extends CodexTask {
+  project_name: string | null;
+  milestone_title: string | null;
+  mission_log_path: string | null;
+}
+
 export interface ProjectSummary extends Project {
   current_milestone: string | null;
   current_milestone_id: string | null;
@@ -321,6 +344,22 @@ export interface UpsertProjectMetadataInput {
   repoPath?: string | null;
   statusSummary?: string | null;
   validationCommands?: string[];
+}
+
+export interface ObservedCodexTaskInput {
+  source: "local_goal" | "cloud_task";
+  sourceTaskId: string;
+  title: string;
+  status: string;
+  url?: string | null;
+  summary?: string | null;
+  codexUpdatedAt?: string | null;
+}
+
+export interface AssociateCodexTaskInput {
+  taskId: string;
+  projectId: string;
+  milestoneId?: string | null;
 }
 
 export interface CreateWorkItemInput {

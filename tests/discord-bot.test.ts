@@ -4,9 +4,10 @@ import path from "node:path";
 import type { ChatInputCommandInteraction } from "discord.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { ArcadiaCli, buildCliInvocation } from "../apps/discord-bot/src/arcadia/cli.js";
-import type { ArcadiaJsonSuccess, ExecutionRun, Milestone, RunShowData, WorkItem } from "../apps/discord-bot/src/arcadia/types.js";
+import type { ArcadiaJsonSuccess, CodexTask, ExecutionRun, Milestone, RunShowData, WorkItem } from "../apps/discord-bot/src/arcadia/types.js";
 import { loadConfig } from "../apps/discord-bot/src/config.js";
 import { handleArcadiaInteraction } from "../apps/discord-bot/src/events/interactionCreate.js";
+import { formatCodexTasks } from "../apps/discord-bot/src/formatters/codexFormatter.js";
 import { formatRequiresReview } from "../apps/discord-bot/src/formatters/requiresReviewFormatter.js";
 import { formatRunDetail, formatRuns } from "../apps/discord-bot/src/formatters/runFormatter.js";
 import { formatStatus } from "../apps/discord-bot/src/formatters/statusFormatter.js";
@@ -85,6 +86,51 @@ describe("discord bot CLI adapter", () => {
       workspace,
       "--json"
     ]);
+  });
+
+  it("invokes arcadia codex list for a mocked /arcadia codex interaction", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-discord-workspace-"));
+    tempDirs.push(workspace);
+    const cliPath = path.join(workspace, "fake-arcadia-codex.mjs");
+    const argvPath = path.join(workspace, "argv.json");
+    writeFileSync(cliPath, fakeArcadiaCodexCliScript(argvPath));
+    chmodSync(cliPath, 0o755);
+    const cli = new ArcadiaCli({ workspace, cliPath });
+    let reply = "";
+
+    const interaction = {
+      commandName: "arcadia",
+      guildId: "guild",
+      channelId: "channel",
+      options: {
+        getSubcommand: () => "codex"
+      },
+      deferReply: async () => {},
+      editReply: async (message: { content: string }) => {
+        reply = message.content;
+      }
+    } as unknown as ChatInputCommandInteraction;
+
+    await handleArcadiaInteraction(interaction, {
+      arcadiaWorkspace: workspace,
+      discordBotToken: "token",
+      discordClientId: "client",
+      discordGuildId: "guild",
+      discordChannelId: "channel",
+      arcadiaCliPath: cliPath,
+      pollIntervalSeconds: 60
+    }, cli);
+
+    expect(JSON.parse(readFileSync(argvPath, "utf8"))).toEqual([
+      "codex",
+      "list",
+      "--workspace",
+      workspace,
+      "--active-only",
+      "--json"
+    ]);
+    expect(reply).toContain("**Codex Companion**");
+    expect(reply).toContain("Project: Rebuster");
   });
 });
 
@@ -337,12 +383,15 @@ describe("discord bot end-to-end fixture", () => {
     const evaluation = evaluateNotifications({
       requiresReviewCount: status.data.requiresReviewCount,
       runs: runs.data.runs,
-      completedMilestones: []
+      completedMilestones: [],
+      codexTasks: []
     }, {
       initializedAt: "2026-06-10T12:00:00.000Z",
       lastRequiresReviewCount: 0,
       notifiedRunIds: [],
-      notifiedMilestoneIds: []
+      notifiedMilestoneIds: [],
+      codexTaskStatuses: {},
+      notifiedCodexTaskEvents: []
     }, "2026-06-10T12:05:00.000Z", submissions);
 
     expect(evaluation.messages.map((message) => message.key)).toEqual(expect.arrayContaining([
@@ -377,6 +426,19 @@ describe("discord bot formatters", () => {
     expect(output).not.toContain("Needs Mark");
   });
 
+  it("formats active Codex tasks for Discord", () => {
+    const output = formatCodexTasks({
+      observedCount: 1,
+      missionLogPaths: [],
+      tasks: [{ ...sampleCodexTask(), status: "active" }]
+    });
+
+    expect(output).toContain("**Codex Companion**");
+    expect(output).toContain("Active tasks: 1");
+    expect(output).toContain("Project: Rebuster");
+    expect(output).toContain("Task: ctask_1");
+  });
+
   it("uses Requires Review terminology for review items", () => {
     const output = formatRequiresReview([sampleWorkItem()]);
 
@@ -409,26 +471,24 @@ describe("discord bot notifications", () => {
     const evaluation = evaluateNotifications({
       requiresReviewCount: 2,
       runs: [{ ...sampleRun(), status: "failed" }],
-      completedMilestones: [sampleMilestone()]
+      completedMilestones: [sampleMilestone()],
+      codexTasks: [{ ...sampleCodexTask(), status: "active" }]
     }, null, "2026-06-10T12:00:00.000Z");
 
     expect(evaluation.messages).toEqual([]);
     expect(evaluation.nextState.lastRequiresReviewCount).toBe(2);
     expect(evaluation.nextState.notifiedRunIds).toEqual(["run_1"]);
     expect(evaluation.nextState.notifiedMilestoneIds).toEqual(["ms_1"]);
+    expect(evaluation.nextState.codexTaskStatuses.ctask_1).toBe("active");
   });
 
   it("posts each notable event once", () => {
-    const previous: NotificationState = {
-      initializedAt: "2026-06-10T12:00:00.000Z",
-      lastRequiresReviewCount: 0,
-      notifiedRunIds: [],
-      notifiedMilestoneIds: []
-    };
+    const previous: NotificationState = emptyNotificationStateForTest();
     const snapshot = {
       requiresReviewCount: 1,
       runs: [{ ...sampleRun(), status: "needs_mark" }],
-      completedMilestones: [sampleMilestone()]
+      completedMilestones: [sampleMilestone()],
+      codexTasks: []
     };
 
     const first = evaluateNotifications(snapshot, previous);
@@ -444,16 +504,12 @@ describe("discord bot notifications", () => {
   });
 
   it("suppresses routine completed runs that did not originate from Discord", () => {
-    const previous: NotificationState = {
-      initializedAt: "2026-06-10T12:00:00.000Z",
-      lastRequiresReviewCount: 0,
-      notifiedRunIds: [],
-      notifiedMilestoneIds: []
-    };
+    const previous: NotificationState = emptyNotificationStateForTest();
     const evaluation = evaluateNotifications({
       requiresReviewCount: 0,
       runs: [{ ...sampleRun(), status: "completed" }],
-      completedMilestones: []
+      completedMilestones: [],
+      codexTasks: []
     }, previous);
 
     expect(evaluation.messages).toEqual([]);
@@ -461,12 +517,7 @@ describe("discord bot notifications", () => {
   });
 
   it("posts completed runs once when they originated from Discord", () => {
-    const previous: NotificationState = {
-      initializedAt: "2026-06-10T12:00:00.000Z",
-      lastRequiresReviewCount: 0,
-      notifiedRunIds: [],
-      notifiedMilestoneIds: []
-    };
+    const previous: NotificationState = emptyNotificationStateForTest();
     const submissions = {
       submittedAskIds: ["ask_1"],
       submittedWorkItemIds: ["work_1"],
@@ -476,7 +527,8 @@ describe("discord bot notifications", () => {
     const snapshot = {
       requiresReviewCount: 0,
       runs: [{ ...sampleRun(), status: "completed" }],
-      completedMilestones: []
+      completedMilestones: [],
+      codexTasks: []
     };
 
     const first = evaluateNotifications(snapshot, previous, "2026-06-10T12:05:00.000Z", submissions);
@@ -490,15 +542,65 @@ describe("discord bot notifications", () => {
     expect(second.messages).toEqual([]);
   });
 
+  it("posts Codex task transition notifications once", () => {
+    const previous: NotificationState = {
+      ...emptyNotificationStateForTest(),
+      codexTaskStatuses: { ctask_1: "active" }
+    };
+    const snapshot = {
+      requiresReviewCount: 0,
+      runs: [],
+      completedMilestones: [],
+      codexTasks: [{ ...sampleCodexTask(), status: "complete", mission_log_path: "mission_logs/codex.md" }]
+    };
+
+    const first = evaluateNotifications(snapshot, previous);
+    const second = evaluateNotifications(snapshot, first.nextState);
+
+    expect(first.messages).toHaveLength(1);
+    expect(first.messages[0].key).toBe("codex:ctask_1:completed");
+    expect(first.messages[0].content).toContain("**Codex task completed**");
+    expect(first.messages[0].content).toContain("Mission log: mission_logs/codex.md");
+    expect(second.messages).toEqual([]);
+  });
+
+  it("posts Codex started, requires-review, and failed notifications", () => {
+    const started = evaluateNotifications({
+      requiresReviewCount: 0,
+      runs: [],
+      completedMilestones: [],
+      codexTasks: [{ ...sampleCodexTask(), status: "active" }]
+    }, emptyNotificationStateForTest());
+    expect(started.messages[0].key).toBe("codex:ctask_1:started");
+
+    const requiresReview = evaluateNotifications({
+      requiresReviewCount: 0,
+      runs: [],
+      completedMilestones: [],
+      codexTasks: [{ ...sampleCodexTask(), status: "blocked" }]
+    }, { ...emptyNotificationStateForTest(), codexTaskStatuses: { ctask_1: "active" } });
+    expect(requiresReview.messages[0].key).toBe("codex:ctask_1:requires_review");
+
+    const failed = evaluateNotifications({
+      requiresReviewCount: 0,
+      runs: [],
+      completedMilestones: [],
+      codexTasks: [{ ...sampleCodexTask(), status: "failed" }]
+    }, { ...emptyNotificationStateForTest(), codexTaskStatuses: { ctask_1: "active" } });
+    expect(failed.messages[0].key).toBe("codex:ctask_1:failed");
+  });
+
   it("persists notification state atomically", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "arcadia-discord-state-"));
     tempDirs.push(dir);
     const filePath = path.join(dir, "state.json");
     const state: NotificationState = {
-      initializedAt: "2026-06-10T12:00:00.000Z",
+      ...emptyNotificationStateForTest(),
       lastRequiresReviewCount: 1,
       notifiedRunIds: ["run_1"],
-      notifiedMilestoneIds: ["ms_1"]
+      notifiedMilestoneIds: ["ms_1"],
+      codexTaskStatuses: { ctask_1: "active" },
+      notifiedCodexTaskEvents: ["ctask_1:started"]
     };
 
     await saveNotificationState(filePath, state);
@@ -618,6 +720,36 @@ function sampleMilestone(): Milestone {
     status: "completed",
     created_at: "2026-06-10T12:00:00.000Z",
     updated_at: "2026-06-10T12:00:00.000Z"
+  };
+}
+
+function sampleCodexTask(): CodexTask {
+  return {
+    id: "ctask_1",
+    source: "local_goal",
+    source_task_id: "thread_1",
+    title: "Implement Codex Companion",
+    status: "active",
+    url: null,
+    summary: "Implement Arcadia Codex Companion.",
+    project_id: "proj_1",
+    milestone_id: "ms_1",
+    mission_log_id: null,
+    project_name: "Rebuster",
+    milestone_title: "Codex Companion",
+    mission_log_path: null,
+    last_observed_at: "2026-06-10T12:00:00.000Z"
+  };
+}
+
+function emptyNotificationStateForTest(): NotificationState {
+  return {
+    initializedAt: "2026-06-10T12:00:00.000Z",
+    lastRequiresReviewCount: 0,
+    notifiedRunIds: [],
+    notifiedMilestoneIds: [],
+    codexTaskStatuses: {},
+    notifiedCodexTaskEvents: []
   };
 }
 
@@ -755,6 +887,43 @@ process.stdout.write(JSON.stringify({
       artifacts: []
     },
     needsMark: []
+  },
+  artifacts: [],
+  warnings: []
+}));
+`;
+}
+
+function fakeArcadiaCodexCliScript(argvPath: string): string {
+  return `#!/usr/bin/env node
+import { writeFileSync } from "node:fs";
+
+const args = process.argv.slice(2);
+writeFileSync(${JSON.stringify(argvPath)}, JSON.stringify(args));
+
+process.stdout.write(JSON.stringify({
+  ok: true,
+  command: "codex.list",
+  workspace: args[args.indexOf("--workspace") + 1],
+  data: {
+    observedCount: 1,
+    missionLogPaths: [],
+    tasks: [{
+      id: "ctask_1",
+      source: "local_goal",
+      source_task_id: "thread_1",
+      title: "Implement Codex Companion",
+      status: "active",
+      url: null,
+      summary: "Implement Arcadia Codex Companion.",
+      project_id: "proj_1",
+      milestone_id: "ms_1",
+      mission_log_id: null,
+      project_name: "Rebuster",
+      milestone_title: "Codex Companion",
+      mission_log_path: null,
+      last_observed_at: "2026-06-10T12:00:00.000Z"
+    }]
   },
   artifacts: [],
   warnings: []

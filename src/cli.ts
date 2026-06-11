@@ -11,6 +11,13 @@ import {
 } from "./commands/artifact.js";
 import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
 import { renderCaptureSuccess, runCaptureCommand } from "./commands/capture.js";
+import {
+  renderCodexAssociateSuccess,
+  renderCodexListSuccess,
+  runCodexAssociateCommand,
+  runCodexListCommand,
+  runCodexSyncCommand
+} from "./commands/codex.js";
 import { renderDashboardSnapshotSuccess, runDashboardSnapshotCommand } from "./commands/dashboard.js";
 import { renderInboxImportSuccess, runInboxAddCommand, runInboxImportCommand } from "./commands/inbox.js";
 import { renderInitSuccess, runInitCommand } from "./commands/init.js";
@@ -273,6 +280,50 @@ export function buildProgram(): Command {
       options,
       () => runDashboardSnapshotCommand(options),
       renderDashboardSnapshotSuccess
+    )
+  );
+
+  const codex = program.command("codex").description("Codex Companion commands");
+  addJsonOption(
+    codex
+      .command("list")
+      .description("List observed Codex tasks and goals")
+      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--source <source>", "Codex source: all, local-goals, cloud", "all")
+      .option("--active-only", "Only show non-terminal tasks")
+      .option("--no-sync", "Use the last Arcadia snapshot without observing Codex first")
+  ).action((options: { workspace: string; source?: string; activeOnly?: boolean; sync?: boolean; json?: boolean }) =>
+    runCliAction("codex.list", options, () => runCodexListCommand(options), renderCodexListSuccess)
+  );
+  addJsonOption(
+    codex
+      .command("sync")
+      .description("Refresh observed Codex task and goal state")
+      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--source <source>", "Codex source: all, local-goals, cloud", "all")
+      .option("--active-only", "Only show non-terminal tasks")
+  ).action((options: { workspace: string; source?: string; activeOnly?: boolean; json?: boolean }) =>
+    runCliAction("codex.sync", options, () => runCodexSyncCommand(options), renderCodexListSuccess)
+  );
+  addJsonOption(
+    codex
+      .command("associate")
+      .description("Associate an observed Codex task with an Arcadia project")
+      .argument("<task-id>", "Arcadia Codex task id or Codex source id")
+      .requiredOption("--workspace <path>", "Workspace path")
+      .requiredOption("--project <project-id>", "Arcadia project id")
+      .option("--milestone <milestone-id>", "Arcadia milestone id")
+  ).action((taskId: string, options: { workspace: string; project: string; milestone?: string; json?: boolean }) =>
+    runCliAction(
+      "codex.associate",
+      options,
+      () => runCodexAssociateCommand({
+        workspace: options.workspace,
+        taskId,
+        projectId: options.project,
+        milestoneId: options.milestone
+      }),
+      renderCodexAssociateSuccess
     )
   );
 

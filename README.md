@@ -55,9 +55,20 @@ pnpm arcadia --help
 
 Arcadia includes a lightweight Discord adapter in `apps/discord-bot`.
 
-The bot can show concise status, submit requests through `arcadia ask`, optionally run deterministic safe request steps, show Requires Review items, list recent runs, inspect a single run, and post meaningful execution notifications including Discord-origin safe completions. It does not approve work, review artifacts, publish, deploy, or spend money.
+The bot can show concise status, submit requests through `arcadia ask`, optionally run deterministic safe request steps, show Requires Review items, list recent runs, inspect a single run, show observed Codex Companion tasks, and post meaningful execution notifications including Discord-origin safe completions and Codex task transitions. It does not approve work, review artifacts, publish, deploy, run Codex from Discord, or spend money.
 
 See `apps/discord-bot/README.md` for environment variables, slash command registration, local run commands, and notification deduplication behavior.
+
+## Codex Companion
+
+Arcadia can observe Codex Cloud tasks and local Codex goals as a thin coordination layer:
+
+```sh
+pnpm arcadia codex list --workspace ./tmp/demo-workspace --active-only
+pnpm arcadia codex associate <task-id-or-source-id> --workspace ./tmp/demo-workspace --project <project-id>
+```
+
+Codex remains responsible for implementation work and task lifecycle. Arcadia stores lightweight project association, Discord visibility, notification state, and completion mission logs.
 
 ## Dashboard
 

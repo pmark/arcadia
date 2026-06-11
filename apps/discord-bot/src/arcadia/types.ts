@@ -136,3 +136,26 @@ export interface AskData {
   codexInvocations: CodexInvocation[];
   run: ExecutionRun | null;
 }
+
+export interface CodexTask {
+  id: string;
+  source: string;
+  source_task_id: string;
+  title: string;
+  status: string;
+  url: string | null;
+  summary: string | null;
+  project_id: string | null;
+  milestone_id: string | null;
+  mission_log_id: string | null;
+  project_name: string | null;
+  milestone_title: string | null;
+  mission_log_path: string | null;
+  last_observed_at: string;
+}
+
+export interface CodexListData {
+  tasks: CodexTask[];
+  observedCount: number;
+  missionLogPaths: string[];
+}

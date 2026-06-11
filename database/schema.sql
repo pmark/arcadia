@@ -217,6 +217,27 @@ CREATE TABLE IF NOT EXISTS codex_invocations (
   FOREIGN KEY (run_id) REFERENCES execution_runs(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS codex_tasks (
+  id TEXT PRIMARY KEY,
+  source TEXT NOT NULL CHECK (source IN ('local_goal', 'cloud_task')),
+  source_task_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  status TEXT NOT NULL,
+  url TEXT,
+  summary TEXT,
+  codex_updated_at TEXT,
+  project_id TEXT,
+  milestone_id TEXT,
+  mission_log_id TEXT,
+  last_observed_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (source, source_task_id),
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+  FOREIGN KEY (milestone_id) REFERENCES milestones(id) ON DELETE SET NULL,
+  FOREIGN KEY (mission_log_id) REFERENCES mission_logs(id) ON DELETE SET NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_milestones_project_id ON milestones(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_metadata_repo_path ON project_metadata(repo_path);
 CREATE INDEX IF NOT EXISTS idx_work_items_project_id ON work_items(project_id);
@@ -236,5 +257,8 @@ CREATE INDEX IF NOT EXISTS idx_approval_gates_work_item_id ON approval_gates(wor
 CREATE INDEX IF NOT EXISTS idx_approval_gates_status ON approval_gates(status);
 CREATE INDEX IF NOT EXISTS idx_codex_invocations_work_item_id ON codex_invocations(work_item_id);
 CREATE INDEX IF NOT EXISTS idx_codex_invocations_plan_id ON codex_invocations(plan_id);
+CREATE INDEX IF NOT EXISTS idx_codex_tasks_source_task ON codex_tasks(source, source_task_id);
+CREATE INDEX IF NOT EXISTS idx_codex_tasks_status ON codex_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_codex_tasks_project_id ON codex_tasks(project_id);
 
-PRAGMA user_version = 4;
+PRAGMA user_version = 5;

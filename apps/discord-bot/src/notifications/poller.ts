@@ -1,7 +1,8 @@
 import type { Client } from "discord.js";
 import type { ArcadiaCli } from "../arcadia/cli.js";
-import type { ExecutionRun, Milestone } from "../arcadia/types.js";
+import type { CodexTask, ExecutionRun, Milestone } from "../arcadia/types.js";
 import type { BotConfig } from "../config.js";
+import { formatCodexTaskNotification } from "../formatters/codexFormatter.js";
 import { formatMilestoneCompletedNotification } from "../formatters/milestoneFormatter.js";
 import type { LogLevel } from "../logging.js";
 import { requiresReviewTransitionMessage } from "./requiresReview.js";
@@ -21,6 +22,7 @@ export interface NotificationSnapshot {
   requiresReviewCount: number;
   runs: ExecutionRun[];
   completedMilestones: Milestone[];
+  codexTasks: CodexTask[];
 }
 
 export interface NotificationMessage {
@@ -34,16 +36,18 @@ export interface NotificationEvaluation {
 }
 
 export async function loadNotificationSnapshot(cli: ArcadiaCli): Promise<NotificationSnapshot> {
-  const [status, runs, milestones] = await Promise.all([
+  const [status, runs, milestones, codex] = await Promise.all([
     cli.status(),
     cli.runs(20),
-    cli.milestones("completed", 20)
+    cli.milestones("completed", 20),
+    cli.codexTasks(false)
   ]);
 
   return {
     requiresReviewCount: status.data.requiresReviewCount,
     runs: runs.data.runs,
-    completedMilestones: milestones.data.milestones
+    completedMilestones: milestones.data.milestones,
+    codexTasks: codex.data.tasks
   };
 }
 
@@ -60,6 +64,10 @@ export function evaluateNotifications(
     .filter((run) => run.status === "completed" && isDiscordSubmittedRun(run, submissions))
     .map((run) => run.id);
   const completedMilestoneIds = snapshot.completedMilestones.map((milestone) => milestone.id);
+  const codexTaskStatuses = Object.fromEntries(snapshot.codexTasks.map((task) => [task.id, task.status]));
+  const codexTerminalOrReviewEvents = snapshot.codexTasks
+    .map((task) => codexEventForStatus(null, task.status) ? `${task.id}:${codexEventForStatus(null, task.status)}` : null)
+    .filter((event): event is string => Boolean(event));
 
   if (!previous) {
     return {
@@ -68,13 +76,16 @@ export function evaluateNotifications(
         initializedAt: now,
         lastRequiresReviewCount: snapshot.requiresReviewCount,
         notifiedRunIds: Array.from(new Set([...notableRunIds, ...completedDiscordRunIds])),
-        notifiedMilestoneIds: completedMilestoneIds
+        notifiedMilestoneIds: completedMilestoneIds,
+        codexTaskStatuses,
+        notifiedCodexTaskEvents: codexTerminalOrReviewEvents
       }
     };
   }
 
   const sentRuns = new Set(previous.notifiedRunIds);
   const sentMilestones = new Set(previous.notifiedMilestoneIds);
+  const sentCodexEvents = new Set(previous.notifiedCodexTaskEvents);
   const messages: NotificationMessage[] = [];
 
   for (const run of snapshot.runs) {
@@ -107,13 +118,32 @@ export function evaluateNotifications(
     }
   }
 
+  const nextCodexEvents = new Set(previous.notifiedCodexTaskEvents);
+  for (const task of snapshot.codexTasks) {
+    const previousStatus = previous.codexTaskStatuses[task.id] ?? null;
+    const event = codexEventForStatus(previousStatus, task.status);
+    if (!event) {
+      continue;
+    }
+    const eventKey = `${task.id}:${event}`;
+    nextCodexEvents.add(eventKey);
+    if (!sentCodexEvents.has(eventKey)) {
+      messages.push({
+        key: `codex:${eventKey}`,
+        content: formatCodexTaskNotification(task, event)
+      });
+    }
+  }
+
   return {
     messages,
     nextState: {
       initializedAt: previous.initializedAt,
       lastRequiresReviewCount: snapshot.requiresReviewCount,
       notifiedRunIds: Array.from(new Set([...previous.notifiedRunIds, ...notableRunIds, ...completedDiscordRunIds])),
-      notifiedMilestoneIds: Array.from(new Set([...previous.notifiedMilestoneIds, ...completedMilestoneIds]))
+      notifiedMilestoneIds: Array.from(new Set([...previous.notifiedMilestoneIds, ...completedMilestoneIds])),
+      codexTaskStatuses,
+      notifiedCodexTaskEvents: Array.from(nextCodexEvents)
     }
   };
 }
@@ -176,4 +206,25 @@ function emptyDiscordSubmissionState(now: string): DiscordSubmissionState {
     submittedRunIds: [],
     updatedAt: now
   };
+}
+
+function codexEventForStatus(
+  previousStatus: string | null,
+  status: string
+): "started" | "requires_review" | "completed" | "failed" | null {
+  const normalized = status.toLowerCase();
+  const previous = previousStatus?.toLowerCase() ?? null;
+  if (previous === null && ["active", "running", "in_progress", "pending"].includes(normalized)) {
+    return "started";
+  }
+  if (previous !== normalized && ["blocked", "needs_review", "requires_review", "usage_limited", "budget_limited"].includes(normalized)) {
+    return "requires_review";
+  }
+  if (previous !== normalized && ["complete", "completed", "succeeded", "success"].includes(normalized)) {
+    return "completed";
+  }
+  if (previous !== normalized && ["failed", "error"].includes(normalized)) {
+    return "failed";
+  }
+  return null;
 }

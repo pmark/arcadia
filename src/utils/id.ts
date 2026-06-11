@@ -14,7 +14,8 @@ const PREFIXES = {
   runArtifact: "rart",
   askRequest: "ask",
   approvalGate: "gate",
-  codexInvocation: "codex"
+  codexInvocation: "codex",
+  codexTask: "ctask"
 } as const;
 
 export type IdKind = keyof typeof PREFIXES;

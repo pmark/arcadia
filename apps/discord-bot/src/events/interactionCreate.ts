@@ -1,6 +1,7 @@
 import { type ChatInputCommandInteraction, MessageFlags } from "discord.js";
 import type { ArcadiaCli } from "../arcadia/cli.js";
 import type { BotConfig } from "../config.js";
+import { codexCommand } from "../commands/codex.js";
 import { requestCommand } from "../commands/request.js";
 import { requiresReviewCommand } from "../commands/requiresReview.js";
 import { runCommand, runsCommand } from "../commands/runs.js";
@@ -60,6 +61,10 @@ function runSubcommand(
 
   if (subcommand === "requires-review") {
     return requiresReviewCommand(cli);
+  }
+
+  if (subcommand === "codex") {
+    return codexCommand(cli);
   }
 
   if (subcommand === "runs") {

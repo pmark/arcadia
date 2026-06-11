@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runAskCommand } from "../src/commands/ask.js";
+import { runCodexAssociateCommand, runCodexListCommand } from "../src/commands/codex.js";
 import { runWorkRunCommand } from "../src/commands/work.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
@@ -11,6 +12,7 @@ import {
   createApprovalGate,
   createCodexInvocation,
   createProjectWithInitialWork,
+  listCodexTasks,
   listApprovalGatesForWorkItem,
   listCodexInvocationsForWorkItem,
   upsertProjectMetadata
@@ -23,9 +25,70 @@ import { getWorkspacePaths } from "../src/workspace/paths.js";
 const workspaces: string[] = [];
 
 afterEach(() => {
+  delete process.env.ARCADIA_CODEX_CLOUD_FIXTURE;
   for (const workspace of workspaces.splice(0)) {
     rmSync(workspace, { recursive: true, force: true });
   }
+});
+
+describe("Codex Companion", () => {
+  it("observes Codex tasks, associates them with projects, and logs completion transitions", () => {
+    const workspace = initializedWorkspace();
+    const created = withDatabase(workspace, (db) =>
+      createProjectWithInitialWork(db, {
+        name: "Companion Project",
+        mission: "Verify Codex Companion.",
+        status: "active",
+        currentMilestone: "Observe Codex work",
+        nextAction: "Associate Codex task",
+        workClassification: "codex"
+      })
+    );
+
+    process.env.ARCADIA_CODEX_CLOUD_FIXTURE = JSON.stringify({
+      tasks: [{
+        id: "task_cloud_1",
+        title: "Implement companion",
+        status: "running",
+        url: "https://chatgpt.com/codex/tasks/task_cloud_1",
+        updated_at: "2026-06-11T10:00:00.000Z",
+        summary: "Working on Arcadia Codex Companion."
+      }]
+    });
+    const observed = runCodexListCommand({ workspace, source: "cloud", activeOnly: true });
+    expect(observed.data.tasks[0].source_task_id).toBe("task_cloud_1");
+    expect(observed.data.tasks[0].project_name).toBeNull();
+
+    const associated = runCodexAssociateCommand({
+      workspace,
+      taskId: "task_cloud_1",
+      projectId: created.project.id,
+      milestoneId: created.milestone.id
+    });
+    expect(associated.data.task.project_name).toBe("Companion Project");
+
+    process.env.ARCADIA_CODEX_CLOUD_FIXTURE = JSON.stringify({
+      tasks: [{
+        id: "task_cloud_1",
+        title: "Implement companion",
+        status: "completed",
+        url: "https://chatgpt.com/codex/tasks/task_cloud_1",
+        updated_at: "2026-06-11T10:10:00.000Z",
+        summary: "Implemented and verified Arcadia Codex Companion."
+      }]
+    });
+    const completed = runCodexListCommand({ workspace, source: "cloud" });
+    expect(completed.data.missionLogPaths).toHaveLength(1);
+    expect(existsSync(completed.data.missionLogPaths[0])).toBe(true);
+
+    withDatabase(workspace, (db) => {
+      const [task] = listCodexTasks(db);
+      expect(task.status).toBe("completed");
+      expect(task.project_name).toBe("Companion Project");
+      expect(task.mission_log_path).toMatch(/^mission_logs\//);
+      expect(countRows(db, "mission_logs")).toBe(1);
+    });
+  });
 });
 
 describe("Phase 3 registries", () => {

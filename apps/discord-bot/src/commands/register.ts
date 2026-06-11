@@ -17,6 +17,11 @@ export function buildArcadiaCommand() {
     )
     .addSubcommand((subcommand) =>
       subcommand
+        .setName("codex")
+        .setDescription("Show active Codex Companion tasks")
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
         .setName("request")
         .setDescription("Submit an Arcadia request")
         .addStringOption((option) =>

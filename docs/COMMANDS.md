@@ -47,6 +47,40 @@ pnpm arcadia ask \
 
 When a request needs Codex, Arcadia writes a prompt packet under `prompts/codex/<invocation-id>/` and records the invocation. It does not invoke Codex, deploy, publish, use credentials, or make unsafe changes by default.
 
+## Codex Companion
+
+Use `codex list` to observe current Codex Cloud tasks and local Codex goals, then show the Arcadia snapshot:
+
+```sh
+pnpm arcadia codex list \
+  --workspace "$WORKSPACE" \
+  --active-only \
+  --json
+```
+
+Associate an observed Codex task with an Arcadia project:
+
+```sh
+pnpm arcadia codex associate ctask_example \
+  --workspace "$WORKSPACE" \
+  --project proj_example \
+  --milestone ms_example \
+  --json
+```
+
+You can pass either the Arcadia task id, such as `ctask_example`, or the Codex source id, such as a local thread id or cloud task id.
+
+Refresh the snapshot without relying on the list command output:
+
+```sh
+pnpm arcadia codex sync \
+  --workspace "$WORKSPACE" \
+  --source all \
+  --json
+```
+
+Arcadia only observes Codex state. Codex remains responsible for implementation work, task execution, and goal lifecycle. When an associated Codex task transitions to a successful terminal status, Arcadia writes a mission log and links it to the observed task.
+
 Run deterministic safe steps immediately:
 
 ```sh

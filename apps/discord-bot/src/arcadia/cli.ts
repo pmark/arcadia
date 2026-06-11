@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import type {
   AskData,
   ArcadiaJsonSuccess,
+  CodexListData,
   MilestoneListData,
   QueueData,
   RunListData,
@@ -65,6 +66,17 @@ export class ArcadiaCli {
 
   run(runId: string): Promise<ArcadiaJsonSuccess<RunShowData>> {
     return this.runJson<RunShowData>(["run", "show", runId, "--workspace", this.options.workspace, "--json"]);
+  }
+
+  codexTasks(activeOnly = true): Promise<ArcadiaJsonSuccess<CodexListData>> {
+    return this.runJson<CodexListData>([
+      "codex",
+      "list",
+      "--workspace",
+      this.options.workspace,
+      ...(activeOnly ? ["--active-only"] : []),
+      "--json"
+    ]);
   }
 
   milestones(status = "completed", limit = 20): Promise<ArcadiaJsonSuccess<MilestoneListData>> {

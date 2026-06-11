@@ -6,6 +6,8 @@ export interface NotificationState {
   lastRequiresReviewCount: number;
   notifiedRunIds: string[];
   notifiedMilestoneIds: string[];
+  codexTaskStatuses: Record<string, string>;
+  notifiedCodexTaskEvents: string[];
 }
 
 export interface DiscordSubmissionState {
@@ -31,13 +33,46 @@ export function discordSubmissionStatePath(workspace: string): string {
 
 export async function loadNotificationState(filePath: string): Promise<NotificationState | null> {
   try {
-    return JSON.parse(await readFile(filePath, "utf8")) as NotificationState;
+    return normalizeNotificationState(JSON.parse(await readFile(filePath, "utf8")));
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
       return null;
     }
     throw error;
   }
+}
+
+function normalizeNotificationState(raw: unknown): NotificationState {
+  if (!raw || typeof raw !== "object") {
+    return emptyNotificationState();
+  }
+
+  const record = raw as Partial<NotificationState>;
+  return {
+    initializedAt: typeof record.initializedAt === "string" ? record.initializedAt : new Date().toISOString(),
+    lastRequiresReviewCount: typeof record.lastRequiresReviewCount === "number" ? record.lastRequiresReviewCount : 0,
+    notifiedRunIds: stringArray(record.notifiedRunIds),
+    notifiedMilestoneIds: stringArray(record.notifiedMilestoneIds),
+    codexTaskStatuses: record.codexTaskStatuses && typeof record.codexTaskStatuses === "object"
+      ? Object.fromEntries(
+          Object.entries(record.codexTaskStatuses).filter(
+            (entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string"
+          )
+        )
+      : {},
+    notifiedCodexTaskEvents: stringArray(record.notifiedCodexTaskEvents)
+  };
+}
+
+function emptyNotificationState(now = new Date().toISOString()): NotificationState {
+  return {
+    initializedAt: now,
+    lastRequiresReviewCount: 0,
+    notifiedRunIds: [],
+    notifiedMilestoneIds: [],
+    codexTaskStatuses: {},
+    notifiedCodexTaskEvents: []
+  };
 }
 
 export async function loadDiscordSubmissionState(filePath: string): Promise<DiscordSubmissionState> {

@@ -56,6 +56,7 @@ pnpm --filter arcadia-discord-bot start
 
 - `/arcadia status` shows active projects, running work, queued work, Requires Review count, and recent artifacts.
 - `/arcadia request text:<request> run-safe:<true|false>` submits a natural-language request through `arcadia ask`; `run-safe:true` immediately runs deterministic safe steps.
+- `/arcadia codex` shows active Codex Companion tasks observed by Arcadia, including project association and mission log path when available.
 - `/arcadia requires-review` shows the current Requires Review queue.
 - `/arcadia runs` shows recent execution runs.
 - `/arcadia run id:<run-id>` shows one run with mission log, artifacts, Requires Review items, and failure or blocking reason.
@@ -69,6 +70,7 @@ The bot polls Arcadia and notifies the configured channel when:
 - a run fails,
 - a run pauses with Requires Review,
 - a Discord-submitted run completes,
+- an observed Codex task starts, requires review, completes, or fails,
 - the Requires Review count transitions from `0` to a positive number,
 - a milestone is completed.
 
@@ -93,3 +95,16 @@ The first startup initializes this state silently so old workspace history is no
 Arcadia may still store legacy internal values such as `needs_mark` for compatibility. Discord output uses the user-name-agnostic phrase `Requires Review`.
 
 Arcadia remains authoritative for approvals, planning, implementation, and artifact review.
+
+## Codex Companion
+
+Arcadia observes Codex through structured sources and keeps only lightweight coordination state. It does not run Codex from Discord.
+
+Before using `/arcadia codex`, refresh and optionally associate tasks locally:
+
+```sh
+pnpm arcadia codex list --workspace "$ARCADIA_WORKSPACE" --active-only
+pnpm arcadia codex associate <task-id-or-source-id> --workspace "$ARCADIA_WORKSPACE" --project <project-id>
+```
+
+After association, `/arcadia codex` shows the task under its Arcadia project. When the task later completes successfully, Arcadia records a mission log and Discord links that mission log in the completion notification.

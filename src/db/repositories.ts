@@ -40,7 +40,10 @@ import type {
   ApprovalGate,
   AskRequest,
   AskRequestSummary,
+  AssociateCodexTaskInput,
   CodexInvocation,
+  CodexTask,
+  CodexTaskSummary,
   CreateApprovalGateInput,
   CreateArtifactInput,
   CreateAskRequestInput,
@@ -60,6 +63,7 @@ import type {
   MilestoneSummary,
   MissionLog,
   MissionLogSummary,
+  ObservedCodexTaskInput,
   Project,
   ProjectContext,
   ProjectMetadata,
@@ -173,6 +177,13 @@ function validateCodexInvocationPurpose(value: string): CodexInvocationPurpose {
 
 function validateCodexInvocationStatus(value: string): CodexInvocationStatus {
   assertAllowedValue("Codex invocation status", value, CODEX_INVOCATION_STATUSES);
+  return value;
+}
+
+function validateCodexTaskSource(value: string): "local_goal" | "cloud_task" {
+  if (value !== "local_goal" && value !== "cloud_task") {
+    throw new Error("Codex task source must be one of: local_goal, cloud_task");
+  }
   return value;
 }
 
@@ -1110,7 +1121,24 @@ export function createApprovalGate(db: Database.Database, input: CreateApprovalG
 
 export function listApprovalGatesForWorkItem(db: Database.Database, workItemId: string): ApprovalGate[] {
   return db
-    .prepare("SELECT * FROM approval_gates WHERE work_item_id = ? ORDER BY created_at ASC, id ASC")
+    .prepare(
+      `SELECT * FROM approval_gates
+       WHERE work_item_id = ?
+       ORDER BY
+         CASE gate_type
+           WHEN 'credentials_required' THEN 1
+           WHEN 'external_deployment' THEN 2
+           WHEN 'publication' THEN 3
+           WHEN 'destructive_filesystem_changes' THEN 4
+           WHEN 'production_data_access' THEN 5
+           WHEN 'financial_action' THEN 6
+           WHEN 'merge_to_main' THEN 7
+           WHEN 'send_email_or_messages' THEN 8
+           ELSE 99
+         END ASC,
+         created_at ASC,
+         id ASC`
+    )
     .all(workItemId) as ApprovalGate[];
 }
 
@@ -1190,6 +1218,156 @@ export function updateCodexInvocationStatus(
     id
   );
   return db.prepare("SELECT * FROM codex_invocations WHERE id = ?").get(id) as CodexInvocation;
+}
+
+export function upsertObservedCodexTask(
+  db: Database.Database,
+  input: ObservedCodexTaskInput
+): { task: CodexTaskSummary; previousStatus: string | null } {
+  const source = validateCodexTaskSource(input.source);
+  const sourceTaskId = required(input.sourceTaskId, "Codex task source id");
+  const existing = db
+    .prepare("SELECT * FROM codex_tasks WHERE source = ? AND source_task_id = ?")
+    .get(source, sourceTaskId) as CodexTask | undefined;
+  const timestamp = nowIso();
+
+  if (!existing) {
+    const task: CodexTask = {
+      id: createId("codexTask"),
+      source,
+      source_task_id: sourceTaskId,
+      title: required(input.title, "Codex task title"),
+      status: required(input.status, "Codex task status"),
+      url: nullable(input.url),
+      summary: nullable(input.summary),
+      codex_updated_at: nullable(input.codexUpdatedAt),
+      project_id: null,
+      milestone_id: null,
+      mission_log_id: null,
+      last_observed_at: timestamp,
+      created_at: timestamp,
+      updated_at: timestamp
+    };
+
+    db.prepare(
+      `INSERT INTO codex_tasks (
+        id, source, source_task_id, title, status, url, summary, codex_updated_at,
+        project_id, milestone_id, mission_log_id, last_observed_at, created_at, updated_at
+      ) VALUES (
+        @id, @source, @source_task_id, @title, @status, @url, @summary, @codex_updated_at,
+        @project_id, @milestone_id, @mission_log_id, @last_observed_at, @created_at, @updated_at
+      )`
+    ).run(task);
+
+    return { task: getCodexTask(db, task.id) as CodexTaskSummary, previousStatus: null };
+  }
+
+  db.prepare(
+    `UPDATE codex_tasks
+     SET title = ?, status = ?, url = ?, summary = ?, codex_updated_at = ?,
+         last_observed_at = ?, updated_at = ?
+     WHERE id = ?`
+  ).run(
+    required(input.title, "Codex task title"),
+    required(input.status, "Codex task status"),
+    nullable(input.url),
+    nullable(input.summary),
+    nullable(input.codexUpdatedAt),
+    timestamp,
+    timestamp,
+    existing.id
+  );
+
+  return { task: getCodexTask(db, existing.id) as CodexTaskSummary, previousStatus: existing.status };
+}
+
+export function associateCodexTask(db: Database.Database, input: AssociateCodexTaskInput): CodexTaskSummary | null {
+  const existing = getCodexTask(db, input.taskId);
+  const project = getProject(db, input.projectId);
+  if (!existing || !project) {
+    return null;
+  }
+
+  const milestoneId = input.milestoneId === undefined ? existing.milestone_id : input.milestoneId;
+  if (milestoneId && !getMilestone(db, milestoneId)) {
+    return null;
+  }
+
+  db.prepare("UPDATE codex_tasks SET project_id = ?, milestone_id = ?, updated_at = ? WHERE id = ?").run(
+    input.projectId,
+    milestoneId ?? null,
+    nowIso(),
+    input.taskId
+  );
+  return getCodexTask(db, input.taskId);
+}
+
+export function attachMissionLogToCodexTask(
+  db: Database.Database,
+  taskId: string,
+  missionLogId: string
+): CodexTaskSummary | null {
+  if (!getCodexTask(db, taskId)) {
+    return null;
+  }
+
+  db.prepare("UPDATE codex_tasks SET mission_log_id = ?, updated_at = ? WHERE id = ?").run(
+    missionLogId,
+    nowIso(),
+    taskId
+  );
+  return getCodexTask(db, taskId);
+}
+
+export function getCodexTask(db: Database.Database, id: string): CodexTaskSummary | null {
+  return (
+    (db
+      .prepare(
+        `SELECT
+          ct.*,
+          p.name AS project_name,
+          m.title AS milestone_title,
+          ml.markdown_path AS mission_log_path
+        FROM codex_tasks ct
+        LEFT JOIN projects p ON p.id = ct.project_id
+        LEFT JOIN milestones m ON m.id = ct.milestone_id
+        LEFT JOIN mission_logs ml ON ml.id = ct.mission_log_id
+        WHERE ct.id = ?`
+      )
+      .get(id) as CodexTaskSummary | undefined) ?? null
+  );
+}
+
+export function getCodexTaskBySource(
+  db: Database.Database,
+  source: string,
+  sourceTaskId: string
+): CodexTaskSummary | null {
+  const row = db
+    .prepare("SELECT id FROM codex_tasks WHERE source = ? AND source_task_id = ?")
+    .get(validateCodexTaskSource(source), sourceTaskId) as { id: string } | undefined;
+  return row ? getCodexTask(db, row.id) : null;
+}
+
+export function listCodexTasks(db: Database.Database, options: { activeOnly?: boolean } = {}): CodexTaskSummary[] {
+  const activeWhere = options.activeOnly
+    ? "WHERE lower(ct.status) NOT IN ('complete', 'completed', 'succeeded', 'failed', 'cancelled', 'canceled', 'archived')"
+    : "";
+  return db
+    .prepare(
+      `SELECT
+        ct.*,
+        p.name AS project_name,
+        m.title AS milestone_title,
+        ml.markdown_path AS mission_log_path
+       FROM codex_tasks ct
+       LEFT JOIN projects p ON p.id = ct.project_id
+       LEFT JOIN milestones m ON m.id = ct.milestone_id
+       LEFT JOIN mission_logs ml ON ml.id = ct.mission_log_id
+       ${activeWhere}
+       ORDER BY ct.last_observed_at DESC, ct.created_at DESC`
+    )
+    .all() as CodexTaskSummary[];
 }
 
 export function createExecutionRun(db: Database.Database, input: CreateExecutionRunInput): ExecutionRunSummary | null {
@@ -1450,7 +1628,8 @@ export function countRows(db: Database.Database, table: string): number {
       "run_artifacts",
       "ask_requests",
       "approval_gates",
-      "codex_invocations"
+      "codex_invocations",
+      "codex_tasks"
     ].includes(table)
   ) {
     throw new Error(`Unsupported table: ${table}`);
