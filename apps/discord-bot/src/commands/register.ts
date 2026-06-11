@@ -4,7 +4,7 @@ import { loadConfig, type BotConfig } from "../config.js";
 export function buildArcadiaCommand() {
   return new SlashCommandBuilder()
     .setName("arcadia")
-    .setDescription("Read Arcadia awareness summaries")
+    .setDescription("Read Arcadia summaries and submit requests")
     .addSubcommand((subcommand) =>
       subcommand
         .setName("status")
@@ -14,6 +14,17 @@ export function buildArcadiaCommand() {
       subcommand
         .setName("requires-review")
         .setDescription("Show current Requires Review items")
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("request")
+        .setDescription("Submit an Arcadia request")
+        .addStringOption((option) =>
+          option
+            .setName("text")
+            .setDescription("Natural-language request")
+            .setRequired(true)
+        )
     )
     .addSubcommand((subcommand) =>
       subcommand

@@ -53,9 +53,9 @@ pnpm arcadia --help
 
 ## Discord Awareness Bot
 
-Arcadia includes a lightweight Discord awareness adapter in `apps/discord-bot`.
+Arcadia includes a lightweight Discord adapter in `apps/discord-bot`.
 
-The bot is read-only plus notifications. It can show concise status, Requires Review items, recent runs, and post meaningful execution notifications. It does not approve work, plan work, review artifacts, execute freeform Discord requests, publish, deploy, or spend money.
+The bot can show concise status, submit requests through `arcadia ask`, show Requires Review items, show recent runs, and post meaningful execution notifications. It does not approve work, review artifacts, publish, deploy, or spend money.
 
 See `apps/discord-bot/README.md` for environment variables, slash command registration, local run commands, and notification deduplication behavior.
 

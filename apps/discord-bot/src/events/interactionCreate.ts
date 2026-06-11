@@ -1,6 +1,7 @@
 import { type ChatInputCommandInteraction, MessageFlags } from "discord.js";
 import type { ArcadiaCli } from "../arcadia/cli.js";
 import type { BotConfig } from "../config.js";
+import { requestCommand } from "../commands/request.js";
 import { requiresReviewCommand } from "../commands/requiresReview.js";
 import { runsCommand } from "../commands/runs.js";
 import { statusCommand } from "../commands/status.js";
@@ -26,7 +27,7 @@ export async function handleArcadiaInteraction(
 
   try {
     const subcommand = interaction.options.getSubcommand();
-    const content = await runSubcommand(subcommand, cli);
+    const content = await runSubcommand(interaction, subcommand, cli);
     await interaction.editReply({ content });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -38,9 +39,17 @@ function isAllowedLocation(interaction: ChatInputCommandInteraction, config: Bot
   return interaction.guildId === config.discordGuildId && interaction.channelId === config.discordChannelId;
 }
 
-function runSubcommand(subcommand: string, cli: ArcadiaCli): Promise<string> {
+function runSubcommand(
+  interaction: ChatInputCommandInteraction,
+  subcommand: string,
+  cli: ArcadiaCli
+): Promise<string> {
   if (subcommand === "status") {
     return statusCommand(cli);
+  }
+
+  if (subcommand === "request") {
+    return requestCommand(cli, interaction.options.getString("text", true));
   }
 
   if (subcommand === "requires-review") {

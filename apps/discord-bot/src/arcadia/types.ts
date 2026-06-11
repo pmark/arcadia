@@ -26,6 +26,8 @@ export interface WorkItem {
   id: string;
   title: string;
   raw_input?: string;
+  project_id?: string | null;
+  milestone_id?: string | null;
   queue: string;
   work_classification: string;
   next_action: string;
@@ -80,4 +82,49 @@ export interface Milestone {
 
 export interface MilestoneListData {
   milestones: Milestone[];
+}
+
+export interface AskRequest {
+  id: string;
+  raw_request: string;
+  resolved_intent: string;
+  prompt_packet_path: string | null;
+  status: string;
+}
+
+export interface ResolvedIntent {
+  intentId: string;
+  matched: boolean;
+  outputKind: string;
+  workClassification: string;
+}
+
+export interface ExecutionPlan {
+  id: string;
+  status: string;
+  summary: string;
+}
+
+export interface ApprovalGate {
+  id: string;
+  gate_type: string;
+  reason: string;
+  status: string;
+}
+
+export interface CodexInvocation {
+  id: string;
+  purpose: string;
+  prompt_path: string;
+  status: string;
+}
+
+export interface AskData {
+  ask: AskRequest;
+  resolvedIntent: ResolvedIntent;
+  workItem: WorkItem;
+  plan: ExecutionPlan;
+  approvalGates: ApprovalGate[];
+  codexInvocations: CodexInvocation[];
+  run: ExecutionRun | null;
 }

@@ -1,8 +1,8 @@
 # Arcadia Discord Bot
 
-This app is a lightweight Discord awareness adapter for Arcadia. It reads Arcadia through the CLI, posts concise progress notifications, and directs richer decisions back to Arcadia.
+This app is a lightweight Discord adapter for Arcadia. It reads Arcadia through the CLI, submits requests through `arcadia ask`, posts concise progress notifications, and directs richer decisions back to Arcadia.
 
-Discord is intentionally not an approval, planning, artifact review, deployment, publishing, spending, or freeform work-request surface.
+Discord is intentionally not an approval, artifact review, deployment, publishing, or spending surface.
 
 ## Environment
 
@@ -55,6 +55,7 @@ pnpm --filter arcadia-discord-bot start
 ## Slash Commands
 
 - `/arcadia status` shows active projects, running work, queued work, Requires Review count, and recent artifacts.
+- `/arcadia request text:<request>` submits a natural-language request through `arcadia ask`.
 - `/arcadia requires-review` shows the current Requires Review queue.
 - `/arcadia runs` shows recent execution runs.
 

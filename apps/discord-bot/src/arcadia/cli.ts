@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import type {
+  AskData,
   ArcadiaJsonSuccess,
   MilestoneListData,
   QueueData,
@@ -32,6 +33,10 @@ export class ArcadiaCli {
 
   queue(): Promise<ArcadiaJsonSuccess<QueueData>> {
     return this.runJson<QueueData>(["queue", "--workspace", this.options.workspace, "--json"]);
+  }
+
+  ask(request: string): Promise<ArcadiaJsonSuccess<AskData>> {
+    return this.runJson<AskData>(["ask", "--workspace", this.options.workspace, request, "--json"]);
   }
 
   runs(limit = 10): Promise<ArcadiaJsonSuccess<RunListData>> {

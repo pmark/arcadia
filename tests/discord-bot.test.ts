@@ -1,10 +1,12 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { ChatInputCommandInteraction } from "discord.js";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildCliInvocation } from "../apps/discord-bot/src/arcadia/cli.js";
+import { ArcadiaCli, buildCliInvocation } from "../apps/discord-bot/src/arcadia/cli.js";
 import type { ExecutionRun, Milestone, WorkItem } from "../apps/discord-bot/src/arcadia/types.js";
 import { loadConfig } from "../apps/discord-bot/src/config.js";
+import { handleArcadiaInteraction } from "../apps/discord-bot/src/events/interactionCreate.js";
 import { formatRequiresReview } from "../apps/discord-bot/src/formatters/requiresReviewFormatter.js";
 import { formatRuns } from "../apps/discord-bot/src/formatters/runFormatter.js";
 import { formatStatus } from "../apps/discord-bot/src/formatters/statusFormatter.js";
@@ -51,6 +53,64 @@ describe("discord bot CLI adapter", () => {
 
     expect(invocation.command).toBe("/usr/local/bin/arcadia");
     expect(invocation.args).toEqual(["status", "--json"]);
+  });
+});
+
+describe("discord bot request command", () => {
+  it("invokes arcadia ask for a mocked /arcadia request interaction", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-discord-workspace-"));
+    tempDirs.push(workspace);
+    const cliPath = path.join(workspace, "fake-arcadia.mjs");
+    const argvPath = path.join(workspace, "argv.json");
+    const request = "Build Pinterest posting support for Rebuster.";
+    writeFileSync(cliPath, fakeArcadiaCliScript(argvPath));
+    chmodSync(cliPath, 0o755);
+    const cli = new ArcadiaCli({ workspace, cliPath });
+    let deferred = false;
+    let reply = "";
+
+    const interaction = {
+      commandName: "arcadia",
+      guildId: "guild",
+      channelId: "channel",
+      options: {
+        getSubcommand: () => "request",
+        getString: (name: string, required: boolean) => {
+          expect(name).toBe("text");
+          expect(required).toBe(true);
+          return request;
+        }
+      },
+      deferReply: async () => {
+        deferred = true;
+      },
+      editReply: async (payload: { content: string }) => {
+        reply = payload.content;
+      }
+    } as unknown as ChatInputCommandInteraction;
+
+    await handleArcadiaInteraction(interaction, {
+      arcadiaWorkspace: workspace,
+      discordBotToken: "token",
+      discordClientId: "client",
+      discordGuildId: "guild",
+      discordChannelId: "channel",
+      arcadiaCliPath: cliPath,
+      pollIntervalSeconds: 60
+    }, cli);
+
+    expect(deferred).toBe(true);
+    expect(JSON.parse(readFileSync(argvPath, "utf8"))).toEqual([
+      "ask",
+      "--workspace",
+      workspace,
+      request,
+      "--json"
+    ]);
+    expect(reply).toContain("**Arcadia request created**");
+    expect(reply).toContain("Ask: `ask_1`");
+    expect(reply).toContain("Work item: `work_1`");
+    expect(reply).toContain("Plan: `plan_1`");
   });
 });
 
@@ -196,4 +256,63 @@ function sampleMilestone(): Milestone {
     created_at: "2026-06-10T12:00:00.000Z",
     updated_at: "2026-06-10T12:00:00.000Z"
   };
+}
+
+function fakeArcadiaCliScript(argvPath: string): string {
+  return `#!/usr/bin/env node
+import { writeFileSync } from "node:fs";
+
+const args = process.argv.slice(2);
+writeFileSync(${JSON.stringify(argvPath)}, JSON.stringify(args));
+const workspace = args[args.indexOf("--workspace") + 1];
+const request = args[args.indexOf("--workspace") + 2];
+
+process.stdout.write(JSON.stringify({
+  ok: true,
+  command: "ask",
+  workspace,
+  data: {
+    ask: {
+      id: "ask_1",
+      raw_request: request,
+      resolved_intent: "codex_plan",
+      prompt_packet_path: "prompts/codex/codex_1/prompt.md",
+      status: "planned"
+    },
+    resolvedIntent: {
+      intentId: "codex_plan",
+      matched: false,
+      outputKind: "codex_planning_packet",
+      workClassification: "codex"
+    },
+    workItem: {
+      id: "work_1",
+      title: request,
+      raw_input: request,
+      queue: "work_queue",
+      work_classification: "codex",
+      next_action: "Review the Codex planning packet for this request.",
+      expected_artifact: "Codex planning packet",
+      status: "open",
+      project_name: null,
+      milestone_title: null
+    },
+    plan: {
+      id: "plan_1",
+      status: "planned",
+      summary: "Intent plan."
+    },
+    approvalGates: [],
+    codexInvocations: [{
+      id: "codex_1",
+      purpose: "planning",
+      prompt_path: "prompts/codex/codex_1/prompt.md",
+      status: "packet_created"
+    }],
+    run: null
+  },
+  artifacts: [],
+  warnings: []
+}));
+`;
 }
