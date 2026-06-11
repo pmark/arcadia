@@ -25,6 +25,22 @@ export interface Project {
   updated_at: string;
 }
 
+export interface ProjectMetadata {
+  project_id: string;
+  aliases: string;
+  repo_path: string | null;
+  status_summary: string | null;
+  validation_commands: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectContext {
+  project: Project;
+  metadata: ProjectMetadata | null;
+  activeMilestone: Milestone | null;
+}
+
 export interface Milestone {
   id: string;
   project_id: string;
@@ -297,6 +313,14 @@ export interface CreateProjectInput {
   nextAction: string;
   expectedArtifact?: string;
   workClassification: WorkClassification;
+}
+
+export interface UpsertProjectMetadataInput {
+  projectId: string;
+  aliases?: string[];
+  repoPath?: string | null;
+  statusSummary?: string | null;
+  validationCommands?: string[];
 }
 
 export interface CreateWorkItemInput {

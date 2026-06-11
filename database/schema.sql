@@ -9,6 +9,17 @@ CREATE TABLE IF NOT EXISTS projects (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS project_metadata (
+  project_id TEXT PRIMARY KEY,
+  aliases TEXT NOT NULL DEFAULT '[]',
+  repo_path TEXT,
+  status_summary TEXT,
+  validation_commands TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS milestones (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
@@ -207,6 +218,7 @@ CREATE TABLE IF NOT EXISTS codex_invocations (
 );
 
 CREATE INDEX IF NOT EXISTS idx_milestones_project_id ON milestones(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_metadata_repo_path ON project_metadata(repo_path);
 CREATE INDEX IF NOT EXISTS idx_work_items_project_id ON work_items(project_id);
 CREATE INDEX IF NOT EXISTS idx_work_items_queue ON work_items(queue);
 CREATE INDEX IF NOT EXISTS idx_work_items_classification ON work_items(work_classification);
@@ -225,4 +237,4 @@ CREATE INDEX IF NOT EXISTS idx_approval_gates_status ON approval_gates(status);
 CREATE INDEX IF NOT EXISTS idx_codex_invocations_work_item_id ON codex_invocations(work_item_id);
 CREATE INDEX IF NOT EXISTS idx_codex_invocations_plan_id ON codex_invocations(plan_id);
 
-PRAGMA user_version = 3;
+PRAGMA user_version = 4;

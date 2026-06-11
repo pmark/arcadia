@@ -1,6 +1,6 @@
 import path from "node:path";
 import { createCodexPacket, selectAgentProfile } from "../codex/packets.js";
-import { milestoneNotFound, projectNotFound, workItemNotFound } from "../cli/errors.js";
+import { milestoneNotFound, projectNotFound, validationError, workItemNotFound } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
@@ -12,11 +12,14 @@ import {
   createCodexInvocation,
   createExecutionPlan,
   createWorkItemWithOptionalArtifact,
+  getActiveMilestoneForProject,
   getMilestone,
   getProject,
+  getProjectContext,
   getWorkItem,
   listApprovalGatesForWorkItem,
-  listCodexInvocationsForWorkItem
+  listCodexInvocationsForWorkItem,
+  resolveProjectContextFromRequest
 } from "../db/repositories.js";
 import type {
   ApprovalGate,
@@ -24,6 +27,7 @@ import type {
   CodexInvocation,
   ExecutionPlanSummary,
   ExecutionRunSummary,
+  ProjectContext,
   WorkItemSummary
 } from "../domain/types.js";
 import { ensureBuiltInSkills } from "../execution/skills.js";
@@ -59,10 +63,10 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
 
   const initial = withDatabase(workspacePath, (db) => {
     ensureBuiltInSkills(db);
-    validateContext(db, options);
+    const context = resolveAskContext(db, options);
     const created = createWorkItemWithOptionalArtifact(db, {
-      projectId: options.project ?? null,
-      milestoneId: options.milestone ?? null,
+      projectId: context.projectId,
+      milestoneId: context.milestoneId,
       title: resolved.title,
       rawInput: options.request,
       queue: resolved.queue,
@@ -93,7 +97,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       });
     }
 
-    return { workItem, plan };
+    return { workItem, plan, projectContext: context.projectContext };
   });
 
   const codexPacket = resolved.codexPurpose
@@ -103,6 +107,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         resolved,
         workItem: initial.workItem,
         planId: initial.plan.id,
+        projectContext: initial.projectContext,
         agentProfile: selectAgentProfile(registries.codingAgents.profiles, resolved.codexPurpose)
       })
     : null;
@@ -113,7 +118,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         id: codexPacket.invocationId,
         purpose: codexPacket.purpose,
         agentProfile: codexPacket.agentProfile.name,
-        workspaceScope: workspacePath,
+        workspaceScope: codexPacket.workspaceScope,
         command: codexPacket.command,
         promptPath: codexPacket.relativePromptPath,
         jsonlOutputPath: codexPacket.relativeJsonlOutputPath,
@@ -198,19 +203,53 @@ export function renderAskSuccess(response: CommandSuccess<AskCommandData>): stri
   ];
 }
 
-function validateContext(db: Parameters<typeof getProject>[0], options: AskOptions): void {
-  if (options.project && !getProject(db, options.project)) {
-    throw projectNotFound(options.project);
+interface ResolvedAskContext {
+  projectId: string | null;
+  milestoneId: string | null;
+  projectContext: ProjectContext | null;
+}
+
+function resolveAskContext(db: Parameters<typeof getProject>[0], options: AskOptions): ResolvedAskContext {
+  let projectId = options.project ?? null;
+  let milestoneId = options.milestone ?? null;
+
+  if (projectId && !getProject(db, projectId)) {
+    throw projectNotFound(projectId);
   }
 
-  if (options.milestone) {
-    const milestone = getMilestone(db, options.milestone);
+  if (milestoneId) {
+    const milestone = getMilestone(db, milestoneId);
     if (!milestone) {
-      throw milestoneNotFound(options.milestone);
+      throw milestoneNotFound(milestoneId);
     }
 
-    if (options.project && milestone.project_id !== options.project) {
-      throw milestoneNotFound(options.milestone);
+    if (projectId && milestone.project_id !== projectId) {
+      throw milestoneNotFound(milestoneId);
     }
+
+    projectId ??= milestone.project_id;
   }
+
+  if (!projectId) {
+    const resolvedProject = resolveProjectContextFromRequest(db, options.request);
+    projectId = resolvedProject?.project.id ?? null;
+    milestoneId ??= resolvedProject?.activeMilestone?.id ?? null;
+    return {
+      projectId,
+      milestoneId,
+      projectContext: resolvedProject
+    };
+  }
+
+  milestoneId ??= getActiveMilestoneForProject(db, projectId)?.id ?? null;
+  const projectContext = getProjectContext(db, projectId);
+  if (!projectContext) {
+    throw validationError("Project context could not be resolved.", { projectId });
+  }
+
+  return {
+    projectId,
+    milestoneId,
+    projectContext
+  };
 }

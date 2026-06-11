@@ -90,6 +90,31 @@
       "approvalGates": ["publication"]
     },
     {
+      "id": "build_social_posting_support",
+      "aliases": [
+        "pinterest posting support",
+        "social posting support",
+        "posting support"
+      ],
+      "examples": [
+        "Build Pinterest posting support for Rebuster."
+      ],
+      "outputKind": "codex_build_packet",
+      "workClassification": "codex",
+      "nextAction": "Review the social posting support build packet and approve credentialed posting work if appropriate.",
+      "expectedArtifact": "Social posting support Codex build packet",
+      "skillSequence": [
+        {
+          "skillName": "codex_build",
+          "title": "Prepare Codex build packet for social posting support",
+          "executorType": "codex_build",
+          "safeToRun": false,
+          "needsMark": "Codex build requires explicit review before credentialed social posting work."
+        }
+      ],
+      "approvalGates": ["credentials_required", "publication", "send_email_or_messages"]
+    },
+    {
       "id": "process_analytics_data",
       "aliases": [
         "posthog",

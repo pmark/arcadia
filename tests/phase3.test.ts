@@ -10,8 +10,10 @@ import {
   createAskRequest,
   createApprovalGate,
   createCodexInvocation,
+  createProjectWithInitialWork,
   listApprovalGatesForWorkItem,
-  listCodexInvocationsForWorkItem
+  listCodexInvocationsForWorkItem,
+  upsertProjectMetadata
 } from "../src/db/repositories.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../src/intent/registries.js";
 import { resolveIntent } from "../src/intent/resolver.js";
@@ -130,6 +132,53 @@ describe("arcadia ask command", () => {
     expect(result.data.resolvedIntent.intentId).toBe("codex_plan");
     expect(result.data.plan.steps[0].skill_name).toBe("codex_planning");
     expect(result.data.codexInvocations[0].purpose).toBe("planning");
+  });
+
+  it("resolves Rebuster project metadata, attaches its active milestone, and writes packet context", () => {
+    const workspace = initializedWorkspace();
+    const project = withDatabase(workspace, (db) => {
+      const created = createProjectWithInitialWork(db, {
+        name: "Rebuster",
+        mission: "Help users turn product evidence into better shipping decisions.",
+        status: "active",
+        currentMilestone: "Pinterest publishing support",
+        nextAction: "Define Pinterest posting support boundaries.",
+        expectedArtifact: "Pinterest implementation plan",
+        workClassification: "codex"
+      });
+      upsertProjectMetadata(db, {
+        projectId: created.project.id,
+        aliases: ["Rebuster", "rebuster app"],
+        repoPath: "/Users/pmark/Dev/MR/Rebuster/rebuster",
+        statusSummary: "Active product repository with posting automation work in scope.",
+        validationCommands: ["pnpm test", "pnpm lint"]
+      });
+      return created;
+    });
+
+    const result = runAskCommand({
+      workspace,
+      request: "Build Pinterest posting support for Rebuster."
+    });
+
+    expect(result.data.resolvedIntent.intentId).toBe("build_social_posting_support");
+    expect(result.data.resolvedIntent.matched).toBe(true);
+    expect(result.data.workItem.project_id).toBe(project.project.id);
+    expect(result.data.workItem.project_name).toBe("Rebuster");
+    expect(result.data.workItem.milestone_id).toBe(project.milestone.id);
+    expect(result.data.workItem.milestone_title).toBe("Pinterest publishing support");
+    expect(result.data.codexInvocations[0].purpose).toBe("build");
+    expect(result.data.codexInvocations[0].workspace_scope).toBe("/Users/pmark/Dev/MR/Rebuster/rebuster");
+    expect(new Set(result.data.approvalGates.map((gate) => gate.gate_type))).toEqual(
+      new Set(["credentials_required", "publication", "send_email_or_messages"])
+    );
+
+    const prompt = readFileSync(path.join(workspace, result.data.codexInvocations[0].prompt_path), "utf8");
+    expect(prompt).toContain("## Target Project Context");
+    expect(prompt).toContain("Project: Rebuster");
+    expect(prompt).toContain("Active milestone: Pinterest publishing support");
+    expect(prompt).toContain("Target repository: /Users/pmark/Dev/MR/Rebuster/rebuster");
+    expect(prompt).toContain("Validation commands: pnpm test && pnpm lint");
   });
 
   it("can run deterministic safe ask work through the existing runner", () => {

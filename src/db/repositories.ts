@@ -61,11 +61,14 @@ import type {
   MissionLog,
   MissionLogSummary,
   Project,
+  ProjectContext,
+  ProjectMetadata,
   ProjectSummary,
   QueueGroups,
   SkillDefinition,
   SuggestedNextAction,
   StatusReportData,
+  UpsertProjectMetadataInput,
   WeeklyReviewData,
   UpdateArtifactInput,
   UpdateWorkItemInput,
@@ -80,6 +83,27 @@ function nullable(value: string | null | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
+function normalizedUniqueValues(values: string[] | undefined): string[] {
+  return [...new Set((values ?? []).map((value) => value.trim()).filter(Boolean))];
+}
+
+function encodeStringArray(values: string[] | undefined): string {
+  return JSON.stringify(normalizedUniqueValues(values));
+}
+
+function decodeStringArray(raw: string | null | undefined): string[] {
+  if (!raw) {
+    return [];
+  }
+
+  const parsed = JSON.parse(raw) as unknown;
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+
+  return parsed.filter((value): value is string => typeof value === "string").map((value) => value.trim()).filter(Boolean);
+}
+
 function required(value: string, label: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -91,6 +115,10 @@ function required(value: string, label: string): string {
 
 function titleFromRawInput(rawInput: string): string {
   return required(rawInput, "Raw input").split(/\r?\n/)[0]?.trim().slice(0, 120) || "Untitled work";
+}
+
+function normalizeProjectReference(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
 }
 
 function validateProjectStatus(value: string): ProjectStatus {
@@ -374,6 +402,112 @@ export function listProjects(db: Database.Database): Project[] {
 
 export function getProject(db: Database.Database, id: string): Project | null {
   return (db.prepare("SELECT * FROM projects WHERE id = ?").get(id) as Project | undefined) ?? null;
+}
+
+export function upsertProjectMetadata(
+  db: Database.Database,
+  input: UpsertProjectMetadataInput
+): ProjectMetadata | null {
+  if (!getProject(db, input.projectId)) {
+    return null;
+  }
+
+  const timestamp = nowIso();
+  const existing = getProjectMetadata(db, input.projectId);
+  const metadata: ProjectMetadata = {
+    project_id: input.projectId,
+    aliases: encodeStringArray(input.aliases),
+    repo_path: nullable(input.repoPath),
+    status_summary: nullable(input.statusSummary),
+    validation_commands: encodeStringArray(input.validationCommands),
+    created_at: existing?.created_at ?? timestamp,
+    updated_at: timestamp
+  };
+
+  db.prepare(
+    `INSERT INTO project_metadata (
+      project_id, aliases, repo_path, status_summary, validation_commands, created_at, updated_at
+    ) VALUES (
+      @project_id, @aliases, @repo_path, @status_summary, @validation_commands, @created_at, @updated_at
+    )
+    ON CONFLICT(project_id) DO UPDATE SET
+      aliases = excluded.aliases,
+      repo_path = excluded.repo_path,
+      status_summary = excluded.status_summary,
+      validation_commands = excluded.validation_commands,
+      updated_at = excluded.updated_at`
+  ).run(metadata);
+
+  return getProjectMetadata(db, input.projectId);
+}
+
+export function getProjectMetadata(db: Database.Database, projectId: string): ProjectMetadata | null {
+  return (
+    (db.prepare("SELECT * FROM project_metadata WHERE project_id = ?").get(projectId) as ProjectMetadata | undefined) ??
+    null
+  );
+}
+
+export function getProjectContext(db: Database.Database, projectId: string): ProjectContext | null {
+  const project = getProject(db, projectId);
+  if (!project) {
+    return null;
+  }
+
+  return {
+    project,
+    metadata: getProjectMetadata(db, projectId),
+    activeMilestone: getActiveMilestoneForProject(db, projectId)
+  };
+}
+
+export function resolveProjectContextFromRequest(db: Database.Database, request: string): ProjectContext | null {
+  const normalizedRequest = ` ${normalizeProjectReference(request)} `;
+  const matches = listProjects(db).flatMap((project) => {
+    const metadata = getProjectMetadata(db, project.id);
+    const aliases = decodeStringArray(metadata?.aliases);
+    const candidates = normalizedUniqueValues([project.name, ...aliases])
+      .map((candidate) => ({
+        raw: candidate,
+        normalized: normalizeProjectReference(candidate)
+      }))
+      .filter((candidate) => candidate.normalized.length > 0);
+    return candidates
+      .filter((candidate) => normalizedRequest.includes(` ${candidate.normalized} `))
+      .map((candidate) => ({
+        project,
+        metadata,
+        activeMilestone: getActiveMilestoneForProject(db, project.id),
+        matchedAlias: candidate.raw,
+        score: candidate.normalized.length
+      }));
+  });
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  matches.sort((left, right) =>
+    right.score - left.score ||
+    left.project.name.localeCompare(right.project.name) ||
+    left.project.id.localeCompare(right.project.id)
+  );
+
+  const best = matches[0];
+  const ambiguous = matches.find(
+    (match) => match.score === best.score && match.project.id !== best.project.id
+  );
+  if (ambiguous) {
+    throw new Error(
+      `Project reference is ambiguous: ${best.matchedAlias} matches ${best.project.name} and ${ambiguous.project.name}`
+    );
+  }
+
+  return {
+    project: best.project,
+    metadata: best.metadata,
+    activeMilestone: best.activeMilestone
+  };
 }
 
 export function updateProjectStatus(db: Database.Database, id: string, status: string): Project | null {
@@ -1303,6 +1437,7 @@ export function countRows(db: Database.Database, table: string): number {
   if (
     ![
       "projects",
+      "project_metadata",
       "milestones",
       "work_items",
       "mission_logs",
