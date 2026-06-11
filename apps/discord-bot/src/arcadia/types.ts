@@ -115,6 +115,7 @@ export interface ApprovalGate {
 export interface CodexInvocation {
   id: string;
   purpose: string;
+  workspace_scope: string;
   prompt_path: string;
   status: string;
 }

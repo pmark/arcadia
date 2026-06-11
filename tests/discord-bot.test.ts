@@ -111,6 +111,11 @@ describe("discord bot request command", () => {
     expect(reply).toContain("Ask: `ask_1`");
     expect(reply).toContain("Work item: `work_1`");
     expect(reply).toContain("Plan: `plan_1`");
+    expect(reply).toContain("Project: Rebuster");
+    expect(reply).toContain("Active milestone: Pinterest publishing support");
+    expect(reply).toContain("Approval gates: 3 (credentials_required, publication, send_email_or_messages)");
+    expect(reply).toContain("Codex packet: prompts/codex/codex_1/prompt.md");
+    expect(reply).toContain("Repo scope: /Users/pmark/Dev/MR/Rebuster/rebuster");
   });
 });
 
@@ -289,23 +294,45 @@ process.stdout.write(JSON.stringify({
       id: "work_1",
       title: request,
       raw_input: request,
+      project_id: "proj_rebuster",
+      milestone_id: "ms_pinterest",
       queue: "work_queue",
       work_classification: "codex",
       next_action: "Review the Codex planning packet for this request.",
       expected_artifact: "Codex planning packet",
       status: "open",
-      project_name: null,
-      milestone_title: null
+      project_name: "Rebuster",
+      milestone_title: "Pinterest publishing support"
     },
     plan: {
       id: "plan_1",
       status: "planned",
       summary: "Intent plan."
     },
-    approvalGates: [],
+    approvalGates: [
+      {
+        id: "gate_1",
+        gate_type: "credentials_required",
+        reason: "Pinterest API credentials are required before posting work.",
+        status: "pending"
+      },
+      {
+        id: "gate_2",
+        gate_type: "publication",
+        reason: "Publishing boundaries require approval.",
+        status: "pending"
+      },
+      {
+        id: "gate_3",
+        gate_type: "send_email_or_messages",
+        reason: "Posting to social channels requires approval.",
+        status: "pending"
+      }
+    ],
     codexInvocations: [{
       id: "codex_1",
-      purpose: "planning",
+      purpose: "build",
+      workspace_scope: "/Users/pmark/Dev/MR/Rebuster/rebuster",
       prompt_path: "prompts/codex/codex_1/prompt.md",
       status: "packet_created"
     }],
