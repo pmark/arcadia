@@ -140,6 +140,7 @@ function renderPrompt(input: {
     .map(([key, value]) => `- ${key}: ${value}`)
     .join("\n") || "None";
   const projectContext = renderProjectContext(input.projectContext, input.workItem);
+  const validationGuidance = renderValidationGuidance(input.projectContext);
 
   return `# Arcadia Codex ${input.agentProfile.purpose === "build" ? "Build" : "Planning"} Packet
 
@@ -167,6 +168,7 @@ ${gates}
 
 ## Boundaries
 - Do not publish, deploy, merge, delete, spend money, use credentials, access production data, or send messages.
+- Treat approval gates as hard stops; credential access, publication, and social posting/messaging require explicit approval before use.
 - Keep all behavior explicit and inspectable.
 - If implementation is required, produce a clear plan or patch summary only after Mark approves Codex build execution.
 - Use the selected repository or workspace scope only.
@@ -174,9 +176,10 @@ ${gates}
 ## Discovery And Validation
 - Start by inspecting the target repository/project context above.
 - Prefer deterministic local scripts and existing project conventions before adding new tooling.
+${validationGuidance}
 - Report changed files, validation commands run, and any commands that could not be run.
 
-## Final Response Requirements
+## Final Reporting Requirements
 - Summarize project, milestone, and repository scope.
 - Summarize implementation or planning outcome.
 - List validation results.
@@ -206,6 +209,15 @@ function renderProjectContext(projectContext: ProjectContext | null, workItem: W
     `- Project status summary: ${metadata?.status_summary ?? "None"}`,
     `- Validation commands: ${validationCommands.length > 0 ? validationCommands.join(" && ") : "Use existing project validation scripts"}`
   ].join("\n");
+}
+
+function renderValidationGuidance(projectContext: ProjectContext | null): string {
+  const validationCommands = decodeStringArray(projectContext?.metadata?.validation_commands);
+  if (validationCommands.length === 0) {
+    return "- Determine validation commands from the target repository and report any missing validation path.";
+  }
+
+  return validationCommands.map((command) => `- Run validation command: ${command}`).join("\n");
 }
 
 function decodeStringArray(raw: string | null | undefined): string[] {

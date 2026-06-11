@@ -169,6 +169,8 @@ describe("arcadia ask command", () => {
     expect(result.data.workItem.milestone_title).toBe("Pinterest publishing support");
     expect(result.data.codexInvocations[0].purpose).toBe("build");
     expect(result.data.codexInvocations[0].workspace_scope).toBe("/Users/pmark/Dev/MR/Rebuster/rebuster");
+    expect(result.data.ask.prompt_packet_path).toBe(result.data.codexInvocations[0].prompt_path);
+    expect(result.artifacts).toContain(path.join(workspace, result.data.codexInvocations[0].prompt_path));
     expect(new Set(result.data.approvalGates.map((gate) => gate.gate_type))).toEqual(
       new Set(["credentials_required", "publication", "send_email_or_messages"])
     );
@@ -177,8 +179,17 @@ describe("arcadia ask command", () => {
     expect(prompt).toContain("## Target Project Context");
     expect(prompt).toContain("Project: Rebuster");
     expect(prompt).toContain("Active milestone: Pinterest publishing support");
+    expect(prompt).toContain("Work item milestone: Pinterest publishing support");
     expect(prompt).toContain("Target repository: /Users/pmark/Dev/MR/Rebuster/rebuster");
+    expect(prompt).toContain("Project status summary: Active product repository with posting automation work in scope.");
     expect(prompt).toContain("Validation commands: pnpm test && pnpm lint");
+    expect(prompt).toContain("Run validation command: pnpm test");
+    expect(prompt).toContain("Run validation command: pnpm lint");
+    expect(prompt).toContain("Do not publish, deploy, merge, delete, spend money, use credentials, access production data, or send messages.");
+    expect(prompt).toContain("credential access, publication, and social posting/messaging require explicit approval");
+    expect(prompt).toContain("## Final Reporting Requirements");
+    expect(prompt).toContain("Summarize project, milestone, and repository scope.");
+    expect(prompt).toContain("List validation results.");
   });
 
   it("can run deterministic safe ask work through the existing runner", () => {
