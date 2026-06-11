@@ -59,6 +59,14 @@ The bot is read-only plus notifications. It can show concise status, Requires Re
 
 See `apps/discord-bot/README.md` for environment variables, slash command registration, local run commands, and notification deduplication behavior.
 
+## Dashboard
+
+Arcadia includes a local mobile-first dashboard adapter in `apps/dashboard`.
+
+The dashboard is read-only. It shows project status, current milestones, Requires Review items, recent runs, and recent artifacts through `arcadia dashboard snapshot --json`. It does not edit projects, approve work, start runs, or run AI.
+
+See `apps/dashboard/README.md` for environment variables and local network usage.
+
 ## Quick Start
 
 Initialize a private workspace:
@@ -150,6 +158,12 @@ pnpm arcadia status --workspace ./tmp/demo-workspace
 pnpm arcadia report status --workspace ./tmp/demo-workspace
 ```
 
+Read the dashboard snapshot without regenerating reports:
+
+```sh
+pnpm arcadia dashboard snapshot --workspace ./tmp/demo-workspace --json
+```
+
 Generate a deterministic weekly review:
 
 ```sh
@@ -176,6 +190,7 @@ pnpm smoke
 - `arcadia inbox add --workspace <path>` interactively adds manually classified work.
 - `arcadia inbox import --workspace <path> --title <title> --input <text> --queue <queue> --classification <classification> --next-action <action>` adds manually classified work without prompts.
 - `arcadia queue --workspace <path>` shows Inbox, Work Queue, Needs Mark, and Blocked items.
+- `arcadia dashboard snapshot --workspace <path>` emits the read-only dashboard snapshot.
 - `arcadia work list --workspace <path>` lists work items.
 - `arcadia work update --workspace <path> <work-id> [--queue <queue>] [--classification <classification>] [--next-action <action>] [--status <status>]` updates a work item.
 - `arcadia work done --workspace <path> <work-id>` marks a work item complete.
@@ -250,7 +265,7 @@ Keep private workspaces separate from Arcadia Core. Do not commit personal works
 
 ## Current Boundaries
 
-Arcadia Core does not include a dashboard, daemon, cloud sync, authentication, AI classification, automatic Codex dispatch, plugin marketplace, advanced scheduling, local model integration, or a web app.
+Arcadia Core does not include a daemon, cloud sync, authentication, AI classification, automatic Codex dispatch, plugin marketplace, advanced scheduling, or local model integration.
 
 ## License
 

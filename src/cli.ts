@@ -11,6 +11,7 @@ import {
 } from "./commands/artifact.js";
 import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
 import { renderCaptureSuccess, runCaptureCommand } from "./commands/capture.js";
+import { renderDashboardSnapshotSuccess, runDashboardSnapshotCommand } from "./commands/dashboard.js";
 import { renderInboxImportSuccess, runInboxAddCommand, runInboxImportCommand } from "./commands/inbox.js";
 import { renderInitSuccess, runInitCommand } from "./commands/init.js";
 import { renderIngressProcessSuccess, runIngressProcessCommand } from "./commands/ingress.js";
@@ -197,6 +198,21 @@ export function buildProgram(): Command {
       .requiredOption("--workspace <path>", "Workspace path")
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("queue", options, () => runQueueCommand(options), renderQueueSuccess)
+  );
+
+  const dashboard = program.command("dashboard").description("Dashboard read model commands");
+  addJsonOption(
+    dashboard
+      .command("snapshot")
+      .description("Emit the read-only dashboard snapshot")
+      .requiredOption("--workspace <path>", "Workspace path")
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "dashboard.snapshot",
+      options,
+      () => runDashboardSnapshotCommand(options),
+      renderDashboardSnapshotSuccess
+    )
   );
 
   const ingress = program.command("ingress").description("Local file ingress commands");
@@ -485,6 +501,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "ingress" && second === "process") {
     return "ingress.process";
+  }
+
+  if (first === "dashboard" && second === "snapshot") {
+    return "dashboard.snapshot";
   }
 
   if (first === "work" && ["list", "update", "done", "plan", "run"].includes(second ?? "")) {

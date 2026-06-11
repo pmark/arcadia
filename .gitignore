@@ -35,6 +35,7 @@ pnpm-debug.log
 dist/
 build/
 out/
+.next/
 coverage/
 
 # Environment and secrets

@@ -11,6 +11,8 @@
     "build": "tsc -p tsconfig.json && pnpm --filter arcadia-discord-bot build",
     "test": "vitest run",
     "arcadia": "tsx src/cli.ts",
+    "dashboard": "pnpm --filter arcadia-dashboard dev",
+    "dashboard:build": "pnpm --filter arcadia-dashboard build",
     "smoke": "tsx scripts/smoke.ts"
   },
   "dependencies": {

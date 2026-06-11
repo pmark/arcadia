@@ -181,6 +181,7 @@ pnpm arcadia run show "$run_id" --workspace "$WORKSPACE" --json
 ```sh
 pnpm arcadia project list --workspace "$WORKSPACE"
 pnpm arcadia queue --workspace "$WORKSPACE"
+pnpm arcadia dashboard snapshot --workspace "$WORKSPACE" --json
 pnpm arcadia work list --workspace "$WORKSPACE"
 pnpm arcadia report status --workspace "$WORKSPACE"
 pnpm arcadia review weekly --workspace "$WORKSPACE"

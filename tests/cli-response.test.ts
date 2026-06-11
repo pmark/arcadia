@@ -216,6 +216,22 @@ describe("CLI response contract", () => {
     expect(json.data.queues.blocked).toEqual([]);
   });
 
+  it("emits JSON success for dashboard snapshots", () => {
+    const workspace = initializedWorkspace();
+    createProject(workspace);
+    const result = runCli(["dashboard", "snapshot", "--workspace", workspace, "--json"]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const json = parseJson(result.stdout);
+    expect(json.ok).toBe(true);
+    expect(json.command).toBe("dashboard.snapshot");
+    expect(json.workspace).toBe(path.resolve(workspace));
+    expect(json.data.snapshot.counts.activeProjects).toBe(1);
+    expect(json.data.snapshot.projects[0].lastArtifact.title).toBe("CLI Fixture Artifact");
+    expect(json.artifacts).toEqual([]);
+  });
+
   it("imports an inbox item non-interactively with JSON output", () => {
     const workspace = initializedWorkspace();
     const result = runCli([
