@@ -34,6 +34,7 @@ describe("CLI response contract", () => {
 
   it("emits JSON success for status and generated report artifacts", () => {
     const workspace = initializedWorkspace();
+    createProject(workspace);
     const result = runCli(["status", "--workspace", workspace, "--json"]);
 
     expect(result.status).toBe(0);
@@ -42,7 +43,13 @@ describe("CLI response contract", () => {
     expect(json.ok).toBe(true);
     expect(json.command).toBe("status");
     expect(json.workspace).toBe(path.resolve(workspace));
-    expect(json.data.projectCount).toBe(0);
+    expect(json.data.projectCount).toBe(1);
+    expect(json.data.activeProjectCount).toBe(1);
+    expect(json.data.runningWorkCount).toBe(0);
+    expect(json.data.queuedWorkCount).toBe(1);
+    expect(json.data.requiresReviewCount).toBe(0);
+    expect(json.data.needsMarkCount).toBe(0);
+    expect(json.data.recentArtifactCount).toBe(1);
     expect(json.data.reportPath).toBe(path.join(path.resolve(workspace), "reports", "status.md"));
     expect(json.artifacts).toContain(path.join(path.resolve(workspace), "reports", "status.md"));
   });
@@ -165,6 +172,36 @@ describe("CLI response contract", () => {
     expect(completeJson.data.milestone.status).toBe("completed");
   });
 
+  it("lists milestones with JSON output", () => {
+    const workspace = initializedWorkspace();
+    const created = createProject(workspace);
+    const createResult = runCli([
+      "milestone",
+      "create",
+      created.project.id,
+      "--workspace",
+      workspace,
+      "--title",
+      "Completed milestone",
+      "--json"
+    ]);
+    const milestoneId = parseJson(createResult.stdout).data.milestone.id;
+    const completeResult = runCli(["milestone", "complete", milestoneId, "--workspace", workspace, "--json"]);
+    expect(completeResult.status).toBe(0);
+
+    const result = runCli(["milestone", "list", "--workspace", workspace, "--status", "completed", "--json"]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const json = parseJson(result.stdout);
+    expect(json.ok).toBe(true);
+    expect(json.command).toBe("milestone.list");
+    expect(json.data.milestones).toHaveLength(1);
+    expect(json.data.milestones[0].id).toBe(milestoneId);
+    expect(json.data.milestones[0].project_name).toBe("CLI Fixture Project");
+    expect(json.data.milestones[0].status).toBe("completed");
+  });
+
   it("emits JSON success for queue groups", () => {
     const workspace = initializedWorkspace();
     const result = runCli(["queue", "--workspace", workspace, "--json"]);
@@ -265,6 +302,15 @@ describe("CLI response contract", () => {
     expect(showJson.command).toBe("run.show");
     expect(showJson.data.run.id).toBe(runJson.data.run.id);
     expect(showJson.data.needsMark).toEqual([]);
+
+    const listResult = runCli(["run", "list", "--workspace", workspace, "--limit", "5", "--json"]);
+    expect(listResult.status).toBe(0);
+    const listJson = parseJson(listResult.stdout);
+    expect(listJson.ok).toBe(true);
+    expect(listJson.command).toBe("run.list");
+    expect(listJson.data.runs).toHaveLength(1);
+    expect(listJson.data.runs[0].id).toBe(runJson.data.run.id);
+    expect(listJson.data.runs[0].work_item_title).toBe("Generate status report");
   });
 
   it("asks natural language intent with JSON output", () => {

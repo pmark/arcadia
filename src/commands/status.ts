@@ -7,11 +7,16 @@ import { writeStatusReport } from "../markdown/statusReport.js";
 
 export interface StatusCommandData {
   projectCount: number;
+  activeProjectCount: number;
+  runningWorkCount: number;
+  queuedWorkCount: number;
   needsMarkCount: number;
+  requiresReviewCount: number;
   autonomousCount: number;
   codexCount: number;
   blockedCount: number;
   recentMissionLogCount: number;
+  recentArtifactCount: number;
   reportPath: string;
   projects: Array<{
     name: string;
@@ -35,11 +40,16 @@ export function runStatusCommand(options: { workspace: string }): CommandSuccess
     workspace: workspacePath,
     data: {
       projectCount: data.projects.length,
+      activeProjectCount: data.projects.filter((project) => project.status === "active").length,
+      runningWorkCount: Object.values(data.queues).flat().filter((item) => item.status === "in_progress").length,
+      queuedWorkCount: data.queues.work_queue.length,
       needsMarkCount: data.needsMarkItems.length,
+      requiresReviewCount: data.needsMarkItems.length,
       autonomousCount: data.autonomousItems.length,
       codexCount: data.codexItems.length,
       blockedCount: data.blockedItems.length,
       recentMissionLogCount: data.recentMissionLogs.length,
+      recentArtifactCount: data.upcomingArtifacts.length,
       reportPath,
       projects: data.projects.map((project) => ({
         name: project.name,
@@ -72,6 +82,7 @@ export function renderStatusSuccess(response: CommandSuccess<StatusCommandData>)
   }
 
   lines.push(`Needs Mark: ${response.data.needsMarkCount}`);
+  lines.push(`Requires Review: ${response.data.requiresReviewCount}`);
   lines.push(`Autonomous: ${response.data.autonomousCount}`);
   lines.push(`Codex: ${response.data.codexCount}`);
   lines.push(`Blocked: ${response.data.blockedCount}`);

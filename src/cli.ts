@@ -18,8 +18,10 @@ import { runLogCreateCommand } from "./commands/log.js";
 import {
   renderMilestoneCompleteSuccess,
   renderMilestoneCreateSuccess,
+  renderMilestoneListSuccess,
   runMilestoneCompleteCommand,
-  runMilestoneCreateCommand
+  runMilestoneCreateCommand,
+  runMilestoneListCommand
 } from "./commands/milestone.js";
 import {
   renderProjectListSuccess,
@@ -31,7 +33,7 @@ import {
 import { renderQueueSuccess, runQueueCommand } from "./commands/queue.js";
 import { renderReportStatusSuccess, runReportStatusCommand } from "./commands/report.js";
 import { renderReviewWeeklySuccess, runReviewWeeklyCommand } from "./commands/review.js";
-import { renderRunShowSuccess, runRunShowCommand } from "./commands/run.js";
+import { renderRunListSuccess, renderRunShowSuccess, runRunListCommand, runRunShowCommand } from "./commands/run.js";
 import { renderStatusSuccess, runStatusCommand } from "./commands/status.js";
 import {
   renderWorkDoneSuccess,
@@ -316,6 +318,15 @@ export function buildProgram(): Command {
   const run = program.command("run").description("Execution run commands");
   addJsonOption(
     run
+      .command("list")
+      .description("List recent execution runs")
+      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--limit <n>", "Maximum number of runs to return", "10")
+  ).action((options: { workspace: string; limit?: string; json?: boolean }) =>
+    runCliAction("run.list", options, () => runRunListCommand(options), renderRunListSuccess)
+  );
+  addJsonOption(
+    run
       .command("show")
       .description("Show an execution run audit trail")
       .argument("<run-id>", "Run id")
@@ -332,6 +343,16 @@ export function buildProgram(): Command {
     .action((options: { workspace: string }) => runLogCreateCommand(options));
 
   const milestone = program.command("milestone").description("Milestone commands");
+  addJsonOption(
+    milestone
+      .command("list")
+      .description("List milestones")
+      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--status <status>", "Optional status filter: active, paused, completed")
+      .option("--limit <n>", "Maximum number of milestones to return", "10")
+  ).action((options: { workspace: string; status?: string; limit?: string; json?: boolean }) =>
+    runCliAction("milestone.list", options, () => runMilestoneListCommand(options), renderMilestoneListSuccess)
+  );
   addJsonOption(
     milestone
       .command("create")

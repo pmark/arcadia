@@ -57,6 +57,7 @@ import type {
   ExecutionRunStep,
   ExecutionRunSummary,
   Milestone,
+  MilestoneSummary,
   MissionLog,
   MissionLogSummary,
   Project,
@@ -424,6 +425,36 @@ export function listMilestonesForProject(db: Database.Database, projectId: strin
   return db
     .prepare("SELECT * FROM milestones WHERE project_id = ? ORDER BY status = 'active' DESC, created_at DESC")
     .all(projectId) as Milestone[];
+}
+
+export function listMilestones(
+  db: Database.Database,
+  options: { status?: string; limit?: number } = {}
+): MilestoneSummary[] {
+  const conditions: string[] = [];
+  const parameters: Record<string, unknown> = {
+    limit: options.limit ?? 10
+  };
+
+  if (options.status !== undefined) {
+    parameters.status = validateMilestoneStatus(options.status);
+    conditions.push("m.status = @status");
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  return db
+    .prepare(
+      `SELECT
+        m.*,
+        p.name AS project_name
+      FROM milestones m
+      JOIN projects p ON p.id = m.project_id
+      ${where}
+      ORDER BY m.updated_at DESC, m.created_at DESC
+      LIMIT @limit`
+    )
+    .all(parameters) as MilestoneSummary[];
 }
 
 export function getActiveMilestoneForProject(db: Database.Database, projectId: string): Milestone | null {
@@ -1172,6 +1203,17 @@ export function getExecutionRun(db: Database.Database, id: string): ExecutionRun
     .all(id) as ExecutionRunSummary["artifacts"];
 
   return { ...run, steps, artifacts };
+}
+
+export function listExecutionRuns(db: Database.Database, limit = 10): ExecutionRunSummary[] {
+  const rows = db
+    .prepare("SELECT id FROM execution_runs ORDER BY updated_at DESC, created_at DESC LIMIT ?")
+    .all(limit) as Array<{ id: string }>;
+
+  return rows.flatMap((row) => {
+    const run = getExecutionRun(db, row.id);
+    return run ? [run] : [];
+  });
 }
 
 export function listUpcomingArtifacts(db: Database.Database, limit = 20): ArtifactSummary[] {

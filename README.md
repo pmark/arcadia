@@ -51,6 +51,14 @@ Show CLI help:
 pnpm arcadia --help
 ```
 
+## Discord Awareness Bot
+
+Arcadia includes a lightweight Discord awareness adapter in `apps/discord-bot`.
+
+The bot is read-only plus notifications. It can show concise status, Requires Review items, recent runs, and post meaningful execution notifications. It does not approve work, plan work, review artifacts, execute freeform Discord requests, publish, deploy, or spend money.
+
+See `apps/discord-bot/README.md` for environment variables, slash command registration, local run commands, and notification deduplication behavior.
+
 ## Quick Start
 
 Initialize a private workspace:
@@ -173,7 +181,9 @@ pnpm smoke
 - `arcadia work done --workspace <path> <work-id>` marks a work item complete.
 - `arcadia work plan --workspace <path> <work-id>` creates an observable execution plan for a work item.
 - `arcadia work run --workspace <path> <work-id> [--plan <plan-id>] [--allow-codex-planning] [--allow-codex-build] [--agent-profile <name>]` runs deterministic safe steps by default, and runs Codex steps only with explicit allow flags.
+- `arcadia run list --workspace <path> [--limit <n>]` lists recent execution runs.
 - `arcadia run show --workspace <path> <run-id>` shows the run audit trail and Needs Mark items.
+- `arcadia milestone list --workspace <path> [--status <status>] [--limit <n>]` lists milestones.
 - `arcadia milestone create --workspace <path> <project-id> --title <title>` creates a milestone.
 - `arcadia milestone complete --workspace <path> <milestone-id>` marks a milestone complete.
 - `arcadia artifact list --workspace <path>` lists artifacts.

@@ -34,6 +34,10 @@ export interface Milestone {
   updated_at: string;
 }
 
+export interface MilestoneSummary extends Milestone {
+  project_name: string;
+}
+
 export interface WorkItem {
   id: string;
   project_id: string | null;

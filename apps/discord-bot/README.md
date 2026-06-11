@@ -1,0 +1,86 @@
+# Arcadia Discord Bot
+
+This app is a lightweight Discord awareness adapter for Arcadia. It reads Arcadia through the CLI, posts concise progress notifications, and directs richer decisions back to Arcadia.
+
+Discord is intentionally not an approval, planning, artifact review, deployment, publishing, spending, or freeform work-request surface.
+
+## Environment
+
+Required:
+
+```sh
+ARCADIA_WORKSPACE=/absolute/path/to/arcadia-workspace
+DISCORD_BOT_TOKEN=...
+DISCORD_CLIENT_ID=...
+DISCORD_GUILD_ID=...
+DISCORD_CHANNEL_ID=...
+```
+
+Optional:
+
+```sh
+ARCADIA_CLI_PATH=/absolute/path/to/arcadia
+ARCADIA_DISCORD_POLL_INTERVAL_SECONDS=60
+```
+
+If `ARCADIA_CLI_PATH` is omitted, the bot looks for the local Arcadia CLI source or built CLI.
+
+## Commands
+
+Install dependencies from the repository root:
+
+```sh
+pnpm install
+```
+
+Register slash commands:
+
+```sh
+pnpm --filter arcadia-discord-bot register
+```
+
+Run locally:
+
+```sh
+pnpm --filter arcadia-discord-bot dev
+```
+
+Build and start:
+
+```sh
+pnpm --filter arcadia-discord-bot build
+pnpm --filter arcadia-discord-bot start
+```
+
+## Slash Commands
+
+- `/arcadia status` shows active projects, running work, queued work, Requires Review count, and recent artifacts.
+- `/arcadia requires-review` shows the current Requires Review queue.
+- `/arcadia runs` shows recent execution runs.
+
+Commands only respond in the configured guild and channel.
+
+## Notifications
+
+The bot polls Arcadia and notifies the configured channel when:
+
+- a run fails,
+- a run pauses with Requires Review,
+- the Requires Review count transitions from `0` to a positive number,
+- a milestone is completed.
+
+The bot suppresses routine artifact generation, mission log updates, intermediate execution steps, and successful runs with no human action required.
+
+Notification state is stored at:
+
+```text
+ARCADIA_WORKSPACE/database/discord-notifications.json
+```
+
+The first startup initializes this state silently so old workspace history is not replayed into Discord. Future notable events are posted once.
+
+## Requires Review
+
+Arcadia may still store legacy internal values such as `needs_mark` for compatibility. Discord output uses the user-name-agnostic phrase `Requires Review`.
+
+Arcadia remains authoritative for approvals, planning, implementation, and artifact review.
