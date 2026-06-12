@@ -11,7 +11,7 @@ Natural language request
   -> deterministic intent resolution
   -> structured work item
   -> execution plan
-  -> safe deterministic execution or explicit Codex/Needs Mark handoff
+  -> safe deterministic execution or explicit Codex/Requires Review handoff
 ```
 
 SQLite remains authoritative. Markdown and prompt packets are inspectable artifacts. Codex means the `@openai/codex` CLI, invoked through configurable coding-agent profiles when Mark explicitly approves execution.
@@ -20,7 +20,7 @@ SQLite remains authoritative. Markdown and prompt packets are inspectable artifa
 
 - Phase 2 already provides work items, execution plans, execution runs, deterministic skills, mission logs, and run audit display.
 - `work run` executes only deterministic safe steps by default.
-- Codex and Mark steps pause as `needs_mark`.
+- Codex and review steps pause as `needs_mark`.
 - Workspace data lives under local folders created by `arcadia init`.
 - `config/*.json` is the right place for inspectable registry files.
 
@@ -83,7 +83,7 @@ Schema v3 adds:
 4. Select template refs and skill sequence from the matched intent.
 5. Create approval gates from intent and template rules.
 6. If no intent matches, fall back to a Codex planning packet.
-7. If a request is unsupported and unsafe, create Needs Mark work.
+7. If a request is unsupported and unsafe, create Requires Review work.
 
 Skill selection order:
 
@@ -92,7 +92,7 @@ Skill selection order:
 3. local model classifier, only if configured and available
 4. Codex planning
 5. Codex build
-6. Needs Mark
+6. Requires Review
 
 ## Codex Invocation Design
 
@@ -190,7 +190,7 @@ Expected result:
 - `arcadia ask --workspace <path> "create a new blog site named MartianRover Field Notes"` creates a work item and plan.
 - The generated plan uses the Astro Field Notes template metadata when matched.
 - If no matching intent exists, Arcadia creates a Codex planning packet.
-- Credentialed actions are classified as approval gates and Needs Mark work where appropriate.
+- Credentialed actions are classified as approval gates and Requires Review work where appropriate.
 - Every ask creates an audit trail.
 - Every generated plan is inspectable.
 - Every Codex handoff has a visible prompt packet and database record.

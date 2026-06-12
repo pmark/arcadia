@@ -12,20 +12,32 @@ export function formatRequest(data: AskData): string {
     ? `Run detail: /arcadia run id:${data.run.id}`
     : "Run detail: Use /arcadia runs after work starts.";
 
-  return [
-    "**Arcadia request created**",
+  const lines = [
+    data.workItem ? "**Arcadia request created**" : "**Arcadia ask handled**",
     `Ask: \`${data.ask.id}\``,
-    `Work item: \`${data.workItem.id}\``,
-    `Plan: \`${data.plan.id}\``,
-    runLine,
-    `Project: ${data.workItem.project_name ?? "Unresolved"}`,
-    `Active milestone: ${data.workItem.milestone_title ?? "None"}`,
-    `Classification: ${data.workItem.work_classification}`,
+    `Interpreted as: ${data.intake?.resolvedIntent ?? data.resolvedIntent.intentId}`,
+    `Result: ${data.result?.summary ?? labelStatus(data.ask.status)}`
+  ];
+
+  if (data.workItem) {
+    lines.push(
+      `Work item: \`${data.workItem.id}\``,
+      `Plan: \`${data.plan?.id ?? "None"}\``,
+      runLine,
+      `Project: ${data.workItem.project_name ?? "Unresolved"}`,
+      `Active milestone: ${data.workItem.milestone_title ?? "None"}`,
+      `Classification: ${labelStatus(data.workItem.work_classification)}`
+    );
+  }
+
+  lines.push(
     `Approval gates: ${gateSummary}`,
     `Codex packet: ${packetPath}`,
     `Repo scope: ${codexInvocation?.workspace_scope ?? "Workspace scope"}`,
     runDetailLine
-  ].join("\n");
+  );
+
+  return lines.join("\n");
 }
 
 function labelStatus(status: string): string {

@@ -91,6 +91,28 @@ describe("CLI response contract", () => {
     expect(readFileSync(reportPath, "utf8")).toContain("Review window: 2026-06-03 to 2026-06-09");
   });
 
+  it("emits JSON success for Requires Review packets", () => {
+    const workspace = initializedWorkspace();
+    importWorkItem(workspace, {
+      title: "Clarify intake request",
+      queue: "needs_mark",
+      classification: "needs_mark",
+      nextAction: "Clarify missing intake fields: project."
+    });
+
+    const result = runCli(["review", "--workspace", workspace, "--json"]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const json = parseJson(result.stdout);
+    expect(json.ok).toBe(true);
+    expect(json.command).toBe("review");
+    expect(json.data.count).toBe(1);
+    expect(json.data.items[0].decisionNeeded).toBe("Clarify missing intake fields: project.");
+    expect(json.data.items[0].options).toContain("assign a project");
+    expect(json.data.items[0].sourceInput).toBe("Clarify intake request");
+  });
+
   it("emits JSON success for project list", () => {
     const workspace = initializedWorkspace();
     const result = runCli(["project", "list", "--workspace", workspace, "--json"]);
@@ -418,7 +440,8 @@ describe("CLI response contract", () => {
     const json = parseJson(result.stdout);
     expect(json.ok).toBe(true);
     expect(json.command).toBe("ask");
-    expect(json.data.resolvedIntent.intentId).toBe("create_astro_blog");
+    expect(json.data.intake.resolvedIntent).toBe("InstantiateProject");
+    expect(json.data.resolvedIntent.intentId).toBe("InstantiateProject");
     expect(json.data.workItem.id).toMatch(/^work_/);
     expect(json.data.plan.id).toMatch(/^plan_/);
     expect(json.data.codexInvocations).toHaveLength(1);

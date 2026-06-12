@@ -38,14 +38,14 @@ export const CODEX_INVOCATION_STATUSES = ["packet_created", "running", "complete
 export const QUEUE_LABELS: Record<QueueName, string> = {
   inbox: "Inbox",
   work_queue: "Work Queue",
-  needs_mark: "Needs Mark",
+  needs_mark: "Requires Review",
   blocked: "Blocked"
 };
 
 export const WORK_CLASSIFICATION_LABELS: Record<WorkClassification, string> = {
   autonomous: "Autonomous",
   codex: "Codex",
-  needs_mark: "Needs Mark",
+  needs_mark: "Requires Review",
   blocked: "Blocked"
 };
 

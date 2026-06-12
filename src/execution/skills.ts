@@ -53,7 +53,7 @@ export const BUILT_IN_SKILLS: BuiltInSkill[] = [
   {
     name: "prepare_publication_packet",
     title: "Prepare publication packet",
-    description: "Create a local Markdown packet for Mark to review before publication.",
+    description: "Create a local Markdown packet for review before publication.",
     executorType: "deterministic",
     safeToRun: true
   },
@@ -94,8 +94,8 @@ export const BUILT_IN_SKILLS: BuiltInSkill[] = [
   },
   {
     name: "needs_mark_decision",
-    title: "Surface decision for Mark",
-    description: "Pause execution until Mark provides direction, approval, or missing context.",
+    title: "Surface required review",
+    description: "Pause execution until the user provides direction, approval, or missing context.",
     executorType: "mark",
     safeToRun: false
   }
@@ -132,7 +132,7 @@ export function classifyCapturedIntent(text: string): IntentClassification {
     title,
     queue: "needs_mark",
     workClassification: "needs_mark",
-    nextAction: "Mark must clarify the desired outcome or approve a Codex execution path.",
+    nextAction: "Clarify the desired outcome or approve a Codex execution path.",
     matchedSkillName: null
   };
 }
@@ -145,7 +145,7 @@ export function planStepsForWorkItem(workItem: WorkItemSummary): PlannedSkillSte
     return [
       {
         skillName: "needs_mark_decision",
-        title: "Surface required decision for Mark",
+        title: "Surface required review",
         command: null,
         executorType: "mark",
         safeToRun: false,
@@ -246,7 +246,7 @@ function nextActionForSkill(skillName: string): string {
     case "generate_weekly_review":
       return "Generate the deterministic weekly review.";
     case "prepare_publication_packet":
-      return "Prepare a local publication packet for Mark to review.";
+      return "Prepare a local publication packet for review.";
     case "prepare_weekly_update_draft":
       return "Prepare a local weekly update draft from recent mission logs.";
     case "generate_specification_artifact":

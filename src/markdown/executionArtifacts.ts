@@ -49,7 +49,7 @@ export function writePublicationPacket(workspace: string, workItem: WorkItemSumm
       "",
       "## Review Required",
       "",
-      "Mark must approve the packet before publication.",
+      "The user must approve the packet before publication.",
       ""
     ].join("\n"),
     "utf8"

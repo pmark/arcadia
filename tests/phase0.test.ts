@@ -631,7 +631,7 @@ describe("Phase 0 data operations", () => {
     expect(report).not.toContain("Old completed work");
     expect(report).toContain("## Mission Logs Created");
     expect(report).toContain("Weekly review report is generated.");
-    expect(report).toContain("## Needs Mark Items");
+    expect(report).toContain("## Requires Review Items");
     expect(report).toContain("## Active Codex/Autonomous Work");
     expect(report).toContain("## Artifact Changes Or Upcoming Artifacts");
     expect(report).toContain("artifacts/implementation-summary.md");

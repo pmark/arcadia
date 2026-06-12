@@ -19,7 +19,7 @@ export interface DiscordSubmissionState {
 
 export interface DiscordSubmissionRecord {
   askId: string;
-  workItemId: string;
+  workItemId: string | null;
   runId: string | null;
 }
 
@@ -102,7 +102,9 @@ export async function recordDiscordSubmission(
   const state = await loadDiscordSubmissionState(filePath);
   const nextState: DiscordSubmissionState = {
     submittedAskIds: appendUnique(state.submittedAskIds, submission.askId),
-    submittedWorkItemIds: appendUnique(state.submittedWorkItemIds, submission.workItemId),
+    submittedWorkItemIds: submission.workItemId
+      ? appendUnique(state.submittedWorkItemIds, submission.workItemId)
+      : state.submittedWorkItemIds,
     submittedRunIds: submission.runId ? appendUnique(state.submittedRunIds, submission.runId) : state.submittedRunIds,
     updatedAt: now
   };

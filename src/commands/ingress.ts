@@ -239,8 +239,8 @@ function processCandidate(input: {
       finalPath,
       sidecarPath,
       askId: response.data.ask.id,
-      workItemId: response.data.workItem.id,
-      planId: response.data.plan.id,
+      workItemId: response.data.workItem?.id,
+      planId: response.data.plan?.id,
       runId: response.data.run?.id,
       artifacts: [...response.artifacts, path.join(workspacePath, missionLogPath)],
       failureReason
@@ -308,8 +308,8 @@ function writeIngressMissionLog(
     response?: CommandSuccess<AskCommandData>;
   }
 ): string {
-  const projectId = input.response?.data.workItem.project_id ?? null;
-  const milestoneId = input.response?.data.workItem.milestone_id ?? null;
+  const projectId = input.response?.data.workItem?.project_id ?? input.response?.data.project?.id ?? null;
+  const milestoneId = input.response?.data.workItem?.milestone_id ?? null;
   const project = projectId ? withDatabase(workspacePath, (db) => getProject(db, projectId)) : null;
   const milestone = milestoneId ? withDatabase(workspacePath, (db) => getMilestone(db, milestoneId)) : null;
   const logId = createId("missionLog");
@@ -331,8 +331,8 @@ function writeIngressMissionLog(
         "",
         `Execution mode: ${input.executionMode}`,
         `Ask id: ${input.response?.data.ask.id ?? "None"}`,
-        `Work item id: ${input.response?.data.workItem.id ?? "None"}`,
-        `Plan id: ${input.response?.data.plan.id ?? "None"}`,
+        `Work item id: ${input.response?.data.workItem?.id ?? "None"}`,
+        `Plan id: ${input.response?.data.plan?.id ?? "None"}`,
         `Run id: ${input.response?.data.run?.id ?? "None"}`
       ].join("\n"),
       result: input.status === "processed"
@@ -341,7 +341,7 @@ function writeIngressMissionLog(
       blockers: input.status === "failed" ? input.failureReason ?? "Review the failed ingress sidecar." : "",
       nextAction: input.status === "failed"
         ? "Review the failed ingress sidecar and source file."
-        : input.response?.data.workItem.next_action ?? "Review the created Arcadia work item.",
+        : input.response?.data.workItem?.next_action ?? input.response?.data.result.summary ?? "Review the Arcadia ask result.",
       artifactImpact: artifacts.join(", "),
       markdownPath
     })

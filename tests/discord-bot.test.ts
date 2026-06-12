@@ -350,7 +350,11 @@ describe("discord bot end-to-end fixture", () => {
     const rebusterRunId = extractBacktickedValue(rebusterReply, "Run");
     expect(rebusterReply).toContain("Project: Rebuster");
     expect(rebusterReply).toContain("Active milestone: Pinterest publishing support");
-    expect(rebusterReply).toContain("Approval gates: 3 (credentials_required, publication, send_email_or_messages)");
+    expect(rebusterReply).toContain("Approval gates: 4");
+    expect(rebusterReply).toContain("credentials_required");
+    expect(rebusterReply).toContain("destructive_filesystem_changes");
+    expect(rebusterReply).toContain("publication");
+    expect(rebusterReply).toContain("send_email_or_messages");
     expect(rebusterReply).toContain("Repo scope: /Users/pmark/Dev/MR/Rebuster/rebuster");
     expect(rebusterReply).toContain("Run detail: /arcadia run id:");
 
@@ -360,7 +364,7 @@ describe("discord bot end-to-end fixture", () => {
       return { gates, invocation };
     });
     expect(new Set(packet.gates.map((gate) => gate.gate_type))).toEqual(
-      new Set(["credentials_required", "publication", "send_email_or_messages"])
+      new Set(["credentials_required", "destructive_filesystem_changes", "publication", "send_email_or_messages"])
     );
     const prompt = readFileSync(path.join(workspace, packet.invocation.prompt_path), "utf8");
     expect(prompt).toContain("Target repository: /Users/pmark/Dev/MR/Rebuster/rebuster");
@@ -399,8 +403,8 @@ describe("discord bot end-to-end fixture", () => {
       `run:${weeklyRunId}`,
       "requires-review:transition"
     ]));
-    expect(evaluation.messages.map((message) => message.content).join("\n")).toContain("**Arcadia run completed**");
     expect(evaluation.messages.map((message) => message.content).join("\n")).toContain("**Arcadia progress update**");
+    expect(evaluation.messages.map((message) => message.content).join("\n")).toContain("**Arcadia requires review**");
   });
 });
 

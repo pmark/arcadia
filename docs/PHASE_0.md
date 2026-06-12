@@ -10,7 +10,7 @@ Phase 0 makes Arcadia real as a local-first CLI.
 - Apply the initial SQLite schema.
 - Create projects, milestones, work items, and artifact records.
 - Add manually classified inbox work.
-- View Inbox, Work Queue, Needs Mark, and Blocked queues.
+- View Inbox, Work Queue, Requires Review, and Blocked queues.
 - Create mission logs in SQLite.
 - Write mission log Markdown files under `mission_logs/YYYY/MM/`.
 - Generate `reports/status.md` from real SQLite rows.

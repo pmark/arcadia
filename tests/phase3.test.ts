@@ -164,9 +164,10 @@ describe("arcadia ask command", () => {
     });
 
     expect(result.command).toBe("ask");
-    expect(result.data.resolvedIntent.intentId).toBe("create_astro_blog");
-    expect(result.data.workItem.work_classification).toBe("codex");
-    expect(result.data.plan.steps[0].skill_name).toBe("codex_build");
+    expect(result.data.intake.resolvedIntent).toBe("InstantiateProject");
+    expect(result.data.resolvedIntent.intentId).toBe("InstantiateProject");
+    expect(result.data.workItem?.work_classification).toBe("codex");
+    expect(result.data.plan?.steps[0].skill_name).toBe("codex_build");
     expect(result.data.approvalGates.map((gate) => gate.gate_type)).toContain("external_deployment");
     expect(result.data.codexInvocations).toHaveLength(1);
 
@@ -178,12 +179,12 @@ describe("arcadia ask command", () => {
       expect(countRows(db, "ask_requests")).toBe(1);
       expect(countRows(db, "approval_gates")).toBeGreaterThan(0);
       expect(countRows(db, "codex_invocations")).toBe(1);
-      expect(listCodexInvocationsForWorkItem(db, result.data.workItem.id)).toHaveLength(1);
-      expect(listApprovalGatesForWorkItem(db, result.data.workItem.id).length).toBeGreaterThan(0);
+      expect(listCodexInvocationsForWorkItem(db, result.data.workItem?.id ?? "")).toHaveLength(1);
+      expect(listApprovalGatesForWorkItem(db, result.data.workItem?.id ?? "").length).toBeGreaterThan(0);
     });
   });
 
-  it("falls back to a Codex planning packet for unknown intent", () => {
+  it("preserves low-confidence input as Requires Review instead of invoking Codex", () => {
     const workspace = initializedWorkspace();
 
     const result = runAskCommand({
@@ -192,9 +193,10 @@ describe("arcadia ask command", () => {
     });
 
     expect(result.data.resolvedIntent.matched).toBe(false);
-    expect(result.data.resolvedIntent.intentId).toBe("codex_plan");
-    expect(result.data.plan.steps[0].skill_name).toBe("codex_planning");
-    expect(result.data.codexInvocations[0].purpose).toBe("planning");
+    expect(result.data.resolvedIntent.intentId).toBe("CaptureThought");
+    expect(result.data.workItem?.queue).toBe("needs_mark");
+    expect(result.data.plan?.steps[0].skill_name).toBe("needs_mark_decision");
+    expect(result.data.codexInvocations).toHaveLength(0);
   });
 
   it("resolves Rebuster project metadata, attaches its active milestone, and writes packet context", () => {
@@ -225,19 +227,23 @@ describe("arcadia ask command", () => {
       request: "Build Pinterest posting support for Rebuster."
     });
 
-    expect(result.data.resolvedIntent.intentId).toBe("build_social_posting_support");
+    expect(result.data.intake.resolvedIntent).toBe("CreateWork");
+    expect(result.data.resolvedIntent.intentId).toBe("CreateWork");
     expect(result.data.resolvedIntent.matched).toBe(true);
-    expect(result.data.workItem.project_id).toBe(project.project.id);
-    expect(result.data.workItem.project_name).toBe("Rebuster");
-    expect(result.data.workItem.milestone_id).toBe(project.milestone.id);
-    expect(result.data.workItem.milestone_title).toBe("Pinterest publishing support");
+    expect(result.data.workItem?.project_id).toBe(project.project.id);
+    expect(result.data.workItem?.project_name).toBe("Rebuster");
+    expect(result.data.workItem?.milestone_id).toBe(project.milestone.id);
+    expect(result.data.workItem?.milestone_title).toBe("Pinterest publishing support");
     expect(result.data.codexInvocations[0].purpose).toBe("build");
     expect(result.data.codexInvocations[0].workspace_scope).toBe("/Users/pmark/Dev/MR/Rebuster/rebuster");
     expect(result.data.ask.prompt_packet_path).toBe(result.data.codexInvocations[0].prompt_path);
     expect(result.artifacts).toContain(path.join(workspace, result.data.codexInvocations[0].prompt_path));
-    expect(new Set(result.data.approvalGates.map((gate) => gate.gate_type))).toEqual(
-      new Set(["credentials_required", "publication", "send_email_or_messages"])
-    );
+    expect(new Set(result.data.approvalGates.map((gate) => gate.gate_type))).toEqual(new Set([
+      "credentials_required",
+      "destructive_filesystem_changes",
+      "publication",
+      "send_email_or_messages"
+    ]));
 
     const prompt = readFileSync(path.join(workspace, result.data.codexInvocations[0].prompt_path), "utf8");
     expect(prompt).toContain("## Target Project Context");
@@ -257,24 +263,45 @@ describe("arcadia ask command", () => {
     expect(prompt).toContain("List validation results.");
   });
 
-  it("can run deterministic safe ask work through the existing runner", () => {
+  it("updates a project goal through high-confidence intake routing", () => {
     const workspace = initializedWorkspace();
+    const created = withDatabase(workspace, (db) =>
+      createProjectWithInitialWork(db, {
+        name: "MIDI Opener",
+        mission: "Make MIDI files easy to preview.",
+        goal: "Improve onboarding.",
+        status: "active",
+        currentMilestone: "Conversion",
+        nextAction: "Review App Store funnel.",
+        workClassification: "codex"
+      })
+    );
 
     const result = runAskCommand({
       workspace,
-      request: "Prepare a weekly Martian Rover Labs update from recent mission logs.",
-      runSafe: true
+      request: "The goal for MIDI Opener is to improve App Store conversion."
     });
 
-    expect(result.data.resolvedIntent.intentId).toBe("prepare_blog_update");
-    expect(result.data.run?.status).toBe("completed");
-    expect(result.data.run?.artifacts[0].artifact_type).toBe("weekly_update_draft");
-    expect(result.data.approvalGates.map((gate) => gate.gate_type)).toContain("publication");
-    expect(existsSync(path.join(workspace, result.data.run?.artifacts[0].path ?? ""))).toBe(true);
+    expect(result.data.intake.resolvedIntent).toBe("UpdateGoal");
+    expect(result.data.result.status).toBe("acted");
+    expect(result.data.project?.id).toBe(created.project.id);
+    expect(result.data.project?.goal).toBe("improve App Store conversion");
+    expect(result.data.workItem).toBeNull();
   });
 
-  it("runs an explicitly approved Codex planning step through a configured fake agent", () => {
+  it("runs an explicitly approved Codex build step through a configured fake agent", () => {
     const workspace = initializedWorkspace();
+    const created = withDatabase(workspace, (db) =>
+      createProjectWithInitialWork(db, {
+        name: "Rebuster",
+        mission: "Help users turn product evidence into better shipping decisions.",
+        goal: "Improve candidate review.",
+        status: "active",
+        currentMilestone: "Candidate review",
+        nextAction: "Define candidate review flow.",
+        workClassification: "codex"
+      })
+    );
     const paths = getWorkspacePaths(workspace);
     const fakeAgent = path.join(workspace, "fake-codex-agent.cjs");
     writeFileSync(
@@ -289,12 +316,12 @@ describe("arcadia ask command", () => {
           version: 1,
           profiles: [
             {
-              name: "fake_planning",
+              name: "fake_build",
               provider: "fake-agent",
               package: "local",
               command: process.execPath,
-              purpose: "planning",
-              sandbox: "read-only",
+              purpose: "build",
+              sandbox: "workspace-write",
               args: [fakeAgent]
             }
           ]
@@ -307,14 +334,18 @@ describe("arcadia ask command", () => {
 
     const asked = runAskCommand({
       workspace,
-      request: "Improve the Rebuster candidate review flow."
+      request: "Build candidate review flow for Rebuster."
     });
+    expect(asked.data.workItem?.project_id).toBe(created.project.id);
+    if (!asked.data.workItem || !asked.data.plan) {
+      throw new Error("Expected ask to create a work item and plan.");
+    }
     const run = runWorkRunCommand({
       workspace,
       workId: asked.data.workItem.id,
       plan: asked.data.plan.id,
-      allowCodexPlanning: true,
-      agentProfile: "fake_planning"
+      allowCodexBuild: true,
+      agentProfile: "fake_build"
     });
 
     expect(run.data.run.status).toBe("completed");

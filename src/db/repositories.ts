@@ -1820,7 +1820,7 @@ function buildSuggestedNextActions(input: {
 
   for (const item of input.needsMarkItems) {
     seenWorkItems.add(item.id);
-    suggestions.push(workItemSuggestion(item, "Needs Mark"));
+    suggestions.push(workItemSuggestion(item, "Requires Review"));
   }
 
   for (const item of input.blockedItems) {

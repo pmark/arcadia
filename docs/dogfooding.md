@@ -32,7 +32,9 @@ Run:
 pnpm arcadia dogfood ask "Create a work item for implementing Discord notifications."
 ```
 
-`dogfood ask` is a thin wrapper around the existing `arcadia ask` pipeline. It automatically supplies `.arcadia-workspace/` as the workspace and leaves ask resolution, work item creation, execution planning, Codex packet creation, and Requires Review handling to the existing ask implementation.
+`dogfood ask` is the preferred local workflow for Arcadia development. It is a thin wrapper around `arcadia ask`: it automatically supplies `.arcadia-workspace/` as the workspace, then routes the request through Arcadia Intake before ask creates work items, updates project state, shows status, or surfaces Requires Review packets.
+
+Use natural language. Do not manually choose skills, queues, or Codex packet types for common work.
 
 ## Difference From Discord And iCloud Ingress
 
@@ -51,7 +53,17 @@ Arcadia intentionally does not add OKRs, KPIs, scorecards, or goal analytics.
 ## Recommended Workflow
 
 1. Initialize the workspace with `pnpm arcadia dogfood init`.
-2. Issue dogfood ask commands with `pnpm arcadia dogfood ask "..."`.
+2. Issue natural-language dogfood requests with `pnpm arcadia dogfood ask "..."`.
 3. Review status, artifacts, mission logs, and Requires Review items in `.arcadia-workspace/`.
 
+Examples:
+
+```sh
+pnpm arcadia dogfood ask "Add a top-level review command."
+pnpm arcadia dogfood ask "What needs review?"
+pnpm arcadia dogfood ask "What should I focus on today?"
+```
+
 For copy-pasteable Codex prompts and everyday usage patterns, see `docs/using-arcadia-skills.md`.
+
+For Intake behavior and supported intents, see `docs/intake.md`.

@@ -75,7 +75,7 @@ export function renderRunShowSuccess(response: CommandSuccess<RunShowCommandData
     lines.push(`  ${step.status}: ${step.plan_step_title}`);
   }
 
-  lines.push("Needs Mark:");
+  lines.push("Requires Review:");
   if (response.data.needsMark.length === 0) {
     lines.push("  None");
   } else {

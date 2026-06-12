@@ -11,7 +11,7 @@ export async function requestCommand(
   const response = await cli.ask(request, { runSafe });
   await recordDiscordSubmission(discordSubmissionStatePath(workspace), {
     askId: response.data.ask.id,
-    workItemId: response.data.workItem.id,
+    workItemId: response.data.workItem?.id ?? null,
     runId: response.data.run?.id ?? null
   });
   return formatRequest(response.data);

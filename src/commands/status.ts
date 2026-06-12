@@ -81,7 +81,6 @@ export function renderStatusSuccess(response: CommandSuccess<StatusCommandData>)
     }
   }
 
-  lines.push(`Needs Mark: ${response.data.needsMarkCount}`);
   lines.push(`Requires Review: ${response.data.requiresReviewCount}`);
   lines.push(`Autonomous: ${response.data.autonomousCount}`);
   lines.push(`Codex: ${response.data.codexCount}`);

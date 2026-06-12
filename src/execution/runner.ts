@@ -422,7 +422,7 @@ function summaryForRunStatus(status: "completed" | "needs_mark" | "failed", work
   }
 
   if (status === "needs_mark") {
-    return `Paused execution for "${workItem.title}" because Mark input is required.`;
+    return `Paused execution for "${workItem.title}" because review input is required.`;
   }
 
   return `Execution failed for "${workItem.title}".`;
@@ -434,7 +434,7 @@ function nextActionForRunStatus(status: "completed" | "needs_mark" | "failed"): 
   }
 
   if (status === "needs_mark") {
-    return "Mark must review the run and provide the required input.";
+    return "Review the run and provide the required input.";
   }
 
   return "Inspect the failed run record and decide whether to retry or revise the work item.";

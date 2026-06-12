@@ -44,7 +44,7 @@ export function renderStatusReport(data: StatusReportData): string {
   lines.push("");
   lines.push("## Work By Classification");
   lines.push("");
-  lines.push("### Needs Mark");
+  lines.push("### Requires Review");
   lines.push("");
   lines.push(renderWorkItems(data.needsMarkItems));
   lines.push("");

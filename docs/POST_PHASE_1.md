@@ -25,7 +25,7 @@ Codex.
 ## Progress
 
 - [x] Added deterministic weekly review date-window validation
-- [x] Added weekly review SQLite queries for completed work, mission logs, blocked work, Needs Mark, Codex/autonomous work, artifacts, projects without open next actions, and suggested next actions
+- [x] Added weekly review SQLite queries for completed work, mission logs, blocked work, Requires Review, Codex/autonomous work, artifacts, projects without open next actions, and suggested next actions
 - [x] Added Markdown generation under `reports/weekly/YYYY-MM-DD.md`
 - [x] Added CLI support for `review weekly`
 - [x] Added JSON success and failure tests for the new command

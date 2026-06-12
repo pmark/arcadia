@@ -93,4 +93,17 @@ describe("arcadia dogfood", () => {
       }
     ]);
   });
+
+  it("uses Intake through the real dogfood ask command", () => {
+    runDogfoodInitCommand();
+
+    const result = runDogfoodAskCommand({ request: "What should I focus on today?" });
+
+    expect(result.command).toBe("ask");
+    expect(result.workspace).toBe(dogfoodWorkspacePath());
+    expect(result.data.intake.resolvedIntent).toBe("ShowStatus");
+    expect(result.data.result.status).toBe("acted");
+    expect(result.data.status?.projectCount).toBeGreaterThan(0);
+    expect(result.data.workItem).toBeNull();
+  });
 });

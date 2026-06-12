@@ -43,7 +43,7 @@ export function renderWeeklyReviewReport(data: WeeklyReviewData): string {
     "",
     renderWorkItems(data.blockedItems, { includeRawInput: true }),
     "",
-    "## Needs Mark Items",
+    "## Requires Review Items",
     "",
     renderWorkItems(data.needsMarkItems),
     "",

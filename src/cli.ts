@@ -52,7 +52,12 @@ import {
 } from "./commands/project.js";
 import { renderQueueSuccess, runQueueCommand } from "./commands/queue.js";
 import { renderReportStatusSuccess, runReportStatusCommand } from "./commands/report.js";
-import { renderReviewWeeklySuccess, runReviewWeeklyCommand } from "./commands/review.js";
+import {
+  renderReviewRequiredSuccess,
+  renderReviewWeeklySuccess,
+  runReviewRequiredCommand,
+  runReviewWeeklyCommand
+} from "./commands/review.js";
 import { renderRunListSuccess, renderRunShowSuccess, runRunListCommand, runRunShowCommand } from "./commands/run.js";
 import { renderStatusSuccess, runStatusCommand } from "./commands/status.js";
 import {
@@ -67,7 +72,7 @@ import {
   runWorkRunCommand,
   runWorkUpdateCommand
 } from "./commands/work.js";
-import { normalizeError } from "./cli/errors.js";
+import { normalizeError, validationError } from "./cli/errors.js";
 import {
   createFailure,
   type CommandSuccess,
@@ -576,7 +581,26 @@ export function buildProgram(): Command {
     runCliAction("report.status", options, () => runReportStatusCommand(options), renderReportStatusSuccess)
   );
 
-  const review = program.command("review").description("Review commands");
+  const review = program
+    .command("review")
+    .description("Review commands")
+    .allowUnknownOption(true)
+    .allowExcessArguments(true)
+    .action((options: { json?: boolean }) =>
+    runCliAction(
+      "review",
+      { workspace: workspaceFromArgv(process.argv), json: Boolean(options.json) || wantsJson(process.argv) },
+      () => {
+        const workspace = workspaceFromArgv(process.argv);
+        if (!workspace) {
+          throw validationError("Workspace path is required.", { option: "--workspace" });
+        }
+
+        return runReviewRequiredCommand({ workspace });
+      },
+      renderReviewRequiredSuccess
+    )
+  );
   addJsonOption(
     review
       .command("weekly")
@@ -696,6 +720,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "review" && second === "weekly") {
     return "review.weekly";
+  }
+
+  if (first === "review") {
+    return "review";
   }
 
   return first ?? "unknown";

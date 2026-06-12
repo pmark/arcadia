@@ -129,9 +129,19 @@ export interface CodexInvocation {
 
 export interface AskData {
   ask: AskRequest;
+  intake?: {
+    resolvedIntent: string;
+    confidence: number;
+    confidenceLabel: string;
+    proposedAction: string;
+  };
   resolvedIntent: ResolvedIntent;
-  workItem: WorkItem;
-  plan: ExecutionPlan;
+  result?: {
+    status: string;
+    summary: string;
+  };
+  workItem: WorkItem | null;
+  plan: ExecutionPlan | null;
   approvalGates: ApprovalGate[];
   codexInvocations: CodexInvocation[];
   run: ExecutionRun | null;

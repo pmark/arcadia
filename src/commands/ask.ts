@@ -13,13 +13,16 @@ import {
   createExecutionPlan,
   createWorkItemWithOptionalArtifact,
   getActiveMilestoneForProject,
+  getProjectMetadata,
   getMilestone,
   getProject,
   getProjectContext,
   getWorkItem,
+  listProjects,
   listApprovalGatesForWorkItem,
   listCodexInvocationsForWorkItem,
-  resolveProjectContextFromRequest
+  resolveProjectContextFromRequest,
+  updateProject
 } from "../db/repositories.js";
 import type {
   ApprovalGate,
@@ -27,6 +30,7 @@ import type {
   CodexInvocation,
   ExecutionPlanSummary,
   ExecutionRunSummary,
+  Project,
   ProjectContext,
   WorkItemSummary
 } from "../domain/types.js";
@@ -34,7 +38,12 @@ import { ensureBuiltInSkills } from "../execution/skills.js";
 import { executePlan } from "../execution/runner.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import type { ResolvedIntent } from "../intent/resolver.js";
-import { resolveIntent } from "../intent/resolver.js";
+import type { IntakeProjectContext, IntakeResult, IntakeWorkspaceContext } from "../intake/index.js";
+import { resolveIntake } from "../intake/index.js";
+import type { ReviewRequiredCommandData } from "./review.js";
+import { runReviewRequiredCommand } from "./review.js";
+import type { StatusCommandData } from "./status.js";
+import { runStatusCommand } from "./status.js";
 
 export interface AskOptions {
   workspace: string;
@@ -46,24 +55,200 @@ export interface AskOptions {
 
 export interface AskCommandData {
   ask: AskRequestSummary;
+  intake: IntakeResult;
   resolvedIntent: ResolvedIntent;
-  workItem: WorkItemSummary;
-  plan: ExecutionPlanSummary;
+  result: {
+    status: "acted" | "queued" | "requires_review";
+    summary: string;
+  };
+  workItem: WorkItemSummary | null;
+  plan: ExecutionPlanSummary | null;
   approvalGates: ApprovalGate[];
   codexInvocations: CodexInvocation[];
   run: ExecutionRunSummary | null;
+  project: Project | null;
+  status: StatusCommandData | null;
+  review: ReviewRequiredCommandData | null;
 }
 
 export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const registries = loadPhase3Registries(workspacePath);
   validatePhase3Registries(registries);
-  const resolved = resolveIntent(options.request, registries);
+  const intake = withDatabase(workspacePath, (db) => resolveIntake(options.request, buildIntakeContext(db)));
+  const resolved = resolvedIntentFromIntake(intake);
   let run: ExecutionRunSummary | null = null;
+
+  if (intake.action.kind === "show_status" && intake.confidenceLabel === "high") {
+    const status = runStatusCommand({ workspace: workspacePath });
+    const ask = withDatabase(workspacePath, (db) =>
+      createAskRequest(db, {
+        rawRequest: options.request,
+        resolvedIntent: resolved.intentId,
+        registryVersion: registries.intents.version,
+        outputKind: resolved.outputKind,
+        status: "planned"
+      })
+    );
+
+    return createSuccess({
+      command: "ask",
+      workspace: workspacePath,
+      data: {
+        ask,
+        intake,
+        resolvedIntent: resolved,
+        result: {
+          status: "acted",
+          summary: "Status shown."
+        },
+        workItem: null,
+        plan: null,
+        approvalGates: [],
+        codexInvocations: [],
+        run: null,
+        project: null,
+        status: status.data,
+        review: null
+      },
+      artifacts: status.artifacts
+    });
+  }
+
+  if (intake.action.kind === "show_review" && intake.confidenceLabel === "high") {
+    const review = runReviewRequiredCommand({ workspace: workspacePath });
+    const ask = withDatabase(workspacePath, (db) =>
+      createAskRequest(db, {
+        rawRequest: options.request,
+        resolvedIntent: resolved.intentId,
+        registryVersion: registries.intents.version,
+        outputKind: resolved.outputKind,
+        status: "planned"
+      })
+    );
+
+    return createSuccess({
+      command: "ask",
+      workspace: workspacePath,
+      data: {
+        ask,
+        intake,
+        resolvedIntent: resolved,
+        result: {
+          status: "acted",
+          summary: "Requires Review items shown."
+        },
+        workItem: null,
+        plan: null,
+        approvalGates: [],
+        codexInvocations: [],
+        run: null,
+        project: null,
+        status: null,
+        review: review.data
+      }
+    });
+  }
+
+  if (
+    intake.confidenceLabel === "high" &&
+    intake.action.kind === "update_project_goal" &&
+    intake.action.projectId &&
+    intake.action.goal
+  ) {
+    const projectId = intake.action.projectId;
+    const goal = intake.action.goal;
+    const { ask, project } = withDatabase(workspacePath, (db) => {
+      const project = updateProject(db, projectId, { goal });
+      if (!project) {
+        throw projectNotFound(projectId);
+      }
+
+      const ask = createAskRequest(db, {
+        rawRequest: options.request,
+        resolvedIntent: resolved.intentId,
+        registryVersion: registries.intents.version,
+        outputKind: resolved.outputKind,
+        status: "planned"
+      });
+      return { ask, project };
+    });
+
+    return createSuccess({
+      command: "ask",
+      workspace: workspacePath,
+      data: {
+        ask,
+        intake,
+        resolvedIntent: resolved,
+        result: {
+          status: "acted",
+          summary: `Updated goal for ${project.name}.`
+        },
+        workItem: null,
+        plan: null,
+        approvalGates: [],
+        codexInvocations: [],
+        run: null,
+        project,
+        status: null,
+        review: null
+      }
+    });
+  }
+
+  if (
+    intake.confidenceLabel === "high" &&
+    intake.action.kind === "update_project_status" &&
+    intake.action.projectId
+  ) {
+    const projectId = intake.action.projectId;
+    const status = intake.action.status;
+    const { ask, project } = withDatabase(workspacePath, (db) => {
+      const project = updateProject(db, projectId, { status });
+      if (!project) {
+        throw projectNotFound(projectId);
+      }
+
+      const ask = createAskRequest(db, {
+        rawRequest: options.request,
+        resolvedIntent: resolved.intentId,
+        registryVersion: registries.intents.version,
+        outputKind: resolved.outputKind,
+        status: "planned"
+      });
+      return { ask, project };
+    });
+
+    return createSuccess({
+      command: "ask",
+      workspace: workspacePath,
+      data: {
+        ask,
+        intake,
+        resolvedIntent: resolved,
+        result: {
+          status: "acted",
+          summary: `Updated ${project.name} status to ${project.status}.`
+        },
+        workItem: null,
+        plan: null,
+        approvalGates: [],
+        codexInvocations: [],
+        run: null,
+        project,
+        status: null,
+        review: null
+      }
+    });
+  }
 
   const initial = withDatabase(workspacePath, (db) => {
     ensureBuiltInSkills(db);
-    const context = resolveAskContext(db, options);
+    const context = resolveAskContext(db, {
+      ...options,
+      project: projectIdFromIntake(intake) ?? options.project
+    });
     const created = createWorkItemWithOptionalArtifact(db, {
       projectId: context.projectId,
       milestoneId: context.milestoneId,
@@ -167,12 +352,20 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     workspace: workspacePath,
     data: {
       ask: data.ask,
+      intake,
       resolvedIntent: resolved,
+      result: {
+        status: resolved.workClassification === "needs_mark" ? "requires_review" : "queued",
+        summary: resolved.workClassification === "needs_mark" ? "Requires Review item created." : "Work item created."
+      },
       workItem: data.workItem,
       plan: data.plan,
       approvalGates: data.approvalGates,
       codexInvocations: data.codexInvocations,
-      run
+      run,
+      project: null,
+      status: null,
+      review: null
     },
     artifacts: [
       ...(codexPacket
@@ -190,17 +383,255 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
 }
 
 export function renderAskSuccess(response: CommandSuccess<AskCommandData>): string[] {
-  return [
+  const lines = [
     `Ask: ${response.data.ask.id}`,
-    `Intent: ${response.data.resolvedIntent.intentId}${response.data.resolvedIntent.matched ? "" : " (fallback)"}`,
-    `Work item: ${response.data.workItem.id}`,
-    `Plan: ${response.data.plan.id}`,
-    `Queue: ${response.data.workItem.queue}`,
-    `Work classification: ${response.data.workItem.work_classification}`,
+    `Interpreted as: ${response.data.intake.resolvedIntent}`,
+    `Confidence: ${response.data.intake.confidenceLabel} (${response.data.intake.confidence.toFixed(2)})`,
+    `Project: ${response.data.intake.project?.name ?? response.data.workItem?.project_name ?? response.data.project?.name ?? "None"}`,
+    `Goal: ${response.data.project?.goal ?? "None"}`,
+    `Action: ${response.data.intake.proposedAction}`,
+    `Result: ${response.data.result.summary}`
+  ];
+
+  if (response.data.workItem) {
+    lines.push(`Work item: ${response.data.workItem.id}`);
+    lines.push(`Plan: ${response.data.plan?.id ?? "None"}`);
+    lines.push(`Queue: ${response.data.workItem.queue === "needs_mark" ? "requires_review" : response.data.workItem.queue}`);
+    lines.push(`Work classification: ${labelWorkClassification(response.data.workItem.work_classification)}`);
+  }
+
+  lines.push(
     `Approval gates: ${response.data.approvalGates.length}`,
     `Codex packets: ${response.data.codexInvocations.length}`,
     `Run: ${response.data.run?.id ?? "Not run"}`
-  ];
+  );
+
+  return lines;
+}
+
+export function buildIntakeContext(db: Parameters<typeof listProjects>[0]): IntakeWorkspaceContext {
+  const projects: IntakeProjectContext[] = listProjects(db).map((project) => {
+    const metadata = getProjectMetadata(db, project.id);
+    const activeMilestone = getActiveMilestoneForProject(db, project.id);
+    return {
+      id: project.id,
+      name: project.name,
+      goal: project.goal,
+      aliases: decodeStringArray(metadata?.aliases),
+      activeMilestoneId: activeMilestone?.id ?? null,
+      activeMilestoneTitle: activeMilestone?.title ?? null
+    };
+  });
+
+  return { projects };
+}
+
+function resolvedIntentFromIntake(intake: IntakeResult): ResolvedIntent {
+  if (intake.confidenceLabel !== "high" || intake.resolvedIntent === "CaptureThought") {
+    return {
+      intentId: intake.resolvedIntent,
+      matched: false,
+      title: `Requires Review: ${titleFromRequest(intake.rawInput)}`,
+      outputKind: "requires_review",
+      queue: "needs_mark",
+      workClassification: "needs_mark",
+      nextAction: reviewNextAction(intake),
+      expectedArtifact: "Clarified Arcadia request",
+      skillSequence: [
+        {
+          skillName: "needs_mark_decision",
+          title: "Review intake interpretation",
+          command: null,
+          executorType: "mark",
+          safeToRun: false,
+          needsMark: reviewNextAction(intake)
+        }
+      ],
+      approvalGates: [],
+      templates: [],
+      slots: intake.extractedFields,
+      codexPurpose: null
+    };
+  }
+
+  if (intake.action.kind === "instantiate_project") {
+    const templateName = intake.action.template?.name ?? intake.extractedFields.template ?? "templated project";
+    const projectName = intake.action.projectName ?? "Untitled project";
+    return {
+      intentId: intake.resolvedIntent,
+      matched: true,
+      title: `Create ${templateName}: ${projectName}`,
+      outputKind: "codex_build_packet",
+      queue: "work_queue",
+      workClassification: intake.action.template?.workClassification ?? "codex",
+      nextAction: `Review the ${templateName} build packet and approve Codex build if appropriate.`,
+      expectedArtifact: intake.action.template?.expectedArtifact ?? "Templated project Codex build packet",
+      skillSequence: [
+        {
+          skillName: "codex_build",
+          title: `Prepare Codex build packet for ${templateName}`,
+          command: null,
+          executorType: "codex_build",
+          safeToRun: false,
+          needsMark: "Codex build requires explicit review before repository changes."
+        }
+      ],
+      approvalGates: approvalGatesForIntake(intake).map((gateType) => ({
+        gateType,
+        reason: reasonForGate(gateType)
+      })),
+      templates: [],
+      slots: intake.extractedFields,
+      codexPurpose: "build"
+    };
+  }
+
+  if (intake.action.kind === "create_work") {
+    return {
+      intentId: intake.resolvedIntent,
+      matched: true,
+      title: intake.action.title,
+      outputKind: "codex_build_packet",
+      queue: "work_queue",
+      workClassification: intake.action.workClassification,
+      nextAction: `Review the Codex build packet for: ${intake.action.title}.`,
+      expectedArtifact: "Codex build packet",
+      skillSequence: [
+        {
+          skillName: "codex_build",
+          title: "Prepare Codex build packet",
+          command: null,
+          executorType: "codex_build",
+          safeToRun: false,
+          needsMark: "Codex build requires explicit review before repository changes."
+        }
+      ],
+      approvalGates: approvalGatesForIntake(intake).map((gateType) => ({
+        gateType,
+        reason: reasonForGate(gateType)
+      })),
+      templates: [],
+      slots: intake.extractedFields,
+      codexPurpose: "build"
+    };
+  }
+
+  return {
+    intentId: intake.resolvedIntent,
+    matched: true,
+    title: titleFromRequest(intake.rawInput),
+    outputKind: outputKindForIntake(intake),
+    queue: "work_queue",
+    workClassification: "autonomous",
+    nextAction: intake.proposedAction,
+    expectedArtifact: null,
+    skillSequence: [],
+    approvalGates: [],
+    templates: [],
+    slots: intake.extractedFields,
+    codexPurpose: null
+  };
+}
+
+function projectIdFromIntake(intake: IntakeResult): string | null {
+  switch (intake.action.kind) {
+    case "create_work":
+    case "update_project_goal":
+    case "update_project_status":
+      return intake.action.projectId;
+    default:
+      return null;
+  }
+}
+
+function outputKindForIntake(intake: IntakeResult): string {
+  switch (intake.resolvedIntent) {
+    case "ShowStatus":
+      return "status_summary";
+    case "ReviewRequired":
+      return "review_packets";
+    case "UpdateGoal":
+    case "PauseProject":
+    case "ResumeProject":
+      return "project_update";
+    default:
+      return "intake_result";
+  }
+}
+
+function approvalGatesForIntake(intake: IntakeResult): ResolvedIntent["approvalGates"][number]["gateType"][] {
+  const normalized = intake.rawInput.toLowerCase();
+  const gates = new Set<ResolvedIntent["approvalGates"][number]["gateType"]>();
+
+  if (intake.action.kind === "instantiate_project") {
+    gates.add("destructive_filesystem_changes");
+    if (/astro|blog|site|next|website|web app|serverless|api/.test(normalized)) {
+      gates.add("external_deployment");
+    }
+  }
+
+  if (intake.action.kind === "create_work") {
+    gates.add("destructive_filesystem_changes");
+    if (/pinterest|social|post|publish/.test(normalized)) {
+      gates.add("credentials_required");
+      gates.add("publication");
+      gates.add("send_email_or_messages");
+    }
+  }
+
+  return [...gates];
+}
+
+function reasonForGate(gateType: ResolvedIntent["approvalGates"][number]["gateType"]): string {
+  switch (gateType) {
+    case "credentials_required":
+      return "Credentials are required before this work can access external services.";
+    case "external_deployment":
+      return "External deployment requires explicit approval.";
+    case "publication":
+      return "Publication requires explicit approval.";
+    case "destructive_filesystem_changes":
+      return "Repository or filesystem changes require explicit review.";
+    case "production_data_access":
+      return "Production data access requires explicit approval.";
+    case "financial_action":
+      return "Financial actions require explicit approval.";
+    case "merge_to_main":
+      return "Merging to main requires explicit approval.";
+    case "send_email_or_messages":
+      return "Sending email or messages requires explicit approval.";
+  }
+}
+
+function reviewNextAction(intake: IntakeResult): string {
+  if (intake.missingFields.length > 0) {
+    return `Clarify missing intake fields: ${intake.missingFields.join(", ")}.`;
+  }
+
+  return "Clarify the desired Arcadia action before execution.";
+}
+
+function titleFromRequest(request: string): string {
+  return request.trim().split(/\r?\n/)[0]?.trim().slice(0, 120) || "Natural language request";
+}
+
+function decodeStringArray(raw: string | null | undefined): string[] {
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === "string").map((value) => value.trim()).filter(Boolean)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function labelWorkClassification(value: string): string {
+  return value === "needs_mark" ? "Requires Review" : value;
 }
 
 interface ResolvedAskContext {
