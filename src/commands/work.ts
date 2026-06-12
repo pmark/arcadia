@@ -1,4 +1,5 @@
 import path from "node:path";
+import { createCodexPacket, selectAgentProfile } from "../codex/packets.js";
 import { executionPlanNotFound, validationError, workItemNotFound } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
@@ -6,7 +7,11 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import {
   completeWorkItem,
+  createArtifactRecord,
+  createCodexInvocation,
   createExecutionPlan,
+  getCodexInvocationForPlan,
+  getProjectContext,
   getWorkItem,
   listWorkItems,
   updateWorkItem
@@ -18,7 +23,9 @@ import {
 import type { ExecutionPlanSummary, ExecutionRunSummary, WorkItemSummary } from "../domain/types.js";
 import { ensureBuiltInSkills, planStepsForWorkItem } from "../execution/skills.js";
 import { executePlan, resolvePlanForRun } from "../execution/runner.js";
+import type { Phase3Registries } from "../intent/registries.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
+import type { ResolvedIntent } from "../intent/resolver.js";
 
 export interface WorkListCommandData {
   workItems: WorkItemSummary[];
@@ -167,6 +174,13 @@ export function runWorkRunCommand(options: {
       return { missingPlan: true as const };
     }
 
+    if (registries) {
+      ensureCodexPacketsForPlan(db, workspacePath, workItem, plan, registries, {
+        allowCodexPlanning: options.allowCodexPlanning,
+        allowCodexBuild: options.allowCodexBuild
+      });
+    }
+
     return executePlan(db, workspacePath, plan, {
       allowCodexPlanning: options.allowCodexPlanning,
       allowCodexBuild: options.allowCodexBuild,
@@ -269,6 +283,97 @@ function updatedFields(options: WorkUpdateOptions): string[] {
   }
 
   return fields;
+}
+
+function ensureCodexPacketsForPlan(
+  db: Parameters<typeof getWorkItem>[0],
+  workspacePath: string,
+  workItem: WorkItemSummary,
+  plan: ExecutionPlanSummary,
+  registries: Phase3Registries,
+  permissions: { allowCodexPlanning?: boolean; allowCodexBuild?: boolean }
+): void {
+  for (const step of plan.steps) {
+    const purpose = step.executor_type === "codex_build"
+      ? "build"
+      : step.executor_type === "codex_planning"
+        ? "planning"
+        : null;
+
+    if (!purpose) {
+      continue;
+    }
+
+    const allowed = purpose === "build" ? permissions.allowCodexBuild : permissions.allowCodexPlanning;
+    const existing = getCodexInvocationForPlan(db, { workItemId: workItem.id, planId: plan.id, purpose });
+    if (!allowed || existing) {
+      continue;
+    }
+
+    const agentProfile = selectAgentProfile(registries.codingAgents.profiles, purpose);
+    const packet = createCodexPacket({
+      workspace: workspacePath,
+      request: workItem.raw_input,
+      resolved: resolvedIntentForWorkPlan(workItem, plan, purpose),
+      workItem,
+      planId: plan.id,
+      projectContext: workItem.project_id ? getProjectContext(db, workItem.project_id) : null,
+      agentProfile
+    });
+
+    createCodexInvocation(db, {
+      id: packet.invocationId,
+      purpose: packet.purpose,
+      agentProfile: packet.agentProfile.name,
+      workspaceScope: packet.workspaceScope,
+      command: packet.command,
+      promptPath: packet.relativePromptPath,
+      jsonlOutputPath: packet.relativeJsonlOutputPath,
+      finalMessagePath: packet.relativeFinalMessagePath,
+      status: "packet_created",
+      workItemId: workItem.id,
+      planId: plan.id,
+      planStepId: step.id
+    });
+
+    createArtifactRecord(db, {
+      projectId: workItem.project_id,
+      workItemId: workItem.id,
+      title: `Codex ${packet.purpose} packet: ${workItem.title}`,
+      artifactType: "codex_prompt_packet",
+      status: "drafted",
+      path: packet.relativePromptPath
+    });
+  }
+}
+
+function resolvedIntentForWorkPlan(
+  workItem: WorkItemSummary,
+  plan: ExecutionPlanSummary,
+  purpose: "planning" | "build"
+): ResolvedIntent {
+  return {
+    intentId: purpose === "build" ? "codex_build" : "codex_plan",
+    matched: false,
+    title: workItem.title,
+    outputKind: purpose === "build" ? "codex_build_packet" : "codex_planning_packet",
+    queue: workItem.queue,
+    workClassification: workItem.work_classification,
+    nextAction: workItem.next_action,
+    expectedArtifact: workItem.expected_artifact,
+    skillSequence: plan.steps.map((step) => ({
+      skillName: step.skill_name,
+      title: step.title,
+      command: step.command,
+      executorType: step.executor_type,
+      safeToRun: step.safe_to_run === 1,
+      needsMark: step.needs_mark
+    })),
+    approvalGates: [],
+    templates: [],
+    slots: {},
+    codexPurpose: purpose
+  };
 }
 
 function renderWorkItem(item: WorkItemSummary): string[] {
