@@ -48,13 +48,16 @@ describe("ingress process command", () => {
     const sidecar = JSON.parse(readFileSync(sidecarPath, "utf8"));
     expect(sidecar.status).toBe("processed");
     expect(sidecar.response.data.ask.id).toMatch(/^ask_/);
-    expect(sidecar.response.data.workItem.id).toMatch(/^work_/);
-    expect(sidecar.response.data.plan.id).toMatch(/^plan_/);
+    expect(sidecar.response.data.result.status).toBe("requires_review");
+    expect(sidecar.response.data.reviewItemId).toMatch(/^review_/);
+    expect(sidecar.response.data.workItem).toBeNull();
+    expect(sidecar.response.data.plan).toBeNull();
 
     withDatabase(workspace, (db) => {
       expect(countRows(db, "ask_requests")).toBe(1);
-      expect(countRows(db, "work_items")).toBe(1);
-      expect(countRows(db, "execution_plans")).toBe(1);
+      expect(countRows(db, "work_items")).toBe(0);
+      expect(countRows(db, "execution_plans")).toBe(0);
+      expect(countRows(db, "review_items")).toBe(1);
       const logs = listRecentMissionLogs(db, 5);
       expect(logs.some((log) => log.work_performed.includes("Ingested local request file"))).toBe(true);
       expect(logs.some((log) => log.work_performed.includes("20260610-075552.txt"))).toBe(true);

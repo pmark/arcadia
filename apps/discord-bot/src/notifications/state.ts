@@ -4,8 +4,11 @@ import path from "node:path";
 export interface NotificationState {
   initializedAt: string;
   lastRequiresReviewCount: number;
+  notifiedReviewItemIds: string[];
   notifiedRunIds: string[];
   notifiedMilestoneIds: string[];
+  notifiedBlockedWorkItemIds: string[];
+  notifiedArtifactIds: string[];
   codexTaskStatuses: Record<string, string>;
   notifiedCodexTaskEvents: string[];
 }
@@ -51,8 +54,11 @@ function normalizeNotificationState(raw: unknown): NotificationState {
   return {
     initializedAt: typeof record.initializedAt === "string" ? record.initializedAt : new Date().toISOString(),
     lastRequiresReviewCount: typeof record.lastRequiresReviewCount === "number" ? record.lastRequiresReviewCount : 0,
+    notifiedReviewItemIds: stringArray(record.notifiedReviewItemIds),
     notifiedRunIds: stringArray(record.notifiedRunIds),
     notifiedMilestoneIds: stringArray(record.notifiedMilestoneIds),
+    notifiedBlockedWorkItemIds: stringArray(record.notifiedBlockedWorkItemIds),
+    notifiedArtifactIds: stringArray(record.notifiedArtifactIds),
     codexTaskStatuses: record.codexTaskStatuses && typeof record.codexTaskStatuses === "object"
       ? Object.fromEntries(
           Object.entries(record.codexTaskStatuses).filter(
@@ -68,8 +74,11 @@ function emptyNotificationState(now = new Date().toISOString()): NotificationSta
   return {
     initializedAt: now,
     lastRequiresReviewCount: 0,
+    notifiedReviewItemIds: [],
     notifiedRunIds: [],
     notifiedMilestoneIds: [],
+    notifiedBlockedWorkItemIds: [],
+    notifiedArtifactIds: [],
     codexTaskStatuses: {},
     notifiedCodexTaskEvents: []
   };

@@ -27,6 +27,7 @@ import {
   listCodexInvocationsForWorkItem,
   upsertProjectMetadata
 } from "../src/db/repositories.js";
+import { runReviewApproveCommand } from "../src/commands/review.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const tempDirs: string[] = [];
@@ -346,17 +347,13 @@ describe("discord bot end-to-end fixture", () => {
       runSafe: true
     });
 
-    const rebusterWorkId = extractBacktickedValue(rebusterReply, "Work item");
-    const rebusterRunId = extractBacktickedValue(rebusterReply, "Run");
-    expect(rebusterReply).toContain("Project: Rebuster");
-    expect(rebusterReply).toContain("Active milestone: Pinterest publishing support");
-    expect(rebusterReply).toContain("Approval gates: 4");
-    expect(rebusterReply).toContain("credentials_required");
-    expect(rebusterReply).toContain("destructive_filesystem_changes");
-    expect(rebusterReply).toContain("publication");
-    expect(rebusterReply).toContain("send_email_or_messages");
-    expect(rebusterReply).toContain("Repo scope: /Users/pmark/Dev/MR/Rebuster/rebuster");
-    expect(rebusterReply).toContain("Run detail: /arcadia run id:");
+    const rebusterReviewId = extractBacktickedValue(rebusterReply, "Requires Review");
+    expect(rebusterReply).toContain("Result: Requires Review item created.");
+    expect(rebusterReply).toContain("Decision: Pinterest posting support for Rebuster.");
+
+    const approved = runReviewApproveCommand({ workspace, id: rebusterReviewId });
+    const rebusterWorkId = approved.data.approval?.workItem?.id ?? "";
+    expect(rebusterWorkId).toMatch(/^work_/);
 
     const packet = withDatabase(workspace, (db) => {
       const gates = listApprovalGatesForWorkItem(db, rebusterWorkId);
@@ -377,34 +374,36 @@ describe("discord bot end-to-end fixture", () => {
       text: "Prepare a weekly Martian Rover Labs update from recent mission logs.",
       runSafe: true
     });
-    const weeklyRunId = extractBacktickedValue(weeklyReply, "Run");
-    expect(weeklyReply).toContain("Run detail: /arcadia run id:");
+    const weeklyReviewId = extractBacktickedValue(weeklyReply, "Requires Review");
+    expect(weeklyReply).toContain("Result: Requires Review item created.");
 
     const submissions = await loadDiscordSubmissionState(discordSubmissionStatePath(workspace));
-    expect(submissions.submittedRunIds).toEqual(expect.arrayContaining([rebusterRunId, weeklyRunId]));
+    expect(submissions.submittedRunIds).toEqual([]);
 
-    const [status, runs] = await Promise.all([cli.status(), cli.runs(10)]);
+    const [status, review, runs] = await Promise.all([cli.status(), cli.review(), cli.runs(10)]);
     const evaluation = evaluateNotifications({
       requiresReviewCount: status.data.requiresReviewCount,
+      reviewItems: review.data.items,
+      blockedWorkItems: [],
       runs: runs.data.runs,
       completedMilestones: [],
       codexTasks: []
     }, {
       initializedAt: "2026-06-10T12:00:00.000Z",
       lastRequiresReviewCount: 0,
+      notifiedReviewItemIds: [],
       notifiedRunIds: [],
       notifiedMilestoneIds: [],
+      notifiedBlockedWorkItemIds: [],
+      notifiedArtifactIds: [],
       codexTaskStatuses: {},
       notifiedCodexTaskEvents: []
     }, "2026-06-10T12:05:00.000Z", submissions);
 
     expect(evaluation.messages.map((message) => message.key)).toEqual(expect.arrayContaining([
-      `run:${rebusterRunId}`,
-      `run:${weeklyRunId}`,
-      "requires-review:transition"
+      `requires-review:${weeklyReviewId}`
     ]));
-    expect(evaluation.messages.map((message) => message.content).join("\n")).toContain("**Arcadia progress update**");
-    expect(evaluation.messages.map((message) => message.content).join("\n")).toContain("**Arcadia requires review**");
+    expect(evaluation.messages.map((message) => message.content).join("\n")).toContain("Requires Review:");
   });
 });
 
@@ -538,10 +537,12 @@ describe("discord bot notifications", () => {
     const first = evaluateNotifications(snapshot, previous, "2026-06-10T12:05:00.000Z", submissions);
     const second = evaluateNotifications(snapshot, first.nextState, "2026-06-10T12:06:00.000Z", submissions);
 
-    expect(first.messages).toHaveLength(1);
+    expect(first.messages).toHaveLength(2);
     expect(first.messages[0].key).toBe("run:run_1");
     expect(first.messages[0].content).toContain("**Arcadia run completed**");
     expect(first.messages[0].content).toContain("Run detail: /arcadia run id:run_1");
+    expect(first.messages[1].key).toBe("artifact:art_1");
+    expect(first.messages[1].content).toContain("Artifact produced: Static Images");
     expect(first.nextState.notifiedRunIds).toEqual(["run_1"]);
     expect(second.messages).toEqual([]);
   });
@@ -750,8 +751,11 @@ function emptyNotificationStateForTest(): NotificationState {
   return {
     initializedAt: "2026-06-10T12:00:00.000Z",
     lastRequiresReviewCount: 0,
+    notifiedReviewItemIds: [],
     notifiedRunIds: [],
     notifiedMilestoneIds: [],
+    notifiedBlockedWorkItemIds: [],
+    notifiedArtifactIds: [],
     codexTaskStatuses: {},
     notifiedCodexTaskEvents: []
   };

@@ -176,6 +176,31 @@ export interface AskRequest {
   updated_at: string;
 }
 
+export type ReviewItemStatus = "open" | "approved" | "rejected" | "deferred";
+
+export interface ReviewItem {
+  id: string;
+  ask_request_id: string | null;
+  work_item_id: string | null;
+  plan_id: string | null;
+  project_id: string | null;
+  status: ReviewItemStatus;
+  decision_needed: string;
+  recommendation: string | null;
+  source_input: string;
+  proposed_action: string;
+  resolved_intent: string;
+  confidence_label: string;
+  confidence: number;
+  missing_fields: string;
+  context_json: string;
+  created_at: string;
+  updated_at: string;
+  decided_at: string | null;
+  decision_note: string | null;
+  resulting_ask_request_id: string | null;
+}
+
 export interface ApprovalGate {
   id: string;
   gate_type: ApprovalGateType;
@@ -276,6 +301,14 @@ export interface ArtifactSummary extends Artifact {
 export interface AskRequestSummary extends AskRequest {
   work_item_title: string | null;
   plan_summary: string | null;
+}
+
+export interface ReviewItemSummary extends ReviewItem {
+  project_name: string | null;
+  project_goal: string | null;
+  work_item_title: string | null;
+  plan_summary: string | null;
+  resulting_ask_work_item_title: string | null;
 }
 
 export interface QueueGroups {
@@ -429,6 +462,22 @@ export interface CreateAskRequestInput {
   planId?: string | null;
   promptPacketPath?: string | null;
   status: AskRequestStatus;
+}
+
+export interface CreateReviewItemInput {
+  askRequestId?: string | null;
+  workItemId?: string | null;
+  planId?: string | null;
+  projectId?: string | null;
+  decisionNeeded: string;
+  recommendation?: string | null;
+  sourceInput: string;
+  proposedAction: string;
+  resolvedIntent: string;
+  confidenceLabel: string;
+  confidence: number;
+  missingFields?: string[];
+  context?: Record<string, unknown>;
 }
 
 export interface CreateApprovalGateInput {

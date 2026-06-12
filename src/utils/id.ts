@@ -13,6 +13,7 @@ const PREFIXES = {
   executionRunStep: "rstep",
   runArtifact: "rart",
   askRequest: "ask",
+  reviewItem: "review",
   approvalGate: "gate",
   codexInvocation: "codex",
   codexTask: "ctask"

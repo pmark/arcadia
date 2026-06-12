@@ -54,8 +54,14 @@ import { renderQueueSuccess, runQueueCommand } from "./commands/queue.js";
 import { renderReportStatusSuccess, runReportStatusCommand } from "./commands/report.js";
 import {
   renderReviewRequiredSuccess,
+  renderReviewDecisionSuccess,
+  renderReviewShowSuccess,
   renderReviewWeeklySuccess,
+  runReviewApproveCommand,
+  runReviewDeferCommand,
+  runReviewRejectCommand,
   runReviewRequiredCommand,
+  runReviewShowCommand,
   runReviewWeeklyCommand
 } from "./commands/review.js";
 import { renderRunListSuccess, renderRunShowSuccess, runRunListCommand, runRunShowCommand } from "./commands/run.js";
@@ -603,6 +609,42 @@ export function buildProgram(): Command {
   );
   addJsonOption(
     review
+      .command("show")
+      .description("Show detailed Requires Review context")
+      .argument("<id>", "Requires Review item id")
+      .requiredOption("--workspace <path>", "Workspace path")
+  ).action((id: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction("review.show", options, () => runReviewShowCommand({ ...options, id }), renderReviewShowSuccess)
+  );
+  addJsonOption(
+    review
+      .command("approve")
+      .description("Approve a Requires Review item and continue the intended Arcadia workflow")
+      .argument("<id>", "Requires Review item id")
+      .requiredOption("--workspace <path>", "Workspace path")
+  ).action((id: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction("review.approve", options, () => runReviewApproveCommand({ ...options, id }), renderReviewDecisionSuccess)
+  );
+  addJsonOption(
+    review
+      .command("reject")
+      .description("Reject a Requires Review item without executing it")
+      .argument("<id>", "Requires Review item id")
+      .requiredOption("--workspace <path>", "Workspace path")
+  ).action((id: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction("review.reject", options, () => runReviewRejectCommand({ ...options, id }), renderReviewDecisionSuccess)
+  );
+  addJsonOption(
+    review
+      .command("defer")
+      .description("Keep a Requires Review item open for future review")
+      .argument("<id>", "Requires Review item id")
+      .requiredOption("--workspace <path>", "Workspace path")
+  ).action((id: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction("review.defer", options, () => runReviewDeferCommand({ ...options, id }), renderReviewDecisionSuccess)
+  );
+  addJsonOption(
+    review
       .command("weekly")
       .description("Write a deterministic weekly review report")
       .requiredOption("--workspace <path>", "Workspace path")
@@ -718,8 +760,8 @@ function commandNameFromArgv(argv: string[]): string {
     return "report.status";
   }
 
-  if (first === "review" && second === "weekly") {
-    return "review.weekly";
+  if (first === "review" && ["show", "approve", "reject", "defer", "weekly"].includes(second ?? "")) {
+    return `review.${second}`;
   }
 
   if (first === "review") {

@@ -11,6 +11,7 @@ import {
   createAskRequest,
   createCodexInvocation,
   createExecutionPlan,
+  createReviewItem,
   createWorkItemWithOptionalArtifact,
   getActiveMilestoneForProject,
   getProjectMetadata,
@@ -51,6 +52,7 @@ export interface AskOptions {
   project?: string;
   milestone?: string;
   runSafe?: boolean;
+  approvedReviewItemId?: string;
 }
 
 export interface AskCommandData {
@@ -69,6 +71,7 @@ export interface AskCommandData {
   project: Project | null;
   status: StatusCommandData | null;
   review: ReviewRequiredCommandData | null;
+  reviewItemId: string | null;
 }
 
 export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandData> {
@@ -109,7 +112,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         run: null,
         project: null,
         status: status.data,
-        review: null
+        review: null,
+        reviewItemId: null
       },
       artifacts: status.artifacts
     });
@@ -145,7 +149,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         run: null,
         project: null,
         status: null,
-        review: review.data
+        review: review.data,
+        reviewItemId: null
       }
     });
   }
@@ -192,7 +197,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         run: null,
         project,
         status: null,
-        review: null
+        review: null,
+        reviewItemId: null
       }
     });
   }
@@ -238,7 +244,63 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         run: null,
         project,
         status: null,
-        review: null
+        review: null,
+        reviewItemId: null
+      }
+    });
+  }
+
+  if (intake.reviewRequired && !options.approvedReviewItemId) {
+    const { ask, reviewItem } = withDatabase(workspacePath, (db) => {
+      const ask = createAskRequest(db, {
+        rawRequest: options.request,
+        resolvedIntent: resolved.intentId,
+        registryVersion: registries.intents.version,
+        outputKind: "requires_review",
+        status: "needs_mark"
+      });
+      const reviewItem = createReviewItem(db, {
+        askRequestId: ask.id,
+        projectId: projectIdFromIntake(intake) ?? intake.project?.id ?? null,
+        decisionNeeded: decisionNeededForIntake(intake),
+        recommendation: recommendationForIntake(intake),
+        sourceInput: intake.rawInput,
+        proposedAction: intake.proposedAction,
+        resolvedIntent: intake.resolvedIntent,
+        confidenceLabel: intake.confidenceLabel,
+        confidence: intake.confidence,
+        missingFields: intake.missingFields,
+        context: {
+          extractedFields: intake.extractedFields,
+          explanation: intake.explanation,
+          action: intake.action,
+          project: intake.project,
+          template: intake.template
+        }
+      });
+      return { ask, reviewItem };
+    });
+
+    return createSuccess({
+      command: "ask",
+      workspace: workspacePath,
+      data: {
+        ask,
+        intake,
+        resolvedIntent: resolved,
+        result: {
+          status: "requires_review",
+          summary: "Requires Review item created."
+        },
+        workItem: null,
+        plan: null,
+        approvalGates: [],
+        codexInvocations: [],
+        run: null,
+        project: null,
+        status: null,
+        review: null,
+        reviewItemId: reviewItem.id
       }
     });
   }
@@ -365,7 +427,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       run,
       project: null,
       status: null,
-      review: null
+      review: null,
+      reviewItemId: null
     },
     artifacts: [
       ...(codexPacket
@@ -398,6 +461,10 @@ export function renderAskSuccess(response: CommandSuccess<AskCommandData>): stri
     lines.push(`Plan: ${response.data.plan?.id ?? "None"}`);
     lines.push(`Queue: ${response.data.workItem.queue === "needs_mark" ? "requires_review" : response.data.workItem.queue}`);
     lines.push(`Work classification: ${labelWorkClassification(response.data.workItem.work_classification)}`);
+  }
+
+  if (response.data.reviewItemId) {
+    lines.push(`Requires Review: ${response.data.reviewItemId}`);
   }
 
   lines.push(
@@ -531,6 +598,34 @@ function resolvedIntentFromIntake(intake: IntakeResult): ResolvedIntent {
     slots: intake.extractedFields,
     codexPurpose: null
   };
+}
+
+function decisionNeededForIntake(intake: IntakeResult): string {
+  if (intake.missingFields.length > 0) {
+    return `Confirm missing fields: ${intake.missingFields.join(", ")}.`;
+  }
+
+  if (!intake.safeToExecute) {
+    return `Approve or reject this proposed Arcadia action: ${intake.proposedAction}`;
+  }
+
+  return reviewNextAction(intake);
+}
+
+function recommendationForIntake(intake: IntakeResult): string {
+  if (intake.confidenceLabel === "low") {
+    return "Defer or clarify before creating work.";
+  }
+
+  if (intake.missingFields.length > 0) {
+    return "Provide the missing fields, then approve only if the proposed action is correct.";
+  }
+
+  if (!intake.safeToExecute) {
+    return "Approve only if the project, goal, and action match your intent.";
+  }
+
+  return "Review the proposed action before execution.";
 }
 
 function projectIdFromIntake(intake: IntakeResult): string | null {

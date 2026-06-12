@@ -1,6 +1,6 @@
 import type { Client } from "discord.js";
 import type { ArcadiaCli } from "../arcadia/cli.js";
-import type { CodexTask, ExecutionRun, Milestone } from "../arcadia/types.js";
+import type { CodexTask, ExecutionRun, Milestone, ReviewItem, WorkItem } from "../arcadia/types.js";
 import type { BotConfig } from "../config.js";
 import { formatCodexTaskNotification } from "../formatters/codexFormatter.js";
 import { formatMilestoneCompletedNotification } from "../formatters/milestoneFormatter.js";
@@ -20,6 +20,8 @@ import {
 
 export interface NotificationSnapshot {
   requiresReviewCount: number;
+  reviewItems: ReviewItem[];
+  blockedWorkItems: WorkItem[];
   runs: ExecutionRun[];
   completedMilestones: Milestone[];
   codexTasks: CodexTask[];
@@ -36,8 +38,10 @@ export interface NotificationEvaluation {
 }
 
 export async function loadNotificationSnapshot(cli: ArcadiaCli): Promise<NotificationSnapshot> {
-  const [status, runs, milestones, codex] = await Promise.all([
+  const [status, review, queue, runs, milestones, codex] = await Promise.all([
     cli.status(),
+    cli.review(),
+    cli.queue(),
     cli.runs(20),
     cli.milestones("completed", 20),
     cli.codexTasks(false)
@@ -45,6 +49,8 @@ export async function loadNotificationSnapshot(cli: ArcadiaCli): Promise<Notific
 
   return {
     requiresReviewCount: status.data.requiresReviewCount,
+    reviewItems: review.data.items,
+    blockedWorkItems: queue.data.queues.blocked,
     runs: runs.data.runs,
     completedMilestones: milestones.data.milestones,
     codexTasks: codex.data.tasks
@@ -57,6 +63,8 @@ export function evaluateNotifications(
   now = new Date().toISOString(),
   submissions: DiscordSubmissionState = emptyDiscordSubmissionState(now)
 ): NotificationEvaluation {
+  const reviewItems = snapshot.reviewItems ?? [];
+  const blockedWorkItems = snapshot.blockedWorkItems ?? [];
   const notableRunIds = snapshot.runs
     .filter((run) => run.status === "failed" || run.status === "needs_mark")
     .map((run) => run.id);
@@ -64,6 +72,11 @@ export function evaluateNotifications(
     .filter((run) => run.status === "completed" && isDiscordSubmittedRun(run, submissions))
     .map((run) => run.id);
   const completedMilestoneIds = snapshot.completedMilestones.map((milestone) => milestone.id);
+  const reviewItemIds = reviewItems.map((item) => item.id);
+  const blockedWorkItemIds = blockedWorkItems.map((item) => item.id);
+  const artifactIds = snapshot.runs.flatMap((run) =>
+    run.status === "completed" ? run.artifacts.map((artifact) => artifact.id) : []
+  );
   const codexTaskStatuses = Object.fromEntries(snapshot.codexTasks.map((task) => [task.id, task.status]));
   const codexTerminalOrReviewEvents = snapshot.codexTasks
     .map((task) => codexEventForStatus(null, task.status) ? `${task.id}:${codexEventForStatus(null, task.status)}` : null)
@@ -75,18 +88,38 @@ export function evaluateNotifications(
       nextState: {
         initializedAt: now,
         lastRequiresReviewCount: snapshot.requiresReviewCount,
+        notifiedReviewItemIds: reviewItemIds,
         notifiedRunIds: Array.from(new Set([...notableRunIds, ...completedDiscordRunIds])),
         notifiedMilestoneIds: completedMilestoneIds,
+        notifiedBlockedWorkItemIds: blockedWorkItemIds,
+        notifiedArtifactIds: artifactIds,
         codexTaskStatuses,
         notifiedCodexTaskEvents: codexTerminalOrReviewEvents
       }
     };
   }
 
-  const sentRuns = new Set(previous.notifiedRunIds);
-  const sentMilestones = new Set(previous.notifiedMilestoneIds);
+  const previousReviewItemIds = previous.notifiedReviewItemIds ?? [];
+  const previousRunIds = previous.notifiedRunIds ?? [];
+  const previousMilestoneIds = previous.notifiedMilestoneIds ?? [];
+  const previousBlockedWorkItemIds = previous.notifiedBlockedWorkItemIds ?? [];
+  const previousArtifactIds = previous.notifiedArtifactIds ?? [];
+  const sentRuns = new Set(previousRunIds);
+  const sentMilestones = new Set(previousMilestoneIds);
+  const sentReviewItems = new Set(previousReviewItemIds);
+  const sentBlockedWorkItems = new Set(previousBlockedWorkItemIds);
+  const sentArtifacts = new Set(previousArtifactIds);
   const sentCodexEvents = new Set(previous.notifiedCodexTaskEvents);
   const messages: NotificationMessage[] = [];
+
+  for (const item of reviewItems) {
+    if (!sentReviewItems.has(item.id)) {
+      messages.push({
+        key: `requires-review:${item.id}`,
+        content: requiresReviewItemMessage(item)
+      });
+    }
+  }
 
   for (const run of snapshot.runs) {
     if (sentRuns.has(run.id)) {
@@ -102,11 +135,41 @@ export function evaluateNotifications(
     }
   }
 
-  if (previous.lastRequiresReviewCount === 0 && snapshot.requiresReviewCount > 0) {
+  if (
+    reviewItems.length === 0 &&
+    previous.lastRequiresReviewCount === 0 &&
+    snapshot.requiresReviewCount > 0
+  ) {
     messages.push({
       key: "requires-review:transition",
       content: requiresReviewTransitionMessage(snapshot.requiresReviewCount)
     });
+  }
+
+  for (const workItem of blockedWorkItems) {
+    if (!sentBlockedWorkItems.has(workItem.id)) {
+      messages.push({
+        key: `blocked:${workItem.id}`,
+        content: blockedWorkItemMessage(workItem)
+      });
+    }
+  }
+
+  for (const run of snapshot.runs) {
+    if (run.status !== "completed") {
+      continue;
+    }
+    if (!isDiscordSubmittedRun(run, submissions)) {
+      continue;
+    }
+    for (const artifact of run.artifacts) {
+      if (!sentArtifacts.has(artifact.id)) {
+        messages.push({
+          key: `artifact:${artifact.id}`,
+          content: artifactProducedMessage(run, artifact)
+        });
+      }
+    }
   }
 
   for (const milestone of snapshot.completedMilestones) {
@@ -140,12 +203,43 @@ export function evaluateNotifications(
     nextState: {
       initializedAt: previous.initializedAt,
       lastRequiresReviewCount: snapshot.requiresReviewCount,
-      notifiedRunIds: Array.from(new Set([...previous.notifiedRunIds, ...notableRunIds, ...completedDiscordRunIds])),
-      notifiedMilestoneIds: Array.from(new Set([...previous.notifiedMilestoneIds, ...completedMilestoneIds])),
+      notifiedReviewItemIds: Array.from(new Set([...previousReviewItemIds, ...reviewItemIds])),
+      notifiedRunIds: Array.from(new Set([...previousRunIds, ...notableRunIds, ...completedDiscordRunIds])),
+      notifiedMilestoneIds: Array.from(new Set([...previousMilestoneIds, ...completedMilestoneIds])),
+      notifiedBlockedWorkItemIds: Array.from(new Set([...previousBlockedWorkItemIds, ...blockedWorkItemIds])),
+      notifiedArtifactIds: Array.from(new Set([...previousArtifactIds, ...artifactIds])),
       codexTaskStatuses,
       notifiedCodexTaskEvents: Array.from(nextCodexEvents)
     }
   };
+}
+
+function requiresReviewItemMessage(item: ReviewItem): string {
+  return [
+    `Requires Review: ${item.project ?? "Unassigned"} - ${item.decisionNeeded}`,
+    `ID: ${item.id}`,
+    `Recommendation: ${item.recommendation ?? "Clarify before execution."}`,
+    "Use `pnpm arcadia review show " + item.id + "`."
+  ].join("\n");
+}
+
+function blockedWorkItemMessage(item: WorkItem): string {
+  return [
+    `Blocked: ${item.project_name ?? "Unassigned"} - ${item.title}`,
+    `Next action: ${item.next_action}`,
+    `Work item: ${item.id}`
+  ].join("\n");
+}
+
+function artifactProducedMessage(
+  run: ExecutionRun,
+  artifact: ExecutionRun["artifacts"][number]
+): string {
+  return [
+    `Artifact produced: ${artifact.title}`,
+    `Run: ${run.id}`,
+    artifact.path ? `Path: ${artifact.path}` : null
+  ].filter((line): line is string => Boolean(line)).join("\n");
 }
 
 export function startNotificationPoller(

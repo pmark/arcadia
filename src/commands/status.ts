@@ -2,7 +2,7 @@ import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
-import { buildStatusReportData } from "../db/repositories.js";
+import { buildStatusReportData, listReviewItems } from "../db/repositories.js";
 import { writeStatusReport } from "../markdown/statusReport.js";
 
 export interface StatusCommandData {
@@ -29,10 +29,11 @@ export interface StatusCommandData {
 
 export function runStatusCommand(options: { workspace: string }): CommandSuccess<StatusCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const { data, reportPath } = withDatabase(workspacePath, (db) => {
+  const { data, reportPath, reviewItemCount } = withDatabase(workspacePath, (db) => {
     const reportData = buildStatusReportData(db, workspacePath);
+    const reviewItemCount = listReviewItems(db, "open").length + listReviewItems(db, "deferred").length;
     const writtenReportPath = writeStatusReport(workspacePath, reportData);
-    return { data: reportData, reportPath: writtenReportPath };
+    return { data: reportData, reportPath: writtenReportPath, reviewItemCount };
   });
 
   return createSuccess({
@@ -44,7 +45,7 @@ export function runStatusCommand(options: { workspace: string }): CommandSuccess
       runningWorkCount: Object.values(data.queues).flat().filter((item) => item.status === "in_progress").length,
       queuedWorkCount: data.queues.work_queue.length,
       needsMarkCount: data.needsMarkItems.length,
-      requiresReviewCount: data.needsMarkItems.length,
+      requiresReviewCount: reviewItemCount + data.needsMarkItems.length,
       autonomousCount: data.autonomousItems.length,
       codexCount: data.codexItems.length,
       blockedCount: data.blockedItems.length,

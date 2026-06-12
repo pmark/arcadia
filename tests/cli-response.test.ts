@@ -442,11 +442,11 @@ describe("CLI response contract", () => {
     expect(json.command).toBe("ask");
     expect(json.data.intake.resolvedIntent).toBe("InstantiateProject");
     expect(json.data.resolvedIntent.intentId).toBe("InstantiateProject");
-    expect(json.data.workItem.id).toMatch(/^work_/);
-    expect(json.data.plan.id).toMatch(/^plan_/);
-    expect(json.data.codexInvocations).toHaveLength(1);
-    expect(json.data.approvalGates.map((gate: { gate_type: string }) => gate.gate_type)).toContain("external_deployment");
-    expect(existsSync(path.join(workspace, json.data.codexInvocations[0].prompt_path))).toBe(true);
+    expect(json.data.result.status).toBe("requires_review");
+    expect(json.data.reviewItemId).toMatch(/^review_/);
+    expect(json.data.workItem).toBeNull();
+    expect(json.data.plan).toBeNull();
+    expect(json.data.codexInvocations).toHaveLength(0);
   });
 
   it("emits JSON success for ingress dry-run", () => {

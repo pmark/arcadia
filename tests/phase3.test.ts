@@ -4,6 +4,13 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runAskCommand } from "../src/commands/ask.js";
 import { runCodexAssociateCommand, runCodexListCommand } from "../src/commands/codex.js";
+import {
+  runReviewApproveCommand,
+  runReviewDeferCommand,
+  runReviewRejectCommand,
+  runReviewRequiredCommand,
+  runReviewShowCommand
+} from "../src/commands/review.js";
 import { runWorkRunCommand } from "../src/commands/work.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
@@ -158,29 +165,35 @@ describe("arcadia ask command", () => {
   it("creates a structured work item, execution plan, approval gates, and Codex build packet", () => {
     const workspace = initializedWorkspace();
 
-    const result = runAskCommand({
+    const initial = runAskCommand({
       workspace,
       request: "Create a new blog site named MartianRover Field Notes."
     });
+    if (!initial.data.reviewItemId) {
+      throw new Error("Expected Requires Review item.");
+    }
+    const approved = runReviewApproveCommand({ workspace, id: initial.data.reviewItemId });
+    const result = approved.data.approval ?? (() => {
+      throw new Error("Expected approval data.");
+    })();
 
-    expect(result.command).toBe("ask");
-    expect(result.data.intake.resolvedIntent).toBe("InstantiateProject");
-    expect(result.data.resolvedIntent.intentId).toBe("InstantiateProject");
-    expect(result.data.workItem?.work_classification).toBe("codex");
-    expect(result.data.plan?.steps[0].skill_name).toBe("codex_build");
-    expect(result.data.approvalGates.map((gate) => gate.gate_type)).toContain("external_deployment");
-    expect(result.data.codexInvocations).toHaveLength(1);
+    expect(result.intake.resolvedIntent).toBe("InstantiateProject");
+    expect(result.resolvedIntent.intentId).toBe("InstantiateProject");
+    expect(result.workItem?.work_classification).toBe("codex");
+    expect(result.plan?.steps[0].skill_name).toBe("codex_build");
+    expect(result.approvalGates.map((gate) => gate.gate_type)).toContain("external_deployment");
+    expect(result.codexInvocations).toHaveLength(1);
 
-    const promptPath = path.join(workspace, result.data.codexInvocations[0].prompt_path);
+    const promptPath = path.join(workspace, result.codexInvocations[0].prompt_path);
     expect(existsSync(promptPath)).toBe(true);
     expect(readFileSync(promptPath, "utf8")).toContain("MartianRover Field Notes");
 
     withDatabase(workspace, (db) => {
-      expect(countRows(db, "ask_requests")).toBe(1);
+      expect(countRows(db, "ask_requests")).toBe(2);
       expect(countRows(db, "approval_gates")).toBeGreaterThan(0);
       expect(countRows(db, "codex_invocations")).toBe(1);
-      expect(listCodexInvocationsForWorkItem(db, result.data.workItem?.id ?? "")).toHaveLength(1);
-      expect(listApprovalGatesForWorkItem(db, result.data.workItem?.id ?? "").length).toBeGreaterThan(0);
+      expect(listCodexInvocationsForWorkItem(db, result.workItem?.id ?? "")).toHaveLength(1);
+      expect(listApprovalGatesForWorkItem(db, result.workItem?.id ?? "").length).toBeGreaterThan(0);
     });
   });
 
@@ -194,9 +207,63 @@ describe("arcadia ask command", () => {
 
     expect(result.data.resolvedIntent.matched).toBe(false);
     expect(result.data.resolvedIntent.intentId).toBe("CaptureThought");
-    expect(result.data.workItem?.queue).toBe("needs_mark");
-    expect(result.data.plan?.steps[0].skill_name).toBe("needs_mark_decision");
+    expect(result.data.result.status).toBe("requires_review");
+    expect(result.data.reviewItemId).toMatch(/^review_/);
+    expect(result.data.workItem).toBeNull();
+    expect(result.data.plan).toBeNull();
     expect(result.data.codexInvocations).toHaveLength(0);
+
+    const review = runReviewRequiredCommand({ workspace });
+    expect(review.data.items[0].id).toBe(result.data.reviewItemId);
+    expect(review.data.items[0].sourceInput).toBe("Improve the Rebuster candidate review flow.");
+  });
+
+  it("approves a Requires Review item by replaying the intended ask workflow", () => {
+    const workspace = initializedWorkspace();
+
+    const asked = runAskCommand({
+      workspace,
+      request: "Create a new blog site named MartianRover Field Notes."
+    });
+    expect(asked.data.result.status).toBe("requires_review");
+    if (!asked.data.reviewItemId) {
+      throw new Error("Expected Requires Review item.");
+    }
+
+    const shown = runReviewShowCommand({ workspace, id: asked.data.reviewItemId });
+    expect(shown.data.item.decisionNeeded).toContain("Approve or reject");
+
+    const approved = runReviewApproveCommand({ workspace, id: asked.data.reviewItemId });
+    expect(approved.data.result.status).toBe("approved");
+    expect(approved.data.approval?.workItem?.work_classification).toBe("codex");
+    expect(approved.data.approval?.codexInvocations).toHaveLength(1);
+
+    const open = runReviewRequiredCommand({ workspace });
+    expect(open.data.items.map((item) => item.id)).not.toContain(asked.data.reviewItemId);
+  });
+
+  it("rejects and defers Requires Review items without executing the proposed action", () => {
+    const rejectedWorkspace = initializedWorkspace();
+    const rejectedAsk = runAskCommand({ workspace: rejectedWorkspace, request: "Pinterest might help Rebuster." });
+    if (!rejectedAsk.data.reviewItemId) {
+      throw new Error("Expected rejected review item.");
+    }
+
+    const rejected = runReviewRejectCommand({ workspace: rejectedWorkspace, id: rejectedAsk.data.reviewItemId });
+    expect(rejected.data.result.status).toBe("rejected");
+    expect(rejected.data.approval).toBeNull();
+
+    const deferredWorkspace = initializedWorkspace();
+    const deferredAsk = runAskCommand({ workspace: deferredWorkspace, request: "Pinterest might help Rebuster." });
+    if (!deferredAsk.data.reviewItemId) {
+      throw new Error("Expected deferred review item.");
+    }
+    const deferred = runReviewDeferCommand({ workspace: deferredWorkspace, id: deferredAsk.data.reviewItemId });
+    expect(deferred.data.result.status).toBe("deferred");
+    expect(deferred.data.approval).toBeNull();
+    expect(runReviewRequiredCommand({ workspace: deferredWorkspace }).data.items.map((item) => item.id)).toContain(
+      deferredAsk.data.reviewItemId
+    );
   });
 
   it("resolves Rebuster project metadata, attaches its active milestone, and writes packet context", () => {
@@ -222,30 +289,37 @@ describe("arcadia ask command", () => {
       return created;
     });
 
-    const result = runAskCommand({
+    const initial = runAskCommand({
       workspace,
       request: "Build Pinterest posting support for Rebuster."
     });
+    if (!initial.data.reviewItemId) {
+      throw new Error("Expected Requires Review item.");
+    }
+    const approved = runReviewApproveCommand({ workspace, id: initial.data.reviewItemId });
+    const result = approved.data.approval ?? (() => {
+      throw new Error("Expected approval data.");
+    })();
 
-    expect(result.data.intake.resolvedIntent).toBe("CreateWork");
-    expect(result.data.resolvedIntent.intentId).toBe("CreateWork");
-    expect(result.data.resolvedIntent.matched).toBe(true);
-    expect(result.data.workItem?.project_id).toBe(project.project.id);
-    expect(result.data.workItem?.project_name).toBe("Rebuster");
-    expect(result.data.workItem?.milestone_id).toBe(project.milestone.id);
-    expect(result.data.workItem?.milestone_title).toBe("Pinterest publishing support");
-    expect(result.data.codexInvocations[0].purpose).toBe("build");
-    expect(result.data.codexInvocations[0].workspace_scope).toBe("/Users/pmark/Dev/MR/Rebuster/rebuster");
-    expect(result.data.ask.prompt_packet_path).toBe(result.data.codexInvocations[0].prompt_path);
-    expect(result.artifacts).toContain(path.join(workspace, result.data.codexInvocations[0].prompt_path));
-    expect(new Set(result.data.approvalGates.map((gate) => gate.gate_type))).toEqual(new Set([
+    expect(result.intake.resolvedIntent).toBe("CreateWork");
+    expect(result.resolvedIntent.intentId).toBe("CreateWork");
+    expect(result.resolvedIntent.matched).toBe(true);
+    expect(result.workItem?.project_id).toBe(project.project.id);
+    expect(result.workItem?.project_name).toBe("Rebuster");
+    expect(result.workItem?.milestone_id).toBe(project.milestone.id);
+    expect(result.workItem?.milestone_title).toBe("Pinterest publishing support");
+    expect(result.codexInvocations[0].purpose).toBe("build");
+    expect(result.codexInvocations[0].workspace_scope).toBe("/Users/pmark/Dev/MR/Rebuster/rebuster");
+    expect(result.ask.prompt_packet_path).toBe(result.codexInvocations[0].prompt_path);
+    expect(approved.artifacts).toContain(path.join(workspace, result.codexInvocations[0].prompt_path));
+    expect(new Set(result.approvalGates.map((gate) => gate.gate_type))).toEqual(new Set([
       "credentials_required",
       "destructive_filesystem_changes",
       "publication",
       "send_email_or_messages"
     ]));
 
-    const prompt = readFileSync(path.join(workspace, result.data.codexInvocations[0].prompt_path), "utf8");
+    const prompt = readFileSync(path.join(workspace, result.codexInvocations[0].prompt_path), "utf8");
     expect(prompt).toContain("## Target Project Context");
     expect(prompt).toContain("Project: Rebuster");
     expect(prompt).toContain("Goal: Ship Pinterest publishing support.");
@@ -332,25 +406,32 @@ describe("arcadia ask command", () => {
       "utf8"
     );
 
-    const asked = runAskCommand({
+    const reviewAsk = runAskCommand({
       workspace,
       request: "Build candidate review flow for Rebuster."
     });
-    expect(asked.data.workItem?.project_id).toBe(created.project.id);
-    if (!asked.data.workItem || !asked.data.plan) {
+    if (!reviewAsk.data.reviewItemId) {
+      throw new Error("Expected Requires Review item.");
+    }
+    const approved = runReviewApproveCommand({ workspace, id: reviewAsk.data.reviewItemId });
+    const asked = approved.data.approval ?? (() => {
+      throw new Error("Expected approval data.");
+    })();
+    expect(asked.workItem?.project_id).toBe(created.project.id);
+    if (!asked.workItem || !asked.plan) {
       throw new Error("Expected ask to create a work item and plan.");
     }
     const run = runWorkRunCommand({
       workspace,
-      workId: asked.data.workItem.id,
-      plan: asked.data.plan.id,
+      workId: asked.workItem.id,
+      plan: asked.plan.id,
       allowCodexBuild: true,
       agentProfile: "fake_build"
     });
 
     expect(run.data.run.status).toBe("completed");
     const invocation = withDatabase(workspace, (db) =>
-      listCodexInvocationsForWorkItem(db, asked.data.workItem.id)[0]
+      listCodexInvocationsForWorkItem(db, asked.workItem.id)[0]
     );
     expect(invocation.status).toBe("completed");
     expect(invocation.run_id).toBe(run.data.run.id);

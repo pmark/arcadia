@@ -170,6 +170,34 @@ CREATE TABLE IF NOT EXISTS ask_requests (
   FOREIGN KEY (plan_id) REFERENCES execution_plans(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS review_items (
+  id TEXT PRIMARY KEY,
+  ask_request_id TEXT,
+  work_item_id TEXT,
+  plan_id TEXT,
+  project_id TEXT,
+  status TEXT NOT NULL CHECK (status IN ('open', 'approved', 'rejected', 'deferred')),
+  decision_needed TEXT NOT NULL,
+  recommendation TEXT,
+  source_input TEXT NOT NULL,
+  proposed_action TEXT NOT NULL,
+  resolved_intent TEXT NOT NULL,
+  confidence_label TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  missing_fields TEXT NOT NULL DEFAULT '[]',
+  context_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  decided_at TEXT,
+  decision_note TEXT,
+  resulting_ask_request_id TEXT,
+  FOREIGN KEY (ask_request_id) REFERENCES ask_requests(id) ON DELETE SET NULL,
+  FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE SET NULL,
+  FOREIGN KEY (plan_id) REFERENCES execution_plans(id) ON DELETE SET NULL,
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+  FOREIGN KEY (resulting_ask_request_id) REFERENCES ask_requests(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS approval_gates (
   id TEXT PRIMARY KEY,
   gate_type TEXT NOT NULL CHECK (
@@ -254,6 +282,9 @@ CREATE INDEX IF NOT EXISTS idx_execution_run_steps_run_id ON execution_run_steps
 CREATE INDEX IF NOT EXISTS idx_run_artifacts_run_id ON run_artifacts(run_id);
 CREATE INDEX IF NOT EXISTS idx_ask_requests_work_item_id ON ask_requests(work_item_id);
 CREATE INDEX IF NOT EXISTS idx_ask_requests_plan_id ON ask_requests(plan_id);
+CREATE INDEX IF NOT EXISTS idx_review_items_status ON review_items(status);
+CREATE INDEX IF NOT EXISTS idx_review_items_project_id ON review_items(project_id);
+CREATE INDEX IF NOT EXISTS idx_review_items_ask_request_id ON review_items(ask_request_id);
 CREATE INDEX IF NOT EXISTS idx_approval_gates_work_item_id ON approval_gates(work_item_id);
 CREATE INDEX IF NOT EXISTS idx_approval_gates_status ON approval_gates(status);
 CREATE INDEX IF NOT EXISTS idx_codex_invocations_work_item_id ON codex_invocations(work_item_id);

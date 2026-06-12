@@ -30,6 +30,13 @@ export function formatRequest(data: AskData): string {
     );
   }
 
+  if (!data.workItem && data.reviewItemId) {
+    lines.push(
+      `Requires Review: \`${data.reviewItemId}\``,
+      `Decision: ${data.intake?.proposedAction ?? data.result?.summary ?? "Review required"}`
+    );
+  }
+
   lines.push(
     `Approval gates: ${gateSummary}`,
     `Codex packet: ${packetPath}`,

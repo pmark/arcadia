@@ -8,6 +8,7 @@ import type {
   CodexListData,
   MilestoneListData,
   QueueData,
+  ReviewData,
   RunListData,
   RunShowData,
   StatusData
@@ -39,6 +40,10 @@ export class ArcadiaCli {
 
   queue(): Promise<ArcadiaJsonSuccess<QueueData>> {
     return this.runJson<QueueData>(["queue", "--workspace", this.options.workspace, "--json"]);
+  }
+
+  review(): Promise<ArcadiaJsonSuccess<ReviewData>> {
+    return this.runJson<ReviewData>(["review", "--workspace", this.options.workspace, "--json"]);
   }
 
   ask(request: string, askOptions: AskCliOptions = {}): Promise<ArcadiaJsonSuccess<AskData>> {

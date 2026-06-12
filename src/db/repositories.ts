@@ -50,6 +50,7 @@ import type {
   CreateCodexInvocationInput,
   CreateMissionLogInput,
   CreateProjectInput,
+  CreateReviewItemInput,
   CreateWorkItemInput,
   CreatedProjectBundle,
   ExecutionPlan,
@@ -69,6 +70,9 @@ import type {
   ProjectMetadata,
   ProjectSummary,
   QueueGroups,
+  ReviewItem,
+  ReviewItemStatus,
+  ReviewItemSummary,
   SkillDefinition,
   SuggestedNextAction,
   StatusReportData,
@@ -159,6 +163,13 @@ function validateArtifactStatus(value: string): ArtifactStatus {
 
 function validateAskRequestStatus(value: string): AskRequestStatus {
   assertAllowedValue("Ask request status", value, ASK_REQUEST_STATUSES);
+  return value;
+}
+
+function validateReviewItemStatus(value: string): ReviewItemStatus {
+  if (value !== "open" && value !== "approved" && value !== "rejected" && value !== "deferred") {
+    throw new Error("Review item status must be one of: open, approved, rejected, deferred");
+  }
   return value;
 }
 
@@ -1134,6 +1145,112 @@ export function createAskRequest(db: Database.Database, input: CreateAskRequestI
   return created;
 }
 
+export function createReviewItem(db: Database.Database, input: CreateReviewItemInput): ReviewItemSummary {
+  const timestamp = nowIso();
+  const reviewItem: ReviewItem = {
+    id: createId("reviewItem"),
+    ask_request_id: input.askRequestId ?? null,
+    work_item_id: input.workItemId ?? null,
+    plan_id: input.planId ?? null,
+    project_id: input.projectId ?? null,
+    status: "open",
+    decision_needed: required(input.decisionNeeded, "Review decision"),
+    recommendation: nullable(input.recommendation),
+    source_input: required(input.sourceInput, "Review source input"),
+    proposed_action: required(input.proposedAction, "Review proposed action"),
+    resolved_intent: required(input.resolvedIntent, "Review resolved intent"),
+    confidence_label: required(input.confidenceLabel, "Review confidence label"),
+    confidence: input.confidence,
+    missing_fields: encodeStringArray(input.missingFields),
+    context_json: JSON.stringify(input.context ?? {}),
+    created_at: timestamp,
+    updated_at: timestamp,
+    decided_at: null,
+    decision_note: null,
+    resulting_ask_request_id: null
+  };
+
+  db.prepare(
+    `INSERT INTO review_items (
+      id, ask_request_id, work_item_id, plan_id, project_id, status, decision_needed,
+      recommendation, source_input, proposed_action, resolved_intent, confidence_label,
+      confidence, missing_fields, context_json, created_at, updated_at, decided_at,
+      decision_note, resulting_ask_request_id
+    ) VALUES (
+      @id, @ask_request_id, @work_item_id, @plan_id, @project_id, @status, @decision_needed,
+      @recommendation, @source_input, @proposed_action, @resolved_intent, @confidence_label,
+      @confidence, @missing_fields, @context_json, @created_at, @updated_at, @decided_at,
+      @decision_note, @resulting_ask_request_id
+    )`
+  ).run(reviewItem);
+
+  const created = getReviewItem(db, reviewItem.id);
+  if (!created) {
+    throw new Error(`Review item could not be created: ${reviewItem.id}`);
+  }
+  return created;
+}
+
+export function getReviewItem(db: Database.Database, id: string): ReviewItemSummary | null {
+  return (
+    (db
+      .prepare(reviewItemSelectSql("WHERE ri.id = ?"))
+      .get(id) as ReviewItemSummary | undefined) ?? null
+  );
+}
+
+export function listReviewItems(db: Database.Database, status: ReviewItemStatus | "all" = "open"): ReviewItemSummary[] {
+  const where = status === "all" ? "" : "WHERE ri.status = ?";
+  const parameters = status === "all" ? [] : [status];
+  return db
+    .prepare(`${reviewItemSelectSql(where)} ORDER BY ri.created_at DESC`)
+    .all(...parameters) as ReviewItemSummary[];
+}
+
+export function updateReviewItemStatus(
+  db: Database.Database,
+  id: string,
+  input: { status: ReviewItemStatus; decisionNote?: string | null; resultingAskRequestId?: string | null }
+): ReviewItemSummary | null {
+  const timestamp = nowIso();
+  db.prepare(
+    `UPDATE review_items
+     SET status = ?,
+         updated_at = ?,
+         decided_at = CASE WHEN ? = 'deferred' THEN decided_at ELSE ? END,
+         decision_note = ?,
+         resulting_ask_request_id = COALESCE(?, resulting_ask_request_id)
+     WHERE id = ?`
+  ).run(
+    validateReviewItemStatus(input.status),
+    timestamp,
+    input.status,
+    timestamp,
+    nullable(input.decisionNote),
+    input.resultingAskRequestId ?? null,
+    id
+  );
+
+  return getReviewItem(db, id);
+}
+
+function reviewItemSelectSql(whereSql: string): string {
+  return `SELECT
+    ri.*,
+    p.name AS project_name,
+    p.goal AS project_goal,
+    wi.title AS work_item_title,
+    ep.summary AS plan_summary,
+    resulting_wi.title AS resulting_ask_work_item_title
+  FROM review_items ri
+  LEFT JOIN projects p ON p.id = ri.project_id
+  LEFT JOIN work_items wi ON wi.id = ri.work_item_id
+  LEFT JOIN execution_plans ep ON ep.id = ri.plan_id
+  LEFT JOIN ask_requests resulting_ask ON resulting_ask.id = ri.resulting_ask_request_id
+  LEFT JOIN work_items resulting_wi ON resulting_wi.id = resulting_ask.work_item_id
+  ${whereSql}`;
+}
+
 export function getAskRequest(db: Database.Database, id: string): AskRequestSummary | null {
   return (
     (db
@@ -1684,6 +1801,7 @@ export function countRows(db: Database.Database, table: string): number {
       "execution_run_steps",
       "run_artifacts",
       "ask_requests",
+      "review_items",
       "approval_gates",
       "codex_invocations",
       "codex_tasks"

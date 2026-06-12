@@ -145,6 +145,24 @@ export interface AskData {
   approvalGates: ApprovalGate[];
   codexInvocations: CodexInvocation[];
   run: ExecutionRun | null;
+  reviewItemId?: string | null;
+}
+
+export interface ReviewItem {
+  id: string;
+  workItemId: string | null;
+  project: string | null;
+  goal: string | null;
+  decisionNeeded: string;
+  context: string;
+  recommendation: string | null;
+  options: string[];
+  sourceInput: string;
+}
+
+export interface ReviewData {
+  count: number;
+  items: ReviewItem[];
 }
 
 export interface CodexTask {
