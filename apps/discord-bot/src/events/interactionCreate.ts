@@ -3,7 +3,13 @@ import type { ArcadiaCli } from "../arcadia/cli.js";
 import type { BotConfig } from "../config.js";
 import { codexCommand } from "../commands/codex.js";
 import { requestCommand } from "../commands/request.js";
-import { requiresReviewCommand } from "../commands/requiresReview.js";
+import {
+  requiresReviewApproveCommand,
+  requiresReviewCommand,
+  requiresReviewDeferCommand,
+  requiresReviewRejectCommand,
+  requiresReviewShowCommand
+} from "../commands/requiresReview.js";
 import { runCommand, runsCommand } from "../commands/runs.js";
 import { statusCommand } from "../commands/status.js";
 
@@ -59,8 +65,24 @@ function runSubcommand(
     );
   }
 
-  if (subcommand === "requires-review") {
+  if (subcommand === "review") {
     return requiresReviewCommand(cli);
+  }
+
+  if (subcommand === "review-show") {
+    return requiresReviewShowCommand(cli, interaction.options.getString("id", true));
+  }
+
+  if (subcommand === "review-approve") {
+    return requiresReviewApproveCommand(cli, interaction.options.getString("id", true));
+  }
+
+  if (subcommand === "review-reject") {
+    return requiresReviewRejectCommand(cli, interaction.options.getString("id", true));
+  }
+
+  if (subcommand === "review-defer") {
+    return requiresReviewDeferCommand(cli, interaction.options.getString("id", true));
   }
 
   if (subcommand === "codex") {

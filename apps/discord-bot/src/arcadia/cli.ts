@@ -8,7 +8,9 @@ import type {
   CodexListData,
   MilestoneListData,
   QueueData,
+  ReviewDecisionData,
   ReviewData,
+  ReviewShowData,
   RunListData,
   RunShowData,
   StatusData
@@ -44,6 +46,22 @@ export class ArcadiaCli {
 
   review(): Promise<ArcadiaJsonSuccess<ReviewData>> {
     return this.runJson<ReviewData>(["review", "--workspace", this.options.workspace, "--json"]);
+  }
+
+  reviewShow(id: string): Promise<ArcadiaJsonSuccess<ReviewShowData>> {
+    return this.runJson<ReviewShowData>(["review", "show", id, "--workspace", this.options.workspace, "--json"]);
+  }
+
+  reviewApprove(id: string): Promise<ArcadiaJsonSuccess<ReviewDecisionData>> {
+    return this.runJson<ReviewDecisionData>(["review", "approve", id, "--workspace", this.options.workspace, "--json"]);
+  }
+
+  reviewReject(id: string): Promise<ArcadiaJsonSuccess<ReviewDecisionData>> {
+    return this.runJson<ReviewDecisionData>(["review", "reject", id, "--workspace", this.options.workspace, "--json"]);
+  }
+
+  reviewDefer(id: string): Promise<ArcadiaJsonSuccess<ReviewDecisionData>> {
+    return this.runJson<ReviewDecisionData>(["review", "defer", id, "--workspace", this.options.workspace, "--json"]);
   }
 
   ask(request: string, askOptions: AskCliOptions = {}): Promise<ArcadiaJsonSuccess<AskData>> {

@@ -23,7 +23,13 @@ import {
   renderDogfoodAskSuccess,
   renderDogfoodInitSuccess,
   runDogfoodAskCommand,
-  runDogfoodInitCommand
+  runDogfoodInitCommand,
+  runDogfoodReviewApproveCommand,
+  runDogfoodReviewCommand,
+  runDogfoodReviewDeferCommand,
+  runDogfoodReviewRejectCommand,
+  runDogfoodReviewShowCommand,
+  runDogfoodStatusCommand
 } from "./commands/dogfood.js";
 import { renderInboxImportSuccess, runInboxAddCommand, runInboxImportCommand } from "./commands/inbox.js";
 import { renderInitSuccess, runInitCommand } from "./commands/init.js";
@@ -78,7 +84,7 @@ import {
   runWorkRunCommand,
   runWorkUpdateCommand
 } from "./commands/work.js";
-import { normalizeError, validationError } from "./cli/errors.js";
+import { normalizeError } from "./cli/errors.js";
 import {
   createFailure,
   type CommandSuccess,
@@ -113,7 +119,7 @@ export function buildProgram(): Command {
     runCliAction("init", options, () => runInitCommand(workspace), renderInitSuccess)
   );
 
-  const dogfood = program.command("dogfood").description("Arcadia dogfooding workspace commands");
+  const dogfood = program.command("dogfood").description("Arcadia dogfooding commands that use .arcadia-workspace");
   addJsonOption(
     dogfood
       .command("init")
@@ -135,12 +141,82 @@ export function buildProgram(): Command {
       renderDogfoodAskSuccess
     )
   );
+  addJsonOption(
+    dogfood
+      .command("status")
+      .description("Print status for the repo-local Arcadia dogfooding workspace")
+  ).action((options: { json?: boolean }) =>
+    runCliAction("dogfood.status", options, () => runDogfoodStatusCommand(), renderStatusSuccess)
+  );
+  const dogfoodReview = dogfood
+    .command("review")
+    .description("Review Requires Review items in the repo-local Arcadia dogfooding workspace");
+  addJsonOption(dogfoodReview).action((options: { json?: boolean }) =>
+    runCliAction(
+      "dogfood.review",
+      jsonOptionsFromArgv(options),
+      () => runDogfoodReviewCommand(),
+      renderReviewRequiredSuccess
+    )
+  );
+  addJsonOption(
+    dogfoodReview
+      .command("show")
+      .description("Show detailed dogfood Requires Review context")
+      .argument("<id>", "Requires Review item id")
+  ).action((id: string, options: { json?: boolean }) =>
+    runCliAction(
+      "dogfood.review.show",
+      jsonOptionsFromArgv(options),
+      () => runDogfoodReviewShowCommand(id),
+      renderReviewShowSuccess
+    )
+  );
+  addJsonOption(
+    dogfoodReview
+      .command("approve")
+      .description("Approve a dogfood Requires Review item and continue the intended Arcadia workflow")
+      .argument("<id>", "Requires Review item id")
+  ).action((id: string, options: { json?: boolean }) =>
+    runCliAction(
+      "dogfood.review.approve",
+      jsonOptionsFromArgv(options),
+      () => runDogfoodReviewApproveCommand(id),
+      renderReviewDecisionSuccess
+    )
+  );
+  addJsonOption(
+    dogfoodReview
+      .command("reject")
+      .description("Reject a dogfood Requires Review item without executing it")
+      .argument("<id>", "Requires Review item id")
+  ).action((id: string, options: { json?: boolean }) =>
+    runCliAction(
+      "dogfood.review.reject",
+      jsonOptionsFromArgv(options),
+      () => runDogfoodReviewRejectCommand(id),
+      renderReviewDecisionSuccess
+    )
+  );
+  addJsonOption(
+    dogfoodReview
+      .command("defer")
+      .description("Keep a dogfood Requires Review item open for future review")
+      .argument("<id>", "Requires Review item id")
+  ).action((id: string, options: { json?: boolean }) =>
+    runCliAction(
+      "dogfood.review.defer",
+      jsonOptionsFromArgv(options),
+      () => runDogfoodReviewDeferCommand(id),
+      renderReviewDecisionSuccess
+    )
+  );
 
   addJsonOption(
     program
     .command("status")
     .description("Print workspace status and write reports/status.md")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", ".")
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("status", options, () => runStatusCommand(options), renderStatusSuccess)
   );
@@ -150,7 +226,7 @@ export function buildProgram(): Command {
       .command("ask")
       .description("Resolve natural language intent into an auditable work item and execution plan")
       .argument("<request>", "Natural-language request")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", ".")
       .option("--project <project-id>", "Optional project id")
       .option("--milestone <milestone-id>", "Optional milestone id")
       .option("--run-safe", "Immediately run deterministic safe steps")
@@ -589,21 +665,14 @@ export function buildProgram(): Command {
 
   const review = program
     .command("review")
-    .description("Review commands")
-    .allowUnknownOption(true)
-    .allowExcessArguments(true)
-    .action((options: { json?: boolean }) =>
+    .description("List and decide Requires Review items")
+    .option("--workspace <path>", "Workspace path", ".")
+    .option("--json", "Emit machine-readable JSON output")
+    .action((options: { workspace: string; json?: boolean }) =>
     runCliAction(
       "review",
-      { workspace: workspaceFromArgv(process.argv), json: Boolean(options.json) || wantsJson(process.argv) },
-      () => {
-        const workspace = workspaceFromArgv(process.argv);
-        if (!workspace) {
-          throw validationError("Workspace path is required.", { option: "--workspace" });
-        }
-
-        return runReviewRequiredCommand({ workspace });
-      },
+      reviewOptionsFromArgv(options),
+      () => runReviewRequiredCommand({ workspace: reviewOptionsFromArgv(options).workspace }),
       renderReviewRequiredSuccess
     )
   );
@@ -612,46 +681,71 @@ export function buildProgram(): Command {
       .command("show")
       .description("Show detailed Requires Review context")
       .argument("<id>", "Requires Review item id")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", ".")
   ).action((id: string, options: { workspace: string; json?: boolean }) =>
-    runCliAction("review.show", options, () => runReviewShowCommand({ ...options, id }), renderReviewShowSuccess)
+    runCliAction(
+      "review.show",
+      reviewOptionsFromArgv(options),
+      () => runReviewShowCommand({ ...reviewOptionsFromArgv(options), id }),
+      renderReviewShowSuccess
+    )
   );
   addJsonOption(
     review
       .command("approve")
       .description("Approve a Requires Review item and continue the intended Arcadia workflow")
       .argument("<id>", "Requires Review item id")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", ".")
   ).action((id: string, options: { workspace: string; json?: boolean }) =>
-    runCliAction("review.approve", options, () => runReviewApproveCommand({ ...options, id }), renderReviewDecisionSuccess)
+    runCliAction(
+      "review.approve",
+      reviewOptionsFromArgv(options),
+      () => runReviewApproveCommand({ ...reviewOptionsFromArgv(options), id }),
+      renderReviewDecisionSuccess
+    )
   );
   addJsonOption(
     review
       .command("reject")
       .description("Reject a Requires Review item without executing it")
       .argument("<id>", "Requires Review item id")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", ".")
   ).action((id: string, options: { workspace: string; json?: boolean }) =>
-    runCliAction("review.reject", options, () => runReviewRejectCommand({ ...options, id }), renderReviewDecisionSuccess)
+    runCliAction(
+      "review.reject",
+      reviewOptionsFromArgv(options),
+      () => runReviewRejectCommand({ ...reviewOptionsFromArgv(options), id }),
+      renderReviewDecisionSuccess
+    )
   );
   addJsonOption(
     review
       .command("defer")
       .description("Keep a Requires Review item open for future review")
       .argument("<id>", "Requires Review item id")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", ".")
   ).action((id: string, options: { workspace: string; json?: boolean }) =>
-    runCliAction("review.defer", options, () => runReviewDeferCommand({ ...options, id }), renderReviewDecisionSuccess)
+    runCliAction(
+      "review.defer",
+      reviewOptionsFromArgv(options),
+      () => runReviewDeferCommand({ ...reviewOptionsFromArgv(options), id }),
+      renderReviewDecisionSuccess
+    )
   );
   addJsonOption(
     review
       .command("weekly")
       .description("Write a deterministic weekly review report")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", ".")
       .option("--since <YYYY-MM-DD>", "Inclusive review start date")
       .option("--until <YYYY-MM-DD>", "Inclusive review end date")
   ).action((options: { workspace: string; since?: string; until?: string; json?: boolean }) =>
-    runCliAction("review.weekly", options, () => runReviewWeeklyCommand(options), renderReviewWeeklySuccess)
+    runCliAction(
+      "review.weekly",
+      reviewOptionsFromArgv(options),
+      () => runReviewWeeklyCommand({ ...options, ...reviewOptionsFromArgv(options) }),
+      renderReviewWeeklySuccess
+    )
   );
 
   return program;
@@ -740,6 +834,17 @@ function commandNameFromArgv(argv: string[]): string {
     return "ask";
   }
 
+  if (first === "dogfood") {
+    if (second === "review") {
+      const third = parts[2];
+      return ["show", "approve", "reject", "defer"].includes(third ?? "")
+        ? `dogfood.review.${third}`
+        : "dogfood.review";
+    }
+
+    return ["init", "ask", "status"].includes(second ?? "") ? `dogfood.${second}` : "dogfood";
+  }
+
   if (first === "ingress" && second === "process") {
     return "ingress.process";
   }
@@ -778,6 +883,23 @@ function workspaceFromArgv(argv: string[]): string | undefined {
   }
 
   return path.resolve(argv[index + 1]);
+}
+
+function reviewOptionsFromArgv<TOptions extends { workspace?: string; json?: boolean }>(
+  options: TOptions
+): TOptions & { workspace: string; json: boolean } {
+  return {
+    ...options,
+    workspace: workspaceFromArgv(process.argv) ?? options.workspace ?? ".",
+    json: Boolean(options.json) || wantsJson(process.argv)
+  };
+}
+
+function jsonOptionsFromArgv<TOptions extends { json?: boolean }>(options: TOptions): TOptions & { json: boolean } {
+  return {
+    ...options,
+    json: Boolean(options.json) || wantsJson(process.argv)
+  };
 }
 
 function collectValues(value: string, previous: string[] = []): string[] {

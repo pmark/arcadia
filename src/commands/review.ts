@@ -6,12 +6,11 @@ import { withDatabase } from "../db/connection.js";
 import {
   buildStatusReportData,
   buildWeeklyReviewData,
-  getProject,
   getReviewItem,
   listReviewItems,
   updateReviewItemStatus
 } from "../db/repositories.js";
-import type { ReviewItemSummary, WorkItemSummary } from "../domain/types.js";
+import type { ReviewItemSummary } from "../domain/types.js";
 import { writeWeeklyReviewReport } from "../markdown/weeklyReview.js";
 import { localDateStamp } from "../utils/time.js";
 import { runAskCommand, type AskCommandData } from "./ask.js";
@@ -26,6 +25,7 @@ export interface RequiresReviewPacket {
   recommendation: string | null;
   options: string[];
   sourceInput: string;
+  resultingAskRequestId: string | null;
 }
 
 export interface ReviewRequiredCommandOptions {
@@ -76,7 +76,7 @@ export interface ReviewWeeklyCommandData {
     completedWork: number;
     missionLogs: number;
     blockedWork: number;
-    needsMark: number;
+    requiresReview: number;
     codexWork: number;
     autonomousWork: number;
     artifacts: number;
@@ -90,20 +90,10 @@ export function runReviewRequiredCommand(
 ): CommandSuccess<ReviewRequiredCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const items = withDatabase(workspacePath, (db) => {
-    const reviewItems = [
+    return [
       ...listReviewItems(db, "open"),
       ...listReviewItems(db, "deferred")
     ].map(reviewPacketForReviewItem);
-    const status = buildStatusReportData(db, workspacePath);
-    const legacyItems = status.needsMarkItems.map((item) => {
-      const project = item.project_id ? getProject(db, item.project_id) : null;
-      return reviewPacketForWorkItem(item, project?.goal ?? null);
-    });
-    const seen = new Set(reviewItems.map((item) => item.workItemId).filter(Boolean));
-    return [
-      ...reviewItems,
-      ...legacyItems.filter((item) => item.workItemId && !seen.has(item.workItemId))
-    ];
   });
 
   return createSuccess({
@@ -218,7 +208,7 @@ export function runReviewWeeklyCommand(
         completedWork: data.completedWorkItems.length,
         missionLogs: data.missionLogs.length,
         blockedWork: data.blockedItems.length,
-        needsMark: data.needsMarkItems.length,
+        requiresReview: data.needsMarkItems.length,
         codexWork: data.codexItems.length,
         autonomousWork: data.autonomousItems.length,
         artifacts: data.artifactItems.length,
@@ -328,20 +318,6 @@ function parseDateOption(field: "since" | "until", value: string): Date {
   return date;
 }
 
-function reviewPacketForWorkItem(item: WorkItemSummary, goal: string | null): RequiresReviewPacket {
-  return {
-    id: item.id,
-    workItemId: item.id,
-    project: item.project_name,
-    goal,
-    decisionNeeded: userFacingReviewText(item.next_action),
-    context: item.title,
-    recommendation: recommendationForWorkItem(item),
-    options: optionsForWorkItem(item),
-    sourceInput: item.raw_input
-  };
-}
-
 function reviewPacketForReviewItem(item: ReviewItemSummary): RequiresReviewPacket {
   return {
     id: item.id,
@@ -352,7 +328,8 @@ function reviewPacketForReviewItem(item: ReviewItemSummary): RequiresReviewPacke
     context: `${item.resolved_intent}: ${item.proposed_action}`,
     recommendation: item.recommendation,
     options: ["approve", "reject", "defer"],
-    sourceInput: item.source_input
+    sourceInput: item.source_input,
+    resultingAskRequestId: item.resulting_ask_request_id
   };
 }
 
@@ -389,42 +366,6 @@ function runReviewDecisionCommand(
       approval: null
     }
   });
-}
-
-function recommendationForWorkItem(item: WorkItemSummary): string | null {
-  if (item.expected_artifact) {
-    return `Confirm whether to produce: ${item.expected_artifact}.`;
-  }
-
-  if (item.project_name) {
-    return `Clarify the next action for ${item.project_name}.`;
-  }
-
-  return "Clarify the intended Arcadia action.";
-}
-
-function optionsForWorkItem(item: WorkItemSummary): string[] {
-  if (item.project_name) {
-    return [
-      "approve as written",
-      "revise the requested action",
-      "move out of Requires Review"
-    ];
-  }
-
-  return [
-    "assign a project",
-    "capture as a loose thought",
-    "dismiss after review"
-  ];
-}
-
-function userFacingReviewText(value: string): string {
-  return value
-    .replace(/\bNeeds Mark\b/g, "Requires Review")
-    .replace(/\bneeds_mark\b/g, "Requires Review")
-    .replace(/\bMark must\b/g, "The user must")
-    .replace(/\bMark\b/g, "the user");
 }
 
 function todayLocalDate(): Date {

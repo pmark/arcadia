@@ -4,6 +4,20 @@ import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import type { AskCommandData, AskOptions } from "./ask.js";
 import { renderAskSuccess, runAskCommand } from "./ask.js";
+import type {
+  ReviewDecisionCommandData,
+  ReviewRequiredCommandData,
+  ReviewShowCommandData
+} from "./review.js";
+import {
+  runReviewApproveCommand,
+  runReviewDeferCommand,
+  runReviewRejectCommand,
+  runReviewRequiredCommand,
+  runReviewShowCommand
+} from "./review.js";
+import type { StatusCommandData } from "./status.js";
+import { runStatusCommand } from "./status.js";
 import { withDatabase } from "../db/connection.js";
 import {
   createMissionLog,
@@ -98,6 +112,30 @@ export function runDogfoodAskCommand(
     milestone: context.milestoneId ?? undefined,
     runSafe: options.runSafe
   });
+}
+
+export function runDogfoodStatusCommand(): CommandSuccess<StatusCommandData> {
+  return runStatusCommand({ workspace: DOGFOOD_WORKSPACE });
+}
+
+export function runDogfoodReviewCommand(): CommandSuccess<ReviewRequiredCommandData> {
+  return runReviewRequiredCommand({ workspace: DOGFOOD_WORKSPACE });
+}
+
+export function runDogfoodReviewShowCommand(id: string): CommandSuccess<ReviewShowCommandData> {
+  return runReviewShowCommand({ workspace: DOGFOOD_WORKSPACE, id });
+}
+
+export function runDogfoodReviewApproveCommand(id: string): CommandSuccess<ReviewDecisionCommandData> {
+  return runReviewApproveCommand({ workspace: DOGFOOD_WORKSPACE, id });
+}
+
+export function runDogfoodReviewRejectCommand(id: string): CommandSuccess<ReviewDecisionCommandData> {
+  return runReviewRejectCommand({ workspace: DOGFOOD_WORKSPACE, id });
+}
+
+export function runDogfoodReviewDeferCommand(id: string): CommandSuccess<ReviewDecisionCommandData> {
+  return runReviewDeferCommand({ workspace: DOGFOOD_WORKSPACE, id });
 }
 
 export function renderDogfoodInitSuccess(response: CommandSuccess<DogfoodInitCommandData>): string[] {

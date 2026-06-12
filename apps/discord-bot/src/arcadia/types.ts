@@ -158,11 +158,25 @@ export interface ReviewItem {
   recommendation: string | null;
   options: string[];
   sourceInput: string;
+  resultingAskRequestId: string | null;
 }
 
 export interface ReviewData {
   count: number;
   items: ReviewItem[];
+}
+
+export interface ReviewShowData {
+  item: ReviewItem;
+}
+
+export interface ReviewDecisionData {
+  item: ReviewItem;
+  result: {
+    status: "approved" | "rejected" | "deferred";
+    summary: string;
+  };
+  approval: AskData | null;
 }
 
 export interface CodexTask {

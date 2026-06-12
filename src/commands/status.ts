@@ -3,6 +3,7 @@ import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import { buildStatusReportData, listReviewItems } from "../db/repositories.js";
+import { WORK_CLASSIFICATION_LABELS, type WorkClassification } from "../domain/constants.js";
 import { writeStatusReport } from "../markdown/statusReport.js";
 
 export interface StatusCommandData {
@@ -57,7 +58,7 @@ export function runStatusCommand(options: { workspace: string }): CommandSuccess
         status: project.status,
         currentMilestone: project.current_milestone,
         nextAction: project.next_action,
-        workClassification: project.work_classification
+      workClassification: project.work_classification
       }))
     },
     artifacts: [reportPath]
@@ -78,7 +79,7 @@ export function renderStatusSuccess(response: CommandSuccess<StatusCommandData>)
       lines.push(`- ${project.name} (${project.status})`);
       lines.push(`  Milestone: ${project.currentMilestone ?? "None"}`);
       lines.push(`  Next action: ${project.nextAction ?? "None"}`);
-      lines.push(`  Work classification: ${project.workClassification ?? "None"}`);
+      lines.push(`  Work classification: ${labelWorkClassification(project.workClassification)}`);
     }
   }
 
@@ -89,4 +90,12 @@ export function renderStatusSuccess(response: CommandSuccess<StatusCommandData>)
   lines.push(`Recent mission logs: ${response.data.recentMissionLogCount}`);
   lines.push(`Report: ${response.data.reportPath}`);
   return lines;
+}
+
+function labelWorkClassification(value: string | null): string {
+  if (!value) {
+    return "None";
+  }
+
+  return WORK_CLASSIFICATION_LABELS[value as WorkClassification] ?? value;
 }

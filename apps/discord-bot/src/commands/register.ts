@@ -12,8 +12,52 @@ export function buildArcadiaCommand() {
     )
     .addSubcommand((subcommand) =>
       subcommand
-        .setName("requires-review")
+        .setName("review")
         .setDescription("Show current Requires Review items")
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("review-show")
+        .setDescription("Show one Requires Review item")
+        .addStringOption((option) =>
+          option
+            .setName("id")
+            .setDescription("Requires Review item id")
+            .setRequired(true)
+        )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("review-approve")
+        .setDescription("Approve a Requires Review item and continue the intended workflow")
+        .addStringOption((option) =>
+          option
+            .setName("id")
+            .setDescription("Requires Review item id")
+            .setRequired(true)
+        )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("review-reject")
+        .setDescription("Reject a Requires Review item without executing it")
+        .addStringOption((option) =>
+          option
+            .setName("id")
+            .setDescription("Requires Review item id")
+            .setRequired(true)
+        )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("review-defer")
+        .setDescription("Keep a Requires Review item open for future review")
+        .addStringOption((option) =>
+          option
+            .setName("id")
+            .setDescription("Requires Review item id")
+            .setRequired(true)
+        )
     )
     .addSubcommand((subcommand) =>
       subcommand

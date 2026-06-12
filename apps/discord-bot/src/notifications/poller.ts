@@ -159,9 +159,6 @@ export function evaluateNotifications(
     if (run.status !== "completed") {
       continue;
     }
-    if (!isDiscordSubmittedRun(run, submissions)) {
-      continue;
-    }
     for (const artifact of run.artifacts) {
       if (!sentArtifacts.has(artifact.id)) {
         messages.push({
@@ -219,7 +216,7 @@ function requiresReviewItemMessage(item: ReviewItem): string {
     `Requires Review: ${item.project ?? "Unassigned"} - ${item.decisionNeeded}`,
     `ID: ${item.id}`,
     `Recommendation: ${item.recommendation ?? "Clarify before execution."}`,
-    "Use `pnpm arcadia review show " + item.id + "`."
+    "Use `/arcadia review-show id:" + item.id + "`."
   ].join("\n");
 }
 

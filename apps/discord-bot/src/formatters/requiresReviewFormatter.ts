@@ -1,7 +1,7 @@
-import type { WorkItem } from "../arcadia/types.js";
-import { estimatedReviewTimeFor, recommendationFor } from "./decisionFormatter.js";
+import type { ReviewDecisionData, ReviewItem } from "../arcadia/types.js";
+import { estimatedReviewTimeFor } from "./decisionFormatter.js";
 
-export function formatRequiresReview(items: WorkItem[]): string {
+export function formatRequiresReview(items: ReviewItem[]): string {
   if (items.length === 0) {
     return "**Arcadia Requires Review**\nNo items require review.";
   }
@@ -30,16 +30,50 @@ export function formatRequiresReviewNotification(count: number): string {
     "**Arcadia requires review**",
     `${count} item${count === 1 ? "" : "s"} require review.`,
     `Estimated total review time: ${estimatedReviewTimeFor(count)}`,
-    "Use `/arcadia requires-review`."
+    "Use `/arcadia review`."
   ].join("\n");
 }
 
-function formatRequiresReviewItem(item: WorkItem): string {
+export function formatRequiresReviewShow(item: ReviewItem): string {
   return [
-    `**${item.title}**`,
-    `Project: ${item.project_name ?? "Unassigned"}`,
-    "Why review is required: Arcadia paused this item for human judgment.",
-    `Recommended: ${recommendationFor(item)}`,
-    "Estimated review time: 1 minute"
+    "**Arcadia Requires Review**",
+    `ID: \`${item.id}\``,
+    `Project: ${item.project ?? "Unassigned"}`,
+    `Goal: ${item.goal ?? "None"}`,
+    `Decision needed: ${item.decisionNeeded}`,
+    `Recommendation: ${item.recommendation ?? "Clarify before execution."}`,
+    `Source input: ${item.sourceInput}`,
+    `Context: ${item.context}`,
+    `Actions: ${item.options.join(", ")}`
+  ].join("\n");
+}
+
+export function formatRequiresReviewDecision(data: ReviewDecisionData): string {
+  const lines = [
+    `**Requires Review ${data.result.status}**`,
+    `ID: \`${data.item.id}\``,
+    `Result: ${data.result.summary}`
+  ];
+
+  if (data.item.resultingAskRequestId) {
+    lines.push(`Resumed ask: \`${data.item.resultingAskRequestId}\``);
+  }
+
+  if (data.approval?.workItem) {
+    lines.push(`Work item: \`${data.approval.workItem.id}\``);
+  }
+
+  return lines.join("\n");
+}
+
+function formatRequiresReviewItem(item: ReviewItem): string {
+  return [
+    `**${item.project ?? "Unassigned"}**`,
+    `ID: \`${item.id}\``,
+    `Decision needed: ${item.decisionNeeded}`,
+    `Recommended: ${item.recommendation ?? "Clarify before execution."}`,
+    `Actions: ${item.options.join(", ")}`,
+    "Estimated review time: 1 minute",
+    `Use \`/arcadia review-show id:${item.id}\`.`
   ].join("\n");
 }

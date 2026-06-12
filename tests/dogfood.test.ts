@@ -1,4 +1,5 @@
 import { existsSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CommandSuccess } from "../src/cli/response.js";
@@ -10,11 +11,20 @@ import {
   DOGFOOD_NEXT_ACTION,
   dogfoodWorkspacePath,
   runDogfoodAskCommand,
-  runDogfoodInitCommand
+  runDogfoodInitCommand,
+  runDogfoodReviewApproveCommand,
+  runDogfoodReviewCommand,
+  runDogfoodReviewDeferCommand,
+  runDogfoodReviewRejectCommand,
+  runDogfoodReviewShowCommand,
+  runDogfoodStatusCommand
 } from "../src/commands/dogfood.js";
 import { withDatabase } from "../src/db/connection.js";
 import { countRows, listProjectSummaries, listRecentMissionLogs, listWorkItems } from "../src/db/repositories.js";
 import type { AskCommandData, AskOptions } from "../src/commands/ask.js";
+
+const repoRoot = path.resolve(import.meta.dirname, "..");
+const tsxBin = path.join(repoRoot, "node_modules", ".bin", "tsx");
 
 beforeEach(removeDogfoodWorkspace);
 afterEach(removeDogfoodWorkspace);
@@ -105,5 +115,72 @@ describe("arcadia dogfood", () => {
     expect(result.data.result.status).toBe("acted");
     expect(result.data.status?.projectCount).toBeGreaterThan(0);
     expect(result.data.workItem).toBeNull();
+  });
+
+  it("runs dogfood review commands against the repo-local workspace", () => {
+    runDogfoodInitCommand();
+    const asked = runDogfoodAskCommand({ request: "Make Arcadia easier somehow." });
+    expect(asked.data.result.status).toBe("requires_review");
+    if (!asked.data.reviewItemId) {
+      throw new Error("Expected Requires Review item.");
+    }
+
+    const review = runDogfoodReviewCommand();
+    expect(review.workspace).toBe(dogfoodWorkspacePath());
+    expect(review.data.items.map((item) => item.id)).toContain(asked.data.reviewItemId);
+    expect(runDogfoodReviewShowCommand(asked.data.reviewItemId).data.item.id).toBe(asked.data.reviewItemId);
+
+    const deferred = runDogfoodReviewDeferCommand(asked.data.reviewItemId);
+    expect(deferred.data.result.status).toBe("deferred");
+    const rejected = runDogfoodReviewRejectCommand(asked.data.reviewItemId);
+    expect(rejected.data.result.status).toBe("rejected");
+  });
+
+  it("approves dogfood Requires Review by resuming execution and updates status", () => {
+    runDogfoodInitCommand();
+    const asked = runDogfoodAskCommand({ request: "Create a NextJS app called Arcadia Companion." });
+    expect(asked.data.result.status).toBe("requires_review");
+    if (!asked.data.reviewItemId) {
+      throw new Error("Expected Requires Review item.");
+    }
+
+    const approved = runDogfoodReviewApproveCommand(asked.data.reviewItemId);
+    expect(approved.workspace).toBe(dogfoodWorkspacePath());
+    expect(approved.data.result.status).toBe("approved");
+    expect(approved.data.approval?.workItem?.id).toMatch(/^work_/);
+    expect(approved.data.item.resultingAskRequestId).toBe(approved.data.approval?.ask.id);
+
+    const status = runDogfoodStatusCommand();
+    expect(status.workspace).toBe(dogfoodWorkspacePath());
+    expect(status.data.projectCount).toBeGreaterThan(0);
+    expect(status.data.codexCount).toBeGreaterThan(0);
+  });
+
+  it("emits JSON for dogfood review decision subcommands", () => {
+    runDogfoodInitCommand();
+    const asked = runDogfoodAskCommand({ request: "Create a NextJS app called Arcadia Companion." });
+    if (!asked.data.reviewItemId) {
+      throw new Error("Expected Requires Review item.");
+    }
+
+    const result = spawnSync(
+      tsxBin,
+      [
+        path.join(repoRoot, "src", "cli.ts"),
+        "dogfood",
+        "review",
+        "approve",
+        asked.data.reviewItemId,
+        "--json"
+      ],
+      { cwd: repoRoot, encoding: "utf8" }
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const json = JSON.parse(result.stdout);
+    expect(json.ok).toBe(true);
+    expect(json.command).toBe("review.approve");
+    expect(json.data.item.resultingAskRequestId).toBe(json.data.approval.ask.id);
   });
 });

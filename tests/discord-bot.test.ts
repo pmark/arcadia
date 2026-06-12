@@ -4,11 +4,25 @@ import path from "node:path";
 import type { ChatInputCommandInteraction } from "discord.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { ArcadiaCli, buildCliInvocation } from "../apps/discord-bot/src/arcadia/cli.js";
-import type { ArcadiaJsonSuccess, CodexTask, ExecutionRun, Milestone, RunShowData, WorkItem } from "../apps/discord-bot/src/arcadia/types.js";
+import type {
+  ArcadiaJsonSuccess,
+  CodexTask,
+  ExecutionRun,
+  Milestone,
+  ReviewDecisionData,
+  ReviewItem,
+  RunShowData,
+  WorkItem
+} from "../apps/discord-bot/src/arcadia/types.js";
 import { loadConfig } from "../apps/discord-bot/src/config.js";
 import { handleArcadiaInteraction } from "../apps/discord-bot/src/events/interactionCreate.js";
+import { buildArcadiaCommand } from "../apps/discord-bot/src/commands/register.js";
 import { formatCodexTasks } from "../apps/discord-bot/src/formatters/codexFormatter.js";
-import { formatRequiresReview } from "../apps/discord-bot/src/formatters/requiresReviewFormatter.js";
+import {
+  formatRequiresReview,
+  formatRequiresReviewDecision,
+  formatRequiresReviewShow
+} from "../apps/discord-bot/src/formatters/requiresReviewFormatter.js";
 import { formatRunDetail, formatRuns } from "../apps/discord-bot/src/formatters/runFormatter.js";
 import { formatStatus } from "../apps/discord-bot/src/formatters/statusFormatter.js";
 import { evaluateNotifications } from "../apps/discord-bot/src/notifications/poller.js";
@@ -60,6 +74,22 @@ describe("discord bot config", () => {
   });
 });
 
+describe("discord slash command registration", () => {
+  it("aligns Requires Review commands with the CLI review actions", () => {
+    const command = buildArcadiaCommand() as { options: Array<{ name: string }> };
+    const subcommands = command.options.map((option) => option.name);
+
+    expect(subcommands).toEqual(expect.arrayContaining([
+      "review",
+      "review-show",
+      "review-approve",
+      "review-reject",
+      "review-defer"
+    ]));
+    expect(subcommands).not.toContain("requires-review");
+  });
+});
+
 describe("discord bot CLI adapter", () => {
   it("uses custom CLI paths without shell construction", () => {
     const invocation = buildCliInvocation(["status", "--json"], "/usr/local/bin/arcadia");
@@ -83,6 +113,59 @@ describe("discord bot CLI adapter", () => {
       "run",
       "show",
       "run_1",
+      "--workspace",
+      workspace,
+      "--json"
+    ]);
+  });
+
+  it("invokes arcadia review actions with the configured workspace", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-discord-workspace-"));
+    tempDirs.push(workspace);
+    const cliPath = path.join(workspace, "fake-arcadia-review.mjs");
+    const argvPath = path.join(workspace, "argv.json");
+    writeFileSync(cliPath, fakeArcadiaReviewCliScript(argvPath));
+    chmodSync(cliPath, 0o755);
+    const cli = new ArcadiaCli({ workspace, cliPath });
+
+    await cli.review();
+    expect(JSON.parse(readFileSync(argvPath, "utf8"))).toEqual(["review", "--workspace", workspace, "--json"]);
+
+    await cli.reviewShow("review_1");
+    expect(JSON.parse(readFileSync(argvPath, "utf8"))).toEqual([
+      "review",
+      "show",
+      "review_1",
+      "--workspace",
+      workspace,
+      "--json"
+    ]);
+
+    await cli.reviewApprove("review_1");
+    expect(JSON.parse(readFileSync(argvPath, "utf8"))).toEqual([
+      "review",
+      "approve",
+      "review_1",
+      "--workspace",
+      workspace,
+      "--json"
+    ]);
+
+    await cli.reviewReject("review_1");
+    expect(JSON.parse(readFileSync(argvPath, "utf8"))).toEqual([
+      "review",
+      "reject",
+      "review_1",
+      "--workspace",
+      workspace,
+      "--json"
+    ]);
+
+    await cli.reviewDefer("review_1");
+    expect(JSON.parse(readFileSync(argvPath, "utf8"))).toEqual([
+      "review",
+      "defer",
+      "review_1",
       "--workspace",
       workspace,
       "--json"
@@ -443,11 +526,23 @@ describe("discord bot formatters", () => {
   });
 
   it("uses Requires Review terminology for review items", () => {
-    const output = formatRequiresReview([sampleWorkItem()]);
+    const output = formatRequiresReview([sampleReviewItem()]);
 
     expect(output).toContain("Arcadia Requires Review");
-    expect(output).toContain("Recommended: Review the draft.");
+    expect(output).toContain("Actions: approve, reject, defer");
+    expect(output).toContain("Use `/arcadia review-show id:review_1`.");
     expect(output).not.toContain("Needs Mark");
+  });
+
+  it("formats Requires Review details and decisions for Discord", () => {
+    const detail = formatRequiresReviewShow(sampleReviewItem());
+    expect(detail).toContain("ID: `review_1`");
+    expect(detail).toContain("Actions: approve, reject, defer");
+
+    const decision = formatRequiresReviewDecision(sampleReviewDecision());
+    expect(decision).toContain("Requires Review approved");
+    expect(decision).toContain("Resumed ask: `ask_2`");
+    expect(decision).toContain("Work item: `work_2`");
   });
 
   it("does not leak internal run status terminology", () => {
@@ -506,7 +601,7 @@ describe("discord bot notifications", () => {
     expect(second.messages).toEqual([]);
   });
 
-  it("suppresses routine completed runs that did not originate from Discord", () => {
+  it("suppresses routine completed run notices while still surfacing artifacts", () => {
     const previous: NotificationState = emptyNotificationStateForTest();
     const evaluation = evaluateNotifications({
       requiresReviewCount: 0,
@@ -515,7 +610,9 @@ describe("discord bot notifications", () => {
       codexTasks: []
     }, previous);
 
-    expect(evaluation.messages).toEqual([]);
+    expect(evaluation.messages).toHaveLength(1);
+    expect(evaluation.messages[0].key).toBe("artifact:art_1");
+    expect(evaluation.messages[0].content).toContain("Artifact produced: Static Images");
     expect(evaluation.nextState.notifiedRunIds).toEqual([]);
   });
 
@@ -690,6 +787,60 @@ function sampleWorkItem(): WorkItem {
     status: "open",
     project_name: "Rebuster",
     milestone_title: "Publishing foundation"
+  };
+}
+
+function sampleReviewItem(): ReviewItem {
+  return {
+    id: "review_1",
+    workItemId: null,
+    project: "Rebuster",
+    goal: "Ship Pinterest publishing support.",
+    decisionNeeded: "Approve or reject this proposed Arcadia action.",
+    context: "CreateWork: Build Pinterest posting support",
+    recommendation: "Approve only if the project, goal, and action match your intent.",
+    options: ["approve", "reject", "defer"],
+    sourceInput: "Build Pinterest posting support for Rebuster.",
+    resultingAskRequestId: null
+  };
+}
+
+function sampleReviewDecision(): ReviewDecisionData {
+  return {
+    item: {
+      ...sampleReviewItem(),
+      resultingAskRequestId: "ask_2"
+    },
+    result: {
+      status: "approved",
+      summary: "Work item created."
+    },
+    approval: {
+      ask: {
+        id: "ask_2",
+        raw_request: "Build Pinterest posting support for Rebuster.",
+        resolved_intent: "CreateWork",
+        prompt_packet_path: null,
+        status: "planned"
+      },
+      resolvedIntent: {
+        intentId: "CreateWork",
+        matched: true,
+        outputKind: "codex_build_packet",
+        workClassification: "codex"
+      },
+      workItem: {
+        ...sampleWorkItem(),
+        id: "work_2",
+        queue: "work_queue",
+        work_classification: "codex"
+      },
+      plan: null,
+      approvalGates: [],
+      codexInvocations: [],
+      run: null,
+      reviewItemId: null
+    }
   };
 }
 
@@ -896,6 +1047,50 @@ process.stdout.write(JSON.stringify({
     },
     needsMark: []
   },
+  artifacts: [],
+  warnings: []
+}));
+`;
+}
+
+function fakeArcadiaReviewCliScript(argvPath: string): string {
+  return `#!/usr/bin/env node
+import { writeFileSync } from "node:fs";
+
+const args = process.argv.slice(2);
+writeFileSync(${JSON.stringify(argvPath)}, JSON.stringify(args));
+const workspace = args[args.indexOf("--workspace") + 1];
+const id = args.includes("review_1") ? "review_1" : null;
+const item = {
+  id: id ?? "review_1",
+  workItemId: null,
+  project: "Arcadia",
+  goal: "Dogfood Arcadia.",
+  decisionNeeded: "Approve or reject this proposed Arcadia action.",
+  context: "CreateWork: Build the thing",
+  recommendation: "Approve only if this matches your intent.",
+  options: ["approve", "reject", "defer"],
+  sourceInput: "Build the thing",
+  resultingAskRequestId: args.includes("approve") ? "ask_2" : null
+};
+const data = args.includes("show")
+  ? { item }
+  : args.includes("approve") || args.includes("reject") || args.includes("defer")
+    ? {
+        item,
+        result: {
+          status: args.includes("approve") ? "approved" : args.includes("reject") ? "rejected" : "deferred",
+          summary: args.includes("approve") ? "Work item created." : "Decision recorded."
+        },
+        approval: args.includes("approve") ? { ask: { id: "ask_2" }, workItem: { id: "work_1" } } : null
+      }
+    : { count: 1, items: [item] };
+
+process.stdout.write(JSON.stringify({
+  ok: true,
+  command: "review",
+  workspace,
+  data,
   artifacts: [],
   warnings: []
 }));

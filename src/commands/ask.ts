@@ -79,7 +79,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   const registries = loadPhase3Registries(workspacePath);
   validatePhase3Registries(registries);
   const intake = withDatabase(workspacePath, (db) => resolveIntake(options.request, buildIntakeContext(db)));
-  const resolved = resolvedIntentFromIntake(intake);
+  const approvedFromReview = Boolean(options.approvedReviewItemId);
+  const resolved = resolvedIntentFromIntake(intake, approvedFromReview);
   let run: ExecutionRunSummary | null = null;
 
   if (intake.action.kind === "show_status" && intake.confidenceLabel === "high") {
@@ -156,7 +157,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   }
 
   if (
-    intake.confidenceLabel === "high" &&
+    (intake.confidenceLabel === "high" || approvedFromReview) &&
     intake.action.kind === "update_project_goal" &&
     intake.action.projectId &&
     intake.action.goal
@@ -204,7 +205,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   }
 
   if (
-    intake.confidenceLabel === "high" &&
+    (intake.confidenceLabel === "high" || approvedFromReview) &&
     intake.action.kind === "update_project_status" &&
     intake.action.projectId
   ) {
@@ -493,8 +494,8 @@ export function buildIntakeContext(db: Parameters<typeof listProjects>[0]): Inta
   return { projects };
 }
 
-function resolvedIntentFromIntake(intake: IntakeResult): ResolvedIntent {
-  if (intake.confidenceLabel !== "high" || intake.resolvedIntent === "CaptureThought") {
+function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = false): ResolvedIntent {
+  if ((!approvedFromReview && intake.confidenceLabel !== "high") || intake.resolvedIntent === "CaptureThought") {
     return {
       intentId: intake.resolvedIntent,
       matched: false,

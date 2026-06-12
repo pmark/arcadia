@@ -18,7 +18,9 @@ import {
   createAskRequest,
   createApprovalGate,
   createCodexInvocation,
+  createWorkItemWithOptionalArtifact,
   createProjectWithInitialWork,
+  getReviewItem,
   listCodexTasks,
   listApprovalGatesForWorkItem,
   listCodexInvocationsForWorkItem,
@@ -237,9 +239,79 @@ describe("arcadia ask command", () => {
     expect(approved.data.result.status).toBe("approved");
     expect(approved.data.approval?.workItem?.work_classification).toBe("codex");
     expect(approved.data.approval?.codexInvocations).toHaveLength(1);
+    expect(approved.data.item.resultingAskRequestId).toBe(approved.data.approval?.ask.id);
+
+    const stored = withDatabase(workspace, (db) => getReviewItem(db, asked.data.reviewItemId ?? ""));
+    expect(stored?.resulting_ask_request_id).toBe(approved.data.approval?.ask.id);
 
     const open = runReviewRequiredCommand({ workspace });
     expect(open.data.items.map((item) => item.id)).not.toContain(asked.data.reviewItemId);
+  });
+
+  it("only shows actionable Requires Review records", () => {
+    const workspace = initializedWorkspace();
+    const legacy = withDatabase(workspace, (db) =>
+      createWorkItemWithOptionalArtifact(db, {
+        title: "Legacy ambiguous item",
+        rawInput: "legacy ambiguous item",
+        queue: "needs_mark",
+        workClassification: "needs_mark",
+        nextAction: "Clarify legacy item."
+      }).workItem
+    );
+    const asked = runAskCommand({ workspace, request: "Pinterest might help Rebuster." });
+    if (!asked.data.reviewItemId) {
+      throw new Error("Expected Requires Review item.");
+    }
+
+    const review = runReviewRequiredCommand({ workspace });
+
+    expect(review.data.items.map((item) => item.id)).toEqual([asked.data.reviewItemId]);
+    expect(review.data.items.map((item) => item.id)).not.toContain(legacy.id);
+    for (const item of review.data.items) {
+      expect(item.options).toEqual(["approve", "reject", "defer"]);
+      expect(runReviewShowCommand({ workspace, id: item.id }).data.item.id).toBe(item.id);
+    }
+  });
+
+  it("supports every decision command for every shown Requires Review item shape", () => {
+    for (const action of ["approve", "reject", "defer"] as const) {
+      const workspace = initializedWorkspace();
+      const asked = runAskCommand({ workspace, request: "Pinterest might help Rebuster." });
+      if (!asked.data.reviewItemId) {
+        throw new Error("Expected Requires Review item.");
+      }
+      const [item] = runReviewRequiredCommand({ workspace }).data.items;
+      expect(item.id).toBe(asked.data.reviewItemId);
+
+      const result =
+        action === "approve"
+          ? runReviewApproveCommand({ workspace, id: item.id })
+          : action === "reject"
+            ? runReviewRejectCommand({ workspace, id: item.id })
+            : runReviewDeferCommand({ workspace, id: item.id });
+
+      expect(result.data.result.status).toBe(action === "approve" ? "approved" : action === "reject" ? "rejected" : "deferred");
+    }
+  });
+
+  it("approval resumes medium-confidence CreateWork as work instead of another review item", () => {
+    const workspace = initializedWorkspace();
+    const asked = runAskCommand({
+      workspace,
+      request: "Build Pinterest posting support for Unknown App."
+    });
+    expect(asked.data.result.status).toBe("requires_review");
+    if (!asked.data.reviewItemId) {
+      throw new Error("Expected Requires Review item.");
+    }
+
+    const approved = runReviewApproveCommand({ workspace, id: asked.data.reviewItemId });
+
+    expect(approved.data.result.summary).toBe("Work item created.");
+    expect(approved.data.approval?.workItem?.queue).toBe("work_queue");
+    expect(approved.data.approval?.workItem?.work_classification).toBe("codex");
+    expect(approved.data.approval?.reviewItemId).toBeNull();
   });
 
   it("rejects and defers Requires Review items without executing the proposed action", () => {

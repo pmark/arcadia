@@ -93,12 +93,10 @@ describe("CLI response contract", () => {
 
   it("emits JSON success for Requires Review packets", () => {
     const workspace = initializedWorkspace();
-    importWorkItem(workspace, {
-      title: "Clarify intake request",
-      queue: "needs_mark",
-      classification: "needs_mark",
-      nextAction: "Clarify missing intake fields: project."
-    });
+    const asked = runCli(["ask", "Pinterest might help Rebuster.", "--workspace", workspace, "--json"]);
+    expect(asked.status).toBe(0);
+    const askedJson = parseJson(asked.stdout);
+    expect(askedJson.data.reviewItemId).toMatch(/^review_/);
 
     const result = runCli(["review", "--workspace", workspace, "--json"]);
 
@@ -108,9 +106,9 @@ describe("CLI response contract", () => {
     expect(json.ok).toBe(true);
     expect(json.command).toBe("review");
     expect(json.data.count).toBe(1);
-    expect(json.data.items[0].decisionNeeded).toBe("Clarify missing intake fields: project.");
-    expect(json.data.items[0].options).toContain("assign a project");
-    expect(json.data.items[0].sourceInput).toBe("Clarify intake request");
+    expect(json.data.items[0].id).toBe(askedJson.data.reviewItemId);
+    expect(json.data.items[0].options).toEqual(["approve", "reject", "defer"]);
+    expect(json.data.items[0].sourceInput).toBe("Pinterest might help Rebuster.");
   });
 
   it("emits JSON success for project list", () => {
@@ -990,16 +988,16 @@ describe("CLI response contract", () => {
     expect(json.error.message).toContain("required option");
   });
 
-  it("emits stable JSON for usage errors", () => {
+  it("defaults status to the current directory workspace", () => {
     const result = runCli(["status", "--json"]);
 
-    expect(result.status).toBe(2);
+    expect(result.status).toBe(3);
     expect(result.stdout).toBe("");
     const json = parseJson(result.stderr);
     expect(json.ok).toBe(false);
     expect(json.command).toBe("status");
-    expect(json.error.code).toBe("USAGE_ERROR");
-    expect(json.error.message).toContain("required option");
+    expect(json.error.code).toBe("DATABASE_NOT_INITIALIZED");
+    expect(json.error.message).toBe("Arcadia database is not initialized.");
   });
 
   it("emits stable JSON for missing workspaces", () => {
