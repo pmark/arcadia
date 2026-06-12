@@ -3,6 +3,7 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
+  slug TEXT NOT NULL,
   mission TEXT NOT NULL,
   goal TEXT,
   status TEXT NOT NULL CHECK (status IN ('active', 'paused', 'incubating', 'completed')),

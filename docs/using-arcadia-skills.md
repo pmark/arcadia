@@ -4,26 +4,26 @@ These examples show how to use the local Codex skills for real Arcadia work. The
 
 ## Skills
 
-- `arcadia-dogfood-workflow`: use when managing Arcadia development through `.arcadia-workspace/`.
+- `arcadia-dogfood-workflow`: use only when explicitly managing the repo-local `.arcadia-workspace/` compatibility workflow.
 - `arcadia-workspace-operator`: use when inspecting or operating any Arcadia workspace.
-- `arcadia-development-loop`: use when changing Arcadia code while keeping the work tracked through dogfooding.
+- `arcadia-development-loop`: use when explicitly asked to change Arcadia code while keeping the work tracked through an Arcadia workspace.
 
 Codex should still prefer deterministic Arcadia CLI commands over inference.
 
-## Daily Dogfood Startup
+## Daily Arcadia Workspace Startup
 
 Use this when starting an Arcadia work session.
 
 Prompt:
 
 ```text
-Use the arcadia-dogfood-workflow skill. Initialize or refresh the dogfood workspace, then tell me the current milestone, next action, work classification, required artifacts, open queues, and any Requires Review items.
+Use the arcadia-workspace-operator skill. Initialize or refresh `.arcadia-workspace` with the Arcadia profile, then tell me the current milestone, next action, work classification, required artifacts, open queues, and any Requires Review items.
 ```
 
 Expected commands:
 
 ```sh
-pnpm arcadia dogfood init
+pnpm arcadia init .arcadia-workspace --profile arcadia
 pnpm arcadia status --workspace .arcadia-workspace --json
 pnpm arcadia project list --workspace .arcadia-workspace --json
 pnpm arcadia queue --workspace .arcadia-workspace --json
@@ -45,13 +45,13 @@ Use this when you have an idea but do not want Codex to implement it immediately
 Prompt:
 
 ```text
-Use the arcadia-dogfood-workflow skill. Create a dogfood ask for: Add a command that lists stale projects with no open next action. Do not implement yet. Report the work item, plan, artifacts, and whether it requires review.
+Use the arcadia-workspace-operator skill. In `.arcadia-workspace`, create an ask for: Add a command that lists stale projects with no open next action. Do not implement yet. Report the work item, plan, artifacts, and whether it requires review.
 ```
 
 Expected command:
 
 ```sh
-pnpm arcadia dogfood ask "Add a command that lists stale projects with no open next action." --json
+pnpm arcadia ask --workspace .arcadia-workspace "Add a command that lists stale projects with no open next action." --json
 ```
 
 Good output should include:
@@ -71,14 +71,14 @@ Use this when Codex should both track and implement the work.
 Prompt:
 
 ```text
-Use the arcadia-development-loop skill. Track this through dogfooding and then implement it: Add `arcadia project stale --workspace <path>` to list active projects that have no open next action. Keep the change small and add tests.
+Use the arcadia-development-loop skill. Track this through `.arcadia-workspace` and then implement it: Add `arcadia project stale --workspace <path>` to list active projects that have no open next action. Keep the change small and add tests.
 ```
 
 Expected commands:
 
 ```sh
-pnpm arcadia dogfood init
-pnpm arcadia dogfood ask "Add arcadia project stale --workspace <path> to list active projects that have no open next action." --json
+pnpm arcadia init .arcadia-workspace --profile arcadia
+pnpm arcadia ask --workspace .arcadia-workspace "Add arcadia project stale --workspace <path> to list active projects that have no open next action." --json
 git status --short
 pnpm test
 pnpm build
@@ -98,7 +98,7 @@ Good final report should include:
 
 ## Get Workspace Status
 
-Use this for any Arcadia workspace, not just the dogfood workspace.
+Use this for any Arcadia workspace, not just `.arcadia-workspace`.
 
 Prompt:
 
@@ -115,10 +115,10 @@ pnpm arcadia queue --workspace /path/to/workspace --json
 pnpm arcadia run list --workspace /path/to/workspace --json
 ```
 
-Use this exact dogfood variant for Arcadia itself:
+For Arcadia itself, point the same workflow at `.arcadia-workspace` or any other workspace initialized with `--profile arcadia`:
 
 ```text
-Use the arcadia-workspace-operator skill. Inspect the Arcadia dogfood workspace and summarize project goals, current milestones, next actions, queued work, artifacts, mission logs, and Requires Review items. Do not modify anything.
+Use the arcadia-workspace-operator skill. Inspect `.arcadia-workspace` and summarize project goals, current milestones, next actions, queued work, artifacts, mission logs, and Requires Review items. Do not modify anything.
 ```
 
 ## Update A Project Goal
@@ -128,14 +128,14 @@ Use this when the outcome changes but the project mission remains stable.
 Prompt:
 
 ```text
-Use the arcadia-workspace-operator skill. In the Arcadia dogfood workspace, update the Arcadia project goal to: Use Arcadia every day for planning and reviewing Arcadia development until the dogfood loop is boringly reliable. Then show the project detail.
+Use the arcadia-workspace-operator skill. In `.arcadia-workspace`, update the Arcadia project goal to: Manage Arcadia development through the same workspace model used for every other project. Then show the project detail.
 ```
 
 Expected commands:
 
 ```sh
 pnpm arcadia project list --workspace .arcadia-workspace --json
-pnpm arcadia project update <project-id> --workspace .arcadia-workspace --goal "Use Arcadia every day for planning and reviewing Arcadia development until the dogfood loop is boringly reliable." --json
+pnpm arcadia project update <project-id> --workspace .arcadia-workspace --goal "Manage Arcadia development through the same workspace model used for every other project." --json
 pnpm arcadia project show <project-id> --workspace .arcadia-workspace --json
 ```
 
@@ -155,7 +155,7 @@ Use this when you want decisions, approvals, or blocked human review surfaced cl
 Prompt:
 
 ```text
-Use the arcadia-dogfood-workflow skill. Show only Arcadia dogfood items that require review. For each item, include the project, milestone, reason, next action, artifact path if any, and the exact command I can run next.
+Use the arcadia-workspace-operator skill. Show only Arcadia items in `.arcadia-workspace` that require review. For each item, include the project, milestone, reason, next action, artifact path if any, and the exact command I can run next.
 ```
 
 Expected commands:
@@ -174,7 +174,7 @@ Use this when you want a Markdown status artifact written into the workspace.
 Prompt:
 
 ```text
-Use the arcadia-workspace-operator skill. Generate a deterministic status report for the Arcadia dogfood workspace, then summarize where it was written and the most important next action.
+Use the arcadia-workspace-operator skill. Generate a deterministic status report for `.arcadia-workspace`, then summarize where it was written and the most important next action.
 ```
 
 Expected command:
@@ -196,7 +196,7 @@ Use this when reviewing recent work and deciding what to do next.
 Prompt:
 
 ```text
-Use the arcadia-workspace-operator skill. Create a weekly review for the Arcadia dogfood workspace for this week. Summarize completed work, mission logs, blocked work, Requires Review items, and the top three next actions.
+Use the arcadia-workspace-operator skill. Create a weekly review for `.arcadia-workspace` for this week. Summarize completed work, mission logs, blocked work, Requires Review items, and the top three next actions.
 ```
 
 Expected command:
@@ -220,13 +220,13 @@ Use this when the idea needs sharpening before implementation.
 Prompt:
 
 ```text
-Use the arcadia-dogfood-workflow skill. I have a vague idea: Arcadia should be better at telling me what to do next. Convert that into one concrete dogfood ask, issue it, and report the resulting work item and expected artifact. Do not implement.
+Use the arcadia-workspace-operator skill. I have a vague idea: Arcadia should be better at telling me what to do next. Convert that into one concrete ask in `.arcadia-workspace`, issue it, and report the resulting work item and expected artifact. Do not implement.
 ```
 
 Expected behavior:
 
 1. Rewrite the vague idea into a concrete request.
-2. Run `pnpm arcadia dogfood ask "<concrete request>" --json`.
+2. Run `pnpm arcadia ask --workspace .arcadia-workspace "<concrete request>" --json`.
 3. Report the ask id, work item id, plan id, next action, and required artifact.
 
 ## Continue Existing Arcadia Work
@@ -236,13 +236,13 @@ Use this when returning after context loss or a break.
 Prompt:
 
 ```text
-Use the arcadia-development-loop skill. Continue the highest-value Arcadia work already represented in the dogfood workspace. Inspect status and queues first, pick the next action, tell me what you selected and why, then implement only that scoped task.
+Use the arcadia-development-loop skill. Continue the highest-value Arcadia work already represented in `.arcadia-workspace`. Inspect status and queues first, pick the next action, tell me what you selected and why, then implement only that scoped task.
 ```
 
 Expected commands:
 
 ```sh
-pnpm arcadia dogfood init
+pnpm arcadia init .arcadia-workspace --profile arcadia
 pnpm arcadia status --workspace .arcadia-workspace --json
 pnpm arcadia project list --workspace .arcadia-workspace --json
 pnpm arcadia queue --workspace .arcadia-workspace --json
@@ -251,14 +251,14 @@ git status --short
 
 Codex should explain the selected task before editing files.
 
-## Audit The Dogfood Workspace
+## Audit The Repo-Local Compatibility Workspace
 
-Use this to verify the dogfooding setup itself.
+Use this only to verify the repo-local compatibility shortcuts.
 
 Prompt:
 
 ```text
-Use the arcadia-dogfood-workflow skill. Audit whether Arcadia dogfooding is set up correctly. Verify `.arcadia-workspace/` is ignored, the Arcadia project is Active, the mission and goal are present, there is an active milestone, there is an open next action, and dogfood ask works without Discord, iCloud, servers, or external services.
+Use the arcadia-dogfood-workflow skill. Audit whether the `.arcadia-workspace/` compatibility workflow is set up correctly. Verify `.arcadia-workspace/` is ignored, the Arcadia project is Active, the mission and goal are present, there is an active milestone, there is an open next action, and the compatibility ask shortcut works without Discord, iCloud, servers, or external services.
 ```
 
 Expected commands:
@@ -282,11 +282,11 @@ Good output should classify every requirement as:
 Use these as shorthand prompts:
 
 ```text
-Use arcadia-dogfood-workflow. Start my Arcadia day.
+Use arcadia-workspace-operator. Start my Arcadia day in .arcadia-workspace.
 ```
 
 ```text
-Use arcadia-dogfood-workflow. Create a dogfood ask for: <request>. Do not implement.
+Use arcadia-workspace-operator. Create an ask in .arcadia-workspace for: <request>. Do not implement.
 ```
 
 ```text
@@ -302,7 +302,7 @@ Use arcadia-workspace-operator. Update the goal for <project> in <workspace> to:
 ```
 
 ```text
-Use arcadia-dogfood-workflow. Show Requires Review items only.
+Use arcadia-workspace-operator. Show Requires Review items in <workspace> only.
 ```
 
 ## What To Expect From Codex
@@ -318,8 +318,7 @@ For Arcadia work, expect every substantial response to identify:
 
 For implementation work, expect:
 
-- Dogfood ask created or referenced
+- Workspace ask created or referenced
 - Files changed
 - Tests run
 - Remaining Requires Review items or blockers
-

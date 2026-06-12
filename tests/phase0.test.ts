@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
+import { runInitCommand } from "../src/commands/init.js";
+import { runProjectCreateCommand } from "../src/commands/project.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
   buildStatusReportData,
@@ -21,6 +23,7 @@ import {
   getExecutionRun,
   getMilestone,
   getProject,
+  getProjectMetadata,
   getWorkItem,
   listArtifacts,
   listWorkItems,
@@ -36,6 +39,11 @@ import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../src/mar
 import { writeStatusReport } from "../src/markdown/statusReport.js";
 import { writeWeeklyReviewReport } from "../src/markdown/weeklyReview.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import {
+  ARCADIA_PROJECT_GOAL,
+  ARCADIA_PROJECT_MILESTONE,
+  ARCADIA_PROJECT_NEXT_ACTION
+} from "../src/workspace/arcadiaProject.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
 
 const workspaces: string[] = [];
@@ -71,6 +79,57 @@ describe("Phase 0 workspace initialization", () => {
         .get() as { name: string } | undefined;
       expect(row?.name).toBe("projects");
       expect(countRows(db, "projects")).toBe(0);
+    });
+  });
+
+  it("can seed Arcadia as a normal workspace profile", () => {
+    const workspace = createTempWorkspace();
+    const result = runInitCommand(workspace, { profile: "arcadia" });
+
+    expect(result.command).toBe("init");
+    expect(result.workspace).toBe(path.resolve(workspace));
+    expect(result.data.profile).toBe("arcadia");
+    expect(result.data.seed?.project.name).toBe("Arcadia");
+    expect(result.data.seed?.project.goal).toBe(ARCADIA_PROJECT_GOAL);
+    expect(result.data.seed?.milestone.title).toBe(ARCADIA_PROJECT_MILESTONE);
+    expect(result.data.seed?.workItem.next_action).toBe(ARCADIA_PROJECT_NEXT_ACTION);
+    expect(existsSync(path.join(result.workspace, result.data.seed?.missionLog.markdown_path ?? ""))).toBe(true);
+
+    withDatabase(workspace, (db) => {
+      expect(countRows(db, "projects")).toBe(1);
+      expect(countRows(db, "milestones")).toBe(1);
+      expect(countRows(db, "work_items")).toBe(1);
+      expect(countRows(db, "mission_logs")).toBe(1);
+    });
+  });
+
+  it("creates a project without filesystem templates", async () => {
+    const workspace = createTempWorkspace();
+    initWorkspace(workspace);
+    const paths = getWorkspacePaths(workspace);
+
+    expect(existsSync(path.join(paths.root, "templates"))).toBe(false);
+
+    const created = await runProjectCreateCommand({
+      workspace,
+      name: "Boring Defaults"
+    });
+
+    expect(created.data.project.name).toBe("Boring Defaults");
+    expect(created.data.project.slug).toBe("boring-defaults");
+    expect(created.data.project.status).toBe("incubating");
+    expect(created.data.projectPath).toBe(path.join(paths.projects, "boring-defaults"));
+    expect(created.data.templateUsed).toBeNull();
+    expect(existsSync(path.join(created.data.projectPath, "PROJECT.md"))).toBe(true);
+    expect(existsSync(path.join(created.data.projectPath, "MISSION_LOG.md"))).toBe(true);
+
+    withDatabase(workspace, (db) => {
+      expect(countRows(db, "projects")).toBe(1);
+      expect(countRows(db, "milestones")).toBe(1);
+      expect(countRows(db, "work_items")).toBe(1);
+      expect(countRows(db, "mission_logs")).toBe(1);
+      expect(getProject(db, created.data.project.id)?.slug).toBe("boring-defaults");
+      expect(getProjectMetadata(db, created.data.project.id)?.repo_path).toBe(created.data.projectPath);
     });
   });
 });

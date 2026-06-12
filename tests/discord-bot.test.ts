@@ -55,7 +55,7 @@ afterEach(() => {
 describe("discord bot config", () => {
   it("validates required environment variables", () => {
     expect(() => loadConfig({})).toThrow(
-      "Missing required environment variables: ARCADIA_WORKSPACE, DISCORD_BOT_TOKEN, DISCORD_CLIENT_ID, DISCORD_GUILD_ID, DISCORD_CHANNEL_ID"
+      "Missing required environment variables: DISCORD_BOT_TOKEN, DISCORD_CLIENT_ID, DISCORD_GUILD_ID, DISCORD_CHANNEL_ID"
     );
   });
 

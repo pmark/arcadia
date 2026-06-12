@@ -1,10 +1,11 @@
 import * as dotenv from "dotenv";
 import path from "node:path";
+import { loadUserConfig } from "../../../src/workspace/config.js";
 
 dotenv.config();
 
 export interface BotConfig {
-  arcadiaWorkspace: string;
+  arcadiaWorkspace: string | null;
   discordBotToken: string;
   discordClientId: string;
   discordGuildId: string;
@@ -14,7 +15,6 @@ export interface BotConfig {
 }
 
 const requiredEnv = [
-  "ARCADIA_WORKSPACE",
   "DISCORD_BOT_TOKEN",
   "DISCORD_CLIENT_ID",
   "DISCORD_GUILD_ID",
@@ -28,7 +28,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
   }
 
   return {
-    arcadiaWorkspace: path.resolve(requireEnv(env, "ARCADIA_WORKSPACE")),
+    arcadiaWorkspace: resolveConfiguredWorkspace(env),
     discordBotToken: requireEnv(env, "DISCORD_BOT_TOKEN"),
     discordClientId: requireEnv(env, "DISCORD_CLIENT_ID"),
     discordGuildId: requireEnv(env, "DISCORD_GUILD_ID"),
@@ -40,6 +40,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
 
 function requireEnv(env: NodeJS.ProcessEnv, name: (typeof requiredEnv)[number]): string {
   return env[name]?.trim() ?? "";
+}
+
+function resolveConfiguredWorkspace(env: NodeJS.ProcessEnv): string | null {
+  if (env.ARCADIA_WORKSPACE?.trim()) {
+    return path.resolve(env.ARCADIA_WORKSPACE);
+  }
+
+  const defaultWorkspace = loadUserConfig(env).defaultWorkspace;
+  return defaultWorkspace ? path.resolve(defaultWorkspace) : null;
 }
 
 function parsePollInterval(raw: string | undefined): number {

@@ -19,7 +19,7 @@ import type {
 const execFileAsync = promisify(execFile);
 
 export interface ArcadiaCliOptions {
-  workspace: string;
+  workspace: string | null;
   cliPath: string | null;
   timeoutMs?: number;
 }
@@ -37,83 +37,75 @@ export class ArcadiaCli {
   constructor(private readonly options: ArcadiaCliOptions) {}
 
   status(): Promise<ArcadiaJsonSuccess<StatusData>> {
-    return this.runJson<StatusData>(["status", "--workspace", this.options.workspace, "--json"]);
+    return this.runJson<StatusData>(this.withWorkspace(["status", "--json"]));
   }
 
   queue(): Promise<ArcadiaJsonSuccess<QueueData>> {
-    return this.runJson<QueueData>(["queue", "--workspace", this.options.workspace, "--json"]);
+    return this.runJson<QueueData>(this.withWorkspace(["queue", "--json"]));
   }
 
   review(): Promise<ArcadiaJsonSuccess<ReviewData>> {
-    return this.runJson<ReviewData>(["review", "--workspace", this.options.workspace, "--json"]);
+    return this.runJson<ReviewData>(this.withWorkspace(["review", "--json"]));
   }
 
   reviewShow(id: string): Promise<ArcadiaJsonSuccess<ReviewShowData>> {
-    return this.runJson<ReviewShowData>(["review", "show", id, "--workspace", this.options.workspace, "--json"]);
+    return this.runJson<ReviewShowData>(this.withWorkspace(["review", "show", id, "--json"]));
   }
 
   reviewApprove(id: string): Promise<ArcadiaJsonSuccess<ReviewDecisionData>> {
-    return this.runJson<ReviewDecisionData>(["review", "approve", id, "--workspace", this.options.workspace, "--json"]);
+    return this.runJson<ReviewDecisionData>(this.withWorkspace(["review", "approve", id, "--json"]));
   }
 
   reviewReject(id: string): Promise<ArcadiaJsonSuccess<ReviewDecisionData>> {
-    return this.runJson<ReviewDecisionData>(["review", "reject", id, "--workspace", this.options.workspace, "--json"]);
+    return this.runJson<ReviewDecisionData>(this.withWorkspace(["review", "reject", id, "--json"]));
   }
 
   reviewDefer(id: string): Promise<ArcadiaJsonSuccess<ReviewDecisionData>> {
-    return this.runJson<ReviewDecisionData>(["review", "defer", id, "--workspace", this.options.workspace, "--json"]);
+    return this.runJson<ReviewDecisionData>(this.withWorkspace(["review", "defer", id, "--json"]));
   }
 
   ask(request: string, askOptions: AskCliOptions = {}): Promise<ArcadiaJsonSuccess<AskData>> {
-    return this.runJson<AskData>([
+    return this.runJson<AskData>(this.withWorkspaceAfter(1, [
       "ask",
-      "--workspace",
-      this.options.workspace,
       request,
       ...(askOptions.runSafe ? ["--run-safe"] : []),
       "--json"
-    ]);
+    ]));
   }
 
   runs(limit = 10): Promise<ArcadiaJsonSuccess<RunListData>> {
-    return this.runJson<RunListData>([
+    return this.runJson<RunListData>(this.withWorkspace([
       "run",
       "list",
-      "--workspace",
-      this.options.workspace,
       "--limit",
       String(limit),
       "--json"
-    ]);
+    ]));
   }
 
   run(runId: string): Promise<ArcadiaJsonSuccess<RunShowData>> {
-    return this.runJson<RunShowData>(["run", "show", runId, "--workspace", this.options.workspace, "--json"]);
+    return this.runJson<RunShowData>(this.withWorkspace(["run", "show", runId, "--json"]));
   }
 
   codexTasks(activeOnly = true): Promise<ArcadiaJsonSuccess<CodexListData>> {
-    return this.runJson<CodexListData>([
+    return this.runJson<CodexListData>(this.withWorkspaceAfter(2, [
       "codex",
       "list",
-      "--workspace",
-      this.options.workspace,
       ...(activeOnly ? ["--active-only"] : []),
       "--json"
-    ]);
+    ]));
   }
 
   milestones(status = "completed", limit = 20): Promise<ArcadiaJsonSuccess<MilestoneListData>> {
-    return this.runJson<MilestoneListData>([
+    return this.runJson<MilestoneListData>(this.withWorkspaceAfter(2, [
       "milestone",
       "list",
-      "--workspace",
-      this.options.workspace,
       "--status",
       status,
       "--limit",
       String(limit),
       "--json"
-    ]);
+    ]));
   }
 
   buildInvocation(args: string[]): CliInvocation {
@@ -137,6 +129,25 @@ export class ArcadiaCli {
       }
       throw error;
     }
+  }
+
+  private withWorkspace(args: string[]): string[] {
+    if (!this.options.workspace) {
+      return args;
+    }
+
+    const jsonIndex = args.lastIndexOf("--json");
+    if (jsonIndex === -1) {
+      return [...args, "--workspace", this.options.workspace];
+    }
+
+    return [...args.slice(0, jsonIndex), "--workspace", this.options.workspace, ...args.slice(jsonIndex)];
+  }
+
+  private withWorkspaceAfter(index: number, args: string[]): string[] {
+    return this.options.workspace
+      ? [...args.slice(0, index), "--workspace", this.options.workspace, ...args.slice(index)]
+      : args;
   }
 }
 

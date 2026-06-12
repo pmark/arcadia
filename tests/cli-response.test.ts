@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -122,6 +122,85 @@ describe("CLI response contract", () => {
     expect(json.workspace).toBe(path.resolve(workspace));
     expect(json.data.projects).toEqual([]);
   });
+
+  it("defaults workspace commands from ARCADIA_WORKSPACE", () => {
+    const workspace = initializedWorkspace();
+    const result = runCli(["project", "list", "--json"], { ARCADIA_WORKSPACE: workspace });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const json = parseJson(result.stdout);
+    expect(json.ok).toBe(true);
+    expect(json.command).toBe("project.list");
+    expect(json.workspace).toBe(path.resolve(workspace));
+  });
+
+  it("lets explicit --workspace override ARCADIA_WORKSPACE", () => {
+    const envWorkspace = initializedWorkspace();
+    const explicitWorkspace = initializedWorkspace();
+    createProject(explicitWorkspace);
+
+    const result = runCli(
+      ["project", "list", "--workspace", explicitWorkspace, "--json"],
+      { ARCADIA_WORKSPACE: envWorkspace }
+    );
+
+    expect(result.status).toBe(0);
+    const json = parseJson(result.stdout);
+    expect(json.workspace).toBe(path.resolve(explicitWorkspace));
+    expect(json.data.projects).toHaveLength(1);
+  });
+
+  it("sets, gets, and uses the persistent default workspace", () => {
+    const workspace = initializedWorkspace();
+    const configPath = createTempConfigPath();
+
+    const set = runCli(["config", "set", "defaultWorkspace", workspace, "--json"], {}, { configPath });
+    expect(set.status).toBe(0);
+    expect(parseJson(set.stdout).data.defaultWorkspace).toBe(path.resolve(workspace));
+
+    const get = runCli(["config", "get", "defaultWorkspace", "--json"], {}, { configPath });
+    expect(get.status).toBe(0);
+    expect(parseJson(get.stdout).data.defaultWorkspace).toBe(path.resolve(workspace));
+
+    const listed = runCli(["project", "list", "--json"], {}, { configPath });
+    expect(listed.status).toBe(0);
+    expect(parseJson(listed.stdout).workspace).toBe(path.resolve(workspace));
+  });
+
+  it("reports workspace resolution source precedence", () => {
+    const userWorkspace = initializedWorkspace();
+    const localWorkspace = initializedWorkspace();
+    const envWorkspace = initializedWorkspace();
+    const explicitWorkspace = initializedWorkspace();
+    const configPath = createTempConfigPath();
+    const nested = path.join(localWorkspace, "projects", "nested");
+    mkdirSync(nested, { recursive: true });
+
+    expect(runCli(["config", "set", "defaultWorkspace", userWorkspace], {}, { configPath }).status).toBe(0);
+
+    const user = parseJson(runCli(["workspace", "resolve", "--json"], {}, { configPath }).stdout);
+    expect(user.data.source).toBe("user config");
+    expect(user.data.workspacePath).toBe(path.resolve(userWorkspace));
+
+    const local = parseJson(runCli(["workspace", "resolve", "--json"], {}, { configPath, cwd: nested }).stdout);
+    expect(local.data.source).toBe("local marker");
+    expect(local.data.workspacePath).toBe(realpathSync(localWorkspace));
+
+    const env = parseJson(runCli(["workspace", "resolve", "--json"], { ARCADIA_WORKSPACE: envWorkspace }, { configPath, cwd: nested }).stdout);
+    expect(env.data.source).toBe("environment variable");
+    expect(env.data.workspacePath).toBe(path.resolve(envWorkspace));
+
+    const explicit = parseJson(
+      runCli(
+        ["workspace", "resolve", "--workspace", explicitWorkspace, "--json"],
+        { ARCADIA_WORKSPACE: envWorkspace },
+        { configPath, cwd: nested }
+      ).stdout
+    );
+    expect(explicit.data.source).toBe("flag");
+    expect(explicit.data.workspacePath).toBe(path.resolve(explicitWorkspace));
+  }, 20_000);
 
   it("imports projects with JSON output", () => {
     const workspace = initializedWorkspace();
@@ -420,7 +499,7 @@ describe("CLI response contract", () => {
     expect(listJson.data.runs).toHaveLength(1);
     expect(listJson.data.runs[0].id).toBe(runJson.data.run.id);
     expect(listJson.data.runs[0].work_item_title).toBe("Generate status report");
-  });
+  }, 20_000);
 
   it("asks natural language intent with JSON output", () => {
     const workspace = initializedWorkspace();
@@ -989,15 +1068,14 @@ describe("CLI response contract", () => {
   });
 
   it("defaults status to the current directory workspace", () => {
-    const result = runCli(["status", "--json"]);
+    const workspace = initializedWorkspace();
+    const result = runCli(["status", "--json"], {}, { cwd: workspace });
 
-    expect(result.status).toBe(3);
-    expect(result.stdout).toBe("");
-    const json = parseJson(result.stderr);
-    expect(json.ok).toBe(false);
+    expect(result.status).toBe(0);
+    const json = parseJson(result.stdout);
+    expect(json.ok).toBe(true);
     expect(json.command).toBe("status");
-    expect(json.error.code).toBe("DATABASE_NOT_INITIALIZED");
-    expect(json.error.message).toBe("Arcadia database is not initialized.");
+    expect(json.workspace).toBe(realpathSync(workspace));
   });
 
   it("emits stable JSON for missing workspaces", () => {
@@ -1060,11 +1138,26 @@ describe("CLI response contract", () => {
     expect(result.stderr.trim()).toBe("Error [WORKSPACE_NOT_FOUND]: Workspace not found.");
     expect(result.stderr).not.toContain("at ");
   });
+
+  it("emits a helpful missing workspace error", () => {
+    const result = runCli(["status", "--json"], {}, { configPath: createTempConfigPath() });
+
+    expect(result.status).toBe(2);
+    const json = parseJson(result.stderr);
+    expect(json.error.code).toBe("USAGE_ERROR");
+    expect(json.error.message).toContain("arcadia config set defaultWorkspace <path>");
+  });
 });
 
-function runCli(args: string[]) {
-  return spawnSync(tsxBin, ["src/cli.ts", ...args], {
-    cwd: repoRoot,
+function runCli(
+  args: string[],
+  env: Record<string, string> = {},
+  options: { configPath?: string; cwd?: string } = {}
+) {
+  const { ARCADIA_WORKSPACE: _arcadiaWorkspace, ...baseEnv } = process.env;
+  return spawnSync(tsxBin, [path.join(repoRoot, "src", "cli.ts"), ...args], {
+    cwd: options.cwd ?? repoRoot,
+    env: { ...baseEnv, ARCADIA_CONFIG_PATH: options.configPath ?? createTempConfigPath(), ...env },
     encoding: "utf8"
   });
 }
@@ -1078,6 +1171,12 @@ function createTempWorkspacePath(): string {
   rmSync(workspace, { recursive: true, force: true });
   workspaces.push(workspace);
   return workspace;
+}
+
+function createTempConfigPath(): string {
+  const directory = mkdtempSync(path.join(tmpdir(), "arcadia-cli-config-"));
+  workspaces.push(directory);
+  return path.join(directory, "config.json");
 }
 
 function initializedWorkspace(): string {

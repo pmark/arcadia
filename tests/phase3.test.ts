@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runAskCommand } from "../src/commands/ask.js";
+import { runInitCommand } from "../src/commands/init.js";
 import { runCodexAssociateCommand, runCodexListCommand } from "../src/commands/codex.js";
 import {
   runReviewApproveCommand,
@@ -164,6 +165,29 @@ describe("Phase 3 audit records", () => {
 });
 
 describe("arcadia ask command", () => {
+  it("creates a plain project through the shared project creation path", () => {
+    const workspace = initializedWorkspace();
+    const paths = getWorkspacePaths(workspace);
+
+    const result = runAskCommand({
+      workspace,
+      request: "Create a project called Boring Defaults."
+    });
+
+    expect(result.data.intake.resolvedIntent).toBe("CreateProject");
+    expect(result.data.result.status).toBe("acted");
+    expect(result.data.project?.name).toBe("Boring Defaults");
+    expect(result.data.project?.slug).toBe("boring-defaults");
+    expect(result.data.workItem?.next_action).toBe("Clarify the project mission and first concrete next action.");
+    expect(existsSync(path.join(paths.projects, "boring-defaults", "PROJECT.md"))).toBe(true);
+
+    withDatabase(workspace, (db) => {
+      expect(countRows(db, "projects")).toBe(1);
+      expect(countRows(db, "ask_requests")).toBe(1);
+      expect(countRows(db, "mission_logs")).toBe(1);
+    });
+  });
+
   it("creates a structured work item, execution plan, approval gates, and Codex build packet", () => {
     const workspace = initializedWorkspace();
 
@@ -407,6 +431,29 @@ describe("arcadia ask command", () => {
     expect(prompt).toContain("## Final Reporting Requirements");
     expect(prompt).toContain("Summarize project, milestone, and repository scope.");
     expect(prompt).toContain("List validation results.");
+  });
+
+  it("defaults approved asks to the only active project in an Arcadia-profile workspace", () => {
+    const workspace = createTempWorkspace();
+    const initialized = runInitCommand(workspace, { profile: "arcadia" });
+
+    const initial = runAskCommand({
+      workspace,
+      request: "Create a NextJS app called Arcadia Companion."
+    });
+    if (!initial.data.reviewItemId) {
+      throw new Error("Expected Requires Review item.");
+    }
+
+    const approved = runReviewApproveCommand({ workspace, id: initial.data.reviewItemId });
+    const result = approved.data.approval ?? (() => {
+      throw new Error("Expected approval data.");
+    })();
+
+    expect(result.workItem?.project_id).toBe(initialized.data.seed?.project.id);
+    expect(result.workItem?.project_name).toBe("Arcadia");
+    expect(result.workItem?.milestone_id).toBe(initialized.data.seed?.milestone.id);
+    expect(result.workItem?.milestone_title).toBe("Unify Arcadia onto the single workspace model.");
   });
 
   it("updates a project goal through high-confidence intake routing", () => {

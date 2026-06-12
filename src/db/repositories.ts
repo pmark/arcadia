@@ -86,6 +86,7 @@ import type {
   WorkItemSummary
 } from "../domain/types.js";
 import { createId } from "../utils/id.js";
+import { slugify } from "../utils/slug.js";
 import { nowIso } from "../utils/time.js";
 
 function nullable(value: string | null | undefined): string | null {
@@ -224,6 +225,7 @@ function insertProject(db: Database.Database, input: CreateProjectInput, timesta
   const project: Project = {
     id: createId("project"),
     name: required(input.name, "Project name"),
+    slug: slugify(input.name),
     mission: required(input.mission, "Mission"),
     goal: nullable(input.goal),
     status: validateProjectStatus(input.status),
@@ -232,8 +234,8 @@ function insertProject(db: Database.Database, input: CreateProjectInput, timesta
   };
 
   db.prepare(
-    `INSERT INTO projects (id, name, mission, goal, status, created_at, updated_at)
-     VALUES (@id, @name, @mission, @goal, @status, @created_at, @updated_at)`
+    `INSERT INTO projects (id, name, slug, mission, goal, status, created_at, updated_at)
+     VALUES (@id, @name, @slug, @mission, @goal, @status, @created_at, @updated_at)`
   ).run(project);
 
   return project;
@@ -437,6 +439,7 @@ export function upsertProject(db: Database.Database, input: UpsertProjectInput):
   const project: Project = {
     id: existing?.id ?? input.id ?? createId("project"),
     name: required(input.name, "Project name"),
+    slug: existing?.slug ?? slugify(input.name),
     mission: required(input.mission, "Mission"),
     goal: nullable(input.goal),
     status: validateProjectStatus(input.status),
@@ -445,10 +448,11 @@ export function upsertProject(db: Database.Database, input: UpsertProjectInput):
   };
 
   db.prepare(
-    `INSERT INTO projects (id, name, mission, goal, status, created_at, updated_at)
-     VALUES (@id, @name, @mission, @goal, @status, @created_at, @updated_at)
+    `INSERT INTO projects (id, name, slug, mission, goal, status, created_at, updated_at)
+     VALUES (@id, @name, @slug, @mission, @goal, @status, @created_at, @updated_at)
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name,
+       slug = excluded.slug,
        mission = excluded.mission,
        goal = excluded.goal,
        status = excluded.status,

@@ -2,6 +2,7 @@ import type { ProjectStatus, WorkClassification } from "../domain/constants.js";
 
 export type IntakeIntent =
   | "CaptureThought"
+  | "CreateProject"
   | "InstantiateProject"
   | "UpdateGoal"
   | "CreateWork"
@@ -45,6 +46,10 @@ export type IntakeAction =
   | {
       kind: "capture_thought";
       title: string;
+    }
+  | {
+      kind: "create_project";
+      projectName: string | null;
     }
   | {
       kind: "instantiate_project";
@@ -237,6 +242,26 @@ export function resolveIntake(rawInput: string, context: IntakeWorkspaceContext)
 
   const instantiate = parseInstantiateProject(raw);
   if (instantiate) {
+    if (isPlainProjectReference(instantiate.templateReference)) {
+      return highResult({
+        raw,
+        resolvedIntent: "CreateProject",
+        extractedFields: compactFields({
+          projectName: instantiate.projectName
+        }),
+        proposedAction: `Create a project named ${instantiate.projectName}.`,
+        safeToExecute: true,
+        reviewRequired: false,
+        explanation: "The request clearly asks for a plain Arcadia project with built-in defaults.",
+        action: {
+          kind: "create_project",
+          projectName: instantiate.projectName
+        },
+        project: null,
+        template: null
+      });
+    }
+
     const template = resolveTemplateReference(instantiate.templateReference);
     const missingFields = [
       ...(instantiate.projectName ? [] : ["projectName"]),
@@ -408,6 +433,11 @@ function parseInstantiateProject(raw: string): { templateReference: string; proj
     templateReference: match[1].replace(/^new\s+/i, "").trim(),
     projectName: cleanTrailingPunctuation(match[2])
   };
+}
+
+function isPlainProjectReference(value: string): boolean {
+  const normalized = normalizeText(value);
+  return normalized === "project" || normalized === "new project";
 }
 
 function parseGoalUpdate(raw: string): { projectReference: string; goal: string } | null {

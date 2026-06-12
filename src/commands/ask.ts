@@ -45,6 +45,7 @@ import type { ReviewRequiredCommandData } from "./review.js";
 import { runReviewRequiredCommand } from "./review.js";
 import type { StatusCommandData } from "./status.js";
 import { runStatusCommand } from "./status.js";
+import { createProjectWithDefaults } from "./project.js";
 
 export interface AskOptions {
   workspace: string;
@@ -94,7 +95,6 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         status: "planned"
       })
     );
-
     return createSuccess({
       command: "ask",
       workspace: workspacePath,
@@ -131,7 +131,6 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         status: "planned"
       })
     );
-
     return createSuccess({
       command: "ask",
       workspace: workspacePath,
@@ -153,6 +152,54 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         review: review.data,
         reviewItemId: null
       }
+    });
+  }
+
+  if (
+    (intake.confidenceLabel === "high" || approvedFromReview) &&
+    intake.action.kind === "create_project" &&
+    intake.action.projectName
+  ) {
+    const created = createProjectWithDefaults({
+      workspace: workspacePath,
+      name: intake.action.projectName
+    });
+    const ask = withDatabase(workspacePath, (db) =>
+      createAskRequest(db, {
+        rawRequest: options.request,
+        resolvedIntent: resolved.intentId,
+        registryVersion: registries.intents.version,
+        outputKind: resolved.outputKind,
+        status: "planned"
+      })
+    );
+    const workItem = withDatabase(workspacePath, (db) => getWorkItem(db, created.data.workItem.id));
+    if (!workItem) {
+      throw workItemNotFound(created.data.workItem.id);
+    }
+
+    return createSuccess({
+      command: "ask",
+      workspace: workspacePath,
+      data: {
+        ask,
+        intake,
+        resolvedIntent: resolved,
+        result: {
+          status: "acted",
+          summary: `Created project ${created.data.project.name}.`
+        },
+        workItem,
+        plan: null,
+        approvalGates: [],
+        codexInvocations: [],
+        run: null,
+        project: created.data.project,
+        status: null,
+        review: null,
+        reviewItemId: null
+      },
+      artifacts: created.artifacts
     });
   }
 
@@ -554,6 +601,25 @@ function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = fal
     };
   }
 
+  if (intake.action.kind === "create_project") {
+    const projectName = intake.action.projectName ?? "Untitled project";
+    return {
+      intentId: intake.resolvedIntent,
+      matched: true,
+      title: `Create project: ${projectName}`,
+      outputKind: "project_created",
+      queue: "work_queue",
+      workClassification: "autonomous",
+      nextAction: `Clarify the project mission and first concrete next action for ${projectName}.`,
+      expectedArtifact: "Arcadia project record",
+      skillSequence: [],
+      approvalGates: [],
+      templates: [],
+      slots: intake.extractedFields,
+      codexPurpose: null
+    };
+  }
+
   if (intake.action.kind === "create_work") {
     return {
       intentId: intake.resolvedIntent,
@@ -759,12 +825,13 @@ function resolveAskContext(db: Parameters<typeof getProject>[0], options: AskOpt
 
   if (!projectId) {
     const resolvedProject = resolveProjectContextFromRequest(db, options.request);
-    projectId = resolvedProject?.project.id ?? null;
-    milestoneId ??= resolvedProject?.activeMilestone?.id ?? null;
+    const defaultProject = resolvedProject ?? resolveOnlyActiveProjectContext(db);
+    projectId = defaultProject?.project.id ?? null;
+    milestoneId ??= defaultProject?.activeMilestone?.id ?? null;
     return {
       projectId,
       milestoneId,
-      projectContext: resolvedProject
+      projectContext: defaultProject
     };
   }
 
@@ -779,4 +846,13 @@ function resolveAskContext(db: Parameters<typeof getProject>[0], options: AskOpt
     milestoneId,
     projectContext
   };
+}
+
+function resolveOnlyActiveProjectContext(db: Parameters<typeof getProject>[0]): ProjectContext | null {
+  const activeProjects = listProjects(db).filter((project) => project.status === "active");
+  if (activeProjects.length !== 1) {
+    return null;
+  }
+
+  return getProjectContext(db, activeProjects[0].id);
 }

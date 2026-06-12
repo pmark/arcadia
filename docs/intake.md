@@ -118,8 +118,10 @@ pnpm arcadia review --workspace "$WORKSPACE"
 Dogfood:
 
 ```sh
-pnpm arcadia dogfood ask "Implement Arcadia Intake as the unified natural language front door."
+pnpm arcadia ask --workspace .arcadia-workspace "Implement Arcadia Intake as the unified natural language front door."
 ```
+
+`dogfood ask` is a repo-local compatibility shortcut for `ask --workspace .arcadia-workspace`. It does not use separate Intake rules.
 
 Discord:
 

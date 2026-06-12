@@ -191,6 +191,7 @@ function createCodexTaskMissionLog(workspace: string, db: Database.Database, tas
     project: {
       id: task.project_id,
       name: task.project_name ?? "Codex",
+      slug: task.project_name?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "codex",
       mission: "",
       goal: null,
       status: "active",

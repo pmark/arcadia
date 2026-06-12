@@ -86,6 +86,14 @@ Initialize a private workspace:
 pnpm arcadia init ./tmp/demo-workspace
 ```
 
+Workspace commands use `ARCADIA_WORKSPACE` when it is set; otherwise they default to the current directory. Passing `--workspace <path>` always takes precedence.
+
+Initialize a workspace that manages Arcadia itself as an ordinary project:
+
+```sh
+pnpm arcadia init ./tmp/arcadia-workspace --profile arcadia
+```
+
 Create a project:
 
 ```sh
@@ -190,9 +198,9 @@ pnpm smoke
 
 ## Commands
 
-- `arcadia init <workspace>` creates workspace folders, `config/arcadia.json`, `database/arcadia.sqlite3`, and applies the initial schema.
-- `arcadia status --workspace <path>` prints a concise summary and writes `reports/status.md`.
-- `arcadia ask --workspace <path> <request> [--project <project-id>] [--milestone <milestone-id>] [--run-safe]` resolves natural-language intent into an auditable work item and execution plan.
+- `arcadia init <workspace> [--profile arcadia]` creates workspace folders, `config/arcadia.json`, `database/arcadia.sqlite3`, and applies the initial schema. The optional `arcadia` profile seeds Arcadia as a normal project in that workspace.
+- `arcadia status [--workspace <path>]` prints a concise summary and writes `reports/status.md`.
+- `arcadia ask [--workspace <path>] <request> [--project <project-id>] [--milestone <milestone-id>] [--run-safe]` resolves natural-language intent into an auditable work item and execution plan.
 - `arcadia ingress process --workspace <path> [--source iCloudIdeas] [--run-safe] [--dry-run]` processes local text request files from `~/ArcadiaIngress/<source>/In/`.
 - `arcadia capture --workspace <path> --text <intent> [--project <project-id>] [--milestone <milestone-id>] [--expected-artifact <artifact>]` captures natural-language intent as structured work.
 - `arcadia project create --workspace <path>` interactively creates one project, milestone, initial work item, and optional artifact record.

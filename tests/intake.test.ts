@@ -48,6 +48,16 @@ describe("Arcadia Intake", () => {
     expect(result.safeToExecute).toBe(false);
   });
 
+  it("extracts plain project creation without requiring a template", () => {
+    const result = resolveIntake("Create a project called Boring Defaults.", context);
+
+    expect(result.resolvedIntent).toBe("CreateProject");
+    expect(result.confidenceLabel).toBe("high");
+    expect(result.extractedFields.projectName).toBe("Boring Defaults");
+    expect(result.action).toMatchObject({ kind: "create_project", projectName: "Boring Defaults" });
+    expect(result.safeToExecute).toBe(true);
+  });
+
   it("extracts create-work requests and resolves projects", () => {
     const result = resolveIntake("Add Pinterest publishing support to Rebuster.", context);
 

@@ -44,6 +44,7 @@ import {
   runMilestoneListCommand
 } from "./commands/milestone.js";
 import {
+  renderProjectCreateSuccess,
   renderProjectImportSuccess,
   renderProjectListSuccess,
   renderProjectMetadataSuccess,
@@ -87,12 +88,26 @@ import {
 import { normalizeError } from "./cli/errors.js";
 import {
   createFailure,
+  createSuccess,
   type CommandSuccess,
   type HumanRenderer,
   wantsJson,
   writeFailure,
   writeSuccess
 } from "./cli/response.js";
+import { loadUserConfig, setDefaultWorkspace, userConfigPath } from "./workspace/config.js";
+import { resolveWorkspace, type WorkspaceResolution } from "./workspace/resolve.js";
+
+interface ConfigDefaultWorkspaceData {
+  defaultWorkspace: string | null;
+  configPath: string;
+}
+
+interface WorkspaceResolveData {
+  source: WorkspaceResolution["source"];
+  workspacePath: string | null;
+  detail?: string;
+}
 
 export function buildProgram(): Command {
   const program = new Command();
@@ -115,22 +130,97 @@ export function buildProgram(): Command {
     .command("init")
     .description("Initialize an Arcadia workspace")
       .argument("<workspace>", "Workspace path")
-  ).action((workspace: string, options: { json?: boolean }) =>
-    runCliAction("init", options, () => runInitCommand(workspace), renderInitSuccess)
+      .option("--profile <name>", "Optional workspace profile: arcadia")
+  ).action((workspace: string, options: { profile?: string; json?: boolean }) =>
+    runCliAction("init", options, () => runInitCommand(workspace, options), renderInitSuccess)
   );
 
-  const dogfood = program.command("dogfood").description("Arcadia dogfooding commands that use .arcadia-workspace");
+  const config = program.command("config").description("User-level Arcadia configuration");
+  const configSet = config.command("set").description("Set user-level Arcadia configuration");
+  addJsonOption(
+    configSet
+      .command("defaultWorkspace")
+      .description("Set the persistent default workspace")
+      .argument("<workspace>", "Workspace path")
+  ).action((workspace: string, options: { json?: boolean }) =>
+    runCliAction(
+      "config.set.defaultWorkspace",
+      options,
+      () => {
+        const updated = setDefaultWorkspace(workspace);
+        return createSuccess({
+          command: "config.set.defaultWorkspace",
+          data: {
+            defaultWorkspace: updated.defaultWorkspace ?? null,
+            configPath: userConfigPath()
+          }
+        });
+      },
+      renderConfigDefaultWorkspaceSuccess
+    )
+  );
+
+  const configGet = config.command("get").description("Inspect user-level Arcadia configuration");
+  addJsonOption(
+    configGet
+      .command("defaultWorkspace")
+      .description("Show the persistent default workspace")
+  ).action((options: { json?: boolean }) =>
+    runCliAction(
+      "config.get.defaultWorkspace",
+      options,
+      () => {
+        const loaded = loadUserConfig();
+        return createSuccess({
+          command: "config.get.defaultWorkspace",
+          data: {
+            defaultWorkspace: loaded.defaultWorkspace ?? null,
+            configPath: userConfigPath()
+          }
+        });
+      },
+      renderConfigDefaultWorkspaceSuccess
+    )
+  );
+
+  const workspace = program.command("workspace").description("Workspace utilities");
+  addJsonOption(
+    workspace
+      .command("resolve")
+      .description("Show the workspace resolution result")
+      .option("--workspace <path>", "Workspace path")
+  ).action((options: { workspace?: string; json?: boolean }) =>
+    runCliAction(
+      "workspace.resolve",
+      options,
+      () => {
+        const resolution = resolveWorkspace({ workspace: options.workspace });
+        return createSuccess({
+          command: "workspace.resolve",
+          workspace: resolution.workspacePath ?? undefined,
+          data: {
+            source: resolution.source,
+            workspacePath: resolution.workspacePath,
+            detail: resolution.detail
+          }
+        });
+      },
+      renderWorkspaceResolveSuccess
+    )
+  );
+
+  const dogfood = program.command("dogfood").description("Compatibility shortcuts for .arcadia-workspace");
   addJsonOption(
     dogfood
       .command("init")
-      .description("Initialize the repo-local Arcadia dogfooding workspace")
+      .description("Initialize .arcadia-workspace with the Arcadia workspace profile")
   ).action((options: { json?: boolean }) =>
     runCliAction("dogfood.init", options, () => runDogfoodInitCommand(), renderDogfoodInitSuccess)
   );
   addJsonOption(
     dogfood
       .command("ask")
-      .description("Issue a request through arcadia ask using the dogfooding workspace")
+      .description("Issue a request through arcadia ask using .arcadia-workspace")
       .argument("<request>", "Natural-language request")
       .option("--run-safe", "Immediately run deterministic safe steps")
   ).action((request: string, options: { runSafe?: boolean; json?: boolean }) =>
@@ -144,13 +234,13 @@ export function buildProgram(): Command {
   addJsonOption(
     dogfood
       .command("status")
-      .description("Print status for the repo-local Arcadia dogfooding workspace")
+      .description("Print status for .arcadia-workspace")
   ).action((options: { json?: boolean }) =>
     runCliAction("dogfood.status", options, () => runDogfoodStatusCommand(), renderStatusSuccess)
   );
   const dogfoodReview = dogfood
     .command("review")
-    .description("Review Requires Review items in the repo-local Arcadia dogfooding workspace");
+    .description("Review Requires Review items in .arcadia-workspace");
   addJsonOption(dogfoodReview).action((options: { json?: boolean }) =>
     runCliAction(
       "dogfood.review",
@@ -162,7 +252,7 @@ export function buildProgram(): Command {
   addJsonOption(
     dogfoodReview
       .command("show")
-      .description("Show detailed dogfood Requires Review context")
+      .description("Show detailed Requires Review context from .arcadia-workspace")
       .argument("<id>", "Requires Review item id")
   ).action((id: string, options: { json?: boolean }) =>
     runCliAction(
@@ -175,7 +265,7 @@ export function buildProgram(): Command {
   addJsonOption(
     dogfoodReview
       .command("approve")
-      .description("Approve a dogfood Requires Review item and continue the intended Arcadia workflow")
+      .description("Approve a Requires Review item from .arcadia-workspace")
       .argument("<id>", "Requires Review item id")
   ).action((id: string, options: { json?: boolean }) =>
     runCliAction(
@@ -188,7 +278,7 @@ export function buildProgram(): Command {
   addJsonOption(
     dogfoodReview
       .command("reject")
-      .description("Reject a dogfood Requires Review item without executing it")
+      .description("Reject a Requires Review item from .arcadia-workspace")
       .argument("<id>", "Requires Review item id")
   ).action((id: string, options: { json?: boolean }) =>
     runCliAction(
@@ -201,7 +291,7 @@ export function buildProgram(): Command {
   addJsonOption(
     dogfoodReview
       .command("defer")
-      .description("Keep a dogfood Requires Review item open for future review")
+      .description("Keep a Requires Review item open in .arcadia-workspace")
       .argument("<id>", "Requires Review item id")
   ).action((id: string, options: { json?: boolean }) =>
     runCliAction(
@@ -215,8 +305,8 @@ export function buildProgram(): Command {
   addJsonOption(
     program
     .command("status")
-    .description("Print workspace status and write reports/status.md")
-      .option("--workspace <path>", "Workspace path", ".")
+      .description("Print workspace status and write reports/status.md")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("status", options, () => runStatusCommand(options), renderStatusSuccess)
   );
@@ -226,7 +316,7 @@ export function buildProgram(): Command {
       .command("ask")
       .description("Resolve natural language intent into an auditable work item and execution plan")
       .argument("<request>", "Natural-language request")
-      .option("--workspace <path>", "Workspace path", ".")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--project <project-id>", "Optional project id")
       .option("--milestone <milestone-id>", "Optional milestone id")
       .option("--run-safe", "Immediately run deterministic safe steps")
@@ -242,7 +332,7 @@ export function buildProgram(): Command {
     program
     .command("capture")
       .description("Capture executable intent as a structured work item")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .requiredOption("--text <intent>", "Natural-language intent")
       .option("--project <project-id>", "Optional project id")
       .option("--milestone <milestone-id>", "Optional milestone id")
@@ -257,16 +347,26 @@ export function buildProgram(): Command {
   }) => runCliAction("capture", options, () => runCaptureCommand(options), renderCaptureSuccess));
 
   const project = program.command("project").description("Project commands");
-  project
-    .command("create")
-    .description("Interactively create a project")
-    .requiredOption("--workspace <path>", "Workspace path")
-    .action((options: { workspace: string }) => runProjectCreateCommand(options));
+  addJsonOption(
+    project
+      .command("create")
+      .description("Create a project with built-in defaults")
+      .argument("[name]", "Project name")
+      .argument("[path]", "Optional project path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((name: string | undefined, projectPath: string | undefined, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "project.create",
+      options,
+      () => runProjectCreateCommand({ ...options, name, path: projectPath }),
+      renderProjectCreateSuccess
+    )
+  );
   addJsonOption(
     project
     .command("list")
     .description("List projects")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("project.list", options, () => runProjectListCommand(options), renderProjectListSuccess)
   );
@@ -275,7 +375,7 @@ export function buildProgram(): Command {
       .command("show")
       .description("Show project details")
       .argument("<project-id>", "Project id")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((projectId: string, options: { workspace: string; json?: boolean }) =>
     runCliAction(
       "project.show",
@@ -288,7 +388,7 @@ export function buildProgram(): Command {
     project
       .command("import")
       .description("Create a project without prompts")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .requiredOption("--name <name>", "Project name")
       .requiredOption("--mission <mission>", "Project mission")
       .option("--goal <goal>", "Project goal")
@@ -316,7 +416,7 @@ export function buildProgram(): Command {
       .command("update")
       .description("Update project fields")
       .argument("<project-id>", "Project id")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--status <status>", "Status: active, paused, incubating, completed")
       .option("--mission <mission>", "Project mission")
       .option("--goal <goal>", "Project goal")
@@ -339,7 +439,7 @@ export function buildProgram(): Command {
       .command("metadata")
       .description("Upsert deterministic project metadata")
       .argument("<project-id>", "Project id")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--alias <alias>", "Project alias; repeat for multiple aliases", collectValues, undefined)
       .option("--repo-path <path>", "Target repository path")
       .option("--status-summary <summary>", "Project status summary")
@@ -371,13 +471,13 @@ export function buildProgram(): Command {
   inbox
     .command("add")
     .description("Interactively add a manually classified inbox item")
-    .requiredOption("--workspace <path>", "Workspace path")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
     .action((options: { workspace: string }) => runInboxAddCommand(options));
   addJsonOption(
     inbox
       .command("import")
       .description("Import a manually classified inbox item without prompts")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .requiredOption("--title <title>", "Work item title")
       .requiredOption("--input <text>", "Raw input text")
       .requiredOption("--queue <queue>", "Queue: inbox, work_queue, needs_mark, blocked")
@@ -405,7 +505,7 @@ export function buildProgram(): Command {
     program
     .command("queue")
     .description("Show grouped queues")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("queue", options, () => runQueueCommand(options), renderQueueSuccess)
   );
@@ -415,7 +515,7 @@ export function buildProgram(): Command {
     dashboard
       .command("snapshot")
       .description("Emit the read-only dashboard snapshot")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction(
       "dashboard.snapshot",
@@ -430,7 +530,7 @@ export function buildProgram(): Command {
     codex
       .command("list")
       .description("List observed Codex tasks and goals")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--source <source>", "Codex source: all, local-goals, cloud", "all")
       .option("--active-only", "Only show non-terminal tasks")
       .option("--no-sync", "Use the last Arcadia snapshot without observing Codex first")
@@ -441,7 +541,7 @@ export function buildProgram(): Command {
     codex
       .command("sync")
       .description("Refresh observed Codex task and goal state")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--source <source>", "Codex source: all, local-goals, cloud", "all")
       .option("--active-only", "Only show non-terminal tasks")
   ).action((options: { workspace: string; source?: string; activeOnly?: boolean; json?: boolean }) =>
@@ -452,7 +552,7 @@ export function buildProgram(): Command {
       .command("associate")
       .description("Associate an observed Codex task with an Arcadia project")
       .argument("<task-id>", "Arcadia Codex task id or Codex source id")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .requiredOption("--project <project-id>", "Arcadia project id")
       .option("--milestone <milestone-id>", "Arcadia milestone id")
   ).action((taskId: string, options: { workspace: string; project: string; milestone?: string; json?: boolean }) =>
@@ -474,7 +574,7 @@ export function buildProgram(): Command {
     ingress
       .command("process")
       .description("Process local ingress request files")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--source <name>", "Ingress source folder", "iCloudIdeas")
       .option("--run-safe", "Immediately run deterministic safe steps")
       .option("--dry-run", "Report files that would be processed without changing files")
@@ -491,7 +591,7 @@ export function buildProgram(): Command {
     artifact
       .command("list")
       .description("List artifacts")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("artifact.list", options, () => runArtifactListCommand(options), renderArtifactListSuccess)
   );
@@ -500,7 +600,7 @@ export function buildProgram(): Command {
       .command("update")
       .description("Update artifact status or path")
       .argument("<artifact-id>", "Artifact id")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--status <status>", "Status: planned, drafted, ready, published")
       .option("--path <path>", "Artifact path")
   ).action((artifactId: string, options: { workspace: string; status?: string; path?: string; json?: boolean }) =>
@@ -517,7 +617,7 @@ export function buildProgram(): Command {
     work
       .command("list")
       .description("List work items")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("work.list", options, () => runWorkListCommand(options), renderWorkListSuccess)
   );
@@ -526,7 +626,7 @@ export function buildProgram(): Command {
       .command("update")
       .description("Update an existing work item")
       .argument("<work-id>", "Work item id")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--queue <queue>", "Queue: inbox, work_queue, needs_mark, blocked")
       .option("--classification <classification>", "Work classification: autonomous, codex, needs_mark, blocked")
       .option("--next-action <action>", "Next action")
@@ -551,7 +651,7 @@ export function buildProgram(): Command {
       .command("done")
       .description("Mark a work item complete")
       .argument("<work-id>", "Work item id")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((workId: string, options: { workspace: string; json?: boolean }) =>
     runCliAction("work.done", options, () => runWorkDoneCommand({ ...options, workId }), renderWorkDoneSuccess)
   );
@@ -560,7 +660,7 @@ export function buildProgram(): Command {
       .command("plan")
       .description("Create an execution plan for a work item")
       .argument("<work-id>", "Work item id")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((workId: string, options: { workspace: string; json?: boolean }) =>
     runCliAction("work.plan", options, () => runWorkPlanCommand({ ...options, workId }), renderWorkPlanSuccess)
   );
@@ -569,7 +669,7 @@ export function buildProgram(): Command {
       .command("run")
       .description("Execute safe deterministic steps for a work item")
       .argument("<work-id>", "Work item id")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--plan <plan-id>", "Optional execution plan id")
       .option("--allow-codex-planning", "Allow approved Codex planning steps to run")
       .option("--allow-codex-build", "Allow approved Codex build steps to run")
@@ -590,7 +690,7 @@ export function buildProgram(): Command {
     run
       .command("list")
       .description("List recent execution runs")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--limit <n>", "Maximum number of runs to return", "10")
   ).action((options: { workspace: string; limit?: string; json?: boolean }) =>
     runCliAction("run.list", options, () => runRunListCommand(options), renderRunListSuccess)
@@ -600,7 +700,7 @@ export function buildProgram(): Command {
       .command("show")
       .description("Show an execution run audit trail")
       .argument("<run-id>", "Run id")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((runId: string, options: { workspace: string; json?: boolean }) =>
     runCliAction("run.show", options, () => runRunShowCommand({ ...options, runId }), renderRunShowSuccess)
   );
@@ -609,7 +709,7 @@ export function buildProgram(): Command {
   log
     .command("create")
     .description("Interactively create a mission log")
-    .requiredOption("--workspace <path>", "Workspace path")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
     .action((options: { workspace: string }) => runLogCreateCommand(options));
 
   const milestone = program.command("milestone").description("Milestone commands");
@@ -617,7 +717,7 @@ export function buildProgram(): Command {
     milestone
       .command("list")
       .description("List milestones")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--status <status>", "Optional status filter: active, paused, completed")
       .option("--limit <n>", "Maximum number of milestones to return", "10")
   ).action((options: { workspace: string; status?: string; limit?: string; json?: boolean }) =>
@@ -628,7 +728,7 @@ export function buildProgram(): Command {
       .command("create")
       .description("Create a milestone for a project")
       .argument("<project-id>", "Project id")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .requiredOption("--title <title>", "Milestone title")
   ).action((projectId: string, options: { workspace: string; title: string; json?: boolean }) =>
     runCliAction(
@@ -643,7 +743,7 @@ export function buildProgram(): Command {
       .command("complete")
       .description("Mark a milestone complete")
       .argument("<milestone-id>", "Milestone id")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((milestoneId: string, options: { workspace: string; json?: boolean }) =>
     runCliAction(
       "milestone.complete",
@@ -658,7 +758,7 @@ export function buildProgram(): Command {
     report
     .command("status")
     .description("Write reports/status.md")
-      .requiredOption("--workspace <path>", "Workspace path")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("report.status", options, () => runReportStatusCommand(options), renderReportStatusSuccess)
   );
@@ -666,7 +766,7 @@ export function buildProgram(): Command {
   const review = program
     .command("review")
     .description("List and decide Requires Review items")
-    .option("--workspace <path>", "Workspace path", ".")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
     .option("--json", "Emit machine-readable JSON output")
     .action((options: { workspace: string; json?: boolean }) =>
     runCliAction(
@@ -681,7 +781,7 @@ export function buildProgram(): Command {
       .command("show")
       .description("Show detailed Requires Review context")
       .argument("<id>", "Requires Review item id")
-      .option("--workspace <path>", "Workspace path", ".")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((id: string, options: { workspace: string; json?: boolean }) =>
     runCliAction(
       "review.show",
@@ -695,7 +795,7 @@ export function buildProgram(): Command {
       .command("approve")
       .description("Approve a Requires Review item and continue the intended Arcadia workflow")
       .argument("<id>", "Requires Review item id")
-      .option("--workspace <path>", "Workspace path", ".")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((id: string, options: { workspace: string; json?: boolean }) =>
     runCliAction(
       "review.approve",
@@ -709,7 +809,7 @@ export function buildProgram(): Command {
       .command("reject")
       .description("Reject a Requires Review item without executing it")
       .argument("<id>", "Requires Review item id")
-      .option("--workspace <path>", "Workspace path", ".")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((id: string, options: { workspace: string; json?: boolean }) =>
     runCliAction(
       "review.reject",
@@ -723,7 +823,7 @@ export function buildProgram(): Command {
       .command("defer")
       .description("Keep a Requires Review item open for future review")
       .argument("<id>", "Requires Review item id")
-      .option("--workspace <path>", "Workspace path", ".")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((id: string, options: { workspace: string; json?: boolean }) =>
     runCliAction(
       "review.defer",
@@ -736,7 +836,7 @@ export function buildProgram(): Command {
     review
       .command("weekly")
       .description("Write a deterministic weekly review report")
-      .option("--workspace <path>", "Workspace path", ".")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--since <YYYY-MM-DD>", "Inclusive review start date")
       .option("--until <YYYY-MM-DD>", "Inclusive review end date")
   ).action((options: { workspace: string; since?: string; until?: string; json?: boolean }) =>
@@ -776,6 +876,10 @@ function addJsonOption(command: Command): Command {
   return command.option("--json", "Emit machine-readable JSON output");
 }
 
+function defaultWorkspace(): string {
+  return undefined as unknown as string;
+}
+
 async function runCliAction<TData>(
   command: string,
   options: { workspace?: string; json?: boolean },
@@ -800,6 +904,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "project" && second === "list") {
     return "project.list";
+  }
+
+  if (first === "project" && second === "create") {
+    return "project.create";
   }
 
   if (first === "project" && second === "import") {
@@ -890,7 +998,7 @@ function reviewOptionsFromArgv<TOptions extends { workspace?: string; json?: boo
 ): TOptions & { workspace: string; json: boolean } {
   return {
     ...options,
-    workspace: workspaceFromArgv(process.argv) ?? options.workspace ?? ".",
+    workspace: workspaceFromArgv(process.argv) ?? options.workspace ?? defaultWorkspace(),
     json: Boolean(options.json) || wantsJson(process.argv)
   };
 }
@@ -904,4 +1012,19 @@ function jsonOptionsFromArgv<TOptions extends { json?: boolean }>(options: TOpti
 
 function collectValues(value: string, previous: string[] = []): string[] {
   return [...previous, value];
+}
+
+function renderConfigDefaultWorkspaceSuccess(response: CommandSuccess<ConfigDefaultWorkspaceData>): string[] {
+  return [
+    `Default workspace: ${response.data.defaultWorkspace ?? "Not configured"}`,
+    `Config: ${response.data.configPath}`
+  ];
+}
+
+function renderWorkspaceResolveSuccess(response: CommandSuccess<WorkspaceResolveData>): string[] {
+  return [
+    `Source: ${response.data.source}`,
+    `Workspace: ${response.data.workspacePath ?? "Not resolved"}`,
+    ...(response.data.detail ? [`Detail: ${response.data.detail}`] : [])
+  ];
 }

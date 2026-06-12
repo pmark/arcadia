@@ -28,8 +28,23 @@ export function applyInitialSchema(db: Database.Database): void {
 }
 
 export function applyMigrations(db: Database.Database): void {
+  ensureProjectSlugColumn(db);
   ensureProjectGoalColumn(db);
   ensureReviewItemsTable(db);
+}
+
+function ensureProjectSlugColumn(db: Database.Database): void {
+  const columns = db.prepare("PRAGMA table_info(projects)").all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === "slug")) {
+    return;
+  }
+
+  db.prepare("ALTER TABLE projects ADD COLUMN slug TEXT").run();
+  const projects = db.prepare("SELECT id, name FROM projects").all() as Array<{ id: string; name: string }>;
+  const update = db.prepare("UPDATE projects SET slug = ? WHERE id = ?");
+  for (const project of projects) {
+    update.run(slugifyForMigration(project.name), project.id);
+  }
 }
 
 function ensureProjectGoalColumn(db: Database.Database): void {
@@ -72,4 +87,16 @@ function ensureReviewItemsTable(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_review_items_project_id ON review_items(project_id);
     CREATE INDEX IF NOT EXISTS idx_review_items_ask_request_id ON review_items(ask_request_id);
   `);
+}
+
+function slugifyForMigration(value: string): string {
+  const slug = value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+
+  return slug || "project";
 }

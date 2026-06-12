@@ -19,6 +19,7 @@ import type {
 export interface Project {
   id: string;
   name: string;
+  slug: string;
   mission: string;
   goal: string | null;
   status: ProjectStatus;
