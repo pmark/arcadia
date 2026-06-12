@@ -107,11 +107,40 @@ export async function registerSlashCommands(config: BotConfig): Promise<void> {
   );
 }
 
+export async function unregisterSlashCommands(config: BotConfig): Promise<void> {
+  const rest = new REST({ version: "10" }).setToken(config.discordBotToken);
+  await rest.put(
+    Routes.applicationGuildCommands(config.discordClientId, config.discordGuildId),
+    { body: [] }
+  );
+}
+
+export async function reregisterSlashCommands(config: BotConfig): Promise<void> {
+  await unregisterSlashCommands(config);
+  await registerSlashCommands(config);
+}
+
 if (isMainModule()) {
-  registerSlashCommands(loadConfig()).catch((error: unknown) => {
+  runSlashCommandMaintenance(process.argv[2], loadConfig()).catch((error: unknown) => {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exit(1);
   });
+}
+
+async function runSlashCommandMaintenance(action = "register", config: BotConfig): Promise<void> {
+  switch (action) {
+    case "register":
+      await registerSlashCommands(config);
+      return;
+    case "unregister":
+      await unregisterSlashCommands(config);
+      return;
+    case "reregister":
+      await reregisterSlashCommands(config);
+      return;
+    default:
+      throw new Error("Usage: register.ts [register|unregister|reregister]");
+  }
 }
 
 function isMainModule(): boolean {

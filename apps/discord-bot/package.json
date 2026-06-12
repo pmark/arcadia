@@ -11,6 +11,8 @@
   "scripts": {
     "dev": "tsx src/main.ts",
     "register": "tsx src/commands/register.ts",
+    "unregister": "tsx src/commands/register.ts unregister",
+    "reregister": "tsx src/commands/register.ts reregister",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/src/main.js"
   },

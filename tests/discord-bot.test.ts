@@ -88,6 +88,19 @@ describe("discord slash command registration", () => {
     ]));
     expect(subcommands).not.toContain("requires-review");
   });
+
+  it("documents slash command reset scripts", () => {
+    const packageJson = JSON.parse(readFileSync(path.resolve("apps", "discord-bot", "package.json"), "utf8"));
+    const readme = readFileSync(path.resolve("apps", "discord-bot", "README.md"), "utf8");
+
+    expect(packageJson.scripts.register).toBe("tsx src/commands/register.ts");
+    expect(packageJson.scripts.unregister).toBe("tsx src/commands/register.ts unregister");
+    expect(packageJson.scripts.reregister).toBe("tsx src/commands/register.ts reregister");
+    expect(readme).toContain("pnpm --filter arcadia-discord-bot unregister");
+    expect(readme).toContain("pnpm --filter arcadia-discord-bot reregister");
+    expect(readme).toContain("/arcadia review-approve");
+    expect(readme).not.toContain("/arcadia requires-review");
+  });
 });
 
 describe("discord bot CLI adapter", () => {

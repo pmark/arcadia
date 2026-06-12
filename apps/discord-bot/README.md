@@ -39,6 +39,18 @@ Register slash commands:
 pnpm --filter arcadia-discord-bot register
 ```
 
+Clear all guild slash commands for this app:
+
+```sh
+pnpm --filter arcadia-discord-bot unregister
+```
+
+Clear all guild slash commands and register the current supported commands:
+
+```sh
+pnpm --filter arcadia-discord-bot reregister
+```
+
 Run locally:
 
 ```sh
@@ -57,7 +69,11 @@ pnpm --filter arcadia-discord-bot start
 - `/arcadia status` shows active projects, running work, queued work, Requires Review count, and recent artifacts.
 - `/arcadia request text:<request> run-safe:<true|false>` submits a natural-language request through `arcadia ask`; `run-safe:true` immediately runs deterministic safe steps.
 - `/arcadia codex` shows active Codex Companion tasks observed by Arcadia, including project association and mission log path when available.
-- `/arcadia requires-review` shows the current Requires Review queue.
+- `/arcadia review` shows current Requires Review items.
+- `/arcadia review-show id:<review-id>` shows one Requires Review item.
+- `/arcadia review-approve id:<review-id>` approves a Requires Review item and resumes the intended workflow.
+- `/arcadia review-reject id:<review-id>` rejects a Requires Review item without executing it.
+- `/arcadia review-defer id:<review-id>` keeps a Requires Review item open for future review.
 - `/arcadia runs` shows recent execution runs.
 - `/arcadia run id:<run-id>` shows one run with mission log, artifacts, Requires Review items, and failure or blocking reason.
 
