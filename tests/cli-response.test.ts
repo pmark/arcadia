@@ -236,6 +236,33 @@ describe("CLI response contract", () => {
     expect(json.data.workItem.next_action).toBe("Define Pinterest posting support boundaries.");
   });
 
+  it("creates a project when the workspace is supplied as the second positional argument", () => {
+    const workspace = initializedWorkspace();
+
+    const result = runCli(["project", "create", "Boring Defaults", workspace, "--json"]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const json = parseJson(result.stdout);
+    expect(json.ok).toBe(true);
+    expect(json.command).toBe("project.create");
+    expect(json.workspace).toBe(path.resolve(workspace));
+    expect(json.data.project.name).toBe("Boring Defaults");
+    expect(json.data.projectPath).toBe(path.join(path.resolve(workspace), "projects", "boring-defaults"));
+    expect(existsSync(path.join(path.resolve(workspace), "projects", "boring-defaults", "PROJECT.md"))).toBe(true);
+  });
+
+  it("emits a usage error for project create when no workspace is configured", () => {
+    const projectPath = createTempWorkspacePath();
+
+    const result = runCli(["project", "create", "Boring Defaults", projectPath, "--json"]);
+
+    expect(result.status).toBe(2);
+    const json = parseJson(result.stderr);
+    expect(json.error.code).toBe("USAGE_ERROR");
+    expect(json.error.message).toContain("Arcadia workspace is not configured.");
+  });
+
   it("updates project status with JSON output", () => {
     const workspace = initializedWorkspace();
     const created = createProject(workspace);

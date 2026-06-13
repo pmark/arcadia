@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
@@ -96,6 +96,7 @@ import {
   writeSuccess
 } from "./cli/response.js";
 import { loadUserConfig, setDefaultWorkspace, userConfigPath } from "./workspace/config.js";
+import { getWorkspacePaths } from "./workspace/paths.js";
 import { resolveWorkspace, type WorkspaceResolution } from "./workspace/resolve.js";
 
 interface ConfigDefaultWorkspaceData {
@@ -354,14 +355,15 @@ export function buildProgram(): Command {
       .argument("[name]", "Project name")
       .argument("[path]", "Optional project path")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((name: string | undefined, projectPath: string | undefined, options: { workspace: string; json?: boolean }) =>
-    runCliAction(
+  ).action((name: string | undefined, projectPath: string | undefined, options: { workspace?: string; json?: boolean }) => {
+    const resolved = resolveProjectCreateArguments(name, projectPath, options);
+    return runCliAction(
       "project.create",
-      options,
-      () => runProjectCreateCommand({ ...options, name, path: projectPath }),
+      resolved.options,
+      () => runProjectCreateCommand(resolved.commandOptions),
       renderProjectCreateSuccess
-    )
-  );
+    );
+  });
   addJsonOption(
     project
     .command("list")
@@ -878,6 +880,31 @@ function addJsonOption(command: Command): Command {
 
 function defaultWorkspace(): string {
   return undefined as unknown as string;
+}
+
+function resolveProjectCreateArguments(
+  name: string | undefined,
+  projectPath: string | undefined,
+  options: { workspace?: string; json?: boolean }
+): {
+  options: { workspace?: string; json?: boolean };
+  commandOptions: { workspace: string; name?: string; path?: string };
+} {
+  if (!options.workspace && projectPath && isInitializedWorkspacePath(projectPath)) {
+    return {
+      options: { ...options, workspace: projectPath },
+      commandOptions: { ...options, workspace: projectPath, name }
+    };
+  }
+
+  return {
+    options,
+    commandOptions: { ...options, workspace: options.workspace as string, name, path: projectPath }
+  };
+}
+
+function isInitializedWorkspacePath(candidate: string): boolean {
+  return existsSync(getWorkspacePaths(candidate).configFile);
 }
 
 async function runCliAction<TData>(

@@ -47,15 +47,15 @@ export async function runProjectCreateCommand(options: {
   name?: string;
   path?: string;
 }): Promise<CommandSuccess<ProjectCreateCommandData>> {
-  const workspacePath = resolveWorkspacePath(options.workspace);
   if (options.name) {
     return createProjectWithDefaults({
-      workspace: workspacePath,
+      workspace: options.workspace,
       name: options.name,
       path: options.path
     });
   }
 
+  const workspacePath = resolveWorkspacePath(options.workspace);
   const input = await promptForProjectCreate();
   const result = withDatabase(workspacePath, (db) => createProjectWithInitialWork(db, input));
 
