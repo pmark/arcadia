@@ -9,6 +9,7 @@ import {
   runReviewApproveCommand,
   runReviewDeferCommand,
   runReviewRejectCommand,
+  runReviewResolveReplyCommand,
   runReviewRequiredCommand,
   runReviewShowCommand
 } from "../src/commands/review.js";
@@ -22,10 +23,13 @@ import {
   createWorkItemWithOptionalArtifact,
   createProjectWithInitialWork,
   getActiveMilestoneForProject,
+  getBackBurnerItem,
   getReviewItem,
   listCodexTasks,
   listApprovalGatesForWorkItem,
   listCodexInvocationsForWorkItem,
+  listBackBurnerItems,
+  listReviewFeedback,
   listWorkItems,
   upsertProjectMetadata
 } from "../src/db/repositories.js";
@@ -225,7 +229,7 @@ describe("arcadia ask command", () => {
     });
   });
 
-  it("preserves low-confidence input as Requires Review instead of invoking Codex", () => {
+  it("preserves low-confidence input in the Back Burner instead of invoking Codex", () => {
     const workspace = initializedWorkspace();
 
     const result = runAskCommand({
@@ -235,15 +239,18 @@ describe("arcadia ask command", () => {
 
     expect(result.data.resolvedIntent.matched).toBe(false);
     expect(result.data.resolvedIntent.intentId).toBe("CaptureThought");
-    expect(result.data.result.status).toBe("requires_review");
-    expect(result.data.reviewItemId).toMatch(/^review_/);
+    expect(result.data.result.status).toBe("captured");
+    expect(result.data.reviewItemId).toBeNull();
+    expect(result.data.backBurnerItemId).toMatch(/^bb_/);
     expect(result.data.workItem).toBeNull();
     expect(result.data.plan).toBeNull();
     expect(result.data.codexInvocations).toHaveLength(0);
 
     const review = runReviewRequiredCommand({ workspace });
-    expect(review.data.items[0].id).toBe(result.data.reviewItemId);
-    expect(review.data.items[0].sourceInput).toBe("Improve the Rebuster candidate review flow.");
+    expect(review.data.items).toEqual([]);
+    const item = withDatabase(workspace, (db) => getBackBurnerItem(db, result.data.backBurnerItemId ?? ""));
+    expect(item?.original_input).toBe("Improve the Rebuster candidate review flow.");
+    expect(item?.status).toBe("incubating");
   });
 
   it("approves a Requires Review item by replaying the intended ask workflow", () => {
@@ -260,6 +267,7 @@ describe("arcadia ask command", () => {
 
     const shown = runReviewShowCommand({ workspace, id: asked.data.reviewItemId });
     expect(shown.data.item.decisionNeeded).toContain("Approve or reject");
+    expect(shown.data.item.slug).toMatch(/^R\d+$/);
 
     const approved = runReviewApproveCommand({ workspace, id: asked.data.reviewItemId });
     expect(approved.data.result.status).toBe("approved");
@@ -274,6 +282,59 @@ describe("arcadia ask command", () => {
     expect(open.data.items.map((item) => item.id)).not.toContain(asked.data.reviewItemId);
   });
 
+  it("resolves Requires Review replies by option letter and slug", () => {
+    const approveWorkspace = initializedWorkspace();
+    const approveAsk = runAskCommand({ workspace: approveWorkspace, request: "Build Pinterest posting support for Unknown App." });
+    const approveItem = runReviewRequiredCommand({ workspace: approveWorkspace }).data.items[0];
+    expect(approveItem.slug).toMatch(/^R\d+$/);
+
+    const approved = runReviewResolveReplyCommand({
+      workspace: approveWorkspace,
+      id: approveAsk.data.reviewItemId,
+      reply: "A"
+    });
+
+    expect(approved.data.action).toBe("approved");
+    expect(approved.data.selectedOption).toBe("approve");
+    expect(approved.data.confirmation).toContain(`${approveItem.slug} approved`);
+
+    const deferWorkspace = initializedWorkspace();
+    runAskCommand({ workspace: deferWorkspace, request: "Build Pinterest posting support for Unknown App." });
+    const deferItem = runReviewRequiredCommand({ workspace: deferWorkspace }).data.items[0];
+
+    const deferred = runReviewResolveReplyCommand({
+      workspace: deferWorkspace,
+      reply: `${deferItem.slug} defer`
+    });
+
+    expect(deferred.data.action).toBe("deferred");
+    expect(deferred.data.confirmation).toBe(`${deferItem.slug} deferred.`);
+  });
+
+  it("captures durable feedback from review replies", () => {
+    const workspace = initializedWorkspace();
+    runAskCommand({ workspace, request: "Build Pinterest posting support for Unknown App." });
+    const item = runReviewRequiredCommand({ workspace }).data.items[0];
+
+    const result = runReviewResolveReplyCommand({
+      workspace,
+      id: item.id,
+      reply: "wrong project"
+    });
+
+    expect(result.data.action).toBe("feedback_captured");
+    expect(result.data.confirmation).toBe(`Feedback captured for ${item.slug}: wrong project.`);
+    withDatabase(workspace, (db) => {
+      expect(countRows(db, "review_feedback")).toBe(1);
+      const feedback = listReviewFeedback(db, item.id)[0];
+      expect(feedback.review_slug).toBe(item.slug);
+      expect(feedback.source_input).toBe("Build Pinterest posting support for Unknown App.");
+      expect(feedback.proposed_interpretation).toContain("referenced project");
+      expect(feedback.feedback_type).toBe("wrong project");
+      expect(feedback.raw_reply).toBe("wrong project");
+    });
+  });
+
   it("only shows actionable Requires Review records", () => {
     const workspace = initializedWorkspace();
     const legacy = withDatabase(workspace, (db) =>
@@ -285,7 +346,7 @@ describe("arcadia ask command", () => {
         nextAction: "Clarify legacy item."
       }).workItem
     );
-    const asked = runAskCommand({ workspace, request: "Pinterest might help Rebuster." });
+    const asked = runAskCommand({ workspace, request: "Build Pinterest posting support for Unknown App." });
     if (!asked.data.reviewItemId) {
       throw new Error("Expected Requires Review item.");
     }
@@ -303,7 +364,7 @@ describe("arcadia ask command", () => {
   it("supports every decision command for every shown Requires Review item shape", () => {
     for (const action of ["approve", "reject", "defer"] as const) {
       const workspace = initializedWorkspace();
-      const asked = runAskCommand({ workspace, request: "Pinterest might help Rebuster." });
+      const asked = runAskCommand({ workspace, request: "Build Pinterest posting support for Unknown App." });
       if (!asked.data.reviewItemId) {
         throw new Error("Expected Requires Review item.");
       }
@@ -342,7 +403,7 @@ describe("arcadia ask command", () => {
 
   it("rejects and defers Requires Review items without executing the proposed action", () => {
     const rejectedWorkspace = initializedWorkspace();
-    const rejectedAsk = runAskCommand({ workspace: rejectedWorkspace, request: "Pinterest might help Rebuster." });
+    const rejectedAsk = runAskCommand({ workspace: rejectedWorkspace, request: "Build Pinterest posting support for Unknown App." });
     if (!rejectedAsk.data.reviewItemId) {
       throw new Error("Expected rejected review item.");
     }
@@ -352,7 +413,7 @@ describe("arcadia ask command", () => {
     expect(rejected.data.approval).toBeNull();
 
     const deferredWorkspace = initializedWorkspace();
-    const deferredAsk = runAskCommand({ workspace: deferredWorkspace, request: "Pinterest might help Rebuster." });
+    const deferredAsk = runAskCommand({ workspace: deferredWorkspace, request: "Build Pinterest posting support for Unknown App." });
     if (!deferredAsk.data.reviewItemId) {
       throw new Error("Expected deferred review item.");
     }
@@ -652,8 +713,10 @@ describe("arcadia ask command", () => {
         intent: "CaptureThought",
         assert: () => {
           const result = runAskCommand({ workspace, request: "Improve the Rebuster candidate review flow." });
-          expect(result.data.result.status).toBe("requires_review");
+          expect(result.data.result.status).toBe("captured");
           expect(result.data.intake.resolvedIntent).toBe("CaptureThought");
+          expect(result.data.reviewItemId).toBeNull();
+          expect(result.data.backBurnerItemId).toMatch(/^bb_/);
           expect(result.data.codexInvocations).toHaveLength(0);
         }
       },

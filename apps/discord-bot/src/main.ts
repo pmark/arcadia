@@ -2,6 +2,7 @@ import { Client, Events, GatewayIntentBits } from "discord.js";
 import { ArcadiaCli } from "./arcadia/cli.js";
 import { loadConfig } from "./config.js";
 import { handleArcadiaInteraction } from "./events/interactionCreate.js";
+import { handleArcadiaMessage } from "./events/messageCreate.js";
 import { logJson } from "./logging.js";
 import { startNotificationPoller } from "./notifications/poller.js";
 
@@ -13,7 +14,7 @@ async function main(): Promise<void> {
   });
 
   const client = new Client({
-    intents: [GatewayIntentBits.Guilds]
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
   });
 
   client.once(Events.ClientReady, (readyClient) => {
@@ -31,6 +32,17 @@ async function main(): Promise<void> {
     }
 
     await handleArcadiaInteraction(interaction, config, cli);
+  });
+
+  client.on(Events.MessageCreate, async (message) => {
+    try {
+      await handleArcadiaMessage(message, config, cli);
+    } catch (error) {
+      logJson("error", {
+        msg: "discord message handling failed",
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
   });
 
   client.on(Events.Error, (error) => {

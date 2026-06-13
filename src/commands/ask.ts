@@ -9,6 +9,7 @@ import {
   createApprovalGate,
   createArtifactRecord,
   createAskRequest,
+  createBackBurnerItem,
   createCodexInvocation,
   createExecutionPlan,
   createMilestoneForProject,
@@ -48,7 +49,7 @@ import type { ResolvedIntent } from "../intent/resolver.js";
 import type { IntakeProjectAttribute, IntakeProjectContext, IntakeResult, IntakeWorkspaceContext } from "../intake/index.js";
 import { resolveIntake } from "../intake/index.js";
 import type { ReviewRequiredCommandData } from "./review.js";
-import { runReviewRequiredCommand } from "./review.js";
+import { runReviewRequiredCommand, runReviewResolveReplyCommand } from "./review.js";
 import type { StatusCommandData } from "./status.js";
 import { runStatusCommand } from "./status.js";
 import { createProjectWithDefaults } from "./project.js";
@@ -60,6 +61,7 @@ export interface AskOptions {
   milestone?: string;
   runSafe?: boolean;
   approvedReviewItemId?: string;
+  sourceIngress?: string;
 }
 
 export interface AskCommandData {
@@ -67,7 +69,7 @@ export interface AskCommandData {
   intake: IntakeResult;
   resolvedIntent: ResolvedIntent;
   result: {
-    status: "acted" | "queued" | "requires_review";
+    status: "acted" | "queued" | "requires_review" | "captured";
     summary: string;
   };
   workItem: WorkItemSummary | null;
@@ -81,6 +83,7 @@ export interface AskCommandData {
   status: StatusCommandData | null;
   review: ReviewRequiredCommandData | null;
   reviewItemId: string | null;
+  backBurnerItemId: string | null;
 }
 
 export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandData> {
@@ -124,7 +127,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         projects: null,
         status: status.data,
         review: null,
-        reviewItemId: null
+        reviewItemId: null,
+        backBurnerItemId: null
       },
       artifacts: status.artifacts
     });
@@ -162,8 +166,52 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         projects: null,
         status: null,
         review: review.data,
-        reviewItemId: null
+        reviewItemId: null,
+        backBurnerItemId: null
       }
+    });
+  }
+
+  if (intake.classification === "ReviewResponse" && explicitReviewSlugFromInput(options.request)) {
+    const reviewResolution = runReviewResolveReplyCommand({
+      workspace: workspacePath,
+      reply: options.request
+    });
+    const ask = withDatabase(workspacePath, (db) =>
+      createAskRequest(db, {
+        rawRequest: options.request,
+        resolvedIntent: resolved.intentId,
+        registryVersion: registries.intents.version,
+        outputKind: "review_response",
+        status: "planned"
+      })
+    );
+
+    return createSuccess({
+      command: "ask",
+      workspace: workspacePath,
+      data: {
+        ask,
+        intake,
+        resolvedIntent: resolved,
+        result: {
+          status: "acted",
+          summary: reviewResolution.data.confirmation
+        },
+        workItem: null,
+        plan: null,
+        approvalGates: [],
+        codexInvocations: [],
+        run: null,
+        project: null,
+        projectSummary: null,
+        projects: null,
+        status: null,
+        review: null,
+        reviewItemId: null,
+        backBurnerItemId: null
+      },
+      artifacts: reviewResolution.artifacts
     });
   }
 
@@ -211,7 +259,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         projects: null,
         status: null,
         review: null,
-        reviewItemId: null
+        reviewItemId: null,
+        backBurnerItemId: null
       },
       artifacts: created.artifacts
     });
@@ -290,7 +339,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         projects: null,
         status: null,
         review: null,
-        reviewItemId: null
+        reviewItemId: null,
+        backBurnerItemId: null
       }
     });
   }
@@ -325,7 +375,56 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         projects,
         status: null,
         review: null,
-        reviewItemId: null
+        reviewItemId: null,
+        backBurnerItemId: null
+      }
+    });
+  }
+
+  if (shouldCaptureInBackBurner(intake) && !options.approvedReviewItemId) {
+    const { ask, backBurnerItem } = withDatabase(workspacePath, (db) => {
+      const ask = createAskRequest(db, {
+        rawRequest: options.request,
+        resolvedIntent: resolved.intentId,
+        registryVersion: registries.intents.version,
+        outputKind: "back_burner",
+        status: "planned"
+      });
+      const backBurnerItem = createBackBurnerItem(db, {
+        originalInput: intake.rawInput,
+        ingressSource: options.sourceIngress ?? "cli.ask",
+        classification: intake.classification,
+        confidence: intake.confidence,
+        reason: intake.classificationReason || intake.explanation,
+        status: intake.classification === "Idea" ? "opportunistic" : "incubating",
+        suggestedNextStep: intake.suggestedNextStep
+      });
+      return { ask, backBurnerItem };
+    });
+
+    return createSuccess({
+      command: "ask",
+      workspace: workspacePath,
+      data: {
+        ask,
+        intake,
+        resolvedIntent: resolved,
+        result: {
+          status: "captured",
+          summary: "Captured in Back Burner."
+        },
+        workItem: null,
+        plan: null,
+        approvalGates: [],
+        codexInvocations: [],
+        run: null,
+        project: null,
+        projectSummary: null,
+        projects: null,
+        status: null,
+        review: null,
+        reviewItemId: null,
+        backBurnerItemId: backBurnerItem.id
       }
     });
   }
@@ -382,7 +481,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         projects: null,
         status: null,
         review: null,
-        reviewItemId: reviewItem.id
+        reviewItemId: reviewItem.id,
+        backBurnerItemId: null
       }
     });
   }
@@ -512,7 +612,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       projects: null,
       status: null,
       review: null,
-      reviewItemId: null
+      reviewItemId: null,
+      backBurnerItemId: null
     },
     artifacts: [
       ...(codexPacket
@@ -558,7 +659,8 @@ function actedProjectUpdate(input: {
       projects: null,
       status: null,
       review: null,
-      reviewItemId: null
+      reviewItemId: null,
+      backBurnerItemId: null
     }
   });
 }
@@ -676,6 +778,10 @@ export function renderAskSuccess(response: CommandSuccess<AskCommandData>): stri
 
   if (response.data.reviewItemId) {
     lines.push(`Requires Review: ${response.data.reviewItemId}`);
+  }
+
+  if (response.data.backBurnerItemId) {
+    lines.push(`Back Burner: ${response.data.backBurnerItemId}`);
   }
 
   if (response.data.projectSummary) {
@@ -868,6 +974,36 @@ function decisionNeededForIntake(intake: IntakeResult): string {
   }
 
   return reviewNextAction(intake);
+}
+
+function shouldCaptureInBackBurner(intake: IntakeResult): boolean {
+  if (intake.action.kind === "capture_thought") {
+    return true;
+  }
+
+  if (["ArcadiaFeedback", "BugReport", "Idea", "Question", "IncubatingThought"].includes(intake.classification)) {
+    return !hasConcreteReviewDecision(intake);
+  }
+
+  return false;
+}
+
+function explicitReviewSlugFromInput(value: string): string | null {
+  const match = /^\s*(R\d+)\b/i.exec(value);
+  return match?.[1]?.toUpperCase() ?? null;
+}
+
+function hasConcreteReviewDecision(intake: IntakeResult): boolean {
+  if (!intake.reviewRequired) {
+    return false;
+  }
+
+  const concreteMissingFields = new Set(["project", "attribute", "attributeValue", "template", "projectName"]);
+  if (intake.missingFields.some((field) => concreteMissingFields.has(field))) {
+    return true;
+  }
+
+  return !intake.safeToExecute && intake.action.kind !== "capture_thought";
 }
 
 function renderResolvedAttribute(intake: IntakeResult): string {

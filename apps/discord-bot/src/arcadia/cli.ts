@@ -10,6 +10,7 @@ import type {
   QueueData,
   ReviewDecisionData,
   ReviewData,
+  ReviewResolveReplyData,
   ReviewShowData,
   RunListData,
   RunShowData,
@@ -31,6 +32,7 @@ export interface CliInvocation {
 
 export interface AskCliOptions {
   runSafe?: boolean;
+  sourceIngress?: string;
 }
 
 export class ArcadiaCli {
@@ -64,10 +66,21 @@ export class ArcadiaCli {
     return this.runJson<ReviewDecisionData>(this.withWorkspace(["review", "defer", id, "--json"]));
   }
 
+  reviewResolveReply(reply: string, id?: string | null): Promise<ArcadiaJsonSuccess<ReviewResolveReplyData>> {
+    return this.runJson<ReviewResolveReplyData>(this.withWorkspace([
+      "review",
+      "resolve-reply",
+      reply,
+      ...(id ? ["--id", id] : []),
+      "--json"
+    ]));
+  }
+
   ask(request: string, askOptions: AskCliOptions = {}): Promise<ArcadiaJsonSuccess<AskData>> {
     return this.runJson<AskData>(this.withWorkspaceAfter(1, [
       "ask",
       request,
+      ...(askOptions.sourceIngress ? ["--source-ingress", askOptions.sourceIngress] : []),
       ...(askOptions.runSafe ? ["--run-safe"] : []),
       "--json"
     ]));

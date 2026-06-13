@@ -25,7 +25,7 @@ export function useArcadiaSnapshot(): SnapshotState {
       const response = await fetch("/api/snapshot", { cache: "no-store" });
       const body = await response.json();
       if (!response.ok) {
-        throw new Error(body.error ?? "Snapshot request failed.");
+        throw new Error(errorMessageFromBody(body, "Snapshot request failed."));
       }
 
       setSnapshot(body as DashboardSnapshot);
@@ -49,4 +49,18 @@ export function useArcadiaSnapshot(): SnapshotState {
   }, [refresh]);
 
   return { snapshot, error, loading, refreshing, lastLoadedAt, refresh };
+}
+
+function errorMessageFromBody(body: unknown, fallback: string): string {
+  if (!body || typeof body !== "object") {
+    return fallback;
+  }
+
+  const error = "error" in body && typeof body.error === "string" ? body.error : fallback;
+  const details = "details" in body ? body.details : null;
+  if (!details) {
+    return error;
+  }
+
+  return `${error}\n${JSON.stringify(details, null, 2)}`;
 }

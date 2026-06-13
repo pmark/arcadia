@@ -131,9 +131,11 @@ export interface AskData {
   ask: AskRequest;
   intake?: {
     resolvedIntent: string;
+    classification?: string;
     confidence: number;
     confidenceLabel: string;
     proposedAction: string;
+    suggestedNextStep?: string | null;
   };
   resolvedIntent: ResolvedIntent;
   result?: {
@@ -146,10 +148,12 @@ export interface AskData {
   codexInvocations: CodexInvocation[];
   run: ExecutionRun | null;
   reviewItemId?: string | null;
+  backBurnerItemId?: string | null;
 }
 
 export interface ReviewItem {
   id: string;
+  slug: string;
   workItemId: string | null;
   project: string | null;
   goal: string | null;
@@ -177,6 +181,23 @@ export interface ReviewDecisionData {
     summary: string;
   };
   approval: AskData | null;
+}
+
+export interface ReviewResolveReplyData {
+  item: ReviewItem;
+  action: "approved" | "rejected" | "deferred" | "feedback_captured";
+  selectedOption: string | null;
+  feedback: {
+    id: string;
+    review_id: string;
+    review_slug: string;
+    feedback_type: string;
+    raw_reply: string;
+    created_at: string;
+  } | null;
+  result: ReviewDecisionData["result"] | null;
+  approval: AskData | null;
+  confirmation: string;
 }
 
 export interface CodexTask {

@@ -173,6 +173,7 @@ CREATE TABLE IF NOT EXISTS ask_requests (
 
 CREATE TABLE IF NOT EXISTS review_items (
   id TEXT PRIMARY KEY,
+  slug TEXT UNIQUE,
   ask_request_id TEXT,
   work_item_id TEXT,
   plan_id TEXT,
@@ -198,6 +199,50 @@ CREATE TABLE IF NOT EXISTS review_items (
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
   FOREIGN KEY (resulting_ask_request_id) REFERENCES ask_requests(id) ON DELETE SET NULL
 );
+
+CREATE TABLE IF NOT EXISTS review_feedback (
+  id TEXT PRIMARY KEY,
+  review_id TEXT NOT NULL,
+  review_slug TEXT NOT NULL,
+  source_input TEXT,
+  proposed_interpretation TEXT,
+  feedback_type TEXT NOT NULL,
+  raw_reply TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (review_id) REFERENCES review_items(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_review_feedback_review_id ON review_feedback(review_id);
+
+CREATE TABLE IF NOT EXISTS back_burner_items (
+  id TEXT PRIMARY KEY,
+  original_input TEXT NOT NULL,
+  ingress_source TEXT NOT NULL,
+  classification TEXT NOT NULL CHECK (
+    classification IN (
+      'ExecutionRequest',
+      'ReviewResponse',
+      'ClarificationResponse',
+      'ArcadiaFeedback',
+      'BugReport',
+      'Idea',
+      'Question',
+      'IncubatingThought'
+    )
+  ),
+  confidence REAL NOT NULL,
+  reason TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('incubating', 'opportunistic', 'promoted', 'archived')),
+  suggested_next_step TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  promoted_at TEXT,
+  promoted_work_item_id TEXT,
+  FOREIGN KEY (promoted_work_item_id) REFERENCES work_items(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_back_burner_items_status ON back_burner_items(status);
+CREATE INDEX IF NOT EXISTS idx_back_burner_items_created_at ON back_burner_items(created_at);
 
 CREATE TABLE IF NOT EXISTS approval_gates (
   id TEXT PRIMARY KEY,

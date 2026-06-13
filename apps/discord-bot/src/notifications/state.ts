@@ -26,12 +26,29 @@ export interface DiscordSubmissionRecord {
   runId: string | null;
 }
 
+export interface ReviewMessageState {
+  messages: Record<string, ReviewMessageRecord>;
+  updatedAt: string;
+}
+
+export interface ReviewMessageRecord {
+  reviewId: string;
+  reviewSlug: string;
+  channelId: string;
+  messageId: string;
+  createdAt: string;
+}
+
 export function notificationStatePath(workspace: string): string {
   return path.join(workspace, "database", "discord-notifications.json");
 }
 
 export function discordSubmissionStatePath(workspace: string): string {
   return path.join(workspace, "database", "discord-submissions.json");
+}
+
+export function reviewMessageStatePath(workspace: string): string {
+  return path.join(workspace, "database", "discord-review-messages.json");
 }
 
 export async function loadNotificationState(filePath: string): Promise<NotificationState | null> {
@@ -95,12 +112,44 @@ export async function loadDiscordSubmissionState(filePath: string): Promise<Disc
   }
 }
 
+export async function loadReviewMessageState(filePath: string): Promise<ReviewMessageState> {
+  try {
+    return normalizeReviewMessageState(JSON.parse(await readFile(filePath, "utf8")));
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return emptyReviewMessageState();
+    }
+    throw error;
+  }
+}
+
 export async function saveNotificationState(filePath: string, state: NotificationState): Promise<void> {
   await writeJsonAtomically(filePath, state);
 }
 
 export async function saveDiscordSubmissionState(filePath: string, state: DiscordSubmissionState): Promise<void> {
   await writeJsonAtomically(filePath, state);
+}
+
+export async function saveReviewMessageState(filePath: string, state: ReviewMessageState): Promise<void> {
+  await writeJsonAtomically(filePath, state);
+}
+
+export async function recordReviewMessage(
+  filePath: string,
+  record: ReviewMessageRecord,
+  now = new Date().toISOString()
+): Promise<ReviewMessageState> {
+  const state = await loadReviewMessageState(filePath);
+  const nextState: ReviewMessageState = {
+    messages: {
+      ...state.messages,
+      [record.messageId]: record
+    },
+    updatedAt: now
+  };
+  await saveReviewMessageState(filePath, nextState);
+  return nextState;
 }
 
 export async function recordDiscordSubmission(
@@ -140,6 +189,42 @@ function normalizeDiscordSubmissionState(raw: unknown): DiscordSubmissionState {
     submittedAskIds: stringArray(record.submittedAskIds),
     submittedWorkItemIds: stringArray(record.submittedWorkItemIds),
     submittedRunIds: stringArray(record.submittedRunIds),
+    updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : new Date().toISOString()
+  };
+}
+
+function emptyReviewMessageState(now = new Date().toISOString()): ReviewMessageState {
+  return {
+    messages: {},
+    updatedAt: now
+  };
+}
+
+function normalizeReviewMessageState(raw: unknown): ReviewMessageState {
+  if (!raw || typeof raw !== "object") {
+    return emptyReviewMessageState();
+  }
+
+  const record = raw as Partial<ReviewMessageState>;
+  const messages = record.messages && typeof record.messages === "object"
+    ? Object.fromEntries(
+        Object.entries(record.messages).filter((entry): entry is [string, ReviewMessageRecord] => {
+          if (!entry[1] || typeof entry[1] !== "object") {
+            return false;
+          }
+          const value = entry[1] as Partial<ReviewMessageRecord>;
+          return typeof entry[0] === "string" &&
+            typeof value.reviewId === "string" &&
+            typeof value.reviewSlug === "string" &&
+            typeof value.channelId === "string" &&
+            typeof value.messageId === "string" &&
+            typeof value.createdAt === "string";
+        })
+      )
+    : {};
+
+  return {
+    messages,
     updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : new Date().toISOString()
   };
 }

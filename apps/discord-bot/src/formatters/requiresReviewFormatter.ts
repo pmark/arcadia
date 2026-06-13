@@ -36,7 +36,7 @@ export function formatRequiresReviewNotification(count: number): string {
 
 export function formatRequiresReviewShow(item: ReviewItem): string {
   return [
-    "**Arcadia Requires Review**",
+    `**${item.slug} - Requires Review**`,
     `ID: \`${item.id}\``,
     `Project: ${item.project ?? "Unassigned"}`,
     `Goal: ${item.goal ?? "None"}`,
@@ -51,7 +51,7 @@ export function formatRequiresReviewShow(item: ReviewItem): string {
 export function formatRequiresReviewDecision(data: ReviewDecisionData): string {
   const lines = [
     `**Requires Review ${data.result.status}**`,
-    `ID: \`${data.item.id}\``,
+    `Review: \`${data.item.slug}\``,
     `Result: ${data.result.summary}`
   ];
 
@@ -68,12 +68,47 @@ export function formatRequiresReviewDecision(data: ReviewDecisionData): string {
 
 function formatRequiresReviewItem(item: ReviewItem): string {
   return [
-    `**${item.project ?? "Unassigned"}**`,
-    `ID: \`${item.id}\``,
-    `Decision needed: ${item.decisionNeeded}`,
-    `Recommended: ${item.recommendation ?? "Clarify before execution."}`,
-    `Actions: ${item.options.join(", ")}`,
-    "Estimated review time: 1 minute",
-    `Use \`/arcadia review-show id:${item.id}\`.`
-  ].join("\n");
+    `**${item.slug} - Requires Review**`,
+    item.decisionNeeded,
+    item.sourceInput ? `Original: ${item.sourceInput}` : null,
+    item.recommendation ? `Recommendation: ${item.recommendation}` : null,
+    ...labeledOptions(item.options),
+    "",
+    `Reply with ${validReplyText(item)}.`
+  ].filter((line): line is string => line !== null).join("\n");
+}
+
+export function formatRequiresReviewNotificationItem(item: ReviewItem): string {
+  return formatRequiresReviewItem(item);
+}
+
+export function formatInvalidReviewReply(item: ReviewItem): string {
+  return `${item.slug}: reply with ${validReplyText(item)}.`;
+}
+
+function labeledOptions(options: string[]): string[] {
+  return options.map((option, index) => `${String.fromCharCode("A".charCodeAt(0) + index)}) ${labelOption(option)}`);
+}
+
+function labelOption(option: string): string {
+  if (option === "approve") {
+    return "Approve";
+  }
+  if (option === "reject") {
+    return "Reject";
+  }
+  if (option === "defer") {
+    return "Defer";
+  }
+  return option;
+}
+
+function validReplyText(item: ReviewItem): string {
+  const letters = item.options.map((_, index) => String.fromCharCode("A".charCodeAt(0) + index));
+  const words = [
+    item.options.includes("approve") ? "approve" : null,
+    item.options.includes("reject") ? "reject" : null,
+    item.options.includes("defer") ? "defer" : null
+  ].filter((value): value is string => Boolean(value));
+  return [...letters, ...words].join(", ");
 }

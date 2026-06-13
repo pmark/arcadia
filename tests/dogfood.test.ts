@@ -117,7 +117,7 @@ describe("arcadia dogfood", () => {
 
   it("runs dogfood review commands against the repo-local workspace", () => {
     runDogfoodInitCommand();
-    const asked = runDogfoodAskCommand({ request: "Make Arcadia easier somehow." });
+    const asked = runDogfoodAskCommand({ request: "Build Pinterest posting support for Unknown App." });
     expect(asked.data.result.status).toBe("requires_review");
     if (!asked.data.reviewItemId) {
       throw new Error("Expected Requires Review item.");

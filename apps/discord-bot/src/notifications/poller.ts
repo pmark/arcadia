@@ -5,6 +5,7 @@ import type { BotConfig } from "../config.js";
 import { formatCodexTaskNotification } from "../formatters/codexFormatter.js";
 import { formatMilestoneCompletedNotification } from "../formatters/milestoneFormatter.js";
 import type { LogLevel } from "../logging.js";
+import { formatRequiresReviewNotificationItem } from "../formatters/requiresReviewFormatter.js";
 import { requiresReviewTransitionMessage } from "./requiresReview.js";
 import { runCompletedMessage, runRequiresReviewMessage } from "./runCompleted.js";
 import { runFailedMessage } from "./runFailed.js";
@@ -13,6 +14,8 @@ import {
   loadDiscordSubmissionState,
   loadNotificationState,
   notificationStatePath,
+  recordReviewMessage,
+  reviewMessageStatePath,
   saveNotificationState,
   type DiscordSubmissionState,
   type NotificationState
@@ -212,12 +215,7 @@ export function evaluateNotifications(
 }
 
 function requiresReviewItemMessage(item: ReviewItem): string {
-  return [
-    `Requires Review: ${item.project ?? "Unassigned"} - ${item.decisionNeeded}`,
-    `ID: ${item.id}`,
-    `Recommendation: ${item.recommendation ?? "Clarify before execution."}`,
-    "Use `/arcadia review-show id:" + item.id + "`."
-  ].join("\n");
+  return formatRequiresReviewNotificationItem(item);
 }
 
 function blockedWorkItemMessage(item: WorkItem): string {
@@ -257,7 +255,20 @@ export function startNotificationPoller(
       const evaluation = evaluateNotifications(snapshot, previous, new Date().toISOString(), submissions);
 
       for (const message of evaluation.messages) {
-        await sendToConfiguredChannel(client, config.discordChannelId, message.content);
+        const sent = await sendToConfiguredChannel(client, config.discordChannelId, message.content);
+        const reviewId = reviewIdFromNotificationKey(message.key);
+        if (reviewId) {
+          const item = snapshot.reviewItems.find((candidate) => candidate.id === reviewId);
+          if (item) {
+            await recordReviewMessage(reviewMessageStatePath(config.arcadiaWorkspace), {
+              reviewId: item.id,
+              reviewSlug: item.slug,
+              channelId: config.discordChannelId,
+              messageId: sent.id,
+              createdAt: new Date().toISOString()
+            });
+          }
+        }
         logJson("info", { msg: "discord notification sent", key: message.key });
       }
 
@@ -274,13 +285,19 @@ export function startNotificationPoller(
   return setInterval(() => void tick(), config.pollIntervalSeconds * 1000);
 }
 
-async function sendToConfiguredChannel(client: Client, channelId: string, content: string): Promise<void> {
+async function sendToConfiguredChannel(client: Client, channelId: string, content: string): Promise<{ id: string }> {
   const channel = await client.channels.fetch(channelId);
   if (!channel || !("send" in channel)) {
     throw new Error("Configured Discord channel is not sendable.");
   }
 
-  await channel.send({ content });
+  return channel.send({ content });
+}
+
+function reviewIdFromNotificationKey(key: string): string | null {
+  return key.startsWith("requires-review:") && key !== "requires-review:transition"
+    ? key.slice("requires-review:".length)
+    : null;
 }
 
 function isDiscordSubmittedRun(run: ExecutionRun, submissions: DiscordSubmissionState): boolean {

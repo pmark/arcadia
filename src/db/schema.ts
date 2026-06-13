@@ -31,6 +31,9 @@ export function applyMigrations(db: Database.Database): void {
   ensureProjectSlugColumn(db);
   ensureProjectGoalColumn(db);
   ensureReviewItemsTable(db);
+  ensureReviewItemSlugs(db);
+  ensureReviewFeedbackTable(db);
+  ensureBackBurnerItemsTable(db);
 }
 
 function ensureProjectSlugColumn(db: Database.Database): void {
@@ -58,6 +61,7 @@ function ensureReviewItemsTable(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS review_items (
       id TEXT PRIMARY KEY,
+      slug TEXT UNIQUE,
       ask_request_id TEXT,
       work_item_id TEXT,
       plan_id TEXT,
@@ -87,6 +91,95 @@ function ensureReviewItemsTable(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_review_items_project_id ON review_items(project_id);
     CREATE INDEX IF NOT EXISTS idx_review_items_ask_request_id ON review_items(ask_request_id);
   `);
+}
+
+function ensureReviewItemSlugs(db: Database.Database): void {
+  const columns = db.prepare("PRAGMA table_info(review_items)").all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === "slug")) {
+    db.prepare("ALTER TABLE review_items ADD COLUMN slug TEXT").run();
+  }
+
+  const rows = db
+    .prepare("SELECT rowid, id, slug FROM review_items ORDER BY rowid ASC")
+    .all() as Array<{ rowid: number; id: string; slug: string | null }>;
+  const used = new Set(rows.map((row) => row.slug).filter((slug): slug is string => Boolean(slug)));
+  const update = db.prepare("UPDATE review_items SET slug = ? WHERE id = ?");
+  let nextNumber = nextReviewSlugNumber(used);
+
+  for (const row of rows) {
+    if (row.slug) {
+      continue;
+    }
+    while (used.has(`R${nextNumber}`)) {
+      nextNumber += 1;
+    }
+    const slug = `R${nextNumber}`;
+    used.add(slug);
+    update.run(slug, row.id);
+  }
+
+  db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_review_items_slug ON review_items(slug)").run();
+}
+
+function ensureReviewFeedbackTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS review_feedback (
+      id TEXT PRIMARY KEY,
+      review_id TEXT NOT NULL,
+      review_slug TEXT NOT NULL,
+      source_input TEXT,
+      proposed_interpretation TEXT,
+      feedback_type TEXT NOT NULL,
+      raw_reply TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (review_id) REFERENCES review_items(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_review_feedback_review_id ON review_feedback(review_id);
+  `);
+}
+
+function ensureBackBurnerItemsTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS back_burner_items (
+      id TEXT PRIMARY KEY,
+      original_input TEXT NOT NULL,
+      ingress_source TEXT NOT NULL,
+      classification TEXT NOT NULL CHECK (
+        classification IN (
+          'ExecutionRequest',
+          'ReviewResponse',
+          'ClarificationResponse',
+          'ArcadiaFeedback',
+          'BugReport',
+          'Idea',
+          'Question',
+          'IncubatingThought'
+        )
+      ),
+      confidence REAL NOT NULL,
+      reason TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('incubating', 'opportunistic', 'promoted', 'archived')),
+      suggested_next_step TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      promoted_at TEXT,
+      promoted_work_item_id TEXT,
+      FOREIGN KEY (promoted_work_item_id) REFERENCES work_items(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_back_burner_items_status ON back_burner_items(status);
+    CREATE INDEX IF NOT EXISTS idx_back_burner_items_created_at ON back_burner_items(created_at);
+  `);
+}
+
+function nextReviewSlugNumber(slugs: Set<string>): number {
+  let highest = 0;
+  for (const slug of slugs) {
+    const match = /^R(\d+)$/i.exec(slug);
+    if (match?.[1]) {
+      highest = Math.max(highest, Number(match[1]));
+    }
+  }
+  return highest + 1;
 }
 
 function slugifyForMigration(value: string): string {

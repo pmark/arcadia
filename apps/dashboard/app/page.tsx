@@ -29,11 +29,12 @@ export default function MissionControlPage() {
         <LoadingState />
       ) : snapshot ? (
         <div className="grid min-w-0 gap-6">
-          <section className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-4">
+          <section className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-5">
             <Metric label="Active" value={snapshot.counts.activeProjects} tone="green" />
             <Metric label="Paused" value={snapshot.counts.pausedProjects} tone="gold" />
             <Metric label="Incubating" value={snapshot.counts.incubatingProjects} tone="steel" />
             <Metric label="Requires Review" value={snapshot.counts.requiresReview} tone="clay" />
+            <Metric label="Back Burner" value={snapshot.counts.backBurner} tone="neutral" />
           </section>
 
           <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">

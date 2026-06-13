@@ -197,7 +197,7 @@ function processCandidate(input: {
   }
 
   try {
-    const response = askRunner({ workspace: workspacePath, request, runSafe });
+    const response = askRunner({ workspace: workspacePath, request, runSafe, sourceIngress: `ingress:${source}` });
     const runStatus = response.data.run?.status ?? null;
     const failedRun = runStatus === "failed";
     const finalPath = moveToUnique(

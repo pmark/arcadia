@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Eye, FolderKanban, History, RefreshCw } from "lucide-react";
+import { Activity, Archive, Eye, FolderKanban, History, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 
 interface DashboardChromeProps {
@@ -18,6 +18,7 @@ const navItems = [
   { href: "/", label: "Control", icon: Activity },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/review", label: "Review", icon: Eye },
+  { href: "/back-burner", label: "Back Burner", icon: Archive },
   { href: "/runs", label: "Runs", icon: History }
 ];
 
@@ -51,7 +52,7 @@ export function DashboardChrome({
             <RefreshCw className={refreshing ? "h-5 w-5 animate-spin" : "h-5 w-5"} aria-hidden="true" />
           </button>
         </div>
-        <nav className="mx-auto grid max-w-6xl grid-cols-4 border-t border-line px-2 sm:px-4">
+        <nav className="mx-auto grid max-w-6xl grid-cols-5 border-t border-line px-2 sm:px-4">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href;

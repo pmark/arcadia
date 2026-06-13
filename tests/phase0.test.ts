@@ -195,6 +195,66 @@ describe("Phase 0 data operations", () => {
     });
   });
 
+  it("migrates existing review items without slugs", () => {
+    const workspace = createTempWorkspace();
+    const paths = getWorkspacePaths(workspace);
+    mkdirSync(paths.database, { recursive: true });
+    mkdirSync(paths.config, { recursive: true });
+    writeFileSync(paths.configFile, "{}\n", "utf8");
+    const legacy = new Database(paths.databaseFile);
+    legacy.exec(`
+      CREATE TABLE projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        mission TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('active', 'paused', 'incubating', 'completed')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE review_items (
+        id TEXT PRIMARY KEY,
+        ask_request_id TEXT,
+        work_item_id TEXT,
+        plan_id TEXT,
+        project_id TEXT,
+        status TEXT NOT NULL CHECK (status IN ('open', 'approved', 'rejected', 'deferred')),
+        decision_needed TEXT NOT NULL,
+        recommendation TEXT,
+        source_input TEXT NOT NULL,
+        proposed_action TEXT NOT NULL,
+        resolved_intent TEXT NOT NULL,
+        confidence_label TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        missing_fields TEXT NOT NULL DEFAULT '[]',
+        context_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        decided_at TEXT,
+        decision_note TEXT,
+        resulting_ask_request_id TEXT
+      );
+      INSERT INTO review_items (
+        id, status, decision_needed, source_input, proposed_action, resolved_intent,
+        confidence_label, confidence, missing_fields, context_json, created_at, updated_at
+      ) VALUES (
+        'review_legacy', 'open', 'Approve or reject this proposed Arcadia action.',
+        'Build the thing.', 'Create work from request.', 'CreateWork', 'medium', 0.5,
+        '[]', '{}', '2026-06-11T00:00:00.000Z', '2026-06-11T00:00:00.000Z'
+      );
+    `);
+    legacy.close();
+
+    withDatabase(workspace, (db) => {
+      expect(
+        db.prepare("SELECT name FROM pragma_table_info('review_items') WHERE name = 'slug'").get()
+      ).toMatchObject({ name: "slug" });
+      expect(db.prepare("SELECT slug FROM review_items WHERE id = 'review_legacy'").get()).toMatchObject({ slug: "R1" });
+      expect(
+        db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_review_items_slug'").get()
+      ).toMatchObject({ name: "idx_review_items_slug" });
+    });
+  });
+
   it("stores a manually classified inbox item", () => {
     const workspace = initializedWorkspace();
 

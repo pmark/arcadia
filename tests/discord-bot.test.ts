@@ -16,6 +16,7 @@ import type {
 } from "../apps/discord-bot/src/arcadia/types.js";
 import { loadConfig } from "../apps/discord-bot/src/config.js";
 import { handleArcadiaInteraction } from "../apps/discord-bot/src/events/interactionCreate.js";
+import { handleArcadiaMessage } from "../apps/discord-bot/src/events/messageCreate.js";
 import { buildArcadiaCommand } from "../apps/discord-bot/src/commands/register.js";
 import { formatCodexTasks } from "../apps/discord-bot/src/formatters/codexFormatter.js";
 import {
@@ -31,6 +32,8 @@ import {
   loadDiscordSubmissionState,
   loadNotificationState,
   recordDiscordSubmission,
+  recordReviewMessage,
+  reviewMessageStatePath,
   saveNotificationState,
   type NotificationState
 } from "../apps/discord-bot/src/notifications/state.js";
@@ -183,6 +186,18 @@ describe("discord bot CLI adapter", () => {
       workspace,
       "--json"
     ]);
+
+    await cli.reviewResolveReply("A", "review_1");
+    expect(JSON.parse(readFileSync(argvPath, "utf8"))).toEqual([
+      "review",
+      "resolve-reply",
+      "A",
+      "--id",
+      "review_1",
+      "--workspace",
+      workspace,
+      "--json"
+    ]);
   });
 
   it("invokes arcadia codex list for a mocked /arcadia codex interaction", async () => {
@@ -284,6 +299,8 @@ describe("discord bot request command", () => {
       "--workspace",
       workspace,
       request,
+      "--source-ingress",
+      "discord.request",
       "--json"
     ]);
     expect(reply).toContain("**Arcadia request created**");
@@ -347,6 +364,8 @@ describe("discord bot request command", () => {
       "--workspace",
       workspace,
       request,
+      "--source-ingress",
+      "discord.request",
       "--run-safe",
       "--json"
     ]);
@@ -470,8 +489,8 @@ describe("discord bot end-to-end fixture", () => {
       text: "Prepare a weekly Martian Rover Labs update from recent mission logs.",
       runSafe: true
     });
-    const weeklyReviewId = extractBacktickedValue(weeklyReply, "Requires Review");
-    expect(weeklyReply).toContain("Result: Requires Review item created.");
+    expect(extractBacktickedValue(weeklyReply, "Back Burner")).toMatch(/^bb_/);
+    expect(weeklyReply).toContain("Result: Captured in Back Burner.");
 
     const submissions = await loadDiscordSubmissionState(discordSubmissionStatePath(workspace));
     expect(submissions.submittedRunIds).toEqual([]);
@@ -496,10 +515,8 @@ describe("discord bot end-to-end fixture", () => {
       notifiedCodexTaskEvents: []
     }, "2026-06-10T12:05:00.000Z", submissions);
 
-    expect(evaluation.messages.map((message) => message.key)).toEqual(expect.arrayContaining([
-      `requires-review:${weeklyReviewId}`
-    ]));
-    expect(evaluation.messages.map((message) => message.content).join("\n")).toContain("Requires Review:");
+    expect(evaluation.messages.map((message) => message.key).some((key) => key.startsWith("requires-review:"))).toBe(false);
+    expect(evaluation.messages.map((message) => message.content).join("\n")).not.toContain("Reply with A, B, C");
   });
 });
 
@@ -542,8 +559,9 @@ describe("discord bot formatters", () => {
     const output = formatRequiresReview([sampleReviewItem()]);
 
     expect(output).toContain("Arcadia Requires Review");
-    expect(output).toContain("Actions: approve, reject, defer");
-    expect(output).toContain("Use `/arcadia review-show id:review_1`.");
+    expect(output).toContain("R1 - Requires Review");
+    expect(output).toContain("A) Approve");
+    expect(output).toContain("Reply with A, B, C, approve, reject, defer.");
     expect(output).not.toContain("Needs Mark");
   });
 
@@ -554,6 +572,7 @@ describe("discord bot formatters", () => {
 
     const decision = formatRequiresReviewDecision(sampleReviewDecision());
     expect(decision).toContain("Requires Review approved");
+    expect(decision).toContain("Review: `R1`");
     expect(decision).toContain("Resumed ask: `ask_2`");
     expect(decision).toContain("Work item: `work_2`");
   });
@@ -574,6 +593,83 @@ describe("discord bot formatters", () => {
     expect(output).toContain("Artifacts: Static Images (artifacts/static.md)");
     expect(output).toContain("Blocking step: Approve Static Images");
     expect(output).toContain("Final reporting depends on completed validation artifacts.");
+  });
+});
+
+describe("discord review reply handling", () => {
+  it("resolves direct replies through the Arcadia CLI", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-discord-state-"));
+    tempDirs.push(workspace);
+    await recordReviewMessage(reviewMessageStatePath(workspace), {
+      reviewId: "review_1",
+      reviewSlug: "R1",
+      channelId: "channel",
+      messageId: "message_1",
+      createdAt: "2026-06-10T12:00:00.000Z"
+    });
+    let calledWith: { reply: string; id?: string | null } | null = null;
+    let reply = "";
+    const cli = {
+      reviewResolveReply: async (content: string, id?: string | null) => {
+        calledWith = { reply: content, id };
+        return {
+          ok: true,
+          command: "review.resolve-reply",
+          workspace,
+          data: {
+            item: sampleReviewItem(),
+            action: "approved",
+            selectedOption: "approve",
+            feedback: null,
+            result: { status: "approved", summary: "Work item created." },
+            approval: null,
+            confirmation: "R1 approved. Resuming execution."
+          },
+          artifacts: [],
+          warnings: []
+        };
+      }
+    } as unknown as ArcadiaCli;
+
+    await handleArcadiaMessage(fakeMessage({
+      content: "A",
+      referenceMessageId: "message_1",
+      reply: async (content: string) => {
+        reply = content;
+      }
+    }), testConfig(workspace), cli);
+
+    expect(calledWith).toEqual({ reply: "A", id: "review_1" });
+    expect(reply).toBe("R1 approved. Resuming execution.");
+  });
+
+  it("supports slug fallback without a Discord reply", async () => {
+    let calledWith: { reply: string; id?: string | null } | null = null;
+    const cli = {
+      reviewResolveReply: async (content: string, id?: string | null) => {
+        calledWith = { reply: content, id };
+        return {
+          ok: true,
+          command: "review.resolve-reply",
+          workspace: "/tmp/workspace",
+          data: {
+            item: sampleReviewItem(),
+            action: "deferred",
+            selectedOption: "defer",
+            feedback: null,
+            result: { status: "deferred", summary: "Deferred for future review." },
+            approval: null,
+            confirmation: "R1 deferred."
+          },
+          artifacts: [],
+          warnings: []
+        };
+      }
+    } as unknown as ArcadiaCli;
+
+    await handleArcadiaMessage(fakeMessage({ content: "R1 defer" }), testConfig("/tmp/workspace"), cli);
+
+    expect(calledWith).toEqual({ reply: "R1 defer", id: null });
   });
 });
 
@@ -780,6 +876,33 @@ async function invokeArcadiaInteraction(
   return reply;
 }
 
+function testConfig(workspace: string) {
+  return {
+    arcadiaWorkspace: workspace,
+    discordBotToken: "token",
+    discordClientId: "client",
+    discordGuildId: "guild",
+    discordChannelId: "channel",
+    arcadiaCliPath: null,
+    pollIntervalSeconds: 60
+  };
+}
+
+function fakeMessage(options: {
+  content: string;
+  referenceMessageId?: string;
+  reply?: (content: string) => Promise<void>;
+}) {
+  return {
+    content: options.content,
+    guildId: "guild",
+    channelId: "channel",
+    author: { bot: false },
+    reference: options.referenceMessageId ? { messageId: options.referenceMessageId } : null,
+    reply: options.reply ?? (async () => {})
+  } as never;
+}
+
 function extractBacktickedValue(output: string, label: string): string {
   const match = new RegExp(`${label}: \`([^\`]+)\``).exec(output);
   if (!match?.[1]) {
@@ -806,6 +929,7 @@ function sampleWorkItem(): WorkItem {
 function sampleReviewItem(): ReviewItem {
   return {
     id: "review_1",
+    slug: "R1",
     workItemId: null,
     project: "Rebuster",
     goal: "Ship Pinterest publishing support.",
@@ -1076,6 +1200,7 @@ const workspace = args[args.indexOf("--workspace") + 1];
 const id = args.includes("review_1") ? "review_1" : null;
 const item = {
   id: id ?? "review_1",
+  slug: "R1",
   workItemId: null,
   project: "Arcadia",
   goal: "Dogfood Arcadia.",
@@ -1088,6 +1213,16 @@ const item = {
 };
 const data = args.includes("show")
   ? { item }
+  : args.includes("resolve-reply")
+    ? {
+        item,
+        action: "approved",
+        selectedOption: "approve",
+        feedback: null,
+        result: { status: "approved", summary: "Work item created." },
+        approval: null,
+        confirmation: "R1 approved. Resuming execution."
+      }
   : args.includes("approve") || args.includes("reject") || args.includes("defer")
     ? {
         item,

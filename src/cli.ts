@@ -10,6 +10,16 @@ import {
   runArtifactUpdateCommand
 } from "./commands/artifact.js";
 import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
+import {
+  renderBackBurnerArchiveSuccess,
+  renderBackBurnerListSuccess,
+  renderBackBurnerPromoteSuccess,
+  renderBackBurnerShowSuccess,
+  runBackBurnerArchiveCommand,
+  runBackBurnerListCommand,
+  runBackBurnerPromoteCommand,
+  runBackBurnerShowCommand
+} from "./commands/backBurner.js";
 import { renderCaptureSuccess, runCaptureCommand } from "./commands/capture.js";
 import {
   renderCodexAssociateSuccess,
@@ -62,11 +72,13 @@ import { renderReportStatusSuccess, runReportStatusCommand } from "./commands/re
 import {
   renderReviewRequiredSuccess,
   renderReviewDecisionSuccess,
+  renderReviewResolveReplySuccess,
   renderReviewShowSuccess,
   renderReviewWeeklySuccess,
   runReviewApproveCommand,
   runReviewDeferCommand,
   runReviewRejectCommand,
+  runReviewResolveReplyCommand,
   runReviewRequiredCommand,
   runReviewShowCommand,
   runReviewWeeklyCommand
@@ -320,11 +332,13 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--project <project-id>", "Optional project id")
       .option("--milestone <milestone-id>", "Optional milestone id")
+      .option("--source-ingress <source>", "Ingress source for audit trails")
       .option("--run-safe", "Immediately run deterministic safe steps")
   ).action((request: string, options: {
     workspace: string;
     project?: string;
     milestone?: string;
+    sourceIngress?: string;
     runSafe?: boolean;
     json?: boolean;
   }) => runCliAction("ask", options, () => runAskCommand({ ...options, request }), renderAskSuccess));
@@ -346,6 +360,74 @@ export function buildProgram(): Command {
     expectedArtifact?: string;
     json?: boolean;
   }) => runCliAction("capture", options, () => runCaptureCommand(options), renderCaptureSuccess));
+
+  const backBurner = program.command("back-burner").description("List and manage Back Burner items");
+  addJsonOption(
+    backBurner
+      .command("list")
+      .description("List Back Burner items")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--status <status>", "Status filter: incubating, opportunistic, promoted, archived, all")
+  ).action((options: { workspace: string; status?: string; json?: boolean }) =>
+    runCliAction(
+      "back-burner.list",
+      options,
+      () => runBackBurnerListCommand({ ...options, status: options.status as Parameters<typeof runBackBurnerListCommand>[0]["status"] }),
+      renderBackBurnerListSuccess
+    )
+  );
+  addJsonOption(
+    backBurner
+      .command("show")
+      .description("Show one Back Burner item")
+      .argument("<id>", "Back Burner item id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((id: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction("back-burner.show", options, () => runBackBurnerShowCommand({ ...options, id }), renderBackBurnerShowSuccess)
+  );
+  addJsonOption(
+    backBurner
+      .command("promote")
+      .description("Promote a Back Burner item to a work item")
+      .argument("<id>", "Back Burner item id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--title <title>", "Work item title")
+      .option("--project <project-id>", "Optional project id")
+      .option("--next-action <text>", "Work item next action")
+      .option("--classification <classification>", "Work classification: autonomous or codex")
+  ).action((id: string, options: {
+    workspace: string;
+    title?: string;
+    project?: string;
+    nextAction?: string;
+    classification?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "back-burner.promote",
+      options,
+      () => runBackBurnerPromoteCommand({
+        ...options,
+        id,
+        classification: options.classification as Parameters<typeof runBackBurnerPromoteCommand>[0]["classification"]
+      }),
+      renderBackBurnerPromoteSuccess
+    )
+  );
+  addJsonOption(
+    backBurner
+      .command("archive")
+      .description("Archive a Back Burner item")
+      .argument("<id>", "Back Burner item id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((id: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "back-burner.archive",
+      options,
+      () => runBackBurnerArchiveCommand({ ...options, id }),
+      renderBackBurnerArchiveSuccess
+    )
+  );
 
   const project = program.command("project").description("Project commands");
   addJsonOption(
@@ -836,6 +918,21 @@ export function buildProgram(): Command {
   );
   addJsonOption(
     review
+      .command("resolve-reply")
+      .description("Resolve a Requires Review item from a short reply")
+      .argument("<reply>", "Reply text, such as 'R45 A' or 'approve'")
+      .option("--id <id>", "Requires Review item id when the reply came from a known message")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((reply: string, options: { id?: string; workspace: string; json?: boolean }) =>
+    runCliAction(
+      "review.resolve-reply",
+      reviewOptionsFromArgv(options),
+      () => runReviewResolveReplyCommand({ ...reviewOptionsFromArgv(options), id: options.id, reply }),
+      renderReviewResolveReplySuccess
+    )
+  );
+  addJsonOption(
+    review
       .command("weekly")
       .description("Write a deterministic weekly review report")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
@@ -967,6 +1064,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "ask") {
     return "ask";
+  }
+
+  if (first === "back-burner" && ["list", "show", "promote", "archive"].includes(second ?? "")) {
+    return `back-burner.${second}`;
   }
 
   if (first === "dogfood") {

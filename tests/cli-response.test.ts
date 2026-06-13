@@ -91,24 +91,56 @@ describe("CLI response contract", () => {
     expect(readFileSync(reportPath, "utf8")).toContain("Review window: 2026-06-03 to 2026-06-09");
   });
 
-  it("emits JSON success for Requires Review packets", () => {
+  it("emits JSON success for Back Burner capture and keeps review empty", () => {
     const workspace = initializedWorkspace();
     const asked = runCli(["ask", "Pinterest might help Rebuster.", "--workspace", workspace, "--json"]);
     expect(asked.status).toBe(0);
     const askedJson = parseJson(asked.stdout);
-    expect(askedJson.data.reviewItemId).toMatch(/^review_/);
+    expect(askedJson.data.result.status).toBe("captured");
+    expect(askedJson.data.reviewItemId).toBeNull();
+    expect(askedJson.data.backBurnerItemId).toMatch(/^bb_/);
 
-    const result = runCli(["review", "--workspace", workspace, "--json"]);
+    const backBurner = runCli(["back-burner", "list", "--workspace", workspace, "--status", "all", "--json"]);
+    const review = runCli(["review", "--workspace", workspace, "--json"]);
 
-    expect(result.status).toBe(0);
-    expect(result.stderr).toBe("");
-    const json = parseJson(result.stdout);
+    expect(backBurner.status).toBe(0);
+    const json = parseJson(backBurner.stdout);
     expect(json.ok).toBe(true);
-    expect(json.command).toBe("review");
+    expect(json.command).toBe("back-burner.list");
     expect(json.data.count).toBe(1);
-    expect(json.data.items[0].id).toBe(askedJson.data.reviewItemId);
-    expect(json.data.items[0].options).toEqual(["approve", "reject", "defer"]);
-    expect(json.data.items[0].sourceInput).toBe("Pinterest might help Rebuster.");
+    expect(json.data.items[0].id).toBe(askedJson.data.backBurnerItemId);
+    expect(json.data.items[0].original_input).toBe("Pinterest might help Rebuster.");
+
+    expect(review.status).toBe(0);
+    expect(parseJson(review.stdout).data.count).toBe(0);
+  });
+
+  it("shows, promotes, and archives Back Burner items from the CLI", () => {
+    const promoteWorkspace = initializedWorkspace();
+    const asked = parseJson(runCli(["ask", "Pinterest might help Rebuster.", "--workspace", promoteWorkspace, "--json"]).stdout);
+    const itemId = asked.data.backBurnerItemId;
+
+    const shown = parseJson(runCli(["back-burner", "show", itemId, "--workspace", promoteWorkspace, "--json"]).stdout);
+    expect(shown.command).toBe("back-burner.show");
+    expect(shown.data.item.original_input).toBe("Pinterest might help Rebuster.");
+
+    const promoted = parseJson(runCli(["back-burner", "promote", itemId, "--workspace", promoteWorkspace, "--json"]).stdout);
+    expect(promoted.command).toBe("back-burner.promote");
+    expect(promoted.data.result.status).toBe("promoted");
+    expect(promoted.data.workItem.id).toMatch(/^work_/);
+
+    const archiveWorkspace = initializedWorkspace();
+    const archivedAsk = parseJson(runCli(["ask", "Maybe improve Arcadia intake.", "--workspace", archiveWorkspace, "--json"]).stdout);
+    const archived = parseJson(runCli([
+      "back-burner",
+      "archive",
+      archivedAsk.data.backBurnerItemId,
+      "--workspace",
+      archiveWorkspace,
+      "--json"
+    ]).stdout);
+    expect(archived.command).toBe("back-burner.archive");
+    expect(archived.data.item.status).toBe("archived");
   });
 
   it("emits JSON success for project list", () => {

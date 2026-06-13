@@ -73,15 +73,18 @@ Failed commands return:
 ```json
 {
   "ask": { "id": "ask_...", "status": "planned" },
-  "result": { "status": "acted|queued|requires_review", "summary": "..." },
+  "result": { "status": "acted|queued|requires_review|captured", "summary": "..." },
   "workItem": null,
   "plan": null,
   "run": null,
   "status": null,
   "review": null,
-  "reviewItemId": "review_..."
+  "reviewItemId": "review_...",
+  "backBurnerItemId": "bb_..."
 }
 ```
+
+When `result.status` is `captured`, adapters should treat the input as preserved in the Back Burner, not as an actionable Requires Review item. `reviewItemId` will be `null` and `backBurnerItemId` will identify the durable captured item.
 
 `status` data includes:
 

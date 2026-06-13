@@ -14,6 +14,8 @@ const PREFIXES = {
   runArtifact: "rart",
   askRequest: "ask",
   reviewItem: "review",
+  reviewFeedback: "rfb",
+  backBurnerItem: "bb",
   approvalGate: "gate",
   codexInvocation: "codex",
   codexTask: "ctask"

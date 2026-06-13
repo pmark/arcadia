@@ -1,11 +1,12 @@
 import * as dotenv from "dotenv";
+import { existsSync, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { loadUserConfig } from "../../../src/workspace/config.js";
 
 dotenv.config();
 
 export interface BotConfig {
-  arcadiaWorkspace: string | null;
+  arcadiaWorkspace: string;
   discordBotToken: string;
   discordClientId: string;
   discordGuildId: string;
@@ -42,13 +43,49 @@ function requireEnv(env: NodeJS.ProcessEnv, name: (typeof requiredEnv)[number]):
   return env[name]?.trim() ?? "";
 }
 
-function resolveConfiguredWorkspace(env: NodeJS.ProcessEnv): string | null {
+function resolveConfiguredWorkspace(env: NodeJS.ProcessEnv): string {
   if (env.ARCADIA_WORKSPACE?.trim()) {
     return path.resolve(env.ARCADIA_WORKSPACE);
   }
 
   const defaultWorkspace = loadUserConfig(env).defaultWorkspace;
-  return defaultWorkspace ? path.resolve(defaultWorkspace) : null;
+  if (defaultWorkspace) {
+    return path.resolve(defaultWorkspace);
+  }
+
+  throw new Error("Set ARCADIA_WORKSPACE or configure an Arcadia default workspace.");
+}
+
+function userConfigPath(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.ARCADIA_CONFIG_PATH?.trim()) {
+    return path.resolve(env.ARCADIA_CONFIG_PATH);
+  }
+
+  if (process.platform === "win32" && env.APPDATA?.trim()) {
+    return path.join(env.APPDATA, "Arcadia", "config.json");
+  }
+
+  const configHome = env.XDG_CONFIG_HOME?.trim()
+    ? path.resolve(env.XDG_CONFIG_HOME)
+    : path.join(os.homedir(), ".config");
+  return path.join(configHome, "arcadia", "config.json");
+}
+
+function loadUserConfig(env: NodeJS.ProcessEnv = process.env): { defaultWorkspace?: string } {
+  const configPath = userConfigPath(env);
+  if (!existsSync(configPath)) {
+    return {};
+  }
+
+  const raw = readFileSync(configPath, "utf8").trim();
+  if (!raw) {
+    return {};
+  }
+
+  const parsed = JSON.parse(raw) as { defaultWorkspace?: unknown };
+  return {
+    defaultWorkspace: typeof parsed.defaultWorkspace === "string" ? parsed.defaultWorkspace : undefined
+  };
 }
 
 function parsePollInterval(raw: string | undefined): number {

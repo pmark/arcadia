@@ -1,7 +1,11 @@
-import type { ArtifactSummary, ExecutionRunSummary, MilestoneSummary, WorkItemSummary } from "../domain/types.js";
+import type { RequiresReviewPacket } from "../commands/review.js";
+import { reviewPacketForReviewItem } from "../commands/review.js";
+import type { ArtifactSummary, BackBurnerItemSummary, ExecutionRunSummary, MilestoneSummary } from "../domain/types.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
 import {
   buildStatusReportData,
+  listBackBurnerItems,
+  listActionableReviewItems,
   listArtifacts,
   listExecutionRuns,
   listMilestones
@@ -23,12 +27,14 @@ export interface DashboardSnapshot {
     incubatingProjects: number;
     totalProjects: number;
     requiresReview: number;
+    backBurner: number;
     recentRuns: number;
     recentArtifacts: number;
   };
   projects: DashboardProject[];
   currentMilestones: DashboardMilestone[];
   requiresReviewItems: DashboardReviewItem[];
+  backBurnerItems: DashboardBackBurnerItem[];
   recentRuns: DashboardRun[];
   recentArtifacts: DashboardArtifact[];
 }
@@ -59,20 +65,25 @@ export interface DashboardMilestone {
   updatedAt: string;
 }
 
-export interface DashboardReviewItem {
+export interface DashboardReviewItem extends RequiresReviewPacket {
+  displayId: string;
+  statusLabel: string;
+}
+
+export interface DashboardBackBurnerItem {
   id: string;
-  title: string;
-  projectName: string | null;
-  milestoneTitle: string | null;
-  nextAction: string;
-  expectedArtifact: string | null;
-  queue: string;
-  queueLabel: string;
-  workClassification: string;
-  workClassificationLabel: string;
+  originalInput: string;
+  ingressSource: string;
+  classification: string;
+  confidence: number;
+  reason: string;
   status: string;
   statusLabel: string;
+  suggestedNextStep: string | null;
+  createdAt: string;
   updatedAt: string;
+  promotedWorkItemId: string | null;
+  promotedWorkItemTitle: string | null;
 }
 
 export interface DashboardRun {
@@ -112,6 +123,10 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
     const artifacts = listArtifacts(db);
     const runs = listExecutionRuns(db, runLimit);
     const currentMilestones = listMilestones(db, { status: "active", limit: milestoneLimit });
+    const reviewItems = listActionableReviewItems(db);
+    const backBurnerItems = listBackBurnerItems(db, "all").filter((item) =>
+      item.status === "incubating" || item.status === "opportunistic"
+    );
     const lastArtifactByProject = new Map<string, DashboardArtifact>();
 
     for (const artifact of artifacts) {
@@ -146,17 +161,37 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
         pausedProjects: statusData.projects.filter((project) => project.status === "paused").length,
         incubatingProjects: statusData.projects.filter((project) => project.status === "incubating").length,
         totalProjects: statusData.projects.length,
-        requiresReview: statusData.needsMarkItems.length,
+        requiresReview: reviewItems.length,
+        backBurner: backBurnerItems.length,
         recentRuns: runs.length,
         recentArtifacts: Math.min(artifacts.length, artifactLimit)
       },
       projects,
       currentMilestones: currentMilestones.map(toDashboardMilestone),
-      requiresReviewItems: statusData.needsMarkItems.map(toDashboardReviewItem),
+      requiresReviewItems: reviewItems.map(toDashboardReviewItem),
+      backBurnerItems: backBurnerItems.map(toDashboardBackBurnerItem),
       recentRuns: runs.map(toDashboardRun),
       recentArtifacts: artifacts.slice(0, artifactLimit).map(toDashboardArtifact)
     };
   });
+}
+
+function toDashboardBackBurnerItem(item: BackBurnerItemSummary): DashboardBackBurnerItem {
+  return {
+    id: item.id,
+    originalInput: item.original_input,
+    ingressSource: item.ingress_source,
+    classification: item.classification,
+    confidence: item.confidence,
+    reason: item.reason,
+    status: item.status,
+    statusLabel: labelStatus(item.status),
+    suggestedNextStep: item.suggested_next_step,
+    createdAt: item.created_at,
+    updatedAt: item.updated_at,
+    promotedWorkItemId: item.promoted_work_item_id,
+    promotedWorkItemTitle: item.promoted_work_item_title
+  };
 }
 
 function toDashboardMilestone(milestone: MilestoneSummary): DashboardMilestone {
@@ -171,21 +206,12 @@ function toDashboardMilestone(milestone: MilestoneSummary): DashboardMilestone {
   };
 }
 
-function toDashboardReviewItem(item: WorkItemSummary): DashboardReviewItem {
+function toDashboardReviewItem(item: Parameters<typeof reviewPacketForReviewItem>[0]): DashboardReviewItem {
+  const packet = reviewPacketForReviewItem(item);
   return {
-    id: item.id,
-    title: item.title,
-    projectName: item.project_name,
-    milestoneTitle: item.milestone_title,
-    nextAction: item.next_action,
-    expectedArtifact: item.expected_artifact,
-    queue: item.queue,
-    queueLabel: labelQueue(item.queue),
-    workClassification: item.work_classification,
-    workClassificationLabel: labelWorkClassification(item.work_classification),
-    status: item.status,
-    statusLabel: labelStatus(item.status),
-    updatedAt: item.updated_at
+    ...packet,
+    displayId: packet.slug || packet.id,
+    statusLabel: labelStatus(packet.status)
   };
 }
 

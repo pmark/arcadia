@@ -8,7 +8,7 @@ export async function requestCommand(
   request: string,
   runSafe = false
 ): Promise<string> {
-  const response = await cli.ask(request, { runSafe });
+  const response = await cli.ask(request, { runSafe, sourceIngress: "discord.request" });
   await recordDiscordSubmission(discordSubmissionStatePath(workspace), {
     askId: response.data.ask.id,
     workItemId: response.data.workItem?.id ?? null,

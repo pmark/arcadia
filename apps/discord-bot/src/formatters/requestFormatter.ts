@@ -37,6 +37,14 @@ export function formatRequest(data: AskData): string {
     );
   }
 
+  if (!data.workItem && data.backBurnerItemId) {
+    lines.push(
+      `Back Burner: \`${data.backBurnerItemId}\``,
+      `Classification: ${data.intake?.classification ?? "IncubatingThought"}`,
+      `Next step: ${data.intake?.suggestedNextStep ?? "Clarify before promoting to work."}`
+    );
+  }
+
   lines.push(
     `Approval gates: ${gateSummary}`,
     `Codex packet: ${packetPath}`,

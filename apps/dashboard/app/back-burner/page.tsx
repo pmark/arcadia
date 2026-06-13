@@ -2,46 +2,33 @@
 
 import { useState } from "react";
 import { DashboardChrome } from "../../components/chrome";
-import { EmptyState, ErrorState, LoadingState, ReviewCard } from "../../components/dashboard-ui";
+import { BackBurnerCard, EmptyState, ErrorState, LoadingState } from "../../components/dashboard-ui";
 import { useArcadiaSnapshot } from "../../hooks/use-arcadia-snapshot";
-import type { DashboardReviewItem } from "../../lib/types";
+import type { DashboardBackBurnerItem } from "../../lib/types";
 
-export default function ReviewPage() {
+export default function BackBurnerPage() {
   const { snapshot, error, loading, refreshing, lastLoadedAt, refresh } = useArcadiaSnapshot();
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  async function submitAction(item: DashboardReviewItem, action: "approve" | "reject" | "defer") {
-    await submitReviewAction(item, action);
-  }
-
-  async function submitOption(item: DashboardReviewItem, option: string) {
-    await submitReviewAction(item, "resolve", option);
-  }
-
-  async function submitReviewAction(
-    item: DashboardReviewItem,
-    action: "approve" | "reject" | "defer" | "resolve",
-    reply?: string
-  ) {
-    const key = action === "resolve" ? `${item.id}:resolve:${reply}` : `${item.id}:${action}`;
-    setPendingKey(key);
+  async function submitAction(item: DashboardBackBurnerItem, action: "promote" | "archive") {
+    setPendingKey(`${item.id}:${action}`);
     setActionMessage(null);
     setActionError(null);
 
     try {
-      const response = await fetch("/api/review-action", {
+      const response = await fetch("/api/back-burner-action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: item.id, action, reply })
+        body: JSON.stringify({ id: item.id, action })
       });
       const body = await response.json();
       if (!response.ok) {
-        throw new Error(errorMessageFromBody(body, "Review action failed."));
+        throw new Error(errorMessageFromBody(body, "Back Burner action failed."));
       }
 
-      setActionMessage(typeof body.message === "string" ? body.message : "Review action completed.");
+      setActionMessage(typeof body.message === "string" ? body.message : "Back Burner action completed.");
       await refresh();
     } catch (submitError) {
       setActionError(submitError instanceof Error ? submitError.message : String(submitError));
@@ -52,14 +39,14 @@ export default function ReviewPage() {
 
   return (
     <DashboardChrome
-      title="Requires Review"
-      subtitle={snapshot ? `${snapshot.counts.requiresReview} active` : undefined}
+      title="Back Burner"
+      subtitle={snapshot ? `${snapshot.counts.backBurner} active` : undefined}
       refreshing={refreshing}
       lastLoadedAt={lastLoadedAt}
       onRefresh={() => void refresh()}
     >
       {error ? <ErrorState message={error} /> : null}
-      {actionError ? <ErrorState title="Review action failed" message={actionError} /> : null}
+      {actionError ? <ErrorState title="Back Burner action failed" message={actionError} /> : null}
       {actionMessage ? (
         <div className="mb-3 rounded-md border border-moss/30 bg-moss/10 p-4 text-sm font-medium text-moss">
           {actionMessage}
@@ -67,26 +54,26 @@ export default function ReviewPage() {
       ) : null}
       {loading && !snapshot ? (
         <LoadingState />
-      ) : snapshot?.requiresReviewItems.length ? (
+      ) : snapshot?.backBurnerItems.length ? (
         <div className="grid min-w-0 gap-3 md:grid-cols-2">
-          {snapshot.requiresReviewItems.map((item) => (
-            <ReviewCard
+          {snapshot.backBurnerItems.map((item) => (
+            <BackBurnerCard
               key={item.id}
               item={item}
               pendingAction={pendingActionFor(item, pendingKey)}
-              onAction={(reviewItem, action) => void submitAction(reviewItem, action)}
-              onResolveOption={(reviewItem, option) => void submitOption(reviewItem, option)}
+              onPromote={(backBurnerItem) => void submitAction(backBurnerItem, "promote")}
+              onArchive={(backBurnerItem) => void submitAction(backBurnerItem, "archive")}
             />
           ))}
         </div>
       ) : (
-        <EmptyState text="No items require review." />
+        <EmptyState text="No active Back Burner items." />
       )}
     </DashboardChrome>
   );
 }
 
-function pendingActionFor(item: DashboardReviewItem, pendingKey: string | null): string | null {
+function pendingActionFor(item: DashboardBackBurnerItem, pendingKey: string | null): string | null {
   if (!pendingKey?.startsWith(`${item.id}:`)) {
     return null;
   }

@@ -1,4 +1,5 @@
 import { PROJECT_STATUSES, type ProjectStatus, type WorkClassification } from "../domain/constants.js";
+import type { IntakeClassification } from "../domain/types.js";
 
 export type IntakeIntent =
   | "CaptureThought"
@@ -95,6 +96,7 @@ export type IntakeAction =
 export interface IntakeResult {
   rawInput: string;
   resolvedIntent: IntakeIntent;
+  classification: IntakeClassification;
   confidence: number;
   confidenceLabel: IntakeConfidenceLabel;
   extractedFields: Record<string, string>;
@@ -103,6 +105,8 @@ export interface IntakeResult {
   safeToExecute: boolean;
   reviewRequired: boolean;
   explanation: string;
+  classificationReason: string;
+  suggestedNextStep: string | null;
   action: IntakeAction;
   project: IntakeResolvedReference | null;
   template: IntakeResolvedReference | null;
@@ -233,7 +237,35 @@ export const INTAKE_TEMPLATES: IntakeTemplateDefinition[] = [
   }
 ];
 
+export interface IntakeClassifier {
+  classify(rawInput: string, resolved: Omit<IntakeResult, "classification" | "classificationReason" | "suggestedNextStep">): {
+    classification: IntakeClassification;
+    reason: string;
+    suggestedNextStep: string | null;
+  };
+}
+
+export const deterministicIntakeClassifier: IntakeClassifier = {
+  classify(rawInput, resolved) {
+    return classifyDeterministically(rawInput, resolved);
+  }
+};
+
 export function resolveIntake(rawInput: string, context: IntakeWorkspaceContext): IntakeResult {
+  const resolved = resolveIntakeWithoutClassification(rawInput, context);
+  const classification = deterministicIntakeClassifier.classify(rawInput, resolved);
+  return {
+    ...resolved,
+    classification: classification.classification,
+    classificationReason: classification.reason,
+    suggestedNextStep: classification.suggestedNextStep
+  };
+}
+
+function resolveIntakeWithoutClassification(
+  rawInput: string,
+  context: IntakeWorkspaceContext
+): Omit<IntakeResult, "classification" | "classificationReason" | "suggestedNextStep"> {
   const raw = rawInput.trim();
   const normalized = normalizeText(raw);
 
@@ -432,6 +464,91 @@ export function resolveIntake(rawInput: string, context: IntakeWorkspaceContext)
   };
 }
 
+type IntakeResultCore = Omit<IntakeResult, "classification" | "classificationReason" | "suggestedNextStep">;
+
+function classifyDeterministically(rawInput: string, resolved: IntakeResultCore): {
+  classification: IntakeClassification;
+  reason: string;
+  suggestedNextStep: string | null;
+} {
+  const normalized = normalizeText(rawInput);
+
+  if (/^(?:r\d+\s+)?(?:approve|approved|reject|rejected|defer|later|yes|no)\b/.test(normalized)) {
+    return {
+      classification: "ReviewResponse",
+      reason: "The input looks like a short response to an existing review decision.",
+      suggestedNextStep: "Route the reply to review resolution when a review id is available."
+    };
+  }
+
+  if (/^(?:it is|it's|that is|use|choose|select|the answer is)\b/.test(normalized)) {
+    return {
+      classification: "ClarificationResponse",
+      reason: "The input appears to answer a prior clarification request.",
+      suggestedNextStep: "Attach this response to the pending clarification when context is available."
+    };
+  }
+
+  if (/\b(?:bug|broken|crash|error|fails?|failure|regression|not working)\b/.test(normalized)) {
+    return {
+      classification: "BugReport",
+      reason: "The input reports a broken or failing behavior.",
+      suggestedNextStep: "Promote to a work item when the affected project and reproduction details are clear."
+    };
+  }
+
+  if (/\b(?:arcadia should|arcadia needs|feedback|annoying|confusing|too noisy|review noise)\b/.test(normalized)) {
+    return {
+      classification: "ArcadiaFeedback",
+      reason: "The input comments on Arcadia's behavior rather than requesting immediate execution.",
+      suggestedNextStep: "Review during Arcadia improvement planning."
+    };
+  }
+
+  if (/\?$/.test(rawInput.trim()) || /^(?:what|why|how|when|where|who|should|could|can)\b/.test(normalized)) {
+    return {
+      classification: "Question",
+      reason: "The input is phrased as a question.",
+      suggestedNextStep: "Answer or convert to work only when it implies a concrete task."
+    };
+  }
+
+  if (/\b(?:idea|maybe|might|could|someday|eventually|explore|consider|worth)\b/.test(normalized)) {
+    return {
+      classification: "Idea",
+      reason: "The input is exploratory and does not require an immediate decision.",
+      suggestedNextStep: "Leave incubating until it becomes a concrete execution request."
+    };
+  }
+
+  if (
+    resolved.resolvedIntent === "CreateWork" ||
+    resolved.resolvedIntent === "CreateProject" ||
+    resolved.resolvedIntent === "InstantiateProject" ||
+    resolved.resolvedIntent === "UpdateEntityAttribute"
+  ) {
+    return {
+      classification: resolved.resolvedIntent === "UpdateEntityAttribute" ? "ExecutionRequest" : "ExecutionRequest",
+      reason: "The deterministic resolver found an execution-shaped Arcadia request.",
+      suggestedNextStep: resolved.proposedAction
+    };
+  }
+
+  if (resolved.resolvedIntent === "ReviewRequired") {
+    return {
+      classification: "ExecutionRequest",
+      reason: "The input asks Arcadia to show pending review decisions.",
+      suggestedNextStep: "Show Requires Review items."
+    };
+  }
+
+  return {
+    classification: "IncubatingThought",
+    reason: "No deterministic execution or review-response pattern matched.",
+    suggestedNextStep: "Clarify desired outcome before creating work."
+  };
+}
+
 function highResult(input: {
   raw: string;
   resolvedIntent: IntakeIntent;
@@ -443,7 +560,7 @@ function highResult(input: {
   action: IntakeAction;
   project: IntakeResolvedReference | null;
   template: IntakeResolvedReference | null;
-}): IntakeResult {
+}): IntakeResultCore {
   return {
     rawInput: input.raw,
     resolvedIntent: input.resolvedIntent,
@@ -473,7 +590,7 @@ function resultFromProjectIntent(input: {
   project: IntakeResolvedReference | null;
   template: IntakeResolvedReference | null;
   baseConfidence: number;
-}): IntakeResult {
+}): IntakeResultCore {
   const confidence = confidenceFor({
     base: input.baseConfidence,
     missingFields: input.missingFields,
@@ -501,7 +618,7 @@ function resultFromEntityAttributeUpdate(
   raw: string,
   parsed: ParsedEntityAttributeUpdate,
   context: IntakeWorkspaceContext
-): IntakeResult {
+): IntakeResultCore {
   const project = resolveProjectReference(parsed.entityReference, context);
   const attribute = resolveProjectAttributeReference(parsed.attributeReference);
   const validation = attribute ? attribute.validate(parsed.value) : { value: parsed.value || null, invalidReason: null };

@@ -4,6 +4,7 @@ import {
   APPROVAL_GATE_STATUSES,
   APPROVAL_GATE_TYPES,
   ASK_REQUEST_STATUSES,
+  BACK_BURNER_STATUSES,
   CODEX_INVOCATION_PURPOSES,
   CODEX_INVOCATION_STATUSES,
   EXECUTION_PLAN_STATUSES,
@@ -21,6 +22,7 @@ import {
   type ApprovalGateStatus,
   type ApprovalGateType,
   type AskRequestStatus,
+  type BackBurnerStatus,
   type CodexInvocationPurpose,
   type CodexInvocationStatus,
   type ExecutionPlanStatus,
@@ -41,15 +43,19 @@ import type {
   AskRequest,
   AskRequestSummary,
   AssociateCodexTaskInput,
+  BackBurnerItem,
+  BackBurnerItemSummary,
   CodexInvocation,
   CodexTask,
   CodexTaskSummary,
   CreateApprovalGateInput,
   CreateArtifactInput,
   CreateAskRequestInput,
+  CreateBackBurnerItemInput,
   CreateCodexInvocationInput,
   CreateMissionLogInput,
   CreateProjectInput,
+  CreateReviewFeedbackInput,
   CreateReviewItemInput,
   CreateWorkItemInput,
   CreatedProjectBundle,
@@ -71,6 +77,7 @@ import type {
   ProjectSummary,
   QueueGroups,
   ReviewItem,
+  ReviewFeedback,
   ReviewItemStatus,
   ReviewItemSummary,
   SkillDefinition,
@@ -81,6 +88,7 @@ import type {
   UpdateProjectInput,
   WeeklyReviewData,
   UpdateArtifactInput,
+  UpdateBackBurnerItemInput,
   UpdateWorkItemInput,
   WorkItem,
   WorkItemSummary
@@ -171,6 +179,11 @@ function validateReviewItemStatus(value: string): ReviewItemStatus {
   if (value !== "open" && value !== "approved" && value !== "rejected" && value !== "deferred") {
     throw new Error("Review item status must be one of: open, approved, rejected, deferred");
   }
+  return value;
+}
+
+function validateBackBurnerStatus(value: string): BackBurnerStatus {
+  assertAllowedValue("Back Burner status", value, BACK_BURNER_STATUSES);
   return value;
 }
 
@@ -1153,6 +1166,7 @@ export function createReviewItem(db: Database.Database, input: CreateReviewItemI
   const timestamp = nowIso();
   const reviewItem: ReviewItem = {
     id: createId("reviewItem"),
+    slug: nextReviewSlug(db),
     ask_request_id: input.askRequestId ?? null,
     work_item_id: input.workItemId ?? null,
     plan_id: input.planId ?? null,
@@ -1176,12 +1190,12 @@ export function createReviewItem(db: Database.Database, input: CreateReviewItemI
 
   db.prepare(
     `INSERT INTO review_items (
-      id, ask_request_id, work_item_id, plan_id, project_id, status, decision_needed,
+      id, slug, ask_request_id, work_item_id, plan_id, project_id, status, decision_needed,
       recommendation, source_input, proposed_action, resolved_intent, confidence_label,
       confidence, missing_fields, context_json, created_at, updated_at, decided_at,
       decision_note, resulting_ask_request_id
     ) VALUES (
-      @id, @ask_request_id, @work_item_id, @plan_id, @project_id, @status, @decision_needed,
+      @id, @slug, @ask_request_id, @work_item_id, @plan_id, @project_id, @status, @decision_needed,
       @recommendation, @source_input, @proposed_action, @resolved_intent, @confidence_label,
       @confidence, @missing_fields, @context_json, @created_at, @updated_at, @decided_at,
       @decision_note, @resulting_ask_request_id
@@ -1203,12 +1217,27 @@ export function getReviewItem(db: Database.Database, id: string): ReviewItemSumm
   );
 }
 
+export function getReviewItemBySlug(db: Database.Database, slug: string): ReviewItemSummary | null {
+  return (
+    (db
+      .prepare(reviewItemSelectSql("WHERE lower(ri.slug) = lower(?)"))
+      .get(slug) as ReviewItemSummary | undefined) ?? null
+  );
+}
+
 export function listReviewItems(db: Database.Database, status: ReviewItemStatus | "all" = "open"): ReviewItemSummary[] {
   const where = status === "all" ? "" : "WHERE ri.status = ?";
   const parameters = status === "all" ? [] : [status];
   return db
     .prepare(`${reviewItemSelectSql(where)} ORDER BY ri.created_at DESC`)
     .all(...parameters) as ReviewItemSummary[];
+}
+
+export function listActionableReviewItems(db: Database.Database): ReviewItemSummary[] {
+  return [
+    ...listReviewItems(db, "open"),
+    ...listReviewItems(db, "deferred")
+  ];
 }
 
 export function updateReviewItemStatus(
@@ -1238,6 +1267,135 @@ export function updateReviewItemStatus(
   return getReviewItem(db, id);
 }
 
+export function createReviewFeedback(db: Database.Database, input: CreateReviewFeedbackInput): ReviewFeedback {
+  const timestamp = nowIso();
+  const feedback: ReviewFeedback = {
+    id: createId("reviewFeedback"),
+    review_id: required(input.reviewId, "Review id"),
+    review_slug: required(input.reviewSlug, "Review slug"),
+    source_input: nullable(input.sourceInput),
+    proposed_interpretation: nullable(input.proposedInterpretation),
+    feedback_type: required(input.feedbackType, "Review feedback type"),
+    raw_reply: required(input.rawReply, "Review feedback reply"),
+    created_at: timestamp
+  };
+
+  db.prepare(
+    `INSERT INTO review_feedback (
+      id, review_id, review_slug, source_input, proposed_interpretation,
+      feedback_type, raw_reply, created_at
+    ) VALUES (
+      @id, @review_id, @review_slug, @source_input, @proposed_interpretation,
+      @feedback_type, @raw_reply, @created_at
+    )`
+  ).run(feedback);
+
+  return feedback;
+}
+
+export function listReviewFeedback(db: Database.Database, reviewId: string): ReviewFeedback[] {
+  return db
+    .prepare("SELECT * FROM review_feedback WHERE review_id = ? ORDER BY created_at DESC")
+    .all(reviewId) as ReviewFeedback[];
+}
+
+export function createBackBurnerItem(
+  db: Database.Database,
+  input: CreateBackBurnerItemInput
+): BackBurnerItemSummary {
+  const timestamp = nowIso();
+  const item: BackBurnerItem = {
+    id: createId("backBurnerItem"),
+    original_input: required(input.originalInput, "Back Burner original input"),
+    ingress_source: required(input.ingressSource, "Back Burner ingress source"),
+    classification: input.classification,
+    confidence: input.confidence,
+    reason: required(input.reason, "Back Burner reason"),
+    status: validateBackBurnerStatus(input.status ?? "incubating"),
+    suggested_next_step: nullable(input.suggestedNextStep),
+    created_at: timestamp,
+    updated_at: timestamp,
+    promoted_at: null,
+    promoted_work_item_id: null
+  };
+
+  db.prepare(
+    `INSERT INTO back_burner_items (
+      id, original_input, ingress_source, classification, confidence, reason, status,
+      suggested_next_step, created_at, updated_at, promoted_at, promoted_work_item_id
+    ) VALUES (
+      @id, @original_input, @ingress_source, @classification, @confidence, @reason, @status,
+      @suggested_next_step, @created_at, @updated_at, @promoted_at, @promoted_work_item_id
+    )`
+  ).run(item);
+
+  const created = getBackBurnerItem(db, item.id);
+  if (!created) {
+    throw new Error(`Back Burner item could not be created: ${item.id}`);
+  }
+  return created;
+}
+
+export function getBackBurnerItem(db: Database.Database, id: string): BackBurnerItemSummary | null {
+  return (
+    (db
+      .prepare(backBurnerItemSelectSql("WHERE bbi.id = ?"))
+      .get(id) as BackBurnerItemSummary | undefined) ?? null
+  );
+}
+
+export function listBackBurnerItems(
+  db: Database.Database,
+  status: BackBurnerStatus | "all" = "incubating"
+): BackBurnerItemSummary[] {
+  if (status !== "all") {
+    validateBackBurnerStatus(status);
+  }
+  const where = status === "all" ? "" : "WHERE bbi.status = ?";
+  const parameters = status === "all" ? [] : [status];
+  return db
+    .prepare(`${backBurnerItemSelectSql(where)} ORDER BY bbi.created_at DESC`)
+    .all(...parameters) as BackBurnerItemSummary[];
+}
+
+export function updateBackBurnerItem(
+  db: Database.Database,
+  id: string,
+  input: UpdateBackBurnerItemInput
+): BackBurnerItemSummary | null {
+  const updates: string[] = ["updated_at = @updatedAt"];
+  const parameters: Record<string, string | null> = { id, updatedAt: nowIso() };
+
+  if (input.status) {
+    updates.push("status = @status");
+    parameters.status = validateBackBurnerStatus(input.status);
+    if (input.status === "promoted") {
+      updates.push("promoted_at = COALESCE(promoted_at, @updatedAt)");
+    }
+  }
+
+  if (input.promotedWorkItemId !== undefined) {
+    updates.push("promoted_work_item_id = @promotedWorkItemId");
+    parameters.promotedWorkItemId = input.promotedWorkItemId;
+  }
+
+  if (updates.length === 1) {
+    throw new Error("At least one Back Burner field is required");
+  }
+
+  db.prepare(`UPDATE back_burner_items SET ${updates.join(", ")} WHERE id = @id`).run(parameters);
+  return getBackBurnerItem(db, id);
+}
+
+function backBurnerItemSelectSql(whereSql: string): string {
+  return `SELECT
+    bbi.*,
+    wi.title AS promoted_work_item_title
+  FROM back_burner_items bbi
+  LEFT JOIN work_items wi ON wi.id = bbi.promoted_work_item_id
+  ${whereSql}`;
+}
+
 function reviewItemSelectSql(whereSql: string): string {
   return `SELECT
     ri.*,
@@ -1253,6 +1411,18 @@ function reviewItemSelectSql(whereSql: string): string {
   LEFT JOIN ask_requests resulting_ask ON resulting_ask.id = ri.resulting_ask_request_id
   LEFT JOIN work_items resulting_wi ON resulting_wi.id = resulting_ask.work_item_id
   ${whereSql}`;
+}
+
+function nextReviewSlug(db: Database.Database): string {
+  const rows = db.prepare("SELECT slug FROM review_items WHERE slug IS NOT NULL").all() as Array<{ slug: string }>;
+  let highest = 0;
+  for (const row of rows) {
+    const match = /^R(\d+)$/i.exec(row.slug);
+    if (match?.[1]) {
+      highest = Math.max(highest, Number(match[1]));
+    }
+  }
+  return `R${highest + 1}`;
 }
 
 export function getAskRequest(db: Database.Database, id: string): AskRequestSummary | null {
@@ -1806,6 +1976,8 @@ export function countRows(db: Database.Database, table: string): number {
       "run_artifacts",
       "ask_requests",
       "review_items",
+      "review_feedback",
+      "back_burner_items",
       "approval_gates",
       "codex_invocations",
       "codex_tasks"

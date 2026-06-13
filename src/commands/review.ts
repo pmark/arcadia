@@ -6,25 +6,34 @@ import { withDatabase } from "../db/connection.js";
 import {
   buildStatusReportData,
   buildWeeklyReviewData,
+  createReviewFeedback,
   getReviewItem,
-  listReviewItems,
+  getReviewItemBySlug,
+  listActionableReviewItems,
   updateReviewItemStatus
 } from "../db/repositories.js";
-import type { ReviewItemSummary } from "../domain/types.js";
+import type { ReviewFeedback, ReviewItemSummary } from "../domain/types.js";
 import { writeWeeklyReviewReport } from "../markdown/weeklyReview.js";
 import { localDateStamp } from "../utils/time.js";
 import { runAskCommand, type AskCommandData } from "./ask.js";
 
 export interface RequiresReviewPacket {
   id: string;
+  slug: string;
   workItemId: string | null;
   project: string | null;
   goal: string | null;
+  status: ReviewItemSummary["status"];
+  category: string;
   decisionNeeded: string;
   context: string;
   recommendation: string | null;
+  proposedAction: string;
+  missingFields: string[];
   options: string[];
   sourceInput: string;
+  createdAt: string;
+  updatedAt: string;
   resultingAskRequestId: string | null;
 }
 
@@ -60,6 +69,22 @@ export interface ReviewDecisionCommandData {
   approval: AskCommandData | null;
 }
 
+export interface ReviewResolveReplyCommandOptions {
+  workspace: string;
+  reply: string;
+  id?: string | null;
+}
+
+export interface ReviewResolveReplyCommandData {
+  item: RequiresReviewPacket;
+  action: "approved" | "rejected" | "deferred" | "feedback_captured";
+  selectedOption: string | null;
+  feedback: ReviewFeedback | null;
+  result: ReviewDecisionCommandData["result"] | null;
+  approval: AskCommandData | null;
+  confirmation: string;
+}
+
 export interface ReviewWeeklyCommandOptions {
   workspace: string;
   since?: string;
@@ -90,10 +115,7 @@ export function runReviewRequiredCommand(
 ): CommandSuccess<ReviewRequiredCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const items = withDatabase(workspacePath, (db) => {
-    return [
-      ...listReviewItems(db, "open"),
-      ...listReviewItems(db, "deferred")
-    ].map(reviewPacketForReviewItem);
+    return listActionableReviewItems(db).map(reviewPacketForReviewItem);
   });
 
   return createSuccess({
@@ -111,7 +133,7 @@ export function runReviewShowCommand(
 ): CommandSuccess<ReviewShowCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const item = withDatabase(workspacePath, (db) => {
-    const reviewItem = getReviewItem(db, options.id);
+    const reviewItem = getReviewItemByIdOrSlug(db, options.id);
     if (reviewItem) {
       return reviewPacketForReviewItem(reviewItem);
     }
@@ -125,12 +147,92 @@ export function runReviewShowCommand(
   });
 }
 
+export function runReviewResolveReplyCommand(
+  options: ReviewResolveReplyCommandOptions
+): CommandSuccess<ReviewResolveReplyCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const parsed = parseReviewReply(options.reply);
+  const reviewItem = withDatabase(workspacePath, (db) => {
+    const item = options.id
+      ? getReviewItem(db, options.id)
+      : parsed.slug
+        ? getReviewItemBySlug(db, parsed.slug)
+        : null;
+    if (!item) {
+      throw validationError("Requires Review item was not found.", { id: options.id ?? parsed.slug ?? null });
+    }
+    if (item.status !== "open" && item.status !== "deferred") {
+      throw validationError("Requires Review item is already decided.", { id: item.id, status: item.status });
+    }
+    return item;
+  });
+  const packet = reviewPacketForReviewItem(reviewItem);
+
+  const feedbackType = parsed.feedbackType;
+  if (feedbackType) {
+    const feedback = withDatabase(workspacePath, (db) =>
+      createReviewFeedback(db, {
+        reviewId: reviewItem.id,
+        reviewSlug: packet.slug,
+        sourceInput: reviewItem.source_input,
+        proposedInterpretation: reviewItem.proposed_action,
+        feedbackType,
+        rawReply: options.reply
+      })
+    );
+    return createSuccess({
+      command: "review.resolve-reply",
+      workspace: workspacePath,
+      data: {
+        item: packet,
+        action: "feedback_captured",
+        selectedOption: null,
+        feedback,
+        result: null,
+        approval: null,
+        confirmation: `Feedback captured for ${packet.slug}: ${feedback.feedback_type}.`
+      }
+    });
+  }
+
+  const decision = resolveReplyDecision(parsed.value, packet);
+  if (!decision) {
+    throw validationError("Invalid Requires Review reply.", {
+      reply: options.reply,
+      validReplies: validRepliesForReview(packet)
+    });
+  }
+
+  const response =
+    decision === "approve"
+      ? runReviewApproveCommand({ workspace: workspacePath, id: reviewItem.id })
+      : decision === "reject"
+        ? runReviewRejectCommand({ workspace: workspacePath, id: reviewItem.id })
+        : runReviewDeferCommand({ workspace: workspacePath, id: reviewItem.id });
+  const updated = response.data.item;
+
+  return createSuccess({
+    command: "review.resolve-reply",
+    workspace: workspacePath,
+    data: {
+      item: updated,
+      action: response.data.result.status,
+      selectedOption: decision,
+      feedback: null,
+      result: response.data.result,
+      approval: response.data.approval,
+      confirmation: confirmationForDecision(updated, decision, response.data.result.summary)
+    },
+    artifacts: response.artifacts
+  });
+}
+
 export function runReviewApproveCommand(
   options: ReviewDecisionCommandOptions
 ): CommandSuccess<ReviewDecisionCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const reviewItem = withDatabase(workspacePath, (db) => {
-    const item = getReviewItem(db, options.id);
+    const item = getReviewItemByIdOrSlug(db, options.id);
     if (!item) {
       throw validationError("Requires Review item was not found.", { id: options.id });
     }
@@ -254,6 +356,7 @@ export function renderReviewShowSuccess(response: CommandSuccess<ReviewShowComma
   return [
     "Arcadia Requires Review",
     `ID: ${item.id}`,
+    `Slug: ${item.slug}`,
     `Project: ${item.project ?? "None"}`,
     `Project goal: ${item.goal ?? "None"}`,
     `Decision needed: ${item.decisionNeeded}`,
@@ -268,6 +371,7 @@ export function renderReviewDecisionSuccess(response: CommandSuccess<ReviewDecis
   const lines = [
     `Requires Review ${response.data.result.status}.`,
     `ID: ${response.data.item.id}`,
+    `Slug: ${response.data.item.slug}`,
     `Result: ${response.data.result.summary}`
   ];
   if (response.data.approval?.workItem) {
@@ -277,6 +381,10 @@ export function renderReviewDecisionSuccess(response: CommandSuccess<ReviewDecis
     lines.push(`Plan: ${response.data.approval.plan.id}`);
   }
   return lines;
+}
+
+export function renderReviewResolveReplySuccess(response: CommandSuccess<ReviewResolveReplyCommandData>): string[] {
+  return [response.data.confirmation];
 }
 
 function resolveReviewWindow(options: ReviewWeeklyCommandOptions): { since: string; until: string } {
@@ -318,19 +426,130 @@ function parseDateOption(field: "since" | "until", value: string): Date {
   return date;
 }
 
-function reviewPacketForReviewItem(item: ReviewItemSummary): RequiresReviewPacket {
+export function reviewPacketForReviewItem(item: ReviewItemSummary): RequiresReviewPacket {
   return {
     id: item.id,
+    slug: item.slug ?? item.id,
     workItemId: item.work_item_id,
     project: item.project_name,
     goal: item.project_goal,
+    status: item.status,
+    category: item.resolved_intent,
     decisionNeeded: item.decision_needed,
     context: `${item.resolved_intent}: ${item.proposed_action}`,
     recommendation: item.recommendation,
+    proposedAction: item.proposed_action,
+    missingFields: parseStringArray(item.missing_fields),
     options: ["approve", "reject", "defer"],
     sourceInput: item.source_input,
+    createdAt: item.created_at,
+    updatedAt: item.updated_at,
     resultingAskRequestId: item.resulting_ask_request_id
   };
+}
+
+function parseStringArray(raw: string | null | undefined): string[] {
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === "string").map((value) => value.trim()).filter(Boolean)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+const FEEDBACK_TYPES = [
+  "misunderstood",
+  "wrong project",
+  "wrong intent",
+  "should not review",
+  "intent failed",
+  "missing option",
+  "confusing"
+] as const;
+
+type FeedbackType = typeof FEEDBACK_TYPES[number];
+
+function parseReviewReply(reply: string): { slug: string | null; value: string; feedbackType: FeedbackType | null } {
+  const trimmed = reply.trim();
+  const slugMatch = /^(R\d+)\b\s*(.*)$/i.exec(trimmed);
+  const slug = slugMatch?.[1]?.toUpperCase() ?? null;
+  const value = (slugMatch ? slugMatch[2] : trimmed).trim();
+  const normalized = normalizeReply(value);
+  const feedbackType = FEEDBACK_TYPES.find((type) => normalized === normalizeReply(type)) ?? null;
+  return { slug, value, feedbackType };
+}
+
+function resolveReplyDecision(reply: string, item: RequiresReviewPacket): "approve" | "reject" | "defer" | null {
+  const normalized = normalizeReply(reply);
+  if (!normalized) {
+    return null;
+  }
+
+  const letter = /^[a-z]$/i.test(normalized) ? normalized.toUpperCase() : null;
+  if (letter) {
+    const index = letter.charCodeAt(0) - "A".charCodeAt(0);
+    const option = item.options[index];
+    return decisionForOption(option);
+  }
+
+  if (["yes", "approve", "approved"].includes(normalized) && item.options.includes("approve")) {
+    return "approve";
+  }
+  if (["no", "reject", "rejected"].includes(normalized) && item.options.includes("reject")) {
+    return "reject";
+  }
+  if (["defer", "later"].includes(normalized) && item.options.includes("defer")) {
+    return "defer";
+  }
+
+  return decisionForOption(normalized);
+}
+
+export function validRepliesForReview(item: RequiresReviewPacket): string[] {
+  const letters = item.options.map((_, index) => String.fromCharCode("A".charCodeAt(0) + index));
+  const words = [
+    item.options.includes("approve") ? "approve" : null,
+    item.options.includes("reject") ? "reject" : null,
+    item.options.includes("defer") ? "defer" : null
+  ].filter((value): value is string => Boolean(value));
+  return [...letters, ...words, ...FEEDBACK_TYPES];
+}
+
+function decisionForOption(option: string | undefined): "approve" | "reject" | "defer" | null {
+  const normalized = normalizeReply(option ?? "");
+  if (normalized === "approve") {
+    return "approve";
+  }
+  if (normalized === "reject") {
+    return "reject";
+  }
+  if (normalized === "defer") {
+    return "defer";
+  }
+  return null;
+}
+
+function normalizeReply(value: string): string {
+  return value.trim().toLowerCase().replaceAll(/\s+/g, " ");
+}
+
+function confirmationForDecision(item: RequiresReviewPacket, decision: "approve" | "reject" | "defer", summary: string): string {
+  if (decision === "approve") {
+    return `${item.slug} approved. Resuming execution.`;
+  }
+  if (decision === "reject") {
+    return `${item.slug} rejected.`;
+  }
+  if (decision === "defer") {
+    return `${item.slug} deferred.`;
+  }
+  return `${item.slug} resolved: ${summary}`;
 }
 
 function runReviewDecisionCommand(
@@ -340,7 +559,7 @@ function runReviewDecisionCommand(
 ): CommandSuccess<ReviewDecisionCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const updated = withDatabase(workspacePath, (db) => {
-    const item = getReviewItem(db, options.id);
+    const item = getReviewItemByIdOrSlug(db, options.id);
     if (!item) {
       throw validationError("Requires Review item was not found.", { id: options.id });
     }
@@ -366,6 +585,10 @@ function runReviewDecisionCommand(
       approval: null
     }
   });
+}
+
+function getReviewItemByIdOrSlug(db: Parameters<typeof getReviewItem>[0], idOrSlug: string): ReviewItemSummary | null {
+  return getReviewItem(db, idOrSlug) ?? getReviewItemBySlug(db, idOrSlug);
 }
 
 function todayLocalDate(): Date {

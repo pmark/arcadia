@@ -1,6 +1,6 @@
 # Arcadia Dashboard
 
-Arcadia Dashboard is a local, read-only Mission Control adapter for Arcadia.
+Arcadia Dashboard is a local Mission Control adapter for Arcadia.
 
 It shows:
 
@@ -9,23 +9,19 @@ It shows:
 - Requires Review items
 - recent execution runs and artifacts
 
-It does not edit projects, start runs, approve work, run AI, or manage background jobs.
+It can approve, reject, defer, or resolve Requires Review items through the same CLI review commands used in a terminal. It does not edit projects, start runs directly, manage background jobs, or maintain a dashboard-only review store.
 
 ## Workspace
 
-By default, the dashboard reads:
+The dashboard lets the Arcadia CLI resolve the workspace. Resolution order is:
 
-```sh
-./tmp/demo-workspace
-```
+1. CLI `--workspace` flag when a dashboard command is called directly.
+2. `ARCADIA_WORKSPACE`.
+3. A local initialized workspace marker from the CLI working directory, including repo-local `.arcadia-workspace`.
+4. User config `defaultWorkspace`.
+5. Missing workspace error.
 
-Override it with:
-
-```sh
-ARCADIA_WORKSPACE=/absolute/path/to/arcadia-workspace
-```
-
-The workspace must already be initialized with `arcadia init`.
+The workspace must already be initialized with `arcadia init`, including `database/arcadia.sqlite3`.
 
 ## Run Locally
 
@@ -51,10 +47,19 @@ Use your computer's LAN IP address from a phone on the same network.
 
 ## Data Source
 
-The dashboard calls:
+The dashboard snapshot calls:
 
 ```sh
-arcadia dashboard snapshot --workspace <path> --json
+arcadia dashboard snapshot --json
 ```
 
 The command uses a read-only SQLite connection and does not regenerate `reports/status.md`.
+
+Review decisions call:
+
+```sh
+arcadia review approve <id> --json
+arcadia review reject <id> --json
+arcadia review defer <id> --json
+arcadia review resolve-reply <reply> --id <id> --json
+```

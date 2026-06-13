@@ -46,7 +46,7 @@ Intake is deterministic and local. It does not call Codex, an LLM, a local model
 
 The first supported intents are:
 
-- `CaptureThought`: Preserve a loose idea or unclear note and create a Requires Review item.
+- `CaptureThought`: Preserve a loose idea or unclear note in the Back Burner.
 - `InstantiateProject`: Create a work item for a supported templated project.
 - `UpdateEntityAttribute`: Update a supported attribute on a supported entity.
 - `CreateWork`: Create actionable work for an existing project.
@@ -80,9 +80,30 @@ Intake returns:
 
 High-confidence results can be routed immediately to existing Arcadia behavior. For example, `UpdateEntityAttribute` updates a supported project attribute through a deterministic handler, while `CreateWork` creates an auditable work item and Codex packet.
 
-Medium-confidence results preserve the proposed interpretation but require confirmation. They become Requires Review items instead of silently executing.
+Medium-confidence results preserve the proposed interpretation. They become Requires Review items only when Arcadia can name a specific decision, such as a missing project, missing attribute, invalid value, approval, or risk confirmation.
 
-Low-confidence results are captured as thoughts and become Requires Review items asking for clarification. Arcadia preserves the source input instead of discarding it.
+Low-confidence results are captured as Back Burner items instead of interrupting the user with vague review prompts. Arcadia preserves the source input, ingress source, classification, confidence, reason, status, and suggested next step.
+
+## Back Burner Routing
+
+Before creating work or review items, Intake attaches a deterministic classification:
+
+```text
+ExecutionRequest
+ReviewResponse
+ClarificationResponse
+ArcadiaFeedback
+BugReport
+Idea
+Question
+IncubatingThought
+```
+
+`ExecutionRequest` continues through the existing ask/work/review flow. `ReviewResponse` can route to review resolution when the reply includes an explicit review slug such as `R12 approve`.
+
+`ArcadiaFeedback`, `BugReport`, `Idea`, `Question`, and `IncubatingThought` are captured to `back_burner_items` unless they also contain a concrete decision that belongs in Requires Review.
+
+Requires Review is reserved for actionable decisions. It should not contain generic “missing intent” items.
 
 ## Deterministic-First Design
 
@@ -145,4 +166,4 @@ with file contents:
 Pinterest might help Rebuster.
 ```
 
-That input is low-confidence and becomes a Requires Review item asking for clarification.
+That input is low-confidence and becomes a Back Burner item.

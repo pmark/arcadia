@@ -3,6 +3,7 @@ import type {
   ApprovalGateStatus,
   ApprovalGateType,
   AskRequestStatus,
+  BackBurnerStatus,
   CodexInvocationPurpose,
   CodexInvocationStatus,
   ExecutionPlanStatus,
@@ -181,6 +182,7 @@ export type ReviewItemStatus = "open" | "approved" | "rejected" | "deferred";
 
 export interface ReviewItem {
   id: string;
+  slug: string | null;
   ask_request_id: string | null;
   work_item_id: string | null;
   plan_id: string | null;
@@ -200,6 +202,42 @@ export interface ReviewItem {
   decided_at: string | null;
   decision_note: string | null;
   resulting_ask_request_id: string | null;
+}
+
+export interface ReviewFeedback {
+  id: string;
+  review_id: string;
+  review_slug: string;
+  source_input: string | null;
+  proposed_interpretation: string | null;
+  feedback_type: string;
+  raw_reply: string;
+  created_at: string;
+}
+
+export type IntakeClassification =
+  | "ExecutionRequest"
+  | "ReviewResponse"
+  | "ClarificationResponse"
+  | "ArcadiaFeedback"
+  | "BugReport"
+  | "Idea"
+  | "Question"
+  | "IncubatingThought";
+
+export interface BackBurnerItem {
+  id: string;
+  original_input: string;
+  ingress_source: string;
+  classification: IntakeClassification;
+  confidence: number;
+  reason: string;
+  status: BackBurnerStatus;
+  suggested_next_step: string | null;
+  created_at: string;
+  updated_at: string;
+  promoted_at: string | null;
+  promoted_work_item_id: string | null;
 }
 
 export interface ApprovalGate {
@@ -310,6 +348,10 @@ export interface ReviewItemSummary extends ReviewItem {
   work_item_title: string | null;
   plan_summary: string | null;
   resulting_ask_work_item_title: string | null;
+}
+
+export interface BackBurnerItemSummary extends BackBurnerItem {
+  promoted_work_item_title: string | null;
 }
 
 export interface QueueGroups {
@@ -479,6 +521,30 @@ export interface CreateReviewItemInput {
   confidence: number;
   missingFields?: string[];
   context?: Record<string, unknown>;
+}
+
+export interface CreateReviewFeedbackInput {
+  reviewId: string;
+  reviewSlug: string;
+  sourceInput?: string | null;
+  proposedInterpretation?: string | null;
+  feedbackType: string;
+  rawReply: string;
+}
+
+export interface CreateBackBurnerItemInput {
+  originalInput: string;
+  ingressSource: string;
+  classification: IntakeClassification;
+  confidence: number;
+  reason: string;
+  status?: BackBurnerStatus;
+  suggestedNextStep?: string | null;
+}
+
+export interface UpdateBackBurnerItemInput {
+  status?: BackBurnerStatus;
+  promotedWorkItemId?: string | null;
 }
 
 export interface CreateApprovalGateInput {

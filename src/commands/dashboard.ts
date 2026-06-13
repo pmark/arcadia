@@ -28,6 +28,7 @@ export function renderDashboardSnapshotSuccess(response: CommandSuccess<Dashboar
     `Paused projects: ${snapshot.counts.pausedProjects}`,
     `Incubating projects: ${snapshot.counts.incubatingProjects}`,
     `Requires Review: ${snapshot.counts.requiresReview}`,
+    `Back Burner: ${snapshot.counts.backBurner}`,
     `Recent runs: ${snapshot.counts.recentRuns}`,
     `Recent artifacts: ${snapshot.counts.recentArtifacts}`
   ];
