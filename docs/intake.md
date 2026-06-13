@@ -48,12 +48,12 @@ The first supported intents are:
 
 - `CaptureThought`: Preserve a loose idea or unclear note and create a Requires Review item.
 - `InstantiateProject`: Create a work item for a supported templated project.
-- `UpdateGoal`: Update the goal of an existing project.
+- `UpdateEntityAttribute`: Update a supported attribute on a supported entity.
 - `CreateWork`: Create actionable work for an existing project.
 - `ReviewRequired`: Show Requires Review items.
 - `ShowStatus`: Show current status and focus guidance.
 
-Intake also recognizes simple `pause <project>` and `resume <project>` project status requests.
+The initial `UpdateEntityAttribute` entity scope is `project`. Supported project attributes are `goal`, `mission`, `status`, `current milestone`, and `next action`. Intake also recognizes simple `pause <project>` and `resume <project>` project status requests through the same generic status attribute path.
 
 Supported project templates:
 
@@ -78,7 +78,7 @@ Intake returns:
 - whether review is required
 - human-readable explanation
 
-High-confidence results can be routed immediately to existing Arcadia behavior. For example, `UpdateGoal` updates the project goal, while `CreateWork` creates an auditable work item and Codex packet.
+High-confidence results can be routed immediately to existing Arcadia behavior. For example, `UpdateEntityAttribute` updates a supported project attribute through a deterministic handler, while `CreateWork` creates an auditable work item and Codex packet.
 
 Medium-confidence results preserve the proposed interpretation but require confirmation. They become Requires Review items instead of silently executing.
 
@@ -92,6 +92,9 @@ Intake currently supports deterministic patterns including:
 create a <template> called <name>
 create a <template> named <name>
 the goal for <project> is <goal>
+set <project> <attribute>: <value>
+set <project> <attribute> to <value>
+set <attribute> for <project> to <value>
 pause <project>
 resume <project>
 add <action> for <project>
@@ -102,7 +105,7 @@ what should I focus on
 status
 ```
 
-Project names and template names use local fuzzy matching. Ambiguous or weak matches require review.
+Project names and template names use local fuzzy matching. Project attributes use a small registry of aliases, validators, and deterministic handlers. Ambiguous or weak matches, unsupported attributes, missing values, and invalid values require review.
 
 ## Examples
 

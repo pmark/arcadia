@@ -1,15 +1,15 @@
-import type { ProjectStatus, WorkClassification } from "../domain/constants.js";
+import { PROJECT_STATUSES, type ProjectStatus, type WorkClassification } from "../domain/constants.js";
 
 export type IntakeIntent =
   | "CaptureThought"
   | "CreateProject"
   | "InstantiateProject"
-  | "UpdateGoal"
+  | "UpdateEntityAttribute"
   | "CreateWork"
   | "ReviewRequired"
-  | "ShowStatus"
-  | "PauseProject"
-  | "ResumeProject";
+  | "ShowProject"
+  | "ListProjects"
+  | "ShowStatus";
 
 export type IntakeConfidenceLabel = "high" | "medium" | "low";
 
@@ -42,6 +42,10 @@ export interface IntakeTemplateDefinition {
   expectedArtifact: string;
 }
 
+export type IntakeEntityType = "project";
+export type IntakeProjectAttribute = "goal" | "mission" | "status" | "current_milestone" | "next_action";
+export type IntakeSafetyLevel = "safe_deterministic";
+
 export type IntakeAction =
   | {
       kind: "capture_thought";
@@ -57,14 +61,16 @@ export type IntakeAction =
       template: IntakeTemplateDefinition | null;
     }
   | {
-      kind: "update_project_goal";
-      projectId: string | null;
-      goal: string | null;
-    }
-  | {
-      kind: "update_project_status";
-      projectId: string | null;
-      status: ProjectStatus;
+      kind: "update_entity_attribute";
+      entityType: IntakeEntityType;
+      entityId: string | null;
+      entityName: string | null;
+      attribute: IntakeProjectAttribute | null;
+      attributeName: string | null;
+      value: string | null;
+      safetyLevel: IntakeSafetyLevel;
+      deterministicHandler: string | null;
+      invalidReason: string | null;
     }
   | {
       kind: "create_work";
@@ -77,6 +83,13 @@ export type IntakeAction =
     }
   | {
       kind: "show_status";
+    }
+  | {
+      kind: "show_project";
+      projectId: string | null;
+    }
+  | {
+      kind: "list_projects";
     };
 
 export interface IntakeResult {
@@ -98,6 +111,82 @@ export interface IntakeResult {
 const HIGH_CONFIDENCE = 0.8;
 const MEDIUM_CONFIDENCE = 0.5;
 const GENERIC_REFERENCE_TOKENS = new Set(["app", "project", "site", "website", "tool"]);
+
+interface ParsedEntityAttributeUpdate {
+  entityType: IntakeEntityType;
+  entityReference: string;
+  attributeReference: string;
+  value: string;
+}
+
+interface AttributeValidationResult {
+  value: string | null;
+  invalidReason: string | null;
+}
+
+interface ProjectAttributeDefinition {
+  name: IntakeProjectAttribute;
+  displayName: string;
+  missingField: string;
+  aliases: string[];
+  deterministicHandler: string;
+  validate(value: string): AttributeValidationResult;
+}
+
+interface EntityTypeDefinition {
+  type: IntakeEntityType;
+  displayName: string;
+}
+
+const ENTITY_TYPE_REGISTRY: EntityTypeDefinition[] = [
+  {
+    type: "project",
+    displayName: "project"
+  }
+];
+
+const PROJECT_ATTRIBUTE_REGISTRY: ProjectAttributeDefinition[] = [
+  {
+    name: "goal",
+    displayName: "goal",
+    missingField: "attributeValue",
+    aliases: ["goal"],
+    deterministicHandler: "project.update.goal",
+    validate: validateNonEmptyString
+  },
+  {
+    name: "mission",
+    displayName: "mission",
+    missingField: "attributeValue",
+    aliases: ["mission"],
+    deterministicHandler: "project.update.mission",
+    validate: validateNonEmptyString
+  },
+  {
+    name: "status",
+    displayName: "status",
+    missingField: "attributeValue",
+    aliases: ["status"],
+    deterministicHandler: "project.update.status",
+    validate: validateProjectStatusValue
+  },
+  {
+    name: "current_milestone",
+    displayName: "current milestone",
+    missingField: "attributeValue",
+    aliases: ["current milestone", "milestone"],
+    deterministicHandler: "project.update.current_milestone",
+    validate: validateNonEmptyString
+  },
+  {
+    name: "next_action",
+    displayName: "next action",
+    missingField: "attributeValue",
+    aliases: ["next action"],
+    deterministicHandler: "project.update.next_action",
+    validate: validateNonEmptyString
+  }
+];
 
 export const INTAKE_TEMPLATES: IntakeTemplateDefinition[] = [
   {
@@ -163,6 +252,21 @@ export function resolveIntake(rawInput: string, context: IntakeWorkspaceContext)
     });
   }
 
+  if (isListProjectsRequest(normalized)) {
+    return highResult({
+      raw,
+      resolvedIntent: "ListProjects",
+      extractedFields: {},
+      proposedAction: "List Arcadia projects.",
+      safeToExecute: true,
+      reviewRequired: false,
+      explanation: "The request asks to list projects.",
+      action: { kind: "list_projects" },
+      project: null,
+      template: null
+    });
+  }
+
   if (isStatusRequest(normalized)) {
     return highResult({
       raw,
@@ -178,31 +282,26 @@ export function resolveIntake(rawInput: string, context: IntakeWorkspaceContext)
     });
   }
 
-  const goal = parseGoalUpdate(raw);
-  if (goal) {
-    const project = resolveProjectReference(goal.projectReference, context);
+  const showProject = parseShowProject(raw);
+  if (showProject) {
+    const project = resolveProjectReference(showProject.projectReference, context);
     return resultFromProjectIntent({
       raw,
-      resolvedIntent: "UpdateGoal",
+      resolvedIntent: "ShowProject",
       extractedFields: {
-        project: goal.projectReference,
-        goal: goal.goal
+        project: showProject.projectReference
       },
-      missingFields: [
-        ...missingProjectFields(project),
-        ...(goal.goal ? [] : ["goal"])
-      ],
+      missingFields: missingProjectFields(project),
       proposedAction: project.reference
-        ? `Update ${project.reference.name} goal to "${goal.goal}".`
-        : `Update a project goal to "${goal.goal}".`,
+        ? `Show ${project.reference.name}.`
+        : "Show the referenced project after the project is confirmed.",
       safeToExecute: true,
       explanation: project.reference
-        ? "The request clearly changes a project goal."
-        : "The request changes a project goal, but the project needs confirmation.",
+        ? "The request clearly asks to show a project."
+        : "The request asks to show a project, but the project needs confirmation.",
       action: {
-        kind: "update_project_goal",
-        projectId: project.reference?.id ?? null,
-        goal: goal.goal || null
+        kind: "show_project",
+        projectId: project.reference?.id ?? null
       },
       project: project.reference,
       template: null,
@@ -210,34 +309,9 @@ export function resolveIntake(rawInput: string, context: IntakeWorkspaceContext)
     });
   }
 
-  const projectStatus = parseProjectStatus(raw);
-  if (projectStatus) {
-    const project = resolveProjectReference(projectStatus.projectReference, context);
-    const resolvedIntent = projectStatus.status === "paused" ? "PauseProject" : "ResumeProject";
-    return resultFromProjectIntent({
-      raw,
-      resolvedIntent,
-      extractedFields: {
-        project: projectStatus.projectReference,
-        status: projectStatus.status
-      },
-      missingFields: missingProjectFields(project),
-      proposedAction: project.reference
-        ? `${projectStatus.status === "paused" ? "Pause" : "Resume"} ${project.reference.name}.`
-        : `${projectStatus.status === "paused" ? "Pause" : "Resume"} the referenced project.`,
-      safeToExecute: true,
-      explanation: project.reference
-        ? "The request clearly changes a project status."
-        : "The request changes a project status, but the project needs confirmation.",
-      action: {
-        kind: "update_project_status",
-        projectId: project.reference?.id ?? null,
-        status: projectStatus.status
-      },
-      project: project.reference,
-      template: null,
-      baseConfidence: 0.9
-    });
+  const entityAttributeUpdate = parseEntityAttributeUpdate(raw) ?? parseProjectStatusShortcut(raw);
+  if (entityAttributeUpdate) {
+    return resultFromEntityAttributeUpdate(raw, entityAttributeUpdate, context);
   }
 
   const instantiate = parseInstantiateProject(raw);
@@ -423,6 +497,99 @@ function resultFromProjectIntent(input: {
   };
 }
 
+function resultFromEntityAttributeUpdate(
+  raw: string,
+  parsed: ParsedEntityAttributeUpdate,
+  context: IntakeWorkspaceContext
+): IntakeResult {
+  const project = resolveProjectReference(parsed.entityReference, context);
+  const attribute = resolveProjectAttributeReference(parsed.attributeReference);
+  const validation = attribute ? attribute.validate(parsed.value) : { value: parsed.value || null, invalidReason: null };
+  const missingFields = [
+    ...missingProjectFields(project),
+    ...(attribute ? [] : ["attribute"]),
+    ...(attribute && !parsed.value ? [attribute.missingField] : []),
+    ...(validation.invalidReason ? ["attributeValue"] : [])
+  ];
+  const confidence = confidenceFor({
+    base: 0.92,
+    missingFields,
+    references: [project.reference]
+  });
+  const confidenceLabel = labelForConfidence(confidence);
+  const value = validation.value;
+  const projectName = project.reference?.name ?? parsed.entityReference;
+  const attributeName = attribute?.displayName ?? parsed.attributeReference;
+
+  return {
+    rawInput: raw,
+    resolvedIntent: "UpdateEntityAttribute",
+    confidence,
+    confidenceLabel,
+    extractedFields: compactFields({
+      entityType: parsed.entityType,
+      entity: parsed.entityReference,
+      project: parsed.entityReference,
+      attribute: attributeName,
+      value,
+      invalidReason: validation.invalidReason
+    }),
+    missingFields,
+    proposedAction: proposedEntityAttributeAction({
+      projectName,
+      attributeName,
+      value,
+      missingFields,
+      invalidReason: validation.invalidReason
+    }),
+    safeToExecute: true,
+    reviewRequired: confidenceLabel !== "high" || missingFields.length > 0,
+    explanation: missingFields.length === 0
+      ? "The request clearly changes a supported project attribute."
+      : "The request is update-shaped, but project, attribute, or value needs review.",
+    action: {
+      kind: "update_entity_attribute",
+      entityType: parsed.entityType,
+      entityId: project.reference?.id ?? null,
+      entityName: project.reference?.name ?? null,
+      attribute: attribute?.name ?? null,
+      attributeName: attribute?.displayName ?? null,
+      value,
+      safetyLevel: "safe_deterministic",
+      deterministicHandler: attribute?.deterministicHandler ?? null,
+      invalidReason: validation.invalidReason
+    },
+    project: project.reference,
+    template: null
+  };
+}
+
+function proposedEntityAttributeAction(input: {
+  projectName: string;
+  attributeName: string;
+  value: string | null;
+  missingFields: string[];
+  invalidReason: string | null;
+}): string {
+  if (input.missingFields.includes("project")) {
+    return "Requires Review: project ambiguous or missing.";
+  }
+
+  if (input.missingFields.includes("attribute")) {
+    return "Requires Review: attribute ambiguous or missing.";
+  }
+
+  if (input.invalidReason) {
+    return `Requires Review: invalid attribute value (${input.invalidReason}).`;
+  }
+
+  if (!input.value) {
+    return "Requires Review: missing attribute value.";
+  }
+
+  return `Update ${input.projectName} ${input.attributeName} to "${input.value}".`;
+}
+
 function parseInstantiateProject(raw: string): { templateReference: string; projectName: string } | null {
   const match = /^\s*(?:please\s+)?create\s+(?:a|an)?\s*(.+?)\s+(?:called|named)\s+(.+?)\s*[.!?]?\s*$/i.exec(raw);
   if (!match?.[1] || !match[2]) {
@@ -440,30 +607,123 @@ function isPlainProjectReference(value: string): boolean {
   return normalized === "project" || normalized === "new project";
 }
 
-function parseGoalUpdate(raw: string): { projectReference: string; goal: string } | null {
-  const match = /^\s*(?:the\s+)?goal\s+for\s+(.+?)\s+is\s+(.+?)\s*[.!?]?\s*$/i.exec(raw);
-  if (!match?.[1] || !match[2]) {
+function cleanProjectReference(value: string): string {
+  return cleanTrailingPunctuation(value)
+    .replace(/^the\s+/i, "")
+    .replace(/\s+project$/i, "")
+    .trim();
+}
+
+function parseEntityAttributeUpdate(raw: string): ParsedEntityAttributeUpdate | null {
+  const command = /^\s*(?:please\s+)?(?:set|update|change)\s+(.+?)\s*[.!?]?\s*$/i.exec(raw);
+  if (command?.[1]) {
+    return parseAttributeForEntityUpdate(command[1]) ?? parseEntityFirstUpdate(command[1]);
+  }
+
+  return parseAttributeForEntityUpdate(raw);
+}
+
+function parseAttributeForEntityUpdate(body: string): ParsedEntityAttributeUpdate | null {
+  for (const alias of projectAttributeAliasesByLength()) {
+    const escapedAlias = escapeRegExp(alias.alias).replace(/\s+/g, "\\s+");
+    const withValue = new RegExp(
+      `^(?:the\\s+)?${escapedAlias}\\s+for\\s+(.+?)(?::|\\s+to:?\\s+|\\s+is\\s+)(.*?)$`,
+      "i"
+    ).exec(body.trim());
+    const match = withValue ?? new RegExp(`^(?:the\\s+)?${escapedAlias}\\s+for\\s+(.+?)$`, "i").exec(body.trim());
+    if (!match?.[1]) {
+      continue;
+    }
+
+    return {
+      entityType: projectEntityType(),
+      entityReference: cleanProjectReference(match[1]),
+      attributeReference: alias.alias,
+      value: cleanExtractedValue(match[2] ?? "")
+    };
+  }
+
+  return null;
+}
+
+function parseEntityFirstUpdate(body: string): ParsedEntityAttributeUpdate | null {
+  const separator = /(?::|\s+to:?\s+|\s+is\s+)/i.exec(body);
+  const left = separator ? body.slice(0, separator.index).trim() : body.trim();
+  const value = separator ? body.slice(separator.index + separator[0].length).trim() : "";
+  const split = splitEntityAndAttribute(left);
+  if (!split) {
     return null;
   }
 
   return {
-    projectReference: match[1].trim(),
-    goal: cleanTrailingPunctuation(match[2]).replace(/^to\s+/i, "")
+    entityType: projectEntityType(),
+    entityReference: cleanProjectReference(split.entityReference),
+    attributeReference: split.attributeReference,
+    value: cleanExtractedValue(value)
   };
 }
 
-function parseProjectStatus(raw: string): { projectReference: string; status: "active" | "paused" } | null {
+function splitEntityAndAttribute(left: string): { entityReference: string; attributeReference: string } | null {
+  const cleaned = left.trim().replace(/\s+/g, " ");
+  for (const alias of projectAttributeAliasesByLength()) {
+    const escapedAlias = escapeRegExp(alias.alias).replace(/\s+/g, "\\s+");
+    const match = new RegExp(`^(.+?)(?:['’]s)?\\s+${escapedAlias}$`, "i").exec(cleaned);
+    if (match?.[1]) {
+      return {
+        entityReference: match[1],
+        attributeReference: alias.alias
+      };
+    }
+  }
+
+  const genericMatch = /^(.+?)(?:['’]s)?\s+([a-z][a-z0-9 ]*)$/i.exec(cleaned);
+  if (!genericMatch?.[1] || !genericMatch[2]) {
+    return null;
+  }
+
+  return {
+    entityReference: genericMatch[1],
+    attributeReference: genericMatch[2]
+  };
+}
+
+function parseProjectStatusShortcut(raw: string): ParsedEntityAttributeUpdate | null {
   const pause = /^\s*pause\s+(.+?)\s*[.!?]?\s*$/i.exec(raw);
   if (pause?.[1]) {
-    return { projectReference: cleanTrailingPunctuation(pause[1]), status: "paused" };
+    return {
+      entityType: projectEntityType(),
+      entityReference: cleanProjectReference(pause[1]),
+      attributeReference: "status",
+      value: "paused"
+    };
   }
 
   const resume = /^\s*resume\s+(.+?)\s*[.!?]?\s*$/i.exec(raw);
   if (resume?.[1]) {
-    return { projectReference: cleanTrailingPunctuation(resume[1]), status: "active" };
+    return {
+      entityType: projectEntityType(),
+      entityReference: cleanProjectReference(resume[1]),
+      attributeReference: "status",
+      value: "active"
+    };
   }
 
   return null;
+}
+
+function projectAttributeAliasesByLength(): Array<{ alias: string; attribute: ProjectAttributeDefinition }> {
+  return PROJECT_ATTRIBUTE_REGISTRY.flatMap((attribute) =>
+    attribute.aliases.map((alias) => ({ alias, attribute }))
+  ).sort((left, right) => right.alias.length - left.alias.length);
+}
+
+function resolveProjectAttributeReference(reference: string): ProjectAttributeDefinition | null {
+  const normalized = normalizeText(reference);
+  return projectAttributeAliasesByLength().find((candidate) => normalizeText(candidate.alias) === normalized)?.attribute ?? null;
+}
+
+function projectEntityType(): IntakeEntityType {
+  return ENTITY_TYPE_REGISTRY[0].type;
 }
 
 function parseCreateWork(raw: string): { action: string; projectReference: string } | null {
@@ -483,6 +743,9 @@ function isReviewRequest(normalized: string): boolean {
     normalized === "needs review" ||
     normalized === "requires review" ||
     normalized === "what requires review" ||
+    normalized === "list review items" ||
+    normalized === "show review items" ||
+    normalized === "list requires review" ||
     normalized.includes("what needs review");
 }
 
@@ -492,6 +755,24 @@ function isStatusRequest(normalized: string): boolean {
     normalized === "what should i focus on" ||
     normalized === "what should i focus on today" ||
     normalized.includes("what matters now");
+}
+
+function isListProjectsRequest(normalized: string): boolean {
+  return normalized === "list projects" ||
+    normalized === "show projects" ||
+    normalized === "all projects" ||
+    normalized === "show all projects";
+}
+
+function parseShowProject(raw: string): { projectReference: string } | null {
+  const match = /^\s*(?:please\s+)?(?:show|open|display)\s+(?:the\s+)?project\s+(.+?)\s*[.!?]?\s*$/i.exec(raw) ??
+    /^\s*(?:please\s+)?(?:show|open|display)\s+(.+?)(?:\s+project)?\s*[.!?]?\s*$/i.exec(raw);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  const projectReference = cleanTrailingPunctuation(match[1]).replace(/^the\s+/i, "");
+  return projectReference ? { projectReference } : null;
 }
 
 function resolveProjectReference(
@@ -641,6 +922,41 @@ function normalizeText(value: string): string {
 
 function cleanTrailingPunctuation(value: string): string {
   return value.trim().replace(/[.!?]+$/g, "").trim();
+}
+
+function cleanExtractedValue(value: string): string {
+  return cleanTrailingPunctuation(value)
+    .replace(/^to\s+/i, "")
+    .replace(/^["“](.+)["”]$/s, "$1")
+    .trim();
+}
+
+function validateNonEmptyString(value: string): AttributeValidationResult {
+  const cleaned = cleanExtractedValue(value);
+  return {
+    value: cleaned || null,
+    invalidReason: null
+  };
+}
+
+function validateProjectStatusValue(value: string): AttributeValidationResult {
+  const cleaned = cleanExtractedValue(value).toLowerCase();
+  if (!cleaned) {
+    return { value: null, invalidReason: null };
+  }
+
+  if (!PROJECT_STATUSES.includes(cleaned as ProjectStatus)) {
+    return {
+      value: cleaned,
+      invalidReason: `status must be one of: ${PROJECT_STATUSES.join(", ")}`
+    };
+  }
+
+  return { value: cleaned, invalidReason: null };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function compactFields(fields: Record<string, string | null | undefined>): Record<string, string> {

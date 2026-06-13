@@ -11,6 +11,7 @@ import {
   createAskRequest,
   createCodexInvocation,
   createExecutionPlan,
+  createMilestoneForProject,
   createReviewItem,
   createWorkItemWithOptionalArtifact,
   getActiveMilestoneForProject,
@@ -20,10 +21,13 @@ import {
   getProjectContext,
   getWorkItem,
   listProjects,
+  listProjectSummaries,
+  listWorkItems,
   listApprovalGatesForWorkItem,
   listCodexInvocationsForWorkItem,
   resolveProjectContextFromRequest,
-  updateProject
+  updateProject,
+  updateWorkItem
 } from "../db/repositories.js";
 import type {
   ApprovalGate,
@@ -32,14 +36,16 @@ import type {
   ExecutionPlanSummary,
   ExecutionRunSummary,
   Project,
+  ProjectSummary,
   ProjectContext,
   WorkItemSummary
 } from "../domain/types.js";
+import type { ProjectStatus } from "../domain/constants.js";
 import { ensureBuiltInSkills } from "../execution/skills.js";
 import { executePlan } from "../execution/runner.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import type { ResolvedIntent } from "../intent/resolver.js";
-import type { IntakeProjectContext, IntakeResult, IntakeWorkspaceContext } from "../intake/index.js";
+import type { IntakeProjectAttribute, IntakeProjectContext, IntakeResult, IntakeWorkspaceContext } from "../intake/index.js";
 import { resolveIntake } from "../intake/index.js";
 import type { ReviewRequiredCommandData } from "./review.js";
 import { runReviewRequiredCommand } from "./review.js";
@@ -70,6 +76,8 @@ export interface AskCommandData {
   codexInvocations: CodexInvocation[];
   run: ExecutionRunSummary | null;
   project: Project | null;
+  projectSummary: ProjectSummary | null;
+  projects: ProjectSummary[] | null;
   status: StatusCommandData | null;
   review: ReviewRequiredCommandData | null;
   reviewItemId: string | null;
@@ -112,6 +120,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         codexInvocations: [],
         run: null,
         project: null,
+        projectSummary: null,
+        projects: null,
         status: status.data,
         review: null,
         reviewItemId: null
@@ -148,6 +158,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         codexInvocations: [],
         run: null,
         project: null,
+        projectSummary: null,
+        projects: null,
         status: null,
         review: review.data,
         reviewItemId: null
@@ -195,6 +207,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         codexInvocations: [],
         run: null,
         project: created.data.project,
+        projectSummary: null,
+        projects: null,
         status: null,
         review: null,
         reviewItemId: null
@@ -205,17 +219,16 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
 
   if (
     (intake.confidenceLabel === "high" || approvedFromReview) &&
-    intake.action.kind === "update_project_goal" &&
-    intake.action.projectId &&
-    intake.action.goal
+    intake.action.kind === "update_entity_attribute" &&
+    intake.action.entityType === "project" &&
+    intake.action.entityId &&
+    intake.action.attribute &&
+    intake.action.value &&
+    !intake.action.invalidReason
   ) {
-    const projectId = intake.action.projectId;
-    const goal = intake.action.goal;
+    const action = intake.action;
     const { ask, project } = withDatabase(workspacePath, (db) => {
-      const project = updateProject(db, projectId, { goal });
-      if (!project) {
-        throw projectNotFound(projectId);
-      }
+      const project = applyProjectAttributeUpdate(db, action);
 
       const ask = createAskRequest(db, {
         rawRequest: options.request,
@@ -227,6 +240,38 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       return { ask, project };
     });
 
+    return actedProjectUpdate({
+      workspacePath,
+      ask,
+      intake,
+      resolved,
+      project,
+      summary: `Updated ${renderResolvedAttribute(intake)} for ${project.name}.`
+    });
+  }
+
+  if (
+    (intake.confidenceLabel === "high" || approvedFromReview) &&
+    intake.action.kind === "show_project" &&
+    intake.action.projectId
+  ) {
+    const projectId = intake.action.projectId;
+    const { ask, projectSummary } = withDatabase(workspacePath, (db) => {
+      const projectSummary = listProjectSummaries(db).find((candidate) => candidate.id === projectId) ?? null;
+      if (!projectSummary) {
+        throw projectNotFound(projectId);
+      }
+
+      const ask = createAskRequest(db, {
+        rawRequest: options.request,
+        resolvedIntent: resolved.intentId,
+        registryVersion: registries.intents.version,
+        outputKind: resolved.outputKind,
+        status: "planned"
+      });
+      return { ask, projectSummary };
+    });
+
     return createSuccess({
       command: "ask",
       workspace: workspacePath,
@@ -234,16 +279,15 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         ask,
         intake,
         resolvedIntent: resolved,
-        result: {
-          status: "acted",
-          summary: `Updated goal for ${project.name}.`
-        },
+        result: { status: "acted", summary: `Shown project ${projectSummary.name}.` },
         workItem: null,
         plan: null,
         approvalGates: [],
         codexInvocations: [],
         run: null,
-        project,
+        project: null,
+        projectSummary,
+        projects: null,
         status: null,
         review: null,
         reviewItemId: null
@@ -251,19 +295,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     });
   }
 
-  if (
-    (intake.confidenceLabel === "high" || approvedFromReview) &&
-    intake.action.kind === "update_project_status" &&
-    intake.action.projectId
-  ) {
-    const projectId = intake.action.projectId;
-    const status = intake.action.status;
-    const { ask, project } = withDatabase(workspacePath, (db) => {
-      const project = updateProject(db, projectId, { status });
-      if (!project) {
-        throw projectNotFound(projectId);
-      }
-
+  if ((intake.confidenceLabel === "high" || approvedFromReview) && intake.action.kind === "list_projects") {
+    const { ask, projects } = withDatabase(workspacePath, (db) => {
       const ask = createAskRequest(db, {
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
@@ -271,7 +304,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         outputKind: resolved.outputKind,
         status: "planned"
       });
-      return { ask, project };
+      return { ask, projects: listProjectSummaries(db) };
     });
 
     return createSuccess({
@@ -281,16 +314,15 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         ask,
         intake,
         resolvedIntent: resolved,
-        result: {
-          status: "acted",
-          summary: `Updated ${project.name} status to ${project.status}.`
-        },
+        result: { status: "acted", summary: "Projects listed." },
         workItem: null,
         plan: null,
         approvalGates: [],
         codexInvocations: [],
         run: null,
-        project,
+        project: null,
+        projectSummary: null,
+        projects,
         status: null,
         review: null,
         reviewItemId: null
@@ -346,6 +378,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         codexInvocations: [],
         run: null,
         project: null,
+        projectSummary: null,
+        projects: null,
         status: null,
         review: null,
         reviewItemId: reviewItem.id
@@ -474,6 +508,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       codexInvocations: data.codexInvocations,
       run,
       project: null,
+      projectSummary: null,
+      projects: null,
       status: null,
       review: null,
       reviewItemId: null
@@ -493,12 +529,139 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   });
 }
 
+function actedProjectUpdate(input: {
+  workspacePath: string;
+  ask: AskRequestSummary;
+  intake: IntakeResult;
+  resolved: ResolvedIntent;
+  project: Project;
+  summary: string;
+}): CommandSuccess<AskCommandData> {
+  return createSuccess({
+    command: "ask",
+    workspace: input.workspacePath,
+    data: {
+      ask: input.ask,
+      intake: input.intake,
+      resolvedIntent: input.resolved,
+      result: {
+        status: "acted",
+        summary: input.summary
+      },
+      workItem: null,
+      plan: null,
+      approvalGates: [],
+      codexInvocations: [],
+      run: null,
+      project: input.project,
+      projectSummary: null,
+      projects: null,
+      status: null,
+      review: null,
+      reviewItemId: null
+    }
+  });
+}
+
+type UpdateEntityAttributeAction = Extract<IntakeResult["action"], { kind: "update_entity_attribute" }>;
+type ProjectAttributeUpdateHandler = (
+  db: Parameters<typeof getProject>[0],
+  action: UpdateEntityAttributeAction
+) => Project;
+
+const PROJECT_ATTRIBUTE_UPDATE_HANDLERS: Record<IntakeProjectAttribute, ProjectAttributeUpdateHandler> = {
+  goal: (db, action) => {
+    const project = updateProject(db, requireEntityId(action), { goal: requireAttributeValue(action) });
+    if (!project) {
+      throw projectNotFound(requireEntityId(action));
+    }
+    return project;
+  },
+  mission: (db, action) => {
+    const project = updateProject(db, requireEntityId(action), { mission: requireAttributeValue(action) });
+    if (!project) {
+      throw projectNotFound(requireEntityId(action));
+    }
+    return project;
+  },
+  status: (db, action) => {
+    const project = updateProject(db, requireEntityId(action), { status: requireAttributeValue(action) as ProjectStatus });
+    if (!project) {
+      throw projectNotFound(requireEntityId(action));
+    }
+    return project;
+  },
+  current_milestone: (db, action) => {
+    const projectId = requireEntityId(action);
+    const project = getProject(db, projectId);
+    if (!project) {
+      throw projectNotFound(projectId);
+    }
+
+    const milestone = createMilestoneForProject(db, projectId, requireAttributeValue(action), "active");
+    if (!milestone) {
+      throw projectNotFound(projectId);
+    }
+    return project;
+  },
+  next_action: (db, action) => {
+    const projectId = requireEntityId(action);
+    const project = getProject(db, projectId);
+    if (!project) {
+      throw projectNotFound(projectId);
+    }
+
+    const target = listWorkItems(db).find((item) => item.project_id === projectId && item.status !== "done");
+    if (!target) {
+      throw validationError("Project has no open work item to hold next action.", { projectId });
+    }
+
+    const updated = updateWorkItem(db, target.id, { nextAction: requireAttributeValue(action) });
+    if (!updated) {
+      throw workItemNotFound(target.id);
+    }
+    return project;
+  }
+};
+
+function applyProjectAttributeUpdate(
+  db: Parameters<typeof getProject>[0],
+  action: UpdateEntityAttributeAction
+): Project {
+  if (action.entityType !== "project") {
+    throw validationError("Only project entity updates are supported.", { entityType: action.entityType });
+  }
+
+  if (!action.attribute) {
+    throw validationError("Project attribute is required.");
+  }
+
+  const handler = PROJECT_ATTRIBUTE_UPDATE_HANDLERS[action.attribute];
+  return handler(db, action);
+}
+
+function requireEntityId(action: UpdateEntityAttributeAction): string {
+  if (!action.entityId) {
+    throw validationError("Project is required.");
+  }
+  return action.entityId;
+}
+
+function requireAttributeValue(action: UpdateEntityAttributeAction): string {
+  if (!action.value?.trim()) {
+    throw validationError("Attribute value is required.");
+  }
+  return action.value;
+}
+
 export function renderAskSuccess(response: CommandSuccess<AskCommandData>): string[] {
   const lines = [
     `Ask: ${response.data.ask.id}`,
     `Interpreted as: ${response.data.intake.resolvedIntent}`,
     `Confidence: ${response.data.intake.confidenceLabel} (${response.data.intake.confidence.toFixed(2)})`,
-    `Project: ${response.data.intake.project?.name ?? response.data.workItem?.project_name ?? response.data.project?.name ?? "None"}`,
+    `Project: ${response.data.intake.project?.name ?? response.data.workItem?.project_name ?? response.data.project?.name ?? response.data.projectSummary?.name ?? "None"}`,
+    `Attribute: ${renderResolvedAttribute(response.data.intake)}`,
+    `Value: ${renderResolvedAttributeValue(response.data.intake)}`,
     `Goal: ${response.data.project?.goal ?? "None"}`,
     `Action: ${response.data.intake.proposedAction}`,
     `Result: ${response.data.result.summary}`
@@ -513,6 +676,18 @@ export function renderAskSuccess(response: CommandSuccess<AskCommandData>): stri
 
   if (response.data.reviewItemId) {
     lines.push(`Requires Review: ${response.data.reviewItemId}`);
+  }
+
+  if (response.data.projectSummary) {
+    lines.push(`Status: ${response.data.projectSummary.status}`);
+    lines.push(`Mission: ${response.data.projectSummary.mission}`);
+    lines.push(`Current milestone: ${response.data.projectSummary.current_milestone ?? "None"}`);
+    lines.push(`Next action: ${response.data.projectSummary.next_action ?? "None"}`);
+  }
+
+  if (response.data.projects) {
+    lines.push(`Projects: ${response.data.projects.length}`);
+    lines.push(...response.data.projects.map((project) => `- ${project.name} (${project.status})`));
   }
 
   lines.push(
@@ -669,6 +844,22 @@ function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = fal
 
 function decisionNeededForIntake(intake: IntakeResult): string {
   if (intake.missingFields.length > 0) {
+    if (intake.missingFields.includes("project")) {
+      return "Requires Review: project ambiguous or missing.";
+    }
+
+    if (intake.missingFields.includes("attribute")) {
+      return "Requires Review: attribute ambiguous or missing.";
+    }
+
+    if (intake.action.kind === "update_entity_attribute" && intake.action.invalidReason) {
+      return `Requires Review: invalid attribute value (${intake.action.invalidReason}).`;
+    }
+
+    if (intake.missingFields.includes("attributeValue")) {
+      return "Requires Review: missing attribute value.";
+    }
+
     return `Confirm missing fields: ${intake.missingFields.join(", ")}.`;
   }
 
@@ -677,6 +868,22 @@ function decisionNeededForIntake(intake: IntakeResult): string {
   }
 
   return reviewNextAction(intake);
+}
+
+function renderResolvedAttribute(intake: IntakeResult): string {
+  if (intake.action.kind === "update_entity_attribute") {
+    return intake.action.attributeName ?? intake.extractedFields.attribute ?? "None";
+  }
+
+  return "None";
+}
+
+function renderResolvedAttributeValue(intake: IntakeResult): string {
+  if (intake.action.kind === "update_entity_attribute") {
+    return intake.action.value ?? "None";
+  }
+
+  return "None";
 }
 
 function recommendationForIntake(intake: IntakeResult): string {
@@ -698,8 +905,10 @@ function recommendationForIntake(intake: IntakeResult): string {
 function projectIdFromIntake(intake: IntakeResult): string | null {
   switch (intake.action.kind) {
     case "create_work":
-    case "update_project_goal":
-    case "update_project_status":
+      return intake.action.projectId;
+    case "update_entity_attribute":
+      return intake.action.entityId;
+    case "show_project":
       return intake.action.projectId;
     default:
       return null;
@@ -712,9 +921,11 @@ function outputKindForIntake(intake: IntakeResult): string {
       return "status_summary";
     case "ReviewRequired":
       return "review_packets";
-    case "UpdateGoal":
-    case "PauseProject":
-    case "ResumeProject":
+    case "ShowProject":
+      return "project_summary";
+    case "ListProjects":
+      return "project_list";
+    case "UpdateEntityAttribute":
       return "project_update";
     default:
       return "intake_result";

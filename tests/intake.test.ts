@@ -31,10 +31,19 @@ describe("Arcadia Intake", () => {
   it("extracts goal updates and fuzzy matches project names", () => {
     const result = resolveIntake("The goal for midi opener app is to improve App Store conversion.", context);
 
-    expect(result.resolvedIntent).toBe("UpdateGoal");
+    expect(result.resolvedIntent).toBe("UpdateEntityAttribute");
     expect(result.confidenceLabel).toBe("high");
     expect(result.project?.id).toBe("project_midi");
-    expect(result.extractedFields.goal).toBe("improve App Store conversion");
+    expect(result.extractedFields.attribute).toBe("goal");
+    expect(result.extractedFields.value).toBe("improve App Store conversion");
+    expect(result.action).toMatchObject({
+      kind: "update_entity_attribute",
+      entityType: "project",
+      entityId: "project_midi",
+      attribute: "goal",
+      value: "improve App Store conversion",
+      deterministicHandler: "project.update.goal"
+    });
     expect(result.missingFields).toEqual([]);
   });
 
@@ -71,12 +80,42 @@ describe("Arcadia Intake", () => {
     const paused = resolveIntake("Pause Rebuster.", context);
     const resumed = resolveIntake("Resume midi opener app.", context);
 
-    expect(paused.resolvedIntent).toBe("PauseProject");
+    expect(paused.resolvedIntent).toBe("UpdateEntityAttribute");
     expect(paused.confidenceLabel).toBe("high");
-    expect(paused.action).toMatchObject({ kind: "update_project_status", projectId: "project_rebuster", status: "paused" });
-    expect(resumed.resolvedIntent).toBe("ResumeProject");
+    expect(paused.action).toMatchObject({
+      kind: "update_entity_attribute",
+      entityId: "project_rebuster",
+      attribute: "status",
+      value: "paused"
+    });
+    expect(resumed.resolvedIntent).toBe("UpdateEntityAttribute");
     expect(resumed.confidenceLabel).toBe("high");
-    expect(resumed.action).toMatchObject({ kind: "update_project_status", projectId: "project_midi", status: "active" });
+    expect(resumed.action).toMatchObject({
+      kind: "update_entity_attribute",
+      entityId: "project_midi",
+      attribute: "status",
+      value: "active"
+    });
+  });
+
+  it("requires review for unsupported attributes and invalid values", () => {
+    const unknownAttribute = resolveIntake("Set Rebuster priority to High.", context);
+    const invalidStatus = resolveIntake("Set Rebuster status to shipped.", context);
+
+    expect(unknownAttribute.resolvedIntent).toBe("UpdateEntityAttribute");
+    expect(unknownAttribute.action).toMatchObject({ kind: "update_entity_attribute", attribute: null });
+    expect(unknownAttribute.missingFields).toContain("attribute");
+    expect(unknownAttribute.reviewRequired).toBe(true);
+
+    expect(invalidStatus.resolvedIntent).toBe("UpdateEntityAttribute");
+    expect(invalidStatus.action).toMatchObject({
+      kind: "update_entity_attribute",
+      attribute: "status",
+      value: "shipped"
+    });
+    expect(invalidStatus.missingFields).toContain("attributeValue");
+    expect(invalidStatus.extractedFields.invalidReason).toContain("status must be one of");
+    expect(invalidStatus.reviewRequired).toBe(true);
   });
 
   it("requires review when a project field is missing", () => {

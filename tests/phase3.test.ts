@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runAskCommand } from "../src/commands/ask.js";
+import { renderAskSuccess, runAskCommand } from "../src/commands/ask.js";
 import { runInitCommand } from "../src/commands/init.js";
 import { runCodexAssociateCommand, runCodexListCommand } from "../src/commands/codex.js";
 import {
@@ -21,10 +21,12 @@ import {
   createCodexInvocation,
   createWorkItemWithOptionalArtifact,
   createProjectWithInitialWork,
+  getActiveMilestoneForProject,
   getReviewItem,
   listCodexTasks,
   listApprovalGatesForWorkItem,
   listCodexInvocationsForWorkItem,
+  listWorkItems,
   upsertProjectMetadata
 } from "../src/db/repositories.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../src/intent/registries.js";
@@ -475,11 +477,250 @@ describe("arcadia ask command", () => {
       request: "The goal for MIDI Opener is to improve App Store conversion."
     });
 
-    expect(result.data.intake.resolvedIntent).toBe("UpdateGoal");
+    expect(result.data.intake.resolvedIntent).toBe("UpdateEntityAttribute");
     expect(result.data.result.status).toBe("acted");
     expect(result.data.project?.id).toBe(created.project.id);
     expect(result.data.project?.goal).toBe("improve App Store conversion");
     expect(result.data.workItem).toBeNull();
+  });
+
+  it("extracts deterministic project goal updates from common command-shaped phrasings", () => {
+    const workspace = createTempWorkspace();
+    runInitCommand(workspace, { profile: "arcadia" });
+    const goalPhrases = [
+      "Set Arcadia goal: Perform basic operations",
+      "Set Arcadia's goal to Perform basic operations",
+      "Set Arcadia’s goal to Perform basic operations",
+      "Set goal for Arcadia to Perform basic operations",
+      "Set goal for the Arcadia project to Perform basic operations",
+      "Set goal for the Arcadia project to: Perform basic operations",
+      "Update Arcadia goal: Perform basic operations",
+      "Change Arcadia goal to Perform basic operations",
+      "Update the goal for Arcadia to Perform basic operations",
+      "The goal for Arcadia is Perform basic operations"
+    ];
+
+    for (const request of goalPhrases) {
+      const result = runAskCommand({ workspace, request });
+      expect(result.data.intake.resolvedIntent).toBe("UpdateEntityAttribute");
+      expect(result.data.intake.project?.name).toBe("Arcadia");
+      expect(result.data.intake.extractedFields.attribute).toBe("goal");
+      expect(result.data.intake.extractedFields.value).toBe("Perform basic operations");
+      expect(result.data.intake.action).toMatchObject({
+        kind: "update_entity_attribute",
+        entityType: "project",
+        entityName: "Arcadia",
+        attribute: "goal",
+        value: "Perform basic operations",
+        safetyLevel: "safe_deterministic",
+        deterministicHandler: "project.update.goal"
+      });
+      expect(result.data.project?.goal).toBe("Perform basic operations");
+      expect(result.data.result.status).toBe("acted");
+      expect(result.data.reviewItemId).toBeNull();
+      expect(result.data.codexInvocations).toHaveLength(0);
+
+      const output = renderAskSuccess(result);
+      expect(output).toContain("Project: Arcadia");
+      expect(output).toContain("Attribute: goal");
+      expect(output).toContain("Value: Perform basic operations");
+      expect(output).toContain("Result: Updated goal for Arcadia.");
+    }
+  });
+
+  it("routes obvious natural-language deterministic requests before CaptureThought", () => {
+    const workspace = createTempWorkspace();
+    const initialized = runInitCommand(workspace, { profile: "arcadia" });
+    const projectId = initialized.data.seed?.project.id ?? (() => {
+      throw new Error("Expected seeded Arcadia project.");
+    })();
+
+    const examples = [
+      {
+        request: "Set goal for the Arcadia project to \"Perform basic operations\"",
+        intent: "UpdateEntityAttribute",
+        assert: () => {
+          const result = runAskCommand({ workspace, request: "Set goal for the Arcadia project to \"Perform basic operations\"" });
+          expect(result.data.result.status).toBe("acted");
+          expect(result.data.project?.goal).toBe("Perform basic operations");
+          expect(result.data.codexInvocations).toHaveLength(0);
+          expect(result.data.reviewItemId).toBeNull();
+        }
+      },
+      {
+        request: "Set Arcadia status: paused",
+        intent: "UpdateEntityAttribute",
+        assert: () => {
+          const result = runAskCommand({ workspace, request: "Set Arcadia status: paused" });
+          expect(result.data.result.status).toBe("acted");
+          expect(result.data.project?.status).toBe("paused");
+          expect(result.data.codexInvocations).toHaveLength(0);
+        }
+      },
+      {
+        request: "Set Arcadia status to active",
+        intent: "UpdateEntityAttribute",
+        assert: () => {
+          const result = runAskCommand({ workspace, request: "Set Arcadia status to active" });
+          expect(result.data.result.status).toBe("acted");
+          expect(result.data.project?.status).toBe("active");
+          expect(result.data.codexInvocations).toHaveLength(0);
+        }
+      },
+      {
+        request: "Set Arcadia mission: Keep creative projects moving.",
+        intent: "UpdateEntityAttribute",
+        assert: () => {
+          const result = runAskCommand({ workspace, request: "Set Arcadia mission: Keep creative projects moving." });
+          expect(result.data.result.status).toBe("acted");
+          expect(result.data.project?.mission).toBe("Keep creative projects moving");
+          expect(result.data.reviewItemId).toBeNull();
+        }
+      },
+      {
+        request: "Update Arcadia current milestone: Deterministic natural-language routing.",
+        intent: "UpdateEntityAttribute",
+        assert: () => {
+          const result = runAskCommand({
+            workspace,
+            request: "Update Arcadia current milestone: Deterministic natural-language routing."
+          });
+          expect(result.data.result.status).toBe("acted");
+          const active = withDatabase(workspace, (db) => getActiveMilestoneForProject(db, projectId));
+          expect(active?.title).toBe("Deterministic natural-language routing");
+          expect(result.data.codexInvocations).toHaveLength(0);
+        }
+      },
+      {
+        request: "Set Arcadia next action: Run the deterministic routing smoke test.",
+        intent: "UpdateEntityAttribute",
+        assert: () => {
+          const result = runAskCommand({
+            workspace,
+            request: "Set Arcadia next action: Run the deterministic routing smoke test."
+          });
+          expect(result.data.result.status).toBe("acted");
+          const nextActions = withDatabase(workspace, (db) =>
+            listWorkItems(db).filter((item) => item.project_id === projectId && item.status !== "done").map((item) => item.next_action)
+          );
+          expect(nextActions).toContain("Run the deterministic routing smoke test");
+          expect(result.data.reviewItemId).toBeNull();
+        }
+      },
+      {
+        request: "Show project Arcadia",
+        intent: "ShowProject",
+        assert: () => {
+          const result = runAskCommand({ workspace, request: "Show project Arcadia" });
+          expect(result.data.result.status).toBe("acted");
+          expect(result.data.projectSummary?.name).toBe("Arcadia");
+          expect(result.data.codexInvocations).toHaveLength(0);
+        }
+      },
+      {
+        request: "List projects",
+        intent: "ListProjects",
+        assert: () => {
+          const result = runAskCommand({ workspace, request: "List projects" });
+          expect(result.data.result.status).toBe("acted");
+          expect(result.data.projects?.map((project) => project.name)).toContain("Arcadia");
+          expect(result.data.reviewItemId).toBeNull();
+        }
+      },
+      {
+        request: "List review items",
+        intent: "ReviewRequired",
+        assert: () => {
+          const result = runAskCommand({ workspace, request: "List review items" });
+          expect(result.data.result.status).toBe("acted");
+          expect(result.data.review?.count).toBe(0);
+          expect(result.data.codexInvocations).toHaveLength(0);
+        }
+      },
+      {
+        request: "The goal for Arcadia is to simplify deterministic operations.",
+        intent: "UpdateEntityAttribute",
+        assert: () => {
+          const result = runAskCommand({ workspace, request: "The goal for Arcadia is to simplify deterministic operations." });
+          expect(result.data.result.status).toBe("acted");
+          expect(result.data.project?.goal).toBe("simplify deterministic operations");
+          expect(result.data.workItem).toBeNull();
+        }
+      },
+      {
+        request: "Improve the Rebuster candidate review flow.",
+        intent: "CaptureThought",
+        assert: () => {
+          const result = runAskCommand({ workspace, request: "Improve the Rebuster candidate review flow." });
+          expect(result.data.result.status).toBe("requires_review");
+          expect(result.data.intake.resolvedIntent).toBe("CaptureThought");
+          expect(result.data.codexInvocations).toHaveLength(0);
+        }
+      },
+      {
+        request: "Set Arcadia goal:",
+        intent: "UpdateEntityAttribute",
+        assert: () => {
+          const result = runAskCommand({ workspace, request: "Set Arcadia goal:" });
+          expect(result.data.result.status).toBe("requires_review");
+          expect(result.data.intake.resolvedIntent).toBe("UpdateEntityAttribute");
+          expect(result.data.intake.missingFields).toContain("attributeValue");
+          expect(result.data.intake.proposedAction).toBe("Requires Review: missing attribute value.");
+          expect(result.data.reviewItemId).toMatch(/^review_/);
+          expect(result.data.codexInvocations).toHaveLength(0);
+          const review = runReviewShowCommand({ workspace, id: result.data.reviewItemId ?? "" });
+          expect(review.data.item.decisionNeeded).toBe("Requires Review: missing attribute value.");
+        }
+      },
+      {
+        request: "Set Arcadia priority to High",
+        intent: "UpdateEntityAttribute",
+        assert: () => {
+          const result = runAskCommand({ workspace, request: "Set Arcadia priority to High" });
+          expect(result.data.result.status).toBe("requires_review");
+          expect(result.data.intake.missingFields).toContain("attribute");
+          expect(result.data.reviewItemId).toMatch(/^review_/);
+          expect(result.data.codexInvocations).toHaveLength(0);
+          const review = runReviewShowCommand({ workspace, id: result.data.reviewItemId ?? "" });
+          expect(review.data.item.decisionNeeded).toBe("Requires Review: attribute ambiguous or missing.");
+        }
+      },
+      {
+        request: "Set Arcadia status to shipped",
+        intent: "UpdateEntityAttribute",
+        assert: () => {
+          const result = runAskCommand({ workspace, request: "Set Arcadia status to shipped" });
+          expect(result.data.result.status).toBe("requires_review");
+          expect(result.data.intake.missingFields).toContain("attributeValue");
+          expect(result.data.intake.extractedFields.invalidReason).toContain("status must be one of");
+          expect(result.data.reviewItemId).toMatch(/^review_/);
+          expect(result.data.codexInvocations).toHaveLength(0);
+          const review = runReviewShowCommand({ workspace, id: result.data.reviewItemId ?? "" });
+          expect(review.data.item.decisionNeeded).toContain("Requires Review: invalid attribute value");
+        }
+      },
+      {
+        request: "Set Unknown App goal to Perform basic operations",
+        intent: "UpdateEntityAttribute",
+        assert: () => {
+          const result = runAskCommand({ workspace, request: "Set Unknown App goal to Perform basic operations" });
+          expect(result.data.result.status).toBe("requires_review");
+          expect(result.data.intake.missingFields).toContain("project");
+          expect(result.data.reviewItemId).toMatch(/^review_/);
+          expect(result.data.codexInvocations).toHaveLength(0);
+          const review = runReviewShowCommand({ workspace, id: result.data.reviewItemId ?? "" });
+          expect(review.data.item.decisionNeeded).toBe("Requires Review: project ambiguous or missing.");
+        }
+      }
+    ];
+
+    for (const example of examples) {
+      example.assert();
+      const lastAskIntent = withDatabase(workspace, (db) =>
+        db.prepare("SELECT resolved_intent FROM ask_requests ORDER BY created_at DESC LIMIT 1").get() as { resolved_intent: string }
+      );
+      expect(lastAskIntent.resolved_intent).toBe(example.intent);
+    }
   });
 
   it("runs an explicitly approved Codex build step through a configured fake agent", () => {
