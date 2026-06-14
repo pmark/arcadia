@@ -31,8 +31,11 @@ export interface StewardshipQualityFixture {
     project: string | null;
     slots?: Record<string, string>;
     requestedWorkArtifactIncludes?: string[];
+    requestedWorkArtifactExcludes?: string[];
     packetArtifactIncludes?: string[];
+    packetArtifactExcludes?: string[];
     packetIncludes?: string[];
+    packetCritiqueStatus?: string;
     knownBadPhrasesAbsent?: string[];
     clarificationRequired?: boolean;
     reviewRequired?: boolean;
@@ -74,6 +77,88 @@ export const defaultProjects: SeedProject[] = [
 ];
 
 export const stewardshipQualityFixtures: StewardshipQualityFixture[] = [
+  {
+    name: "planning packet names Pinterest publishing plan artifact",
+    input: "Plan and implement Publishing support for Pinterest for Rebuster.",
+    seed: { projects: defaultProjects },
+    expect: {
+      intentType: "Planning Request",
+      executionPath: "Plan First",
+      confidenceLabel: "high",
+      project: "Rebuster",
+      slots: {
+        project: "Rebuster",
+        platform: "Pinterest",
+        purpose: "publishing support"
+      },
+      requestedWorkArtifactIncludes: [
+        "Pinterest publishing plan for Rebuster",
+        "ordered phases",
+        "risks/open questions",
+        "approval requirements",
+        "recommended next action"
+      ],
+      requestedWorkArtifactExcludes: ["Goal stewardship plan"],
+      packetArtifactIncludes: [
+        "Pinterest publishing plan for Rebuster",
+        "ordered phases",
+        "risks/open questions",
+        "approval requirements",
+        "recommended next action"
+      ],
+      packetArtifactExcludes: ["Goal stewardship plan"],
+      knownBadPhrasesAbsent: [
+        "Publishing support for Pinterest for Rebuster",
+        "the relevant project",
+        "Goal stewardship plan"
+      ],
+      packetCritiqueStatus: "approved",
+      reviewRequired: false,
+      planningRecommended: true
+    }
+  },
+  {
+    name: "build packet names Pinterest publishing support artifact",
+    input: "Implement Rebuster publishing support for Pinterest.",
+    seed: { projects: defaultProjects },
+    expect: {
+      intentType: "Project Work",
+      executionPath: "Requires Review",
+      confidenceLabel: "high",
+      project: "Rebuster",
+      slots: {
+        project: "Rebuster",
+        platform: "Pinterest",
+        requestedAction: "implement publishing support"
+      },
+      requestedWorkArtifactIncludes: [
+        "Pinterest publishing support for Rebuster",
+        "safe repository changes",
+        "docs/tests if applicable"
+      ],
+      requestedWorkArtifactExcludes: ["Codex build packet"],
+      packetArtifactIncludes: [
+        "Pinterest publishing support for Rebuster",
+        "safe repository changes",
+        "docs/tests if applicable"
+      ],
+      packetArtifactExcludes: ["Codex build packet"],
+      packetIncludes: [
+        "destructive_filesystem_changes",
+        "publication",
+        "send_email_or_messages",
+        "Do not publish, deploy, merge, delete, spend money, use credentials, access production data, or send messages."
+      ],
+      knownBadPhrasesAbsent: [
+        "Publishing support for Pinterest for Rebuster",
+        "the relevant project",
+        "Codex build packet"
+      ],
+      packetCritiqueStatus: "approved",
+      reviewRequired: true,
+      planningRecommended: true
+    }
+  },
   {
     name: "resolves Rebuster and treats Pinterest as platform",
     input: "Implement Pinterest publishing support for Rebuster",

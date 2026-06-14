@@ -941,7 +941,9 @@ function resolvedIntentForStewardship(
       queue: "work_queue",
       workClassification: "codex",
       nextAction: "Review the Codex planning packet and use it to choose the next execution step.",
-      expectedArtifact: stewardship.intentType === "Research Request" ? "Research brief and recommendation" : "Goal stewardship plan",
+      expectedArtifact: stewardship.intentType === "Research Request"
+        ? "Research brief and recommendation"
+        : expectedPlanningArtifactForIntake(intake),
       skillSequence: [
         {
           skillName: "codex_planning",
@@ -1311,6 +1313,51 @@ function expectedArtifactForCreateWork(intake: IntakeResult): string {
       (intake.action.kind === "create_work" ? intake.action.title : null)
   ].filter((value): value is string => Boolean(value)).join(" ");
   return `${subject || "Requested work"} for ${project} implementation with tests.`;
+}
+
+function expectedPlanningArtifactForIntake(intake: IntakeResult): string {
+  const project = intake.project?.name ?? intake.extractedFields.project ?? "selected project";
+  const subject = (canonicalArtifactSubject(intake) ?? "project execution").replace(/\s+support$/i, "");
+  return `${subject} plan for ${project} with ordered phases, risks/open questions, approval requirements, and recommended next action.`;
+}
+
+function canonicalArtifactSubject(intake: IntakeResult): string | null {
+  const platform = intake.extractedFields.platform;
+  const base = intake.extractedFields.purpose ??
+    intake.extractedFields.action ??
+    intake.extractedFields.requestedAction ??
+    null;
+  if (!base && !platform) {
+    return null;
+  }
+
+  const cleaned = cleanArtifactSubject(platform ? base?.replace(new RegExp(`\\b(?:for|to|in)\\s+${escapeRegExp(platform)}\\b.*$`, "i"), "") ?? "" : base ?? "");
+  if (platform && cleaned && !normalizeForArtifact(cleaned).includes(normalizeForArtifact(platform))) {
+    return `${platform} ${decapitalize(cleaned)}`;
+  }
+
+  return cleaned || platform || null;
+}
+
+function cleanArtifactSubject(value: string): string {
+  return value
+    .trim()
+    .replace(/[.!?]+$/g, "")
+    .replace(/^(?:plan\s+and\s+implement|implement|plan|build|add|create|prepare|fix|publish|improve)\s+/i, "")
+    .trim();
+}
+
+function normalizeForArtifact(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+}
+
+function decapitalize(value: string): string {
+  const trimmed = value.trim();
+  return trimmed ? `${trimmed[0].toLowerCase()}${trimmed.slice(1)}` : trimmed;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function approvalGatesForIntake(intake: IntakeResult): ResolvedIntent["approvalGates"][number]["gateType"][] {

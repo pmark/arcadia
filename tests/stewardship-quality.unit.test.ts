@@ -41,6 +41,7 @@ describe("stewardship quality unit fixtures", () => {
       for (const phrase of fixture.expect.knownBadPhrasesAbsent ?? []) {
         expect([
           intake.extractedFields.value ?? "",
+          intake.extractedFields.requestedArtifact ?? "",
           intake.proposedAction,
           stewardship.generatedCodexGoalText ?? "",
           stewardship.classificationReason

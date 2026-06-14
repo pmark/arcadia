@@ -136,7 +136,7 @@ const GENERIC_CONTEXT_TOKENS = new Set([
   "to",
   "work"
 ]);
-const WORK_VERBS = "add|build|implement|prepare|fix|create|write|improve|publish";
+const WORK_VERBS = "plan\\s+and\\s+implement|add|build|implement|prepare|fix|create|write|improve|publish";
 const CONTEXTUAL_WORK_VERBS = "keep\\s+going\\s+on|continue|work\\s+on";
 const KNOWN_PLATFORMS = [
   "Pinterest",
@@ -454,16 +454,18 @@ function resolveIntakeWithoutClassification(
   const work = parseCreateWork(raw, context);
   if (work) {
     const project = resolveProjectReference(work.projectReference, context);
+    const extractedFields = createWorkExtractedFields(raw, work, context, project.reference?.name ?? null);
+    const projectName = project.reference?.name ?? work.projectReference;
     return resultFromProjectIntent({
       raw,
       resolvedIntent: "CreateWork",
-      extractedFields: createWorkExtractedFields(raw, work, context, project.reference?.name ?? null),
+      extractedFields,
       missingFields: [
         ...missingProjectFields(project),
         ...(work.action ? [] : ["action"])
       ],
       proposedAction: project.reference
-        ? `${capitalize(work.action)} for ${project.reference.name}.`
+        ? `${capitalize(proposedActionSubject(extractedFields, work.action))} for ${projectName}.`
         : `${capitalize(work.action)} for the referenced project.`,
       safeToExecute: false,
       explanation: project.reference
@@ -1076,6 +1078,7 @@ function createWorkExtractedFields(
     project: resolvedProjectName ?? work.projectReference,
     action: work.action,
     requestedAction,
+    purpose: decapitalize(cleanActionForArtifact(work.action)),
     platform: platform && platform !== "Discord" ? platform : null,
     channel,
     feature,
@@ -1110,13 +1113,23 @@ function requestedArtifactForWork(input: {
   const lead = input.platform ?? input.channel ?? null;
   const detail = input.feature ?? input.target ?? cleanActionForArtifact(input.action);
   const subject = lead && detail && !normalizeText(detail).includes(normalizeText(lead))
-    ? `${lead} ${detail}`
+    ? `${lead} ${decapitalize(detail)}`
     : detail || lead || "";
   const artifactSubject = cleanExtractedValue(subject) || input.requestedAction || input.action;
   const suffix = /\b(?:publishing|posting|workflow|integration|support|credentials?)\b/i.test(input.action)
-    ? "implementation plan and safe repository changes"
+    ? "implementation plan, safe repository changes, and docs/tests if applicable"
     : "implementation with tests";
   return `${artifactSubject} for ${input.project} ${suffix}.`;
+}
+
+function proposedActionSubject(fields: Record<string, string>, fallback: string): string {
+  const platform = fields.platform;
+  const purpose = fields.purpose;
+  if (platform && purpose && !normalizeText(purpose).includes(normalizeText(platform))) {
+    return `${platform} ${purpose}`;
+  }
+
+  return purpose || fields.action || fallback;
 }
 
 function cleanActionForArtifact(action: string): string {
@@ -1417,4 +1430,9 @@ function titleFromRaw(raw: string): string {
 function capitalize(value: string): string {
   const trimmed = value.trim();
   return trimmed ? `${trimmed[0].toUpperCase()}${trimmed.slice(1)}` : trimmed;
+}
+
+function decapitalize(value: string): string {
+  const trimmed = value.trim();
+  return trimmed ? `${trimmed[0].toLowerCase()}${trimmed.slice(1)}` : trimmed;
 }

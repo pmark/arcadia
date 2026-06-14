@@ -660,7 +660,7 @@ function semanticMetadataValues(metadata: Record<string, unknown>): Array<{ path
 }
 
 function skipMetadataKey(key: string): boolean {
-  return /(?:^id$|Id$|Path$|path$|command|Command|createdAt|updatedAt|agentProfile|workspaceScope|outputKind|purpose)/.test(key);
+  return /(?:^id$|Id$|Path$|path$|command|Command|createdAt|updatedAt|agentProfile|workspaceScope|outputKind|purpose|^action$|requestedAction)/.test(key);
 }
 
 function commandPhrased(value: string): boolean {

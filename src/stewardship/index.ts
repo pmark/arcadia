@@ -208,8 +208,12 @@ function codexGoalTextForInput(input: StewardIntentInput & {
   const project = input.relatedProject?.name ?? "the relevant project";
   const goal = input.relatedGoal ? ` toward its goal: ${input.relatedGoal}` : "";
   const request = stripTerminalPunctuation(input.rawInput.trim());
+  const subject = canonicalSubjectForInput(input);
 
   if (input.intentType === "Planning Request") {
+    if (subject && input.relatedProject?.name) {
+      return `Create a practical plan for ${subject} for ${input.relatedProject.name} with ordered phases, risks, approval requirements, and recommended next action${goal}.`;
+    }
     return `Create a practical plan for ${project} that turns "${request}" into sequenced, reviewable progress${goal}.`;
   }
 
@@ -224,7 +228,8 @@ function codexGoalTextForInput(input: StewardIntentInput & {
   }
 
   if (input.intake.action.kind === "create_work") {
-    return `${input.planningRecommended ? "Plan and implement" : "Implement"} ${input.intake.action.title} for ${project}${goal}.`;
+    const action = subject ?? input.intake.action.title;
+    return `${input.planningRecommended ? "Plan and implement" : "Implement"} ${action} for ${project}${goal}.`;
   }
 
   if (input.intake.action.kind === "update_entity_attribute" && input.intake.action.attributeName && input.intake.action.value) {
@@ -330,4 +335,40 @@ function normalize(value: string): string {
 
 function stripTerminalPunctuation(value: string): string {
   return value.replace(/[.!?]+$/g, "").trim();
+}
+
+function canonicalSubjectForInput(input: StewardIntentInput): string | null {
+  const platform = input.intake.extractedFields.platform;
+  const purpose = input.intake.extractedFields.purpose;
+  const action = input.intake.extractedFields.action;
+  const requestedAction = input.intake.extractedFields.requestedAction;
+
+  const base = purpose || action || requestedAction;
+  if (!base && !platform) {
+    return null;
+  }
+
+  const withoutPlatform = platform
+    ? cleanSubject(base.replace(new RegExp(`\\b(?:for|to|in)\\s+${escapeRegExp(platform)}\\b.*$`, "i"), ""))
+    : cleanSubject(base);
+  if (platform && withoutPlatform && !normalize(withoutPlatform).includes(normalize(platform))) {
+    return `${platform} ${decapitalize(withoutPlatform)}`;
+  }
+
+  return withoutPlatform || platform || null;
+}
+
+function cleanSubject(value: string): string {
+  return stripTerminalPunctuation(value)
+    .replace(/^(?:plan\s+and\s+implement|implement|plan|build|add|create|prepare|fix|publish|improve)\s+/i, "")
+    .trim();
+}
+
+function decapitalize(value: string): string {
+  const trimmed = value.trim();
+  return trimmed ? `${trimmed[0].toLowerCase()}${trimmed.slice(1)}` : trimmed;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

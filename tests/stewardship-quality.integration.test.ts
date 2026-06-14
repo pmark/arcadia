@@ -45,6 +45,9 @@ describe("stewardship quality integration fixtures", () => {
       for (const phrase of fixture.expect.requestedWorkArtifactIncludes ?? []) {
         expect(requestedArtifact, `${fixture.name}: requested artifact`).toContain(phrase);
       }
+      for (const phrase of fixture.expect.requestedWorkArtifactExcludes ?? []) {
+        expect(requestedArtifact, `${fixture.name}: requested artifact excludes ${phrase}`).not.toContain(phrase);
+      }
 
       for (const phrase of fixture.expect.knownBadPhrasesAbsent ?? []) {
         expect([
@@ -62,17 +65,23 @@ describe("stewardship quality integration fixtures", () => {
         const promptPath = path.join(workspace, packet.prompt_path);
         expect(existsSync(promptPath)).toBe(true);
         const prompt = readFileSync(promptPath, "utf8");
+        const goal = extractSection(prompt, "Goal");
+        const expectedArtifact = extractSection(prompt, "Expected Artifact");
         const packetDir = path.dirname(promptPath);
         const critiquePath = path.join(packetDir, "critique.md");
         const metadataPath = path.join(packetDir, "metadata.json");
         expect(existsSync(critiquePath)).toBe(true);
         expect(readFileSync(critiquePath, "utf8")).toContain("# Stewardship Critique");
-        expect(JSON.parse(readFileSync(metadataPath, "utf8"))).toMatchObject({
+        const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
+        expect(metadata).toMatchObject({
           critique: {
             critic: "deterministic_critic",
             targetKind: packet.purpose === "build" ? "codex_build_packet" : "codex_planning_packet"
           }
         });
+        if (fixture.expect.packetCritiqueStatus) {
+          expect(metadata.critique.status, `${fixture.name}: packet critique status`).toBe(fixture.expect.packetCritiqueStatus);
+        }
 
         for (const phrase of [
           "## Goal",
@@ -94,9 +103,15 @@ describe("stewardship quality integration fixtures", () => {
         ]) {
           expect(prompt, `${fixture.name}: packet includes ${phrase}`).toContain(phrase);
         }
+        for (const phrase of fixture.expect.packetArtifactIncludes ?? []) {
+          expect(expectedArtifact, `${fixture.name}: packet expected artifact includes ${phrase}`).toContain(phrase);
+        }
+        for (const phrase of fixture.expect.packetArtifactExcludes ?? []) {
+          expect(expectedArtifact, `${fixture.name}: packet expected artifact excludes ${phrase}`).not.toContain(phrase);
+        }
 
         for (const phrase of fixture.expect.knownBadPhrasesAbsent ?? []) {
-          expect(prompt, `${fixture.name}: packet excludes ${phrase}`).not.toContain(phrase);
+          expect([goal, expectedArtifact].join("\n"), `${fixture.name}: packet goal/artifact excludes ${phrase}`).not.toContain(phrase);
         }
       }
 
@@ -164,4 +179,10 @@ function initializedWorkspace(fixture: StewardshipQualityFixture): string {
   });
 
   return workspace;
+}
+
+function extractSection(markdown: string, heading: string): string {
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`## ${escaped}\\n([\\s\\S]*?)(?:\\n## |$)`).exec(markdown);
+  return match?.[1]?.trim() ?? "";
 }
