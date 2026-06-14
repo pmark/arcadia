@@ -5,6 +5,7 @@ import {
   Circle,
   Clock3,
   FileText,
+  History,
   PauseCircle,
   Radio,
   Sparkles
@@ -12,6 +13,8 @@ import {
 import type { ReactNode } from "react";
 import type {
   DashboardArtifact,
+  DashboardAttentionItem,
+  DashboardActivityEvent,
   DashboardBackBurnerItem,
   DashboardMilestone,
   DashboardProject,
@@ -108,6 +111,79 @@ export function ProjectCard({ project }: { project: DashboardProject }) {
         <Field label="Next Action" value={project.nextAction ?? "None"} />
         <Field label="Last Artifact" value={project.lastArtifact?.title ?? "None"} />
       </dl>
+    </article>
+  );
+}
+
+export function AttentionCard({
+  item,
+  pendingAction,
+  onReviewAction
+}: {
+  item: DashboardAttentionItem;
+  pendingAction?: string | null;
+  onReviewAction?: (item: DashboardAttentionItem, action: "approve" | "reject" | "defer") => void;
+}) {
+  const Icon = item.severity === "blocked" ? AlertTriangle : Radio;
+
+  return (
+    <article className="min-w-0 rounded-md border border-line bg-panel p-4 shadow-soft">
+      <div className="flex min-w-0 items-start gap-3">
+        <Icon className={`mt-1 h-4 w-4 shrink-0 ${item.severity === "blocked" ? "text-clay" : "text-gold"}`} aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h3 className="break-words text-base font-semibold leading-6">{item.reason}</h3>
+              <p className="mt-1 break-words text-sm text-muted">{item.projectName ?? "Unassigned"}</p>
+            </div>
+            <StatusBadge status={item.severity === "blocked" ? "blocked" : "needs_mark"} label={labelAttentionKind(item.kind)} />
+          </div>
+          <dl className="mt-4 grid gap-3 text-sm">
+            <Field label="Related Work" value={item.workItemTitle ?? item.workItemId ?? "None"} />
+            <Field label="Related Artifact" value={item.relatedArtifactPath ?? item.relatedArtifactTitle ?? "None"} />
+            <Field label="Next Action" value={item.nextAction} />
+          </dl>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {item.primaryActions.map((action) => {
+              if (action.reviewAction) {
+                const pending = pendingAction === action.reviewAction;
+                return (
+                  <button
+                    key={action.label}
+                    type="button"
+                    disabled={!onReviewAction || Boolean(pendingAction)}
+                    onClick={() => onReviewAction?.(item, action.reviewAction!)}
+                    className={`min-h-10 rounded-md border px-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${reviewActionClass(action.reviewAction)}`}
+                  >
+                    {pending ? "Working..." : action.label}
+                  </button>
+                );
+              }
+
+              if (action.href) {
+                return (
+                  <a
+                    key={action.label}
+                    href={action.href}
+                    className="inline-flex min-h-10 items-center rounded-md border border-steel/30 bg-steel/10 px-3 text-sm font-semibold text-steel transition hover:border-steel"
+                  >
+                    {action.label}
+                  </a>
+                );
+              }
+
+              return action.command ? (
+                <code
+                  key={action.label}
+                  className="min-w-0 break-all rounded-md border border-line bg-canvas px-3 py-2 text-xs text-muted"
+                >
+                  {action.label}: {action.command}
+                </code>
+              ) : null;
+            })}
+          </div>
+        </div>
+      </div>
     </article>
   );
 }
@@ -246,13 +322,18 @@ export function RunCard({ run }: { run: DashboardRun }) {
         <StatusBadge status={run.status} label={run.statusLabel} />
       </div>
       <dl className="mt-4 grid gap-3 text-sm">
+        <Field label="Project" value={run.projectName ?? "Unassigned"} />
+        <Field label="Current Step" value={run.currentStep ?? "None"} />
+        <Field label="Latest Message" value={run.latestMessage} />
         <Field label="Started" value={formatDateTime(run.startedAt)} />
+        <Field label="Updated" value={formatDateTime(run.updatedAt)} />
         <Field label="Completed" value={run.completedAt ? formatDateTime(run.completedAt) : "Running"} />
+        <Field label="Mission Log" value={run.missionLogPath ?? "None"} />
         <Field
           label="Artifacts Produced"
           value={
             run.artifactsProduced.length > 0
-              ? run.artifactsProduced.map((artifact) => artifact.title).join(", ")
+              ? run.artifactsProduced.map((artifact) => artifact.path ?? artifact.title).join(", ")
               : "None"
           }
         />
@@ -299,10 +380,46 @@ export function SmallRunRow({ run }: { run: DashboardRun }) {
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold">{run.workItemTitle}</div>
         <div className="mt-1 truncate text-xs text-muted">
-          {run.statusLabel} · {formatDateTime(run.startedAt)}
+          {run.statusLabel} · {run.currentStep ?? "No current step"} · {formatDateTime(run.updatedAt)}
         </div>
       </div>
     </div>
+  );
+}
+
+export function ActivityRow({ event }: { event: DashboardActivityEvent }) {
+  return (
+    <div className="flex w-full min-w-0 items-start gap-3 rounded-md border border-line bg-panel p-3 shadow-soft">
+      <History className="mt-0.5 h-4 w-4 shrink-0 text-steel" aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <div className="text-sm font-semibold">{event.eventLabel}</div>
+          <div className="text-xs text-muted">{formatDateTime(event.occurredAt)}</div>
+        </div>
+        <div className="mt-1 break-words text-sm text-muted">{event.summary}</div>
+        <div className="mt-1 truncate text-xs text-muted">
+          {event.projectName ?? event.workItemTitle ?? event.artifactPath ?? event.reviewSlug ?? "Workspace"}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {event.reviewId ? <ActivityLink href="/review" label={event.reviewSlug ?? "Review"} /> : null}
+          {event.runId ? <ActivityLink href="/runs" label={event.runId} /> : null}
+          {event.workItemId ? <ActivityLink href="/projects" label="Work" /> : null}
+          {event.backBurnerItemId ? <ActivityLink href="/back-burner" label="Back Burner" /> : null}
+          {event.artifactPath ? <ActivityLink href={event.artifactPath} label="Artifact" /> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActivityLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      className="inline-flex min-h-8 items-center rounded-md border border-steel/30 bg-steel/10 px-2 text-xs font-semibold text-steel transition hover:border-steel"
+    >
+      {label}
+    </a>
   );
 }
 
@@ -398,4 +515,24 @@ function iconClass(status: string): string {
   }
 
   return "text-muted";
+}
+
+function labelAttentionKind(kind: DashboardAttentionItem["kind"]): string {
+  if (kind === "codex_packet") {
+    return "Codex Packet";
+  }
+
+  if (kind === "blocked_work") {
+    return "Blocked Work";
+  }
+
+  return labelStatus(kind);
+}
+
+function labelStatus(status: string): string {
+  return status
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(" ");
 }

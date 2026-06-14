@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ArcadiaCli, buildCliInvocation } from "../apps/discord-bot/src/arcadia/cli.js";
 import type {
   ArcadiaJsonSuccess,
+  AskData,
   CodexTask,
   ExecutionRun,
   Milestone,
@@ -597,7 +598,7 @@ describe("discord bot formatters", () => {
 });
 
 describe("discord review reply handling", () => {
-  it("resolves direct replies through the Arcadia CLI", async () => {
+  it("routes direct replies through ask with review metadata", async () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-discord-state-"));
     tempDirs.push(workspace);
     await recordReviewMessage(reviewMessageStatePath(workspace), {
@@ -607,27 +608,17 @@ describe("discord review reply handling", () => {
       messageId: "message_1",
       createdAt: "2026-06-10T12:00:00.000Z"
     });
-    let calledWith: { reply: string; id?: string | null } | null = null;
+    let calledWith: { request: string; replyReviewId?: string | null; sourceIngress?: string } | null = null;
     let reply = "";
     const cli = {
-      reviewResolveReply: async (content: string, id?: string | null) => {
-        calledWith = { reply: content, id };
-        return {
-          ok: true,
-          command: "review.resolve-reply",
+      ask: async (request: string, options?: { replyReviewId?: string | null; sourceIngress?: string }) => {
+        calledWith = { request, replyReviewId: options?.replyReviewId, sourceIngress: options?.sourceIngress };
+        return askResponse({
           workspace,
-          data: {
-            item: sampleReviewItem(),
-            action: "approved",
-            selectedOption: "approve",
-            feedback: null,
-            result: { status: "approved", summary: "Work item created." },
-            approval: null,
-            confirmation: "R1 approved. Resuming execution."
-          },
-          artifacts: [],
-          warnings: []
-        };
+          request,
+          resultSummary: "R1 approved. Resuming execution.",
+          reviewItemId: "review_1"
+        });
       }
     } as unknown as ArcadiaCli;
 
@@ -639,37 +630,58 @@ describe("discord review reply handling", () => {
       }
     }), testConfig(workspace), cli);
 
-    expect(calledWith).toEqual({ reply: "A", id: "review_1" });
-    expect(reply).toBe("R1 approved. Resuming execution.");
+    expect(calledWith).toEqual({ request: "A", replyReviewId: "review_1", sourceIngress: "discord.message" });
+    expect(reply).toContain("**Arcadia ask handled**");
+    expect(reply).toContain("Result: R1 approved. Resuming execution.");
   });
 
-  it("supports slug fallback without a Discord reply", async () => {
-    let calledWith: { reply: string; id?: string | null } | null = null;
+  it("routes slug fallback through ask without Discord-specific parsing", async () => {
+    let calledWith: { request: string; replyReviewId?: string | null; sourceIngress?: string } | null = null;
     const cli = {
-      reviewResolveReply: async (content: string, id?: string | null) => {
-        calledWith = { reply: content, id };
-        return {
-          ok: true,
-          command: "review.resolve-reply",
+      ask: async (request: string, options?: { replyReviewId?: string | null; sourceIngress?: string }) => {
+        calledWith = { request, replyReviewId: options?.replyReviewId, sourceIngress: options?.sourceIngress };
+        return askResponse({
           workspace: "/tmp/workspace",
-          data: {
-            item: sampleReviewItem(),
-            action: "deferred",
-            selectedOption: "defer",
-            feedback: null,
-            result: { status: "deferred", summary: "Deferred for future review." },
-            approval: null,
-            confirmation: "R1 deferred."
-          },
-          artifacts: [],
-          warnings: []
-        };
+          request,
+          resultSummary: "R1 deferred.",
+          reviewItemId: "review_1"
+        });
       }
     } as unknown as ArcadiaCli;
 
     await handleArcadiaMessage(fakeMessage({ content: "R1 defer" }), testConfig("/tmp/workspace"), cli);
 
-    expect(calledWith).toEqual({ reply: "R1 defer", id: null });
+    expect(calledWith).toEqual({ request: "R1 defer", replyReviewId: null, sourceIngress: "discord.message" });
+  });
+
+  it("routes plain natural messages through ask", async () => {
+    let calledWith: { request: string; replyReviewId?: string | null; sourceIngress?: string } | null = null;
+    let reply = "";
+    const cli = {
+      ask: async (request: string, options?: { replyReviewId?: string | null; sourceIngress?: string }) => {
+        calledWith = { request, replyReviewId: options?.replyReviewId, sourceIngress: options?.sourceIngress };
+        return askResponse({
+          workspace: "/tmp/workspace",
+          request,
+          resultSummary: "Requires Review item created.",
+          reviewItemId: "review_1"
+        });
+      }
+    } as unknown as ArcadiaCli;
+
+    await handleArcadiaMessage(fakeMessage({
+      content: "Implement Rebuster Pinterest publishing",
+      reply: async (content: string) => {
+        reply = content;
+      }
+    }), testConfig("/tmp/workspace"), cli);
+
+    expect(calledWith).toEqual({
+      request: "Implement Rebuster Pinterest publishing",
+      replyReviewId: null,
+      sourceIngress: "discord.message"
+    });
+    expect(reply).toContain("Result: Requires Review item created.");
   });
 });
 
@@ -1059,6 +1071,55 @@ function runShowResponse(run: ExecutionRun, needsMark: string[]): ArcadiaJsonSuc
       ...(run.mission_log_path ? [run.mission_log_path] : []),
       ...run.artifacts.flatMap((artifact) => artifact.path ? [artifact.path] : [])
     ],
+    warnings: []
+  };
+}
+
+function askResponse(input: {
+  workspace: string;
+  request: string;
+  resultSummary: string;
+  reviewItemId?: string | null;
+}): ArcadiaJsonSuccess<AskData> {
+  return {
+    ok: true,
+    command: "ask",
+    workspace: input.workspace,
+    data: {
+      ask: {
+        id: "ask_1",
+        raw_request: input.request,
+        resolved_intent: "ReviewResponse",
+        prompt_packet_path: null,
+        status: "planned"
+      },
+      intake: {
+        resolvedIntent: "ReviewResponse",
+        classification: "ReviewResponse",
+        confidence: 0.96,
+        confidenceLabel: "high",
+        proposedAction: input.request,
+        suggestedNextStep: null
+      },
+      resolvedIntent: {
+        intentId: "ReviewResponse",
+        matched: true,
+        outputKind: "review_response",
+        workClassification: "autonomous"
+      },
+      result: {
+        status: "acted",
+        summary: input.resultSummary
+      },
+      workItem: null,
+      plan: null,
+      approvalGates: [],
+      codexInvocations: [],
+      run: null,
+      reviewItemId: input.reviewItemId ?? null,
+      backBurnerItemId: null
+    },
+    artifacts: [],
     warnings: []
   };
 }

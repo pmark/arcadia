@@ -59,6 +59,7 @@ export interface ExecutionRun {
   plan_id?: string;
   status: string;
   summary: string;
+  project_name?: string | null;
   work_item_title: string;
   plan_summary: string;
   mission_log_path: string | null;
@@ -128,7 +129,7 @@ export interface CodexInvocation {
 }
 
 export interface AskData {
-  ask: AskRequest;
+  ask: AskRequest | null;
   intake?: {
     resolvedIntent: string;
     classification?: string;

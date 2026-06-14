@@ -2,7 +2,7 @@ import type { AskData } from "../arcadia/types.js";
 
 export function formatRequest(data: AskData): string {
   const codexInvocation = data.codexInvocations[0] ?? null;
-  const packetPath = data.ask.prompt_packet_path ?? codexInvocation?.prompt_path ?? "None";
+  const packetPath = data.ask?.prompt_packet_path ?? codexInvocation?.prompt_path ?? "None";
   const gateTypes = data.approvalGates.map((gate) => gate.gate_type);
   const gateSummary = gateTypes.length > 0 ? `${gateTypes.length} (${gateTypes.join(", ")})` : "0";
   const runLine = data.run
@@ -14,9 +14,9 @@ export function formatRequest(data: AskData): string {
 
   const lines = [
     data.workItem ? "**Arcadia request created**" : "**Arcadia ask handled**",
-    `Ask: \`${data.ask.id}\``,
+    `Ask: \`${data.ask?.id ?? "None"}\``,
     `Interpreted as: ${data.intake?.resolvedIntent ?? data.resolvedIntent.intentId}`,
-    `Result: ${data.result?.summary ?? labelStatus(data.ask.status)}`
+    `Result: ${data.result?.summary ?? labelStatus(data.ask?.status ?? "ignored")}`
   ];
 
   if (data.workItem) {

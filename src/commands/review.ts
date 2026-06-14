@@ -14,6 +14,12 @@ import {
 } from "../db/repositories.js";
 import type { ReviewFeedback, ReviewItemSummary } from "../domain/types.js";
 import { writeWeeklyReviewReport } from "../markdown/weeklyReview.js";
+import {
+  REVIEW_FEEDBACK_TYPES,
+  normalizeReviewResponseValue,
+  parseReviewResponse,
+  type ParsedReviewResponse
+} from "../review/responseParser.js";
 import { localDateStamp } from "../utils/time.js";
 import { runAskCommand, type AskCommandData } from "./ask.js";
 
@@ -151,15 +157,19 @@ export function runReviewResolveReplyCommand(
   options: ReviewResolveReplyCommandOptions
 ): CommandSuccess<ReviewResolveReplyCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const parsed = parseReviewReply(options.reply);
+  const parsed = parseReviewResponse(options.reply);
   const reviewItem = withDatabase(workspacePath, (db) => {
     const item = options.id
       ? getReviewItem(db, options.id)
-      : parsed.slug
-        ? getReviewItemBySlug(db, parsed.slug)
+      : parsed.reviewId
+        ? getReviewItem(db, parsed.reviewId)
+        : parsed.reviewSlug
+        ? getReviewItemBySlug(db, parsed.reviewSlug)
         : null;
     if (!item) {
-      throw validationError("Requires Review item was not found.", { id: options.id ?? parsed.slug ?? null });
+      throw validationError("Requires Review item was not found.", {
+        id: options.id ?? parsed.reviewId ?? parsed.reviewSlug ?? null
+      });
     }
     if (item.status !== "open" && item.status !== "deferred") {
       throw validationError("Requires Review item is already decided.", { id: item.id, status: item.status });
@@ -195,7 +205,7 @@ export function runReviewResolveReplyCommand(
     });
   }
 
-  const decision = resolveReplyDecision(parsed.value, packet);
+  const decision = resolveReplyDecision(parsed, packet);
   if (!decision) {
     throw validationError("Invalid Requires Review reply.", {
       reply: options.reply,
@@ -247,12 +257,16 @@ export function runReviewApproveCommand(
     request: reviewItem.source_input,
     approvedReviewItemId: reviewItem.id
   });
+  if (!approval.data.ask) {
+    throw validationError("Approved Requires Review item did not produce an ask request.", { id: reviewItem.id });
+  }
+  const approvalAskId = approval.data.ask.id;
 
   const updated = withDatabase(workspacePath, (db) => {
     const item = updateReviewItemStatus(db, reviewItem.id, {
       status: "approved",
       decisionNote: "Approved from Requires Review.",
-      resultingAskRequestId: approval.data.ask.id
+      resultingAskRequestId: approvalAskId
     });
     if (!item) {
       throw validationError("Requires Review item was not found.", { id: reviewItem.id });
@@ -463,49 +477,20 @@ function parseStringArray(raw: string | null | undefined): string[] {
   }
 }
 
-const FEEDBACK_TYPES = [
-  "misunderstood",
-  "wrong project",
-  "wrong intent",
-  "should not review",
-  "intent failed",
-  "missing option",
-  "confusing"
-] as const;
-
-type FeedbackType = typeof FEEDBACK_TYPES[number];
-
-function parseReviewReply(reply: string): { slug: string | null; value: string; feedbackType: FeedbackType | null } {
-  const trimmed = reply.trim();
-  const slugMatch = /^(R\d+)\b\s*(.*)$/i.exec(trimmed);
-  const slug = slugMatch?.[1]?.toUpperCase() ?? null;
-  const value = (slugMatch ? slugMatch[2] : trimmed).trim();
-  const normalized = normalizeReply(value);
-  const feedbackType = FEEDBACK_TYPES.find((type) => normalized === normalizeReply(type)) ?? null;
-  return { slug, value, feedbackType };
-}
-
-function resolveReplyDecision(reply: string, item: RequiresReviewPacket): "approve" | "reject" | "defer" | null {
-  const normalized = normalizeReply(reply);
+function resolveReplyDecision(parsed: ParsedReviewResponse, item: RequiresReviewPacket): "approve" | "reject" | "defer" | null {
+  const normalized = normalizeReviewResponseValue(parsed.value);
   if (!normalized) {
     return null;
   }
 
-  const letter = /^[a-z]$/i.test(normalized) ? normalized.toUpperCase() : null;
-  if (letter) {
-    const index = letter.charCodeAt(0) - "A".charCodeAt(0);
+  if (parsed.optionLetter) {
+    const index = parsed.optionLetter.charCodeAt(0) - "A".charCodeAt(0);
     const option = item.options[index];
     return decisionForOption(option);
   }
 
-  if (["yes", "approve", "approved"].includes(normalized) && item.options.includes("approve")) {
-    return "approve";
-  }
-  if (["no", "reject", "rejected"].includes(normalized) && item.options.includes("reject")) {
-    return "reject";
-  }
-  if (["defer", "later"].includes(normalized) && item.options.includes("defer")) {
-    return "defer";
+  if (parsed.decisionToken && item.options.includes(parsed.decisionToken)) {
+    return parsed.decisionToken;
   }
 
   return decisionForOption(normalized);
@@ -518,11 +503,11 @@ export function validRepliesForReview(item: RequiresReviewPacket): string[] {
     item.options.includes("reject") ? "reject" : null,
     item.options.includes("defer") ? "defer" : null
   ].filter((value): value is string => Boolean(value));
-  return [...letters, ...words, ...FEEDBACK_TYPES];
+  return [...letters, ...words, ...REVIEW_FEEDBACK_TYPES];
 }
 
 function decisionForOption(option: string | undefined): "approve" | "reject" | "defer" | null {
-  const normalized = normalizeReply(option ?? "");
+  const normalized = normalizeReviewResponseValue(option ?? "");
   if (normalized === "approve") {
     return "approve";
   }
@@ -533,10 +518,6 @@ function decisionForOption(option: string | undefined): "approve" | "reject" | "
     return "defer";
   }
   return null;
-}
-
-function normalizeReply(value: string): string {
-  return value.trim().toLowerCase().replaceAll(/\s+/g, " ");
 }
 
 function confirmationForDecision(item: RequiresReviewPacket, decision: "approve" | "reject" | "defer", summary: string): string {

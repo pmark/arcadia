@@ -48,6 +48,7 @@ import { loadPhase3Registries, validatePhase3Registries } from "../intent/regist
 import type { ResolvedIntent } from "../intent/resolver.js";
 import type { IntakeProjectAttribute, IntakeProjectContext, IntakeResult, IntakeWorkspaceContext } from "../intake/index.js";
 import { resolveIntake } from "../intake/index.js";
+import { parseReviewResponse } from "../review/responseParser.js";
 import type { ReviewRequiredCommandData } from "./review.js";
 import { runReviewRequiredCommand, runReviewResolveReplyCommand } from "./review.js";
 import type { StatusCommandData } from "./status.js";
@@ -62,14 +63,19 @@ export interface AskOptions {
   runSafe?: boolean;
   approvedReviewItemId?: string;
   sourceIngress?: string;
+  userIdentifier?: string;
+  channelIdentifier?: string;
+  conversationIdentifier?: string;
+  replyToMessageIdentifier?: string;
+  adapterMetadata?: Record<string, unknown>;
 }
 
 export interface AskCommandData {
-  ask: AskRequestSummary;
+  ask: AskRequestSummary | null;
   intake: IntakeResult;
   resolvedIntent: ResolvedIntent;
   result: {
-    status: "acted" | "queued" | "requires_review" | "captured";
+    status: "ignored" | "acted" | "queued" | "requires_review" | "captured";
     summary: string;
   };
   workItem: WorkItemSummary | null;
@@ -88,12 +94,70 @@ export interface AskCommandData {
 
 export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  if (!options.request.trim()) {
+    return createSuccess({
+      command: "ask",
+      workspace: workspacePath,
+      data: ignoredAskData(options.request)
+    });
+  }
+
   const registries = loadPhase3Registries(workspacePath);
   validatePhase3Registries(registries);
   const intake = withDatabase(workspacePath, (db) => resolveIntake(options.request, buildIntakeContext(db)));
   const approvedFromReview = Boolean(options.approvedReviewItemId);
   const resolved = resolvedIntentFromIntake(intake, approvedFromReview);
   let run: ExecutionRunSummary | null = null;
+  const parsedReviewResponse = parseReviewResponse(options.request, reviewResponseContextFromAskOptions(options));
+
+  if (parsedReviewResponse.hasResponse && parsedReviewResponse.hasReviewReference) {
+    const reviewResolution = runReviewResolveReplyCommand({
+      workspace: workspacePath,
+      id: parsedReviewResponse.reviewId,
+      reply: options.request
+    });
+    const ask = withDatabase(workspacePath, (db) =>
+      createAskRequest(db, {
+        rawRequest: options.request,
+        resolvedIntent: "ReviewResponse",
+        registryVersion: registries.intents.version,
+        outputKind: "review_response",
+        status: "planned"
+      })
+    );
+
+    return createSuccess({
+      command: "ask",
+      workspace: workspacePath,
+      data: {
+        ask,
+        intake,
+        resolvedIntent: {
+          ...resolved,
+          intentId: "ReviewResponse",
+          outputKind: "review_response",
+          matched: true
+        },
+        result: {
+          status: "acted",
+          summary: reviewResolution.data.confirmation
+        },
+        workItem: null,
+        plan: null,
+        approvalGates: [],
+        codexInvocations: [],
+        run: null,
+        project: null,
+        projectSummary: null,
+        projects: null,
+        status: null,
+        review: null,
+        reviewItemId: reviewResolution.data.item.id,
+        backBurnerItemId: null
+      },
+      artifacts: reviewResolution.artifacts
+    });
+  }
 
   if (intake.action.kind === "show_status" && intake.confidenceLabel === "high") {
     const status = runStatusCommand({ workspace: workspacePath });
@@ -169,49 +233,6 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         reviewItemId: null,
         backBurnerItemId: null
       }
-    });
-  }
-
-  if (intake.classification === "ReviewResponse" && explicitReviewSlugFromInput(options.request)) {
-    const reviewResolution = runReviewResolveReplyCommand({
-      workspace: workspacePath,
-      reply: options.request
-    });
-    const ask = withDatabase(workspacePath, (db) =>
-      createAskRequest(db, {
-        rawRequest: options.request,
-        resolvedIntent: resolved.intentId,
-        registryVersion: registries.intents.version,
-        outputKind: "review_response",
-        status: "planned"
-      })
-    );
-
-    return createSuccess({
-      command: "ask",
-      workspace: workspacePath,
-      data: {
-        ask,
-        intake,
-        resolvedIntent: resolved,
-        result: {
-          status: "acted",
-          summary: reviewResolution.data.confirmation
-        },
-        workItem: null,
-        plan: null,
-        approvalGates: [],
-        codexInvocations: [],
-        run: null,
-        project: null,
-        projectSummary: null,
-        projects: null,
-        status: null,
-        review: null,
-        reviewItemId: null,
-        backBurnerItemId: null
-      },
-      artifacts: reviewResolution.artifacts
     });
   }
 
@@ -758,7 +779,7 @@ function requireAttributeValue(action: UpdateEntityAttributeAction): string {
 
 export function renderAskSuccess(response: CommandSuccess<AskCommandData>): string[] {
   const lines = [
-    `Ask: ${response.data.ask.id}`,
+    `Ask: ${response.data.ask?.id ?? "None"}`,
     `Interpreted as: ${response.data.intake.resolvedIntent}`,
     `Confidence: ${response.data.intake.confidenceLabel} (${response.data.intake.confidence.toFixed(2)})`,
     `Project: ${response.data.intake.project?.name ?? response.data.workItem?.project_name ?? response.data.project?.name ?? response.data.projectSummary?.name ?? "None"}`,
@@ -948,6 +969,77 @@ function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = fal
   };
 }
 
+function ignoredAskData(rawRequest: string): AskCommandData {
+  const intake: IntakeResult = {
+    rawInput: rawRequest,
+    resolvedIntent: "CaptureThought",
+    classification: "IncubatingThought",
+    confidence: 0,
+    confidenceLabel: "low",
+    extractedFields: {},
+    missingFields: ["input"],
+    proposedAction: "Ignore empty input.",
+    safeToExecute: false,
+    reviewRequired: false,
+    explanation: "Input was empty after trimming.",
+    classificationReason: "Empty input is not actionable.",
+    suggestedNextStep: null,
+    action: {
+      kind: "capture_thought",
+      title: "Empty input"
+    },
+    project: null,
+    template: null
+  };
+
+  return {
+    ask: null,
+    intake,
+    resolvedIntent: {
+      intentId: "CaptureThought",
+      matched: false,
+      title: "Empty input",
+      outputKind: "ignored",
+      queue: "inbox",
+      workClassification: "autonomous",
+      nextAction: "Ignore empty input.",
+      expectedArtifact: null,
+      skillSequence: [],
+      approvalGates: [],
+      templates: [],
+      slots: {},
+      codexPurpose: null
+    },
+    result: {
+      status: "ignored",
+      summary: "Ignored empty input."
+    },
+    workItem: null,
+    plan: null,
+    approvalGates: [],
+    codexInvocations: [],
+    run: null,
+    project: null,
+    projectSummary: null,
+    projects: null,
+    status: null,
+    review: null,
+    reviewItemId: null,
+    backBurnerItemId: null
+  };
+}
+
+function reviewResponseContextFromAskOptions(options: AskOptions): { reviewId?: string | null; reviewSlug?: string | null } {
+  const reviewId = metadataString(options.adapterMetadata, "reviewId");
+  const reviewSlug = metadataString(options.adapterMetadata, "reviewSlug");
+  return { reviewId, reviewSlug };
+}
+
+function metadataString(metadata: Record<string, unknown> | undefined, key: string): string | null {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 function decisionNeededForIntake(intake: IntakeResult): string {
   if (intake.missingFields.length > 0) {
     if (intake.missingFields.includes("project")) {
@@ -986,11 +1078,6 @@ function shouldCaptureInBackBurner(intake: IntakeResult): boolean {
   }
 
   return false;
-}
-
-function explicitReviewSlugFromInput(value: string): string | null {
-  const match = /^\s*(R\d+)\b/i.exec(value);
-  return match?.[1]?.toUpperCase() ?? null;
 }
 
 function hasConcreteReviewDecision(intake: IntakeResult): boolean {

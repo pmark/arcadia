@@ -33,6 +33,7 @@ export interface CliInvocation {
 export interface AskCliOptions {
   runSafe?: boolean;
   sourceIngress?: string;
+  replyReviewId?: string | null;
 }
 
 export class ArcadiaCli {
@@ -81,6 +82,7 @@ export class ArcadiaCli {
       "ask",
       request,
       ...(askOptions.sourceIngress ? ["--source-ingress", askOptions.sourceIngress] : []),
+      ...(askOptions.replyReviewId ? ["--reply-review-id", askOptions.replyReviewId] : []),
       ...(askOptions.runSafe ? ["--run-safe"] : []),
       "--json"
     ]));

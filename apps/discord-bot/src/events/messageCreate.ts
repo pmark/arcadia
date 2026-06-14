@@ -1,8 +1,13 @@
 import type { Message } from "discord.js";
 import type { ArcadiaCli } from "../arcadia/cli.js";
 import type { BotConfig } from "../config.js";
-import { formatInvalidReviewReply } from "../formatters/requiresReviewFormatter.js";
-import { loadReviewMessageState, reviewMessageStatePath } from "../notifications/state.js";
+import { formatRequest } from "../formatters/requestFormatter.js";
+import {
+  discordSubmissionStatePath,
+  loadReviewMessageState,
+  recordDiscordSubmission,
+  reviewMessageStatePath
+} from "../notifications/state.js";
 
 export async function handleArcadiaMessage(
   message: Message,
@@ -14,22 +19,21 @@ export async function handleArcadiaMessage(
   }
 
   const replyReviewId = await reviewIdFromReply(message, config.arcadiaWorkspace);
-  const slug = replyReviewId ? null : slugFromReply(message.content);
-  if (!replyReviewId && !slug) {
-    return;
-  }
-
   try {
-    const response = await cli.reviewResolveReply(message.content, replyReviewId);
-    await message.reply(response.data.confirmation);
-  } catch (error) {
-    const item = await loadReviewItemForInvalidReply(cli, replyReviewId ?? slug);
-    if (item) {
-      await message.reply(formatInvalidReviewReply(item));
-      return;
+    const response = await cli.ask(message.content, {
+      sourceIngress: "discord.message",
+      replyReviewId
+    });
+    if (response.data.ask) {
+      await recordDiscordSubmission(discordSubmissionStatePath(config.arcadiaWorkspace), {
+        askId: response.data.ask.id,
+        workItemId: response.data.workItem?.id ?? null,
+        runId: response.data.run?.id ?? null
+      });
     }
-
-    await message.reply(`Arcadia review reply failed: ${error instanceof Error ? error.message : String(error)}`);
+    await message.reply(formatRequest(response.data));
+  } catch (error) {
+    await message.reply(`Arcadia ask failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -45,21 +49,4 @@ async function reviewIdFromReply(message: Message, workspace: string): Promise<s
 
   const state = await loadReviewMessageState(reviewMessageStatePath(workspace));
   return state.messages[messageId]?.reviewId ?? null;
-}
-
-function slugFromReply(content: string): string | null {
-  return /^(R\d+)\b/i.exec(content.trim())?.[1]?.toUpperCase() ?? null;
-}
-
-async function loadReviewItemForInvalidReply(cli: ArcadiaCli, idOrSlug: string | null | undefined) {
-  if (!idOrSlug) {
-    return null;
-  }
-
-  try {
-    const response = await cli.reviewShow(idOrSlug);
-    return response.data.item;
-  } catch {
-    return null;
-  }
 }

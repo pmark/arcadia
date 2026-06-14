@@ -408,7 +408,7 @@ function resolveIntakeWithoutClassification(
     };
   }
 
-  const work = parseCreateWork(raw);
+  const work = parseCreateWork(raw, context);
   if (work) {
     const project = resolveProjectReference(work.projectReference, context);
     return resultFromProjectIntent({
@@ -489,6 +489,27 @@ function classifyDeterministically(rawInput: string, resolved: IntakeResultCore)
     };
   }
 
+  if (
+    resolved.resolvedIntent === "CreateWork" ||
+    resolved.resolvedIntent === "CreateProject" ||
+    resolved.resolvedIntent === "InstantiateProject" ||
+    resolved.resolvedIntent === "UpdateEntityAttribute"
+  ) {
+    return {
+      classification: "ExecutionRequest",
+      reason: "The deterministic resolver found an execution-shaped Arcadia request.",
+      suggestedNextStep: resolved.proposedAction
+    };
+  }
+
+  if (resolved.resolvedIntent === "ReviewRequired") {
+    return {
+      classification: "ExecutionRequest",
+      reason: "The input asks Arcadia to show pending review decisions.",
+      suggestedNextStep: "Show Requires Review items."
+    };
+  }
+
   if (/\b(?:bug|broken|crash|error|fails?|failure|regression|not working)\b/.test(normalized)) {
     return {
       classification: "BugReport",
@@ -518,27 +539,6 @@ function classifyDeterministically(rawInput: string, resolved: IntakeResultCore)
       classification: "Idea",
       reason: "The input is exploratory and does not require an immediate decision.",
       suggestedNextStep: "Leave incubating until it becomes a concrete execution request."
-    };
-  }
-
-  if (
-    resolved.resolvedIntent === "CreateWork" ||
-    resolved.resolvedIntent === "CreateProject" ||
-    resolved.resolvedIntent === "InstantiateProject" ||
-    resolved.resolvedIntent === "UpdateEntityAttribute"
-  ) {
-    return {
-      classification: resolved.resolvedIntent === "UpdateEntityAttribute" ? "ExecutionRequest" : "ExecutionRequest",
-      reason: "The deterministic resolver found an execution-shaped Arcadia request.",
-      suggestedNextStep: resolved.proposedAction
-    };
-  }
-
-  if (resolved.resolvedIntent === "ReviewRequired") {
-    return {
-      classification: "ExecutionRequest",
-      reason: "The input asks Arcadia to show pending review decisions.",
-      suggestedNextStep: "Show Requires Review items."
     };
   }
 
@@ -843,16 +843,69 @@ function projectEntityType(): IntakeEntityType {
   return ENTITY_TYPE_REGISTRY[0].type;
 }
 
-function parseCreateWork(raw: string): { action: string; projectReference: string } | null {
-  const match = /^\s*(?:please\s+)?(?:add|build|implement)\s+(.+?)\s+(?:for|to|in)\s+(.+?)\s*[.!?]?\s*$/i.exec(raw);
+function parseCreateWork(raw: string, context: IntakeWorkspaceContext): { action: string; projectReference: string } | null {
+  const match = /^\s*(?:please\s+)?(?:add|build|implement|prepare|fix|create|write)\s+(.+?)\s+(?:for|to|in)\s+(.+?)\s*[.!?]?\s*$/i.exec(raw);
   if (!match?.[1] || !match[2]) {
-    return null;
+    return parseProjectReferencedWork(raw, context);
   }
 
   return {
     action: cleanTrailingPunctuation(match[1]),
     projectReference: cleanTrailingPunctuation(match[2])
   };
+}
+
+function parseProjectReferencedWork(
+  raw: string,
+  context: IntakeWorkspaceContext
+): { action: string; projectReference: string } | null {
+  const command = /^\s*(?:please\s+)?(?:add|build|implement|prepare|fix|create|write)\s+(.+?)\s*[.!?]?\s*$/i.exec(raw);
+  if (!command?.[1]) {
+    return null;
+  }
+
+  const body = cleanTrailingPunctuation(command[1]).replace(/^the\s+/i, "").trim();
+  const projectReference = findProjectReferenceInWorkBody(body, context);
+  if (!projectReference) {
+    return null;
+  }
+
+  const action = cleanExtractedValue(`${projectReference.before} ${projectReference.after}`.trim());
+  if (!action) {
+    return null;
+  }
+
+  return {
+    action,
+    projectReference: projectReference.reference
+  };
+}
+
+function findProjectReferenceInWorkBody(
+  body: string,
+  context: IntakeWorkspaceContext
+): { reference: string; before: string; after: string } | null {
+  const candidates = context.projects.flatMap((project) =>
+    [project.name, ...project.aliases].map((reference) => ({ project, reference }))
+  ).filter((candidate) => candidate.reference.trim());
+  candidates.sort((left, right) => right.reference.length - left.reference.length);
+
+  for (const candidate of candidates) {
+    const pattern = new RegExp(`(^|\\s)(${escapeRegExp(candidate.reference)})(?=\\s|$)`, "i");
+    const match = pattern.exec(body);
+    if (!match?.[2]) {
+      continue;
+    }
+    const start = match.index + match[1].length;
+    const end = start + match[2].length;
+    return {
+      reference: match[2],
+      before: body.slice(0, start).trim(),
+      after: body.slice(end).trim()
+    };
+  }
+
+  return null;
 }
 
 function isReviewRequest(normalized: string): boolean {

@@ -28,7 +28,12 @@ import {
   runCodexListCommand,
   runCodexSyncCommand
 } from "./commands/codex.js";
-import { renderDashboardSnapshotSuccess, runDashboardSnapshotCommand } from "./commands/dashboard.js";
+import {
+  renderAttentionSuccess,
+  renderDashboardSnapshotSuccess,
+  runAttentionCommand,
+  runDashboardSnapshotCommand
+} from "./commands/dashboard.js";
 import {
   renderDogfoodAskSuccess,
   renderDogfoodInitSuccess,
@@ -333,15 +338,26 @@ export function buildProgram(): Command {
       .option("--project <project-id>", "Optional project id")
       .option("--milestone <milestone-id>", "Optional milestone id")
       .option("--source-ingress <source>", "Ingress source for audit trails")
+      .option("--reply-review-id <review-id>", "Review id from adapter reply context")
       .option("--run-safe", "Immediately run deterministic safe steps")
   ).action((request: string, options: {
     workspace: string;
     project?: string;
     milestone?: string;
     sourceIngress?: string;
+    replyReviewId?: string;
     runSafe?: boolean;
     json?: boolean;
-  }) => runCliAction("ask", options, () => runAskCommand({ ...options, request }), renderAskSuccess));
+  }) => runCliAction(
+    "ask",
+    options,
+    () => runAskCommand({
+      ...options,
+      request,
+      adapterMetadata: options.replyReviewId ? { reviewId: options.replyReviewId } : undefined
+    }),
+    renderAskSuccess
+  ));
 
   addJsonOption(
     program
@@ -587,11 +603,20 @@ export function buildProgram(): Command {
 
   addJsonOption(
     program
-    .command("queue")
-    .description("Show grouped queues")
+      .command("queue")
+      .description("Show grouped queues")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("queue", options, () => runQueueCommand(options), renderQueueSuccess)
+  );
+
+  addJsonOption(
+    program
+      .command("attention")
+      .description("List immediate user-facing blockers and review actions")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("attention", options, () => runAttentionCommand(options), renderAttentionSuccess)
   );
 
   const dashboard = program.command("dashboard").description("Dashboard read model commands");
@@ -1087,6 +1112,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "dashboard" && second === "snapshot") {
     return "dashboard.snapshot";
+  }
+
+  if (first === "attention") {
+    return "attention";
   }
 
   if (first === "work" && ["list", "update", "done", "plan", "run"].includes(second ?? "")) {

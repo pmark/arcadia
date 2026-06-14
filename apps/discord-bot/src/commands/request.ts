@@ -9,10 +9,12 @@ export async function requestCommand(
   runSafe = false
 ): Promise<string> {
   const response = await cli.ask(request, { runSafe, sourceIngress: "discord.request" });
-  await recordDiscordSubmission(discordSubmissionStatePath(workspace), {
-    askId: response.data.ask.id,
-    workItemId: response.data.workItem?.id ?? null,
-    runId: response.data.run?.id ?? null
-  });
+  if (response.data.ask) {
+    await recordDiscordSubmission(discordSubmissionStatePath(workspace), {
+      askId: response.data.ask.id,
+      workItemId: response.data.workItem?.id ?? null,
+      runId: response.data.run?.id ?? null
+    });
+  }
   return formatRequest(response.data);
 }

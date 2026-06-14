@@ -35,8 +35,10 @@ import {
 } from "../src/db/repositories.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../src/intent/registries.js";
 import { resolveIntent } from "../src/intent/resolver.js";
+import { parseReviewResponse } from "../src/review/responseParser.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
+import { goldenRequestExamples } from "./goldenRequests.js";
 
 const workspaces: string[] = [];
 
@@ -171,6 +173,32 @@ describe("Phase 3 audit records", () => {
 });
 
 describe("arcadia ask command", () => {
+  it("parses review response shorthand in shared core code", () => {
+    expect(parseReviewResponse("R12 A")).toMatchObject({
+      reviewSlug: "R12",
+      optionLetter: "A",
+      hasReviewReference: true,
+      hasResponse: true
+    });
+    expect(parseReviewResponse("approve R12")).toMatchObject({
+      reviewSlug: "R12",
+      decisionToken: "approve",
+      hasReviewReference: true,
+      hasResponse: true
+    });
+    expect(parseReviewResponse("review_abc123 wrong project")).toMatchObject({
+      reviewId: "review_abc123",
+      feedbackType: "wrong project",
+      hasReviewReference: true,
+      hasResponse: true
+    });
+    expect(parseReviewResponse("A")).toMatchObject({
+      optionLetter: "A",
+      hasReviewReference: false,
+      hasResponse: true
+    });
+  });
+
   it("creates a plain project through the shared project creation path", () => {
     const workspace = initializedWorkspace();
     const paths = getWorkspacePaths(workspace);
@@ -333,6 +361,117 @@ describe("arcadia ask command", () => {
       expect(feedback.feedback_type).toBe("wrong project");
       expect(feedback.raw_reply).toBe("wrong project");
     });
+  });
+
+  it("routes review shorthand through ask without guessing bare replies", () => {
+    const approveWorkspace = initializedWorkspace();
+    runAskCommand({ workspace: approveWorkspace, request: "Build Pinterest posting support for Unknown App." });
+    const approveItem = runReviewRequiredCommand({ workspace: approveWorkspace }).data.items[0];
+
+    const approved = runAskCommand({
+      workspace: approveWorkspace,
+      request: `${approveItem.slug} approve`
+    });
+
+    expect(approved.data.result.status).toBe("acted");
+    expect(approved.data.result.summary).toContain(`${approveItem.slug} approved`);
+    expect(runReviewShowCommand({ workspace: approveWorkspace, id: approveItem.id }).data.item.status).toBe("approved");
+
+    const deferWorkspace = initializedWorkspace();
+    runAskCommand({ workspace: deferWorkspace, request: "Build Pinterest posting support for Unknown App." });
+    const deferItem = runReviewRequiredCommand({ workspace: deferWorkspace }).data.items[0];
+    const deferred = runAskCommand({
+      workspace: deferWorkspace,
+      request: `defer ${deferItem.slug}`
+    });
+    expect(deferred.data.result.summary).toBe(`${deferItem.slug} deferred.`);
+    expect(runReviewShowCommand({ workspace: deferWorkspace, id: deferItem.id }).data.item.status).toBe("deferred");
+
+    const feedbackWorkspace = initializedWorkspace();
+    runAskCommand({ workspace: feedbackWorkspace, request: "Build Pinterest posting support for Unknown App." });
+    const feedbackItem = runReviewRequiredCommand({ workspace: feedbackWorkspace }).data.items[0];
+    const feedback = runAskCommand({
+      workspace: feedbackWorkspace,
+      request: `${feedbackItem.slug} wrong project`
+    });
+    expect(feedback.data.result.summary).toBe(`Feedback captured for ${feedbackItem.slug}: wrong project.`);
+    withDatabase(feedbackWorkspace, (db) => {
+      expect(listReviewFeedback(db, feedbackItem.id)[0].feedback_type).toBe("wrong project");
+    });
+
+    const bareWorkspace = initializedWorkspace();
+    runAskCommand({ workspace: bareWorkspace, request: "Build Pinterest posting support for Unknown App." });
+    const bare = runAskCommand({ workspace: bareWorkspace, request: "A" });
+    expect(bare.data.result.status).toBe("captured");
+    expect(bare.data.backBurnerItemId).toMatch(/^bb_/);
+    expect(runReviewRequiredCommand({ workspace: bareWorkspace }).data.items).toHaveLength(1);
+  });
+
+  it("routes context-backed review replies through ask", () => {
+    const workspace = initializedWorkspace();
+    runAskCommand({ workspace, request: "Build Pinterest posting support for Unknown App." });
+    const item = runReviewRequiredCommand({ workspace }).data.items[0];
+
+    const result = runAskCommand({
+      workspace,
+      request: "A",
+      adapterMetadata: { reviewId: item.id }
+    });
+
+    expect(result.data.result.summary).toContain(`${item.slug} approved`);
+    expect(runReviewShowCommand({ workspace, id: item.id }).data.item.status).toBe("approved");
+  });
+
+  it("routes the Golden Request Suite through ask", () => {
+    const workspace = initializedWorkspace();
+    withDatabase(workspace, (db) => {
+      const arcadia = createProjectWithInitialWork(db, {
+        name: "Arcadia",
+        mission: "Maintain momentum across creative projects.",
+        goal: "Make ask the universal ingress router.",
+        status: "active",
+        currentMilestone: "Universal ask router",
+        nextAction: "Implement shared ask routing.",
+        workClassification: "codex"
+      });
+      upsertProjectMetadata(db, { projectId: arcadia.project.id, aliases: ["Arcadia"] });
+      const rebuster = createProjectWithInitialWork(db, {
+        name: "Rebuster",
+        mission: "Help users turn product evidence into better shipping decisions.",
+        goal: "Ship Pinterest publishing support.",
+        status: "active",
+        currentMilestone: "Pinterest publishing support",
+        nextAction: "Define Pinterest support boundaries.",
+        workClassification: "codex"
+      });
+      upsertProjectMetadata(db, { projectId: rebuster.project.id, aliases: ["Rebuster"] });
+      const midiOpener = createProjectWithInitialWork(db, {
+        name: "MIDI Opener",
+        mission: "Make MIDI files easy to preview.",
+        goal: "Improve playback and release operations.",
+        status: "active",
+        currentMilestone: "Playback reliability",
+        nextAction: "Triage loop playback bugs.",
+        workClassification: "codex"
+      });
+      upsertProjectMetadata(db, { projectId: midiOpener.project.id, aliases: ["MIDI Opener", "midi opener app"] });
+    });
+
+    for (const example of goldenRequestExamples) {
+      const result = runAskCommand({ workspace, request: example.input });
+      expect(result.data.intake.classification, example.name).toBe(example.expectedClassification);
+      expect(result.data.intake.resolvedIntent, example.name).toBe(example.expectedIntent);
+      expect(result.data.intake.project?.name ?? null, example.name).toBe(example.expectedProject);
+      expect(result.data.result.status, example.name).toBe(example.expectedRoutingOutcome);
+
+      if (example.expectedBackBurner) {
+        expect(result.data.backBurnerItemId, example.name).toMatch(/^bb_/);
+        expect(result.data.reviewItemId, example.name).toBeNull();
+      } else {
+        expect(result.data.backBurnerItemId, example.name).toBeNull();
+        expect(result.data.reviewItemId, example.name).toMatch(/^review_/);
+      }
+    }
   });
 
   it("only shows actionable Requires Review records", () => {

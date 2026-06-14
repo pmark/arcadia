@@ -1819,11 +1819,13 @@ export function getExecutionRun(db: Database.Database, id: string): ExecutionRun
     .prepare(
       `SELECT
         er.*,
+        p.name AS project_name,
         wi.title AS work_item_title,
         ep.summary AS plan_summary,
         ml.markdown_path AS mission_log_path
       FROM execution_runs er
       JOIN work_items wi ON wi.id = er.work_item_id
+      LEFT JOIN projects p ON p.id = wi.project_id
       JOIN execution_plans ep ON ep.id = er.plan_id
       LEFT JOIN mission_logs ml ON ml.id = er.mission_log_id
       WHERE er.id = ?`

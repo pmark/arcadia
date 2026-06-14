@@ -2,12 +2,23 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { ArcadiaJsonSuccess, DashboardSnapshotResponse } from "./types";
+import type { ArcadiaJsonSuccess, AskResponse, DashboardSnapshotResponse } from "./types";
 
 const execFileAsync = promisify(execFile);
 
 export async function loadDashboardSnapshot(): Promise<ArcadiaJsonSuccess<DashboardSnapshotResponse>> {
   return runArcadiaCliJson<DashboardSnapshotResponse>(["dashboard", "snapshot"]);
+}
+
+export async function runAsk(input: {
+  request: string;
+}): Promise<ArcadiaJsonSuccess<AskResponse>> {
+  return runArcadiaCliJson<AskResponse>([
+    "ask",
+    input.request,
+    "--source-ingress",
+    "dashboard.ask"
+  ]);
 }
 
 export interface ReviewActionResponse {

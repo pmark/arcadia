@@ -2,14 +2,16 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runDashboardSnapshotCommand } from "../src/commands/dashboard.js";
+import { runAttentionCommand, runDashboardSnapshotCommand } from "../src/commands/dashboard.js";
 import { runReviewRequiredCommand } from "../src/commands/review.js";
 import { buildDashboardSnapshot } from "../src/dashboard/snapshot.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
   createExecutionPlan,
   createExecutionRun,
+  createArtifactRecord,
   createBackBurnerItem,
+  createCodexInvocation,
   createProjectWithInitialWork,
   createReviewItem,
   createWorkItemWithOptionalArtifact,
@@ -34,6 +36,7 @@ describe("dashboard snapshot", () => {
     const paths = getWorkspacePaths(workspace);
 
     withDatabase(workspace, (db) => {
+      ensureBuiltInSkills(db);
       const active = createProjectWithInitialWork(db, {
         name: "Active Project",
         mission: "Keep momentum visible.",
@@ -94,6 +97,37 @@ describe("dashboard snapshot", () => {
         status: "opportunistic",
         suggestedNextStep: "Leave incubating until it becomes concrete."
       });
+
+      const workItem = getWorkItem(db, active.workItem.id);
+      expect(workItem).not.toBeNull();
+      const plan = createExecutionPlan(db, {
+        workItemId: active.workItem.id,
+        summary: "Codex build packet review.",
+        steps: planStepsForWorkItem(workItem!)
+      });
+      expect(plan).not.toBeNull();
+      createCodexInvocation(db, {
+        id: "codex_packet_pinterest",
+        purpose: "build",
+        agentProfile: "codex",
+        workspaceScope: workspace,
+        command: "codex --cd . -",
+        promptPath: "prompts/codex/codex_packet_pinterest/prompt.md",
+        jsonlOutputPath: "prompts/codex/codex_packet_pinterest/output.jsonl",
+        finalMessagePath: "prompts/codex/codex_packet_pinterest/final.md",
+        status: "packet_created",
+        workItemId: active.workItem.id,
+        planId: plan!.id,
+        planStepId: plan!.steps.find((step) => step.executor_type === "codex_build")?.id ?? plan!.steps[0].id
+      });
+      createArtifactRecord(db, {
+        projectId: active.project.id,
+        workItemId: active.workItem.id,
+        title: "Codex build packet: Pinterest publishing",
+        artifactType: "codex_prompt_packet",
+        status: "drafted",
+        path: "prompts/codex/codex_packet_pinterest/prompt.md"
+      });
     });
 
     expect(existsSync(paths.statusReport)).toBe(false);
@@ -105,8 +139,14 @@ describe("dashboard snapshot", () => {
     expect(snapshot.counts.pausedProjects).toBe(1);
     expect(snapshot.counts.incubatingProjects).toBe(1);
     expect(snapshot.counts.requiresReview).toBe(1);
+    expect(snapshot.counts.attention).toBeGreaterThanOrEqual(2);
     expect(snapshot.counts.backBurner).toBe(1);
     expect(snapshot.requiresReviewItems.map((item) => item.id)).toEqual(cliReview.data.items.map((item) => item.id));
+    expect(snapshot.attentionItems.some((item) => item.relatedArtifactPath?.includes("codex_packet_pinterest"))).toBe(
+      true
+    );
+    expect(snapshot.activityEvents.map((event) => event.eventType)).toContain("codex_packet_created");
+    expect(snapshot.activityEvents.map((event) => event.eventType)).toContain("routed_to_review");
     expect(snapshot.backBurnerItems[0]).toMatchObject({
       originalInput: "Pinterest might help Rebuster.",
       classification: "Idea",
@@ -115,9 +155,15 @@ describe("dashboard snapshot", () => {
     expect(snapshot.requiresReviewItems[0].sourceInput).toBe("Ship the dashboard review flow.");
     expect(snapshot.requiresReviewItems[0].missingFields).toEqual(["release boundary"]);
     expect(snapshot.projects.find((project) => project.name === "Active Project")?.lastArtifact?.title).toBe(
-      "Dashboard v0"
+      "Codex build packet: Pinterest publishing"
     );
+    expect(snapshot.recentArtifacts.map((artifact) => artifact.title)).toContain("Dashboard v0");
     expect(snapshot.currentMilestones.map((milestone) => milestone.title)).toContain("Ship Mission Control");
+    const attention = runAttentionCommand({ workspace });
+    expect(attention.data.items.map((item) => item.id)).toEqual(snapshot.attentionItems.map((item) => item.id));
+    expect(attention.data.items.find((item) => item.kind === "codex_packet")?.nextAction).toContain(
+      "arcadia work run"
+    );
     expect(existsSync(paths.statusReport)).toBe(false);
   });
 

@@ -197,7 +197,17 @@ function processCandidate(input: {
   }
 
   try {
-    const response = askRunner({ workspace: workspacePath, request, runSafe, sourceIngress: `ingress:${source}` });
+    const response = askRunner({
+      workspace: workspacePath,
+      request,
+      runSafe,
+      sourceIngress: `ingress:${source}`,
+      adapterMetadata: {
+        ingressSource: source,
+        fileName: candidate.fileName,
+        sourcePath: originalPath
+      }
+    });
     const runStatus = response.data.run?.status ?? null;
     const failedRun = runStatus === "failed";
     const finalPath = moveToUnique(
@@ -238,7 +248,7 @@ function processCandidate(input: {
       requestPreview: preview(request),
       finalPath,
       sidecarPath,
-      askId: response.data.ask.id,
+      askId: response.data.ask?.id,
       workItemId: response.data.workItem?.id,
       planId: response.data.plan?.id,
       runId: response.data.run?.id,
@@ -330,7 +340,7 @@ function writeIngressMissionLog(
         input.request,
         "",
         `Execution mode: ${input.executionMode}`,
-        `Ask id: ${input.response?.data.ask.id ?? "None"}`,
+        `Ask id: ${input.response?.data.ask?.id ?? "None"}`,
         `Work item id: ${input.response?.data.workItem?.id ?? "None"}`,
         `Plan id: ${input.response?.data.plan?.id ?? "None"}`,
         `Run id: ${input.response?.data.run?.id ?? "None"}`
