@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -9,6 +9,7 @@ import {
   createArtifactRecord,
   createExecutionRun,
   createMissionLog,
+  createReviewItem,
   getCodexInvocationForPlan,
   getExecutionPlan,
   getMilestone,
@@ -20,6 +21,7 @@ import {
 import type { CodexInvocationPurpose } from "../domain/constants.js";
 import type {
   Artifact,
+  CodexInvocation,
   ExecutionPlanSummary,
   ExecutionRunSummary,
   ExecutionRunStep,
@@ -30,6 +32,11 @@ import { writeMissionLogMarkdown, buildMissionLogRelativePath } from "../markdow
 import { renderRunSummary, writePublicationPacket, writeSpecificationArtifact } from "../markdown/executionArtifacts.js";
 import { writeStatusReport } from "../markdown/statusReport.js";
 import { writeWeeklyReviewReport } from "../markdown/weeklyReview.js";
+import {
+  validatePlanningArtifact,
+  type PlanningArtifactValidationIssue,
+  type PlanningArtifactValidationResult
+} from "../stewardship/artifactValidator.js";
 import { createId } from "../utils/id.js";
 import { localDateStamp } from "../utils/time.js";
 import { getWorkspacePaths, toWorkspaceRelativePath } from "../workspace/paths.js";
@@ -47,6 +54,35 @@ export interface ExecutePlanOptions {
 }
 
 type RunStepInput = Parameters<typeof createExecutionRun>[1]["steps"][number];
+type CodexStepStatus = "completed" | "needs_mark" | "failed";
+
+interface ExecutedCodexStep {
+  invocationId: string;
+  status: CodexStepStatus;
+  command: string;
+  output: string | null;
+  error: string | null;
+  artifactPath: string | null;
+  artifact: Artifact | null;
+}
+
+interface PlanningValidationSidecar {
+  validator: "deterministic_planning_artifact_validator";
+  artifactKind: "planning_artifact";
+  status: "passed" | "failed" | "not_run";
+  summary: string;
+  packetPath: string;
+  artifactPath: string;
+  validation: PlanningArtifactValidationResult | null;
+}
+
+interface PlanningValidationOutcome {
+  status: "passed" | "failed" | "not_run";
+  summary: string;
+  validation: PlanningArtifactValidationResult | null;
+  sidecarRelativePath: string;
+  artifact: Artifact;
+}
 
 export function executePlan(
   db: Database.Database,
@@ -82,16 +118,23 @@ export function executePlan(
 
       try {
         const executed = executeCodexStep(db, workspace, workItem, plan, step.id, step.executor_type, options);
+        if (executed.artifact) {
+          artifacts.push(executed.artifact);
+        }
         stepResults.push({
           planStepId: step.id,
-          status: "completed",
+          status: executed.status,
           command: executed.command,
           output: executed.output,
-          error: null,
+          error: executed.error,
           artifactPath: executed.artifactPath
         });
         completedCodexInvocationIds.push(executed.invocationId);
-        continue;
+        if (executed.status === "completed") {
+          continue;
+        }
+        runStatus = executed.status;
+        break;
       } catch (error) {
         stepResults.push({
           planStepId: step.id,
@@ -201,7 +244,7 @@ function executeCodexStep(
   planStepId: string,
   executorType: "codex_planning" | "codex_build",
   options: ExecutePlanOptions
-): { invocationId: string; command: string; output: string; artifactPath: string | null } {
+): ExecutedCodexStep {
   const purpose: CodexInvocationPurpose = executorType === "codex_build" ? "build" : "planning";
   const profile = selectExecutionProfile(options, purpose);
   if (profile.sandbox === "danger-full-access") {
@@ -220,9 +263,28 @@ function executeCodexStep(
   const promptPath = path.join(workspace, invocation.prompt_path);
   const jsonlOutputPath = path.join(workspace, invocation.jsonl_output_path);
   const finalMessagePath = path.join(workspace, invocation.final_message_path);
-  const prompt = readFileSync(promptPath, "utf8");
   const args = argsForProfile(profile, workspace, finalMessagePath);
   const command = [profile.command, ...args].join(" ");
+
+  if (!existsSync(promptPath)) {
+    updateCodexInvocationStatus(db, invocation.id, "failed");
+    const summary = `Planning artifact validation not run: packet file is missing: ${invocation.prompt_path}`;
+    if (purpose === "planning") {
+      const validation = recordPlanningArtifactValidationNotRun(db, workspace, workItem, invocation, summary);
+      return {
+        invocationId: invocation.id,
+        status: "failed",
+        command,
+        output: validation.summary,
+        error: validation.summary,
+        artifactPath: validation.sidecarRelativePath,
+        artifact: validation.artifact
+      };
+    }
+    throw new Error(`Codex invocation packet file is missing: ${invocation.prompt_path}`);
+  }
+
+  const prompt = readFileSync(promptPath, "utf8");
 
   updateCodexInvocationStatus(db, invocation.id, "running");
   const result = spawnSync(profile.command, args, {
@@ -242,6 +304,21 @@ function executeCodexStep(
     throw new Error(result.error?.message ?? result.stderr ?? `Codex command failed with status ${result.status}`);
   }
 
+  let validationOutput: string | null = null;
+  let validationArtifact: Artifact | null = null;
+  let status: CodexStepStatus = "completed";
+  let error: string | null = null;
+
+  if (purpose === "planning") {
+    const validation = recordPlanningArtifactValidation(db, workspace, workItem, plan, invocation);
+    validationOutput = validation.summary;
+    validationArtifact = validation.artifact;
+    if (validation.status === "failed") {
+      status = "needs_mark";
+      error = validation.summary;
+    }
+  }
+
   updateCodexInvocationStatus(db, invocation.id, "completed");
   db.prepare("UPDATE codex_invocations SET plan_step_id = ?, updated_at = ? WHERE id = ?").run(
     planStepId,
@@ -251,10 +328,182 @@ function executeCodexStep(
 
   return {
     invocationId: invocation.id,
+    status,
     command,
-    output: `Codex ${purpose} output captured: ${invocation.jsonl_output_path}`,
-    artifactPath: invocation.final_message_path
+    output: [
+      `Codex ${purpose} output captured: ${invocation.jsonl_output_path}`,
+      validationOutput
+    ].filter(Boolean).join("\n"),
+    error,
+    artifactPath: invocation.final_message_path,
+    artifact: validationArtifact
   };
+}
+
+function recordPlanningArtifactValidation(
+  db: Database.Database,
+  workspace: string,
+  workItem: WorkItemSummary,
+  plan: ExecutionPlanSummary,
+  invocation: CodexInvocation
+): PlanningValidationOutcome {
+  const packetPath = path.join(workspace, invocation.prompt_path);
+  const artifactPath = path.join(workspace, invocation.final_message_path);
+
+  if (!existsSync(packetPath)) {
+    return recordPlanningArtifactValidationNotRun(
+      db,
+      workspace,
+      workItem,
+      invocation,
+      `Planning artifact validation not run: packet file is missing: ${invocation.prompt_path}`
+    );
+  }
+
+  if (!existsSync(artifactPath)) {
+    return recordPlanningArtifactValidationNotRun(
+      db,
+      workspace,
+      workItem,
+      invocation,
+      `Planning artifact validation not run: artifact file is missing: ${invocation.final_message_path}`
+    );
+  }
+
+  const validation = validatePlanningArtifact({
+    packetText: readFileSync(packetPath, "utf8"),
+    artifactText: readFileSync(artifactPath, "utf8")
+  });
+  const status = validation.passed ? "passed" : "failed";
+  const summary = summarizePlanningValidation(status, validation);
+  const sidecar = writePlanningValidationSidecar(workspace, invocation, {
+    validator: "deterministic_planning_artifact_validator",
+    artifactKind: "planning_artifact",
+    status,
+    summary,
+    packetPath: invocation.prompt_path,
+    artifactPath: invocation.final_message_path,
+    validation
+  });
+  const artifact = createPlanningValidationArtifact(db, workItem, sidecar, status);
+
+  if (!validation.passed) {
+    createPlanningValidationReviewItem(db, workItem, plan, invocation, validation, summary, sidecar);
+  }
+
+  return { status, summary, validation, sidecarRelativePath: sidecar, artifact };
+}
+
+function recordPlanningArtifactValidationNotRun(
+  db: Database.Database,
+  workspace: string,
+  workItem: WorkItemSummary,
+  invocation: CodexInvocation,
+  summary: string
+): PlanningValidationOutcome {
+  const sidecar = writePlanningValidationSidecar(workspace, invocation, {
+    validator: "deterministic_planning_artifact_validator",
+    artifactKind: "planning_artifact",
+    status: "not_run",
+    summary,
+    packetPath: invocation.prompt_path,
+    artifactPath: invocation.final_message_path,
+    validation: null
+  });
+  const artifact = createPlanningValidationArtifact(db, workItem, sidecar, "not_run");
+  return { status: "not_run", summary, validation: null, sidecarRelativePath: sidecar, artifact };
+}
+
+function writePlanningValidationSidecar(
+  workspace: string,
+  invocation: CodexInvocation,
+  sidecar: PlanningValidationSidecar
+): string {
+  const relativePath = path.join(path.dirname(invocation.final_message_path), "planning-validation.json");
+  const absolutePath = path.join(workspace, relativePath);
+  mkdirSync(path.dirname(absolutePath), { recursive: true });
+  writeFileSync(absolutePath, `${JSON.stringify(sidecar, null, 2)}\n`, "utf8");
+  return toWorkspaceRelativePath(workspace, absolutePath);
+}
+
+function createPlanningValidationArtifact(
+  db: Database.Database,
+  workItem: WorkItemSummary,
+  sidecarRelativePath: string,
+  status: PlanningValidationOutcome["status"]
+): Artifact {
+  return createArtifactRecord(db, {
+    projectId: workItem.project_id,
+    workItemId: workItem.id,
+    title: `Planning artifact validation: ${workItem.title}`,
+    artifactType: "planning_artifact_validation",
+    status: status === "passed" ? "ready" : "drafted",
+    path: sidecarRelativePath
+  });
+}
+
+function createPlanningValidationReviewItem(
+  db: Database.Database,
+  workItem: WorkItemSummary,
+  plan: ExecutionPlanSummary,
+  invocation: CodexInvocation,
+  validation: PlanningArtifactValidationResult,
+  summary: string,
+  sidecarRelativePath: string
+): void {
+  createReviewItem(db, {
+    workItemId: workItem.id,
+    planId: plan.id,
+    projectId: workItem.project_id,
+    decisionNeeded: [
+      `Planning artifact validation failed for "${workItem.title}".`,
+      renderIssuesForOperator("Failures", validation.failures),
+      renderIssuesForOperator("Warnings", validation.warnings)
+    ].filter(Boolean).join("\n"),
+    recommendation: [
+      summary,
+      `Review ${invocation.final_message_path} against ${invocation.prompt_path}.`,
+      `Validation result: ${sidecarRelativePath}`
+    ].join("\n"),
+    sourceInput: workItem.raw_input,
+    proposedAction: "Revise the Codex planning artifact before treating it as ready for operator review.",
+    resolvedIntent: "codex_planning_artifact_validation",
+    confidenceLabel: "high",
+    confidence: 1,
+    missingFields: validation.failures.map((failure) => failure.code),
+    context: {
+      codexInvocationId: invocation.id,
+      packetPath: invocation.prompt_path,
+      artifactPath: invocation.final_message_path,
+      validationResultPath: sidecarRelativePath,
+      validation
+    }
+  });
+}
+
+function summarizePlanningValidation(
+  status: "passed" | "failed",
+  validation: PlanningArtifactValidationResult
+): string {
+  const base = `Planning artifact validation ${status === "passed" ? "passed" : "failed"}: score ${validation.score}, ${validation.failures.length} failures, ${validation.warnings.length} warnings.`;
+  const failures = validation.failures.length > 0 ? ` Failures: ${inlineIssueSummary(validation.failures)}.` : "";
+  const warnings = validation.warnings.length > 0 ? ` Warnings: ${inlineIssueSummary(validation.warnings)}.` : "";
+  return `${base}${failures}${warnings}`;
+}
+
+function inlineIssueSummary(issues: PlanningArtifactValidationIssue[]): string {
+  return issues.map((issue) => `${issue.code}: ${issue.message}`).join("; ");
+}
+
+function renderIssuesForOperator(label: string, issues: PlanningArtifactValidationIssue[]): string {
+  if (issues.length === 0) {
+    return `${label}: none.`;
+  }
+
+  return [
+    `${label}:`,
+    ...issues.map((issue) => `- ${issue.code}: ${issue.message}`)
+  ].join("\n");
 }
 
 function selectExecutionProfile(options: ExecutePlanOptions, purpose: CodexInvocationPurpose): CodingAgentProfile {
