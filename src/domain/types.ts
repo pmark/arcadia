@@ -170,6 +170,7 @@ export interface AskRequest {
   resolved_intent: string;
   registry_version: number;
   output_kind: string;
+  stewardship_json: string | null;
   work_item_id: string | null;
   plan_id: string | null;
   prompt_packet_path: string | null;
@@ -502,6 +503,7 @@ export interface CreateAskRequestInput {
   resolvedIntent: string;
   registryVersion: number;
   outputKind: string;
+  stewardshipJson?: string | null;
   workItemId?: string | null;
   planId?: string | null;
   promptPacketPath?: string | null;

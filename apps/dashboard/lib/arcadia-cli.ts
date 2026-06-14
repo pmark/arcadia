@@ -10,6 +10,15 @@ export async function loadDashboardSnapshot(): Promise<ArcadiaJsonSuccess<Dashbo
   return runArcadiaCliJson<DashboardSnapshotResponse>(["dashboard", "snapshot"]);
 }
 
+export async function resolveDashboardWorkspace(): Promise<string> {
+  const response = await runArcadiaCliJson<{ workspacePath: string | null }>(["workspace", "resolve"]);
+  if (!response.data.workspacePath) {
+    throw new ArcadiaCliError("Arcadia workspace is not configured.", 503, response.data);
+  }
+
+  return response.data.workspacePath;
+}
+
 export async function runAsk(input: {
   request: string;
 }): Promise<ArcadiaJsonSuccess<AskResponse>> {

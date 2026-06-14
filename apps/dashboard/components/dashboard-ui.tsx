@@ -415,12 +415,20 @@ export function ActivityRow({ event }: { event: DashboardActivityEvent }) {
 function ActivityLink({ href, label }: { href: string; label: string }) {
   return (
     <a
-      href={href}
+      href={dashboardFileHref(href)}
       className="inline-flex min-h-8 items-center rounded-md border border-steel/30 bg-steel/10 px-2 text-xs font-semibold text-steel transition hover:border-steel"
     >
       {label}
     </a>
   );
+}
+
+function dashboardFileHref(href: string): string {
+  if (href.startsWith("/") || /^[a-z][a-z0-9+.-]*:/i.test(href)) {
+    return href;
+  }
+
+  return `/api/file/${href.split("/").map(encodeURIComponent).join("/")}`;
 }
 
 function Field({ label, value }: { label: string; value: string }) {

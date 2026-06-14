@@ -19,6 +19,15 @@ export interface AskResponse {
     prompt_packet_path: string | null;
     status: string;
   } | null;
+  stewardship?: {
+    intentType: string;
+    recommendedExecutionPath: string;
+    planningRecommended: boolean;
+    clarificationRequired: boolean;
+    reviewRequired: boolean;
+    generatedCodexGoalText: string | null;
+    classificationReason: string;
+  };
   intake: {
     resolvedIntent: string;
     classification?: string;

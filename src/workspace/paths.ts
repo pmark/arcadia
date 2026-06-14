@@ -14,6 +14,7 @@ export interface WorkspacePaths {
   configFile: string;
   databaseFile: string;
   statusReport: string;
+  operatorContext: string;
   intentRegistry: string;
   templateRegistry: string;
   codingAgentProfiles: string;
@@ -40,6 +41,7 @@ export function getWorkspacePaths(workspace: string): WorkspacePaths {
     configFile: path.join(root, "config", "arcadia.json"),
     databaseFile: path.join(root, "database", "arcadia.sqlite3"),
     statusReport: path.join(root, "reports", "status.md"),
+    operatorContext: path.join(root, "OPERATOR_CONTEXT.md"),
     intentRegistry: path.join(root, "config", "intent-registry.json"),
     templateRegistry: path.join(root, "config", "template-registry.json"),
     codingAgentProfiles: path.join(root, "config", "coding-agent-profiles.json")

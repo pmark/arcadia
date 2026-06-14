@@ -15,6 +15,7 @@ export function formatRequest(data: AskData): string {
   const lines = [
     data.workItem ? "**Arcadia request created**" : "**Arcadia ask handled**",
     `Ask: \`${data.ask?.id ?? "None"}\``,
+    `Stewardship: ${data.stewardship ? `${data.stewardship.intentType} -> ${data.stewardship.recommendedExecutionPath}` : "Unavailable"}`,
     `Interpreted as: ${data.intake?.resolvedIntent ?? data.resolvedIntent.intentId}`,
     `Result: ${data.result?.summary ?? labelStatus(data.ask?.status ?? "ignored")}`
   ];

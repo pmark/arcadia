@@ -404,7 +404,7 @@ function buildAttentionItems(
           label: "View Packet",
           kind: "view",
           command: null,
-          href: packet.prompt_path,
+          href: dashboardFileHref(packet.prompt_path),
           reviewAction: null
         },
         {
@@ -495,6 +495,10 @@ function reviewActions(reviewId: string): DashboardAttentionAction[] {
     { label: "Reject", kind: "reject", command: null, href: null, reviewAction: "reject" },
     { label: "Defer", kind: "defer", command: null, href: null, reviewAction: "defer" }
   ];
+}
+
+function dashboardFileHref(relativePath: string): string {
+  return `/api/file/${relativePath.split("/").map(encodeURIComponent).join("/")}`;
 }
 
 function getWorkItemTitle(db: Database.Database, workItemId: string | null): string | null {
@@ -604,6 +608,7 @@ function askActivityEvents(db: Database.Database): DashboardActivityEvent[] {
         ar.raw_request,
         ar.resolved_intent,
         ar.output_kind,
+        ar.stewardship_json,
         ar.work_item_id,
         wi.title AS work_item_title,
         p.name AS project_name,
@@ -619,36 +624,42 @@ function askActivityEvents(db: Database.Database): DashboardActivityEvent[] {
       raw_request: string;
       resolved_intent: string;
       output_kind: string;
+      stewardship_json: string | null;
       work_item_id: string | null;
       work_item_title: string | null;
       project_name: string | null;
       created_at: string;
     }>;
 
-  return rows.flatMap((row) => [
-    activityEvent({
-      id: `ask-received:${row.id}`,
-      eventType: "ask_received",
-      eventLabel: "Ask Received",
-      summary: row.raw_request,
-      projectName: row.project_name,
-      askId: row.id,
-      workItemId: row.work_item_id,
-      workItemTitle: row.work_item_title,
-      occurredAt: row.created_at
-    }),
-    activityEvent({
-      id: `input-classified:${row.id}`,
-      eventType: "input_classified",
-      eventLabel: "Input Classified",
-      summary: `${row.resolved_intent} -> ${row.output_kind}`,
-      projectName: row.project_name,
-      askId: row.id,
-      workItemId: row.work_item_id,
-      workItemTitle: row.work_item_title,
-      occurredAt: row.created_at
-    })
-  ]);
+  return rows.flatMap((row) => {
+    const stewardship = parseStewardship(row.stewardship_json);
+    return [
+      activityEvent({
+        id: `ask-received:${row.id}`,
+        eventType: "ask_received",
+        eventLabel: "Ask Received",
+        summary: row.raw_request,
+        projectName: row.project_name,
+        askId: row.id,
+        workItemId: row.work_item_id,
+        workItemTitle: row.work_item_title,
+        occurredAt: row.created_at
+      }),
+      activityEvent({
+        id: `input-classified:${row.id}`,
+        eventType: "input_classified",
+        eventLabel: "Input Classified",
+        summary: stewardship
+          ? `${stewardship.intentType} -> ${stewardship.recommendedExecutionPath}: ${stewardship.classificationReason}`
+          : `${row.resolved_intent} -> ${row.output_kind}`,
+        projectName: row.project_name,
+        askId: row.id,
+        workItemId: row.work_item_id,
+        workItemTitle: row.work_item_title,
+        occurredAt: row.created_at
+      })
+    ];
+  });
 }
 
 function workActivityEvents(db: Database.Database): DashboardActivityEvent[] {
@@ -781,11 +792,13 @@ function codexPacketActivityEvents(db: Database.Database): DashboardActivityEven
         wi.title AS work_item_title,
         p.name AS project_name,
         a.id AS artifact_id,
+        ar.stewardship_json,
         ci.created_at
       FROM codex_invocations ci
       LEFT JOIN work_items wi ON wi.id = ci.work_item_id
       LEFT JOIN projects p ON p.id = wi.project_id
       LEFT JOIN artifacts a ON a.path = ci.prompt_path
+      LEFT JOIN ask_requests ar ON ar.prompt_packet_path = ci.prompt_path
       ORDER BY ci.created_at DESC
       LIMIT 30`
     )
@@ -799,13 +812,17 @@ function codexPacketActivityEvents(db: Database.Database): DashboardActivityEven
         work_item_title: string | null;
         project_name: string | null;
         artifact_id: string | null;
+        stewardship_json: string | null;
         created_at: string;
       };
+      const stewardship = parseStewardship(packet.stewardship_json);
       return activityEvent({
         id: `codex-packet-created:${packet.id}`,
         eventType: "codex_packet_created",
         eventLabel: "Codex Packet Created",
-        summary: `${labelStatus(packet.purpose)} packet: ${packet.prompt_path}`,
+        summary: stewardship?.generatedCodexGoalText
+          ? `${labelStatus(packet.purpose)} packet: ${stewardship.generatedCodexGoalText}`
+          : `${labelStatus(packet.purpose)} packet: ${packet.prompt_path}`,
         projectName: packet.project_name,
         workItemId: packet.work_item_id,
         workItemTitle: packet.work_item_title,
@@ -941,6 +958,37 @@ function backBurnerActivityEvents(db: Database.Database): DashboardActivityEvent
       occurredAt: row.created_at
     })
   );
+}
+
+function parseStewardship(raw: string | null): {
+  intentType: string;
+  recommendedExecutionPath: string;
+  classificationReason: string;
+  generatedCodexGoalText: string | null;
+} | null {
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (
+      typeof parsed.intentType !== "string" ||
+      typeof parsed.recommendedExecutionPath !== "string" ||
+      typeof parsed.classificationReason !== "string"
+    ) {
+      return null;
+    }
+
+    return {
+      intentType: parsed.intentType,
+      recommendedExecutionPath: parsed.recommendedExecutionPath,
+      classificationReason: parsed.classificationReason,
+      generatedCodexGoalText: typeof parsed.generatedCodexGoalText === "string" ? parsed.generatedCodexGoalText : null
+    };
+  } catch {
+    return null;
+  }
 }
 
 function activityEvent(input: Partial<DashboardActivityEvent> & {

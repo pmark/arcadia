@@ -1136,6 +1136,7 @@ export function createAskRequest(db: Database.Database, input: CreateAskRequestI
     resolved_intent: required(input.resolvedIntent, "Resolved intent"),
     registry_version: input.registryVersion,
     output_kind: required(input.outputKind, "Output kind"),
+    stewardship_json: nullable(input.stewardshipJson),
     work_item_id: input.workItemId ?? null,
     plan_id: input.planId ?? null,
     prompt_packet_path: nullable(input.promptPacketPath),
@@ -1146,10 +1147,10 @@ export function createAskRequest(db: Database.Database, input: CreateAskRequestI
 
   db.prepare(
     `INSERT INTO ask_requests (
-      id, raw_request, resolved_intent, registry_version, output_kind, work_item_id,
+      id, raw_request, resolved_intent, registry_version, output_kind, stewardship_json, work_item_id,
       plan_id, prompt_packet_path, status, created_at, updated_at
     ) VALUES (
-      @id, @raw_request, @resolved_intent, @registry_version, @output_kind, @work_item_id,
+      @id, @raw_request, @resolved_intent, @registry_version, @output_kind, @stewardship_json, @work_item_id,
       @plan_id, @prompt_packet_path, @status, @created_at, @updated_at
     )`
   ).run(askRequest);

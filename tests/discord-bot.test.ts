@@ -490,8 +490,9 @@ describe("discord bot end-to-end fixture", () => {
       text: "Prepare a weekly Martian Rover Labs update from recent mission logs.",
       runSafe: true
     });
-    expect(extractBacktickedValue(weeklyReply, "Back Burner")).toMatch(/^bb_/);
-    expect(weeklyReply).toContain("Result: Captured in Back Burner.");
+    expect(extractBacktickedValue(weeklyReply, "Requires Review")).toMatch(/^review_/);
+    expect(weeklyReply).toContain("Stewardship: Project Work -> Clarify First");
+    expect(weeklyReply).toContain("Result: Requires Review item created.");
 
     const submissions = await loadDiscordSubmissionState(discordSubmissionStatePath(workspace));
     expect(submissions.submittedRunIds).toEqual([]);
@@ -516,8 +517,8 @@ describe("discord bot end-to-end fixture", () => {
       notifiedCodexTaskEvents: []
     }, "2026-06-10T12:05:00.000Z", submissions);
 
-    expect(evaluation.messages.map((message) => message.key).some((key) => key.startsWith("requires-review:"))).toBe(false);
-    expect(evaluation.messages.map((message) => message.content).join("\n")).not.toContain("Reply with A, B, C");
+    expect(evaluation.messages.map((message) => message.key).some((key) => key.startsWith("requires-review:"))).toBe(true);
+    expect(evaluation.messages.map((message) => message.content).join("\n")).toContain("Reply with A, B, C");
   });
 });
 

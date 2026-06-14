@@ -161,6 +161,7 @@ CREATE TABLE IF NOT EXISTS ask_requests (
   resolved_intent TEXT NOT NULL,
   registry_version INTEGER NOT NULL,
   output_kind TEXT NOT NULL,
+  stewardship_json TEXT,
   work_item_id TEXT,
   plan_id TEXT,
   prompt_packet_path TEXT,
@@ -339,4 +340,4 @@ CREATE INDEX IF NOT EXISTS idx_codex_tasks_source_task ON codex_tasks(source, so
 CREATE INDEX IF NOT EXISTS idx_codex_tasks_status ON codex_tasks(status);
 CREATE INDEX IF NOT EXISTS idx_codex_tasks_project_id ON codex_tasks(project_id);
 
-PRAGMA user_version = 5;
+PRAGMA user_version = 6;

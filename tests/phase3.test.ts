@@ -281,6 +281,99 @@ describe("arcadia ask command", () => {
     expect(item?.status).toBe("incubating");
   });
 
+  it("stewards direct project work, planning, vague ideas, clarification, and goal refinement", () => {
+    const workspace = initializedWorkspace();
+    const project = withDatabase(workspace, (db) => {
+      const created = createProjectWithInitialWork(db, {
+        name: "Rebuster",
+        mission: "Help users turn product evidence into better shipping decisions.",
+        goal: "Ship Pinterest publishing support.",
+        status: "active",
+        currentMilestone: "Pinterest publishing support",
+        nextAction: "Define Pinterest support boundaries.",
+        workClassification: "codex"
+      });
+      upsertProjectMetadata(db, {
+        projectId: created.project.id,
+        aliases: ["Rebuster"],
+        repoPath: "/Users/pmark/Dev/MR/Rebuster/rebuster",
+        validationCommands: ["pnpm test"]
+      });
+      return created;
+    });
+
+    const direct = runAskCommand({
+      workspace,
+      request: "Set current milestone for Rebuster to Pinterest automation."
+    });
+    expect(direct.data.stewardship.intentType).toBe("Project Work");
+    expect(direct.data.stewardship.recommendedExecutionPath).toBe("Execute Directly");
+    expect(direct.data.stewardship.planningRecommended).toBe(false);
+    expect(direct.data.result.status).toBe("acted");
+
+    const plan = runAskCommand({
+      workspace,
+      request: "Plan the Pinterest publishing rollout for Rebuster."
+    });
+    expect(plan.data.stewardship.intentType).toBe("Planning Request");
+    expect(plan.data.stewardship.recommendedExecutionPath).toBe("Plan First");
+    expect(plan.data.stewardship.relatedProject?.name).toBe("Rebuster");
+    expect(plan.data.workItem?.project_id).toBe(project.project.id);
+    expect(plan.data.plan?.steps[0].skill_name).toBe("codex_planning");
+    expect(plan.data.codexInvocations[0].purpose).toBe("planning");
+    expect(plan.data.stewardship.generatedCodexGoalText).toContain("Create a practical plan");
+
+    const prompt = readFileSync(path.join(workspace, plan.data.codexInvocations[0].prompt_path), "utf8");
+    expect(prompt).toContain("## Goal");
+    expect(prompt).toContain("## Why This Matters");
+    expect(prompt).toContain("## Current Milestone");
+    expect(prompt).toContain("## Repository / Path Context");
+    expect(prompt).toContain("## Constraints");
+    expect(prompt).toContain("## Acceptance Criteria");
+    expect(prompt).toContain("## Approval Boundaries");
+    expect(prompt).toContain("## Expected Artifact");
+    expect(prompt).toContain("## Execution Instruction");
+    expect(prompt).toContain("Plan first.");
+    expect(prompt).toContain("## Operator Context");
+
+    const vague = runAskCommand({
+      workspace,
+      request: "Maybe creator partnerships could help Rebuster someday."
+    });
+    expect(vague.data.stewardship.intentType).toBe("Back Burner Idea");
+    expect(vague.data.stewardship.recommendedExecutionPath).toBe("Back Burner");
+    expect(vague.data.result.status).toBe("captured");
+    expect(vague.data.backBurnerItemId).toMatch(/^bb_/);
+
+    const clarify = runAskCommand({
+      workspace,
+      request: "Build Pinterest support."
+    });
+    expect(clarify.data.stewardship.intentType).toBe("Project Work");
+    expect(clarify.data.stewardship.recommendedExecutionPath).toBe("Clarify First");
+    expect(clarify.data.stewardship.clarificationRequired).toBe(true);
+    expect(clarify.data.result.status).toBe("requires_review");
+    expect(clarify.data.reviewItemId).toMatch(/^review_/);
+
+    const goal = runAskCommand({
+      workspace,
+      request: "Set goal for Rebuster to Ship creator partnership experiments."
+    });
+    expect(goal.data.stewardship.intentType).toBe("Goal Refinement");
+    expect(goal.data.stewardship.relatedProject?.name).toBe("Rebuster");
+    expect(goal.data.stewardship.relatedGoal).toBe("Ship Pinterest publishing support.");
+    expect(goal.data.project?.goal).toBe("Ship creator partnership experiments");
+
+    const storedStewardship = withDatabase(workspace, (db) =>
+      db.prepare("SELECT stewardship_json FROM ask_requests WHERE id = ?").get(plan.data.ask?.id) as { stewardship_json: string }
+    );
+    expect(JSON.parse(storedStewardship.stewardship_json)).toMatchObject({
+      intentType: "Planning Request",
+      recommendedExecutionPath: "Plan First",
+      generatedCodexGoalText: plan.data.stewardship.generatedCodexGoalText
+    });
+  });
+
   it("approves a Requires Review item by replaying the intended ask workflow", () => {
     const workspace = initializedWorkspace();
 

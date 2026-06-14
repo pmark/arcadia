@@ -1,12 +1,13 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { CodexInvocationPurpose } from "../domain/constants.js";
 import type { ProjectContext, WorkItemSummary } from "../domain/types.js";
 import type { CodingAgentProfile, TemplateDefinition } from "../intent/registries.js";
 import type { ResolvedIntent } from "../intent/resolver.js";
+import type { GoalStewardshipResult } from "../stewardship/index.js";
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
-import { toWorkspaceRelativePath } from "../workspace/paths.js";
+import { getWorkspacePaths, toWorkspaceRelativePath } from "../workspace/paths.js";
 
 export interface CodexPacket {
   invocationId: string;
@@ -31,6 +32,7 @@ export function createCodexPacket(input: {
   planId: string;
   projectContext: ProjectContext | null;
   agentProfile: CodingAgentProfile;
+  stewardship?: GoalStewardshipResult | null;
 }): CodexPacket {
   const invocationId = createId("codexInvocation");
   const packetDir = path.join(input.workspace, "prompts", "codex", invocationId);
@@ -75,6 +77,7 @@ export function createCodexPacket(input: {
           : null,
         resolvedIntent: input.resolved.intentId,
         outputKind: input.resolved.outputKind,
+        stewardship: input.stewardship ?? null,
         promptPath: toWorkspaceRelativePath(input.workspace, promptPath),
         jsonlOutputPath: toWorkspaceRelativePath(input.workspace, jsonlOutputPath),
         finalMessagePath: toWorkspaceRelativePath(input.workspace, finalMessagePath)
@@ -126,13 +129,16 @@ function buildCommand(profile: CodingAgentProfile, workspaceScope: string, final
 }
 
 function renderPrompt(input: {
+  workspace: string;
   request: string;
   resolved: ResolvedIntent;
   workItem: WorkItemSummary;
   planId: string;
   projectContext: ProjectContext | null;
   agentProfile: CodingAgentProfile;
+  stewardship?: GoalStewardshipResult | null;
 }): string {
+  const stewardship = input.stewardship ?? defaultStewardshipForPacket(input);
   const templates = input.resolved.templates.map(renderTemplate).join("\n\n") || "None";
   const gates = input.resolved.approvalGates
     .map((gate) => `- ${gate.gateType}: ${gate.reason}`)
@@ -141,12 +147,30 @@ function renderPrompt(input: {
     .map(([key, value]) => `- ${key}: ${value}`)
     .join("\n") || "None";
   const projectContext = renderProjectContext(input.projectContext, input.workItem);
+  const milestoneContext = renderCurrentMilestone(input.projectContext, input.workItem);
+  const pathContext = renderPathContext(input.projectContext, input.workspace);
+  const operatorContext = readOperatorContext(input.workspace);
   const validationGuidance = renderValidationGuidance(input.projectContext);
+  const executionInstruction = renderExecutionInstruction(input.agentProfile.purpose, stewardship);
 
   return `# Arcadia Codex ${input.agentProfile.purpose === "build" ? "Build" : "Planning"} Packet
 
-## Request
+## Goal
+${stewardship.generatedCodexGoalText ?? goalFromResolved(input)}
+
+## Why This Matters
+${whyThisMatters(stewardship, input.projectContext)}
+
+## Original Input
 ${input.request}
+
+## Stewardship Decision
+- Intent type: ${stewardship.intentType}
+- Execution path: ${stewardship.recommendedExecutionPath}
+- Planning recommended: ${stewardship.planningRecommended ? "yes" : "no"}
+- Clarification required: ${stewardship.clarificationRequired ? "yes" : "no"}
+- Review required: ${stewardship.reviewRequired ? "yes" : "no"}
+- Why: ${stewardship.classificationReason}
 
 ## Resolved Intent
 - Intent: ${input.resolved.intentId}
@@ -158,21 +182,43 @@ ${input.request}
 ## Target Project Context
 ${projectContext}
 
+## Current Milestone
+${milestoneContext}
+
+## Repository / Path Context
+${pathContext}
+
+## Operator Context
+${operatorContext}
+
 ## Slots
 ${slots}
 
 ## Templates
 ${templates}
 
+## Constraints
+- Preserve the existing architecture and local project conventions.
+- Prefer deterministic local scripts and existing tooling before adding new automation.
+- Keep the change scoped to the stated goal and expected artifact.
+- Use the selected repository or workspace scope only.
+
+## Acceptance Criteria
+${renderAcceptanceCriteria(input, stewardship)}
+
+## Approval Boundaries
+- Do not publish, deploy, merge, delete, spend money, use credentials, access production data, or send messages.
+- Treat approval gates as hard stops; credential access, publication, and social posting/messaging require explicit approval before use.
+- If a boundary is needed to complete the goal, stop and report the exact approval needed.
+
 ## Approval Gates
 ${gates}
 
-## Boundaries
-- Do not publish, deploy, merge, delete, spend money, use credentials, access production data, or send messages.
-- Treat approval gates as hard stops; credential access, publication, and social posting/messaging require explicit approval before use.
-- Keep all behavior explicit and inspectable.
-- If implementation is required, produce a clear plan or patch summary only after Mark approves Codex build execution.
-- Use the selected repository or workspace scope only.
+## Expected Artifact
+${input.resolved.expectedArtifact ?? input.workItem.expected_artifact ?? "Clear implementation or planning artifact"}
+
+## Execution Instruction
+${executionInstruction}
 
 ## Discovery And Validation
 - Start by inspecting the target repository/project context above.
@@ -211,6 +257,127 @@ function renderProjectContext(projectContext: ProjectContext | null, workItem: W
     `- Project status summary: ${metadata?.status_summary ?? "None"}`,
     `- Validation commands: ${validationCommands.length > 0 ? validationCommands.join(" && ") : "Use existing project validation scripts"}`
   ].join("\n");
+}
+
+function renderCurrentMilestone(projectContext: ProjectContext | null, workItem: WorkItemSummary): string {
+  if (projectContext?.activeMilestone) {
+    return [
+      `- Active milestone: ${projectContext.activeMilestone.title} (${projectContext.activeMilestone.id})`,
+      `- Work item milestone: ${workItem.milestone_title ?? "None"} (${workItem.milestone_id ?? "none"})`
+    ].join("\n");
+  }
+
+  return `- Current milestone: ${workItem.milestone_title ?? "Unknown"} (${workItem.milestone_id ?? "none"})`;
+}
+
+function renderPathContext(projectContext: ProjectContext | null, workspace: string): string {
+  const validationCommands = decodeStringArray(projectContext?.metadata?.validation_commands);
+  return [
+    `- Workspace: ${workspace}`,
+    `- Target repository/path: ${projectContext?.metadata?.repo_path ?? "Workspace scope"}`,
+    `- Validation commands: ${validationCommands.length > 0 ? validationCommands.join(" && ") : "Use existing project validation scripts"}`
+  ].join("\n");
+}
+
+function readOperatorContext(workspace: string): string {
+  const operatorContext = getWorkspacePaths(workspace).operatorContext;
+  if (existsSync(operatorContext)) {
+    return readFileSync(operatorContext, "utf8").trim();
+  }
+
+  return [
+    "- Stable value: maintain momentum across creative and software projects with low cognitive overhead.",
+    "- Execution preference: deterministic local scripts first, local automation second, Codex only for code changes or reviewable plans.",
+    "- Approval boundaries: do not publish, deploy, merge, delete, spend money, use credentials, access production data, or send messages without explicit approval.",
+    "- Reporting preference: identify current milestone, next action, work classification, and required artifact."
+  ].join("\n");
+}
+
+function renderAcceptanceCriteria(input: {
+  resolved: ResolvedIntent;
+  workItem: WorkItemSummary;
+  projectContext: ProjectContext | null;
+  agentProfile: CodingAgentProfile;
+}, stewardship: GoalStewardshipResult): string {
+  const artifact = input.resolved.expectedArtifact ?? input.workItem.expected_artifact ?? "requested artifact";
+  const project = input.projectContext?.project.name ?? input.workItem.project_name ?? "the selected project";
+  const criteria = [
+    `- Deliver the expected artifact: ${artifact}.`,
+    `- Keep the work aligned with ${project}${input.projectContext?.project.goal ? ` goal: ${input.projectContext.project.goal}` : ""}.`,
+    "- Preserve existing behavior outside the requested scope.",
+    "- Run relevant local validation or explain why validation could not run."
+  ];
+
+  if (stewardship.planningRecommended || input.agentProfile.purpose === "planning") {
+    criteria.push("- Produce a concrete plan with ordered steps, risks, open questions, and recommended next action before implementation.");
+  } else {
+    criteria.push("- Execute directly within the approval boundaries and report changed files plus validation results.");
+  }
+
+  return criteria.join("\n");
+}
+
+function renderExecutionInstruction(
+  purpose: CodexInvocationPurpose,
+  stewardship: GoalStewardshipResult
+): string {
+  if (stewardship.planningRecommended || purpose === "planning") {
+    return "Plan first. Do not make implementation changes until the plan, risks, approval boundaries, and expected artifact are clear.";
+  }
+
+  return "Execute directly after local inspection. Stay inside the approval boundaries and stop if the work requires a blocked action.";
+}
+
+function whyThisMatters(stewardship: GoalStewardshipResult, projectContext: ProjectContext | null): string {
+  if (projectContext?.project.goal) {
+    return `This advances ${projectContext.project.name} toward its goal: ${projectContext.project.goal}.`;
+  }
+
+  if (stewardship.relatedProject && stewardship.relatedGoal) {
+    return `This advances ${stewardship.relatedProject.name} toward its goal: ${stewardship.relatedGoal}.`;
+  }
+
+  return "This turns the operator's input into visible progress while preserving local-first, reviewable execution.";
+}
+
+function goalFromResolved(input: {
+  resolved: ResolvedIntent;
+  workItem: WorkItemSummary;
+  projectContext: ProjectContext | null;
+}): string {
+  const project = input.projectContext?.project.name ?? input.workItem.project_name ?? "the selected project";
+  return `${input.resolved.title} for ${project}.`;
+}
+
+function defaultStewardshipForPacket(input: {
+  request: string;
+  resolved: ResolvedIntent;
+  workItem: WorkItemSummary;
+  projectContext: ProjectContext | null;
+  agentProfile: CodingAgentProfile;
+}): GoalStewardshipResult {
+  const planning = input.agentProfile.purpose === "planning";
+  const relatedProject = input.projectContext
+    ? { id: input.projectContext.project.id, name: input.projectContext.project.name }
+    : input.workItem.project_id && input.workItem.project_name
+      ? { id: input.workItem.project_id, name: input.workItem.project_name }
+      : null;
+
+  return {
+    originalInput: input.request,
+    interpretedIntent: input.resolved.nextAction,
+    intentType: planning ? "Planning Request" : "Project Work",
+    relatedProject,
+    relatedGoal: input.projectContext?.project.goal ?? null,
+    recommendedExecutionPath: planning ? "Plan First" : "Execute Directly",
+    planningRecommended: planning,
+    clarificationRequired: false,
+    reviewRequired: false,
+    generatedCodexGoalText: input.resolved.expectedArtifact
+      ? `${planning ? "Plan" : "Complete"} ${input.resolved.title} and produce ${input.resolved.expectedArtifact}.`
+      : `${planning ? "Plan" : "Complete"} ${input.resolved.title}.`,
+    classificationReason: "Generated from an existing execution plan that requires a Codex packet."
+  };
 }
 
 function renderValidationGuidance(projectContext: ProjectContext | null): string {

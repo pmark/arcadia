@@ -130,6 +130,15 @@ export interface CodexInvocation {
 
 export interface AskData {
   ask: AskRequest | null;
+  stewardship?: {
+    intentType: string;
+    recommendedExecutionPath: string;
+    planningRecommended: boolean;
+    clarificationRequired: boolean;
+    reviewRequired: boolean;
+    generatedCodexGoalText: string | null;
+    classificationReason: string;
+  };
   intake?: {
     resolvedIntent: string;
     classification?: string;

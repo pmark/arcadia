@@ -34,6 +34,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureReviewItemSlugs(db);
   ensureReviewFeedbackTable(db);
   ensureBackBurnerItemsTable(db);
+  ensureAskRequestStewardshipColumn(db);
 }
 
 function ensureProjectSlugColumn(db: Database.Database): void {
@@ -169,6 +170,13 @@ function ensureBackBurnerItemsTable(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_back_burner_items_status ON back_burner_items(status);
     CREATE INDEX IF NOT EXISTS idx_back_burner_items_created_at ON back_burner_items(created_at);
   `);
+}
+
+function ensureAskRequestStewardshipColumn(db: Database.Database): void {
+  const columns = db.prepare("PRAGMA table_info(ask_requests)").all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === "stewardship_json")) {
+    db.prepare("ALTER TABLE ask_requests ADD COLUMN stewardship_json TEXT").run();
+  }
 }
 
 function nextReviewSlugNumber(slugs: Set<string>): number {

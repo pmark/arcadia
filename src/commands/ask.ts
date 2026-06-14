@@ -49,6 +49,8 @@ import type { ResolvedIntent } from "../intent/resolver.js";
 import type { IntakeProjectAttribute, IntakeProjectContext, IntakeResult, IntakeWorkspaceContext } from "../intake/index.js";
 import { resolveIntake } from "../intake/index.js";
 import { parseReviewResponse } from "../review/responseParser.js";
+import type { GoalStewardshipResult } from "../stewardship/index.js";
+import { isPlanningOrResearchStewardship, stewardIntent } from "../stewardship/index.js";
 import type { ReviewRequiredCommandData } from "./review.js";
 import { runReviewRequiredCommand, runReviewResolveReplyCommand } from "./review.js";
 import type { StatusCommandData } from "./status.js";
@@ -72,6 +74,7 @@ export interface AskOptions {
 
 export interface AskCommandData {
   ask: AskRequestSummary | null;
+  stewardship: GoalStewardshipResult;
   intake: IntakeResult;
   resolvedIntent: ResolvedIntent;
   result: {
@@ -104,11 +107,38 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
 
   const registries = loadPhase3Registries(workspacePath);
   validatePhase3Registries(registries);
-  const intake = withDatabase(workspacePath, (db) => resolveIntake(options.request, buildIntakeContext(db)));
   const approvedFromReview = Boolean(options.approvedReviewItemId);
-  const resolved = resolvedIntentFromIntake(intake, approvedFromReview);
-  let run: ExecutionRunSummary | null = null;
   const parsedReviewResponse = parseReviewResponse(options.request, reviewResponseContextFromAskOptions(options));
+  const { intake, workspaceContext } = withDatabase(workspacePath, (db) => {
+    const workspaceContext = buildIntakeContext(db);
+    return {
+      intake: resolveIntake(options.request, workspaceContext),
+      workspaceContext
+    };
+  });
+  const resolved = resolvedIntentForStewardship(
+    intake,
+    stewardIntent({
+      rawInput: options.request,
+      intake,
+      resolved: resolvedIntentFromIntake(intake, approvedFromReview),
+      workspaceContext,
+      approvedFromReview,
+      reviewResponseHasReference: parsedReviewResponse.hasReviewReference,
+      reviewResponseHasResponse: parsedReviewResponse.hasResponse
+    }),
+    approvedFromReview
+  );
+  const stewardship = stewardIntent({
+    rawInput: options.request,
+    intake,
+    resolved,
+    workspaceContext,
+    approvedFromReview,
+    reviewResponseHasReference: parsedReviewResponse.hasReviewReference,
+    reviewResponseHasResponse: parsedReviewResponse.hasResponse
+  });
+  let run: ExecutionRunSummary | null = null;
 
   if (parsedReviewResponse.hasResponse && parsedReviewResponse.hasReviewReference) {
     const reviewResolution = runReviewResolveReplyCommand({
@@ -122,6 +152,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         resolvedIntent: "ReviewResponse",
         registryVersion: registries.intents.version,
         outputKind: "review_response",
+        stewardshipJson: stewardshipJson(stewardship),
         status: "planned"
       })
     );
@@ -131,6 +162,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       workspace: workspacePath,
       data: {
         ask,
+        stewardship,
         intake,
         resolvedIntent: {
           ...resolved,
@@ -167,6 +199,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         resolvedIntent: resolved.intentId,
         registryVersion: registries.intents.version,
         outputKind: resolved.outputKind,
+        stewardshipJson: stewardshipJson(stewardship),
         status: "planned"
       })
     );
@@ -175,6 +208,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       workspace: workspacePath,
       data: {
         ask,
+        stewardship,
         intake,
         resolvedIntent: resolved,
         result: {
@@ -206,6 +240,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         resolvedIntent: resolved.intentId,
         registryVersion: registries.intents.version,
         outputKind: resolved.outputKind,
+        stewardshipJson: stewardshipJson(stewardship),
         status: "planned"
       })
     );
@@ -214,6 +249,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       workspace: workspacePath,
       data: {
         ask,
+        stewardship,
         intake,
         resolvedIntent: resolved,
         result: {
@@ -251,6 +287,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         resolvedIntent: resolved.intentId,
         registryVersion: registries.intents.version,
         outputKind: resolved.outputKind,
+        stewardshipJson: stewardshipJson(stewardship),
         status: "planned"
       })
     );
@@ -264,6 +301,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       workspace: workspacePath,
       data: {
         ask,
+        stewardship,
         intake,
         resolvedIntent: resolved,
         result: {
@@ -305,6 +343,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         resolvedIntent: resolved.intentId,
         registryVersion: registries.intents.version,
         outputKind: resolved.outputKind,
+        stewardshipJson: stewardshipJson(stewardship),
         status: "planned"
       });
       return { ask, project };
@@ -313,6 +352,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     return actedProjectUpdate({
       workspacePath,
       ask,
+      stewardship,
       intake,
       resolved,
       project,
@@ -337,6 +377,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         resolvedIntent: resolved.intentId,
         registryVersion: registries.intents.version,
         outputKind: resolved.outputKind,
+        stewardshipJson: stewardshipJson(stewardship),
         status: "planned"
       });
       return { ask, projectSummary };
@@ -347,6 +388,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       workspace: workspacePath,
       data: {
         ask,
+        stewardship,
         intake,
         resolvedIntent: resolved,
         result: { status: "acted", summary: `Shown project ${projectSummary.name}.` },
@@ -373,6 +415,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         resolvedIntent: resolved.intentId,
         registryVersion: registries.intents.version,
         outputKind: resolved.outputKind,
+        stewardshipJson: stewardshipJson(stewardship),
         status: "planned"
       });
       return { ask, projects: listProjectSummaries(db) };
@@ -383,6 +426,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       workspace: workspacePath,
       data: {
         ask,
+        stewardship,
         intake,
         resolvedIntent: resolved,
         result: { status: "acted", summary: "Projects listed." },
@@ -402,13 +446,14 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     });
   }
 
-  if (shouldCaptureInBackBurner(intake) && !options.approvedReviewItemId) {
+  if (stewardship.recommendedExecutionPath === "Back Burner" && !options.approvedReviewItemId) {
     const { ask, backBurnerItem } = withDatabase(workspacePath, (db) => {
       const ask = createAskRequest(db, {
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
         registryVersion: registries.intents.version,
         outputKind: "back_burner",
+        stewardshipJson: stewardshipJson(stewardship),
         status: "planned"
       });
       const backBurnerItem = createBackBurnerItem(db, {
@@ -416,7 +461,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         ingressSource: options.sourceIngress ?? "cli.ask",
         classification: intake.classification,
         confidence: intake.confidence,
-        reason: intake.classificationReason || intake.explanation,
+        reason: stewardship.classificationReason || intake.classificationReason || intake.explanation,
         status: intake.classification === "Idea" ? "opportunistic" : "incubating",
         suggestedNextStep: intake.suggestedNextStep
       });
@@ -428,6 +473,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       workspace: workspacePath,
       data: {
         ask,
+        stewardship,
         intake,
         resolvedIntent: resolved,
         result: {
@@ -450,20 +496,25 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     });
   }
 
-  if (intake.reviewRequired && !options.approvedReviewItemId) {
+  if (
+    (stewardship.recommendedExecutionPath === "Clarify First" ||
+      stewardship.recommendedExecutionPath === "Requires Review") &&
+    !options.approvedReviewItemId
+  ) {
     const { ask, reviewItem } = withDatabase(workspacePath, (db) => {
       const ask = createAskRequest(db, {
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
         registryVersion: registries.intents.version,
         outputKind: "requires_review",
+        stewardshipJson: stewardshipJson(stewardship),
         status: "needs_mark"
       });
       const reviewItem = createReviewItem(db, {
         askRequestId: ask.id,
         projectId: projectIdFromIntake(intake) ?? intake.project?.id ?? null,
-        decisionNeeded: decisionNeededForIntake(intake),
-        recommendation: recommendationForIntake(intake),
+        decisionNeeded: decisionNeededForStewardship(intake, stewardship),
+        recommendation: recommendationForStewardship(intake, stewardship),
         sourceInput: intake.rawInput,
         proposedAction: intake.proposedAction,
         resolvedIntent: intake.resolvedIntent,
@@ -475,7 +526,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
           explanation: intake.explanation,
           action: intake.action,
           project: intake.project,
-          template: intake.template
+          template: intake.template,
+          stewardship
         }
       });
       return { ask, reviewItem };
@@ -486,6 +538,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       workspace: workspacePath,
       data: {
         ask,
+        stewardship,
         intake,
         resolvedIntent: resolved,
         result: {
@@ -512,7 +565,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     ensureBuiltInSkills(db);
     const context = resolveAskContext(db, {
       ...options,
-      project: projectIdFromIntake(intake) ?? options.project
+      project: projectIdFromIntake(intake) ?? intake.project?.id ?? options.project
     });
     const created = createWorkItemWithOptionalArtifact(db, {
       projectId: context.projectId,
@@ -558,7 +611,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         workItem: initial.workItem,
         planId: initial.plan.id,
         projectContext: initial.projectContext,
-        agentProfile: selectAgentProfile(registries.codingAgents.profiles, resolved.codexPurpose)
+        agentProfile: selectAgentProfile(registries.codingAgents.profiles, resolved.codexPurpose),
+        stewardship
       })
     : null;
 
@@ -595,6 +649,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       workItemId: initial.workItem.id,
       planId: initial.plan.id,
       promptPacketPath: codexPacket?.relativePromptPath ?? null,
+      stewardshipJson: stewardshipJson(stewardship),
       status: resolved.workClassification === "needs_mark" ? "needs_mark" : "planned"
     });
 
@@ -617,6 +672,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     workspace: workspacePath,
     data: {
       ask: data.ask,
+      stewardship,
       intake,
       resolvedIntent: resolved,
       result: {
@@ -654,6 +710,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
 function actedProjectUpdate(input: {
   workspacePath: string;
   ask: AskRequestSummary;
+  stewardship: GoalStewardshipResult;
   intake: IntakeResult;
   resolved: ResolvedIntent;
   project: Project;
@@ -664,6 +721,7 @@ function actedProjectUpdate(input: {
     workspace: input.workspacePath,
     data: {
       ask: input.ask,
+      stewardship: input.stewardship,
       intake: input.intake,
       resolvedIntent: input.resolved,
       result: {
@@ -779,6 +837,13 @@ function requireAttributeValue(action: UpdateEntityAttributeAction): string {
 
 export function renderAskSuccess(response: CommandSuccess<AskCommandData>): string[] {
   const lines = [
+    `Stewardship intent: ${response.data.stewardship.intentType}`,
+    `Execution path: ${response.data.stewardship.recommendedExecutionPath}`,
+    `Stewardship reason: ${response.data.stewardship.classificationReason}`,
+    `Planning recommended: ${response.data.stewardship.planningRecommended ? "yes" : "no"}`,
+    `Clarification required: ${response.data.stewardship.clarificationRequired ? "yes" : "no"}`,
+    `Review required: ${response.data.stewardship.reviewRequired ? "yes" : "no"}`,
+    `Codex goal: ${response.data.stewardship.generatedCodexGoalText ?? "None"}`,
     `Ask: ${response.data.ask?.id ?? "None"}`,
     `Interpreted as: ${response.data.intake.resolvedIntent}`,
     `Confidence: ${response.data.intake.confidenceLabel} (${response.data.intake.confidence.toFixed(2)})`,
@@ -841,6 +906,44 @@ export function buildIntakeContext(db: Parameters<typeof listProjects>[0]): Inta
   });
 
   return { projects };
+}
+
+function resolvedIntentForStewardship(
+  intake: IntakeResult,
+  stewardship: GoalStewardshipResult,
+  approvedFromReview = false
+): ResolvedIntent {
+  if (
+    isPlanningOrResearchStewardship(stewardship) &&
+    stewardship.recommendedExecutionPath === "Plan First"
+  ) {
+    return {
+      intentId: stewardship.intentType === "Research Request" ? "ResearchRequest" : "PlanningRequest",
+      matched: true,
+      title: titleFromRequest(intake.rawInput),
+      outputKind: "codex_planning_packet",
+      queue: "work_queue",
+      workClassification: "codex",
+      nextAction: "Review the Codex planning packet and use it to choose the next execution step.",
+      expectedArtifact: stewardship.intentType === "Research Request" ? "Research brief and recommendation" : "Goal stewardship plan",
+      skillSequence: [
+        {
+          skillName: "codex_planning",
+          title: stewardship.intentType === "Research Request" ? "Prepare research brief" : "Prepare goal stewardship plan",
+          command: null,
+          executorType: "codex_planning",
+          safeToRun: false,
+          needsMark: "Planning output should be reviewed before implementation."
+        }
+      ],
+      approvalGates: [],
+      templates: [],
+      slots: intake.extractedFields,
+      codexPurpose: "planning"
+    };
+  }
+
+  return resolvedIntentFromIntake(intake, approvedFromReview);
 }
 
 function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = false): ResolvedIntent {
@@ -969,7 +1072,24 @@ function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = fal
   };
 }
 
+function stewardshipJson(stewardship: GoalStewardshipResult): string {
+  return JSON.stringify(stewardship);
+}
+
 function ignoredAskData(rawRequest: string): AskCommandData {
+  const stewardship: GoalStewardshipResult = {
+    originalInput: rawRequest,
+    interpretedIntent: "Ignore empty input.",
+    intentType: "Back Burner Idea",
+    relatedProject: null,
+    relatedGoal: null,
+    recommendedExecutionPath: "Blocked",
+    planningRecommended: false,
+    clarificationRequired: false,
+    reviewRequired: false,
+    generatedCodexGoalText: null,
+    classificationReason: "Input was empty after trimming."
+  };
   const intake: IntakeResult = {
     rawInput: rawRequest,
     resolvedIntent: "CaptureThought",
@@ -994,6 +1114,7 @@ function ignoredAskData(rawRequest: string): AskCommandData {
 
   return {
     ask: null,
+    stewardship,
     intake,
     resolvedIntent: {
       intentId: "CaptureThought",
@@ -1040,6 +1161,22 @@ function metadataString(metadata: Record<string, unknown> | undefined, key: stri
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function decisionNeededForStewardship(intake: IntakeResult, stewardship: GoalStewardshipResult): string {
+  if (stewardship.recommendedExecutionPath === "Clarify First") {
+    if (intake.resolvedIntent === "UpdateEntityAttribute") {
+      return decisionNeededForIntake(intake);
+    }
+
+    return `Clarify before execution: ${stewardship.classificationReason}`;
+  }
+
+  if (stewardship.recommendedExecutionPath === "Requires Review") {
+    return `Approve or reject the stewarded path: ${stewardship.interpretedIntent}`;
+  }
+
+  return decisionNeededForIntake(intake);
+}
+
 function decisionNeededForIntake(intake: IntakeResult): string {
   if (intake.missingFields.length > 0) {
     if (intake.missingFields.includes("project")) {
@@ -1068,29 +1205,16 @@ function decisionNeededForIntake(intake: IntakeResult): string {
   return reviewNextAction(intake);
 }
 
-function shouldCaptureInBackBurner(intake: IntakeResult): boolean {
-  if (intake.action.kind === "capture_thought") {
-    return true;
+function recommendationForStewardship(intake: IntakeResult, stewardship: GoalStewardshipResult): string {
+  if (stewardship.recommendedExecutionPath === "Clarify First") {
+    return "Clarify the missing target or outcome, then approve only if the stewarded intent is correct.";
   }
 
-  if (["ArcadiaFeedback", "BugReport", "Idea", "Question", "IncubatingThought"].includes(intake.classification)) {
-    return !hasConcreteReviewDecision(intake);
+  if (stewardship.planningRecommended) {
+    return "Plan first, then approve implementation only after scope, risks, and approval boundaries are clear.";
   }
 
-  return false;
-}
-
-function hasConcreteReviewDecision(intake: IntakeResult): boolean {
-  if (!intake.reviewRequired) {
-    return false;
-  }
-
-  const concreteMissingFields = new Set(["project", "attribute", "attributeValue", "template", "projectName"]);
-  if (intake.missingFields.some((field) => concreteMissingFields.has(field))) {
-    return true;
-  }
-
-  return !intake.safeToExecute && intake.action.kind !== "capture_thought";
+  return recommendationForIntake(intake);
 }
 
 function renderResolvedAttribute(intake: IntakeResult): string {
