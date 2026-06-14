@@ -5,7 +5,9 @@ import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import {
   renderArtifactListSuccess,
+  renderArtifactValidatePlanningSuccess,
   renderArtifactUpdateSuccess,
+  runArtifactValidatePlanningCommand,
   runArtifactListCommand,
   runArtifactUpdateCommand
 } from "./commands/artifact.js";
@@ -720,6 +722,25 @@ export function buildProgram(): Command {
       renderArtifactUpdateSuccess
     )
   );
+  addJsonOption(
+    artifact
+      .command("validate-planning")
+      .description("Validate a Codex planning artifact against its originating packet")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .requiredOption("--packet <path>", "Originating Codex planning packet path")
+      .requiredOption("--artifact <path>", "Codex-produced planning artifact path")
+  ).action((options: { workspace: string; packet: string; artifact: string; json?: boolean }) =>
+    runCliAction(
+      "artifact.validate-planning",
+      options,
+      () => runArtifactValidatePlanningCommand({
+        workspace: options.workspace,
+        packetPath: options.packet,
+        artifactPath: options.artifact
+      }),
+      renderArtifactValidatePlanningSuccess
+    )
+  );
 
   const work = program.command("work").description("Work item commands");
   addJsonOption(
@@ -1079,7 +1100,7 @@ function commandNameFromArgv(argv: string[]): string {
     return `milestone.${second}`;
   }
 
-  if (first === "artifact" && ["list", "update"].includes(second ?? "")) {
+  if (first === "artifact" && ["list", "update", "validate-planning"].includes(second ?? "")) {
     return `artifact.${second}`;
   }
 

@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { artifactNotFound, validationError } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
@@ -5,6 +7,10 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import { listArtifacts, updateArtifact } from "../db/repositories.js";
 import type { ArtifactSummary } from "../domain/types.js";
+import {
+  validatePlanningArtifact,
+  type PlanningArtifactValidationResult
+} from "../stewardship/artifactValidator.js";
 
 export interface ArtifactListCommandData {
   artifacts: ArtifactSummary[];
@@ -13,6 +19,12 @@ export interface ArtifactListCommandData {
 export interface ArtifactUpdateCommandData {
   artifact: ArtifactSummary;
   updated: string[];
+}
+
+export interface ArtifactValidatePlanningCommandData {
+  packetPath: string;
+  artifactPath: string;
+  validation: PlanningArtifactValidationResult;
 }
 
 export function runArtifactListCommand(options: { workspace: string }): CommandSuccess<ArtifactListCommandData> {
@@ -57,6 +69,30 @@ export function runArtifactUpdateCommand(options: {
   });
 }
 
+export function runArtifactValidatePlanningCommand(options: {
+  workspace: string;
+  packetPath: string;
+  artifactPath: string;
+}): CommandSuccess<ArtifactValidatePlanningCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const packetPath = resolveArtifactInputPath(workspacePath, options.packetPath);
+  const artifactPath = resolveArtifactInputPath(workspacePath, options.artifactPath);
+  const packetText = readExistingUtf8File(packetPath, "Packet");
+  const artifactText = readExistingUtf8File(artifactPath, "Planning artifact");
+  const validation = validatePlanningArtifact({ packetText, artifactText });
+
+  return createSuccess({
+    command: "artifact.validate-planning",
+    workspace: workspacePath,
+    data: {
+      packetPath,
+      artifactPath,
+      validation
+    },
+    warnings: validation.warnings.map((warning) => `${warning.code}: ${warning.message}`)
+  });
+}
+
 export function renderArtifactListSuccess(response: CommandSuccess<ArtifactListCommandData>): string[] {
   if (response.data.artifacts.length === 0) {
     return ["No artifacts yet."];
@@ -73,6 +109,30 @@ export function renderArtifactUpdateSuccess(response: CommandSuccess<ArtifactUpd
     `Status: ${response.data.artifact.status}`,
     `Path: ${response.data.artifact.path ?? "None"}`
   ];
+}
+
+export function renderArtifactValidatePlanningSuccess(
+  response: CommandSuccess<ArtifactValidatePlanningCommandData>
+): string[] {
+  const result = response.data.validation;
+  const lines = [
+    "Planning artifact validation",
+    `Result: ${result.passed ? "PASS" : "FAIL"}`,
+    `Score: ${result.score}`,
+    `Packet: ${response.data.packetPath}`,
+    `Artifact: ${response.data.artifactPath}`,
+    `Failures: ${result.failures.length}`,
+    `Warnings: ${result.warnings.length}`
+  ];
+
+  for (const failure of result.failures) {
+    lines.push(`- FAIL ${failure.code}: ${failure.message}`);
+  }
+  for (const warning of result.warnings) {
+    lines.push(`- WARN ${warning.code}: ${warning.message}`);
+  }
+
+  return lines;
 }
 
 const updateableFields = ["status", "path"] as const;
@@ -102,4 +162,16 @@ function renderArtifact(artifact: ArtifactSummary): string[] {
     `  Status: ${artifact.status}`,
     `  Path: ${artifact.path ?? "None"}`
   ];
+}
+
+function resolveArtifactInputPath(workspacePath: string, inputPath: string): string {
+  return path.isAbsolute(inputPath) ? inputPath : path.join(workspacePath, inputPath);
+}
+
+function readExistingUtf8File(filePath: string, label: string): string {
+  if (!existsSync(filePath)) {
+    throw validationError(`${label} file does not exist.`, { path: filePath });
+  }
+
+  return readFileSync(filePath, "utf8");
 }

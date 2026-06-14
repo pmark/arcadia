@@ -377,7 +377,7 @@ function renderAcceptanceCriteria(input: {
     "- Run relevant local validation or explain why validation could not run."
   ];
 
-  if (stewardship.planningRecommended || input.agentProfile.purpose === "planning") {
+  if (stewardship.planningRecommended) {
     criteria.push("- Produce a concrete plan with ordered steps, risks, open questions, and recommended next action before implementation.");
   } else {
     criteria.push("- Execute directly within the approval boundaries and report changed files plus validation results.");
