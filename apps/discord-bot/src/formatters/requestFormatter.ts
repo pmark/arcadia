@@ -16,8 +16,12 @@ export function formatRequest(data: AskData): string {
     data.workItem ? "**Arcadia request created**" : "**Arcadia ask handled**",
     `Ask: \`${data.ask?.id ?? "None"}\``,
     `Stewardship: ${data.stewardship ? `${data.stewardship.intentType} -> ${data.stewardship.recommendedExecutionPath}` : "Unavailable"}`,
+    `Stewardship reason: ${data.stewardship?.classificationReason ?? "Unavailable"}`,
     `Interpreted as: ${data.intake?.resolvedIntent ?? data.resolvedIntent.intentId}`,
-    `Result: ${data.result?.summary ?? labelStatus(data.ask?.status ?? "ignored")}`
+    `Result: ${data.result?.summary ?? labelStatus(data.ask?.status ?? "ignored")}`,
+    `Project: ${data.workItem?.project_name ?? data.project?.name ?? data.projectSummary?.name ?? data.intake?.project?.name ?? "Unresolved"}`,
+    `Next action: ${data.workItem?.next_action ?? data.intake?.suggestedNextStep ?? data.resolvedIntent.nextAction ?? "Review the Arcadia response."}`,
+    `Expected artifact: ${data.workItem?.expected_artifact ?? data.resolvedIntent.expectedArtifact ?? "None"}`
   ];
 
   if (data.workItem) {

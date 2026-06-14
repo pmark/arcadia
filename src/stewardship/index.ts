@@ -187,7 +187,7 @@ function planningRecommendedForInput(
     return false;
   }
 
-  return /\b(?:architecture|architect|migration|redesign|roadmap|strategy|workflow|integration|publishing|posting|automation|release|multi[- ]step|end[- ]to[- ]end)\b/.test(normalized) ||
+  return /\b(?:architecture|architect|migration|redesign|roadmap|strategy|workflow|integration|publishing|posting|publish|automation|release|multi[- ]step|end[- ]to[- ]end)\b/.test(normalized) ||
     input.resolved.approvalGates.length > 1;
 }
 
@@ -225,6 +225,10 @@ function codexGoalTextForInput(input: StewardIntentInput & {
 
   if (input.intake.action.kind === "create_work") {
     return `${input.planningRecommended ? "Plan and implement" : "Implement"} ${input.intake.action.title} for ${project}${goal}.`;
+  }
+
+  if (input.intake.action.kind === "update_entity_attribute" && input.intake.action.attributeName && input.intake.action.value) {
+    return `Update ${project} ${input.intake.action.attributeName} to "${input.intake.action.value}".`;
   }
 
   return `Advance ${project} by completing: ${request}.`;
@@ -317,7 +321,7 @@ function commandShapedMissingTarget(normalized: string, intake: IntakeResult): b
     return false;
   }
 
-  return /^(?:please\s+)?(?:add|build|implement|prepare|fix|create|write|ship|update|change|set|plan|research|investigate)\b/.test(normalized);
+  return /^(?:please\s+)?(?:add|build|implement|prepare|fix|create|write|ship|update|change|set|plan|research|investigate|publish|keep|continue|work)\b/.test(normalized);
 }
 
 function normalize(value: string): string {

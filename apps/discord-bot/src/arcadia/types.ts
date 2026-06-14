@@ -105,6 +105,8 @@ export interface ResolvedIntent {
   matched: boolean;
   outputKind: string;
   workClassification: string;
+  nextAction?: string;
+  expectedArtifact?: string | null;
 }
 
 export interface ExecutionPlan {
@@ -146,6 +148,10 @@ export interface AskData {
     confidenceLabel: string;
     proposedAction: string;
     suggestedNextStep?: string | null;
+    project?: {
+      id: string;
+      name: string;
+    } | null;
   };
   resolvedIntent: ResolvedIntent;
   result?: {
@@ -153,6 +159,14 @@ export interface AskData {
     summary: string;
   };
   workItem: WorkItem | null;
+  project?: {
+    id: string;
+    name: string;
+  } | null;
+  projectSummary?: {
+    id: string;
+    name: string;
+  } | null;
   plan: ExecutionPlan | null;
   approvalGates: ApprovalGate[];
   codexInvocations: CodexInvocation[];

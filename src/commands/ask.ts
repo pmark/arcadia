@@ -905,7 +905,14 @@ export function buildIntakeContext(db: Parameters<typeof listProjects>[0]): Inta
     };
   });
 
-  return { projects };
+  const recentActivity = listWorkItems(db).slice(0, 20).map((item) => ({
+    id: item.id,
+    projectId: item.project_id,
+    projectName: item.project_name,
+    title: item.title
+  }));
+
+  return { projects, recentActivity };
 }
 
 function resolvedIntentForStewardship(
@@ -956,7 +963,9 @@ function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = fal
       queue: "needs_mark",
       workClassification: "needs_mark",
       nextAction: reviewNextAction(intake),
-      expectedArtifact: "Clarified Arcadia request",
+      expectedArtifact: intake.action.kind === "create_work"
+        ? expectedArtifactForCreateWork(intake)
+        : "Clarified Arcadia request",
       skillSequence: [
         {
           skillName: "needs_mark_decision",
@@ -1034,7 +1043,7 @@ function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = fal
       queue: "work_queue",
       workClassification: intake.action.workClassification,
       nextAction: `Review the Codex build packet for: ${intake.action.title}.`,
-      expectedArtifact: "Codex build packet",
+      expectedArtifact: expectedArtifactForCreateWork(intake),
       skillSequence: [
         {
           skillName: "codex_build",
@@ -1279,6 +1288,22 @@ function outputKindForIntake(intake: IntakeResult): string {
   }
 }
 
+function expectedArtifactForCreateWork(intake: IntakeResult): string {
+  const requested = intake.extractedFields.requestedArtifact;
+  if (requested) {
+    return requested;
+  }
+
+  const project = intake.project?.name ?? intake.extractedFields.project ?? "selected project";
+  const subject = [
+    intake.extractedFields.platform ?? intake.extractedFields.channel ?? null,
+    intake.extractedFields.feature ??
+      intake.extractedFields.target ??
+      (intake.action.kind === "create_work" ? intake.action.title : null)
+  ].filter((value): value is string => Boolean(value)).join(" ");
+  return `${subject || "Requested work"} for ${project} implementation with tests.`;
+}
+
 function approvalGatesForIntake(intake: IntakeResult): ResolvedIntent["approvalGates"][number]["gateType"][] {
   const normalized = intake.rawInput.toLowerCase();
   const gates = new Set<ResolvedIntent["approvalGates"][number]["gateType"]>();
@@ -1292,10 +1317,26 @@ function approvalGatesForIntake(intake: IntakeResult): ResolvedIntent["approvalG
 
   if (intake.action.kind === "create_work") {
     gates.add("destructive_filesystem_changes");
-    if (/pinterest|social|post|publish/.test(normalized)) {
+    if (/credential|oauth|api key|token|secret|pinterest|external service/.test(normalized)) {
       gates.add("credentials_required");
+    }
+    if (/deploy|deployment|production release|external service/.test(normalized)) {
+      gates.add("external_deployment");
+    }
+    if (/pinterest|social|post|posting|publish|publication/.test(normalized)) {
       gates.add("publication");
+    }
+    if (/send|message|email|discord|slack|post|posting|publish/.test(normalized)) {
       gates.add("send_email_or_messages");
+    }
+    if (/spend|buy|purchase|paid|budget|ad campaign|ads?\b|money/.test(normalized)) {
+      gates.add("financial_action");
+    }
+    if (/production data|prod data|customer data|live data|production credentials/.test(normalized)) {
+      gates.add("production_data_access");
+    }
+    if (/merge to main|merge into main/.test(normalized)) {
+      gates.add("merge_to_main");
     }
   }
 

@@ -25,6 +25,14 @@ export interface IntakeProjectContext {
 
 export interface IntakeWorkspaceContext {
   projects: IntakeProjectContext[];
+  recentActivity?: IntakeRecentActivityContext[];
+}
+
+export interface IntakeRecentActivityContext {
+  id: string;
+  projectId: string | null;
+  projectName: string | null;
+  title: string;
 }
 
 export interface IntakeResolvedReference {
@@ -115,12 +123,47 @@ export interface IntakeResult {
 const HIGH_CONFIDENCE = 0.8;
 const MEDIUM_CONFIDENCE = 0.5;
 const GENERIC_REFERENCE_TOKENS = new Set(["app", "project", "site", "website", "tool"]);
+const GENERIC_CONTEXT_TOKENS = new Set([
+  "a",
+  "an",
+  "and",
+  "for",
+  "going",
+  "keep",
+  "on",
+  "the",
+  "thing",
+  "to",
+  "work"
+]);
+const WORK_VERBS = "add|build|implement|prepare|fix|create|write|improve|publish";
+const CONTEXTUAL_WORK_VERBS = "keep\\s+going\\s+on|continue|work\\s+on";
+const KNOWN_PLATFORMS = [
+  "Pinterest",
+  "Discord",
+  "Cloudflare",
+  "GitHub",
+  "App Store",
+  "YouTube",
+  "Instagram",
+  "TikTok",
+  "Mastodon",
+  "Bluesky"
+];
 
 interface ParsedEntityAttributeUpdate {
   entityType: IntakeEntityType;
   entityReference: string;
   attributeReference: string;
   value: string;
+}
+
+interface ParsedCreateWork {
+  action: string;
+  projectReference: string;
+  verb: string;
+  baseConfidence?: number;
+  contextSource?: "recent_context";
 }
 
 interface AttributeValidationResult {
@@ -162,7 +205,7 @@ const PROJECT_ATTRIBUTE_REGISTRY: ProjectAttributeDefinition[] = [
     name: "mission",
     displayName: "mission",
     missingField: "attributeValue",
-    aliases: ["mission"],
+    aliases: ["mission", "project mission", "description", "description/mission", "project description/mission"],
     deterministicHandler: "project.update.mission",
     validate: validateNonEmptyString
   },
@@ -414,10 +457,7 @@ function resolveIntakeWithoutClassification(
     return resultFromProjectIntent({
       raw,
       resolvedIntent: "CreateWork",
-      extractedFields: {
-        project: work.projectReference,
-        action: work.action
-      },
+      extractedFields: createWorkExtractedFields(raw, work, context, project.reference?.name ?? null),
       missingFields: [
         ...missingProjectFields(project),
         ...(work.action ? [] : ["action"])
@@ -437,7 +477,7 @@ function resolveIntakeWithoutClassification(
       },
       project: project.reference,
       template: null,
-      baseConfidence: 0.88
+      baseConfidence: work.baseConfidence ?? 0.88
     });
   }
 
@@ -843,41 +883,144 @@ function projectEntityType(): IntakeEntityType {
   return ENTITY_TYPE_REGISTRY[0].type;
 }
 
-function parseCreateWork(raw: string, context: IntakeWorkspaceContext): { action: string; projectReference: string } | null {
-  const match = /^\s*(?:please\s+)?(?:add|build|implement|prepare|fix|create|write)\s+(.+?)\s+(?:for|to|in)\s+(.+?)\s*[.!?]?\s*$/i.exec(raw);
-  if (!match?.[1] || !match[2]) {
-    return parseProjectReferencedWork(raw, context);
+function parseCreateWork(raw: string, context: IntakeWorkspaceContext): ParsedCreateWork | null {
+  const direct = new RegExp(
+    `^\\s*(?:please\\s+)?(?<verb>${WORK_VERBS})\\s+(?<body>.+?)\\s+(?<preposition>for|to|in)\\s+(?<target>.+?)\\s*[.!?]?\\s*$`,
+    "i"
+  ).exec(raw);
+  const body = direct?.groups?.body;
+  const target = direct?.groups?.target;
+  const verb = direct?.groups?.verb;
+  if (body && target && verb) {
+    const cleanedTarget = cleanTrailingPunctuation(target);
+    if (resolveProjectReference(cleanedTarget, context).reference) {
+      return {
+        action: cleanTrailingPunctuation(body),
+        projectReference: cleanedTarget,
+        verb: normalizeText(verb)
+      };
+    }
+
+    const embeddedProject = findProjectReferenceInWorkBody(cleanTrailingPunctuation(body), context);
+    if (embeddedProject) {
+      return {
+        action: cleanExtractedValue(
+          `${embeddedProject.before} ${embeddedProject.after} ${direct.groups?.preposition ?? "for"} ${cleanedTarget}`.trim()
+        ),
+        projectReference: embeddedProject.reference,
+        verb: normalizeText(verb)
+      };
+    }
+
+    return {
+      action: cleanTrailingPunctuation(body),
+      projectReference: cleanedTarget,
+      verb: normalizeText(verb)
+    };
   }
 
-  return {
-    action: cleanTrailingPunctuation(match[1]),
-    projectReference: cleanTrailingPunctuation(match[2])
-  };
+  return parseProjectReferencedWork(raw, context);
 }
 
-function parseProjectReferencedWork(
-  raw: string,
-  context: IntakeWorkspaceContext
-): { action: string; projectReference: string } | null {
-  const command = /^\s*(?:please\s+)?(?:add|build|implement|prepare|fix|create|write)\s+(.+?)\s*[.!?]?\s*$/i.exec(raw);
+function parseProjectReferencedWork(raw: string, context: IntakeWorkspaceContext): ParsedCreateWork | null {
+  const command = new RegExp(
+    `^\\s*(?:please\\s+)?(?:use\\s+codex\\s+to\\s+)?(?<verb>${WORK_VERBS}|${CONTEXTUAL_WORK_VERBS})\\s+(?<body>.+?)\\s*[.!?]?\\s*$`,
+    "i"
+  ).exec(raw);
   if (!command?.[1]) {
     return null;
   }
 
-  const body = cleanTrailingPunctuation(command[1]).replace(/^the\s+/i, "").trim();
+  const verb = normalizeText(command.groups?.verb ?? "");
+  const body = cleanTrailingPunctuation(command.groups?.body ?? command[1]).replace(/^the\s+/i, "").trim();
   const projectReference = findProjectReferenceInWorkBody(body, context);
-  if (!projectReference) {
+  if (projectReference) {
+    const action = cleanExtractedValue(`${projectReference.before} ${projectReference.after}`.trim());
+    if (!action) {
+      return null;
+    }
+
+    if (normalizeText(verb) === "improve" && isVagueImprovementAction(action)) {
+      return null;
+    }
+
+    return {
+      action,
+      projectReference: projectReference.reference,
+      verb
+    };
+  }
+
+  if (isContextualWorkVerb(verb)) {
+    const contextual = resolveContextualWork(body, context);
+    if (contextual) {
+      return {
+        action: contextual.action,
+        projectReference: contextual.projectReference,
+        verb,
+        baseConfidence: 0.72,
+        contextSource: "recent_context"
+      };
+    }
+
+    return {
+      action: cleanExtractedValue(body) || "continue work",
+      projectReference: cleanProjectReference(body),
+      verb,
+      baseConfidence: 0.58
+    };
+  }
+
+  return null;
+}
+
+function isVagueImprovementAction(action: string): boolean {
+  return /\b(?:flow|workflow|experience|process|system|thing|stuff)\b/i.test(action) &&
+    !/\b(?:focus mode|midi in|bug|crash|error|test|release|publishing|posting|integration)\b/i.test(action);
+}
+
+function resolveContextualWork(
+  body: string,
+  context: IntakeWorkspaceContext
+): { action: string; projectReference: string } | null {
+  const tokens = significantContextTokens(body);
+  if (tokens.length === 0) {
     return null;
   }
 
-  const action = cleanExtractedValue(`${projectReference.before} ${projectReference.after}`.trim());
-  if (!action) {
+  const scored = context.projects.map((project) => {
+    const activityTitles = context.recentActivity
+      ?.filter((activity) =>
+        (activity.projectId && activity.projectId === project.id) ||
+        (activity.projectName && normalizeText(activity.projectName) === normalizeText(project.name))
+      )
+      .map((activity) => activity.title) ?? [];
+    const haystack = [
+      project.name,
+      ...project.aliases,
+      project.goal ?? "",
+      project.activeMilestoneTitle ?? "",
+      ...activityTitles
+    ].map(normalizeText).join(" ");
+    return {
+      project,
+      score: tokens.filter((token) => haystack.includes(token)).length
+    };
+  }).filter((candidate) => candidate.score > 0);
+
+  scored.sort((left, right) => right.score - left.score || left.project.name.localeCompare(right.project.name));
+  const best = scored[0];
+  if (!best) {
+    return null;
+  }
+
+  if (scored.some((candidate) => candidate.project.id !== best.project.id && candidate.score === best.score)) {
     return null;
   }
 
   return {
-    action,
-    projectReference: projectReference.reference
+    action: best.project.activeMilestoneTitle ?? body,
+    projectReference: best.project.name
   };
 }
 
@@ -891,7 +1034,7 @@ function findProjectReferenceInWorkBody(
   candidates.sort((left, right) => right.reference.length - left.reference.length);
 
   for (const candidate of candidates) {
-    const pattern = new RegExp(`(^|\\s)(${escapeRegExp(candidate.reference)})(?=\\s|$)`, "i");
+    const pattern = new RegExp(`(^|\\s)(${escapeRegExp(candidate.reference)})(?=\\s|$|['’]s\\b)`, "i");
     const match = pattern.exec(body);
     if (!match?.[2]) {
       continue;
@@ -901,11 +1044,143 @@ function findProjectReferenceInWorkBody(
     return {
       reference: match[2],
       before: body.slice(0, start).trim(),
-      after: body.slice(end).trim()
+      after: body.slice(end).replace(/^['’]s\s*/i, "").trim()
     };
   }
 
   return null;
+}
+
+function createWorkExtractedFields(
+  raw: string,
+  work: ParsedCreateWork,
+  context: IntakeWorkspaceContext,
+  resolvedProjectName: string | null
+): Record<string, string> {
+  const platform = detectKnownPlatform(raw);
+  const channel = platform === "Discord" && !hasProjectNamed(context, "Discord") ? "Discord" : null;
+  const feature = detectFeature(raw, work.action, platform);
+  const target = /\bmidi\s+in\b/i.test(raw) ? "MIDI IN" : null;
+  const requestedAction = requestedActionForWork(work, platform);
+  const requestedArtifact = requestedArtifactForWork({
+    action: work.action,
+    requestedAction,
+    platform,
+    channel,
+    feature,
+    target,
+    project: resolvedProjectName ?? work.projectReference
+  });
+
+  return compactFields({
+    project: resolvedProjectName ?? work.projectReference,
+    action: work.action,
+    requestedAction,
+    platform: platform && platform !== "Discord" ? platform : null,
+    channel,
+    feature,
+    target,
+    artifact: detectRequestedArtifact(raw),
+    requestedArtifact,
+    contextSource: work.contextSource ?? null
+  });
+}
+
+function requestedActionForWork(work: ParsedCreateWork, platform: string | null): string {
+  const action = platform
+    ? cleanExtractedValue(work.action.replace(new RegExp(`\\b(?:for|to|in)\\s+${escapeRegExp(platform)}\\b.*$`, "i"), ""))
+    : work.action;
+  const verb = normalizeText(work.verb);
+  if (!verb || verb === "work on" || verb === "keep going on" || verb === "continue") {
+    return action;
+  }
+
+  return cleanExtractedValue(`${verb} ${action}`.trim());
+}
+
+function requestedArtifactForWork(input: {
+  action: string;
+  requestedAction: string;
+  platform: string | null;
+  channel: string | null;
+  feature: string | null;
+  target: string | null;
+  project: string;
+}): string {
+  const lead = input.platform ?? input.channel ?? null;
+  const detail = input.feature ?? input.target ?? cleanActionForArtifact(input.action);
+  const subject = lead && detail && !normalizeText(detail).includes(normalizeText(lead))
+    ? `${lead} ${detail}`
+    : detail || lead || "";
+  const artifactSubject = cleanExtractedValue(subject) || input.requestedAction || input.action;
+  const suffix = /\b(?:publishing|posting|workflow|integration|support|credentials?)\b/i.test(input.action)
+    ? "implementation plan and safe repository changes"
+    : "implementation with tests";
+  return `${artifactSubject} for ${input.project} ${suffix}.`;
+}
+
+function cleanActionForArtifact(action: string): string {
+  return cleanExtractedValue(action.replace(/\busing\s+.+$/i, "").replace(/\b(?:for|to|in)\s+\S.+$/i, ""));
+}
+
+function detectKnownPlatform(raw: string): string | null {
+  return KNOWN_PLATFORMS.find((platform) => new RegExp(`\\b${escapeRegExp(platform)}\\b`, "i").test(raw)) ?? null;
+}
+
+function detectFeature(raw: string, action: string, platform: string | null): string | null {
+  const focusMode = /\bfocus\s+mode\b/i.exec(raw);
+  if (focusMode) {
+    return "Focus Mode";
+  }
+
+  const reviewUx = /\breview\s+UX\b/i.exec(raw);
+  if (reviewUx) {
+    return "review UX";
+  }
+
+  if (platform === "Discord") {
+    return cleanExtractedValue(action.replace(/^the\s+/i, "")) || "Discord";
+  }
+
+  return null;
+}
+
+function detectRequestedArtifact(raw: string): string | null {
+  const normalized = normalizeText(raw);
+  if (/\bimplementation plan\b/.test(normalized)) {
+    return "implementation plan";
+  }
+  if (/\bcli command\b/.test(normalized)) {
+    return "CLI command";
+  }
+  if (/\bdocumentation\b/.test(normalized)) {
+    return "documentation";
+  }
+  if (/\btests?\b/.test(normalized)) {
+    return "tests";
+  }
+  if (/\bresearch report\b/.test(normalized)) {
+    return "research report";
+  }
+  return null;
+}
+
+function hasProjectNamed(context: IntakeWorkspaceContext, name: string): boolean {
+  return context.projects.some((project) =>
+    normalizeText(project.name) === normalizeText(name) ||
+    project.aliases.some((alias) => normalizeText(alias) === normalizeText(name))
+  );
+}
+
+function isContextualWorkVerb(verb: string): boolean {
+  const normalized = normalizeText(verb);
+  return normalized === "keep going on" || normalized === "continue" || normalized === "work on";
+}
+
+function significantContextTokens(value: string): string[] {
+  return normalizeText(value)
+    .split(" ")
+    .filter((token) => token.length >= 3 && !GENERIC_CONTEXT_TOKENS.has(token));
 }
 
 function isReviewRequest(normalized: string): boolean {
