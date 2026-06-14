@@ -639,6 +639,14 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         status: "drafted",
         path: codexPacket.relativePromptPath
       });
+      createArtifactRecord(db, {
+        projectId: initial.workItem.project_id,
+        workItemId: initial.workItem.id,
+        title: `Stewardship critique: ${initial.workItem.title}`,
+        artifactType: "stewardship_critique",
+        status: codexPacket.critique.status === "approved" ? "ready" : "drafted",
+        path: codexPacket.relativeCritiquePath
+      });
     }
 
     const ask = createAskRequest(db, {
@@ -698,7 +706,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
             codexPacket.promptPath,
             codexPacket.jsonlOutputPath,
             codexPacket.finalMessagePath,
-            codexPacket.metadataPath
+            codexPacket.metadataPath,
+            codexPacket.critiquePath
           ]
         : []),
       ...(run?.mission_log_path ? [path.join(workspacePath, run.mission_log_path)] : []),

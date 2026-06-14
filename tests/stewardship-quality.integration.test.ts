@@ -62,6 +62,17 @@ describe("stewardship quality integration fixtures", () => {
         const promptPath = path.join(workspace, packet.prompt_path);
         expect(existsSync(promptPath)).toBe(true);
         const prompt = readFileSync(promptPath, "utf8");
+        const packetDir = path.dirname(promptPath);
+        const critiquePath = path.join(packetDir, "critique.md");
+        const metadataPath = path.join(packetDir, "metadata.json");
+        expect(existsSync(critiquePath)).toBe(true);
+        expect(readFileSync(critiquePath, "utf8")).toContain("# Stewardship Critique");
+        expect(JSON.parse(readFileSync(metadataPath, "utf8"))).toMatchObject({
+          critique: {
+            critic: "deterministic_critic",
+            targetKind: packet.purpose === "build" ? "codex_build_packet" : "codex_planning_packet"
+          }
+        });
 
         for (const phrase of [
           "## Goal",

@@ -4,6 +4,11 @@ import type { CodexInvocationPurpose } from "../domain/constants.js";
 import type { ProjectContext, WorkItemSummary } from "../domain/types.js";
 import type { CodingAgentProfile, TemplateDefinition } from "../intent/registries.js";
 import type { ResolvedIntent } from "../intent/resolver.js";
+import {
+  createStewardshipCritic,
+  renderCritiqueMarkdown,
+  type StewardshipCritiqueResult
+} from "../stewardship/critic.js";
 import type { GoalStewardshipResult } from "../stewardship/index.js";
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
@@ -19,9 +24,12 @@ export interface CodexPacket {
   jsonlOutputPath: string;
   finalMessagePath: string;
   metadataPath: string;
+  critiquePath: string;
   relativePromptPath: string;
   relativeJsonlOutputPath: string;
   relativeFinalMessagePath: string;
+  relativeCritiquePath: string;
+  critique: StewardshipCritiqueResult;
 }
 
 export function createCodexPacket(input: {
@@ -42,12 +50,51 @@ export function createCodexPacket(input: {
   const jsonlOutputPath = path.join(packetDir, "output.jsonl");
   const finalMessagePath = path.join(packetDir, "final.md");
   const metadataPath = path.join(packetDir, "metadata.json");
+  const critiquePath = path.join(packetDir, "critique.md");
   const workspaceScope = input.projectContext?.metadata?.repo_path ?? input.workspace;
   const command = buildCommand(input.agentProfile, workspaceScope, finalMessagePath);
+  const promptText = renderPrompt(input);
+  const stewardship = input.stewardship ?? defaultStewardshipForPacket(input);
+  const validationCommands = decodeStringArray(input.projectContext?.metadata?.validation_commands);
+  const critique = createStewardshipCritic("deterministic_critic").critique({
+    targetKind: input.agentProfile.purpose === "build" ? "codex_build_packet" : "codex_planning_packet",
+    originalInput: input.request,
+    artifactText: promptText,
+    goalText: stewardship.generatedCodexGoalText ?? goalFromResolved(input),
+    acceptanceCriteria: renderAcceptanceCriteria(input, stewardship),
+    expectedArtifact: input.resolved.expectedArtifact ?? input.workItem.expected_artifact,
+    executionPath: stewardship.recommendedExecutionPath,
+    rationale: stewardship.classificationReason,
+    confidenceLabel: confidenceFromResolved(input.resolved.matched),
+    clarificationRequired: stewardship.clarificationRequired,
+    reviewRequired: stewardship.reviewRequired,
+    projectName: input.projectContext?.project.name ?? input.workItem.project_name,
+    platformName: input.resolved.slots.platform,
+    approvalBoundaries: [
+      "Do not publish, deploy, merge, delete, spend money, use credentials, access production data, or send messages.",
+      "Treat approval gates as hard stops; credential access, publication, and social posting/messaging require explicit approval before use."
+    ],
+    validationCommands,
+    metadata: {
+      expectedArtifact: input.resolved.expectedArtifact ?? input.workItem.expected_artifact ?? null,
+      slots: input.resolved.slots,
+      project: input.projectContext
+        ? {
+            name: input.projectContext.project.name,
+            mission: input.projectContext.project.mission,
+            status: input.projectContext.project.status,
+            repoPath: input.projectContext.metadata?.repo_path ?? null
+          }
+        : null
+    },
+    stewardship,
+    purpose: input.agentProfile.purpose
+  });
 
-  writeFileSync(promptPath, renderPrompt(input), "utf8");
+  writeFileSync(promptPath, promptText, "utf8");
   writeFileSync(jsonlOutputPath, "", "utf8");
   writeFileSync(finalMessagePath, "Codex has not been invoked yet.\n", "utf8");
+  writeFileSync(critiquePath, `${renderCritiqueMarkdown(critique)}\n`, "utf8");
   writeFileSync(
     metadataPath,
     `${JSON.stringify(
@@ -78,9 +125,11 @@ export function createCodexPacket(input: {
         resolvedIntent: input.resolved.intentId,
         outputKind: input.resolved.outputKind,
         stewardship: input.stewardship ?? null,
+        critique,
         promptPath: toWorkspaceRelativePath(input.workspace, promptPath),
         jsonlOutputPath: toWorkspaceRelativePath(input.workspace, jsonlOutputPath),
-        finalMessagePath: toWorkspaceRelativePath(input.workspace, finalMessagePath)
+        finalMessagePath: toWorkspaceRelativePath(input.workspace, finalMessagePath),
+        critiquePath: toWorkspaceRelativePath(input.workspace, critiquePath)
       },
       null,
       2
@@ -98,9 +147,12 @@ export function createCodexPacket(input: {
     jsonlOutputPath,
     finalMessagePath,
     metadataPath,
+    critiquePath,
     relativePromptPath: toWorkspaceRelativePath(input.workspace, promptPath),
     relativeJsonlOutputPath: toWorkspaceRelativePath(input.workspace, jsonlOutputPath),
-    relativeFinalMessagePath: toWorkspaceRelativePath(input.workspace, finalMessagePath)
+    relativeFinalMessagePath: toWorkspaceRelativePath(input.workspace, finalMessagePath),
+    relativeCritiquePath: toWorkspaceRelativePath(input.workspace, critiquePath),
+    critique
   };
 }
 
@@ -400,6 +452,10 @@ function decodeStringArray(raw: string | null | undefined): string[] {
   }
 
   return parsed.filter((value): value is string => typeof value === "string").map((value) => value.trim()).filter(Boolean);
+}
+
+function confidenceFromResolved(matched: boolean): "high" | "medium" {
+  return matched ? "high" : "medium";
 }
 
 function renderTemplate(template: TemplateDefinition): string {
