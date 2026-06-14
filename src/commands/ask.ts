@@ -1321,7 +1321,12 @@ function expectedArtifactForCreateWork(intake: IntakeResult): string {
 function expectedPlanningArtifactForIntake(intake: IntakeResult): string {
   const project = intake.project?.name ?? intake.extractedFields.project ?? "selected project";
   const subject = (canonicalArtifactSubject(intake) ?? "project execution").replace(/\s+support$/i, "");
-  return `${subject} plan for ${project} with ordered phases, risks/open questions, approval requirements, and recommended next action.`;
+  return `${capitalizePlanningSubject(subject)} plan for ${project} with ordered phases, risks/open questions, approval requirements, and recommended next action.`;
+}
+
+function capitalizePlanningSubject(value: string): string {
+  const trimmed = value.trim();
+  return trimmed ? `${trimmed[0].toUpperCase()}${trimmed.slice(1)}` : trimmed;
 }
 
 function canonicalArtifactSubject(intake: IntakeResult): string | null {

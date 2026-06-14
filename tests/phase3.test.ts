@@ -332,8 +332,12 @@ describe("arcadia ask command", () => {
     expect(prompt).toContain("## Acceptance Criteria");
     expect(prompt).toContain("## Approval Boundaries");
     expect(prompt).toContain("## Expected Artifact");
+    expect(prompt).toContain("## Repository Impact Assessment");
+    expect(prompt).toContain("## Smallest Useful Follow-up Codex Goal");
     expect(prompt).toContain("## Execution Instruction");
-    expect(prompt).toContain("Plan first.");
+    expect(prompt).toContain("Plan only. Do not make implementation changes.");
+    expect(prompt).toContain("None required for planning-only packet creation.");
+    expect(prompt).toContain("Validation strategy:");
     expect(prompt).toContain("## Operator Context");
 
     const vague = runAskCommand({
@@ -725,7 +729,7 @@ describe("arcadia ask command", () => {
     expect(prompt).toContain("credential access, publication, and social posting/messaging require explicit approval");
     expect(prompt).toContain("## Final Reporting Requirements");
     expect(prompt).toContain("Summarize project, milestone, and repository scope.");
-    expect(prompt).toContain("List validation results.");
+    expect(prompt).toContain("List changed files, validation commands run, and any commands that could not be run.");
   });
 
   it("defaults approved asks to the only active project in an Arcadia-profile workspace", () => {

@@ -63,9 +63,25 @@ describe("stewardship quality integration fixtures", () => {
         ].join("\n")).not.toContain(phrase);
       }
 
+      if (fixture.expect.approvalGates) {
+        const gateTypes = response.data.approvalGates.map((gate) => gate.gate_type);
+        for (const gate of fixture.expect.approvalGates) {
+          expect(gateTypes, `${fixture.name}: approval gate ${gate}`).toContain(gate);
+        }
+      }
+      if (fixture.expect.approvalGatesAbsent) {
+        const gateTypes = response.data.approvalGates.map((gate) => gate.gate_type);
+        for (const gate of fixture.expect.approvalGatesAbsent) {
+          expect(gateTypes, `${fixture.name}: absent approval gate ${gate}`).not.toContain(gate);
+        }
+      }
+
       if (fixture.expect.packetIncludes || fixture.expect.packetArtifactIncludes || response.data.codexInvocations.length > 0) {
         const packet = response.data.codexInvocations[0];
         expect(packet, `${fixture.name}: packet`).toBeTruthy();
+        if (fixture.expect.packetPurpose) {
+          expect(packet.purpose, `${fixture.name}: packet purpose`).toBe(fixture.expect.packetPurpose);
+        }
         const promptPath = path.join(workspace, packet.prompt_path);
         expect(existsSync(promptPath)).toBe(true);
         const prompt = readFileSync(promptPath, "utf8");

@@ -29,6 +29,37 @@ const boundedPacket = [
   "- Run validation command: pnpm test"
 ].join("\n");
 
+const boundedPlanningPacket = [
+  "## Goal",
+  "Create a practical plan for Pinterest publishing support for Rebuster.",
+  "## Acceptance Criteria",
+  "- Deliver the expected planning artifact: Pinterest publishing plan for Rebuster with ordered phases, risks/open questions, approval requirements, and recommended next action.",
+  "- Preserve implementation intent by framing implementation as a future phase, not work authorized by this packet.",
+  "## Approval Boundaries",
+  "- Do not publish, deploy, merge, delete, spend money, use credentials, access production data, or send messages.",
+  "- Planning is safe to perform now; implementation, credential setup, publishing, deployment, spending, production access, and outbound actions are future phases that require separate approval before execution.",
+  "## Approval Gates",
+  "- None required for planning-only packet creation.",
+  "- Future implementation approval required before execution: credentials_required: credentials or external-service access require explicit approval.",
+  "- Future implementation approval required before execution: publication: publishing or posting requires explicit approval.",
+  "## Expected Artifact",
+  "Pinterest publishing plan for Rebuster with ordered phases, risks/open questions, approval requirements, and recommended next action.",
+  "## Repository Impact Assessment",
+  "- Likely future implementation area: publishing/social integration modules.",
+  "- Likely future implementation area: tests or fixtures covering outbound-action boundaries.",
+  "## Smallest Useful Follow-up Codex Goal",
+  "After this plan is reviewed, open the smallest useful Codex implementation goal: implement the first repository-only slice of Pinterest publishing support for Rebuster, with no credentials, publishing, deployment, spending, production access, or outbound actions.",
+  "## Execution Instruction",
+  "Plan only. Do not make implementation changes. Preserve the original implementation intent by describing implementation as a future phase that requires a separate approved Codex implementation goal.",
+  "## Discovery And Validation",
+  "- Validation strategy: identify the relevant validation path for future implementation, likely `pnpm test`.",
+  "- Do not run tests or lint for this planning-only packet unless files change while preparing the plan.",
+  "## Final Reporting Requirements",
+  "- Summarize the planning outcome only.",
+  "- List the concrete planning artifacts produced.",
+  "- Identify future approval needs, open questions, and blockers before implementation."
+].join("\n");
+
 export const stewardshipCriticFixtures: StewardshipCriticFixture[] = [
   {
     name: "approves bounded Codex packet",
@@ -62,12 +93,10 @@ export const stewardshipCriticFixtures: StewardshipCriticFixture[] = [
     input: {
       targetKind: "codex_planning_packet",
       originalInput: "Plan Pinterest publishing support for Rebuster",
-      artifactText: boundedPacket
-        .replaceAll("Implement Pinterest publishing support for Rebuster.", "Plan Pinterest publishing support for Rebuster.")
-        .replaceAll("Pinterest publishing implementation for Rebuster with tests.", "Pinterest publishing plan for Rebuster with risks and next action."),
+      artifactText: boundedPlanningPacket,
       goalText: "Plan Pinterest publishing support for Rebuster.",
       acceptanceCriteria: "Deliver Pinterest publishing plan for Rebuster.",
-      expectedArtifact: "Pinterest publishing plan for Rebuster with risks and next action.",
+      expectedArtifact: "Pinterest publishing plan for Rebuster with ordered phases, risks/open questions, approval requirements, and recommended next action.",
       executionPath: "Plan First",
       rationale: "The request involves planning, scope, and risk, so a plan should precede execution.",
       confidenceLabel: "high",
@@ -227,6 +256,74 @@ export const stewardshipCriticFixtures: StewardshipCriticFixture[] = [
     expect: {
       status: "requires_review_recommended",
       checks: ["approval_boundaries_present"]
+    }
+  },
+  {
+    name: "catches planning packet that authorizes implementation work",
+    input: {
+      targetKind: "codex_planning_packet",
+      originalInput: "Plan Pinterest publishing support for Rebuster",
+      artifactText: [
+        "## Goal",
+        "Plan Pinterest publishing support for Rebuster.",
+        "## Approval Boundaries",
+        "- Do not publish, deploy, merge, delete, spend money, use credentials, access production data, or send messages.",
+        "## Approval Gates",
+        "None",
+        "## Expected Artifact",
+        "project execution plan",
+        "## Execution Instruction",
+        "Execute directly after local inspection.",
+        "## Discovery And Validation",
+        "- Run validation command: pnpm test",
+        "- Report changed files, validation commands run, and any commands that could not be run.",
+        "## Final Reporting Requirements",
+        "- Summarize implementation or planning outcome."
+      ].join("\n"),
+      goalText: "Plan Pinterest publishing support for Rebuster.",
+      acceptanceCriteria: "Deliver a project execution plan.",
+      expectedArtifact: "project execution plan",
+      executionPath: "Plan First",
+      rationale: "The request involves planning, scope, and risk, so a plan should precede execution.",
+      confidenceLabel: "high",
+      projectName: "Rebuster",
+      platformName: "Pinterest",
+      approvalBoundaries: ["Do not publish, deploy, merge, delete, spend money, use credentials, access production data, or send messages."],
+      validationCommands: ["pnpm test"]
+    },
+    expect: {
+      status: "revision_recommended",
+      checks: [
+        "expected_artifact_concrete",
+        "planning_packet_no_implementation_authorization",
+        "planning_packet_required_sections",
+        "planning_packet_conditional_validation",
+        "planning_expected_artifact_specific"
+      ]
+    }
+  },
+  {
+    name: "catches planning packet missing future approval visibility",
+    input: {
+      targetKind: "codex_planning_packet",
+      originalInput: "Plan Pinterest publishing support for Rebuster",
+      artifactText: boundedPlanningPacket
+        .replace("- None required for planning-only packet creation.\n", "")
+        .replaceAll(/- Future implementation approval required before execution:[^\n]+\n?/g, ""),
+      goalText: "Plan Pinterest publishing support for Rebuster.",
+      acceptanceCriteria: "Deliver Pinterest publishing plan for Rebuster.",
+      expectedArtifact: "Pinterest publishing plan for Rebuster with ordered phases, risks/open questions, approval requirements, and recommended next action.",
+      executionPath: "Plan First",
+      rationale: "The request involves planning, scope, and risk, so a plan should precede execution.",
+      confidenceLabel: "high",
+      projectName: "Rebuster",
+      platformName: "Pinterest",
+      approvalBoundaries: ["Do not publish, deploy, merge, delete, spend money, use credentials, access production data, or send messages."],
+      validationCommands: ["pnpm test"]
+    },
+    expect: {
+      status: "revision_recommended",
+      checks: ["planning_packet_required_sections"]
     }
   },
   {

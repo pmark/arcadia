@@ -36,6 +36,9 @@ export interface StewardshipQualityFixture {
     packetArtifactExcludes?: string[];
     packetIncludes?: string[];
     packetCritiqueStatus?: string;
+    packetPurpose?: "planning" | "build";
+    approvalGates?: string[];
+    approvalGatesAbsent?: string[];
     askRawInputIncludes?: string[];
     packetExcludes?: string[];
     knownBadPhrasesAbsent?: string[];
@@ -50,7 +53,7 @@ export const defaultProjects: SeedProject[] = [
     name: "Arcadia",
     mission: "Maintain momentum across creative projects.",
     goal: "Make ask the universal ingress router.",
-    aliases: ["Arcadia"],
+    aliases: ["Arcadia", "Back Burner"],
     activeMilestone: "Discord review workflow",
     nextAction: "Tighten stewardship review UX.",
     repoPath: "/Users/pmark/Dev/MR/Arcadia/arcadia",
@@ -387,6 +390,306 @@ export const stewardshipQualityFixtures: StewardshipQualityFixture[] = [
         "Do not publish, deploy, merge, delete, spend money, use credentials, access production data, or send messages."
       ],
       reviewRequired: true,
+      planningRecommended: true
+    }
+  },
+  {
+    name: "requested fixture: plan and implement Pinterest publishing support",
+    input: "Plan and implement Pinterest publishing support for Rebuster.",
+    seed: { projects: defaultProjects },
+    expect: {
+      intentType: "Planning Request",
+      executionPath: "Plan First",
+      confidenceLabel: "high",
+      project: "Rebuster",
+      slots: {
+        project: "Rebuster",
+        platform: "Pinterest",
+        purpose: "pinterest publishing support"
+      },
+      requestedWorkArtifactIncludes: [
+        "Pinterest publishing plan for Rebuster",
+        "approval requirements",
+        "recommended next action"
+      ],
+      packetPurpose: "planning",
+      packetArtifactIncludes: ["Pinterest publishing plan for Rebuster"],
+      packetIncludes: [
+        "Plan only. Do not make implementation changes.",
+        "future phase",
+        "None required for planning-only packet creation.",
+        "Future implementation approval required before execution: credentials_required",
+        "Future implementation approval required before execution: publication",
+        "Repository Impact Assessment",
+        "Smallest Useful Follow-up Codex Goal",
+        "Validation strategy:",
+        "Do not run tests or lint for this planning-only packet unless files change",
+        "Summarize the planning outcome only.",
+        "List the concrete planning artifacts produced."
+      ],
+      packetExcludes: [
+        "Run validation command:",
+        "Report changed files",
+        "Summarize implementation or planning outcome"
+      ],
+      packetCritiqueStatus: "approved",
+      approvalGatesAbsent: ["credentials_required", "publication", "send_email_or_messages"],
+      clarificationRequired: false,
+      reviewRequired: false,
+      planningRecommended: true
+    }
+  },
+  {
+    name: "requested fixture: implement Pinterest publishing support",
+    input: "Implement Pinterest publishing support for Rebuster.",
+    seed: { projects: defaultProjects },
+    expect: {
+      intentType: "Project Work",
+      executionPath: "Requires Review",
+      confidenceLabel: "high",
+      project: "Rebuster",
+      slots: {
+        project: "Rebuster",
+        platform: "Pinterest",
+        requestedAction: "implement Pinterest publishing support"
+      },
+      requestedWorkArtifactIncludes: [
+        "Pinterest publishing support for Rebuster",
+        "safe repository changes",
+        "docs/tests if applicable"
+      ],
+      packetPurpose: "build",
+      packetArtifactIncludes: ["Pinterest publishing support for Rebuster"],
+      packetIncludes: [
+        "credentials_required",
+        "publication",
+        "send_email_or_messages",
+        "Run validation command: pnpm test",
+        "Run validation command: pnpm lint"
+      ],
+      approvalGates: ["credentials_required", "publication", "send_email_or_messages", "destructive_filesystem_changes"],
+      clarificationRequired: false,
+      reviewRequired: true,
+      planningRecommended: true
+    }
+  },
+  {
+    name: "requested fixture: plan cleanup of stale Back Burner items",
+    input: "Plan cleanup of stale Back Burner items.",
+    seed: { projects: defaultProjects },
+    expect: {
+      intentType: "Planning Request",
+      executionPath: "Plan First",
+      confidenceLabel: "high",
+      project: "Arcadia",
+      slots: {
+        project: "Arcadia",
+        purpose: "cleanup of stale items"
+      },
+      requestedWorkArtifactIncludes: [
+        "Cleanup of stale items plan for Arcadia",
+        "ordered phases",
+        "recommended next action"
+      ],
+      packetPurpose: "planning",
+      packetArtifactIncludes: ["Cleanup of stale items plan for Arcadia"],
+      packetIncludes: [
+        "None required for planning-only packet creation.",
+        "Repository Impact Assessment",
+        "Likely future implementation area: Arcadia intake/back-burner logic.",
+        "Validation strategy:",
+        "Summarize the planning outcome only."
+      ],
+      packetExcludes: ["Run validation command:", "Summarize implementation or planning outcome"],
+      packetCritiqueStatus: "approved",
+      approvalGatesAbsent: ["credentials_required", "publication", "external_deployment"],
+      clarificationRequired: false,
+      reviewRequired: false,
+      planningRecommended: true
+    }
+  },
+  {
+    name: "requested fixture: add Back Burner capture regression fixture",
+    input: "Add a deterministic fixture for Back Burner capture regression.",
+    seed: { projects: defaultProjects },
+    expect: {
+      intentType: "Project Work",
+      executionPath: "Requires Review",
+      confidenceLabel: "high",
+      project: "Arcadia",
+      slots: {
+        project: "Arcadia",
+        purpose: "a deterministic fixture"
+      },
+      requestedWorkArtifactIncludes: [
+        "a deterministic fixture for Arcadia",
+        "implementation with tests"
+      ],
+      clarificationRequired: false,
+      reviewRequired: true,
+      planningRecommended: false
+    }
+  },
+  {
+    name: "requested fixture: figure out multi-platform Rebuster publishing",
+    input: "Figure out how Rebuster should publish to more platforms.",
+    seed: { projects: defaultProjects },
+    expect: {
+      intentType: "Research Request",
+      executionPath: "Plan First",
+      confidenceLabel: "low",
+      project: "Rebuster",
+      requestedWorkArtifactIncludes: ["Research brief and recommendation"],
+      packetPurpose: "planning",
+      packetArtifactIncludes: ["Research brief and recommendation"],
+      packetIncludes: [
+        "Plan only. Do not make implementation changes.",
+        "Future implementation approval required before execution: publication",
+        "Future implementation approval required before execution: send_email_or_messages",
+        "Repository Impact Assessment",
+        "Smallest Useful Follow-up Codex Goal",
+        "Validation strategy:"
+      ],
+      packetExcludes: ["Run validation command:", "Summarize implementation or planning outcome"],
+      packetCritiqueStatus: "approved",
+      clarificationRequired: false,
+      reviewRequired: false,
+      planningRecommended: true
+    }
+  },
+  {
+    name: "requested fixture: post latest Rebuster video everywhere",
+    input: "Post the latest Rebuster video everywhere.",
+    seed: { projects: defaultProjects },
+    expect: {
+      intentType: "Project Work",
+      executionPath: "Requires Review",
+      confidenceLabel: "high",
+      project: "Rebuster",
+      slots: {
+        project: "Rebuster",
+        requestedAction: "post latest video everywhere"
+      },
+      requestedWorkArtifactIncludes: ["latest video everywhere for Rebuster"],
+      packetPurpose: "build",
+      packetIncludes: ["publication", "send_email_or_messages"],
+      approvalGates: ["publication", "send_email_or_messages", "destructive_filesystem_changes"],
+      clarificationRequired: false,
+      reviewRequired: true,
+      planningRecommended: true
+    }
+  },
+  {
+    name: "requested fixture: set up Pinterest API credentials",
+    input: "Set up Pinterest API credentials for Rebuster.",
+    seed: { projects: defaultProjects },
+    expect: {
+      intentType: "Project Work",
+      executionPath: "Requires Review",
+      confidenceLabel: "high",
+      project: "Rebuster",
+      slots: {
+        project: "Rebuster",
+        platform: "Pinterest",
+        requestedAction: "set up Pinterest API credentials"
+      },
+      requestedWorkArtifactIncludes: [
+        "Pinterest API credentials for Rebuster",
+        "safe repository changes"
+      ],
+      packetPurpose: "build",
+      packetIncludes: ["credentials_required", "publication"],
+      approvalGates: ["credentials_required", "publication", "destructive_filesystem_changes"],
+      clarificationRequired: false,
+      reviewRequired: true,
+      planningRecommended: true
+    }
+  },
+  {
+    name: "requested fixture: deploy Rebuster Pinterest publisher",
+    input: "Deploy the Rebuster Pinterest publisher.",
+    seed: { projects: defaultProjects },
+    expect: {
+      intentType: "Project Work",
+      executionPath: "Requires Review",
+      confidenceLabel: "high",
+      project: "Rebuster",
+      slots: {
+        project: "Rebuster",
+        platform: "Pinterest",
+        requestedAction: "deploy Pinterest publisher"
+      },
+      requestedWorkArtifactIncludes: ["Pinterest publisher for Rebuster"],
+      packetPurpose: "build",
+      packetIncludes: ["credentials_required", "publication", "external_deployment"],
+      approvalGates: ["credentials_required", "publication", "external_deployment", "destructive_filesystem_changes"],
+      clarificationRequired: false,
+      reviewRequired: true,
+      planningRecommended: true
+    }
+  },
+  {
+    name: "requested fixture: add best paid Pinterest scheduler",
+    input: "Add the best paid Pinterest scheduler for Rebuster.",
+    seed: { projects: defaultProjects },
+    expect: {
+      intentType: "Project Work",
+      executionPath: "Requires Review",
+      confidenceLabel: "high",
+      project: "Rebuster",
+      slots: {
+        project: "Rebuster",
+        platform: "Pinterest",
+        requestedAction: "add the best paid Pinterest scheduler"
+      },
+      requestedWorkArtifactIncludes: ["best paid Pinterest scheduler for Rebuster"],
+      packetPurpose: "build",
+      packetIncludes: ["credentials_required", "publication", "financial_action"],
+      approvalGates: ["credentials_required", "publication", "financial_action", "destructive_filesystem_changes"],
+      clarificationRequired: false,
+      reviewRequired: true,
+      planningRecommended: true
+    }
+  },
+  {
+    name: "requested fixture: plan Pinterest publishing support",
+    input: "Plan Pinterest publishing support for Rebuster.",
+    seed: { projects: defaultProjects },
+    expect: {
+      intentType: "Planning Request",
+      executionPath: "Plan First",
+      confidenceLabel: "high",
+      project: "Rebuster",
+      slots: {
+        project: "Rebuster",
+        platform: "Pinterest",
+        requestedAction: "plan Pinterest publishing support"
+      },
+      requestedWorkArtifactIncludes: [
+        "Pinterest publishing plan for Rebuster",
+        "ordered phases",
+        "approval requirements"
+      ],
+      packetPurpose: "planning",
+      packetArtifactIncludes: ["Pinterest publishing plan for Rebuster"],
+      packetIncludes: [
+        "None required for planning-only packet creation.",
+        "Future implementation approval required before execution: credentials_required",
+        "Future implementation approval required before execution: publication",
+        "Repository Impact Assessment",
+        "Smallest Useful Follow-up Codex Goal",
+        "Validation strategy:",
+        "Summarize the planning outcome only."
+      ],
+      packetExcludes: [
+        "Run validation command:",
+        "Report changed files",
+        "Summarize implementation or planning outcome"
+      ],
+      packetCritiqueStatus: "approved",
+      approvalGatesAbsent: ["credentials_required", "publication", "send_email_or_messages"],
+      clarificationRequired: false,
+      reviewRequired: false,
       planningRecommended: true
     }
   }

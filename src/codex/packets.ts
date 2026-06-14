@@ -192,9 +192,6 @@ function renderPrompt(input: {
 }): string {
   const stewardship = input.stewardship ?? defaultStewardshipForPacket(input);
   const templates = input.resolved.templates.map(renderTemplate).join("\n\n") || "None";
-  const gates = input.resolved.approvalGates
-    .map((gate) => `- ${gate.gateType}: ${gate.reason}`)
-    .join("\n") || "None";
   const slots = Object.entries(input.resolved.slots)
     .map(([key, value]) => `- ${key}: ${value}`)
     .join("\n") || "None";
@@ -202,8 +199,14 @@ function renderPrompt(input: {
   const milestoneContext = renderCurrentMilestone(input.projectContext, input.workItem);
   const pathContext = renderPathContext(input.projectContext, input.workspace);
   const operatorContext = readOperatorContext(input.workspace);
-  const validationGuidance = renderValidationGuidance(input.projectContext);
+  const isPlanningPacket = input.agentProfile.purpose === "planning";
+  const validationGuidance = renderValidationGuidance(input.projectContext, isPlanningPacket);
   const executionInstruction = renderExecutionInstruction(input.agentProfile.purpose, stewardship);
+  const expectedArtifact = input.resolved.expectedArtifact ?? input.workItem.expected_artifact ?? expectedArtifactFallback(isPlanningPacket);
+  const approvalGateText = renderApprovalGates(input.resolved.approvalGates, input.request, isPlanningPacket);
+  const repositoryImpact = renderRepositoryImpactAssessment(input);
+  const followUpGoal = renderSmallestFollowUpGoal(input, expectedArtifact);
+  const finalReportingRequirements = renderFinalReportingRequirements(isPlanningPacket);
 
   return `# Arcadia Codex ${input.agentProfile.purpose === "build" ? "Build" : "Planning"} Packet
 
@@ -262,12 +265,19 @@ ${renderAcceptanceCriteria(input, stewardship)}
 - Do not publish, deploy, merge, delete, spend money, use credentials, access production data, or send messages.
 - Treat approval gates as hard stops; credential access, publication, and social posting/messaging require explicit approval before use.
 - If a boundary is needed to complete the goal, stop and report the exact approval needed.
+${isPlanningPacket ? "- Planning is safe to perform now; implementation, credential setup, publishing, deployment, spending, production access, and outbound actions are future phases that require separate approval before execution." : ""}
 
 ## Approval Gates
-${gates}
+${approvalGateText}
 
 ## Expected Artifact
-${input.resolved.expectedArtifact ?? input.workItem.expected_artifact ?? "Clear implementation or planning artifact"}
+${expectedArtifact}
+
+## Repository Impact Assessment
+${repositoryImpact}
+
+## Smallest Useful Follow-up Codex Goal
+${followUpGoal}
 
 ## Execution Instruction
 ${executionInstruction}
@@ -276,13 +286,9 @@ ${executionInstruction}
 - Start by inspecting the target repository/project context above.
 - Prefer deterministic local scripts and existing project conventions before adding new tooling.
 ${validationGuidance}
-- Report changed files, validation commands run, and any commands that could not be run.
 
 ## Final Reporting Requirements
-- Summarize project, milestone, and repository scope.
-- Summarize implementation or planning outcome.
-- List validation results.
-- Identify remaining approval gates or blockers.
+${finalReportingRequirements}
 `;
 }
 
@@ -354,6 +360,16 @@ function renderAcceptanceCriteria(input: {
   const artifact = input.resolved.expectedArtifact ?? input.workItem.expected_artifact ?? "requested artifact";
   const project = input.projectContext?.project.name ?? input.workItem.project_name ?? "the selected project";
   const projectGoal = input.projectContext?.project.goal ? ` goal: ${trimTerminalPunctuation(input.projectContext.project.goal)}` : "";
+  if (input.agentProfile.purpose === "planning") {
+    return [
+      `- Deliver the expected planning artifact: ${trimTerminalPunctuation(artifact)}.`,
+      `- Keep the plan aligned with ${project}${projectGoal}.`,
+      "- Preserve implementation intent by framing implementation as a future phase, not work authorized by this packet.",
+      "- Include ordered phases, concrete expected artifacts, repository impact assessment, approval needs, validation strategy, risks/open questions, and the smallest useful follow-up Codex implementation goal.",
+      "- Do not require tests, lint, deployment, credentials, publishing, spending, production access, or outbound actions unless files are changed while preparing the plan."
+    ].join("\n");
+  }
+
   const criteria = [
     `- Deliver the expected artifact: ${trimTerminalPunctuation(artifact)}.`,
     `- Keep the work aligned with ${project}${projectGoal}.`,
@@ -374,8 +390,8 @@ function renderExecutionInstruction(
   purpose: CodexInvocationPurpose,
   stewardship: GoalStewardshipResult
 ): string {
-  if (stewardship.planningRecommended || purpose === "planning") {
-    return "Plan first. Do not make implementation changes until the plan, risks, approval boundaries, and expected artifact are clear.";
+  if (purpose === "planning") {
+    return "Plan only. Do not make implementation changes. Preserve the original implementation intent by describing implementation as a future phase that requires a separate approved Codex implementation goal.";
   }
 
   return "Execute directly after local inspection. Stay inside the approval boundaries and stop if the work requires a blocked action.";
@@ -383,11 +399,11 @@ function renderExecutionInstruction(
 
 function whyThisMatters(stewardship: GoalStewardshipResult, projectContext: ProjectContext | null): string {
   if (projectContext?.project.goal) {
-    return `This advances ${projectContext.project.name} toward its goal: ${projectContext.project.goal}.`;
+    return `This advances ${projectContext.project.name} toward its goal: ${trimTerminalPunctuation(projectContext.project.goal)}.`;
   }
 
   if (stewardship.relatedProject && stewardship.relatedGoal) {
-    return `This advances ${stewardship.relatedProject.name} toward its goal: ${stewardship.relatedGoal}.`;
+    return `This advances ${stewardship.relatedProject.name} toward its goal: ${trimTerminalPunctuation(stewardship.relatedGoal)}.`;
   }
 
   return "This turns the operator's input into visible progress while preserving local-first, reviewable execution.";
@@ -433,13 +449,194 @@ function defaultStewardshipForPacket(input: {
   };
 }
 
-function renderValidationGuidance(projectContext: ProjectContext | null): string {
+function renderApprovalGates(
+  gates: ResolvedIntent["approvalGates"],
+  request: string,
+  isPlanningPacket: boolean
+): string {
+  const renderedGates = gates.map((gate) => `- ${gate.gateType}: ${gate.reason}`);
+  if (!isPlanningPacket) {
+    return renderedGates.join("\n") || "None";
+  }
+
+  const futureNeeds = inferFutureApprovalNeeds(request, gates);
+  return [
+    "- None required for planning-only packet creation.",
+    ...futureNeeds.map((need) => `- Future implementation approval required before execution: ${need}`)
+  ].join("\n");
+}
+
+function renderRepositoryImpactAssessment(input: {
+  request: string;
+  resolved: ResolvedIntent;
+  projectContext: ProjectContext | null;
+  workItem: WorkItemSummary;
+  agentProfile: CodingAgentProfile;
+}): string {
+  const project = input.projectContext?.project.name ?? input.workItem.project_name ?? "selected project";
+  const repo = input.projectContext?.metadata?.repo_path ?? "workspace scope";
+  const normalized = normalizeForPacket(`${input.request} ${Object.values(input.resolved.slots).join(" ")}`);
+  const likelyAreas = new Set<string>();
+
+  if (/\b(?:pinterest|social|post|posting|publish|publication|platform)\b/.test(normalized)) {
+    likelyAreas.add("publishing/social integration modules");
+    likelyAreas.add("platform adapter or service layer");
+    likelyAreas.add("configuration and environment documentation");
+    likelyAreas.add("tests or fixtures covering outbound-action boundaries");
+  }
+  if (/\b(?:credential|oauth|api key|token|secret)\b/.test(normalized)) {
+    likelyAreas.add("credential configuration paths and setup documentation");
+  }
+  if (/\b(?:deploy|deployment|release|production)\b/.test(normalized)) {
+    likelyAreas.add("deployment scripts, release configuration, and operational docs");
+  }
+  if (/\b(?:back burner|fixture|regression|cleanup|stale)\b/.test(normalized)) {
+    likelyAreas.add("Arcadia intake/back-burner logic");
+    likelyAreas.add("deterministic fixtures and regression tests");
+  }
+  if (/\b(?:paid|scheduler|spend|buy|purchase|budget)\b/.test(normalized)) {
+    likelyAreas.add("vendor evaluation notes and spending approval records");
+  }
+
+  if (likelyAreas.size === 0) {
+    likelyAreas.add("request-specific source modules discovered during repository inspection");
+    likelyAreas.add("nearest docs and tests for the planned change");
+  }
+
+  return [
+    `- Target repository/path: ${repo}.`,
+    `- Project affected: ${project}.`,
+    ...[...likelyAreas].map((area) => `- Likely future implementation area: ${area}.`),
+    input.agentProfile.purpose === "planning"
+      ? "- Planning packet may inspect repository structure, but it must not edit implementation files."
+      : "- Build packet may edit repository files only after approval and must stay inside approval boundaries."
+  ].join("\n");
+}
+
+function renderSmallestFollowUpGoal(input: {
+  request: string;
+  resolved: ResolvedIntent;
+  projectContext: ProjectContext | null;
+  workItem: WorkItemSummary;
+  agentProfile: CodingAgentProfile;
+}, expectedArtifact: string): string {
+  const project = input.projectContext?.project.name ?? input.workItem.project_name ?? "the selected project";
+  const subject = canonicalFollowUpSubject(input.resolved, input.workItem.title, expectedArtifact);
+  if (input.agentProfile.purpose === "planning") {
+    return `After this plan is reviewed, open the smallest useful Codex implementation goal: implement the first repository-only slice of ${subject} for ${project}, with no credentials, publishing, deployment, spending, production access, or outbound actions.`;
+  }
+
+  return `If this build packet is approved, implement the smallest repository-only slice of ${subject} for ${project} and stop before any gated external action.`;
+}
+
+function renderFinalReportingRequirements(isPlanningPacket: boolean): string {
+  if (isPlanningPacket) {
+    return [
+      "- Summarize project, milestone, and repository scope.",
+      "- Summarize the planning outcome only.",
+      "- List the concrete planning artifacts produced.",
+      "- Describe validation strategy and note that tests/lint were not required unless files changed.",
+      "- Identify future approval needs, open questions, and blockers before implementation."
+    ].join("\n");
+  }
+
+  return [
+    "- Summarize project, milestone, and repository scope.",
+    "- Summarize implementation outcome.",
+    "- List changed files, validation commands run, and any commands that could not be run.",
+    "- Identify remaining approval gates or blockers."
+  ].join("\n");
+}
+
+function renderValidationGuidance(projectContext: ProjectContext | null, isPlanningPacket: boolean): string {
   const validationCommands = decodeStringArray(projectContext?.metadata?.validation_commands);
+  if (isPlanningPacket) {
+    const commands = validationCommands.length > 0
+      ? validationCommands.map((command) => `\`${command}\``).join(", ")
+      : "the repository's existing validation scripts";
+    return [
+      `- Validation strategy: identify the relevant validation path for future implementation, likely ${commands}.`,
+      "- Do not run tests or lint for this planning-only packet unless files change while preparing the plan.",
+      "- If files do change while preparing the plan, run the narrowest relevant validation command and report it."
+    ].join("\n");
+  }
+
   if (validationCommands.length === 0) {
     return "- Determine validation commands from the target repository and report any missing validation path.";
   }
 
   return validationCommands.map((command) => `- Run validation command: ${command}`).join("\n");
+}
+
+function inferFutureApprovalNeeds(
+  request: string,
+  gates: ResolvedIntent["approvalGates"]
+): string[] {
+  const normalized = normalizeForPacket(request);
+  const needs = new Set<string>();
+  for (const gate of gates) {
+    needs.add(`${gate.gateType}: ${gate.reason}`);
+  }
+
+  if (/\b(?:credential|oauth|api key|token|secret|pinterest|external service)\b/.test(normalized)) {
+    needs.add("credentials_required: credentials or external-service access require explicit approval.");
+  }
+  if (/\b(?:publish|publication|post|posting|social|everywhere|video|pinterest|youtube|instagram|tiktok|mastodon|bluesky)\b/.test(normalized)) {
+    needs.add("publication: publishing or posting requires explicit approval.");
+    needs.add("send_email_or_messages: outbound posts, messages, or notifications require explicit approval.");
+  }
+  if (/\b(?:deploy|deployment|production release)\b/.test(normalized)) {
+    needs.add("external_deployment: deployment requires explicit approval.");
+  }
+  if (/\b(?:production data|prod data|customer data|live data|production credentials)\b/.test(normalized)) {
+    needs.add("production_data_access: production access requires explicit approval.");
+  }
+  if (/\b(?:paid|scheduler|spend|buy|purchase|budget|ad campaign|ads?\b|money)\b/.test(normalized)) {
+    needs.add("financial_action: spending or paid vendor selection requires explicit approval.");
+  }
+
+  if (needs.size === 0) {
+    return ["normal repository-change approval only; no credential, publishing, deployment, spending, production-access, or outbound-action approval identified."];
+  }
+  return [...needs];
+}
+
+function canonicalFollowUpSubject(resolved: ResolvedIntent, title: string, expectedArtifact: string): string {
+  const platform = resolved.slots.platform;
+  const purpose = resolved.slots.purpose ?? resolved.slots.action ?? resolved.slots.requestedAction;
+  if (platform && purpose && !normalizeForPacket(purpose).includes(normalizeForPacket(platform))) {
+    return `${platform} ${decapitalize(trimTerminalPunctuation(purpose.replace(/^plan\s+/i, "")))}`;
+  }
+  if (purpose) {
+    const cleaned = trimTerminalPunctuation(purpose.replace(/^(?:plan|build|implement|add|set up|deploy|post)\s+/i, ""));
+    return platform ? restoreKnownCasing(cleaned, platform) : cleaned;
+  }
+
+  const cleanedArtifact = expectedArtifact
+    .replace(new RegExp(`\\s+for\\s+${escapeRegExp(resolved.slots.project ?? "")}\\b`, "i"), "")
+    .replace(/\bplan\b.*$/i, "")
+    .replace(/\bimplementation plan\b.*$/i, "")
+    .replace(/\bsafe repository changes\b.*$/i, "")
+    .trim();
+  return trimTerminalPunctuation(cleanedArtifact || title);
+}
+
+function expectedArtifactFallback(isPlanningPacket: boolean): string {
+  return isPlanningPacket
+    ? "Concrete planning brief with ordered phases, repository impact assessment, approval needs, validation strategy, and recommended next action"
+    : "Concrete implementation artifact with changed files and validation results";
+}
+
+function normalizeForPacket(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+}
+
+function restoreKnownCasing(value: string, knownValue: string): string {
+  return value.replace(new RegExp(`\\b${escapeRegExp(knownValue)}\\b`, "i"), knownValue);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function decodeStringArray(raw: string | null | undefined): string[] {
@@ -461,6 +658,11 @@ function confidenceFromResolved(matched: boolean): "high" | "medium" {
 
 function trimTerminalPunctuation(value: string): string {
   return value.trim().replace(/[.!?]+$/g, "");
+}
+
+function decapitalize(value: string): string {
+  const trimmed = value.trim();
+  return trimmed ? `${trimmed[0].toLowerCase()}${trimmed.slice(1)}` : trimmed;
 }
 
 function renderTemplate(template: TemplateDefinition): string {

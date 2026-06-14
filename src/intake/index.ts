@@ -136,7 +136,7 @@ const GENERIC_CONTEXT_TOKENS = new Set([
   "to",
   "work"
 ]);
-const WORK_VERBS = "plan\\s+and\\s+implement|add|build|implement|prepare|fix|create|write|improve|publish";
+const WORK_VERBS = "plan\\s+and\\s+implement|set\\s+up|add|build|implement|prepare|fix|create|write|improve|publish|plan|post|deploy";
 const CONTEXTUAL_WORK_VERBS = "keep\\s+going\\s+on|continue|work\\s+on";
 const KNOWN_PLATFORMS = [
   "Pinterest",
@@ -774,7 +774,7 @@ function cleanProjectReference(value: string): string {
 }
 
 function parseEntityAttributeUpdate(raw: string): ParsedEntityAttributeUpdate | null {
-  const command = /^\s*(?:please\s+)?(?:set|update|change)\s+(.+?)\s*[.!?]?\s*$/i.exec(raw);
+  const command = /^\s*(?:please\s+)?(?!(?:set\s+up)\b)(?:set|update|change)\s+(.+?)\s*[.!?]?\s*$/i.exec(raw);
   if (command?.[1]) {
     return parseAttributeForEntityUpdate(command[1]) ?? parseEntityFirstUpdate(command[1]);
   }

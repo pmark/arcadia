@@ -143,12 +143,12 @@ function executionPathForInput(
     return planningRecommended ? "Plan First" : "Execute Directly";
   }
 
-  if (input.intake.missingFields.length > 0 && commandShapedMissingTarget(normalized, input.intake)) {
-    return "Clarify First";
-  }
-
   if (intentType === "Planning Request" || intentType === "Research Request") {
     return input.intake.project || !requiresProjectForPlan(normalized) ? "Plan First" : "Clarify First";
+  }
+
+  if (input.intake.missingFields.length > 0 && commandShapedMissingTarget(normalized, input.intake)) {
+    return "Clarify First";
   }
 
   if (input.intake.action.kind === "capture_thought") {
@@ -187,7 +187,7 @@ function planningRecommendedForInput(
     return false;
   }
 
-  return /\b(?:architecture|architect|migration|redesign|roadmap|strategy|workflow|integration|publishing|posting|publish|automation|release|multi[- ]step|end[- ]to[- ]end)\b/.test(normalized) ||
+  return /\b(?:architecture|architect|migration|redesign|roadmap|strategy|workflow|integration|publishing|posting|publish|post|deploy|deployment|credentials?|paid|scheduler|automation|release|multi[- ]step|end[- ]to[- ]end)\b/.test(normalized) ||
     input.resolved.approvalGates.length > 1;
 }
 
@@ -206,13 +206,13 @@ function codexGoalTextForInput(input: StewardIntentInput & {
   }
 
   const project = input.relatedProject?.name ?? "the relevant project";
-  const goal = input.relatedGoal ? ` toward its goal: ${input.relatedGoal}` : "";
+  const goal = input.relatedGoal ? ` toward its goal: ${stripTerminalPunctuation(input.relatedGoal)}` : "";
   const request = stripTerminalPunctuation(input.rawInput.trim());
   const subject = canonicalSubjectForInput(input);
 
   if (input.intentType === "Planning Request") {
     if (subject && input.relatedProject?.name) {
-      return `Create a practical plan for ${subject} for ${input.relatedProject.name} with ordered phases, risks, approval requirements, and recommended next action${goal}.`;
+      return `Create a practical plan for ${capitalizeSubject(subject)} for ${input.relatedProject.name} with ordered phases, risks, approval requirements, and recommended next action${goal}.`;
     }
     return `Create a practical plan for ${project} that turns "${request}" into sequenced, reviewable progress${goal}.`;
   }
@@ -228,7 +228,7 @@ function codexGoalTextForInput(input: StewardIntentInput & {
   }
 
   if (input.intake.action.kind === "create_work") {
-    const action = subject ?? input.intake.action.title;
+    const action = subject ? decapitalize(subject) : input.intake.action.title;
     return `${input.planningRecommended ? "Plan and implement" : "Implement"} ${action} for ${project}${goal}.`;
   }
 
@@ -314,7 +314,7 @@ function isPlanningRequest(normalized: string): boolean {
 }
 
 function isResearchRequest(normalized: string): boolean {
-  return /\b(?:research|investigate|compare|evaluate|look into|find out|survey)\b/.test(normalized);
+  return /\b(?:research|investigate|compare|evaluate|look into|find out|figure out|survey)\b/.test(normalized);
 }
 
 function requiresProjectForPlan(normalized: string): boolean {
@@ -367,6 +367,11 @@ function cleanSubject(value: string): string {
 function decapitalize(value: string): string {
   const trimmed = value.trim();
   return trimmed ? `${trimmed[0].toLowerCase()}${trimmed.slice(1)}` : trimmed;
+}
+
+function capitalizeSubject(value: string): string {
+  const trimmed = value.trim();
+  return trimmed ? `${trimmed[0].toUpperCase()}${trimmed.slice(1)}` : trimmed;
 }
 
 function escapeRegExp(value: string): string {

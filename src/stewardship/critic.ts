@@ -143,6 +143,7 @@ export class DeterministicStewardshipCritic implements StewardshipCritic {
     this.checkClarification(findings, originalInput, confidenceLabel, clarificationRequired, executionPath, projectName);
     this.checkApprovalBoundaries(findings, input.targetKind, artifactText, input.approvalBoundaries);
     this.checkValidationCommands(findings, input.targetKind, artifactText, input.validationCommands);
+    this.checkPlanningPacketContract(findings, input.targetKind, artifactText, expectedArtifact);
     this.checkProjectPlatform(findings, originalInput, artifactText, projectName, platformName);
     this.checkMetadata(findings, input.metadata);
 
@@ -220,6 +221,23 @@ export class DeterministicStewardshipCritic implements StewardshipCritic {
         "Expected artifacts should describe the operator-visible outcome, not Arcadia internals.",
         internalTerms,
         "Name the deliverable or decision outcome the work should produce."
+      ));
+    }
+
+    const abstractTerms = [
+      "clear implementation or planning artifact",
+      "requested artifact",
+      "requested work artifact",
+      "project execution plan"
+    ].filter((term) => normalize(expectedArtifact) === normalize(term) || containsLoose(expectedArtifact, term));
+
+    if (abstractTerms.length > 0) {
+      findings.push(finding(
+        "expected_artifact_concrete",
+        "warning",
+        "Expected artifacts should be concrete and inspectable, not abstract placeholders.",
+        abstractTerms,
+        "Name the specific planning brief, implementation slice, fixture, report, or validation artifact the operator should inspect."
       ));
     }
   }
@@ -378,7 +396,7 @@ export class DeterministicStewardshipCritic implements StewardshipCritic {
     }
 
     const commands = (validationCommands ?? []).map((command) => command.trim()).filter(Boolean);
-    const hasFallbackGuidance = /\b(?:validation commands|determine validation|existing project validation|run validation command)\b/i.test(artifactText);
+    const hasFallbackGuidance = /\b(?:validation commands|validation strategy|determine validation|existing project validation|run validation command)\b/i.test(artifactText);
     const missing = commands.filter((command) => !artifactText.includes(command));
 
     if (!hasFallbackGuidance || missing.length > 0) {
@@ -388,6 +406,79 @@ export class DeterministicStewardshipCritic implements StewardshipCritic {
         "Validation guidance is missing or does not include the resolved project commands.",
         missing,
         "Include resolved validation commands or explicit guidance to discover and report the validation path."
+      ));
+    }
+  }
+
+  private checkPlanningPacketContract(
+    findings: CritiqueFinding[],
+    targetKind: CritiqueTargetKind,
+    artifactText: string,
+    expectedArtifact: string
+  ): void {
+    if (targetKind !== "codex_planning_packet" || !artifactText) {
+      return;
+    }
+
+    const unauthorizedImplementation = [
+      "Execute directly",
+      "Summarize implementation or planning outcome",
+      "List changed files",
+      "Report changed files",
+      "Run validation command:"
+    ].filter((phrase) => artifactText.includes(phrase));
+    if (unauthorizedImplementation.length > 0) {
+      findings.push(finding(
+        "planning_packet_no_implementation_authorization",
+        "blocker",
+        "Planning packets must not authorize or imply implementation execution.",
+        unauthorizedImplementation,
+        "Replace build-only language with planning-only instructions and frame implementation as a future approved phase."
+      ));
+    }
+
+    const requiredPhrases = [
+      "Do not make implementation changes",
+      "future phase",
+      "None required for planning-only packet creation",
+      "Future implementation approval required before execution",
+      "Repository Impact Assessment",
+      "Likely future implementation area",
+      "Smallest Useful Follow-up Codex Goal",
+      "Validation strategy",
+      "planning outcome only",
+      "planning artifacts produced"
+    ];
+    const missing = requiredPhrases.filter((phrase) => !artifactText.includes(phrase));
+    if (missing.length > 0) {
+      findings.push(finding(
+        "planning_packet_required_sections",
+        "warning",
+        "Planning packets are missing required planning-only guidance.",
+        missing,
+        "Include planning-only authorization, future approval visibility, repository impact, smallest follow-up goal, conditional validation, and planning-only final reporting."
+      ));
+    }
+
+    const conditionalValidation = /Do not run tests or lint for this planning-only packet unless files change/i.test(artifactText) ||
+      /unless files change while preparing the plan/i.test(artifactText);
+    if (!conditionalValidation) {
+      findings.push(finding(
+        "planning_packet_conditional_validation",
+        "warning",
+        "Planning-only packets should describe validation strategy without requiring test or lint execution.",
+        [],
+        "Make validation conditional: identify commands for future implementation and run them only if planning edits files."
+      ));
+    }
+
+    if (!expectedArtifact || containsLoose(expectedArtifact, "project execution plan")) {
+      findings.push(finding(
+        "planning_expected_artifact_specific",
+        "warning",
+        "Planning packets need a concrete expected planning artifact.",
+        expectedArtifact ? [expectedArtifact] : [],
+        "Name the specific plan, brief, fixture, repository impact assessment, approval matrix, or follow-up goal expected."
       ));
     }
   }
