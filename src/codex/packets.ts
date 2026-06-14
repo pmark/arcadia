@@ -353,9 +353,10 @@ function renderAcceptanceCriteria(input: {
 }, stewardship: GoalStewardshipResult): string {
   const artifact = input.resolved.expectedArtifact ?? input.workItem.expected_artifact ?? "requested artifact";
   const project = input.projectContext?.project.name ?? input.workItem.project_name ?? "the selected project";
+  const projectGoal = input.projectContext?.project.goal ? ` goal: ${trimTerminalPunctuation(input.projectContext.project.goal)}` : "";
   const criteria = [
-    `- Deliver the expected artifact: ${artifact}.`,
-    `- Keep the work aligned with ${project}${input.projectContext?.project.goal ? ` goal: ${input.projectContext.project.goal}` : ""}.`,
+    `- Deliver the expected artifact: ${trimTerminalPunctuation(artifact)}.`,
+    `- Keep the work aligned with ${project}${projectGoal}.`,
     "- Preserve existing behavior outside the requested scope.",
     "- Run relevant local validation or explain why validation could not run."
   ];
@@ -456,6 +457,10 @@ function decodeStringArray(raw: string | null | undefined): string[] {
 
 function confidenceFromResolved(matched: boolean): "high" | "medium" {
   return matched ? "high" : "medium";
+}
+
+function trimTerminalPunctuation(value: string): string {
+  return value.trim().replace(/[.!?]+$/g, "");
 }
 
 function renderTemplate(template: TemplateDefinition): string {

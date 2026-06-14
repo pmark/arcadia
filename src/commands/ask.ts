@@ -48,6 +48,7 @@ import { loadPhase3Registries, validatePhase3Registries } from "../intent/regist
 import type { ResolvedIntent } from "../intent/resolver.js";
 import type { IntakeProjectAttribute, IntakeProjectContext, IntakeResult, IntakeWorkspaceContext } from "../intake/index.js";
 import { resolveIntake } from "../intake/index.js";
+import { normalizeAskInput } from "../intake/normalization.js";
 import { parseReviewResponse } from "../review/responseParser.js";
 import type { GoalStewardshipResult } from "../stewardship/index.js";
 import { isPlanningOrResearchStewardship, stewardIntent } from "../stewardship/index.js";
@@ -97,7 +98,9 @@ export interface AskCommandData {
 
 export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  if (!options.request.trim()) {
+  const normalizedInput = normalizeAskInput(options.request);
+  const request = normalizedInput.askText;
+  if (!request.trim()) {
     return createSuccess({
       command: "ask",
       workspace: workspacePath,
@@ -108,18 +111,18 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   const registries = loadPhase3Registries(workspacePath);
   validatePhase3Registries(registries);
   const approvedFromReview = Boolean(options.approvedReviewItemId);
-  const parsedReviewResponse = parseReviewResponse(options.request, reviewResponseContextFromAskOptions(options));
+  const parsedReviewResponse = parseReviewResponse(request, reviewResponseContextFromAskOptions(options));
   const { intake, workspaceContext } = withDatabase(workspacePath, (db) => {
     const workspaceContext = buildIntakeContext(db);
     return {
-      intake: resolveIntake(options.request, workspaceContext),
+      intake: resolveIntake(request, workspaceContext),
       workspaceContext
     };
   });
   const resolved = resolvedIntentForStewardship(
     intake,
     stewardIntent({
-      rawInput: options.request,
+      rawInput: request,
       intake,
       resolved: resolvedIntentFromIntake(intake, approvedFromReview),
       workspaceContext,
@@ -130,7 +133,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     approvedFromReview
   );
   const stewardship = stewardIntent({
-    rawInput: options.request,
+    rawInput: request,
     intake,
     resolved,
     workspaceContext,
@@ -144,7 +147,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     const reviewResolution = runReviewResolveReplyCommand({
       workspace: workspacePath,
       id: parsedReviewResponse.reviewId,
-      reply: options.request
+      reply: request
     });
     const ask = withDatabase(workspacePath, (db) =>
       createAskRequest(db, {
@@ -571,7 +574,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       projectId: context.projectId,
       milestoneId: context.milestoneId,
       title: resolved.title,
-      rawInput: options.request,
+      rawInput: request,
       queue: resolved.queue,
       workClassification: resolved.workClassification,
       nextAction: resolved.nextAction,
@@ -606,7 +609,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   const codexPacket = resolved.codexPurpose
     ? createCodexPacket({
         workspace: workspacePath,
-        request: options.request,
+        request,
         resolved,
         workItem: initial.workItem,
         planId: initial.plan.id,

@@ -36,6 +36,8 @@ export interface StewardshipQualityFixture {
     packetArtifactExcludes?: string[];
     packetIncludes?: string[];
     packetCritiqueStatus?: string;
+    askRawInputIncludes?: string[];
+    packetExcludes?: string[];
     knownBadPhrasesAbsent?: string[];
     clarificationRequired?: boolean;
     reviewRequired?: boolean;
@@ -77,6 +79,76 @@ export const defaultProjects: SeedProject[] = [
 ];
 
 export const stewardshipQualityFixtures: StewardshipQualityFixture[] = [
+  {
+    name: "normalizes pnpm arcadia ask wrapper before planning stewardship",
+    input: "pnpm arcadia ask \"Plan and implement Publishing support for Pinterest for Rebuster project\"",
+    seed: { projects: defaultProjects },
+    expect: {
+      intentType: "Planning Request",
+      executionPath: "Plan First",
+      confidenceLabel: "high",
+      project: "Rebuster",
+      slots: {
+        project: "Rebuster",
+        platform: "Pinterest",
+        purpose: "publishing support"
+      },
+      requestedWorkArtifactIncludes: [
+        "Pinterest publishing plan for Rebuster",
+        "ordered phases",
+        "risks/open questions",
+        "approval requirements",
+        "recommended next action"
+      ],
+      requestedWorkArtifactExcludes: ["Goal stewardship plan", "generic project execution plan"],
+      packetArtifactIncludes: [
+        "Pinterest publishing plan for Rebuster",
+        "ordered phases",
+        "risks/open questions",
+        "approval requirements",
+        "recommended next action"
+      ],
+      packetArtifactExcludes: ["Goal stewardship plan", "generic project execution plan"],
+      packetExcludes: ["pnpm arcadia ask"],
+      askRawInputIncludes: ["pnpm arcadia ask"],
+      knownBadPhrasesAbsent: [
+        "the relevant project",
+        "Goal stewardship plan"
+      ],
+      packetCritiqueStatus: "approved",
+      reviewRequired: false,
+      planningRecommended: true
+    }
+  },
+  {
+    name: "normalizes arcadia ask single quote wrapper before planning stewardship",
+    input: "arcadia ask 'Plan and implement Publishing support for Pinterest for Rebuster project'",
+    seed: { projects: defaultProjects },
+    expect: {
+      intentType: "Planning Request",
+      executionPath: "Plan First",
+      confidenceLabel: "high",
+      project: "Rebuster",
+      slots: {
+        project: "Rebuster",
+        platform: "Pinterest",
+        purpose: "publishing support"
+      },
+      requestedWorkArtifactIncludes: [
+        "Pinterest publishing plan for Rebuster",
+        "ordered phases",
+        "risks/open questions",
+        "approval requirements",
+        "recommended next action"
+      ],
+      packetArtifactIncludes: ["Pinterest publishing plan for Rebuster"],
+      packetExcludes: ["arcadia ask"],
+      askRawInputIncludes: ["arcadia ask"],
+      packetCritiqueStatus: "approved",
+      reviewRequired: false,
+      planningRecommended: true
+    }
+  },
   {
     name: "planning packet names Pinterest publishing plan artifact",
     input: "Plan and implement Publishing support for Pinterest for Rebuster.",

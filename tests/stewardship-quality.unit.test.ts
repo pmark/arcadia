@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolveIntent } from "../src/intent/resolver.js";
 import { resolveIntake, type IntakeWorkspaceContext } from "../src/intake/index.js";
+import { normalizeAskInput } from "../src/intake/normalization.js";
 import { stewardIntent } from "../src/stewardship/index.js";
 import { defaultProjects, stewardshipQualityFixtures, type StewardshipQualityFixture } from "./stewardshipQualityFixtures.js";
 
@@ -8,12 +9,13 @@ describe("stewardship quality unit fixtures", () => {
   for (const fixture of stewardshipQualityFixtures) {
     it(fixture.name, () => {
       const context = intakeContextForFixture(fixture);
-      const intake = resolveIntake(fixture.input, context);
-      const resolved = resolveIntent(fixture.input, emptyRegistries());
+      const normalized = normalizeAskInput(fixture.input);
+      const intake = resolveIntake(normalized.askText, context);
+      const resolved = resolveIntent(normalized.askText, emptyRegistries());
       const stewardship = stewardIntent({
-        rawInput: fixture.input,
+        rawInput: normalized.askText,
         intake,
-        resolved: resolvedFromIntakeForUnit(fixture.input, intake),
+        resolved: resolvedFromIntakeForUnit(normalized.askText, intake),
         workspaceContext: context
       });
 

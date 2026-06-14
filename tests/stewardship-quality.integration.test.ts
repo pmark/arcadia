@@ -30,6 +30,10 @@ describe("stewardship quality integration fixtures", () => {
       const initial = runAskCommand({ workspace, request: fixture.input });
       const response = responseWithPacketIfNeeded(workspace, initial);
 
+      for (const phrase of fixture.expect.askRawInputIncludes ?? []) {
+        expect(initial.data.ask?.raw_request, `${fixture.name}: ask raw input includes ${phrase}`).toContain(phrase);
+      }
+
       expect(initial.data.stewardship.intentType).toBe(fixture.expect.intentType);
       expect(initial.data.stewardship.recommendedExecutionPath).toBe(fixture.expect.executionPath);
       expect(initial.data.intake.confidenceLabel).toBe(fixture.expect.confidenceLabel);
@@ -108,6 +112,9 @@ describe("stewardship quality integration fixtures", () => {
         }
         for (const phrase of fixture.expect.packetArtifactExcludes ?? []) {
           expect(expectedArtifact, `${fixture.name}: packet expected artifact excludes ${phrase}`).not.toContain(phrase);
+        }
+        for (const phrase of fixture.expect.packetExcludes ?? []) {
+          expect(prompt, `${fixture.name}: packet excludes ${phrase}`).not.toContain(phrase);
         }
 
         for (const phrase of fixture.expect.knownBadPhrasesAbsent ?? []) {
