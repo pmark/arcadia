@@ -12,15 +12,15 @@ export const WORKSPACE_FOLDERS = [
 
 export const PROJECT_STATUSES = ["active", "paused", "incubating", "completed"] as const;
 export const MILESTONE_STATUSES = ["active", "paused", "completed"] as const;
-export const QUEUES = ["inbox", "work_queue", "needs_mark", "blocked"] as const;
-export const WORK_CLASSIFICATIONS = ["autonomous", "codex", "needs_mark", "blocked"] as const;
+export const QUEUES = ["inbox", "work_queue", "requires_review", "needs_mark", "blocked"] as const;
+export const WORK_CLASSIFICATIONS = ["autonomous", "codex", "requires_review", "needs_mark", "blocked"] as const;
 export const WORK_ITEM_STATUSES = ["open", "in_progress", "done", "blocked"] as const;
 export const ARTIFACT_STATUSES = ["planned", "drafted", "ready", "published"] as const;
 export const EXECUTOR_TYPES = ["deterministic", "codex_planning", "codex_build", "mark"] as const;
-export const EXECUTION_PLAN_STATUSES = ["planned", "running", "completed", "needs_mark", "failed"] as const;
-export const EXECUTION_RUN_STATUSES = ["running", "completed", "needs_mark", "failed"] as const;
-export const EXECUTION_STEP_STATUSES = ["pending", "running", "completed", "needs_mark", "failed", "skipped"] as const;
-export const ASK_REQUEST_STATUSES = ["planned", "needs_mark", "failed"] as const;
+export const EXECUTION_PLAN_STATUSES = ["planned", "running", "completed", "requires_review", "needs_mark", "failed"] as const;
+export const EXECUTION_RUN_STATUSES = ["running", "completed", "requires_review", "needs_mark", "failed"] as const;
+export const EXECUTION_STEP_STATUSES = ["pending", "running", "completed", "requires_review", "needs_mark", "failed", "skipped"] as const;
+export const ASK_REQUEST_STATUSES = ["planned", "requires_review", "needs_mark", "failed"] as const;
 export const APPROVAL_GATE_TYPES = [
   "credentials_required",
   "external_deployment",
@@ -39,6 +39,7 @@ export const BACK_BURNER_STATUSES = ["incubating", "opportunistic", "promoted", 
 export const QUEUE_LABELS: Record<QueueName, string> = {
   inbox: "Inbox",
   work_queue: "Work Queue",
+  requires_review: "Requires Review",
   needs_mark: "Requires Review",
   blocked: "Blocked"
 };
@@ -46,6 +47,7 @@ export const QUEUE_LABELS: Record<QueueName, string> = {
 export const WORK_CLASSIFICATION_LABELS: Record<WorkClassification, string> = {
   autonomous: "Autonomous",
   codex: "Codex",
+  requires_review: "Requires Review",
   needs_mark: "Requires Review",
   blocked: "Blocked"
 };
@@ -67,6 +69,10 @@ export type CodexInvocationPurpose = (typeof CODEX_INVOCATION_PURPOSES)[number];
 export type CodexInvocationStatus = (typeof CODEX_INVOCATION_STATUSES)[number];
 export type BackBurnerStatus = (typeof BACK_BURNER_STATUSES)[number];
 
+export function isRequiresReviewValue(value: string | null | undefined): boolean {
+  return value === "requires_review" || value === "needs_mark";
+}
+
 export function assertAllowedValue<T extends string>(
   label: string,
   value: string,
@@ -78,8 +84,8 @@ export function assertAllowedValue<T extends string>(
 }
 
 export function queueForWorkClassification(classification: WorkClassification): QueueName {
-  if (classification === "needs_mark") {
-    return "needs_mark";
+  if (isRequiresReviewValue(classification)) {
+    return "requires_review";
   }
 
   if (classification === "blocked") {

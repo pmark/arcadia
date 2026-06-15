@@ -80,10 +80,10 @@ describe("Codex planning artifact validation workflow", () => {
       allowCodexPlanning: true
     });
 
-    expect(result.data.run.status).toBe("needs_mark");
-    expect(result.data.run.steps[0].status).toBe("needs_mark");
+    expect(result.data.run.status).toBe("requires_review");
+    expect(result.data.run.steps[0].status).toBe("requires_review");
     expect(result.data.run.steps[0].error).toContain("Planning artifact validation failed");
-    expect(withDatabase(workspace, (db) => getWorkItem(db, fixture.workItemId)?.queue)).toBe("needs_mark");
+    expect(withDatabase(workspace, (db) => getWorkItem(db, fixture.workItemId)?.queue)).toBe("requires_review");
 
     const reviewItems = withDatabase(workspace, (db) => listReviewItems(db, "all"));
     expect(reviewItems).toHaveLength(1);

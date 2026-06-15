@@ -608,7 +608,7 @@ describe("CLI response contract", () => {
     expect(json.data.counts.discovered).toBe(0);
   });
 
-  it("pauses captured ambiguous work as Needs Mark", () => {
+  it("pauses captured ambiguous work as Requires Review", () => {
     const workspace = initializedWorkspace();
 
     const captureResult = runCli([
@@ -621,14 +621,14 @@ describe("CLI response contract", () => {
     ]);
     expect(captureResult.status).toBe(0);
     const captureJson = parseJson(captureResult.stdout);
-    expect(captureJson.data.workItem.queue).toBe("needs_mark");
-    expect(captureJson.data.workItem.work_classification).toBe("needs_mark");
+    expect(captureJson.data.workItem.queue).toBe("requires_review");
+    expect(captureJson.data.workItem.work_classification).toBe("requires_review");
 
     const runResult = runCli(["work", "run", captureJson.data.workItem.id, "--workspace", workspace, "--json"]);
     expect(runResult.status).toBe(0);
     const runJson = parseJson(runResult.stdout);
-    expect(runJson.data.run.status).toBe("needs_mark");
-    expect(runJson.data.run.steps[0].status).toBe("needs_mark");
+    expect(runJson.data.run.status).toBe("requires_review");
+    expect(runJson.data.run.steps[0].status).toBe("requires_review");
   });
 
   it("lists artifacts with JSON output", () => {

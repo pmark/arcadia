@@ -71,8 +71,8 @@ describe("dashboard snapshot", () => {
         milestoneId: active.milestone.id,
         title: "Decision pending",
         rawInput: "Decision pending",
-        queue: "needs_mark",
-        workClassification: "needs_mark",
+        queue: "requires_review",
+        workClassification: "requires_review",
         nextAction: "Choose the dashboard release boundary"
       });
 
@@ -175,8 +175,8 @@ describe("dashboard snapshot", () => {
       const created = createWorkItemWithOptionalArtifact(db, {
         title: "Review boundary",
         rawInput: "Review boundary",
-        queue: "needs_mark",
-        workClassification: "needs_mark",
+        queue: "requires_review",
+        workClassification: "requires_review",
         nextAction: "Pick the release boundary"
       });
       const workItem = getWorkItem(db, created.workItem.id);
@@ -190,12 +190,12 @@ describe("dashboard snapshot", () => {
       const run = createExecutionRun(db, {
         workItemId: created.workItem.id,
         planId: plan!.id,
-        status: "needs_mark",
+        status: "requires_review",
         summary: "Paused for review.",
         steps: [
           {
             planStepId: plan!.steps[0].id,
-            status: "needs_mark",
+            status: "requires_review",
             output: "Requires review",
             error: "Requires review"
           }

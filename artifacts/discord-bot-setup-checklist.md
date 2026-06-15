@@ -108,7 +108,7 @@ Local verification note:
 - [ ] Define artifact review behavior for Discord, or keep artifact review local-only.
 - [ ] Define credential handling policy. Current expected behavior is no credential use from Discord.
 - [ ] Define publishing/deployment/social-posting policy. Current expected behavior is no publishing from Discord.
-- [ ] Migrate remaining user-facing CLI/report labels from legacy `Needs Mark` wording to `Requires Review` while preserving internal compatibility.
+- [x] Migrate remaining user-facing CLI/report labels from legacy review wording to `Requires Review` while preserving internal compatibility.
 - [ ] Add a deployment choice if the bot should run continuously outside a local terminal, such as launchd, a server, or a container.
 - [ ] Add operational logging and restart policy for the chosen always-on runtime.
 - [ ] Add a short runbook for rotating `DISCORD_BOT_TOKEN`.

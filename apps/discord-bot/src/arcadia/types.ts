@@ -41,6 +41,7 @@ export interface QueueData {
   queues: {
     inbox: WorkItem[];
     work_queue: WorkItem[];
+    requires_review: WorkItem[];
     needs_mark: WorkItem[];
     blocked: WorkItem[];
   };

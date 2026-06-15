@@ -577,8 +577,8 @@ describe("arcadia ask command", () => {
       createWorkItemWithOptionalArtifact(db, {
         title: "Legacy ambiguous item",
         rawInput: "legacy ambiguous item",
-        queue: "needs_mark",
-        workClassification: "needs_mark",
+        queue: "requires_review",
+        workClassification: "requires_review",
         nextAction: "Clarify legacy item."
       }).workItem
     );

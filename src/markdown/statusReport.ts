@@ -141,7 +141,7 @@ function renderProjectsWithoutNextAction(projects: ProjectSummary[]): string {
 }
 
 function renderQueueGroups(queues: QueueGroups): string {
-  const orderedQueues: QueueName[] = ["inbox", "work_queue", "needs_mark", "blocked"];
+  const orderedQueues: QueueName[] = ["inbox", "work_queue", "requires_review", "blocked"];
   return orderedQueues
     .map((queue) => [`### ${QUEUE_LABELS[queue]}`, "", renderWorkItems(queues[queue])].join("\n"))
     .join("\n\n");

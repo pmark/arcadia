@@ -758,10 +758,12 @@ function listOpenWorkItems(db: Database.Database, whereSql: string, parameters: 
 }
 
 export function listQueueGroups(db: Database.Database): QueueGroups {
+  const requiresReview = listOpenWorkItems(db, "wi.queue IN (?, ?)", ["requires_review", "needs_mark"]);
   return {
     inbox: listOpenWorkItems(db, "wi.queue = ?", ["inbox"]),
     work_queue: listOpenWorkItems(db, "wi.queue = ?", ["work_queue"]),
-    needs_mark: listOpenWorkItems(db, "wi.queue = ?", ["needs_mark"]),
+    requires_review: requiresReview,
+    needs_mark: requiresReview,
     blocked: listOpenWorkItems(db, "wi.queue = ?", ["blocked"])
   };
 }
@@ -1902,7 +1904,10 @@ export function buildStatusReportData(db: Database.Database, workspacePath: stri
     generatedAt: nowIso(),
     projects: listProjectSummaries(db),
     queues: listQueueGroups(db),
-    needsMarkItems: listOpenWorkItems(db, "wi.queue = 'needs_mark' OR wi.work_classification = 'needs_mark'"),
+    needsMarkItems: listOpenWorkItems(
+      db,
+      "wi.queue IN ('requires_review', 'needs_mark') OR wi.work_classification IN ('requires_review', 'needs_mark')"
+    ),
     autonomousItems: listOpenWorkItems(
       db,
       "wi.work_classification = 'autonomous' AND wi.queue != 'blocked'"
@@ -1930,7 +1935,10 @@ export function buildWeeklyReviewData(
     db,
     "wi.queue = 'blocked' OR wi.work_classification = 'blocked' OR wi.status = 'blocked'"
   );
-  const needsMarkItems = listOpenWorkItems(db, "wi.queue = 'needs_mark' OR wi.work_classification = 'needs_mark'");
+  const needsMarkItems = listOpenWorkItems(
+    db,
+    "wi.queue IN ('requires_review', 'needs_mark') OR wi.work_classification IN ('requires_review', 'needs_mark')"
+  );
   const autonomousItems = listOpenWorkItems(
     db,
     "wi.work_classification = 'autonomous' AND wi.queue != 'blocked'"

@@ -18,7 +18,7 @@ set -euo pipefail
 # Arcadia operating checklist:
 # - Current milestone: define the smallest useful outcome for the project.
 # - Next action: record the next concrete action that moves the project forward.
-# - Work classification: choose autonomous, codex, needs_mark, or blocked.
+# - Work classification: choose autonomous, codex, requires_review, or blocked.
 # - Required artifacts: name any expected output before work starts.
 
 WORKSPACE="${WORKSPACE:-../workspaces/martianrover}"
@@ -133,7 +133,7 @@ cat <<EOF
 Current project context:
   Current milestone id: $MILESTONE_ID
   Next action source project id: $PROJECT_ID
-  Work classification examples: autonomous, codex, needs_mark, blocked
+  Work classification examples: autonomous, codex, requires_review, blocked
   Required artifacts are tracked through expected-artifact fields and artifact records.
 
 EOF
@@ -170,21 +170,21 @@ codex_json="$(
 )"
 CODEX_WORK_ID="$(printf '%s' "$codex_json" | json_query 'data.workItem.id')"
 
-print_step "Capture work that needs Mark's judgment before execution"
-needs_mark_json="$(
+print_step "Capture work that needs review before execution"
+requires_review_json="$(
   arcadia inbox import \
     --workspace "$WORKSPACE" \
     --project "$PROJECT_ID" \
     --milestone "$MILESTONE_ID" \
     --title "Choose the product direction" \
     --input "This requires human judgment before execution." \
-    --queue needs_mark \
-    --classification needs_mark \
+    --queue requires_review \
+    --classification requires_review \
     --next-action "Decide which option matters most this week" \
     --expected-artifact "Decision note" \
     --json
 )"
-NEEDS_MARK_WORK_ID="$(printf '%s' "$needs_mark_json" | json_query 'data.workItem.id')"
+NEEDS_MARK_WORK_ID="$(printf '%s' "$requires_review_json" | json_query 'data.workItem.id')"
 
 print_step "Capture blocked work explicitly instead of carrying it mentally"
 blocked_json="$(

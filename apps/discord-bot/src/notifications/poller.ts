@@ -69,7 +69,7 @@ export function evaluateNotifications(
   const reviewItems = snapshot.reviewItems ?? [];
   const blockedWorkItems = snapshot.blockedWorkItems ?? [];
   const notableRunIds = snapshot.runs
-    .filter((run) => run.status === "failed" || run.status === "needs_mark")
+    .filter((run) => run.status === "failed" || isRequiresReviewStatus(run.status))
     .map((run) => run.id);
   const completedDiscordRunIds = snapshot.runs
     .filter((run) => run.status === "completed" && isDiscordSubmittedRun(run, submissions))
@@ -131,7 +131,7 @@ export function evaluateNotifications(
 
     if (run.status === "failed") {
       messages.push({ key: `run:${run.id}`, content: runFailedMessage(run) });
-    } else if (run.status === "needs_mark") {
+    } else if (isRequiresReviewStatus(run.status)) {
       messages.push({ key: `run:${run.id}`, content: runRequiresReviewMessage(run) });
     } else if (run.status === "completed" && isDiscordSubmittedRun(run, submissions)) {
       messages.push({ key: `run:${run.id}`, content: runCompletedMessage(run) });
@@ -212,6 +212,10 @@ export function evaluateNotifications(
       notifiedCodexTaskEvents: Array.from(nextCodexEvents)
     }
   };
+}
+
+function isRequiresReviewStatus(value: string | null | undefined): boolean {
+  return value === "requires_review" || value === "needs_mark";
 }
 
 function requiresReviewItemMessage(item: ReviewItem): string {

@@ -41,7 +41,7 @@ import type {
   ProjectContext,
   WorkItemSummary
 } from "../domain/types.js";
-import type { ProjectStatus } from "../domain/constants.js";
+import { isRequiresReviewValue, type ProjectStatus } from "../domain/constants.js";
 import { ensureBuiltInSkills } from "../execution/skills.js";
 import { executePlan } from "../execution/runner.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
@@ -511,7 +511,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         registryVersion: registries.intents.version,
         outputKind: "requires_review",
         stewardshipJson: stewardshipJson(stewardship),
-        status: "needs_mark"
+        status: "requires_review"
       });
       const reviewItem = createReviewItem(db, {
         askRequestId: ask.id,
@@ -661,7 +661,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       planId: initial.plan.id,
       promptPacketPath: codexPacket?.relativePromptPath ?? null,
       stewardshipJson: stewardshipJson(stewardship),
-      status: resolved.workClassification === "needs_mark" ? "needs_mark" : "planned"
+      status: isRequiresReviewValue(resolved.workClassification) ? "requires_review" : "planned"
     });
 
     return {
@@ -687,8 +687,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       intake,
       resolvedIntent: resolved,
       result: {
-        status: resolved.workClassification === "needs_mark" ? "requires_review" : "queued",
-        summary: resolved.workClassification === "needs_mark" ? "Requires Review item created." : "Work item created."
+        status: isRequiresReviewValue(resolved.workClassification) ? "requires_review" : "queued",
+        summary: isRequiresReviewValue(resolved.workClassification) ? "Requires Review item created." : "Work item created."
       },
       workItem: data.workItem,
       plan: data.plan,
@@ -870,7 +870,7 @@ export function renderAskSuccess(response: CommandSuccess<AskCommandData>): stri
   if (response.data.workItem) {
     lines.push(`Work item: ${response.data.workItem.id}`);
     lines.push(`Plan: ${response.data.plan?.id ?? "None"}`);
-    lines.push(`Queue: ${response.data.workItem.queue === "needs_mark" ? "requires_review" : response.data.workItem.queue}`);
+    lines.push(`Queue: ${isRequiresReviewValue(response.data.workItem.queue) ? "requires_review" : response.data.workItem.queue}`);
     lines.push(`Work classification: ${labelWorkClassification(response.data.workItem.work_classification)}`);
   }
 
@@ -974,15 +974,15 @@ function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = fal
       matched: false,
       title: `Requires Review: ${titleFromRequest(intake.rawInput)}`,
       outputKind: "requires_review",
-      queue: "needs_mark",
-      workClassification: "needs_mark",
+      queue: "requires_review",
+      workClassification: "requires_review",
       nextAction: reviewNextAction(intake),
       expectedArtifact: intake.action.kind === "create_work"
         ? expectedArtifactForCreateWork(intake)
         : "Clarified Arcadia request",
       skillSequence: [
         {
-          skillName: "needs_mark_decision",
+          skillName: "requires_review_decision",
           title: "Review intake interpretation",
           command: null,
           executorType: "mark",
@@ -1456,7 +1456,7 @@ function decodeStringArray(raw: string | null | undefined): string[] {
 }
 
 function labelWorkClassification(value: string): string {
-  return value === "needs_mark" ? "Requires Review" : value;
+  return isRequiresReviewValue(value) ? "Requires Review" : value;
 }
 
 interface ResolvedAskContext {

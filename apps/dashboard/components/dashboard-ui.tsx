@@ -136,7 +136,7 @@ export function AttentionCard({
               <h3 className="break-words text-base font-semibold leading-6">{item.reason}</h3>
               <p className="mt-1 break-words text-sm text-muted">{item.projectName ?? "Unassigned"}</p>
             </div>
-            <StatusBadge status={item.severity === "blocked" ? "blocked" : "needs_mark"} label={labelAttentionKind(item.kind)} />
+            <StatusBadge status={item.severity === "blocked" ? "blocked" : "requires_review"} label={labelAttentionKind(item.kind)} />
           </div>
           <dl className="mt-4 grid gap-3 text-sm">
             <Field label="Related Work" value={item.workItemTitle ?? item.workItemId ?? "None"} />
@@ -462,7 +462,7 @@ function statusClass(status: string): string {
     return "border-gold/30 bg-gold/10 text-gold";
   }
 
-  if (status === "needs_mark" || status === "failed" || status === "blocked") {
+  if (isRequiresReviewStatus(status) || status === "failed" || status === "blocked") {
     return "border-clay/30 bg-clay/10 text-clay";
   }
 
@@ -490,7 +490,7 @@ function iconForStatus(status: string) {
     return AlertTriangle;
   }
 
-  if (status === "needs_mark") {
+  if (isRequiresReviewStatus(status)) {
     return Radio;
   }
 
@@ -514,7 +514,7 @@ function iconClass(status: string): string {
     return "text-moss";
   }
 
-  if (status === "failed" || status === "needs_mark") {
+  if (status === "failed" || isRequiresReviewStatus(status)) {
     return "text-clay";
   }
 
@@ -523,6 +523,10 @@ function iconClass(status: string): string {
   }
 
   return "text-muted";
+}
+
+function isRequiresReviewStatus(value: string | null | undefined): boolean {
+  return value === "requires_review" || value === "needs_mark";
 }
 
 function labelAttentionKind(kind: DashboardAttentionItem["kind"]): string {

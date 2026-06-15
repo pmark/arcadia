@@ -35,6 +35,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureReviewFeedbackTable(db);
   ensureBackBurnerItemsTable(db);
   ensureAskRequestStewardshipColumn(db);
+  ensureRequiresReviewCompatibility(db);
 }
 
 function ensureProjectSlugColumn(db: Database.Database): void {
@@ -177,6 +178,91 @@ function ensureAskRequestStewardshipColumn(db: Database.Database): void {
   if (!columns.some((column) => column.name === "stewardship_json")) {
     db.prepare("ALTER TABLE ask_requests ADD COLUMN stewardship_json TEXT").run();
   }
+}
+
+function ensureRequiresReviewCompatibility(db: Database.Database): void {
+  repairLegacyRequiresReviewReferences(db);
+
+  const tables = [
+    "work_items",
+    "execution_plans",
+    "execution_plan_steps",
+    "execution_runs",
+    "execution_run_steps",
+    "ask_requests"
+  ];
+
+  for (const table of tables) {
+    const row = db
+      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .get(table) as { sql: string } | undefined;
+    if (!row?.sql || row.sql.includes("'requires_review'")) {
+      continue;
+    }
+
+    rebuildTableWithCurrentSchema(db, table);
+  }
+
+  repairLegacyRequiresReviewReferences(db);
+}
+
+function repairLegacyRequiresReviewReferences(db: Database.Database): void {
+  const rows = db
+    .prepare(
+      "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND sql LIKE '%__legacy_requires_review%'"
+    )
+    .all() as Array<{ name: string; sql: string }>;
+
+  for (const row of rows) {
+    rebuildTableWithCurrentSchema(db, row.name);
+  }
+}
+
+function rebuildTableWithCurrentSchema(db: Database.Database, table: string): void {
+  const schema = readInitialSchema();
+  const tempTable = `${table}__requires_review_rebuild`;
+  const createStatement = createStatementForTableName(extractCreateTableStatement(schema, table), table, tempTable);
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  const columnNames = columns.map((column) => column.name);
+  const quotedColumns = columnNames.map((column) => `"${column}"`).join(", ");
+
+  db.exec("PRAGMA foreign_keys = OFF");
+  try {
+    db.transaction(() => {
+      db.prepare(`DROP TABLE IF EXISTS ${quoteIdentifier(tempTable)}`).run();
+      db.exec(createStatement);
+      db.prepare(`INSERT INTO ${quoteIdentifier(tempTable)} (${quotedColumns}) SELECT ${quotedColumns} FROM ${quoteIdentifier(table)}`).run();
+      db.prepare(`DROP TABLE ${quoteIdentifier(table)}`).run();
+      db.prepare(`ALTER TABLE ${quoteIdentifier(tempTable)} RENAME TO ${quoteIdentifier(table)}`).run();
+    })();
+  } finally {
+    db.exec("PRAGMA foreign_keys = ON");
+  }
+}
+
+function extractCreateTableStatement(schema: string, table: string): string {
+  const pattern = new RegExp(`CREATE TABLE IF NOT EXISTS ${table} \\([\\s\\S]*?\\n\\);`);
+  const match = schema.match(pattern);
+  if (!match) {
+    throw new Error(`Could not find CREATE TABLE statement for ${table}`);
+  }
+
+  return match[0];
+}
+
+function createStatementForTableName(statement: string, table: string, replacement: string): string {
+  return statement.replace(
+    new RegExp(`CREATE TABLE IF NOT EXISTS ${escapeRegExp(table)}\\b`),
+    `CREATE TABLE ${quoteIdentifier(replacement)}`
+  );
+}
+
+function quoteIdentifier(identifier: string): string {
+  return `"${identifier.replaceAll('"', '""')}"`;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function nextReviewSlugNumber(slugs: Set<string>): number {

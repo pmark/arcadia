@@ -169,12 +169,12 @@
       "id": "progress_safe_work",
       "aliases": ["progress all safe work", "run safe work", "progress safe work"],
       "examples": ["Progress all safe work."],
-      "outputKind": "needs_mark",
-      "workClassification": "needs_mark",
+      "outputKind": "requires_review",
+      "workClassification": "requires_review",
       "nextAction": "Mark must approve the first portfolio-wide safe-work progression implementation.",
       "skillSequence": [
         {
-          "skillName": "needs_mark_decision",
+          "skillName": "requires_review_decision",
           "title": "Surface portfolio-wide progression decision",
           "executorType": "mark",
           "safeToRun": false,

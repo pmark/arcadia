@@ -210,7 +210,7 @@ pnpm smoke
 - `arcadia project metadata --workspace <path> <project-id> [--alias <alias>] [--repo-path <path>] [--status-summary <summary>] [--validation-command <command>]` upserts deterministic project metadata for request routing and Codex packet context.
 - `arcadia inbox add --workspace <path>` interactively adds manually classified work.
 - `arcadia inbox import --workspace <path> --title <title> --input <text> --queue <queue> --classification <classification> --next-action <action>` adds manually classified work without prompts.
-- `arcadia queue --workspace <path>` shows Inbox, Work Queue, Needs Mark, and Blocked items.
+- `arcadia queue --workspace <path>` shows Inbox, Work Queue, Requires Review, and Blocked items.
 - `arcadia dashboard snapshot --workspace <path>` emits the read-only dashboard snapshot.
 - `arcadia work list --workspace <path>` lists work items.
 - `arcadia work update --workspace <path> <work-id> [--queue <queue>] [--classification <classification>] [--next-action <action>] [--status <status>]` updates a work item.
@@ -218,7 +218,7 @@ pnpm smoke
 - `arcadia work plan --workspace <path> <work-id>` creates an observable execution plan for a work item.
 - `arcadia work run --workspace <path> <work-id> [--plan <plan-id>] [--allow-codex-planning] [--allow-codex-build] [--agent-profile <name>]` runs deterministic safe steps by default, and runs Codex steps only with explicit allow flags.
 - `arcadia run list --workspace <path> [--limit <n>]` lists recent execution runs.
-- `arcadia run show --workspace <path> <run-id>` shows the run audit trail and Needs Mark items.
+- `arcadia run show --workspace <path> <run-id>` shows the run audit trail and Requires Review items.
 - `arcadia milestone list --workspace <path> [--status <status>] [--limit <n>]` lists milestones.
 - `arcadia milestone create --workspace <path> <project-id> --title <title>` creates a milestone.
 - `arcadia milestone complete --workspace <path> <milestone-id>` marks a milestone complete.

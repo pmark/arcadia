@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { ExecutorType, WorkClassification } from "../domain/constants.js";
+import { isRequiresReviewValue, type ExecutorType, type WorkClassification } from "../domain/constants.js";
 import type { WorkItemSummary } from "../domain/types.js";
 import { upsertSkillDefinition } from "../db/repositories.js";
 
@@ -22,7 +22,7 @@ export interface PlannedSkillStep {
 
 export interface IntentClassification {
   title: string;
-  queue: "work_queue" | "needs_mark";
+  queue: "work_queue" | "requires_review";
   workClassification: WorkClassification;
   nextAction: string;
   matchedSkillName: string | null;
@@ -93,9 +93,16 @@ export const BUILT_IN_SKILLS: BuiltInSkill[] = [
     safeToRun: false
   },
   {
-    name: "needs_mark_decision",
+    name: "requires_review_decision",
     title: "Surface required review",
     description: "Pause execution until the user provides direction, approval, or missing context.",
+    executorType: "mark",
+    safeToRun: false
+  },
+  {
+    name: "needs_mark_decision",
+    title: "Surface required review",
+    description: "Legacy alias for required-review pauses.",
     executorType: "mark",
     safeToRun: false
   }
@@ -130,8 +137,8 @@ export function classifyCapturedIntent(text: string): IntentClassification {
 
   return {
     title,
-    queue: "needs_mark",
-    workClassification: "needs_mark",
+    queue: "requires_review",
+    workClassification: "requires_review",
     nextAction: "Clarify the desired outcome or approve a Codex execution path.",
     matchedSkillName: null
   };
@@ -141,10 +148,10 @@ export function planStepsForWorkItem(workItem: WorkItemSummary): PlannedSkillSte
   const raw = `${workItem.title}\n${workItem.raw_input}\n${workItem.next_action}`.toLowerCase();
   const safeSkillName = safeSkillForIntent(raw);
 
-  if (workItem.queue === "needs_mark" || workItem.work_classification === "needs_mark") {
+  if (isRequiresReviewValue(workItem.queue) || isRequiresReviewValue(workItem.work_classification)) {
     return [
       {
-        skillName: "needs_mark_decision",
+        skillName: "requires_review_decision",
         title: "Surface required review",
         command: null,
         executorType: "mark",
@@ -174,7 +181,7 @@ export function planStepsForWorkItem(workItem: WorkItemSummary): PlannedSkillSte
   if (!safeSkillName) {
     return [
       {
-        skillName: "needs_mark_decision",
+        skillName: "requires_review_decision",
         title: "Surface missing execution path",
         command: null,
         executorType: "mark",

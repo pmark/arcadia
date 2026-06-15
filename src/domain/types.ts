@@ -359,6 +359,7 @@ export interface BackBurnerItemSummary extends BackBurnerItem {
 export interface QueueGroups {
   inbox: WorkItemSummary[];
   work_queue: WorkItemSummary[];
+  requires_review: WorkItemSummary[];
   needs_mark: WorkItemSummary[];
   blocked: WorkItemSummary[];
 }

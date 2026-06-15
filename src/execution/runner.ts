@@ -18,7 +18,7 @@ import {
   updateCodexInvocationStatus,
   updateWorkItem
 } from "../db/repositories.js";
-import type { CodexInvocationPurpose } from "../domain/constants.js";
+import { isRequiresReviewValue, type CodexInvocationPurpose } from "../domain/constants.js";
 import type {
   Artifact,
   CodexInvocation,
@@ -54,7 +54,7 @@ export interface ExecutePlanOptions {
 }
 
 type RunStepInput = Parameters<typeof createExecutionRun>[1]["steps"][number];
-type CodexStepStatus = "completed" | "needs_mark" | "failed";
+type CodexStepStatus = "completed" | "requires_review" | "failed";
 
 interface ExecutedCodexStep {
   invocationId: string;
@@ -98,7 +98,7 @@ export function executePlan(
   const stepResults: RunStepInput[] = [];
   const artifacts: Artifact[] = [];
   const completedCodexInvocationIds: string[] = [];
-  let runStatus: "completed" | "needs_mark" | "failed" = "completed";
+  let runStatus: "completed" | "requires_review" | "failed" = "completed";
 
   for (const step of plan.steps) {
     if (step.executor_type === "codex_planning" || step.executor_type === "codex_build") {
@@ -106,13 +106,13 @@ export function executePlan(
       if (!allowed) {
         stepResults.push({
           planStepId: step.id,
-          status: "needs_mark",
+          status: "requires_review",
           command: step.command,
           output: step.needs_mark ?? "This Codex step requires explicit approval.",
           error: step.needs_mark ?? "Execution paused for explicit Codex approval.",
           artifactPath: null
         });
-        runStatus = "needs_mark";
+        runStatus = "requires_review";
         break;
       }
 
@@ -152,13 +152,13 @@ export function executePlan(
     if (step.executor_type !== "deterministic" || step.safe_to_run !== 1) {
       stepResults.push({
         planStepId: step.id,
-        status: "needs_mark",
+        status: "requires_review",
         command: step.command,
-        output: step.needs_mark ?? "This step requires Mark or Codex.",
+        output: step.needs_mark ?? "This step requires review or Codex.",
         error: step.needs_mark ?? "Execution paused for explicit input.",
         artifactPath: null
       });
-      runStatus = "needs_mark";
+      runStatus = "requires_review";
       break;
     }
 
@@ -215,10 +215,10 @@ export function executePlan(
 
   if (runStatus === "completed") {
     updateWorkItem(db, workItem.id, { status: "done" });
-  } else if (runStatus === "needs_mark") {
+  } else if (runStatus === "requires_review") {
     updateWorkItem(db, workItem.id, {
-      queue: "needs_mark",
-      workClassification: "needs_mark",
+      queue: "requires_review",
+      workClassification: "requires_review",
       nextAction: "Review the execution run and provide the required input."
     });
   } else {
@@ -314,7 +314,7 @@ function executeCodexStep(
     validationOutput = validation.summary;
     validationArtifact = validation.artifact;
     if (validation.status === "failed") {
-      status = "needs_mark";
+      status = "requires_review";
       error = validation.summary;
     }
   }
@@ -629,7 +629,7 @@ function createRunMissionLog(
   workspace: string,
   workItem: WorkItemSummary,
   run: ExecutionRunSummary,
-  runStatus: "completed" | "needs_mark" | "failed",
+  runStatus: "completed" | "requires_review" | "failed",
   artifacts: Artifact[]
 ) {
   const project = workItem.project_id ? getProject(db, workItem.project_id) : null;
@@ -665,24 +665,24 @@ function validateWorkspace(workspace: string): string {
   return "Workspace validation passed.";
 }
 
-function summaryForRunStatus(status: "completed" | "needs_mark" | "failed", workItem: WorkItemSummary): string {
+function summaryForRunStatus(status: "completed" | "requires_review" | "failed", workItem: WorkItemSummary): string {
   if (status === "completed") {
     return `Completed deterministic execution for "${workItem.title}".`;
   }
 
-  if (status === "needs_mark") {
+  if (isRequiresReviewValue(status)) {
     return `Paused execution for "${workItem.title}" because review input is required.`;
   }
 
   return `Execution failed for "${workItem.title}".`;
 }
 
-function nextActionForRunStatus(status: "completed" | "needs_mark" | "failed"): string {
+function nextActionForRunStatus(status: "completed" | "requires_review" | "failed"): string {
   if (status === "completed") {
     return "Review the generated run record and artifacts.";
   }
 
-  if (status === "needs_mark") {
+  if (isRequiresReviewValue(status)) {
     return "Review the run and provide the required input.";
   }
 

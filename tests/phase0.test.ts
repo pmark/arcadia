@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runInitCommand } from "../src/commands/init.js";
 import { runProjectCreateCommand } from "../src/commands/project.js";
 import { withDatabase } from "../src/db/connection.js";
+import { applyMigrations, readInitialSchema } from "../src/db/schema.js";
 import {
   buildStatusReportData,
   buildWeeklyReviewData,
@@ -262,15 +263,15 @@ describe("Phase 0 data operations", () => {
       createWorkItemWithOptionalArtifact(db, {
         title: "Review a decision",
         rawInput: "Review a decision",
-        queue: "needs_mark",
-        workClassification: "needs_mark",
+        queue: "requires_review",
+        workClassification: "requires_review",
         nextAction: "Decide whether to proceed",
         expectedArtifact: "Decision note"
       })
     );
 
-    expect(result.workItem.queue).toBe("needs_mark");
-    expect(result.workItem.work_classification).toBe("needs_mark");
+    expect(result.workItem.queue).toBe("requires_review");
+    expect(result.workItem.work_classification).toBe("requires_review");
     expect(result.artifact?.title).toBe("Decision note");
   });
 
@@ -295,8 +296,8 @@ describe("Phase 0 data operations", () => {
       createWorkItemWithOptionalArtifact(db, {
         title: "Make decision",
         rawInput: "Make decision",
-        queue: "needs_mark",
-        workClassification: "needs_mark",
+        queue: "requires_review",
+        workClassification: "requires_review",
         nextAction: "Choose an option"
       });
       createWorkItemWithOptionalArtifact(db, {
@@ -310,9 +311,80 @@ describe("Phase 0 data operations", () => {
       const groups = listQueueGroups(db);
       expect(groups.inbox).toHaveLength(1);
       expect(groups.work_queue).toHaveLength(1);
+      expect(groups.requires_review).toHaveLength(1);
       expect(groups.needs_mark).toHaveLength(1);
       expect(groups.blocked).toHaveLength(1);
     });
+  });
+
+  it("keeps legacy needs_mark records in Requires Review compatibility views", () => {
+    const workspace = initializedWorkspace();
+
+    withDatabase(workspace, (db) => {
+      const legacy = createWorkItemWithOptionalArtifact(db, {
+        title: "Legacy review decision",
+        rawInput: "Legacy review decision",
+        queue: "needs_mark",
+        workClassification: "needs_mark",
+        nextAction: "Choose an option"
+      });
+
+      const groups = listQueueGroups(db);
+      expect(groups.requires_review.map((item) => item.id)).toContain(legacy.workItem.id);
+      expect(groups.needs_mark.map((item) => item.id)).toContain(legacy.workItem.id);
+
+      const report = buildStatusReportData(db, workspace);
+      expect(report.needsMarkItems.map((item) => item.id)).toContain(legacy.workItem.id);
+    });
+  });
+
+  it("migrates legacy review CHECK constraints to accept requires_review", () => {
+    const db = new Database(":memory:");
+    try {
+      const legacySchema = readInitialSchema()
+        .replaceAll("'requires_review', ", "")
+        .replaceAll(", 'requires_review'", "");
+      db.exec(legacySchema);
+      applyMigrations(db);
+
+      db.prepare(`
+        INSERT INTO work_items (
+          id, title, raw_input, queue, work_classification, next_action, status, created_at, updated_at
+        )
+        VALUES (
+          'wi_requires_review', 'Review migration', 'Review migration', 'requires_review',
+          'requires_review', 'Review the migrated item.', 'open',
+          '2026-06-11T00:00:00.000Z', '2026-06-11T00:00:00.000Z'
+        )
+      `).run();
+
+      expect(db.prepare("SELECT queue, work_classification FROM work_items WHERE id = ?").get("wi_requires_review"))
+        .toMatchObject({ queue: "requires_review", work_classification: "requires_review" });
+
+      const legacyReferences = db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND sql LIKE '%__legacy_requires_review%'")
+        .all();
+      expect(legacyReferences).toHaveLength(0);
+
+      db.prepare(`
+        INSERT INTO review_items (
+          id, slug, work_item_id, status, decision_needed, source_input, proposed_action,
+          resolved_intent, confidence_label, confidence, missing_fields, context_json,
+          created_at, updated_at
+        )
+        VALUES (
+          'review_requires_review', 'R1', 'wi_requires_review', 'open',
+          'Review the migrated item.', 'Review migration', 'Confirm migrated review item.',
+          'codex_planning_artifact_validation', 'high', 1, '[]', '{}',
+          '2026-06-11T00:00:00.000Z', '2026-06-11T00:00:00.000Z'
+        )
+      `).run();
+
+      expect(db.prepare("SELECT work_item_id FROM review_items WHERE id = ?").get("review_requires_review"))
+        .toMatchObject({ work_item_id: "wi_requires_review" });
+    } finally {
+      db.close();
+    }
   });
 
   it("lists, updates, and completes work items", () => {
@@ -681,10 +753,10 @@ describe("Phase 0 data operations", () => {
       );
 
       createWorkItemWithOptionalArtifact(db, {
-        title: "Needs a Mark decision",
-        rawInput: "Needs a Mark decision",
-        queue: "needs_mark",
-        workClassification: "needs_mark",
+        title: "Needs a review decision",
+        rawInput: "Needs a review decision",
+        queue: "requires_review",
+        workClassification: "requires_review",
         nextAction: "Choose whether to proceed"
       });
       createWorkItemWithOptionalArtifact(db, {
@@ -731,7 +803,7 @@ describe("Phase 0 data operations", () => {
       expect(data.completedWorkItems.map((item) => item.title)).toContain("Run the first smoke test");
       expect(data.completedWorkItems.map((item) => item.title)).not.toContain("Old completed work");
       expect(data.missionLogs).toHaveLength(1);
-      expect(data.needsMarkItems.map((item) => item.title)).toContain("Needs a Mark decision");
+      expect(data.needsMarkItems.map((item) => item.title)).toContain("Needs a review decision");
       expect(data.blockedItems.map((item) => item.title)).toContain("Blocked dependency");
       expect(data.autonomousItems.map((item) => item.title)).toContain("Autonomous local script");
       expect(data.codexItems.map((item) => item.title)).toContain("Codex implementation");

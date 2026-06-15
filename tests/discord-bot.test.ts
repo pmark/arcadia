@@ -389,7 +389,7 @@ describe("discord bot run command", () => {
         requestedRunId = runId;
         return runShowResponse({
           ...sampleRun(),
-          status: "needs_mark"
+          status: "requires_review"
         }, ["Approval required"]);
       }
     } as unknown as ArcadiaCli;
@@ -428,7 +428,7 @@ describe("discord bot run command", () => {
     expect(reply).toContain("Mission log: mission_logs/run.md");
     expect(reply).toContain("Artifacts: Static Images (artifacts/static.md)");
     expect(reply).toContain("Reason: Approval required");
-    expect(reply).not.toContain("needs_mark");
+    expect(reply).not.toContain("requires_review");
   });
 });
 
@@ -580,10 +580,10 @@ describe("discord bot formatters", () => {
   });
 
   it("does not leak internal run status terminology", () => {
-    const output = formatRuns([{ ...sampleRun(), status: "needs_mark" }]);
+    const output = formatRuns([{ ...sampleRun(), status: "requires_review" }]);
 
     expect(output).toContain("Requires Review");
-    expect(output).not.toContain("needs_mark");
+    expect(output).not.toContain("requires_review");
     expect(output).not.toContain("Needs Mark");
   });
 
@@ -706,7 +706,7 @@ describe("discord bot notifications", () => {
     const previous: NotificationState = emptyNotificationStateForTest();
     const snapshot = {
       requiresReviewCount: 1,
-      runs: [{ ...sampleRun(), status: "needs_mark" }],
+      runs: [{ ...sampleRun(), status: "requires_review" }],
       completedMilestones: [sampleMilestone()],
       codexTasks: []
     };
@@ -929,8 +929,8 @@ function sampleWorkItem(): WorkItem {
     id: "work_1",
     title: "Approve static images",
     raw_input: "Approve static images",
-    queue: "needs_mark",
-    work_classification: "needs_mark",
+    queue: "requires_review",
+    work_classification: "requires_review",
     next_action: "Review the draft.",
     expected_artifact: "Static images",
     status: "open",
@@ -1007,7 +1007,7 @@ function sampleRun(): ExecutionRun {
     updated_at: "2026-06-10T12:00:00.000Z",
     steps: [
       {
-        status: "needs_mark",
+        status: "requires_review",
         plan_step_title: "Approve Static Images",
         output: "Approval required",
         error: null

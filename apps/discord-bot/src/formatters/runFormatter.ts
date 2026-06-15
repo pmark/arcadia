@@ -15,7 +15,7 @@ export function formatRuns(runs: ExecutionRun[]): string {
 }
 
 export function formatRunRequiresReviewNotification(run: ExecutionRun): string {
-  const reviewCount = run.steps.filter((step) => step.status === "needs_mark").length || 1;
+  const reviewCount = run.steps.filter((step) => isRequiresReviewStatus(step.status)).length || 1;
 
   return [
     "**Arcadia progress update**",
@@ -40,7 +40,7 @@ export function formatRunCompletedNotification(run: ExecutionRun): string {
 
 export function formatRunDetail(data: RunShowData): string {
   const run = data.run;
-  const blockingStep = run.steps.find((step) => step.status === "failed" || step.status === "needs_mark");
+  const blockingStep = run.steps.find((step) => step.status === "failed" || isRequiresReviewStatus(step.status));
   const reviewCount = data.needsMark.length;
   const lines = [
     "**Arcadia run detail**",
@@ -78,7 +78,11 @@ export function formatRunFailedNotification(run: ExecutionRun): string {
 }
 
 function labelStatus(status: string): string {
-  return status === "needs_mark" ? "Requires Review" : status.replaceAll("_", " ");
+  return isRequiresReviewStatus(status) ? "Requires Review" : status.replaceAll("_", " ");
+}
+
+function isRequiresReviewStatus(value: string | null | undefined): boolean {
+  return value === "requires_review" || value === "needs_mark";
 }
 
 function formatArtifacts(run: ExecutionRun): string {

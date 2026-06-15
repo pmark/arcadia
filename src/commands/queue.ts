@@ -6,7 +6,7 @@ import { listQueueGroups } from "../db/repositories.js";
 import { QUEUE_LABELS, WORK_CLASSIFICATION_LABELS, type QueueName } from "../domain/constants.js";
 import type { QueueGroups, WorkItemSummary } from "../domain/types.js";
 
-const ORDERED_QUEUES: QueueName[] = ["inbox", "work_queue", "needs_mark", "blocked"];
+const ORDERED_QUEUES: QueueName[] = ["inbox", "work_queue", "requires_review", "blocked"];
 
 export interface QueueCommandData {
   queues: QueueGroups;

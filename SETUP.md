@@ -133,7 +133,7 @@ A fresh workspace should show:
 - No active projects
 - Empty Inbox
 - Empty Work Queue
-- Empty Needs Mark queue
+- Empty Requires Review queue
 - Empty Blocked queue
 - No mission logs yet
 - No artifacts scheduled yet
@@ -191,14 +191,14 @@ Arcadia should classify the input into one of:
 
 - Inbox
 - Work Queue
-- Needs Mark
+- Requires Review
 - Blocked
 
 And one work class:
 
 - Autonomous
 - Codex
-- Needs Mark
+- Requires Review
 - Blocked
 
 ## Execute Safe Work
@@ -211,7 +211,7 @@ Use the Phase 2 execution loop for one work item at a time:
 
 `pnpm arcadia run show --workspace ~/ArcadiaWorkspace <run-id> --json`
 
-Arcadia runs deterministic safe steps automatically. Anything requiring Mark, Codex, publication approval, destructive changes, or missing information pauses as Needs Mark.
+Arcadia runs deterministic safe steps automatically. Anything requiring review, Codex, publication approval, destructive changes, or missing information pauses as Requires Review.
 
 For copy-paste examples of common actions, see `docs/COMMANDS.md`.
 
@@ -284,7 +284,7 @@ Use an explicit inclusive date window when a script or review ritual needs a sta
 
 `pnpm arcadia review weekly --workspace ~/ArcadiaWorkspace --since 2026-06-03 --until 2026-06-09 --json`
 
-The weekly review is generated from SQLite only. It includes completed work, mission logs created during the window, blocked work, Needs Mark items, active Codex/autonomous work, artifact changes or upcoming artifacts, projects without open next actions, and deterministic suggested next actions.
+The weekly review is generated from SQLite only. It includes completed work, mission logs created during the window, blocked work, Requires Review items, active Codex/autonomous work, artifact changes or upcoming artifacts, projects without open next actions, and deterministic suggested next actions.
 
 ## Generate a Mission Log
 
@@ -388,7 +388,7 @@ A feature spec should be created only when there is a concrete implementation ta
 
 Good examples:
 
-- Add the Needs Mark queue
+- Add the Requires Review queue
 - Add SQLite persistence
 - Generate weekly mission summaries
 - Add project status reporting
@@ -457,7 +457,7 @@ Arcadia is considered bootstrapped when it can:
 3. Track a milestone.
 4. Record a next action.
 5. Classify work.
-6. Surface Needs Mark items.
+6. Surface Requires Review items.
 7. Identify Codex-ready work.
 8. Generate a mission log.
 9. Generate a Markdown status report.

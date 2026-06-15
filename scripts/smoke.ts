@@ -84,8 +84,8 @@ const imported = runInboxImportCommand({
   milestone: created.milestone.id,
   title: "Review the generated report",
   input: "Review the generated report",
-  queue: "needs_mark",
-  classification: "needs_mark",
+  queue: "requires_review",
+  classification: "requires_review",
   nextAction: "Confirm the report has the expected sections",
   expectedArtifact: "Review note"
 });

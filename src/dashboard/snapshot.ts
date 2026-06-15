@@ -224,7 +224,7 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
         attention: attentionItems.length,
         requiresReview: reviewItems.length,
         backBurner: backBurnerItems.length,
-        activeRuns: runs.filter((run) => run.status === "running" || run.status === "needs_mark").length,
+        activeRuns: runs.filter((run) => run.status === "running" || isRequiresReviewStatus(run.status)).length,
         recentRuns: runs.length,
         recentArtifacts: Math.min(artifacts.length, artifactLimit),
         activityEvents: activityEvents.length
@@ -282,7 +282,7 @@ function toDashboardReviewItem(item: Parameters<typeof reviewPacketForReviewItem
 
 function toDashboardRun(run: ExecutionRunSummary): DashboardRun {
   const failedStep = run.steps.find((step) => step.status === "failed");
-  const reviewStep = run.steps.find((step) => step.status === "needs_mark");
+  const reviewStep = run.steps.find((step) => isRequiresReviewStatus(step.status));
   const currentStep =
     run.steps.find((step) => step.status === "running") ??
     failedStep ??
@@ -330,7 +330,7 @@ function stepReason(step: ExecutionRunSummary["steps"][number]): string {
 }
 
 function labelWorkClassification(classification: string): string {
-  if (classification === "needs_mark") {
+  if (isRequiresReviewStatus(classification)) {
     return "Requires Review";
   }
 
@@ -338,7 +338,7 @@ function labelWorkClassification(classification: string): string {
 }
 
 function labelStatus(status: string): string {
-  if (status === "needs_mark") {
+  if (isRequiresReviewStatus(status)) {
     return "Requires Review";
   }
 
@@ -422,7 +422,7 @@ function buildAttentionItems(
     });
   }
 
-  for (const run of runs.filter((candidate) => candidate.status === "failed" || candidate.status === "needs_mark")) {
+  for (const run of runs.filter((candidate) => candidate.status === "failed" || isRequiresReviewStatus(candidate.status))) {
     const dashboardRun = toDashboardRun(run);
     items.push({
       id: `run:${run.id}`,
@@ -486,6 +486,10 @@ function buildAttentionItems(
   }
 
   return items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+function isRequiresReviewStatus(value: string | null | undefined): boolean {
+  return value === "requires_review" || value === "needs_mark";
 }
 
 function reviewActions(reviewId: string): DashboardAttentionAction[] {

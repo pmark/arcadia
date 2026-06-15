@@ -5,6 +5,7 @@ import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import { getExecutionRun, listExecutionRuns } from "../db/repositories.js";
+import { isRequiresReviewValue } from "../domain/constants.js";
 import type { ExecutionRunSummary } from "../domain/types.js";
 import { validationError } from "../cli/errors.js";
 
@@ -89,7 +90,7 @@ export function renderRunShowSuccess(response: CommandSuccess<RunShowCommandData
 
 function needsMarkItems(run: ExecutionRunSummary): string[] {
   return run.steps
-    .filter((step) => step.status === "needs_mark")
+    .filter((step) => isRequiresReviewValue(step.status))
     .map((step) => step.error ?? step.output ?? step.plan_step_title);
 }
 

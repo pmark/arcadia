@@ -58,9 +58,9 @@ Arcadia installs built-in skill definitions into SQLite when planning or running
 - `create_mission_log_from_run`
 - `codex_planning`
 - `codex_build`
-- `needs_mark_decision`
+- `requires_review_decision`
 
-Only deterministic safe skills run automatically. Codex and Mark steps pause execution and are recorded as `needs_mark`.
+Only deterministic safe skills run automatically. Codex and review steps pause execution and are recorded as `requires_review`.
 
 ## Out Of Scope
 

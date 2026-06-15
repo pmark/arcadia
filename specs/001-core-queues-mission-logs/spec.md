@@ -3,7 +3,7 @@
 Feature: Arcadia Core Queues and Mission Logs
 
 Objective:
-Establish the smallest useful system capable of tracking projects, classifying work, exposing Needs Mark items, and recording mission logs.
+Establish the smallest useful system capable of tracking projects, classifying work, exposing Requires Review items, and recording mission logs.
 
 Out of scope:
 - Authentication

@@ -25,7 +25,7 @@ pnpm arcadia capture \
   --json
 ```
 
-Safe known work is placed in `work_queue` as `autonomous`. Ambiguous work is placed in `needs_mark`.
+Safe known work is placed in `work_queue` as `autonomous`. Ambiguous work is placed in `requires_review`.
 
 ```sh
 pnpm arcadia capture \
@@ -170,7 +170,7 @@ pnpm arcadia work run work_example \
   --json
 ```
 
-Arcadia executes only deterministic safe steps. Codex, publishing, destructive, unclear, or Mark-required steps pause as `needs_mark`.
+Arcadia executes only deterministic safe steps. Codex, publishing, destructive, unclear, or review-required steps pause as `requires_review`.
 
 Explicitly approved Codex steps can be run through configured coding-agent profiles:
 

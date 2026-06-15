@@ -20,7 +20,7 @@ SQLite remains authoritative. Markdown and prompt packets are inspectable artifa
 
 - Phase 2 already provides work items, execution plans, execution runs, deterministic skills, mission logs, and run audit display.
 - `work run` executes only deterministic safe steps by default.
-- Codex and review steps pause as `needs_mark`.
+- Codex and review steps pause as `requires_review`.
 - Workspace data lives under local folders created by `arcadia init`.
 - `config/*.json` is the right place for inspectable registry files.
 
