@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { runAskCommand } from "../src/commands/ask.js";
 import { runAttentionCommand, runDashboardSnapshotCommand } from "../src/commands/dashboard.js";
 import { runReviewRequiredCommand } from "../src/commands/review.js";
 import { buildDashboardSnapshot } from "../src/dashboard/snapshot.js";
@@ -16,6 +17,7 @@ import {
   createReviewItem,
   createWorkItemWithOptionalArtifact,
   getWorkItem,
+  upsertProjectMetadata,
   updateProjectStatus
 } from "../src/db/repositories.js";
 import { ensureBuiltInSkills, planStepsForWorkItem } from "../src/execution/skills.js";
@@ -40,6 +42,7 @@ describe("dashboard snapshot", () => {
       const active = createProjectWithInitialWork(db, {
         name: "Active Project",
         mission: "Keep momentum visible.",
+        goal: "Ship a managed dashboard workflow.",
         status: "active",
         currentMilestone: "Ship Mission Control",
         nextAction: "Open the local dashboard",
@@ -65,6 +68,13 @@ describe("dashboard snapshot", () => {
 
       updateProjectStatus(db, paused.project.id, "paused");
       updateProjectStatus(db, incubating.project.id, "incubating");
+      upsertProjectMetadata(db, {
+        projectId: active.project.id,
+        aliases: ["active"],
+        repoPath: "/Users/pmark/Dev/MR/ActiveProject/repo",
+        statusSummary: "Dashboard test repository.",
+        validationCommands: ["pnpm test"]
+      });
 
       createWorkItemWithOptionalArtifact(db, {
         projectId: active.project.id,
@@ -102,16 +112,16 @@ describe("dashboard snapshot", () => {
       expect(workItem).not.toBeNull();
       const plan = createExecutionPlan(db, {
         workItemId: active.workItem.id,
-        summary: "Codex build packet review.",
+        summary: "Codex planning packet review.",
         steps: planStepsForWorkItem(workItem!)
       });
       expect(plan).not.toBeNull();
       createCodexInvocation(db, {
         id: "codex_packet_pinterest",
-        purpose: "build",
+        purpose: "planning",
         agentProfile: "codex",
-        workspaceScope: workspace,
-        command: "codex --cd . -",
+        workspaceScope: "/Users/pmark/Dev/MR/ActiveProject/repo",
+        command: "codex --cd /Users/pmark/Dev/MR/ActiveProject/repo -",
         promptPath: "prompts/codex/codex_packet_pinterest/prompt.md",
         jsonlOutputPath: "prompts/codex/codex_packet_pinterest/output.jsonl",
         finalMessagePath: "prompts/codex/codex_packet_pinterest/final.md",
@@ -123,7 +133,7 @@ describe("dashboard snapshot", () => {
       createArtifactRecord(db, {
         projectId: active.project.id,
         workItemId: active.workItem.id,
-        title: "Codex build packet: Pinterest publishing",
+        title: "Codex planning packet: Pinterest publishing",
         artifactType: "codex_prompt_packet",
         status: "drafted",
         path: "prompts/codex/codex_packet_pinterest/prompt.md"
@@ -155,7 +165,7 @@ describe("dashboard snapshot", () => {
     expect(snapshot.requiresReviewItems[0].sourceInput).toBe("Ship the dashboard review flow.");
     expect(snapshot.requiresReviewItems[0].missingFields).toEqual(["release boundary"]);
     expect(snapshot.projects.find((project) => project.name === "Active Project")?.lastArtifact?.title).toBe(
-      "Codex build packet: Pinterest publishing"
+      "Codex planning packet: Pinterest publishing"
     );
     expect(snapshot.recentArtifacts.map((artifact) => artifact.title)).toContain("Dashboard v0");
     expect(snapshot.currentMilestones.map((milestone) => milestone.title)).toContain("Ship Mission Control");
@@ -164,6 +174,25 @@ describe("dashboard snapshot", () => {
     expect(attention.data.items.find((item) => item.kind === "codex_packet")?.nextAction).toContain(
       "arcadia work run"
     );
+    const codexCard = snapshot.attentionItems.find((item) => item.kind === "codex_packet");
+    expect(codexCard).toMatchObject({
+      projectName: "Active Project",
+      milestone: "Ship Mission Control",
+      goal: "Ship a managed dashboard workflow.",
+      status: "packet_created",
+      statusLabel: "Packet Created",
+      expectedArtifact: "Dashboard v0",
+      targetRepositoryRoot: "/Users/pmark/Dev/MR/ActiveProject/repo",
+      relatedArtifactPath: "prompts/codex/codex_packet_pinterest/prompt.md",
+      finalArtifactPath: "prompts/codex/codex_packet_pinterest/final.md",
+      validationPath: "prompts/codex/codex_packet_pinterest/planning-validation.json"
+    });
+    expect(codexCard?.primaryActions.map((action) => action.label)).toEqual([
+      "View Packet",
+      "Approve & Run",
+      "View Final Artifact",
+      "View Validation"
+    ]);
     expect(existsSync(paths.statusReport)).toBe(false);
   });
 
@@ -225,6 +254,89 @@ describe("dashboard snapshot", () => {
     expect(response.artifacts).toEqual([]);
     expect(labels).toContain("Requires Review");
     expect(labels).not.toContain("Needs Mark");
+  });
+
+  it("surfaces missing project repository path as a blocking setup issue", () => {
+    const workspace = initializedWorkspace();
+    withDatabase(workspace, (db) => {
+      createProjectWithInitialWork(db, {
+        name: "Repo Setup Project",
+        mission: "Require explicit repository setup.",
+        goal: "Run project Codex work only in the configured repository.",
+        status: "active",
+        currentMilestone: "Repository setup",
+        nextAction: "Set repository path.",
+        workClassification: "codex"
+      });
+    });
+
+    const ask = runAskCommand({
+      workspace,
+      request: "Plan repository setup validation for Repo Setup Project."
+    });
+    expect(ask.data.result.status).toBe("requires_review");
+
+    const snapshot = buildDashboardSnapshot({ workspace });
+    const blocker = snapshot.attentionItems.find((item) =>
+      item.reason.includes("This project needs a repository path before Arcadia can run Codex on its files.")
+    );
+
+    expect(blocker).toMatchObject({
+      kind: "review",
+      severity: "action",
+      projectName: "Repo Setup Project",
+      reason: "Requires Review: This project needs a repository path before Arcadia can run Codex on its files.",
+      targetRepositoryRoot: null
+    });
+  });
+
+  it("keeps legacy project Codex packets readable without treating workspace scope as runnable", () => {
+    const workspace = initializedWorkspace();
+    withDatabase(workspace, (db) => {
+      ensureBuiltInSkills(db);
+      const created = createProjectWithInitialWork(db, {
+        name: "Legacy Packet Project",
+        mission: "Keep old packet records inspectable.",
+        goal: "Avoid workspace fallback for project Codex work.",
+        status: "active",
+        currentMilestone: "Packet audit",
+        nextAction: "Set repository path.",
+        workClassification: "codex"
+      });
+      const workItem = getWorkItem(db, created.workItem.id);
+      expect(workItem).not.toBeNull();
+      const plan = createExecutionPlan(db, {
+        workItemId: created.workItem.id,
+        summary: "Legacy packet.",
+        steps: planStepsForWorkItem(workItem!)
+      });
+      expect(plan).not.toBeNull();
+      createCodexInvocation(db, {
+        id: "codex_legacy_workspace_scope",
+        purpose: "planning",
+        agentProfile: "codex",
+        workspaceScope: workspace,
+        command: `codex --cd ${workspace} -`,
+        promptPath: "prompts/codex/codex_legacy_workspace_scope/prompt.md",
+        jsonlOutputPath: "prompts/codex/codex_legacy_workspace_scope/output.jsonl",
+        finalMessagePath: "prompts/codex/codex_legacy_workspace_scope/final.md",
+        status: "packet_created",
+        workItemId: created.workItem.id,
+        planId: plan!.id,
+        planStepId: plan!.steps[0].id
+      });
+    });
+
+    const snapshot = buildDashboardSnapshot({ workspace });
+    const card = snapshot.attentionItems.find((item) => item.relatedCodexInvocationId === "codex_legacy_workspace_scope");
+
+    expect(card).toMatchObject({
+      kind: "codex_packet",
+      severity: "blocked",
+      reason: "This project needs a repository path before Arcadia can run Codex on its files.",
+      targetRepositoryRoot: null
+    });
+    expect(card?.primaryActions.map((action) => action.label)).not.toContain("Approve & Run");
   });
 });
 

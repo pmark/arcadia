@@ -14,6 +14,7 @@ import {
   getExecutionPlan,
   getMilestone,
   getProject,
+  getProjectMetadata,
   getWorkItem,
   updateCodexInvocationStatus,
   updateWorkItem
@@ -263,7 +264,41 @@ function executeCodexStep(
   const promptPath = path.join(workspace, invocation.prompt_path);
   const jsonlOutputPath = path.join(workspace, invocation.jsonl_output_path);
   const finalMessagePath = path.join(workspace, invocation.final_message_path);
-  const args = argsForProfile(profile, workspace, finalMessagePath);
+  const projectRepositoryPath = workItem.project_id ? getProjectMetadata(db, workItem.project_id)?.repo_path : null;
+  if (workItem.project_id && !projectRepositoryPath) {
+    const message = "This project needs a repository path before Arcadia can run Codex on its files.";
+    updateCodexInvocationStatus(db, invocation.id, "failed");
+    createReviewItem(db, {
+      workItemId: workItem.id,
+      planId: plan.id,
+      projectId: workItem.project_id,
+      decisionNeeded: `Requires Review: ${message}`,
+      recommendation: "Set project_metadata.repo_path for this project, then regenerate the Codex packet.",
+      sourceInput: workItem.raw_input,
+      proposedAction: message,
+      resolvedIntent: `codex_${purpose}`,
+      confidenceLabel: "high",
+      confidence: 1,
+      missingFields: ["repository path"],
+      context: {
+        workItemId: workItem.id,
+        planId: plan.id,
+        invocationId: invocation.id,
+        reason: message
+      }
+    });
+    return {
+      invocationId: invocation.id,
+      status: "requires_review",
+      command: invocation.command,
+      output: message,
+      error: message,
+      artifactPath: invocation.prompt_path,
+      artifact: null
+    };
+  }
+  const executionScope = projectRepositoryPath ?? invocation.workspace_scope;
+  const args = argsForProfile(profile, executionScope, finalMessagePath);
   const command = [profile.command, ...args].join(" ");
 
   if (!existsSync(promptPath)) {
@@ -288,7 +323,7 @@ function executeCodexStep(
 
   updateCodexInvocationStatus(db, invocation.id, "running");
   const result = spawnSync(profile.command, args, {
-    cwd: workspace,
+    cwd: executionScope,
     input: prompt,
     encoding: "utf8",
     maxBuffer: 10 * 1024 * 1024

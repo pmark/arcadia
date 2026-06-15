@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -11,7 +11,8 @@ import {
   createProjectWithInitialWork,
   getWorkItem,
   listArtifacts,
-  listReviewItems
+  listReviewItems,
+  upsertProjectMetadata
 } from "../src/db/repositories.js";
 import { ensureBuiltInSkills } from "../src/execution/skills.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -58,6 +59,32 @@ describe("Codex planning artifact validation workflow", () => {
     expect(sidecar.status).toBe("passed");
     expect(sidecar.validation.passed).toBe(true);
     expect(result.data.run.artifacts.some((artifact) => artifact.path === fixture.validationRelativePath)).toBe(true);
+  });
+
+  it("runs managed Codex from the repository root while storing artifacts in Arcadia workspace", () => {
+    const workspace = initializedWorkspace();
+    const targetRepositoryRoot = path.join(workspace, "target-repository");
+    const cwdCapturePath = path.join(workspace, "captured-cwd.txt");
+    mkdirSync(targetRepositoryRoot, { recursive: true });
+    const fixture = setupCodexRun(workspace, {
+      purpose: "planning",
+      agentOutput: completePlanningArtifact,
+      workspaceScope: targetRepositoryRoot,
+      cwdCapturePath
+    });
+
+    const result = runWorkRunCommand({
+      workspace,
+      workId: fixture.workItemId,
+      plan: fixture.planId,
+      allowCodexPlanning: true
+    });
+
+    expect(result.data.run.status).toBe("completed");
+    expect(readFileSync(cwdCapturePath, "utf8")).toBe(realpathSync(targetRepositoryRoot));
+    expect(existsSync(path.join(workspace, fixture.promptRelativePath))).toBe(true);
+    expect(existsSync(path.join(workspace, fixture.finalRelativePath))).toBe(true);
+    expect(existsSync(path.join(workspace, fixture.validationRelativePath))).toBe(true);
   });
 
   it("surfaces failed planning validation through Requires Review", () => {
@@ -220,7 +247,7 @@ function initializedWorkspace(): string {
 
 function setupCodexRun(
   workspace: string,
-  input: { purpose: "planning" | "build"; agentOutput: string }
+  input: { purpose: "planning" | "build"; agentOutput: string; workspaceScope?: string; cwdCapturePath?: string }
 ): {
   workItemId: string;
   planId: string;
@@ -233,7 +260,7 @@ function setupCodexRun(
   const outputPath = path.join(workspace, `fake-${input.purpose}-output.md`);
   writeFileSync(
     agentPath,
-    "const { readFileSync } = require('node:fs'); process.stdin.resume(); process.stdin.on('end', () => process.stdout.write(readFileSync(process.argv[2], 'utf8')));",
+    "const { readFileSync, writeFileSync } = require('node:fs'); process.stdin.resume(); process.stdin.on('end', () => { if (process.argv[3]) writeFileSync(process.argv[3], process.cwd(), 'utf8'); process.stdout.write(readFileSync(process.argv[2], 'utf8')); });",
     "utf8"
   );
   writeFileSync(outputPath, input.agentOutput, "utf8");
@@ -248,7 +275,7 @@ function setupCodexRun(
         command: process.execPath,
         purpose: input.purpose,
         sandbox: input.purpose === "planning" ? "read-only" : "workspace-write",
-        args: [agentPath, outputPath]
+        args: input.cwdCapturePath ? [agentPath, outputPath, input.cwdCapturePath] : [agentPath, outputPath]
       }]
     }, null, 2)}\n`,
     "utf8"
@@ -264,6 +291,13 @@ function setupCodexRun(
       currentMilestone: "Planning validation",
       nextAction: input.purpose === "planning" ? "Prepare planning artifact" : "Prepare build artifact",
       workClassification: "codex"
+    });
+    upsertProjectMetadata(db, {
+      projectId: created.project.id,
+      aliases: ["Planning Validation Project"],
+      repoPath: input.workspaceScope ?? workspace,
+      statusSummary: "Repository for planning artifact validation workflow tests.",
+      validationCommands: []
     });
     const workItem = getWorkItem(db, created.workItem.id);
     if (!workItem) {
@@ -300,7 +334,7 @@ function setupCodexRun(
       id: invocationId,
       purpose: input.purpose,
       agentProfile: `fake_${input.purpose}`,
-      workspaceScope: workspace,
+      workspaceScope: input.workspaceScope ?? workspace,
       command: `${process.execPath} ${agentPath} ${outputPath}`,
       promptPath: promptRelativePath,
       jsonlOutputPath: outputRelativePath,

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -732,6 +732,82 @@ describe("arcadia ask command", () => {
     expect(prompt).toContain("List changed files, validation commands run, and any commands that could not be run.");
   });
 
+  it("resolves a daily-driver Rebuster planning ask to the project repository root", () => {
+    const workspace = initializedWorkspace();
+    const project = withDatabase(workspace, (db) => {
+      const created = createProjectWithInitialWork(db, {
+        name: "Rebuster",
+        mission: "Help users turn product evidence into better shipping decisions.",
+        goal: "Ship Pinterest publishing support.",
+        status: "active",
+        currentMilestone: "Pinterest publishing support",
+        nextAction: "Define Pinterest posting support boundaries.",
+        expectedArtifact: "Pinterest publishing implementation plan",
+        workClassification: "codex"
+      });
+      upsertProjectMetadata(db, {
+        projectId: created.project.id,
+        aliases: ["Rebuster", "rebuster app"],
+        repoPath: "/Users/pmark/Dev/MR/Rebuster/rebuster",
+        statusSummary: "Active product repository.",
+        validationCommands: ["pnpm test", "pnpm lint"]
+      });
+      return created;
+    });
+
+    const result = runAskCommand({
+      workspace,
+      request: "Plan and implement Pinterest publishing support for Rebuster."
+    });
+
+    expect(result.data.result.status).toBe("queued");
+    expect(result.data.workItem?.project_id).toBe(project.project.id);
+    expect(result.data.workItem?.project_name).toBe("Rebuster");
+    expect(result.data.workItem?.milestone_title).toBe("Pinterest publishing support");
+    expect(result.data.codexInvocations[0].purpose).toBe("planning");
+    expect(result.data.codexInvocations[0].workspace_scope).toBe("/Users/pmark/Dev/MR/Rebuster/rebuster");
+    expect(result.data.codexInvocations[0].command).toContain("--cd /Users/pmark/Dev/MR/Rebuster/rebuster");
+    expect(result.data.ask?.prompt_packet_path).toBe(result.data.codexInvocations[0].prompt_path);
+    expect(result.artifacts.every((artifact) => artifact.startsWith(workspace))).toBe(true);
+
+    const prompt = readFileSync(path.join(workspace, result.data.codexInvocations[0].prompt_path), "utf8");
+    expect(prompt).toContain("Project: Rebuster");
+    expect(prompt).toContain("Target repository/path: /Users/pmark/Dev/MR/Rebuster/rebuster");
+    expect(prompt).toContain("Workspace:");
+  });
+
+  it("pauses project-specific Codex asks when the target repository root is missing", () => {
+    const workspace = initializedWorkspace();
+    const project = withDatabase(workspace, (db) =>
+      createProjectWithInitialWork(db, {
+        name: "Rebuster",
+        mission: "Help users turn product evidence into better shipping decisions.",
+        goal: "Ship Pinterest publishing support.",
+        status: "active",
+        currentMilestone: "Pinterest publishing support",
+        nextAction: "Set repository metadata.",
+        workClassification: "codex"
+      })
+    );
+
+    const result = runAskCommand({
+      workspace,
+      request: "Plan Pinterest publishing support for Rebuster."
+    });
+
+    expect(result.data.result.status).toBe("requires_review");
+    expect(result.data.workItem?.project_id).toBe(project.project.id);
+    expect(result.data.codexInvocations).toHaveLength(0);
+    expect(result.data.ask?.prompt_packet_path).toBeNull();
+    expect(result.data.reviewItemId).toMatch(/^review_/);
+
+    const review = withDatabase(workspace, (db) => getReviewItem(db, result.data.reviewItemId ?? ""));
+    expect(review?.decision_needed).toBe(
+      "Requires Review: This project needs a repository path before Arcadia can run Codex on its files."
+    );
+    expect(review?.missing_fields).toContain("repository path");
+  });
+
   it("defaults approved asks to the only active project in an Arcadia-profile workspace", () => {
     const workspace = createTempWorkspace();
     const initialized = runInitCommand(workspace, { profile: "arcadia" });
@@ -1036,6 +1112,17 @@ describe("arcadia ask command", () => {
       })
     );
     const paths = getWorkspacePaths(workspace);
+    const repoPath = path.join(workspace, "rebuster-repo");
+    mkdirSync(repoPath, { recursive: true });
+    withDatabase(workspace, (db) => {
+      upsertProjectMetadata(db, {
+        projectId: created.project.id,
+        aliases: ["Rebuster"],
+        repoPath,
+        statusSummary: "Test repository for managed Codex execution.",
+        validationCommands: []
+      });
+    });
     const fakeAgent = path.join(workspace, "fake-codex-agent.cjs");
     writeFileSync(
       fakeAgent,

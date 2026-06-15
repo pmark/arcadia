@@ -606,6 +606,85 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     return { workItem, plan, projectContext: context.projectContext };
   });
 
+  if (resolved.codexPurpose && initial.projectContext && !initial.projectContext.metadata?.repo_path) {
+    const missingRepositoryPathMessage = "This project needs a repository path before Arcadia can run Codex on its files.";
+    const data = withDatabase(workspacePath, (db) => {
+      updateWorkItem(db, initial.workItem.id, {
+        queue: "requires_review",
+        workClassification: "requires_review",
+        nextAction: missingRepositoryPathMessage
+      });
+      const ask = createAskRequest(db, {
+        rawRequest: options.request,
+        resolvedIntent: resolved.intentId,
+        registryVersion: registries.intents.version,
+        outputKind: "requires_review",
+        workItemId: initial.workItem.id,
+        planId: initial.plan.id,
+        promptPacketPath: null,
+        stewardshipJson: stewardshipJson(stewardship),
+        status: "requires_review"
+      });
+      const reviewItem = createReviewItem(db, {
+        askRequestId: ask.id,
+        workItemId: initial.workItem.id,
+        planId: initial.plan.id,
+        projectId: initial.projectContext?.project.id ?? null,
+        decisionNeeded: `Requires Review: ${missingRepositoryPathMessage}`,
+        recommendation: `Set project metadata repo path, then ask again. Example: arcadia project metadata --workspace ${workspacePath} ${initial.projectContext?.project.id} --repo-path <repository-root>`,
+        sourceInput: request,
+        proposedAction: missingRepositoryPathMessage,
+        resolvedIntent: resolved.intentId,
+        confidenceLabel: "high",
+        confidence: 1,
+        missingFields: ["repository path"],
+        context: {
+          project: {
+            id: initial.projectContext?.project.id,
+            name: initial.projectContext?.project.name
+          },
+          workItemId: initial.workItem.id,
+          planId: initial.plan.id,
+          reason: missingRepositoryPathMessage
+        }
+      });
+
+      return {
+        ask,
+        workItem: getWorkItem(db, initial.workItem.id) as WorkItemSummary,
+        approvalGates: listApprovalGatesForWorkItem(db, initial.workItem.id),
+        reviewItem
+      };
+    });
+
+    return createSuccess({
+      command: "ask",
+      workspace: workspacePath,
+      data: {
+        ask: data.ask,
+        stewardship,
+        intake,
+        resolvedIntent: resolved,
+        result: {
+          status: "requires_review",
+          summary: "Requires Review item created."
+        },
+        workItem: data.workItem,
+        plan: initial.plan,
+        approvalGates: data.approvalGates,
+        codexInvocations: [],
+        run,
+        project: null,
+        projectSummary: null,
+        projects: null,
+        status: null,
+        review: null,
+        reviewItemId: data.reviewItem.id,
+        backBurnerItemId: null
+      }
+    });
+  }
+
   const codexPacket = resolved.codexPurpose
     ? createCodexPacket({
         workspace: workspacePath,

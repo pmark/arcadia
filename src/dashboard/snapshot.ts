@@ -66,12 +66,21 @@ export interface DashboardAttentionItem {
   kind: "review" | "codex_packet" | "run" | "blocked_work";
   severity: "action" | "blocked" | "info";
   projectName: string | null;
+  projectId: string | null;
+  milestone: string | null;
+  goal: string | null;
+  status: string;
+  statusLabel: string;
   reason: string;
   workItemId: string | null;
   workItemTitle: string | null;
+  expectedArtifact: string | null;
+  targetRepositoryRoot: string | null;
   relatedArtifactId: string | null;
   relatedArtifactTitle: string | null;
   relatedArtifactPath: string | null;
+  finalArtifactPath: string | null;
+  validationPath: string | null;
   relatedReviewId: string | null;
   relatedReviewSlug: string | null;
   relatedRunId: string | null;
@@ -362,12 +371,21 @@ function buildAttentionItems(
       kind: "review",
       severity: "action",
       projectName: item.project,
+      projectId: null,
+      milestone: null,
+      goal: item.goal,
+      status: item.status,
+      statusLabel: item.statusLabel,
       reason: item.decisionNeeded,
       workItemId: item.workItemId,
       workItemTitle: getWorkItemTitle(db, item.workItemId),
+      expectedArtifact: null,
+      targetRepositoryRoot: null,
       relatedArtifactId: null,
       relatedArtifactTitle: null,
       relatedArtifactPath: null,
+      finalArtifactPath: null,
+      validationPath: null,
       relatedReviewId: item.id,
       relatedReviewSlug: item.slug,
       relatedRunId: null,
@@ -381,24 +399,45 @@ function buildAttentionItems(
 
   for (const packet of listPendingCodexPackets(db)) {
     const purposeLabel = packet.purpose === "build" ? "build" : "planning";
+    const missingProjectRepositoryPath = Boolean(packet.project_id && !packet.target_repository_root);
+    const missingProjectRepositoryPathMessage = "This project needs a repository path before Arcadia can run Codex on its files.";
+    const runCommand = packet.plan_step_id
+      ? `arcadia work run ${packet.work_item_id} --plan ${packet.plan_id} --allow-codex-${purposeLabel}`
+      : packet.command;
+    const validationPath = packet.purpose === "planning"
+      ? `${packet.final_message_path.split("/").slice(0, -1).join("/")}/planning-validation.json`
+      : null;
     items.push({
       id: `codex:${packet.id}`,
       kind: "codex_packet",
-      severity: "action",
+      severity: missingProjectRepositoryPath ? "blocked" : "action",
       projectName: packet.project_name,
-      reason: `Codex ${purposeLabel} packet awaiting review.`,
+      projectId: packet.project_id,
+      milestone: packet.milestone_title,
+      goal: packet.project_goal,
+      status: packet.status,
+      statusLabel: labelStatus(packet.status),
+      reason: missingProjectRepositoryPath
+        ? missingProjectRepositoryPathMessage
+        : `Codex ${purposeLabel} packet awaiting review.`,
       workItemId: packet.work_item_id,
       workItemTitle: packet.work_item_title,
+      expectedArtifact: packet.expected_artifact,
+      targetRepositoryRoot: packet.target_repository_root,
       relatedArtifactId: packet.artifact_id,
       relatedArtifactTitle: packet.artifact_title,
       relatedArtifactPath: packet.prompt_path,
+      finalArtifactPath: packet.final_message_path,
+      validationPath,
       relatedReviewId: null,
       relatedReviewSlug: null,
       relatedRunId: packet.run_id,
       relatedCodexInvocationId: packet.id,
-      nextAction: packet.plan_step_id
-        ? `Open ${packet.prompt_path}. If approved, run: arcadia work run ${packet.work_item_id} --plan ${packet.plan_id} --allow-codex-${purposeLabel}`
-        : `Open ${packet.prompt_path}. If approved, run the existing Codex command recorded in the packet metadata.`,
+      nextAction: missingProjectRepositoryPath
+        ? missingProjectRepositoryPathMessage
+        : packet.plan_step_id
+          ? `Open ${packet.prompt_path}. If approved, run: ${runCommand}`
+          : `Open ${packet.prompt_path}. If approved, run the existing Codex command recorded in the packet metadata.`,
       primaryActions: [
         {
           label: "View Packet",
@@ -407,15 +446,40 @@ function buildAttentionItems(
           href: dashboardFileHref(packet.prompt_path),
           reviewAction: null
         },
+        ...(missingProjectRepositoryPath
+          ? []
+          : [{
+              label: "Approve & Run",
+              kind: "command" as const,
+              command: runCommand,
+              href: null,
+              reviewAction: null
+            }]),
+        ...(packet.run_id
+          ? [{
+              label: "View Run",
+              kind: "command" as const,
+              command: `arcadia run show ${packet.run_id}`,
+              href: null,
+              reviewAction: null
+            }]
+          : []),
         {
-          label: "Run Approval Command",
-          kind: "command",
-          command: packet.plan_step_id
-            ? `arcadia work run ${packet.work_item_id} --plan ${packet.plan_id} --allow-codex-${purposeLabel}`
-            : packet.command,
-          href: null,
+          label: "View Final Artifact",
+          kind: "view",
+          command: null,
+          href: dashboardFileHref(packet.final_message_path),
           reviewAction: null
-        }
+        },
+        ...(validationPath
+          ? [{
+              label: "View Validation",
+              kind: "view" as const,
+              command: null,
+              href: dashboardFileHref(validationPath),
+              reviewAction: null
+            }]
+          : [])
       ],
       createdAt: packet.created_at,
       updatedAt: packet.updated_at
@@ -429,12 +493,21 @@ function buildAttentionItems(
       kind: "run",
       severity: run.status === "failed" ? "blocked" : "action",
       projectName: run.project_name,
+      projectId: null,
+      milestone: null,
+      goal: null,
+      status: run.status,
+      statusLabel: labelStatus(run.status),
       reason: run.status === "failed" ? "Execution run failed." : "Execution run requires review.",
       workItemId: run.work_item_id,
       workItemTitle: run.work_item_title,
+      expectedArtifact: null,
+      targetRepositoryRoot: null,
       relatedArtifactId: run.artifacts[0]?.id ?? null,
       relatedArtifactTitle: run.artifacts[0]?.title ?? null,
       relatedArtifactPath: run.artifacts[0]?.path ?? run.mission_log_path,
+      finalArtifactPath: run.artifacts.find((artifact) => artifact.artifact_type === "planning_artifact")?.path ?? null,
+      validationPath: run.artifacts.find((artifact) => artifact.artifact_type === "planning_artifact_validation")?.path ?? null,
       relatedReviewId: null,
       relatedReviewSlug: null,
       relatedRunId: run.id,
@@ -460,12 +533,21 @@ function buildAttentionItems(
       kind: "blocked_work",
       severity: "blocked",
       projectName: workItem.project_name,
+      projectId: null,
+      milestone: null,
+      goal: null,
+      status: "blocked",
+      statusLabel: "Blocked",
       reason: "Work item is blocked.",
       workItemId: workItem.id,
       workItemTitle: workItem.title,
+      expectedArtifact: null,
+      targetRepositoryRoot: null,
       relatedArtifactId: null,
       relatedArtifactTitle: null,
       relatedArtifactPath: null,
+      finalArtifactPath: null,
+      validationPath: null,
       relatedReviewId: null,
       relatedReviewSlug: null,
       relatedRunId: null,
@@ -519,13 +601,20 @@ interface PendingCodexPacketRow {
   purpose: "planning" | "build";
   command: string;
   prompt_path: string;
+  final_message_path: string;
   status: string;
   work_item_id: string | null;
   work_item_title: string | null;
+  expected_artifact: string | null;
   plan_id: string | null;
   plan_step_id: string | null;
   run_id: string | null;
+  workspace_scope: string;
+  project_id: string | null;
   project_name: string | null;
+  project_goal: string | null;
+  milestone_title: string | null;
+  target_repository_root: string | null;
   artifact_id: string | null;
   artifact_title: string | null;
   created_at: string;
@@ -540,13 +629,20 @@ function listPendingCodexPackets(db: Database.Database): PendingCodexPacketRow[]
         ci.purpose,
         ci.command,
         ci.prompt_path,
+        ci.final_message_path,
         ci.status,
+        ci.workspace_scope,
         ci.work_item_id,
         wi.title AS work_item_title,
+        wi.expected_artifact,
         ci.plan_id,
         ci.plan_step_id,
         ci.run_id,
+        p.id AS project_id,
         p.name AS project_name,
+        p.goal AS project_goal,
+        m.title AS milestone_title,
+        pm.repo_path AS target_repository_root,
         a.id AS artifact_id,
         a.title AS artifact_title,
         ci.created_at,
@@ -554,6 +650,8 @@ function listPendingCodexPackets(db: Database.Database): PendingCodexPacketRow[]
       FROM codex_invocations ci
       LEFT JOIN work_items wi ON wi.id = ci.work_item_id
       LEFT JOIN projects p ON p.id = wi.project_id
+      LEFT JOIN milestones m ON m.id = wi.milestone_id
+      LEFT JOIN project_metadata pm ON pm.project_id = p.id
       LEFT JOIN artifacts a ON a.path = ci.prompt_path
       WHERE ci.status = 'packet_created'
       ORDER BY ci.updated_at DESC, ci.created_at DESC`

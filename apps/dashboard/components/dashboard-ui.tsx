@@ -136,11 +136,17 @@ export function AttentionCard({
               <h3 className="break-words text-base font-semibold leading-6">{item.reason}</h3>
               <p className="mt-1 break-words text-sm text-muted">{item.projectName ?? "Unassigned"}</p>
             </div>
-            <StatusBadge status={item.severity === "blocked" ? "blocked" : "requires_review"} label={labelAttentionKind(item.kind)} />
+            <StatusBadge status={item.status} label={item.kind === "codex_packet" ? item.statusLabel : labelAttentionKind(item.kind)} />
           </div>
           <dl className="mt-4 grid gap-3 text-sm">
+            {item.milestone ? <Field label="Milestone" value={item.milestone} /> : null}
+            {item.goal ? <Field label="Goal" value={item.goal} /> : null}
+            {item.targetRepositoryRoot ? <Field label="Target Repository Root" value={item.targetRepositoryRoot} /> : null}
+            {item.expectedArtifact ? <Field label="Expected Artifact" value={item.expectedArtifact} /> : null}
             <Field label="Related Work" value={item.workItemTitle ?? item.workItemId ?? "None"} />
             <Field label="Related Artifact" value={item.relatedArtifactPath ?? item.relatedArtifactTitle ?? "None"} />
+            {item.finalArtifactPath ? <Field label="Final Artifact" value={item.finalArtifactPath} /> : null}
+            {item.validationPath ? <Field label="Validation" value={item.validationPath} /> : null}
             <Field label="Next Action" value={item.nextAction} />
           </dl>
           <div className="mt-4 flex flex-wrap gap-2">

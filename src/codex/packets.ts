@@ -42,6 +42,10 @@ export function createCodexPacket(input: {
   agentProfile: CodingAgentProfile;
   stewardship?: GoalStewardshipResult | null;
 }): CodexPacket {
+  if (input.projectContext && !input.projectContext.metadata?.repo_path) {
+    throw new Error("This project needs a repository path before Arcadia can run Codex on its files.");
+  }
+
   const invocationId = createId("codexInvocation");
   const packetDir = path.join(input.workspace, "prompts", "codex", invocationId);
   mkdirSync(packetDir, { recursive: true });
