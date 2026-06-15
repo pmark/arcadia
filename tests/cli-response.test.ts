@@ -1,10 +1,10 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 import { withDatabase } from "../src/db/connection.js";
-import { createProjectWithInitialWork, getProjectMetadata } from "../src/db/repositories.js";
+import { createProjectWithInitialWork, getProjectMetadata, upsertProjectMetadata } from "../src/db/repositories.js";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const tsxBin = path.join(repoRoot, "node_modules", ".bin", "tsx");
@@ -358,6 +358,74 @@ describe("CLI response contract", () => {
 
     const metadata = withDatabase(workspace, (db) => getProjectMetadata(db, created.project.id));
     expect(metadata?.status_summary).toBe("Active product repository with posting automation work in scope.");
+  });
+
+  it("sets up Arcadia project context by --repo and by project metadata", () => {
+    const repo = createTempRepo();
+    writeFileSync(path.join(repo, "package.json"), JSON.stringify({
+      scripts: {
+        test: "vitest run",
+        deploy: "platform deploy"
+      },
+      dependencies: {
+        react: "^19.0.0"
+      },
+      devDependencies: {
+        vitest: "^4.0.0"
+      }
+    }, null, 2), "utf8");
+    writeFileSync(path.join(repo, "pnpm-lock.yaml"), "", "utf8");
+    mkdirSync(path.join(repo, "src"));
+    mkdirSync(path.join(repo, "tests"));
+    writeFileSync(path.join(repo, "src", "index.ts"), "export const ok = true;\n", "utf8");
+    writeFileSync(path.join(repo, "README.md"), "# Fixture\n", "utf8");
+
+    const byRepo = runCli(["project", "setup-context", "--repo", repo, "--json"]);
+
+    expect(byRepo.status).toBe(0);
+    expect(byRepo.stderr).toBe("");
+    const repoJson = parseJson(byRepo.stdout);
+    expect(repoJson.command).toBe("project.setup-context");
+    expect(repoJson.workspace).toBeUndefined();
+    expect(repoJson.data.repoPath).toBe(realpathSync(repo));
+    expect(existsSync(path.join(repo, ".arcadia", "AGENT_CONTEXT_POLICY.md"))).toBe(true);
+    expect(existsSync(path.join(repo, ".arcadia", "repo-context.md"))).toBe(true);
+    expect(existsSync(path.join(repo, ".arcadia", "context-policy.json"))).toBe(true);
+    expect(readFileSync(path.join(repo, "AGENTS.md"), "utf8")).toContain("<!-- ARCADIA_CONTEXT_START -->");
+
+    const workspace = initializedWorkspace();
+    const created = createProject(workspace);
+    withDatabase(workspace, (db) =>
+      upsertProjectMetadata(db, {
+        projectId: created.project.id,
+        aliases: ["fixture alias"],
+        repoPath: repo,
+        statusSummary: "Fixture repo.",
+        validationCommands: ["pnpm test"]
+      })
+    );
+
+    const byProject = runCli(["project", "setup-context", "fixture alias", "--workspace", workspace, "--json"]);
+
+    expect(byProject.status).toBe(0);
+    expect(byProject.stderr).toBe("");
+    const projectJson = parseJson(byProject.stdout);
+    expect(projectJson.workspace).toBe(path.resolve(workspace));
+    expect(projectJson.data.project).toMatchObject({ id: created.project.id, name: created.project.name });
+    expect(projectJson.data.context.safe_commands).toContain("pnpm test");
+    expect(projectJson.data.context.safe_commands).not.toContain("pnpm deploy");
+
+    const agents = readFileSync(path.join(repo, "AGENTS.md"), "utf8");
+    expect(agents.match(/ARCADIA_CONTEXT_START/g)).toHaveLength(1);
+    expect(agents.match(/ARCADIA_CONTEXT_END/g)).toHaveLength(1);
+    const policy = JSON.parse(readFileSync(path.join(repo, ".arcadia", "context-policy.json"), "utf8"));
+    expect(policy).toMatchObject({
+      source_roots: ["src"],
+      test_roots: ["tests"],
+      broad_scan_allowed: false,
+      max_discovery_commands: 6
+    });
+    expect(policy.denied_context_paths).toContain("node_modules/");
   });
 
   it("creates and completes milestones with JSON output", () => {
@@ -1236,6 +1304,12 @@ function createTempConfigPath(): string {
   const directory = mkdtempSync(path.join(tmpdir(), "arcadia-cli-config-"));
   workspaces.push(directory);
   return path.join(directory, "config.json");
+}
+
+function createTempRepo(): string {
+  const repo = mkdtempSync(path.join(tmpdir(), "arcadia-repo-test-"));
+  workspaces.push(repo);
+  return repo;
 }
 
 function initializedWorkspace(): string {

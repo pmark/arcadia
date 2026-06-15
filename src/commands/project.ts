@@ -25,6 +25,7 @@ import { WORK_CLASSIFICATION_LABELS, type ProjectStatus, type WorkClassification
 import type { CreatedProjectBundle, MissionLog, Project, ProjectMetadata, ProjectSummary } from "../domain/types.js";
 import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../markdown/missionLog.js";
 import { promptForProjectCreate } from "../prompts/index.js";
+import { setupArcadiaProjectContext, type SetupProjectContextResult } from "../projects/contextSetup.js";
 import { decodeStringArray, updateProjectSetup } from "../projects/setup.js";
 import { slugify } from "../utils/slug.js";
 import { getWorkspacePaths, resolveWorkspacePath, toWorkspaceRelativePath } from "../workspace/paths.js";
@@ -94,6 +95,13 @@ export interface ProjectUpdateCommandData {
 
 export interface ProjectMetadataCommandData {
   metadata: ProjectMetadata;
+}
+
+export interface ProjectSetupContextCommandData {
+  repoPath: string;
+  project: SetupProjectContextResult["project"];
+  files: SetupProjectContextResult["files"];
+  context: SetupProjectContextResult["context"];
 }
 
 export function createProjectWithDefaults(options: {
@@ -335,6 +343,41 @@ export function runProjectMetadataCommand(options: {
   });
 }
 
+export function runProjectSetupContextCommand(options: {
+  workspace?: string;
+  projectId?: string;
+  repoPath?: string;
+}): CommandSuccess<ProjectSetupContextCommandData> {
+  if (!options.projectId && !options.repoPath) {
+    throw validationError("Project identifier or --repo is required.");
+  }
+
+  let workspacePath: string | undefined;
+  const setup = options.repoPath
+    ? setupArcadiaProjectContext({ repoPath: options.repoPath })
+    : (() => {
+        workspacePath = resolveReadyWorkspace(options.workspace).workspacePath;
+        return withDatabase(workspacePath, (db) =>
+          setupArcadiaProjectContext({ db, projectIdentifier: options.projectId })
+        );
+      })();
+  if (options.repoPath && options.workspace) {
+    workspacePath = resolveReadyWorkspace(options.workspace).workspacePath;
+  }
+
+  return createSuccess({
+    command: "project.setup-context",
+    workspace: workspacePath,
+    data: {
+      repoPath: setup.repoPath,
+      project: setup.project,
+      files: setup.files,
+      context: setup.context
+    },
+    artifacts: Object.values(setup.files)
+  });
+}
+
 export function renderProjectListSuccess(response: CommandSuccess<ProjectListCommandData>): string[] {
   if (response.data.projects.length === 0) {
     return ["No projects yet."];
@@ -415,6 +458,17 @@ export function renderProjectMetadataSuccess(response: CommandSuccess<ProjectMet
     `Aliases: ${decodeStringArray(response.data.metadata.aliases).join(", ") || "None"}`,
     `Repository: ${response.data.metadata.repo_path ?? "None"}`,
     `Validation: ${decodeStringArray(response.data.metadata.validation_commands).join(", ") || "None"}`
+  ];
+}
+
+export function renderProjectSetupContextSuccess(response: CommandSuccess<ProjectSetupContextCommandData>): string[] {
+  return [
+    `Arcadia context setup: ${response.data.repoPath}`,
+    `Project: ${response.data.project?.name ?? "None (--repo)"}`,
+    `Agent policy: ${response.data.files.agentPolicy}`,
+    `Repo context: ${response.data.files.repoContext}`,
+    `Context policy: ${response.data.files.contextPolicy}`,
+    `AGENTS.md: ${response.data.files.agents}`
   ];
 }
 

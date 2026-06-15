@@ -10,6 +10,7 @@ import {
   type StewardshipCritiqueResult
 } from "../stewardship/critic.js";
 import type { GoalStewardshipResult } from "../stewardship/index.js";
+import { renderCodexContextGuidance } from "../projects/contextSetup.js";
 import { CODEX_REPO_PATH_REQUIRED_MESSAGE } from "../projects/setup.js";
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
@@ -203,6 +204,7 @@ function renderPrompt(input: {
   const projectContext = renderProjectContext(input.projectContext, input.workItem);
   const milestoneContext = renderCurrentMilestone(input.projectContext, input.workItem);
   const pathContext = renderPathContext(input.projectContext, input.workspace);
+  const arcadiaContextGuidance = renderArcadiaContextGuidance(input.projectContext);
   const operatorContext = readOperatorContext(input.workspace);
   const isPlanningPacket = input.agentProfile.purpose === "planning";
   const validationGuidance = renderValidationGuidance(input.projectContext, isPlanningPacket);
@@ -247,6 +249,8 @@ ${milestoneContext}
 
 ## Repository / Path Context
 ${pathContext}
+
+${arcadiaContextGuidance}
 
 ## Operator Context
 ${operatorContext}
@@ -340,6 +344,15 @@ function renderPathContext(projectContext: ProjectContext | null, workspace: str
     `- Target repository/path: ${projectContext?.metadata?.repo_path ?? "Workspace scope"}`,
     `- Validation commands: ${validationCommands.length > 0 ? validationCommands.join(" && ") : "Use existing project validation scripts"}`
   ].join("\n");
+}
+
+function renderArcadiaContextGuidance(projectContext: ProjectContext | null): string {
+  const repoPath = projectContext?.metadata?.repo_path;
+  if (!repoPath) {
+    return "";
+  }
+
+  return renderCodexContextGuidance(repoPath) ?? "";
 }
 
 function readOperatorContext(workspace: string): string {

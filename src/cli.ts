@@ -65,12 +65,14 @@ import {
   renderProjectImportSuccess,
   renderProjectListSuccess,
   renderProjectMetadataSuccess,
+  renderProjectSetupContextSuccess,
   renderProjectShowSuccess,
   renderProjectUpdateSuccess,
   runProjectCreateCommand,
   runProjectImportCommand,
   runProjectListCommand,
   runProjectMetadataCommand,
+  runProjectSetupContextCommand,
   runProjectShowCommand,
   runProjectUpdateCommand
 } from "./commands/project.js";
@@ -566,6 +568,29 @@ export function buildProgram(): Command {
         validationCommands: options.validationCommand
       }),
       renderProjectMetadataSuccess
+    )
+  );
+  addJsonOption(
+    project
+      .command("setup-context")
+      .description("Generate explicit Arcadia context files in a project repository")
+      .argument("[project-id]", "Project id, slug, name, or alias")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--repo <path>", "Repository path")
+  ).action((projectId: string | undefined, options: {
+    workspace?: string;
+    repo?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "project.setup-context",
+      options,
+      () => runProjectSetupContextCommand({
+        workspace: options.workspace,
+        projectId,
+        repoPath: options.repo
+      }),
+      renderProjectSetupContextSuccess
     )
   );
 
@@ -1090,6 +1115,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "project" && second === "metadata") {
     return "project.metadata";
+  }
+
+  if (first === "project" && second === "setup-context") {
+    return "project.setup-context";
   }
 
   if (first === "inbox" && second === "import") {

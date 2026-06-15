@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { renderAskSuccess, runAskCommand } from "../src/commands/ask.js";
 import { runInitCommand } from "../src/commands/init.js";
 import { runCodexAssociateCommand, runCodexListCommand } from "../src/commands/codex.js";
+import { runProjectSetupContextCommand } from "../src/commands/project.js";
 import {
   runReviewApproveCommand,
   runReviewDeferCommand,
@@ -663,6 +664,11 @@ describe("arcadia ask command", () => {
 
   it("resolves Rebuster project metadata, attaches its active milestone, and writes packet context", () => {
     const workspace = initializedWorkspace();
+    const repo = createTempWorkspace();
+    mkdirSync(path.join(repo, "src"));
+    writeFileSync(path.join(repo, "README.md"), "# Rebuster\n", "utf8");
+    writeFileSync(path.join(repo, "package.json"), JSON.stringify({ scripts: { test: "vitest run", lint: "eslint ." } }, null, 2), "utf8");
+    runProjectSetupContextCommand({ repoPath: repo });
     const project = withDatabase(workspace, (db) => {
       const created = createProjectWithInitialWork(db, {
         name: "Rebuster",
@@ -677,7 +683,7 @@ describe("arcadia ask command", () => {
       upsertProjectMetadata(db, {
         projectId: created.project.id,
         aliases: ["Rebuster", "rebuster app"],
-        repoPath: "/Users/pmark/Dev/MR/Rebuster/rebuster",
+        repoPath: repo,
         statusSummary: "Active product repository with posting automation work in scope.",
         validationCommands: ["pnpm test", "pnpm lint"]
       });
@@ -704,7 +710,7 @@ describe("arcadia ask command", () => {
     expect(result.workItem?.milestone_id).toBe(project.milestone.id);
     expect(result.workItem?.milestone_title).toBe("Pinterest publishing support");
     expect(result.codexInvocations[0].purpose).toBe("build");
-    expect(result.codexInvocations[0].workspace_scope).toBe("/Users/pmark/Dev/MR/Rebuster/rebuster");
+    expect(result.codexInvocations[0].workspace_scope).toBe(repo);
     expect(result.ask.prompt_packet_path).toBe(result.codexInvocations[0].prompt_path);
     expect(approved.artifacts).toContain(path.join(workspace, result.codexInvocations[0].prompt_path));
     expect(new Set(result.approvalGates.map((gate) => gate.gate_type))).toEqual(new Set([
@@ -720,9 +726,14 @@ describe("arcadia ask command", () => {
     expect(prompt).toContain("Goal: Ship Pinterest publishing support.");
     expect(prompt).toContain("Active milestone: Pinterest publishing support");
     expect(prompt).toContain("Work item milestone: Pinterest publishing support");
-    expect(prompt).toContain("Target repository: /Users/pmark/Dev/MR/Rebuster/rebuster");
+    expect(prompt).toContain(`Target repository: ${repo}`);
     expect(prompt).toContain("Project status summary: Active product repository with posting automation work in scope.");
     expect(prompt).toContain("Validation commands: pnpm test && pnpm lint");
+    expect(prompt).toContain("## Arcadia Repository Context");
+    expect(prompt).toContain("Read `.arcadia/AGENT_CONTEXT_POLICY.md`, `.arcadia/repo-context.md`, and `.arcadia/context-policy.json` before source files.");
+    expect(prompt).toContain("Use targeted searches and focused file reads before broad repository scans.");
+    expect(prompt).toContain("Respect denied context paths from `.arcadia/context-policy.json`");
+    expect(prompt).toContain("Trust the current target repository path above over stale references in older packet text.");
     expect(prompt).toContain("Run validation command: pnpm test");
     expect(prompt).toContain("Run validation command: pnpm lint");
     expect(prompt).toContain("Do not publish, deploy, merge, delete, spend money, use credentials, access production data, or send messages.");
