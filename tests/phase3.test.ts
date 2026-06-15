@@ -803,7 +803,7 @@ describe("arcadia ask command", () => {
 
     const review = withDatabase(workspace, (db) => getReviewItem(db, result.data.reviewItemId ?? ""));
     expect(review?.decision_needed).toBe(
-      "Requires Review: This project needs a repository path before Arcadia can run Codex on its files."
+      "Requires Review: Codex cannot run for this project until a repository path is configured."
     );
     expect(review?.missing_fields).toContain("repository path");
   });

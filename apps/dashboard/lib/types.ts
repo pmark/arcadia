@@ -106,6 +106,10 @@ export interface DashboardProject {
   nextAction: string | null;
   workClassification: string | null;
   workClassificationLabel: string | null;
+  repoPath: string | null;
+  statusSummary: string | null;
+  validationCommands: string[];
+  setupWarnings: string[];
   lastArtifact: DashboardArtifact | null;
   updatedAt: string;
 }
@@ -154,6 +158,7 @@ export interface DashboardActivityEvent {
   eventLabel: string;
   summary: string;
   projectName: string | null;
+  projectId: string | null;
   askId: string | null;
   reviewId: string | null;
   reviewSlug: string | null;
@@ -182,6 +187,7 @@ export interface DashboardReviewItem {
   slug: string;
   displayId: string;
   workItemId: string | null;
+  projectId: string | null;
   project: string | null;
   goal: string | null;
   status: string;
@@ -219,6 +225,7 @@ export interface DashboardRun {
   id: string;
   status: string;
   statusLabel: string;
+  projectId: string | null;
   projectName: string | null;
   startedAt: string;
   updatedAt: string;
@@ -241,6 +248,7 @@ export interface DashboardArtifact {
   status: string;
   statusLabel: string;
   path: string | null;
+  projectId: string | null;
   projectName: string | null;
   workItemTitle: string | null;
   updatedAt: string;

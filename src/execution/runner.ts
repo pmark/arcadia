@@ -33,6 +33,7 @@ import { writeMissionLogMarkdown, buildMissionLogRelativePath } from "../markdow
 import { renderRunSummary, writePublicationPacket, writeSpecificationArtifact } from "../markdown/executionArtifacts.js";
 import { writeStatusReport } from "../markdown/statusReport.js";
 import { writeWeeklyReviewReport } from "../markdown/weeklyReview.js";
+import { CODEX_REPO_PATH_REQUIRED_MESSAGE } from "../projects/setup.js";
 import {
   validatePlanningArtifact,
   type PlanningArtifactValidationIssue,
@@ -266,7 +267,7 @@ function executeCodexStep(
   const finalMessagePath = path.join(workspace, invocation.final_message_path);
   const projectRepositoryPath = workItem.project_id ? getProjectMetadata(db, workItem.project_id)?.repo_path : null;
   if (workItem.project_id && !projectRepositoryPath) {
-    const message = "This project needs a repository path before Arcadia can run Codex on its files.";
+    const message = CODEX_REPO_PATH_REQUIRED_MESSAGE;
     updateCodexInvocationStatus(db, invocation.id, "failed");
     createReviewItem(db, {
       workItemId: workItem.id,

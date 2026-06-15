@@ -49,6 +49,7 @@ import type { ResolvedIntent } from "../intent/resolver.js";
 import type { IntakeProjectAttribute, IntakeProjectContext, IntakeResult, IntakeWorkspaceContext } from "../intake/index.js";
 import { resolveIntake } from "../intake/index.js";
 import { normalizeAskInput } from "../intake/normalization.js";
+import { CODEX_REPO_PATH_REQUIRED_MESSAGE } from "../projects/setup.js";
 import { parseReviewResponse } from "../review/responseParser.js";
 import type { GoalStewardshipResult } from "../stewardship/index.js";
 import { isPlanningOrResearchStewardship, stewardIntent } from "../stewardship/index.js";
@@ -607,7 +608,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   });
 
   if (resolved.codexPurpose && initial.projectContext && !initial.projectContext.metadata?.repo_path) {
-    const missingRepositoryPathMessage = "This project needs a repository path before Arcadia can run Codex on its files.";
+    const missingRepositoryPathMessage = CODEX_REPO_PATH_REQUIRED_MESSAGE;
     const data = withDatabase(workspacePath, (db) => {
       updateWorkItem(db, initial.workItem.id, {
         queue: "requires_review",

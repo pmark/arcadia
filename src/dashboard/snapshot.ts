@@ -5,12 +5,16 @@ import type { ArtifactSummary, BackBurnerItemSummary, ExecutionRunSummary, Miles
 import { withReadOnlyDatabase } from "../db/connection.js";
 import {
   buildStatusReportData,
+  getProjectMetadata,
   listBackBurnerItems,
   listActionableReviewItems,
   listArtifacts,
   listExecutionRuns,
   listMilestones
 } from "../db/repositories.js";
+import { CODEX_REPO_PATH_REQUIRED_MESSAGE } from "../projects/setup.js";
+
+export const MISSING_REPO_PATH_WARNING = CODEX_REPO_PATH_REQUIRED_MESSAGE;
 
 export interface DashboardSnapshotOptions {
   workspace: string;
@@ -57,6 +61,10 @@ export interface DashboardProject {
   nextAction: string | null;
   workClassification: string | null;
   workClassificationLabel: string | null;
+  repoPath: string | null;
+  statusSummary: string | null;
+  validationCommands: string[];
+  setupWarnings: string[];
   lastArtifact: DashboardArtifact | null;
   updatedAt: string;
 }
@@ -105,6 +113,7 @@ export interface DashboardActivityEvent {
   eventLabel: string;
   summary: string;
   projectName: string | null;
+  projectId: string | null;
   askId: string | null;
   reviewId: string | null;
   reviewSlug: string | null;
@@ -153,6 +162,7 @@ export interface DashboardRun {
   id: string;
   status: string;
   statusLabel: string;
+  projectId: string | null;
   projectName: string | null;
   startedAt: string;
   updatedAt: string;
@@ -175,6 +185,7 @@ export interface DashboardArtifact {
   status: string;
   statusLabel: string;
   path: string | null;
+  projectId: string | null;
   projectName: string | null;
   workItemTitle: string | null;
   updatedAt: string;
@@ -204,23 +215,31 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
       }
     }
 
-    const projects = statusData.projects.map((project) => ({
-      id: project.id,
-      name: project.name,
-      mission: project.mission,
-      goal: project.goal,
-      status: project.status,
-      statusLabel: labelStatus(project.status),
-      currentMilestone: project.current_milestone,
-      currentMilestoneId: project.current_milestone_id,
-      nextAction: project.next_action,
-      workClassification: project.work_classification,
-      workClassificationLabel: project.work_classification
-        ? labelWorkClassification(project.work_classification)
-        : null,
-      lastArtifact: lastArtifactByProject.get(project.id) ?? null,
-      updatedAt: project.updated_at
-    }));
+    const projects = statusData.projects.map((project) => {
+      const metadata = getProjectMetadata(db, project.id);
+      const repoPath = metadata?.repo_path ?? null;
+      return {
+        id: project.id,
+        name: project.name,
+        mission: project.mission,
+        goal: project.goal,
+        status: project.status,
+        statusLabel: labelStatus(project.status),
+        currentMilestone: project.current_milestone,
+        currentMilestoneId: project.current_milestone_id,
+        nextAction: project.next_action,
+        workClassification: project.work_classification,
+        workClassificationLabel: project.work_classification
+          ? labelWorkClassification(project.work_classification)
+          : null,
+        repoPath,
+        statusSummary: metadata?.status_summary ?? null,
+        validationCommands: decodeStringArray(metadata?.validation_commands),
+        setupWarnings: repoPath ? [] : [MISSING_REPO_PATH_WARNING],
+        lastArtifact: lastArtifactByProject.get(project.id) ?? null,
+        updatedAt: project.updated_at
+      };
+    });
 
     return {
       generatedAt: statusData.generatedAt,
@@ -304,6 +323,7 @@ function toDashboardRun(run: ExecutionRunSummary): DashboardRun {
     id: run.id,
     status: run.status,
     statusLabel: labelStatus(run.status),
+    projectId: run.project_id,
     projectName: run.project_name,
     startedAt: run.created_at,
     updatedAt: run.updated_at,
@@ -328,6 +348,7 @@ function toDashboardArtifact(artifact: ArtifactSummary): DashboardArtifact {
     status: artifact.status,
     statusLabel: labelStatus(artifact.status),
     path: artifact.path,
+    projectId: artifact.project_id,
     projectName: artifact.project_name,
     workItemTitle: artifact.work_item_title,
     updatedAt: artifact.updated_at
@@ -366,12 +387,13 @@ function buildAttentionItems(
   const items: DashboardAttentionItem[] = [];
 
   for (const item of reviewItems) {
+    const missingRepoPath = isMissingRepoPathReview(item);
     items.push({
       id: `review:${item.id}`,
       kind: "review",
       severity: "action",
       projectName: item.project,
-      projectId: null,
+      projectId: item.projectId,
       milestone: null,
       goal: item.goal,
       status: item.status,
@@ -391,7 +413,12 @@ function buildAttentionItems(
       relatedRunId: null,
       relatedCodexInvocationId: null,
       nextAction: `Review ${item.slug || item.id} and choose Approve, Reject, or Defer.`,
-      primaryActions: reviewActions(item.slug || item.id),
+      primaryActions: [
+        ...(missingRepoPath && item.projectId
+          ? [projectSetupAction(item.projectId)]
+          : []),
+        ...reviewActions(item.slug || item.id)
+      ],
       createdAt: item.createdAt,
       updatedAt: item.updatedAt
     });
@@ -400,7 +427,6 @@ function buildAttentionItems(
   for (const packet of listPendingCodexPackets(db)) {
     const purposeLabel = packet.purpose === "build" ? "build" : "planning";
     const missingProjectRepositoryPath = Boolean(packet.project_id && !packet.target_repository_root);
-    const missingProjectRepositoryPathMessage = "This project needs a repository path before Arcadia can run Codex on its files.";
     const runCommand = packet.plan_step_id
       ? `arcadia work run ${packet.work_item_id} --plan ${packet.plan_id} --allow-codex-${purposeLabel}`
       : packet.command;
@@ -418,7 +444,7 @@ function buildAttentionItems(
       status: packet.status,
       statusLabel: labelStatus(packet.status),
       reason: missingProjectRepositoryPath
-        ? missingProjectRepositoryPathMessage
+        ? MISSING_REPO_PATH_WARNING
         : `Codex ${purposeLabel} packet awaiting review.`,
       workItemId: packet.work_item_id,
       workItemTitle: packet.work_item_title,
@@ -434,7 +460,7 @@ function buildAttentionItems(
       relatedRunId: packet.run_id,
       relatedCodexInvocationId: packet.id,
       nextAction: missingProjectRepositoryPath
-        ? missingProjectRepositoryPathMessage
+        ? MISSING_REPO_PATH_WARNING
         : packet.plan_step_id
           ? `Open ${packet.prompt_path}. If approved, run: ${runCommand}`
           : `Open ${packet.prompt_path}. If approved, run the existing Codex command recorded in the packet metadata.`,
@@ -446,6 +472,9 @@ function buildAttentionItems(
           href: dashboardFileHref(packet.prompt_path),
           reviewAction: null
         },
+        ...(missingProjectRepositoryPath && packet.project_id
+          ? [projectSetupAction(packet.project_id)]
+          : []),
         ...(missingProjectRepositoryPath
           ? []
           : [{
@@ -493,7 +522,7 @@ function buildAttentionItems(
       kind: "run",
       severity: run.status === "failed" ? "blocked" : "action",
       projectName: run.project_name,
-      projectId: null,
+      projectId: run.project_id,
       milestone: null,
       goal: null,
       status: run.status,
@@ -533,7 +562,7 @@ function buildAttentionItems(
       kind: "blocked_work",
       severity: "blocked",
       projectName: workItem.project_name,
-      projectId: null,
+      projectId: workItem.project_id,
       milestone: null,
       goal: null,
       status: "blocked",
@@ -583,8 +612,37 @@ function reviewActions(reviewId: string): DashboardAttentionAction[] {
   ];
 }
 
+function projectSetupAction(projectId: string): DashboardAttentionAction {
+  return {
+    label: "Set Repository Path",
+    kind: "view",
+    command: null,
+    href: `/projects/${encodeURIComponent(projectId)}`,
+    reviewAction: null
+  };
+}
+
+function isMissingRepoPathReview(item: DashboardReviewItem): boolean {
+  return item.decisionNeeded.includes("repository path") || item.missingFields.includes("repository path");
+}
+
 function dashboardFileHref(relativePath: string): string {
   return `/api/file/${relativePath.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+function decodeStringArray(raw: string | null | undefined): string[] {
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === "string").map((value) => value.trim()).filter(Boolean)
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 function getWorkItemTitle(db: Database.Database, workItemId: string | null): string | null {
@@ -663,6 +721,7 @@ interface BlockedWorkItemRow {
   id: string;
   title: string;
   next_action: string;
+  project_id: string | null;
   project_name: string | null;
   created_at: string;
   updated_at: string;
@@ -675,6 +734,7 @@ function listBlockedWorkItems(db: Database.Database): BlockedWorkItemRow[] {
         wi.id,
         wi.title,
         wi.next_action,
+        p.id AS project_id,
         p.name AS project_name,
         wi.created_at,
         wi.updated_at
@@ -713,6 +773,7 @@ function askActivityEvents(db: Database.Database): DashboardActivityEvent[] {
         ar.stewardship_json,
         ar.work_item_id,
         wi.title AS work_item_title,
+        p.id AS project_id,
         p.name AS project_name,
         ar.created_at
       FROM ask_requests ar
@@ -729,6 +790,7 @@ function askActivityEvents(db: Database.Database): DashboardActivityEvent[] {
       stewardship_json: string | null;
       work_item_id: string | null;
       work_item_title: string | null;
+      project_id: string | null;
       project_name: string | null;
       created_at: string;
     }>;
@@ -741,6 +803,7 @@ function askActivityEvents(db: Database.Database): DashboardActivityEvent[] {
         eventType: "ask_received",
         eventLabel: "Ask Received",
         summary: row.raw_request,
+        projectId: row.project_id,
         projectName: row.project_name,
         askId: row.id,
         workItemId: row.work_item_id,
@@ -754,6 +817,7 @@ function askActivityEvents(db: Database.Database): DashboardActivityEvent[] {
         summary: stewardship
           ? `${stewardship.intentType} -> ${stewardship.recommendedExecutionPath}: ${stewardship.classificationReason}`
           : `${row.resolved_intent} -> ${row.output_kind}`,
+        projectId: row.project_id,
         projectName: row.project_name,
         askId: row.id,
         workItemId: row.work_item_id,
@@ -785,6 +849,7 @@ function workActivityEvents(db: Database.Database): DashboardActivityEvent[] {
       title: string;
       queue: string;
       work_classification: string;
+      project_id: string | null;
       project_name: string | null;
       created_at: string;
     }>;
@@ -795,6 +860,7 @@ function workActivityEvents(db: Database.Database): DashboardActivityEvent[] {
       eventType: "routed_to_work",
       eventLabel: "Routed To Work",
       summary: `${row.title} (${labelStatus(row.queue)}, ${labelWorkClassification(row.work_classification)})`,
+      projectId: row.project_id,
       projectName: row.project_name,
       workItemId: row.id,
       workItemTitle: row.title,
@@ -813,6 +879,7 @@ function reviewActivityEvents(db: Database.Database): DashboardActivityEvent[] {
         ri.decision_needed,
         ri.work_item_id,
         wi.title AS work_item_title,
+        p.id AS project_id,
         p.name AS project_name,
         ri.created_at,
         ri.updated_at,
@@ -830,6 +897,7 @@ function reviewActivityEvents(db: Database.Database): DashboardActivityEvent[] {
       decision_needed: string;
       work_item_id: string | null;
       work_item_title: string | null;
+      project_id: string | null;
       project_name: string | null;
       created_at: string;
       updated_at: string;
@@ -842,6 +910,7 @@ function reviewActivityEvents(db: Database.Database): DashboardActivityEvent[] {
       eventType: "routed_to_review",
       eventLabel: "Routed To Review",
       summary: row.decision_needed,
+      projectId: row.project_id,
       projectName: row.project_name,
       reviewId: row.id,
       reviewSlug: row.slug,
@@ -854,6 +923,7 @@ function reviewActivityEvents(db: Database.Database): DashboardActivityEvent[] {
       eventType: "review_created",
       eventLabel: "Review Created",
       summary: row.decision_needed,
+      projectId: row.project_id,
       projectName: row.project_name,
       reviewId: row.id,
       reviewSlug: row.slug,
@@ -872,6 +942,7 @@ function reviewActivityEvents(db: Database.Database): DashboardActivityEvent[] {
         eventType: "review_resolved",
         eventLabel: "Review Resolved",
         summary: `${row.slug ?? row.id} ${labelStatus(row.status)}`,
+        projectId: row.project_id,
         projectName: row.project_name,
         reviewId: row.id,
         reviewSlug: row.slug,
@@ -892,6 +963,7 @@ function codexPacketActivityEvents(db: Database.Database): DashboardActivityEven
         ci.prompt_path,
         ci.work_item_id,
         wi.title AS work_item_title,
+        p.id AS project_id,
         p.name AS project_name,
         a.id AS artifact_id,
         ar.stewardship_json,
@@ -912,6 +984,7 @@ function codexPacketActivityEvents(db: Database.Database): DashboardActivityEven
         prompt_path: string;
         work_item_id: string | null;
         work_item_title: string | null;
+        project_id: string | null;
         project_name: string | null;
         artifact_id: string | null;
         stewardship_json: string | null;
@@ -925,6 +998,7 @@ function codexPacketActivityEvents(db: Database.Database): DashboardActivityEven
         summary: stewardship?.generatedCodexGoalText
           ? `${labelStatus(packet.purpose)} packet: ${stewardship.generatedCodexGoalText}`
           : `${labelStatus(packet.purpose)} packet: ${packet.prompt_path}`,
+        projectId: packet.project_id,
         projectName: packet.project_name,
         workItemId: packet.work_item_id,
         workItemTitle: packet.work_item_title,
@@ -945,6 +1019,7 @@ function runActivityEvents(db: Database.Database): DashboardActivityEvent[] {
         er.summary,
         er.work_item_id,
         wi.title AS work_item_title,
+        p.id AS project_id,
         p.name AS project_name,
         er.created_at,
         er.updated_at
@@ -960,6 +1035,7 @@ function runActivityEvents(db: Database.Database): DashboardActivityEvent[] {
       summary: string;
       work_item_id: string;
       work_item_title: string;
+      project_id: string | null;
       project_name: string | null;
       created_at: string;
       updated_at: string;
@@ -971,6 +1047,7 @@ function runActivityEvents(db: Database.Database): DashboardActivityEvent[] {
       eventType: "execution_started",
       eventLabel: "Execution Started",
       summary: row.work_item_title,
+      projectId: row.project_id,
       projectName: row.project_name,
       workItemId: row.work_item_id,
       workItemTitle: row.work_item_title,
@@ -987,6 +1064,7 @@ function runActivityEvents(db: Database.Database): DashboardActivityEvent[] {
         eventType: row.status === "completed" ? "run_completed" : "run_failed",
         eventLabel: row.status === "completed" ? "Run Completed" : "Run Failed",
         summary: row.summary,
+        projectId: row.project_id,
         projectName: row.project_name,
         workItemId: row.work_item_id,
         workItemTitle: row.work_item_title,
@@ -1006,6 +1084,7 @@ function artifactActivityEvents(db: Database.Database): DashboardActivityEvent[]
         a.path,
         a.work_item_id,
         wi.title AS work_item_title,
+        p.id AS project_id,
         p.name AS project_name,
         a.created_at
       FROM artifacts a
@@ -1020,6 +1099,7 @@ function artifactActivityEvents(db: Database.Database): DashboardActivityEvent[]
       path: string | null;
       work_item_id: string | null;
       work_item_title: string | null;
+      project_id: string | null;
       project_name: string | null;
       created_at: string;
     }>;
@@ -1030,6 +1110,7 @@ function artifactActivityEvents(db: Database.Database): DashboardActivityEvent[]
       eventType: "artifact_created",
       eventLabel: "Artifact Created",
       summary: row.title,
+      projectId: row.project_id,
       projectName: row.project_name,
       workItemId: row.work_item_id,
       workItemTitle: row.work_item_title,
@@ -1105,6 +1186,7 @@ function activityEvent(input: Partial<DashboardActivityEvent> & {
     eventType: input.eventType,
     eventLabel: input.eventLabel,
     summary: input.summary,
+    projectId: input.projectId ?? null,
     projectName: input.projectName ?? null,
     askId: input.askId ?? null,
     reviewId: input.reviewId ?? null,

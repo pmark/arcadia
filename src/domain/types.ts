@@ -321,6 +321,7 @@ export interface ExecutionRunStepSummary extends ExecutionRunStep {
 }
 
 export interface ExecutionRunSummary extends ExecutionRun {
+  project_id: string | null;
   project_name: string | null;
   work_item_title: string;
   plan_summary: string;

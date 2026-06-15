@@ -10,6 +10,7 @@ import {
   type StewardshipCritiqueResult
 } from "../stewardship/critic.js";
 import type { GoalStewardshipResult } from "../stewardship/index.js";
+import { CODEX_REPO_PATH_REQUIRED_MESSAGE } from "../projects/setup.js";
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
 import { getWorkspacePaths, toWorkspaceRelativePath } from "../workspace/paths.js";
@@ -43,7 +44,7 @@ export function createCodexPacket(input: {
   stewardship?: GoalStewardshipResult | null;
 }): CodexPacket {
   if (input.projectContext && !input.projectContext.metadata?.repo_path) {
-    throw new Error("This project needs a repository path before Arcadia can run Codex on its files.");
+    throw new Error(CODEX_REPO_PATH_REQUIRED_MESSAGE);
   }
 
   const invocationId = createId("codexInvocation");

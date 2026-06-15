@@ -1822,6 +1822,7 @@ export function getExecutionRun(db: Database.Database, id: string): ExecutionRun
     .prepare(
       `SELECT
         er.*,
+        p.id AS project_id,
         p.name AS project_name,
         wi.title AS work_item_title,
         ep.summary AS plan_summary,

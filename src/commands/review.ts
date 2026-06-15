@@ -27,6 +27,7 @@ export interface RequiresReviewPacket {
   id: string;
   slug: string;
   workItemId: string | null;
+  projectId: string | null;
   project: string | null;
   goal: string | null;
   status: ReviewItemSummary["status"];
@@ -445,6 +446,7 @@ export function reviewPacketForReviewItem(item: ReviewItemSummary): RequiresRevi
     id: item.id,
     slug: item.slug ?? item.id,
     workItemId: item.work_item_id,
+    projectId: item.project_id,
     project: item.project_name,
     goal: item.project_goal,
     status: item.status,

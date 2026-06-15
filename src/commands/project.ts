@@ -25,6 +25,7 @@ import { WORK_CLASSIFICATION_LABELS, type ProjectStatus, type WorkClassification
 import type { CreatedProjectBundle, MissionLog, Project, ProjectMetadata, ProjectSummary } from "../domain/types.js";
 import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../markdown/missionLog.js";
 import { promptForProjectCreate } from "../prompts/index.js";
+import { decodeStringArray, updateProjectSetup } from "../projects/setup.js";
 import { slugify } from "../utils/slug.js";
 import { getWorkspacePaths, resolveWorkspacePath, toWorkspaceRelativePath } from "../workspace/paths.js";
 
@@ -254,22 +255,42 @@ export function runProjectUpdateCommand(options: {
   if (updated.length === 0) {
     throw validationError("At least one project field is required.", { fields: ["status", "mission", "goal"] });
   }
-  const project = withDatabase(workspacePath, (db) =>
-    updateProject(db, options.projectId, {
-      status: options.status as ProjectStatus | undefined,
-      mission: options.mission,
-      goal: options.goal
+  if (options.goal !== undefined) {
+    const project = withDatabase(workspacePath, (db) =>
+      updateProject(db, options.projectId, {
+        status: options.status as ProjectStatus | undefined,
+        mission: options.mission,
+        goal: options.goal
+      })
+    );
+
+    if (!project) {
+      throw projectNotFound(options.projectId);
+    }
+
+    return createSuccess({
+      command: "project.update",
+      workspace: workspacePath,
+      data: { project, updated }
+    });
+  }
+
+  const result = withDatabase(workspacePath, (db) =>
+    updateProjectSetup(db, {
+      projectId: options.projectId,
+      status: options.status,
+      mission: options.mission
     })
   );
 
-  if (!project) {
+  if (!result) {
     throw projectNotFound(options.projectId);
   }
 
   return createSuccess({
     command: "project.update",
     workspace: workspacePath,
-    data: { project, updated }
+    data: { project: result.project, updated }
   });
 }
 
@@ -283,16 +304,24 @@ export function runProjectMetadataCommand(options: {
 }): CommandSuccess<ProjectMetadataCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const metadata = withDatabase(workspacePath, (db) => {
-    const existing = getProjectMetadata(db, options.projectId);
-    const updated = upsertProjectMetadata(db, {
+    if (options.aliases !== undefined || options.statusSummary !== undefined) {
+      const existing = getProjectMetadata(db, options.projectId);
+      return upsertProjectMetadata(db, {
+        projectId: options.projectId,
+        aliases: options.aliases ?? decodeStringArray(existing?.aliases),
+        repoPath: options.repoPath ?? existing?.repo_path ?? null,
+        statusSummary: options.statusSummary ?? existing?.status_summary ?? null,
+        validationCommands: options.validationCommands ?? decodeStringArray(existing?.validation_commands)
+      });
+    }
+
+    const result = updateProjectSetup(db, {
       projectId: options.projectId,
-      aliases: options.aliases ?? decodeStringArray(existing?.aliases),
-      repoPath: options.repoPath ?? existing?.repo_path ?? null,
-      statusSummary: options.statusSummary ?? existing?.status_summary ?? null,
-      validationCommands: options.validationCommands ?? decodeStringArray(existing?.validation_commands)
+      repoPath: options.repoPath,
+      validationCommands: options.validationCommands
     });
 
-    return updated;
+    return result?.metadata ?? null;
   });
 
   if (!metadata) {
@@ -387,17 +416,6 @@ export function renderProjectMetadataSuccess(response: CommandSuccess<ProjectMet
     `Repository: ${response.data.metadata.repo_path ?? "None"}`,
     `Validation: ${decodeStringArray(response.data.metadata.validation_commands).join(", ") || "None"}`
   ];
-}
-
-function decodeStringArray(raw: string | null | undefined): string[] {
-  if (!raw) {
-    return [];
-  }
-
-  const parsed = JSON.parse(raw) as unknown;
-  return Array.isArray(parsed)
-    ? parsed.filter((value): value is string => typeof value === "string").map((value) => value.trim()).filter(Boolean)
-    : [];
 }
 
 function resolveProjectFilesystemPath(workspacePath: string, slug: string, providedPath?: string): string {

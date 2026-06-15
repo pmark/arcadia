@@ -10,6 +10,7 @@ import {
   Radio,
   Sparkles
 } from "lucide-react";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import type {
   DashboardArtifact,
@@ -100,17 +101,35 @@ export function ProjectCard({ project }: { project: DashboardProject }) {
     <article className="min-w-0 rounded-md border border-line bg-panel p-4 shadow-soft">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-base font-semibold leading-6">{project.name}</h3>
+          <h3 className="text-base font-semibold leading-6">
+            <Link href={`/projects/${encodeURIComponent(project.id)}`} className="transition hover:text-steel">
+              {project.name}
+            </Link>
+          </h3>
           <p className="mt-1 text-sm leading-5 text-muted">{project.mission}</p>
         </div>
         <StatusBadge status={project.status} label={project.statusLabel} />
       </div>
+      {project.setupWarnings.length > 0 ? (
+        <div className="mt-4 rounded-md border border-clay/30 bg-clay/10 px-3 py-2 text-sm font-medium text-clay">
+          {project.setupWarnings[0]}
+        </div>
+      ) : null}
       <dl className="mt-4 grid gap-3 text-sm">
+        <Field label="Repository" value={project.repoPath ?? "Not configured"} />
         <Field label="Goal" value={project.goal ?? "None"} />
         <Field label="Current Milestone" value={project.currentMilestone ?? "None"} />
         <Field label="Next Action" value={project.nextAction ?? "None"} />
         <Field label="Last Artifact" value={project.lastArtifact?.title ?? "None"} />
       </dl>
+      <div className="mt-4">
+        <Link
+          href={`/projects/${encodeURIComponent(project.id)}`}
+          className="inline-flex min-h-10 items-center rounded-md border border-steel/30 bg-steel/10 px-3 text-sm font-semibold text-steel transition hover:border-steel"
+        >
+          {project.repoPath ? "View Details" : "Set Repository Path"}
+        </Link>
+      </div>
     </article>
   );
 }
@@ -409,7 +428,9 @@ export function ActivityRow({ event }: { event: DashboardActivityEvent }) {
         <div className="mt-3 flex flex-wrap gap-2">
           {event.reviewId ? <ActivityLink href="/review" label={event.reviewSlug ?? "Review"} /> : null}
           {event.runId ? <ActivityLink href="/runs" label={event.runId} /> : null}
-          {event.workItemId ? <ActivityLink href="/projects" label="Work" /> : null}
+          {event.workItemId ? (
+            <ActivityLink href={event.projectId ? `/projects/${encodeURIComponent(event.projectId)}` : "/projects"} label="Work" />
+          ) : null}
           {event.backBurnerItemId ? <ActivityLink href="/back-burner" label="Back Burner" /> : null}
           {event.artifactPath ? <ActivityLink href={event.artifactPath} label="Artifact" /> : null}
         </div>
