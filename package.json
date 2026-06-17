@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.5.1",
-    "better-sqlite3": "^12.10.0",
+    "better-sqlite3": "^12.11.1",
     "commander": "^15.0.0"
   },
   "devDependencies": {
@@ -30,5 +30,5 @@
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "pnpm@11.5.1"
+  "packageManager": "pnpm@11.7.0"
 }

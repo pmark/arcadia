@@ -1735,15 +1735,18 @@ export function createExecutionRun(db: Database.Database, input: CreateExecution
       status: validateExecutionRunStatus(input.status),
       summary: required(input.summary, "Execution run summary"),
       mission_log_id: input.missionLogId ?? null,
+      review_item_id: null,
+      executor_name: null,
+      pid: null,
       created_at: timestamp,
       updated_at: timestamp
     };
 
     db.prepare(
       `INSERT INTO execution_runs (
-        id, work_item_id, plan_id, status, summary, mission_log_id, created_at, updated_at
+        id, work_item_id, plan_id, status, summary, mission_log_id, review_item_id, executor_name, pid, created_at, updated_at
       ) VALUES (
-        @id, @work_item_id, @plan_id, @status, @summary, @mission_log_id, @created_at, @updated_at
+        @id, @work_item_id, @plan_id, @status, @summary, @mission_log_id, @review_item_id, @executor_name, @pid, @created_at, @updated_at
       )`
     ).run(run);
 
@@ -1817,6 +1820,102 @@ export function attachMissionLogToExecutionRun(
   return getExecutionRun(db, runId);
 }
 
+export function createReviewExecutionRun(
+  db: Database.Database,
+  input: {
+    reviewItemId: string;
+    executorName: string;
+    workItemId?: string | null;
+    planId?: string | null;
+    summary: string;
+  }
+): ExecutionRunSummary {
+  const timestamp = nowIso();
+  const run = {
+    id: createId("executionRun"),
+    work_item_id: input.workItemId ?? null,
+    plan_id: input.planId ?? null,
+    status: "pending_execution" as const,
+    summary: input.summary,
+    mission_log_id: null,
+    review_item_id: input.reviewItemId,
+    executor_name: input.executorName,
+    pid: null,
+    created_at: timestamp,
+    updated_at: timestamp
+  };
+
+  db.prepare(
+    `INSERT INTO execution_runs (
+      id, work_item_id, plan_id, status, summary, mission_log_id, review_item_id, executor_name, pid, created_at, updated_at
+    ) VALUES (
+      @id, @work_item_id, @plan_id, @status, @summary, @mission_log_id, @review_item_id, @executor_name, @pid, @created_at, @updated_at
+    )`
+  ).run(run);
+
+  return getExecutionRun(db, run.id) as ExecutionRunSummary;
+}
+
+export function claimNextPendingRun(
+  db: Database.Database,
+  pid: number
+): ExecutionRunSummary | null {
+  const row = db
+    .prepare(
+      "SELECT id FROM execution_runs WHERE status = 'pending_execution' ORDER BY created_at ASC LIMIT 1"
+    )
+    .get() as { id: string } | undefined;
+
+  if (!row) {
+    return null;
+  }
+
+  const timestamp = nowIso();
+  const affected = db
+    .prepare(
+      "UPDATE execution_runs SET status = 'running', pid = ?, updated_at = ? WHERE id = ? AND status = 'pending_execution'"
+    )
+    .run(pid, timestamp, row.id);
+
+  if (affected.changes === 0) {
+    return null;
+  }
+
+  return getExecutionRun(db, row.id);
+}
+
+export function updateExecutionRunStatus(
+  db: Database.Database,
+  runId: string,
+  status: "pending_execution" | "running" | "completed" | "requires_review" | "needs_mark" | "failed",
+  extra: { pid?: number | null; summary?: string } = {}
+): void {
+  const timestamp = nowIso();
+  if (extra.summary !== undefined && extra.pid !== undefined) {
+    db.prepare("UPDATE execution_runs SET status = ?, pid = ?, summary = ?, updated_at = ? WHERE id = ?").run(
+      status, extra.pid, extra.summary, timestamp, runId
+    );
+  } else if (extra.summary !== undefined) {
+    db.prepare("UPDATE execution_runs SET status = ?, summary = ?, updated_at = ? WHERE id = ?").run(
+      status, extra.summary, timestamp, runId
+    );
+  } else if (extra.pid !== undefined) {
+    db.prepare("UPDATE execution_runs SET status = ?, pid = ?, updated_at = ? WHERE id = ?").run(
+      status, extra.pid, timestamp, runId
+    );
+  } else {
+    db.prepare("UPDATE execution_runs SET status = ?, updated_at = ? WHERE id = ?").run(
+      status, timestamp, runId
+    );
+  }
+}
+
+export function listOrphanedRuns(db: Database.Database): Array<{ id: string; pid: number }> {
+  return db
+    .prepare("SELECT id, pid FROM execution_runs WHERE status = 'running' AND pid IS NOT NULL")
+    .all() as Array<{ id: string; pid: number }>;
+}
+
 export function getExecutionRun(db: Database.Database, id: string): ExecutionRunSummary | null {
   const run = db
     .prepare(
@@ -1824,14 +1923,15 @@ export function getExecutionRun(db: Database.Database, id: string): ExecutionRun
         er.*,
         p.id AS project_id,
         p.name AS project_name,
-        wi.title AS work_item_title,
+        COALESCE(wi.title, ri.decision_needed, er.summary) AS work_item_title,
         ep.summary AS plan_summary,
         ml.markdown_path AS mission_log_path
       FROM execution_runs er
-      JOIN work_items wi ON wi.id = er.work_item_id
+      LEFT JOIN work_items wi ON wi.id = er.work_item_id
       LEFT JOIN projects p ON p.id = wi.project_id
-      JOIN execution_plans ep ON ep.id = er.plan_id
+      LEFT JOIN execution_plans ep ON ep.id = er.plan_id
       LEFT JOIN mission_logs ml ON ml.id = er.mission_log_id
+      LEFT JOIN review_items ri ON ri.id = er.review_item_id
       WHERE er.id = ?`
     )
     .get(id) as Omit<ExecutionRunSummary, "steps" | "artifacts"> | undefined;

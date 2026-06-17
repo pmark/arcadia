@@ -119,16 +119,20 @@ CREATE TABLE IF NOT EXISTS execution_plan_steps (
 
 CREATE TABLE IF NOT EXISTS execution_runs (
   id TEXT PRIMARY KEY,
-  work_item_id TEXT NOT NULL,
-  plan_id TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'requires_review', 'needs_mark', 'failed')),
+  work_item_id TEXT,
+  plan_id TEXT,
+  status TEXT NOT NULL CHECK (status IN ('pending_execution', 'running', 'completed', 'requires_review', 'needs_mark', 'failed')),
   summary TEXT NOT NULL,
   mission_log_id TEXT,
+  review_item_id TEXT,
+  executor_name TEXT,
+  pid INTEGER,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE CASCADE,
   FOREIGN KEY (plan_id) REFERENCES execution_plans(id) ON DELETE CASCADE,
-  FOREIGN KEY (mission_log_id) REFERENCES mission_logs(id) ON DELETE SET NULL
+  FOREIGN KEY (mission_log_id) REFERENCES mission_logs(id) ON DELETE SET NULL,
+  FOREIGN KEY (review_item_id) REFERENCES review_items(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS execution_run_steps (

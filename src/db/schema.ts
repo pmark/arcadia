@@ -36,6 +36,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureBackBurnerItemsTable(db);
   ensureAskRequestStewardshipColumn(db);
   ensureRequiresReviewCompatibility(db);
+  ensureExecutionRunWorkerColumns(db);
 }
 
 function ensureProjectSlugColumn(db: Database.Database): void {
@@ -204,6 +205,29 @@ function ensureRequiresReviewCompatibility(db: Database.Database): void {
   }
 
   repairLegacyRequiresReviewReferences(db);
+}
+
+function ensureExecutionRunWorkerColumns(db: Database.Database): void {
+  const row = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'execution_runs'")
+    .get() as { sql: string } | undefined;
+
+  if (row?.sql && !row.sql.includes("'pending_execution'")) {
+    rebuildTableWithCurrentSchema(db, "execution_runs");
+  }
+
+  const columns = db.prepare("PRAGMA table_info(execution_runs)").all() as Array<{ name: string }>;
+  const columnNames = new Set(columns.map((c) => c.name));
+
+  if (!columnNames.has("pid")) {
+    db.prepare("ALTER TABLE execution_runs ADD COLUMN pid INTEGER").run();
+  }
+  if (!columnNames.has("review_item_id")) {
+    db.prepare("ALTER TABLE execution_runs ADD COLUMN review_item_id TEXT REFERENCES review_items(id) ON DELETE SET NULL").run();
+  }
+  if (!columnNames.has("executor_name")) {
+    db.prepare("ALTER TABLE execution_runs ADD COLUMN executor_name TEXT").run();
+  }
 }
 
 function repairLegacyRequiresReviewReferences(db: Database.Database): void {

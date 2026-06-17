@@ -95,6 +95,13 @@ import {
 import { renderRunListSuccess, renderRunShowSuccess, runRunListCommand, runRunShowCommand } from "./commands/run.js";
 import { renderStatusSuccess, runStatusCommand } from "./commands/status.js";
 import {
+  runWorkerInstallCommand,
+  runWorkerStartCommand,
+  runWorkerStatusCommand,
+  runWorkerStopCommand,
+  runWorkerUninstallCommand
+} from "./commands/worker.js";
+import {
   renderWorkDoneSuccess,
   renderWorkListSuccess,
   renderWorkPlanSuccess,
@@ -1023,6 +1030,38 @@ export function buildProgram(): Command {
       renderReviewWeeklySuccess
     )
   );
+
+  const worker = program.command("worker").description("Background execution worker daemon");
+
+  worker
+    .command("start")
+    .description("Start the worker daemon and process queued execution runs")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+    .action((options: { workspace: string }) => runWorkerStartCommand(options));
+
+  worker
+    .command("stop")
+    .description("Stop the running worker daemon")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+    .action((options: { workspace: string }) => runWorkerStopCommand(options));
+
+  worker
+    .command("status")
+    .description("Show whether the worker daemon is running")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+    .action((options: { workspace: string }) => runWorkerStatusCommand(options));
+
+  worker
+    .command("install")
+    .description("Install worker as a launchd service (macOS) that starts on login")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+    .action((options: { workspace: string }) => runWorkerInstallCommand(options));
+
+  worker
+    .command("uninstall")
+    .description("Remove the launchd service and stop the worker")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+    .action((options: { workspace: string }) => runWorkerUninstallCommand(options));
 
   return program;
 }

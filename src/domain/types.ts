@@ -135,11 +135,14 @@ export interface ExecutionPlanStep {
 
 export interface ExecutionRun {
   id: string;
-  work_item_id: string;
-  plan_id: string;
+  work_item_id: string | null;
+  plan_id: string | null;
   status: ExecutionRunStatus;
   summary: string;
   mission_log_id: string | null;
+  review_item_id: string | null;
+  executor_name: string | null;
+  pid: number | null;
   created_at: string;
   updated_at: string;
 }

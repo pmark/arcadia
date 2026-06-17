@@ -1,3 +1,5 @@
+import { existsSync, realpathSync, statSync } from "node:fs";
+import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { validationError } from "../cli/errors.js";
@@ -6,10 +8,13 @@ import { withDatabase } from "../db/connection.js";
 import {
   buildStatusReportData,
   buildWeeklyReviewData,
+  createReviewExecutionRun,
   createReviewItem,
   createReviewFeedback,
+  getProjectMetadata,
   getReviewItem,
   getReviewItemBySlug,
+  getWorkItem,
   listActionableReviewItems,
   updateReviewItemStatus
 } from "../db/repositories.js";
@@ -74,11 +79,12 @@ export interface ReviewDecisionCommandOptions {
 export interface ReviewDecisionCommandData {
   item: RequiresReviewPacket;
   result: {
-    status: "approved" | "rejected" | "deferred";
+    status: "approved" | "rejected" | "deferred" | "pending_execution";
     summary: string;
   };
   approval: AskCommandData | null;
   execution: ReviewExecutionPacket | null;
+  run: { id: string } | null;
 }
 
 export interface ReviewExecutionPacket {
@@ -112,12 +118,13 @@ export interface ReviewResolveReplyCommandOptions {
 
 export interface ReviewResolveReplyCommandData {
   item: RequiresReviewPacket;
-  action: "approved" | "rejected" | "deferred" | "feedback_captured";
+  action: "approved" | "rejected" | "deferred" | "feedback_captured" | "pending_execution";
   selectedOption: string | null;
   feedback: ReviewFeedback | null;
   result: ReviewDecisionCommandData["result"] | null;
   approval: AskCommandData | null;
   execution: ReviewExecutionPacket | null;
+  run: { id: string } | null;
   confirmation: string;
 }
 
@@ -231,6 +238,7 @@ export function runReviewResolveReplyCommand(
         result: null,
         approval: null,
         execution: null,
+        run: null,
         confirmation: `Feedback captured for ${packet.slug}: ${feedback.feedback_type}.`
       }
     });
@@ -263,6 +271,7 @@ export function runReviewResolveReplyCommand(
       result: response.data.result,
       approval: response.data.approval,
       execution: response.data.execution,
+      run: response.data.run,
       confirmation: confirmationForDecision(updated, decision, response.data.result.summary)
     },
     artifacts: response.artifacts
@@ -323,7 +332,8 @@ export function runReviewApproveCommand(
         summary: `${approval.data.result.summary} Execution pending as Requires Review item ${pendingExecutionReview.slug ?? pendingExecutionReview.id}.`
       },
       approval: approval.data,
-      execution: null
+      execution: null,
+      run: null
     },
     artifacts: approval.artifacts,
     warnings: [`Execution was not run. Approve ${pendingExecutionReview.slug ?? pendingExecutionReview.id} to execute the approved work.`]
@@ -333,31 +343,60 @@ export function runReviewApproveCommand(
 function runReviewApproveExecuteCommand(
   options: ReviewDecisionCommandOptions
 ): CommandSuccess<ReviewDecisionCommandData> {
-  const { result, artifacts } = withDatabase(options.workspace, (db) => {
-    const execution = executeApprovedReview(db, {
-      workspace: options.workspace,
-      reviewId: options.id,
-      executorName: options.executor
+  const { run, review } = withDatabase(options.workspace, (db) => {
+    const reviewItem = getReviewItem(db, options.id) ?? getReviewItemBySlug(db, options.id);
+    if (!reviewItem) {
+      throw validationError("Requires Review item was not found.", { id: options.id });
+    }
+    if (reviewItem.status !== "open" && reviewItem.status !== "deferred") {
+      throw validationError("Requires Review item is already decided.", { id: reviewItem.id, status: reviewItem.status });
+    }
+
+    // Validate repo path upfront so the user gets an error immediately, not when the worker runs.
+    const projectId = reviewItem.project_id
+      ?? (reviewItem.work_item_id ? (getWorkItem(db, reviewItem.work_item_id)?.project_id ?? null) : null);
+    if (projectId) {
+      const meta = getProjectMetadata(db, projectId);
+      const repoPath = meta?.repo_path?.trim();
+      if (!repoPath) {
+        throw validationError("Review execution requires project repository metadata.", { reviewId: reviewItem.id, field: "repo_path" });
+      }
+      const absolute = path.resolve(repoPath);
+      if (!existsSync(absolute) || !statSync(absolute).isDirectory()) {
+        throw validationError("Review execution refused because the project repository path is missing or invalid.", {
+          reviewId: reviewItem.id,
+          repoPath: absolute
+        });
+      }
+      realpathSync(absolute); // resolves symlinks — validates the path is real
+    }
+
+    const executorName = options.executor ?? "codex";
+    const pendingRun = createReviewExecutionRun(db, {
+      reviewItemId: reviewItem.id,
+      executorName,
+      workItemId: reviewItem.work_item_id,
+      planId: reviewItem.plan_id,
+      summary: `Execution queued for ${reviewItem.slug ?? reviewItem.id} with ${executorName}.`
     });
-    return {
-      result: execution,
-      artifacts: execution.artifactPaths
-    };
+
+    return { run: pendingRun, review: reviewItem };
   });
 
   return createSuccess({
     command: "review.approve",
     workspace: options.workspace,
     data: {
-      item: reviewPacketForReviewItem(result.review),
+      item: reviewPacketForReviewItem(review),
       result: {
-        status: "approved",
-        summary: `Approved and executed with ${result.executor}; follow-up Requires Review item ${result.followUpReview.slug ?? result.followUpReview.id} created.`
+        status: "pending_execution",
+        summary: `Execution queued as run ${run.id}. Start the worker to execute: arcadia worker start`
       },
       approval: null,
-      execution: reviewExecutionPacket(result)
+      execution: null,
+      run: { id: run.id }
     },
-    artifacts
+    artifacts: []
   });
 }
 
@@ -670,7 +709,8 @@ function runReviewDecisionCommand(
       item: reviewPacketForReviewItem(updated),
       result: { status, summary },
       approval: null,
-      execution: null
+      execution: null,
+      run: null
     }
   });
 }

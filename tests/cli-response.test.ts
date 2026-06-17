@@ -12,6 +12,7 @@ import {
   listActionableReviewItems,
   upsertProjectMetadata
 } from "../src/db/repositories.js";
+import { executeApprovedReview } from "../src/execution/reviewExecutor.js";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const tsxBin = path.join(repoRoot, "node_modules", ".bin", "tsx");
@@ -706,10 +707,9 @@ describe("CLI response contract", () => {
     expect(runJson.data.run.steps[0].status).toBe("requires_review");
   });
 
-  it("executes approved review with built-in Codex adapter and creates follow-up Requires Review", () => {
+  it("queues an execution run when review is approved with --execute", () => {
     const workspace = initializedWorkspace();
     const repo = initializedGitRepo();
-    const fakeBin = fakeExecutorBin(["codex"]);
     const { reviewId } = createExecutableReview(workspace, repo);
     mkdirSync(path.join(repo, ".arcadia"), { recursive: true });
     writeFileSync(path.join(repo, ".arcadia", "context-policy.json"), JSON.stringify({ denied_context_paths: ["node_modules/"] }), "utf8");
@@ -724,34 +724,56 @@ describe("CLI response contract", () => {
       "--executor",
       "codex",
       "--json"
-    ], { PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` });
+    ]);
 
     expect(result.status).toBe(0);
     const json = parseJson(result.stdout);
-    expect(json.data.result.status).toBe("approved");
+    expect(json.data.result.status).toBe("pending_execution");
     expect(json.data.approval).toBeNull();
-    expect(json.data.execution.executor).toBe("codex");
-    expect(json.data.execution.changedFiles).toContain("tracked.txt");
-    expect(json.data.execution.validation[0]).toMatchObject({ command: "test -f tracked.txt", exitStatus: 0 });
-    expect(existsSync(json.data.execution.metadataPath)).toBe(true);
+    expect(json.data.execution).toBeNull();
+    expect(json.data.run).toMatchObject({ id: expect.stringContaining("run_") });
+  });
 
-    const prompt = readFileSync(path.join(path.dirname(json.data.execution.metadataPath), "prompt.md"), "utf8");
-    expect(prompt).toContain("Safe implementation mode:");
-    expect(prompt).toContain("context-policy.json");
-    expect(prompt).toContain("Repo guidance from Arcadia.");
+  it("worker executes a queued run with built-in Codex adapter and creates follow-up review", () => {
+    const workspace = initializedWorkspace();
+    const repo = initializedGitRepo();
+    const fakeBin = fakeExecutorBin(["codex"]);
+    const { reviewId } = createExecutableReview(workspace, repo);
+    mkdirSync(path.join(repo, ".arcadia"), { recursive: true });
+    writeFileSync(path.join(repo, ".arcadia", "context-policy.json"), JSON.stringify({ denied_context_paths: ["node_modules/"] }), "utf8");
+    writeFileSync(path.join(repo, ".arcadia", "repo-context.md"), "Repo guidance from Arcadia.\n", "utf8");
 
-    withDatabase(workspace, (db) => {
-      expect(getReviewItem(db, reviewId)?.status).toBe("approved");
-      const open = listActionableReviewItems(db);
-      expect(open.map((item) => item.id)).toContain(json.data.execution.followUpReviewItemId);
-      expect(getReviewItem(db, json.data.execution.followUpReviewItemId)?.proposed_action).toContain("Executor codex finished");
-    });
+    const prevPath = process.env["PATH"];
+    process.env["PATH"] = `${fakeBin}${path.delimiter}${prevPath ?? ""}`;
+    try {
+      const result = withDatabase(workspace, (db) =>
+        executeApprovedReview(db, { workspace, reviewId, executorName: "codex" })
+      );
+
+      expect(result.executor).toBe("codex");
+      expect(result.changedFiles).toContain("tracked.txt");
+      expect(result.validation[0]).toMatchObject({ command: "test -f tracked.txt", exitStatus: 0 });
+      expect(existsSync(result.metadataPath)).toBe(true);
+
+      const prompt = readFileSync(path.join(path.dirname(result.metadataPath), "prompt.md"), "utf8");
+      expect(prompt).toContain("Safe implementation mode:");
+      expect(prompt).toContain("context-policy.json");
+      expect(prompt).toContain("Repo guidance from Arcadia.");
+
+      withDatabase(workspace, (db) => {
+        expect(getReviewItem(db, reviewId)?.status).toBe("approved");
+        const open = listActionableReviewItems(db);
+        expect(open.map((item) => item.id)).toContain(result.followUpReview.id);
+        expect(getReviewItem(db, result.followUpReview.id)?.proposed_action).toContain("Executor codex finished");
+      });
+    } finally {
+      process.env["PATH"] = prevPath;
+    }
   });
 
   it("leaves an actionable execution review when approval explicitly skips execution", () => {
     const workspace = initializedWorkspace();
     const repo = initializedGitRepo();
-    const fakeBin = fakeExecutorBin(["codex"]);
     const { reviewId } = createExecutableReview(workspace, repo);
 
     const result = runCli([
@@ -769,52 +791,31 @@ describe("CLI response contract", () => {
     expect(json.data.execution).toBeNull();
     expect(json.warnings[0]).toContain("Execution was not run");
 
-    const pendingId = withDatabase(workspace, (db) => {
+    withDatabase(workspace, (db) => {
       const pending = listActionableReviewItems(db).find((item) => item.resolved_intent === "ReviewExecutionPending");
       expect(pending?.proposed_action).toContain(`review approve ${json.data.item.slug} --execute`);
       expect(pending?.context_json).toContain(reviewId);
-      return pending?.id ?? "";
     });
-    expect(pendingId).toMatch(/^review_/);
-
-    const executed = runCli([
-      "review",
-      "approve",
-      pendingId,
-      "--workspace",
-      workspace,
-      "--json"
-    ], { PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` });
-
-    expect(executed.status, executed.stderr).toBe(0);
-    const executedJson = parseJson(executed.stdout);
-    expect(executedJson.data.execution.executor).toBe("codex");
-    expect(executedJson.data.execution.changedFiles).toContain("tracked.txt");
   });
 
   it("provides Claude Code and Gemini built-in adapters", () => {
-    for (const executor of ["claude-code", "gemini"]) {
+    for (const executor of ["claude-code", "gemini"] as const) {
       const workspace = initializedWorkspace();
       const repo = initializedGitRepo();
       const fakeBin = fakeExecutorBin(["claude", "gemini"]);
       const { reviewId } = createExecutableReview(workspace, repo);
 
-      const result = runCli([
-        "review",
-        "approve",
-        reviewId,
-        "--workspace",
-        workspace,
-        "--execute",
-        "--executor",
-        executor,
-        "--json"
-      ], { PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` });
-
-      expect(result.status, result.stderr).toBe(0);
-      const json = parseJson(result.stdout);
-      expect(json.data.execution.executor).toBe(executor);
-      expect(json.data.execution.changedFiles).toContain("tracked.txt");
+      const prevPath = process.env["PATH"];
+      process.env["PATH"] = `${fakeBin}${path.delimiter}${prevPath ?? ""}`;
+      try {
+        const result = withDatabase(workspace, (db) =>
+          executeApprovedReview(db, { workspace, reviewId, executorName: executor })
+        );
+        expect(result.executor).toBe(executor);
+        expect(result.changedFiles).toContain("tracked.txt");
+      } finally {
+        process.env["PATH"] = prevPath;
+      }
     }
   });
 
@@ -841,22 +842,17 @@ describe("CLI response contract", () => {
     writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
     mkdirSync(path.join(repo, ".arcadia"), { recursive: true });
 
-    const result = runCli([
-      "review",
-      "approve",
-      reviewId,
-      "--workspace",
-      workspace,
-      "--execute",
-      "--executor",
-      "aider",
-      "--json"
-    ], { PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` });
-
-    expect(result.status, result.stderr).toBe(0);
-    const json = parseJson(result.stdout);
-    expect(json.data.execution.executor).toBe("aider");
-    expect(json.data.execution.finalOutput).toContain("final from aider");
+    const prevPath = process.env["PATH"];
+    process.env["PATH"] = `${fakeBin}${path.delimiter}${prevPath ?? ""}`;
+    try {
+      const result = withDatabase(workspace, (db) =>
+        executeApprovedReview(db, { workspace, reviewId, executorName: "aider" })
+      );
+      expect(result.executor).toBe("aider");
+      expect(result.finalOutput).toContain("final from aider");
+    } finally {
+      process.env["PATH"] = prevPath;
+    }
   });
 
   it("refuses execution when the project repo path is invalid", () => {
