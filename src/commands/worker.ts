@@ -87,7 +87,8 @@ export function runWorkerStartCommand(options: WorkerOptions): never {
           const result = executeApprovedReview(db, {
             workspace: workspacePath,
             reviewId: run.review_item_id,
-            executorName: run.executor_name ?? undefined
+            executorName: run.executor_name ?? undefined,
+            runId: run.id
           });
           const validationPassed = result.validation.every((v) => v.exitStatus === 0);
           const summary = [

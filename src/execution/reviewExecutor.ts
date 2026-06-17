@@ -27,6 +27,7 @@ export interface ReviewExecutionOptions {
   workspace: string;
   reviewId: string;
   executorName?: ExecutorName;
+  runId?: string;
 }
 
 export interface ReviewExecutionResult {
@@ -141,7 +142,7 @@ export function executeApprovedReview(
   const plan = review.plan_id ? getExecutionPlan(db, review.plan_id) : null;
   const validationCommands = parseStringArray(metadata?.validation_commands);
 
-  const runId = createId("executionRun");
+  const runId = options.runId ?? createId("executionRun");
   const startedAt = new Date().toISOString();
   const artifactRoot = path.join(getWorkspacePaths(options.workspace).artifacts, "review-executions", runId);
   mkdirSync(artifactRoot, { recursive: true });

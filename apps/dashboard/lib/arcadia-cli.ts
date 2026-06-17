@@ -46,11 +46,30 @@ export interface ReviewActionResponse {
     slug: string;
   };
   result: {
-    status: "approved" | "rejected" | "deferred";
+    status: "approved" | "rejected" | "deferred" | "pending_execution";
     summary: string;
   };
   approval: unknown | null;
   execution: ReviewExecutionResponse | null;
+  run: { id: string } | null;
+}
+
+export interface RunShowResponse {
+  run: {
+    id: string;
+    status: string;
+    summary: string;
+    executor_name: string | null;
+    review_item_id: string | null;
+    work_item_title: string;
+    project_name: string | null;
+    created_at: string;
+    updated_at: string;
+    pid: number | null;
+  };
+  needsMark: string[];
+  executorOutputPath: string | null;
+  artifactRoot: string | null;
 }
 
 export interface ReviewResolveReplyResponse {
@@ -107,6 +126,10 @@ export interface BackBurnerActionResponse {
     status: "promoted" | "archived";
     summary: string;
   };
+}
+
+export async function getRunDetails(id: string): Promise<ArcadiaJsonSuccess<RunShowResponse>> {
+  return runArcadiaCliJson<RunShowResponse>(["run", "show", id]);
 }
 
 export async function runBackBurnerAction(input: {

@@ -28,9 +28,11 @@ export async function POST(request: Request) {
 
     if (action === "approve" && execute) {
       const response = await reviewApproveWithExecute({ id, executor });
+      const runId = response.data.run?.id ?? null;
       return NextResponse.json({
         message: `Requires Review ${response.data.result.status}. ${response.data.result.summary}`,
-        result: response.data
+        result: response.data,
+        runId
       });
     }
 

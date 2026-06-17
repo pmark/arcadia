@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { DashboardChrome } from "../../components/chrome";
 import { EmptyState, ErrorState, LoadingState, ReviewCard } from "../../components/dashboard-ui";
@@ -7,6 +8,7 @@ import { useArcadiaSnapshot } from "../../hooks/use-arcadia-snapshot";
 import type { DashboardReviewItem } from "../../lib/types";
 
 export default function ReviewPage() {
+  const router = useRouter();
   const { snapshot, error, loading, refreshing, lastLoadedAt, refresh } = useArcadiaSnapshot();
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -14,6 +16,37 @@ export default function ReviewPage() {
 
   async function submitAction(item: DashboardReviewItem, action: "approve" | "reject" | "defer") {
     await submitReviewAction(item, action);
+  }
+
+  async function submitApproveAndExecute(item: DashboardReviewItem) {
+    const key = `${item.id}:approve-execute`;
+    setPendingKey(key);
+    setActionMessage(null);
+    setActionError(null);
+
+    try {
+      const response = await fetch("/api/review-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id, action: "approve", execute: true })
+      });
+      const body = await response.json() as { message?: string; runId?: string | null; error?: string };
+      if (!response.ok) {
+        throw new Error(errorMessageFromBody(body, "Review action failed."));
+      }
+
+      if (typeof body.runId === "string") {
+        router.push(`/runs/${encodeURIComponent(body.runId)}`);
+        return;
+      }
+
+      setActionMessage(typeof body.message === "string" ? body.message : "Execution queued.");
+      await refresh();
+    } catch (submitError) {
+      setActionError(submitError instanceof Error ? submitError.message : String(submitError));
+    } finally {
+      setPendingKey(null);
+    }
   }
 
   async function submitOption(item: DashboardReviewItem, option: string) {
@@ -75,6 +108,7 @@ export default function ReviewPage() {
               item={item}
               pendingAction={pendingActionFor(item, pendingKey)}
               onAction={(reviewItem, action) => void submitAction(reviewItem, action)}
+              onApproveAndExecute={(reviewItem) => void submitApproveAndExecute(reviewItem)}
               onResolveOption={(reviewItem, option) => void submitOption(reviewItem, option)}
             />
           ))}

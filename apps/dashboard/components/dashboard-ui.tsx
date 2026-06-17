@@ -7,6 +7,7 @@ import {
   FileText,
   History,
   PauseCircle,
+  Play,
   Radio,
   Sparkles
 } from "lucide-react";
@@ -217,11 +218,13 @@ export function ReviewCard({
   item,
   pendingAction,
   onAction,
+  onApproveAndExecute,
   onResolveOption
 }: {
   item: DashboardReviewItem;
   pendingAction?: string | null;
   onAction?: (item: DashboardReviewItem, action: "approve" | "reject" | "defer") => void;
+  onApproveAndExecute?: (item: DashboardReviewItem) => void;
   onResolveOption?: (item: DashboardReviewItem, option: string) => void;
 }) {
   const primaryActions = ["approve", "reject", "defer"] as const;
@@ -248,6 +251,17 @@ export function ReviewCard({
         <Field label="Created" value={`${formatDateTime(item.createdAt)} · ${item.statusLabel}`} />
       </dl>
       <div className="mt-4 flex flex-wrap gap-2">
+        {onApproveAndExecute ? (
+          <button
+            type="button"
+            onClick={() => onApproveAndExecute(item)}
+            disabled={Boolean(pendingAction)}
+            className="inline-flex min-h-10 items-center gap-2 rounded-md border border-moss/30 bg-moss/10 px-3 text-sm font-semibold text-moss transition hover:border-moss disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Play className="h-3.5 w-3.5" aria-hidden="true" />
+            {pendingAction === "approve-execute" ? "Queuing…" : "Approve & Execute"}
+          </button>
+        ) : null}
         {primaryActions.map((action) => {
           const pending = pendingAction === action;
           const disabled = Boolean(pendingAction);
@@ -341,7 +355,11 @@ export function RunCard({ run }: { run: DashboardRun }) {
     <article className="min-w-0 rounded-md border border-line bg-panel p-4 shadow-soft">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-base font-semibold leading-6">{run.workItemTitle}</h3>
+          <h3 className="text-base font-semibold leading-6">
+            <Link href={`/runs/${encodeURIComponent(run.id)}`} className="transition hover:text-steel">
+              {run.workItemTitle}
+            </Link>
+          </h3>
           <p className="mt-1 font-mono text-xs text-muted">{run.id}</p>
         </div>
         <StatusBadge status={run.status} label={run.statusLabel} />

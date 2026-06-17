@@ -41,12 +41,16 @@ export function useArcadiaSnapshot(): SnapshotState {
 
   useEffect(() => {
     void refresh();
-    const interval = window.setInterval(() => {
-      void refresh();
-    }, 45_000);
-
-    return () => window.clearInterval(interval);
   }, [refresh]);
+
+  useEffect(() => {
+    const activeRuns = snapshot?.counts.activeRuns ?? 0;
+    const interval = window.setInterval(
+      () => void refresh(),
+      activeRuns > 0 ? 5_000 : 45_000
+    );
+    return () => window.clearInterval(interval);
+  }, [refresh, snapshot?.counts.activeRuns]);
 
   return { snapshot, error, loading, refreshing, lastLoadedAt, refresh };
 }
