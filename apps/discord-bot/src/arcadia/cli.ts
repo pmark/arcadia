@@ -59,6 +59,13 @@ export class ArcadiaCli {
     return this.runJson<ReviewDecisionData>(this.withWorkspace(["review", "approve", id, "--json"]));
   }
 
+  reviewApproveWithExecute(id: string, executor = "codex"): Promise<ArcadiaJsonSuccess<ReviewDecisionData>> {
+    return this.runJson<ReviewDecisionData>(
+      this.withWorkspace(["review", "approve", id, "--execute", "--executor", executor, "--json"]),
+      { timeoutMs: 35 * 60 * 1000 }
+    );
+  }
+
   reviewReject(id: string): Promise<ArcadiaJsonSuccess<ReviewDecisionData>> {
     return this.runJson<ReviewDecisionData>(this.withWorkspace(["review", "reject", id, "--json"]));
   }
@@ -127,14 +134,14 @@ export class ArcadiaCli {
     return buildCliInvocation(args, this.options.cliPath);
   }
 
-  private async runJson<TData>(args: string[]): Promise<ArcadiaJsonSuccess<TData>> {
+  private async runJson<TData>(args: string[], options: { timeoutMs?: number } = {}): Promise<ArcadiaJsonSuccess<TData>> {
     const invocation = this.buildInvocation(args);
     try {
       const result = await execFileAsync(invocation.command, invocation.args, {
         cwd: repoRoot(),
         encoding: "utf8",
-        timeout: this.options.timeoutMs ?? 30_000,
-        maxBuffer: 4 * 1024 * 1024
+        timeout: options.timeoutMs ?? this.options.timeoutMs ?? 30_000,
+        maxBuffer: 16 * 1024 * 1024
       });
       return parseJsonResponse<TData>(result.stdout);
     } catch (error) {

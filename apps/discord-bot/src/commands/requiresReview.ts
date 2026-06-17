@@ -2,6 +2,7 @@ import type { ArcadiaCli } from "../arcadia/cli.js";
 import {
   formatRequiresReview,
   formatRequiresReviewDecision,
+  formatRequiresReviewExecutionDecision,
   formatRequiresReviewShow
 } from "../formatters/requiresReviewFormatter.js";
 
@@ -16,8 +17,8 @@ export async function requiresReviewShowCommand(cli: ArcadiaCli, id: string): Pr
 }
 
 export async function requiresReviewApproveCommand(cli: ArcadiaCli, id: string): Promise<string> {
-  const response = await cli.reviewApprove(id);
-  return formatRequiresReviewDecision(response.data);
+  const response = await cli.reviewApproveWithExecute(id);
+  return formatRequiresReviewExecutionDecision(response.data);
 }
 
 export async function requiresReviewRejectCommand(cli: ArcadiaCli, id: string): Promise<string> {

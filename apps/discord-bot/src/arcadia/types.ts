@@ -199,6 +199,16 @@ export interface ReviewShowData {
   item: ReviewItem;
 }
 
+export interface ReviewExecutionData {
+  executor: string;
+  followUpReviewItemId: string;
+  followUpReviewSlug: string;
+  exitStatus: number | null;
+  changedFiles: string[];
+  validation: Array<{ command: string; exitStatus: number | null; error: string | null }>;
+  finalOutput: string | null;
+}
+
 export interface ReviewDecisionData {
   item: ReviewItem;
   result: {
@@ -206,6 +216,7 @@ export interface ReviewDecisionData {
     summary: string;
   };
   approval: AskData | null;
+  execution: ReviewExecutionData | null;
 }
 
 export interface ReviewResolveReplyData {

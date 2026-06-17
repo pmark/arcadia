@@ -1,4 +1,4 @@
-import type { ReviewDecisionData, ReviewItem } from "../arcadia/types.js";
+import type { ReviewDecisionData, ReviewExecutionData, ReviewItem } from "../arcadia/types.js";
 import { estimatedReviewTimeFor } from "./decisionFormatter.js";
 
 export function formatRequiresReview(items: ReviewItem[]): string {
@@ -62,6 +62,49 @@ export function formatRequiresReviewDecision(data: ReviewDecisionData): string {
   if (data.approval?.workItem) {
     lines.push(`Work item: \`${data.approval.workItem.id}\``);
   }
+
+  return lines.join("\n");
+}
+
+export function formatRequiresReviewExecutionDecision(data: ReviewDecisionData): string {
+  if (!data.execution) {
+    return formatRequiresReviewDecision(data);
+  }
+
+  return formatExecutionResult(data.item.slug, data.execution);
+}
+
+function formatExecutionResult(reviewSlug: string, execution: ReviewExecutionData): string {
+  const validationPassed = execution.validation.every((v) => v.exitStatus === 0);
+  const validationLabel = execution.validation.length === 0
+    ? "no validation"
+    : validationPassed ? "validation ✓" : "validation ✗";
+
+  const lines = [
+    `**${reviewSlug} executed** with \`${execution.executor}\``,
+    `Exit: ${execution.exitStatus ?? "unknown"}  |  Changed: ${execution.changedFiles.length} file${execution.changedFiles.length === 1 ? "" : "s"}  |  ${validationLabel}`
+  ];
+
+  if (execution.changedFiles.length > 0) {
+    lines.push(execution.changedFiles.slice(0, 6).map((f) => `• ${f}`).join("\n"));
+    if (execution.changedFiles.length > 6) {
+      lines.push(`+ ${execution.changedFiles.length - 6} more`);
+    }
+  }
+
+  if (execution.validation.some((v) => v.exitStatus !== 0)) {
+    const failed = execution.validation.filter((v) => v.exitStatus !== 0);
+    lines.push(`Failed: ${failed.map((v) => `\`${v.command}\``).join(", ")}`);
+  }
+
+  if (execution.finalOutput) {
+    const excerpt = execution.finalOutput.trim().split("\n").slice(-3).join("\n");
+    if (excerpt) {
+      lines.push(`\`\`\`\n${excerpt.slice(0, 400)}\n\`\`\``);
+    }
+  }
+
+  lines.push(`Follow-up: **${execution.followUpReviewSlug}** — \`/arcadia review-approve ${execution.followUpReviewSlug}\``);
 
   return lines.join("\n");
 }

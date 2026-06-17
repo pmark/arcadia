@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ArcadiaCliError, resolveReviewReply, runReviewAction } from "../../../lib/arcadia-cli";
+import { ArcadiaCliError, resolveReviewReply, reviewApproveWithExecute, runReviewAction } from "../../../lib/arcadia-cli";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -10,6 +10,8 @@ interface ReviewActionRequest {
   id?: unknown;
   action?: unknown;
   reply?: unknown;
+  execute?: unknown;
+  executor?: unknown;
 }
 
 export async function POST(request: Request) {
@@ -17,9 +19,19 @@ export async function POST(request: Request) {
     const body = (await request.json()) as ReviewActionRequest;
     const id = typeof body.id === "string" ? body.id.trim() : "";
     const action = typeof body.action === "string" ? body.action.trim() as ReviewAction : "";
+    const execute = body.execute === true;
+    const executor = typeof body.executor === "string" ? body.executor.trim() : undefined;
 
     if (!id) {
       return NextResponse.json({ error: "Requires Review item id is required.", details: null }, { status: 400 });
+    }
+
+    if (action === "approve" && execute) {
+      const response = await reviewApproveWithExecute({ id, executor });
+      return NextResponse.json({
+        message: `Requires Review ${response.data.result.status}. ${response.data.result.summary}`,
+        result: response.data
+      });
     }
 
     if (action === "approve" || action === "reject" || action === "defer") {

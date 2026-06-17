@@ -30,6 +30,16 @@ export async function runAsk(input: {
   ]);
 }
 
+export interface ReviewExecutionResponse {
+  executor: string;
+  followUpReviewItemId: string;
+  followUpReviewSlug: string;
+  exitStatus: number | null;
+  changedFiles: string[];
+  validation: Array<{ command: string; exitStatus: number | null; error: string | null }>;
+  finalOutput: string | null;
+}
+
 export interface ReviewActionResponse {
   item: {
     id: string;
@@ -40,6 +50,7 @@ export interface ReviewActionResponse {
     summary: string;
   };
   approval: unknown | null;
+  execution: ReviewExecutionResponse | null;
 }
 
 export interface ReviewResolveReplyResponse {
@@ -52,6 +63,7 @@ export interface ReviewResolveReplyResponse {
   feedback: unknown | null;
   result: ReviewActionResponse["result"] | null;
   approval: unknown | null;
+  execution: ReviewExecutionResponse | null;
   confirmation: string;
 }
 
@@ -60,6 +72,16 @@ export async function runReviewAction(input: {
   action: "approve" | "reject" | "defer";
 }): Promise<ArcadiaJsonSuccess<ReviewActionResponse>> {
   return runArcadiaCliJson<ReviewActionResponse>(["review", input.action, input.id]);
+}
+
+export async function reviewApproveWithExecute(input: {
+  id: string;
+  executor?: string;
+}): Promise<ArcadiaJsonSuccess<ReviewActionResponse>> {
+  return runArcadiaCliJson<ReviewActionResponse>(
+    ["review", "approve", input.id, "--execute", "--executor", input.executor ?? "codex"],
+    { timeoutMs: 35 * 60 * 1000 }
+  );
 }
 
 export async function resolveReviewReply(input: {
@@ -106,7 +128,10 @@ export class ArcadiaCliError extends Error {
   }
 }
 
-async function runArcadiaCliJson<TData>(args: string[]): Promise<ArcadiaJsonSuccess<TData>> {
+async function runArcadiaCliJson<TData>(
+  args: string[],
+  options: { timeoutMs?: number } = {}
+): Promise<ArcadiaJsonSuccess<TData>> {
   const repoRoot = findRepoRoot(process.cwd());
   const sourceCli = path.join(repoRoot, "src", "cli.ts");
   const tsxBin = path.join(repoRoot, "node_modules", ".bin", "tsx");
@@ -121,8 +146,8 @@ async function runArcadiaCliJson<TData>(args: string[]): Promise<ArcadiaJsonSucc
     const result = await execFileAsync(command, cliArgs, {
       cwd: repoRoot,
       encoding: "utf8",
-      timeout: 60_000,
-      maxBuffer: 4 * 1024 * 1024
+      timeout: options.timeoutMs ?? 60_000,
+      maxBuffer: 16 * 1024 * 1024
     });
 
     const parsed = parseArcadiaJson<TData>(result.stdout);
