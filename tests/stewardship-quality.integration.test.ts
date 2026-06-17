@@ -162,7 +162,7 @@ function responseWithPacketIfNeeded(
   initial: CommandSuccess<AskCommandData>
 ): CommandSuccess<AskCommandData> {
   if (initial.data.reviewItemId && initial.data.stewardship.planningRecommended) {
-    const approved = runReviewApproveCommand({ workspace, id: initial.data.reviewItemId });
+    const approved = runReviewApproveCommand({ workspace, id: initial.data.reviewItemId, execute: false });
     if (!approved.data.approval) {
       throw new Error(`Expected approval data for ${initial.data.reviewItemId}`);
     }

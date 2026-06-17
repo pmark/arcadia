@@ -4,7 +4,14 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 import { withDatabase } from "../src/db/connection.js";
-import { createProjectWithInitialWork, getProjectMetadata, upsertProjectMetadata } from "../src/db/repositories.js";
+import {
+  createProjectWithInitialWork,
+  createReviewItem,
+  getProjectMetadata,
+  getReviewItem,
+  listActionableReviewItems,
+  upsertProjectMetadata
+} from "../src/db/repositories.js";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const tsxBin = path.join(repoRoot, "node_modules", ".bin", "tsx");
@@ -699,6 +706,179 @@ describe("CLI response contract", () => {
     expect(runJson.data.run.steps[0].status).toBe("requires_review");
   });
 
+  it("executes approved review with built-in Codex adapter and creates follow-up Requires Review", () => {
+    const workspace = initializedWorkspace();
+    const repo = initializedGitRepo();
+    const fakeBin = fakeExecutorBin(["codex"]);
+    const { reviewId } = createExecutableReview(workspace, repo);
+    mkdirSync(path.join(repo, ".arcadia"), { recursive: true });
+    writeFileSync(path.join(repo, ".arcadia", "context-policy.json"), JSON.stringify({ denied_context_paths: ["node_modules/"] }), "utf8");
+    writeFileSync(path.join(repo, ".arcadia", "repo-context.md"), "Repo guidance from Arcadia.\n", "utf8");
+
+    const result = runCli([
+      "review",
+      "approve",
+      reviewId,
+      "--workspace",
+      workspace,
+      "--executor",
+      "codex",
+      "--json"
+    ], { PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` });
+
+    expect(result.status).toBe(0);
+    const json = parseJson(result.stdout);
+    expect(json.data.result.status).toBe("approved");
+    expect(json.data.approval).toBeNull();
+    expect(json.data.execution.executor).toBe("codex");
+    expect(json.data.execution.changedFiles).toContain("tracked.txt");
+    expect(json.data.execution.validation[0]).toMatchObject({ command: "test -f tracked.txt", exitStatus: 0 });
+    expect(existsSync(json.data.execution.metadataPath)).toBe(true);
+
+    const prompt = readFileSync(path.join(path.dirname(json.data.execution.metadataPath), "prompt.md"), "utf8");
+    expect(prompt).toContain("Safe implementation mode:");
+    expect(prompt).toContain("context-policy.json");
+    expect(prompt).toContain("Repo guidance from Arcadia.");
+
+    withDatabase(workspace, (db) => {
+      expect(getReviewItem(db, reviewId)?.status).toBe("approved");
+      const open = listActionableReviewItems(db);
+      expect(open.map((item) => item.id)).toContain(json.data.execution.followUpReviewItemId);
+      expect(getReviewItem(db, json.data.execution.followUpReviewItemId)?.proposed_action).toContain("Executor codex finished");
+    });
+  });
+
+  it("leaves an actionable execution review when approval explicitly skips execution", () => {
+    const workspace = initializedWorkspace();
+    const repo = initializedGitRepo();
+    const fakeBin = fakeExecutorBin(["codex"]);
+    const { reviewId } = createExecutableReview(workspace, repo);
+
+    const result = runCli([
+      "review",
+      "approve",
+      reviewId,
+      "--workspace",
+      workspace,
+      "--no-execute",
+      "--json"
+    ]);
+
+    expect(result.status, result.stderr).toBe(0);
+    const json = parseJson(result.stdout);
+    expect(json.data.execution).toBeNull();
+    expect(json.warnings[0]).toContain("Execution was not run");
+
+    const pendingId = withDatabase(workspace, (db) => {
+      const pending = listActionableReviewItems(db).find((item) => item.resolved_intent === "ReviewExecutionPending");
+      expect(pending?.proposed_action).toContain(`review approve ${json.data.item.slug} --execute`);
+      expect(pending?.context_json).toContain(reviewId);
+      return pending?.id ?? "";
+    });
+    expect(pendingId).toMatch(/^review_/);
+
+    const executed = runCli([
+      "review",
+      "approve",
+      pendingId,
+      "--workspace",
+      workspace,
+      "--json"
+    ], { PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` });
+
+    expect(executed.status, executed.stderr).toBe(0);
+    const executedJson = parseJson(executed.stdout);
+    expect(executedJson.data.execution.executor).toBe("codex");
+    expect(executedJson.data.execution.changedFiles).toContain("tracked.txt");
+  });
+
+  it("provides Claude Code and Gemini built-in adapters", () => {
+    for (const executor of ["claude-code", "gemini"]) {
+      const workspace = initializedWorkspace();
+      const repo = initializedGitRepo();
+      const fakeBin = fakeExecutorBin(["claude", "gemini"]);
+      const { reviewId } = createExecutableReview(workspace, repo);
+
+      const result = runCli([
+        "review",
+        "approve",
+        reviewId,
+        "--workspace",
+        workspace,
+        "--execute",
+        "--executor",
+        executor,
+        "--json"
+      ], { PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` });
+
+      expect(result.status, result.stderr).toBe(0);
+      const json = parseJson(result.stdout);
+      expect(json.data.execution.executor).toBe(executor);
+      expect(json.data.execution.changedFiles).toContain("tracked.txt");
+    }
+  });
+
+  it("supports custom executor config for Aider or OpenCode style CLIs", () => {
+    const workspace = initializedWorkspace();
+    const repo = initializedGitRepo();
+    const fakeBin = fakeExecutorBin(["aider"]);
+    const { reviewId } = createExecutableReview(workspace, repo);
+    const configPath = path.join(workspace, "config", "arcadia.json");
+    const config = JSON.parse(readFileSync(configPath, "utf8"));
+    config.executors = [
+      {
+        name: "aider",
+        commandTemplate: "aider",
+        args: ["--message-file", "{promptFile}"],
+        promptMode: "prompt-file",
+        workingDirectory: "repo",
+        outputCapture: "combined",
+        finalOutputFilePath: ".arcadia/final-output.md",
+        timeoutMs: 30000,
+        environmentAllowlist: ["PATH"]
+      }
+    ];
+    writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+    mkdirSync(path.join(repo, ".arcadia"), { recursive: true });
+
+    const result = runCli([
+      "review",
+      "approve",
+      reviewId,
+      "--workspace",
+      workspace,
+      "--execute",
+      "--executor",
+      "aider",
+      "--json"
+    ], { PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}` });
+
+    expect(result.status, result.stderr).toBe(0);
+    const json = parseJson(result.stdout);
+    expect(json.data.execution.executor).toBe("aider");
+    expect(json.data.execution.finalOutput).toContain("final from aider");
+  });
+
+  it("refuses execution when the project repo path is invalid", () => {
+    const workspace = initializedWorkspace();
+    const { reviewId } = createExecutableReview(workspace, path.join(tmpdir(), `arcadia-missing-repo-${Date.now()}`));
+
+    const result = runCli([
+      "review",
+      "approve",
+      reviewId,
+      "--workspace",
+      workspace,
+      "--execute",
+      "--json"
+    ]);
+
+    expect(result.status).not.toBe(0);
+    const json = parseJson(result.stderr);
+    expect(json.error.code).toBe("VALIDATION_ERROR");
+    expect(json.error.message).toContain("repository path is missing or invalid");
+  });
+
   it("lists artifacts with JSON output", () => {
     const workspace = initializedWorkspace();
     createProject(workspace);
@@ -1312,6 +1492,39 @@ function createTempRepo(): string {
   return repo;
 }
 
+function initializedGitRepo(): string {
+  const repo = createTempRepo();
+  writeFileSync(path.join(repo, "tracked.txt"), "initial\n", "utf8");
+  spawnSync("git", ["init"], { cwd: repo });
+  spawnSync("git", ["config", "user.email", "arcadia@example.test"], { cwd: repo });
+  spawnSync("git", ["config", "user.name", "Arcadia Test"], { cwd: repo });
+  spawnSync("git", ["add", "tracked.txt"], { cwd: repo });
+  spawnSync("git", ["commit", "-m", "initial"], { cwd: repo });
+  return repo;
+}
+
+function fakeExecutorBin(names: string[]): string {
+  const directory = mkdtempSync(path.join(tmpdir(), "arcadia-fake-executors-"));
+  workspaces.push(directory);
+  for (const name of names) {
+    const scriptPath = path.join(directory, name);
+    writeFileSync(
+      scriptPath,
+      [
+        "#!/bin/sh",
+        "name=$(basename \"$0\")",
+        "cat >/dev/null",
+        "printf '\\nchanged by %s\\n' \"$name\" >> tracked.txt",
+        "mkdir -p .arcadia",
+        "printf 'final from %s\\n' \"$name\" > .arcadia/final-output.md",
+        "printf 'executor %s complete\\n' \"$name\""
+      ].join("\n"),
+      { encoding: "utf8", mode: 0o755 }
+    );
+  }
+  return directory;
+}
+
 function initializedWorkspace(): string {
   const workspace = createTempWorkspacePath();
   const result = runCli(["init", workspace]);
@@ -1331,6 +1544,39 @@ function createProject(workspace: string) {
       workClassification: "codex"
     })
   );
+}
+
+function createExecutableReview(workspace: string, repoPath: string) {
+  return withDatabase(workspace, (db) => {
+    const created = createProjectWithInitialWork(db, {
+      name: `Executor Fixture ${Date.now()} ${Math.random()}`,
+      mission: "Exercise review execution.",
+      status: "active",
+      currentMilestone: "Execution milestone",
+      nextAction: "Review the executor output",
+      expectedArtifact: "Review execution artifact",
+      workClassification: "codex"
+    });
+    upsertProjectMetadata(db, {
+      projectId: created.project.id,
+      aliases: [],
+      repoPath,
+      statusSummary: "Executor fixture repository.",
+      validationCommands: ["test -f tracked.txt"]
+    });
+    const review = createReviewItem(db, {
+      workItemId: created.workItem.id,
+      projectId: created.project.id,
+      decisionNeeded: "Approve implementation.",
+      recommendation: "Execute in safe implementation mode.",
+      sourceInput: "Implement a small tracked-file change.",
+      proposedAction: "Modify tracked.txt only.",
+      resolvedIntent: "ExecutionRequest",
+      confidenceLabel: "high",
+      confidence: 0.99
+    });
+    return { projectId: created.project.id, workItemId: created.workItem.id, reviewId: review.id };
+  });
 }
 
 function importWorkItem(

@@ -233,7 +233,7 @@ describe("arcadia ask command", () => {
     if (!initial.data.reviewItemId) {
       throw new Error("Expected Requires Review item.");
     }
-    const approved = runReviewApproveCommand({ workspace, id: initial.data.reviewItemId });
+    const approved = runReviewApproveCommand({ workspace, id: initial.data.reviewItemId, execute: false });
     const result = approved.data.approval ?? (() => {
       throw new Error("Expected approval data.");
     })();
@@ -395,7 +395,7 @@ describe("arcadia ask command", () => {
     expect(shown.data.item.decisionNeeded).toContain("Approve or reject");
     expect(shown.data.item.slug).toMatch(/^R\d+$/);
 
-    const approved = runReviewApproveCommand({ workspace, id: asked.data.reviewItemId });
+    const approved = runReviewApproveCommand({ workspace, id: asked.data.reviewItemId, execute: false });
     expect(approved.data.result.status).toBe("approved");
     expect(approved.data.approval?.workItem?.work_classification).toBe("codex");
     expect(approved.data.approval?.codexInvocations).toHaveLength(1);
@@ -417,7 +417,8 @@ describe("arcadia ask command", () => {
     const approved = runReviewResolveReplyCommand({
       workspace: approveWorkspace,
       id: approveAsk.data.reviewItemId,
-      reply: "A"
+      reply: "A",
+      execute: false
     });
 
     expect(approved.data.action).toBe("approved");
@@ -468,7 +469,8 @@ describe("arcadia ask command", () => {
 
     const approved = runAskCommand({
       workspace: approveWorkspace,
-      request: `${approveItem.slug} approve`
+      request: `${approveItem.slug} approve`,
+      executeReview: false
     });
 
     expect(approved.data.result.status).toBe("acted");
@@ -513,7 +515,8 @@ describe("arcadia ask command", () => {
     const result = runAskCommand({
       workspace,
       request: "A",
-      adapterMetadata: { reviewId: item.id }
+      adapterMetadata: { reviewId: item.id },
+      executeReview: false
     });
 
     expect(result.data.result.summary).toContain(`${item.slug} approved`);
@@ -610,7 +613,7 @@ describe("arcadia ask command", () => {
 
       const result =
         action === "approve"
-          ? runReviewApproveCommand({ workspace, id: item.id })
+          ? runReviewApproveCommand({ workspace, id: item.id, execute: false })
           : action === "reject"
             ? runReviewRejectCommand({ workspace, id: item.id })
             : runReviewDeferCommand({ workspace, id: item.id });
@@ -630,9 +633,10 @@ describe("arcadia ask command", () => {
       throw new Error("Expected Requires Review item.");
     }
 
-    const approved = runReviewApproveCommand({ workspace, id: asked.data.reviewItemId });
+    const approved = runReviewApproveCommand({ workspace, id: asked.data.reviewItemId, execute: false });
 
-    expect(approved.data.result.summary).toBe("Work item created.");
+    expect(approved.data.result.summary).toContain("Work item created.");
+    expect(approved.data.result.summary).toContain("Execution pending as Requires Review item");
     expect(approved.data.approval?.workItem?.queue).toBe("work_queue");
     expect(approved.data.approval?.workItem?.work_classification).toBe("codex");
     expect(approved.data.approval?.reviewItemId).toBeNull();
@@ -697,7 +701,7 @@ describe("arcadia ask command", () => {
     if (!initial.data.reviewItemId) {
       throw new Error("Expected Requires Review item.");
     }
-    const approved = runReviewApproveCommand({ workspace, id: initial.data.reviewItemId });
+    const approved = runReviewApproveCommand({ workspace, id: initial.data.reviewItemId, execute: false });
     const result = approved.data.approval ?? (() => {
       throw new Error("Expected approval data.");
     })();
@@ -831,7 +835,7 @@ describe("arcadia ask command", () => {
       throw new Error("Expected Requires Review item.");
     }
 
-    const approved = runReviewApproveCommand({ workspace, id: initial.data.reviewItemId });
+    const approved = runReviewApproveCommand({ workspace, id: initial.data.reviewItemId, execute: false });
     const result = approved.data.approval ?? (() => {
       throw new Error("Expected approval data.");
     })();
@@ -1170,7 +1174,7 @@ describe("arcadia ask command", () => {
     if (!reviewAsk.data.reviewItemId) {
       throw new Error("Expected Requires Review item.");
     }
-    const approved = runReviewApproveCommand({ workspace, id: reviewAsk.data.reviewItemId });
+    const approved = runReviewApproveCommand({ workspace, id: reviewAsk.data.reviewItemId, execute: false });
     const asked = approved.data.approval ?? (() => {
       throw new Error("Expected approval data.");
     })();

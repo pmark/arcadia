@@ -6,6 +6,7 @@ import { withDatabase } from "../db/connection.js";
 import {
   buildStatusReportData,
   buildWeeklyReviewData,
+  createReviewItem,
   createReviewFeedback,
   getReviewItem,
   getReviewItemBySlug,
@@ -13,6 +14,7 @@ import {
   updateReviewItemStatus
 } from "../db/repositories.js";
 import type { ReviewFeedback, ReviewItemSummary } from "../domain/types.js";
+import { executeApprovedReview, type ReviewExecutionResult } from "../execution/reviewExecutor.js";
 import { writeWeeklyReviewReport } from "../markdown/weeklyReview.js";
 import {
   REVIEW_FEEDBACK_TYPES,
@@ -65,6 +67,8 @@ export interface ReviewShowCommandData {
 export interface ReviewDecisionCommandOptions {
   workspace: string;
   id: string;
+  execute?: boolean;
+  executor?: string;
 }
 
 export interface ReviewDecisionCommandData {
@@ -74,12 +78,36 @@ export interface ReviewDecisionCommandData {
     summary: string;
   };
   approval: AskCommandData | null;
+  execution: ReviewExecutionPacket | null;
+}
+
+export interface ReviewExecutionPacket {
+  executor: string;
+  command: string[];
+  repoPath: string;
+  workItemId: string | null;
+  followUpReviewItemId: string;
+  followUpReviewSlug: string;
+  startedAt: string;
+  endedAt: string;
+  exitStatus: number | null;
+  changedFiles: string[];
+  validation: Array<{
+    command: string;
+    exitStatus: number | null;
+    error: string | null;
+  }>;
+  finalOutput: string | null;
+  metadataPath: string;
+  artifactPaths: string[];
 }
 
 export interface ReviewResolveReplyCommandOptions {
   workspace: string;
   reply: string;
   id?: string | null;
+  execute?: boolean;
+  executor?: string;
 }
 
 export interface ReviewResolveReplyCommandData {
@@ -89,6 +117,7 @@ export interface ReviewResolveReplyCommandData {
   feedback: ReviewFeedback | null;
   result: ReviewDecisionCommandData["result"] | null;
   approval: AskCommandData | null;
+  execution: ReviewExecutionPacket | null;
   confirmation: string;
 }
 
@@ -201,6 +230,7 @@ export function runReviewResolveReplyCommand(
         feedback,
         result: null,
         approval: null,
+        execution: null,
         confirmation: `Feedback captured for ${packet.slug}: ${feedback.feedback_type}.`
       }
     });
@@ -216,7 +246,7 @@ export function runReviewResolveReplyCommand(
 
   const response =
     decision === "approve"
-      ? runReviewApproveCommand({ workspace: workspacePath, id: reviewItem.id })
+      ? runReviewApproveCommand({ workspace: workspacePath, id: reviewItem.id, execute: options.execute, executor: options.executor })
       : decision === "reject"
         ? runReviewRejectCommand({ workspace: workspacePath, id: reviewItem.id })
         : runReviewDeferCommand({ workspace: workspacePath, id: reviewItem.id });
@@ -232,6 +262,7 @@ export function runReviewResolveReplyCommand(
       feedback: null,
       result: response.data.result,
       approval: response.data.approval,
+      execution: response.data.execution,
       confirmation: confirmationForDecision(updated, decision, response.data.result.summary)
     },
     artifacts: response.artifacts
@@ -242,6 +273,10 @@ export function runReviewApproveCommand(
   options: ReviewDecisionCommandOptions
 ): CommandSuccess<ReviewDecisionCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  if (options.execute !== false) {
+    return runReviewApproveExecuteCommand({ ...options, workspace: workspacePath });
+  }
+
   const reviewItem = withDatabase(workspacePath, (db) => {
     const item = getReviewItemByIdOrSlug(db, options.id);
     if (!item) {
@@ -263,16 +298,19 @@ export function runReviewApproveCommand(
   }
   const approvalAskId = approval.data.ask.id;
 
-  const updated = withDatabase(workspacePath, (db) => {
+  const { updated, pendingExecutionReview } = withDatabase(workspacePath, (db) => {
     const item = updateReviewItemStatus(db, reviewItem.id, {
       status: "approved",
-      decisionNote: "Approved from Requires Review.",
+      decisionNote: "Approved from Requires Review. Execution pending.",
       resultingAskRequestId: approvalAskId
     });
     if (!item) {
       throw validationError("Requires Review item was not found.", { id: reviewItem.id });
     }
-    return item;
+    return {
+      updated: item,
+      pendingExecutionReview: createPendingExecutionReviewItem(db, item)
+    };
   });
 
   return createSuccess({
@@ -282,11 +320,69 @@ export function runReviewApproveCommand(
       item: reviewPacketForReviewItem(updated),
       result: {
         status: "approved",
-        summary: approval.data.result.summary
+        summary: `${approval.data.result.summary} Execution pending as Requires Review item ${pendingExecutionReview.slug ?? pendingExecutionReview.id}.`
       },
-      approval: approval.data
+      approval: approval.data,
+      execution: null
     },
-    artifacts: approval.artifacts
+    artifacts: approval.artifacts,
+    warnings: [`Execution was not run. Approve ${pendingExecutionReview.slug ?? pendingExecutionReview.id} to execute the approved work.`]
+  });
+}
+
+function runReviewApproveExecuteCommand(
+  options: ReviewDecisionCommandOptions
+): CommandSuccess<ReviewDecisionCommandData> {
+  const { result, artifacts } = withDatabase(options.workspace, (db) => {
+    const execution = executeApprovedReview(db, {
+      workspace: options.workspace,
+      reviewId: options.id,
+      executorName: options.executor
+    });
+    return {
+      result: execution,
+      artifacts: execution.artifactPaths
+    };
+  });
+
+  return createSuccess({
+    command: "review.approve",
+    workspace: options.workspace,
+    data: {
+      item: reviewPacketForReviewItem(result.review),
+      result: {
+        status: "approved",
+        summary: `Approved and executed with ${result.executor}; follow-up Requires Review item ${result.followUpReview.slug ?? result.followUpReview.id} created.`
+      },
+      approval: null,
+      execution: reviewExecutionPacket(result)
+    },
+    artifacts
+  });
+}
+
+function createPendingExecutionReviewItem(
+  db: Parameters<typeof createReviewItem>[0],
+  approvedReview: ReviewItemSummary
+): ReviewItemSummary {
+  return createReviewItem(db, {
+    askRequestId: approvedReview.ask_request_id,
+    workItemId: approvedReview.work_item_id,
+    planId: approvedReview.plan_id,
+    projectId: approvedReview.project_id,
+    decisionNeeded: "Execute approved work.",
+    recommendation: `Approve this item to run the executor for ${approvedReview.slug ?? approvedReview.id}.`,
+    sourceInput: approvedReview.source_input,
+    proposedAction: `Run approved review execution for ${approvedReview.slug ?? approvedReview.id}. CLI: pnpm arcadia review approve ${approvedReview.slug ?? approvedReview.id} --execute`,
+    resolvedIntent: "ReviewExecutionPending",
+    confidenceLabel: "high",
+    confidence: 1,
+    missingFields: [],
+    context: {
+      originalReviewId: approvedReview.id,
+      originalReviewSlug: approvedReview.slug,
+      triggerCommand: `pnpm arcadia review approve ${approvedReview.slug ?? approvedReview.id} --execute`
+    }
   });
 }
 
@@ -394,6 +490,14 @@ export function renderReviewDecisionSuccess(response: CommandSuccess<ReviewDecis
   }
   if (response.data.approval?.plan) {
     lines.push(`Plan: ${response.data.approval.plan.id}`);
+  }
+  if (response.data.execution) {
+    lines.push(`Executor: ${response.data.execution.executor}`);
+    lines.push(`Repo: ${response.data.execution.repoPath}`);
+    lines.push(`Exit status: ${response.data.execution.exitStatus ?? "unknown"}`);
+    lines.push(`Changed files: ${response.data.execution.changedFiles.length > 0 ? response.data.execution.changedFiles.join(", ") : "None"}`);
+    lines.push(`Follow-up review: ${response.data.execution.followUpReviewSlug}`);
+    lines.push(`Metadata: ${response.data.execution.metadataPath}`);
   }
   return lines;
 }
@@ -565,9 +669,33 @@ function runReviewDecisionCommand(
     data: {
       item: reviewPacketForReviewItem(updated),
       result: { status, summary },
-      approval: null
+      approval: null,
+      execution: null
     }
   });
+}
+
+function reviewExecutionPacket(result: ReviewExecutionResult): ReviewExecutionPacket {
+  return {
+    executor: result.executor,
+    command: result.command,
+    repoPath: result.repoPath,
+    workItemId: result.workItemId,
+    followUpReviewItemId: result.followUpReview.id,
+    followUpReviewSlug: result.followUpReview.slug ?? result.followUpReview.id,
+    startedAt: result.startedAt,
+    endedAt: result.endedAt,
+    exitStatus: result.exitStatus,
+    changedFiles: result.changedFiles,
+    validation: result.validation.map((validation) => ({
+      command: validation.command,
+      exitStatus: validation.exitStatus,
+      error: validation.error
+    })),
+    finalOutput: result.finalOutput,
+    metadataPath: result.metadataPath,
+    artifactPaths: result.artifactPaths
+  };
 }
 
 function getReviewItemByIdOrSlug(db: Parameters<typeof getReviewItem>[0], idOrSlug: string): ReviewItemSummary | null {

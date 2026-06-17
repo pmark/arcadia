@@ -467,7 +467,7 @@ describe("discord bot end-to-end fixture", () => {
     expect(rebusterReply).toContain("Result: Requires Review item created.");
     expect(rebusterReply).toContain("Decision: Pinterest posting support for Rebuster.");
 
-    const approved = runReviewApproveCommand({ workspace, id: rebusterReviewId });
+    const approved = runReviewApproveCommand({ workspace, id: rebusterReviewId, execute: false });
     const rebusterWorkId = approved.data.approval?.workItem?.id ?? "";
     expect(rebusterWorkId).toMatch(/^work_/);
 

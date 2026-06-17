@@ -145,7 +145,7 @@ describe("arcadia dogfood", () => {
       throw new Error("Expected Requires Review item.");
     }
 
-    const approved = runDogfoodReviewApproveCommand(asked.data.reviewItemId);
+    const approved = runDogfoodReviewApproveCommand(asked.data.reviewItemId, { execute: false });
     expect(approved.command).toBe("dogfood.review.approve");
     expect(approved.workspace).toBe(dogfoodWorkspacePath());
     expect(approved.data.result.status).toBe("approved");
@@ -174,6 +174,7 @@ describe("arcadia dogfood", () => {
         "review",
         "approve",
         asked.data.reviewItemId,
+        "--no-execute",
         "--json"
       ],
       { cwd: repoRoot, encoding: "utf8" }

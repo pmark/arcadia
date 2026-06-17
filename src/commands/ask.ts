@@ -72,6 +72,8 @@ export interface AskOptions {
   conversationIdentifier?: string;
   replyToMessageIdentifier?: string;
   adapterMetadata?: Record<string, unknown>;
+  executeReview?: boolean;
+  reviewExecutor?: string;
 }
 
 export interface AskCommandData {
@@ -148,7 +150,9 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     const reviewResolution = runReviewResolveReplyCommand({
       workspace: workspacePath,
       id: parsedReviewResponse.reviewId,
-      reply: request
+      reply: request,
+      execute: options.executeReview,
+      executor: options.reviewExecutor
     });
     const ask = withDatabase(workspacePath, (db) =>
       createAskRequest(db, {

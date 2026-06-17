@@ -88,8 +88,11 @@ export function runDogfoodReviewShowCommand(id: string): CommandSuccess<ReviewSh
   return withCommand("dogfood.review.show", runReviewShowCommand({ workspace: DOGFOOD_WORKSPACE, id }));
 }
 
-export function runDogfoodReviewApproveCommand(id: string): CommandSuccess<ReviewDecisionCommandData> {
-  return withCommand("dogfood.review.approve", runReviewApproveCommand({ workspace: DOGFOOD_WORKSPACE, id }));
+export function runDogfoodReviewApproveCommand(
+  id: string,
+  options: { execute?: boolean; executor?: string } = {}
+): CommandSuccess<ReviewDecisionCommandData> {
+  return withCommand("dogfood.review.approve", runReviewApproveCommand({ workspace: DOGFOOD_WORKSPACE, id, ...options }));
 }
 
 export function runDogfoodReviewRejectCommand(id: string): CommandSuccess<ReviewDecisionCommandData> {

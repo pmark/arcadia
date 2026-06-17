@@ -289,11 +289,14 @@ export function buildProgram(): Command {
       .command("approve")
       .description("Approve a Requires Review item from .arcadia-workspace")
       .argument("<id>", "Requires Review item id")
-  ).action((id: string, options: { json?: boolean }) =>
+      .option("--execute", "Execute the approved review item with an agent executor")
+      .option("--no-execute", "Approve without executor execution and leave an execution review item")
+      .option("--executor <name>", "Executor adapter to use when execution runs", "codex")
+  ).action((id: string, options: { execute?: boolean; executor?: string; json?: boolean }) =>
     runCliAction(
       "dogfood.review.approve",
       jsonOptionsFromArgv(options),
-      () => runDogfoodReviewApproveCommand(id),
+      () => runDogfoodReviewApproveCommand(id, { execute: options.execute, executor: options.executor }),
       renderReviewDecisionSuccess
     )
   );
@@ -950,12 +953,15 @@ export function buildProgram(): Command {
       .command("approve")
       .description("Approve a Requires Review item and continue the intended Arcadia workflow")
       .argument("<id>", "Requires Review item id")
+      .option("--execute", "Execute the approved review item with an agent executor")
+      .option("--no-execute", "Approve without executor execution and leave an execution review item")
+      .option("--executor <name>", "Executor adapter to use when execution runs", "codex")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((id: string, options: { workspace: string; json?: boolean }) =>
+  ).action((id: string, options: { workspace: string; execute?: boolean; executor?: string; json?: boolean }) =>
     runCliAction(
       "review.approve",
       reviewOptionsFromArgv(options),
-      () => runReviewApproveCommand({ ...reviewOptionsFromArgv(options), id }),
+      () => runReviewApproveCommand({ ...reviewOptionsFromArgv(options), id, execute: options.execute, executor: options.executor }),
       renderReviewDecisionSuccess
     )
   );
