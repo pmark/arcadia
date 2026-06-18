@@ -56,14 +56,17 @@ export interface ExecutionRunStep {
 
 export interface ExecutionRun {
   id: string;
-  work_item_id?: string;
-  plan_id?: string;
+  work_item_id?: string | null;
+  plan_id?: string | null;
+  review_item_id?: string | null;
+  executor_name?: string | null;
   status: string;
   summary: string;
   project_name?: string | null;
   work_item_title: string;
   plan_summary: string;
   mission_log_path: string | null;
+  pid?: number | null;
   created_at: string;
   updated_at: string;
   steps: ExecutionRunStep[];
@@ -212,11 +215,12 @@ export interface ReviewExecutionData {
 export interface ReviewDecisionData {
   item: ReviewItem;
   result: {
-    status: "approved" | "rejected" | "deferred";
+    status: "approved" | "rejected" | "deferred" | "pending_execution";
     summary: string;
   };
   approval: AskData | null;
   execution: ReviewExecutionData | null;
+  run: { id: string } | null;
 }
 
 export interface ReviewResolveReplyData {

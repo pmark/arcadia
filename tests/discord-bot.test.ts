@@ -371,7 +371,7 @@ describe("discord bot request command", () => {
       "--json"
     ]);
     expect(reply).toContain("Run: `run_1` completed");
-    expect(reply).toContain("Run detail: /arcadia run id:run_1");
+    expect(reply).toContain("run id:run_1");
     await expect(loadDiscordSubmissionState(discordSubmissionStatePath(workspace))).resolves.toMatchObject({
       submittedAskIds: ["ask_1"],
       submittedWorkItemIds: ["work_1"],
@@ -759,7 +759,7 @@ describe("discord bot notifications", () => {
     expect(first.messages).toHaveLength(2);
     expect(first.messages[0].key).toBe("run:run_1");
     expect(first.messages[0].content).toContain("**Arcadia run completed**");
-    expect(first.messages[0].content).toContain("Run detail: /arcadia run id:run_1");
+    expect(first.messages[0].content).toContain("run id:run_1");
     expect(first.messages[1].key).toBe("artifact:art_1");
     expect(first.messages[1].content).toContain("Artifact produced: Static Images");
     expect(first.nextState.notifiedRunIds).toEqual(["run_1"]);

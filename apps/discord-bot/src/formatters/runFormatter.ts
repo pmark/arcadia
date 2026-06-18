@@ -28,14 +28,28 @@ export function formatRunRequiresReviewNotification(run: ExecutionRun): string {
 }
 
 export function formatRunCompletedNotification(run: ExecutionRun): string {
-  return [
+  const lines = [
     "**Arcadia run completed**",
     `Run: \`${run.id}\``,
-    `Work: ${run.work_item_title}`,
-    `Mission log: ${run.mission_log_path ?? "None"}`,
-    `Artifacts: ${formatArtifacts(run)}`,
-    `Run detail: /arcadia run id:${run.id}`
-  ].join("\n");
+    `Work: ${run.work_item_title}`
+  ];
+
+  if (run.executor_name) {
+    lines.push(`Executor: ${run.executor_name}`);
+  }
+
+  lines.push(`Summary: ${run.summary || "See artifacts for details."}`);
+
+  if (run.mission_log_path) {
+    lines.push(`Mission log: ${run.mission_log_path}`);
+  }
+
+  if (run.artifacts.length > 0) {
+    lines.push(`Artifacts: ${formatArtifacts(run)}`);
+  }
+
+  lines.push(`Run detail: \`/arcadia run id:${run.id}\``);
+  return lines.join("\n");
 }
 
 export function formatRunDetail(data: RunShowData): string {

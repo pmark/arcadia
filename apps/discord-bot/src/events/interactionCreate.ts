@@ -74,7 +74,7 @@ function runSubcommand(
   }
 
   if (subcommand === "review-approve") {
-    return requiresReviewApproveCommand(cli, interaction.options.getString("id", true));
+    return requiresReviewApproveCommand(cli, interaction.options.getString("id", true), config);
   }
 
   if (subcommand === "review-reject") {

@@ -241,13 +241,18 @@ function artifactProducedMessage(
   ].filter((line): line is string => Boolean(line)).join("\n");
 }
 
+const ACTIVE_POLL_INTERVAL_MS = 5_000;
+
 export function startNotificationPoller(
   client: Client,
   config: BotConfig,
   cli: ArcadiaCli,
   logJson: (level: LogLevel, obj: Record<string, unknown>) => void
-): NodeJS.Timeout {
+): void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
   const tick = async (): Promise<void> => {
+    let hasActiveRuns = false;
     try {
       const statePath = notificationStatePath(config.arcadiaWorkspace);
       const submissionPath = discordSubmissionStatePath(config.arcadiaWorkspace);
@@ -256,6 +261,11 @@ export function startNotificationPoller(
         loadNotificationSnapshot(cli),
         loadDiscordSubmissionState(submissionPath)
       ]);
+
+      hasActiveRuns = snapshot.runs.some(
+        (run) => run.status === "running" || run.status === "pending_execution"
+      );
+
       const evaluation = evaluateNotifications(snapshot, previous, new Date().toISOString(), submissions);
 
       for (const message of evaluation.messages) {
@@ -283,10 +293,13 @@ export function startNotificationPoller(
         error: error instanceof Error ? error.message : String(error)
       });
     }
+
+    const nextInterval = hasActiveRuns ? ACTIVE_POLL_INTERVAL_MS : config.pollIntervalSeconds * 1000;
+    timer = setTimeout(() => void tick(), nextInterval);
   };
 
-  void tick();
-  return setInterval(() => void tick(), config.pollIntervalSeconds * 1000);
+  timer = setTimeout(() => void tick(), 0);
+  void timer;
 }
 
 async function sendToConfiguredChannel(client: Client, channelId: string, content: string): Promise<{ id: string }> {

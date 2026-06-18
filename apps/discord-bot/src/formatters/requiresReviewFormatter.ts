@@ -67,6 +67,14 @@ export function formatRequiresReviewDecision(data: ReviewDecisionData): string {
 }
 
 export function formatRequiresReviewExecutionDecision(data: ReviewDecisionData): string {
+  if (data.result.status === "pending_execution" && data.run) {
+    return [
+      `**${data.item.slug} approved** — execution queued`,
+      `Run: \`${data.run.id}\``,
+      "I'll notify when the executor finishes."
+    ].join("\n");
+  }
+
   if (!data.execution) {
     return formatRequiresReviewDecision(data);
   }
