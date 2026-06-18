@@ -1243,6 +1243,19 @@ export function listActionableReviewItems(db: Database.Database): ReviewItemSumm
   ];
 }
 
+export function findFollowUpReviewForRun(db: Database.Database, runId: string): ReviewItemSummary | null {
+  const row = db
+    .prepare(
+      `${reviewItemSelectSql(
+        `WHERE ri.resolved_intent = 'ReviewExecutionResult'
+         AND json_extract(ri.context_json, '$.runId') = ?
+         AND ri.status IN ('open', 'deferred')`
+      )} ORDER BY ri.created_at DESC LIMIT 1`
+    )
+    .get(runId) as ReviewItemSummary | undefined;
+  return row ?? null;
+}
+
 export function updateReviewItemStatus(
   db: Database.Database,
   id: string,

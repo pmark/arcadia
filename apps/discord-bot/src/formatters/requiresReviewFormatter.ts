@@ -130,7 +130,67 @@ function formatRequiresReviewItem(item: ReviewItem): string {
 }
 
 export function formatRequiresReviewNotificationItem(item: ReviewItem): string {
+  if (item.resolvedIntent === "ReviewExecutionResult" && item.contextJson) {
+    return formatExecutionResultFollowUp(item);
+  }
   return formatRequiresReviewItem(item);
+}
+
+function formatExecutionResultFollowUp(item: ReviewItem): string {
+  const ctx = parseContextJson(item.contextJson);
+  const validationPassed = !ctx.validation || ctx.validation.every((v) => v.exitStatus === 0);
+  const validationLabel = !ctx.validation || ctx.validation.length === 0
+    ? "no validation"
+    : validationPassed ? "validation ✓" : "validation ✗";
+
+  const lines = [
+    `**${item.slug} — Execution result requires review**`,
+    `Decision: ${item.decisionNeeded}`,
+    `Executor: ${ctx.executor ?? "unknown"}  |  Changed: ${ctx.changedFiles?.length ?? 0} file${(ctx.changedFiles?.length ?? 0) === 1 ? "" : "s"}  |  ${validationLabel}`
+  ];
+
+  if (ctx.changedFiles && ctx.changedFiles.length > 0) {
+    lines.push(ctx.changedFiles.slice(0, 6).map((f) => `• ${f}`).join("\n"));
+    if (ctx.changedFiles.length > 6) {
+      lines.push(`+ ${ctx.changedFiles.length - 6} more`);
+    }
+  }
+
+  if (ctx.validation && ctx.validation.some((v) => v.exitStatus !== 0)) {
+    const failed = ctx.validation.filter((v) => v.exitStatus !== 0);
+    lines.push(`Failed checks: ${failed.map((v) => `\`${v.command}\``).join(", ")}`);
+  }
+
+  if (ctx.finalOutput) {
+    const excerpt = ctx.finalOutput.trim().split("\n").slice(-3).join("\n");
+    if (excerpt) {
+      lines.push(`\`\`\`\n${excerpt.slice(0, 400)}\n\`\`\``);
+    }
+  }
+
+  if (item.recommendation) {
+    lines.push(`Recommendation: ${item.recommendation}`);
+  }
+
+  lines.push(`Approve: \`/arcadia review-approve ${item.slug}\`  |  Reject: \`/arcadia review-reject ${item.slug}\``);
+
+  return lines.join("\n");
+}
+
+interface ExecutionContextJson {
+  executor?: string;
+  changedFiles?: string[];
+  validation?: Array<{ command: string; exitStatus: number | null; error: string | null }>;
+  finalOutput?: string | null;
+}
+
+function parseContextJson(raw: string | null | undefined): ExecutionContextJson {
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as ExecutionContextJson;
+  } catch {
+    return {};
+  }
 }
 
 export function formatInvalidReviewReply(item: ReviewItem): string {

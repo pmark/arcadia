@@ -5,17 +5,19 @@ import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
-import { getExecutionRun, listExecutionRuns } from "../db/repositories.js";
+import { findFollowUpReviewForRun, getExecutionRun, listExecutionRuns } from "../db/repositories.js";
 import { isRequiresReviewValue } from "../domain/constants.js";
 import type { ExecutionRunSummary } from "../domain/types.js";
 import { validationError } from "../cli/errors.js";
 import { getWorkspacePaths, toWorkspaceRelativePath } from "../workspace/paths.js";
+import { reviewPacketForReviewItem, type RequiresReviewPacket } from "./review.js";
 
 export interface RunShowCommandData {
   run: ExecutionRunSummary;
   needsMark: string[];
   executorOutputPath: string | null;
   artifactRoot: string | null;
+  followUpReview: RequiresReviewPacket | null;
 }
 
 export interface RunListCommandData {
@@ -42,7 +44,12 @@ export function runRunShowCommand(options: {
   runId: string;
 }): CommandSuccess<RunShowCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const run = withDatabase(workspacePath, (db) => getExecutionRun(db, options.runId));
+  const { run, followUpReview } = withDatabase(workspacePath, (db) => {
+    const r = getExecutionRun(db, options.runId);
+    if (!r) return { run: null, followUpReview: null };
+    const raw = findFollowUpReviewForRun(db, options.runId);
+    return { run: r, followUpReview: raw ? reviewPacketForReviewItem(raw) : null };
+  });
 
   if (!run) {
     throw executionRunNotFound(options.runId);
@@ -66,7 +73,7 @@ export function runRunShowCommand(options: {
   return createSuccess({
     command: "run.show",
     workspace: workspacePath,
-    data: { run, needsMark: needsMarkItems(run), executorOutputPath, artifactRoot },
+    data: { run, needsMark: needsMarkItems(run), executorOutputPath, artifactRoot, followUpReview },
     artifacts: [
       ...(run.mission_log_path ? [path.join(workspacePath, run.mission_log_path)] : []),
       ...(outputFileAbs && existsSync(outputFileAbs) ? [outputFileAbs] : []),

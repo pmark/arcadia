@@ -54,6 +54,29 @@ export interface ReviewActionResponse {
   run: { id: string } | null;
 }
 
+export interface ExecutionContextJson {
+  originalReviewId?: string;
+  runId?: string;
+  executor?: string;
+  repoPath?: string;
+  exitStatus?: number | null;
+  changedFiles?: string[];
+  validation?: Array<{ command: string; exitStatus: number | null; error: string | null }>;
+  finalOutput?: string | null;
+  artifactPaths?: string[];
+}
+
+export interface FollowUpReview {
+  id: string;
+  slug: string;
+  resolvedIntent: string;
+  decisionNeeded: string;
+  proposedAction: string;
+  recommendation: string | null;
+  contextJson: string | null;
+  status: string;
+}
+
 export interface RunShowResponse {
   run: {
     id: string;
@@ -70,6 +93,7 @@ export interface RunShowResponse {
   needsMark: string[];
   executorOutputPath: string | null;
   artifactRoot: string | null;
+  followUpReview: FollowUpReview | null;
 }
 
 export interface ReviewResolveReplyResponse {

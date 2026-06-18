@@ -251,6 +251,7 @@ export function executeApprovedReview(
     missingFields: [],
     context: {
       originalReviewId: review.id,
+      runId,
       executor: executor.name,
       repoPath,
       command,

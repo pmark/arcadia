@@ -187,6 +187,8 @@ export interface ReviewItem {
   goal: string | null;
   decisionNeeded: string;
   context: string;
+  resolvedIntent?: string;
+  contextJson?: string | null;
   recommendation: string | null;
   options: string[];
   sourceInput: string;

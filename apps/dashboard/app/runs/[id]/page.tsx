@@ -5,6 +5,25 @@ import Link from "next/link";
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { ErrorState } from "../../../components/dashboard-ui";
 
+interface ExecutionContextJson {
+  changedFiles?: string[];
+  validation?: Array<{ command: string; exitStatus: number | null; error: string | null }>;
+  finalOutput?: string | null;
+  executor?: string;
+  exitStatus?: number | null;
+}
+
+interface FollowUpReview {
+  id: string;
+  slug: string;
+  resolvedIntent: string;
+  decisionNeeded: string;
+  proposedAction: string;
+  recommendation: string | null;
+  contextJson: string | null;
+  status: string;
+}
+
 interface RunDetail {
   run: {
     id: string;
@@ -21,6 +40,7 @@ interface RunDetail {
   needsMark: string[];
   executorOutputPath: string | null;
   artifactRoot: string | null;
+  followUpReview: FollowUpReview | null;
   workspace: string;
 }
 
@@ -37,6 +57,9 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
   const [outputLines, setOutputLines] = useState<string[]>([]);
   const [outputError, setOutputError] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [reviewPending, setReviewPending] = useState<string | null>(null);
+  const [reviewMessage, setReviewMessage] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const outputRef = useRef<HTMLPreElement>(null);
   const startTimeRef = useRef<Date | null>(null);
 
@@ -73,6 +96,29 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
       setOutputError(err instanceof Error ? err.message : String(err));
     }
   }, []);
+
+  const submitReviewAction = useCallback(async (reviewId: string, action: "approve" | "reject" | "defer") => {
+    setReviewPending(action);
+    setReviewMessage(null);
+    setReviewError(null);
+    try {
+      const response = await fetch("/api/review-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: reviewId, action })
+      });
+      const body = await response.json() as { message?: string; error?: string };
+      if (!response.ok) {
+        throw new Error(typeof body.error === "string" ? body.error : "Review action failed.");
+      }
+      setReviewMessage(typeof body.message === "string" ? body.message : "Review action completed.");
+      await fetchRun();
+    } catch (err) {
+      setReviewError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setReviewPending(null);
+    }
+  }, [fetchRun]);
 
   useEffect(() => {
     void fetchRun();
@@ -187,6 +233,16 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
           </section>
         ) : null}
 
+        {detail?.followUpReview ? (
+          <FollowUpReviewPanel
+            review={detail.followUpReview}
+            pendingAction={reviewPending}
+            message={reviewMessage}
+            error={reviewError}
+            onAction={(action) => void submitReviewAction(detail.followUpReview!.id, action)}
+          />
+        ) : null}
+
         {detail?.needsMark.length ? (
           <section>
             <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">Requires Mark</h2>
@@ -202,6 +258,107 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
       </div>
     </RunPageShell>
   );
+}
+
+function FollowUpReviewPanel({
+  review,
+  pendingAction,
+  message,
+  error,
+  onAction
+}: {
+  review: FollowUpReview;
+  pendingAction: string | null;
+  message: string | null;
+  error: string | null;
+  onAction: (action: "approve" | "reject" | "defer") => void;
+}) {
+  const ctx = parseContextJson(review.contextJson);
+
+  return (
+    <section className="min-w-0 rounded-md border border-gold/30 bg-gold/5 p-4 shadow-soft">
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gold">Follow-up Review Required</h2>
+
+      {message ? (
+        <div className="mb-3 rounded-md border border-moss/30 bg-moss/10 p-3 text-sm text-moss">{message}</div>
+      ) : null}
+      {error ? (
+        <div className="mb-3 rounded-md border border-clay/30 bg-clay/10 p-3 text-sm text-clay">{error}</div>
+      ) : null}
+
+      <dl className="grid gap-3 text-sm">
+        <RunField label="Decision Needed" value={review.decisionNeeded} />
+        {review.recommendation ? <RunField label="Recommendation" value={review.recommendation} /> : null}
+      </dl>
+
+      {ctx.changedFiles && ctx.changedFiles.length > 0 ? (
+        <div className="mt-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Changed Files ({ctx.changedFiles.length})</h3>
+          <ul className="mt-2 grid gap-1">
+            {ctx.changedFiles.slice(0, 10).map((file) => (
+              <li key={file} className="font-mono text-xs text-ink">{file}</li>
+            ))}
+            {ctx.changedFiles.length > 10 ? (
+              <li className="text-xs text-muted">+ {ctx.changedFiles.length - 10} more</li>
+            ) : null}
+          </ul>
+        </div>
+      ) : null}
+
+      {ctx.validation && ctx.validation.length > 0 ? (
+        <div className="mt-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Validation</h3>
+          <ul className="mt-2 grid gap-1">
+            {ctx.validation.map((v, i) => (
+              <li key={i} className="flex items-center gap-2 text-xs">
+                {v.exitStatus === 0 ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-moss" aria-hidden="true" />
+                ) : (
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-clay" aria-hidden="true" />
+                )}
+                <code className="font-mono">{v.command}</code>
+                <span className={v.exitStatus === 0 ? "text-moss" : "text-clay"}>
+                  {v.exitStatus === 0 ? "passed" : `exit ${v.exitStatus ?? "?"}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {ctx.finalOutput ? (
+        <div className="mt-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Final Output</h3>
+          <pre className="mt-2 max-h-40 overflow-auto rounded-md border border-line bg-canvas p-3 font-mono text-xs leading-5 text-ink">
+            {ctx.finalOutput.trim().split("\n").slice(-20).join("\n")}
+          </pre>
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {(["approve", "reject", "defer"] as const).map((action) => (
+          <button
+            key={action}
+            type="button"
+            onClick={() => onAction(action)}
+            disabled={Boolean(pendingAction)}
+            className={`min-h-10 rounded-md border px-3 text-sm font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-60 ${reviewActionClass(action)}`}
+          >
+            {pendingAction === action ? "Working..." : action}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function parseContextJson(raw: string | null): ExecutionContextJson {
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as ExecutionContextJson;
+  } catch {
+    return {};
+  }
 }
 
 function RunPageShell({ id, children }: { id: string; children: React.ReactNode }) {
@@ -244,6 +401,12 @@ function RunField({ label, value }: { label: string; value: string }) {
       <dd className="mt-1 break-words leading-5">{value}</dd>
     </div>
   );
+}
+
+function reviewActionClass(action: "approve" | "reject" | "defer"): string {
+  if (action === "approve") return "border-moss/30 bg-moss/10 text-moss hover:border-moss";
+  if (action === "reject") return "border-clay/30 bg-clay/10 text-clay hover:border-clay";
+  return "border-gold/30 bg-gold/10 text-gold hover:border-gold";
 }
 
 function statusLabel(status: string): string {

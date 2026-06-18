@@ -39,8 +39,10 @@ export interface RequiresReviewPacket {
   goal: string | null;
   status: ReviewItemSummary["status"];
   category: string;
+  resolvedIntent: string;
   decisionNeeded: string;
   context: string;
+  contextJson: string | null;
   recommendation: string | null;
   proposedAction: string;
   missingFields: string[];
@@ -594,8 +596,10 @@ export function reviewPacketForReviewItem(item: ReviewItemSummary): RequiresRevi
     goal: item.project_goal,
     status: item.status,
     category: item.resolved_intent,
+    resolvedIntent: item.resolved_intent,
     decisionNeeded: item.decision_needed,
     context: `${item.resolved_intent}: ${item.proposed_action}`,
+    contextJson: item.context_json || null,
     recommendation: item.recommendation,
     proposedAction: item.proposed_action,
     missingFields: parseStringArray(item.missing_fields),
