@@ -12,3 +12,12 @@ Always identify:
 - Next action
 - Work classification
 - Required artifacts
+
+## Arcadia Semantics
+
+Before changing user-facing terminology, data models, CLI commands, dashboard labels, or documentation, read:
+
+`docs/arcadia-semantics.md`
+
+Use Arcadia’s canonical terms consistently:
+Domain, Project, Mission, Outcome, Milestone, Action, Artifact, Decision, Log.

@@ -43,7 +43,7 @@ function renderItems(items: WorkItemSummary[]): string[] {
   for (const item of items) {
     const project = item.project_name ? ` [${item.project_name}]` : "";
     lines.push(`  - ${item.title}${project}`);
-    lines.push(`    Classification: ${WORK_CLASSIFICATION_LABELS[item.work_classification]}`);
+    lines.push(`    Responsibility: ${WORK_CLASSIFICATION_LABELS[item.work_classification]}`);
     lines.push(`    Next action: ${item.next_action}`);
     lines.push(`    Status: ${item.status}`);
   }

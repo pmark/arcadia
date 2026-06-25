@@ -161,7 +161,7 @@ function validateWorkClassification(value: string): WorkClassification {
 }
 
 function validateWorkItemStatus(value: string): WorkItemStatus {
-  assertAllowedValue("Work item status", value, WORK_ITEM_STATUSES);
+  assertAllowedValue("Action status", value, WORK_ITEM_STATUSES);
   return value;
 }
 
@@ -241,15 +241,17 @@ function insertProject(db: Database.Database, input: CreateProjectInput, timesta
     slug: slugify(input.name),
     mission: required(input.mission, "Mission"),
     goal: nullable(input.goal),
+    outcome: nullable(input.goal),
     status: validateProjectStatus(input.status),
     created_at: timestamp,
     updated_at: timestamp
   };
 
+  const { outcome: _outcome, ...projectRow } = project;
   db.prepare(
     `INSERT INTO projects (id, name, slug, mission, goal, status, created_at, updated_at)
      VALUES (@id, @name, @slug, @mission, @goal, @status, @created_at, @updated_at)`
-  ).run(project);
+  ).run(projectRow);
 
   return project;
 }
@@ -288,7 +290,7 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
     id: createId("workItem"),
     project_id: input.projectId ?? null,
     milestone_id: input.milestoneId ?? null,
-    title: required(input.title || titleFromRawInput(rawInput), "Work item title"),
+    title: required(input.title || titleFromRawInput(rawInput), "Action title"),
     raw_input: rawInput,
     queue,
     work_classification: workClassification,
@@ -309,7 +311,7 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
     )`
   ).run(workItem);
 
-  return workItem;
+  return { ...workItem, responsibility: workClassification };
 }
 
 function insertArtifact(db: Database.Database, input: CreateArtifactInput, timestamp: string): Artifact {
@@ -437,11 +439,11 @@ export function createMissionLog(db: Database.Database, input: CreateMissionLogI
 }
 
 export function listProjects(db: Database.Database): Project[] {
-  return db.prepare("SELECT * FROM projects ORDER BY created_at DESC").all() as Project[];
+  return db.prepare("SELECT *, goal AS outcome FROM projects ORDER BY created_at DESC").all() as Project[];
 }
 
 export function getProject(db: Database.Database, id: string): Project | null {
-  return (db.prepare("SELECT * FROM projects WHERE id = ?").get(id) as Project | undefined) ?? null;
+  return (db.prepare("SELECT *, goal AS outcome FROM projects WHERE id = ?").get(id) as Project | undefined) ?? null;
 }
 
 export function upsertProject(db: Database.Database, input: UpsertProjectInput): Project {
@@ -455,11 +457,13 @@ export function upsertProject(db: Database.Database, input: UpsertProjectInput):
     slug: existing?.slug ?? slugify(input.name),
     mission: required(input.mission, "Mission"),
     goal: nullable(input.goal),
+    outcome: nullable(input.goal),
     status: validateProjectStatus(input.status),
     created_at: existing?.created_at ?? timestamp,
     updated_at: timestamp
   };
 
+  const { outcome: _outcome, ...projectRow } = project;
   db.prepare(
     `INSERT INTO projects (id, name, slug, mission, goal, status, created_at, updated_at)
      VALUES (@id, @name, @slug, @mission, @goal, @status, @created_at, @updated_at)
@@ -470,7 +474,7 @@ export function upsertProject(db: Database.Database, input: UpsertProjectInput):
        goal = excluded.goal,
        status = excluded.status,
        updated_at = excluded.updated_at`
-  ).run(project);
+  ).run(projectRow);
 
   return getProject(db, project.id) as Project;
 }
@@ -700,6 +704,7 @@ export function listProjectSummaries(db: Database.Database): ProjectSummary[] {
     .prepare(
       `SELECT
         p.*,
+        p.goal AS outcome,
         (
           SELECT m.title
           FROM milestones m
@@ -729,6 +734,13 @@ export function listProjectSummaries(db: Database.Database): ProjectSummary[] {
           LIMIT 1
         ) AS work_classification,
         (
+          SELECT wi.work_classification
+          FROM work_items wi
+          WHERE wi.project_id = p.id AND wi.status != 'done'
+          ORDER BY wi.created_at DESC
+          LIMIT 1
+        ) AS responsibility,
+        (
           SELECT wi.expected_artifact
           FROM work_items wi
           WHERE wi.project_id = p.id AND wi.status != 'done'
@@ -746,6 +758,7 @@ function listOpenWorkItems(db: Database.Database, whereSql: string, parameters: 
     .prepare(
       `SELECT
         wi.*,
+        wi.work_classification AS responsibility,
         p.name AS project_name,
         m.title AS milestone_title
       FROM work_items wi
@@ -773,6 +786,7 @@ export function listRecentlyCompletedWorkItems(db: Database.Database, limit = 10
     .prepare(
       `SELECT
         wi.*,
+        wi.work_classification AS responsibility,
         p.name AS project_name,
         m.title AS milestone_title
       FROM work_items wi
@@ -790,6 +804,7 @@ export function listWorkItems(db: Database.Database): WorkItemSummary[] {
     .prepare(
       `SELECT
         wi.*,
+        wi.work_classification AS responsibility,
         p.name AS project_name,
         m.title AS milestone_title
       FROM work_items wi
@@ -806,6 +821,7 @@ export function getWorkItem(db: Database.Database, id: string): WorkItemSummary 
       .prepare(
         `SELECT
           wi.*,
+          wi.work_classification AS responsibility,
           p.name AS project_name,
           m.title AS milestone_title
         FROM work_items wi
@@ -846,7 +862,7 @@ export function updateWorkItem(
   }
 
   if (updates.length === 0) {
-    throw new Error("At least one work item field is required");
+    throw new Error("At least one Action field is required");
   }
 
   if (!getWorkItem(db, id)) {
@@ -1417,6 +1433,7 @@ function reviewItemSelectSql(whereSql: string): string {
     ri.*,
     p.name AS project_name,
     p.goal AS project_goal,
+    p.goal AS project_outcome,
     wi.title AS work_item_title,
     ep.summary AS plan_summary,
     resulting_wi.title AS resulting_ask_work_item_title
@@ -2105,7 +2122,13 @@ export function countRows(db: Database.Database, table: string): number {
       "back_burner_items",
       "approval_gates",
       "codex_invocations",
-      "codex_tasks"
+      "codex_tasks",
+      "capability_migrations",
+      "events",
+      "blog_sites",
+      "blog_ideas",
+      "blog_posts",
+      "blog_schedules"
     ].includes(table)
   ) {
     throw new Error(`Unsupported table: ${table}`);
@@ -2123,6 +2146,7 @@ function listCompletedWorkItemsInWindow(
     .prepare(
       `SELECT
         wi.*,
+        wi.work_classification AS responsibility,
         p.name AS project_name,
         m.title AS milestone_title
       FROM work_items wi

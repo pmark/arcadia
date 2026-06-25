@@ -254,11 +254,13 @@ describe("CLI response contract", () => {
       "Rebuster",
       "--mission",
       "Help users turn product evidence into better shipping decisions.",
+      "--outcome",
+      "Ship Pinterest support.",
       "--milestone",
       "Pinterest publishing support",
       "--next-action",
       "Define Pinterest posting support boundaries.",
-      "--classification",
+      "--responsibility",
       "codex",
       "--expected-artifact",
       "Pinterest implementation plan",
@@ -272,8 +274,79 @@ describe("CLI response contract", () => {
     expect(json.command).toBe("project.import");
     expect(json.data.project.name).toBe("Rebuster");
     expect(json.data.project.status).toBe("active");
+    expect(json.data.project.goal).toBe("Ship Pinterest support.");
+    expect(json.data.project.outcome).toBe("Ship Pinterest support.");
     expect(json.data.milestone.title).toBe("Pinterest publishing support");
     expect(json.data.workItem.next_action).toBe("Define Pinterest posting support boundaries.");
+    expect(json.data.workItem.work_classification).toBe("codex");
+    expect(json.data.workItem.responsibility).toBe("codex");
+  });
+
+  it("keeps legacy project goal and classification flags working", () => {
+    const workspace = initializedWorkspace();
+
+    const result = runCli([
+      "project",
+      "import",
+      "--workspace",
+      workspace,
+      "--name",
+      "Legacy Flags",
+      "--mission",
+      "Keep old automation working.",
+      "--goal",
+      "Accept legacy project goal input.",
+      "--milestone",
+      "Compatibility",
+      "--next-action",
+      "Run compatibility smoke.",
+      "--classification",
+      "autonomous",
+      "--json"
+    ]);
+
+    expect(result.status).toBe(0);
+    const json = parseJson(result.stdout);
+    expect(json.data.project.goal).toBe("Accept legacy project goal input.");
+    expect(json.data.project.outcome).toBe("Accept legacy project goal input.");
+    expect(json.data.workItem.work_classification).toBe("autonomous");
+    expect(json.data.workItem.responsibility).toBe("autonomous");
+  });
+
+  it("rejects conflicting canonical and legacy semantic flags", () => {
+    const workspace = initializedWorkspace();
+
+    const outcomeConflict = runCli([
+      "project",
+      "update",
+      createProject(workspace).project.id,
+      "--workspace",
+      workspace,
+      "--goal",
+      "Legacy",
+      "--outcome",
+      "Canonical",
+      "--json"
+    ]);
+    expect(outcomeConflict.status).toBe(2);
+    expect(parseJson(outcomeConflict.stderr).error.message).toContain("Use only one of --goal or --outcome.");
+
+    const responsibilityConflict = runCli([
+      "work",
+      "update",
+      createProject(workspace).workItem.id,
+      "--workspace",
+      workspace,
+      "--classification",
+      "codex",
+      "--responsibility",
+      "autonomous",
+      "--json"
+    ]);
+    expect(responsibilityConflict.status).toBe(2);
+    expect(parseJson(responsibilityConflict.stderr).error.message).toContain(
+      "Use only one of --classification or --responsibility."
+    );
   });
 
   it("creates a project when the workspace is supplied as the second positional argument", () => {
@@ -327,6 +400,28 @@ describe("CLI response contract", () => {
     expect(json.data.updated).toEqual(["status"]);
     expect(json.data.project.id).toBe(created.project.id);
     expect(json.data.project.status).toBe("paused");
+  });
+
+  it("updates project outcome with canonical alias", () => {
+    const workspace = initializedWorkspace();
+    const created = createProject(workspace);
+
+    const result = runCli([
+      "project",
+      "update",
+      created.project.id,
+      "--workspace",
+      workspace,
+      "--outcome",
+      "Ship canonical language.",
+      "--json"
+    ]);
+
+    expect(result.status).toBe(0);
+    const json = parseJson(result.stdout);
+    expect(json.data.updated).toEqual(["goal"]);
+    expect(json.data.project.goal).toBe("Ship canonical language.");
+    expect(json.data.project.outcome).toBe("Ship canonical language.");
   });
 
   it("upserts project metadata with JSON output", () => {
@@ -978,6 +1073,7 @@ describe("CLI response contract", () => {
     expect(json.data.workItem.id).toBe(workItem.id);
     expect(json.data.workItem.queue).toBe("work_queue");
     expect(json.data.workItem.work_classification).toBe("codex");
+    expect(json.data.workItem.responsibility).toBe("codex");
     expect(json.data.workItem.next_action).toBe("Implement the update");
     expect(json.data.workItem.status).toBe("in_progress");
   });
@@ -1302,7 +1398,7 @@ describe("CLI response contract", () => {
     expect(json.ok).toBe(false);
     expect(json.command).toBe("work.update");
     expect(json.error.code).toBe("VALIDATION_ERROR");
-    expect(json.error.message).toContain("Work item status must be one of");
+    expect(json.error.message).toContain("Action status must be one of");
   });
 
   it("emits stable JSON when work update has no fields", () => {

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
+import { applyCapabilityMigrations } from "../capabilities/migrations.js";
 
 export function getSchemaPath(): string {
   const fromCwd = path.resolve("database", "schema.sql");
@@ -28,6 +29,7 @@ export function applyInitialSchema(db: Database.Database): void {
 }
 
 export function applyMigrations(db: Database.Database): void {
+  ensureCapabilityCoreTables(db);
   ensureProjectSlugColumn(db);
   ensureProjectGoalColumn(db);
   ensureReviewItemsTable(db);
@@ -37,6 +39,39 @@ export function applyMigrations(db: Database.Database): void {
   ensureAskRequestStewardshipColumn(db);
   ensureRequiresReviewCompatibility(db);
   ensureExecutionRunWorkerColumns(db);
+  applyCapabilityMigrations(db);
+}
+
+function ensureCapabilityCoreTables(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS capability_migrations (
+      module_id TEXT NOT NULL,
+      migration_id TEXT NOT NULL,
+      version TEXT NOT NULL,
+      applied_at TEXT NOT NULL,
+      PRIMARY KEY (module_id, migration_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS events (
+      id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      source_module TEXT,
+      project_id TEXT,
+      work_item_id TEXT,
+      artifact_id TEXT,
+      review_item_id TEXT,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+      FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE SET NULL,
+      FOREIGN KEY (artifact_id) REFERENCES artifacts(id) ON DELETE SET NULL,
+      FOREIGN KEY (review_item_id) REFERENCES review_items(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);
+    CREATE INDEX IF NOT EXISTS idx_events_project_id ON events(project_id);
+    CREATE INDEX IF NOT EXISTS idx_events_source_module ON events(source_module);
+  `);
 }
 
 function ensureProjectSlugColumn(db: Database.Database): void {

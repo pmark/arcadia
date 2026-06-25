@@ -1,0 +1,124 @@
+You are working on Arcadia, a local-first mission control system for coordinating creative/software projects.
+
+Goal: Design a practical Capability Module / Plugin architecture for Arcadia, using Blogging as the first proving module, without over-engineering into microservices.
+
+Context:
+Arcadia core is not a task manager or generic agent framework. It owns project stewardship: projects, statuses, milestones, work items, review items, artifacts, mission logs, execution records, events, and safe approval gates. SQLite is the operational source of truth. Markdown stores long-form artifacts and mission logs. Git preserves history. Arcadia must remain useful from phone and desktop, without requiring frontier models, Codex, or local LLMs.
+
+Important architectural direction:
+Do NOT turn Arcadia into microservices.
+Do NOT make Blogging a core feature.
+Do design a modular monolith with strict capability boundaries.
+MCP support is likely later, but should be treated as an adapter/export layer, not as the internal architecture.
+
+Plan the smallest useful implementation that lets Arcadia support domain capabilities such as Blogging while preserving core simplicity.
+
+Required output:
+Produce a planning artifact that includes:
+
+1. Current-state assumptions
+
+* Identify likely existing Arcadia concepts: projects, project_metadata, work_items, review items, artifacts, mission logs, execution records, intake/router, dashboard.
+* Note what must be verified in the repo.
+
+2. Proposed architecture
+
+* Arcadia Core remains the steward/orchestrator.
+* Capability modules provide domain-specific workflows.
+* Modules may own their own SQLite tables and migrations.
+* Modules must interact with core through constrained APIs/events, not arbitrary writes to core tables.
+* Core APIs should include things like:
+    * readProjectContext
+    * createWorkItem
+    * createReviewItem
+    * attachArtifact
+    * appendMissionLog
+    * emitEvent
+    * registerCapability
+
+3. Capability Contract v1
+    Define a minimal contract for modules:
+
+* module id/name/version
+* migrations
+* commands/actions
+* event handlers
+* permissions / required approval gates
+* artifact types produced
+* dashboard surfaces
+* optional future MCP exposure metadata
+
+Keep this boring and deterministic.
+
+4. Blogging module v1
+    Design Blogging as the first module, with minimal tables such as:
+
+* blog_sites
+* blog_posts
+* blog_ideas
+* blog_schedules or editorial_calendar
+
+Required pipeline:
+Idea → Brief → Draft → Review → Scheduled → Published → Logged
+
+Required blog streams:
+
+* Martian Rover: founder/build-in-public, product strategy, AI-assisted creator workflow
+* MIDI Opener: product updates, tutorials, MIDI education, release notes, SEO posts
+* Rebuster: puzzle updates, behind-the-scenes, visual puzzle lists, publishing experiments
+
+Blogging actions should create artifacts and review items, not publish automatically.
+
+5. Safety and permissions
+    Classify actions:
+
+* Autonomous: deterministic scheduling, idea organization, draft scaffolds, metadata generation
+* Codex: code changes, route creation, content pipeline implementation, tests
+* Needs Mark: voice approval, strategic positioning, publishing approval, sensitive claims
+* Blocked: missing repo, missing site, missing credentials, missing decision
+
+No deployment, publishing, spending, or destructive action without explicit approval.
+
+6. Dashboard / phone-first UX
+    Plan the smallest useful surfaces:
+
+* capability list
+* blog status per project
+* next scheduled post
+* drafts needing review
+* one-tap approve/reject/defer/clarify
+* artifact links
+
+7. MCP horizon
+    Do not implement MCP unless already trivial.
+    Do preserve clean action/resource boundaries so selected capabilities can later be exposed as MCP tools/resources.
+    Examples:
+
+* arcadia.blog.create_idea
+* arcadia.blog.prepare_schedule
+* arcadia.blog.draft_post
+* arcadia.review.create
+* arcadia.artifact.attach
+
+8. Acceptance criteria
+    The plan should make it possible for a later implementation agent to support:
+
+* “Prepare next week’s MIDI Opener blog schedule.”
+* “Draft the next Rebuster update post.”
+* “Show blog posts that need my review.”
+* “Create a Martian Rover build-in-public post idea from recent mission logs.”
+
+Each result should produce visible artifacts, review items when needed, and mission-log entries.
+
+Constraints:
+
+* Prefer existing CLI tools and deterministic code.
+* Avoid speculative agent frameworks.
+* Avoid hidden prompts.
+* Avoid complex infrastructure.
+* Avoid microservices.
+* Keep Arcadia useful without AI.
+* Keep the first increment small enough to implement and validate in days, not months.
+
+Deliverable:
+Write a concrete implementation plan, likely files to inspect/change, schema proposal, event/API proposal, testing plan, risks, simplifications, and the smallest recommended first implementation slice.

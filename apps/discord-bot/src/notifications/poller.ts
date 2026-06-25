@@ -226,7 +226,7 @@ function blockedWorkItemMessage(item: WorkItem): string {
   return [
     `Blocked: ${item.project_name ?? "Unassigned"} - ${item.title}`,
     `Next action: ${item.next_action}`,
-    `Work item: ${item.id}`
+    `Action: ${item.id}`
   ].join("\n");
 }
 

@@ -4,8 +4,8 @@ export function formatStatus(data: StatusData): string {
   return [
     "**Arcadia status**",
     `Active projects: ${data.activeProjectCount}`,
-    `Running work: ${data.runningWorkCount}`,
-    `Queued work: ${data.queuedWorkCount}`,
+    `Running Actions: ${data.runningWorkCount}`,
+    `Queued Actions: ${data.queuedWorkCount}`,
     `Requires Review: ${data.requiresReviewCount}`,
     `Recent artifacts: ${data.recentArtifactCount}`
   ].join("\n");

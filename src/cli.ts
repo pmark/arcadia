@@ -22,6 +22,20 @@ import {
   runBackBurnerPromoteCommand,
   runBackBurnerShowCommand
 } from "./commands/backBurner.js";
+import {
+  renderBlogConfigureSiteSuccess,
+  renderBlogCreateIdeaSuccess,
+  renderBlogDraftPostSuccess,
+  renderBlogPrepareScheduleSuccess,
+  renderBlogReviewSuccess,
+  renderBlogSitesSuccess,
+  runBlogConfigureSiteCommand,
+  runBlogCreateIdeaCommand,
+  runBlogDraftPostCommand,
+  runBlogPrepareScheduleCommand,
+  runBlogReviewCommand,
+  runBlogSitesCommand
+} from "./commands/blog.js";
 import { renderCaptureSuccess, runCaptureCommand } from "./commands/capture.js";
 import {
   renderCodexAssociateSuccess,
@@ -113,7 +127,7 @@ import {
   runWorkRunCommand,
   runWorkUpdateCommand
 } from "./commands/work.js";
-import { normalizeError } from "./cli/errors.js";
+import { normalizeError, validationError } from "./cli/errors.js";
 import {
   createFailure,
   createSuccess,
@@ -346,7 +360,7 @@ export function buildProgram(): Command {
   addJsonOption(
     program
       .command("ask")
-      .description("Resolve natural language intent into an auditable work item and execution plan")
+      .description("Resolve natural language intent into an auditable Action and workflow plan")
       .argument("<request>", "Natural-language request")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--project <project-id>", "Optional project id")
@@ -376,7 +390,7 @@ export function buildProgram(): Command {
   addJsonOption(
     program
     .command("capture")
-      .description("Capture executable intent as a structured work item")
+      .description("Capture executable intent as a structured Action")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .requiredOption("--text <intent>", "Natural-language intent")
       .option("--project <project-id>", "Optional project id")
@@ -418,29 +432,34 @@ export function buildProgram(): Command {
   addJsonOption(
     backBurner
       .command("promote")
-      .description("Promote a Back Burner item to a work item")
+      .description("Promote a Back Burner item to an Action")
       .argument("<id>", "Back Burner item id")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-      .option("--title <title>", "Work item title")
+      .option("--title <title>", "Action title")
       .option("--project <project-id>", "Optional project id")
-      .option("--next-action <text>", "Work item next action")
-      .option("--classification <classification>", "Work classification: autonomous or codex")
+      .option("--next-action <text>", "Action next action")
+      .option("--classification <classification>", "Legacy alias for --responsibility")
+      .option("--responsibility <responsibility>", "Responsibility: autonomous or codex")
   ).action((id: string, options: {
     workspace: string;
     title?: string;
     project?: string;
     nextAction?: string;
     classification?: string;
+    responsibility?: string;
     json?: boolean;
   }) =>
     runCliAction(
       "back-burner.promote",
       options,
-      () => runBackBurnerPromoteCommand({
-        ...options,
-        id,
-        classification: options.classification as Parameters<typeof runBackBurnerPromoteCommand>[0]["classification"]
-      }),
+      () => {
+        const normalized = normalizeResponsibilityOption(options);
+        return runBackBurnerPromoteCommand({
+          ...normalized,
+          id,
+          classification: normalized.classification as Parameters<typeof runBackBurnerPromoteCommand>[0]["classification"]
+        });
+      },
       renderBackBurnerPromoteSuccess
     )
   );
@@ -505,10 +524,12 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .requiredOption("--name <name>", "Project name")
       .requiredOption("--mission <mission>", "Project mission")
-      .option("--goal <goal>", "Project goal")
+      .option("--goal <goal>", "Legacy alias for --outcome")
+      .option("--outcome <outcome>", "Project outcome")
       .requiredOption("--milestone <milestone>", "Initial active milestone")
       .requiredOption("--next-action <action>", "Initial next action")
-      .requiredOption("--classification <classification>", "Work classification: autonomous, codex, requires_review, blocked")
+      .option("--classification <classification>", "Legacy alias for --responsibility")
+      .option("--responsibility <responsibility>", "Responsibility: autonomous, codex, requires_review, blocked")
       .option("--status <status>", "Project status: active, paused, incubating, completed", "active")
       .option("--expected-artifact <artifact>", "Initial expected artifact")
   ).action((options: {
@@ -516,14 +537,21 @@ export function buildProgram(): Command {
     name: string;
     mission: string;
     goal?: string;
+    outcome?: string;
     milestone: string;
     nextAction: string;
-    classification: string;
+    classification?: string;
+    responsibility?: string;
     status: string;
     expectedArtifact?: string;
     json?: boolean;
   }) =>
-    runCliAction("project.import", options, () => runProjectImportCommand(options), renderProjectImportSuccess)
+    runCliAction(
+      "project.import",
+      options,
+      () => runProjectImportCommand(normalizeSemanticOptions(options) as Parameters<typeof runProjectImportCommand>[0]),
+      renderProjectImportSuccess
+    )
   );
   addJsonOption(
     project
@@ -533,18 +561,20 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--status <status>", "Status: active, paused, incubating, completed")
       .option("--mission <mission>", "Project mission")
-      .option("--goal <goal>", "Project goal")
+      .option("--goal <goal>", "Legacy alias for --outcome")
+      .option("--outcome <outcome>", "Project outcome")
   ).action((projectId: string, options: {
     workspace: string;
     status?: string;
     mission?: string;
     goal?: string;
+    outcome?: string;
     json?: boolean;
   }) =>
     runCliAction(
       "project.update",
       options,
-      () => runProjectUpdateCommand({ ...options, projectId }),
+      () => runProjectUpdateCommand({ ...normalizeOutcomeOption(options), projectId }),
       renderProjectUpdateSuccess
     )
   );
@@ -613,12 +643,13 @@ export function buildProgram(): Command {
   addJsonOption(
     inbox
       .command("import")
-      .description("Import a manually classified inbox item without prompts")
+      .description("Import a manually assigned Action without prompts")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-      .requiredOption("--title <title>", "Work item title")
+      .requiredOption("--title <title>", "Action title")
       .requiredOption("--input <text>", "Raw input text")
       .requiredOption("--queue <queue>", "Queue: inbox, work_queue, requires_review, blocked")
-      .requiredOption("--classification <classification>", "Work classification: autonomous, codex, requires_review, blocked")
+      .option("--classification <classification>", "Legacy alias for --responsibility")
+      .option("--responsibility <responsibility>", "Responsibility: autonomous, codex, requires_review, blocked")
       .requiredOption("--next-action <action>", "Next action")
       .option("--project <project-id>", "Optional project id")
       .option("--milestone <milestone-id>", "Optional milestone id")
@@ -629,13 +660,19 @@ export function buildProgram(): Command {
       title: string;
       input: string;
       queue: string;
-      classification: string;
+      classification?: string;
+      responsibility?: string;
       nextAction: string;
       project?: string;
       milestone?: string;
       expectedArtifact?: string;
       json?: boolean;
-    }) => runCliAction("inbox.import", options, () => runInboxImportCommand(options as never), renderInboxImportSuccess)
+    }) => runCliAction(
+      "inbox.import",
+      options,
+      () => runInboxImportCommand(normalizeResponsibilityOption(options, { required: true }) as never),
+      renderInboxImportSuccess
+    )
   );
 
   addJsonOption(
@@ -654,6 +691,110 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("attention", options, () => runAttentionCommand(options), renderAttentionSuccess)
+  );
+
+  const blog = program.command("blog").description("Blogging capability commands");
+  addJsonOption(
+    blog
+      .command("sites")
+      .description("List configured blog sites")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("blog.sites", options, () => runBlogSitesCommand(options), renderBlogSitesSuccess)
+  );
+  addJsonOption(
+    blog
+      .command("configure-site")
+      .description("Configure a Blogging capability site for a project")
+      .argument("<project>", "Project id, slug, or exact name")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .requiredOption("--stream <stream>", "Blog stream key")
+      .requiredOption("--name <name>", "Blog site display name")
+      .option("--site-url <url>", "Public site URL")
+      .option("--content-repo-path <path>", "Optional content repository path")
+      .option("--content-root <path>", "Optional content root inside the repository")
+  ).action((project: string, options: {
+    workspace: string;
+    stream: string;
+    name: string;
+    siteUrl?: string;
+    contentRepoPath?: string;
+    contentRoot?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "blog.configure-site",
+      options,
+      () => runBlogConfigureSiteCommand({ ...options, project }),
+      renderBlogConfigureSiteSuccess
+    )
+  );
+  addJsonOption(
+    blog
+      .command("create-idea")
+      .description("Create a local blog idea artifact")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .requiredOption("--site <site-id>", "Blog site id")
+      .requiredOption("--title <title>", "Idea title")
+      .requiredOption("--summary <summary>", "Idea summary")
+      .option("--source <source>", "Idea source", "manual")
+  ).action((options: {
+    workspace: string;
+    site: string;
+    title: string;
+    summary: string;
+    source?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "blog.create-idea",
+      options,
+      () => runBlogCreateIdeaCommand({
+        workspace: options.workspace,
+        siteId: options.site,
+        title: options.title,
+        summary: options.summary,
+        source: options.source
+      }),
+      renderBlogCreateIdeaSuccess
+    )
+  );
+  addJsonOption(
+    blog
+      .command("prepare-schedule")
+      .description("Prepare a local blog schedule artifact and review item")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .requiredOption("--site <site-id>", "Blog site id")
+      .requiredOption("--week <yyyy-mm-dd>", "Week start date")
+  ).action((options: { workspace: string; site: string; week: string; json?: boolean }) =>
+    runCliAction(
+      "blog.prepare-schedule",
+      options,
+      () => runBlogPrepareScheduleCommand({ workspace: options.workspace, siteId: options.site, week: options.week }),
+      renderBlogPrepareScheduleSuccess
+    )
+  );
+  addJsonOption(
+    blog
+      .command("draft-post")
+      .description("Create a local draft scaffold from a blog idea")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .requiredOption("--idea <idea-id>", "Blog idea id")
+  ).action((options: { workspace: string; idea: string; json?: boolean }) =>
+    runCliAction(
+      "blog.draft-post",
+      options,
+      () => runBlogDraftPostCommand({ workspace: options.workspace, ideaId: options.idea }),
+      renderBlogDraftPostSuccess
+    )
+  );
+  addJsonOption(
+    blog
+      .command("review")
+      .description("List blog posts and schedules that need review")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("blog.review", options, () => runBlogReviewCommand(options), renderBlogReviewSuccess)
   );
 
   const dashboard = program.command("dashboard").description("Dashboard read model commands");
@@ -777,11 +918,11 @@ export function buildProgram(): Command {
     )
   );
 
-  const work = program.command("work").description("Work item commands");
+  const work = program.command("work").description("Action commands");
   addJsonOption(
     work
       .command("list")
-      .description("List work items")
+      .description("List Actions")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("work.list", options, () => runWorkListCommand(options), renderWorkListSuccess)
@@ -789,17 +930,19 @@ export function buildProgram(): Command {
   addJsonOption(
     work
       .command("update")
-      .description("Update an existing work item")
-      .argument("<work-id>", "Work item id")
+      .description("Update an existing Action")
+      .argument("<work-id>", "Action id")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--queue <queue>", "Queue: inbox, work_queue, requires_review, blocked")
-      .option("--classification <classification>", "Work classification: autonomous, codex, requires_review, blocked")
+      .option("--classification <classification>", "Legacy alias for --responsibility")
+      .option("--responsibility <responsibility>", "Responsibility: autonomous, codex, requires_review, blocked")
       .option("--next-action <action>", "Next action")
       .option("--status <status>", "Status: open, in_progress, done, blocked")
   ).action((workId: string, options: {
     workspace: string;
     queue?: string;
     classification?: string;
+    responsibility?: string;
     nextAction?: string;
     status?: string;
     json?: boolean;
@@ -807,15 +950,15 @@ export function buildProgram(): Command {
     runCliAction(
       "work.update",
       options,
-      () => runWorkUpdateCommand({ ...options, workId }),
+      () => runWorkUpdateCommand({ ...normalizeResponsibilityOption(options), workId }),
       renderWorkUpdateSuccess
     )
   );
   addJsonOption(
     work
       .command("done")
-      .description("Mark a work item complete")
-      .argument("<work-id>", "Work item id")
+      .description("Mark an Action complete")
+      .argument("<work-id>", "Action id")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((workId: string, options: { workspace: string; json?: boolean }) =>
     runCliAction("work.done", options, () => runWorkDoneCommand({ ...options, workId }), renderWorkDoneSuccess)
@@ -823,8 +966,8 @@ export function buildProgram(): Command {
   addJsonOption(
     work
       .command("plan")
-      .description("Create an execution plan for a work item")
-      .argument("<work-id>", "Work item id")
+      .description("Create a workflow plan for an Action")
+      .argument("<work-id>", "Action id")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((workId: string, options: { workspace: string; json?: boolean }) =>
     runCliAction("work.plan", options, () => runWorkPlanCommand({ ...options, workId }), renderWorkPlanSuccess)
@@ -832,8 +975,8 @@ export function buildProgram(): Command {
   addJsonOption(
     work
       .command("run")
-      .description("Execute safe deterministic steps for a work item")
-      .argument("<work-id>", "Work item id")
+      .description("Run safe deterministic steps for an Action")
+      .argument("<work-id>", "Action id")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--plan <plan-id>", "Optional execution plan id")
       .option("--allow-codex-planning", "Allow approved Codex planning steps to run")
@@ -850,11 +993,11 @@ export function buildProgram(): Command {
     runCliAction("work.run", options, () => runWorkRunCommand({ ...options, workId }), renderWorkRunSuccess)
   );
 
-  const run = program.command("run").description("Execution run commands");
+  const run = program.command("run").description("Run commands");
   addJsonOption(
     run
       .command("list")
-      .description("List recent execution runs")
+      .description("List recent runs")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--limit <n>", "Maximum number of runs to return", "10")
   ).action((options: { workspace: string; limit?: string; json?: boolean }) =>
@@ -863,7 +1006,7 @@ export function buildProgram(): Command {
   addJsonOption(
     run
       .command("show")
-      .description("Show an execution run audit trail")
+      .description("Show a run audit trail")
       .argument("<run-id>", "Run id")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((runId: string, options: { workspace: string; json?: boolean }) =>
@@ -1118,6 +1261,67 @@ function resolveProjectCreateArguments(
 
 function isInitializedWorkspacePath(candidate: string): boolean {
   return existsSync(getWorkspacePaths(candidate).configFile);
+}
+
+function normalizeSemanticOptions<TOptions extends {
+  goal?: string;
+  outcome?: string;
+  classification?: string;
+  responsibility?: string;
+}>(options: TOptions): Omit<TOptions, "outcome" | "responsibility"> & {
+  goal?: string;
+  classification: string;
+} {
+  const normalized = normalizeResponsibilityOption(normalizeOutcomeOption(options), { required: true });
+  return {
+    ...normalized,
+    classification: normalized.classification as string
+  } as Omit<TOptions, "outcome" | "responsibility"> & {
+    goal?: string;
+    classification: string;
+  };
+}
+
+function normalizeOutcomeOption<TOptions extends { goal?: string; outcome?: string }>(
+  options: TOptions
+): Omit<TOptions, "outcome"> & { goal?: string } {
+  if (options.goal !== undefined && options.outcome !== undefined) {
+    throw validationError("Use only one of --goal or --outcome.", {
+      legacy: "--goal",
+      canonical: "--outcome"
+    });
+  }
+
+  const { outcome: _outcome, ...rest } = options;
+  return {
+    ...rest,
+    goal: options.goal ?? options.outcome
+  };
+}
+
+function normalizeResponsibilityOption<TOptions extends { classification?: string; responsibility?: string }>(
+  options: TOptions,
+  settings: { required?: boolean } = {}
+): Omit<TOptions, "responsibility"> & { classification?: string } {
+  if (options.classification !== undefined && options.responsibility !== undefined) {
+    throw validationError("Use only one of --classification or --responsibility.", {
+      legacy: "--classification",
+      canonical: "--responsibility"
+    });
+  }
+
+  const { responsibility: _responsibility, ...rest } = options;
+  const classification = options.classification ?? options.responsibility;
+  if (settings.required && classification === undefined) {
+    throw validationError("Responsibility is required.", {
+      options: ["--responsibility", "--classification"]
+    });
+  }
+
+  return {
+    ...rest,
+    classification
+  };
 }
 
 async function runCliAction<TData>(

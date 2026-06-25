@@ -189,6 +189,7 @@ describe("dashboard snapshot", () => {
       projectName: "Active Project",
       milestone: "Ship Mission Control",
       goal: "Ship a managed dashboard workflow.",
+      outcome: "Ship a managed dashboard workflow.",
       status: "packet_created",
       statusLabel: "Packet Created",
       expectedArtifact: "Dashboard v0",
@@ -203,6 +204,19 @@ describe("dashboard snapshot", () => {
       "View Final Artifact",
       "View Validation"
     ]);
+    expect(activeProject).toMatchObject({
+      goal: "Ship a managed dashboard workflow.",
+      outcome: "Ship a managed dashboard workflow.",
+      workClassification: "requires_review",
+      responsibility: "requires_review",
+      workClassificationLabel: "Requires Review",
+      responsibilityLabel: "Requires Review"
+    });
+    expect(snapshot.requiresReviewItems[0]).toMatchObject({
+      decisionId: snapshot.requiresReviewItems[0].id,
+      decisionSlug: snapshot.requiresReviewItems[0].slug,
+      outcome: "Ship a managed dashboard workflow."
+    });
     expect(existsSync(paths.statusReport)).toBe(false);
   });
 

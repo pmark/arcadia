@@ -74,7 +74,7 @@ export function runWorkUpdateCommand(options: WorkUpdateOptions): CommandSuccess
   const updated = updatedFields(options);
 
   if (updated.length === 0) {
-    throw validationError("At least one work item field is required.", { fields: updateableFields });
+    throw validationError("At least one Action field is required.", { fields: updateableFields });
   }
 
   const workItem = withDatabase(workspacePath, (db) =>
@@ -213,7 +213,7 @@ export function runWorkRunCommand(options: {
 
 export function renderWorkListSuccess(response: CommandSuccess<WorkListCommandData>): string[] {
   if (response.data.workItems.length === 0) {
-    return ["No work items yet."];
+    return ["No Actions yet."];
   }
 
   return response.data.workItems.flatMap((item) => renderWorkItem(item));
@@ -221,11 +221,11 @@ export function renderWorkListSuccess(response: CommandSuccess<WorkListCommandDa
 
 export function renderWorkUpdateSuccess(response: CommandSuccess<WorkUpdateCommandData>): string[] {
   return [
-    `Updated work item: ${response.data.workItem.title}`,
+    `Updated Action: ${response.data.workItem.title}`,
     `ID: ${response.data.workItem.id}`,
     `Updated fields: ${response.data.updated.join(", ")}`,
     `Queue: ${response.data.workItem.queue}`,
-    `Work classification: ${response.data.workItem.work_classification}`,
+    `Responsibility: ${WORK_CLASSIFICATION_LABELS[response.data.workItem.work_classification]}`,
     `Status: ${response.data.workItem.status}`,
     `Next action: ${response.data.workItem.next_action}`
   ];
@@ -233,7 +233,7 @@ export function renderWorkUpdateSuccess(response: CommandSuccess<WorkUpdateComma
 
 export function renderWorkDoneSuccess(response: CommandSuccess<WorkDoneCommandData>): string[] {
   return [
-    `Completed work item: ${response.data.workItem.title}`,
+    `Completed Action: ${response.data.workItem.title}`,
     `ID: ${response.data.workItem.id}`,
     `Status: ${response.data.workItem.status}`
   ];
@@ -241,8 +241,8 @@ export function renderWorkDoneSuccess(response: CommandSuccess<WorkDoneCommandDa
 
 export function renderWorkPlanSuccess(response: CommandSuccess<WorkPlanCommandData>): string[] {
   return [
-    `Created execution plan: ${response.data.plan.id}`,
-    `Work item: ${response.data.plan.work_item_id}`,
+    `Created workflow plan: ${response.data.plan.id}`,
+    `Action: ${response.data.plan.work_item_id}`,
     `Status: ${response.data.plan.status}`,
     "Steps:",
     ...response.data.plan.steps.map((step) =>
@@ -253,7 +253,7 @@ export function renderWorkPlanSuccess(response: CommandSuccess<WorkPlanCommandDa
 
 export function renderWorkRunSuccess(response: CommandSuccess<WorkRunCommandData>): string[] {
   return [
-    `Created execution run: ${response.data.run.id}`,
+    `Created run: ${response.data.run.id}`,
     `Status: ${response.data.run.status}`,
     `Mission log: ${response.data.missionLogPath ?? "None"}`,
     "Steps:",
@@ -384,7 +384,7 @@ function renderWorkItem(item: WorkItemSummary): string[] {
     `${item.title}${project}${milestone}`,
     `  ID: ${item.id}`,
     `  Queue: ${QUEUE_LABELS[item.queue]}`,
-    `  Work classification: ${WORK_CLASSIFICATION_LABELS[item.work_classification]}`,
+    `  Responsibility: ${WORK_CLASSIFICATION_LABELS[item.work_classification]}`,
     `  Status: ${item.status}`,
     `  Next action: ${item.next_action}`
   ];

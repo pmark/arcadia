@@ -556,7 +556,7 @@ function classifyDeterministically(rawInput: string, resolved: IntakeResultCore)
     return {
       classification: "BugReport",
       reason: "The input reports a broken or failing behavior.",
-      suggestedNextStep: "Promote to a work item when the affected project and reproduction details are clear."
+      suggestedNextStep: "Promote to an Action when the affected project and reproduction details are clear."
     };
   }
 

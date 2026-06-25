@@ -16,7 +16,7 @@ pnpm arcadia init "$WORKSPACE"
 
 ## Capture Intent
 
-Use `capture` when you have natural-language intent and want Arcadia to structure it as work.
+Use `capture` when you have natural-language intent and want Arcadia to structure it as an Action.
 
 ```sh
 pnpm arcadia capture \
@@ -25,7 +25,7 @@ pnpm arcadia capture \
   --json
 ```
 
-Safe known work is placed in `work_queue` as `autonomous`. Ambiguous work is placed in `requires_review`.
+Safe known Actions are placed in `work_queue` as `autonomous`. Ambiguous Actions are placed in `requires_review`.
 
 ```sh
 pnpm arcadia capture \
@@ -36,7 +36,7 @@ pnpm arcadia capture \
 
 ## Ask Natural Language
 
-Use `ask` when you want Arcadia to resolve a natural-language request through Phase 3 intent registries, create an audit record, create a work item, and create an execution plan.
+Use `ask` when you want Arcadia to resolve a natural-language request through Phase 3 intent registries, create an audit record, create an Action, and create a workflow plan.
 
 ```sh
 pnpm arcadia ask \
@@ -153,7 +153,7 @@ The plan records each step, executor type, command label, and whether the step i
 
 ## Run Safe Work
 
-Run the latest plan for a work item:
+Run the latest plan for an Action:
 
 ```sh
 pnpm arcadia work run work_example \
@@ -193,7 +193,7 @@ pnpm arcadia run show run_example \
   --json
 ```
 
-This includes run status, plan steps, step outcomes, mission log path, linked artifacts, and the compact `needsMark` list.
+This includes run status, plan steps, step outcomes, mission log path, linked artifacts, and the compact `needsMark` compatibility list.
 
 ## Common Execution Loop
 
@@ -222,19 +222,19 @@ pnpm arcadia review weekly --workspace "$WORKSPACE"
 pnpm arcadia artifact list --workspace "$WORKSPACE" --json
 ```
 
-Update work manually:
+Update an Action manually:
 
 ```sh
 pnpm arcadia work update work_example \
   --workspace "$WORKSPACE" \
   --queue work_queue \
-  --classification autonomous \
+  --responsibility autonomous \
   --next-action "Run the deterministic skill" \
   --status in_progress \
   --json
 ```
 
-Mark work done:
+Mark an Action done:
 
 ```sh
 pnpm arcadia work done work_example --workspace "$WORKSPACE" --json

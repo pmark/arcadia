@@ -84,7 +84,7 @@ export function runRunShowCommand(options: {
 
 export function renderRunListSuccess(response: CommandSuccess<RunListCommandData>): string[] {
   if (response.data.runs.length === 0) {
-    return ["No execution runs yet."];
+    return ["No runs yet."];
   }
 
   return response.data.runs.map((run) => `${run.id}: ${run.status} - ${run.work_item_title}`);
@@ -94,7 +94,7 @@ export function renderRunShowSuccess(response: CommandSuccess<RunShowCommandData
   const lines = [
     `Run: ${response.data.run.id}`,
     `Status: ${response.data.run.status}`,
-    `Work item: ${response.data.run.work_item_title}`,
+    `Action: ${response.data.run.work_item_title}`,
     `Mission log: ${response.data.run.mission_log_path ?? "None"}`,
     "Steps:"
   ];

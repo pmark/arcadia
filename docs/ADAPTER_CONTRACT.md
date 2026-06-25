@@ -58,7 +58,7 @@ Failed commands return:
   "workspace": "/absolute/workspace/path",
   "error": {
     "code": "VALIDATION_ERROR",
-    "message": "Requires Review item was not found.",
+    "message": "Decision was not found.",
     "details": {
       "id": "review_missing"
     }
@@ -80,11 +80,12 @@ Failed commands return:
   "status": null,
   "review": null,
   "reviewItemId": "review_...",
+  "decisionId": "review_...",
   "backBurnerItemId": "bb_..."
 }
 ```
 
-When `result.status` is `captured`, adapters should treat the input as preserved in the Back Burner, not as an actionable Requires Review item. `reviewItemId` will be `null` and `backBurnerItemId` will identify the durable captured item.
+When `result.status` is `captured`, adapters should treat the input as preserved in the Back Burner, not as an actionable Requires Review Decision. `reviewItemId` and `decisionId` will be `null`, and `backBurnerItemId` will identify the durable captured item.
 
 `status` data includes:
 
@@ -110,12 +111,15 @@ When `result.status` is `captured`, adapters should treat the input as preserved
   "items": [
     {
       "id": "review_...",
+      "decisionId": "review_...",
       "workItemId": null,
+      "actionId": null,
       "project": "Arcadia",
       "goal": "Manage Arcadia development through the same workspace model used for every other project.",
+      "outcome": "Manage Arcadia development through the same workspace model used for every other project.",
       "decisionNeeded": "Approve or reject this proposed Arcadia action: ...",
       "context": "CreateWork: ...",
-      "recommendation": "Approve only if the project, goal, and action match your intent.",
+      "recommendation": "Approve only if the project, outcome, and action match your intent.",
       "options": ["approve", "reject", "defer"],
       "sourceInput": "original user request",
       "resultingAskRequestId": null
@@ -129,7 +133,7 @@ When `result.status` is `captured`, adapters should treat the input as preserved
 ```json
 {
   "item": { "id": "review_...", "resultingAskRequestId": "ask_..." },
-  "result": { "status": "approved", "summary": "Work item created." },
+  "result": { "status": "approved", "summary": "Action created." },
   "approval": { "ask": { "id": "ask_..." } }
 }
 ```

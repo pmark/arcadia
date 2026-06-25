@@ -1,0 +1,352 @@
+You are working on Arcadia, a local-first mission control system for coordinating creative/software projects.
+
+Goal:
+Improve Arcadia's natural-language understanding so it is astonishingly accurate, useful, and safe across general project stewardship and capability modules, with Blogging as the proving ground.
+
+This is not a request to add a chatbot, hidden LLM prompts, agent framework, microservice, or fuzzy autonomous executor. Arcadia must remain deterministic, local-first, inspectable, and useful without Codex, frontier models, or local LLMs.
+
+What is at stake:
+Arcadia's input understanding is the trust boundary for the whole system.
+
+If Arcadia under-matches clear requests, it creates review noise and feels like clerical software.
+If Arcadia over-matches vague requests, it creates the wrong work and damages confidence.
+If Arcadia misses project/capability context, it loses the thread of creative momentum.
+If Arcadia hides interpretation, Mark cannot correct it quickly.
+If Arcadia routes publishing, credential, deployment, spending, destructive, or code-changing work too aggressively, it violates the core safety model.
+
+The target is not "parse more phrases." The target is an auditable understanding layer that can explain:
+
+- what the user is asking for
+- which project, milestone, capability, and artifact type it concerns
+- whether this is execution, review, clarification, status, planning, research, bug, feedback, or an incubating idea
+- what the safest next action is
+- what visible artifact/review/log record should be produced
+- what approval gates are required
+- what information is missing, only when something material is actually missing
+
+Current architecture assumptions to verify in the repo:
+
+- `src/intake/index.ts` owns deterministic intake classification.
+- `src/intent/resolver.ts` owns registry-based known intent matching.
+- `config/defaults/intent-registry.json` contains inspectable intent aliases/examples.
+- `src/stewardship/index.ts` chooses execution path and safety posture.
+- `src/commands/ask.ts` composes intake, intent resolution, stewardship, work/review/back-burner routing, and run-safe execution.
+- Capability modules now exist under `src/capabilities/*`.
+- Blogging capability commands exist under `src/commands/blog.ts`.
+- Dashboard/review surfaces already display review items, artifacts, mission logs, and activity.
+
+Implementation principle:
+Make understanding capability-aware, not Blogging-hardcoded.
+
+Arcadia should understand capability requests through a deterministic capability action registry:
+
+```text
+raw input
+  -> normalize
+  -> resolve project/capability/action/artifact/safety hints
+  -> match command grammar and capability action registry
+  -> score interpretation with explicit reasons
+  -> route to core/capability command, review, back-burner, or blocked setup
+```
+
+Do not add a broad semantic LLM layer. If optional model-assisted interpretation is ever added later, it must be an adapter behind the deterministic layer and must produce inspectable structured candidates, never hidden actions.
+
+Required outcome:
+After this work, these requests should succeed as expected or better:
+
+1. "Prepare next week's MIDI Opener blog schedule."
+   Expected:
+   - project: MIDI Opener
+   - capability: Blogging
+   - action: `blog.prepare_schedule`
+   - infer next week's week-start deterministically from current date/timezone utilities
+   - create schedule artifact
+   - create Requires Review item for publication/strategy approval
+   - append mission log
+   - emit event
+   - no publishing, deployment, credential use, or external writes
+
+2. "Draft the next Rebuster update post."
+   Expected:
+   - project: Rebuster
+   - capability: Blogging
+   - action: draft next suitable post
+   - if a ready idea exists, draft from it
+   - if no suitable idea exists, create a blocked/review item that asks for the missing topic, not a generic "missing intent" review
+   - create draft artifact and review item when possible
+   - append mission log
+   - no publishing
+
+3. "Show blog posts that need my review."
+   Expected:
+   - capability: Blogging
+   - action: `blog.list_review_needed`
+   - return blog-linked open review items
+   - do not create new work
+
+4. "Create a Martian Rover build-in-public post idea from recent mission logs."
+   Expected:
+   - project: Martian Rover
+   - capability: Blogging
+   - action: `blog.create_idea`
+   - stream/topic: build-in-public
+   - source: recent mission logs
+   - produce visible idea artifact
+   - append mission log
+   - emit event
+   - no draft/publish unless separately requested
+
+Generalization requirements:
+The same system should also handle non-blog capability-shaped requests without special casing:
+
+- "Show <capability> items that need review."
+- "Prepare next week's <project> <capability> schedule."
+- "Create a <project> idea from recent mission logs."
+- "Draft the next <project> update."
+- "Configure <capability> for <project>."
+- "What is blocked for <project>?"
+- "What needs Mark's approval for <project>?"
+
+Do not broaden execution unsafely. If a request contains any of these risk indicators, create or preserve approval gates:
+
+- publishing, scheduling public release, deployment, credentials, analytics/production data, spending, destructive filesystem changes, merge to main, outbound messages/email/social posting, sensitive claims, strategic positioning, Mark's voice.
+
+Design changes to implement:
+
+1. Capability Action Registry
+
+Add an inspectable registry for capability actions, either as TypeScript metadata exported by built-in capabilities or a JSON default copied into workspaces.
+
+Each action definition should include:
+
+- action id, e.g. `blog.prepare_schedule`
+- capability id, e.g. `blogging`
+- aliases and example phrases
+- required slots
+- optional slots
+- slot extractors
+- project required: yes/no
+- safe execution class: autonomous/codex/needs_mark/blocked
+- approval gates
+- produced artifact types
+- whether command mutates state
+- CLI command or handler mapping
+
+Do not invent dynamic plugin loading for v1.
+
+2. Structured Understanding Result
+
+Extend intake/resolution to produce a structured candidate before routing:
+
+```ts
+interface UnderstandingCandidate {
+  rawInput: string;
+  intentKind:
+    | "capability_action"
+    | "core_action"
+    | "review_query"
+    | "status_query"
+    | "planning_request"
+    | "research_request"
+    | "bug_report"
+    | "arcadia_feedback"
+    | "idea"
+    | "question"
+    | "incubating_thought";
+  projectId: string | null;
+  projectName: string | null;
+  capabilityId: string | null;
+  actionId: string | null;
+  slots: Record<string, string>;
+  missingFields: string[];
+  confidence: number;
+  confidenceLabel: "high" | "medium" | "low";
+  safeToExecute: boolean;
+  approvalGates: string[];
+  proposedAction: string;
+  explanation: string;
+}
+```
+
+Keep existing public types compatible unless a focused migration is clearly better.
+
+3. Better Project And Capability Resolution
+
+Project matching must use:
+
+- project id
+- project slug
+- project name
+- `project_metadata.aliases`
+- exact normalized match first
+- longest alias wins
+- ambiguity detection when two candidates are equally strong
+
+Capability matching must use:
+
+- capability id/name
+- action aliases/examples
+- artifact terms such as post, draft, schedule, idea, review
+- known streams such as Martian Rover, MIDI Opener, Rebuster, but configured data should win over hardcoded names
+
+4. Material Missing Fields Only
+
+Replace generic "missing intent" Requires Review with material, answerable gaps.
+
+Good:
+- "Which Rebuster update topic should be drafted?"
+- "MIDI Opener has no Blogging site configured."
+- "Martian Rover was not found as a project or alias."
+- "No recent mission logs were found for Martian Rover."
+
+Bad:
+- "Clarify missing intake fields: intent."
+- "Capture the thought and ask for clarification before creating work."
+
+Low-confidence non-actionable thoughts should go to Back Burner, not Requires Review.
+
+5. Deterministic Date And Recency Semantics
+
+Use existing local date/time utilities.
+
+Support:
+
+- next week
+- this week
+- tomorrow
+- today
+- recent mission logs
+
+Use absolute dates in stored artifacts and review items.
+For "next week", calculate the next local week start deterministically and include the exact date in the artifact/review text.
+
+6. Blogging Semantics
+
+Add Blogging action matching through the capability registry, not ad hoc text checks.
+
+Recognize:
+
+- idea/post idea
+- brief
+- draft
+- review
+- schedule/editorial calendar
+- published/logged only as record/evidence, never automatic publishing
+- build-in-public
+- release notes
+- product update
+- tutorial
+- MIDI education
+- SEO post
+- puzzle update
+- behind-the-scenes
+- visual puzzle list
+- publishing experiment
+
+Expected routing:
+
+- "show/list/what needs review" + blog terms -> read-only blog review command
+- "prepare/schedule/editorial calendar" + project/blog terms -> schedule artifact + review item
+- "draft/write post/update" + project/blog terms -> draft scaffold if topic/idea exists, otherwise specific review/blocked setup
+- "idea/from recent mission logs" -> idea artifact from local mission logs
+- "publish/post/go live/deploy" -> Needs Mark / publication approval, no external action
+
+7. Safety Model
+
+Preserve these rules:
+
+- no deployment without explicit approval
+- no publishing without explicit approval
+- no spending without explicit approval
+- no credential access without explicit approval
+- no destructive action without explicit approval
+- no code changes without Codex/build classification
+- no hidden prompts
+- no automatic external writes
+
+When in doubt, create a review item with a specific decision and a recommendation, or block on setup with a precise missing artifact/config.
+
+8. User-Facing Explanation
+
+Every ask result should make the interpretation obvious:
+
+- Project
+- Capability
+- Action
+- Confidence
+- Missing fields, if any
+- Work classification
+- Approval gates
+- Artifact to be created/read
+- Next action
+
+This is critical because Mark must be able to correct Arcadia quickly.
+
+Testing requirements:
+
+Add a golden request suite for understanding behavior. It should cover at least:
+
+Blogging:
+
+- "Prepare next week's MIDI Opener blog schedule."
+- "Draft the next Rebuster update post."
+- "Show blog posts that need my review."
+- "Create a Martian Rover build-in-public post idea from recent mission logs."
+- "Publish the MIDI Opener release notes." -> review/approval, no publish.
+- "Schedule Rebuster puzzle update for tomorrow." -> schedule/review, no external publish.
+- "Create a MIDI Opener SEO post idea." -> idea artifact.
+- "Write a behind-the-scenes Rebuster post." -> draft or specific topic clarification.
+
+Core:
+
+- "What needs Mark's approval?"
+- "What is blocked for Rebuster?"
+- "Set MIDI Opener goal to improve App Store conversion."
+- "Pause Rebuster."
+- "Create a project called Example."
+
+Ambiguity/safety:
+
+- Two projects with overlapping aliases should require a specific project decision.
+- Missing Blogging site should produce setup-specific review/blocking output.
+- Missing recent mission logs should produce a specific blocked/review item.
+- Publishing/deployment/credential phrases should always create approval gates.
+
+Assertions should verify:
+
+- resolved intent/action id
+- project id/name
+- capability id
+- confidence label
+- work classification
+- approval gates
+- whether it mutates state
+- artifacts created or not created
+- review item created or not created
+- mission log created when mutation occurs
+- no external publish/deploy/credential action
+
+Implementation constraints:
+
+- Prefer deterministic code and registries.
+- Prefer local scripts before AI.
+- Keep SQLite as source of truth.
+- Keep Markdown artifacts inspectable.
+- Do not introduce services, queues, workers, MCP runtime, model calls, or plugin loading for this task.
+- Keep the first implementation small enough to validate in days.
+
+Acceptance criteria:
+
+- All Blogging examples above succeed with precise, non-generic interpretation.
+- Existing ask/review/status/project flows continue to pass.
+- Existing approval-gated Codex behavior remains intact.
+- The dashboard and CLI show enough interpretation detail for Mark to correct mistakes.
+- `pnpm test`, `pnpm build`, `pnpm dashboard:build`, and `pnpm smoke` pass.
+
+Deliverable:
+Implement the deterministic understanding improvements, update docs where helpful, and include a concise summary of:
+
+- what changed in intake/resolution/stewardship
+- what new golden requests were added
+- what safety behavior was preserved
+- any remaining known limitations or intentionally unsupported phrasing

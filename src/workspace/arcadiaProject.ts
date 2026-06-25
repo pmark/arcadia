@@ -20,7 +20,7 @@ export const ARCADIA_PROJECT_MISSION =
 export const ARCADIA_PROJECT_GOAL =
   "Manage Arcadia development through the same workspace model used for every other project.";
 export const ARCADIA_PROJECT_MILESTONE = "Unify Arcadia onto the single workspace model.";
-export const ARCADIA_PROJECT_NEXT_ACTION = "Use Arcadia ask to create and run Arcadia development work items.";
+export const ARCADIA_PROJECT_NEXT_ACTION = "Use Arcadia ask to create and run Arcadia development Actions.";
 
 const ARCADIA_WORKSPACE_LOG_RESULT = "Arcadia is managed as a project in this workspace.";
 const LEGACY_DOGFOOD_LOG_RESULT = "Arcadia is now being dogfooded through its repo-local workspace.";
@@ -83,7 +83,7 @@ function ensureArcadiaWorkItem(db: Database.Database, projectId: string, milesto
       status: "open"
     });
     if (!updated) {
-      throw new Error("Could not update Arcadia work item.");
+      throw new Error("Could not update Arcadia Action.");
     }
     return updated;
   }

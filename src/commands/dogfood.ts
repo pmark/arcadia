@@ -107,7 +107,7 @@ export function renderDogfoodInitSuccess(response: CommandSuccess<DogfoodInitCom
   return [
     `Initialized Arcadia compatibility workspace: ${response.data.workspacePath}`,
     `Project: ${response.data.project.name} (${response.data.project.status})`,
-    `Goal: ${response.data.project.goal ?? "None"}`,
+    `Outcome: ${response.data.project.outcome ?? response.data.project.goal ?? "None"}`,
     `Milestone: ${response.data.milestone.title}`,
     `Next action: ${response.data.workItem.next_action}`,
     `Mission log: ${response.data.missionLog.markdown_path}`

@@ -123,11 +123,11 @@ export function executeApprovedReview(
 ): ReviewExecutionResult {
   const triggerReview = getReviewItem(db, options.reviewId) ?? getReviewItemBySlug(db, options.reviewId);
   if (!triggerReview) {
-    throw validationError("Requires Review item was not found.", { id: options.reviewId });
+    throw validationError("Requires Review Decision was not found.", { id: options.reviewId });
   }
   const review = executionReviewForTrigger(db, triggerReview);
   if (!canExecuteReview(triggerReview, review)) {
-    throw validationError("Requires Review item is already decided.", { id: triggerReview.id, status: triggerReview.status });
+    throw validationError("Requires Review Decision is already decided.", { id: triggerReview.id, status: triggerReview.status });
   }
 
   const workItem = review.work_item_id ? getWorkItem(db, review.work_item_id) : null;
@@ -228,7 +228,7 @@ export function executeApprovedReview(
     decisionNote: `Approved and executed with ${executor.name}. Implementation remains Requires Review.`
   });
   if (!updatedReview) {
-    throw validationError("Requires Review item was not found.", { id: review.id });
+    throw validationError("Requires Review Decision was not found.", { id: review.id });
   }
   if (triggerReview.id !== review.id) {
     updateReviewItemStatus(db, triggerReview.id, {
@@ -289,7 +289,7 @@ function executionReviewForTrigger(db: Database.Database, triggerReview: ReviewI
   if (triggerReview.resolved_intent === "ReviewExecutionPending" && originalReviewId) {
     const original = getReviewItem(db, originalReviewId);
     if (!original) {
-      throw validationError("Original approved review item was not found.", {
+      throw validationError("Original approved Decision was not found.", {
         reviewId: triggerReview.id,
         originalReviewId
       });
@@ -423,9 +423,9 @@ function buildImplementationPacket(input: {
     `Decision needed: ${input.review.decision_needed}`,
     `Recommendation: ${input.review.recommendation ?? "None"}`,
     "",
-    "## Original Work Context",
-    `Work item ID: ${input.workItem?.id ?? input.review.work_item_id ?? "None"}`,
-    `Work item title: ${input.workItem?.title ?? input.review.work_item_title ?? "None"}`,
+    "## Original Action Context",
+    `Action ID: ${input.workItem?.id ?? input.review.work_item_id ?? "None"}`,
+    `Action title: ${input.workItem?.title ?? input.review.work_item_title ?? "None"}`,
     `Original request: ${input.review.source_input}`,
     `Proposed action: ${input.review.proposed_action}`,
     `Plan summary: ${input.planSummary ?? "None"}`,

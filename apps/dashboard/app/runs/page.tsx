@@ -25,7 +25,7 @@ export default function RunsPage() {
           ))}
         </div>
       ) : (
-        <EmptyState text="No execution runs yet." />
+        <EmptyState text="No runs yet." />
       )}
     </DashboardChrome>
   );

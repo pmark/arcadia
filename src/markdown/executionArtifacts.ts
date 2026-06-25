@@ -14,7 +14,7 @@ export function writeSpecificationArtifact(workspace: string, workItem: WorkItem
     [
       `# Specification: ${workItem.title}`,
       "",
-      `Source work item: ${workItem.id}`,
+      `Source Action: ${workItem.id}`,
       `Project: ${workItem.project_name ?? "Unassigned"}`,
       "",
       "## Captured Intent",
@@ -40,7 +40,7 @@ export function writePublicationPacket(workspace: string, workItem: WorkItemSumm
     [
       `# Publication Packet: ${workItem.title}`,
       "",
-      `Source work item: ${workItem.id}`,
+      `Source Action: ${workItem.id}`,
       `Project: ${workItem.project_name ?? "Unassigned"}`,
       "",
       "## Intent",
@@ -59,9 +59,9 @@ export function writePublicationPacket(workspace: string, workItem: WorkItemSumm
 
 export function renderRunSummary(run: ExecutionRunSummary): string {
   const lines = [
-    `Execution run ${run.id}`,
+    `Run ${run.id}`,
     `Status: ${run.status}`,
-    `Work item: ${run.work_item_title}`,
+    `Action: ${run.work_item_title}`,
     `Plan: ${run.plan_id}`,
     `Mission log: ${run.mission_log_path ?? "None"}`,
     "",

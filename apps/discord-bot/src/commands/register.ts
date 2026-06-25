@@ -13,49 +13,49 @@ export function buildArcadiaCommand() {
     .addSubcommand((subcommand) =>
       subcommand
         .setName("review")
-        .setDescription("Show current Requires Review items")
+        .setDescription("Show current Requires Review Decisions")
     )
     .addSubcommand((subcommand) =>
       subcommand
         .setName("review-show")
-        .setDescription("Show one Requires Review item")
+        .setDescription("Show one Requires Review Decision")
         .addStringOption((option) =>
           option
             .setName("id")
-            .setDescription("Requires Review item id")
+            .setDescription("Requires Review Decision id")
             .setRequired(true)
         )
     )
     .addSubcommand((subcommand) =>
       subcommand
         .setName("review-approve")
-        .setDescription("Approve a Requires Review item and continue the intended workflow")
+        .setDescription("Approve a Requires Review Decision and continue the intended workflow")
         .addStringOption((option) =>
           option
             .setName("id")
-            .setDescription("Requires Review item id")
+            .setDescription("Requires Review Decision id")
             .setRequired(true)
         )
     )
     .addSubcommand((subcommand) =>
       subcommand
         .setName("review-reject")
-        .setDescription("Reject a Requires Review item without executing it")
+        .setDescription("Reject a Requires Review Decision without executing it")
         .addStringOption((option) =>
           option
             .setName("id")
-            .setDescription("Requires Review item id")
+            .setDescription("Requires Review Decision id")
             .setRequired(true)
         )
     )
     .addSubcommand((subcommand) =>
       subcommand
         .setName("review-defer")
-        .setDescription("Keep a Requires Review item open for future review")
+        .setDescription("Keep a Requires Review Decision open for future review")
         .addStringOption((option) =>
           option
             .setName("id")
-            .setDescription("Requires Review item id")
+            .setDescription("Requires Review Decision id")
             .setRequired(true)
         )
     )
@@ -83,16 +83,16 @@ export function buildArcadiaCommand() {
     .addSubcommand((subcommand) =>
       subcommand
         .setName("runs")
-        .setDescription("Show recent Arcadia execution runs")
+        .setDescription("Show recent Arcadia runs")
     )
     .addSubcommand((subcommand) =>
       subcommand
         .setName("run")
-        .setDescription("Show one Arcadia execution run")
+        .setDescription("Show one Arcadia run")
         .addStringOption((option) =>
           option
             .setName("id")
-            .setDescription("Execution run id")
+            .setDescription("Run id")
             .setRequired(true)
         )
     )

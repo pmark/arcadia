@@ -441,7 +441,7 @@ describe("Phase 0 data operations", () => {
       });
 
       expect(() => updateWorkItem(db, created.workItem.id, { status: "invalid_status" })).toThrow(
-        "Work item status must be one of"
+        "Action status must be one of"
       );
       expect(getWorkItem(db, created.workItem.id)?.status).toBe("open");
     });
@@ -684,7 +684,7 @@ describe("Phase 0 data operations", () => {
     const report = readFileSync(reportPath, "utf8");
     expect(report).toContain("Example Project");
     expect(report).toContain("Run the first smoke test");
-    expect(report).toContain("Codex Work");
+    expect(report).toContain("Codex Actions");
   });
 
   it("writes expanded status report sections from SQLite state", () => {
@@ -709,12 +709,12 @@ describe("Phase 0 data operations", () => {
     const reportPath = withDatabase(workspace, (db) => writeStatusReport(workspace, buildStatusReportData(db, workspace)));
     const report = readFileSync(reportPath, "utf8");
 
-    expect(report).toContain("## Work By Queue");
+    expect(report).toContain("## Actions By Queue");
     expect(report).toContain("### Blocked");
-    expect(report).toContain("## Work By Classification");
+    expect(report).toContain("## Actions By Responsibility");
     expect(report).toContain("## Projects Without Open Next Action");
     expect(report).toContain("Example Project");
-    expect(report).toContain("## Recently Completed Work");
+    expect(report).toContain("## Recently Completed Actions");
     expect(report).toContain("Run the first smoke test");
     expect(report).toContain("## Artifacts By Status");
     expect(report).toContain("### Ready");
@@ -817,13 +817,13 @@ describe("Phase 0 data operations", () => {
     const report = readFileSync(reportPath, "utf8");
     expect(report).toContain("# Arcadia Weekly Review");
     expect(report).toContain("Review window: 2026-06-03 to 2026-06-09");
-    expect(report).toContain("## Completed Work");
+    expect(report).toContain("## Completed Actions");
     expect(report).toContain("Run the first smoke test");
     expect(report).not.toContain("Old completed work");
     expect(report).toContain("## Mission Logs Created");
     expect(report).toContain("Weekly review report is generated.");
-    expect(report).toContain("## Requires Review Items");
-    expect(report).toContain("## Active Codex/Autonomous Work");
+    expect(report).toContain("## Requires Review Decisions");
+    expect(report).toContain("## Active Codex/Autonomous Actions");
     expect(report).toContain("## Artifact Changes Or Upcoming Artifacts");
     expect(report).toContain("artifacts/implementation-summary.md");
     expect(report).toContain("## Projects Without Open Next Actions");

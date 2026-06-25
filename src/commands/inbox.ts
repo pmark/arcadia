@@ -11,7 +11,7 @@ import {
   listProjects
 } from "../db/repositories.js";
 import type { Artifact, Milestone, WorkItem } from "../domain/types.js";
-import type { QueueName, WorkClassification } from "../domain/constants.js";
+import { WORK_CLASSIFICATION_LABELS, type QueueName, type WorkClassification } from "../domain/constants.js";
 import { promptForInboxItem } from "../prompts/index.js";
 import { resolveWorkspacePath } from "../workspace/paths.js";
 
@@ -30,7 +30,7 @@ export async function runInboxAddCommand(options: { workspace: string }): Promis
   const input = await promptForInboxItem(projects, milestones);
   const result = withDatabase(workspacePath, (db) => createWorkItemWithOptionalArtifact(db, input));
 
-  console.log(`Added work item: ${result.workItem.title}`);
+  console.log(`Added Action: ${result.workItem.title}`);
   console.log(`Queue: ${result.workItem.queue}`);
 }
 
@@ -91,10 +91,10 @@ export function runInboxImportCommand(options: InboxImportOptions): CommandSucce
 
 export function renderInboxImportSuccess(response: CommandSuccess<InboxImportCommandData>): string[] {
   const lines = [
-    `Imported work item: ${response.data.workItem.title}`,
+    `Imported Action: ${response.data.workItem.title}`,
     `ID: ${response.data.workItem.id}`,
     `Queue: ${response.data.workItem.queue}`,
-    `Work classification: ${response.data.workItem.work_classification}`
+    `Responsibility: ${WORK_CLASSIFICATION_LABELS[response.data.workItem.work_classification]}`
   ];
 
   if (response.data.artifact) {

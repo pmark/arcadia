@@ -2,6 +2,8 @@ import type Database from "better-sqlite3";
 import type { RequiresReviewPacket } from "../commands/review.js";
 import { reviewPacketForReviewItem } from "../commands/review.js";
 import type { ArtifactSummary, BackBurnerItemSummary, ExecutionRunSummary, MilestoneSummary } from "../domain/types.js";
+import { listCapabilities } from "../capabilities/registry.js";
+import { listBlogDashboardSites, listBlogReviewItems } from "../capabilities/blogging/repository.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
 import {
   buildStatusReportData,
@@ -42,6 +44,8 @@ export interface DashboardSnapshot {
   projects: DashboardProject[];
   attentionItems: DashboardAttentionItem[];
   activityEvents: DashboardActivityEvent[];
+  capabilities: DashboardCapability[];
+  blogging: DashboardBloggingSnapshot;
   currentMilestones: DashboardMilestone[];
   requiresReviewItems: DashboardReviewItem[];
   backBurnerItems: DashboardBackBurnerItem[];
@@ -54,18 +58,70 @@ export interface DashboardProject {
   name: string;
   mission: string;
   goal: string | null;
+  outcome: string | null;
   status: string;
   statusLabel: string;
   currentMilestone: string | null;
   currentMilestoneId: string | null;
   nextAction: string | null;
   workClassification: string | null;
+  responsibility: string | null;
   workClassificationLabel: string | null;
+  responsibilityLabel: string | null;
   repoPath: string | null;
   statusSummary: string | null;
   validationCommands: string[];
   setupWarnings: string[];
   lastArtifact: DashboardArtifact | null;
+  updatedAt: string;
+}
+
+export interface DashboardCapability {
+  id: string;
+  name: string;
+  version: string;
+  status: "available";
+  dashboardSurfaces: string[];
+}
+
+export interface DashboardBloggingSnapshot {
+  sites: DashboardBlogSite[];
+  reviewItems: DashboardBlogReviewItem[];
+}
+
+export interface DashboardBlogSite {
+  id: string;
+  projectId: string;
+  projectName: string;
+  name: string;
+  streamKey: string;
+  status: string;
+  statusLabel: string;
+  nextScheduledTitle: string | null;
+  nextScheduledFor: string | null;
+  draftsNeedingReview: number;
+  ideasCount: number;
+  postsCount: number;
+  latestArtifactPath: string | null;
+  updatedAt: string;
+}
+
+export interface DashboardBlogReviewItem {
+  kind: "post" | "schedule";
+  id: string;
+  title: string;
+  siteId: string;
+  siteName: string;
+  streamKey: string;
+  projectId: string;
+  projectName: string;
+  status: string;
+  statusLabel: string;
+  artifactId: string | null;
+  artifactPath: string | null;
+  reviewItemId: string;
+  reviewSlug: string | null;
+  decisionNeeded: string;
   updatedAt: string;
 }
 
@@ -77,11 +133,14 @@ export interface DashboardAttentionItem {
   projectId: string | null;
   milestone: string | null;
   goal: string | null;
+  outcome: string | null;
   status: string;
   statusLabel: string;
   reason: string;
   workItemId: string | null;
+  actionId: string | null;
   workItemTitle: string | null;
+  actionTitle: string | null;
   expectedArtifact: string | null;
   targetRepositoryRoot: string | null;
   relatedArtifactId: string | null;
@@ -91,6 +150,8 @@ export interface DashboardAttentionItem {
   validationPath: string | null;
   relatedReviewId: string | null;
   relatedReviewSlug: string | null;
+  relatedDecisionId: string | null;
+  relatedDecisionSlug: string | null;
   relatedRunId: string | null;
   relatedCodexInvocationId: string | null;
   nextAction: string;
@@ -117,8 +178,12 @@ export interface DashboardActivityEvent {
   askId: string | null;
   reviewId: string | null;
   reviewSlug: string | null;
+  decisionId: string | null;
+  decisionSlug: string | null;
   workItemId: string | null;
+  actionId: string | null;
   workItemTitle: string | null;
+  actionTitle: string | null;
   runId: string | null;
   artifactId: string | null;
   artifactPath: string | null;
@@ -168,6 +233,7 @@ export interface DashboardRun {
   updatedAt: string;
   completedAt: string | null;
   workItemTitle: string;
+  actionTitle: string;
   summary: string;
   planSummary: string;
   currentStep: string | null;
@@ -188,6 +254,7 @@ export interface DashboardArtifact {
   projectId: string | null;
   projectName: string | null;
   workItemTitle: string | null;
+  actionTitle: string | null;
   updatedAt: string;
 }
 
@@ -202,6 +269,8 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
     const runs = listExecutionRuns(db, runLimit);
     const currentMilestones = listMilestones(db, { status: "active", limit: milestoneLimit });
     const reviewItems = listActionableReviewItems(db);
+    const bloggingSites = listBlogDashboardSites(db).map(toDashboardBlogSite);
+    const bloggingReviewItems = listBlogReviewItems(db).map(toDashboardBlogReviewItem);
     const attentionItems = buildAttentionItems(db, reviewItems.map(toDashboardReviewItem), runs);
     const activityEvents = buildActivityEvents(db, 30);
     const backBurnerItems = listBackBurnerItems(db, "all").filter((item) =>
@@ -223,14 +292,19 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
         name: project.name,
         mission: project.mission,
         goal: project.goal,
+        outcome: project.outcome ?? project.goal,
         status: project.status,
         statusLabel: labelStatus(project.status),
         currentMilestone: project.current_milestone,
         currentMilestoneId: project.current_milestone_id,
         nextAction: project.next_action,
         workClassification: project.work_classification,
+        responsibility: project.responsibility ?? project.work_classification,
         workClassificationLabel: project.work_classification
           ? labelWorkClassification(project.work_classification)
+          : null,
+        responsibilityLabel: (project.responsibility ?? project.work_classification)
+          ? labelWorkClassification((project.responsibility ?? project.work_classification) as string)
           : null,
         repoPath,
         statusSummary: metadata?.status_summary ?? null,
@@ -260,6 +334,17 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
       projects,
       attentionItems,
       activityEvents,
+      capabilities: listCapabilities().map((module) => ({
+        id: module.id,
+        name: module.name,
+        version: module.version,
+        status: "available",
+        dashboardSurfaces: module.dashboardSurfaces.map((surface) => surface.title)
+      })),
+      blogging: {
+        sites: bloggingSites,
+        reviewItems: bloggingReviewItems
+      },
       currentMilestones: currentMilestones.map(toDashboardMilestone),
       requiresReviewItems: reviewItems.map(toDashboardReviewItem),
       backBurnerItems: backBurnerItems.map(toDashboardBackBurnerItem),
@@ -329,6 +414,7 @@ function toDashboardRun(run: ExecutionRunSummary): DashboardRun {
     updatedAt: run.updated_at,
     completedAt: run.status === "running" ? null : run.updated_at,
     workItemTitle: run.work_item_title,
+    actionTitle: run.work_item_title,
     summary: run.summary,
     planSummary: run.plan_summary,
     currentStep: currentStep?.plan_step_title ?? null,
@@ -351,7 +437,48 @@ function toDashboardArtifact(artifact: ArtifactSummary): DashboardArtifact {
     projectId: artifact.project_id,
     projectName: artifact.project_name,
     workItemTitle: artifact.work_item_title,
+    actionTitle: artifact.work_item_title,
     updatedAt: artifact.updated_at
+  };
+}
+
+function toDashboardBlogSite(site: ReturnType<typeof listBlogDashboardSites>[number]): DashboardBlogSite {
+  return {
+    id: site.id,
+    projectId: site.project_id,
+    projectName: site.project_name,
+    name: site.name,
+    streamKey: site.stream_key,
+    status: site.status,
+    statusLabel: labelStatus(site.status),
+    nextScheduledTitle: site.next_scheduled_title,
+    nextScheduledFor: site.next_scheduled_for,
+    draftsNeedingReview: Number(site.drafts_needing_review),
+    ideasCount: Number(site.ideas_count),
+    postsCount: Number(site.posts_count),
+    latestArtifactPath: site.latest_artifact_path,
+    updatedAt: site.updated_at
+  };
+}
+
+function toDashboardBlogReviewItem(item: ReturnType<typeof listBlogReviewItems>[number]): DashboardBlogReviewItem {
+  return {
+    kind: item.kind,
+    id: item.id,
+    title: item.title,
+    siteId: item.site_id,
+    siteName: item.site_name,
+    streamKey: item.stream_key,
+    projectId: item.project_id,
+    projectName: item.project_name,
+    status: item.status,
+    statusLabel: labelStatus(item.status),
+    artifactId: item.artifact_id,
+    artifactPath: item.artifact_path,
+    reviewItemId: item.review_item_id,
+    reviewSlug: item.review_slug,
+    decisionNeeded: item.decision_needed,
+    updatedAt: item.updated_at
   };
 }
 
@@ -396,11 +523,14 @@ function buildAttentionItems(
       projectId: item.projectId,
       milestone: null,
       goal: item.goal,
+      outcome: item.outcome,
       status: item.status,
       statusLabel: item.statusLabel,
       reason: item.decisionNeeded,
       workItemId: item.workItemId,
+      actionId: item.actionId,
       workItemTitle: getWorkItemTitle(db, item.workItemId),
+      actionTitle: getWorkItemTitle(db, item.actionId),
       expectedArtifact: null,
       targetRepositoryRoot: null,
       relatedArtifactId: null,
@@ -410,6 +540,8 @@ function buildAttentionItems(
       validationPath: null,
       relatedReviewId: item.id,
       relatedReviewSlug: item.slug,
+      relatedDecisionId: item.decisionId,
+      relatedDecisionSlug: item.decisionSlug,
       relatedRunId: null,
       relatedCodexInvocationId: null,
       nextAction: `Review ${item.slug || item.id} and choose Approve, Reject, or Defer.`,
@@ -441,13 +573,16 @@ function buildAttentionItems(
       projectId: packet.project_id,
       milestone: packet.milestone_title,
       goal: packet.project_goal,
+      outcome: packet.project_goal,
       status: packet.status,
       statusLabel: labelStatus(packet.status),
       reason: missingProjectRepositoryPath
         ? MISSING_REPO_PATH_WARNING
         : `Codex ${purposeLabel} packet awaiting review.`,
       workItemId: packet.work_item_id,
+      actionId: packet.work_item_id,
       workItemTitle: packet.work_item_title,
+      actionTitle: packet.work_item_title,
       expectedArtifact: packet.expected_artifact,
       targetRepositoryRoot: packet.target_repository_root,
       relatedArtifactId: packet.artifact_id,
@@ -457,6 +592,8 @@ function buildAttentionItems(
       validationPath,
       relatedReviewId: null,
       relatedReviewSlug: null,
+      relatedDecisionId: null,
+      relatedDecisionSlug: null,
       relatedRunId: packet.run_id,
       relatedCodexInvocationId: packet.id,
       nextAction: missingProjectRepositoryPath
@@ -525,11 +662,14 @@ function buildAttentionItems(
       projectId: run.project_id,
       milestone: null,
       goal: null,
+      outcome: null,
       status: run.status,
       statusLabel: labelStatus(run.status),
       reason: run.status === "failed" ? "Execution run failed." : "Execution run requires review.",
       workItemId: run.work_item_id,
+      actionId: run.work_item_id,
       workItemTitle: run.work_item_title,
+      actionTitle: run.work_item_title,
       expectedArtifact: null,
       targetRepositoryRoot: null,
       relatedArtifactId: run.artifacts[0]?.id ?? null,
@@ -539,6 +679,8 @@ function buildAttentionItems(
       validationPath: run.artifacts.find((artifact) => artifact.artifact_type === "planning_artifact_validation")?.path ?? null,
       relatedReviewId: null,
       relatedReviewSlug: null,
+      relatedDecisionId: null,
+      relatedDecisionSlug: null,
       relatedRunId: run.id,
       relatedCodexInvocationId: null,
       nextAction: dashboardRun.failureReason ?? dashboardRun.reviewReason ?? "Open the run detail and decide the next step.",
@@ -565,11 +707,14 @@ function buildAttentionItems(
       projectId: workItem.project_id,
       milestone: null,
       goal: null,
+      outcome: null,
       status: "blocked",
       statusLabel: "Blocked",
-      reason: "Work item is blocked.",
+      reason: "Action is blocked.",
       workItemId: workItem.id,
+      actionId: workItem.id,
       workItemTitle: workItem.title,
+      actionTitle: workItem.title,
       expectedArtifact: null,
       targetRepositoryRoot: null,
       relatedArtifactId: null,
@@ -579,12 +724,14 @@ function buildAttentionItems(
       validationPath: null,
       relatedReviewId: null,
       relatedReviewSlug: null,
+      relatedDecisionId: null,
+      relatedDecisionSlug: null,
       relatedRunId: null,
       relatedCodexInvocationId: null,
       nextAction: workItem.next_action,
       primaryActions: [
         {
-          label: "View Work",
+          label: "View Actions",
           kind: "command",
           command: `arcadia work list`,
           href: null,
@@ -748,6 +895,7 @@ function listBlockedWorkItems(db: Database.Database): BlockedWorkItemRow[] {
 
 function buildActivityEvents(db: Database.Database, limit: number): DashboardActivityEvent[] {
   const events: DashboardActivityEvent[] = [
+    ...persistedActivityEvents(db),
     ...askActivityEvents(db),
     ...workActivityEvents(db),
     ...reviewActivityEvents(db),
@@ -760,6 +908,76 @@ function buildActivityEvents(db: Database.Database, limit: number): DashboardAct
   return events
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
     .slice(0, limit);
+}
+
+function persistedActivityEvents(db: Database.Database): DashboardActivityEvent[] {
+  const rows = db
+    .prepare(
+      `SELECT
+        e.id,
+        e.event_type,
+        e.source_module,
+        e.project_id,
+        p.name AS project_name,
+        e.work_item_id,
+        wi.title AS work_item_title,
+        e.artifact_id,
+        a.path AS artifact_path,
+        e.review_item_id,
+        ri.slug AS review_slug,
+        e.payload_json,
+        e.created_at
+      FROM events e
+      LEFT JOIN projects p ON p.id = e.project_id
+      LEFT JOIN work_items wi ON wi.id = e.work_item_id
+      LEFT JOIN artifacts a ON a.id = e.artifact_id
+      LEFT JOIN review_items ri ON ri.id = e.review_item_id
+      ORDER BY e.created_at DESC
+      LIMIT 30`
+    )
+    .all() as Array<{
+      id: string;
+      event_type: string;
+      source_module: string | null;
+      project_id: string | null;
+      project_name: string | null;
+      work_item_id: string | null;
+      work_item_title: string | null;
+      artifact_id: string | null;
+      artifact_path: string | null;
+      review_item_id: string | null;
+      review_slug: string | null;
+      payload_json: string;
+      created_at: string;
+    }>;
+
+  return rows.map((row) =>
+    activityEvent({
+      id: `event:${row.id}`,
+      eventType: row.event_type,
+      eventLabel: labelStatus(row.event_type),
+      summary: eventSummary(row),
+      projectId: row.project_id,
+      projectName: row.project_name,
+      workItemId: row.work_item_id,
+      workItemTitle: row.work_item_title,
+      artifactId: row.artifact_id,
+      artifactPath: row.artifact_path,
+      reviewId: row.review_item_id,
+      reviewSlug: row.review_slug,
+      occurredAt: row.created_at
+    })
+  );
+}
+
+function eventSummary(row: { event_type: string; source_module: string | null; payload_json: string }): string {
+  const payload = parsePayload(row.payload_json);
+  const title =
+    stringPayload(payload, "artifactPath") ??
+    stringPayload(payload, "name") ??
+    stringPayload(payload, "streamKey") ??
+    row.event_type;
+  return `${row.source_module ?? "core"}: ${title}`;
 }
 
 function askActivityEvents(db: Database.Database): DashboardActivityEvent[] {
@@ -1174,6 +1392,20 @@ function parseStewardship(raw: string | null): {
   }
 }
 
+function parsePayload(raw: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function stringPayload(payload: Record<string, unknown>, key: string): string | null {
+  const value = payload[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
 function activityEvent(input: Partial<DashboardActivityEvent> & {
   id: string;
   eventType: string;
@@ -1191,8 +1423,12 @@ function activityEvent(input: Partial<DashboardActivityEvent> & {
     askId: input.askId ?? null,
     reviewId: input.reviewId ?? null,
     reviewSlug: input.reviewSlug ?? null,
+    decisionId: input.decisionId ?? input.reviewId ?? null,
+    decisionSlug: input.decisionSlug ?? input.reviewSlug ?? null,
     workItemId: input.workItemId ?? null,
+    actionId: input.actionId ?? input.workItemId ?? null,
     workItemTitle: input.workItemTitle ?? null,
+    actionTitle: input.actionTitle ?? input.workItemTitle ?? null,
     runId: input.runId ?? null,
     artifactId: input.artifactId ?? null,
     artifactPath: input.artifactPath ?? null,

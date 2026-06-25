@@ -38,29 +38,29 @@ export function renderStatusReport(data: StatusReportData): string {
   lines.push("");
   lines.push(renderProjectsWithoutNextAction(data.projects));
   lines.push("");
-  lines.push("## Work By Queue");
+  lines.push("## Actions By Queue");
   lines.push("");
   lines.push(renderQueueGroups(data.queues));
   lines.push("");
-  lines.push("## Work By Classification");
+  lines.push("## Actions By Responsibility");
   lines.push("");
   lines.push("### Requires Review");
   lines.push("");
   lines.push(renderWorkItems(data.needsMarkItems));
   lines.push("");
-  lines.push("### Autonomous Work");
+  lines.push("### Autonomous Actions");
   lines.push("");
   lines.push(renderWorkItems(data.autonomousItems));
   lines.push("");
-  lines.push("### Codex Work");
+  lines.push("### Codex Actions");
   lines.push("");
   lines.push(renderWorkItems(data.codexItems));
   lines.push("");
-  lines.push("## Blocked Work");
+  lines.push("## Blocked Actions");
   lines.push("");
   lines.push(renderBlockedWorkItems(data.blockedItems));
   lines.push("");
-  lines.push("## Recently Completed Work");
+  lines.push("## Recently Completed Actions");
   lines.push("");
   lines.push(renderWorkItems(data.recentlyCompletedWorkItems));
   lines.push("");
@@ -98,12 +98,12 @@ function renderProjectList(projects: ProjectSummary[]): string {
   return projects
     .map((project) => {
       const milestone = project.current_milestone ?? "No active milestone";
-      const goal = project.goal ?? "No goal recorded";
+      const outcome = project.outcome ?? project.goal ?? "No outcome recorded";
       const nextAction = project.next_action ?? "No next action recorded";
       const classification = project.work_classification
         ? WORK_CLASSIFICATION_LABELS[project.work_classification]
         : "Unclassified";
-      return `- **${project.name}** (${project.status}) - goal: ${goal}; milestone: ${milestone}; next: ${nextAction}; work: ${classification}`;
+      return `- **${project.name}** (${project.status}) - outcome: ${outcome}; milestone: ${milestone}; next: ${nextAction}; responsibility: ${classification}`;
     })
     .join("\n");
 }

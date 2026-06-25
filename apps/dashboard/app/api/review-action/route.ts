@@ -23,14 +23,14 @@ export async function POST(request: Request) {
     const executor = typeof body.executor === "string" ? body.executor.trim() : undefined;
 
     if (!id) {
-      return NextResponse.json({ error: "Requires Review item id is required.", details: null }, { status: 400 });
+      return NextResponse.json({ error: "Requires Review Decision id is required.", details: null }, { status: 400 });
     }
 
     if (action === "approve" && execute) {
       const response = await reviewApproveWithExecute({ id, executor });
       const runId = response.data.run?.id ?? null;
       return NextResponse.json({
-        message: `Requires Review ${response.data.result.status}. ${response.data.result.summary}`,
+        message: `Decision ${response.data.result.status}. ${response.data.result.summary}`,
         result: response.data,
         runId
       });
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
     if (action === "approve" || action === "reject" || action === "defer") {
       const response = await runReviewAction({ id, action });
       return NextResponse.json({
-        message: `Requires Review ${response.data.result.status}. ${response.data.result.summary}`,
+        message: `Decision ${response.data.result.status}. ${response.data.result.summary}`,
         result: response.data
       });
     }

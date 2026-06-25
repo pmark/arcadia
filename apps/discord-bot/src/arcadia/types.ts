@@ -30,6 +30,7 @@ export interface WorkItem {
   milestone_id?: string | null;
   queue: string;
   work_classification: string;
+  responsibility?: string;
   next_action: string;
   expected_artifact: string | null;
   status: string;
@@ -176,15 +177,20 @@ export interface AskData {
   codexInvocations: CodexInvocation[];
   run: ExecutionRun | null;
   reviewItemId?: string | null;
+  decisionId?: string | null;
   backBurnerItemId?: string | null;
 }
 
 export interface ReviewItem {
   id: string;
   slug: string;
+  decisionId?: string;
+  decisionSlug?: string;
   workItemId: string | null;
+  actionId?: string | null;
   project: string | null;
   goal: string | null;
+  outcome?: string | null;
   decisionNeeded: string;
   context: string;
   resolvedIntent?: string;

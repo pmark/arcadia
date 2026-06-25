@@ -237,9 +237,9 @@ ${input.request}
 ## Resolved Intent
 - Intent: ${input.resolved.intentId}
 - Output kind: ${input.resolved.outputKind}
-- Work item: ${input.workItem.id}
+- Action: ${input.workItem.id}
 - Plan: ${input.planId}
-- Work classification: ${input.workItem.work_classification}
+- Responsibility: ${input.workItem.work_classification}
 
 ## Target Project Context
 ${projectContext}
@@ -305,7 +305,7 @@ function renderProjectContext(projectContext: ProjectContext | null, workItem: W
   if (!projectContext) {
     return [
       "- Project: Unresolved",
-      `- Work item project: ${workItem.project_id ?? "None"}`,
+      `- Action project: ${workItem.project_id ?? "None"}`,
       `- Milestone: ${workItem.milestone_title ?? "None"}`,
       "- Repository: Workspace scope"
     ].join("\n");
@@ -317,9 +317,9 @@ function renderProjectContext(projectContext: ProjectContext | null, workItem: W
     `- Project: ${projectContext.project.name} (${projectContext.project.id})`,
     `- Project status: ${projectContext.project.status}`,
     `- Mission: ${projectContext.project.mission}`,
-    `- Goal: ${projectContext.project.goal ?? "None"}`,
+    `- Outcome: ${projectContext.project.outcome ?? projectContext.project.goal ?? "None"}`,
     `- Active milestone: ${projectContext.activeMilestone?.title ?? "None"} (${projectContext.activeMilestone?.id ?? "none"})`,
-    `- Work item milestone: ${workItem.milestone_title ?? "None"} (${workItem.milestone_id ?? "none"})`,
+    `- Action milestone: ${workItem.milestone_title ?? "None"} (${workItem.milestone_id ?? "none"})`,
     `- Target repository: ${metadata?.repo_path ?? "Workspace scope"}`,
     `- Project status summary: ${metadata?.status_summary ?? "None"}`,
     `- Validation commands: ${validationCommands.length > 0 ? validationCommands.join(" && ") : "Use existing project validation scripts"}`
@@ -330,7 +330,7 @@ function renderCurrentMilestone(projectContext: ProjectContext | null, workItem:
   if (projectContext?.activeMilestone) {
     return [
       `- Active milestone: ${projectContext.activeMilestone.title} (${projectContext.activeMilestone.id})`,
-      `- Work item milestone: ${workItem.milestone_title ?? "None"} (${workItem.milestone_id ?? "none"})`
+      `- Action milestone: ${workItem.milestone_title ?? "None"} (${workItem.milestone_id ?? "none"})`
     ].join("\n");
   }
 

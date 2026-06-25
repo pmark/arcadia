@@ -390,10 +390,10 @@ export function renderProjectListSuccess(response: CommandSuccess<ProjectListCom
       : "Unclassified";
     lines.push(`${project.name} (${project.status})`);
     lines.push(`  Mission: ${project.mission}`);
-    lines.push(`  Goal: ${project.goal ?? "None"}`);
+    lines.push(`  Outcome: ${project.outcome ?? project.goal ?? "None"}`);
     lines.push(`  Milestone: ${project.current_milestone ?? "None"}`);
     lines.push(`  Next action: ${project.next_action ?? "None"}`);
-    lines.push(`  Work classification: ${classification}`);
+    lines.push(`  Responsibility: ${classification}`);
   }
 
   return lines;
@@ -410,10 +410,10 @@ export function renderProjectShowSuccess(response: CommandSuccess<ProjectShowCom
     `ID: ${project.id}`,
     `Status: ${project.status}`,
     `Mission: ${project.mission}`,
-    `Goal: ${project.goal ?? "None"}`,
+    `Outcome: ${project.outcome ?? project.goal ?? "None"}`,
     `Current milestone: ${project.current_milestone ?? "None"}`,
     `Next action: ${project.next_action ?? "None"}`,
-    `Work classification: ${classification}`,
+    `Responsibility: ${classification}`,
     `Expected artifact: ${project.expected_artifact ?? "None"}`
   ];
 }
@@ -422,9 +422,9 @@ export function renderProjectImportSuccess(response: CommandSuccess<ProjectImpor
   return [
     `Created project: ${response.data.project.name}`,
     `Project: ${response.data.project.id}`,
-    `Goal: ${response.data.project.goal ?? "None"}`,
+    `Outcome: ${response.data.project.goal ?? "None"}`,
     `Milestone: ${response.data.milestone.title}`,
-    `Work item: ${response.data.workItem.id}`
+    `Action: ${response.data.workItem.id}`
   ];
 }
 
@@ -447,7 +447,7 @@ export function renderProjectUpdateSuccess(response: CommandSuccess<ProjectUpdat
     `Updated project: ${response.data.project.name}`,
     `ID: ${response.data.project.id}`,
     `Mission: ${response.data.project.mission}`,
-    `Goal: ${response.data.project.goal ?? "None"}`,
+    `Outcome: ${response.data.project.goal ?? "None"}`,
     `Status: ${response.data.project.status}`
   ];
 }

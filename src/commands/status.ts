@@ -25,6 +25,7 @@ export interface StatusCommandData {
     currentMilestone: string | null;
     nextAction: string | null;
     workClassification: string | null;
+    responsibility: string | null;
   }>;
 }
 
@@ -58,7 +59,8 @@ export function runStatusCommand(options: { workspace: string }): CommandSuccess
         status: project.status,
         currentMilestone: project.current_milestone,
         nextAction: project.next_action,
-      workClassification: project.work_classification
+        workClassification: project.work_classification,
+        responsibility: project.responsibility
       }))
     },
     artifacts: [reportPath]
@@ -79,7 +81,7 @@ export function renderStatusSuccess(response: CommandSuccess<StatusCommandData>)
       lines.push(`- ${project.name} (${project.status})`);
       lines.push(`  Milestone: ${project.currentMilestone ?? "None"}`);
       lines.push(`  Next action: ${project.nextAction ?? "None"}`);
-      lines.push(`  Work classification: ${labelWorkClassification(project.workClassification)}`);
+      lines.push(`  Responsibility: ${labelWorkClassification(project.responsibility ?? project.workClassification)}`);
     }
   }
 

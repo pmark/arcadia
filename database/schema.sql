@@ -318,6 +318,30 @@ CREATE TABLE IF NOT EXISTS codex_tasks (
   FOREIGN KEY (mission_log_id) REFERENCES mission_logs(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS capability_migrations (
+  module_id TEXT NOT NULL,
+  migration_id TEXT NOT NULL,
+  version TEXT NOT NULL,
+  applied_at TEXT NOT NULL,
+  PRIMARY KEY (module_id, migration_id)
+);
+
+CREATE TABLE IF NOT EXISTS events (
+  id TEXT PRIMARY KEY,
+  event_type TEXT NOT NULL,
+  source_module TEXT,
+  project_id TEXT,
+  work_item_id TEXT,
+  artifact_id TEXT,
+  review_item_id TEXT,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+  FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE SET NULL,
+  FOREIGN KEY (artifact_id) REFERENCES artifacts(id) ON DELETE SET NULL,
+  FOREIGN KEY (review_item_id) REFERENCES review_items(id) ON DELETE SET NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_milestones_project_id ON milestones(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_metadata_repo_path ON project_metadata(repo_path);
 CREATE INDEX IF NOT EXISTS idx_work_items_project_id ON work_items(project_id);
@@ -343,5 +367,8 @@ CREATE INDEX IF NOT EXISTS idx_codex_invocations_plan_id ON codex_invocations(pl
 CREATE INDEX IF NOT EXISTS idx_codex_tasks_source_task ON codex_tasks(source, source_task_id);
 CREATE INDEX IF NOT EXISTS idx_codex_tasks_status ON codex_tasks(status);
 CREATE INDEX IF NOT EXISTS idx_codex_tasks_project_id ON codex_tasks(project_id);
+CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);
+CREATE INDEX IF NOT EXISTS idx_events_project_id ON events(project_id);
+CREATE INDEX IF NOT EXISTS idx_events_source_module ON events(source_module);
 
-PRAGMA user_version = 6;
+PRAGMA user_version = 7;

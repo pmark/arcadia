@@ -18,7 +18,12 @@ const PREFIXES = {
   backBurnerItem: "bb",
   approvalGate: "gate",
   codexInvocation: "codex",
-  codexTask: "ctask"
+  codexTask: "ctask",
+  event: "event",
+  blogSite: "bsite",
+  blogIdea: "bidea",
+  blogPost: "bpost",
+  blogSchedule: "bsched"
 } as const;
 
 export type IdKind = keyof typeof PREFIXES;

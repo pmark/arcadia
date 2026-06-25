@@ -306,7 +306,7 @@ describe("discord bot request command", () => {
     ]);
     expect(reply).toContain("**Arcadia request created**");
     expect(reply).toContain("Ask: `ask_1`");
-    expect(reply).toContain("Work item: `work_1`");
+    expect(reply).toContain("Action: `work_1`");
     expect(reply).toContain("Plan: `plan_1`");
     expect(reply).toContain("Run: Not run");
     expect(reply).toContain("Project: Rebuster");
@@ -464,7 +464,7 @@ describe("discord bot end-to-end fixture", () => {
     });
 
     const rebusterReviewId = extractBacktickedValue(rebusterReply, "Requires Review");
-    expect(rebusterReply).toContain("Result: Requires Review item created.");
+    expect(rebusterReply).toContain("Result: Requires Review Decision created.");
     expect(rebusterReply).toContain("Decision: Pinterest posting support for Rebuster.");
 
     const approved = runReviewApproveCommand({ workspace, id: rebusterReviewId, execute: false });
@@ -490,12 +490,14 @@ describe("discord bot end-to-end fixture", () => {
       text: "Prepare a weekly Martian Rover Labs update from recent mission logs.",
       runSafe: true
     });
-    expect(extractBacktickedValue(weeklyReply, "Requires Review")).toMatch(/^review_/);
+    expect(extractBacktickedValue(weeklyReply, "Action")).toMatch(/^work_/);
     expect(weeklyReply).toContain("Stewardship: Project Work -> Clarify First");
-    expect(weeklyReply).toContain("Result: Requires Review item created.");
+    expect(weeklyReply).toContain("Result: Action created.");
+    expect(weeklyReply).toContain("completed");
 
     const submissions = await loadDiscordSubmissionState(discordSubmissionStatePath(workspace));
-    expect(submissions.submittedRunIds).toEqual([]);
+    expect(submissions.submittedRunIds).toHaveLength(1);
+    expect(submissions.submittedRunIds[0]).toMatch(/^run_/);
 
     const [status, review, runs] = await Promise.all([cli.status(), cli.review(), cli.runs(10)]);
     const evaluation = evaluateNotifications({
@@ -573,10 +575,10 @@ describe("discord bot formatters", () => {
     expect(detail).toContain("Actions: approve, reject, defer");
 
     const decision = formatRequiresReviewDecision(sampleReviewDecision());
-    expect(decision).toContain("Requires Review approved");
-    expect(decision).toContain("Review: `R1`");
+    expect(decision).toContain("Decision approved");
+    expect(decision).toContain("Decision: `R1`");
     expect(decision).toContain("Resumed ask: `ask_2`");
-    expect(decision).toContain("Work item: `work_2`");
+    expect(decision).toContain("Action: `work_2`");
   });
 
   it("does not leak internal run status terminology", () => {
@@ -664,7 +666,7 @@ describe("discord review reply handling", () => {
         return askResponse({
           workspace: "/tmp/workspace",
           request,
-          resultSummary: "Requires Review item created.",
+          resultSummary: "Requires Review Decision created.",
           reviewItemId: "review_1"
         });
       }
@@ -682,7 +684,7 @@ describe("discord review reply handling", () => {
       replyReviewId: null,
       sourceIngress: "discord.message"
     });
-    expect(reply).toContain("Result: Requires Review item created.");
+    expect(reply).toContain("Result: Requires Review Decision created.");
   });
 });
 
@@ -948,7 +950,7 @@ function sampleReviewItem(): ReviewItem {
     goal: "Ship Pinterest publishing support.",
     decisionNeeded: "Approve or reject this proposed Arcadia action.",
     context: "CreateWork: Build Pinterest posting support",
-    recommendation: "Approve only if the project, goal, and action match your intent.",
+    recommendation: "Approve only if the project, outcome, and action match your intent.",
     options: ["approve", "reject", "defer"],
     sourceInput: "Build Pinterest posting support for Rebuster.",
     resultingAskRequestId: null
@@ -963,7 +965,7 @@ function sampleReviewDecision(): ReviewDecisionData {
     },
     result: {
       status: "approved",
-      summary: "Work item created."
+      summary: "Action created."
     },
     approval: {
       ask: {
@@ -1281,7 +1283,7 @@ const data = args.includes("show")
         action: "approved",
         selectedOption: "approve",
         feedback: null,
-        result: { status: "approved", summary: "Work item created." },
+        result: { status: "approved", summary: "Action created." },
         approval: null,
         confirmation: "R1 approved. Resuming execution."
       }
@@ -1290,7 +1292,7 @@ const data = args.includes("show")
         item,
         result: {
           status: args.includes("approve") ? "approved" : args.includes("reject") ? "rejected" : "deferred",
-          summary: args.includes("approve") ? "Work item created." : "Decision recorded."
+          summary: args.includes("approve") ? "Action created." : "Decision recorded."
         },
         approval: args.includes("approve") ? { ask: { id: "ask_2" }, workItem: { id: "work_1" } } : null
       }

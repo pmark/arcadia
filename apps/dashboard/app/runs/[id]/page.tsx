@@ -368,7 +368,7 @@ function RunPageShell({ id, children }: { id: string; children: React.ReactNode 
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold uppercase tracking-wide text-moss">Arcadia</p>
-            <h1 className="truncate text-xl font-semibold leading-7">Execution Run</h1>
+            <h1 className="truncate text-xl font-semibold leading-7">Run</h1>
             <p className="truncate font-mono text-xs text-muted">{id}</p>
           </div>
           <Link
@@ -416,7 +416,7 @@ function statusLabel(status: string): string {
     case "completed": return "Completed";
     case "failed": return "Failed";
     case "requires_review": return "Requires Review";
-    case "needs_mark": return "Needs Mark";
+    case "needs_mark": return "Requires Review";
     default: return status;
   }
 }

@@ -72,7 +72,7 @@ export function renderAttentionSuccess(response: CommandSuccess<AttentionCommand
       "",
       `${index + 1}. ${item.reason}`,
       `   Project: ${item.projectName ?? "Unassigned"}`,
-      `   Work item: ${item.workItemTitle ?? item.workItemId ?? "None"}`,
+      `   Action: ${item.workItemTitle ?? item.actionId ?? item.workItemId ?? "None"}`,
       `   Artifact: ${item.relatedArtifactPath ?? item.relatedArtifactTitle ?? "None"}`,
       `   Next action: ${item.nextAction}`,
       `   Actions: ${item.primaryActions.map(renderAttentionAction).join(" | ")}`

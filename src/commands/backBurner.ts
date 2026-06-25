@@ -160,7 +160,7 @@ export function runBackBurnerPromoteCommand(
       workItem: result.workItem,
       result: {
         status: "promoted",
-        summary: "Back Burner item promoted to work item."
+        summary: "Back Burner item promoted to Action."
       }
     }
   });
@@ -190,13 +190,13 @@ export function renderBackBurnerShowSuccess(response: CommandSuccess<BackBurnerS
     "Arcadia Back Burner",
     `ID: ${item.id}`,
     `Status: ${item.status}`,
-    `Classification: ${item.classification}`,
+    `Intake category: ${item.classification}`,
     `Confidence: ${item.confidence.toFixed(2)}`,
     `Ingress source: ${item.ingress_source}`,
     `Original input: ${item.original_input}`,
     `Reason: ${item.reason}`,
     `Suggested next step: ${item.suggested_next_step ?? "None"}`,
-    `Promoted work item: ${item.promoted_work_item_id ?? "None"}`
+    `Promoted Action: ${item.promoted_work_item_id ?? "None"}`
   ];
 }
 
@@ -212,7 +212,7 @@ export function renderBackBurnerPromoteSuccess(response: CommandSuccess<BackBurn
   return [
     "Back Burner item promoted.",
     `ID: ${response.data.item.id}`,
-    `Work item: ${response.data.workItem.id}`,
+    `Action: ${response.data.workItem.id}`,
     `Title: ${response.data.workItem.title}`
   ];
 }

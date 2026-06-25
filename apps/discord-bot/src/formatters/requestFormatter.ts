@@ -26,18 +26,18 @@ export function formatRequest(data: AskData): string {
 
   if (data.workItem) {
     lines.push(
-      `Work item: \`${data.workItem.id}\``,
+      `Action: \`${data.workItem.id}\``,
       `Plan: \`${data.plan?.id ?? "None"}\``,
       runLine,
       `Project: ${data.workItem.project_name ?? "Unresolved"}`,
       `Active milestone: ${data.workItem.milestone_title ?? "None"}`,
-      `Classification: ${labelStatus(data.workItem.work_classification)}`
+      `Responsibility: ${labelStatus(data.workItem.responsibility ?? data.workItem.work_classification)}`
     );
   }
 
   if (!data.workItem && data.reviewItemId) {
     lines.push(
-      `Requires Review: \`${data.reviewItemId}\``,
+      `Requires Review: \`${data.decisionId ?? data.reviewItemId}\``,
       `Decision: ${data.intake?.proposedAction ?? data.result?.summary ?? "Review required"}`
     );
   }
@@ -45,8 +45,8 @@ export function formatRequest(data: AskData): string {
   if (!data.workItem && data.backBurnerItemId) {
     lines.push(
       `Back Burner: \`${data.backBurnerItemId}\``,
-      `Classification: ${data.intake?.classification ?? "IncubatingThought"}`,
-      `Next step: ${data.intake?.suggestedNextStep ?? "Clarify before promoting to work."}`
+      `Intake category: ${data.intake?.classification ?? "IncubatingThought"}`,
+      `Next step: ${data.intake?.suggestedNextStep ?? "Clarify before promoting to an Action."}`
     );
   }
 

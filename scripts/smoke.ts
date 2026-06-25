@@ -6,7 +6,7 @@ import { runCaptureCommand } from "../src/commands/capture.js";
 import { runInboxImportCommand } from "../src/commands/inbox.js";
 import { runMilestoneCompleteCommand, runMilestoneCreateCommand } from "../src/commands/milestone.js";
 import { runProjectUpdateCommand } from "../src/commands/project.js";
-import { runReviewWeeklyCommand } from "../src/commands/review.js";
+import { runReviewApproveCommand, runReviewWeeklyCommand } from "../src/commands/review.js";
 import { runWorkDoneCommand, runWorkPlanCommand, runWorkRunCommand, runWorkUpdateCommand } from "../src/commands/work.js";
 import { runRunShowCommand } from "../src/commands/run.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -165,7 +165,15 @@ const codexAsk = runAskCommand({
   workspace,
   request: "Create a new blog site named MartianRover Field Notes."
 });
-if (codexAsk.data.codexInvocations.length !== 1) {
+if (!codexAsk.data.reviewItemId) {
+  throw new Error("Smoke test expected Phase 3 ask to create a Requires Review item.");
+}
+const approvedCodexAsk = runReviewApproveCommand({
+  workspace,
+  id: codexAsk.data.reviewItemId,
+  execute: false
+});
+if ((approvedCodexAsk.data.approval?.codexInvocations.length ?? 0) !== 1) {
   throw new Error("Smoke test expected Phase 3 ask to create a Codex packet.");
 }
 const paths = getWorkspacePaths(workspace);

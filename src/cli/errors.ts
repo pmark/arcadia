@@ -62,7 +62,7 @@ export function milestoneNotFound(milestoneId: string): ArcadiaError {
 }
 
 export function workItemNotFound(workItemId: string): ArcadiaError {
-  return new ArcadiaError("WORK_ITEM_NOT_FOUND", "Work item not found.", 3, { workItemId });
+  return new ArcadiaError("WORK_ITEM_NOT_FOUND", "Action not found.", 3, { workItemId });
 }
 
 export function artifactNotFound(artifactId: string): ArcadiaError {

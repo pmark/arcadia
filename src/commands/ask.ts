@@ -45,7 +45,7 @@ import { isRequiresReviewValue, type ProjectStatus } from "../domain/constants.j
 import { ensureBuiltInSkills } from "../execution/skills.js";
 import { executePlan } from "../execution/runner.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
-import type { ResolvedIntent } from "../intent/resolver.js";
+import { resolveIntent, type ResolvedIntent } from "../intent/resolver.js";
 import type { IntakeProjectAttribute, IntakeProjectContext, IntakeResult, IntakeWorkspaceContext } from "../intake/index.js";
 import { resolveIntake } from "../intake/index.js";
 import { normalizeAskInput } from "../intake/normalization.js";
@@ -96,6 +96,7 @@ export interface AskCommandData {
   status: StatusCommandData | null;
   review: ReviewRequiredCommandData | null;
   reviewItemId: string | null;
+  decisionId: string | null;
   backBurnerItemId: string | null;
 }
 
@@ -122,12 +123,20 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       workspaceContext
     };
   });
-  const resolved = resolvedIntentForStewardship(
+  const registryResolved = resolveIntent(request, registries);
+  const usingRegistryFallback = intake.resolvedIntent === "CaptureThought" && registryResolved.matched;
+  const preliminaryResolved =
+    usingRegistryFallback
+      ? registryResolved
+      : resolvedIntentFromIntake(intake, approvedFromReview);
+  const resolved = usingRegistryFallback
+    ? registryResolved
+    : resolvedIntentForStewardship(
     intake,
     stewardIntent({
       rawInput: request,
       intake,
-      resolved: resolvedIntentFromIntake(intake, approvedFromReview),
+      resolved: preliminaryResolved,
       workspaceContext,
       approvedFromReview,
       reviewResponseHasReference: parsedReviewResponse.hasReviewReference,
@@ -193,6 +202,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         status: null,
         review: null,
         reviewItemId: reviewResolution.data.item.id,
+        decisionId: reviewResolution.data.item.id,
         backBurnerItemId: null
       },
       artifacts: reviewResolution.artifacts
@@ -234,6 +244,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         status: status.data,
         review: null,
         reviewItemId: null,
+        decisionId: null,
         backBurnerItemId: null
       },
       artifacts: status.artifacts
@@ -262,7 +273,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         resolvedIntent: resolved,
         result: {
           status: "acted",
-          summary: "Requires Review items shown."
+          summary: "Requires Review Decisions shown."
         },
         workItem: null,
         plan: null,
@@ -275,6 +286,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         status: null,
         review: review.data,
         reviewItemId: null,
+        decisionId: null,
         backBurnerItemId: null
       }
     });
@@ -327,6 +339,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         status: null,
         review: null,
         reviewItemId: null,
+        decisionId: null,
         backBurnerItemId: null
       },
       artifacts: created.artifacts
@@ -411,6 +424,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         status: null,
         review: null,
         reviewItemId: null,
+        decisionId: null,
         backBurnerItemId: null
       }
     });
@@ -449,6 +463,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         status: null,
         review: null,
         reviewItemId: null,
+        decisionId: null,
         backBurnerItemId: null
       }
     });
@@ -499,6 +514,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         status: null,
         review: null,
         reviewItemId: null,
+        decisionId: null,
         backBurnerItemId: backBurnerItem.id
       }
     });
@@ -507,6 +523,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   if (
     (stewardship.recommendedExecutionPath === "Clarify First" ||
       stewardship.recommendedExecutionPath === "Requires Review") &&
+    !usingRegistryFallback &&
     !options.approvedReviewItemId
   ) {
     const { ask, reviewItem } = withDatabase(workspacePath, (db) => {
@@ -551,7 +568,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         resolvedIntent: resolved,
         result: {
           status: "requires_review",
-          summary: "Requires Review item created."
+          summary: "Requires Review Decision created."
         },
         workItem: null,
         plan: null,
@@ -564,6 +581,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         status: null,
         review: null,
         reviewItemId: reviewItem.id,
+        decisionId: reviewItem.id,
         backBurnerItemId: null
       }
     });
@@ -672,7 +690,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         resolvedIntent: resolved,
         result: {
           status: "requires_review",
-          summary: "Requires Review item created."
+          summary: "Requires Review Decision created."
         },
         workItem: data.workItem,
         plan: initial.plan,
@@ -685,6 +703,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         status: null,
         review: null,
         reviewItemId: data.reviewItem.id,
+        decisionId: data.reviewItem.id,
         backBurnerItemId: null
       }
     });
@@ -772,7 +791,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       resolvedIntent: resolved,
       result: {
         status: isRequiresReviewValue(resolved.workClassification) ? "requires_review" : "queued",
-        summary: isRequiresReviewValue(resolved.workClassification) ? "Requires Review item created." : "Work item created."
+        summary: isRequiresReviewValue(resolved.workClassification) ? "Requires Review Decision created." : "Action created."
       },
       workItem: data.workItem,
       plan: data.plan,
@@ -785,6 +804,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       status: null,
       review: null,
       reviewItemId: null,
+      decisionId: null,
       backBurnerItemId: null
     },
     artifacts: [
@@ -835,6 +855,7 @@ function actedProjectUpdate(input: {
       status: null,
       review: null,
       reviewItemId: null,
+      decisionId: null,
       backBurnerItemId: null
     }
   });
@@ -890,7 +911,7 @@ const PROJECT_ATTRIBUTE_UPDATE_HANDLERS: Record<IntakeProjectAttribute, ProjectA
 
     const target = listWorkItems(db).find((item) => item.project_id === projectId && item.status !== "done");
     if (!target) {
-      throw validationError("Project has no open work item to hold next action.", { projectId });
+      throw validationError("Project has no open Action to hold next action.", { projectId });
     }
 
     const updated = updateWorkItem(db, target.id, { nextAction: requireAttributeValue(action) });
@@ -946,16 +967,16 @@ export function renderAskSuccess(response: CommandSuccess<AskCommandData>): stri
     `Project: ${response.data.intake.project?.name ?? response.data.workItem?.project_name ?? response.data.project?.name ?? response.data.projectSummary?.name ?? "None"}`,
     `Attribute: ${renderResolvedAttribute(response.data.intake)}`,
     `Value: ${renderResolvedAttributeValue(response.data.intake)}`,
-    `Goal: ${response.data.project?.goal ?? "None"}`,
+    `Outcome: ${response.data.project?.goal ?? "None"}`,
     `Action: ${response.data.intake.proposedAction}`,
     `Result: ${response.data.result.summary}`
   ];
 
   if (response.data.workItem) {
-    lines.push(`Work item: ${response.data.workItem.id}`);
+    lines.push(`Action: ${response.data.workItem.id}`);
     lines.push(`Plan: ${response.data.plan?.id ?? "None"}`);
     lines.push(`Queue: ${isRequiresReviewValue(response.data.workItem.queue) ? "requires_review" : response.data.workItem.queue}`);
-    lines.push(`Work classification: ${labelWorkClassification(response.data.workItem.work_classification)}`);
+    lines.push(`Responsibility: ${labelWorkClassification(response.data.workItem.work_classification)}`);
   }
 
   if (response.data.reviewItemId) {
@@ -1253,6 +1274,7 @@ function ignoredAskData(rawRequest: string): AskCommandData {
     status: null,
     review: null,
     reviewItemId: null,
+    decisionId: null,
     backBurnerItemId: null
   };
 }
@@ -1350,7 +1372,7 @@ function recommendationForIntake(intake: IntakeResult): string {
   }
 
   if (!intake.safeToExecute) {
-    return "Approve only if the project, goal, and action match your intent.";
+    return "Approve only if the project, outcome, and action match your intent.";
   }
 
   return "Review the proposed action before execution.";

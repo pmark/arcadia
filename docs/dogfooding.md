@@ -29,10 +29,10 @@ pnpm arcadia dogfood init
 Both commands initialize the workspace with the normal Arcadia workspace logic and create or update the Arcadia project:
 
 - Mission: Build Arcadia into a local-first mission control system for sustaining progress across a portfolio of creative and software projects.
-- Goal: Manage Arcadia development through the same workspace model used for every other project.
+- Outcome: Manage Arcadia development through the same workspace model used for every other project.
 - Status: Active.
 - Current milestone: Unify Arcadia onto the single workspace model.
-- Next action: Use Arcadia ask to create and run Arcadia development work items.
+- Next action: Use Arcadia ask to create and run Arcadia development Actions.
 
 It also records a mission log explaining that Arcadia is managed as a project in the workspace. Initialization is idempotent.
 
@@ -41,16 +41,16 @@ It also records a mission log explaining that Arcadia is managed as a project in
 Run:
 
 ```sh
-pnpm arcadia ask --workspace .arcadia-workspace "Create a work item for implementing Discord notifications."
+pnpm arcadia ask --workspace .arcadia-workspace "Create an Action for implementing Discord notifications."
 ```
 
 The compatibility shortcut is:
 
 ```sh
-pnpm arcadia dogfood ask "Create a work item for implementing Discord notifications."
+pnpm arcadia dogfood ask "Create an Action for implementing Discord notifications."
 ```
 
-`dogfood ask` is a thin wrapper around `arcadia ask`: it supplies `.arcadia-workspace/` as the workspace, then routes the request through Arcadia Intake before ask creates work items, updates project state, shows status, or surfaces Requires Review packets. Project routing is the same as the generic ask command: explicit project flags and project names win, and a workspace with exactly one active project uses that project by default.
+`dogfood ask` is a thin wrapper around `arcadia ask`: it supplies `.arcadia-workspace/` as the workspace, then routes the request through Arcadia Intake before ask creates Actions, updates project state, shows status, or surfaces Requires Review packets. Project routing is the same as the generic ask command: explicit project flags and project names win, and a workspace with exactly one active project uses that project by default.
 
 When emitted as JSON, compatibility shortcuts report their `dogfood.*` command name while keeping the same data shape as the generic command.
 
@@ -64,17 +64,17 @@ iCloud ingress processes request files from a local iCloud-style inbox and write
 
 Repo-local self-management is direct local CLI usage. It does not depend on Discord, iCloud folders, polling, bot credentials, notification delivery, or remote services.
 
-## Goals
+## Outcomes
 
-Project goals are plain text outcomes currently being pursued. Arcadia keeps the mission as the reason a project exists, and the goal as the concrete outcome currently in focus. Goals appear in project status views and Codex planning context when available. Missing goals are allowed for older workspaces and are shown as `None`.
+Project outcomes are plain text results currently being pursued. Arcadia keeps the mission as the reason a project exists, and the outcome as the concrete result currently in focus. Outcomes appear in project status views and Codex planning context when available. Missing outcomes are allowed for older workspaces and are shown as `None`.
 
-Arcadia intentionally does not add OKRs, KPIs, scorecards, or goal analytics.
+Arcadia intentionally does not add OKRs, KPIs, scorecards, or outcome analytics.
 
 ## Recommended Workflow
 
 1. Initialize a workspace with `pnpm arcadia init <workspace> --profile arcadia`.
 2. Issue natural-language requests with `pnpm arcadia ask --workspace <workspace> "..."`.
-3. Review status, artifacts, mission logs, and Requires Review items in that workspace.
+3. Review status, artifacts, mission logs, and Requires Review Decisions in that workspace.
 
 Examples:
 

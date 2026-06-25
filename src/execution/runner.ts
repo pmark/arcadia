@@ -94,7 +94,7 @@ export function executePlan(
 ): ExecutionResult {
   const workItem = getWorkItem(db, plan.work_item_id);
   if (!workItem) {
-    throw new Error(`Work item is required: ${plan.work_item_id}`);
+    throw new Error(`Action is required: ${plan.work_item_id}`);
   }
 
   const stepResults: RunStepInput[] = [];
@@ -201,7 +201,7 @@ export function executePlan(
   });
 
   if (!run) {
-    throw new Error("Execution run could not be created.");
+    throw new Error("Run could not be created.");
   }
 
   for (const invocationId of completedCodexInvocationIds) {
@@ -221,14 +221,14 @@ export function executePlan(
     updateWorkItem(db, workItem.id, {
       queue: "requires_review",
       workClassification: "requires_review",
-      nextAction: "Review the execution run and provide the required input."
+      nextAction: "Review the run and provide the required input."
     });
   } else {
     updateWorkItem(db, workItem.id, {
       queue: "blocked",
       workClassification: "blocked",
       status: "blocked",
-      nextAction: "Review the failed execution run."
+      nextAction: "Review the failed run."
     });
   }
 
@@ -682,7 +682,7 @@ function createRunMissionLog(
     nextAction: nextActionForRunStatus(runStatus),
     artifactImpact: artifacts.length > 0
       ? artifacts.map((artifact) => artifact.path ?? artifact.title).join(", ")
-      : "Execution run recorded.",
+      : "Run recorded.",
     markdownPath
   });
   writeMissionLogMarkdown(workspace, { missionLog, project, milestone });
@@ -722,7 +722,7 @@ function nextActionForRunStatus(status: "completed" | "requires_review" | "faile
     return "Review the run and provide the required input.";
   }
 
-  return "Inspect the failed run record and decide whether to retry or revise the work item.";
+  return "Inspect the failed run record and decide whether to retry or revise the Action.";
 }
 
 function addDays(date: Date, days: number): Date {

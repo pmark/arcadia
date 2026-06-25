@@ -635,8 +635,8 @@ describe("arcadia ask command", () => {
 
     const approved = runReviewApproveCommand({ workspace, id: asked.data.reviewItemId, execute: false });
 
-    expect(approved.data.result.summary).toContain("Work item created.");
-    expect(approved.data.result.summary).toContain("Execution pending as Requires Review item");
+    expect(approved.data.result.summary).toContain("Action created.");
+    expect(approved.data.result.summary).toContain("Run pending as Requires Review Decision");
     expect(approved.data.approval?.workItem?.queue).toBe("work_queue");
     expect(approved.data.approval?.workItem?.work_classification).toBe("codex");
     expect(approved.data.approval?.reviewItemId).toBeNull();
@@ -727,9 +727,9 @@ describe("arcadia ask command", () => {
     const prompt = readFileSync(path.join(workspace, result.codexInvocations[0].prompt_path), "utf8");
     expect(prompt).toContain("## Target Project Context");
     expect(prompt).toContain("Project: Rebuster");
-    expect(prompt).toContain("Goal: Ship Pinterest publishing support.");
+    expect(prompt).toContain("Outcome: Ship Pinterest publishing support.");
     expect(prompt).toContain("Active milestone: Pinterest publishing support");
-    expect(prompt).toContain("Work item milestone: Pinterest publishing support");
+    expect(prompt).toContain("Action milestone: Pinterest publishing support");
     expect(prompt).toContain(`Target repository: ${repo}`);
     expect(prompt).toContain("Project status summary: Active product repository with posting automation work in scope.");
     expect(prompt).toContain("Validation commands: pnpm test && pnpm lint");

@@ -7,6 +7,7 @@ import {
   ActivityRow,
   ArtifactRow,
   AttentionCard,
+  BloggingPanel,
   EmptyState,
   ErrorState,
   LoadingState,
@@ -155,6 +156,10 @@ export default function MissionControlPage() {
             )}
           </Section>
 
+          <Section title="Blogging">
+            <BloggingPanel blogging={snapshot.blogging} />
+          </Section>
+
           <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <Section title="Current Milestones">
               {snapshot.currentMilestones.length > 0 ? (
@@ -176,7 +181,7 @@ export default function MissionControlPage() {
                   ))}
                 </div>
               ) : (
-                <EmptyState text="No execution runs yet." />
+                <EmptyState text="No runs yet." />
               )}
             </Section>
           </div>

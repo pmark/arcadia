@@ -17,7 +17,7 @@ Use this when starting an Arcadia work session.
 Prompt:
 
 ```text
-Use the arcadia-workspace-operator skill. Initialize or refresh `.arcadia-workspace` with the Arcadia profile, then tell me the current milestone, next action, work classification, required artifacts, open queues, and any Requires Review items.
+Use the arcadia-workspace-operator skill. Initialize or refresh `.arcadia-workspace` with the Arcadia profile, then tell me the current milestone, next action, responsibility, required artifacts, open queues, and any Requires Review Decisions.
 ```
 
 Expected commands:
@@ -33,19 +33,19 @@ Good output should answer:
 
 - Current milestone
 - Next action
-- Work classification
+- Responsibility
 - Required artifacts
 - Requires Review count and items
 - Whether `.arcadia-workspace/` is still Git-ignored
 
-## Create A New Arcadia Development Work Item
+## Create A New Arcadia Development Action
 
 Use this when you have an idea but do not want Codex to implement it immediately.
 
 Prompt:
 
 ```text
-Use the arcadia-workspace-operator skill. In `.arcadia-workspace`, create an ask for: Add a command that lists stale projects with no open next action. Do not implement yet. Report the work item, plan, artifacts, and whether it requires review.
+Use the arcadia-workspace-operator skill. In `.arcadia-workspace`, create an ask for: Add a command that lists stale projects with no open next action. Do not implement yet. Report the Action, plan, artifacts, and whether it requires review.
 ```
 
 Expected command:
@@ -57,10 +57,10 @@ pnpm arcadia ask --workspace .arcadia-workspace "Add a command that lists stale 
 Good output should include:
 
 - Ask id
-- Work item id
+- Action id
 - Plan id
 - Queue
-- Work classification
+- Responsibility
 - Prompt packet or artifact paths
 - Requires Review status
 
@@ -93,7 +93,7 @@ Good final report should include:
 - Tests performed and results
 - Current milestone
 - Next action
-- Work classification
+- Responsibility
 - Required artifacts
 
 ## Get Workspace Status
@@ -103,7 +103,7 @@ Use this for any Arcadia workspace, not just `.arcadia-workspace`.
 Prompt:
 
 ```text
-Use the arcadia-workspace-operator skill. Inspect `/path/to/workspace` and summarize project goals, current milestones, next actions, queued work, artifacts, mission logs, and Requires Review items. Do not modify anything.
+Use the arcadia-workspace-operator skill. Inspect `/path/to/workspace` and summarize project outcomes, current milestones, next actions, queued Actions, artifacts, mission logs, and Requires Review Decisions. Do not modify anything.
 ```
 
 Expected commands:
@@ -118,44 +118,44 @@ pnpm arcadia run list --workspace /path/to/workspace --json
 For Arcadia itself, point the same workflow at `.arcadia-workspace` or any other workspace initialized with `--profile arcadia`:
 
 ```text
-Use the arcadia-workspace-operator skill. Inspect `.arcadia-workspace` and summarize project goals, current milestones, next actions, queued work, artifacts, mission logs, and Requires Review items. Do not modify anything.
+Use the arcadia-workspace-operator skill. Inspect `.arcadia-workspace` and summarize project outcomes, current milestones, next actions, queued Actions, artifacts, mission logs, and Requires Review Decisions. Do not modify anything.
 ```
 
-## Update A Project Goal
+## Update A Project Outcome
 
 Use this when the outcome changes but the project mission remains stable.
 
 Prompt:
 
 ```text
-Use the arcadia-workspace-operator skill. In `.arcadia-workspace`, update the Arcadia project goal to: Manage Arcadia development through the same workspace model used for every other project. Then show the project detail.
+Use the arcadia-workspace-operator skill. In `.arcadia-workspace`, update the Arcadia project outcome to: Manage Arcadia development through the same workspace model used for every other project. Then show the project detail.
 ```
 
 Expected commands:
 
 ```sh
 pnpm arcadia project list --workspace .arcadia-workspace --json
-pnpm arcadia project update <project-id> --workspace .arcadia-workspace --goal "Manage Arcadia development through the same workspace model used for every other project." --json
+pnpm arcadia project update <project-id> --workspace .arcadia-workspace --outcome "Manage Arcadia development through the same workspace model used for every other project." --json
 pnpm arcadia project show <project-id> --workspace .arcadia-workspace --json
 ```
 
 Good output should confirm:
 
 - Mission
-- Goal
+- Outcome
 - Status
 - Current milestone
 - Next action
 - Required artifacts
 
-## Review Requires Review Items
+## Review Requires Review Decisions
 
 Use this when you want decisions, approvals, or blocked human review surfaced cleanly.
 
 Prompt:
 
 ```text
-Use the arcadia-workspace-operator skill. Show only Arcadia items in `.arcadia-workspace` that require review. For each item, include the project, milestone, reason, next action, artifact path if any, and the exact command I can run next.
+Use the arcadia-workspace-operator skill. Show only Arcadia Decisions in `.arcadia-workspace` that require review. For each Decision, include the project, milestone, reason, next action, artifact path if any, and the exact command I can run next.
 ```
 
 Expected commands:
@@ -196,7 +196,7 @@ Use this when reviewing recent work and deciding what to do next.
 Prompt:
 
 ```text
-Use the arcadia-workspace-operator skill. Create a weekly review for `.arcadia-workspace` for this week. Summarize completed work, mission logs, blocked work, Requires Review items, and the top three next actions.
+Use the arcadia-workspace-operator skill. Create a weekly review for `.arcadia-workspace` for this week. Summarize completed Actions, mission logs, blocked Actions, Requires Review Decisions, and the top three next actions.
 ```
 
 Expected command:
@@ -207,9 +207,9 @@ pnpm arcadia review weekly --workspace .arcadia-workspace --json
 
 Good output should separate:
 
-- Completed work
+- Completed Actions
 - Mission logs
-- Blocked work
+- Blocked Actions
 - Requires Review
 - Suggested next actions
 
@@ -220,14 +220,14 @@ Use this when the idea needs sharpening before implementation.
 Prompt:
 
 ```text
-Use the arcadia-workspace-operator skill. I have a vague idea: Arcadia should be better at telling me what to do next. Convert that into one concrete ask in `.arcadia-workspace`, issue it, and report the resulting work item and expected artifact. Do not implement.
+Use the arcadia-workspace-operator skill. I have a vague idea: Arcadia should be better at telling me what to do next. Convert that into one concrete ask in `.arcadia-workspace`, issue it, and report the resulting Action and expected artifact. Do not implement.
 ```
 
 Expected behavior:
 
 1. Rewrite the vague idea into a concrete request.
 2. Run `pnpm arcadia ask --workspace .arcadia-workspace "<concrete request>" --json`.
-3. Report the ask id, work item id, plan id, next action, and required artifact.
+3. Report the ask id, Action id, plan id, next action, and required artifact.
 
 ## Continue Existing Arcadia Work
 
@@ -258,7 +258,7 @@ Use this only to verify the repo-local compatibility shortcuts.
 Prompt:
 
 ```text
-Use the arcadia-dogfood-workflow skill. Audit whether the `.arcadia-workspace/` compatibility workflow is set up correctly. Verify `.arcadia-workspace/` is ignored, the Arcadia project is Active, the mission and goal are present, there is an active milestone, there is an open next action, and the compatibility ask shortcut works without Discord, iCloud, servers, or external services.
+Use the arcadia-dogfood-workflow skill. Audit whether the `.arcadia-workspace/` compatibility workflow is set up correctly. Verify `.arcadia-workspace/` is ignored, the Arcadia project is Active, the mission and outcome are present, there is an active milestone, there is an open next action, and the compatibility ask shortcut works without Discord, iCloud, servers, or external services.
 ```
 
 Expected commands:
@@ -267,7 +267,7 @@ Expected commands:
 git check-ignore -v .arcadia-workspace/
 pnpm arcadia dogfood init --json
 pnpm arcadia project list --workspace .arcadia-workspace --json
-pnpm arcadia dogfood ask "Create a small audit work item to verify dogfood ask routing." --json
+pnpm arcadia dogfood ask "Create a small audit Action to verify dogfood ask routing." --json
 ```
 
 Good output should classify every requirement as:
@@ -298,11 +298,11 @@ Use arcadia-workspace-operator. Show status for <workspace>. Do not modify anyth
 ```
 
 ```text
-Use arcadia-workspace-operator. Update the goal for <project> in <workspace> to: <goal>.
+Use arcadia-workspace-operator. Update the outcome for <project> in <workspace> to: <outcome>.
 ```
 
 ```text
-Use arcadia-workspace-operator. Show Requires Review items in <workspace> only.
+Use arcadia-workspace-operator. Show Requires Review Decisions in <workspace> only.
 ```
 
 ## What To Expect From Codex
@@ -313,7 +313,7 @@ For Arcadia work, expect every substantial response to identify:
 
 - Current milestone
 - Next action
-- Work classification
+- Responsibility
 - Required artifacts
 
 For implementation work, expect:
@@ -321,4 +321,4 @@ For implementation work, expect:
 - Workspace ask created or referenced
 - Files changed
 - Tests run
-- Remaining Requires Review items or blockers
+- Remaining Requires Review Decisions or blockers

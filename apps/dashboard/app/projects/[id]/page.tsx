@@ -148,8 +148,8 @@ export default function ProjectDetailsPage() {
               <ReadOnlyField label="Repository" value={project.repoPath ?? "Not configured"} />
               <ReadOnlyField label="Current Milestone" value={project.currentMilestone ?? "None"} />
               <ReadOnlyField label="Next Action" value={project.nextAction ?? "None"} />
-              <ReadOnlyField label="Work Classification" value={project.workClassificationLabel ?? "None"} />
-              <ReadOnlyField label="Goal" value={project.goal ?? "None"} />
+              <ReadOnlyField label="Responsibility" value={project.responsibilityLabel ?? project.workClassificationLabel ?? "None"} />
+              <ReadOnlyField label="Outcome" value={project.outcome ?? project.goal ?? "None"} />
               <ReadOnlyField label="Last Artifact" value={project.lastArtifact?.title ?? "None"} />
             </dl>
           </section>
@@ -238,7 +238,7 @@ export default function ProjectDetailsPage() {
                     ))}
                   </div>
                 ) : (
-                  <EmptyState text="No project Requires Review items." />
+                  <EmptyState text="No project Requires Review Decisions." />
                 )}
               </Section>
 

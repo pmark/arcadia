@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   Archive,
+  BookOpenText,
   CheckCircle2,
   Circle,
   Clock3,
@@ -18,6 +19,7 @@ import type {
   DashboardAttentionItem,
   DashboardActivityEvent,
   DashboardBackBurnerItem,
+  DashboardBloggingSnapshot,
   DashboardMilestone,
   DashboardProject,
   DashboardReviewItem,
@@ -118,7 +120,7 @@ export function ProjectCard({ project }: { project: DashboardProject }) {
       ) : null}
       <dl className="mt-4 grid gap-3 text-sm">
         <Field label="Repository" value={project.repoPath ?? "Not configured"} />
-        <Field label="Goal" value={project.goal ?? "None"} />
+        <Field label="Outcome" value={project.outcome ?? project.goal ?? "None"} />
         <Field label="Current Milestone" value={project.currentMilestone ?? "None"} />
         <Field label="Next Action" value={project.nextAction ?? "None"} />
         <Field label="Last Artifact" value={project.lastArtifact?.title ?? "None"} />
@@ -160,10 +162,10 @@ export function AttentionCard({
           </div>
           <dl className="mt-4 grid gap-3 text-sm">
             {item.milestone ? <Field label="Milestone" value={item.milestone} /> : null}
-            {item.goal ? <Field label="Goal" value={item.goal} /> : null}
+            {item.outcome ? <Field label="Outcome" value={item.outcome} /> : null}
             {item.targetRepositoryRoot ? <Field label="Target Repository Root" value={item.targetRepositoryRoot} /> : null}
             {item.expectedArtifact ? <Field label="Expected Artifact" value={item.expectedArtifact} /> : null}
-            <Field label="Related Work" value={item.workItemTitle ?? item.workItemId ?? "None"} />
+            <Field label="Related Action" value={item.actionTitle ?? item.workItemTitle ?? item.actionId ?? item.workItemId ?? "None"} />
             <Field label="Related Artifact" value={item.relatedArtifactPath ?? item.relatedArtifactTitle ?? "None"} />
             {item.finalArtifactPath ? <Field label="Final Artifact" value={item.finalArtifactPath} /> : null}
             {item.validationPath ? <Field label="Validation" value={item.validationPath} /> : null}
@@ -325,8 +327,8 @@ export function BackBurnerCard({
       <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"
-          title="Promote to work item"
-          aria-label="Promote to work item"
+          title="Promote to Action"
+          aria-label="Promote to Action"
           onClick={() => onPromote?.(item)}
           disabled={!onPromote || Boolean(pendingAction)}
           className="inline-flex min-h-10 items-center gap-2 rounded-md border border-moss/30 bg-moss/10 px-3 text-sm font-semibold text-moss transition hover:border-moss disabled:cursor-not-allowed disabled:opacity-60"
@@ -347,6 +349,54 @@ export function BackBurnerCard({
         </button>
       </div>
     </article>
+  );
+}
+
+export function BloggingPanel({ blogging }: { blogging: DashboardBloggingSnapshot }) {
+  return (
+    <div className="grid min-w-0 gap-3">
+      {blogging.sites.length === 0 ? (
+        <EmptyState text="No blog sites configured." />
+      ) : (
+        <div className="grid min-w-0 gap-3 md:grid-cols-2">
+          {blogging.sites.slice(0, 4).map((site) => (
+            <article key={site.id} className="min-w-0 rounded-md border border-line bg-panel p-4 shadow-soft">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="break-words text-base font-semibold leading-6">{site.name}</h3>
+                  <p className="mt-1 break-words text-sm text-muted">{site.projectName}</p>
+                </div>
+                <StatusBadge status={site.status} label={site.statusLabel} />
+              </div>
+              <dl className="mt-4 grid gap-3 text-sm">
+                <Field label="Stream" value={site.streamKey} />
+                <Field label="Next Scheduled" value={site.nextScheduledTitle ?? "None"} />
+        <Field label="Needs Decision" value={String(site.draftsNeedingReview)} />
+                <Field label="Ideas" value={String(site.ideasCount)} />
+                <Field label="Posts" value={String(site.postsCount)} />
+                <Field label="Latest Artifact" value={site.latestArtifactPath ?? "None"} />
+              </dl>
+            </article>
+          ))}
+        </div>
+      )}
+      {blogging.reviewItems.length > 0 ? (
+        <div className="grid min-w-0 gap-3">
+          {blogging.reviewItems.slice(0, 4).map((item) => (
+            <div key={`${item.kind}:${item.id}`} className="flex min-w-0 items-start gap-3 rounded-md border border-line bg-panel p-3 shadow-soft">
+              <BookOpenText className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold">{item.title}</div>
+                <div className="mt-1 truncate text-xs text-muted">
+                  {item.siteName} · {item.reviewSlug ?? item.reviewItemId}
+                </div>
+                {item.artifactPath ? <div className="mt-1 truncate font-mono text-xs text-muted">{item.artifactPath}</div> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -381,7 +431,7 @@ export function RunCard({ run }: { run: DashboardRun }) {
           }
         />
         {run.failureReason ? <Field label="Failure Reason" value={run.failureReason} /> : null}
-        {run.reviewReason ? <Field label="Review Reason" value={run.reviewReason} /> : null}
+        {run.reviewReason ? <Field label="Decision Reason" value={run.reviewReason} /> : null}
       </dl>
     </article>
   );

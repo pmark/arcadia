@@ -23,6 +23,7 @@ export interface Project {
   slug: string;
   mission: string;
   goal: string | null;
+  outcome?: string | null;
   status: ProjectStatus;
   created_at: string;
   updated_at: string;
@@ -65,6 +66,7 @@ export interface WorkItem {
   raw_input: string;
   queue: QueueName;
   work_classification: WorkClassification;
+  responsibility?: WorkClassification;
   next_action: string;
   expected_artifact: string | null;
   status: WorkItemStatus;
@@ -298,16 +300,19 @@ export interface CodexTaskSummary extends CodexTask {
 }
 
 export interface ProjectSummary extends Project {
+  outcome: string | null;
   current_milestone: string | null;
   current_milestone_id: string | null;
   next_action: string | null;
   work_classification: WorkClassification | null;
+  responsibility: WorkClassification | null;
   expected_artifact: string | null;
 }
 
 export interface WorkItemSummary extends WorkItem {
   project_name: string | null;
   milestone_title: string | null;
+  responsibility: WorkClassification;
 }
 
 export interface ExecutionPlanStepSummary extends ExecutionPlanStep {
@@ -351,6 +356,7 @@ export interface AskRequestSummary extends AskRequest {
 export interface ReviewItemSummary extends ReviewItem {
   project_name: string | null;
   project_goal: string | null;
+  project_outcome: string | null;
   work_item_title: string | null;
   plan_summary: string | null;
   resulting_ask_work_item_title: string | null;

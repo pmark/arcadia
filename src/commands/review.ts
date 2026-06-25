@@ -33,10 +33,14 @@ import { runAskCommand, type AskCommandData } from "./ask.js";
 export interface RequiresReviewPacket {
   id: string;
   slug: string;
+  decisionId: string;
+  decisionSlug: string;
   workItemId: string | null;
+  actionId: string | null;
   projectId: string | null;
   project: string | null;
   goal: string | null;
+  outcome: string | null;
   status: ReviewItemSummary["status"];
   category: string;
   resolvedIntent: string;
@@ -182,7 +186,7 @@ export function runReviewShowCommand(
     if (reviewItem) {
       return reviewPacketForReviewItem(reviewItem);
     }
-    throw validationError("Requires Review item was not found.", { id: options.id });
+    throw validationError("Requires Review Decision was not found.", { id: options.id });
   });
 
   return createSuccess({
@@ -206,12 +210,12 @@ export function runReviewResolveReplyCommand(
         ? getReviewItemBySlug(db, parsed.reviewSlug)
         : null;
     if (!item) {
-      throw validationError("Requires Review item was not found.", {
+      throw validationError("Requires Review Decision was not found.", {
         id: options.id ?? parsed.reviewId ?? parsed.reviewSlug ?? null
       });
     }
     if (item.status !== "open" && item.status !== "deferred") {
-      throw validationError("Requires Review item is already decided.", { id: item.id, status: item.status });
+      throw validationError("Requires Review Decision is already decided.", { id: item.id, status: item.status });
     }
     return item;
   });
@@ -291,10 +295,10 @@ export function runReviewApproveCommand(
   const reviewItem = withDatabase(workspacePath, (db) => {
     const item = getReviewItemByIdOrSlug(db, options.id);
     if (!item) {
-      throw validationError("Requires Review item was not found.", { id: options.id });
+      throw validationError("Requires Review Decision was not found.", { id: options.id });
     }
     if (item.status !== "open" && item.status !== "deferred") {
-      throw validationError("Requires Review item is already decided.", { id: item.id, status: item.status });
+      throw validationError("Requires Review Decision is already decided.", { id: item.id, status: item.status });
     }
     return item;
   });
@@ -305,7 +309,7 @@ export function runReviewApproveCommand(
     approvedReviewItemId: reviewItem.id
   });
   if (!approval.data.ask) {
-    throw validationError("Approved Requires Review item did not produce an ask request.", { id: reviewItem.id });
+    throw validationError("Approved Requires Review Decision did not produce an ask request.", { id: reviewItem.id });
   }
   const approvalAskId = approval.data.ask.id;
 
@@ -316,7 +320,7 @@ export function runReviewApproveCommand(
       resultingAskRequestId: approvalAskId
     });
     if (!item) {
-      throw validationError("Requires Review item was not found.", { id: reviewItem.id });
+      throw validationError("Requires Review Decision was not found.", { id: reviewItem.id });
     }
     return {
       updated: item,
@@ -331,7 +335,7 @@ export function runReviewApproveCommand(
       item: reviewPacketForReviewItem(updated),
       result: {
         status: "approved",
-        summary: `${approval.data.result.summary} Execution pending as Requires Review item ${pendingExecutionReview.slug ?? pendingExecutionReview.id}.`
+        summary: `${approval.data.result.summary} Run pending as Requires Review Decision ${pendingExecutionReview.slug ?? pendingExecutionReview.id}.`
       },
       approval: approval.data,
       execution: null,
@@ -348,10 +352,10 @@ function runReviewApproveExecuteCommand(
   const { run, review } = withDatabase(options.workspace, (db) => {
     const reviewItem = getReviewItem(db, options.id) ?? getReviewItemBySlug(db, options.id);
     if (!reviewItem) {
-      throw validationError("Requires Review item was not found.", { id: options.id });
+      throw validationError("Requires Review Decision was not found.", { id: options.id });
     }
     if (reviewItem.status !== "open" && reviewItem.status !== "deferred") {
-      throw validationError("Requires Review item is already decided.", { id: reviewItem.id, status: reviewItem.status });
+      throw validationError("Requires Review Decision is already decided.", { id: reviewItem.id, status: reviewItem.status });
     }
 
     // Validate repo path upfront so the user gets an error immediately, not when the worker runs.
@@ -483,7 +487,7 @@ export function renderReviewWeeklySuccess(response: CommandSuccess<ReviewWeeklyC
 }
 
 export function renderReviewRequiredSuccess(response: CommandSuccess<ReviewRequiredCommandData>): string[] {
-  const lines = ["Arcadia Requires Review", `Items: ${response.data.count}`];
+  const lines = ["Arcadia Requires Review", `Decisions: ${response.data.count}`];
   if (response.data.items.length === 0) {
     lines.push("None");
     return lines;
@@ -493,7 +497,7 @@ export function renderReviewRequiredSuccess(response: CommandSuccess<ReviewRequi
     lines.push("");
     lines.push(`- ${item.id}: ${item.context}`);
     lines.push(`  Project: ${item.project ?? "None"}`);
-    lines.push(`  Goal: ${item.goal ?? "None"}`);
+    lines.push(`  Outcome: ${item.outcome ?? "None"}`);
     lines.push(`  Decision needed: ${item.decisionNeeded}`);
     lines.push(`  Recommendation: ${item.recommendation ?? "Clarify the request before execution."}`);
     lines.push(`  Options: ${item.options.join("; ")}`);
@@ -510,7 +514,7 @@ export function renderReviewShowSuccess(response: CommandSuccess<ReviewShowComma
     `ID: ${item.id}`,
     `Slug: ${item.slug}`,
     `Project: ${item.project ?? "None"}`,
-    `Project goal: ${item.goal ?? "None"}`,
+    `Project outcome: ${item.outcome ?? "None"}`,
     `Decision needed: ${item.decisionNeeded}`,
     `Recommendation: ${item.recommendation ?? "Clarify the request before execution."}`,
     `Source input: ${item.sourceInput}`,
@@ -521,13 +525,13 @@ export function renderReviewShowSuccess(response: CommandSuccess<ReviewShowComma
 
 export function renderReviewDecisionSuccess(response: CommandSuccess<ReviewDecisionCommandData>): string[] {
   const lines = [
-    `Requires Review ${response.data.result.status}.`,
+    `Decision ${response.data.result.status}.`,
     `ID: ${response.data.item.id}`,
     `Slug: ${response.data.item.slug}`,
     `Result: ${response.data.result.summary}`
   ];
   if (response.data.approval?.workItem) {
-    lines.push(`Work item: ${response.data.approval.workItem.id}`);
+    lines.push(`Action: ${response.data.approval.workItem.id}`);
   }
   if (response.data.approval?.plan) {
     lines.push(`Plan: ${response.data.approval.plan.id}`);
@@ -590,10 +594,14 @@ export function reviewPacketForReviewItem(item: ReviewItemSummary): RequiresRevi
   return {
     id: item.id,
     slug: item.slug ?? item.id,
+    decisionId: item.id,
+    decisionSlug: item.slug ?? item.id,
     workItemId: item.work_item_id,
+    actionId: item.work_item_id,
     projectId: item.project_id,
     project: item.project_name,
     goal: item.project_goal,
+    outcome: item.project_outcome ?? item.project_goal,
     status: item.status,
     category: item.resolved_intent,
     resolvedIntent: item.resolved_intent,
@@ -691,17 +699,17 @@ function runReviewDecisionCommand(
   const updated = withDatabase(workspacePath, (db) => {
     const item = getReviewItemByIdOrSlug(db, options.id);
     if (!item) {
-      throw validationError("Requires Review item was not found.", { id: options.id });
+      throw validationError("Requires Review Decision was not found.", { id: options.id });
     }
     if (item.status !== "open" && item.status !== "deferred") {
-      throw validationError("Requires Review item is already decided.", { id: item.id, status: item.status });
+      throw validationError("Requires Review Decision is already decided.", { id: item.id, status: item.status });
     }
     const next = updateReviewItemStatus(db, item.id, {
       status,
       decisionNote: summary
     });
     if (!next) {
-      throw validationError("Requires Review item was not found.", { id: item.id });
+      throw validationError("Requires Review Decision was not found.", { id: item.id });
     }
     return next;
   });

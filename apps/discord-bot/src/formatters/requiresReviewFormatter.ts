@@ -8,7 +8,7 @@ export function formatRequiresReview(items: ReviewItem[]): string {
 
   const lines = [
     "**Arcadia Requires Review**",
-    `${items.length} item${items.length === 1 ? "" : "s"} require review.`,
+    `${items.length} decision${items.length === 1 ? "" : "s"} require review.`,
     `Estimated total review time: ${estimatedReviewTimeFor(items.length)}`,
     ""
   ];
@@ -28,7 +28,7 @@ export function formatRequiresReview(items: ReviewItem[]): string {
 export function formatRequiresReviewNotification(count: number): string {
   return [
     "**Arcadia requires review**",
-    `${count} item${count === 1 ? "" : "s"} require review.`,
+    `${count} decision${count === 1 ? "" : "s"} require review.`,
     `Estimated total review time: ${estimatedReviewTimeFor(count)}`,
     "Use `/arcadia review`."
   ].join("\n");
@@ -39,7 +39,7 @@ export function formatRequiresReviewShow(item: ReviewItem): string {
     `**${item.slug} - Requires Review**`,
     `ID: \`${item.id}\``,
     `Project: ${item.project ?? "Unassigned"}`,
-    `Goal: ${item.goal ?? "None"}`,
+    `Outcome: ${item.outcome ?? item.goal ?? "None"}`,
     `Decision needed: ${item.decisionNeeded}`,
     `Recommendation: ${item.recommendation ?? "Clarify before execution."}`,
     `Source input: ${item.sourceInput}`,
@@ -50,8 +50,8 @@ export function formatRequiresReviewShow(item: ReviewItem): string {
 
 export function formatRequiresReviewDecision(data: ReviewDecisionData): string {
   const lines = [
-    `**Requires Review ${data.result.status}**`,
-    `Review: \`${data.item.slug}\``,
+    `**Decision ${data.result.status}**`,
+    `Decision: \`${data.item.decisionSlug ?? data.item.slug}\``,
     `Result: ${data.result.summary}`
   ];
 
@@ -60,7 +60,7 @@ export function formatRequiresReviewDecision(data: ReviewDecisionData): string {
   }
 
   if (data.approval?.workItem) {
-    lines.push(`Work item: \`${data.approval.workItem.id}\``);
+    lines.push(`Action: \`${data.approval.workItem.id}\``);
   }
 
   return lines.join("\n");

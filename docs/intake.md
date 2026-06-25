@@ -9,7 +9,7 @@ Ingress
   -> Intake
   -> Intent resolution
   -> Structured request
-  -> Existing Arcadia commands, work items, review items, or execution plans
+  -> Existing Arcadia commands, Actions, Decisions, or workflow plans
 ```
 
 Intake does not execute work. It does not invoke Codex. It does not own Discord, iCloud ingress, dogfood, dashboard, or CLI behavior. Those surfaces can call Intake to interpret text, then route the result through existing Arcadia command and repository code.
@@ -22,7 +22,7 @@ Arcadia should not require users to remember command names, skills, queues, or e
 pnpm arcadia ask "Add Pinterest publishing support to Rebuster." --workspace "$WORKSPACE"
 ```
 
-and have Arcadia decide whether this is work, a review question, a status request, a goal update, or a loose thought that needs clarification.
+and have Arcadia decide whether this is an Action, a Decision question, a status request, an outcome update, or a loose thought that needs clarification.
 
 ## Difference From Ingress Adapters
 
@@ -47,13 +47,13 @@ Intake is deterministic and local. It does not call Codex, an LLM, a local model
 The first supported intents are:
 
 - `CaptureThought`: Preserve a loose idea or unclear note in the Back Burner.
-- `InstantiateProject`: Create a work item for a supported templated project.
+- `InstantiateProject`: Create an Action for a supported templated project.
 - `UpdateEntityAttribute`: Update a supported attribute on a supported entity.
 - `CreateWork`: Create actionable work for an existing project.
-- `ReviewRequired`: Show Requires Review items.
+- `ReviewRequired`: Show Requires Review Decisions.
 - `ShowStatus`: Show current status and focus guidance.
 
-The initial `UpdateEntityAttribute` entity scope is `project`. Supported project attributes are `goal`, `mission`, `status`, `current milestone`, and `next action`. Intake also recognizes simple `pause <project>` and `resume <project>` project status requests through the same generic status attribute path.
+The initial `UpdateEntityAttribute` entity scope is `project`. Supported project attributes are `outcome`, `mission`, `status`, `current milestone`, and `next action`. The legacy `goal` attribute remains accepted for compatibility. Intake also recognizes simple `pause <project>` and `resume <project>` project status requests through the same generic status attribute path.
 
 Supported project templates:
 
@@ -78,15 +78,15 @@ Intake returns:
 - whether review is required
 - human-readable explanation
 
-High-confidence results can be routed immediately to existing Arcadia behavior. For example, `UpdateEntityAttribute` updates a supported project attribute through a deterministic handler, while `CreateWork` creates an auditable work item and Codex packet.
+High-confidence results can be routed immediately to existing Arcadia behavior. For example, `UpdateEntityAttribute` updates a supported project attribute through a deterministic handler, while `CreateWork` creates an auditable Action and Codex packet.
 
-Medium-confidence results preserve the proposed interpretation. They become Requires Review items only when Arcadia can name a specific decision, such as a missing project, missing attribute, invalid value, approval, or risk confirmation.
+Medium-confidence results preserve the proposed interpretation. They become Requires Review Decisions only when Arcadia can name a specific decision, such as a missing project, missing attribute, invalid value, approval, or risk confirmation.
 
-Low-confidence results are captured as Back Burner items instead of interrupting the user with vague review prompts. Arcadia preserves the source input, ingress source, classification, confidence, reason, status, and suggested next step.
+Low-confidence results are captured as Back Burner items instead of interrupting the user with vague review prompts. Arcadia preserves the source input, ingress source, intake category, confidence, reason, status, and suggested next step.
 
 ## Back Burner Routing
 
-Before creating work or review items, Intake attaches a deterministic classification:
+Before creating Actions or Decisions, Intake attaches a deterministic intake category:
 
 ```text
 ExecutionRequest
@@ -112,7 +112,7 @@ Intake currently supports deterministic patterns including:
 ```text
 create a <template> called <name>
 create a <template> named <name>
-the goal for <project> is <goal>
+the outcome for <project> is <outcome>
 set <project> <attribute>: <value>
 set <project> <attribute> to <value>
 set <attribute> for <project> to <value>
@@ -134,7 +134,7 @@ CLI:
 
 ```sh
 pnpm arcadia ask "Create a NextJS app called Rebuster Admin." --workspace "$WORKSPACE"
-pnpm arcadia ask "The goal for MIDI Opener is to improve App Store conversion." --workspace "$WORKSPACE"
+pnpm arcadia ask "The outcome for MIDI Opener is to improve App Store conversion." --workspace "$WORKSPACE"
 pnpm arcadia ask "What needs review?" --workspace "$WORKSPACE"
 pnpm arcadia review --workspace "$WORKSPACE"
 ```

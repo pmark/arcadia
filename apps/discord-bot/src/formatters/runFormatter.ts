@@ -3,7 +3,7 @@ import { estimatedReviewTimeFor } from "./decisionFormatter.js";
 
 export function formatRuns(runs: ExecutionRun[]): string {
   if (runs.length === 0) {
-    return "**Arcadia runs**\nNo execution runs yet.";
+    return "**Arcadia runs**\nNo runs yet.";
   }
 
   return [
@@ -19,7 +19,7 @@ export function formatRunRequiresReviewNotification(run: ExecutionRun): string {
 
   return [
     "**Arcadia progress update**",
-    `Work: ${run.work_item_title}`,
+    `Action: ${run.work_item_title}`,
     `Artifacts Generated: ${run.artifacts.length}`,
     `Requires Review: ${reviewCount}`,
     `Estimated Review Time: ${estimatedReviewTimeFor(reviewCount)}`,
@@ -73,7 +73,7 @@ export function formatRunDetail(data: RunShowData): string {
   }
 
   if (data.needsMark.length > 0) {
-    lines.push(`Review items: ${data.needsMark.join(" | ")}`);
+    lines.push(`Decisions: ${data.needsMark.join(" | ")}`);
   }
 
   lines.push("Final reporting depends on completed validation artifacts.");

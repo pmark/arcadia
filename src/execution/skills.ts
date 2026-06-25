@@ -186,7 +186,7 @@ export function planStepsForWorkItem(workItem: WorkItemSummary): PlannedSkillSte
         command: null,
         executorType: "mark",
         safeToRun: false,
-        needsMark: "No deterministic skill matched this work item."
+        needsMark: "No deterministic skill matched this Action."
       }
     ];
   }

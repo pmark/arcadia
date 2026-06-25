@@ -65,6 +65,7 @@ export interface AskResponse {
     summary: string;
   } | null;
   reviewItemId: string | null;
+  decisionId?: string | null;
   backBurnerItemId: string | null;
 }
 
@@ -87,6 +88,8 @@ export interface DashboardSnapshot {
   projects: DashboardProject[];
   attentionItems: DashboardAttentionItem[];
   activityEvents: DashboardActivityEvent[];
+  capabilities: DashboardCapability[];
+  blogging: DashboardBloggingSnapshot;
   currentMilestones: DashboardMilestone[];
   requiresReviewItems: DashboardReviewItem[];
   backBurnerItems: DashboardBackBurnerItem[];
@@ -99,18 +102,70 @@ export interface DashboardProject {
   name: string;
   mission: string;
   goal: string | null;
+  outcome: string | null;
   status: string;
   statusLabel: string;
   currentMilestone: string | null;
   currentMilestoneId: string | null;
   nextAction: string | null;
   workClassification: string | null;
+  responsibility: string | null;
   workClassificationLabel: string | null;
+  responsibilityLabel: string | null;
   repoPath: string | null;
   statusSummary: string | null;
   validationCommands: string[];
   setupWarnings: string[];
   lastArtifact: DashboardArtifact | null;
+  updatedAt: string;
+}
+
+export interface DashboardCapability {
+  id: string;
+  name: string;
+  version: string;
+  status: "available";
+  dashboardSurfaces: string[];
+}
+
+export interface DashboardBloggingSnapshot {
+  sites: DashboardBlogSite[];
+  reviewItems: DashboardBlogReviewItem[];
+}
+
+export interface DashboardBlogSite {
+  id: string;
+  projectId: string;
+  projectName: string;
+  name: string;
+  streamKey: string;
+  status: string;
+  statusLabel: string;
+  nextScheduledTitle: string | null;
+  nextScheduledFor: string | null;
+  draftsNeedingReview: number;
+  ideasCount: number;
+  postsCount: number;
+  latestArtifactPath: string | null;
+  updatedAt: string;
+}
+
+export interface DashboardBlogReviewItem {
+  kind: "post" | "schedule";
+  id: string;
+  title: string;
+  siteId: string;
+  siteName: string;
+  streamKey: string;
+  projectId: string;
+  projectName: string;
+  status: string;
+  statusLabel: string;
+  artifactId: string | null;
+  artifactPath: string | null;
+  reviewItemId: string;
+  reviewSlug: string | null;
+  decisionNeeded: string;
   updatedAt: string;
 }
 
@@ -122,11 +177,14 @@ export interface DashboardAttentionItem {
   projectId: string | null;
   milestone: string | null;
   goal: string | null;
+  outcome: string | null;
   status: string;
   statusLabel: string;
   reason: string;
   workItemId: string | null;
+  actionId: string | null;
   workItemTitle: string | null;
+  actionTitle: string | null;
   expectedArtifact: string | null;
   targetRepositoryRoot: string | null;
   relatedArtifactId: string | null;
@@ -136,6 +194,8 @@ export interface DashboardAttentionItem {
   validationPath: string | null;
   relatedReviewId: string | null;
   relatedReviewSlug: string | null;
+  relatedDecisionId: string | null;
+  relatedDecisionSlug: string | null;
   relatedRunId: string | null;
   relatedCodexInvocationId: string | null;
   nextAction: string;
@@ -162,8 +222,12 @@ export interface DashboardActivityEvent {
   askId: string | null;
   reviewId: string | null;
   reviewSlug: string | null;
+  decisionId: string | null;
+  decisionSlug: string | null;
   workItemId: string | null;
+  actionId: string | null;
   workItemTitle: string | null;
+  actionTitle: string | null;
   runId: string | null;
   artifactId: string | null;
   artifactPath: string | null;
@@ -185,11 +249,15 @@ export interface DashboardMilestone {
 export interface DashboardReviewItem {
   id: string;
   slug: string;
+  decisionId: string;
+  decisionSlug: string;
   displayId: string;
   workItemId: string | null;
+  actionId: string | null;
   projectId: string | null;
   project: string | null;
   goal: string | null;
+  outcome: string | null;
   status: string;
   statusLabel: string;
   category: string;
@@ -231,6 +299,7 @@ export interface DashboardRun {
   updatedAt: string;
   completedAt: string | null;
   workItemTitle: string;
+  actionTitle: string;
   summary: string;
   planSummary: string;
   currentStep: string | null;
@@ -251,5 +320,6 @@ export interface DashboardArtifact {
   projectId: string | null;
   projectName: string | null;
   workItemTitle: string | null;
+  actionTitle: string | null;
   updatedAt: string;
 }

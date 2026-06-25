@@ -5,6 +5,7 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import { createWorkItemWithOptionalArtifact, getMilestone, getProject } from "../db/repositories.js";
 import type { Artifact, WorkItem } from "../domain/types.js";
+import { WORK_CLASSIFICATION_LABELS, type WorkClassification } from "../domain/constants.js";
 import { classifyCapturedIntent } from "../execution/skills.js";
 
 export interface CaptureOptions {
@@ -66,10 +67,10 @@ export function runCaptureCommand(options: CaptureOptions): CommandSuccess<Captu
 
 export function renderCaptureSuccess(response: CommandSuccess<CaptureCommandData>): string[] {
   return [
-    `Captured work item: ${response.data.workItem.title}`,
+    `Captured Action: ${response.data.workItem.title}`,
     `ID: ${response.data.workItem.id}`,
     `Queue: ${response.data.workItem.queue}`,
-    `Work classification: ${response.data.workItem.work_classification}`,
+    `Responsibility: ${WORK_CLASSIFICATION_LABELS[response.data.workItem.work_classification as WorkClassification]}`,
     `Matched skill: ${response.data.matchedSkillName ?? "None"}`
   ];
 }

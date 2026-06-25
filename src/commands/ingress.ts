@@ -216,7 +216,7 @@ function processCandidate(input: {
     );
     currentPath = finalPath;
     const sidecarPath = sidecarPathFor(finalPath, failedRun ? "error" : "response");
-    const failureReason = failedRun ? `Execution run failed: ${response.data.run?.summary ?? response.data.run?.id}` : undefined;
+    const failureReason = failedRun ? `Run failed: ${response.data.run?.summary ?? response.data.run?.id}` : undefined;
     const missionLogPath = writeIngressMissionLog(workspacePath, {
       sourcePath: originalPath,
       request,
@@ -341,7 +341,7 @@ function writeIngressMissionLog(
         "",
         `Execution mode: ${input.executionMode}`,
         `Ask id: ${input.response?.data.ask?.id ?? "None"}`,
-        `Work item id: ${input.response?.data.workItem?.id ?? "None"}`,
+        `Action id: ${input.response?.data.workItem?.id ?? "None"}`,
         `Plan id: ${input.response?.data.plan?.id ?? "None"}`,
         `Run id: ${input.response?.data.run?.id ?? "None"}`
       ].join("\n"),
