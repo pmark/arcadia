@@ -69,6 +69,31 @@ export interface AskResponse {
   backBurnerItemId: string | null;
 }
 
+export interface AskFeedbackItem {
+  id: string;
+  ask_request_id: string;
+  decision: "up" | "down";
+  note: string | null;
+  source_ingress: string | null;
+  created_at: string;
+}
+
+export interface FeedbackRecordResponse {
+  feedback: AskFeedbackItem;
+  result: {
+    status: "recorded";
+    summary: string;
+  };
+}
+
+export interface FeedbackListResponse {
+  items: AskFeedbackItem[];
+  counts: {
+    up: number;
+    down: number;
+  };
+}
+
 export interface DashboardSnapshot {
   generatedAt: string;
   workspace: string;

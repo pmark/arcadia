@@ -39,6 +39,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureAskRequestStewardshipColumn(db);
   ensureRequiresReviewCompatibility(db);
   ensureExecutionRunWorkerColumns(db);
+  ensureAskFeedbackTable(db);
   applyCapabilityMigrations(db);
 }
 
@@ -173,6 +174,22 @@ function ensureReviewFeedbackTable(db: Database.Database): void {
       FOREIGN KEY (review_id) REFERENCES review_items(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_review_feedback_review_id ON review_feedback(review_id);
+  `);
+}
+
+function ensureAskFeedbackTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ask_feedback (
+      id TEXT PRIMARY KEY,
+      ask_request_id TEXT NOT NULL,
+      decision TEXT NOT NULL CHECK (decision IN ('up', 'down')),
+      note TEXT,
+      source_ingress TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (ask_request_id) REFERENCES ask_requests(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_ask_feedback_ask_request_id ON ask_feedback(ask_request_id);
+    CREATE INDEX IF NOT EXISTS idx_ask_feedback_created_at ON ask_feedback(created_at);
   `);
 }
 

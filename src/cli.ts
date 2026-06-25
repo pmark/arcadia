@@ -23,6 +23,12 @@ import {
   runBackBurnerShowCommand
 } from "./commands/backBurner.js";
 import {
+  renderFeedbackListSuccess,
+  renderFeedbackRecordSuccess,
+  runFeedbackListCommand,
+  runFeedbackRecordCommand
+} from "./commands/feedback.js";
+import {
   renderBlogConfigureSiteSuccess,
   renderBlogCreateIdeaSuccess,
   renderBlogDraftPostSuccess,
@@ -475,6 +481,50 @@ export function buildProgram(): Command {
       options,
       () => runBackBurnerArchiveCommand({ ...options, id }),
       renderBackBurnerArchiveSuccess
+    )
+  );
+
+  const feedback = program.command("feedback").description("Record and list Decisions on Ask responses");
+  addJsonOption(
+    feedback
+      .command("record")
+      .description("Record a thumbs-up or thumbs-down Decision on an Ask response")
+      .argument("<ask-request-id>", "Ask Request id")
+      .requiredOption("--decision <up|down>", "Feedback decision: up or down")
+      .option("--note <text>", "Optional note explaining the feedback")
+      .option("--source-ingress <source>", "Ingress source for audit trails")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((askRequestId: string, options: {
+    workspace: string;
+    decision: string;
+    note?: string;
+    sourceIngress?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "feedback.record",
+      options,
+      () => {
+        if (options.decision !== "up" && options.decision !== "down") {
+          throw validationError("--decision must be 'up' or 'down'.", { decision: options.decision });
+        }
+        return runFeedbackRecordCommand({ ...options, askRequestId, decision: options.decision });
+      },
+      renderFeedbackRecordSuccess
+    )
+  );
+  addJsonOption(
+    feedback
+      .command("list")
+      .description("List recent Ask response Decisions")
+      .option("--limit <n>", "Maximum number of items to return", "50")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; limit?: string; json?: boolean }) =>
+    runCliAction(
+      "feedback.list",
+      options,
+      () => runFeedbackListCommand({ ...options, limit: options.limit ? Number(options.limit) : undefined }),
+      renderFeedbackListSuccess
     )
   );
 
@@ -1392,6 +1442,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "back-burner" && ["list", "show", "promote", "archive"].includes(second ?? "")) {
     return `back-burner.${second}`;
+  }
+
+  if (first === "feedback" && ["record", "list"].includes(second ?? "")) {
+    return `feedback.${second}`;
   }
 
   if (first === "dogfood") {

@@ -2,6 +2,7 @@ import type {
   ArtifactStatus,
   ApprovalGateStatus,
   ApprovalGateType,
+  AskFeedbackDecision,
   AskRequestStatus,
   BackBurnerStatus,
   CodexInvocationPurpose,
@@ -219,6 +220,22 @@ export interface ReviewFeedback {
   feedback_type: string;
   raw_reply: string;
   created_at: string;
+}
+
+export interface AskFeedback {
+  id: string;
+  ask_request_id: string;
+  decision: AskFeedbackDecision;
+  note: string | null;
+  source_ingress: string | null;
+  created_at: string;
+}
+
+export interface CreateAskFeedbackInput {
+  askRequestId: string;
+  decision: AskFeedbackDecision;
+  note?: string | null;
+  sourceIngress?: string | null;
 }
 
 export type IntakeClassification =

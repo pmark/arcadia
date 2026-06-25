@@ -3,6 +3,7 @@ import {
   ARTIFACT_STATUSES,
   APPROVAL_GATE_STATUSES,
   APPROVAL_GATE_TYPES,
+  ASK_FEEDBACK_DECISIONS,
   ASK_REQUEST_STATUSES,
   BACK_BURNER_STATUSES,
   CODEX_INVOCATION_PURPOSES,
@@ -21,6 +22,7 @@ import {
   type ArtifactStatus,
   type ApprovalGateStatus,
   type ApprovalGateType,
+  type AskFeedbackDecision,
   type AskRequestStatus,
   type BackBurnerStatus,
   type CodexInvocationPurpose,
@@ -40,6 +42,7 @@ import type {
   ArtifactGroups,
   ArtifactSummary,
   ApprovalGate,
+  AskFeedback,
   AskRequest,
   AskRequestSummary,
   AssociateCodexTaskInput,
@@ -50,6 +53,7 @@ import type {
   CodexTaskSummary,
   CreateApprovalGateInput,
   CreateArtifactInput,
+  CreateAskFeedbackInput,
   CreateAskRequestInput,
   CreateBackBurnerItemInput,
   CreateCodexInvocationInput,
@@ -184,6 +188,11 @@ function validateReviewItemStatus(value: string): ReviewItemStatus {
 
 function validateBackBurnerStatus(value: string): BackBurnerStatus {
   assertAllowedValue("Back Burner status", value, BACK_BURNER_STATUSES);
+  return value;
+}
+
+function validateAskFeedbackDecision(value: string): AskFeedbackDecision {
+  assertAllowedValue("Ask feedback decision", value, ASK_FEEDBACK_DECISIONS);
   return value;
 }
 
@@ -1498,6 +1507,33 @@ export function createApprovalGate(db: Database.Database, input: CreateApprovalG
   ).run(gate);
 
   return gate;
+}
+
+export function createAskFeedback(db: Database.Database, input: CreateAskFeedbackInput): AskFeedback {
+  const feedback: AskFeedback = {
+    id: createId("askFeedback"),
+    ask_request_id: required(input.askRequestId, "Ask request id"),
+    decision: validateAskFeedbackDecision(input.decision),
+    note: nullable(input.note),
+    source_ingress: nullable(input.sourceIngress),
+    created_at: nowIso()
+  };
+
+  db.prepare(
+    `INSERT INTO ask_feedback (
+      id, ask_request_id, decision, note, source_ingress, created_at
+    ) VALUES (
+      @id, @ask_request_id, @decision, @note, @source_ingress, @created_at
+    )`
+  ).run(feedback);
+
+  return feedback;
+}
+
+export function listRecentAskFeedback(db: Database.Database, limit = 50): AskFeedback[] {
+  return db
+    .prepare("SELECT * FROM ask_feedback ORDER BY created_at DESC LIMIT ?")
+    .all(limit) as AskFeedback[];
 }
 
 export function listApprovalGatesForWorkItem(db: Database.Database, workItemId: string): ApprovalGate[] {

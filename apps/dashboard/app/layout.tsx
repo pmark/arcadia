@@ -4,12 +4,18 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Arcadia Dashboard",
-  description: "Local Mission Control for Arcadia"
+  description: "Local Mission Control for Arcadia",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Arcadia"
+  }
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover",
   themeColor: "#f5f7f8"
 };
 

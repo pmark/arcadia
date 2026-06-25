@@ -219,6 +219,19 @@ CREATE TABLE IF NOT EXISTS review_feedback (
 
 CREATE INDEX IF NOT EXISTS idx_review_feedback_review_id ON review_feedback(review_id);
 
+CREATE TABLE IF NOT EXISTS ask_feedback (
+  id TEXT PRIMARY KEY,
+  ask_request_id TEXT NOT NULL,
+  decision TEXT NOT NULL CHECK (decision IN ('up', 'down')),
+  note TEXT,
+  source_ingress TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (ask_request_id) REFERENCES ask_requests(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ask_feedback_ask_request_id ON ask_feedback(ask_request_id);
+CREATE INDEX IF NOT EXISTS idx_ask_feedback_created_at ON ask_feedback(created_at);
+
 CREATE TABLE IF NOT EXISTS back_burner_items (
   id TEXT PRIMARY KEY,
   original_input TEXT NOT NULL,
@@ -371,4 +384,4 @@ CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);
 CREATE INDEX IF NOT EXISTS idx_events_project_id ON events(project_id);
 CREATE INDEX IF NOT EXISTS idx_events_source_module ON events(source_module);
 
-PRAGMA user_version = 7;
+PRAGMA user_version = 8;

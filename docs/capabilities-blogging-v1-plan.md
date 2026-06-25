@@ -2,15 +2,17 @@
 
 ## Plan Status (as of 2026-06-24)
 
-This document is the design plan for the first Arcadia capability-module boundary, proven out with a Blogging module. **A first implementation slice already exists on disk, untracked in git:**
+This document is the design plan for the first Arcadia capability-module boundary, proven out with a Blogging module. **A first implementation slice exists and is committed** (commit `ea05ae1`, "plugin modules and blogging"):
 
 - `src/capabilities/core.ts`, `coreApi.ts`, `migrations.ts`, `registry.ts`
 - `src/capabilities/blogging/{module,actions,artifacts,repository}.ts`
 - `src/commands/blog.ts`
-- `tests/blogging-capability.test.ts` (currently passing: 1 file, 1 test)
+- `tests/blogging-capability.test.ts` (passing: 1 file, 1 test; full suite `pnpm test` — 16 files, 264 tests, all passing)
 - `database/schema.sql` already has `capability_migrations` and `events` tables added (`PRAGMA user_version = 7`). Blog-specific tables (`blog_sites`, `blog_ideas`, `blog_posts`, `blog_schedules`) live in `src/capabilities/blogging/module.ts` as module-owned migrations, not in core `schema.sql` — consistent with the contract below.
 
-Before continuing implementation, this plan is being revised. **Do not assume the sections below are final** — see "Open Questions / Revisions Needed" for what's under review, and reconcile the existing code against whatever this doc says after revision.
+All six items raised in the 2026-06-24 review have been resolved against the actual code (see "Resolved Decisions" below; the open-questions list that used to follow has been removed). Two are pure documentation fixes (no behavior change). Four describe behavior that the existing implementation already gets right, once verified against the code rather than assumed from this doc's prior wording. **No production code changed as part of this reconciliation pass** — per Mark's instruction, further implementation (NL intake aliases, events consumer, `create_brief`/`record_published` commands) stays out of scope until this doc is reviewed and signed off again.
+
+Two implementation gaps were found and are tracked below rather than silently assumed complete: `blogging.create_brief` and `blogging.record_published` are declared in `module.ts`'s `commands` list and in this doc's "Actions" section, but have no `actions.ts` function, no CLI command, and no test coverage. The Brief and Published/Logged pipeline stages described below are therefore not yet implemented — only Idea, Draft, and Review are.
 
 ## Summary
 
@@ -89,10 +91,10 @@ interface CapabilityModule {
 
 Contract details:
 
-- Migrations are SQL strings/functions applied by Arcadia startup using a `capability_migrations` table with `(module_id, version, migration_id, applied_at)`.
-- Commands are deterministic action handlers with typed input/output, required permissions, and approval gates.
-- Event handlers are synchronous in-process hooks for core events; v1 can start with `emitEvent` writing to an `events` table and no async bus.
-- Permissions classify actions as `autonomous`, `codex`, `needs_mark`, or `blocked`.
+- Migrations are SQL strings applied by Arcadia startup (`src/db/schema.ts: applyInitialSchema` → `applyMigrations` → `applyCapabilityMigrations`, last in the sequence) using a `capability_migrations` table with `(module_id, migration_id, version, applied_at)` as primary key `(module_id, migration_id)`. Core `schema.sql` and the ad-hoc core migrations in `applyMigrations` always run first, so module migrations can assume `projects`, `artifacts`, `review_items`, and `mission_logs` already exist.
+- Commands are deterministic action handlers with typed input/output, a declared `permission`, and declared `approvalGates`. The `permission` field is descriptive metadata, not a runtime gate — see "Resolved Decisions" #1 for why that's the correct model for v1.
+- Event handlers are synchronous in-process hooks for core events; v1 starts with `emitEvent` writing to an `events` table. `src/dashboard/snapshot.ts`'s `persistedActivityEvents` already reads that table into the dashboard activity feed — see "Resolved Decisions" #3.
+- Permissions classify actions as `autonomous`, `codex`, `needs_mark`, or `blocked`. In practice (matching the existing `WorkClassification` convention used for core work items), these are labels that route a command's output to the right queue/review surface — they are not checked by a dispatcher before a handler runs.
 - Approval gates reuse existing gate types: `publication`, `credentials_required`, `external_deployment`, `destructive_filesystem_changes`, `production_data_access`, `financial_action`, `merge_to_main`, `send_email_or_messages`.
 - Artifact types are strings such as `blog_idea`, `blog_brief`, `blog_draft`, `blog_schedule`, `blog_publish_checklist`.
 - Dashboard surfaces are query functions, not React plugins, for v1.
@@ -195,31 +197,29 @@ CREATE TABLE blog_schedules (
 );
 ```
 
-Required streams:
+`blog_sites`/`blog_ideas`/`blog_posts`/`blog_schedules` cascade-delete from `projects`. This matches the existing core convention (`project_metadata` and `milestones` in `database/schema.sql` already cascade from `projects` the same way) and is safe in practice because **Arcadia has no `delete-project` command anywhere in the codebase** — project deletion isn't a reachable action through any CLI/dashboard path today, so there is nothing for a Blogging-specific gate to intercept. If a project-deletion command is ever added, it should get its own approval gate at that single point (e.g. `destructive_filesystem_changes`); Blogging's FKs don't need their own independent gate to inherit that protection. See "Resolved Decisions" #5.
 
-- `martian_rover`: founder/build-in-public, product strategy, AI-assisted creator workflow.
-- `midi_opener`: product updates, tutorials, MIDI education, release notes, SEO posts.
-- `rebuster`: puzzle updates, behind-the-scenes, visual puzzle lists, publishing experiments.
+Streams (`martian_rover`, `midi_opener`, `rebuster`) are seed/example data for the three known projects, not a hardcoded constraint: `blog_sites.stream_key` has no `CHECK` constraint and `upsertBlogSite`/`configureBlogSite` accept any caller-supplied `streamKey` (normalized via `normalizeStreamKey` in `repository.ts`). New streams are added simply by calling `blogging.configure_site` with a new key. See "Resolved Decisions" #6.
 
-Pipeline:
+Pipeline (Idea, Draft, and Review stages are implemented; Brief and Published/Logged are not — see "Plan Status"):
 
-- Idea: create `blog_ideas`, attach `blog_idea` markdown artifact, append mission log.
-- Brief: create local brief artifact from deterministic template and project context.
-- Draft: scaffold markdown draft artifact; AI use optional, never required.
-- Review: create core `review_items` for voice, claims, strategy, and publish readiness.
-- Scheduled: update `blog_posts.scheduled_for`; no external scheduling/publishing.
-- Published: only after explicit Mark approval and manual/approved publish evidence.
-- Logged: append mission log and link final artifact.
+- Idea: create `blog_ideas`, attach `blog_idea` markdown artifact, append mission log. **Implemented** (`createBlogIdeaAction`).
+- Brief: create local brief artifact from deterministic template and project context. **Not implemented.** No `createBriefAction`, no CLI command, no `blogBriefMarkdown` template (only the `"brief"` literal exists in `artifacts.ts`'s `artifactKind` union, unused).
+- Draft: scaffold markdown draft artifact; AI use optional, never required. **Implemented** (`draftBlogPostAction`) — see action note below.
+- Review: create core `review_items` for voice, claims, strategy, and publish readiness. **Implemented** for schedules and drafts (`prepareBlogScheduleAction`, `draftBlogPostAction`).
+- Scheduled: update `blog_posts.scheduled_for`; no external scheduling/publishing. **Not implemented.** `blog_posts.stage` allows `'scheduled'` and `blog_schedules` exists, but nothing currently transitions a post's `scheduled_for`/`stage` to `'scheduled'`.
+- Published: only after explicit Mark approval and manual/approved publish evidence. **Not implemented** — see `blogging.record_published` below.
+- Logged: append mission log and link final artifact. Mission logs are appended at every implemented step; there is no distinct terminal "Logged" stage transition yet.
 
 Actions:
 
-- `blogging.configure_site`: creates/updates `blog_sites`; blocked if project missing.
-- `blogging.create_idea`: autonomous; may use recent mission logs as source.
-- `blogging.prepare_schedule`: autonomous; produces `blog_schedule` artifact and review item.
-- `blogging.create_brief`: autonomous; creates `blog_brief` artifact.
-- `blogging.draft_post`: autonomous for scaffold-only, `needs_mark` for voice approval, `codex` only if repo/content pipeline code changes are required.
-- `blogging.mark_review`: creates review item and approval gate.
-- `blogging.record_published`: needs Mark; records published URL/date and mission log, but does not deploy or publish.
+- `blogging.configure_site`: creates/updates `blog_sites`; blocked if project missing. Implemented (`configureBlogSite`).
+- `blogging.create_idea`: autonomous; may use recent mission logs as source. Implemented (`createBlogIdeaAction`); the "recent mission logs as source" behavior is just a free-text `source` field today, not an automated mission-log scan — that's NL-intake scope, deliberately deferred.
+- `blogging.prepare_schedule`: autonomous; produces `blog_schedule` artifact and review item. Implemented (`prepareBlogScheduleAction`).
+- `blogging.create_brief`: autonomous; creates `blog_brief` artifact. **Not implemented** — declared in `module.ts`'s `commands` list only.
+- `blogging.draft_post`: autonomous scaffold step that always also opens a review item and a pending `publication` approval gate (matches `prepareBlogScheduleAction`'s pattern exactly). The implementation never branches into a `codex` code-change path — pipeline/content-repo code changes are out of scope for this command entirely and would be filed as an ordinary Codex work item through `coreApi.createWorkItem`, not a tier `draft_post` executes. See "Resolved Decisions" #2.
+- `blogging.mark_review`: creates review item and approval gate. Not a separate command in the implementation — `blog.list_review_needed` (`listBlogReviewNeededAction`) reads existing open review items joined to Blogging rows; review-item/gate creation happens inline inside `prepare_schedule` and `draft_post`, not as its own action.
+- `blogging.record_published`: needs Mark; records published URL/date and mission log, but does not deploy or publish. **Not implemented** — declared in `module.ts`'s `commands` list only; no action, no CLI command, no test.
 
 Artifacts should live under `artifacts/blogging/<site>/<YYYY-MM-DD>-<slug>.md` unless an implementation finds an existing workspace artifact convention that is more specific.
 
@@ -266,7 +266,7 @@ Implement in days, not months:
    - `arcadia blog prepare-schedule --site <id> --week <YYYY-MM-DD>`
    - `arcadia blog draft-post --idea <id>`
    - `arcadia blog review`
-4. Generate markdown artifacts for ideas, schedules, briefs, and scaffold drafts.
+4. Generate markdown artifacts for ideas, schedules, and scaffold drafts. (Briefs are not yet implemented — see "Plan Status".)
 5. Create review items for schedules/drafts that require Mark approval.
 6. Append mission logs for each action.
 7. Extend dashboard snapshot with `capabilities.blogging` and render one compact Blogging panel.
@@ -275,6 +275,8 @@ Implement in days, not months:
    - "Draft the next Rebuster update post."
    - "Show blog posts that need my review."
    - "Create a Martian Rover build-in-public post idea from recent mission logs."
+
+Steps 1–7 are implemented and covered by `tests/blogging-capability.test.ts`. **Step 8 (intake aliases) is explicitly out of scope until this plan is reconciled and re-approved** — do not wire these up yet, per Mark's standing instruction for this reconciliation pass.
 
 Acceptance behavior:
 
@@ -285,16 +287,18 @@ Acceptance behavior:
 
 ## Test Plan
 
-Add unit/integration coverage with temporary workspaces:
+Add unit/integration coverage with temporary workspaces. Current status against `tests/blogging-capability.test.ts` (one test, asserted end-to-end in a single workspace):
 
-- Capability migrations are idempotent and recorded once.
-- Blogging site config fails cleanly for missing project and succeeds for configured project.
-- `create_idea` creates `blog_ideas`, core artifact, event, and mission log.
-- `prepare_schedule` creates `blog_schedules`, artifact, review item, approval gate `publication`, and mission log.
-- `draft_post` creates/updates `blog_posts` and never publishes.
-- Dashboard snapshot includes Blogging status without writing reports.
-- Existing tests for ask/review/dashboard still pass.
-- CLI JSON envelopes follow existing `CommandSuccess` shape.
+- Capability migrations are idempotent and recorded once. **Not directly asserted** (no test reopens a workspace and checks no duplicate insert); `countRows(... "capability_migrations") >= 1` is checked, but idempotency itself relies on `migrations.ts`'s `(module_id, migration_id)` primary key, unverified by this test.
+- Blogging site config fails cleanly for missing project and succeeds for configured project. **Partially covered** — success path only; the missing-project failure path is not asserted in this test (though `requireProjectContext`/`configureBlogSite` do throw).
+- `create_idea` creates `blog_ideas`, core artifact, event, and mission log. **Covered.**
+- `prepare_schedule` creates `blog_schedules`, artifact, review item, approval gate `publication`, and mission log. **Covered** for schedule/artifact/review item/mission log; the approval gate row itself isn't directly asserted (no `approval_gates` row count check), only the review item and event.
+- `draft_post` creates/updates `blog_posts` and never publishes. **Covered** for creation; "never publishes" is true by omission (no code path exists to publish) rather than a guarded check.
+- Dashboard snapshot includes Blogging status without writing reports. **Covered.**
+- Existing tests for ask/review/dashboard still pass. **Covered** — full suite is 16 files / 264 tests, all passing.
+- CLI JSON envelopes follow existing `CommandSuccess` shape. **Covered** by construction (`createSuccess` reused from `cli/response.ts`).
+
+Gaps worth closing in a follow-up test pass (not done in this reconciliation, since it's doc-only): missing-project failure path, explicit `approval_gates` row assertions, and a second-run idempotency check for `capability_migrations`.
 
 Run:
 
@@ -321,15 +325,15 @@ Simplifications:
 - Treat generated posts as local drafts and review artifacts, not deployable content.
 - Use existing review and approval gates instead of inventing module-specific approval systems.
 
-## Open Questions / Revisions Needed
+## Resolved Decisions
 
-Raised in review on 2026-06-24, not yet resolved:
+Raised in review on 2026-06-24. All six checked against the actual code in `src/capabilities/` and `src/commands/blog.ts` (not assumed from the prior wording of this doc) and resolved on 2026-06-24. No production code changed to resolve any of these — all six were either already correct or are pure documentation fixes.
 
-1. **Permission enforcement point is unspecified.** The contract lists `permissions` per command, but no code path is named that checks a command's permission before running its handler. Decide: does `CapabilityRuntime.dispatch()` gate this, or the CLI layer, or convention? Check what `src/capabilities/core.ts` and `coreApi.ts` actually do today — the enforcement may or may not already exist in the untracked implementation.
-2. **`blogging.draft_post` mixes three permission tiers in one action** (autonomous scaffold / needs_mark voice approval / codex pipeline changes). Either split into separate commands (e.g. `scaffold_draft` vs an explicit voice-approval step) or define how conditional permission escalation works within one command.
-3. **`events` table has no consumer.** `emitEvent` writes rows but nothing reads them yet. Decide whether to keep it now (infrastructure-ahead-of-need) or defer until a second module/consumer exists — check whether the existing implementation already leans on it for something.
-4. **Migration runner robustness is underspecified.** Ordering against core `schema.sql`, idempotency, and partial-failure/rollback behavior for `CapabilityMigration[]` aren't defined. Inspect `src/capabilities/migrations.ts` (already implemented) against this concern and tighten the contract to match or to require changes.
-5. **Cascade delete policy is inconsistent with the "destructive actions need a gate" stance.** `blog_sites`/`blog_posts` cascade-delete from `projects` with no approval gate. Either document why project deletion is already gated upstream, or change to `ON DELETE RESTRICT` plus an explicit archival action.
-6. **Hardcoded streams (`martian_rover`, `midi_opener`, `rebuster`) are listed as "required"** in what's supposed to be a minimal, reusable v1 contract. Consider moving these to runtime configuration seeded via `blogging.configure_site` rather than a written module requirement.
+1. **Permission enforcement point — resolved, no code change needed.** There is no dispatcher anywhere that reads `CapabilityCommand.permission` and gates a handler call (confirmed: `grep` for `.permission` and `dispatch` across `src/` finds only the type declaration and the literal values in `module.ts`; nothing reads them at runtime). That's intentional and matches how the rest of Arcadia already works: `WorkClassification` on core `work_items` (`src/domain/constants.ts`) is the same kind of label — it routes a record to a queue (`queueForWorkClassification`), it doesn't block a function call. Arcadia's actual safety property is structural, not a runtime check: code that performs an `autonomous` action is the only code that exists for that action; code for a `needs_mark` action (e.g. actually publishing) is simply never written until Mark approves out-of-band — confirmed system-wide, `approval_gates` rows are only ever inserted with `status: 'pending'` (`createApprovalGate` in `src/db/repositories.ts`) and **no command anywhere in the codebase ever updates an approval gate's status**. `blogging.draft_post` and `blogging.prepare_schedule` follow this exactly: they write local artifacts/DB rows and open a pending gate, and stop — there is no further code path that would need gating. `permission` stays as descriptive/dashboard/future-MCP-routing metadata, as already implemented. No enforcement point needs to be named because none is missing.
+2. **`blogging.draft_post`'s three tiers — resolved, doc clarification only.** Reading `draftBlogPostAction` (`src/capabilities/blogging/actions.ts`), the implementation only ever does one thing: write a scaffold artifact, create a review item, and open a pending `publication` gate — the exact same two-step shape as `prepareBlogScheduleAction`. There is no conditional branch into a `codex` code-change path inside this command, and there shouldn't be: pipeline/content-repo code changes are a different kind of work entirely (filed as an ordinary Codex work item via `coreApi.createWorkItem`, same as any other code change), not something `draft_post` itself executes or branches into. The plan's "mixes three permission tiers" framing was inaccurate — updated the "Actions" section above to describe what the command actually does (autonomous scaffold + needs_mark gate, no codex branch) rather than implying runtime tier-switching.
+3. **`events` table consumer — resolved, a consumer already exists.** `src/dashboard/snapshot.ts`'s `persistedActivityEvents` (called from `buildActivityEvents`) already `SELECT`s from `events` and folds rows into the dashboard's `activityEvents` feed alongside ask/work/review/artifact events. `tests/blogging-capability.test.ts` asserts `blog.idea_created` and `blog.schedule_prepared` show up there. Keep `emitEvent` — it's not infrastructure-ahead-of-need, it's already load-bearing for the one dashboard feed Blogging needs.
+4. **Migration runner robustness — resolved, already adequate for v1.** `src/db/schema.ts: applyInitialSchema` runs core `schema.sql`, then `applyMigrations` (core ad-hoc migrations), then `applyCapabilityMigrations` last — so module migrations can always assume core tables exist; ordering is guaranteed by call sequence, not convention. Idempotency: `capability_migrations` has primary key `(module_id, migration_id)`, and `applyModuleMigrations` checks for an existing row before running each migration. Partial failure: each migration's `db.exec(migration.sql)` + the tracking `INSERT` are wrapped in one `db.transaction()`, so a single migration is all-or-nothing — a failure rolls back that migration only (previously-committed migrations in the same module stay applied, which is correct since they're independently idempotent `CREATE TABLE IF NOT EXISTS` statements) and isn't recorded as applied, so it retries on the next startup. This is sufficient for v1's all-additive, all-idempotent migration SQL; revisit only if a future migration needs to be destructive or multi-table-rewrite (like `rebuildTableWithCurrentSchema` in `schema.ts` already does for core tables).
+5. **Cascade delete policy — resolved, not actually a gap.** `blog_sites`/`blog_ideas`/`blog_posts` cascading from `projects` matches the existing core convention (`project_metadata`, `milestones` already cascade the same way in `database/schema.sql`), and there is **no `delete-project` command anywhere in Arcadia** — project deletion isn't reachable through any CLI or dashboard path today, so there's no in-product action for a gate to intercept. Added a note in the "Blogging Module v1" section above; no schema change needed. If a project-deletion command is ever built, give *that* command the gate (`destructive_filesystem_changes`) — Blogging's FKs will inherit the protection for free without needing a module-specific gate.
+6. **Hardcoded streams — resolved, already runtime-configurable.** `blog_sites.stream_key` has no `CHECK` constraint restricting it, and `upsertBlogSite`/`configureBlogSite` accept any caller-supplied stream key (normalized by `normalizeStreamKey`). `martian_rover`/`midi_opener`/`rebuster` were never enforced in code — they're just the three streams Mark's projects need today. Reworded the "Blogging Module v1" section above from "Required streams" to "Streams (seed data)" to stop the doc overstating a constraint that doesn't exist.
 
-Resolve these (and re-validate against the code already in `src/capabilities/` and `src/commands/blog.ts`) before treating this plan as final.
+Outstanding, tracked separately from these six (not part of the original review, found during this reconciliation pass — see "Plan Status"): `blogging.create_brief` and `blogging.record_published` are declared in the contract and in `module.ts`'s command list but have no implementation. These are deferred, not blocking, per Mark's instruction not to expand scope in this pass.

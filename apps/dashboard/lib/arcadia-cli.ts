@@ -2,7 +2,13 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { ArcadiaJsonSuccess, AskResponse, DashboardSnapshotResponse } from "./types";
+import type {
+  ArcadiaJsonSuccess,
+  AskResponse,
+  DashboardSnapshotResponse,
+  FeedbackListResponse,
+  FeedbackRecordResponse
+} from "./types";
 
 const execFileAsync = promisify(execFile);
 
@@ -28,6 +34,30 @@ export async function runAsk(input: {
     "--source-ingress",
     "dashboard.ask"
   ]);
+}
+
+export async function recordAskFeedback(input: {
+  askRequestId: string;
+  decision: "up" | "down";
+  note?: string;
+}): Promise<ArcadiaJsonSuccess<FeedbackRecordResponse>> {
+  const args = [
+    "feedback",
+    "record",
+    input.askRequestId,
+    "--decision",
+    input.decision,
+    "--source-ingress",
+    "dashboard.feedback"
+  ];
+  if (input.note) {
+    args.push("--note", input.note);
+  }
+  return runArcadiaCliJson<FeedbackRecordResponse>(args);
+}
+
+export async function listAskFeedback(limit = 50): Promise<ArcadiaJsonSuccess<FeedbackListResponse>> {
+  return runArcadiaCliJson<FeedbackListResponse>(["feedback", "list", "--limit", String(limit)]);
 }
 
 export interface ReviewExecutionResponse {

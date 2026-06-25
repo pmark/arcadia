@@ -35,6 +35,7 @@ export const APPROVAL_GATE_STATUSES = ["pending", "approved", "rejected", "resol
 export const CODEX_INVOCATION_PURPOSES = ["planning", "build"] as const;
 export const CODEX_INVOCATION_STATUSES = ["packet_created", "running", "completed", "failed"] as const;
 export const BACK_BURNER_STATUSES = ["incubating", "opportunistic", "promoted", "archived"] as const;
+export const ASK_FEEDBACK_DECISIONS = ["up", "down"] as const;
 
 export const QUEUE_LABELS: Record<QueueName, string> = {
   inbox: "Inbox",
@@ -68,6 +69,7 @@ export type ApprovalGateStatus = (typeof APPROVAL_GATE_STATUSES)[number];
 export type CodexInvocationPurpose = (typeof CODEX_INVOCATION_PURPOSES)[number];
 export type CodexInvocationStatus = (typeof CODEX_INVOCATION_STATUSES)[number];
 export type BackBurnerStatus = (typeof BACK_BURNER_STATUSES)[number];
+export type AskFeedbackDecision = (typeof ASK_FEEDBACK_DECISIONS)[number];
 
 export function isRequiresReviewValue(value: string | null | undefined): boolean {
   return value === "requires_review" || value === "needs_mark";
