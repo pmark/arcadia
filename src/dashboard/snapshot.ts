@@ -4,6 +4,15 @@ import { reviewPacketForReviewItem } from "../commands/review.js";
 import type { ArtifactSummary, BackBurnerItemSummary, ExecutionRunSummary, MilestoneSummary } from "../domain/types.js";
 import { listCapabilities } from "../capabilities/registry.js";
 import { listBlogDashboardSites, listBlogReviewItems } from "../capabilities/blogging/repository.js";
+import {
+  decodeRebusterArtifactRefs,
+  listOpenRebusterDecisionEvents,
+  listRebusterEvents,
+  listRebusterIntegrations,
+  type RebusterArtifactRef,
+  type RebusterEventSummary,
+  type RebusterIntegration
+} from "../capabilities/rebuster/repository.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
 import {
   buildStatusReportData,
@@ -46,6 +55,7 @@ export interface DashboardSnapshot {
   activityEvents: DashboardActivityEvent[];
   capabilities: DashboardCapability[];
   blogging: DashboardBloggingSnapshot;
+  rebuster: DashboardRebusterSnapshot;
   currentMilestones: DashboardMilestone[];
   requiresReviewItems: DashboardReviewItem[];
   backBurnerItems: DashboardBackBurnerItem[];
@@ -123,6 +133,75 @@ export interface DashboardBlogReviewItem {
   reviewSlug: string | null;
   decisionNeeded: string;
   updatedAt: string;
+}
+
+export interface DashboardRebusterSnapshot {
+  connection: DashboardRebusterConnection;
+  status: DashboardRebusterStatus;
+  decisions: DashboardRebusterDecision[];
+  recentEvents: DashboardRebusterEvent[];
+}
+
+export interface DashboardRebusterConnection {
+  configured: boolean;
+  projectId: string | null;
+  projectName: string | null;
+  repoPath: string | null;
+  baseUrl: string | null;
+  dashboardUrl: string | null;
+  status: "configured" | "unconfigured";
+  statusLabel: string;
+  statusSummary: string | null;
+  lastHealthCheckAt: string | null;
+  lastSyncAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface DashboardRebusterStatus {
+  summary: string;
+  lastEventType: string | null;
+  lastEventAt: string | null;
+  openDecisionCount: number;
+  recentEventCount: number;
+}
+
+export interface DashboardRebusterEvent {
+  id: string;
+  externalId: string;
+  eventType: string;
+  eventLabel: string;
+  rebusId: string;
+  answer: string;
+  status: string;
+  statusLabel: string;
+  summary: string;
+  decisionRequired: boolean;
+  recommendation: string | null;
+  rebusterUrl: string;
+  artifactRefs: RebusterArtifactRef[];
+  occurredAt: string;
+  updatedAt: string;
+  projectId: string;
+  projectName: string | null;
+  reviewItemId: string | null;
+  reviewSlug: string | null;
+  reviewStatus: string | null;
+}
+
+export interface DashboardRebusterDecision {
+  id: string;
+  externalId: string;
+  answer: string;
+  status: string;
+  statusLabel: string;
+  summary: string;
+  recommendation: string | null;
+  rebusterUrl: string;
+  occurredAt: string;
+  projectId: string;
+  projectName: string | null;
+  reviewItemId: string;
+  reviewSlug: string | null;
 }
 
 export interface DashboardAttentionItem {
@@ -271,6 +350,9 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
     const reviewItems = listActionableReviewItems(db);
     const bloggingSites = listBlogDashboardSites(db).map(toDashboardBlogSite);
     const bloggingReviewItems = listBlogReviewItems(db).map(toDashboardBlogReviewItem);
+    const rebusterIntegrations = listRebusterIntegrations(db);
+    const rebusterEvents = listRebusterEvents(db, 10);
+    const rebusterDecisions = listOpenRebusterDecisionEvents(db);
     const attentionItems = buildAttentionItems(db, reviewItems.map(toDashboardReviewItem), runs);
     const activityEvents = buildActivityEvents(db, 30);
     const backBurnerItems = listBackBurnerItems(db, "all").filter((item) =>
@@ -345,6 +427,7 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
         sites: bloggingSites,
         reviewItems: bloggingReviewItems
       },
+      rebuster: toDashboardRebusterSnapshot(db, rebusterIntegrations, rebusterEvents, rebusterDecisions),
       currentMilestones: currentMilestones.map(toDashboardMilestone),
       requiresReviewItems: reviewItems.map(toDashboardReviewItem),
       backBurnerItems: backBurnerItems.map(toDashboardBackBurnerItem),
@@ -479,6 +562,105 @@ function toDashboardBlogReviewItem(item: ReturnType<typeof listBlogReviewItems>[
     reviewSlug: item.review_slug,
     decisionNeeded: item.decision_needed,
     updatedAt: item.updated_at
+  };
+}
+
+function toDashboardRebusterSnapshot(
+  db: Database.Database,
+  integrations: RebusterIntegration[],
+  events: RebusterEventSummary[],
+  decisions: RebusterEventSummary[]
+): DashboardRebusterSnapshot {
+  const integration = integrations[0] ?? null;
+  const latestEvent = events[0] ?? null;
+  const connection = integration
+    ? {
+        configured: true,
+        projectId: integration.project_id,
+        projectName: projectNameForId(db, integration.project_id),
+        repoPath: integration.repo_path,
+        baseUrl: integration.base_url,
+        dashboardUrl: integration.dashboard_url,
+        status: "configured" as const,
+        statusLabel: "Configured",
+        statusSummary: integration.status_summary,
+        lastHealthCheckAt: integration.last_health_check_at,
+        lastSyncAt: integration.last_sync_at,
+        updatedAt: integration.updated_at
+      }
+    : {
+        configured: false,
+        projectId: null,
+        projectName: null,
+        repoPath: null,
+        baseUrl: null,
+        dashboardUrl: null,
+        status: "unconfigured" as const,
+        statusLabel: "Unconfigured",
+        statusSummary: null,
+        lastHealthCheckAt: null,
+        lastSyncAt: null,
+        updatedAt: null
+      };
+
+  return {
+    connection,
+    status: {
+      summary: integration
+        ? latestEvent
+          ? latestEvent.summary
+          : "Rebuster bridge configured. No events ingested yet."
+        : "Rebuster bridge is not configured.",
+      lastEventType: latestEvent?.event_type ?? null,
+      lastEventAt: latestEvent?.occurred_at ?? null,
+      openDecisionCount: decisions.length,
+      recentEventCount: events.length
+    },
+    decisions: decisions.map(toDashboardRebusterDecision),
+    recentEvents: events.map(toDashboardRebusterEvent)
+  };
+}
+
+function toDashboardRebusterEvent(event: RebusterEventSummary): DashboardRebusterEvent {
+  return {
+    id: event.id,
+    externalId: event.external_id,
+    eventType: event.event_type,
+    eventLabel: labelStatus(event.event_type),
+    rebusId: event.rebus_id,
+    answer: event.answer,
+    status: event.status,
+    statusLabel: labelStatus(event.status),
+    summary: event.summary,
+    decisionRequired: event.decision_required === 1,
+    recommendation: event.recommendation,
+    rebusterUrl: event.rebuster_url,
+    artifactRefs: decodeRebusterArtifactRefs(event.artifact_refs_json),
+    occurredAt: event.occurred_at,
+    updatedAt: event.updated_at,
+    projectId: event.project_id,
+    projectName: event.project_name,
+    reviewItemId: event.review_item_id,
+    reviewSlug: event.review_slug,
+    reviewStatus: event.review_status
+  };
+}
+
+function toDashboardRebusterDecision(event: RebusterEventSummary): DashboardRebusterDecision {
+  return {
+    id: event.id,
+    externalId: event.external_id,
+    answer: event.answer,
+    status: event.status,
+    statusLabel: labelStatus(event.status),
+    summary: event.summary,
+    recommendation: event.recommendation,
+    rebusterUrl: event.rebuster_url,
+    occurredAt: event.occurred_at,
+    projectId: event.project_id,
+    projectName: event.project_name,
+    reviewItemId: event.review_item_id ?? "",
+    reviewSlug: event.review_slug
   };
 }
 
@@ -973,11 +1155,18 @@ function persistedActivityEvents(db: Database.Database): DashboardActivityEvent[
 function eventSummary(row: { event_type: string; source_module: string | null; payload_json: string }): string {
   const payload = parsePayload(row.payload_json);
   const title =
+    stringPayload(payload, "summary") ??
+    stringPayload(payload, "answer") ??
     stringPayload(payload, "artifactPath") ??
     stringPayload(payload, "name") ??
     stringPayload(payload, "streamKey") ??
     row.event_type;
   return `${row.source_module ?? "core"}: ${title}`;
+}
+
+function projectNameForId(db: Database.Database, projectId: string): string | null {
+  const row = db.prepare("SELECT name FROM projects WHERE id = ?").get(projectId) as { name: string } | undefined;
+  return row?.name ?? null;
 }
 
 function askActivityEvents(db: Database.Database): DashboardActivityEvent[] {

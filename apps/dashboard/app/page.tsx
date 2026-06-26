@@ -13,6 +13,7 @@ import {
   LoadingState,
   Metric,
   MilestoneRow,
+  RebusterPanel,
   Section,
   SmallRunRow
 } from "../components/dashboard-ui";
@@ -158,6 +159,10 @@ export default function MissionControlPage() {
 
           <Section title="Blogging">
             <BloggingPanel blogging={snapshot.blogging} />
+          </Section>
+
+          <Section title="Rebuster Studio">
+            <RebusterPanel rebuster={snapshot.rebuster} />
           </Section>
 
           <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">

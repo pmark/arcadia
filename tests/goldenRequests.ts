@@ -69,6 +69,33 @@ export const goldenRequestExamples: GoldenRequestExample[] = [
     expectedBackBurner: false
   },
   {
+    name: "Rebuster Studio bridge work",
+    input: "Build Rebuster Studio support",
+    expectedClassification: "ExecutionRequest",
+    expectedIntent: "CreateWork",
+    expectedProject: "Rebuster",
+    expectedRoutingOutcome: "requires_review",
+    expectedBackBurner: false
+  },
+  {
+    name: "Rebuster candidate overlap review",
+    input: "Improve Rebuster candidate overlap review",
+    expectedClassification: "ExecutionRequest",
+    expectedIntent: "CreateWork",
+    expectedProject: "Rebuster",
+    expectedRoutingOutcome: "requires_review",
+    expectedBackBurner: false
+  },
+  {
+    name: "strict Rebuster spec",
+    input: "Create a strict Rebuster spec workflow",
+    expectedClassification: "ExecutionRequest",
+    expectedIntent: "CreateWork",
+    expectedProject: "Rebuster",
+    expectedRoutingOutcome: "requires_review",
+    expectedBackBurner: false
+  },
+  {
     name: "MIDI Opener release notes",
     input: "Write release notes for MIDI Opener 5.5",
     expectedClassification: "ExecutionRequest",

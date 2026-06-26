@@ -115,6 +115,38 @@
       "approvalGates": ["credentials_required", "publication", "send_email_or_messages"]
     },
     {
+      "id": "build_rebuster_studio_bridge",
+      "aliases": [
+        "rebuster studio",
+        "rebus candidate",
+        "rebus candidates",
+        "candidate overlap review",
+        "overlap review",
+        "strict rebuster spec",
+        "strict spec",
+        "creative production workflow"
+      ],
+      "examples": [
+        "Build Rebuster Studio support.",
+        "Improve the Rebuster candidate overlap review workflow.",
+        "Generate strict Rebuster specs from rebus candidates."
+      ],
+      "outputKind": "codex_build_packet",
+      "workClassification": "codex",
+      "nextAction": "Review the Rebuster Studio bridge build packet and approve repository changes if appropriate.",
+      "expectedArtifact": "Rebuster Studio bridge Codex build packet",
+      "skillSequence": [
+        {
+          "skillName": "codex_build",
+          "title": "Prepare Codex build packet for Rebuster Studio bridge work",
+          "executorType": "codex_build",
+          "safeToRun": false,
+          "needsMark": "Codex build requires explicit review before Rebuster Studio workflow changes."
+        }
+      ],
+      "approvalGates": ["destructive_filesystem_changes"]
+    },
+    {
       "id": "process_analytics_data",
       "aliases": [
         "posthog",

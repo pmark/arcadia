@@ -115,6 +115,7 @@ export interface DashboardSnapshot {
   activityEvents: DashboardActivityEvent[];
   capabilities: DashboardCapability[];
   blogging: DashboardBloggingSnapshot;
+  rebuster: DashboardRebusterSnapshot;
   currentMilestones: DashboardMilestone[];
   requiresReviewItems: DashboardReviewItem[];
   backBurnerItems: DashboardBackBurnerItem[];
@@ -192,6 +193,75 @@ export interface DashboardBlogReviewItem {
   reviewSlug: string | null;
   decisionNeeded: string;
   updatedAt: string;
+}
+
+export interface DashboardRebusterSnapshot {
+  connection: DashboardRebusterConnection;
+  status: DashboardRebusterStatus;
+  decisions: DashboardRebusterDecision[];
+  recentEvents: DashboardRebusterEvent[];
+}
+
+export interface DashboardRebusterConnection {
+  configured: boolean;
+  projectId: string | null;
+  projectName: string | null;
+  repoPath: string | null;
+  baseUrl: string | null;
+  dashboardUrl: string | null;
+  status: "configured" | "unconfigured";
+  statusLabel: string;
+  statusSummary: string | null;
+  lastHealthCheckAt: string | null;
+  lastSyncAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface DashboardRebusterStatus {
+  summary: string;
+  lastEventType: string | null;
+  lastEventAt: string | null;
+  openDecisionCount: number;
+  recentEventCount: number;
+}
+
+export interface DashboardRebusterEvent {
+  id: string;
+  externalId: string;
+  eventType: string;
+  eventLabel: string;
+  rebusId: string;
+  answer: string;
+  status: string;
+  statusLabel: string;
+  summary: string;
+  decisionRequired: boolean;
+  recommendation: string | null;
+  rebusterUrl: string;
+  artifactRefs: Array<Record<string, unknown>>;
+  occurredAt: string;
+  updatedAt: string;
+  projectId: string;
+  projectName: string | null;
+  reviewItemId: string | null;
+  reviewSlug: string | null;
+  reviewStatus: string | null;
+}
+
+export interface DashboardRebusterDecision {
+  id: string;
+  externalId: string;
+  answer: string;
+  status: string;
+  statusLabel: string;
+  summary: string;
+  recommendation: string | null;
+  rebusterUrl: string;
+  occurredAt: string;
+  projectId: string;
+  projectName: string | null;
+  reviewItemId: string;
+  reviewSlug: string | null;
 }
 
 export interface DashboardAttentionItem {

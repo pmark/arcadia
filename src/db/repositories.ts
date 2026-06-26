@@ -2164,7 +2164,9 @@ export function countRows(db: Database.Database, table: string): number {
       "blog_sites",
       "blog_ideas",
       "blog_posts",
-      "blog_schedules"
+      "blog_schedules",
+      "rebuster_integrations",
+      "rebuster_events"
     ].includes(table)
   ) {
     throw new Error(`Unsupported table: ${table}`);

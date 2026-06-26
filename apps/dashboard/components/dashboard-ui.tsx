@@ -22,6 +22,7 @@ import type {
   DashboardBloggingSnapshot,
   DashboardMilestone,
   DashboardProject,
+  DashboardRebusterSnapshot,
   DashboardReviewItem,
   DashboardRun
 } from "../lib/types";
@@ -391,6 +392,69 @@ export function BloggingPanel({ blogging }: { blogging: DashboardBloggingSnapsho
                   {item.siteName} · {item.reviewSlug ?? item.reviewItemId}
                 </div>
                 {item.artifactPath ? <div className="mt-1 truncate font-mono text-xs text-muted">{item.artifactPath}</div> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function RebusterPanel({ rebuster }: { rebuster: DashboardRebusterSnapshot }) {
+  return (
+    <div className="grid min-w-0 gap-3">
+      <article className="min-w-0 rounded-md border border-line bg-panel p-4 shadow-soft">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="break-words text-base font-semibold leading-6">
+              {rebuster.connection.projectName ?? "Rebuster Studio"}
+            </h3>
+            <p className="mt-1 break-words text-sm text-muted">{rebuster.status.summary}</p>
+          </div>
+          <StatusBadge status={rebuster.connection.status} label={rebuster.connection.statusLabel} />
+        </div>
+        <dl className="mt-4 grid gap-3 text-sm">
+          <Field label="Repository" value={rebuster.connection.repoPath ?? "Not configured"} />
+          <Field label="Dashboard" value={rebuster.connection.dashboardUrl ?? "Not configured"} />
+          <Field label="Open Decisions" value={String(rebuster.status.openDecisionCount)} />
+          <Field label="Recent Events" value={String(rebuster.status.recentEventCount)} />
+          <Field label="Last Sync" value={rebuster.connection.lastSyncAt ?? "Never"} />
+        </dl>
+      </article>
+      {rebuster.decisions.length > 0 ? (
+        <div className="grid min-w-0 gap-3">
+          {rebuster.decisions.slice(0, 4).map((decision) => (
+            <div key={decision.id} className="flex min-w-0 items-start gap-3 rounded-md border border-line bg-panel p-3 shadow-soft">
+              <Radio className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold">{decision.answer}</div>
+                <div className="mt-1 truncate text-xs text-muted">
+                  {decision.reviewSlug ?? decision.reviewItemId} · {decision.statusLabel}
+                </div>
+                <div className="mt-1 truncate text-xs text-muted">{decision.summary}</div>
+                <a
+                  href={decision.rebusterUrl}
+                  className="mt-2 inline-flex min-h-9 items-center rounded-md border border-steel/30 bg-steel/10 px-3 text-xs font-semibold text-steel transition hover:border-steel"
+                >
+                  Open Rebuster
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {rebuster.recentEvents.length > 0 ? (
+        <div className="grid min-w-0 gap-3">
+          {rebuster.recentEvents.slice(0, 4).map((event) => (
+            <div key={event.id} className="flex min-w-0 items-start gap-3 rounded-md border border-line bg-panel p-3 shadow-soft">
+              <History className="mt-0.5 h-4 w-4 shrink-0 text-steel" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold">{event.answer}</div>
+                <div className="mt-1 truncate text-xs text-muted">
+                  {event.eventLabel} · {event.statusLabel}
+                </div>
+                <div className="mt-1 truncate text-xs text-muted">{event.summary}</div>
               </div>
             </div>
           ))}

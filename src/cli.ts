@@ -112,6 +112,16 @@ import {
   runReviewShowCommand,
   runReviewWeeklyCommand
 } from "./commands/review.js";
+import {
+  renderRebusterConfigureSuccess,
+  renderRebusterCreateRebusSuccess,
+  renderRebusterIngestEventSuccess,
+  renderRebusterStatusSuccess,
+  runRebusterConfigureCommand,
+  runRebusterCreateRebusCommand,
+  runRebusterIngestEventCommand,
+  runRebusterStatusCommand
+} from "./commands/rebuster.js";
 import { renderRunListSuccess, renderRunShowSuccess, runRunListCommand, runRunShowCommand } from "./commands/run.js";
 import { renderStatusSuccess, runStatusCommand } from "./commands/status.js";
 import {
@@ -845,6 +855,70 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("blog.review", options, () => runBlogReviewCommand(options), renderBlogReviewSuccess)
+  );
+
+  const rebuster = program.command("rebuster").description("Rebuster bridge capability commands");
+  addJsonOption(
+    rebuster
+      .command("configure")
+      .description("Configure the Rebuster bridge for an Arcadia project")
+      .requiredOption("--project <id>", "Arcadia Project id, slug, or exact name")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--repo-path <path>", "Rebuster repository path")
+      .option("--base-url <url>", "Rebuster API or app base URL")
+      .option("--dashboard-url <url>", "Rebuster Studio dashboard URL")
+  ).action((options: {
+    workspace: string;
+    project: string;
+    repoPath?: string;
+    baseUrl?: string;
+    dashboardUrl?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "rebuster.configure",
+      options,
+      () => runRebusterConfigureCommand(options),
+      renderRebusterConfigureSuccess
+    )
+  );
+  addJsonOption(
+    rebuster
+      .command("status")
+      .description("Show Rebuster bridge status")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("rebuster.status", options, () => runRebusterStatusCommand(options), renderRebusterStatusSuccess)
+  );
+  addJsonOption(
+    rebuster
+      .command("create-rebus")
+      .description("Create a Rebuster rebus from a strict structured spec")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--spec <path>", "Strict structured Rebuster spec file")
+      .option("--spec-text <text>", "Strict structured Rebuster spec text")
+      .option("--force", "Allow eligible Rebuster record updates")
+  ).action((options: { workspace: string; spec?: string; specText?: string; force?: boolean; json?: boolean }) =>
+    runCliAction(
+      "rebuster.create-rebus",
+      options,
+      () => runRebusterCreateRebusCommand(options),
+      renderRebusterCreateRebusSuccess
+    )
+  );
+  addJsonOption(
+    rebuster
+      .command("ingest-event")
+      .description("Ingest a Rebuster event JSON payload")
+      .argument("<json-file>", "Path to a Rebuster event JSON file")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((jsonFile: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "rebuster.ingest-event",
+      options,
+      () => runRebusterIngestEventCommand({ workspace: options.workspace, jsonFile }),
+      renderRebusterIngestEventSuccess
+    )
   );
 
   const dashboard = program.command("dashboard").description("Dashboard read model commands");
