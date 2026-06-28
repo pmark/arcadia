@@ -162,6 +162,7 @@ export function AttentionCard({
             <StatusBadge status={item.status} label={item.kind === "codex_packet" ? item.statusLabel : labelAttentionKind(item.kind)} />
           </div>
           <dl className="mt-4 grid gap-3 text-sm">
+            {item.interpretation ? <Field label="Interpretation" value={item.interpretation} /> : null}
             {item.milestone ? <Field label="Milestone" value={item.milestone} /> : null}
             {item.outcome ? <Field label="Outcome" value={item.outcome} /> : null}
             {item.targetRepositoryRoot ? <Field label="Target Repository Root" value={item.targetRepositoryRoot} /> : null}
@@ -170,6 +171,8 @@ export function AttentionCard({
             <Field label="Related Artifact" value={item.relatedArtifactPath ?? item.relatedArtifactTitle ?? "None"} />
             {item.finalArtifactPath ? <Field label="Final Artifact" value={item.finalArtifactPath} /> : null}
             {item.validationPath ? <Field label="Validation" value={item.validationPath} /> : null}
+            {item.safetyBoundaries.length > 0 ? <Field label="Safety Boundaries" value={item.safetyBoundaries.join(" · ")} /> : null}
+            {item.responsibility ? <Field label="Responsibility" value={labelStatus(item.responsibility)} /> : null}
             <Field label="Next Action" value={item.nextAction} />
           </dl>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -231,6 +234,8 @@ export function ReviewCard({
   onResolveOption?: (item: DashboardReviewItem, option: string) => void;
 }) {
   const primaryActions = ["approve", "reject", "defer"] as const;
+  const isPlanning = item.resolvedIntent === "CodexPlanningRunApproval" || item.resolvedIntent === "CodexPlanningRetryApproval";
+  const isAcceptance = item.resolvedIntent === "CodexPlanningArtifactAcceptance";
   const extraOptions = item.options.filter((option) => !primaryActions.includes(option as (typeof primaryActions)[number]));
 
   return (
@@ -254,6 +259,21 @@ export function ReviewCard({
         <Field label="Created" value={`${formatDateTime(item.createdAt)} · ${item.statusLabel}`} />
       </dl>
       <div className="mt-4 flex flex-wrap gap-2">
+        {item.promptPath ? (
+          <a href={dashboardFileHref(item.promptPath)} className="inline-flex min-h-10 items-center rounded-md border border-steel/30 bg-steel/10 px-3 text-sm font-semibold text-steel">
+            View Packet
+          </a>
+        ) : null}
+        {item.resolvedIntent === "CodexPlanningArtifactAcceptance" && item.artifactPath ? (
+          <a href={dashboardFileHref(item.artifactPath)} className="inline-flex min-h-10 items-center rounded-md border border-steel/30 bg-steel/10 px-3 text-sm font-semibold text-steel">
+            View Plan
+          </a>
+        ) : null}
+        {item.validationPath && item.resolvedIntent !== "CodexPlanningRunApproval" ? (
+          <a href={dashboardFileHref(item.validationPath)} className="inline-flex min-h-10 items-center rounded-md border border-steel/30 bg-steel/10 px-3 text-sm font-semibold text-steel">
+            View Validation
+          </a>
+        ) : null}
         {onApproveAndExecute ? (
           <button
             type="button"
@@ -262,10 +282,16 @@ export function ReviewCard({
             className="inline-flex min-h-10 items-center gap-2 rounded-md border border-moss/30 bg-moss/10 px-3 text-sm font-semibold text-moss transition hover:border-moss disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Play className="h-3.5 w-3.5" aria-hidden="true" />
-            {pendingAction === "approve-execute" ? "Queuing…" : "Approve & Execute"}
+            {pendingAction === "approve-execute"
+              ? "Working…"
+              : isAcceptance
+                ? "Accept Plan"
+                : isPlanning
+                  ? "Approve & Run"
+                  : "Approve & Execute"}
           </button>
         ) : null}
-        {primaryActions.map((action) => {
+        {primaryActions.filter((action) => action !== "approve" || !onApproveAndExecute).map((action) => {
           const pending = pendingAction === action;
           const disabled = Boolean(pendingAction);
           return (
@@ -506,11 +532,17 @@ export function ArtifactRow({ artifact }: { artifact: DashboardArtifact }) {
     <div className="flex w-full min-w-0 items-start gap-3 rounded-md border border-line bg-panel p-3 shadow-soft">
       <FileText className="mt-0.5 h-4 w-4 shrink-0 text-steel" aria-hidden="true" />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold">{artifact.title}</div>
+        <div className="truncate text-sm font-semibold">
+          {artifact.path ? (
+            <a href={dashboardFileHref(artifact.path)} className="transition hover:text-steel">
+              {artifact.title}
+            </a>
+          ) : artifact.title}
+        </div>
         <div className="mt-1 truncate text-xs text-muted">
           {artifact.projectName ?? "Unassigned"} · {artifact.statusLabel}
         </div>
-        {artifact.path ? <div className="mt-1 truncate font-mono text-xs text-muted">{artifact.path}</div> : null}
+        {artifact.path ? <div className="mt-1 break-all font-mono text-xs text-muted">{artifact.path}</div> : null}
       </div>
     </div>
   );
@@ -594,7 +626,7 @@ function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <dt className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</dt>
-      <dd className="mt-1 break-words leading-5">{value}</dd>
+      <dd className="mt-1 min-w-0 [overflow-wrap:anywhere] leading-5">{value}</dd>
     </div>
   );
 }

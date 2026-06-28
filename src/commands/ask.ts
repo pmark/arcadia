@@ -44,6 +44,7 @@ import type {
 import { isRequiresReviewValue, type ProjectStatus } from "../domain/constants.js";
 import { ensureBuiltInSkills } from "../execution/skills.js";
 import { executePlan } from "../execution/runner.js";
+import { packetSha256 } from "../execution/planningAuthorization.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import { resolveIntent, type ResolvedIntent } from "../intent/resolver.js";
 import type { IntakeProjectAttribute, IntakeProjectContext, IntakeResult, IntakeWorkspaceContext } from "../intake/index.js";
@@ -97,6 +98,7 @@ export interface AskCommandData {
   review: ReviewRequiredCommandData | null;
   reviewItemId: string | null;
   decisionId: string | null;
+  decisionSlug?: string | null;
   backBurnerItemId: string | null;
 }
 
@@ -723,6 +725,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     : null;
 
   const data = withDatabase(workspacePath, (db) => {
+    let packetArtifact = null as ReturnType<typeof createArtifactRecord> | null;
     if (codexPacket) {
       createCodexInvocation(db, {
         id: codexPacket.invocationId,
@@ -737,7 +740,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         workItemId: initial.workItem.id,
         planId: initial.plan.id
       });
-      createArtifactRecord(db, {
+      packetArtifact = createArtifactRecord(db, {
         projectId: initial.workItem.project_id,
         workItemId: initial.workItem.id,
         title: `Codex ${codexPacket.purpose} packet: ${initial.workItem.title}`,
@@ -767,16 +770,61 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       status: isRequiresReviewValue(resolved.workClassification) ? "requires_review" : "planned"
     });
 
+    const planningDecision = codexPacket?.purpose === "planning" && packetArtifact
+      ? createReviewItem(db, {
+          askRequestId: ask.id,
+          workItemId: initial.workItem.id,
+          planId: initial.plan.id,
+          projectId: initial.workItem.project_id,
+          artifactId: packetArtifact.id,
+          codexInvocationId: codexPacket.invocationId,
+          decisionNeeded: `Approve the exact planning packet for "${initial.workItem.title}".`,
+          recommendation: "Inspect the packet, then approve and queue one managed planning Run.",
+          sourceInput: request,
+          proposedAction: interpretationForPlanning(intake),
+          resolvedIntent: "CodexPlanningRunApproval",
+          confidenceLabel: "high",
+          confidence: 1,
+          missingFields: [],
+          context: {
+            schemaVersion: 1,
+            packetSha256: packetSha256(codexPacket.promptPath),
+            interpretation: interpretationForPlanning(intake),
+            expectedArtifact: resolved.expectedArtifact,
+            safetyBoundaries: [
+              "No publishing",
+              "No deployment",
+              "No credential use",
+              "No spending",
+              "No messaging",
+              "No merging",
+              "No destructive actions"
+            ],
+            responsibility: "needs_mark"
+          }
+        })
+      : null;
+
+    if (planningDecision) {
+      updateWorkItem(db, initial.workItem.id, {
+        queue: "needs_mark",
+        workClassification: "needs_mark",
+        status: "open",
+        nextAction: "Review the planning packet and approve, reject, or defer its Decision."
+      });
+    }
+
     return {
       ask,
       workItem: getWorkItem(db, initial.workItem.id) as WorkItemSummary,
       plan: initial.plan,
       approvalGates: listApprovalGatesForWorkItem(db, initial.workItem.id),
-      codexInvocations: listCodexInvocationsForWorkItem(db, initial.workItem.id)
+      codexInvocations: listCodexInvocationsForWorkItem(db, initial.workItem.id),
+      planningDecision
     };
   });
 
-  if (options.runSafe) {
+  if (options.runSafe && data.plan.steps.every((step) => step.executor_type === "deterministic" && step.safe_to_run === 1)) {
     const result = withDatabase(workspacePath, (db) => executePlan(db, workspacePath, data.plan));
     run = result.run;
   }
@@ -803,8 +851,9 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       projects: null,
       status: null,
       review: null,
-      reviewItemId: null,
-      decisionId: null,
+        reviewItemId: data.planningDecision?.id ?? null,
+        decisionId: data.planningDecision?.id ?? null,
+        decisionSlug: data.planningDecision?.slug ?? null,
       backBurnerItemId: null
     },
     artifacts: [
@@ -980,7 +1029,7 @@ export function renderAskSuccess(response: CommandSuccess<AskCommandData>): stri
   }
 
   if (response.data.reviewItemId) {
-    lines.push(`Requires Review: ${response.data.reviewItemId}`);
+    lines.push(`Decision created: ${response.data.decisionSlug ?? response.data.reviewItemId}`);
   }
 
   if (response.data.backBurnerItemId) {
@@ -1154,6 +1203,30 @@ function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = fal
   }
 
   if (intake.action.kind === "create_work") {
+    if (normalizeForArtifact(intake.rawInput) === "generate this week s arcadia project status report") {
+      return {
+        intentId: "GenerateStatusReport",
+        matched: true,
+        title: "Generate this week's Arcadia project status report",
+        outputKind: "status_report",
+        queue: "work_queue",
+        workClassification: "autonomous",
+        nextAction: "Generate the deterministic Arcadia status report.",
+        expectedArtifact: "Weekly Arcadia project status report",
+        skillSequence: [{
+          skillName: "generate_status_report",
+          title: "Generate status report",
+          command: "arcadia status",
+          executorType: "deterministic",
+          safeToRun: true,
+          needsMark: null
+        }],
+        approvalGates: [],
+        templates: [],
+        slots: intake.extractedFields,
+        codexPurpose: null
+      };
+    }
     return {
       intentId: intake.resolvedIntent,
       matched: true,
@@ -1428,6 +1501,12 @@ function expectedPlanningArtifactForIntake(intake: IntakeResult): string {
   const project = intake.project?.name ?? intake.extractedFields.project ?? "selected project";
   const subject = (canonicalArtifactSubject(intake) ?? "project execution").replace(/\s+support$/i, "");
   return `${capitalizePlanningSubject(subject)} plan for ${project} with ordered phases, risks/open questions, approval requirements, and recommended next action.`;
+}
+
+function interpretationForPlanning(intake: IntakeResult): string {
+  const project = intake.project?.name ?? intake.extractedFields.project ?? "the selected Project";
+  const subject = (canonicalArtifactSubject(intake) ?? "project execution").replace(/\s+support$/i, "");
+  return `Prepare a ${subject} plan for ${project}.`;
 }
 
 function capitalizePlanningSubject(value: string): string {

@@ -12,6 +12,7 @@ import {
   createExecutionPlan,
   getCodexInvocationForPlan,
   getProjectContext,
+  getReviewItemForInvocation,
   getWorkItem,
   listWorkItems,
   updateWorkItem
@@ -23,6 +24,7 @@ import {
 import type { ExecutionPlanSummary, ExecutionRunSummary, WorkItemSummary } from "../domain/types.js";
 import { ensureBuiltInSkills, planStepsForWorkItem } from "../execution/skills.js";
 import { executePlan, resolvePlanForRun } from "../execution/runner.js";
+import { queueApprovedPlanningRun } from "../execution/planningAuthorization.js";
 import type { Phase3Registries } from "../intent/registries.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import type { ResolvedIntent } from "../intent/resolver.js";
@@ -172,6 +174,35 @@ export function runWorkRunCommand(options: {
 
     if (!plan) {
       return { missingPlan: true as const };
+    }
+
+    if (plan.steps.some((step) => step.executor_type === "codex_planning")) {
+      if (!options.allowCodexPlanning) {
+        throw validationError("Planning execution requires an approved Decision for this Action, plan, and packet.");
+      }
+      const invocation = getCodexInvocationForPlan(db, {
+        workItemId: workItem.id,
+        planId: plan.id,
+        purpose: "planning"
+      });
+      const decision = invocation
+        ? getReviewItemForInvocation(db, invocation.id, ["CodexPlanningRunApproval", "CodexPlanningRetryApproval"])
+        : null;
+      if (!decision || decision.status !== "approved") {
+        throw validationError("Planning execution requires an approved Decision for this Action, plan, and packet.", {
+          workItemId: workItem.id,
+          planId: plan.id
+        });
+      }
+      const queued = queueApprovedPlanningRun(db, workspacePath, {
+        decisionId: decision.id,
+        execute: true,
+        executorName: options.agentProfile
+      });
+      if (!queued.run) {
+        throw validationError("Approved planning Run could not be queued.");
+      }
+      return { run: queued.run, missionLogPath: queued.run.mission_log_path };
     }
 
     if (registries) {

@@ -178,6 +178,7 @@ export interface AskData {
   run: ExecutionRun | null;
   reviewItemId?: string | null;
   decisionId?: string | null;
+  decisionSlug?: string | null;
   backBurnerItemId?: string | null;
 }
 

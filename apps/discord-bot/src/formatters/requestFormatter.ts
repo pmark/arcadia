@@ -35,9 +35,10 @@ export function formatRequest(data: AskData): string {
     );
   }
 
-  if (!data.workItem && data.reviewItemId) {
+  if (data.reviewItemId) {
     lines.push(
-      `Requires Review: \`${data.decisionId ?? data.reviewItemId}\``,
+      `Requires Review: \`${data.reviewItemId}\``,
+      `Decision ID: \`${data.decisionSlug ?? data.decisionId ?? data.reviewItemId}\``,
       `Decision: ${data.intake?.proposedAction ?? data.result?.summary ?? "Review required"}`
     );
   }

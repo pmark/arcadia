@@ -9,7 +9,7 @@ It shows:
 - Requires Review items
 - recent execution runs and artifacts
 
-It can approve, reject, defer, or resolve Requires Review items through the same CLI review commands used in a terminal. It does not edit projects, start runs directly, manage background jobs, or maintain a dashboard-only review store.
+It can approve, reject, defer, or resolve Decisions through the same CLI commands used in a terminal. Planning approval atomically queues one managed Run for the existing Arcadia worker; the dashboard never invokes a planning provider directly and maintains no dashboard-only approval state.
 
 ## Workspace
 
@@ -63,3 +63,17 @@ arcadia review reject <id> --json
 arcadia review defer <id> --json
 arcadia review resolve-reply <reply> --id <id> --json
 ```
+
+Decision-gated planning follows this durable path:
+
+```text
+Action + packet Artifact
+  -> planning approval Decision
+  -> pending Run
+  -> worker
+  -> deterministic Validation
+  -> final planning Artifact + Log
+  -> final plan-acceptance Decision
+```
+
+`arcadia run retry <run-id>` creates an immutable retry Decision for a failed or Requires Review planning Run. Approval creates a new invocation and Run linked to the original attempt.

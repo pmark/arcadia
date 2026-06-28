@@ -32,7 +32,8 @@ export async function runAsk(input: {
     "ask",
     input.request,
     "--source-ingress",
-    "dashboard.ask"
+    "dashboard.ask",
+    "--run-safe"
   ]);
 }
 
@@ -186,6 +187,13 @@ export async function getRunDetails(id: string): Promise<ArcadiaJsonSuccess<RunS
   return runArcadiaCliJson<RunShowResponse>(["run", "show", id]);
 }
 
+export async function requestRunRetry(id: string): Promise<ArcadiaJsonSuccess<{
+  run: { id: string };
+  decision: { id: string; slug: string };
+}>> {
+  return runArcadiaCliJson(["run", "retry", id]);
+}
+
 export async function runBackBurnerAction(input: {
   id: string;
   action: "promote" | "archive";
@@ -282,7 +290,7 @@ function failureFromParsed(parsed: ArcadiaJsonResult<unknown>): ArcadiaCliError 
 
   return new ArcadiaCliError(
     `${parsed.error.code}: ${parsed.error.message}`,
-    statusForArcadiaError(parsed.error.code),
+    statusForArcadiaError(parsed.error.code, parsed.error.details),
     parsed.error.details
   );
 }
@@ -307,7 +315,16 @@ function failureFromExecError(error: unknown): ArcadiaCliError {
   });
 }
 
-function statusForArcadiaError(code: string): number {
+function statusForArcadiaError(code: string, details: unknown): number {
+  if (
+    code === "VALIDATION_ERROR" &&
+    details &&
+    typeof details === "object" &&
+    "conflict" in details &&
+    details.conflict === true
+  ) {
+    return 409;
+  }
   if (code === "USAGE_ERROR" || code === "VALIDATION_ERROR") {
     return 400;
   }

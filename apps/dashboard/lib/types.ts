@@ -294,6 +294,9 @@ export interface DashboardAttentionItem {
   relatedRunId: string | null;
   relatedCodexInvocationId: string | null;
   nextAction: string;
+  interpretation: string | null;
+  safetyBoundaries: string[];
+  responsibility: string | null;
   primaryActions: DashboardAttentionAction[];
   createdAt: string;
   updatedAt: string;
@@ -366,6 +369,14 @@ export interface DashboardReviewItem {
   createdAt: string;
   updatedAt: string;
   resultingAskRequestId: string | null;
+  contextJson: string | null;
+  resolvedIntent: string;
+  packetArtifactId: string | null;
+  codexInvocationId: string | null;
+  artifactPath: string | null;
+  promptPath: string | null;
+  finalMessagePath: string | null;
+  validationPath: string | null;
 }
 
 export interface DashboardBackBurnerItem {

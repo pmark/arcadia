@@ -312,6 +312,33 @@ function resolveIntakeWithoutClassification(
   const raw = rawInput.trim();
   const normalized = normalizeText(raw);
 
+  if (normalized === "generate this week s arcadia project status report") {
+    const project = resolveProjectReference("Arcadia", context);
+    return resultFromProjectIntent({
+      raw,
+      resolvedIntent: "CreateWork",
+      extractedFields: {
+        project: project.reference?.name ?? "Arcadia",
+        action: "Generate this week's project status report",
+        purpose: "weekly project status report",
+        requestedArtifact: "Weekly Arcadia project status report"
+      },
+      missingFields: missingProjectFields(project),
+      proposedAction: "Generate this week's Arcadia project status report.",
+      safeToExecute: true,
+      explanation: "The exact request maps to Arcadia's deterministic status-report skill.",
+      action: {
+        kind: "create_work",
+        title: "Generate this week's Arcadia project status report",
+        projectId: project.reference?.id ?? null,
+        workClassification: "autonomous"
+      },
+      project: project.reference,
+      template: null,
+      baseConfidence: 0.99
+    });
+  }
+
   if (isReviewRequest(normalized)) {
     return highResult({
       raw,
@@ -886,6 +913,14 @@ function projectEntityType(): IntakeEntityType {
 }
 
 function parseCreateWork(raw: string, context: IntakeWorkspaceContext): ParsedCreateWork | null {
+  const preparePlan = /^\s*(?:please\s+)?prepare\s+(?:an?\s+)?plan\s+for\s+(?:adding|implementing|building)\s+(?<action>.+?)\s+(?:to|for|in)\s+(?<target>.+?)\s*[.!?]?\s*$/i.exec(raw);
+  if (preparePlan?.groups?.action && preparePlan.groups.target) {
+    return {
+      action: cleanTrailingPunctuation(preparePlan.groups.action),
+      projectReference: cleanTrailingPunctuation(preparePlan.groups.target),
+      verb: "prepare"
+    };
+  }
   const direct = new RegExp(
     `^\\s*(?:please\\s+)?(?<verb>${WORK_VERBS})\\s+(?<body>.+?)\\s+(?<preposition>for|to|in)\\s+(?<target>.+?)\\s*[.!?]?\\s*$`,
     "i"
@@ -894,16 +929,17 @@ function parseCreateWork(raw: string, context: IntakeWorkspaceContext): ParsedCr
   const target = direct?.groups?.target;
   const verb = direct?.groups?.verb;
   if (body && target && verb) {
+    const normalizedBody = normalizePlanPreparationBody(body, verb);
     const cleanedTarget = cleanTrailingPunctuation(target);
     if (resolveProjectReference(cleanedTarget, context).reference) {
       return {
-        action: cleanTrailingPunctuation(body),
+        action: cleanTrailingPunctuation(normalizedBody),
         projectReference: cleanedTarget,
         verb: normalizeText(verb)
       };
     }
 
-    const embeddedProject = findProjectReferenceInWorkBody(cleanTrailingPunctuation(body), context);
+    const embeddedProject = findProjectReferenceInWorkBody(cleanTrailingPunctuation(normalizedBody), context);
     if (embeddedProject) {
       return {
         action: cleanExtractedValue(
@@ -915,13 +951,20 @@ function parseCreateWork(raw: string, context: IntakeWorkspaceContext): ParsedCr
     }
 
     return {
-      action: cleanTrailingPunctuation(body),
+      action: cleanTrailingPunctuation(normalizedBody),
       projectReference: cleanedTarget,
       verb: normalizeText(verb)
     };
   }
 
   return parseProjectReferencedWork(raw, context);
+}
+
+function normalizePlanPreparationBody(body: string, verb: string): string {
+  if (normalizeText(verb) !== "prepare") {
+    return body;
+  }
+  return body.replace(/^(?:an?\s+)?plan\s+for\s+(?:adding|implementing|building)\s+/i, "");
 }
 
 function parseProjectReferencedWork(raw: string, context: IntakeWorkspaceContext): ParsedCreateWork | null {

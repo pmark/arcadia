@@ -4,11 +4,29 @@ import { execFileSync } from "node:child_process";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { openDatabase } from "../db/connection.js";
 import {
+  attachArtifactToExecutionRun,
+  attachMissionLogToExecutionRun,
   claimNextPendingRun,
+  createMissionLog,
+  getCodexInvocation,
+  getExecutionPlan,
+  getExecutionRun,
+  getMilestone,
+  getProject,
+  getReviewItem,
+  getWorkItem,
   listOrphanedRuns,
-  updateExecutionRunStatus
+  updateExecutionRunStatus,
+  updateExecutionRunStep,
+  updateWorkItem
 } from "../db/repositories.js";
 import { executeApprovedReview } from "../execution/reviewExecutor.js";
+import { executePlan } from "../execution/runner.js";
+import { isPlanningApprovalDecision } from "../execution/planningAuthorization.js";
+import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
+import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../markdown/missionLog.js";
+import { renderRunSummary } from "../markdown/executionArtifacts.js";
+import { createId } from "../utils/id.js";
 
 const POLL_INTERVAL_MS = 2_000;
 
@@ -79,32 +97,7 @@ export function runWorkerStartCommand(options: WorkerOptions): never {
   const tick = () => {
     const db = openDatabase(workspacePath);
     try {
-      recoverOrphanedRuns(db, logfile);
-      const run = claimNextPendingRun(db, process.pid);
-      if (run?.review_item_id) {
-        log(logfile, `Executing run ${run.id} (review: ${run.review_item_id}, executor: ${run.executor_name ?? "codex"})`);
-        try {
-          const result = executeApprovedReview(db, {
-            workspace: workspacePath,
-            reviewId: run.review_item_id,
-            executorName: run.executor_name ?? undefined,
-            runId: run.id
-          });
-          const validationPassed = result.validation.every((v) => v.exitStatus === 0);
-          const summary = [
-            `Executed with ${result.executor}.`,
-            `${result.changedFiles.length} file(s) changed.`,
-            `Validation: ${validationPassed ? "passed" : "failed"}.`,
-            `Follow-up review: ${result.followUpReview.slug ?? result.followUpReview.id}.`
-          ].join(" ");
-          updateExecutionRunStatus(db, run.id, "completed", { pid: null, summary });
-          log(logfile, `Run ${run.id} completed (exit: ${result.exitStatus})`);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          updateExecutionRunStatus(db, run.id, "failed", { pid: null, summary: `Execution failed: ${message}` });
-          log(logfile, `Run ${run.id} failed: ${message}`);
-        }
-      }
+      runWorkerIteration(db, workspacePath, process.pid, logfile);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       log(logfile, `Worker tick error: ${message}`);
@@ -119,6 +112,143 @@ export function runWorkerStartCommand(options: WorkerOptions): never {
   process.stdin.resume();
 
   return undefined as never;
+}
+
+export function reduceExecutionOutcome(input: {
+  exitStatus: number | null;
+  validation: Array<{ exitStatus: number | null }>;
+}): "completed" | "requires_review" | "failed" {
+  if (input.exitStatus !== 0) {
+    return "failed";
+  }
+  if (input.validation.some((validation) => validation.exitStatus !== 0)) {
+    return "requires_review";
+  }
+  return "completed";
+}
+
+export function runWorkerIteration(
+  db: ReturnType<typeof openDatabase>,
+  workspacePath: string,
+  pid = process.pid,
+  logfile = logPath(workspacePath)
+): ReturnType<typeof getExecutionRun> {
+  recoverOrphanedRuns(db, logfile);
+  const run = claimNextPendingRun(db, pid);
+  if (!run?.review_item_id) {
+    return run;
+  }
+  const decision = getReviewItem(db, run.review_item_id);
+  if (!decision) {
+    finalizeWorkerFailure(db, workspacePath, run.id, "Approving Decision is missing.");
+    return getExecutionRun(db, run.id);
+  }
+
+  log(logfile, `Executing run ${run.id} (Decision: ${decision.slug ?? decision.id}, executor: ${run.executor_name ?? "codex"})`);
+  if (isPlanningApprovalDecision(decision)) {
+    try {
+      const plan = run.plan_id ? getExecutionPlan(db, run.plan_id) : null;
+      const invocation = decision.codex_invocation_id ? getCodexInvocation(db, decision.codex_invocation_id) : null;
+      if (!plan || !invocation) {
+        throw new Error("Planning Run is missing its plan or packet invocation.");
+      }
+      const planningStep = plan.steps.find((step) => step.executor_type === "codex_planning");
+      if (planningStep) {
+        updateExecutionRunStep(db, run.id, planningStep.id, { status: "running" });
+      }
+      const registries = loadPhase3Registries(workspacePath);
+      validatePhase3Registries(registries);
+      executePlan(db, workspacePath, plan, {
+        allowCodexPlanning: true,
+        agentProfile: invocation.agent_profile,
+        codingAgentProfiles: registries.codingAgents.profiles,
+        runId: run.id,
+        decisionId: decision.id,
+        invocationId: invocation.id
+      });
+      const finalized = getExecutionRun(db, run.id);
+      log(logfile, `Planning Run ${run.id} finished as ${finalized?.status ?? "unknown"}.`);
+      return finalized;
+    } catch (error) {
+      finalizeWorkerFailure(db, workspacePath, run.id, error instanceof Error ? error.message : String(error));
+      return getExecutionRun(db, run.id);
+    }
+  }
+
+  try {
+    const result = executeApprovedReview(db, {
+      workspace: workspacePath,
+      reviewId: run.review_item_id,
+      executorName: run.executor_name ?? undefined,
+      runId: run.id
+    });
+    const status = reduceExecutionOutcome(result);
+    attachArtifactToExecutionRun(db, run.id, result.artifact.id);
+    const summary = [
+      `Executed with ${result.executor}.`,
+      `${result.changedFiles.length} file(s) changed.`,
+      `Validation: ${status === "completed" ? "passed" : status === "requires_review" ? "failed" : "not run"}.`,
+      `Follow-up Decision: ${result.followUpReview.slug ?? result.followUpReview.id}.`
+    ].join(" ");
+    finalizeGenericRun(db, workspacePath, run.id, status, summary, result.artifact.path ?? result.metadataPath);
+    log(logfile, `Run ${run.id} ${status} (exit: ${result.exitStatus})`);
+  } catch (error) {
+    finalizeWorkerFailure(db, workspacePath, run.id, error instanceof Error ? error.message : String(error));
+  }
+  return getExecutionRun(db, run.id);
+}
+
+function finalizeGenericRun(
+  db: ReturnType<typeof openDatabase>,
+  workspace: string,
+  runId: string,
+  status: "completed" | "requires_review" | "failed",
+  summary: string,
+  artifactImpact: string
+): void {
+  const run = getExecutionRun(db, runId);
+  if (!run) {
+    return;
+  }
+  const workItem = run.work_item_id ? getWorkItem(db, run.work_item_id) : null;
+  const project = workItem?.project_id ? getProject(db, workItem.project_id) : null;
+  const milestone = workItem?.milestone_id ? getMilestone(db, workItem.milestone_id) : null;
+  const logId = createId("missionLog");
+  const markdownPath = buildMissionLogRelativePath(workspace, project?.name ?? "execution", logId);
+  const missionLog = createMissionLog(db, {
+    id: logId,
+    projectId: workItem?.project_id,
+    milestoneId: workItem?.milestone_id,
+    workPerformed: renderRunSummary(run),
+    result: summary,
+    blockers: status === "completed" ? "" : summary,
+    nextAction: status === "completed"
+      ? "Review the execution evidence and follow-up Decision."
+      : status === "requires_review"
+        ? "Review failed Validation and decide how to revise."
+        : "Inspect diagnostics and request a new attempt.",
+    artifactImpact,
+    markdownPath
+  });
+  writeMissionLogMarkdown(workspace, { missionLog, project, milestone });
+  attachMissionLogToExecutionRun(db, runId, missionLog.id);
+  updateExecutionRunStatus(db, runId, status, { pid: null, summary });
+  if (workItem) {
+    updateWorkItem(db, workItem.id, status === "failed"
+      ? { queue: "blocked", workClassification: "blocked", status: "blocked", nextAction: "Inspect the failed Run and request retry." }
+      : status === "requires_review"
+        ? { queue: "needs_mark", workClassification: "needs_mark", status: "in_progress", nextAction: "Review failed Validation." }
+        : { queue: "needs_mark", workClassification: "needs_mark", status: "in_progress", nextAction: "Review the executor result." });
+  }
+}
+
+function finalizeWorkerFailure(
+  db: ReturnType<typeof openDatabase>,
+  workspace: string,
+  runId: string,
+  message: string
+): void {
+  finalizeGenericRun(db, workspace, runId, "failed", `Execution failed: ${message}`, "Diagnostic evidence retained.");
 }
 
 export function runWorkerStatusCommand(options: WorkerOptions): void {
@@ -241,10 +371,19 @@ export function runWorkerUninstallCommand(options: WorkerOptions): void {
   }
 }
 
-function recoverOrphanedRuns(db: ReturnType<typeof openDatabase>, logfile: string): void {
+export function recoverOrphanedRuns(db: ReturnType<typeof openDatabase>, logfile: string): void {
   const orphans = listOrphanedRuns(db);
+  const workspace = path.dirname(path.dirname(logfile));
   for (const { id, pid } of orphans) {
     if (!isProcessAlive(pid)) {
+      const run = getExecutionRun(db, id);
+      const decision = run?.review_item_id ? getReviewItem(db, run.review_item_id) : null;
+      const invocation = decision?.codex_invocation_id ? getCodexInvocation(db, decision.codex_invocation_id) : null;
+      if (decision && isPlanningApprovalDecision(decision) && invocation?.status === "running") {
+        finalizeWorkerFailure(db, workspace, id, "orphaned_execution_state: provider state is uncertain; request an immutable retry.");
+        log(logfile, `Failed orphaned planning Run ${id}; invocation was already running.`);
+        continue;
+      }
       updateExecutionRunStatus(db, id, "pending_execution", { pid: null });
       log(logfile, `Recovered orphaned run ${id} (PID ${pid} is gone)`);
     }

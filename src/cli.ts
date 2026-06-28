@@ -122,7 +122,14 @@ import {
   runRebusterIngestEventCommand,
   runRebusterStatusCommand
 } from "./commands/rebuster.js";
-import { renderRunListSuccess, renderRunShowSuccess, runRunListCommand, runRunShowCommand } from "./commands/run.js";
+import {
+  renderRunListSuccess,
+  renderRunRetrySuccess,
+  renderRunShowSuccess,
+  runRunListCommand,
+  runRunRetryCommand,
+  runRunShowCommand
+} from "./commands/run.js";
 import { renderStatusSuccess, runStatusCommand } from "./commands/status.js";
 import {
   runWorkerInstallCommand,
@@ -1135,6 +1142,15 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((runId: string, options: { workspace: string; json?: boolean }) =>
     runCliAction("run.show", options, () => runRunShowCommand({ ...options, runId }), renderRunShowSuccess)
+  );
+  addJsonOption(
+    run
+      .command("retry")
+      .description("Request an immutable retry Decision for a failed planning Run")
+      .argument("<run-id>", "Run id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((runId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction("run.retry", options, () => runRunRetryCommand({ ...options, runId }), renderRunRetrySuccess)
   );
 
   const log = program.command("log").description("Mission log commands");

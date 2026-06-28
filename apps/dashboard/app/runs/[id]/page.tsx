@@ -36,6 +36,23 @@ interface RunDetail {
     created_at: string;
     updated_at: string;
     pid: number | null;
+    mission_log_path: string | null;
+    retry_of_run_id: string | null;
+    steps: Array<{
+      id: string;
+      status: string;
+      plan_step_title: string;
+      output: string | null;
+      error: string | null;
+      artifact_path: string | null;
+    }>;
+    artifacts: Array<{
+      id: string;
+      title: string;
+      artifact_type: string;
+      status: string;
+      path: string | null;
+    }>;
   };
   needsMark: string[];
   executorOutputPath: string | null;
@@ -60,6 +77,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
   const [reviewPending, setReviewPending] = useState<string | null>(null);
   const [reviewMessage, setReviewMessage] = useState<string | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
+  const [retryMessage, setRetryMessage] = useState<string | null>(null);
   const outputRef = useRef<HTMLPreElement>(null);
   const startTimeRef = useRef<Date | null>(null);
 
@@ -212,6 +230,43 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
               </a>
             </div>
           ) : null}
+          <div className="mt-4 flex min-w-0 flex-wrap gap-2">
+            {run.mission_log_path ? <EvidenceLink label="View Log" path={run.mission_log_path} /> : null}
+            {(run.status === "failed" || run.status === "requires_review") ? (
+              <button
+                type="button"
+                onClick={() => void requestRetry(run.id, setRetryMessage, setReviewError)}
+                className="min-h-9 rounded-md border border-gold/30 bg-gold/10 px-3 text-sm font-semibold text-gold"
+              >
+                Request Retry
+              </button>
+            ) : null}
+          </div>
+          {retryMessage ? <p className="mt-3 text-sm text-moss">{retryMessage}</p> : null}
+        </section>
+
+        <section className="min-w-0 rounded-md border border-line bg-panel p-4 shadow-soft">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Run Evidence</h2>
+          <div className="mt-3 grid min-w-0 gap-3">
+            {run.steps.map((step) => (
+              <div key={step.id} className="min-w-0 rounded-md border border-line p-3">
+                <div className="font-semibold">{step.plan_step_title} · {statusLabel(step.status)}</div>
+                <div className="mt-1 [overflow-wrap:anywhere] text-sm text-muted">
+                  {step.error ?? step.output ?? "No message."}
+                </div>
+              </div>
+            ))}
+            <div className="flex min-w-0 flex-wrap gap-2">
+              {run.artifacts.filter((artifact) => artifact.path).map((artifact) => (
+                <EvidenceLink key={artifact.id} label={artifact.title} path={artifact.path!} />
+              ))}
+            </div>
+            {run.retry_of_run_id ? (
+              <Link href={`/runs/${encodeURIComponent(run.retry_of_run_id)}`} className="text-sm font-semibold text-steel">
+                View prior Run
+              </Link>
+            ) : null}
+          </div>
         </section>
 
         {outputLines.length > 0 ? (
@@ -258,6 +313,40 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
       </div>
     </RunPageShell>
   );
+}
+
+function EvidenceLink({ label, path }: { label: string; path: string }) {
+  return (
+    <a
+      href={`/api/file/${path.split("/").map(encodeURIComponent).join("/")}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex min-h-9 max-w-full items-center rounded-md border border-steel/30 bg-steel/10 px-3 text-sm font-semibold text-steel [overflow-wrap:anywhere]"
+    >
+      {label}
+    </a>
+  );
+}
+
+async function requestRetry(
+  id: string,
+  setMessage: (message: string | null) => void,
+  setError: (message: string | null) => void
+) {
+  try {
+    const response = await fetch("/api/run-action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, action: "retry" })
+    });
+    const body = await response.json() as { message?: string; error?: string };
+    if (!response.ok) {
+      throw new Error(body.error ?? "Retry request failed.");
+    }
+    setMessage(body.message ?? "Retry Decision created.");
+  } catch (error) {
+    setError(error instanceof Error ? error.message : String(error));
+  }
 }
 
 function FollowUpReviewPanel({

@@ -146,6 +146,7 @@ export interface ExecutionRun {
   review_item_id: string | null;
   executor_name: string | null;
   pid: number | null;
+  retry_of_run_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -194,6 +195,8 @@ export interface ReviewItem {
   work_item_id: string | null;
   plan_id: string | null;
   project_id: string | null;
+  artifact_id: string | null;
+  codex_invocation_id: string | null;
   status: ReviewItemStatus;
   decision_needed: string;
   recommendation: string | null;
@@ -377,6 +380,10 @@ export interface ReviewItemSummary extends ReviewItem {
   work_item_title: string | null;
   plan_summary: string | null;
   resulting_ask_work_item_title: string | null;
+  artifact_title: string | null;
+  artifact_path: string | null;
+  codex_prompt_path: string | null;
+  codex_final_message_path: string | null;
 }
 
 export interface BackBurnerItemSummary extends BackBurnerItem {
@@ -502,6 +509,8 @@ export interface UpdateWorkItemInput {
 export interface UpdateArtifactInput {
   status?: string;
   path?: string | null;
+  title?: string;
+  artifactType?: string;
 }
 
 export interface CreateMissionLogInput {
@@ -543,6 +552,8 @@ export interface CreateReviewItemInput {
   workItemId?: string | null;
   planId?: string | null;
   projectId?: string | null;
+  artifactId?: string | null;
+  codexInvocationId?: string | null;
   decisionNeeded: string;
   recommendation?: string | null;
   sourceInput: string;

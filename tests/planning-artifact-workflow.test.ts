@@ -4,17 +4,23 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 import { runWorkRunCommand } from "../src/commands/work.js";
+import { runReviewApproveCommand } from "../src/commands/review.js";
+import { runWorkerIteration } from "../src/commands/worker.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
   createCodexInvocation,
+  createArtifactRecord,
   createExecutionPlan,
   createProjectWithInitialWork,
+  createReviewItem,
+  getExecutionRun,
   getWorkItem,
   listArtifacts,
   listReviewItems,
   upsertProjectMetadata
 } from "../src/db/repositories.js";
 import { ensureBuiltInSkills } from "../src/execution/skills.js";
+import { packetSha256 } from "../src/execution/planningAuthorization.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
 import {
@@ -41,19 +47,16 @@ describe("Codex planning artifact validation workflow", () => {
       agentOutput: completePlanningArtifact
     });
 
-    const result = runWorkRunCommand({
-      workspace,
-      workId: fixture.workItemId,
-      plan: fixture.planId,
-      allowCodexPlanning: true
-    });
+    const result = executeFixture(workspace, fixture);
 
     expect(result.data.run.status).toBe("completed");
     expect(result.data.run.steps[0].status).toBe("completed");
     expect(result.data.run.steps[0].artifact_path).toBe(fixture.finalRelativePath);
     expect(result.data.run.steps[0].output).toContain("Planning artifact validation passed");
-    expect(withDatabase(workspace, (db) => getWorkItem(db, fixture.workItemId)?.status)).toBe("done");
-    expect(withDatabase(workspace, (db) => listReviewItems(db, "all"))).toHaveLength(0);
+    expect(withDatabase(workspace, (db) => getWorkItem(db, fixture.workItemId)?.status)).toBe("in_progress");
+    expect(withDatabase(workspace, (db) =>
+      listReviewItems(db, "open").some((item) => item.resolved_intent === "CodexPlanningArtifactAcceptance")
+    )).toBe(true);
 
     const sidecar = readValidationSidecar(workspace, fixture.validationRelativePath);
     expect(sidecar.status).toBe("passed");
@@ -73,12 +76,7 @@ describe("Codex planning artifact validation workflow", () => {
       cwdCapturePath
     });
 
-    const result = runWorkRunCommand({
-      workspace,
-      workId: fixture.workItemId,
-      plan: fixture.planId,
-      allowCodexPlanning: true
-    });
+    const result = executeFixture(workspace, fixture);
 
     expect(result.data.run.status).toBe("completed");
     expect(readFileSync(cwdCapturePath, "utf8")).toBe(realpathSync(targetRepositoryRoot));
@@ -100,19 +98,14 @@ describe("Codex planning artifact validation workflow", () => {
       agentOutput: failingArtifact
     });
 
-    const result = runWorkRunCommand({
-      workspace,
-      workId: fixture.workItemId,
-      plan: fixture.planId,
-      allowCodexPlanning: true
-    });
+    const result = executeFixture(workspace, fixture);
 
     expect(result.data.run.status).toBe("requires_review");
     expect(result.data.run.steps[0].status).toBe("requires_review");
     expect(result.data.run.steps[0].error).toContain("Planning artifact validation failed");
     expect(withDatabase(workspace, (db) => getWorkItem(db, fixture.workItemId)?.queue)).toBe("requires_review");
 
-    const reviewItems = withDatabase(workspace, (db) => listReviewItems(db, "all"));
+    const reviewItems = withDatabase(workspace, (db) => listReviewItems(db, "open"));
     expect(reviewItems).toHaveLength(1);
     expect(reviewItems[0].decision_needed).toContain("Planning artifact validation failed");
     expect(reviewItems[0].decision_needed).toContain("missing_ordered_phases");
@@ -136,16 +129,13 @@ describe("Codex planning artifact validation workflow", () => {
       agentOutput: warningArtifact
     });
 
-    const result = runWorkRunCommand({
-      workspace,
-      workId: fixture.workItemId,
-      plan: fixture.planId,
-      allowCodexPlanning: true
-    });
+    const result = executeFixture(workspace, fixture);
 
     expect(result.data.run.status).toBe("completed");
     expect(result.data.run.steps[0].output).toContain("1 warnings");
-    expect(withDatabase(workspace, (db) => listReviewItems(db, "all"))).toHaveLength(0);
+    expect(withDatabase(workspace, (db) =>
+      listReviewItems(db, "open").some((item) => item.resolved_intent === "CodexPlanningArtifactAcceptance")
+    )).toBe(true);
 
     const sidecar = readValidationSidecar(workspace, fixture.validationRelativePath);
     expect(sidecar.status).toBe("passed");
@@ -160,13 +150,11 @@ describe("Codex planning artifact validation workflow", () => {
       purpose: "planning",
       agentOutput: completePlanningArtifact
     });
+    const queued = runReviewApproveCommand({ workspace, id: fixture.decisionId });
     unlinkSync(path.join(workspace, fixture.promptRelativePath));
-
-    const result = runWorkRunCommand({
-      workspace,
-      workId: fixture.workItemId,
-      plan: fixture.planId,
-      allowCodexPlanning: true
+    const result = withDatabase(workspace, (db) => {
+      runWorkerIteration(db, workspace, process.pid);
+      return { data: { run: getExecutionRun(db, queued.data.run!.id)! } };
     });
 
     expect(result.data.run.status).toBe("failed");
@@ -254,6 +242,8 @@ function setupCodexRun(
   promptRelativePath: string;
   finalRelativePath: string;
   validationRelativePath: string;
+  decisionId: string;
+  purpose: "planning" | "build";
 } {
   const paths = getWorkspacePaths(workspace);
   const agentPath = path.join(workspace, `fake-${input.purpose}-agent.cjs`);
@@ -330,7 +320,7 @@ function setupCodexRun(
     writeFileSync(path.join(workspace, outputRelativePath), "", "utf8");
     writeFileSync(path.join(workspace, finalRelativePath), "Codex has not been invoked yet.\n", "utf8");
 
-    createCodexInvocation(db, {
+    const invocation = createCodexInvocation(db, {
       id: invocationId,
       purpose: input.purpose,
       agentProfile: `fake_${input.purpose}`,
@@ -344,13 +334,69 @@ function setupCodexRun(
       planId: plan.id,
       planStepId: plan.steps[0].id
     });
+    const packetArtifact = createArtifactRecord(db, {
+      projectId: created.project.id,
+      workItemId: workItem.id,
+      title: `Codex ${input.purpose} packet`,
+      artifactType: "codex_prompt_packet",
+      status: "drafted",
+      path: promptRelativePath
+    });
+    const decision = input.purpose === "planning"
+      ? createReviewItem(db, {
+          workItemId: workItem.id,
+          planId: plan.id,
+          projectId: created.project.id,
+          artifactId: packetArtifact.id,
+          codexInvocationId: invocation.id,
+          decisionNeeded: "Approve the exact planning packet.",
+          recommendation: "Approve and run.",
+          sourceInput: workItem.raw_input,
+          proposedAction: "Prepare a planning Artifact.",
+          resolvedIntent: "CodexPlanningRunApproval",
+          confidenceLabel: "high",
+          confidence: 1,
+          context: {
+            schemaVersion: 1,
+            packetSha256: packetSha256(path.join(workspace, promptRelativePath))
+          }
+        })
+      : null;
 
     return {
       workItemId: workItem.id,
       planId: plan.id,
       promptRelativePath,
       finalRelativePath,
-      validationRelativePath
+      validationRelativePath,
+      decisionId: decision?.id ?? "",
+      purpose: input.purpose
+    };
+  });
+}
+
+function executeFixture(
+  workspace: string,
+  fixture: ReturnType<typeof setupCodexRun>
+) {
+  if (fixture.purpose === "build") {
+    return runWorkRunCommand({
+      workspace,
+      workId: fixture.workItemId,
+      plan: fixture.planId,
+      allowCodexBuild: true
+    });
+  }
+  const queued = runReviewApproveCommand({ workspace, id: fixture.decisionId });
+  return withDatabase(workspace, (db) => {
+    runWorkerIteration(db, workspace, process.pid);
+    const run = getExecutionRun(db, queued.data.run!.id)!;
+    return {
+      command: "work.run",
+      workspace,
+      ok: true as const,
+      data: { run, missionLogPath: run.mission_log_path },
+      artifacts: []
     };
   });
 }

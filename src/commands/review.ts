@@ -12,14 +12,19 @@ import {
   createReviewItem,
   createReviewFeedback,
   getProjectMetadata,
+  getExecutionRun,
   getReviewItem,
   getReviewItemBySlug,
   getWorkItem,
   listActionableReviewItems,
-  updateReviewItemStatus
+  updateArtifact,
+  updateReviewItemStatus,
+  updateWorkItem
 } from "../db/repositories.js";
 import type { ReviewFeedback, ReviewItemSummary } from "../domain/types.js";
 import { executeApprovedReview, type ReviewExecutionResult } from "../execution/reviewExecutor.js";
+import { isPlanningApprovalDecision, queueApprovedPlanningRun } from "../execution/planningAuthorization.js";
+import { parseDecisionContext } from "../execution/planningAuthorization.js";
 import { writeWeeklyReviewReport } from "../markdown/weeklyReview.js";
 import {
   REVIEW_FEEDBACK_TYPES,
@@ -55,6 +60,12 @@ export interface RequiresReviewPacket {
   createdAt: string;
   updatedAt: string;
   resultingAskRequestId: string | null;
+  packetArtifactId: string | null;
+  codexInvocationId: string | null;
+  artifactPath: string | null;
+  promptPath: string | null;
+  finalMessagePath: string | null;
+  validationPath: string | null;
 }
 
 export interface ReviewRequiredCommandOptions {
@@ -288,6 +299,132 @@ export function runReviewApproveCommand(
   options: ReviewDecisionCommandOptions
 ): CommandSuccess<ReviewDecisionCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const specialized = withDatabase(workspacePath, (db) => getReviewItemByIdOrSlug(db, options.id));
+  if (specialized && isPlanningApprovalDecision(specialized)) {
+    try {
+      const queued = withDatabase(workspacePath, (db) => queueApprovedPlanningRun(db, workspacePath, {
+        decisionId: specialized.id,
+        execute: options.execute !== false,
+        executorName: options.executor
+      }));
+      return createSuccess({
+        command: "review.approve",
+        workspace: workspacePath,
+        data: {
+          item: reviewPacketForReviewItem(queued.decision),
+          result: {
+            status: queued.run ? "pending_execution" : "approved",
+            summary: queued.run
+              ? `Managed planning Run ${queued.run.id} ${queued.duplicate ? "already queued" : "queued"}.`
+              : "Planning Decision approved without queueing execution."
+          },
+          approval: null,
+          execution: null,
+          run: queued.run ? { id: queued.run.id } : null
+        }
+      });
+    } catch (error) {
+      throw validationError(error instanceof Error ? error.message : String(error), { id: specialized.id, conflict: true });
+    }
+  }
+  if (specialized?.resolved_intent === "CodexPlanningArtifactAcceptance") {
+    const updated = withDatabase(workspacePath, (db) => {
+      if (specialized.status !== "open" && specialized.status !== "deferred") {
+        throw validationError("Plan acceptance Decision is already decided.", { id: specialized.id, status: specialized.status });
+      }
+      if (!specialized.artifact_id || !specialized.work_item_id) {
+        throw validationError("Plan acceptance Decision is missing its Artifact or Action.", { id: specialized.id });
+      }
+      updateArtifact(db, specialized.artifact_id, { status: "ready" });
+      updateWorkItem(db, specialized.work_item_id, {
+        queue: "work_queue",
+        workClassification: "needs_mark",
+        status: "done",
+        nextAction: "Plan accepted; choose the next implementation Action when ready."
+      });
+      return updateReviewItemStatus(db, specialized.id, {
+        status: "approved",
+        decisionNote: "Validated planning Artifact accepted."
+      }) as ReviewItemSummary;
+    });
+    return createSuccess({
+      command: "review.approve",
+      workspace: workspacePath,
+      data: {
+        item: reviewPacketForReviewItem(updated),
+        result: { status: "approved", summary: "Validated planning Artifact accepted; no executor was invoked." },
+        approval: null,
+        execution: null,
+        run: null
+      }
+    });
+  }
+  if (specialized?.resolved_intent === "codex_planning_artifact_validation") {
+    const created = withDatabase(workspacePath, (db) => {
+      const runId = parseDecisionContext(specialized).runId;
+      const run = typeof runId === "string" ? getExecutionRun(db, runId) : null;
+      const approval = run?.review_item_id ? getReviewItem(db, run.review_item_id) : null;
+      if (!run || !approval || !isPlanningApprovalDecision(approval)) {
+        throw validationError("Validation recovery Decision is missing its source planning Run.", {
+          id: specialized.id,
+          conflict: true
+        });
+      }
+      const existing = listActionableReviewItems(db).find((item) =>
+        item.resolved_intent === "CodexPlanningRetryApproval" &&
+        parseDecisionContext(item).priorRunId === run.id
+      );
+      const retry = existing ?? createReviewItem(db, {
+        workItemId: approval.work_item_id,
+        planId: approval.plan_id,
+        projectId: approval.project_id,
+        artifactId: approval.artifact_id,
+        codexInvocationId: approval.codex_invocation_id,
+        decisionNeeded: `Approve a revised immutable planning attempt after failed Validation for Run ${run.id}.`,
+        recommendation: "Review the Validation evidence, then approve a retry.",
+        sourceInput: approval.source_input,
+        proposedAction: "Queue a new planning attempt using the unchanged approved packet.",
+        resolvedIntent: "CodexPlanningRetryApproval",
+        confidenceLabel: "high",
+        confidence: 1,
+        missingFields: [],
+        context: {
+          ...parseDecisionContext(approval),
+          schemaVersion: 1,
+          priorRunId: run.id,
+          failureEvidence: run.artifacts.map((artifact) => artifact.path ?? artifact.title),
+          recommendedCorrection: specialized.decision_needed
+        }
+      });
+      const updated = updateReviewItemStatus(db, specialized.id, {
+        status: "approved",
+        decisionNote: `Recovery routed to retry Decision ${retry.slug ?? retry.id}.`
+      }) as ReviewItemSummary;
+      if (specialized.work_item_id) {
+        updateWorkItem(db, specialized.work_item_id, {
+          queue: "needs_mark",
+          workClassification: "needs_mark",
+          status: "in_progress",
+          nextAction: "Review and approve or reject the retry Decision."
+        });
+      }
+      return { updated, retry };
+    });
+    return createSuccess({
+      command: "review.approve",
+      workspace: workspacePath,
+      data: {
+        item: reviewPacketForReviewItem(created.updated),
+        result: {
+          status: "approved",
+          summary: `Retry Decision ${created.retry.slug ?? created.retry.id} created; no executor was invoked.`
+        },
+        approval: null,
+        execution: null,
+        run: null
+      }
+    });
+  }
   if (options.execute !== false) {
     return runReviewApproveExecuteCommand({ ...options, workspace: workspacePath });
   }
@@ -615,8 +752,24 @@ export function reviewPacketForReviewItem(item: ReviewItemSummary): RequiresRevi
     sourceInput: item.source_input,
     createdAt: item.created_at,
     updatedAt: item.updated_at,
-    resultingAskRequestId: item.resulting_ask_request_id
+    resultingAskRequestId: item.resulting_ask_request_id,
+    packetArtifactId: item.artifact_id,
+    codexInvocationId: item.codex_invocation_id,
+    artifactPath: item.artifact_path,
+    promptPath: item.codex_prompt_path,
+    finalMessagePath: item.codex_final_message_path,
+    validationPath: validationPathFromReview(item)
   };
+}
+
+function validationPathFromReview(item: ReviewItemSummary): string | null {
+  const context = parseDecisionContext(item);
+  if (typeof context.validationResultPath === "string") {
+    return context.validationResultPath;
+  }
+  return item.codex_final_message_path
+    ? path.join(path.dirname(item.codex_final_message_path), "planning-validation.json")
+    : null;
 }
 
 function parseStringArray(raw: string | null | undefined): string[] {
@@ -710,6 +863,23 @@ function runReviewDecisionCommand(
     });
     if (!next) {
       throw validationError("Requires Review Decision was not found.", { id: item.id });
+    }
+    if (item.work_item_id && [
+      "CodexPlanningRunApproval",
+      "CodexPlanningRetryApproval",
+      "CodexPlanningArtifactAcceptance",
+      "codex_planning_artifact_validation"
+    ].includes(item.resolved_intent)) {
+      updateWorkItem(db, item.work_item_id, {
+        queue: "needs_mark",
+        workClassification: "needs_mark",
+        status: "in_progress",
+        nextAction: status === "deferred"
+          ? "Return to the deferred planning Decision when ready."
+          : item.resolved_intent === "CodexPlanningArtifactAcceptance"
+            ? "Revise or retry the planning Run."
+            : "Revise the planning request or packet before creating a new Decision."
+      });
     }
     return next;
   });

@@ -17,6 +17,7 @@ import { withReadOnlyDatabase } from "../db/connection.js";
 import {
   buildStatusReportData,
   getProjectMetadata,
+  getExecutionRun,
   listBackBurnerItems,
   listActionableReviewItems,
   listArtifacts,
@@ -234,6 +235,9 @@ export interface DashboardAttentionItem {
   relatedRunId: string | null;
   relatedCodexInvocationId: string | null;
   nextAction: string;
+  interpretation: string | null;
+  safetyBoundaries: string[];
+  responsibility: string | null;
   primaryActions: DashboardAttentionAction[];
   createdAt: string;
   updatedAt: string;
@@ -696,6 +700,37 @@ function buildAttentionItems(
   const items: DashboardAttentionItem[] = [];
 
   for (const item of reviewItems) {
+    const decisionContext = decodeObject(item.contextJson);
+    const linkedArtifact = item.packetArtifactId
+      ? db.prepare("SELECT id, title, path FROM artifacts WHERE id = ?").get(item.packetArtifactId) as { id: string; title: string; path: string | null } | undefined
+      : undefined;
+    const linkedInvocation = item.codexInvocationId
+      ? db.prepare("SELECT id, prompt_path, final_message_path FROM codex_invocations WHERE id = ?").get(item.codexInvocationId) as { id: string; prompt_path: string; final_message_path: string } | undefined
+      : undefined;
+    const workContext = item.workItemId
+      ? db.prepare(
+          `SELECT wi.expected_artifact, wi.next_action, wi.work_classification, m.title AS milestone_title, pm.repo_path
+           FROM work_items wi
+           LEFT JOIN milestones m ON m.id = wi.milestone_id
+           LEFT JOIN project_metadata pm ON pm.project_id = wi.project_id
+           WHERE wi.id = ?`
+        ).get(item.workItemId) as {
+          expected_artifact: string | null;
+          next_action: string;
+          work_classification: string;
+          milestone_title: string | null;
+          repo_path: string | null;
+        } | undefined
+      : undefined;
+    const isPlanning = item.resolvedIntent === "CodexPlanningRunApproval" || item.resolvedIntent === "CodexPlanningRetryApproval";
+    const isAcceptance = item.resolvedIntent === "CodexPlanningArtifactAcceptance";
+    const contextRunId = typeof decisionContext.runId === "string" ? decisionContext.runId : null;
+    const contextRun = contextRunId ? getExecutionRun(db, contextRunId) : null;
+    const validationPath = typeof decisionContext.validationResultPath === "string"
+      ? decisionContext.validationResultPath
+      : linkedInvocation
+        ? `${linkedInvocation.final_message_path.split("/").slice(0, -1).join("/")}/planning-validation.json`
+        : null;
     const missingRepoPath = isMissingRepoPathReview(item);
     items.push({
       id: `review:${item.id}`,
@@ -703,7 +738,7 @@ function buildAttentionItems(
       severity: "action",
       projectName: item.project,
       projectId: item.projectId,
-      milestone: null,
+      milestone: workContext?.milestone_title ?? null,
       goal: item.goal,
       outcome: item.outcome,
       status: item.status,
@@ -713,25 +748,43 @@ function buildAttentionItems(
       actionId: item.actionId,
       workItemTitle: getWorkItemTitle(db, item.workItemId),
       actionTitle: getWorkItemTitle(db, item.actionId),
-      expectedArtifact: null,
-      targetRepositoryRoot: null,
-      relatedArtifactId: null,
-      relatedArtifactTitle: null,
-      relatedArtifactPath: null,
-      finalArtifactPath: null,
-      validationPath: null,
+      expectedArtifact: typeof decisionContext.expectedArtifact === "string"
+        ? decisionContext.expectedArtifact
+        : workContext?.expected_artifact ?? null,
+      targetRepositoryRoot: workContext?.repo_path ?? null,
+      relatedArtifactId: linkedArtifact?.id ?? null,
+      relatedArtifactTitle: linkedArtifact?.title ?? null,
+      relatedArtifactPath: linkedArtifact?.path ?? null,
+      finalArtifactPath: isAcceptance ? linkedArtifact?.path ?? null : null,
+      validationPath,
       relatedReviewId: item.id,
       relatedReviewSlug: item.slug,
       relatedDecisionId: item.decisionId,
       relatedDecisionSlug: item.decisionSlug,
-      relatedRunId: null,
-      relatedCodexInvocationId: null,
-      nextAction: `Review ${item.slug || item.id} and choose Approve, Reject, or Defer.`,
+      relatedRunId: contextRunId,
+      relatedCodexInvocationId: item.codexInvocationId,
+      nextAction: workContext?.next_action ?? `Review ${item.slug || item.id} and choose Approve, Reject, or Defer.`,
+      interpretation: typeof decisionContext.interpretation === "string" ? decisionContext.interpretation : item.proposedAction,
+      safetyBoundaries: Array.isArray(decisionContext.safetyBoundaries)
+        ? decisionContext.safetyBoundaries.filter((value): value is string => typeof value === "string")
+        : [],
+      responsibility: typeof decisionContext.responsibility === "string"
+        ? decisionContext.responsibility
+        : workContext?.work_classification ?? null,
       primaryActions: [
         ...(missingRepoPath && item.projectId
           ? [projectSetupAction(item.projectId)]
           : []),
-        ...reviewActions(item.slug || item.id)
+        ...(isPlanning
+          ? planningReviewActions(item.slug || item.id, linkedArtifact?.path ?? linkedInvocation?.prompt_path ?? null)
+          : isAcceptance
+            ? acceptanceReviewActions(
+                item.slug || item.id,
+                linkedArtifact?.path ?? null,
+                validationPath,
+                contextRun?.mission_log_path ?? null
+              )
+            : reviewActions(item.slug || item.id))
       ],
       createdAt: item.createdAt,
       updatedAt: item.updatedAt
@@ -783,6 +836,9 @@ function buildAttentionItems(
         : packet.plan_step_id
           ? `Open ${packet.prompt_path}. If approved, run: ${runCommand}`
           : `Open ${packet.prompt_path}. If approved, run the existing Codex command recorded in the packet metadata.`,
+      interpretation: null,
+      safetyBoundaries: [],
+      responsibility: null,
       primaryActions: [
         {
           label: "View Packet",
@@ -866,12 +922,15 @@ function buildAttentionItems(
       relatedRunId: run.id,
       relatedCodexInvocationId: null,
       nextAction: dashboardRun.failureReason ?? dashboardRun.reviewReason ?? "Open the run detail and decide the next step.",
+      interpretation: null,
+      safetyBoundaries: [],
+      responsibility: run.status === "failed" ? "blocked" : "needs_mark",
       primaryActions: [
         {
           label: "View Run",
-          kind: "command",
-          command: `arcadia run show ${run.id}`,
-          href: null,
+          kind: "view",
+          command: null,
+          href: `/runs/${encodeURIComponent(run.id)}`,
           reviewAction: null
         }
       ],
@@ -880,7 +939,10 @@ function buildAttentionItems(
     });
   }
 
-  for (const workItem of listBlockedWorkItems(db)) {
+  const failedRunActionIds = new Set(
+    runs.filter((run) => run.status === "failed").map((run) => run.work_item_id).filter((id): id is string => Boolean(id))
+  );
+  for (const workItem of listBlockedWorkItems(db).filter((candidate) => !failedRunActionIds.has(candidate.id))) {
     items.push({
       id: `blocked-work:${workItem.id}`,
       kind: "blocked_work",
@@ -911,6 +973,9 @@ function buildAttentionItems(
       relatedRunId: null,
       relatedCodexInvocationId: null,
       nextAction: workItem.next_action,
+      interpretation: null,
+      safetyBoundaries: [],
+      responsibility: "blocked",
       primaryActions: [
         {
           label: "View Actions",
@@ -936,6 +1001,33 @@ function reviewActions(reviewId: string): DashboardAttentionAction[] {
   return [
     { label: "View", kind: "command", command: `arcadia review show ${reviewId}`, href: null, reviewAction: null },
     { label: "Approve", kind: "approve", command: null, href: null, reviewAction: "approve" },
+    { label: "Reject", kind: "reject", command: null, href: null, reviewAction: "reject" },
+    { label: "Defer", kind: "defer", command: null, href: null, reviewAction: "defer" }
+  ];
+}
+
+function planningReviewActions(reviewId: string, packetPath: string | null): DashboardAttentionAction[] {
+  return [
+    ...(packetPath
+      ? [{ label: "View Packet", kind: "view" as const, command: null, href: dashboardFileHref(packetPath), reviewAction: null }]
+      : []),
+    { label: "Approve & Run", kind: "approve", command: null, href: null, reviewAction: "approve" },
+    { label: "Reject", kind: "reject", command: null, href: null, reviewAction: "reject" },
+    { label: "Defer", kind: "defer", command: null, href: null, reviewAction: "defer" }
+  ];
+}
+
+function acceptanceReviewActions(
+  reviewId: string,
+  planPath: string | null,
+  validationPath: string | null,
+  logPath: string | null
+): DashboardAttentionAction[] {
+  return [
+    ...(planPath ? [{ label: "View Plan", kind: "view" as const, command: null, href: dashboardFileHref(planPath), reviewAction: null }] : []),
+    ...(validationPath ? [{ label: "View Validation", kind: "view" as const, command: null, href: dashboardFileHref(validationPath), reviewAction: null }] : []),
+    ...(logPath ? [{ label: "View Log", kind: "view" as const, command: null, href: dashboardFileHref(logPath), reviewAction: null }] : []),
+    { label: "Accept Plan", kind: "approve", command: null, href: null, reviewAction: "approve" },
     { label: "Reject", kind: "reject", command: null, href: null, reviewAction: "reject" },
     { label: "Defer", kind: "defer", command: null, href: null, reviewAction: "defer" }
   ];
@@ -971,6 +1063,15 @@ function decodeStringArray(raw: string | null | undefined): string[] {
       : [];
   } catch {
     return [];
+  }
+}
+
+function decodeObject(raw: string | null | undefined): Record<string, unknown> {
+  try {
+    const parsed = raw ? JSON.parse(raw) as unknown : {};
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
   }
 }
 
@@ -1041,6 +1142,11 @@ function listPendingCodexPackets(db: Database.Database): PendingCodexPacketRow[]
       LEFT JOIN project_metadata pm ON pm.project_id = p.id
       LEFT JOIN artifacts a ON a.path = ci.prompt_path
       WHERE ci.status = 'packet_created'
+        AND NOT EXISTS (
+          SELECT 1 FROM review_items ri
+          WHERE ri.codex_invocation_id = ci.id
+            AND ri.resolved_intent IN ('CodexPlanningRunApproval', 'CodexPlanningRetryApproval')
+        )
       ORDER BY ci.updated_at DESC, ci.created_at DESC`
     )
     .all() as PendingCodexPacketRow[];

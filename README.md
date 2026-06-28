@@ -222,9 +222,10 @@ pnpm smoke
 - `arcadia work update --workspace <path> <work-id> [--queue <queue>] [--responsibility <responsibility>] [--next-action <action>] [--status <status>]` updates an Action. `--classification` remains a compatibility alias.
 - `arcadia work done --workspace <path> <work-id>` marks an Action complete.
 - `arcadia work plan --workspace <path> <work-id>` creates an observable workflow plan for an Action.
-- `arcadia work run --workspace <path> <work-id> [--plan <plan-id>] [--allow-codex-planning] [--allow-codex-build] [--agent-profile <name>]` runs deterministic safe steps by default, and runs Codex steps only with explicit allow flags.
+- `arcadia work run --workspace <path> <work-id> [--plan <plan-id>] [--allow-codex-planning] [--allow-codex-build] [--agent-profile <name>]` runs deterministic safe steps by default. The planning allow flag only dispatches an already approved packet-specific Decision; it is not authorization by itself.
 - `arcadia run list --workspace <path> [--limit <n>]` lists recent runs.
 - `arcadia run show --workspace <path> <run-id>` shows the run audit trail and Requires Review Decisions.
+- `arcadia run retry --workspace <path> <run-id>` creates or returns an immutable retry Decision for a failed or Requires Review managed planning Run.
 - `arcadia milestone list --workspace <path> [--status <status>] [--limit <n>]` lists milestones.
 - `arcadia milestone create --workspace <path> <project-id> --title <title>` creates a milestone.
 - `arcadia milestone complete --workspace <path> <milestone-id>` marks a milestone complete.

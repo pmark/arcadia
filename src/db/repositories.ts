@@ -939,6 +939,16 @@ export function updateArtifact(
     updates.push("path = @path");
   }
 
+  if (input.title !== undefined) {
+    parameters.title = required(input.title, "Artifact title");
+    updates.push("title = @title");
+  }
+
+  if (input.artifactType !== undefined) {
+    parameters.artifact_type = required(input.artifactType, "Artifact type");
+    updates.push("artifact_type = @artifact_type");
+  }
+
   if (updates.length === 0) {
     throw new Error("At least one artifact field is required");
   }
@@ -952,6 +962,60 @@ export function updateArtifact(
 
   db.prepare(`UPDATE artifacts SET ${updates.join(", ")} WHERE id = @id`).run(parameters);
   return getArtifact(db, id);
+}
+
+export function upsertProducedArtifact(
+  db: Database.Database,
+  input: {
+    projectId?: string | null;
+    workItemId: string;
+    title: string;
+    artifactType: string;
+    status: string;
+    path: string;
+    convertPathlessExpected?: boolean;
+  }
+): ArtifactSummary {
+  const normalizedPath = required(input.path, "Artifact path");
+  const existing = db.prepare(
+    `SELECT id FROM artifacts
+     WHERE work_item_id = ? AND path = ?
+     ORDER BY created_at ASC LIMIT 1`
+  ).get(input.workItemId, normalizedPath) as { id: string } | undefined;
+  if (existing) {
+    return updateArtifact(db, existing.id, {
+      title: input.title,
+      artifactType: input.artifactType,
+      status: input.status,
+      path: normalizedPath
+    }) as ArtifactSummary;
+  }
+
+  if (input.convertPathlessExpected) {
+    const expected = db.prepare(
+      `SELECT id FROM artifacts
+       WHERE work_item_id = ? AND artifact_type = 'expected_artifact' AND path IS NULL
+       ORDER BY created_at ASC LIMIT 1`
+    ).get(input.workItemId) as { id: string } | undefined;
+    if (expected) {
+      return updateArtifact(db, expected.id, {
+        title: input.title,
+        artifactType: input.artifactType,
+        status: input.status,
+        path: normalizedPath
+      }) as ArtifactSummary;
+    }
+  }
+
+  const created = createArtifactRecord(db, {
+    projectId: input.projectId,
+    workItemId: input.workItemId,
+    title: input.title,
+    artifactType: input.artifactType,
+    status: validateArtifactStatus(input.status),
+    path: normalizedPath
+  });
+  return getArtifact(db, created.id) as ArtifactSummary;
 }
 
 export function listArtifactsByStatus(db: Database.Database): ArtifactGroups {
@@ -1012,6 +1076,9 @@ export interface CreateExecutionRunInput {
   status: string;
   summary: string;
   missionLogId?: string | null;
+  reviewItemId?: string | null;
+  executorName?: string | null;
+  retryOfRunId?: string | null;
   steps: Array<{
     planStepId: string;
     status: string;
@@ -1199,6 +1266,8 @@ export function createReviewItem(db: Database.Database, input: CreateReviewItemI
     work_item_id: input.workItemId ?? null,
     plan_id: input.planId ?? null,
     project_id: input.projectId ?? null,
+    artifact_id: input.artifactId ?? null,
+    codex_invocation_id: input.codexInvocationId ?? null,
     status: "open",
     decision_needed: required(input.decisionNeeded, "Review decision"),
     recommendation: nullable(input.recommendation),
@@ -1218,12 +1287,12 @@ export function createReviewItem(db: Database.Database, input: CreateReviewItemI
 
   db.prepare(
     `INSERT INTO review_items (
-      id, slug, ask_request_id, work_item_id, plan_id, project_id, status, decision_needed,
+      id, slug, ask_request_id, work_item_id, plan_id, project_id, artifact_id, codex_invocation_id, status, decision_needed,
       recommendation, source_input, proposed_action, resolved_intent, confidence_label,
       confidence, missing_fields, context_json, created_at, updated_at, decided_at,
       decision_note, resulting_ask_request_id
     ) VALUES (
-      @id, @slug, @ask_request_id, @work_item_id, @plan_id, @project_id, @status, @decision_needed,
+      @id, @slug, @ask_request_id, @work_item_id, @plan_id, @project_id, @artifact_id, @codex_invocation_id, @status, @decision_needed,
       @recommendation, @source_input, @proposed_action, @resolved_intent, @confidence_label,
       @confidence, @missing_fields, @context_json, @created_at, @updated_at, @decided_at,
       @decision_note, @resulting_ask_request_id
@@ -1272,12 +1341,20 @@ export function findFollowUpReviewForRun(db: Database.Database, runId: string): 
   const row = db
     .prepare(
       `${reviewItemSelectSql(
-        `WHERE ri.resolved_intent = 'ReviewExecutionResult'
-         AND json_extract(ri.context_json, '$.runId') = ?
+        `WHERE ri.resolved_intent IN (
+           'ReviewExecutionResult',
+           'CodexPlanningArtifactAcceptance',
+           'codex_planning_artifact_validation',
+           'CodexPlanningRetryApproval'
+         )
+         AND (
+           json_extract(ri.context_json, '$.runId') = ?
+           OR json_extract(ri.context_json, '$.priorRunId') = ?
+         )
          AND ri.status IN ('open', 'deferred')`
       )} ORDER BY ri.created_at DESC LIMIT 1`
     )
-    .get(runId) as ReviewItemSummary | undefined;
+    .get(runId, runId) as ReviewItemSummary | undefined;
   return row ?? null;
 }
 
@@ -1306,6 +1383,37 @@ export function updateReviewItemStatus(
   );
 
   return getReviewItem(db, id);
+}
+
+export function compareAndSetReviewItemStatus(
+  db: Database.Database,
+  id: string,
+  from: ReviewItemStatus[],
+  to: ReviewItemStatus,
+  decisionNote?: string | null
+): ReviewItemSummary | null {
+  const timestamp = nowIso();
+  const placeholders = from.map(() => "?").join(", ");
+  const result = db.prepare(
+    `UPDATE review_items
+     SET status = ?, updated_at = ?, decided_at = ?, decision_note = ?
+     WHERE id = ? AND status IN (${placeholders})`
+  ).run(to, timestamp, to === "deferred" ? null : timestamp, nullable(decisionNote), id, ...from);
+  return result.changes === 1 ? getReviewItem(db, id) : null;
+}
+
+export function getReviewItemForInvocation(
+  db: Database.Database,
+  codexInvocationId: string,
+  resolvedIntents?: string[]
+): ReviewItemSummary | null {
+  const intents = resolvedIntents?.length
+    ? ` AND ri.resolved_intent IN (${resolvedIntents.map(() => "?").join(", ")})`
+    : "";
+  return (db.prepare(
+    `${reviewItemSelectSql(`WHERE ri.codex_invocation_id = ?${intents}`)}
+     ORDER BY ri.created_at DESC LIMIT 1`
+  ).get(codexInvocationId, ...(resolvedIntents ?? [])) as ReviewItemSummary | undefined) ?? null;
 }
 
 export function createReviewFeedback(db: Database.Database, input: CreateReviewFeedbackInput): ReviewFeedback {
@@ -1445,13 +1553,19 @@ function reviewItemSelectSql(whereSql: string): string {
     p.goal AS project_outcome,
     wi.title AS work_item_title,
     ep.summary AS plan_summary,
-    resulting_wi.title AS resulting_ask_work_item_title
+    resulting_wi.title AS resulting_ask_work_item_title,
+    decision_artifact.title AS artifact_title,
+    decision_artifact.path AS artifact_path,
+    decision_invocation.prompt_path AS codex_prompt_path,
+    decision_invocation.final_message_path AS codex_final_message_path
   FROM review_items ri
   LEFT JOIN projects p ON p.id = ri.project_id
   LEFT JOIN work_items wi ON wi.id = ri.work_item_id
   LEFT JOIN execution_plans ep ON ep.id = ri.plan_id
   LEFT JOIN ask_requests resulting_ask ON resulting_ask.id = ri.resulting_ask_request_id
   LEFT JOIN work_items resulting_wi ON resulting_wi.id = resulting_ask.work_item_id
+  LEFT JOIN artifacts decision_artifact ON decision_artifact.id = ri.artifact_id
+  LEFT JOIN codex_invocations decision_invocation ON decision_invocation.id = ri.codex_invocation_id
   ${whereSql}`;
 }
 
@@ -1637,6 +1751,10 @@ export function updateCodexInvocationStatus(
   return db.prepare("SELECT * FROM codex_invocations WHERE id = ?").get(id) as CodexInvocation;
 }
 
+export function getCodexInvocation(db: Database.Database, id: string): CodexInvocation | null {
+  return (db.prepare("SELECT * FROM codex_invocations WHERE id = ?").get(id) as CodexInvocation | undefined) ?? null;
+}
+
 export function upsertObservedCodexTask(
   db: Database.Database,
   input: ObservedCodexTaskInput
@@ -1801,18 +1919,19 @@ export function createExecutionRun(db: Database.Database, input: CreateExecution
       status: validateExecutionRunStatus(input.status),
       summary: required(input.summary, "Execution run summary"),
       mission_log_id: input.missionLogId ?? null,
-      review_item_id: null,
-      executor_name: null,
+      review_item_id: input.reviewItemId ?? null,
+      executor_name: input.executorName ?? null,
       pid: null,
+      retry_of_run_id: input.retryOfRunId ?? null,
       created_at: timestamp,
       updated_at: timestamp
     };
 
     db.prepare(
       `INSERT INTO execution_runs (
-        id, work_item_id, plan_id, status, summary, mission_log_id, review_item_id, executor_name, pid, created_at, updated_at
+        id, work_item_id, plan_id, status, summary, mission_log_id, review_item_id, executor_name, pid, retry_of_run_id, created_at, updated_at
       ) VALUES (
-        @id, @work_item_id, @plan_id, @status, @summary, @mission_log_id, @review_item_id, @executor_name, @pid, @created_at, @updated_at
+        @id, @work_item_id, @plan_id, @status, @summary, @mission_log_id, @review_item_id, @executor_name, @pid, @retry_of_run_id, @created_at, @updated_at
       )`
     ).run(run);
 
@@ -1846,7 +1965,7 @@ export function createExecutionRun(db: Database.Database, input: CreateExecution
     }
 
     db.prepare("UPDATE execution_plans SET status = ?, updated_at = ? WHERE id = ?").run(
-      run.status === "completed" ? "completed" : run.status,
+      run.status === "pending_execution" ? "planned" : run.status,
       timestamp,
       run.plan_id
     );
@@ -1907,19 +2026,69 @@ export function createReviewExecutionRun(
     review_item_id: input.reviewItemId,
     executor_name: input.executorName,
     pid: null,
+    retry_of_run_id: null,
     created_at: timestamp,
     updated_at: timestamp
   };
 
   db.prepare(
     `INSERT INTO execution_runs (
-      id, work_item_id, plan_id, status, summary, mission_log_id, review_item_id, executor_name, pid, created_at, updated_at
+      id, work_item_id, plan_id, status, summary, mission_log_id, review_item_id, executor_name, pid, retry_of_run_id, created_at, updated_at
     ) VALUES (
-      @id, @work_item_id, @plan_id, @status, @summary, @mission_log_id, @review_item_id, @executor_name, @pid, @created_at, @updated_at
+      @id, @work_item_id, @plan_id, @status, @summary, @mission_log_id, @review_item_id, @executor_name, @pid, @retry_of_run_id, @created_at, @updated_at
     )`
   ).run(run);
 
   return getExecutionRun(db, run.id) as ExecutionRunSummary;
+}
+
+export function getExecutionRunByReviewItem(
+  db: Database.Database,
+  reviewItemId: string
+): ExecutionRunSummary | null {
+  const row = db.prepare(
+    "SELECT id FROM execution_runs WHERE review_item_id = ? ORDER BY created_at ASC LIMIT 1"
+  ).get(reviewItemId) as { id: string } | undefined;
+  return row ? getExecutionRun(db, row.id) : null;
+}
+
+export function attachArtifactToExecutionRun(
+  db: Database.Database,
+  runId: string,
+  artifactId: string
+): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO run_artifacts (id, run_id, artifact_id, created_at)
+     VALUES (?, ?, ?, ?)`
+  ).run(createId("runArtifact"), runId, artifactId, nowIso());
+}
+
+export function updateExecutionRunStep(
+  db: Database.Database,
+  runId: string,
+  planStepId: string,
+  input: {
+    status: string;
+    command?: string | null;
+    output?: string | null;
+    error?: string | null;
+    artifactPath?: string | null;
+  }
+): void {
+  db.prepare(
+    `UPDATE execution_run_steps
+     SET status = ?, command = COALESCE(?, command), output = ?, error = ?, artifact_path = ?, updated_at = ?
+     WHERE run_id = ? AND plan_step_id = ?`
+  ).run(
+    validateExecutionStepStatus(input.status),
+    nullable(input.command),
+    nullable(input.output),
+    nullable(input.error),
+    nullable(input.artifactPath),
+    nowIso(),
+    runId,
+    planStepId
+  );
 }
 
 export function claimNextPendingRun(

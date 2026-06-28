@@ -14,7 +14,7 @@ import {
   getWorkItem,
   updateReviewItemStatus
 } from "../db/repositories.js";
-import type { ProjectMetadata, ReviewItemSummary, WorkItemSummary } from "../domain/types.js";
+import type { Artifact, ProjectMetadata, ReviewItemSummary, WorkItemSummary } from "../domain/types.js";
 import { createId } from "../utils/id.js";
 import { getWorkspacePaths, toWorkspaceRelativePath } from "../workspace/paths.js";
 
@@ -46,6 +46,7 @@ export interface ReviewExecutionResult {
   finalOutput: string | null;
   artifactPaths: string[];
   metadataPath: string;
+  artifact: Artifact;
 }
 
 export interface ExecutorAdapterConfig {
@@ -214,12 +215,12 @@ export function executeApprovedReview(
   };
   writeFileSync(metadataPath, `${JSON.stringify(metadataJson, null, 2)}\n`, "utf8");
 
-  createArtifactRecord(db, {
+  const artifact = createArtifactRecord(db, {
     projectId,
     workItemId: workItem?.id ?? null,
     title: `Review execution ${review.slug ?? review.id}`,
     artifactType: "review_execution",
-    status: run.status === 0 ? "ready" : "drafted",
+    status: run.status === 0 && validation.every((result) => result.exitStatus === 0) ? "ready" : "drafted",
     path: toWorkspaceRelativePath(options.workspace, metadataPath)
   });
 
@@ -279,7 +280,8 @@ export function executeApprovedReview(
     validation,
     finalOutput,
     artifactPaths,
-    metadataPath
+    metadataPath,
+    artifact
   };
 }
 

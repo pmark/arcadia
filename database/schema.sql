@@ -127,12 +127,14 @@ CREATE TABLE IF NOT EXISTS execution_runs (
   review_item_id TEXT,
   executor_name TEXT,
   pid INTEGER,
+  retry_of_run_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE CASCADE,
   FOREIGN KEY (plan_id) REFERENCES execution_plans(id) ON DELETE CASCADE,
   FOREIGN KEY (mission_log_id) REFERENCES mission_logs(id) ON DELETE SET NULL,
-  FOREIGN KEY (review_item_id) REFERENCES review_items(id) ON DELETE SET NULL
+  FOREIGN KEY (review_item_id) REFERENCES review_items(id) ON DELETE SET NULL,
+  FOREIGN KEY (retry_of_run_id) REFERENCES execution_runs(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS execution_run_steps (
@@ -183,6 +185,8 @@ CREATE TABLE IF NOT EXISTS review_items (
   work_item_id TEXT,
   plan_id TEXT,
   project_id TEXT,
+  artifact_id TEXT,
+  codex_invocation_id TEXT,
   status TEXT NOT NULL CHECK (status IN ('open', 'approved', 'rejected', 'deferred')),
   decision_needed TEXT NOT NULL,
   recommendation TEXT,
@@ -202,6 +206,8 @@ CREATE TABLE IF NOT EXISTS review_items (
   FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE SET NULL,
   FOREIGN KEY (plan_id) REFERENCES execution_plans(id) ON DELETE SET NULL,
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+  FOREIGN KEY (artifact_id) REFERENCES artifacts(id) ON DELETE SET NULL,
+  FOREIGN KEY (codex_invocation_id) REFERENCES codex_invocations(id) ON DELETE SET NULL,
   FOREIGN KEY (resulting_ask_request_id) REFERENCES ask_requests(id) ON DELETE SET NULL
 );
 

@@ -5,12 +5,21 @@ import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
-import { findFollowUpReviewForRun, getExecutionRun, listExecutionRuns } from "../db/repositories.js";
+import {
+  createReviewItem,
+  findFollowUpReviewForRun,
+  getExecutionRun,
+  getReviewItem,
+  listExecutionRuns,
+  listReviewItems,
+  updateWorkItem
+} from "../db/repositories.js";
 import { isRequiresReviewValue } from "../domain/constants.js";
 import type { ExecutionRunSummary } from "../domain/types.js";
 import { validationError } from "../cli/errors.js";
 import { getWorkspacePaths, toWorkspaceRelativePath } from "../workspace/paths.js";
 import { reviewPacketForReviewItem, type RequiresReviewPacket } from "./review.js";
+import { parseDecisionContext } from "../execution/planningAuthorization.js";
 
 export interface RunShowCommandData {
   run: ExecutionRunSummary;
@@ -22,6 +31,11 @@ export interface RunShowCommandData {
 
 export interface RunListCommandData {
   runs: ExecutionRunSummary[];
+}
+
+export interface RunRetryCommandData {
+  run: ExecutionRunSummary;
+  decision: RequiresReviewPacket;
 }
 
 export function runRunListCommand(options: {
@@ -80,6 +94,79 @@ export function runRunShowCommand(options: {
       ...run.artifacts.flatMap((artifact) => artifact.path ? [path.join(workspacePath, artifact.path)] : [])
     ]
   });
+}
+
+export function runRunRetryCommand(options: {
+  workspace: string;
+  runId: string;
+}): CommandSuccess<RunRetryCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const data = withDatabase(workspacePath, (db) => {
+    const run = getExecutionRun(db, options.runId);
+    if (!run) {
+      throw executionRunNotFound(options.runId);
+    }
+    if (run.status !== "failed" && !isRequiresReviewValue(run.status)) {
+      throw validationError("Only failed or Requires Review managed planning Runs can request retry.", {
+        runId: run.id,
+        status: run.status
+      });
+    }
+    const approval = run.review_item_id ? getReviewItem(db, run.review_item_id) : null;
+    if (!approval || !["CodexPlanningRunApproval", "CodexPlanningRetryApproval"].includes(approval.resolved_intent)) {
+      throw validationError("Run is not a recoverable managed planning Run.", { runId: run.id });
+    }
+    const existing = listReviewItems(db, "all").find((item) => {
+      if (item.resolved_intent !== "CodexPlanningRetryApproval" || !["open", "deferred"].includes(item.status)) {
+        return false;
+      }
+      return parseDecisionContext(item).priorRunId === run.id;
+    });
+    const decision = existing ?? createReviewItem(db, {
+      workItemId: approval.work_item_id,
+      planId: approval.plan_id,
+      projectId: approval.project_id,
+      artifactId: approval.artifact_id,
+      codexInvocationId: approval.codex_invocation_id,
+      decisionNeeded: `Approve a new immutable planning attempt after Run ${run.id}.`,
+      recommendation: "Inspect the failed Run evidence before approving a retry.",
+      sourceInput: approval.source_input,
+      proposedAction: "Queue a new planning attempt using the unchanged approved packet.",
+      resolvedIntent: "CodexPlanningRetryApproval",
+      confidenceLabel: "high",
+      confidence: 1,
+      missingFields: [],
+      context: {
+        ...parseDecisionContext(approval),
+        schemaVersion: 1,
+        priorRunId: run.id,
+        failureEvidence: run.artifacts.map((artifact) => artifact.path ?? artifact.title),
+        recommendedCorrection: run.summary
+      }
+    });
+    if (run.work_item_id) {
+      updateWorkItem(db, run.work_item_id, {
+        queue: "needs_mark",
+        workClassification: "needs_mark",
+        status: "in_progress",
+        nextAction: "Review and approve or reject the retry Decision."
+      });
+    }
+    return { run, decision: reviewPacketForReviewItem(decision) };
+  });
+  return createSuccess({
+    command: "run.retry",
+    workspace: workspacePath,
+    data
+  });
+}
+
+export function renderRunRetrySuccess(response: CommandSuccess<RunRetryCommandData>): string[] {
+  return [
+    `Retry Decision: ${response.data.decision.slug}`,
+    `Prior Run: ${response.data.run.id}`,
+    "No executor was invoked."
+  ];
 }
 
 export function renderRunListSuccess(response: CommandSuccess<RunListCommandData>): string[] {

@@ -4,6 +4,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import {
   attachMissionLogToExecutionRun,
+  attachArtifactToExecutionRun,
   buildStatusReportData,
   buildWeeklyReviewData,
   createArtifactRecord,
@@ -11,11 +12,16 @@ import {
   createMissionLog,
   createReviewItem,
   getCodexInvocationForPlan,
+  getCodexInvocation,
   getExecutionPlan,
+  getExecutionRun,
   getMilestone,
   getProject,
   getProjectMetadata,
   getWorkItem,
+  updateExecutionRunStatus,
+  updateExecutionRunStep,
+  upsertProducedArtifact,
   updateCodexInvocationStatus,
   updateWorkItem
 } from "../db/repositories.js";
@@ -42,6 +48,7 @@ import {
 import { createId } from "../utils/id.js";
 import { localDateStamp } from "../utils/time.js";
 import { getWorkspacePaths, toWorkspaceRelativePath } from "../workspace/paths.js";
+import { authorizePlanningRunFromRepository } from "./planningAuthorization.js";
 
 export interface ExecutionResult {
   run: ExecutionRunSummary;
@@ -53,6 +60,9 @@ export interface ExecutePlanOptions {
   allowCodexBuild?: boolean;
   agentProfile?: string;
   codingAgentProfiles?: CodingAgentProfile[];
+  runId?: string;
+  decisionId?: string;
+  invocationId?: string;
 }
 
 type RunStepInput = Parameters<typeof createExecutionRun>[1]["steps"][number];
@@ -66,6 +76,7 @@ interface ExecutedCodexStep {
   error: string | null;
   artifactPath: string | null;
   artifact: Artifact | null;
+  additionalArtifacts: Artifact[];
 }
 
 interface PlanningValidationSidecar {
@@ -96,6 +107,14 @@ export function executePlan(
   if (!workItem) {
     throw new Error(`Action is required: ${plan.work_item_id}`);
   }
+  const protectedPlanning = plan.steps.some((step) => step.executor_type === "codex_planning");
+  if (protectedPlanning && (!options.runId || !options.decisionId || !options.invocationId)) {
+    throw new Error("Planning execution requires an approved Decision for this Action, plan, and packet.");
+  }
+  const existingRun = options.runId ? getExecutionRun(db, options.runId) : null;
+  if (options.runId && (!existingRun || existingRun.plan_id !== plan.id || existingRun.work_item_id !== workItem.id)) {
+    throw new Error("Queued planning Run does not match the Action and plan.");
+  }
 
   const stepResults: RunStepInput[] = [];
   const artifacts: Artifact[] = [];
@@ -123,6 +142,7 @@ export function executePlan(
         if (executed.artifact) {
           artifacts.push(executed.artifact);
         }
+        artifacts.push(...executed.additionalArtifacts);
         stepResults.push({
           planStepId: step.id,
           status: executed.status,
@@ -191,17 +211,26 @@ export function executePlan(
     }
   }
 
-  const run = createExecutionRun(db, {
-    workItemId: workItem.id,
-    planId: plan.id,
-    status: runStatus,
-    summary: summaryForRunStatus(runStatus, workItem),
-    steps: stepResults,
-    artifactIds: artifacts.map((artifact) => artifact.id)
-  });
+  const run = existingRun ?? createExecutionRun(db, {
+      workItemId: workItem.id,
+      planId: plan.id,
+      status: runStatus,
+      summary: summaryForRunStatus(runStatus, workItem),
+      steps: stepResults,
+      artifactIds: artifacts.map((artifact) => artifact.id)
+    });
 
   if (!run) {
     throw new Error("Run could not be created.");
+  }
+
+  if (existingRun) {
+    for (const step of stepResults) {
+      updateExecutionRunStep(db, existingRun.id, step.planStepId, step);
+    }
+    for (const artifact of artifacts) {
+      attachArtifactToExecutionRun(db, existingRun.id, artifact.id);
+    }
   }
 
   for (const invocationId of completedCodexInvocationIds) {
@@ -214,14 +243,31 @@ export function executePlan(
 
   const missionLog = createRunMissionLog(db, workspace, workItem, run, runStatus, artifacts);
   const updatedRun = attachMissionLogToExecutionRun(db, run.id, missionLog.id);
+  if (existingRun) {
+    updateExecutionRunStatus(db, run.id, runStatus, {
+      pid: null,
+      summary: summaryForRunStatus(runStatus, workItem)
+    });
+    db.prepare("UPDATE execution_plans SET status = ?, updated_at = ? WHERE id = ?")
+      .run(runStatus, new Date().toISOString(), plan.id);
+  }
 
   if (runStatus === "completed") {
-    updateWorkItem(db, workItem.id, { status: "done" });
+    if (protectedPlanning) {
+      updateWorkItem(db, workItem.id, {
+        queue: "needs_mark",
+        workClassification: "needs_mark",
+        status: "in_progress",
+        nextAction: "Review Validation and accept or reject the final planning Artifact."
+      });
+    } else {
+      updateWorkItem(db, workItem.id, { status: "done" });
+    }
   } else if (runStatus === "requires_review") {
     updateWorkItem(db, workItem.id, {
       queue: "requires_review",
-      workClassification: "requires_review",
-      nextAction: "Review the run and provide the required input."
+      workClassification: "needs_mark",
+      nextAction: "Review the failed Validation and request a revised planning Run."
     });
   } else {
     updateWorkItem(db, workItem.id, {
@@ -233,7 +279,7 @@ export function executePlan(
   }
 
   return {
-    run: updatedRun ?? run,
+    run: getExecutionRun(db, run.id) ?? updatedRun ?? run,
     missionLogPath: missionLog.markdown_path
   };
 }
@@ -253,11 +299,13 @@ function executeCodexStep(
     throw new Error("Arcadia-managed Codex execution refuses danger-full-access profiles.");
   }
 
-  const invocation = getCodexInvocationForPlan(db, {
-    workItemId: workItem.id,
-    planId: plan.id,
-    purpose
-  });
+  const invocation = options.invocationId
+    ? getCodexInvocation(db, options.invocationId)
+    : getCodexInvocationForPlan(db, {
+        workItemId: workItem.id,
+        planId: plan.id,
+        purpose
+      });
   if (!invocation) {
     throw new Error("Codex invocation packet is required before execution.");
   }
@@ -295,7 +343,8 @@ function executeCodexStep(
       output: message,
       error: message,
       artifactPath: invocation.prompt_path,
-      artifact: null
+      artifact: null,
+      additionalArtifacts: []
     };
   }
   const executionScope = projectRepositoryPath ?? invocation.workspace_scope;
@@ -314,7 +363,8 @@ function executeCodexStep(
         output: validation.summary,
         error: validation.summary,
         artifactPath: validation.sidecarRelativePath,
-        artifact: validation.artifact
+        artifact: validation.artifact,
+        additionalArtifacts: []
       };
     }
     throw new Error(`Codex invocation packet file is missing: ${invocation.prompt_path}`);
@@ -322,22 +372,94 @@ function executeCodexStep(
 
   const prompt = readFileSync(promptPath, "utf8");
 
+  if (purpose === "planning") {
+    const authorization = authorizePlanningRunFromRepository(db, workspace, {
+      runId: options.runId ?? "",
+      planId: plan.id,
+      decisionId: options.decisionId ?? "",
+      invocationId: invocation.id
+    });
+    if (!authorization.authorized) {
+      updateCodexInvocationStatus(db, invocation.id, "failed");
+      const validation = recordPlanningArtifactValidationNotRun(
+        db,
+        workspace,
+        workItem,
+        invocation,
+        `Planning Validation not run: ${authorization.reason}`
+      );
+      return {
+        invocationId: invocation.id,
+        status: "failed",
+        command,
+        output: validation.summary,
+        error: validation.summary,
+        artifactPath: validation.sidecarRelativePath,
+        artifact: validation.artifact,
+        additionalArtifacts: []
+      };
+    }
+  }
+
   updateCodexInvocationStatus(db, invocation.id, "running");
   const result = spawnSync(profile.command, args, {
     cwd: executionScope,
     input: prompt,
     encoding: "utf8",
-    maxBuffer: 10 * 1024 * 1024
+    maxBuffer: 10 * 1024 * 1024,
+    timeout: 30 * 60 * 1000,
+    killSignal: "SIGTERM"
   });
 
-  writeFileSync(jsonlOutputPath, result.stdout ?? "", "utf8");
+  writeFileSync(
+    jsonlOutputPath,
+    [result.stdout ?? "", result.stderr ?? ""].filter(Boolean).join("\n"),
+    "utf8"
+  );
   if (shouldOverwriteFinalMessage(finalMessagePath)) {
     writeFileSync(finalMessagePath, result.stdout || result.stderr || "Codex execution produced no output.\n", "utf8");
   }
 
   if (result.error || result.status !== 0) {
     updateCodexInvocationStatus(db, invocation.id, "failed");
-    throw new Error(result.error?.message ?? result.stderr ?? `Codex command failed with status ${result.status}`);
+    const diagnostic = createArtifactRecord(db, {
+      projectId: workItem.project_id,
+      workItemId: workItem.id,
+      title: `Planning executor diagnostic: ${workItem.title}`,
+      artifactType: "planning_executor_diagnostic",
+      status: "drafted",
+      path: invocation.jsonl_output_path
+    });
+    const partial = existsSync(finalMessagePath) && statSync(finalMessagePath).size > 0
+      ? upsertProducedArtifact(db, {
+          projectId: workItem.project_id,
+          workItemId: workItem.id,
+          title: `Partial planning Artifact: ${workItem.title}`,
+          artifactType: "planning_partial_artifact",
+          status: "drafted",
+          path: invocation.final_message_path,
+          convertPathlessExpected: false
+        })
+      : null;
+    const validation = purpose === "planning"
+      ? recordPlanningArtifactValidationNotRun(
+          db,
+          workspace,
+          workItem,
+          invocation,
+          `Planning Validation not run: executor exited with status ${result.status ?? "unknown"}.`
+        )
+      : null;
+    return {
+      invocationId: invocation.id,
+      status: "failed",
+      command,
+      output: result.stdout || null,
+      error: result.error?.message ?? result.stderr ?? `Codex command failed with status ${result.status}`,
+      artifactPath: partial?.path ?? diagnostic.path,
+      artifact: validation?.artifact ?? diagnostic,
+      additionalArtifacts: [diagnostic, ...(partial ? [partial] : [])]
+    };
   }
 
   let validationOutput: string | null = null;
@@ -346,13 +468,59 @@ function executeCodexStep(
   let error: string | null = null;
 
   if (purpose === "planning") {
+    const planningArtifact = upsertProducedArtifact(db, {
+      projectId: workItem.project_id,
+      workItemId: workItem.id,
+      title: `Planning Artifact: ${workItem.title}`,
+      artifactType: "planning_artifact",
+      status: "drafted",
+      path: invocation.final_message_path,
+      convertPathlessExpected: true
+    });
     const validation = recordPlanningArtifactValidation(db, workspace, workItem, plan, invocation);
     validationOutput = validation.summary;
     validationArtifact = validation.artifact;
     if (validation.status === "failed") {
       status = "requires_review";
       error = validation.summary;
+      createPlanningValidationReviewItem(
+        db,
+        workItem,
+        plan,
+        invocation,
+        validation.validation!,
+        validation.summary,
+        validation.sidecarRelativePath,
+        planningArtifact,
+        options.runId ?? null
+      );
+    } else if (validation.status === "passed") {
+      createPlanningAcceptanceDecision(db, workItem, plan, invocation, planningArtifact, options.runId ?? null);
+    } else {
+      status = "failed";
+      error = validation.summary;
     }
+    validationArtifact = validation.artifact;
+    updateCodexInvocationStatus(db, invocation.id, status === "failed" ? "failed" : "completed");
+    db.prepare("UPDATE codex_invocations SET plan_step_id = ?, run_id = ?, updated_at = ? WHERE id = ?").run(
+      planStepId,
+      options.runId ?? null,
+      new Date().toISOString(),
+      invocation.id
+    );
+    return {
+      invocationId: invocation.id,
+      status,
+      command,
+      output: [
+        `Codex ${purpose} output captured: ${invocation.jsonl_output_path}`,
+        validationOutput
+      ].filter(Boolean).join("\n"),
+      error,
+      artifactPath: invocation.final_message_path,
+      artifact: validationArtifact,
+      additionalArtifacts: [planningArtifact]
+    };
   }
 
   updateCodexInvocationStatus(db, invocation.id, "completed");
@@ -372,7 +540,8 @@ function executeCodexStep(
     ].filter(Boolean).join("\n"),
     error,
     artifactPath: invocation.final_message_path,
-    artifact: validationArtifact
+    artifact: validationArtifact,
+    additionalArtifacts: []
   };
 }
 
@@ -422,10 +591,6 @@ function recordPlanningArtifactValidation(
     validation
   });
   const artifact = createPlanningValidationArtifact(db, workItem, sidecar, status);
-
-  if (!validation.passed) {
-    createPlanningValidationReviewItem(db, workItem, plan, invocation, validation, summary, sidecar);
-  }
 
   return { status, summary, validation, sidecarRelativePath: sidecar, artifact };
 }
@@ -485,12 +650,25 @@ function createPlanningValidationReviewItem(
   invocation: CodexInvocation,
   validation: PlanningArtifactValidationResult,
   summary: string,
-  sidecarRelativePath: string
+  sidecarRelativePath: string,
+  planningArtifact: Artifact,
+  runId: string | null
 ): void {
+  const existing = db.prepare(
+    `SELECT id FROM review_items
+     WHERE resolved_intent = 'codex_planning_artifact_validation'
+       AND codex_invocation_id = ?
+     LIMIT 1`
+  ).get(invocation.id) as { id: string } | undefined;
+  if (existing) {
+    return;
+  }
   createReviewItem(db, {
     workItemId: workItem.id,
     planId: plan.id,
     projectId: workItem.project_id,
+    artifactId: planningArtifact.id,
+    codexInvocationId: invocation.id,
     decisionNeeded: [
       `Planning artifact validation failed for "${workItem.title}".`,
       renderIssuesForOperator("Failures", validation.failures),
@@ -512,7 +690,50 @@ function createPlanningValidationReviewItem(
       packetPath: invocation.prompt_path,
       artifactPath: invocation.final_message_path,
       validationResultPath: sidecarRelativePath,
+      runId,
       validation
+    }
+  });
+}
+
+function createPlanningAcceptanceDecision(
+  db: Database.Database,
+  workItem: WorkItemSummary,
+  plan: ExecutionPlanSummary,
+  invocation: CodexInvocation,
+  planningArtifact: Artifact,
+  runId: string | null
+): void {
+  const existing = db.prepare(
+    `SELECT id FROM review_items
+     WHERE resolved_intent = 'CodexPlanningArtifactAcceptance'
+       AND artifact_id = ?
+       AND json_extract(context_json, '$.runId') IS ?
+     LIMIT 1`
+  ).get(planningArtifact.id, runId) as { id: string } | undefined;
+  if (existing) {
+    return;
+  }
+  createReviewItem(db, {
+    workItemId: workItem.id,
+    planId: plan.id,
+    projectId: workItem.project_id,
+    artifactId: planningArtifact.id,
+    codexInvocationId: invocation.id,
+    decisionNeeded: `Accept the validated planning Artifact for "${workItem.title}".`,
+    recommendation: "Review the plan and Validation evidence, then accept, reject, or defer it.",
+    sourceInput: workItem.raw_input,
+    proposedAction: "Accept the validated plan as the ready planning Artifact.",
+    resolvedIntent: "CodexPlanningArtifactAcceptance",
+    confidenceLabel: "high",
+    confidence: 1,
+    missingFields: [],
+    context: {
+      schemaVersion: 1,
+      runId,
+      artifactPath: planningArtifact.path,
+      validationResultPath: path.join(path.dirname(invocation.final_message_path), "planning-validation.json"),
+      responsibility: "needs_mark"
     }
   });
 }
@@ -607,7 +828,17 @@ function executeDeterministicStep(
       return { output: validateWorkspace(workspace), artifact: null };
     case "generate_status_report": {
       const reportPath = writeStatusReport(workspace, buildStatusReportData(db, workspace));
-      return { output: `Status report written: ${reportPath}`, artifact: null };
+      const relativePath = toWorkspaceRelativePath(workspace, reportPath);
+      const artifact = upsertProducedArtifact(db, {
+        projectId: workItem.project_id,
+        workItemId: workItem.id,
+        title: `Status report: ${workItem.title}`,
+        artifactType: "status_report",
+        status: "ready",
+        path: relativePath,
+        convertPathlessExpected: true
+      });
+      return { output: `Status report written: ${reportPath}`, artifact };
     }
     case "generate_weekly_review": {
       const until = localDateStamp();

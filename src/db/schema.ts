@@ -39,6 +39,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureAskRequestStewardshipColumn(db);
   ensureRequiresReviewCompatibility(db);
   ensureExecutionRunWorkerColumns(db);
+  ensureDecisionGatedPlanningColumns(db);
   ensureAskFeedbackTable(db);
   applyCapabilityMigrations(db);
 }
@@ -280,6 +281,72 @@ function ensureExecutionRunWorkerColumns(db: Database.Database): void {
   if (!columnNames.has("executor_name")) {
     db.prepare("ALTER TABLE execution_runs ADD COLUMN executor_name TEXT").run();
   }
+}
+
+function ensureDecisionGatedPlanningColumns(db: Database.Database): void {
+  const reviewColumns = new Set(
+    (db.prepare("PRAGMA table_info(review_items)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!reviewColumns.has("artifact_id")) {
+    db.prepare("ALTER TABLE review_items ADD COLUMN artifact_id TEXT REFERENCES artifacts(id) ON DELETE SET NULL").run();
+  }
+  if (!reviewColumns.has("codex_invocation_id")) {
+    db.prepare("ALTER TABLE review_items ADD COLUMN codex_invocation_id TEXT REFERENCES codex_invocations(id) ON DELETE SET NULL").run();
+  }
+
+  const runColumns = new Set(
+    (db.prepare("PRAGMA table_info(execution_runs)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!runColumns.has("retry_of_run_id")) {
+    db.prepare("ALTER TABLE execution_runs ADD COLUMN retry_of_run_id TEXT REFERENCES execution_runs(id) ON DELETE SET NULL").run();
+  }
+
+  const duplicateRunDecisions = db.prepare(
+    `SELECT review_item_id
+     FROM execution_runs
+     WHERE review_item_id IS NOT NULL
+     GROUP BY review_item_id
+     HAVING COUNT(*) > 1`
+  ).all() as Array<{ review_item_id: string }>;
+  for (const duplicate of duplicateRunDecisions) {
+    const runs = db.prepare(
+      `SELECT id FROM execution_runs
+       WHERE review_item_id = ?
+       ORDER BY created_at ASC, rowid ASC`
+    ).all(duplicate.review_item_id) as Array<{ id: string }>;
+    for (const run of runs.slice(1)) {
+      db.prepare("UPDATE execution_runs SET review_item_id = NULL WHERE id = ?").run(run.id);
+    }
+    process.stderr.write(`Arcadia migration: preserved earliest Run link for Decision ${duplicate.review_item_id}.\n`);
+  }
+
+  const duplicateArtifactLinks = db.prepare(
+    `SELECT run_id, artifact_id
+     FROM run_artifacts
+     GROUP BY run_id, artifact_id
+     HAVING COUNT(*) > 1`
+  ).all() as Array<{ run_id: string; artifact_id: string }>;
+  for (const duplicate of duplicateArtifactLinks) {
+    const links = db.prepare(
+      `SELECT rowid FROM run_artifacts
+       WHERE run_id = ? AND artifact_id = ?
+       ORDER BY created_at ASC, rowid ASC`
+    ).all(duplicate.run_id, duplicate.artifact_id) as Array<{ rowid: number }>;
+    for (const link of links.slice(1)) {
+      db.prepare("DELETE FROM run_artifacts WHERE rowid = ?").run(link.rowid);
+    }
+    process.stderr.write(`Arcadia migration: removed duplicate Artifact link for Run ${duplicate.run_id}.\n`);
+  }
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_review_items_artifact_id ON review_items(artifact_id);
+    CREATE INDEX IF NOT EXISTS idx_review_items_codex_invocation_id ON review_items(codex_invocation_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_execution_runs_review_item_id_unique
+      ON execution_runs(review_item_id) WHERE review_item_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_execution_runs_retry_of_run_id ON execution_runs(retry_of_run_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_run_artifacts_run_artifact_unique
+      ON run_artifacts(run_id, artifact_id);
+  `);
 }
 
 function repairLegacyRequiresReviewReferences(db: Database.Database): void {
