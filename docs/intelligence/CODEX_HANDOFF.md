@@ -1,4 +1,4 @@
-# Codex Handoff: Arcadia Intelligence v0.1
+# Arcadia Intelligence v0.1
 
 The bootstrap established a domain-neutral skeleton.
 
