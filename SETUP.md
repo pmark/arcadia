@@ -416,6 +416,14 @@ Eventually, local models may help with:
 
 Arcadia should remain usable even if no local model is installed.
 
+Arcadia Intelligence v0.1 has since landed as the first concrete structured-generation
+service: a durable SQLite job queue, an in-process worker, and one configured
+local [LiteLLM](https://docs.litellm.ai/docs/proxy/quick_start) route. See the
+[Arcadia Intelligence (v0.1)](README.md#arcadia-intelligence-v01) section of the
+README and `docs/intelligence/V0_1_SCOPE.md` for what it does and does not cover.
+It remains optional: `arcadia intelligence serve` only needs to run if a
+companion app is submitting structured generation requests.
+
 ## Environment Configuration
 
 Workspace-specific configuration should live in:

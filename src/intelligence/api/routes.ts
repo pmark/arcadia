@@ -1,14 +1,6 @@
 /**
- * API seam for Arcadia Intelligence v0.1.
- *
- * Required endpoints:
- * - POST /api/intelligence/jobs
- * - GET /api/intelligence/jobs/:jobId
- * - POST /api/intelligence/jobs/:jobId/retry
- * - GET /api/intelligence/health
- *
- * Codex should implement this using the existing Arcadia HTTP framework or
- * Fastify if no stronger repository convention already exists.
+ * Documents the four v0.1 routes. The actual HTTP server is
+ * ./server.ts (plain node:http; see that file for why Fastify wasn't added).
  *
  * Do not add generic chat, provider, model-selection, admin, or prompt-playground
  * endpoints.

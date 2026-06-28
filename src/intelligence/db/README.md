@@ -1,9 +1,15 @@
 # Database Notes
 
-v0.1 needs one durable job table.
+The `intelligence_jobs` table lives in the shared Arcadia workspace database. Its
+migration is `ensureIntelligenceJobsTable` in [`../../db/schema.ts`](../../db/schema.ts),
+applied the same way as every other table in `applyMigrations`. There is no
+separate Intelligence database or migration runner.
 
-Keep all request payloads and results as JSON columns until real usage demonstrates
-a need for separate request, artifact, policy, quota, or usage-ledger tables.
+All request payloads and results are kept as JSON columns (`request_json`,
+`result_json`, `validation_json`, `usage_json`) rather than separate tables, per
+v0.1 scope.
 
-The worker must use a lease or equivalent claim mechanism so that process restarts
-do not leave jobs permanently running.
+The worker claims jobs with a lease (`lease_owner`, `lease_expires_at` columns)
+so that a crashed or restarted worker process does not leave jobs stuck in
+`running` forever — see `claimNextQueuedJob` in
+[`sqliteRepository.ts`](./sqliteRepository.ts).

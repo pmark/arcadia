@@ -4,11 +4,9 @@ import type {
 } from "../types.js";
 
 /**
- * Storage seam only.
- *
- * Codex should implement this using Arcadia's existing SQLite access pattern.
- * Do not introduce a second ORM or a separate database unless the existing
- * repository structure makes that necessary.
+ * Storage seam, implemented by ./sqliteRepository.ts against the shared
+ * Arcadia workspace database (see ../../db/connection.js and
+ * ../../db/schema.js). There is no second ORM or separate database.
  */
 export interface IntelligenceJobRepository {
   findById(jobId: string): Promise<IntelligenceJob | undefined>;
@@ -19,9 +17,15 @@ export interface IntelligenceJobRepository {
 
   createQueuedJob(request: IntelligenceRequest): Promise<IntelligenceJob>;
 
+  /**
+   * Claims the oldest job that is queued, or whose worker lease has expired,
+   * for the given workerId. This is what makes job execution restart-safe:
+   * a crashed worker's lease expires and another worker can reclaim the job.
+   */
   claimNextQueuedJob(
     workerId: string,
     nowIso: string,
+    leaseDurationMs: number,
   ): Promise<IntelligenceJob | undefined>;
 
   completeJob(
@@ -44,5 +48,9 @@ export interface IntelligenceJobRepository {
     completedAt: string,
   ): Promise<IntelligenceJob>;
 
+  /**
+   * Resets a failed or blocked job back to queued and increments retryCount.
+   * Eligibility (status, maxRetries) is enforced by the caller.
+   */
   retryJob(jobId: string, nowIso: string): Promise<IntelligenceJob>;
 }

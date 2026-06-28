@@ -1,3 +1,4 @@
+import { Ajv, type ValidateFunction } from "ajv";
 import type {
   JsonValue,
   OutputContract,
@@ -7,16 +8,40 @@ import type {
 /**
  * Generic validation seam.
  *
- * v0.1 should validate model output against the companion-app-supplied JSON
- * Schema. Codex should select the smallest compatible JSON Schema validator
- * already used by Arcadia, or add one only if necessary.
+ * Validates model output against the companion-app-supplied JSON Schema using
+ * ajv. Arcadia does not interpret the schema's domain meaning; it only checks
+ * that the value conforms to the shape the companion app asked for.
  */
+const ajv = new Ajv({ strict: false, allErrors: true });
+const compiledSchemas = new Map<string, ValidateFunction>();
+
 export async function validateOutput(
-  _value: JsonValue,
-  _contract: OutputContract,
+  value: JsonValue,
+  contract: OutputContract,
 ): Promise<ValidationResult> {
-  throw new Error(
-    "Arcadia Intelligence output validation is not implemented yet. " +
-      "Codex should wire this to a generic JSON Schema validator.",
-  );
+  const validate = compileSchema(contract);
+
+  const passed = validate(value);
+  if (passed) {
+    return { passed: true };
+  }
+
+  return {
+    passed: false,
+    errors: (validate.errors ?? []).map(
+      (error) => `${error.instancePath || "(root)"} ${error.message ?? "is invalid"}`,
+    ),
+  };
+}
+
+function compileSchema(contract: OutputContract): ValidateFunction {
+  const cacheKey = `${contract.schemaId}@${contract.schemaVersion}:${contract.schemaHash ?? ""}`;
+  const cached = compiledSchemas.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const validate = ajv.compile(contract.jsonSchema as object);
+  compiledSchemas.set(cacheKey, validate);
+  return validate;
 }

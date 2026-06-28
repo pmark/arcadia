@@ -131,6 +131,7 @@ import {
   runRunShowCommand
 } from "./commands/run.js";
 import { renderStatusSuccess, runStatusCommand } from "./commands/status.js";
+import { runIntelligenceServeCommand } from "./commands/intelligence.js";
 import {
   runWorkerInstallCommand,
   runWorkerStartCommand,
@@ -1345,6 +1346,17 @@ export function buildProgram(): Command {
     .description("Remove the launchd service and stop the worker")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
     .action((options: { workspace: string }) => runWorkerUninstallCommand(options));
+
+  const intelligence = program
+    .command("intelligence")
+    .description("Generic local structured-generation service (Arcadia Intelligence v0.1)");
+
+  intelligence
+    .command("serve")
+    .description("Start the Arcadia Intelligence API and in-process worker in the foreground")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+    .option("--port <number>", "HTTP port", (value) => Number.parseInt(value, 10))
+    .action((options: { workspace: string; port?: number }) => runIntelligenceServeCommand(options));
 
   return program;
 }

@@ -80,9 +80,45 @@ The dashboard is read-only. It shows project status, current milestones, Require
 
 See `apps/dashboard/README.md` for environment variables and local network usage.
 
+## Arcadia Intelligence (v0.1)
+
+Arcadia Intelligence is a generic, local, SQLite-backed structured generation
+service. Companion apps submit a structured generation request with their own
+JSON Schema; Arcadia does not know anything about the requesting app's domain.
+See `docs/intelligence/V0_1_SCOPE.md` for the exact scope and boundaries.
+
+Start the API and its in-process worker together (the worker polls the same
+workspace database for queued jobs):
+
+```sh
+pnpm arcadia intelligence serve --workspace ./tmp/demo-workspace --port 4710
+```
+
+This expects a [LiteLLM proxy](https://docs.litellm.ai/docs/proxy/quick_start)
+running locally (default `http://127.0.0.1:4000`). Configure it with:
+
+- `ARCADIA_LITELLM_BASE_URL` — LiteLLM proxy URL (default `http://127.0.0.1:4000`)
+- `ARCADIA_LITELLM_ROUTE` — the single approved model route/alias (default `arcadia-default`)
+- `ARCADIA_LITELLM_API_KEY` — optional bearer token forwarded to the proxy
+
+If LiteLLM is unreachable or misconfigured, jobs end up `blocked` (not
+silently retried against a paid fallback — v0.1 never escalates routes).
+`GET /api/intelligence/health` reports LiteLLM reachability without
+submitting a job.
+
+API: `POST /api/intelligence/jobs`, `GET /api/intelligence/jobs/:jobId`,
+`POST /api/intelligence/jobs/:jobId/retry`, `GET /api/intelligence/health`.
+A generic TypeScript client (`ArcadiaIntelligenceClient`) is exported from
+`src/intelligence/client/index.ts` with `submit`, `getJob`, `retry`, and
+`waitForCompletion`.
+
+This v0.1 slice intentionally excludes budgets, quotas, caching, multiple
+routes/providers, Codex execution, and any dashboard UI — see
+`docs/intelligence/CODEX_HANDOFF.md` for the full constraint list.
+
 ## Planning Artifacts
 
-- [Arcadia Intelligence Gateway plan](docs/plans/arcadia-intelligence-gateway/README.md) defines the implementation-ready package for a local-first LiteLLM-backed Intelligence Gateway.
+- [Arcadia Intelligence Gateway plan](docs/plans/arcadia-intelligence-gateway/README.md) is a larger, not-yet-implemented design for a policy-aware Intelligence Gateway. The implemented v0.1 service above is an intentionally narrower slice and does not follow this plan's budgets/quotas/artifact scope.
 
 ## Quick Start
 
@@ -234,6 +270,7 @@ pnpm smoke
 - `arcadia log create --workspace <path>` records a mission log in SQLite and writes Markdown under `mission_logs/YYYY/MM/`.
 - `arcadia report status --workspace <path>` writes the full Markdown status report.
 - `arcadia review weekly --workspace <path> [--since <YYYY-MM-DD>] [--until <YYYY-MM-DD>]` writes a deterministic weekly review to `reports/weekly/YYYY-MM-DD.md`. If dates are omitted, Arcadia uses the seven calendar days ending today.
+- `arcadia intelligence serve --workspace <path> [--port <number>]` starts the Arcadia Intelligence v0.1 API and its in-process worker in the foreground (default port 4710). See [Arcadia Intelligence (v0.1)](#arcadia-intelligence-v01) above.
 
 ## Local File Ingress
 

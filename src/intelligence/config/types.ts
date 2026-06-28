@@ -11,6 +11,12 @@ export type IntelligenceV01Config = {
   liteLlmBaseUrl: string;
 
   /**
+   * Optional bearer token forwarded to the local LiteLLM proxy.
+   * Never a provider API key; LiteLLM owns provider credentials.
+   */
+  liteLlmApiKey?: string;
+
+  /**
    * v0.1 default should remain false.
    */
   allowPaidUsage: boolean;
@@ -21,13 +27,13 @@ export type IntelligenceV01Config = {
   maxRetries: number;
 
   /**
-   * Path or identifier for SQLite storage.
-   * Codex should adapt this to existing Arcadia database conventions.
-   */
-  databasePath: string;
-
-  /**
    * Job polling interval for the in-process worker.
    */
   workerPollIntervalMs: number;
+
+  /**
+   * How long a worker's claim on a job is valid before another worker may
+   * reclaim it. Makes job execution restart-safe.
+   */
+  leaseDurationMs: number;
 };
