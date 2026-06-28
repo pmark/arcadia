@@ -1,5 +1,5 @@
 {
-  "name": "arcadia-core",
+  "name": "@pmark/arcadia",
   "version": "0.1.0",
   "description": "Local-first project operating system CLI for creative and software work.",
   "type": "module",
@@ -7,6 +7,28 @@
   "bin": {
     "arcadia": "dist/src/cli.js"
   },
+  "exports": {
+    "./intelligence/client": {
+      "types": "./dist/src/intelligence/client/index.d.ts",
+      "import": "./dist/src/intelligence/client/index.js"
+    },
+    "./intelligence/contracts": {
+      "types": "./dist/src/intelligence/contracts.d.ts",
+      "import": "./dist/src/intelligence/contracts.js"
+    }
+  },
+  "files": [
+    "dist/src/intelligence/client",
+    "dist/src/intelligence/contracts.js",
+    "dist/src/intelligence/contracts.d.ts",
+    "dist/src/intelligence/contracts.js.map",
+    "dist/src/intelligence/contracts.d.ts.map",
+    "dist/src/intelligence/types.js",
+    "dist/src/intelligence/types.d.ts",
+    "dist/src/intelligence/types.js.map",
+    "dist/src/intelligence/types.d.ts.map",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm --filter arcadia-discord-bot build",
     "test": "vitest run",
@@ -14,7 +36,8 @@
     "dashboard": "pnpm --filter arcadia-dashboard dev",
     "dashboard:build": "pnpm --filter arcadia-dashboard build",
     "test:e2e": "playwright test",
-    "smoke": "tsx scripts/smoke.ts"
+    "smoke": "tsx scripts/smoke.ts",
+    "verify:package-boundary": "node scripts/verify-intelligence-package-exports.mjs"
   },
   "dependencies": {
     "@clack/prompts": "^1.5.1",

@@ -108,9 +108,12 @@ submitting a job.
 
 API: `POST /api/intelligence/jobs`, `GET /api/intelligence/jobs/:jobId`,
 `POST /api/intelligence/jobs/:jobId/retry`, `GET /api/intelligence/health`.
-A generic TypeScript client (`ArcadiaIntelligenceClient`) is exported from
-`src/intelligence/client/index.ts` with `submit`, `getJob`, `retry`, and
-`waitForCompletion`.
+A generic TypeScript client (`ArcadiaIntelligenceClient`) with `submit`,
+`getJob`, `retry`, and `waitForCompletion` is published as a public package
+subpath, `@pmark/arcadia/intelligence/client`, alongside the request/job
+contracts at `@pmark/arcadia/intelligence/contracts`. These are the only two
+supported import paths for companion apps such as Rebuster; see
+`docs/intelligence/PNPM_LINK.md` for the local `pnpm link` workflow.
 
 This v0.1 slice intentionally excludes budgets, quotas, caching, multiple
 routes/providers, Codex execution, and any dashboard UI — see
