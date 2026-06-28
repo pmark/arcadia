@@ -80,6 +80,10 @@ The dashboard is read-only. It shows project status, current milestones, Require
 
 See `apps/dashboard/README.md` for environment variables and local network usage.
 
+## Planning Artifacts
+
+- [Arcadia Intelligence Gateway plan](docs/plans/arcadia-intelligence-gateway/README.md) defines the implementation-ready package for a local-first LiteLLM-backed Intelligence Gateway.
+
 ## Quick Start
 
 Initialize a private workspace:
