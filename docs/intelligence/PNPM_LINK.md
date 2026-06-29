@@ -25,7 +25,7 @@ repo.
 ```sh
 pnpm install
 pnpm build                 # emits dist/src/intelligence/{client,contracts,types}
-pnpm link --global         # registers @pmark/arcadia in pnpm's global link store
+# pnpm link --global       # Do NOT run `pnpm link` from here -- deprecated
 arcadia intelligence serve # start the local HTTP service Rebuster will call
 ```
 
@@ -35,7 +35,7 @@ Rebuster picks it up — the package exports point at `dist/`, not `src/`.
 ## From Rebuster
 
 ```sh
-pnpm link --global @pmark/arcadia
+pnpm link /PATH/TO/ARCADIA/ROOT
 ```
 
 Verify the link resolved to this repo (not a registry copy):

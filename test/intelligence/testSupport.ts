@@ -31,6 +31,7 @@ export function buildIntelligenceRequest(
     idempotencyKey: overrides.idempotencyKey ?? `idem_${randomUUID()}`,
     capability: overrides.capability ?? "demo-app.greeting.v1",
     clientApp: overrides.clientApp ?? "demo-app",
+    modality: overrides.modality,
     input: overrides.input ?? { name: "Ada" },
     outputContract: overrides.outputContract ?? {
       schemaId: "demo-app.greeting.v1",
@@ -82,6 +83,50 @@ export function startFakeLiteLlm(options: {
           model: options.model ?? "fake-model",
           choices: [{ message: { content: JSON.stringify(options.content) } }],
           usage: { prompt_tokens: 10, completion_tokens: 5 },
+        }),
+      );
+    };
+    req.on("data", () => {});
+    req.on("end", () => {
+      if (options.delayMs) {
+        setTimeout(respond, options.delayMs);
+      } else {
+        respond();
+      }
+    });
+  });
+
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address() as AddressInfo;
+      resolve({ server, baseUrl: `http://127.0.0.1:${port}` });
+    });
+  });
+}
+
+/** A minimal valid 1x1 transparent PNG, used as fixture image bytes. */
+export const ONE_PIXEL_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUAAarVyFEAAAAASUVORK5CYII=";
+
+/** Fake LiteLLM proxy returning an OpenAI-compatible image-generation response. */
+export function startFakeLiteLlmImages(options: {
+  b64Json?: string;
+  count?: number;
+  seed?: number;
+  revisedPrompt?: string;
+  delayMs?: number;
+}): Promise<{ server: Server; baseUrl: string }> {
+  const count = options.count ?? 1;
+  const server = createServer((req, res) => {
+    const respond = (): void => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          data: Array.from({ length: count }, () => ({
+            b64_json: options.b64Json ?? ONE_PIXEL_PNG_BASE64,
+            seed: options.seed,
+            revised_prompt: options.revisedPrompt,
+          })),
         }),
       );
     };

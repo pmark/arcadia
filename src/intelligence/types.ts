@@ -13,6 +13,13 @@ export type IntelligenceJobStatus =
   | "failed"
   | "blocked";
 
+/**
+ * What kind of generation a request wants. Arcadia interprets this only to
+ * pick a transport (chat completions vs. image generation) and a configured
+ * route; it never interprets the request's domain meaning.
+ */
+export type IntelligenceModality = "text" | "image";
+
 export type JsonPrimitive = string | number | boolean | null;
 
 export type JsonValue =
@@ -114,6 +121,14 @@ export type IntelligenceRequest = {
   missionId?: string;
 
   /**
+   * What kind of generation this request wants. Defaults to "text" when
+   * absent. For "image", `input` must contain a string `prompt` field;
+   * Arcadia passes it to the configured image route unexamined otherwise.
+   * An optional numeric `n` and string `size` in `input` are also read.
+   */
+  modality?: IntelligenceModality;
+
+  /**
    * Arbitrary app-owned structured payload.
    */
   input: JsonValue;
@@ -146,6 +161,43 @@ export type IntelligenceUsage = {
 export type ValidationResult = {
   passed: boolean;
   errors?: string[];
+};
+
+/**
+ * A durable, Arcadia-owned reference to a generated binary artifact (for
+ * example one generated image). Arcadia downloads or decodes provider output,
+ * persists the bytes itself, and returns this record instead of a provider
+ * URL or an inline base64 payload — provider URLs can be temporary, signed,
+ * or credential-sensitive, and base64 bloats job rows and HTTP responses.
+ *
+ * `uri` is a path relative to the Arcadia Intelligence API base URL (the
+ * same `baseUrl` passed to `ArcadiaIntelligenceClient`), fetchable via
+ * `GET {uri}` or `ArcadiaIntelligenceClient.getArtifact(id)`.
+ */
+export type IntelligenceArtifactRecord = {
+  id: string;
+  kind: "image";
+  uri: string;
+  mimeType: string;
+  sha256: string;
+  byteSize: number;
+  dimensions?: { width: number; height: number };
+  /** Safe, provider-returned metadata only (e.g. seed, revised prompt). Never a provider URL or credential. */
+  metadata?: JsonValue;
+};
+
+/**
+ * The generic manifest an image-generation job's `result` conforms to.
+ * Companion apps write their own outputContract.jsonSchema against this
+ * shape, typically requiring only the subset of fields they care about.
+ */
+export type IntelligenceImageGenerationResult = {
+  artifacts: IntelligenceArtifactRecord[];
+  warnings?: string[];
+  generation?: {
+    requestedCount?: number;
+    returnedCount?: number;
+  };
 };
 
 export type IntelligenceJob = {

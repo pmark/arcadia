@@ -27,7 +27,8 @@ const PREFIXES = {
   blogSchedule: "bsched",
   rebusterIntegration: "rint",
   rebusterEvent: "revt",
-  intelligenceJob: "ijob"
+  intelligenceJob: "ijob",
+  intelligenceArtifact: "iart"
 } as const;
 
 export type IdKind = keyof typeof PREFIXES;

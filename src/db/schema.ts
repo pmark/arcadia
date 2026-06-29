@@ -42,6 +42,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureDecisionGatedPlanningColumns(db);
   ensureAskFeedbackTable(db);
   ensureIntelligenceJobsTable(db);
+  ensureIntelligenceJobArtifactsTable(db);
   applyCapabilityMigrations(db);
 }
 
@@ -223,6 +224,25 @@ function ensureIntelligenceJobsTable(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_intelligence_jobs_status ON intelligence_jobs(status);
     CREATE INDEX IF NOT EXISTS idx_intelligence_jobs_created_at ON intelligence_jobs(created_at);
+  `);
+}
+
+function ensureIntelligenceJobArtifactsTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS intelligence_job_artifacts (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL REFERENCES intelligence_jobs(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      byte_size INTEGER NOT NULL,
+      sha256 TEXT NOT NULL,
+      width INTEGER,
+      height INTEGER,
+      relative_path TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_intelligence_job_artifacts_job_id ON intelligence_job_artifacts(job_id);
   `);
 }
 

@@ -43,6 +43,24 @@ export class ArcadiaIntelligenceClient {
     );
   }
 
+  /**
+   * Fetches the durable bytes for an artifact reference from an
+   * IntelligenceArtifactRecord (its `uri`, e.g. "/api/intelligence/artifacts/iart_...").
+   */
+  public async getArtifact(uri: string): Promise<{ bytes: ArrayBuffer; contentType: string }> {
+    const response = await this.fetchImpl(`${this.baseUrl}${uri}`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(
+        `Arcadia Intelligence artifact request failed: ${response.status} ${response.statusText}. ${text}`,
+      );
+    }
+    return {
+      bytes: await response.arrayBuffer(),
+      contentType: response.headers.get("content-type") ?? "application/octet-stream",
+    };
+  }
+
   public async waitForCompletion(
     jobId: string,
     options: {

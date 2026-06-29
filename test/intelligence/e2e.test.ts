@@ -2,6 +2,8 @@ import type Database from "better-sqlite3";
 import type { Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import { createIntelligenceServer } from "../../src/intelligence/api/server.js";
+import { createSqliteIntelligenceArtifactStore } from "../../src/intelligence/artifacts/store.js";
+import type { IntelligenceArtifactStore } from "../../src/intelligence/artifacts/store.js";
 import { ArcadiaIntelligenceClient } from "../../src/intelligence/client/client.js";
 import { createSqliteIntelligenceJobRepository } from "../../src/intelligence/db/sqliteRepository.js";
 import { IntelligenceWorker } from "../../src/intelligence/jobs/worker.js";
@@ -13,6 +15,7 @@ import {
 } from "../../src/intelligence/service/jobService.js";
 import type { IntelligenceJobRepository } from "../../src/intelligence/db/repository.js";
 import {
+  ONE_PIXEL_PNG_BASE64,
   buildIntelligenceRequest,
   closeServer,
   createTempWorkspace,
@@ -20,6 +23,7 @@ import {
   openWorkspaceDatabase,
   removeWorkspace,
   startFakeLiteLlm,
+  startFakeLiteLlmImages,
   testIntelligenceConfig,
   unavailableLiteLlmBaseUrl,
 } from "./testSupport.js";
@@ -48,6 +52,20 @@ function setupRepository(): IntelligenceJobRepository {
   const db = openWorkspaceDatabase(workspace);
   databases.push(db);
   return createSqliteIntelligenceJobRepository(db);
+}
+
+function setupIntelligence(): {
+  repository: IntelligenceJobRepository;
+  artifactStore: IntelligenceArtifactStore;
+} {
+  const workspace = createTempWorkspace();
+  workspaces.push(workspace);
+  const db = openWorkspaceDatabase(workspace);
+  databases.push(db);
+  return {
+    repository: createSqliteIntelligenceJobRepository(db),
+    artifactStore: createSqliteIntelligenceArtifactStore(db, workspace),
+  };
 }
 
 describe("Arcadia Intelligence v0.1 end-to-end", () => {
@@ -264,5 +282,192 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
     expect(response.ok).toBe(true);
     const body = (await response.json()) as { ok: boolean };
     expect(body.ok).toBe(true);
+  });
+
+  it("completes an image generation job with a durable artifact manifest, not a provider URL or base64", async () => {
+    const { repository, artifactStore } = setupIntelligence();
+    const { server, baseUrl } = await startFakeLiteLlmImages({ seed: 42 });
+    servers.push(server);
+
+    const imageRequest = buildIntelligenceRequest({
+      modality: "image",
+      capability: "demo-app.generate-image.v1",
+      input: { prompt: "a friendly robot", n: 1 },
+      outputContract: {
+        schemaId: "demo-app.image-manifest.v1",
+        schemaVersion: 1,
+        jsonSchema: {
+          type: "object",
+          properties: {
+            artifacts: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  kind: { type: "string" },
+                  uri: { type: "string" },
+                  mimeType: { type: "string" },
+                  sha256: { type: "string" },
+                  byteSize: { type: "number" },
+                },
+                required: ["id", "kind", "uri", "mimeType", "sha256", "byteSize"],
+              },
+            },
+          },
+          required: ["artifacts"],
+        },
+      },
+    });
+    await submitIntelligenceRequest(repository, imageRequest);
+
+    const config = testIntelligenceConfig(baseUrl, { defaultLiteLlmImageRoute: "arcadia-image" });
+    const worker = new IntelligenceWorker(
+      repository,
+      createLiteLlmHttpClient({ baseUrl }),
+      config,
+      artifactStore,
+    );
+    const finished = await worker.runOnce();
+
+    expect(finished?.status).toBe("completed");
+    expect(finished?.selectedRoute).toBe("arcadia-image");
+    const result = finished?.result as {
+      artifacts: Array<{
+        id: string;
+        kind: string;
+        uri: string;
+        mimeType: string;
+        sha256: string;
+        byteSize: number;
+        dimensions?: { width: number; height: number };
+        metadata?: { seed?: number };
+      }>;
+      generation?: { requestedCount: number; returnedCount: number };
+    };
+
+    expect(result.artifacts).toHaveLength(1);
+    const [artifact] = result.artifacts;
+    expect(artifact.kind).toBe("image");
+    expect(artifact.mimeType).toBe("image/png");
+    expect(artifact.uri).toBe(`/api/intelligence/artifacts/${artifact.id}`);
+    expect(artifact.dimensions).toEqual({ width: 1, height: 1 });
+    expect(artifact.metadata).toEqual({ seed: 42 });
+    expect(JSON.stringify(result)).not.toContain(ONE_PIXEL_PNG_BASE64);
+    expect(result.generation).toEqual({ requestedCount: 1, returnedCount: 1 });
+
+    const stored = await artifactStore.getArtifactBytes(artifact.id);
+    expect(stored?.mimeType).toBe("image/png");
+    expect(stored?.bytes.byteLength).toBe(artifact.byteSize);
+    expect(stored?.bytes.toString("base64")).toBe(ONE_PIXEL_PNG_BASE64);
+  });
+
+  it("retrieves image artifact bytes over HTTP via the client", async () => {
+    const { repository, artifactStore } = setupIntelligence();
+    const { server: liteLlmServer, baseUrl: liteLlmBaseUrl } = await startFakeLiteLlmImages({});
+    servers.push(liteLlmServer);
+
+    const config = testIntelligenceConfig(liteLlmBaseUrl, {
+      defaultLiteLlmImageRoute: "arcadia-image",
+    });
+    const worker = new IntelligenceWorker(
+      repository,
+      createLiteLlmHttpClient({ baseUrl: liteLlmBaseUrl }),
+      config,
+      artifactStore,
+    );
+    stopFns.push(worker.start());
+
+    const apiServer = createIntelligenceServer({ repository, config, artifactStore });
+    await new Promise<void>((resolve) => apiServer.listen(0, "127.0.0.1", resolve));
+    servers.push(apiServer);
+    const { port } = apiServer.address() as { port: number };
+
+    const client = new ArcadiaIntelligenceClient({ baseUrl: `http://127.0.0.1:${port}` });
+    const { job } = await client.submit(
+      buildIntelligenceRequest({
+        modality: "image",
+        input: { prompt: "a quiet harbor at dawn" },
+        outputContract: {
+          schemaId: "demo-app.image-manifest.v1",
+          schemaVersion: 1,
+          jsonSchema: {
+            type: "object",
+            properties: { artifacts: { type: "array" } },
+            required: ["artifacts"],
+          },
+        },
+      }),
+    );
+
+    const completed = await client.waitForCompletion(job.id, { pollIntervalMs: 20, timeoutMs: 5_000 });
+    expect(completed.status).toBe("completed");
+    const [artifact] = (completed.result as { artifacts: Array<{ uri: string }> }).artifacts;
+
+    const fetched = await client.getArtifact(artifact.uri);
+    expect(fetched.contentType).toBe("image/png");
+    expect(Buffer.from(fetched.bytes).toString("base64")).toBe(ONE_PIXEL_PNG_BASE64);
+  });
+
+  it("blocks an image job clearly when no LiteLLM image route is configured", async () => {
+    const { repository, artifactStore } = setupIntelligence();
+    const { server, baseUrl } = await startFakeLiteLlmImages({});
+    servers.push(server);
+
+    await submitIntelligenceRequest(
+      repository,
+      buildIntelligenceRequest({ modality: "image", input: { prompt: "anything" } }),
+    );
+
+    const config = testIntelligenceConfig(baseUrl); // no defaultLiteLlmImageRoute
+    const worker = new IntelligenceWorker(
+      repository,
+      createLiteLlmHttpClient({ baseUrl }),
+      config,
+      artifactStore,
+    );
+    const finished = await worker.runOnce();
+
+    expect(finished?.status).toBe("blocked");
+    expect(finished?.error?.code).toBe("LITELLM_UNAVAILABLE");
+    expect(finished?.error?.message).toMatch(/image route/i);
+  });
+
+  it("processes a synthetic second app's image-generation request unchanged", async () => {
+    const { repository, artifactStore } = setupIntelligence();
+    const { server, baseUrl } = await startFakeLiteLlmImages({ revisedPrompt: "a cozier harbor scene" });
+    servers.push(server);
+
+    const secondAppRequest = buildIntelligenceRequest({
+      idempotencyKey: "second-app-image-key-1",
+      capability: "another-app.generate-mood-board-image.v1",
+      clientApp: "another-app",
+      modality: "image",
+      input: { prompt: "a cozy harbor", size: "512x512" },
+      outputContract: {
+        schemaId: "another-app.mood-board-image.v1",
+        schemaVersion: 1,
+        jsonSchema: {
+          type: "object",
+          properties: { artifacts: { type: "array", minItems: 1 } },
+          required: ["artifacts"],
+        },
+      },
+      template: { id: "another-app.mood-board-template", version: "1" },
+    });
+
+    await submitIntelligenceRequest(repository, secondAppRequest);
+    const config = testIntelligenceConfig(baseUrl, { defaultLiteLlmImageRoute: "arcadia-image" });
+    const worker = new IntelligenceWorker(
+      repository,
+      createLiteLlmHttpClient({ baseUrl }),
+      config,
+      artifactStore,
+    );
+    const finished = await worker.runOnce();
+
+    expect(finished?.status).toBe("completed");
+    const result = finished?.result as { artifacts: Array<{ metadata?: { revisedPrompt?: string } }> };
+    expect(result.artifacts[0]?.metadata?.revisedPrompt).toBe("a cozier harbor scene");
   });
 });

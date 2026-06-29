@@ -11,7 +11,7 @@ export const intelligenceV01Defaults: IntelligenceV01Config = {
 
 /**
  * Resolves config from environment overrides on top of the v0.1 defaults.
- * Only the local LiteLLM endpoint and route are configurable; v0.1
+ * Only the local LiteLLM endpoint and routes are configurable; v0.1
  * intentionally does not expose provider, budget, or quota settings here.
  */
 export function loadIntelligenceConfig(
@@ -21,6 +21,7 @@ export function loadIntelligenceConfig(
     ...intelligenceV01Defaults,
     defaultLiteLlmRoute:
       env.ARCADIA_LITELLM_ROUTE?.trim() || intelligenceV01Defaults.defaultLiteLlmRoute,
+    defaultLiteLlmImageRoute: env.ARCADIA_LITELLM_IMAGE_ROUTE?.trim() || undefined,
     liteLlmBaseUrl:
       env.ARCADIA_LITELLM_BASE_URL?.trim() || intelligenceV01Defaults.liteLlmBaseUrl,
     liteLlmApiKey: env.ARCADIA_LITELLM_API_KEY?.trim() || undefined,

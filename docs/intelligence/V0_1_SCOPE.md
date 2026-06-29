@@ -12,12 +12,18 @@ the app's domain.
 
 - One generic structured generation request shape
 - One generic output-contract shape
-- One configured LiteLLM route
+- One configured LiteLLM route for text/structured generation, and one
+  separately configured LiteLLM route for image generation
 - SQLite-backed durable jobs
 - In-process worker loop
 - Generic JSON Schema validation
 - Submit, status, retry, and health API endpoints
-- Generic TypeScript client
+- A local artifact store for generated binary results (currently images):
+  Arcadia downloads/decodes provider output, hashes and persists the bytes
+  under the workspace, and returns a durable artifact-reference manifest
+  (never a provider URL or inline base64) plus an HTTP endpoint to fetch
+  those bytes back
+- Generic TypeScript client (including artifact retrieval)
 - No paid fallback
 - One retry maximum
 
@@ -27,16 +33,16 @@ the app's domain.
 - MIDI Opener-specific code
 - Blogging-specific code
 - Codex CLI execution
-- Multiple providers or model routes
+- More than one route per modality, or automatic provider/model selection
 - Automatic fallback
 - Budgets and quotas
 - Caching
-- Image generation
 - Prompt registry
-- Artifact store beyond durable result JSON
+- Image *editing*, variation, or multi-turn generation (single text-to-image only)
 - Dashboard UI
 - Webhooks, streaming, and subscriptions
-- Separate packages
+- Separate packages or deployable services (the public client/contracts
+  subpaths still ship from this one package)
 - Redis, BullMQ, RabbitMQ, or distributed workers
 - Microservices
 - Generic chat endpoints
@@ -57,8 +63,10 @@ Companion apps own:
 Arcadia Intelligence owns:
 
 - durable job execution
-- one approved model route
+- one approved model route per modality (text, image)
 - generic validation
+- durable storage of generated binary artifacts and their hashes/metadata
+  (never companion-app domain meaning about those artifacts)
 - status transitions
 - retry behavior
 - provenance fields

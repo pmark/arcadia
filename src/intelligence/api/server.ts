@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
+import type { IntelligenceArtifactStore } from "../artifacts/store.js";
 import type { IntelligenceV01Config } from "../config/types.js";
 import type { IntelligenceJobRepository } from "../db/repository.js";
 import {
@@ -23,22 +24,25 @@ import type { IntelligenceRequest } from "../types.js";
  * - GET  /api/intelligence/jobs/:jobId
  * - POST /api/intelligence/jobs/:jobId/retry
  * - GET  /api/intelligence/health
+ * - GET  /api/intelligence/artifacts/:artifactId (durable bytes for image jobs)
  */
 export interface IntelligenceServerOptions {
   repository: IntelligenceJobRepository;
   config: IntelligenceV01Config;
+  artifactStore?: IntelligenceArtifactStore;
   fetchImpl?: typeof fetch;
 }
 
 const JOB_ID_PATTERN = /^\/api\/intelligence\/jobs\/([^/]+)$/;
 const RETRY_PATTERN = /^\/api\/intelligence\/jobs\/([^/]+)\/retry$/;
+const ARTIFACT_ID_PATTERN = /^\/api\/intelligence\/artifacts\/([^/]+)$/;
 
 export function createIntelligenceServer(options: IntelligenceServerOptions): Server {
-  const { repository, config } = options;
+  const { repository, config, artifactStore } = options;
   const fetchImpl = options.fetchImpl ?? fetch;
 
   return createServer((req, res) => {
-    void handleRequest(req, res, repository, config, fetchImpl);
+    void handleRequest(req, res, repository, config, artifactStore, fetchImpl);
   });
 }
 
@@ -47,6 +51,7 @@ async function handleRequest(
   res: ServerResponse,
   repository: IntelligenceJobRepository,
   config: IntelligenceV01Config,
+  artifactStore: IntelligenceArtifactStore | undefined,
   fetchImpl: typeof fetch,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -72,6 +77,12 @@ async function handleRequest(
     const jobMatch = method === "GET" ? JOB_ID_PATTERN.exec(url.pathname) : null;
     if (jobMatch) {
       await handleGetJob(res, repository, decodeURIComponent(jobMatch[1]!));
+      return;
+    }
+
+    const artifactMatch = method === "GET" ? ARTIFACT_ID_PATTERN.exec(url.pathname) : null;
+    if (artifactMatch) {
+      await handleGetArtifact(res, artifactStore, decodeURIComponent(artifactMatch[1]!));
       return;
     }
 
@@ -120,6 +131,29 @@ async function handleGetJob(
   sendJson(res, 200, job);
 }
 
+async function handleGetArtifact(
+  res: ServerResponse,
+  artifactStore: IntelligenceArtifactStore | undefined,
+  artifactId: string,
+): Promise<void> {
+  if (!artifactStore) {
+    sendJson(res, 404, { error: "Artifact storage is not configured." });
+    return;
+  }
+
+  const artifact = await artifactStore.getArtifactBytes(artifactId);
+  if (!artifact) {
+    sendJson(res, 404, { error: `Artifact not found: ${artifactId}` });
+    return;
+  }
+
+  res.writeHead(200, {
+    "content-type": artifact.mimeType,
+    "content-length": artifact.bytes.byteLength,
+  });
+  res.end(artifact.bytes);
+}
+
 async function handleRetryJob(
   res: ServerResponse,
   repository: IntelligenceJobRepository,
@@ -153,6 +187,7 @@ async function handleHealth(
     liteLlm: {
       baseUrl: config.liteLlmBaseUrl,
       route: config.defaultLiteLlmRoute,
+      imageRoute: config.defaultLiteLlmImageRoute ?? null,
       reachable: liteLlmReachable,
     },
   });
@@ -194,6 +229,12 @@ function validateIntelligenceRequestShape(body: unknown): string | undefined {
   }
   if (request.input === undefined) {
     return "input is required.";
+  }
+  if (request.modality === "image") {
+    const input = request.input as Record<string, unknown> | null;
+    if (!input || typeof input.prompt !== "string" || input.prompt.trim().length === 0) {
+      return 'modality "image" requires a non-empty string input.prompt.';
+    }
   }
   if (!request.outputContract || typeof request.outputContract.jsonSchema !== "object") {
     return "outputContract.jsonSchema is required.";

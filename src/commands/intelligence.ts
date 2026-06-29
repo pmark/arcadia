@@ -1,6 +1,7 @@
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { openDatabase } from "../db/connection.js";
 import { createIntelligenceServer } from "../intelligence/api/server.js";
+import { createSqliteIntelligenceArtifactStore } from "../intelligence/artifacts/store.js";
 import { loadIntelligenceConfig } from "../intelligence/config/defaults.js";
 import { createSqliteIntelligenceJobRepository } from "../intelligence/db/sqliteRepository.js";
 import { IntelligenceWorker } from "../intelligence/jobs/worker.js";
@@ -21,16 +22,17 @@ export function runIntelligenceServeCommand(options: IntelligenceServeOptions): 
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const db = openDatabase(workspacePath);
   const repository = createSqliteIntelligenceJobRepository(db);
+  const artifactStore = createSqliteIntelligenceArtifactStore(db, workspacePath);
   const config = loadIntelligenceConfig(process.env);
   const liteLlmClient = createLiteLlmHttpClient({
     baseUrl: config.liteLlmBaseUrl,
     apiKey: config.liteLlmApiKey,
   });
 
-  const worker = new IntelligenceWorker(repository, liteLlmClient, config);
+  const worker = new IntelligenceWorker(repository, liteLlmClient, config, artifactStore);
   const stopWorker = worker.start();
 
-  const server = createIntelligenceServer({ repository, config });
+  const server = createIntelligenceServer({ repository, config, artifactStore });
   const port = options.port ?? DEFAULT_PORT;
 
   const shutdown = (): void => {
@@ -44,9 +46,12 @@ export function runIntelligenceServeCommand(options: IntelligenceServeOptions): 
   process.on("SIGTERM", shutdown);
 
   server.listen(port, () => {
+    const imageRouteNote = config.defaultLiteLlmImageRoute
+      ? `, image route: ${config.defaultLiteLlmImageRoute}`
+      : "";
     process.stdout.write(
       `Arcadia Intelligence listening on http://127.0.0.1:${port} ` +
-        `(workspace: ${workspacePath}, LiteLLM: ${config.liteLlmBaseUrl}, route: ${config.defaultLiteLlmRoute})\n`,
+        `(workspace: ${workspacePath}, LiteLLM: ${config.liteLlmBaseUrl}, route: ${config.defaultLiteLlmRoute}${imageRouteNote})\n`,
     );
   });
 }

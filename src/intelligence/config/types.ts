@@ -1,9 +1,16 @@
 export type IntelligenceV01Config = {
   /**
-   * The single configured LiteLLM route allowed for v0.1.
+   * The single configured LiteLLM route for text/structured generation.
    * Companion apps do not select providers or models.
    */
   defaultLiteLlmRoute: string;
+
+  /**
+   * The single configured LiteLLM route for image generation. Undefined
+   * means image generation is not configured; image jobs block clearly
+   * rather than falling back to the text route.
+   */
+  defaultLiteLlmImageRoute?: string;
 
   /**
    * LiteLLM proxy endpoint, usually localhost.
