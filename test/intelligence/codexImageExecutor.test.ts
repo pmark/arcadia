@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { runIntelligenceImageSmokeCommand } from "../../src/commands/intelligence.js";
 import { createSqliteIntelligenceArtifactStore } from "../../src/intelligence/artifacts/store.js";
 import { createCodexCliImageExecutor } from "../../src/intelligence/codex/imageExecutor.js";
 import { buildDefaultRoutes } from "../../src/intelligence/config/defaults.js";
@@ -93,6 +94,41 @@ describe("Codex CLI image executor", () => {
     expect(finished.error?.code).toBe("CODEX_CLI_UNAVAILABLE");
   });
 
+  it("runs the command-level image smoke path through a normal Intelligence job", async () => {
+    const workspace = createTempWorkspace();
+    workspaces.push(workspace);
+    const fakeCommand = createFakeCodexCommand();
+    const previousCommand = process.env.ARCADIA_CODEX_CLI_COMMAND;
+    const previousArgs = process.env.ARCADIA_CODEX_CLI_ARGS;
+
+    process.env.ARCADIA_CODEX_CLI_COMMAND = process.execPath;
+    process.env.ARCADIA_CODEX_CLI_ARGS = JSON.stringify([fakeCommand, "{workspace}", "success"]);
+
+    try {
+      const response = await runIntelligenceImageSmokeCommand({
+        workspace,
+        prompt: "test prompt",
+        idempotencyKey: "arcadia-command-smoke-test",
+      });
+
+      expect(response.command).toBe("intelligence.smoke-image");
+      expect(response.data.job.status).toBe("completed");
+      expect(response.data.artifactCount).toBe(1);
+      expect(response.data.artifactUris[0]).toMatch(/^\/api\/intelligence\/artifacts\/iart_/);
+      expect(response.data.job.usage?.routeId).toBe("arcadia.image.generate.local.quality");
+    } finally {
+      if (previousCommand === undefined) {
+        delete process.env.ARCADIA_CODEX_CLI_COMMAND;
+      } else {
+        process.env.ARCADIA_CODEX_CLI_COMMAND = previousCommand;
+      }
+      if (previousArgs === undefined) {
+        delete process.env.ARCADIA_CODEX_CLI_ARGS;
+      } else {
+        process.env.ARCADIA_CODEX_CLI_ARGS = previousArgs;
+      }
+    }
+  });
 });
 
 async function runCodexImageScenario(

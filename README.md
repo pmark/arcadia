@@ -163,6 +163,12 @@ For Codex runs, the isolated job workspace is preserved at
 `.arcadia/intelligence/jobs/<job-id>/` with `request.json`,
 `instructions.md`, optional `reference-images/`, `output/manifest.json`, and
 `logs/codex.*.log`.
+Run one local Codex image job without starting the HTTP server:
+
+```sh
+pnpm arcadia intelligence smoke-image --workspace ./tmp/demo-workspace --json
+```
+
 API: `POST /api/intelligence/jobs`, `GET /api/intelligence/jobs/:jobId`,
 `POST /api/intelligence/jobs/:jobId/retry`, `GET /api/intelligence/health`,
 `GET /api/intelligence/artifacts/:artifactId`.
@@ -332,6 +338,7 @@ pnpm smoke
 - `arcadia report status --workspace <path>` writes the full Markdown status report.
 - `arcadia review weekly --workspace <path> [--since <YYYY-MM-DD>] [--until <YYYY-MM-DD>]` writes a deterministic weekly review to `reports/weekly/YYYY-MM-DD.md`. If dates are omitted, Arcadia uses the seven calendar days ending today.
 - `arcadia intelligence serve --workspace <path> [--port <number>]` starts the Arcadia Intelligence v0.1 API and its in-process worker in the foreground (default port 4710). See [Arcadia Intelligence (v0.1)](#arcadia-intelligence-v01) above.
+- `arcadia intelligence smoke-image --workspace <path> [--prompt <text>] [--route <name>] [--json]` submits and runs one local Codex image-generation smoke job through the normal Intelligence lifecycle.
 
 ## Local File Ingress
 

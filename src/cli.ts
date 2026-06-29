@@ -131,7 +131,11 @@ import {
   runRunShowCommand
 } from "./commands/run.js";
 import { renderStatusSuccess, runStatusCommand } from "./commands/status.js";
-import { runIntelligenceServeCommand } from "./commands/intelligence.js";
+import {
+  renderIntelligenceImageSmokeSuccess,
+  runIntelligenceImageSmokeCommand,
+  runIntelligenceServeCommand
+} from "./commands/intelligence.js";
 import {
   runWorkerInstallCommand,
   runWorkerStartCommand,
@@ -1358,6 +1362,29 @@ export function buildProgram(): Command {
     .option("--port <number>", "HTTP port", (value) => Number.parseInt(value, 10))
     .action((options: { workspace: string; port?: number }) => runIntelligenceServeCommand(options));
 
+  addJsonOption(
+    intelligence
+      .command("smoke-image")
+      .description("Submit and run one local Codex image-generation smoke job")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--prompt <text>", "Image prompt")
+      .option("--route <name>", "Local Codex image route name", "codex-cli")
+      .option("--idempotency-key <key>", "Optional idempotency key")
+  ).action((options: {
+    workspace: string;
+    prompt?: string;
+    route?: string;
+    idempotencyKey?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "intelligence.smoke-image",
+      options,
+      () => runIntelligenceImageSmokeCommand(options),
+      renderIntelligenceImageSmokeSuccess
+    )
+  );
+
   return program;
 }
 
@@ -1567,6 +1594,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "dashboard" && second === "snapshot") {
     return "dashboard.snapshot";
+  }
+
+  if (first === "intelligence" && second === "smoke-image") {
+    return "intelligence.smoke-image";
   }
 
   if (first === "attention") {

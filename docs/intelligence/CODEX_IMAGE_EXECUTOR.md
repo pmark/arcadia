@@ -131,6 +131,24 @@ The local Codex CLI must be installed, authenticated, and able to satisfy the
 image request locally. Arcadia does not configure Codex auth and does not fall
 back to external services automatically.
 
+## Smoke check
+
+Run a single local Codex image job through the normal SQLite job lifecycle:
+
+```sh
+ARCADIA_CODEX_IMAGE_ROUTE=codex-cli \
+pnpm arcadia intelligence smoke-image \
+  --workspace ./tmp/demo-workspace \
+  --prompt "a simple black square centered on a white background" \
+  --json
+```
+
+This command submits a normal `image.generate` request, runs one worker pass,
+and returns the terminal job plus artifact URIs. It does not start the HTTP
+API. Fetch artifact bytes through the API when running `intelligence serve`,
+or inspect the persisted artifact metadata in SQLite and files under
+`artifacts/intelligence/<job-id>/`.
+
 ## Failure handling
 
 Codex image jobs end in normal Intelligence terminal states:

@@ -1,19 +1,39 @@
 import { resolveReadyWorkspace } from "../cli/workspace.js";
+import type { CommandSuccess } from "../cli/response.js";
+import { createSuccess } from "../cli/response.js";
 import { openDatabase } from "../db/connection.js";
 import { createIntelligenceServer } from "../intelligence/api/server.js";
 import { createSqliteIntelligenceArtifactStore } from "../intelligence/artifacts/store.js";
 import { createCodexCliImageExecutor } from "../intelligence/codex/imageExecutor.js";
-import { loadIntelligenceConfig } from "../intelligence/config/defaults.js";
+import { buildDefaultRoutes, loadIntelligenceConfig } from "../intelligence/config/defaults.js";
 import { createSqliteIntelligenceJobRepository } from "../intelligence/db/sqliteRepository.js";
 import { IntelligenceWorker } from "../intelligence/jobs/worker.js";
 import { createLiteLlmHttpClient } from "../intelligence/litellm/httpClient.js";
+import { submitIntelligenceRequest } from "../intelligence/service/jobService.js";
+import type { IntelligenceImageGenerationResult, IntelligenceJob, IntelligenceRequest } from "../intelligence/types.js";
 
 const DEFAULT_PORT = 4710;
+const DEFAULT_CODEX_IMAGE_ROUTE = "codex-cli";
+const DEFAULT_SMOKE_PROMPT = "a simple black square centered on a white background";
+
 export interface IntelligenceServeOptions {
   workspace: string;
   port?: number;
 }
 
+export interface IntelligenceImageSmokeOptions {
+  workspace: string;
+  prompt?: string;
+  route?: string;
+  idempotencyKey?: string;
+}
+
+export interface IntelligenceImageSmokeData {
+  job: IntelligenceJob;
+  jobWorkspace: string;
+  artifactCount: number;
+  artifactUris: string[];
+}
 
 /**
  * Starts the Arcadia Intelligence v0.1 HTTP API together with its in-process
@@ -64,4 +84,128 @@ export function runIntelligenceServeCommand(options: IntelligenceServeOptions): 
         `(workspace: ${workspacePath}, LiteLLM: ${config.liteLlmBaseUrl}, ${enabledRouteCount} route(s) configured)\n`,
     );
   });
+}
+
+export async function runIntelligenceImageSmokeCommand(
+  options: IntelligenceImageSmokeOptions,
+): Promise<CommandSuccess<IntelligenceImageSmokeData>> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const db = openDatabase(workspacePath);
+
+  try {
+    const repository = createSqliteIntelligenceJobRepository(db);
+    const artifactStore = createSqliteIntelligenceArtifactStore(db, workspacePath);
+    const loadedConfig = loadIntelligenceConfig(process.env);
+    const codexImageRoute = options.route?.trim() || process.env.ARCADIA_CODEX_IMAGE_ROUTE?.trim() || DEFAULT_CODEX_IMAGE_ROUTE;
+    const config = {
+      ...loadedConfig,
+      routes: buildDefaultRoutes({
+        localTextRoute: process.env.ARCADIA_LITELLM_LOCAL_TEXT_ROUTE?.trim() || "arcadia-default",
+        cloudTextRoute: process.env.ARCADIA_LITELLM_CLOUD_TEXT_ROUTE?.trim() || undefined,
+        cloudImageRoute: process.env.ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE?.trim() || undefined,
+        codexImageRoute,
+      }),
+    };
+    const liteLlmClient = createLiteLlmHttpClient({
+      baseUrl: config.liteLlmBaseUrl,
+      apiKey: config.liteLlmApiKey,
+    });
+    const codexImageExecutor = createCodexCliImageExecutor({
+      workspaceRoot: workspacePath,
+      artifactStore,
+      config,
+    });
+    const worker = new IntelligenceWorker(
+      repository,
+      liteLlmClient,
+      config,
+      artifactStore,
+      codexImageExecutor,
+    );
+
+    const request = buildSmokeRequest({
+      prompt: options.prompt ?? DEFAULT_SMOKE_PROMPT,
+      idempotencyKey: options.idempotencyKey,
+    });
+    const { job: submitted } = await submitIntelligenceRequest(repository, request);
+    const finished = await worker.runOnce();
+    const job = finished?.id === submitted.id ? finished : await repository.findById(submitted.id);
+    if (!job) {
+      throw new Error(`Arcadia Intelligence smoke job was not found after submission: ${submitted.id}`);
+    }
+
+    const artifactUris = job.status === "completed"
+      ? ((job.result as unknown as IntelligenceImageGenerationResult).artifacts ?? []).map((artifact) => artifact.uri)
+      : [];
+
+    return createSuccess({
+      command: "intelligence.smoke-image",
+      workspace: workspacePath,
+      data: {
+        job,
+        jobWorkspace: `${workspacePath}/.arcadia/intelligence/jobs/${job.id}`,
+        artifactCount: artifactUris.length,
+        artifactUris,
+      },
+      artifacts: artifactUris,
+      warnings: job.status === "completed" ? [] : [`Job ended ${job.status}: ${job.error?.code ?? "UNKNOWN"}`],
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export function renderIntelligenceImageSmokeSuccess(
+  response: CommandSuccess<IntelligenceImageSmokeData>,
+): string[] {
+  const { job } = response.data;
+  const lines = [
+    "Arcadia Intelligence image smoke",
+    `Workspace: ${response.workspace ?? ""}`,
+    `Job: ${job.id}`,
+    `Status: ${job.status}`,
+    `Route: ${job.usage?.routeId ?? job.selectedRoute ?? "None"}`,
+    `Job workspace: ${response.data.jobWorkspace}`,
+  ];
+
+  if (job.status === "completed") {
+    lines.push(`Artifacts: ${response.data.artifactCount}`);
+    for (const uri of response.data.artifactUris) {
+      lines.push(`- ${uri}`);
+    }
+  } else {
+    lines.push(`Error: ${job.error?.code ?? "UNKNOWN"} - ${job.error?.message ?? "No error message"}`);
+  }
+
+  return lines;
+}
+
+function buildSmokeRequest(input: {
+  prompt: string;
+  idempotencyKey?: string;
+}): IntelligenceRequest {
+  return {
+    idempotencyKey: input.idempotencyKey ?? `arcadia-codex-image-smoke-${Date.now()}`,
+    operationId: "arcadia.smoke-image",
+    clientApp: "arcadia",
+    capability: "image.generate",
+    execution: "local-required",
+    profile: "quality",
+    requirements: { imageSize: "1024x1024", transparency: false },
+    input: { prompt: input.prompt, n: 1 },
+    outputContract: {
+      schemaId: "arcadia.image-smoke.v1",
+      schemaVersion: 1,
+      jsonSchema: {
+        type: "object",
+        properties: {
+          artifacts: { type: "array", minItems: 1 },
+          generation: { type: "object" },
+        },
+        required: ["artifacts"],
+      },
+    },
+    template: { id: "arcadia.image-smoke", version: "1" },
+    executionPolicy: { allowPaidUsage: false, maxRetries: 1 },
+  };
 }

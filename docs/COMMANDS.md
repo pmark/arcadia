@@ -81,6 +81,30 @@ pnpm arcadia codex sync \
 
 Arcadia only observes Codex state. Codex remains responsible for implementation work, task execution, and goal lifecycle. When an associated Codex task transitions to a successful terminal status, Arcadia writes a mission log and links it to the observed task.
 
+## Arcadia Intelligence
+
+Start the local Intelligence API and in-process worker:
+
+```sh
+pnpm arcadia intelligence serve \
+  --workspace "$WORKSPACE" \
+  --port 4710
+```
+
+Run one local Codex image-generation smoke job through the normal
+Intelligence lifecycle:
+
+```sh
+ARCADIA_CODEX_IMAGE_ROUTE=codex-cli \
+pnpm arcadia intelligence smoke-image \
+  --workspace "$WORKSPACE" \
+  --prompt "a simple black square centered on a white background" \
+  --json
+```
+
+The smoke command returns the terminal job, artifact URIs, and the isolated
+job workspace path under `.arcadia/intelligence/jobs/`.
+
 Run deterministic safe steps immediately:
 
 ```sh
