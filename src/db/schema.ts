@@ -42,6 +42,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureDecisionGatedPlanningColumns(db);
   ensureAskFeedbackTable(db);
   ensureIntelligenceJobsTable(db);
+  ensureIntelligenceJobOperationIdColumn(db);
   ensureIntelligenceJobArtifactsTable(db);
   applyCapabilityMigrations(db);
 }
@@ -201,7 +202,7 @@ function ensureIntelligenceJobsTable(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS intelligence_jobs (
       id TEXT PRIMARY KEY,
       idempotency_key TEXT NOT NULL UNIQUE,
-      capability TEXT NOT NULL,
+      operation_id TEXT NOT NULL,
       client_app TEXT NOT NULL,
       project_id TEXT,
       mission_id TEXT,
@@ -225,6 +226,23 @@ function ensureIntelligenceJobsTable(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_intelligence_jobs_status ON intelligence_jobs(status);
     CREATE INDEX IF NOT EXISTS idx_intelligence_jobs_created_at ON intelligence_jobs(created_at);
   `);
+}
+
+/**
+ * Renames the original `capability` column to `operation_id`. It always
+ * stored the companion app's own request identifier (see
+ * IntelligenceRequest.operationId), never an Arcadia routing capability —
+ * the column name predates that distinction and was ambiguous against the
+ * newer `capability` routing field carried inside `request_json`.
+ */
+function ensureIntelligenceJobOperationIdColumn(db: Database.Database): void {
+  const columns = db.prepare("PRAGMA table_info(intelligence_jobs)").all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === "operation_id")) {
+    return;
+  }
+  if (columns.some((column) => column.name === "capability")) {
+    db.prepare("ALTER TABLE intelligence_jobs RENAME COLUMN capability TO operation_id").run();
+  }
 }
 
 function ensureIntelligenceJobArtifactsTable(db: Database.Database): void {

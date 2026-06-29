@@ -15,6 +15,7 @@ export type {
   IntelligenceJobStatus,
   IntelligenceProfile,
   IntelligenceRequest,
+  IntelligenceRequirements,
   IntelligenceUsage,
   JsonPrimitive,
   JsonValue,

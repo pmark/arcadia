@@ -12,11 +12,16 @@ the app's domain.
 
 - One generic structured generation request shape, routed by
   `capability` + `execution` + `profile` — never a raw LiteLLM route,
-  provider name, or model ID (see `ROUTING.md`)
+  Codex command, provider name, or model ID (see `ROUTING.md`)
 - One generic output-contract shape
 - A small, explicit route registry resolving each (capability, execution,
-  profile) request deterministically to exactly one configured LiteLLM
-  route, with no automatic fallback or escalation
+  profile) request deterministically to exactly one configured execution
+  route, with no automatic fallback or escalation — restricted to a
+  narrow, intentional matrix (see `ROUTING.md`), not every
+  capability/profile permutation an alias could theoretically serve
+- A narrow `requirements` shape (`structuredOutput`, `imageSize`,
+  `transparency`) validated before a job runs — not a generic
+  capability-negotiation system
 - SQLite-backed durable jobs
 - In-process worker loop
 - Generic JSON Schema validation
@@ -36,7 +41,7 @@ the app's domain.
 - Rebuster-specific code
 - MIDI Opener-specific code
 - Blogging-specific code
-- Codex CLI execution
+- Codex CLI execution beyond the explicit local image-generation route
 - Automatic provider/model selection, cost optimization, or quality
   escalation — routing is a deterministic lookup, not a policy engine
 - "local-preferred" silently escalating to cloud, or any other automatic
@@ -64,7 +69,7 @@ the app's domain.
 
 Companion apps own:
 
-- their own request identifier (`capabilityId`)
+- their own workflow identifier (`operationId`) — never used for routing
 - input payloads
 - JSON Schemas
 - prompt templates
@@ -84,8 +89,8 @@ Arcadia Intelligence owns:
 
 - durable job execution
 - the route registry and deterministic resolution of capability/execution/
-  profile to one configured LiteLLM route — concrete model/provider/route
-  selection is entirely internal
+  profile to one configured execution route — concrete executor/model/
+  provider/route selection is entirely internal
 - generic validation
 - durable storage of generated binary artifacts and their hashes/metadata
   (never companion-app domain meaning about those artifacts)

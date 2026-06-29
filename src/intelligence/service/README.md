@@ -9,7 +9,7 @@ The service owns:
 
 - durable jobs
 - route authorization
-- one LiteLLM execution path
+- explicit execution paths
 - result validation
 - retry behavior
 - generic status and error states
@@ -20,5 +20,5 @@ The service does not own:
 - companion-app schemas
 - companion-app workflow state
 - provider-specific SDKs
-- budgets, quotas, caching, image generation, Codex execution, or routing logic
-  beyond the single configured LiteLLM route in v0.1.
+- budgets, quotas, caching, publishing, or routing logic beyond the explicit
+  configured route matrix in v0.1.

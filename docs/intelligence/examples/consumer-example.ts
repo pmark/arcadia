@@ -71,11 +71,12 @@ const executionPolicy: ExecutionPolicy = {
 //   - execution: "local-preferred" uses a local route when one is
 //     configured; it never silently escalates to cloud.
 //   - profile: the optimization target ("fast" here).
-// `capabilityId` is unrelated — it's Rebuster's own identifier for this
-// request, stored for provenance only; Arcadia never interprets it.
+// `operationId` is unrelated to routing — it's Rebuster's own identifier
+// for this workflow, stored for provenance/logging only; Arcadia never
+// interprets it or uses it to pick a route.
 const request: IntelligenceRequest = {
   idempotencyKey: `rebuster-candidate-list-${Date.now()}`,
-  capabilityId: "rebuster.generate-candidate-list.v1",
+  operationId: "rebuster.generate-candidate-list",
   clientApp: "rebuster",
   projectId: "proj_example",
   capability: "text.generate",

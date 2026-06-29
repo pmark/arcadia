@@ -2,17 +2,18 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { openDatabase } from "../db/connection.js";
 import { createIntelligenceServer } from "../intelligence/api/server.js";
 import { createSqliteIntelligenceArtifactStore } from "../intelligence/artifacts/store.js";
+import { createCodexCliImageExecutor } from "../intelligence/codex/imageExecutor.js";
 import { loadIntelligenceConfig } from "../intelligence/config/defaults.js";
 import { createSqliteIntelligenceJobRepository } from "../intelligence/db/sqliteRepository.js";
 import { IntelligenceWorker } from "../intelligence/jobs/worker.js";
 import { createLiteLlmHttpClient } from "../intelligence/litellm/httpClient.js";
 
 const DEFAULT_PORT = 4710;
-
 export interface IntelligenceServeOptions {
   workspace: string;
   port?: number;
 }
+
 
 /**
  * Starts the Arcadia Intelligence v0.1 HTTP API together with its in-process
@@ -29,7 +30,18 @@ export function runIntelligenceServeCommand(options: IntelligenceServeOptions): 
     apiKey: config.liteLlmApiKey,
   });
 
-  const worker = new IntelligenceWorker(repository, liteLlmClient, config, artifactStore);
+  const codexImageExecutor = createCodexCliImageExecutor({
+    workspaceRoot: workspacePath,
+    artifactStore,
+    config,
+  });
+  const worker = new IntelligenceWorker(
+    repository,
+    liteLlmClient,
+    config,
+    artifactStore,
+    codexImageExecutor,
+  );
   const stopWorker = worker.start();
 
   const server = createIntelligenceServer({ repository, config, artifactStore });

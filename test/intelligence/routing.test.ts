@@ -75,6 +75,24 @@ describe("resolveIntelligenceRoute", () => {
     }
   });
 
+  it("resolves image.generate + local-required + quality to Codex CLI when configured", () => {
+    const routes = buildDefaultRoutes({ codexImageRoute: "codex-cli" });
+
+    const resolution = resolveIntelligenceRoute(
+      { capability: "image.generate", execution: "local-required", profile: "quality" },
+      routes,
+      { allowPaidUsage: false },
+    );
+
+    expect(resolution.ok).toBe(true);
+    if (resolution.ok) {
+      expect(resolution.route.routeId).toBe("arcadia.image.generate.local.quality");
+      expect(resolution.route.location).toBe("local");
+      expect(resolution.route.executor).toBe("codex-cli");
+      expect(resolution.route.requiresPaidUsage).toBe(false);
+    }
+  });
+
   it("fails cloud-required when paid usage is disallowed and the route requires paid use", () => {
     const routes = buildDefaultRoutes({ cloudTextRoute: "arcadia-cloud" });
 

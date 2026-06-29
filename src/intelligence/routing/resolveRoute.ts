@@ -13,6 +13,7 @@ export type ResolvedIntelligenceRoute = {
   location: IntelligenceRouteLocation;
   profile: IntelligenceProfile;
   liteLlmRoute: string;
+  executor: "litellm" | "codex-cli";
   requiresPaidUsage: boolean;
 };
 
@@ -44,13 +45,13 @@ const EXECUTION_LOCATIONS: Record<ExecutionPreference, IntelligenceRouteLocation
 
 /**
  * Deterministically resolves a companion-app request's capability/execution/
- * profile into exactly one configured LiteLLM route, or a typed failure.
+ * profile into exactly one configured execution route, or a typed failure.
  *
  * This is a small explicit lookup, not a policy engine: no scheduling, no
  * cost optimization, no automatic fallback or quality escalation. Companion
- * apps never see a LiteLLM route, provider, or model name — only this
- * resolution's `route.liteLlmRoute`, which the worker hands to the existing
- * LiteLLM transport unexamined.
+ * apps never see a LiteLLM route, Codex command, provider, model, or
+ * executor name — only this route resolution, which the worker dispatches
+ * to the configured backend.
  */
 export function resolveIntelligenceRoute(
   requested: IntelligenceRouteRequest,
@@ -98,6 +99,7 @@ export function resolveIntelligenceRoute(
         location: entry.location,
         profile: entry.profile,
         liteLlmRoute: entry.liteLlmRoute,
+        executor: entry.executor ?? "litellm",
         requiresPaidUsage: entry.requiresPaidUsage,
       },
     };

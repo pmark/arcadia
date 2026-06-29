@@ -46,13 +46,72 @@ export function mimeTypeToExtension(mimeType: string): string {
   }
 }
 
-/** Reads width/height from a PNG's IHDR chunk. Returns undefined for any other format. */
+/**
+ * Reads width/height from common generated-image formats. Returns undefined
+ * when the bytes are not a valid supported image payload.
+ */
 export function parseImageDimensions(bytes: Buffer): { width: number; height: number } | undefined {
   if (bytes.length >= 24 && bytes.subarray(0, 8).equals(PNG_SIGNATURE)) {
     return {
       width: bytes.readUInt32BE(16),
       height: bytes.readUInt32BE(20),
     };
+  }
+  if (bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8) {
+    return parseJpegDimensions(bytes);
+  }
+  return undefined;
+}
+
+function parseJpegDimensions(bytes: Buffer): { width: number; height: number } | undefined {
+  let offset = 2;
+  while (offset + 9 < bytes.length) {
+    if (bytes[offset] !== 0xff) {
+      return undefined;
+    }
+    const marker = bytes[offset + 1];
+    offset += 2;
+
+    if (marker === 0xd9 || marker === 0xda) {
+      return undefined;
+    }
+    if (marker >= 0xd0 && marker <= 0xd7) {
+      continue;
+    }
+
+    if (offset + 2 > bytes.length) {
+      return undefined;
+    }
+    const segmentLength = bytes.readUInt16BE(offset);
+    if (segmentLength < 2 || offset + segmentLength > bytes.length) {
+      return undefined;
+    }
+
+    if (
+      marker === 0xc0 ||
+      marker === 0xc1 ||
+      marker === 0xc2 ||
+      marker === 0xc3 ||
+      marker === 0xc5 ||
+      marker === 0xc6 ||
+      marker === 0xc7 ||
+      marker === 0xc9 ||
+      marker === 0xca ||
+      marker === 0xcb ||
+      marker === 0xcd ||
+      marker === 0xce ||
+      marker === 0xcf
+    ) {
+      if (offset + 7 > bytes.length) {
+        return undefined;
+      }
+      return {
+        height: bytes.readUInt16BE(offset + 3),
+        width: bytes.readUInt16BE(offset + 5),
+      };
+    }
+
+    offset += segmentLength;
   }
   return undefined;
 }

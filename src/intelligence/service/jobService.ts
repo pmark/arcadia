@@ -1,5 +1,6 @@
 import { nowIso } from "../../utils/time.js";
 import type { IntelligenceJobRepository } from "../db/repository.js";
+import { validateRequirements } from "../validation/validateRequirements.js";
 import type {
   IntelligenceJob,
   IntelligenceRequest,
@@ -20,6 +21,13 @@ export class IntelligenceJobNotFoundError extends Error {
   }
 }
 
+export class RequirementsNotSupportedError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "RequirementsNotSupportedError";
+  }
+}
+
 /**
  * Submits a companion-app request as a durable queued job. If a job already
  * exists for the given idempotency key, that job is returned unchanged
@@ -29,6 +37,11 @@ export async function submitIntelligenceRequest(
   repository: IntelligenceJobRepository,
   request: IntelligenceRequest,
 ): Promise<SubmitIntelligenceRequestResponse> {
+  const requirementsError = validateRequirements(request);
+  if (requirementsError) {
+    throw new RequirementsNotSupportedError(requirementsError);
+  }
+
   const existing = await repository.findByIdempotencyKey(request.idempotencyKey);
   if (existing) {
     return { job: existing, created: false };

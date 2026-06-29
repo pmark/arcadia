@@ -30,12 +30,13 @@ export function buildIntelligenceRequest(
 ): IntelligenceRequest {
   return {
     idempotencyKey: overrides.idempotencyKey ?? `idem_${randomUUID()}`,
-    capabilityId: overrides.capabilityId ?? "demo-app.greeting.v1",
+    operationId: overrides.operationId ?? "demo-app.greeting",
     clientApp: overrides.clientApp ?? "demo-app",
     capability: overrides.capability ?? "text.generate",
     execution: overrides.execution ?? "local-preferred",
     profile: overrides.profile ?? "standard",
     input: overrides.input ?? { name: "Ada" },
+    requirements: overrides.requirements,
     outputContract: overrides.outputContract ?? {
       schemaId: "demo-app.greeting.v1",
       schemaVersion: 1,

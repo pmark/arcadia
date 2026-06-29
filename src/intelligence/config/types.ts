@@ -6,6 +6,7 @@ import type { IntelligenceCapability, IntelligenceProfile } from "../types.js";
  * deployment-time fact about a specific route.
  */
 export type IntelligenceRouteLocation = "local" | "cloud";
+export type IntelligenceRouteExecutor = "litellm" | "codex-cli";
 
 /**
  * One entry in Arcadia's route registry: a deterministic mapping from a
@@ -25,6 +26,11 @@ export type IntelligenceRouteEntry = {
   profile: IntelligenceProfile;
   /** The LiteLLM route/model alias this semantic route resolves to. */
   liteLlmRoute: string;
+  /**
+   * Execution backend for this route. Omitted entries are legacy LiteLLM
+   * routes for compatibility with existing test fixtures and config.
+   */
+  executor?: IntelligenceRouteExecutor;
   enabled: boolean;
   /** If true, this route cannot resolve unless executionPolicy.allowPaidUsage is true. */
   requiresPaidUsage: boolean;
@@ -73,4 +79,10 @@ export type IntelligenceV01Config = {
    * reclaim it. Makes job execution restart-safe.
    */
   leaseDurationMs: number;
+
+  codexCli?: {
+    command: string;
+    args: string[];
+    timeoutMs: number;
+  };
 };

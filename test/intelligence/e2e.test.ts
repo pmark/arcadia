@@ -178,7 +178,7 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
 
     const secondAppRequest = buildIntelligenceRequest({
       idempotencyKey: "second-app-key-1",
-      capabilityId: "another-app.poem-rating.v1",
+      operationId: "another-app.poem-rating",
       clientApp: "another-app",
       input: { poem: "Roses are red..." },
       outputContract: {
@@ -346,8 +346,9 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
     const imageRequest = buildIntelligenceRequest({
       capability: "image.generate",
       execution: "cloud-required",
+      profile: "quality",
       executionPolicy: { allowPaidUsage: true, maxRetries: 1 },
-      capabilityId: "demo-app.generate-image.v1",
+      operationId: "demo-app.generate-image",
       input: { prompt: "a friendly robot", n: 1 },
       outputContract: {
         schemaId: "demo-app.image-manifest.v1",
@@ -446,6 +447,7 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
       buildIntelligenceRequest({
         capability: "image.generate",
         execution: "cloud-required",
+        profile: "quality",
         executionPolicy: { allowPaidUsage: true, maxRetries: 1 },
         input: { prompt: "a quiet harbor at dawn" },
         outputContract: {
@@ -479,6 +481,7 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
       buildIntelligenceRequest({
         capability: "image.generate",
         execution: "cloud-required",
+        profile: "quality",
         executionPolicy: { allowPaidUsage: true, maxRetries: 1 },
         input: { prompt: "anything" },
       }),
@@ -505,10 +508,11 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
 
     const secondAppRequest = buildIntelligenceRequest({
       idempotencyKey: "second-app-image-key-1",
-      capabilityId: "another-app.generate-mood-board-image.v1",
+      operationId: "another-app.generate-mood-board-image",
       clientApp: "another-app",
       capability: "image.generate",
       execution: "cloud-required",
+      profile: "quality",
       executionPolicy: { allowPaidUsage: true, maxRetries: 1 },
       input: { prompt: "a cozy harbor", size: "512x512" },
       outputContract: {

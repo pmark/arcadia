@@ -161,7 +161,12 @@ export function createLiteLlmHttpClient(options: LiteLlmHttpClientOptions): Lite
         throw new Error('Image generation requires a non-empty string "prompt" in input.');
       }
       const n = typeof input?.n === "number" && Number.isInteger(input.n) ? input.n : undefined;
-      const size = typeof input?.size === "string" ? input.size : undefined;
+      // requirements.imageSize is validated (see validateRequirements.ts);
+      // input.size is an older, unvalidated pass-through kept for callers
+      // that bypass requirements.
+      const size =
+        request.requirements?.imageSize ??
+        (typeof input?.size === "string" ? input.size : undefined);
 
       const body = (await postJson("/images/generations", route, {
         model: route,

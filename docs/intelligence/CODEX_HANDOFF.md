@@ -1,4 +1,9 @@
-# Arcadia Intelligence v0.1
+# Arcadia Intelligence v0.1 Historical Handoff
+
+This document records the original v0.1 bootstrap constraints. It is no
+longer the current feature boundary for image generation: local Codex CLI
+image execution is now implemented and documented in
+`docs/intelligence/CODEX_IMAGE_EXECUTOR.md`.
 
 The bootstrap established a domain-neutral skeleton.
 

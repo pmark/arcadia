@@ -13,7 +13,7 @@ import type {
 interface IntelligenceJobRow {
   id: string;
   idempotency_key: string;
-  capability: string;
+  operation_id: string;
   client_app: string;
   project_id: string | null;
   mission_id: string | null;
@@ -79,7 +79,7 @@ export function createSqliteIntelligenceJobRepository(
     const row: IntelligenceJobRow = {
       id: createId("intelligenceJob"),
       idempotency_key: request.idempotencyKey,
-      capability: request.capabilityId,
+      operation_id: request.operationId,
       client_app: request.clientApp,
       project_id: request.projectId ?? null,
       mission_id: request.missionId ?? null,
@@ -101,12 +101,12 @@ export function createSqliteIntelligenceJobRepository(
 
     db.prepare(
       `INSERT INTO intelligence_jobs (
-        id, idempotency_key, capability, client_app, project_id, mission_id, request_json,
+        id, idempotency_key, operation_id, client_app, project_id, mission_id, request_json,
         status, selected_route, result_json, validation_json, usage_json, error_code,
         error_message, retry_count, lease_owner, lease_expires_at, created_at, started_at,
         completed_at
       ) VALUES (
-        @id, @idempotency_key, @capability, @client_app, @project_id, @mission_id, @request_json,
+        @id, @idempotency_key, @operation_id, @client_app, @project_id, @mission_id, @request_json,
         @status, @selected_route, @result_json, @validation_json, @usage_json, @error_code,
         @error_message, @retry_count, @lease_owner, @lease_expires_at, @created_at, @started_at,
         @completed_at

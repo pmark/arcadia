@@ -15,7 +15,7 @@ export type IntelligenceJobStatus =
 
 /**
  * The generic operation a request needs. Arcadia resolves this, together
- * with `execution` and `profile`, to exactly one configured LiteLLM route
+ * with `execution` and `profile`, to exactly one configured execution route
  * (see src/intelligence/routing/resolveRoute.ts). Companion apps select an
  * operation, never a provider, model, or LiteLLM route name directly.
  *
@@ -121,6 +121,40 @@ export type PromptTemplateRef = {
   sourceRef?: string;
 };
 
+/**
+ * The narrow set of requirements Arcadia can actually validate and honor
+ * today. Each field is optional; omitting one means the caller has no
+ * specific requirement on that axis. Unsupported values are rejected with a
+ * typed validation error before the job runs — Arcadia never silently
+ * ignores a requirement it cannot honor.
+ */
+export type IntelligenceRequirements = {
+  /**
+   * Confirms the caller wants a validated structured (JSON) result. This is
+   * not a second validation mechanism: every request already supplies
+   * `outputContract`, which Arcadia always validates the result against.
+   * Setting this to `true` only asserts that the request's `capability`
+   * supports structured output (text.* capabilities); it is rejected for
+   * capabilities that don't, e.g. "image.generate".
+   */
+  structuredOutput?: boolean;
+
+  /**
+   * Image-generation output size. Only "1024x1024" is supported today;
+   * other values are rejected rather than silently ignored or downscaled.
+   * Valid only alongside "image.generate"/"image.edit" capabilities.
+   */
+  imageSize?: string;
+
+  /**
+   * Whether the generated image should have a transparent background. Only
+   * `false` (no transparency) is supported today — Arcadia's configured
+   * image transport does not support transparent generation yet. Valid only
+   * alongside "image.generate"/"image.edit" capabilities.
+   */
+  transparency?: boolean;
+};
+
 export type ExecutionPolicy = {
   /**
    * v0.1 default: false.
@@ -150,13 +184,14 @@ export type IntelligenceRequest = {
   idempotencyKey: string;
 
   /**
-   * App-defined stable identifier for this request, e.g.
-   * "rebuster.candidate-list.v1". Arcadia does not interpret its domain
-   * meaning; it is stored for provenance, logging, and lookups. Distinct
-   * from `capability` below, which is the generic operation Arcadia itself
-   * routes and executes.
+   * App-defined stable identifier for this request's workflow, e.g.
+   * "rebuster.generate-strict-spec". Arcadia does not interpret its domain
+   * meaning and never routes on it; it is stored for provenance, logging,
+   * and prompt/template selection on the caller's side. Distinct from
+   * `capability` below, which is the generic routing operation Arcadia
+   * itself resolves and executes.
    */
-  capabilityId: string;
+  operationId: string;
 
   /**
    * App identity, for example "rebuster".
@@ -176,7 +211,8 @@ export type IntelligenceRequest = {
   /**
    * The generic operation this request needs. Arcadia resolves this,
    * together with `execution` and `profile`, to exactly one configured
-   * LiteLLM route. Never a raw LiteLLM route, provider name, or model ID.
+   * execution route. Never a raw LiteLLM route, provider name, model ID, or
+   * executor command.
    */
   capability: IntelligenceCapability;
 
@@ -196,10 +232,17 @@ export type IntelligenceRequest = {
    * Arbitrary app-owned structured payload. For "image.generate" and
    * "image.edit" capabilities, `input` must contain a string `prompt`
    * field; Arcadia passes it to the resolved image route unexamined
-   * otherwise. An optional numeric `n` and string `size` in `input` are
-   * also read for image generation.
+   * otherwise. An optional numeric `n` in `input` is also read for image
+   * generation. Prefer `requirements.imageSize` over `input.size` — it is
+   * validated; `input.size` is passed through unchecked.
    */
   input: JsonValue;
+
+  /**
+   * The narrow set of requirements Arcadia validates before running this
+   * job. See IntelligenceRequirements. Omit when the request has none.
+   */
+  requirements?: IntelligenceRequirements;
 
   /**
    * App-owned output contract.

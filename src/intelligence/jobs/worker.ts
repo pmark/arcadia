@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { nowIso } from "../../utils/time.js";
 import type { IntelligenceArtifactStore } from "../artifacts/store.js";
+import {
+  CodexImageExecutionBlockedError,
+  CodexImageExecutionFailedError,
+  type CodexImageExecutor,
+} from "../codex/imageExecutor.js";
 import type { IntelligenceV01Config } from "../config/types.js";
 import type { IntelligenceJobRepository } from "../db/repository.js";
 import { LiteLlmUnavailableError } from "../litellm/httpClient.js";
@@ -19,12 +24,11 @@ import type {
  *
  * Claims one durable SQLite job at a time via a lease (see
  * IntelligenceJobRepository.claimNextQueuedJob), resolves its
- * capability/execution/profile to exactly one configured LiteLLM route (see
- * resolveIntelligenceRoute), executes it, validates the result against the
- * app-supplied JSON Schema, and persists a terminal status. There is no
- * external queue, no multiple executors, no provider SDK, and no automatic
- * fallback or escalation if resolution fails — that becomes a typed
- * "blocked" job instead.
+ * capability/execution/profile to exactly one configured execution route
+ * (see resolveIntelligenceRoute), executes it, validates the result against
+ * the app-supplied JSON Schema, and persists a terminal status. There is no
+ * external queue, no provider SDK, and no automatic fallback or escalation
+ * if resolution fails — that becomes a typed "blocked" job instead.
  */
 export class IntelligenceWorker {
   private readonly workerId: string;
@@ -34,6 +38,7 @@ export class IntelligenceWorker {
     private readonly _liteLlmClient: LiteLlmClient,
     private readonly _config: IntelligenceV01Config,
     private readonly _artifactStore?: IntelligenceArtifactStore,
+    private readonly _codexImageExecutor?: CodexImageExecutor,
     workerId: string = randomUUID(),
   ) {
     this.workerId = workerId;
@@ -112,6 +117,20 @@ export class IntelligenceWorker {
           nowIso(),
         );
       }
+      if (error instanceof CodexImageExecutionBlockedError) {
+        return this._repository.blockJob(
+          job.id,
+          { code: error.code, message: error.message },
+          nowIso(),
+        );
+      }
+      if (error instanceof CodexImageExecutionFailedError) {
+        return this._repository.failJob(
+          job.id,
+          { code: error.code, message: error.message },
+          nowIso(),
+        );
+      }
 
       return this._repository.failJob(
         job.id,
@@ -136,6 +155,16 @@ export class IntelligenceWorker {
     job: IntelligenceJob,
     route: ResolvedIntelligenceRoute,
   ): Promise<{ output: JsonValue; usage?: IntelligenceUsage }> {
+    if (route.executor === "codex-cli") {
+      if (!this._codexImageExecutor) {
+        throw new CodexImageExecutionBlockedError(
+          "CODEX_CLI_UNAVAILABLE",
+          "Arcadia Intelligence has no Codex image executor configured.",
+        );
+      }
+      return this._codexImageExecutor.execute(job);
+    }
+
     if (!this._artifactStore) {
       throw new LiteLlmUnavailableError(
         "Arcadia Intelligence has no artifact store configured for image generation.",

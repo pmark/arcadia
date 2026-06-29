@@ -5,6 +5,12 @@ migration is `ensureIntelligenceJobsTable` in [`../../db/schema.ts`](../../db/sc
 applied the same way as every other table in `applyMigrations`. There is no
 separate Intelligence database or migration runner.
 
+The `operation_id` column stores the companion app's own request identifier
+(`IntelligenceRequest.operationId`) — never an Arcadia routing capability. It
+was originally named `capability`, which became ambiguous once `capability`
+gained a formal routing meaning inside `request_json`; `ensureIntelligenceJobOperationIdColumn`
+renames it in place for existing databases.
+
 All request payloads and results are kept as JSON columns (`request_json`,
 `result_json`, `validation_json`, `usage_json`) rather than separate tables, per
 v0.1 scope.

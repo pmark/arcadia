@@ -4,6 +4,7 @@ import type { IntelligenceV01Config } from "../config/types.js";
 import type { IntelligenceJobRepository } from "../db/repository.js";
 import {
   IntelligenceJobNotFoundError,
+  RequirementsNotSupportedError,
   RetryNotAllowedError,
   retryIntelligenceJob,
   submitIntelligenceRequest,
@@ -118,8 +119,16 @@ async function handleSubmitJob(
     return;
   }
 
-  const response = await submitIntelligenceRequest(repository, body as IntelligenceRequest);
-  sendJson(res, response.created ? 201 : 200, response);
+  try {
+    const response = await submitIntelligenceRequest(repository, body as IntelligenceRequest);
+    sendJson(res, response.created ? 201 : 200, response);
+  } catch (error) {
+    if (error instanceof RequirementsNotSupportedError) {
+      sendJson(res, 400, { error: error.message });
+      return;
+    }
+    throw error;
+  }
 }
 
 async function handleGetJob(
@@ -234,8 +243,8 @@ function validateIntelligenceRequestShape(body: unknown): string | undefined {
   if (!isNonEmptyString(request.idempotencyKey)) {
     return "idempotencyKey is required.";
   }
-  if (!isNonEmptyString(request.capabilityId)) {
-    return "capabilityId is required.";
+  if (!isNonEmptyString(request.operationId)) {
+    return "operationId is required.";
   }
   if (!isNonEmptyString(request.clientApp)) {
     return "clientApp is required.";
