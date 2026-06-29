@@ -1,16 +1,21 @@
 # Arcadia Intelligence Configuration
 
-v0.1 intentionally supports one configured LiteLLM route.
+v0.1 supports a small, explicit route registry (`IntelligenceV01Config.routes`)
+built from at most three LiteLLM aliases — see `docs/intelligence/ROUTING.md`
+for the full routing model and the environment variables that configure it
+(`ARCADIA_LITELLM_LOCAL_TEXT_ROUTE`, `ARCADIA_LITELLM_CLOUD_TEXT_ROUTE`,
+`ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE`, `ARCADIA_LITELLM_BASE_URL`,
+`ARCADIA_LITELLM_API_KEY`).
 
-Do not add provider-specific settings here.
+Do not add provider-specific settings here, or one environment variable per
+(capability, profile) combination — `buildDefaultRoutes` in `defaults.ts`
+expands the three aliases into the full registry in code.
 
-The intended future configuration shape is:
+This stays:
 
 - one local LiteLLM endpoint
-- one approved route for generic structured generation
-- paid fallback disabled
+- a small in-code route registry, not a generic rules engine
+- paid usage gated per-request via `executionPolicy.allowPaidUsage`, never
+  an automatic fallback
 - one retry maximum
 - SQLite-backed durable jobs
-
-Codex should reconcile this configuration with Arcadia’s existing environment,
-configuration, secrets, and database patterns before implementation.

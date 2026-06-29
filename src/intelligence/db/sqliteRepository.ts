@@ -79,7 +79,7 @@ export function createSqliteIntelligenceJobRepository(
     const row: IntelligenceJobRow = {
       id: createId("intelligenceJob"),
       idempotency_key: request.idempotencyKey,
-      capability: request.capability,
+      capability: request.capabilityId,
       client_app: request.clientApp,
       project_id: request.projectId ?? null,
       mission_id: request.missionId ?? null,

@@ -46,12 +46,10 @@ export function runIntelligenceServeCommand(options: IntelligenceServeOptions): 
   process.on("SIGTERM", shutdown);
 
   server.listen(port, () => {
-    const imageRouteNote = config.defaultLiteLlmImageRoute
-      ? `, image route: ${config.defaultLiteLlmImageRoute}`
-      : "";
+    const enabledRouteCount = config.routes.filter((route) => route.enabled).length;
     process.stdout.write(
       `Arcadia Intelligence listening on http://127.0.0.1:${port} ` +
-        `(workspace: ${workspacePath}, LiteLLM: ${config.liteLlmBaseUrl}, route: ${config.defaultLiteLlmRoute}${imageRouteNote})\n`,
+        `(workspace: ${workspacePath}, LiteLLM: ${config.liteLlmBaseUrl}, ${enabledRouteCount} route(s) configured)\n`,
     );
   });
 }

@@ -95,26 +95,36 @@ pnpm arcadia intelligence serve --workspace ./tmp/demo-workspace --port 4710
 ```
 
 This expects a [LiteLLM proxy](https://docs.litellm.ai/docs/proxy/quick_start)
-running locally (default `http://127.0.0.1:4000`). Configure it with:
+running locally (default `http://127.0.0.1:4000`). Requests never name a
+LiteLLM route, provider, or model directly — they choose a `capability`
+(what work is needed), `execution` (local vs. cloud preference), and
+`profile` (optimization target), and Arcadia resolves that deterministically
+to exactly one configured route. See `docs/intelligence/ROUTING.md` for the
+full routing model, failure codes, and configuration reference. Configure
+the underlying LiteLLM endpoint and route registry with:
 
 - `ARCADIA_LITELLM_BASE_URL` — LiteLLM proxy URL (default `http://127.0.0.1:4000`)
-- `ARCADIA_LITELLM_ROUTE` — the single approved model route/alias (default `arcadia-default`)
+- `ARCADIA_LITELLM_LOCAL_TEXT_ROUTE` — local text route/alias (default `arcadia-default`)
+- `ARCADIA_LITELLM_CLOUD_TEXT_ROUTE` — cloud text route/alias (unset = disabled)
+- `ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE` — cloud image route/alias (unset = disabled)
 - `ARCADIA_LITELLM_API_KEY` — optional bearer token forwarded to the proxy
 
-If LiteLLM is unreachable or misconfigured, jobs end up `blocked` (not
-silently retried against a paid fallback — v0.1 never escalates routes).
-`GET /api/intelligence/health` reports LiteLLM reachability without
-submitting a job.
+If LiteLLM is unreachable, or a request's capability/execution/profile has no
+configured route, jobs end up `blocked` with a typed error code (not
+silently retried against a paid fallback or a different location — v0.1
+never escalates). `GET /api/intelligence/health` reports LiteLLM reachability
+and the enabled route registry without submitting a job.
 
 ### Image generation
 
-Setting `modality: "image"` on a request (with a string `input.prompt`, and
-optionally `input.n`/`input.size`) routes the job through a second,
-separately configured LiteLLM route:
+Submitting `capability: "image.generate"` (with `execution: "cloud-required"`,
+`executionPolicy.allowPaidUsage: true`, a string `input.prompt`, and
+optionally `input.n`/`input.size`) routes the job through the configured
+cloud image route:
 
-- `ARCADIA_LITELLM_IMAGE_ROUTE` — the single approved image-generation
-  route/alias. Image jobs `block` clearly if this is unset, the same way
-  jobs block when LiteLLM itself is unreachable.
+- `ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE` — the approved image-generation
+  route/alias. Image jobs `block` clearly with `ROUTE_NOT_CONFIGURED` if
+  this is unset, the same way jobs block when LiteLLM itself is unreachable.
 
 The job's `result` is never a provider URL or inline base64 — both are
 unsuitable as a durable, portable reference (provider URLs can expire or be

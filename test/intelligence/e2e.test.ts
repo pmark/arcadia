@@ -5,6 +5,7 @@ import { createIntelligenceServer } from "../../src/intelligence/api/server.js";
 import { createSqliteIntelligenceArtifactStore } from "../../src/intelligence/artifacts/store.js";
 import type { IntelligenceArtifactStore } from "../../src/intelligence/artifacts/store.js";
 import { ArcadiaIntelligenceClient } from "../../src/intelligence/client/client.js";
+import { buildDefaultRoutes } from "../../src/intelligence/config/defaults.js";
 import { createSqliteIntelligenceJobRepository } from "../../src/intelligence/db/sqliteRepository.js";
 import { IntelligenceWorker } from "../../src/intelligence/jobs/worker.js";
 import { createLiteLlmHttpClient } from "../../src/intelligence/litellm/httpClient.js";
@@ -177,7 +178,7 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
 
     const secondAppRequest = buildIntelligenceRequest({
       idempotencyKey: "second-app-key-1",
-      capability: "another-app.poem-rating.v1",
+      capabilityId: "another-app.poem-rating.v1",
       clientApp: "another-app",
       input: { poem: "Roses are red..." },
       outputContract: {
@@ -208,7 +209,7 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
     expect(finished?.result).toEqual({ score: 8.5, tags: ["witty", "concise"] });
   });
 
-  it("never escalates to a different route even when a request allows paid usage", async () => {
+  it("never escalates a local-preferred request to cloud, even when paid usage is allowed and a cloud route is configured", async () => {
     const repository = setupRepository();
     const { server, baseUrl } = await startFakeLiteLlm({ content: { greeting: "hi" } });
     servers.push(server);
@@ -216,10 +217,13 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
     await submitIntelligenceRequest(
       repository,
       buildIntelligenceRequest({
-        executionPolicy: { allowPaidUsage: true, maxRetries: 1, allowedRoutes: ["some-other-route"] },
+        execution: "local-preferred",
+        executionPolicy: { allowPaidUsage: true, maxRetries: 1 },
       }),
     );
-    const config = testIntelligenceConfig(baseUrl, { defaultLiteLlmRoute: "arcadia-default" });
+    const config = testIntelligenceConfig(baseUrl, {
+      routes: buildDefaultRoutes({ localTextRoute: "arcadia-default", cloudTextRoute: "arcadia-cloud" }),
+    });
     const worker = new IntelligenceWorker(
       repository,
       createLiteLlmHttpClient({ baseUrl }),
@@ -227,6 +231,56 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
     );
     const finished = await worker.runOnce();
 
+    expect(finished?.status).toBe("completed");
+    expect(finished?.selectedRoute).toBe("arcadia-default");
+    expect(finished?.usage?.routeId).toBe("arcadia.text.generate.local.standard");
+  });
+
+  it("blocks a cloud-required request with a typed error when paid usage is not allowed", async () => {
+    const repository = setupRepository();
+    const { server, baseUrl } = await startFakeLiteLlm({ content: { greeting: "hi" } });
+    servers.push(server);
+
+    await submitIntelligenceRequest(
+      repository,
+      buildIntelligenceRequest({
+        execution: "cloud-required",
+        executionPolicy: { allowPaidUsage: false, maxRetries: 1 },
+      }),
+    );
+    const config = testIntelligenceConfig(baseUrl, {
+      routes: buildDefaultRoutes({ localTextRoute: "arcadia-default", cloudTextRoute: "arcadia-cloud" }),
+    });
+    const worker = new IntelligenceWorker(
+      repository,
+      createLiteLlmHttpClient({ baseUrl }),
+      config,
+    );
+    const finished = await worker.runOnce();
+
+    expect(finished?.status).toBe("blocked");
+    expect(finished?.error?.code).toBe("PAID_USAGE_NOT_ALLOWED");
+  });
+
+  it("ignores a raw LiteLLM route/model field smuggled into the request and still resolves via the registry", async () => {
+    const repository = setupRepository();
+    const { server, baseUrl } = await startFakeLiteLlm({ content: { greeting: "hi" } });
+    servers.push(server);
+
+    const request = {
+      ...buildIntelligenceRequest(),
+      // Not part of IntelligenceRequest's public type; simulates a client
+      // that ignores the contract or a hand-built JSON payload.
+      route: "some-other-route",
+      model: "gpt-4o",
+    };
+    await submitIntelligenceRequest(repository, request as unknown as Parameters<typeof submitIntelligenceRequest>[1]);
+
+    const config = testIntelligenceConfig(baseUrl);
+    const worker = new IntelligenceWorker(repository, createLiteLlmHttpClient({ baseUrl }), config);
+    const finished = await worker.runOnce();
+
+    expect(finished?.status).toBe("completed");
     expect(finished?.selectedRoute).toBe("arcadia-default");
   });
 
@@ -290,8 +344,10 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
     servers.push(server);
 
     const imageRequest = buildIntelligenceRequest({
-      modality: "image",
-      capability: "demo-app.generate-image.v1",
+      capability: "image.generate",
+      execution: "cloud-required",
+      executionPolicy: { allowPaidUsage: true, maxRetries: 1 },
+      capabilityId: "demo-app.generate-image.v1",
       input: { prompt: "a friendly robot", n: 1 },
       outputContract: {
         schemaId: "demo-app.image-manifest.v1",
@@ -321,7 +377,9 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
     });
     await submitIntelligenceRequest(repository, imageRequest);
 
-    const config = testIntelligenceConfig(baseUrl, { defaultLiteLlmImageRoute: "arcadia-image" });
+    const config = testIntelligenceConfig(baseUrl, {
+      routes: buildDefaultRoutes({ localTextRoute: "arcadia-default", cloudImageRoute: "arcadia-image" }),
+    });
     const worker = new IntelligenceWorker(
       repository,
       createLiteLlmHttpClient({ baseUrl }),
@@ -368,7 +426,7 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
     servers.push(liteLlmServer);
 
     const config = testIntelligenceConfig(liteLlmBaseUrl, {
-      defaultLiteLlmImageRoute: "arcadia-image",
+      routes: buildDefaultRoutes({ localTextRoute: "arcadia-default", cloudImageRoute: "arcadia-image" }),
     });
     const worker = new IntelligenceWorker(
       repository,
@@ -386,7 +444,9 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
     const client = new ArcadiaIntelligenceClient({ baseUrl: `http://127.0.0.1:${port}` });
     const { job } = await client.submit(
       buildIntelligenceRequest({
-        modality: "image",
+        capability: "image.generate",
+        execution: "cloud-required",
+        executionPolicy: { allowPaidUsage: true, maxRetries: 1 },
         input: { prompt: "a quiet harbor at dawn" },
         outputContract: {
           schemaId: "demo-app.image-manifest.v1",
@@ -416,10 +476,15 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
 
     await submitIntelligenceRequest(
       repository,
-      buildIntelligenceRequest({ modality: "image", input: { prompt: "anything" } }),
+      buildIntelligenceRequest({
+        capability: "image.generate",
+        execution: "cloud-required",
+        executionPolicy: { allowPaidUsage: true, maxRetries: 1 },
+        input: { prompt: "anything" },
+      }),
     );
 
-    const config = testIntelligenceConfig(baseUrl); // no defaultLiteLlmImageRoute
+    const config = testIntelligenceConfig(baseUrl); // no cloudImageRoute configured
     const worker = new IntelligenceWorker(
       repository,
       createLiteLlmHttpClient({ baseUrl }),
@@ -429,8 +494,8 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
     const finished = await worker.runOnce();
 
     expect(finished?.status).toBe("blocked");
-    expect(finished?.error?.code).toBe("LITELLM_UNAVAILABLE");
-    expect(finished?.error?.message).toMatch(/image route/i);
+    expect(finished?.error?.code).toBe("ROUTE_NOT_CONFIGURED");
+    expect(finished?.error?.message).toMatch(/image\.generate/i);
   });
 
   it("processes a synthetic second app's image-generation request unchanged", async () => {
@@ -440,9 +505,11 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
 
     const secondAppRequest = buildIntelligenceRequest({
       idempotencyKey: "second-app-image-key-1",
-      capability: "another-app.generate-mood-board-image.v1",
+      capabilityId: "another-app.generate-mood-board-image.v1",
       clientApp: "another-app",
-      modality: "image",
+      capability: "image.generate",
+      execution: "cloud-required",
+      executionPolicy: { allowPaidUsage: true, maxRetries: 1 },
       input: { prompt: "a cozy harbor", size: "512x512" },
       outputContract: {
         schemaId: "another-app.mood-board-image.v1",
@@ -457,7 +524,9 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
     });
 
     await submitIntelligenceRequest(repository, secondAppRequest);
-    const config = testIntelligenceConfig(baseUrl, { defaultLiteLlmImageRoute: "arcadia-image" });
+    const config = testIntelligenceConfig(baseUrl, {
+      routes: buildDefaultRoutes({ localTextRoute: "arcadia-default", cloudImageRoute: "arcadia-image" }),
+    });
     const worker = new IntelligenceWorker(
       repository,
       createLiteLlmHttpClient({ baseUrl }),

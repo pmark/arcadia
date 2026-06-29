@@ -62,14 +62,14 @@ describe("Arcadia Intelligence v0.1 contracts", () => {
   it("accepts arbitrary app-defined capability names and JSON input without interpreting them", async () => {
     const repository = setupRepository();
     const request = buildIntelligenceRequest({
-      capability: "totally-unrelated-app.some-other-capability.v7",
+      capabilityId: "totally-unrelated-app.some-other-capability.v7",
       clientApp: "totally-unrelated-app",
       input: { nested: { whatever: [1, 2, { ok: true }] }, freeform: "anything" },
     });
 
     const response = await submitIntelligenceRequest(repository, request);
 
-    expect(response.job.request.capability).toBe(
+    expect(response.job.request.capabilityId).toBe(
       "totally-unrelated-app.some-other-capability.v7",
     );
     expect(response.job.request.input).toEqual(request.input);

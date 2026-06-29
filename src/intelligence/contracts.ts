@@ -7,11 +7,13 @@
  */
 export type {
   ExecutionPolicy,
+  ExecutionPreference,
   IntelligenceArtifactRecord,
+  IntelligenceCapability,
   IntelligenceImageGenerationResult,
   IntelligenceJob,
   IntelligenceJobStatus,
-  IntelligenceModality,
+  IntelligenceProfile,
   IntelligenceRequest,
   IntelligenceUsage,
   JsonPrimitive,

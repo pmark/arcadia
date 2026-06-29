@@ -64,11 +64,23 @@ const executionPolicy: ExecutionPolicy = {
 
 // 5. Build the request. `idempotencyKey` makes repeated submissions safe to
 //    retry from the caller's side without creating duplicate jobs.
+//
+// `capability` / `execution` / `profile` are how Arcadia routes this request
+// — never a LiteLLM route, provider, or model name:
+//   - capability: the operation needed ("text.generate" here).
+//   - execution: "local-preferred" uses a local route when one is
+//     configured; it never silently escalates to cloud.
+//   - profile: the optimization target ("fast" here).
+// `capabilityId` is unrelated — it's Rebuster's own identifier for this
+// request, stored for provenance only; Arcadia never interprets it.
 const request: IntelligenceRequest = {
   idempotencyKey: `rebuster-candidate-list-${Date.now()}`,
-  capability: "rebuster.generate-candidate-list.v1",
+  capabilityId: "rebuster.generate-candidate-list.v1",
   clientApp: "rebuster",
   projectId: "proj_example",
+  capability: "text.generate",
+  execution: "local-preferred",
+  profile: "fast",
   input: {
     topic: "weekend hiking trip names",
     count: 5,

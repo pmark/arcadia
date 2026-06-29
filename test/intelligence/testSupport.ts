@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { openDatabase } from "../../src/db/connection.js";
 import { initWorkspace } from "../../src/workspace/initWorkspace.js";
+import { buildDefaultRoutes } from "../../src/intelligence/config/defaults.js";
 import type { IntelligenceRequest } from "../../src/intelligence/types.js";
 import type { IntelligenceV01Config } from "../../src/intelligence/config/types.js";
 
@@ -29,9 +30,11 @@ export function buildIntelligenceRequest(
 ): IntelligenceRequest {
   return {
     idempotencyKey: overrides.idempotencyKey ?? `idem_${randomUUID()}`,
-    capability: overrides.capability ?? "demo-app.greeting.v1",
+    capabilityId: overrides.capabilityId ?? "demo-app.greeting.v1",
     clientApp: overrides.clientApp ?? "demo-app",
-    modality: overrides.modality,
+    capability: overrides.capability ?? "text.generate",
+    execution: overrides.execution ?? "local-preferred",
+    profile: overrides.profile ?? "standard",
     input: overrides.input ?? { name: "Ada" },
     outputContract: overrides.outputContract ?? {
       schemaId: "demo-app.greeting.v1",
@@ -59,9 +62,8 @@ export function testIntelligenceConfig(
   overrides: Partial<IntelligenceV01Config> = {},
 ): IntelligenceV01Config {
   return {
-    defaultLiteLlmRoute: "arcadia-default",
+    routes: buildDefaultRoutes({ localTextRoute: "arcadia-default" }),
     liteLlmBaseUrl,
-    allowPaidUsage: false,
     maxRetries: 1,
     workerPollIntervalMs: 25,
     leaseDurationMs: 30_000,

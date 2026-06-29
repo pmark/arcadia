@@ -14,11 +14,64 @@ export type IntelligenceJobStatus =
   | "blocked";
 
 /**
- * What kind of generation a request wants. Arcadia interprets this only to
- * pick a transport (chat completions vs. image generation) and a configured
- * route; it never interprets the request's domain meaning.
+ * The generic operation a request needs. Arcadia resolves this, together
+ * with `execution` and `profile`, to exactly one configured LiteLLM route
+ * (see src/intelligence/routing/resolveRoute.ts). Companion apps select an
+ * operation, never a provider, model, or LiteLLM route name directly.
+ *
+ * Not every capability is wired to an executable transport or has a default
+ * route configured in this milestone (vision/audio/video, image.edit) — an
+ * unconfigured capability resolves to a typed "route_not_configured" failure
+ * rather than throwing or silently falling back.
  */
-export type IntelligenceModality = "text" | "image";
+export const INTELLIGENCE_CAPABILITIES = [
+  "text.generate",
+  "text.classify",
+  "text.extract",
+  "text.reason",
+  "vision.analyze",
+  "image.generate",
+  "image.edit",
+  "audio.transcribe",
+  "audio.synthesize",
+  "video.generate",
+] as const;
+export type IntelligenceCapability = (typeof INTELLIGENCE_CAPABILITIES)[number];
+
+/**
+ * Where a request is allowed/preferred to run.
+ *
+ * - "local-required": only a local route may resolve.
+ * - "local-preferred": resolve to local when configured and available; never
+ *   silently escalate to cloud. Use "cloud-required" explicitly to opt into
+ *   cloud instead.
+ * - "cloud-required": only a cloud route may resolve.
+ *
+ * Deliberately excludes "either"/"cloud-preferred"/"frontier" in this
+ * milestone — routing stays a small, deterministic lookup, not a policy
+ * engine that picks among options on the companion app's behalf.
+ */
+export const EXECUTION_PREFERENCES = [
+  "local-required",
+  "local-preferred",
+  "cloud-required",
+] as const;
+export type ExecutionPreference = (typeof EXECUTION_PREFERENCES)[number];
+
+/**
+ * The requested optimization target.
+ *
+ * - "economy": minimize marginal cash cost.
+ * - "fast": minimize latency and local resource occupancy.
+ * - "standard": normal reliable default.
+ * - "quality": maximize expected output quality.
+ *
+ * Arcadia resolves this deterministically against its route registry; it
+ * never auto-upgrades or auto-downgrades a profile on the companion app's
+ * behalf.
+ */
+export const INTELLIGENCE_PROFILES = ["economy", "fast", "standard", "quality"] as const;
+export type IntelligenceProfile = (typeof INTELLIGENCE_PROFILES)[number];
 
 export type JsonPrimitive = string | number | boolean | null;
 
@@ -70,14 +123,11 @@ export type PromptTemplateRef = {
 
 export type ExecutionPolicy = {
   /**
-   * v0.1 supports one configured LiteLLM route only.
-   * This remains generic so a later policy engine can evolve without breaking clients.
-   */
-  allowedRoutes?: string[];
-
-  /**
    * v0.1 default: false.
-   * No automatic paid fallback should occur.
+   * Authorization/eligibility gate only — not a model tier. A route that
+   * requires paid usage (see IntelligenceRouteEntry.requiresPaidUsage)
+   * cannot resolve unless this is true. No automatic paid fallback occurs:
+   * Arcadia never flips this on or escalates execution on its own.
    */
   allowPaidUsage: boolean;
 
@@ -100,10 +150,13 @@ export type IntelligenceRequest = {
   idempotencyKey: string;
 
   /**
-   * App-defined stable capability identifier.
-   * Arcadia does not interpret its domain meaning.
+   * App-defined stable identifier for this request, e.g.
+   * "rebuster.candidate-list.v1". Arcadia does not interpret its domain
+   * meaning; it is stored for provenance, logging, and lookups. Distinct
+   * from `capability` below, which is the generic operation Arcadia itself
+   * routes and executes.
    */
-  capability: string;
+  capabilityId: string;
 
   /**
    * App identity, for example "rebuster".
@@ -121,15 +174,30 @@ export type IntelligenceRequest = {
   missionId?: string;
 
   /**
-   * What kind of generation this request wants. Defaults to "text" when
-   * absent. For "image", `input` must contain a string `prompt` field;
-   * Arcadia passes it to the configured image route unexamined otherwise.
-   * An optional numeric `n` and string `size` in `input` are also read.
+   * The generic operation this request needs. Arcadia resolves this,
+   * together with `execution` and `profile`, to exactly one configured
+   * LiteLLM route. Never a raw LiteLLM route, provider name, or model ID.
    */
-  modality?: IntelligenceModality;
+  capability: IntelligenceCapability;
 
   /**
-   * Arbitrary app-owned structured payload.
+   * Where this request is allowed/preferred to run. See ExecutionPreference.
+   * "local-preferred" never silently escalates to cloud — there is no
+   * automatic fallback in this milestone.
+   */
+  execution: ExecutionPreference;
+
+  /**
+   * The requested optimization target. See IntelligenceProfile.
+   */
+  profile: IntelligenceProfile;
+
+  /**
+   * Arbitrary app-owned structured payload. For "image.generate" and
+   * "image.edit" capabilities, `input` must contain a string `prompt`
+   * field; Arcadia passes it to the resolved image route unexamined
+   * otherwise. An optional numeric `n` and string `size` in `input` are
+   * also read for image generation.
    */
   input: JsonValue;
 
@@ -148,6 +216,9 @@ export type IntelligenceRequest = {
 };
 
 export type IntelligenceUsage = {
+  /** Semantic resolved route ID, e.g. "arcadia.text.generate.local.fast". */
+  routeId?: string;
+  /** The literal LiteLLM route/model alias the resolved route maps to. */
   modelRoute?: string;
   provider?: string;
   model?: string;

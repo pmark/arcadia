@@ -1,0 +1,149 @@
+import type { IntelligenceRouteEntry, IntelligenceRouteLocation } from "../config/types.js";
+import type { ExecutionPreference, IntelligenceCapability, IntelligenceProfile } from "../types.js";
+
+export type IntelligenceRouteRequest = {
+  capability: IntelligenceCapability;
+  execution: ExecutionPreference;
+  profile: IntelligenceProfile;
+};
+
+export type ResolvedIntelligenceRoute = {
+  routeId: string;
+  capability: IntelligenceCapability;
+  location: IntelligenceRouteLocation;
+  profile: IntelligenceProfile;
+  liteLlmRoute: string;
+  requiresPaidUsage: boolean;
+};
+
+export type IntelligenceRouteResolutionFailureCode =
+  | "route_not_configured"
+  | "route_disabled"
+  | "paid_usage_not_allowed"
+  | "local_route_unavailable"
+  | "cloud_route_unavailable";
+
+export type IntelligenceRouteResolution =
+  | { ok: true; route: ResolvedIntelligenceRoute }
+  | {
+      ok: false;
+      code: IntelligenceRouteResolutionFailureCode;
+      message: string;
+      requested: IntelligenceRouteRequest;
+      alternatives?: IntelligenceRouteRequest[];
+    };
+
+const EXECUTION_LOCATIONS: Record<ExecutionPreference, IntelligenceRouteLocation[]> = {
+  "local-required": ["local"],
+  // v0.1 looks only at local routes for "local-preferred" — it never
+  // escalates to cloud on the companion app's behalf. Use "cloud-required"
+  // explicitly (e.g. from the alternatives this returns) to opt into cloud.
+  "local-preferred": ["local"],
+  "cloud-required": ["cloud"],
+};
+
+/**
+ * Deterministically resolves a companion-app request's capability/execution/
+ * profile into exactly one configured LiteLLM route, or a typed failure.
+ *
+ * This is a small explicit lookup, not a policy engine: no scheduling, no
+ * cost optimization, no automatic fallback or quality escalation. Companion
+ * apps never see a LiteLLM route, provider, or model name — only this
+ * resolution's `route.liteLlmRoute`, which the worker hands to the existing
+ * LiteLLM transport unexamined.
+ */
+export function resolveIntelligenceRoute(
+  requested: IntelligenceRouteRequest,
+  registry: IntelligenceRouteEntry[],
+  options: { allowPaidUsage: boolean },
+): IntelligenceRouteResolution {
+  const candidateLocations = EXECUTION_LOCATIONS[requested.execution];
+
+  for (const location of candidateLocations) {
+    const entry = registry.find(
+      (route) =>
+        route.capability === requested.capability &&
+        route.profile === requested.profile &&
+        route.location === location,
+    );
+    if (!entry) {
+      continue;
+    }
+
+    if (!entry.enabled) {
+      return {
+        ok: false,
+        code: "route_disabled",
+        message: `Route "${entry.id}" is configured but disabled.`,
+        requested,
+      };
+    }
+
+    if (entry.requiresPaidUsage && !options.allowPaidUsage) {
+      return {
+        ok: false,
+        code: "paid_usage_not_allowed",
+        message:
+          `Route "${entry.id}" requires paid usage, but the request's ` +
+          `executionPolicy.allowPaidUsage is false.`,
+        requested,
+      };
+    }
+
+    return {
+      ok: true,
+      route: {
+        routeId: entry.id,
+        capability: entry.capability,
+        location: entry.location,
+        profile: entry.profile,
+        liteLlmRoute: entry.liteLlmRoute,
+        requiresPaidUsage: entry.requiresPaidUsage,
+      },
+    };
+  }
+
+  const configuredForCapability = registry.filter(
+    (route) => route.capability === requested.capability,
+  );
+  if (configuredForCapability.length === 0) {
+    return {
+      ok: false,
+      code: "route_not_configured",
+      message: `No Arcadia Intelligence route is configured for capability "${requested.capability}".`,
+      requested,
+    };
+  }
+
+  const otherLocationEntries = configuredForCapability.filter(
+    (route) => !candidateLocations.includes(route.location),
+  );
+  const alternatives: IntelligenceRouteRequest[] = otherLocationEntries.map((route) => ({
+    capability: route.capability,
+    execution: route.location === "local" ? "local-required" : "cloud-required",
+    profile: route.profile,
+  }));
+
+  if (requested.execution === "cloud-required") {
+    return {
+      ok: false,
+      code: "cloud_route_unavailable",
+      message:
+        `No cloud route is configured for capability "${requested.capability}" ` +
+        `at profile "${requested.profile}".`,
+      requested,
+      alternatives: alternatives.length > 0 ? alternatives : undefined,
+    };
+  }
+
+  return {
+    ok: false,
+    code: "local_route_unavailable",
+    message:
+      `No local route is configured for capability "${requested.capability}" ` +
+      `at profile "${requested.profile}". Arcadia does not automatically ` +
+      `escalate "${requested.execution}" requests to cloud.`,
+    requested,
+    alternatives: alternatives.length > 0 ? alternatives : undefined,
+  };
+}

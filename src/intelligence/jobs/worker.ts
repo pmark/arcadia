@@ -5,6 +5,7 @@ import type { IntelligenceV01Config } from "../config/types.js";
 import type { IntelligenceJobRepository } from "../db/repository.js";
 import { LiteLlmUnavailableError } from "../litellm/httpClient.js";
 import type { LiteLlmClient } from "../litellm/client.js";
+import { resolveIntelligenceRoute, type ResolvedIntelligenceRoute } from "../routing/resolveRoute.js";
 import { validateOutput } from "../validation/validateOutput.js";
 import type {
   IntelligenceArtifactRecord,
@@ -17,11 +18,13 @@ import type {
  * In-process worker for Arcadia Intelligence v0.1.
  *
  * Claims one durable SQLite job at a time via a lease (see
- * IntelligenceJobRepository.claimNextQueuedJob), executes it against the
- * single configured LiteLLM route for its modality (text or image),
- * validates the result against the app-supplied JSON Schema, and persists a
- * terminal status. There is no external queue, no multiple executors, and
- * no provider SDK.
+ * IntelligenceJobRepository.claimNextQueuedJob), resolves its
+ * capability/execution/profile to exactly one configured LiteLLM route (see
+ * resolveIntelligenceRoute), executes it, validates the result against the
+ * app-supplied JSON Schema, and persists a terminal status. There is no
+ * external queue, no multiple executors, no provider SDK, and no automatic
+ * fallback or escalation if resolution fails — that becomes a typed
+ * "blocked" job instead.
  */
 export class IntelligenceWorker {
   private readonly workerId: string;
@@ -52,11 +55,28 @@ export class IntelligenceWorker {
 
     const startedAt = Date.now();
 
+    const resolution = resolveIntelligenceRoute(
+      {
+        capability: job.request.capability,
+        execution: job.request.execution,
+        profile: job.request.profile,
+      },
+      this._config.routes,
+      { allowPaidUsage: job.request.executionPolicy.allowPaidUsage },
+    );
+
+    if (!resolution.ok) {
+      return this._repository.blockJob(
+        job.id,
+        { code: resolution.code.toUpperCase(), message: resolution.message },
+        nowIso(),
+      );
+    }
+
     try {
-      const { output, route, usage } =
-        (job.request.modality ?? "text") === "image"
-          ? await this.executeImageJob(job)
-          : await this.executeTextJob(job);
+      const { output, usage } = job.request.capability.startsWith("image.")
+        ? await this.executeImageJob(job, resolution.route)
+        : await this.executeTextJob(job, resolution.route);
 
       const validation = await validateOutput(output, job.request.outputContract);
       if (!validation.passed) {
@@ -75,8 +95,13 @@ export class IntelligenceWorker {
       return this._repository.completeJob(job.id, {
         result: output,
         validation,
-        usage: { ...usage, modelRoute: route, durationMs: Date.now() - startedAt },
-        selectedRoute: route,
+        usage: {
+          ...usage,
+          routeId: resolution.route.routeId,
+          modelRoute: resolution.route.liteLlmRoute,
+          durationMs: Date.now() - startedAt,
+        },
+        selectedRoute: resolution.route.liteLlmRoute,
         completedAt: nowIso(),
       });
     } catch (error) {
@@ -101,28 +126,23 @@ export class IntelligenceWorker {
 
   private async executeTextJob(
     job: IntelligenceJob,
-  ): Promise<{ output: JsonValue; route: string; usage?: IntelligenceUsage }> {
-    const route = this._config.defaultLiteLlmRoute;
-    const execution = await this._liteLlmClient.generateStructured(job.request, route);
-    return { output: execution.output, route, usage: execution.usage };
+    route: ResolvedIntelligenceRoute,
+  ): Promise<{ output: JsonValue; usage?: IntelligenceUsage }> {
+    const execution = await this._liteLlmClient.generateStructured(job.request, route.liteLlmRoute);
+    return { output: execution.output, usage: execution.usage };
   }
 
   private async executeImageJob(
     job: IntelligenceJob,
-  ): Promise<{ output: JsonValue; route: string; usage?: IntelligenceUsage }> {
-    const route = this._config.defaultLiteLlmImageRoute;
-    if (!route) {
-      throw new LiteLlmUnavailableError(
-        "No LiteLLM image route is configured (set ARCADIA_LITELLM_IMAGE_ROUTE).",
-      );
-    }
+    route: ResolvedIntelligenceRoute,
+  ): Promise<{ output: JsonValue; usage?: IntelligenceUsage }> {
     if (!this._artifactStore) {
       throw new LiteLlmUnavailableError(
         "Arcadia Intelligence has no artifact store configured for image generation.",
       );
     }
 
-    const generation = await this._liteLlmClient.generateImage(job.request, route);
+    const generation = await this._liteLlmClient.generateImage(job.request, route.liteLlmRoute);
     const artifacts: IntelligenceArtifactRecord[] = [];
     for (const image of generation.images) {
       const metadata: Record<string, JsonValue> = {};
@@ -147,7 +167,7 @@ export class IntelligenceWorker {
       generation: { requestedCount: requestedCount ?? artifacts.length, returnedCount: artifacts.length },
     };
 
-    return { output, route, usage: generation.usage };
+    return { output, usage: generation.usage };
   }
 
   /**

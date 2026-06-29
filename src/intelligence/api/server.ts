@@ -8,6 +8,11 @@ import {
   retryIntelligenceJob,
   submitIntelligenceRequest,
 } from "../service/jobService.js";
+import {
+  EXECUTION_PREFERENCES,
+  INTELLIGENCE_CAPABILITIES,
+  INTELLIGENCE_PROFILES,
+} from "../types.js";
 import type { IntelligenceRequest } from "../types.js";
 
 /**
@@ -182,13 +187,21 @@ async function handleHealth(
   fetchImpl: typeof fetch,
 ): Promise<void> {
   const liteLlmReachable = await pingLiteLlm(config.liteLlmBaseUrl, fetchImpl);
+  const routes = config.routes
+    .filter((route) => route.enabled)
+    .map((route) => ({
+      id: route.id,
+      capability: route.capability,
+      location: route.location,
+      profile: route.profile,
+      requiresPaidUsage: route.requiresPaidUsage,
+    }));
   sendJson(res, 200, {
     ok: true,
     liteLlm: {
       baseUrl: config.liteLlmBaseUrl,
-      route: config.defaultLiteLlmRoute,
-      imageRoute: config.defaultLiteLlmImageRoute ?? null,
       reachable: liteLlmReachable,
+      routes,
     },
   });
 }
@@ -221,19 +234,37 @@ function validateIntelligenceRequestShape(body: unknown): string | undefined {
   if (!isNonEmptyString(request.idempotencyKey)) {
     return "idempotencyKey is required.";
   }
-  if (!isNonEmptyString(request.capability)) {
-    return "capability is required.";
+  if (!isNonEmptyString(request.capabilityId)) {
+    return "capabilityId is required.";
   }
   if (!isNonEmptyString(request.clientApp)) {
     return "clientApp is required.";
   }
+  if (
+    !isNonEmptyString(request.capability) ||
+    !(INTELLIGENCE_CAPABILITIES as readonly string[]).includes(request.capability)
+  ) {
+    return `capability must be one of: ${INTELLIGENCE_CAPABILITIES.join(", ")}.`;
+  }
+  if (
+    !isNonEmptyString(request.execution) ||
+    !(EXECUTION_PREFERENCES as readonly string[]).includes(request.execution)
+  ) {
+    return `execution must be one of: ${EXECUTION_PREFERENCES.join(", ")}.`;
+  }
+  if (
+    !isNonEmptyString(request.profile) ||
+    !(INTELLIGENCE_PROFILES as readonly string[]).includes(request.profile)
+  ) {
+    return `profile must be one of: ${INTELLIGENCE_PROFILES.join(", ")}.`;
+  }
   if (request.input === undefined) {
     return "input is required.";
   }
-  if (request.modality === "image") {
+  if (request.capability === "image.generate" || request.capability === "image.edit") {
     const input = request.input as Record<string, unknown> | null;
     if (!input || typeof input.prompt !== "string" || input.prompt.trim().length === 0) {
-      return 'modality "image" requires a non-empty string input.prompt.';
+      return `capability "${request.capability}" requires a non-empty string input.prompt.`;
     }
   }
   if (!request.outputContract || typeof request.outputContract.jsonSchema !== "object") {
