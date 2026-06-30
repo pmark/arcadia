@@ -5,6 +5,7 @@ import { openDatabase } from "../db/connection.js";
 import { createIntelligenceServer } from "../intelligence/api/server.js";
 import { createSqliteIntelligenceArtifactStore } from "../intelligence/artifacts/store.js";
 import { createCodexCliImageExecutor } from "../intelligence/codex/imageExecutor.js";
+import { createCodexCliTextExecutor } from "../intelligence/codex/textExecutor.js";
 import { buildDefaultRoutes, loadIntelligenceConfig } from "../intelligence/config/defaults.js";
 import { createSqliteIntelligenceJobRepository } from "../intelligence/db/sqliteRepository.js";
 import { IntelligenceWorker } from "../intelligence/jobs/worker.js";
@@ -55,12 +56,14 @@ export function runIntelligenceServeCommand(options: IntelligenceServeOptions): 
     artifactStore,
     config,
   });
+  const codexTextExecutor = createCodexCliTextExecutor({ workspaceRoot: workspacePath, config });
   const worker = new IntelligenceWorker(
     repository,
     liteLlmClient,
     config,
     artifactStore,
     codexImageExecutor,
+    codexTextExecutor,
   );
   const stopWorker = worker.start();
 
@@ -115,12 +118,14 @@ export async function runIntelligenceImageSmokeCommand(
       artifactStore,
       config,
     });
+    const codexTextExecutor = createCodexCliTextExecutor({ workspaceRoot: workspacePath, config });
     const worker = new IntelligenceWorker(
       repository,
       liteLlmClient,
       config,
       artifactStore,
       codexImageExecutor,
+      codexTextExecutor,
     );
 
     const request = buildSmokeRequest({

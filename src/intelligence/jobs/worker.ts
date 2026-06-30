@@ -6,6 +6,11 @@ import {
   CodexImageExecutionFailedError,
   type CodexImageExecutor,
 } from "../codex/imageExecutor.js";
+import {
+  CodexTextExecutionBlockedError,
+  CodexTextExecutionFailedError,
+  type CodexTextExecutor,
+} from "../codex/textExecutor.js";
 import type { IntelligenceV01Config } from "../config/types.js";
 import type { IntelligenceJobRepository } from "../db/repository.js";
 import { LiteLlmUnavailableError } from "../litellm/httpClient.js";
@@ -39,6 +44,7 @@ export class IntelligenceWorker {
     private readonly _config: IntelligenceV01Config,
     private readonly _artifactStore?: IntelligenceArtifactStore,
     private readonly _codexImageExecutor?: CodexImageExecutor,
+    private readonly _codexTextExecutor?: CodexTextExecutor,
     workerId: string = randomUUID(),
   ) {
     this.workerId = workerId;
@@ -81,7 +87,9 @@ export class IntelligenceWorker {
     try {
       const { output, usage } = job.request.capability.startsWith("image.")
         ? await this.executeImageJob(job, resolution.route)
-        : await this.executeTextJob(job, resolution.route);
+        : resolution.route.executor === "codex-cli"
+          ? await this.executeCodexTextJob(job)
+          : await this.executeTextJob(job, resolution.route);
 
       const validation = await validateOutput(output, job.request.outputContract);
       if (!validation.passed) {
@@ -117,14 +125,20 @@ export class IntelligenceWorker {
           nowIso(),
         );
       }
-      if (error instanceof CodexImageExecutionBlockedError) {
+      if (
+        error instanceof CodexImageExecutionBlockedError ||
+        error instanceof CodexTextExecutionBlockedError
+      ) {
         return this._repository.blockJob(
           job.id,
           { code: error.code, message: error.message },
           nowIso(),
         );
       }
-      if (error instanceof CodexImageExecutionFailedError) {
+      if (
+        error instanceof CodexImageExecutionFailedError ||
+        error instanceof CodexTextExecutionFailedError
+      ) {
         return this._repository.failJob(
           job.id,
           { code: error.code, message: error.message },
@@ -149,6 +163,18 @@ export class IntelligenceWorker {
   ): Promise<{ output: JsonValue; usage?: IntelligenceUsage }> {
     const execution = await this._liteLlmClient.generateStructured(job.request, route.liteLlmRoute);
     return { output: execution.output, usage: execution.usage };
+  }
+
+  private async executeCodexTextJob(
+    job: IntelligenceJob,
+  ): Promise<{ output: JsonValue; usage?: IntelligenceUsage }> {
+    if (!this._codexTextExecutor) {
+      throw new CodexTextExecutionBlockedError(
+        "CODEX_CLI_UNAVAILABLE",
+        "Arcadia Intelligence has no Codex text executor configured.",
+      );
+    }
+    return this._codexTextExecutor.execute(job);
   }
 
   private async executeImageJob(

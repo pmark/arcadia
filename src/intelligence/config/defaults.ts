@@ -57,6 +57,16 @@ function imageRouteEntries(liteLlmRoute: string | undefined): IntelligenceRouteE
   );
 }
 
+function codexTextRouteEntries(routeName: string): IntelligenceRouteEntry[] {
+  return LOCAL_TEXT_PROFILES.map((profile) => ({
+    ...buildEntry("text.generate", "local", profile, routeName, false, {
+      supportsStructuredOutput: true,
+    }),
+    executor: "codex-cli" as const,
+    metadata: { supportsStructuredOutput: true, costClass: "free" as const },
+  }));
+}
+
 function codexImageRouteEntries(routeName: string | undefined): IntelligenceRouteEntry[] {
   if (!routeName) {
     return [];
@@ -90,16 +100,21 @@ function buildEntry(
 
 /**
  * Builds the v0.1 default route registry from configured LiteLLM aliases
- * plus the optional local Codex image route.
+ * plus optional local Codex routes.
  *
  * This intentionally does not expand each alias across every capability and
  * profile. Only the minimum supported route matrix is produced:
- *   - arcadia.text.generate.local.fast
- *   - arcadia.text.generate.local.standard
+ *   - arcadia.text.generate.local.fast      (LiteLLM or Codex CLI)
+ *   - arcadia.text.generate.local.standard  (LiteLLM or Codex CLI)
  *   - arcadia.text.generate.cloud.standard
  *   - arcadia.text.generate.cloud.quality
- *   - arcadia.image.generate.local.quality
+ *   - arcadia.image.generate.local.quality  (Codex CLI)
  *   - arcadia.image.generate.cloud.quality
+ *
+ * When `codexTextRoute` is set, Codex CLI supplies the local text routes and
+ * `localTextRoute` is ignored. The two options are mutually exclusive for
+ * local text — the route registry never holds both at the same profile.
+ *
  * Other text.* capabilities (classify/extract/reason), other profiles
  * (economy on either text location, fast/standard/economy on image),
  * and other capabilities (vision/audio/video/image.edit) are valid request
@@ -112,9 +127,14 @@ export function buildDefaultRoutes(options: {
   cloudTextRoute?: string;
   cloudImageRoute?: string;
   codexImageRoute?: string;
+  codexTextRoute?: string;
 }): IntelligenceRouteEntry[] {
+  const localTextEntries = options.codexTextRoute
+    ? codexTextRouteEntries(options.codexTextRoute)
+    : textRouteEntries("local", options.localTextRoute, LOCAL_TEXT_PROFILES, false);
+
   return [
-    ...textRouteEntries("local", options.localTextRoute, LOCAL_TEXT_PROFILES, false),
+    ...localTextEntries,
     ...textRouteEntries("cloud", options.cloudTextRoute, CLOUD_TEXT_PROFILES, true),
     ...codexImageRouteEntries(options.codexImageRoute),
     ...imageRouteEntries(options.cloudImageRoute),
@@ -143,9 +163,10 @@ export function loadIntelligenceConfig(
   const cloudTextRoute = env.ARCADIA_LITELLM_CLOUD_TEXT_ROUTE?.trim() || undefined;
   const cloudImageRoute = env.ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE?.trim() || undefined;
   const codexImageRoute = env.ARCADIA_CODEX_IMAGE_ROUTE?.trim() || undefined;
+  const codexTextRoute = env.ARCADIA_CODEX_TEXT_ROUTE?.trim() || undefined;
 
   return {
-    routes: buildDefaultRoutes({ localTextRoute, cloudTextRoute, cloudImageRoute, codexImageRoute }),
+    routes: buildDefaultRoutes({ localTextRoute, cloudTextRoute, cloudImageRoute, codexImageRoute, codexTextRoute }),
     liteLlmBaseUrl:
       env.ARCADIA_LITELLM_BASE_URL?.trim() || intelligenceV01Defaults.liteLlmBaseUrl,
     liteLlmApiKey: env.ARCADIA_LITELLM_API_KEY?.trim() || undefined,
