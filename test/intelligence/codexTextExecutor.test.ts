@@ -50,7 +50,7 @@ describe("Codex CLI text executor", () => {
 
     expect(finished.status).toBe("completed");
     expect(finished.selectedRoute).toBe("codex-cli");
-    expect(finished.usage?.routeId).toBe("arcadia.text.generate.local.fast");
+    expect(finished.usage?.routeId).toBe("arcadia.text.generate.local.fast.codex");
     expect(finished.usage?.provider).toBe("codex-cli");
     expect(finished.result).toEqual(SUCCESS_RESULT);
     expect(finished.validation?.passed).toBe(true);

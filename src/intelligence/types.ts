@@ -58,6 +58,14 @@ export const EXECUTION_PREFERENCES = [
 ] as const;
 export type ExecutionPreference = (typeof EXECUTION_PREFERENCES)[number];
 
+export const INTELLIGENCE_EXECUTION_TARGETS = [
+  "local",
+  "cloud",
+  "codex",
+] as const;
+export type IntelligenceExecutionTarget =
+  (typeof INTELLIGENCE_EXECUTION_TARGETS)[number];
+
 /**
  * The requested optimization target.
  *
@@ -222,6 +230,13 @@ export type IntelligenceRequest = {
    * automatic fallback in this milestone.
    */
   execution: ExecutionPreference;
+
+  /**
+   * Optional high-level execution target. Arcadia validates that this agrees
+   * with `execution` and uses it to distinguish local LLM and Codex routes.
+   * Omit it for backwards-compatible location-only routing.
+   */
+  executionTarget?: IntelligenceExecutionTarget;
 
   /**
    * The requested optimization target. See IntelligenceProfile.

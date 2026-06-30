@@ -37,6 +37,40 @@ describe("resolveIntelligenceRoute", () => {
     }
   });
 
+  it("selects local LLM and Codex independently when both are configured", () => {
+    const routes = buildDefaultRoutes({
+      localTextRoute: "arcadia-default",
+      codexTextRoute: "codex-cli",
+    });
+
+    const local = resolveIntelligenceRoute(
+      {
+        capability: "text.generate",
+        execution: "local-required",
+        executionTarget: "local",
+        profile: "fast",
+      },
+      routes,
+      { allowPaidUsage: false },
+    );
+    const codex = resolveIntelligenceRoute(
+      {
+        capability: "text.generate",
+        execution: "local-required",
+        executionTarget: "codex",
+        profile: "fast",
+      },
+      routes,
+      { allowPaidUsage: false },
+    );
+
+    expect(local.ok && local.route.executor).toBe("litellm");
+    expect(codex.ok && codex.route.executor).toBe("codex-cli");
+    expect(codex.ok && codex.route.routeId).toBe(
+      "arcadia.text.generate.local.fast.codex",
+    );
+  });
+
   it("does not escalate text.generate + local-preferred + standard to cloud when local is absent", () => {
     const routes = buildDefaultRoutes({ cloudTextRoute: "arcadia-cloud" }); // no local route
 

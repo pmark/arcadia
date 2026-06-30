@@ -1,10 +1,16 @@
 import type { IntelligenceRouteEntry, IntelligenceRouteLocation } from "../config/types.js";
-import type { ExecutionPreference, IntelligenceCapability, IntelligenceProfile } from "../types.js";
+import type {
+  ExecutionPreference,
+  IntelligenceCapability,
+  IntelligenceExecutionTarget,
+  IntelligenceProfile,
+} from "../types.js";
 
 export type IntelligenceRouteRequest = {
   capability: IntelligenceCapability;
   execution: ExecutionPreference;
   profile: IntelligenceProfile;
+  executionTarget?: IntelligenceExecutionTarget;
 };
 
 export type ResolvedIntelligenceRoute = {
@@ -59,13 +65,20 @@ export function resolveIntelligenceRoute(
   options: { allowPaidUsage: boolean },
 ): IntelligenceRouteResolution {
   const candidateLocations = EXECUTION_LOCATIONS[requested.execution];
+  const targetExecutor = requested.executionTarget === "codex"
+    ? "codex-cli"
+    : requested.executionTarget === "local" || requested.executionTarget === "cloud"
+      ? "litellm"
+      : undefined;
 
   for (const location of candidateLocations) {
     const entry = registry.find(
       (route) =>
         route.capability === requested.capability &&
         route.profile === requested.profile &&
-        route.location === location,
+        route.location === location &&
+        (targetExecutor === undefined
+          || (route.executor ?? "litellm") === targetExecutor),
     );
     if (!entry) {
       continue;
@@ -106,7 +119,10 @@ export function resolveIntelligenceRoute(
   }
 
   const configuredForCapability = registry.filter(
-    (route) => route.capability === requested.capability,
+    (route) =>
+      route.capability === requested.capability &&
+      (targetExecutor === undefined
+        || (route.executor ?? "litellm") === targetExecutor),
   );
   if (configuredForCapability.length === 0) {
     return {
@@ -124,6 +140,7 @@ export function resolveIntelligenceRoute(
     capability: route.capability,
     execution: route.location === "local" ? "local-required" : "cloud-required",
     profile: route.profile,
+    executionTarget: requested.executionTarget,
   }));
 
   if (requested.execution === "cloud-required") {

@@ -28,6 +28,13 @@ export class RequirementsNotSupportedError extends Error {
   }
 }
 
+export class InvalidExecutionTargetError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "InvalidExecutionTargetError";
+  }
+}
+
 /**
  * Submits a companion-app request as a durable queued job. If a job already
  * exists for the given idempotency key, that job is returned unchanged
@@ -37,6 +44,17 @@ export async function submitIntelligenceRequest(
   repository: IntelligenceJobRepository,
   request: IntelligenceRequest,
 ): Promise<SubmitIntelligenceRequestResponse> {
+  const expectedExecution = request.executionTarget === "cloud"
+    ? "cloud-required"
+    : request.executionTarget === "local" || request.executionTarget === "codex"
+      ? "local-required"
+      : undefined;
+  if (expectedExecution && request.execution !== expectedExecution) {
+    throw new InvalidExecutionTargetError(
+      `executionTarget "${request.executionTarget}" requires execution "${expectedExecution}".`,
+    );
+  }
+
   const requirementsError = validateRequirements(request);
   if (requirementsError) {
     throw new RequirementsNotSupportedError(requirementsError);

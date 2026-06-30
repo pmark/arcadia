@@ -71,6 +71,7 @@ export class IntelligenceWorker {
         capability: job.request.capability,
         execution: job.request.execution,
         profile: job.request.profile,
+        executionTarget: job.request.executionTarget,
       },
       this._config.routes,
       { allowPaidUsage: job.request.executionPolicy.allowPaidUsage },

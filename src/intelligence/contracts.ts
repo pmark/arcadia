@@ -10,6 +10,7 @@ export type {
   ExecutionPreference,
   IntelligenceArtifactRecord,
   IntelligenceCapability,
+  IntelligenceExecutionTarget,
   IntelligenceImageGenerationResult,
   IntelligenceJob,
   IntelligenceJobStatus,
@@ -33,6 +34,7 @@ export type {
  */
 export {
   EXECUTION_PREFERENCES,
+  INTELLIGENCE_EXECUTION_TARGETS,
   INTELLIGENCE_CAPABILITIES,
   INTELLIGENCE_PROFILES,
 } from "./types.js";

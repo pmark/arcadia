@@ -62,6 +62,7 @@ function codexTextRouteEntries(routeName: string): IntelligenceRouteEntry[] {
     ...buildEntry("text.generate", "local", profile, routeName, false, {
       supportsStructuredOutput: true,
     }),
+    id: `arcadia.text.generate.local.${profile}.codex`,
     executor: "codex-cli" as const,
     metadata: { supportsStructuredOutput: true, costClass: "free" as const },
   }));
@@ -111,9 +112,9 @@ function buildEntry(
  *   - arcadia.image.generate.local.quality  (Codex CLI)
  *   - arcadia.image.generate.cloud.quality
  *
- * When `codexTextRoute` is set, Codex CLI supplies the local text routes and
- * `localTextRoute` is ignored. The two options are mutually exclusive for
- * local text — the route registry never holds both at the same profile.
+ * Local LLM and Codex text routes may coexist. A request with an explicit
+ * executionTarget selects one; legacy requests without a target retain the
+ * local LLM route as their deterministic default.
  *
  * Other text.* capabilities (classify/extract/reason), other profiles
  * (economy on either text location, fast/standard/economy on image),
@@ -129,12 +130,9 @@ export function buildDefaultRoutes(options: {
   codexImageRoute?: string;
   codexTextRoute?: string;
 }): IntelligenceRouteEntry[] {
-  const localTextEntries = options.codexTextRoute
-    ? codexTextRouteEntries(options.codexTextRoute)
-    : textRouteEntries("local", options.localTextRoute, LOCAL_TEXT_PROFILES, false);
-
   return [
-    ...localTextEntries,
+    ...textRouteEntries("local", options.localTextRoute, LOCAL_TEXT_PROFILES, false),
+    ...(options.codexTextRoute ? codexTextRouteEntries(options.codexTextRoute) : []),
     ...textRouteEntries("cloud", options.cloudTextRoute, CLOUD_TEXT_PROFILES, true),
     ...codexImageRouteEntries(options.codexImageRoute),
     ...imageRouteEntries(options.cloudImageRoute),
@@ -163,7 +161,7 @@ export function loadIntelligenceConfig(
   const cloudTextRoute = env.ARCADIA_LITELLM_CLOUD_TEXT_ROUTE?.trim() || undefined;
   const cloudImageRoute = env.ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE?.trim() || undefined;
   const codexImageRoute = env.ARCADIA_CODEX_IMAGE_ROUTE?.trim() || undefined;
-  const codexTextRoute = env.ARCADIA_CODEX_TEXT_ROUTE?.trim() || undefined;
+  const codexTextRoute = env.ARCADIA_CODEX_TEXT_ROUTE?.trim() || "codex-cli";
 
   return {
     routes: buildDefaultRoutes({ localTextRoute, cloudTextRoute, cloudImageRoute, codexImageRoute, codexTextRoute }),

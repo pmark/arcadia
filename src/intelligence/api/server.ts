@@ -3,6 +3,7 @@ import type { IntelligenceArtifactStore } from "../artifacts/store.js";
 import type { IntelligenceV01Config } from "../config/types.js";
 import type { IntelligenceJobRepository } from "../db/repository.js";
 import {
+  InvalidExecutionTargetError,
   IntelligenceJobNotFoundError,
   RequirementsNotSupportedError,
   RetryNotAllowedError,
@@ -12,6 +13,7 @@ import {
 import {
   EXECUTION_PREFERENCES,
   INTELLIGENCE_CAPABILITIES,
+  INTELLIGENCE_EXECUTION_TARGETS,
   INTELLIGENCE_PROFILES,
 } from "../types.js";
 import type { IntelligenceRequest } from "../types.js";
@@ -123,7 +125,10 @@ async function handleSubmitJob(
     const response = await submitIntelligenceRequest(repository, body as IntelligenceRequest);
     sendJson(res, response.created ? 201 : 200, response);
   } catch (error) {
-    if (error instanceof RequirementsNotSupportedError) {
+    if (
+      error instanceof RequirementsNotSupportedError ||
+      error instanceof InvalidExecutionTargetError
+    ) {
       sendJson(res, 400, { error: error.message });
       return;
     }
@@ -261,6 +266,13 @@ function validateIntelligenceRequestShape(body: unknown): string | undefined {
     !(EXECUTION_PREFERENCES as readonly string[]).includes(request.execution)
   ) {
     return `execution must be one of: ${EXECUTION_PREFERENCES.join(", ")}.`;
+  }
+  if (
+    request.executionTarget !== undefined &&
+    (!(isNonEmptyString(request.executionTarget)) ||
+      !(INTELLIGENCE_EXECUTION_TARGETS as readonly string[]).includes(request.executionTarget))
+  ) {
+    return `executionTarget must be one of: ${INTELLIGENCE_EXECUTION_TARGETS.join(", ")}.`;
   }
   if (
     !isNonEmptyString(request.profile) ||
