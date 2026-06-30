@@ -7,6 +7,9 @@ export {
 } from "./client.js";
 export type {
   ArcadiaIntelligenceClientOptions,
+  ImageGenerationOperation,
+  ImageGenerationOperationDefinition,
+  OperationWaitOptions,
   StructuredTextOperation,
   StructuredTextOperationDefinition,
   StructuredTextRunOptions,

@@ -1,9 +1,11 @@
 import type {
   IntelligenceCapability,
   IntelligenceExecutionTarget,
+  IntelligenceImageGenerationResult,
   IntelligenceJob,
   IntelligenceProfile,
   IntelligenceRequest,
+  IntelligenceRequirements,
   JsonValue,
   OutputContract,
   PromptTemplateRef,
@@ -71,6 +73,11 @@ export type StructuredTextRunResult<TOutput> = {
   jobId: string;
 };
 
+export type OperationWaitOptions = {
+  pollIntervalMs?: number;
+  timeoutMs?: number;
+};
+
 export interface StructuredTextOperation<
   TInput extends JsonValue,
   TOutput,
@@ -78,6 +85,35 @@ export interface StructuredTextOperation<
   run(
     input: TInput,
     options: StructuredTextRunOptions,
+  ): Promise<StructuredTextRunResult<TOutput>>;
+  retry(
+    jobId: string,
+    options?: OperationWaitOptions,
+  ): Promise<StructuredTextRunResult<TOutput>>;
+}
+
+export type ImageGenerationOperationDefinition<TOutput> = {
+  operationId: string;
+  clientApp: string;
+  projectId?: string;
+  profile: IntelligenceProfile;
+  template: PromptTemplateRef;
+  outputContract: OutputContract;
+  requirements?: IntelligenceRequirements;
+  parse?: (value: unknown) => TOutput;
+};
+
+export interface ImageGenerationOperation<
+  TInput extends JsonValue,
+  TOutput = IntelligenceImageGenerationResult,
+> {
+  run(
+    input: TInput,
+    options: StructuredTextRunOptions,
+  ): Promise<StructuredTextRunResult<TOutput>>;
+  retry(
+    jobId: string,
+    options?: OperationWaitOptions,
   ): Promise<StructuredTextRunResult<TOutput>>;
 }
 
@@ -112,75 +148,75 @@ export class ArcadiaIntelligenceClient {
       TOutput,
     >(
       definition: StructuredTextOperationDefinition<TOutput>,
-    ): StructuredTextOperation<TInput, TOutput> => ({
-      run: async (input, options) => {
-        if (options.execution === "cloud" && options.allowPaidUsage !== true) {
-          throw new ArcadiaExecutionPolicyError(
-            'Cloud execution requires allowPaidUsage: true.',
-          );
-        }
+    ): StructuredTextOperation<TInput, TOutput> => {
+      const parse = (value: unknown): TOutput => definition.parse
+        ? definition.parse(value)
+        : value as TOutput;
+      return {
+        run: async (input, options) => {
+          this.assertExecutionPolicy(options);
+          return this.runOperation({
+            idempotencyKey: options.idempotencyKey,
+            operationId: definition.operationId,
+            clientApp: definition.clientApp,
+            projectId: definition.projectId,
+            capability: "text.generate",
+            execution: this.executionPreference(options.execution),
+            executionTarget: options.execution,
+            profile: definition.profile,
+            input,
+            requirements: { structuredOutput: true },
+            outputContract: definition.outputContract,
+            template: definition.template,
+            executionPolicy: {
+              allowPaidUsage: options.allowPaidUsage ?? false,
+              maxRetries: options.maxRetries ?? 1,
+            },
+          }, options, parse);
+        },
+        retry: async (jobId, options = {}) =>
+          this.retryOperation(jobId, options, parse),
+      };
+    },
+  };
 
-        const request: IntelligenceRequest = {
-          idempotencyKey: options.idempotencyKey,
-          operationId: definition.operationId,
-          clientApp: definition.clientApp,
-          projectId: definition.projectId,
-          capability: "text.generate",
-          execution: options.execution === "cloud"
-            ? "cloud-required"
-            : "local-required",
-          executionTarget: options.execution,
-          profile: definition.profile,
-          input,
-          requirements: { structuredOutput: true },
-          outputContract: definition.outputContract,
-          template: definition.template,
-          executionPolicy: {
-            allowPaidUsage: options.allowPaidUsage ?? false,
-            maxRetries: options.maxRetries ?? 1,
-          },
-        };
-
-        let job: IntelligenceJob;
-        try {
-          const { job: submitted } = await this.submit(request);
-          job = await this.waitForCompletion(submitted.id, {
-            pollIntervalMs: options.pollIntervalMs,
-            timeoutMs: options.timeoutMs,
-          });
-        } catch (error) {
-          throw new ArcadiaUnavailableError(
-            `Arcadia Intelligence is unavailable: ${error instanceof Error ? error.message : String(error)}`,
-            { cause: error },
-          );
-        }
-
-        if (job.status === "blocked") {
-          throw new ArcadiaJobBlockedError(
-            job.id,
-            job.error?.code ?? "UNKNOWN",
-            job.error?.message ?? `Arcadia Intelligence job ${job.id} was blocked.`,
-          );
-        }
-        if (job.status === "failed") {
-          throw new ArcadiaJobFailedError(
-            job.id,
-            job.error?.code ?? "UNKNOWN",
-            job.error?.message ?? `Arcadia Intelligence job ${job.id} failed.`,
-          );
-        }
-        if (job.status !== "completed") {
-          throw new ArcadiaUnavailableError(
-            `Arcadia Intelligence job ${job.id} returned non-terminal status ${job.status}.`,
-          );
-        }
-
-        const result = definition.parse
-          ? definition.parse(job.result)
-          : job.result as TOutput;
-        return { result, jobId: job.id };
-      },
-    }),
+  public readonly image = {
+    defineGenerationOperation: <
+      TInput extends JsonValue,
+      TOutput = IntelligenceImageGenerationResult,
+    >(
+      definition: ImageGenerationOperationDefinition<TOutput>,
+    ): ImageGenerationOperation<TInput, TOutput> => {
+      const parse = (value: unknown): TOutput => definition.parse
+        ? definition.parse(value)
+        : value as TOutput;
+      return {
+        run: async (input, options) => {
+          this.assertExecutionPolicy(options);
+          const request: IntelligenceRequest = {
+            idempotencyKey: options.idempotencyKey,
+            operationId: definition.operationId,
+            clientApp: definition.clientApp,
+            projectId: definition.projectId,
+            capability: "image.generate",
+            execution: this.executionPreference(options.execution),
+            executionTarget: options.execution,
+            profile: definition.profile,
+            input,
+            requirements: definition.requirements,
+            outputContract: definition.outputContract,
+            template: definition.template,
+            executionPolicy: {
+              allowPaidUsage: options.allowPaidUsage ?? false,
+              maxRetries: options.maxRetries ?? 1,
+            },
+          };
+          return this.runOperation(request, options, parse);
+        },
+        retry: async (jobId, options = {}) =>
+          this.retryOperation(jobId, options, parse),
+      };
+    },
   };
 
   public async availableExecutions(
@@ -274,6 +310,92 @@ export class ArcadiaIntelligenceClient {
 
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
+  }
+
+  private assertExecutionPolicy(options: StructuredTextRunOptions): void {
+    if (options.execution === "cloud" && options.allowPaidUsage !== true) {
+      throw new ArcadiaExecutionPolicyError(
+        "Cloud execution requires allowPaidUsage: true.",
+      );
+    }
+  }
+
+  private executionPreference(
+    target: IntelligenceExecutionTarget,
+  ): IntelligenceRequest["execution"] {
+    return target === "cloud" ? "cloud-required" : "local-required";
+  }
+
+  private async runOperation<TOutput>(
+    request: IntelligenceRequest,
+    options: OperationWaitOptions,
+    parse: (value: unknown) => TOutput,
+  ): Promise<StructuredTextRunResult<TOutput>> {
+    try {
+      const { job: submitted } = await this.submit(request);
+      return await this.waitForOperation(submitted.id, options, parse);
+    } catch (error) {
+      if (
+        error instanceof ArcadiaJobBlockedError ||
+        error instanceof ArcadiaJobFailedError
+      ) {
+        throw error;
+      }
+      throw new ArcadiaUnavailableError(
+        `Arcadia Intelligence is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+  }
+
+  private async retryOperation<TOutput>(
+    jobId: string,
+    options: OperationWaitOptions,
+    parse: (value: unknown) => TOutput,
+  ): Promise<StructuredTextRunResult<TOutput>> {
+    try {
+      const { job } = await this.retry(jobId);
+      return await this.waitForOperation(job.id, options, parse);
+    } catch (error) {
+      if (
+        error instanceof ArcadiaJobBlockedError ||
+        error instanceof ArcadiaJobFailedError
+      ) {
+        throw error;
+      }
+      throw new ArcadiaUnavailableError(
+        `Arcadia Intelligence is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+  }
+
+  private async waitForOperation<TOutput>(
+    jobId: string,
+    options: OperationWaitOptions,
+    parse: (value: unknown) => TOutput,
+  ): Promise<StructuredTextRunResult<TOutput>> {
+    const job = await this.waitForCompletion(jobId, options);
+    if (job.status === "blocked") {
+      throw new ArcadiaJobBlockedError(
+        job.id,
+        job.error?.code ?? "UNKNOWN",
+        job.error?.message ?? `Arcadia Intelligence job ${job.id} was blocked.`,
+      );
+    }
+    if (job.status === "failed") {
+      throw new ArcadiaJobFailedError(
+        job.id,
+        job.error?.code ?? "UNKNOWN",
+        job.error?.message ?? `Arcadia Intelligence job ${job.id} failed.`,
+      );
+    }
+    if (job.status !== "completed") {
+      throw new ArcadiaUnavailableError(
+        `Arcadia Intelligence job ${job.id} returned non-terminal status ${job.status}.`,
+      );
+    }
+    return { result: parse(job.result), jobId: job.id };
   }
 
   private async request<T>(

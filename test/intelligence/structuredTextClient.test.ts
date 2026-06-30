@@ -131,3 +131,72 @@ describe("structured text client", () => {
     ).resolves.toEqual(["local", "cloud", "codex"]);
   });
 });
+
+describe("image generation client", () => {
+  it("runs a typed Codex image operation and returns artifact records", async () => {
+    let submitted: IntelligenceRequest | undefined;
+    const fetchImpl = (async (input: string | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (init?.method === "POST") {
+        submitted = JSON.parse(String(init.body)) as IntelligenceRequest;
+        return jsonResponse({
+          created: true,
+          job: { id: "image-job-1", status: "queued" },
+        }, 201);
+      }
+      if (url.pathname.endsWith("/image-job-1")) {
+        return jsonResponse({
+          id: "image-job-1",
+          status: "completed",
+          result: {
+            artifacts: [{
+              id: "artifact-1",
+              kind: "image",
+              uri: "/api/intelligence/artifacts/artifact-1",
+              mimeType: "image/png",
+              sha256: "abc123",
+              byteSize: 128,
+              dimensions: { width: 1024, height: 1024 },
+            }],
+          },
+        });
+      }
+      throw new Error(`Unexpected request: ${url.pathname}`);
+    }) as typeof fetch;
+    const client = new ArcadiaIntelligenceClient({
+      baseUrl: "http://arcadia.test",
+      fetchImpl,
+    });
+    const operation = client.image.defineGenerationOperation<{
+      prompt: string;
+      n: number;
+    }>({
+      operationId: "rebuster.generate-image-candidates",
+      clientApp: "rebuster",
+      profile: "quality",
+      template: { id: "prompts/image-generate.md", version: "1" },
+      requirements: { imageSize: "1024x1024", transparency: false },
+      outputContract: {
+        schemaId: "rebuster.generated-image.v1",
+        schemaVersion: 1,
+        jsonSchema: { type: "object" },
+      },
+    });
+
+    const result = await operation.run(
+      { prompt: "A toe-shaped tow truck.", n: 1 },
+      { idempotencyKey: "image-1", execution: "codex" },
+    );
+
+    expect(result.result.artifacts[0]?.uri).toBe(
+      "/api/intelligence/artifacts/artifact-1",
+    );
+    expect(submitted).toMatchObject({
+      capability: "image.generate",
+      execution: "local-required",
+      executionTarget: "codex",
+      requirements: { imageSize: "1024x1024", transparency: false },
+      executionPolicy: { allowPaidUsage: false, maxRetries: 1 },
+    });
+  });
+});
