@@ -20,6 +20,9 @@ importers:
       commander:
         specifier: ^15.0.0
         version: 15.0.0
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
     devDependencies:
       '@playwright/test':
         specifier: ^1.61.1
@@ -42,6 +45,9 @@ importers:
 
   apps/dashboard:
     dependencies:
+      '@pmark/arcadia':
+        specifier: workspace:*
+        version: link:../..
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@19.2.7)

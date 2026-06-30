@@ -25,3 +25,14 @@ export type {
   SubmitIntelligenceRequestResponse,
   ValidationResult,
 } from "./types.js";
+
+/**
+ * The enumerable value sets behind IntelligenceCapability / ExecutionPreference
+ * / IntelligenceProfile, re-exported as values (not just types) so a caller
+ * can render selectable options without duplicating this list.
+ */
+export {
+  EXECUTION_PREFERENCES,
+  INTELLIGENCE_CAPABILITIES,
+  INTELLIGENCE_PROFILES,
+} from "./types.js";

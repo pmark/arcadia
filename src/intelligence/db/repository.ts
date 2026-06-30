@@ -53,4 +53,14 @@ export interface IntelligenceJobRepository {
    * Eligibility (status, maxRetries) is enforced by the caller.
    */
   retryJob(jobId: string, nowIso: string): Promise<IntelligenceJob>;
+
+  /**
+   * Returns the most recent jobs submitted by a given clientApp, newest
+   * first. Read-only history lookup (e.g. for an admin test bench); not
+   * part of the companion-app HTTP API.
+   */
+  listRecentByClientApp(
+    clientApp: string,
+    limit: number,
+  ): Promise<IntelligenceJob[]>;
 }

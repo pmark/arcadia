@@ -85,6 +85,23 @@ describe("Codex CLI image executor", () => {
     expect(finished.error?.code).toBe("CODEX_INVALID_IMAGE");
   });
 
+  it("recovers a completed manifest when the Codex CLI process lingers past the timeout", async () => {
+    const finished = await runCodexImageScenario("lingers", { timeoutMs: 300 });
+
+    expect(finished.status).toBe("completed");
+    expect(finished.error).toBeUndefined();
+    const result = finished.result as unknown as IntelligenceImageGenerationResult;
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.warnings?.[0]).toMatch(/did not exit within/);
+  });
+
+  it("still fails with CODEX_CLI_TIMEOUT when no manifest was written before the kill", async () => {
+    const finished = await runCodexImageScenario("lingers-no-output", { timeoutMs: 300 });
+
+    expect(finished.status).toBe("failed");
+    expect(finished.error?.code).toBe("CODEX_CLI_TIMEOUT");
+  });
+
   it("blocks clearly when the Codex CLI command is unavailable", async () => {
     const finished = await runCodexImageScenario("success", {
       command: "arcadia-codex-command-that-does-not-exist",
@@ -132,8 +149,14 @@ describe("Codex CLI image executor", () => {
 });
 
 async function runCodexImageScenario(
-  scenario: "success" | "missing-manifest" | "missing-file" | "invalid-image",
-  overrides: { command?: string } = {},
+  scenario:
+    | "success"
+    | "missing-manifest"
+    | "missing-file"
+    | "invalid-image"
+    | "lingers"
+    | "lingers-no-output",
+  overrides: { command?: string; timeoutMs?: number } = {},
 ) {
   const workspace = createTempWorkspace();
   workspaces.push(workspace);
@@ -177,7 +200,7 @@ async function runCodexImageScenario(
     codexCli: {
       command: overrides.command ?? process.execPath,
       args: [fakeCommand, "{workspace}", scenario],
-      timeoutMs: 5_000,
+      timeoutMs: overrides.timeoutMs ?? 5_000,
     },
   };
   const codexImageExecutor = createCodexCliImageExecutor({ workspaceRoot: workspace, artifactStore, config });
@@ -234,6 +257,29 @@ if (scenario === "invalid-image") {
     artifacts: [{ kind: "image", path: "output/image-01.png", mimeType: "image/png", width: 1, height: 1 }]
   }));
   process.exit(0);
+}
+
+if (scenario === "lingers") {
+  fs.writeFileSync(path.join(outputDir, "image-01.png"), Buffer.from("${ONE_PIXEL_PNG_BASE64}", "base64"));
+  fs.writeFileSync(path.join(outputDir, "manifest.json"), JSON.stringify({
+    status: "completed",
+    artifacts: [{
+      kind: "image",
+      path: "output/image-01.png",
+      mimeType: "image/png",
+      width: 1,
+      height: 1,
+      metadata: { prompt: "test prompt", seed: 123, version: "fake-codex" }
+    }],
+    warnings: []
+  }));
+  setTimeout(() => process.exit(0), 30000);
+  return;
+}
+
+if (scenario === "lingers-no-output") {
+  setTimeout(() => process.exit(0), 30000);
+  return;
 }
 
 fs.writeFileSync(path.join(outputDir, "image-01.png"), Buffer.from("${ONE_PIXEL_PNG_BASE64}", "base64"));

@@ -106,11 +106,24 @@ export function createCodexCliImageExecutor(
       writeFileSync(stdoutPath, execution.stdout);
       writeFileSync(stderrPath, execution.stderr);
 
+      const manifestPath = path.join(outputDir, "manifest.json");
+
       if (execution.timedOut) {
-        throw new CodexImageExecutionFailedError(
-          "CODEX_CLI_TIMEOUT",
-          `Codex CLI timed out after ${cli.timeoutMs}ms. Logs are preserved in ${path.relative(workspacePaths.root, logsDir)}.`,
-        );
+        // The Codex CLI process can keep running past task completion (e.g.
+        // a trailing self-review step) and get SIGTERM'd by our timeout
+        // after it has already written a complete, valid manifest. Recover
+        // that output instead of discarding finished work — only fall
+        // through to a hard timeout failure if no valid manifest exists.
+        const recovered = tryReadCompletedManifest(manifestPath);
+        if (!recovered) {
+          throw new CodexImageExecutionFailedError(
+            "CODEX_CLI_TIMEOUT",
+            `Codex CLI timed out after ${cli.timeoutMs}ms. Logs are preserved in ${path.relative(workspacePaths.root, logsDir)}.`,
+          );
+        }
+        return buildResultFromManifest(recovered, job, jobWorkspace, options.artifactStore, startedAt, [
+          `Codex CLI process did not exit within ${cli.timeoutMs}ms, but had already written a completed manifest before being stopped.`,
+        ]);
       }
       if (execution.spawnErrorCode === "ENOENT") {
         throw new CodexImageExecutionBlockedError(
@@ -128,7 +141,6 @@ export function createCodexCliImageExecutor(
         );
       }
 
-      const manifestPath = path.join(outputDir, "manifest.json");
       if (!existsSync(manifestPath)) {
         throw new CodexImageExecutionFailedError(
           "CODEX_MISSING_MANIFEST",
@@ -150,29 +162,61 @@ export function createCodexCliImageExecutor(
         );
       }
 
-      const artifacts: IntelligenceArtifactRecord[] = [];
-      for (const rawArtifact of manifest.artifacts) {
-        artifacts.push(await validateAndPersistArtifact(rawArtifact, jobWorkspace, job.id, options.artifactStore));
-      }
+      return buildResultFromManifest(manifest, job, jobWorkspace, options.artifactStore, startedAt);
+    },
+  };
+}
 
-      const warnings = Array.isArray(manifest.warnings)
-        ? manifest.warnings.filter((warning): warning is string => typeof warning === "string")
-        : undefined;
+/** Returns a manifest only if it parses and its status is already "completed"; never throws. */
+function tryReadCompletedManifest(manifestPath: string): CodexImageManifest | undefined {
+  if (!existsSync(manifestPath)) {
+    return undefined;
+  }
+  try {
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as CodexImageManifest;
+    if (
+      manifest.status === "completed" &&
+      Array.isArray(manifest.artifacts) &&
+      manifest.artifacts.length > 0
+    ) {
+      return manifest;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
 
-      return {
-        output: {
-          artifacts: artifacts as unknown as JsonValue,
-          ...(warnings && warnings.length > 0 ? { warnings } : {}),
-          generation: {
-            requestedCount: requestedImageCount(job.request.input) ?? artifacts.length,
-            returnedCount: artifacts.length,
-          },
-        },
-        usage: {
-          provider: "codex-cli",
-          durationMs: Date.now() - startedAt,
-        },
-      };
+async function buildResultFromManifest(
+  manifest: CodexImageManifest,
+  job: IntelligenceJob,
+  jobWorkspace: string,
+  artifactStore: IntelligenceArtifactStore,
+  startedAt: number,
+  extraWarnings: string[] = [],
+): Promise<{ output: JsonValue; usage?: IntelligenceUsage }> {
+  const artifacts: IntelligenceArtifactRecord[] = [];
+  for (const rawArtifact of manifest.artifacts as unknown[]) {
+    artifacts.push(await validateAndPersistArtifact(rawArtifact, jobWorkspace, job.id, artifactStore));
+  }
+
+  const manifestWarnings = Array.isArray(manifest.warnings)
+    ? manifest.warnings.filter((warning): warning is string => typeof warning === "string")
+    : [];
+  const warnings = [...manifestWarnings, ...extraWarnings];
+
+  return {
+    output: {
+      artifacts: artifacts as unknown as JsonValue,
+      ...(warnings.length > 0 ? { warnings } : {}),
+      generation: {
+        requestedCount: requestedImageCount(job.request.input) ?? artifacts.length,
+        returnedCount: artifacts.length,
+      },
+    },
+    usage: {
+      provider: "codex-cli",
+      durationMs: Date.now() - startedAt,
     },
   };
 }

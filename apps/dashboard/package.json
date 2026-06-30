@@ -10,6 +10,7 @@
     "start": "next start -H 0.0.0.0 -p 3020"
   },
   "dependencies": {
+    "@pmark/arcadia": "workspace:*",
     "lucide-react": "^0.468.0",
     "next": "^15.0.0",
     "react": "^19.0.0",

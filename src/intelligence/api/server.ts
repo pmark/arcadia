@@ -203,6 +203,7 @@ async function handleHealth(
       capability: route.capability,
       location: route.location,
       profile: route.profile,
+      executor: route.executor ?? "litellm",
       requiresPaidUsage: route.requiresPaidUsage,
     }));
   sendJson(res, 200, {

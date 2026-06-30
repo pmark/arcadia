@@ -180,6 +180,57 @@ export function renderIntelligenceImageSmokeSuccess(
   return lines;
 }
 
+export interface IntelligenceListJobsOptions {
+  workspace: string;
+  clientApp: string;
+  limit?: number;
+}
+
+export interface IntelligenceListJobsData {
+  jobs: IntelligenceJob[];
+}
+
+/**
+ * Read-only history lookup for jobs submitted by a given clientApp, newest
+ * first. Used by the Arcadia dashboard's admin Intelligence test bench to
+ * show recent test runs; not part of the companion-app HTTP API.
+ */
+export async function runIntelligenceListJobsCommand(
+  options: IntelligenceListJobsOptions,
+): Promise<CommandSuccess<IntelligenceListJobsData>> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const db = openDatabase(workspacePath);
+
+  try {
+    const repository = createSqliteIntelligenceJobRepository(db);
+    const jobs = await repository.listRecentByClientApp(options.clientApp, options.limit ?? 20);
+
+    return createSuccess({
+      command: "intelligence.list-jobs",
+      workspace: workspacePath,
+      data: { jobs },
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export function renderIntelligenceListJobsSuccess(
+  response: CommandSuccess<IntelligenceListJobsData>,
+): string[] {
+  const { jobs } = response.data;
+  if (jobs.length === 0) {
+    return ["Arcadia Intelligence jobs", "No jobs found."];
+  }
+  const lines = ["Arcadia Intelligence jobs"];
+  for (const job of jobs) {
+    lines.push(
+      `${job.createdAt}  ${job.status}  ${job.id}  ${job.request.capability}  ${job.selectedRoute ?? job.request.profile}`,
+    );
+  }
+  return lines;
+}
+
 function buildSmokeRequest(input: {
   prompt: string;
   idempotencyKey?: string;

@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import * as dotenv from "dotenv";
+
+dotenv.config();
+
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -133,7 +137,9 @@ import {
 import { renderStatusSuccess, runStatusCommand } from "./commands/status.js";
 import {
   renderIntelligenceImageSmokeSuccess,
+  renderIntelligenceListJobsSuccess,
   runIntelligenceImageSmokeCommand,
+  runIntelligenceListJobsCommand,
   runIntelligenceServeCommand
 } from "./commands/intelligence.js";
 import {
@@ -1385,6 +1391,26 @@ export function buildProgram(): Command {
     )
   );
 
+  addJsonOption(
+    intelligence
+      .command("list-jobs")
+      .description("List recent Arcadia Intelligence jobs for a given clientApp (read-only history)")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .requiredOption("--client-app <name>", "clientApp to filter by")
+      .option("--limit <n>", "Maximum number of jobs to return", "20")
+  ).action((options: { workspace: string; clientApp: string; limit?: string; json?: boolean }) =>
+    runCliAction(
+      "intelligence.list-jobs",
+      options,
+      () => runIntelligenceListJobsCommand({
+        workspace: options.workspace,
+        clientApp: options.clientApp,
+        limit: options.limit ? Number(options.limit) : undefined
+      }),
+      renderIntelligenceListJobsSuccess
+    )
+  );
+
   return program;
 }
 
@@ -1598,6 +1624,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "intelligence" && second === "smoke-image") {
     return "intelligence.smoke-image";
+  }
+
+  if (first === "intelligence" && second === "list-jobs") {
+    return "intelligence.list-jobs";
   }
 
   if (first === "attention") {

@@ -16,6 +16,24 @@ export async function loadDashboardSnapshot(): Promise<ArcadiaJsonSuccess<Dashbo
   return runArcadiaCliJson<DashboardSnapshotResponse>(["dashboard", "snapshot"]);
 }
 
+export interface IntelligenceListJobsResponse {
+  jobs: unknown[];
+}
+
+export async function listIntelligenceTestJobs(
+  clientApp: string,
+  limit = 20
+): Promise<ArcadiaJsonSuccess<IntelligenceListJobsResponse>> {
+  return runArcadiaCliJson<IntelligenceListJobsResponse>([
+    "intelligence",
+    "list-jobs",
+    "--client-app",
+    clientApp,
+    "--limit",
+    String(limit)
+  ]);
+}
+
 export async function resolveDashboardWorkspace(): Promise<string> {
   const response = await runArcadiaCliJson<{ workspacePath: string | null }>(["workspace", "resolve"]);
   if (!response.data.workspacePath) {

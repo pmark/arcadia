@@ -218,6 +218,18 @@ export function createSqliteIntelligenceJobRepository(
     return requireJob(jobId);
   }
 
+  function listRecentByClientApp(
+    clientApp: string,
+    limit: number,
+  ): Promise<IntelligenceJob[]> {
+    const rows = db
+      .prepare(
+        `SELECT * FROM intelligence_jobs WHERE client_app = ? ORDER BY created_at DESC, rowid DESC LIMIT ?`,
+      )
+      .all(clientApp, limit) as IntelligenceJobRow[];
+    return Promise.resolve(rows.map(rowToJob));
+  }
+
   function requireJob(jobId: string): Promise<IntelligenceJob> {
     const row = db
       .prepare("SELECT * FROM intelligence_jobs WHERE id = ?")
@@ -237,5 +249,6 @@ export function createSqliteIntelligenceJobRepository(
     failJob,
     blockJob,
     retryJob,
+    listRecentByClientApp,
   };
 }
