@@ -14,7 +14,7 @@ import type {
  * deliberate decision to support a new combination, not a cosmetic change.
  */
 const LOCAL_TEXT_PROFILES: IntelligenceProfile[] = ["fast", "standard"];
-const CLOUD_TEXT_PROFILES: IntelligenceProfile[] = ["standard", "quality"];
+const CLOUD_TEXT_PROFILES: IntelligenceProfile[] = ["fast", "standard", "quality"];
 const LOCAL_CODEX_IMAGE_PROFILES: IntelligenceProfile[] = ["quality"];
 const CLOUD_IMAGE_PROFILES: IntelligenceProfile[] = ["quality"];
 const DEFAULT_CODEX_CLI = {
@@ -107,6 +107,7 @@ function buildEntry(
  * profile. Only the minimum supported route matrix is produced:
  *   - arcadia.text.generate.local.fast      (LiteLLM or Codex CLI)
  *   - arcadia.text.generate.local.standard  (LiteLLM or Codex CLI)
+ *   - arcadia.text.generate.cloud.fast
  *   - arcadia.text.generate.cloud.standard
  *   - arcadia.text.generate.cloud.quality
  *   - arcadia.image.generate.local.quality  (Codex CLI)
@@ -117,7 +118,7 @@ function buildEntry(
  * local LLM route as their deterministic default.
  *
  * Other text.* capabilities (classify/extract/reason), other profiles
- * (economy on either text location, fast/standard/economy on image),
+ * (economy on either text location, standard/economy on image),
  * and other capabilities (vision/audio/video/image.edit) are valid request
  * values but have no default route — they resolve as a typed
  * "route_not_configured"/"*_route_unavailable" failure rather than guessing

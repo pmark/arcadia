@@ -66,6 +66,7 @@ profile." The default registry (`buildDefaultRoutes` in
 | ------------------------------------------- | ---------------- | -------- | -------- | -------------------- |
 | `arcadia.text.generate.local.fast`          | `text.generate`  | local    | fast     | no                    |
 | `arcadia.text.generate.local.standard`      | `text.generate`  | local    | standard | no                    |
+| `arcadia.text.generate.cloud.fast`          | `text.generate`  | cloud    | fast     | yes                   |
 | `arcadia.text.generate.cloud.standard`      | `text.generate`  | cloud    | standard | yes                   |
 | `arcadia.text.generate.cloud.quality`       | `text.generate`  | cloud    | quality  | yes                   |
 | `arcadia.image.generate.local.quality`      | `image.generate` | local    | quality  | no                    |
@@ -155,7 +156,7 @@ optional local Codex image route, configured via environment variables
 | Variable                          | Default            | Used for                                   |
 | ---------------------------------- | ------------------- | -------------------------------------------- |
 | `ARCADIA_LITELLM_LOCAL_TEXT_ROUTE`  | `arcadia-default`   | `text.generate`, local, fast + standard      |
-| `ARCADIA_LITELLM_CLOUD_TEXT_ROUTE`  | *(unset = disabled)* | `text.generate`, cloud, standard + quality   |
+| `ARCADIA_LITELLM_CLOUD_TEXT_ROUTE`  | *(unset = disabled)* | `text.generate`, cloud, fast + standard + quality |
 | `ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE` | *(unset = disabled)* | `image.generate`, cloud, quality             |
 | `ARCADIA_CODEX_IMAGE_ROUTE`         | *(unset = disabled)* | `image.generate`, local, quality             |
 | `ARCADIA_CODEX_CLI_COMMAND`         | `codex`             | Codex CLI executable                         |

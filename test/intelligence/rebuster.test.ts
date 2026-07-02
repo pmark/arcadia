@@ -55,7 +55,7 @@ function setupRepository(): IntelligenceJobRepository {
 }
 
 describe("default route registry", () => {
-  it("produces exactly the intentional five-route matrix when fully configured", () => {
+  it("produces exactly the intentional six-route matrix when fully configured", () => {
     const routes = buildDefaultRoutes({
       localTextRoute: "arcadia-default",
       cloudTextRoute: "arcadia-cloud",
@@ -66,6 +66,7 @@ describe("default route registry", () => {
       [
         "arcadia.text.generate.local.fast",
         "arcadia.text.generate.local.standard",
+        "arcadia.text.generate.cloud.fast",
         "arcadia.text.generate.cloud.standard",
         "arcadia.text.generate.cloud.quality",
         "arcadia.image.generate.cloud.quality",
