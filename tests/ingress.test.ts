@@ -17,6 +17,7 @@ import { runIngressProcessCommand } from "../src/commands/ingress.js";
 import { withDatabase } from "../src/db/connection.js";
 import { countRows, listRecentMissionLogs } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { getWorkflowDefinition } from "../src/workflows/config.js";
 
 const roots: string[] = [];
 
@@ -179,6 +180,74 @@ describe("ingress process command", () => {
     withDatabase(workspace, (db) => {
       expect(countRows(db, "ask_requests")).toBe(0);
       expect(countRows(db, "mission_logs")).toBe(0);
+    });
+  });
+
+  it("runs a matched stable M4A workflow and publishes every MP3 Artifact", () => {
+    const workspace = initializedWorkspace();
+    const ingressRoot = initializedIngressRoot();
+    const driveRoot = mkdtempSync(path.join(tmpdir(), "arcadia-drive-root-"));
+    roots.push(driveRoot);
+    const recordingName = "Thundertonk practice 2026 July 16.m4a";
+    const recordingPath = path.join(ingressRoot, "iCloudIdeas", "In", recordingName);
+    writeFileSync(recordingPath, "fixture recording", "utf8");
+    const workflow = getWorkflowDefinition(workspace, "thundertonk-practice");
+    workflow.action = {
+      executable: process.execPath,
+      arguments: [path.resolve("tests", "fixtures", "fake-rehearsal.mjs"), "{input}"],
+      workingDirectory: "{inputDir}",
+      timeoutSeconds: 30,
+      safeToRunAutomatically: true
+    };
+    workflow.publication.destinationRoot = driveRoot;
+    const workflowDirectory = path.join(workspace, "config", "workflows");
+    mkdirSync(workflowDirectory, { recursive: true });
+    writeFileSync(path.join(workflowDirectory, "thundertonk-practice.json"), `${JSON.stringify(workflow, null, 2)}\n`, "utf8");
+
+    const result = runIngressProcessCommand({
+      workspace,
+      ingressRoot,
+      runSafe: true,
+      stableSeconds: 0
+    });
+
+    expect(result.data.counts).toMatchObject({ discovered: 1, processed: 1, succeeded: 1, failed: 0 });
+    expect(result.data.files[0]).toMatchObject({ status: "processed", workflowId: "thundertonk-practice" });
+    expect(existsSync(recordingPath)).toBe(false);
+    expect(existsSync(path.join(ingressRoot, "iCloudIdeas", "Done", recordingName))).toBe(true);
+    const destination = path.join(driveRoot, "Thundertonk PMA", "Practices", "2026", "0716");
+    expect(readdirSync(destination).filter((name) => name.endsWith(".mp3"))).toHaveLength(3);
+    const sidecar = JSON.parse(readFileSync(
+      path.join(ingressRoot, "iCloudIdeas", "Done", "Thundertonk practice 2026 July 16.response.json"),
+      "utf8"
+    ));
+    expect(sidecar.run.status).toBe("completed");
+    expect(sidecar.run.files).toHaveLength(3);
+    withDatabase(workspace, (db) => {
+      expect((db.prepare("SELECT COUNT(*) AS count FROM artifacts WHERE artifact_type = 'practice_song_mp3'").get() as { count: number }).count).toBe(3);
+    });
+  });
+
+  it("keeps workflow media pending until size and modification time are stable across observations", () => {
+    const workspace = initializedWorkspace();
+    const ingressRoot = initializedIngressRoot();
+    const recordingName = "Thundertonk practice 2026 July 16.m4a";
+    writeFileSync(path.join(ingressRoot, "iCloudIdeas", "In", recordingName), "copy in progress", "utf8");
+
+    const first = runIngressProcessCommand({ workspace, ingressRoot, stableSeconds: 30 });
+    expect(first.data.files[0]).toMatchObject({
+      status: "pending",
+      failureReason: "Waiting for the recording size and modification time to settle."
+    });
+
+    const statePath = path.join(ingressRoot, "iCloudIdeas", ".workflow-stability.json");
+    const state = JSON.parse(readFileSync(statePath, "utf8"));
+    state[recordingName].observedAtMs = Date.now() - 31_000;
+    writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+    const second = runIngressProcessCommand({ workspace, ingressRoot, stableSeconds: 30 });
+    expect(second.data.files[0]).toMatchObject({
+      status: "pending",
+      failureReason: "Matched workflow is ready; pass --run-safe to execute it."
     });
   });
 

@@ -5,6 +5,7 @@ import {
   readFileSync,
   renameSync,
   statSync,
+  unlinkSync,
   writeFileSync
 } from "node:fs";
 import { homedir } from "node:os";
@@ -20,6 +21,10 @@ import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../markdow
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
+import { matchWorkflowDefinition } from "../workflows/config.js";
+import { runWorkflow } from "../workflows/runner.js";
+import type { WorkflowDefinition } from "../workflows/types.js";
+import { recordWorkflowRunArtifacts } from "../workflows/artifacts.js";
 
 export const DEFAULT_INGRESS_SOURCE = "iCloudIdeas";
 
@@ -29,12 +34,13 @@ export interface IngressProcessOptions {
   runSafe?: boolean;
   dryRun?: boolean;
   ingressRoot?: string;
+  stableSeconds?: number;
   askRunner?: (options: AskOptions) => CommandSuccess<AskCommandData>;
 }
 
 export interface IngressFileResult {
   file: string;
-  status: "would_process" | "processed" | "skipped_empty" | "failed";
+  status: "would_process" | "pending" | "processed" | "skipped_empty" | "failed";
   requestPreview?: string;
   finalPath?: string;
   sidecarPath?: string;
@@ -44,6 +50,7 @@ export interface IngressFileResult {
   runId?: string;
   artifacts: string[];
   failureReason?: string;
+  workflowId?: string;
 }
 
 export interface IngressProcessData {
@@ -64,6 +71,7 @@ export interface IngressProcessData {
     succeeded: number;
     failed: number;
     skipped: number;
+    pending: number;
   };
 }
 
@@ -79,6 +87,14 @@ interface CandidateFile {
   fileName: string;
   mtimeMs: number;
   sharedArtifactPaths: string[];
+  workflow: WorkflowDefinition | null;
+  stable: boolean;
+}
+
+interface StabilityObservation {
+  size: number;
+  mtimeMs: number;
+  observedAtMs: number;
 }
 
 export function runIngressProcessCommand(options: IngressProcessOptions): CommandSuccess<IngressProcessData> {
@@ -90,17 +106,34 @@ export function runIngressProcessCommand(options: IngressProcessOptions): Comman
   const directories = ingressDirectories(root, source);
   const dryRun = Boolean(options.dryRun);
   const executionMode = options.runSafe ? "run-safe" : "planned";
+  const stableSeconds = options.stableSeconds ?? 30;
+  if (!Number.isFinite(stableSeconds) || stableSeconds < 0) {
+    throw validationError("Stable seconds must be a non-negative number.", { stableSeconds });
+  }
 
   if (!dryRun) {
     ensureIngressDirectories(directories);
   }
 
-  const candidates = listCandidates(directories.in);
+  const candidates = listCandidates(
+    directories.in,
+    workspacePath,
+    source,
+    stableSeconds,
+    !dryRun
+  );
   const askRunner = options.askRunner ?? runAskCommand;
   const files = dryRun
     ? candidates.map((candidate) => dryRunResult(candidate))
-    : candidates.map((candidate) =>
-        processCandidate({
+    : candidates.map((candidate) => candidate.workflow
+      ? processWorkflowCandidate({
+          candidate,
+          workspacePath,
+          directories,
+          source,
+          runSafe: Boolean(options.runSafe)
+        })
+      : processCandidate({
           candidate,
           workspacePath,
           directories,
@@ -128,10 +161,11 @@ export function runIngressProcessCommand(options: IngressProcessOptions): Comman
       files,
       counts: {
         discovered: candidates.length,
-        processed: files.filter((file) => file.status !== "would_process").length,
+        processed: files.filter((file) => !["would_process", "pending"].includes(file.status)).length,
         succeeded: files.filter((file) => file.status === "processed").length,
         failed: files.filter((file) => file.status === "failed").length,
-        skipped: files.filter((file) => file.status === "skipped_empty").length
+        skipped: files.filter((file) => file.status === "skipped_empty").length,
+        pending: files.filter((file) => file.status === "pending").length
       }
     },
     artifacts: files.flatMap((file) => [file.finalPath, file.sidecarPath, ...file.artifacts].filter(isString))
@@ -147,6 +181,7 @@ export function renderIngressProcessSuccess(response: CommandSuccess<IngressProc
     `Dry run: ${data.dryRun ? "yes" : "no"}`,
     `Discovered: ${data.counts.discovered}`,
     `Processed: ${data.counts.processed}`,
+    `Pending: ${data.counts.pending}`,
     `Skipped: ${data.counts.skipped}`,
     `Failed: ${data.counts.failed}`
   ];
@@ -315,6 +350,124 @@ function processCandidate(input: {
   }
 }
 
+function processWorkflowCandidate(input: {
+  candidate: CandidateFile;
+  workspacePath: string;
+  directories: IngressDirectories;
+  source: string;
+  runSafe: boolean;
+}): IngressFileResult {
+  const { candidate, workspacePath, directories, source, runSafe } = input;
+  const workflow = candidate.workflow as WorkflowDefinition;
+  if (!candidate.stable) {
+    return {
+      file: candidate.absolutePath,
+      status: "pending",
+      workflowId: workflow.id,
+      artifacts: [],
+      failureReason: "Waiting for the recording size and modification time to settle."
+    };
+  }
+  if (!runSafe || !workflow.action.safeToRunAutomatically) {
+    return {
+      file: candidate.absolutePath,
+      status: "pending",
+      workflowId: workflow.id,
+      artifacts: [],
+      failureReason: runSafe
+        ? "The matched workflow is not marked safe to run automatically."
+        : "Matched workflow is ready; pass --run-safe to execute it."
+    };
+  }
+
+  const claimPath = path.join(directories.in, `.processing-${candidate.fileName}.lock`);
+  try {
+    writeFileSync(claimPath, `${JSON.stringify({ pid: process.pid, claimedAt: nowIso(), workflowId: workflow.id })}\n`, {
+      encoding: "utf8",
+      flag: "wx"
+    });
+  } catch {
+    return {
+      file: candidate.absolutePath,
+      status: "pending",
+      workflowId: workflow.id,
+      artifacts: [],
+      failureReason: "Recording is already claimed by another Arcadia worker."
+    };
+  }
+
+  let currentPath = candidate.absolutePath;
+  try {
+    const run = runWorkflow({ workspace: workspacePath, workflow, inputPath: currentPath });
+    const succeeded = run.status === "completed" || run.status === "already_completed";
+    const finalPath = moveToUnique(
+      currentPath,
+      path.join(succeeded ? directories.done : directories.failed, candidate.fileName)
+    );
+    currentPath = finalPath;
+    const sidecarPath = sidecarPathFor(finalPath, succeeded ? "response" : "error");
+    const artifacts = [
+      run.runManifestPath,
+      run.stdoutLogPath,
+      run.stderrLogPath,
+      run.destinationDirectory,
+      ...run.files.map((file) => file.destinationPath)
+    ].filter(isString);
+    writeJson(sidecarPath, {
+      status: succeeded ? "processed" : "failed",
+      source,
+      sourcePath: candidate.absolutePath,
+      finalPath,
+      processedAt: nowIso(),
+      workflowId: workflow.id,
+      runId: run.id,
+      run,
+      artifacts,
+      failureReason: run.failureReason
+    });
+    if (succeeded) {
+      recordWorkflowRunArtifacts(workspacePath, workflow, run, finalPath);
+    }
+    return {
+      file: candidate.absolutePath,
+      status: succeeded ? "processed" : "failed",
+      finalPath,
+      sidecarPath,
+      runId: run.id,
+      workflowId: workflow.id,
+      artifacts,
+      failureReason: run.failureReason ?? undefined
+    };
+  } catch (error) {
+    const normalized = normalizeError(error);
+    const finalPath = existsSync(currentPath)
+      ? moveToUnique(currentPath, path.join(directories.failed, candidate.fileName))
+      : path.join(directories.failed, candidate.fileName);
+    const sidecarPath = sidecarPathFor(finalPath, "error");
+    writeJson(sidecarPath, {
+      status: "failed",
+      source,
+      sourcePath: candidate.absolutePath,
+      finalPath,
+      processedAt: nowIso(),
+      workflowId: workflow.id,
+      error: normalized,
+      artifacts: []
+    });
+    return {
+      file: candidate.absolutePath,
+      status: "failed",
+      finalPath,
+      sidecarPath,
+      workflowId: workflow.id,
+      artifacts: [],
+      failureReason: normalized.message
+    };
+  } finally {
+    if (existsSync(claimPath)) unlinkSync(claimPath);
+  }
+}
+
 function writeIngressMissionLog(
   workspacePath: string,
   input: {
@@ -372,6 +525,15 @@ function writeIngressMissionLog(
 }
 
 function dryRunResult(candidate: CandidateFile): IngressFileResult {
+  if (candidate.workflow) {
+    return {
+      file: candidate.absolutePath,
+      status: "would_process",
+      requestPreview: `Run workflow ${candidate.workflow.id}`,
+      workflowId: candidate.workflow.id,
+      artifacts: []
+    };
+  }
   const request = readFileSync(candidate.absolutePath, "utf8").trim();
   return {
     file: candidate.absolutePath,
@@ -381,23 +543,58 @@ function dryRunResult(candidate: CandidateFile): IngressFileResult {
   };
 }
 
-function listCandidates(inboxPath: string): CandidateFile[] {
+function listCandidates(
+  inboxPath: string,
+  workspacePath: string,
+  source: string,
+  stableSeconds: number,
+  persistObservations: boolean
+): CandidateFile[] {
   if (!existsSync(inboxPath)) {
     return [];
   }
 
-  return readdirSync(inboxPath, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".txt") && !entry.name.startsWith(".processing-"))
+  const statePath = path.join(path.dirname(inboxPath), ".workflow-stability.json");
+  const observations = readStabilityObservations(statePath);
+  const nextObservations: Record<string, StabilityObservation> = {};
+  const now = Date.now();
+  const candidates = readdirSync(inboxPath, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && !entry.name.startsWith(".processing-"))
     .map((entry) => {
       const absolutePath = path.join(inboxPath, entry.name);
+      const workflow = entry.name.endsWith(".txt")
+        ? null
+        : matchWorkflowDefinition(workspacePath, absolutePath, source);
+      if (!entry.name.endsWith(".txt") && !workflow) return null;
+      const stats = statSync(absolutePath);
+      const previous = observations[entry.name];
+      const unchanged = Boolean(previous && previous.size === stats.size && previous.mtimeMs === stats.mtimeMs);
+      const observation = unchanged
+        ? previous
+        : { size: stats.size, mtimeMs: stats.mtimeMs, observedAtMs: now };
+      if (workflow) nextObservations[entry.name] = observation as StabilityObservation;
       return {
         absolutePath,
         fileName: entry.name,
-        mtimeMs: statSync(absolutePath).mtimeMs,
-        sharedArtifactPaths: listSharedArtifactPaths(inboxPath, entry.name)
+        mtimeMs: stats.mtimeMs,
+        sharedArtifactPaths: entry.name.endsWith(".txt") ? listSharedArtifactPaths(inboxPath, entry.name) : [],
+        workflow,
+        stable: !workflow || stableSeconds === 0 || Boolean(unchanged && now - observation!.observedAtMs >= stableSeconds * 1000)
       };
     })
+    .filter((candidate): candidate is CandidateFile => Boolean(candidate))
     .sort((left, right) => left.mtimeMs - right.mtimeMs || left.fileName.localeCompare(right.fileName));
+  if (persistObservations) writeJson(statePath, nextObservations);
+  return candidates;
+}
+
+function readStabilityObservations(filePath: string): Record<string, StabilityObservation> {
+  if (!existsSync(filePath)) return {};
+  try {
+    return JSON.parse(readFileSync(filePath, "utf8")) as Record<string, StabilityObservation>;
+  } catch {
+    return {};
+  }
 }
 
 function ingressDirectories(root: string, source: string): IngressDirectories {

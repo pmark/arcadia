@@ -165,6 +165,23 @@ import {
   runWorkRunCommand,
   runWorkUpdateCommand
 } from "./commands/work.js";
+import {
+  renderWorkflowListSuccess,
+  renderWorkflowMatchSuccess,
+  renderWorkflowRunSuccess,
+  renderWorkflowRunsSuccess,
+  renderWorkflowShowSuccess,
+  renderWorkflowValidateSuccess,
+  runWorkflowAddCommand,
+  runWorkflowListCommand,
+  runWorkflowMatchCommand,
+  runWorkflowRunCommand,
+  runWorkflowRunsCommand,
+  runWorkflowRunShowCommand,
+  runWorkflowSetEnabledCommand,
+  runWorkflowShowCommand,
+  runWorkflowValidateCommand
+} from "./commands/workflow.js";
 import { normalizeError, validationError } from "./cli/errors.js";
 import {
   createFailure,
@@ -1046,16 +1063,143 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--source <name>", "Ingress source folder", "iCloudIdeas")
       .option("--ingress-root <path>", "ArcadiaIngress root folder")
+      .option("--stable-seconds <seconds>", "Minimum unchanged age before processing workflow files", "30")
       .option("--run-safe", "Immediately run deterministic safe steps")
       .option("--dry-run", "Report files that would be processed without changing files")
   ).action((options: {
     workspace: string;
     source?: string;
     ingressRoot?: string;
+    stableSeconds?: string;
     runSafe?: boolean;
     dryRun?: boolean;
     json?: boolean;
-  }) => runCliAction("ingress.process", options, () => runIngressProcessCommand(options), renderIngressProcessSuccess));
+  }) => runCliAction(
+    "ingress.process",
+    options,
+    () => runIngressProcessCommand({ ...options, stableSeconds: Number(options.stableSeconds ?? 30) }),
+    renderIngressProcessSuccess
+  ));
+
+  const workflow = program.command("workflow").description("Discover and run deterministic local workflows");
+  addJsonOption(
+    workflow
+      .command("list")
+      .description("List configured workflows")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("workflow.list", options, () => runWorkflowListCommand(options), renderWorkflowListSuccess)
+  );
+  addJsonOption(
+    workflow
+      .command("show")
+      .description("Show one workflow definition")
+      .argument("<workflow-id>", "Workflow id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((workflowId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction("workflow.show", options, () => runWorkflowShowCommand({ ...options, workflowId }), renderWorkflowShowSuccess)
+  );
+  addJsonOption(
+    workflow
+      .command("match")
+      .description("Identify the enabled workflow matching a file")
+      .argument("<input-file>", "Input file")
+      .option("--source <name>", "Optional ingress source")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((inputPath: string, options: { workspace: string; source?: string; json?: boolean }) =>
+    runCliAction("workflow.match", options, () => runWorkflowMatchCommand({ ...options, inputPath }), renderWorkflowMatchSuccess)
+  );
+  addJsonOption(
+    workflow
+      .command("validate")
+      .description("Validate a configured workflow or definition file without running it")
+      .argument("[workflow-id]", "Workflow id")
+      .option("--file <path>", "Workflow definition JSON file")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((workflowId: string | undefined, options: { workspace: string; file?: string; json?: boolean }) =>
+    runCliAction(
+      "workflow.validate",
+      options,
+      () => runWorkflowValidateCommand({ ...options, workflowId, filePath: options.file }),
+      renderWorkflowValidateSuccess
+    )
+  );
+  addJsonOption(
+    workflow
+      .command("add")
+      .description("Install a validated workflow definition in the workspace")
+      .argument("<definition-file>", "Workflow definition JSON file")
+      .option("--force", "Replace an existing workspace definition")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((filePath: string, options: { workspace: string; force?: boolean; json?: boolean }) =>
+    runCliAction("workflow.add", options, () => runWorkflowAddCommand({ ...options, filePath }), renderWorkflowShowSuccess)
+  );
+  for (const enabled of [true, false]) {
+    const commandName = enabled ? "enable" : "disable";
+    addJsonOption(
+      workflow
+        .command(commandName)
+        .description(`${enabled ? "Enable" : "Disable"} a workflow`)
+        .argument("<workflow-id>", "Workflow id")
+        .option("--workspace <path>", "Workspace path", defaultWorkspace())
+    ).action((workflowId: string, options: { workspace: string; json?: boolean }) =>
+      runCliAction(
+        `workflow.${commandName}`,
+        options,
+        () => runWorkflowSetEnabledCommand({ ...options, workflowId, enabled }),
+        renderWorkflowShowSuccess
+      )
+    );
+  }
+  addJsonOption(
+    workflow
+      .command("run")
+      .description("Run a workflow against one input file")
+      .argument("<workflow-id>", "Workflow id")
+      .argument("<input-file>", "Input file")
+      .option("--destination-root <path>", "Override the configured publication root")
+      .option("--dry-run", "Validate and show the command and destination without writing files")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((workflowId: string, inputPath: string, options: {
+    workspace: string;
+    destinationRoot?: string;
+    dryRun?: boolean;
+    json?: boolean;
+  }) => runCliAction(
+    "workflow.run",
+    options,
+    () => runWorkflowRunCommand({ ...options, workflowId, inputPath }),
+    renderWorkflowRunSuccess
+  ));
+  addJsonOption(
+    workflow
+      .command("runs")
+      .description("List durable workflow Runs")
+      .option("--workflow <workflow-id>", "Filter by workflow id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; workflow?: string; json?: boolean }) =>
+    runCliAction(
+      "workflow.runs",
+      options,
+      () => runWorkflowRunsCommand({ ...options, workflowId: options.workflow }),
+      renderWorkflowRunsSuccess
+    )
+  );
+  const workflowRun = workflow.command("run-info").description("Inspect workflow Run evidence");
+  addJsonOption(
+    workflowRun
+      .command("show")
+      .description("Show one workflow Run")
+      .argument("<run-id>", "Run id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((runId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "workflow.run.show",
+      options,
+      () => runWorkflowRunShowCommand({ ...options, runId }),
+      renderWorkflowRunSuccess
+    )
+  );
 
   const artifact = program.command("artifact").description("Artifact commands");
   addJsonOption(
@@ -1658,6 +1802,14 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "ingress" && second === "process") {
     return "ingress.process";
+  }
+
+  if (first === "workflow") {
+    if (second === "run-info" && parts[2] === "show") return "workflow.run.show";
+    if (["list", "show", "match", "validate", "add", "enable", "disable", "run", "runs"].includes(second ?? "")) {
+      return `workflow.${second}`;
+    }
+    return "workflow";
   }
 
   if (first === "dashboard" && second === "snapshot") {

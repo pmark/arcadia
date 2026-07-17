@@ -6,6 +6,7 @@ SOURCE="${ARCADIA_INGRESS_SOURCE:-iCloudIdeas}"
 ROOT="${ARCADIA_INGRESS_ROOT:-}"
 TEXT=""
 USE_CLIPBOARD=0
+DIRECT_FILES=0
 FILES=()
 
 usage() {
@@ -17,6 +18,7 @@ Create an Arcadia ingress request from text, the macOS clipboard, and/or files.
 Options:
   --text <text>          Add text to the request.
   --clipboard            Add the current macOS clipboard text.
+  --direct-files         Atomically place file arguments in In/ for a configured workflow.
   --source <name>        Ingress source folder (default: iCloudIdeas).
   --ingress-root <path>  ArcadiaIngress folder (default: iCloud Drive when available).
   -h, --help             Show this help.
@@ -36,6 +38,10 @@ while (($# > 0)); do
       ;;
     --clipboard)
       USE_CLIPBOARD=1
+      shift
+      ;;
+    --direct-files)
+      DIRECT_FILES=1
       shift
       ;;
     --source)
@@ -102,6 +108,37 @@ IN_DIR="$ROOT/$SOURCE/In"
 CAPTURE_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 ATTACHMENT_DIR="$ROOT/$SOURCE/Attachments/$CAPTURE_ID"
 mkdir -p "$IN_DIR"
+
+if ((DIRECT_FILES)); then
+  if [[ -n "$TEXT" || ${#FILES[@]} -eq 0 ]]; then
+    echo "arcadia-ingest: --direct-files requires file arguments and cannot be combined with text or clipboard content" >&2
+    exit 2
+  fi
+  INDEX=0
+  for FILE in "${FILES[@]}"; do
+    [[ -f "$FILE" ]] || { echo "arcadia-ingest: direct workflow input must be a file: $FILE" >&2; exit 2; }
+    BASENAME="$(basename "$FILE")"
+    DESTINATION="$IN_DIR/$BASENAME"
+    SUFFIX=1
+    while [[ -e "$DESTINATION" ]]; do
+      if [[ "$BASENAME" == *.* && "$BASENAME" != .* ]]; then
+        STEM="${BASENAME%.*}"
+        EXTENSION=".${BASENAME##*.}"
+      else
+        STEM="$BASENAME"
+        EXTENSION=""
+      fi
+      DESTINATION="$IN_DIR/$STEM-$SUFFIX$EXTENSION"
+      SUFFIX=$((SUFFIX + 1))
+    done
+    TEMP_PATH="$IN_DIR/.capture-$CAPTURE_ID-$INDEX.tmp"
+    cp "$FILE" "$TEMP_PATH"
+    mv "$TEMP_PATH" "$DESTINATION"
+    printf '%s\n' "$DESTINATION"
+    INDEX=$((INDEX + 1))
+  done
+  exit 0
+fi
 
 COPIED_FILES=()
 if ((${#FILES[@]} > 0)); then

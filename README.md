@@ -185,6 +185,7 @@ automatic external fallbacks, and any dashboard UI. See
 
 ## Planning Artifacts
 
+- [Universal Capture-to-Artifact program](docs/plans/universal-capture-to-artifact/README.md) defines the modular path from arbitrary capture through interpretation, safe execution, Artifact delivery, and Obsidian handoff, with implementation-ready Milestones and agent prompts.
 - [Arcadia Intelligence Gateway plan](docs/plans/arcadia-intelligence-gateway/README.md) is a larger, not-yet-implemented design for a policy-aware Intelligence Gateway. The implemented v0.1 service above is an intentionally narrower slice and does not follow this plan's budgets/quotas/artifact scope.
 
 ## Quick Start
@@ -242,6 +243,16 @@ pnpm arcadia ingress process --workspace ./tmp/demo-workspace --source iCloudIde
 ```
 
 See [Apple Platform Ingest](docs/APPLE_INGEST.md) for a macOS clipboard/file helper, Finder Quick Action setup, an iPhone/iPad Share Sheet Shortcut, and the iCloud Drive folder configuration.
+
+Discover, validate, and run configured deterministic Workflows:
+
+```sh
+pnpm arcadia workflow list --workspace ./tmp/demo-workspace --json
+pnpm arcadia workflow match './Thundertonk practice 2026 July 16.m4a' --source iCloudIdeas --workspace ./tmp/demo-workspace --json
+pnpm arcadia workflow validate thundertonk-practice --workspace ./tmp/demo-workspace --json
+pnpm arcadia workflow run thundertonk-practice './Thundertonk practice 2026 July 16.m4a' --workspace ./tmp/demo-workspace --dry-run --json
+pnpm arcadia workflow runs --workspace ./tmp/demo-workspace --json
+```
 
 View queues:
 

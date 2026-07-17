@@ -150,9 +150,26 @@ pnpm arcadia ingress process \
   --dry-run
 ```
 
-Arcadia processes `.txt` files oldest first. Successful and empty files move to `<ingress-root>/iCloudIdeas/Done/`; failed files move to `<ingress-root>/iCloudIdeas/Failed/`. Each moved file gets a readable JSON sidecar, and every non-empty processed request gets an ingress Log. Files placed in `Attachments/<request-basename>/` are recorded as ready Artifacts.
+Arcadia processes `.txt` requests and media files matched by enabled Workflows oldest first. Workflow files remain pending until two observations show their size and modification time unchanged for at least 30 seconds and `--run-safe` is passed. Successful and empty files move to `<ingress-root>/iCloudIdeas/Done/`; failed files move to `<ingress-root>/iCloudIdeas/Failed/`. Each moved file gets a readable JSON sidecar, and every non-empty processed request gets an ingress Log. Files placed in `Attachments/<request-basename>/` are recorded as ready Artifacts.
 
 Watch mode is intentionally not implemented. For periodic processing, configure macOS `launchd` to run `arcadia ingress process` on an interval. See `docs/APPLE_INGEST.md` for the macOS Quick Action and iPhone/iPad Shortcut flow.
+
+## Deterministic Workflows
+
+```sh
+pnpm arcadia workflow list --workspace "$WORKSPACE" --json
+pnpm arcadia workflow show thundertonk-practice --workspace "$WORKSPACE" --json
+pnpm arcadia workflow match './Thundertonk practice 2026 July 16.m4a' --source iCloudIdeas --workspace "$WORKSPACE" --json
+pnpm arcadia workflow validate thundertonk-practice --workspace "$WORKSPACE" --json
+pnpm arcadia workflow add ./workflow.json --workspace "$WORKSPACE" --json
+pnpm arcadia workflow enable thundertonk-practice --workspace "$WORKSPACE" --json
+pnpm arcadia workflow disable thundertonk-practice --workspace "$WORKSPACE" --json
+pnpm arcadia workflow run thundertonk-practice './Thundertonk practice 2026 July 16.m4a' --workspace "$WORKSPACE" --dry-run --json
+pnpm arcadia workflow runs --workspace "$WORKSPACE" --json
+pnpm arcadia workflow run-info show <run-id> --workspace "$WORKSPACE" --json
+```
+
+Workflow definitions are JSON files in `config/workflows/`; workspace definitions override built-ins with the same stable ID. Executables and argument arrays are stored separately, and `{input}` must be one complete argument. A successful Run preserves raw stdout/stderr Logs and a JSON Run manifest below `artifacts/workflow-runs/<run-id>/`.
 
 Attach captured work to project context when known:
 

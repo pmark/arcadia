@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.arcadia.ingress.iCloudIdeas</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/pnpm</string>
+    <string>--dir</string>
+    <string>/Users/pmark/Dev/MR/Arcadia/arcadia</string>
+    <string>arcadia</string>
+    <string>ingress</string>
+    <string>process</string>
+    <string>--workspace</string>
+    <string>/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover</string>
+    <string>--source</string>
+    <string>iCloudIdeas</string>
+    <string>--ingress-root</string>
+    <string>/Users/pmark/Library/Mobile Documents/com~apple~CloudDocs/ArcadiaIngress</string>
+    <string>--run-safe</string>
+    <string>--stable-seconds</string>
+    <string>30</string>
+    <string>--json</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>60</integer>
+  <key>StandardErrorPath</key>
+  <string>/tmp/arcadia-ingress-iCloudIdeas.err.log</string>
+  <key>StandardOutPath</key>
+  <string>/tmp/arcadia-ingress-iCloudIdeas.out.log</string>
+</dict>
+</plist>
