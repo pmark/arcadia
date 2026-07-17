@@ -64,6 +64,41 @@ describe("ingress process command", () => {
     });
   });
 
+  it("records convention-based shared files as ready Artifacts", () => {
+    const workspace = initializedWorkspace();
+    const ingressRoot = initializedIngressRoot();
+    writeIngressFile(ingressRoot, "shared-capture.txt", "Capture this shared file.");
+    const attachmentDirectory = path.join(ingressRoot, "iCloudIdeas", "Attachments", "shared-capture");
+    mkdirSync(attachmentDirectory, { recursive: true });
+    const attachmentPath = path.join(attachmentDirectory, "notes.pdf");
+    writeFileSync(attachmentPath, "example", "utf8");
+
+    const result = runIngressProcessCommand({
+      workspace,
+      ingressRoot,
+      askRunner: (options) => {
+        const response = fakeAskResponse(options.request);
+        response.data.workItem = null;
+        response.data.plan = null;
+        response.data.result = { status: "captured", summary: "Shared file captured." };
+        return response;
+      }
+    });
+
+    expect(result.data.files[0].artifacts).toContain(attachmentPath);
+    const sidecarPath = path.join(ingressRoot, "iCloudIdeas", "Done", "shared-capture.response.json");
+    expect(JSON.parse(readFileSync(sidecarPath, "utf8")).artifacts).toContain(attachmentPath);
+    withDatabase(workspace, (db) => {
+      expect(countRows(db, "artifacts")).toBe(1);
+      const artifact = db.prepare("SELECT * FROM artifacts LIMIT 1").get() as {
+        artifact_type: string;
+        status: string;
+        path: string;
+      };
+      expect(artifact).toMatchObject({ artifact_type: "shared_file", status: "ready", path: attachmentPath });
+    });
+  });
+
   it("moves empty files to Done without calling ask or creating mission logs", () => {
     const workspace = initializedWorkspace();
     const ingressRoot = initializedIngressRoot();
@@ -202,6 +237,7 @@ function initializedIngressRoot(): string {
   mkdirSync(path.join(ingressRoot, "iCloudIdeas", "In"), { recursive: true });
   mkdirSync(path.join(ingressRoot, "iCloudIdeas", "Done"), { recursive: true });
   mkdirSync(path.join(ingressRoot, "iCloudIdeas", "Failed"), { recursive: true });
+  mkdirSync(path.join(ingressRoot, "iCloudIdeas", "Attachments"), { recursive: true });
   return ingressRoot;
 }
 

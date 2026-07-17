@@ -1,0 +1,147 @@
+#!/bin/bash
+
+set -euo pipefail
+
+SOURCE="${ARCADIA_INGRESS_SOURCE:-iCloudIdeas}"
+ROOT="${ARCADIA_INGRESS_ROOT:-}"
+TEXT=""
+USE_CLIPBOARD=0
+FILES=()
+
+usage() {
+  cat <<'EOF'
+Usage: arcadia-ingest [options] [file ...]
+
+Create an Arcadia ingress request from text, the macOS clipboard, and/or files.
+
+Options:
+  --text <text>          Add text to the request.
+  --clipboard            Add the current macOS clipboard text.
+  --source <name>        Ingress source folder (default: iCloudIdeas).
+  --ingress-root <path>  ArcadiaIngress folder (default: iCloud Drive when available).
+  -h, --help             Show this help.
+
+ARCADIA_INGRESS_ROOT and ARCADIA_INGRESS_SOURCE provide the same defaults as
+their corresponding options. File arguments are copied before the request is
+published, so Finder Quick Actions can safely pass temporary or removable files.
+EOF
+}
+
+while (($# > 0)); do
+  case "$1" in
+    --text)
+      [[ $# -ge 2 ]] || { echo "arcadia-ingest: --text requires a value" >&2; exit 2; }
+      TEXT="${2}"
+      shift 2
+      ;;
+    --clipboard)
+      USE_CLIPBOARD=1
+      shift
+      ;;
+    --source)
+      [[ $# -ge 2 ]] || { echo "arcadia-ingest: --source requires a value" >&2; exit 2; }
+      SOURCE="${2}"
+      shift 2
+      ;;
+    --ingress-root)
+      [[ $# -ge 2 ]] || { echo "arcadia-ingest: --ingress-root requires a value" >&2; exit 2; }
+      ROOT="${2}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      while (($# > 0)); do FILES+=("$1"); shift; done
+      ;;
+    -*)
+      echo "arcadia-ingest: unknown option: $1" >&2
+      exit 2
+      ;;
+    *)
+      FILES+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ "$SOURCE" == *"/"* || "$SOURCE" == *"\\"* || "$SOURCE" == "." || "$SOURCE" == ".." ]]; then
+  echo "arcadia-ingest: source must be a simple folder name" >&2
+  exit 2
+fi
+
+if [[ -z "$ROOT" ]]; then
+  ICLOUD_DRIVE="$HOME/Library/Mobile Documents/com~apple~CloudDocs"
+  if [[ -d "$ICLOUD_DRIVE" ]]; then
+    ROOT="$ICLOUD_DRIVE/ArcadiaIngress"
+  else
+    ROOT="$HOME/ArcadiaIngress"
+  fi
+fi
+
+if ((USE_CLIPBOARD)); then
+  command -v pbpaste >/dev/null 2>&1 || {
+    echo "arcadia-ingest: --clipboard requires macOS pbpaste" >&2
+    exit 2
+  }
+  CLIPBOARD_TEXT="$(pbpaste)"
+  if [[ -n "$CLIPBOARD_TEXT" ]]; then
+    [[ -z "$TEXT" ]] || TEXT+=$'\n\n'
+    TEXT+="$CLIPBOARD_TEXT"
+  fi
+fi
+
+if [[ -z "$TEXT" && ${#FILES[@]} -eq 0 ]]; then
+  echo "arcadia-ingest: provide --text, --clipboard, or at least one file" >&2
+  exit 2
+fi
+
+IN_DIR="$ROOT/$SOURCE/In"
+CAPTURE_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+ATTACHMENT_DIR="$ROOT/$SOURCE/Attachments/$CAPTURE_ID"
+mkdir -p "$IN_DIR"
+
+COPIED_FILES=()
+if ((${#FILES[@]} > 0)); then
+  mkdir -p "$ATTACHMENT_DIR"
+  for FILE in "${FILES[@]}"; do
+    [[ -e "$FILE" ]] || { echo "arcadia-ingest: file does not exist: $FILE" >&2; exit 2; }
+    BASENAME="$(basename "$FILE")"
+    DESTINATION="$ATTACHMENT_DIR/$BASENAME"
+    INDEX=1
+    while [[ -e "$DESTINATION" ]]; do
+      if [[ "$BASENAME" == *.* && "$BASENAME" != .* ]]; then
+        STEM="${BASENAME%.*}"
+        EXTENSION=".${BASENAME##*.}"
+      else
+        STEM="$BASENAME"
+        EXTENSION=""
+      fi
+      DESTINATION="$ATTACHMENT_DIR/$STEM-$INDEX$EXTENSION"
+      INDEX=$((INDEX + 1))
+    done
+    cp -R "$FILE" "$DESTINATION"
+    COPIED_FILES+=("$DESTINATION")
+  done
+fi
+
+REQUEST_PATH="$IN_DIR/$CAPTURE_ID.txt"
+TEMP_PATH="$IN_DIR/.capture-$CAPTURE_ID.tmp"
+{
+  if [[ -n "$TEXT" ]]; then
+    printf '%s\n' "$TEXT"
+  else
+    printf '%s\n' "Capture these shared files in Arcadia and identify the next Action."
+  fi
+  if ((${#COPIED_FILES[@]} > 0)); then
+    printf '\nShared Artifacts:\n'
+    for COPIED_FILE in "${COPIED_FILES[@]}"; do
+      printf -- '- %s\n' "$COPIED_FILE"
+    done
+  fi
+} > "$TEMP_PATH"
+mv "$TEMP_PATH" "$REQUEST_PATH"
+
+printf '%s\n' "$REQUEST_PATH"

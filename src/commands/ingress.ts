@@ -13,7 +13,7 @@ import { validationError, normalizeError } from "../cli/errors.js";
 import type { CommandFailure, CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { withDatabase } from "../db/connection.js";
-import { createMissionLog, getMilestone, getProject } from "../db/repositories.js";
+import { createArtifactRecord, createMissionLog, getMilestone, getProject } from "../db/repositories.js";
 import type { AskCommandData, AskOptions } from "./ask.js";
 import { runAskCommand } from "./ask.js";
 import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../markdown/missionLog.js";
@@ -53,6 +53,7 @@ export interface IngressProcessData {
     in: string;
     done: string;
     failed: string;
+    attachments: string;
   };
   executionMode: "planned" | "run-safe";
   dryRun: boolean;
@@ -70,12 +71,14 @@ interface IngressDirectories {
   in: string;
   done: string;
   failed: string;
+  attachments: string;
 }
 
 interface CandidateFile {
   absolutePath: string;
   fileName: string;
   mtimeMs: number;
+  sharedArtifactPaths: string[];
 }
 
 export function runIngressProcessCommand(options: IngressProcessOptions): CommandSuccess<IngressProcessData> {
@@ -117,7 +120,8 @@ export function runIngressProcessCommand(options: IngressProcessOptions): Comman
       directories: {
         in: directories.in,
         done: directories.done,
-        failed: directories.failed
+        failed: directories.failed,
+        attachments: directories.attachments
       },
       executionMode,
       dryRun,
@@ -205,9 +209,11 @@ function processCandidate(input: {
       adapterMetadata: {
         ingressSource: source,
         fileName: candidate.fileName,
-        sourcePath: originalPath
+        sourcePath: originalPath,
+        sharedArtifactPaths: candidate.sharedArtifactPaths
       }
     });
+    const sharedArtifactPaths = recordSharedArtifacts(workspacePath, candidate.sharedArtifactPaths, response);
     const runStatus = response.data.run?.status ?? null;
     const failedRun = runStatus === "failed";
     const finalPath = moveToUnique(
@@ -222,6 +228,7 @@ function processCandidate(input: {
       request,
       executionMode,
       response,
+      sharedArtifactPaths,
       status: failedRun ? "failed" : "processed",
       failureReason,
       sidecarPath
@@ -237,7 +244,7 @@ function processCandidate(input: {
       requestText: request,
       response,
       runId: response.data.run?.id ?? null,
-      artifacts: response.artifacts,
+      artifacts: [...response.artifacts, ...sharedArtifactPaths],
       missionLogPath,
       failureReason: failureReason ?? null
     });
@@ -252,11 +259,12 @@ function processCandidate(input: {
       workItemId: response.data.workItem?.id,
       planId: response.data.plan?.id,
       runId: response.data.run?.id,
-      artifacts: [...response.artifacts, path.join(workspacePath, missionLogPath)],
+      artifacts: [...response.artifacts, ...sharedArtifactPaths, path.join(workspacePath, missionLogPath)],
       failureReason
     };
   } catch (error) {
     const normalized = normalizeError(error);
+    const sharedArtifactPaths = recordSharedArtifacts(workspacePath, candidate.sharedArtifactPaths);
     const finalPath = existsSync(currentPath)
       ? moveToUnique(currentPath, path.join(directories.failed, candidate.fileName))
       : path.join(directories.failed, candidate.fileName);
@@ -276,6 +284,7 @@ function processCandidate(input: {
       sourcePath: originalPath,
       request,
       executionMode,
+      sharedArtifactPaths,
       status: "failed",
       failureReason: normalized.message,
       sidecarPath
@@ -290,7 +299,7 @@ function processCandidate(input: {
       executionMode,
       requestText: request,
       error: failure.error,
-      artifacts: [path.join(workspacePath, missionLogPath)],
+      artifacts: [...sharedArtifactPaths, path.join(workspacePath, missionLogPath)],
       missionLogPath
     });
 
@@ -300,7 +309,7 @@ function processCandidate(input: {
       requestPreview: preview(request),
       finalPath,
       sidecarPath,
-      artifacts: [path.join(workspacePath, missionLogPath)],
+      artifacts: [...sharedArtifactPaths, path.join(workspacePath, missionLogPath)],
       failureReason: normalized.message
     };
   }
@@ -314,6 +323,7 @@ function writeIngressMissionLog(
     executionMode: "planned" | "run-safe";
     status: "processed" | "failed";
     sidecarPath: string;
+    sharedArtifactPaths?: string[];
     failureReason?: string;
     response?: CommandSuccess<AskCommandData>;
   }
@@ -326,6 +336,7 @@ function writeIngressMissionLog(
   const markdownPath = buildMissionLogRelativePath(workspacePath, project?.name ?? "ingress", logId);
   const artifacts = [
     ...(input.response?.artifacts ?? []),
+    ...(input.sharedArtifactPaths ?? []),
     input.sidecarPath
   ];
   const missionLog = withDatabase(workspacePath, (db) =>
@@ -366,7 +377,7 @@ function dryRunResult(candidate: CandidateFile): IngressFileResult {
     file: candidate.absolutePath,
     status: "would_process",
     requestPreview: preview(request),
-    artifacts: []
+    artifacts: candidate.sharedArtifactPaths
   };
 }
 
@@ -382,7 +393,8 @@ function listCandidates(inboxPath: string): CandidateFile[] {
       return {
         absolutePath,
         fileName: entry.name,
-        mtimeMs: statSync(absolutePath).mtimeMs
+        mtimeMs: statSync(absolutePath).mtimeMs,
+        sharedArtifactPaths: listSharedArtifactPaths(inboxPath, entry.name)
       };
     })
     .sort((left, right) => left.mtimeMs - right.mtimeMs || left.fileName.localeCompare(right.fileName));
@@ -393,7 +405,8 @@ function ingressDirectories(root: string, source: string): IngressDirectories {
   return {
     in: path.join(sourceRoot, "In"),
     done: path.join(sourceRoot, "Done"),
-    failed: path.join(sourceRoot, "Failed")
+    failed: path.join(sourceRoot, "Failed"),
+    attachments: path.join(sourceRoot, "Attachments")
   };
 }
 
@@ -401,6 +414,44 @@ function ensureIngressDirectories(directories: IngressDirectories): void {
   mkdirSync(directories.in, { recursive: true });
   mkdirSync(directories.done, { recursive: true });
   mkdirSync(directories.failed, { recursive: true });
+  mkdirSync(directories.attachments, { recursive: true });
+}
+
+function listSharedArtifactPaths(inboxPath: string, requestFileName: string): string[] {
+  const sourceRoot = path.dirname(inboxPath);
+  const attachmentDirectory = path.join(sourceRoot, "Attachments", path.parse(requestFileName).name);
+  if (!existsSync(attachmentDirectory) || !statSync(attachmentDirectory).isDirectory()) {
+    return [];
+  }
+  return readdirSync(attachmentDirectory, { withFileTypes: true })
+    .filter((entry) => entry.isFile() || entry.isDirectory())
+    .map((entry) => path.join(attachmentDirectory, entry.name))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function recordSharedArtifacts(
+  workspacePath: string,
+  sharedArtifactPaths: string[],
+  response?: CommandSuccess<AskCommandData>
+): string[] {
+  if (sharedArtifactPaths.length === 0) {
+    return [];
+  }
+  const projectId = response?.data.workItem?.project_id ?? response?.data.project?.id ?? null;
+  const workItemId = response?.data.workItem?.id ?? null;
+  withDatabase(workspacePath, (db) => {
+    for (const artifactPath of sharedArtifactPaths) {
+      createArtifactRecord(db, {
+        projectId,
+        workItemId,
+        title: path.basename(artifactPath),
+        artifactType: statSync(artifactPath).isDirectory() ? "shared_folder" : "shared_file",
+        status: "ready",
+        path: artifactPath
+      });
+    }
+  });
+  return sharedArtifactPaths;
 }
 
 function validateSourceName(source: string): void {

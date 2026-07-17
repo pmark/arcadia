@@ -117,18 +117,19 @@ pnpm arcadia ask \
 
 ## Process Local Ingress Files
 
-Apple Shortcuts can create Arcadia requests by writing plain text files to:
+Apple Shortcuts can create Arcadia requests by writing plain text files to the default local root:
 
 ```text
 ~/ArcadiaIngress/iCloudIdeas/In/YYYYMMDD-HHMMSS.txt
 ```
 
-The file contents are treated as the natural-language request. Process pending files once:
+The file contents are treated as the natural-language request. To share the folder with iPhone and iPad, use the iCloud Drive root when processing pending files:
 
 ```sh
 pnpm arcadia ingress process \
   --workspace "$WORKSPACE" \
-  --source iCloudIdeas
+  --source iCloudIdeas \
+  --ingress-root "$HOME/Library/Mobile Documents/com~apple~CloudDocs/ArcadiaIngress"
 ```
 
 Run deterministic safe steps for matching requests:
@@ -149,9 +150,9 @@ pnpm arcadia ingress process \
   --dry-run
 ```
 
-Arcadia processes `.txt` files oldest first. Successful and empty files move to `~/ArcadiaIngress/iCloudIdeas/Done/`; failed files move to `~/ArcadiaIngress/iCloudIdeas/Failed/`. Each moved file gets a readable JSON sidecar, and every non-empty processed request gets an ingress mission log.
+Arcadia processes `.txt` files oldest first. Successful and empty files move to `<ingress-root>/iCloudIdeas/Done/`; failed files move to `<ingress-root>/iCloudIdeas/Failed/`. Each moved file gets a readable JSON sidecar, and every non-empty processed request gets an ingress Log. Files placed in `Attachments/<request-basename>/` are recorded as ready Artifacts.
 
-Watch mode is intentionally not implemented. For periodic processing, configure macOS `launchd` to run `arcadia ingress process` on an interval.
+Watch mode is intentionally not implemented. For periodic processing, configure macOS `launchd` to run `arcadia ingress process` on an interval. See `docs/APPLE_INGEST.md` for the macOS Quick Action and iPhone/iPad Shortcut flow.
 
 Attach captured work to project context when known:
 

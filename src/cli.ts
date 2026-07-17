@@ -1005,11 +1005,13 @@ export function buildProgram(): Command {
       .description("Process local ingress request files")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--source <name>", "Ingress source folder", "iCloudIdeas")
+      .option("--ingress-root <path>", "ArcadiaIngress root folder")
       .option("--run-safe", "Immediately run deterministic safe steps")
       .option("--dry-run", "Report files that would be processed without changing files")
   ).action((options: {
     workspace: string;
     source?: string;
+    ingressRoot?: string;
     runSafe?: boolean;
     dryRun?: boolean;
     json?: boolean;

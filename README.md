@@ -241,6 +241,8 @@ pnpm arcadia ingress process --workspace ./tmp/demo-workspace --source iCloudIde
 pnpm arcadia ingress process --workspace ./tmp/demo-workspace --source iCloudIdeas --dry-run
 ```
 
+See [Apple Platform Ingest](docs/APPLE_INGEST.md) for a macOS clipboard/file helper, Finder Quick Action setup, an iPhone/iPad Share Sheet Shortcut, and the iCloud Drive folder configuration.
+
 View queues:
 
 ```sh
@@ -310,7 +312,7 @@ pnpm smoke
 - `arcadia init <workspace> [--profile arcadia]` creates workspace folders, `config/arcadia.json`, `database/arcadia.sqlite3`, and applies the initial schema. The optional `arcadia` profile seeds Arcadia as a normal project in that workspace.
 - `arcadia status [--workspace <path>]` prints a concise summary and writes `reports/status.md`.
 - `arcadia ask [--workspace <path>] <request> [--project <project-id>] [--milestone <milestone-id>] [--run-safe]` resolves natural-language intent into an auditable Action and workflow plan.
-- `arcadia ingress process --workspace <path> [--source iCloudIdeas] [--run-safe] [--dry-run]` processes local text request files from `~/ArcadiaIngress/<source>/In/`.
+- `arcadia ingress process --workspace <path> [--source iCloudIdeas] [--ingress-root <path>] [--run-safe] [--dry-run]` processes local text request files from `<ingress-root>/<source>/In/` (default: `~/ArcadiaIngress`).
 - `arcadia capture --workspace <path> --text <intent> [--project <project-id>] [--milestone <milestone-id>] [--expected-artifact <artifact>]` captures natural-language intent as a structured Action.
 - `arcadia project create --workspace <path>` interactively creates one project, milestone, initial Action, and optional artifact record.
 - `arcadia project list --workspace <path>` lists projects with status, milestone, next action, and responsibility.
@@ -369,6 +371,8 @@ pnpm arcadia ingress process --workspace "$WORKSPACE" --source iCloudIdeas --dry
 Processed files move to `~/ArcadiaIngress/iCloudIdeas/Done/` with a `.response.json` sidecar. Failed files move to `~/ArcadiaIngress/iCloudIdeas/Failed/` with a `.error.json` sidecar. Arcadia records an ingress mission log for every non-empty processed request.
 
 Watch mode is intentionally not implemented. For periodic processing, configure macOS `launchd` to run the `ingress process` command on an interval.
+
+For Share Sheet capture from macOS, iPhone, and iPad—including copied files and clipboard contents—see [Apple Platform Ingest](docs/APPLE_INGEST.md).
 
 ## Workspace Data
 

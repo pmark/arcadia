@@ -9,6 +9,7 @@ Daily workspace commands use `ARCADIA_WORKSPACE` when it is set and otherwise de
 ```text
 arcadia init <workspace> [--profile arcadia] [--json]
 arcadia ask "<intent>" [--workspace <path>] [--run-safe] [--json]
+arcadia ingress process [--workspace <path>] [--source <name>] [--ingress-root <path>] [--run-safe] [--dry-run] [--json]
 arcadia status [--workspace <path>] [--json]
 arcadia review [--workspace <path>] [--json]
 arcadia review show <id> [--workspace <path>] [--json]
@@ -151,6 +152,8 @@ When `result.status` is `captured`, adapters should treat the input as preserved
 `init --profile arcadia` and `dogfood init` are idempotent and may be retried.
 
 `ask` creates a new auditable ask request and is not idempotent unless the caller deduplicates requests upstream.
+
+`ingress process` claims each `.txt` request before processing it and is safe to rerun for the files that remain in `In/`. Share adapters may place files in `Attachments/<request-basename>/`; Arcadia records each top-level item as a ready Artifact and includes its path in the response sidecar.
 
 `review approve`, `review reject`, and `review defer` are single-decision mutations. Retrying a completed approval or rejection returns a validation error. A deferred item remains actionable and can later be approved or rejected.
 
