@@ -418,6 +418,10 @@ export function createWorkItemWithOptionalArtifact(
   return transaction();
 }
 
+export function createWorkItemRecord(db: Database.Database, input: CreateWorkItemInput): WorkItem {
+  return insertWorkItem(db, input, nowIso());
+}
+
 export function createMissionLog(db: Database.Database, input: CreateMissionLogInput): MissionLog {
   const timestamp = nowIso();
   const missionLog: MissionLog = {

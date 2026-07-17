@@ -75,6 +75,10 @@ import {
 import { renderInboxImportSuccess, runInboxAddCommand, runInboxImportCommand } from "./commands/inbox.js";
 import { renderInitSuccess, runInitCommand } from "./commands/init.js";
 import { renderIngressProcessSuccess, runIngressProcessCommand } from "./commands/ingress.js";
+import {
+  renderExperimentBriefSuccess,
+  runExperimentBriefCommand
+} from "./commands/experiment.js";
 import { runLogCreateCommand } from "./commands/log.js";
 import {
   renderMilestoneCompleteSuccess,
@@ -553,6 +557,42 @@ export function buildProgram(): Command {
       options,
       () => runFeedbackListCommand({ ...options, limit: options.limit ? Number(options.limit) : undefined }),
       renderFeedbackListSuccess
+    )
+  );
+
+  const experiment = program.command("experiment").description("Experiment commands");
+  addJsonOption(
+    experiment
+      .command("brief")
+      .description("Create a deterministic experiment brief Artifact and Decision")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .requiredOption("--project <project>", "Project id, slug, exact name, or alias")
+      .requiredOption("--opportunity <text>", "Opportunity being considered")
+      .requiredOption("--hypothesis <text>", "Hypothesis being tested")
+      .requiredOption("--metric <text>", "Primary metric")
+      .option("--baseline <text>", "Known baseline; defaults to Baseline unknown")
+      .requiredOption("--evidence-needed <text>", "Evidence that must be collected")
+      .requiredOption("--decision-criteria <text>", "Decision criteria")
+      .requiredOption("--recommended-next-action <text>", "Recommended next Action")
+      .option("--source-back-burner-item-id <id>", "Optional source Back Burner item id")
+  ).action((options: {
+    workspace: string;
+    project: string;
+    opportunity: string;
+    hypothesis: string;
+    metric: string;
+    baseline?: string;
+    evidenceNeeded: string;
+    decisionCriteria: string;
+    recommendedNextAction: string;
+    sourceBackBurnerItemId?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "experiment.brief",
+      options,
+      () => runExperimentBriefCommand(options),
+      renderExperimentBriefSuccess
     )
   );
 

@@ -48,7 +48,7 @@ describe("admin Intelligence test bench — real job pipeline", () => {
     const repository = createSqliteIntelligenceJobRepository(db);
 
     const { server, baseUrl } = await startFakeLiteLlm({
-      content: { title: "Hello", summary: "A short summary." },
+      content: { result: { title: "Hello", summary: "A short summary." } },
     });
     servers.push(server);
 

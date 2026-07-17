@@ -164,7 +164,7 @@ describe("Rebuster scenario: idea candidate generation", () => {
 
   it("end-to-end: completes locally without contacting a cloud route", async () => {
     const repository = setupRepository();
-    const { server, baseUrl } = await startFakeLiteLlm({ content: { candidates: ["a", "b"] } });
+    const { server, baseUrl } = await startFakeLiteLlm({ content: { result: { candidates: ["a", "b"] } } });
     servers.push(server);
 
     await submitIntelligenceRequest(
@@ -208,7 +208,7 @@ describe("Rebuster scenario: strict spec generation", () => {
 
   it("resolves to cloud quality when paid usage is allowed", async () => {
     const repository = setupRepository();
-    const { server, baseUrl } = await startFakeLiteLlm({ content: { spec: "ICE + CREAM" } });
+    const { server, baseUrl } = await startFakeLiteLlm({ content: { result: { spec: "ICE + CREAM" } } });
     servers.push(server);
 
     await submitIntelligenceRequest(
@@ -241,7 +241,7 @@ describe("Rebuster scenario: strict spec generation", () => {
 
   it("fails with PAID_USAGE_NOT_ALLOWED, never falling back to local, when paid usage is disallowed", async () => {
     const repository = setupRepository();
-    const { server, baseUrl } = await startFakeLiteLlm({ content: { spec: "ICE + CREAM" } });
+    const { server, baseUrl } = await startFakeLiteLlm({ content: { result: { spec: "ICE + CREAM" } } });
     servers.push(server);
 
     await submitIntelligenceRequest(
