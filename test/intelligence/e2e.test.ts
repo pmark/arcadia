@@ -73,7 +73,7 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
   it("moves a job queued -> running -> completed with valid fake LiteLLM output", async () => {
     const repository = setupRepository();
     const { server, baseUrl } = await startFakeLiteLlm({
-      content: { greeting: "Hello, Ada!" },
+      content: { result: { greeting: "Hello, Ada!" } },
       delayMs: 80,
     });
     servers.push(server);
@@ -108,7 +108,7 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
   it("fails the job when LiteLLM output does not match the app-supplied JSON Schema", async () => {
     const repository = setupRepository();
     const { server, baseUrl } = await startFakeLiteLlm({
-      content: { greeting: 12345 },
+      content: { result: { greeting: 12345 } },
     });
     servers.push(server);
 
@@ -144,7 +144,7 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
 
   it("allows exactly one retry and rejects further retries", async () => {
     const repository = setupRepository();
-    const { server, baseUrl } = await startFakeLiteLlm({ content: { greeting: 999 } });
+    const { server, baseUrl } = await startFakeLiteLlm({ content: { result: { greeting: 999 } } });
     servers.push(server);
 
     const { job } = await submitIntelligenceRequest(repository, buildIntelligenceRequest());
@@ -172,7 +172,7 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
   it("processes a synthetic second companion app with an unrelated capability and schema unchanged", async () => {
     const repository = setupRepository();
     const { server, baseUrl } = await startFakeLiteLlm({
-      content: { score: 8.5, tags: ["witty", "concise"] },
+      content: { result: { score: 8.5, tags: ["witty", "concise"] } },
     });
     servers.push(server);
 
@@ -211,7 +211,7 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
 
   it("never escalates a local-preferred request to cloud, even when paid usage is allowed and a cloud route is configured", async () => {
     const repository = setupRepository();
-    const { server, baseUrl } = await startFakeLiteLlm({ content: { greeting: "hi" } });
+    const { server, baseUrl } = await startFakeLiteLlm({ content: { result: { greeting: "hi" } } });
     servers.push(server);
 
     await submitIntelligenceRequest(
@@ -238,7 +238,7 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
 
   it("blocks a cloud-required request with a typed error when paid usage is not allowed", async () => {
     const repository = setupRepository();
-    const { server, baseUrl } = await startFakeLiteLlm({ content: { greeting: "hi" } });
+    const { server, baseUrl } = await startFakeLiteLlm({ content: { result: { greeting: "hi" } } });
     servers.push(server);
 
     await submitIntelligenceRequest(
@@ -264,7 +264,7 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
 
   it("ignores a raw LiteLLM route/model field smuggled into the request and still resolves via the registry", async () => {
     const repository = setupRepository();
-    const { server, baseUrl } = await startFakeLiteLlm({ content: { greeting: "hi" } });
+    const { server, baseUrl } = await startFakeLiteLlm({ content: { result: { greeting: "hi" } } });
     servers.push(server);
 
     const request = {
@@ -287,7 +287,7 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
   it("lets the client submit, poll, and retrieve a job over real HTTP until it reaches a terminal status", async () => {
     const repository = setupRepository();
     const { server: liteLlmServer, baseUrl: liteLlmBaseUrl } = await startFakeLiteLlm({
-      content: { greeting: "Hello from HTTP!" },
+      content: { result: { greeting: "Hello from HTTP!" } },
       delayMs: 30,
     });
     servers.push(liteLlmServer);
@@ -322,7 +322,7 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
   it("reports health with LiteLLM reachability", async () => {
     const repository = setupRepository();
     const { server: liteLlmServer, baseUrl: liteLlmBaseUrl } = await startFakeLiteLlm({
-      content: { greeting: "hi" },
+      content: { result: { greeting: "hi" } },
     });
     servers.push(liteLlmServer);
 

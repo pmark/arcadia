@@ -115,8 +115,17 @@ export function createLiteLlmHttpClient(options: LiteLlmHttpClientOptions): Lite
           {
             role: "system",
             content:
-              "Respond with a single JSON object only, matching the provided JSON Schema. " +
-              "Do not include explanations, markdown, or code fences.",
+              'Respond with a single JSON object of the exact shape {"result": <value>}, ' +
+              "where <value> conforms EXACTLY to the provided JSON Schema, including its own " +
+              "type and properties — the schema's shape does not change just because it is " +
+              'nested under "result". If the schema requires an object with specific ' +
+              'properties (e.g. {"type":"object","properties":{"content":{"type":"string"}},' +
+              '"required":["content"]}), <value> must be that object with those exact ' +
+              'properties (e.g. {"result":{"content":"..."}}) — never the bare string, array, ' +
+              "or other raw value alone, even if that raw value is most of what you were asked " +
+              "to produce. If the schema requires an array or a string at its root, <value> is " +
+              "that array or string directly. " +
+              'Do not add any other top-level keys, explanations, markdown, or code fences.',
           },
           {
             role: "user",
@@ -133,12 +142,24 @@ export function createLiteLlmHttpClient(options: LiteLlmHttpClientOptions): Lite
         throw new Error("LiteLLM response did not include message content.");
       }
 
-      let output: JsonValue;
+      let envelope: JsonValue;
       try {
-        output = JSON.parse(content) as JsonValue;
+        envelope = JSON.parse(content) as JsonValue;
       } catch {
         throw new Error("LiteLLM response content was not valid JSON.");
       }
+
+      if (
+        envelope === null ||
+        typeof envelope !== "object" ||
+        Array.isArray(envelope) ||
+        !("result" in envelope)
+      ) {
+        throw new Error(
+          'LiteLLM response JSON did not contain the required top-level "result" field.',
+        );
+      }
+      const output = (envelope as { result: JsonValue }).result;
 
       const usage: IntelligenceUsage | undefined = body.usage
         ? {
