@@ -105,6 +105,14 @@ pnpm arcadia intelligence smoke-image \
 The smoke command returns the terminal job, artifact URIs, and the isolated
 job workspace path under `.arcadia/intelligence/jobs/`.
 
+Show read-only current-day Intelligence usage and coding-agent availability:
+
+```sh
+pnpm arcadia intelligence usage --workspace "$WORKSPACE" --json
+```
+
+Arcadia aggregates only token and cost data recorded by completed jobs. It shows provider quota and reset time as unknown until a local provider reports them authoritatively.
+
 Run deterministic safe steps immediately:
 
 ```sh

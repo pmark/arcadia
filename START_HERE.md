@@ -14,6 +14,8 @@ Use the **Ask** box for a new request that is not already an Action in Arcadia.
 
 Codex remains the default coding agent. Managed planning and build packets can also use Claude Code through the `claude_planning` and `claude_build` profiles. The Dashboard uses the defaults in `config/coding-agent-profiles.json`; advanced CLI use can select a profile per packet with `arcadia ask --agent-profile <name>` or `arcadia work plan --agent-profile <name>`. A Decision stays bound to the profile named in its exact packet.
 
+The **Intelligence** screen shows recorded current-day usage and any locally observed coding-agent limit state. It deliberately labels provider quota and reset time as unknown unless a provider supplies those values.
+
 Other CLI commands are advanced or compatibility surfaces, not part of normal daily operation unless a current task says otherwise.
 
 ## Automatic local services

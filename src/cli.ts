@@ -152,8 +152,10 @@ import { renderStatusSuccess, runStatusCommand } from "./commands/status.js";
 import {
   renderIntelligenceImageSmokeSuccess,
   renderIntelligenceListJobsSuccess,
+  renderIntelligenceUsageSuccess,
   runIntelligenceImageSmokeCommand,
   runIntelligenceListJobsCommand,
+  runIntelligenceUsageCommand,
   runIntelligenceServeCommand
 } from "./commands/intelligence.js";
 import {
@@ -1669,6 +1671,20 @@ export function buildProgram(): Command {
         limit: options.limit ? Number(options.limit) : undefined
       }),
       renderIntelligenceListJobsSuccess
+    )
+  );
+
+  addJsonOption(
+    intelligence
+      .command("usage")
+      .description("Show read-only current-day Intelligence usage and coding-agent availability")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "intelligence.usage",
+      options,
+      () => runIntelligenceUsageCommand(options),
+      renderIntelligenceUsageSuccess
     )
   );
 

@@ -35,6 +35,9 @@ the app's domain.
 - Paid usage gated separately from routing preference via
   `executionPolicy.allowPaidUsage` — never an automatic fallback
 - One retry maximum
+- Read-only current-day job-usage and coding-agent-availability reporting for
+  the Dashboard; remaining quota and reset time remain unknown unless a
+  provider reports them authoritatively
 
 ## Explicitly excluded
 
@@ -48,7 +51,8 @@ the app's domain.
   fallback
 - "either"/"cloud-preferred"/"frontier" execution preferences (may be added
   later without breaking the registry shape)
-- Budgets and quotas
+- Budget or quota enforcement, provider usage polling, and any inference of
+  remaining provider quota from locally recorded usage
 - Caching
 - Prompt registry
 - Image *editing*, variation, or multi-turn generation (single text-to-image
@@ -56,7 +60,6 @@ the app's domain.
 - Vision, audio, and video capabilities are typed but unconfigured by
   default — they resolve as a typed "route_not_configured" failure rather
   than executing
-- Dashboard UI
 - Webhooks, streaming, and subscriptions
 - Separate packages or deployable services (the public client/contracts
   subpaths still ship from this one package)

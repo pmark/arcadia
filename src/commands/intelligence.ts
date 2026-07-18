@@ -1,7 +1,10 @@
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
+import { codingAgentLabel } from "../codingAgents/adapters.js";
+import { observeCodexTasks } from "../codex/observer.js";
 import { openDatabase } from "../db/connection.js";
+import { loadPhase3Registries, validatePhase3Registries, type CodingAgentProfile } from "../intent/registries.js";
 import { createIntelligenceServer } from "../intelligence/api/server.js";
 import { createSqliteIntelligenceArtifactStore } from "../intelligence/artifacts/store.js";
 import { createCodexCliImageExecutor } from "../intelligence/codex/imageExecutor.js";
@@ -11,7 +14,12 @@ import { createSqliteIntelligenceJobRepository } from "../intelligence/db/sqlite
 import { IntelligenceWorker } from "../intelligence/jobs/worker.js";
 import { createLiteLlmHttpClient } from "../intelligence/litellm/httpClient.js";
 import { submitIntelligenceRequest } from "../intelligence/service/jobService.js";
-import type { IntelligenceImageGenerationResult, IntelligenceJob, IntelligenceRequest } from "../intelligence/types.js";
+import type {
+  IntelligenceImageGenerationResult,
+  IntelligenceJob,
+  IntelligenceRequest,
+  IntelligenceUsage
+} from "../intelligence/types.js";
 
 const DEFAULT_PORT = 4710;
 const DEFAULT_CODEX_IMAGE_ROUTE = "codex-cli";
@@ -195,6 +203,54 @@ export interface IntelligenceListJobsData {
   jobs: IntelligenceJob[];
 }
 
+export type CodingAgentAvailability = "unknown" | "usage_limited" | "budget_limited";
+
+export interface IntelligenceUsageSummary {
+  generatedAt: string;
+  periodStart: string;
+  periodLabel: "today";
+  jobs: {
+    total: number;
+    completed: number;
+    queued: number;
+    running: number;
+    failed: number;
+    blocked: number;
+    withReportedUsage: number;
+    withoutReportedUsage: number;
+  };
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    estimatedCostUsd: number;
+    measuredCostUsd: number;
+    durationMs: number;
+  };
+  providers: Array<{
+    provider: string;
+    jobs: number;
+    inputTokens: number;
+    outputTokens: number;
+    estimatedCostUsd: number;
+    measuredCostUsd: number;
+  }>;
+  codingAgents: Array<{
+    provider: string;
+    profiles: string[];
+    availability: CodingAgentAvailability;
+    observedTasks: number;
+    usageLimitedTasks: number;
+    budgetLimitedTasks: number;
+    remainingTokens: null;
+    resetAt: null;
+    telemetry: string;
+  }>;
+}
+
+export interface IntelligenceUsageCommandData {
+  summary: IntelligenceUsageSummary;
+}
+
 /**
  * Read-only history lookup for jobs submitted by a given clientApp, newest
  * first. Used by the Arcadia dashboard's admin Intelligence test bench to
@@ -220,6 +276,45 @@ export async function runIntelligenceListJobsCommand(
   }
 }
 
+/**
+ * Returns a read-only usage summary for the current local day. It reports
+ * only durable usage supplied by completed Intelligence jobs and explicit
+ * local Codex goal states; provider account quota is intentionally `null`
+ * until a provider exposes it authoritatively.
+ */
+export async function runIntelligenceUsageCommand(
+  options: { workspace: string; now?: Date },
+): Promise<CommandSuccess<IntelligenceUsageCommandData>> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const db = openDatabase(workspacePath);
+  const now = options.now ?? new Date();
+  const periodStart = startOfLocalDay(now);
+
+  try {
+    const repository = createSqliteIntelligenceJobRepository(db);
+    const jobs = await repository.listCreatedSince(periodStart);
+    const registries = loadPhase3Registries(workspacePath);
+    validatePhase3Registries(registries);
+    const localCodexTasks = observeCodexTasks({ includeCloud: false });
+
+    return createSuccess({
+      command: "intelligence.usage",
+      workspace: workspacePath,
+      data: {
+        summary: buildIntelligenceUsageSummary({
+          jobs,
+          profiles: registries.codingAgents.profiles,
+          localCodexTasks,
+          now,
+          periodStart,
+        }),
+      },
+    });
+  } finally {
+    db.close();
+  }
+}
+
 export function renderIntelligenceListJobsSuccess(
   response: CommandSuccess<IntelligenceListJobsData>,
 ): string[] {
@@ -234,6 +329,146 @@ export function renderIntelligenceListJobsSuccess(
     );
   }
   return lines;
+}
+
+export function renderIntelligenceUsageSuccess(
+  response: CommandSuccess<IntelligenceUsageCommandData>,
+): string[] {
+  const { summary } = response.data;
+  const lines = [
+    "Arcadia Intelligence usage",
+    `Period: ${summary.periodLabel} (since ${summary.periodStart})`,
+    `Jobs: ${summary.jobs.total} total, ${summary.jobs.withReportedUsage} with reported usage`,
+    `Tokens: ${summary.usage.inputTokens} input, ${summary.usage.outputTokens} output`,
+    `Cost: $${summary.usage.measuredCostUsd.toFixed(4)} measured, $${summary.usage.estimatedCostUsd.toFixed(4)} estimated`,
+  ];
+  for (const agent of summary.codingAgents) {
+    lines.push(`- ${agent.provider}: ${agent.availability} (${agent.telemetry})`);
+  }
+  return lines;
+}
+
+function buildIntelligenceUsageSummary(input: {
+  jobs: IntelligenceJob[];
+  profiles: CodingAgentProfile[];
+  localCodexTasks: Array<{ status: string }>;
+  now: Date;
+  periodStart: string;
+}): IntelligenceUsageSummary {
+  const usage = emptyUsage();
+  const jobCounts = {
+    total: input.jobs.length,
+    completed: 0,
+    queued: 0,
+    running: 0,
+    failed: 0,
+    blocked: 0,
+    withReportedUsage: 0,
+    withoutReportedUsage: 0,
+  };
+  const providerTotals = new Map<string, ReturnType<typeof emptyUsage> & { jobs: number }>();
+
+  for (const job of input.jobs) {
+    jobCounts[job.status] += 1;
+    const reported = hasReportedUsage(job.usage);
+    if (reported) {
+      jobCounts.withReportedUsage += 1;
+    } else {
+      jobCounts.withoutReportedUsage += 1;
+    }
+    addUsage(usage, job.usage);
+
+    const provider = job.usage?.provider ?? job.usage?.modelRoute ?? job.selectedRoute ?? "unreported";
+    const current = providerTotals.get(provider) ?? { ...emptyUsage(), jobs: 0 };
+    current.jobs += 1;
+    addUsage(current, job.usage);
+    providerTotals.set(provider, current);
+  }
+
+  return {
+    generatedAt: input.now.toISOString(),
+    periodStart: input.periodStart,
+    periodLabel: "today",
+    jobs: jobCounts,
+    usage,
+    providers: [...providerTotals.entries()].map(([provider, total]) => ({ provider, ...total })),
+    codingAgents: summarizeCodingAgentAvailability(input.profiles, input.localCodexTasks),
+  };
+}
+
+function summarizeCodingAgentAvailability(
+  profiles: CodingAgentProfile[],
+  localCodexTasks: Array<{ status: string }>,
+): IntelligenceUsageSummary["codingAgents"] {
+  const groups = new Map<string, CodingAgentProfile[]>();
+  for (const profile of profiles) {
+    const group = groups.get(profile.provider) ?? [];
+    group.push(profile);
+    groups.set(profile.provider, group);
+  }
+
+  return [...groups.values()].map((profilesForProvider) => {
+    const representative = profilesForProvider[0]!;
+    const isCodex = representative.provider === "codex-cli";
+    const normalizedStatuses = isCodex
+      ? localCodexTasks.map((task) => task.status.toLowerCase())
+      : [];
+    const usageLimitedTasks = normalizedStatuses.filter((status) => status === "usage_limited").length;
+    const budgetLimitedTasks = normalizedStatuses.filter((status) => status === "budget_limited").length;
+    const availability: CodingAgentAvailability = budgetLimitedTasks > 0
+      ? "budget_limited"
+      : usageLimitedTasks > 0
+        ? "usage_limited"
+        : "unknown";
+
+    return {
+      provider: codingAgentLabel(representative),
+      profiles: profilesForProvider.map((profile) => profile.name),
+      availability,
+      observedTasks: normalizedStatuses.length,
+      usageLimitedTasks,
+      budgetLimitedTasks,
+      remainingTokens: null,
+      resetAt: null,
+      telemetry: isCodex
+        ? normalizedStatuses.length > 0
+          ? "Local Codex task state; remaining token budget is not reported."
+          : "No local Codex task status is available; remaining token budget is not reported."
+        : "No local provider quota telemetry is configured.",
+    };
+  });
+}
+
+function emptyUsage(): Required<Pick<IntelligenceUsage, "inputTokens" | "outputTokens" | "estimatedCostUsd" | "measuredCostUsd" | "durationMs">> {
+  return { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0, measuredCostUsd: 0, durationMs: 0 };
+}
+
+function addUsage(
+  target: ReturnType<typeof emptyUsage>,
+  usage: IntelligenceUsage | undefined,
+): void {
+  target.inputTokens += usage?.inputTokens ?? 0;
+  target.outputTokens += usage?.outputTokens ?? 0;
+  target.estimatedCostUsd += usage?.estimatedCostUsd ?? 0;
+  target.measuredCostUsd += usage?.measuredCostUsd ?? 0;
+  target.durationMs += usage?.durationMs ?? 0;
+}
+
+function hasReportedUsage(usage: IntelligenceUsage | undefined): boolean {
+  return Boolean(
+    usage && (
+      usage.inputTokens !== undefined ||
+      usage.outputTokens !== undefined ||
+      usage.estimatedCostUsd !== undefined ||
+      usage.measuredCostUsd !== undefined
+    ),
+  );
+}
+
+function startOfLocalDay(now: Date): string {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  return start.toISOString();
 }
 
 function buildSmokeRequest(input: {

@@ -63,4 +63,11 @@ export interface IntelligenceJobRepository {
     clientApp: string,
     limit: number,
   ): Promise<IntelligenceJob[]>;
+
+  /**
+   * Read-only operational usage lookup. Returns every job created on or
+   * after the supplied timestamp, oldest first, so callers can aggregate
+   * one explicit reporting period without guessing provider quotas.
+   */
+  listCreatedSince(sinceIso: string): Promise<IntelligenceJob[]>;
 }

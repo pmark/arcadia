@@ -8,9 +8,11 @@ import { JobPanel } from "../../../components/intelligence/job-panel";
 import { OfferingsPanel } from "../../../components/intelligence/offerings-panel";
 import { RecentHistory } from "../../../components/intelligence/recent-history";
 import { RequestForm } from "../../../components/intelligence/request-form";
+import { UsageSummary } from "../../../components/intelligence/usage-summary";
 import { useIntelligenceCapabilities } from "../../../hooks/use-intelligence-capabilities";
 import { useIntelligenceJob } from "../../../hooks/use-intelligence-job";
 import { useIntelligenceRecent } from "../../../hooks/use-intelligence-recent";
+import { useIntelligenceUsage } from "../../../hooks/use-intelligence-usage";
 import type { AdminSubmission } from "../../../lib/intelligence-types";
 
 export default function AdminIntelligencePage() {
@@ -30,6 +32,7 @@ function AdminIntelligencePageInner() {
     useIntelligenceCapabilities();
   const { job, submit, submitting, error: jobError, pollingStopped, refresh: refreshJob } = useIntelligenceJob(jobIdParam);
   const { jobs: recentJobs, loading: recentLoading, error: recentError, refresh: refreshRecent } = useIntelligenceRecent();
+  const { summary: usage, loading: usageLoading, error: usageError, refresh: refreshUsage } = useIntelligenceUsage();
 
   const selectJob = useCallback(
     (jobId: string) => {
@@ -47,8 +50,9 @@ function AdminIntelligencePageInner() {
   useEffect(() => {
     if (job && (job.status === "completed" || job.status === "failed" || job.status === "blocked")) {
       void refreshRecent();
+      void refreshUsage();
     }
-  }, [job?.status, job?.id, refreshRecent]);
+  }, [job?.status, job?.id, refreshRecent, refreshUsage]);
 
   async function handleSubmit(submission: AdminSubmission) {
     await submit(submission);
@@ -66,7 +70,7 @@ function AdminIntelligencePageInner() {
 
   async function handleRefresh() {
     setRefreshing(true);
-    await Promise.all([refreshCapabilities(), refreshRecent()]);
+    await Promise.all([refreshCapabilities(), refreshRecent(), refreshUsage()]);
     setRefreshing(false);
   }
 
@@ -80,6 +84,8 @@ function AdminIntelligencePageInner() {
     >
       <div className="grid gap-5">
         {capabilitiesError ? <ErrorState title="Arcadia Intelligence unavailable" message={capabilitiesError} /> : null}
+
+        <UsageSummary summary={usage} loading={usageLoading} error={usageError} />
 
         {capabilitiesLoading && !capabilities ? (
           <LoadingState />

@@ -181,8 +181,11 @@ contracts at `@pmark/arcadia/intelligence/contracts`. These are the only two
 supported import paths for companion apps such as Rebuster; see
 `docs/intelligence/PNPM_LINK.md` for the local `pnpm link` workflow.
 
-This v0.1 slice intentionally excludes budgets, quotas, caching, publishing,
-automatic external fallbacks, and any dashboard UI. See
+The Dashboard Intelligence screen includes a read-only current-day usage and
+coding-agent-availability summary. It aggregates durable job usage only; it
+does not infer provider quotas or remaining tokens. Budget enforcement,
+quotas, caching, publishing, and automatic external fallbacks remain excluded.
+See
 `docs/intelligence/CODEX_IMAGE_EXECUTOR.md` for the local Codex image design.
 
 ## Planning Artifacts

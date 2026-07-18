@@ -34,6 +34,10 @@ export interface IntelligenceListJobsResponse {
   jobs: unknown[];
 }
 
+export interface IntelligenceUsageResponse {
+  summary: unknown;
+}
+
 export async function listIntelligenceTestJobs(
   clientApp: string,
   limit = 20
@@ -46,6 +50,10 @@ export async function listIntelligenceTestJobs(
     "--limit",
     String(limit)
   ]);
+}
+
+export async function getIntelligenceUsage(): Promise<ArcadiaJsonSuccess<IntelligenceUsageResponse>> {
+  return runArcadiaCliJson<IntelligenceUsageResponse>(["intelligence", "usage"]);
 }
 
 export async function resolveDashboardWorkspace(): Promise<string> {

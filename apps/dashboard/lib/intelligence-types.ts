@@ -55,5 +55,49 @@ export interface AdminJobSummary {
   job: IntelligenceJob;
 }
 
+export type CodingAgentAvailability = "unknown" | "usage_limited" | "budget_limited";
+
+export interface IntelligenceUsageSummary {
+  generatedAt: string;
+  periodStart: string;
+  periodLabel: "today";
+  jobs: {
+    total: number;
+    completed: number;
+    queued: number;
+    running: number;
+    failed: number;
+    blocked: number;
+    withReportedUsage: number;
+    withoutReportedUsage: number;
+  };
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    estimatedCostUsd: number;
+    measuredCostUsd: number;
+    durationMs: number;
+  };
+  providers: Array<{
+    provider: string;
+    jobs: number;
+    inputTokens: number;
+    outputTokens: number;
+    estimatedCostUsd: number;
+    measuredCostUsd: number;
+  }>;
+  codingAgents: Array<{
+    provider: string;
+    profiles: string[];
+    availability: CodingAgentAvailability;
+    observedTasks: number;
+    usageLimitedTasks: number;
+    budgetLimitedTasks: number;
+    remainingTokens: null;
+    resetAt: null;
+    telemetry: string;
+  }>;
+}
+
 /** clientApp value Arcadia stores on every job submitted from this page. */
 export const ADMIN_INTELLIGENCE_CLIENT_APP = "arcadia-admin";

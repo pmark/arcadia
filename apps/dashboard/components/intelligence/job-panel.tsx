@@ -46,6 +46,16 @@ export function JobPanel({
       <dl className="grid gap-2 text-sm sm:grid-cols-2">
         <Field label="Submitted">{formatDateTime(job.createdAt)}</Field>
         <Field label="Resolved route">{job.selectedRoute ?? job.usage?.routeId ?? "Not yet resolved"}</Field>
+        {job.usage?.inputTokens !== undefined || job.usage?.outputTokens !== undefined ? (
+          <Field label="Tokens">{job.usage?.inputTokens ?? 0} input · {job.usage?.outputTokens ?? 0} output</Field>
+        ) : null}
+        {job.usage?.measuredCostUsd !== undefined || job.usage?.estimatedCostUsd !== undefined ? (
+          <Field label="Cost">
+            {job.usage?.measuredCostUsd !== undefined
+              ? `$${job.usage.measuredCostUsd.toFixed(4)} measured`
+              : `$${job.usage?.estimatedCostUsd?.toFixed(4) ?? "0.0000"} estimated`}
+          </Field>
+        ) : null}
         {job.usage?.durationMs !== undefined ? <Field label="Execution time">{job.usage.durationMs} ms</Field> : null}
         {job.retryCount > 0 ? <Field label="Retries">{job.retryCount}</Field> : null}
       </dl>
