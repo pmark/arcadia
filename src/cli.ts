@@ -430,6 +430,7 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--project <project-id>", "Optional project id")
       .option("--milestone <milestone-id>", "Optional milestone id")
+      .option("--agent-profile <name>", "Coding agent profile for planning or build packets")
       .option("--source-ingress <source>", "Ingress source for audit trails")
       .option("--reply-review-id <review-id>", "Review id from adapter reply context")
       .option("--run-safe", "Immediately run deterministic safe steps")
@@ -437,6 +438,7 @@ export function buildProgram(): Command {
     workspace: string;
     project?: string;
     milestone?: string;
+    agentProfile?: string;
     sourceIngress?: string;
     replyReviewId?: string;
     runSafe?: boolean;
@@ -1366,10 +1368,11 @@ export function buildProgram(): Command {
   addJsonOption(
     work
       .command("plan")
-      .description("Create a workflow plan; stored Codex-planning Actions also get an approval Decision")
+      .description("Create a workflow plan; coding-agent planning Actions also get an approval Decision")
       .argument("<work-id>", "Action id")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((workId: string, options: { workspace: string; json?: boolean }) =>
+      .option("--agent-profile <name>", "Coding agent profile for the planning packet")
+  ).action((workId: string, options: { workspace: string; agentProfile?: string; json?: boolean }) =>
     runCliAction("work.plan", options, () => runWorkPlanCommand({ ...options, workId }), renderWorkPlanSuccess)
   );
   addJsonOption(

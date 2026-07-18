@@ -97,7 +97,7 @@ const BUILT_IN_EXECUTORS: Record<string, ResolvedExecutorAdapter> = {
   "claude-code": {
     name: "claude-code",
     commandTemplate: "claude",
-    args: ["--print"],
+    args: ["--print", "--permission-mode", "acceptEdits", "--no-session-persistence"],
     promptMode: "stdin",
     workingDirectory: "repo",
     outputCapture: "combined",

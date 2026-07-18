@@ -324,7 +324,7 @@ pnpm smoke
 
 - `arcadia init <workspace> [--profile arcadia]` creates workspace folders, `config/arcadia.json`, `database/arcadia.sqlite3`, and applies the initial schema. The optional `arcadia` profile seeds Arcadia as a normal project in that workspace.
 - `arcadia status [--workspace <path>]` prints a concise summary and writes `reports/status.md`.
-- `arcadia ask [--workspace <path>] <request> [--project <project-id>] [--milestone <milestone-id>] [--run-safe]` resolves natural-language intent into an auditable Action and workflow plan.
+- `arcadia ask [--workspace <path>] <request> [--project <project-id>] [--milestone <milestone-id>] [--agent-profile <name>] [--run-safe]` resolves natural-language intent into an auditable Action and workflow plan.
 - `arcadia ingress process --workspace <path> [--source iCloudIdeas] [--ingress-root <path>] [--run-safe] [--dry-run]` processes local text request files from `<ingress-root>/<source>/In/` (default: `~/ArcadiaIngress`).
 - `arcadia capture --workspace <path> --text <intent> [--project <project-id>] [--milestone <milestone-id>] [--expected-artifact <artifact>]` captures natural-language intent as a structured Action.
 - `arcadia project create --workspace <path>` interactively creates one project, milestone, initial Action, and optional artifact record.
@@ -339,7 +339,7 @@ pnpm smoke
 - `arcadia work list --workspace <path>` lists Actions.
 - `arcadia work update --workspace <path> <work-id> [--queue <queue>] [--responsibility <responsibility>] [--next-action <action>] [--status <status>]` updates an Action. `--classification` remains a compatibility alias.
 - `arcadia work done --workspace <path> <work-id>` marks an Action complete.
-- `arcadia work plan --workspace <path> <work-id>` creates an observable workflow plan for an Action.
+- `arcadia work plan --workspace <path> <work-id> [--agent-profile <name>]` creates an observable workflow plan for an Action and binds any managed planning packet to the selected coding agent.
 - `arcadia work run --workspace <path> <work-id> [--plan <plan-id>] [--allow-codex-planning] [--allow-codex-build] [--agent-profile <name>]` runs deterministic safe steps by default. The planning allow flag only dispatches an already approved packet-specific Decision; it is not authorization by itself.
 - `arcadia run list --workspace <path> [--limit <n>]` lists recent runs.
 - `arcadia run show --workspace <path> <run-id>` shows the run audit trail and Requires Review Decisions.
@@ -407,6 +407,19 @@ Phase 3 also creates inspectable registries in `config/`:
 - `template-registry.json`
 - `coding-agent-profiles.json`
 
+### Coding-agent profiles
+
+Arcadia ships managed CLI profiles for Codex and Claude Code:
+
+- `codex_planning` and `codex_build`
+- `claude_planning` and `claude_build`
+
+Codex remains the default. Set the `defaults.planning` and `defaults.build` names in `config/coding-agent-profiles.json` to change a workspace default, or pass `--agent-profile` when creating an Ask or planning packet. Claude planning uses Claude Code's `plan` permission mode; Claude build uses `acceptEdits`. Arcadia still refuses `danger-full-access` profiles and never lets a later Run switch away from the profile approved with its packet.
+
+The profile contract is deliberately CLI-neutral: command, arguments, purpose, sandbox level, and provider adapter. Additional local systems such as Gemini CLI or OpenCode can be added as profiles, with a small output adapter only when their result format requires one. Legacy database and Responsibility names containing `codex` remain compatibility fields; they identify coding-agent work, not a requirement to use OpenAI's CLI.
+
+Approved generic review execution also supports the built-in `codex`, `claude-code`, and `gemini` executors through `arcadia review approve <id> --execute --executor <name>`. Custom Aider/OpenCode-style executors can be declared in `config/arcadia.json` or a repository's `.arcadia/executors.json`.
+
 SQLite is authoritative. Markdown files are generated narrative artifacts.
 
 For copy-paste examples of common workflows, see [docs/COMMANDS.md](docs/COMMANDS.md). For Phase 2 scope and behavior, see [docs/PHASE_2.md](docs/PHASE_2.md). For Phase 3 scope and behavior, see [docs/phase-3-natural-language-intent.md](docs/phase-3-natural-language-intent.md).
@@ -415,7 +428,7 @@ Keep private workspaces separate from Arcadia Core. Do not commit personal works
 
 ## Current Boundaries
 
-Arcadia Core does not include a daemon, cloud sync, authentication, AI classification, automatic Codex dispatch, plugin marketplace, advanced scheduling, or local model integration.
+Arcadia Core does not include cloud sync, authentication, AI classification, unapproved coding-agent dispatch, a plugin marketplace, advanced scheduling, or local model integration.
 
 ## License
 

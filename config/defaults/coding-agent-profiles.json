@@ -1,5 +1,9 @@
 {
-  "version": 1,
+  "version": 2,
+  "defaults": {
+    "planning": "codex_planning",
+    "build": "codex_build"
+  },
   "profiles": [
     {
       "name": "codex_planning",
@@ -18,6 +22,24 @@
       "purpose": "build",
       "sandbox": "workspace-write",
       "args": ["exec", "--json", "--sandbox", "workspace-write"]
+    },
+    {
+      "name": "claude_planning",
+      "provider": "claude-code-cli",
+      "package": "@anthropic-ai/claude-code",
+      "command": "claude",
+      "purpose": "planning",
+      "sandbox": "read-only",
+      "args": ["--print", "--output-format", "json", "--permission-mode", "plan", "--no-session-persistence"]
+    },
+    {
+      "name": "claude_build",
+      "provider": "claude-code-cli",
+      "package": "@anthropic-ai/claude-code",
+      "command": "claude",
+      "purpose": "build",
+      "sandbox": "workspace-write",
+      "args": ["--print", "--output-format", "json", "--permission-mode", "acceptEdits", "--no-session-persistence"]
     }
   ]
 }

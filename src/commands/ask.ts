@@ -76,6 +76,7 @@ export interface AskOptions {
   adapterMetadata?: Record<string, unknown>;
   executeReview?: boolean;
   reviewExecutor?: string;
+  agentProfile?: string;
 }
 
 export interface AskCommandData {
@@ -720,7 +721,12 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         workItem: initial.workItem,
         planId: initial.plan.id,
         projectContext: initial.projectContext,
-        agentProfile: selectAgentProfile(registries.codingAgents.profiles, resolved.codexPurpose),
+        agentProfile: selectAgentProfile(
+          registries.codingAgents.profiles,
+          resolved.codexPurpose,
+          options.agentProfile,
+          registries.codingAgents.defaults
+        ),
         stewardship
       })
     : null;

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { createCodexPacket, selectAgentProfile } from "../codex/packets.js";
+import { codingAgentLabel } from "../codingAgents/adapters.js";
 import { executionPlanNotFound, validationError, workItemNotFound } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
@@ -139,7 +140,7 @@ export function runWorkDoneCommand(options: { workspace: string; workId: string 
   });
 }
 
-export function runWorkPlanCommand(options: { workspace: string; workId: string }): CommandSuccess<WorkPlanCommandData> {
+export function runWorkPlanCommand(options: { workspace: string; workId: string; agentProfile?: string }): CommandSuccess<WorkPlanCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const prepared = withDatabase(workspacePath, (db) => {
     const transaction = db.transaction(() => {
@@ -153,6 +154,12 @@ export function runWorkPlanCommand(options: { workspace: string; workId: string 
 
       const active = existingActivePlanningPreparation(db, workspacePath, workItem);
       if (active) {
+        if (options.agentProfile && active.codexInvocation?.agent_profile !== options.agentProfile) {
+          throw validationError("Active planning Decision is bound to a different coding agent profile.", {
+            requestedProfile: options.agentProfile,
+            packetProfile: active.codexInvocation?.agent_profile
+          });
+        }
         return { ...active, reused: true };
       }
 
@@ -191,7 +198,12 @@ export function runWorkPlanCommand(options: { workspace: string; workId: string 
         workItem,
         planId: plan.id,
         projectContext,
-        agentProfile: selectAgentProfile(registries.codingAgents.profiles, "planning")
+        agentProfile: selectAgentProfile(
+          registries.codingAgents.profiles,
+          "planning",
+          options.agentProfile,
+          registries.codingAgents.defaults
+        )
       });
       const persisted = persistCodexPacketRecords(db, {
         packet,
@@ -470,6 +482,12 @@ export function runWorkRunCommand(options: {
         planId: plan.id,
         purpose: "planning"
       });
+      if (options.agentProfile && invocation?.agent_profile !== options.agentProfile) {
+        throw validationError("Approved planning packet is bound to a different coding agent profile.", {
+          requestedProfile: options.agentProfile,
+          packetProfile: invocation?.agent_profile
+        });
+      }
       const decision = invocation
         ? getReviewItemForInvocation(db, invocation.id, ["CodexPlanningRunApproval", "CodexPlanningRetryApproval"])
         : null;
@@ -482,7 +500,7 @@ export function runWorkRunCommand(options: {
       const queued = queueApprovedPlanningRun(db, workspacePath, {
         decisionId: decision.id,
         execute: true,
-        executorName: options.agentProfile
+        executorName: invocation?.agent_profile
       });
       if (!queued.run) {
         throw validationError("Approved planning Run could not be queued.");
@@ -493,7 +511,8 @@ export function runWorkRunCommand(options: {
     if (registries) {
       ensureCodexPacketsForPlan(db, workspacePath, workItem, plan, registries, {
         allowCodexPlanning: options.allowCodexPlanning,
-        allowCodexBuild: options.allowCodexBuild
+        allowCodexBuild: options.allowCodexBuild,
+        agentProfile: options.agentProfile
       });
     }
 
@@ -613,7 +632,7 @@ function ensureCodexPacketsForPlan(
   workItem: WorkItemSummary,
   plan: ExecutionPlanSummary,
   registries: Phase3Registries,
-  permissions: { allowCodexPlanning?: boolean; allowCodexBuild?: boolean }
+  permissions: { allowCodexPlanning?: boolean; allowCodexBuild?: boolean; agentProfile?: string }
 ): void {
   for (const step of plan.steps) {
     const purpose = step.executor_type === "codex_build"
@@ -628,11 +647,25 @@ function ensureCodexPacketsForPlan(
 
     const allowed = purpose === "build" ? permissions.allowCodexBuild : permissions.allowCodexPlanning;
     const existing = getCodexInvocationForPlan(db, { workItemId: workItem.id, planId: plan.id, purpose });
-    if (!allowed || existing) {
+    if (!allowed) {
+      continue;
+    }
+    if (existing) {
+      if (permissions.agentProfile && existing.agent_profile !== permissions.agentProfile) {
+        throw validationError("Existing packet is bound to a different coding agent profile.", {
+          requestedProfile: permissions.agentProfile,
+          packetProfile: existing.agent_profile
+        });
+      }
       continue;
     }
 
-    const agentProfile = selectAgentProfile(registries.codingAgents.profiles, purpose);
+    const agentProfile = selectAgentProfile(
+      registries.codingAgents.profiles,
+      purpose,
+      permissions.agentProfile,
+      registries.codingAgents.defaults
+    );
     const packet = createCodexPacket({
       workspace: workspacePath,
       request: workItem.raw_input,
@@ -661,7 +694,7 @@ function ensureCodexPacketsForPlan(
     createArtifactRecord(db, {
       projectId: workItem.project_id,
       workItemId: workItem.id,
-      title: `Codex ${packet.purpose} packet: ${workItem.title}`,
+      title: `${codingAgentLabel(packet.agentProfile)} ${packet.purpose} packet: ${workItem.title}`,
       artifactType: "codex_prompt_packet",
       status: "drafted",
       path: packet.relativePromptPath

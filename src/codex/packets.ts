@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { buildCodingAgentCommand, codingAgentLabel } from "../codingAgents/adapters.js";
 import type { CodexInvocationPurpose } from "../domain/constants.js";
 import type { ProjectContext, WorkItemSummary } from "../domain/types.js";
 import type { CodingAgentProfile, TemplateDefinition } from "../intent/registries.js";
@@ -58,7 +59,7 @@ export function createCodexPacket(input: {
   const metadataPath = path.join(packetDir, "metadata.json");
   const critiquePath = path.join(packetDir, "critique.md");
   const workspaceScope = input.projectContext?.metadata?.repo_path ?? input.workspace;
-  const command = buildCommand(input.agentProfile, workspaceScope, finalMessagePath);
+  const command = buildCodingAgentCommand(input.agentProfile, workspaceScope, finalMessagePath).displayCommand;
   const promptText = renderPrompt(input);
   const stewardship = input.stewardship ?? defaultStewardshipForPacket(input);
   const validationCommands = decodeStringArray(input.projectContext?.metadata?.validation_commands);
@@ -99,7 +100,7 @@ export function createCodexPacket(input: {
 
   writeFileSync(promptPath, promptText, "utf8");
   writeFileSync(jsonlOutputPath, "", "utf8");
-  writeFileSync(finalMessagePath, "Codex has not been invoked yet.\n", "utf8");
+  writeFileSync(finalMessagePath, `${codingAgentLabel(input.agentProfile)} has not been invoked yet.\n`, "utf8");
   writeFileSync(critiquePath, `${renderCritiqueMarkdown(critique)}\n`, "utf8");
   writeFileSync(
     metadataPath,
@@ -164,26 +165,24 @@ export function createCodexPacket(input: {
 
 export function selectAgentProfile(
   profiles: CodingAgentProfile[],
-  purpose: CodexInvocationPurpose
+  purpose: CodexInvocationPurpose,
+  requestedName?: string,
+  defaults?: Partial<Record<"planning" | "build", string>>
 ): CodingAgentProfile {
-  const profile = profiles.find((candidate) => candidate.purpose === purpose);
+  const selectedName = requestedName ?? defaults?.[purpose];
+  const profile = selectedName
+    ? profiles.find((candidate) => candidate.name === selectedName)
+    : profiles.find((candidate) => candidate.purpose === purpose);
   if (!profile) {
-    throw new Error(`Coding agent profile is required for purpose: ${purpose}`);
+    throw new Error(selectedName
+      ? `Coding agent profile was not found: ${selectedName}`
+      : `Coding agent profile is required for purpose: ${purpose}`);
+  }
+  if (profile.purpose !== purpose) {
+    throw new Error(`Coding agent profile ${profile.name} is configured for ${profile.purpose}, not ${purpose}.`);
   }
 
   return profile;
-}
-
-function buildCommand(profile: CodingAgentProfile, workspaceScope: string, finalMessagePath: string): string {
-  const args = [
-    ...profile.args,
-    "--cd",
-    workspaceScope,
-    "--output-last-message",
-    finalMessagePath,
-    "-"
-  ];
-  return [profile.command, ...args].join(" ");
 }
 
 function renderPrompt(input: {
@@ -215,7 +214,7 @@ function renderPrompt(input: {
   const followUpGoal = renderSmallestFollowUpGoal(input, expectedArtifact);
   const finalReportingRequirements = renderFinalReportingRequirements(isPlanningPacket);
 
-  return `# Arcadia Codex ${input.agentProfile.purpose === "build" ? "Build" : "Planning"} Packet
+  return `# Arcadia ${codingAgentLabel(input.agentProfile)} ${input.agentProfile.purpose === "build" ? "Build" : "Planning"} Packet
 
 ## Goal
 ${stewardship.generatedCodexGoalText ?? goalFromResolved(input)}

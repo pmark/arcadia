@@ -3,6 +3,12 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import {
+  buildCodingAgentCommand,
+  codingAgentLabel,
+  finalMessageFromExecution,
+  isUninvokedFinalMessage
+} from "../codingAgents/adapters.js";
+import {
   attachMissionLogToExecutionRun,
   attachArtifactToExecutionRun,
   buildStatusReportData,
@@ -294,11 +300,6 @@ function executeCodexStep(
   options: ExecutePlanOptions
 ): ExecutedCodexStep {
   const purpose: CodexInvocationPurpose = executorType === "codex_build" ? "build" : "planning";
-  const profile = selectExecutionProfile(options, purpose);
-  if (profile.sandbox === "danger-full-access") {
-    throw new Error("Arcadia-managed Codex execution refuses danger-full-access profiles.");
-  }
-
   const invocation = options.invocationId
     ? getCodexInvocation(db, options.invocationId)
     : getCodexInvocationForPlan(db, {
@@ -308,6 +309,16 @@ function executeCodexStep(
       });
   if (!invocation) {
     throw new Error("Codex invocation packet is required before execution.");
+  }
+  if (options.agentProfile && options.agentProfile !== invocation.agent_profile) {
+    throw new Error(`Coding agent profile ${options.agentProfile} does not match packet profile ${invocation.agent_profile}.`);
+  }
+  const profile = selectExecutionProfile({
+    ...options,
+    agentProfile: invocation.agent_profile
+  }, purpose);
+  if (profile.sandbox === "danger-full-access") {
+    throw new Error("Arcadia-managed coding-agent execution refuses danger-full-access profiles.");
   }
 
   const promptPath = path.join(workspace, invocation.prompt_path);
@@ -348,8 +359,9 @@ function executeCodexStep(
     };
   }
   const executionScope = projectRepositoryPath ?? invocation.workspace_scope;
-  const args = argsForProfile(profile, executionScope, finalMessagePath);
-  const command = [profile.command, ...args].join(" ");
+  const preparedCommand = buildCodingAgentCommand(profile, executionScope, finalMessagePath);
+  const args = preparedCommand.args;
+  const command = preparedCommand.displayCommand;
 
   if (!existsSync(promptPath)) {
     updateCodexInvocationStatus(db, invocation.id, "failed");
@@ -367,7 +379,7 @@ function executeCodexStep(
         additionalArtifacts: []
       };
     }
-    throw new Error(`Codex invocation packet file is missing: ${invocation.prompt_path}`);
+    throw new Error(`Coding-agent invocation packet file is missing: ${invocation.prompt_path}`);
   }
 
   const prompt = readFileSync(promptPath, "utf8");
@@ -416,8 +428,13 @@ function executeCodexStep(
     [result.stdout ?? "", result.stderr ?? ""].filter(Boolean).join("\n"),
     "utf8"
   );
-  if (shouldOverwriteFinalMessage(finalMessagePath)) {
-    writeFileSync(finalMessagePath, result.stdout || result.stderr || "Codex execution produced no output.\n", "utf8");
+  if (isUninvokedFinalMessage(finalMessagePath)) {
+    writeFileSync(finalMessagePath, finalMessageFromExecution({
+      profile,
+      finalMessagePath,
+      stdout: result.stdout ?? "",
+      stderr: result.stderr ?? ""
+    }), "utf8");
   }
 
   if (result.error || result.status !== 0) {
@@ -455,7 +472,7 @@ function executeCodexStep(
       status: "failed",
       command,
       output: result.stdout || null,
-      error: result.error?.message ?? result.stderr ?? `Codex command failed with status ${result.status}`,
+      error: result.error?.message ?? result.stderr ?? `${codingAgentLabel(profile)} command failed with status ${result.status}`,
       artifactPath: partial?.path ?? diagnostic.path,
       artifact: validation?.artifact ?? diagnostic,
       additionalArtifacts: [diagnostic, ...(partial ? [partial] : [])]
@@ -513,7 +530,7 @@ function executeCodexStep(
       status,
       command,
       output: [
-        `Codex ${purpose} output captured: ${invocation.jsonl_output_path}`,
+        `${codingAgentLabel(profile)} ${purpose} output captured: ${invocation.jsonl_output_path}`,
         validationOutput
       ].filter(Boolean).join("\n"),
       error,
@@ -535,7 +552,7 @@ function executeCodexStep(
     status,
     command,
     output: [
-      `Codex ${purpose} output captured: ${invocation.jsonl_output_path}`,
+      `${codingAgentLabel(profile)} ${purpose} output captured: ${invocation.jsonl_output_path}`,
       validationOutput
     ].filter(Boolean).join("\n"),
     error,
@@ -770,34 +787,14 @@ function selectExecutionProfile(options: ExecutePlanOptions, purpose: CodexInvoc
     : profiles.find((candidate) => candidate.purpose === purpose);
 
   if (!profile) {
-    throw new Error(`Coding agent profile is required for Codex ${purpose}.`);
+    throw new Error(`Coding agent profile is required for ${purpose}.`);
   }
 
   if (profile.purpose !== purpose) {
-    throw new Error(`Coding agent profile ${profile.name} is not configured for Codex ${purpose}.`);
+    throw new Error(`Coding agent profile ${profile.name} is not configured for ${purpose}.`);
   }
 
   return profile;
-}
-
-function argsForProfile(profile: CodingAgentProfile, workspace: string, finalMessagePath: string): string[] {
-  if (profile.provider !== "codex-cli") {
-    return profile.args;
-  }
-
-  return [...profile.args, "--cd", workspace, "--output-last-message", finalMessagePath, "-"];
-}
-
-function shouldOverwriteFinalMessage(finalMessagePath: string): boolean {
-  if (!existsSync(finalMessagePath)) {
-    return true;
-  }
-
-  if (statSync(finalMessagePath).size === 0) {
-    return true;
-  }
-
-  return readFileSync(finalMessagePath, "utf8").trim() === "Codex has not been invoked yet.";
 }
 
 export function resolvePlanForRun(

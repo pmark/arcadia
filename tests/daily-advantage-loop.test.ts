@@ -141,6 +141,33 @@ describe("Daily Advantage existing-Action planning preparation", () => {
     expect(preparedSnapshot.dailyAdvantage?.whyNow).toContain("Finish this Decision");
   });
 
+  it("prepares a Claude Code packet when the Action requests the Claude planning profile", () => {
+    const fixture = createRebusterFixture();
+
+    const prepared = runWorkPlanCommand({
+      workspace: fixture.workspace,
+      workId: fixture.workItemId,
+      agentProfile: "claude_planning"
+    });
+
+    expect(prepared.data.codexInvocation).toMatchObject({
+      agent_profile: "claude_planning",
+      purpose: "planning",
+      status: "packet_created"
+    });
+    expect(prepared.data.codexInvocation?.command).toContain("claude --print --output-format json");
+    expect(prepared.data.codexInvocation?.command).not.toContain("--output-last-message");
+    expect(prepared.data.packetArtifact?.title).toContain("Claude Code planning packet");
+
+    const promptPath = path.join(fixture.workspace, prepared.data.codexInvocation!.prompt_path);
+    const finalPath = path.join(fixture.workspace, prepared.data.codexInvocation!.final_message_path);
+    expect(readFileSync(promptPath, "utf8")).toContain("# Arcadia Claude Code Planning Packet");
+    expect(readFileSync(finalPath, "utf8")).toBe("Claude Code has not been invoked yet.\n");
+
+    const context = JSON.parse(prepared.data.planningDecision!.context_json) as Record<string, unknown>;
+    expect(context.approvalAuthorizes).toBe("One managed read-only Claude Code planning Run for this exact packet.");
+  });
+
   it("is idempotent for repeated preparation of the same Action", () => {
     const fixture = createRebusterFixture();
     const first = runWorkPlanCommand({ workspace: fixture.workspace, workId: fixture.workItemId });

@@ -42,6 +42,7 @@ export interface TemplateDefinition {
 
 export interface CodingAgentProfileRegistry {
   version: number;
+  defaults?: Partial<Record<"planning" | "build", string>>;
   profiles: CodingAgentProfile[];
 }
 
@@ -163,6 +164,20 @@ function validateCodingAgentProfileRegistry(registry: CodingAgentProfileRegistry
     }
     if (!Array.isArray(profile.args)) {
       throw validationError("Coding agent args must be an array.", { profile: profile.name });
+    }
+  }
+
+  for (const purpose of ["planning", "build"] as const) {
+    const defaultName = registry.defaults?.[purpose];
+    if (!defaultName) {
+      continue;
+    }
+    const profile = registry.profiles.find((candidate) => candidate.name === defaultName);
+    if (!profile) {
+      throw validationError(`Default ${purpose} coding agent profile was not found.`, { profile: defaultName });
+    }
+    if (profile.purpose !== purpose) {
+      throw validationError(`Default ${purpose} coding agent profile has the wrong purpose.`, { profile: defaultName });
     }
   }
 }

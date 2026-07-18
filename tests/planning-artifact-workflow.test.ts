@@ -85,6 +85,26 @@ describe("Codex planning artifact validation workflow", () => {
     expect(existsSync(path.join(workspace, fixture.validationRelativePath))).toBe(true);
   });
 
+  it("extracts and validates the final planning Artifact from Claude Code JSON output", () => {
+    const workspace = initializedWorkspace();
+    const fixture = setupCodexRun(workspace, {
+      purpose: "planning",
+      provider: "claude-code-cli",
+      agentOutput: JSON.stringify({
+        type: "result",
+        subtype: "success",
+        result: completePlanningArtifact
+      })
+    });
+
+    const result = executeFixture(workspace, fixture);
+
+    expect(result.data.run.status).toBe("completed");
+    expect(readFileSync(path.join(workspace, fixture.finalRelativePath), "utf8")).toBe(`${completePlanningArtifact}\n`);
+    expect(readFileSync(path.join(workspace, fixture.finalRelativePath), "utf8")).not.toContain('"type":"result"');
+    expect(readValidationSidecar(workspace, fixture.validationRelativePath).status).toBe("passed");
+  });
+
   it("surfaces failed planning validation through Requires Review", () => {
     const workspace = initializedWorkspace();
     const failingArtifact = planningArtifactValidationFixtures.find((fixture) =>
@@ -235,7 +255,13 @@ function initializedWorkspace(): string {
 
 function setupCodexRun(
   workspace: string,
-  input: { purpose: "planning" | "build"; agentOutput: string; workspaceScope?: string; cwdCapturePath?: string }
+  input: {
+    purpose: "planning" | "build";
+    agentOutput: string;
+    provider?: string;
+    workspaceScope?: string;
+    cwdCapturePath?: string;
+  }
 ): {
   workItemId: string;
   planId: string;
@@ -260,7 +286,7 @@ function setupCodexRun(
       version: 1,
       profiles: [{
         name: `fake_${input.purpose}`,
-        provider: "fake-agent",
+        provider: input.provider ?? "fake-agent",
         package: "local",
         command: process.execPath,
         purpose: input.purpose,

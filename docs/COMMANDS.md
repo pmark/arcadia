@@ -199,10 +199,11 @@ pnpm arcadia capture \
 ```sh
 pnpm arcadia work plan work_example \
   --workspace "$WORKSPACE" \
+  --agent-profile claude_planning \
   --json
 ```
 
-The plan records each step, executor type, command label, and whether the step is safe to run.
+The plan records each step, executor type, command label, and whether the step is safe to run. Omit `--agent-profile` to use the workspace default (Codex by default). A managed planning Decision is permanently bound to the profile used when its packet was created.
 
 ## Run Safe Work
 
@@ -225,7 +226,7 @@ pnpm arcadia work run work_example \
 
 Arcadia executes only deterministic safe steps. Codex, publishing, destructive, unclear, or review-required steps pause as `requires_review`.
 
-Explicitly approved Codex steps can be run through configured coding-agent profiles:
+Explicitly approved coding-agent steps can be run through configured profiles:
 
 ```sh
 pnpm arcadia work run work_example \
@@ -237,6 +238,20 @@ pnpm arcadia work run work_example \
 ```
 
 `--allow-codex-build` is separate from `--allow-codex-planning`. Arcadia refuses `danger-full-access` profiles in managed runs.
+
+The built-in managed profiles are `codex_planning`, `codex_build`, `claude_planning`, and `claude_build`. The `codex` wording in the two allow flags is retained as a compatibility name for coding-agent work.
+
+For a generic approved implementation Decision, choose a built-in review executor directly:
+
+```sh
+pnpm arcadia review approve review_example \
+  --workspace "$WORKSPACE" \
+  --execute \
+  --executor claude-code \
+  --json
+```
+
+The other built-in review executors are `codex` and `gemini`. Custom CLI adapters such as OpenCode or Aider can be configured in `config/arcadia.json` or the target repository's `.arcadia/executors.json`.
 
 ## Review A Run
 

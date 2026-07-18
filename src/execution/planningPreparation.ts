@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import type { CodexPacket } from "../codex/packets.js";
+import { codingAgentLabel } from "../codingAgents/adapters.js";
 import {
   createArtifactRecord,
   createCodexInvocation,
@@ -58,7 +59,7 @@ export function persistCodexPacketRecords(
   const packetArtifact = createArtifactRecord(db, {
     projectId: input.workItem.project_id,
     workItemId: input.workItem.id,
-    title: `Codex ${input.packet.purpose} packet: ${input.workItem.title}`,
+    title: `${codingAgentLabel(input.packet.agentProfile)} ${input.packet.purpose} packet: ${input.workItem.title}`,
     artifactType: "codex_prompt_packet",
     status: "drafted",
     path: input.packet.relativePromptPath
@@ -89,6 +90,7 @@ export function createPlanningApprovalDecision(
   }
 ): ReviewItemSummary {
   const existingAction = input.existingAction === true;
+  const agentLabel = codingAgentLabel(input.packet.agentProfile);
   const decision = createReviewItem(db, {
     askRequestId: input.askRequestId ?? null,
     workItemId: input.workItem.id,
@@ -100,8 +102,8 @@ export function createPlanningApprovalDecision(
       ? `Approve the exact planning packet for existing Action "${input.workItem.title}".`
       : `Approve the exact planning packet for "${input.workItem.title}".`,
     recommendation: existingAction
-      ? "Approval authorizes one managed read-only planning Run. It does not authorize implementation or any prohibited external action."
-      : "Inspect the packet, then approve and queue one managed planning Run.",
+      ? `Approval authorizes one managed read-only planning Run with ${agentLabel}. It does not authorize implementation or any prohibited external action.`
+      : `Inspect the packet, then approve and queue one managed planning Run with ${agentLabel}.`,
     sourceInput: input.sourceInput,
     proposedAction: input.proposedAction,
     resolvedIntent: "CodexPlanningRunApproval",
@@ -114,7 +116,7 @@ export function createPlanningApprovalDecision(
       interpretation: input.proposedAction,
       expectedArtifact: input.expectedArtifact,
       originatingActionId: input.workItem.id,
-      approvalAuthorizes: "One managed read-only Codex planning Run for this exact packet.",
+      approvalAuthorizes: `One managed read-only ${agentLabel} planning Run for this exact packet.`,
       preparationSource: existingAction ? "existing_action" : "ask",
       safetyBoundaries: [...PLANNING_SAFETY_BOUNDARIES],
       responsibility: "needs_mark"
