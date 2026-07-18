@@ -18,6 +18,19 @@ The **Intelligence** screen shows recorded current-day usage and any locally obs
 
 Other CLI commands are advanced or compatibility surfaces, not part of normal daily operation unless a current task says otherwise.
 
+## Durable planning memory
+
+An opted-in workspace can project accepted planning Artifacts into an Obsidian vault. SQLite remains operational truth, workspace files remain execution evidence, and synchronization is one-way from Arcadia to the vault. Arcadia exports only after deterministic planning Validation passes and the final `CodexPlanningArtifactAcceptance` Decision is approved; draft plans, initial Run approvals, failed output, and raw executor evidence are not exported.
+
+Final acceptance writes the managed vault Record before marking the Artifact ready, the original Action done, and the Decision approved. If the vault write fails, those SQLite transitions do not occur; fix the reported vault problem and retry acceptance. Historical or changed Records can be inspected and repaired with:
+
+```sh
+arcadia memory sync --workspace <path> --dry-run
+arcadia memory sync --workspace <path>
+```
+
+The command never reads operational state from Obsidian and never deletes vault content. Files under the vault's `Arcadia/Records/` subtree are Arcadia-managed projections, not editable inputs.
+
 ## Automatic local services
 
 After you sign in following a laptop restart, Arcadia's managed launch agents start and keep these services running:

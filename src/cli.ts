@@ -98,6 +98,7 @@ import {
   runMilestoneCreateCommand,
   runMilestoneListCommand
 } from "./commands/milestone.js";
+import { renderMemorySyncSuccess, runMemorySyncCommand } from "./commands/memory.js";
 import {
   renderProjectCreateSuccess,
   renderProjectImportSuccess,
@@ -1485,6 +1486,17 @@ export function buildProgram(): Command {
     runCliAction("report.status", options, () => runReportStatusCommand(options), renderReportStatusSuccess)
   );
 
+  const memory = program.command("memory").description("Persist accepted Arcadia memory projections");
+  addJsonOption(
+    memory
+      .command("sync")
+      .description("Create or repair accepted planning Artifact Records in the configured Obsidian vault")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--dry-run", "Report changes without modifying the vault")
+  ).action((options: { workspace: string; dryRun?: boolean; json?: boolean }) =>
+    runCliAction("memory.sync", options, () => runMemorySyncCommand(options), renderMemorySyncSuccess)
+  );
+
   const review = program
     .command("review")
     .description("List and decide Requires Review items")
@@ -1929,6 +1941,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "report" && second === "status") {
     return "report.status";
+  }
+
+  if (first === "memory" && second === "sync") {
+    return "memory.sync";
   }
 
   if (first === "review" && ["show", "approve", "reject", "defer", "weekly"].includes(second ?? "")) {

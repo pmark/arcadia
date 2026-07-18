@@ -25,6 +25,7 @@ import type { ReviewFeedback, ReviewItemSummary } from "../domain/types.js";
 import { executeApprovedReview, type ReviewExecutionResult } from "../execution/reviewExecutor.js";
 import { isPlanningApprovalDecision, queueApprovedPlanningRun } from "../execution/planningAuthorization.js";
 import { parseDecisionContext } from "../execution/planningAuthorization.js";
+import { exportPlanningAcceptanceBeforeTransition } from "../memory/obsidian.js";
 import { writeWeeklyReviewReport } from "../markdown/weeklyReview.js";
 import {
   REVIEW_FEEDBACK_TYPES,
@@ -329,23 +330,50 @@ export function runReviewApproveCommand(
   }
   if (specialized?.resolved_intent === "CodexPlanningArtifactAcceptance") {
     const updated = withDatabase(workspacePath, (db) => {
+      if (specialized.status === "approved") {
+        try {
+          exportPlanningAcceptanceBeforeTransition(
+            db,
+            workspacePath,
+            specialized.id,
+            specialized.decided_at ?? specialized.created_at
+          );
+        } catch (error) {
+          throw validationError(`Accepted planning Artifact memory export failed: ${error instanceof Error ? error.message : String(error)}`, {
+            id: specialized.id,
+            retry: `arcadia memory sync --workspace ${workspacePath}`
+          });
+        }
+        return getReviewItem(db, specialized.id) as ReviewItemSummary;
+      }
       if (specialized.status !== "open" && specialized.status !== "deferred") {
         throw validationError("Plan acceptance Decision is already decided.", { id: specialized.id, status: specialized.status });
       }
       if (!specialized.artifact_id || !specialized.work_item_id) {
         throw validationError("Plan acceptance Decision is missing its Artifact or Action.", { id: specialized.id });
       }
-      updateArtifact(db, specialized.artifact_id, { status: "ready" });
-      updateWorkItem(db, specialized.work_item_id, {
-        queue: "work_queue",
-        workClassification: "needs_mark",
-        status: "done",
-        nextAction: "Plan accepted; choose the next implementation Action when ready."
-      });
-      return updateReviewItemStatus(db, specialized.id, {
-        status: "approved",
-        decisionNote: "Validated planning Artifact accepted."
-      }) as ReviewItemSummary;
+      try {
+        exportPlanningAcceptanceBeforeTransition(db, workspacePath, specialized.id, new Date().toISOString());
+      } catch (error) {
+        throw validationError(`Planning Artifact acceptance stopped because memory export failed: ${error instanceof Error ? error.message : String(error)}`, {
+          id: specialized.id,
+          actionUnfinished: true,
+          decisionRemainsOpen: true
+        });
+      }
+      return db.transaction(() => {
+        updateArtifact(db, specialized.artifact_id as string, { status: "ready" });
+        updateWorkItem(db, specialized.work_item_id as string, {
+          queue: "work_queue",
+          workClassification: "needs_mark",
+          status: "done",
+          nextAction: "Plan accepted; choose the next implementation Action when ready."
+        });
+        return updateReviewItemStatus(db, specialized.id, {
+          status: "approved",
+          decisionNote: "Validated planning Artifact accepted."
+        }) as ReviewItemSummary;
+      })();
     });
     return createSuccess({
       command: "review.approve",
