@@ -6,7 +6,7 @@ import type { IntelligenceCapability, IntelligenceProfile } from "../types.js";
  * deployment-time fact about a specific route.
  */
 export type IntelligenceRouteLocation = "local" | "cloud";
-export type IntelligenceRouteExecutor = "litellm" | "codex-cli";
+export type IntelligenceRouteExecutor = "litellm" | "codex-cli" | "speech";
 
 /**
  * One entry in Arcadia's route registry: a deterministic mapping from a
@@ -84,5 +84,24 @@ export type IntelligenceV01Config = {
     command: string;
     args: string[];
     timeoutMs: number;
+  };
+
+  /**
+   * Local speech (text-to-speech) transport config. Distinct from
+   * `liteLlmBaseUrl`: local speech points directly at an OpenAI-compatible
+   * `/v1/audio/speech` endpoint (e.g. an MLX-Audio/Kokoro server on the same
+   * Mac), not the LiteLLM proxy. Absent/empty `localBaseUrl` means no local
+   * speech route is configured (requests resolve to a typed
+   * "route_not_configured"/"local_route_unavailable" failure — never a cloud
+   * fallback). Cloud speech, when enabled, reuses `liteLlmBaseUrl`.
+   */
+  speech?: {
+    localBaseUrl?: string;
+    apiKey?: string;
+    /** Semantic Arcadia voiceId -> provider voice name. */
+    voiceMap: Record<string, string>;
+    timeoutMs: number;
+    /** Bounded transport retries for transient speech failures. */
+    maxRetries: number;
   };
 };

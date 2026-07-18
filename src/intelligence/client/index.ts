@@ -10,6 +10,8 @@ export type {
   ImageGenerationOperation,
   ImageGenerationOperationDefinition,
   OperationWaitOptions,
+  SpeechGenerationOperation,
+  SpeechGenerationOperationDefinition,
   StructuredTextOperation,
   StructuredTextOperationDefinition,
   StructuredTextRunOptions,

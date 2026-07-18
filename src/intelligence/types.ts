@@ -34,6 +34,7 @@ export const INTELLIGENCE_CAPABILITIES = [
   "image.edit",
   "audio.transcribe",
   "audio.synthesize",
+  "audio.speech.generate",
   "video.generate",
 ] as const;
 export type IntelligenceCapability = (typeof INTELLIGENCE_CAPABILITIES)[number];
@@ -305,13 +306,22 @@ export type ValidationResult = {
  */
 export type IntelligenceArtifactRecord = {
   id: string;
-  kind: "image";
+  kind: "image" | "audio";
   uri: string;
   mimeType: string;
   sha256: string;
   byteSize: number;
+  /** Image artifacts only. */
   dimensions?: { width: number; height: number };
-  /** Safe, provider-returned metadata only (e.g. seed, revised prompt). Never a provider URL or credential. */
+  /** Audio artifacts only: the container format, e.g. "wav". */
+  format?: string;
+  /** Audio artifacts only: decoded duration in seconds. */
+  durationSeconds?: number;
+  /** Audio artifacts only: sample rate in Hz, when decodable. */
+  sampleRateHz?: number;
+  /** Audio artifacts only: channel count, when decodable. */
+  channels?: number;
+  /** Safe, provider-returned metadata only (e.g. seed, revised prompt, voiceId). Never a provider URL or credential. */
   metadata?: JsonValue;
 };
 
@@ -327,6 +337,33 @@ export type IntelligenceImageGenerationResult = {
     requestedCount?: number;
     returnedCount?: number;
   };
+};
+
+/**
+ * The generic manifest an `audio.speech.generate` job's `result` conforms to.
+ * Self-contained so a companion app (e.g. Rebuster) can use the generated audio
+ * without a second lookup: it carries the durable artifact reference plus the
+ * decoded audio facts and the resolved route/provider provenance. Companion
+ * apps write their own outputContract.jsonSchema against this shape, typically
+ * requiring only the subset of fields they care about.
+ *
+ * The audio bytes themselves are never inlined here (no base64) — `artifact.uri`
+ * is a durable Arcadia locator fetchable via `GET {uri}` /
+ * `ArcadiaIntelligenceClient.getArtifact(uri)`.
+ */
+export type IntelligenceSpeechGenerationResult = {
+  /** Durable Arcadia audio artifact (id, uri, mimeType, format, sha256, byteSize, durationSeconds, sampleRateHz, channels). */
+  artifact: IntelligenceArtifactRecord;
+  /** The semantic Arcadia voice identifier the request asked for. */
+  voiceId: string;
+  /** Semantic resolved route ID, e.g. "arcadia.audio.speech.generate.local.standard". */
+  routeId: string;
+  provider: string;
+  model?: string;
+  /** Usage and cost metadata, using existing Arcadia conventions. */
+  usage?: IntelligenceUsage;
+  /** ISO-8601 creation timestamp. */
+  createdAt: string;
 };
 
 export type IntelligenceJob = {

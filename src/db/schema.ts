@@ -44,6 +44,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureIntelligenceJobsTable(db);
   ensureIntelligenceJobOperationIdColumn(db);
   ensureIntelligenceJobArtifactsTable(db);
+  ensureIntelligenceJobArtifactAudioColumns(db);
   applyCapabilityMigrations(db);
 }
 
@@ -262,6 +263,30 @@ function ensureIntelligenceJobArtifactsTable(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_intelligence_job_artifacts_job_id ON intelligence_job_artifacts(job_id);
   `);
+}
+
+/**
+ * Adds nullable audio-specific columns to `intelligence_job_artifacts` for
+ * `kind = 'audio'` artifacts (text-to-speech). Image artifacts leave them null,
+ * just as audio artifacts leave `width`/`height` null. Additive and idempotent
+ * (guarded by PRAGMA table_info), matching ensureIntelligenceJobOperationIdColumn.
+ */
+function ensureIntelligenceJobArtifactAudioColumns(db: Database.Database): void {
+  const columns = db
+    .prepare("PRAGMA table_info(intelligence_job_artifacts)")
+    .all() as Array<{ name: string }>;
+  const existing = new Set(columns.map((column) => column.name));
+  const additions: Array<{ name: string; ddl: string }> = [
+    { name: "format", ddl: "ALTER TABLE intelligence_job_artifacts ADD COLUMN format TEXT" },
+    { name: "duration_seconds", ddl: "ALTER TABLE intelligence_job_artifacts ADD COLUMN duration_seconds REAL" },
+    { name: "sample_rate_hz", ddl: "ALTER TABLE intelligence_job_artifacts ADD COLUMN sample_rate_hz INTEGER" },
+    { name: "channels", ddl: "ALTER TABLE intelligence_job_artifacts ADD COLUMN channels INTEGER" },
+  ];
+  for (const addition of additions) {
+    if (!existing.has(addition.name)) {
+      db.prepare(addition.ddl).run();
+    }
+  }
 }
 
 function ensureBackBurnerItemsTable(db: Database.Database): void {

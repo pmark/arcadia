@@ -10,12 +10,21 @@ import { buildDefaultRoutes, loadIntelligenceConfig } from "../intelligence/conf
 import { createSqliteIntelligenceJobRepository } from "../intelligence/db/sqliteRepository.js";
 import { IntelligenceWorker } from "../intelligence/jobs/worker.js";
 import { createLiteLlmHttpClient } from "../intelligence/litellm/httpClient.js";
+import { createOpenAiSpeechClient } from "../intelligence/speech/httpClient.js";
 import { submitIntelligenceRequest } from "../intelligence/service/jobService.js";
-import type { IntelligenceImageGenerationResult, IntelligenceJob, IntelligenceRequest } from "../intelligence/types.js";
+import type {
+  IntelligenceImageGenerationResult,
+  IntelligenceJob,
+  IntelligenceRequest,
+  IntelligenceSpeechGenerationResult,
+} from "../intelligence/types.js";
 
 const DEFAULT_PORT = 4710;
 const DEFAULT_CODEX_IMAGE_ROUTE = "codex-cli";
 const DEFAULT_SMOKE_PROMPT = "a simple black square centered on a white background";
+const DEFAULT_SPEECH_SMOKE_TEXT = "Can you solve this rebus?";
+const DEFAULT_SPEECH_SMOKE_VOICE = "arcadia.narrator";
+const DEFAULT_SPEECH_LOCAL_ROUTE = "arcadia-speech";
 
 export interface IntelligenceServeOptions {
   workspace: string;
@@ -57,6 +66,11 @@ export function runIntelligenceServeCommand(options: IntelligenceServeOptions): 
     config,
   });
   const codexTextExecutor = createCodexCliTextExecutor({ workspaceRoot: workspacePath, config });
+  const speechClient = createOpenAiSpeechClient({
+    apiKey: config.speech?.apiKey,
+    timeoutMs: config.speech?.timeoutMs,
+    maxRetries: config.speech?.maxRetries,
+  });
   const worker = new IntelligenceWorker(
     repository,
     liteLlmClient,
@@ -64,6 +78,7 @@ export function runIntelligenceServeCommand(options: IntelligenceServeOptions): 
     artifactStore,
     codexImageExecutor,
     codexTextExecutor,
+    speechClient,
   );
   const stopWorker = worker.start();
 
@@ -185,6 +200,117 @@ export function renderIntelligenceImageSmokeSuccess(
   return lines;
 }
 
+export interface IntelligenceSpeechSmokeOptions {
+  workspace: string;
+  text?: string;
+  voiceId?: string;
+  route?: string;
+  idempotencyKey?: string;
+}
+
+export interface IntelligenceSpeechSmokeData {
+  job: IntelligenceJob;
+  artifactUri?: string;
+  durationSeconds?: number;
+}
+
+/**
+ * Runs one local text-to-speech generation through the normal worker loop
+ * (submit -> resolve route -> speech adapter -> durable artifact) and reports
+ * the result. Requires an already-running OpenAI-compatible /v1/audio/speech
+ * server at ARCADIA_SPEECH_LOCAL_BASE_URL; does not start or manage that server.
+ */
+export async function runIntelligenceSpeechSmokeCommand(
+  options: IntelligenceSpeechSmokeOptions,
+): Promise<CommandSuccess<IntelligenceSpeechSmokeData>> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const db = openDatabase(workspacePath);
+
+  try {
+    const repository = createSqliteIntelligenceJobRepository(db);
+    const artifactStore = createSqliteIntelligenceArtifactStore(db, workspacePath);
+    const loadedConfig = loadIntelligenceConfig(process.env);
+    const localSpeechRoute =
+      options.route?.trim() || process.env.ARCADIA_SPEECH_LOCAL_ROUTE?.trim() || DEFAULT_SPEECH_LOCAL_ROUTE;
+    const config = {
+      ...loadedConfig,
+      routes: buildDefaultRoutes({
+        localTextRoute: process.env.ARCADIA_LITELLM_LOCAL_TEXT_ROUTE?.trim() || "arcadia-default",
+        localSpeechRoute,
+        cloudSpeechRoute: process.env.ARCADIA_SPEECH_CLOUD_ROUTE?.trim() || undefined,
+      }),
+    };
+    const speechClient = createOpenAiSpeechClient({
+      apiKey: config.speech?.apiKey,
+      timeoutMs: config.speech?.timeoutMs,
+      maxRetries: config.speech?.maxRetries,
+    });
+    const worker = new IntelligenceWorker(
+      repository,
+      createLiteLlmHttpClient({ baseUrl: config.liteLlmBaseUrl, apiKey: config.liteLlmApiKey }),
+      config,
+      artifactStore,
+      undefined,
+      undefined,
+      speechClient,
+    );
+
+    const request = buildSpeechSmokeRequest({
+      text: options.text ?? DEFAULT_SPEECH_SMOKE_TEXT,
+      voiceId: options.voiceId ?? DEFAULT_SPEECH_SMOKE_VOICE,
+      idempotencyKey: options.idempotencyKey,
+    });
+    const { job: submitted } = await submitIntelligenceRequest(repository, request);
+    const finished = await worker.runOnce();
+    const job = finished?.id === submitted.id ? finished : await repository.findById(submitted.id);
+    if (!job) {
+      throw new Error(`Arcadia Intelligence speech smoke job was not found after submission: ${submitted.id}`);
+    }
+
+    const result =
+      job.status === "completed"
+        ? (job.result as unknown as IntelligenceSpeechGenerationResult)
+        : undefined;
+
+    return createSuccess({
+      command: "intelligence.smoke-speech",
+      workspace: workspacePath,
+      data: {
+        job,
+        artifactUri: result?.artifact.uri,
+        durationSeconds: result?.artifact.durationSeconds,
+      },
+      artifacts: result?.artifact.uri ? [result.artifact.uri] : [],
+      warnings: job.status === "completed" ? [] : [`Job ended ${job.status}: ${job.error?.code ?? "UNKNOWN"}`],
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export function renderIntelligenceSpeechSmokeSuccess(
+  response: CommandSuccess<IntelligenceSpeechSmokeData>,
+): string[] {
+  const { job } = response.data;
+  const lines = [
+    "Arcadia Intelligence speech smoke",
+    `Workspace: ${response.workspace ?? ""}`,
+    `Job: ${job.id}`,
+    `Status: ${job.status}`,
+    `Route: ${job.usage?.routeId ?? job.selectedRoute ?? "None"}`,
+    `Provider: ${job.usage?.provider ?? "None"}`,
+  ];
+
+  if (job.status === "completed") {
+    lines.push(`Artifact: ${response.data.artifactUri ?? "None"}`);
+    lines.push(`Duration: ${response.data.durationSeconds?.toFixed(2) ?? "?"}s`);
+  } else {
+    lines.push(`Error: ${job.error?.code ?? "UNKNOWN"} - ${job.error?.message ?? "No error message"}`);
+  }
+
+  return lines;
+}
+
 export interface IntelligenceListJobsOptions {
   workspace: string;
   clientApp: string;
@@ -262,6 +388,51 @@ function buildSmokeRequest(input: {
       },
     },
     template: { id: "arcadia.image-smoke", version: "1" },
+    executionPolicy: { allowPaidUsage: false, maxRetries: 1 },
+  };
+}
+
+function buildSpeechSmokeRequest(input: {
+  text: string;
+  voiceId: string;
+  idempotencyKey?: string;
+}): IntelligenceRequest {
+  return {
+    idempotencyKey: input.idempotencyKey ?? `arcadia-speech-smoke-${Date.now()}`,
+    operationId: "arcadia.smoke-speech",
+    clientApp: "arcadia",
+    capability: "audio.speech.generate",
+    execution: "local-required",
+    profile: "standard",
+    input: { text: input.text, voiceId: input.voiceId, format: "wav" },
+    outputContract: {
+      schemaId: "arcadia.speech-smoke.v1",
+      schemaVersion: 1,
+      jsonSchema: {
+        type: "object",
+        properties: {
+          artifact: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              kind: { type: "string", const: "audio" },
+              uri: { type: "string" },
+              mimeType: { type: "string" },
+              format: { type: "string" },
+              sha256: { type: "string" },
+              byteSize: { type: "number" },
+              durationSeconds: { type: "number" },
+            },
+            required: ["id", "kind", "uri", "mimeType", "sha256", "byteSize"],
+          },
+          voiceId: { type: "string" },
+          routeId: { type: "string" },
+          provider: { type: "string" },
+        },
+        required: ["artifact", "voiceId", "routeId", "provider"],
+      },
+    },
+    template: { id: "arcadia.speech-smoke", version: "1" },
     executionPolicy: { allowPaidUsage: false, maxRetries: 1 },
   };
 }

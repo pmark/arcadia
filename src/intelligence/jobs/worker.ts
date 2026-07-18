@@ -16,6 +16,13 @@ import type { IntelligenceJobRepository } from "../db/repository.js";
 import { LiteLlmUnavailableError } from "../litellm/httpClient.js";
 import type { LiteLlmClient } from "../litellm/client.js";
 import { resolveIntelligenceRoute, type ResolvedIntelligenceRoute } from "../routing/resolveRoute.js";
+import {
+  SpeechGenerationError,
+  SpeechUnavailableError,
+  type SpeechClient,
+} from "../speech/client.js";
+import { parseWavMetadata } from "../speech/wavMeta.js";
+import { UnknownVoiceError, resolveVoice } from "../speech/voices.js";
 import { validateOutput } from "../validation/validateOutput.js";
 import type {
   IntelligenceArtifactRecord,
@@ -45,6 +52,7 @@ export class IntelligenceWorker {
     private readonly _artifactStore?: IntelligenceArtifactStore,
     private readonly _codexImageExecutor?: CodexImageExecutor,
     private readonly _codexTextExecutor?: CodexTextExecutor,
+    private readonly _speechClient?: SpeechClient,
     workerId: string = randomUUID(),
   ) {
     this.workerId = workerId;
@@ -86,11 +94,13 @@ export class IntelligenceWorker {
     }
 
     try {
-      const { output, usage } = job.request.capability.startsWith("image.")
-        ? await this.executeImageJob(job, resolution.route)
-        : resolution.route.executor === "codex-cli"
-          ? await this.executeCodexTextJob(job)
-          : await this.executeTextJob(job, resolution.route);
+      const { output, usage } = job.request.capability === "audio.speech.generate"
+        ? await this.executeSpeechJob(job, resolution.route)
+        : job.request.capability.startsWith("image.")
+          ? await this.executeImageJob(job, resolution.route)
+          : resolution.route.executor === "codex-cli"
+            ? await this.executeCodexTextJob(job)
+            : await this.executeTextJob(job, resolution.route);
 
       const validation = await validateOutput(output, job.request.outputContract);
       if (!validation.passed) {
@@ -123,6 +133,20 @@ export class IntelligenceWorker {
         return this._repository.blockJob(
           job.id,
           { code: "LITELLM_UNAVAILABLE", message: error.message },
+          nowIso(),
+        );
+      }
+      if (error instanceof SpeechUnavailableError) {
+        return this._repository.blockJob(
+          job.id,
+          { code: "SPEECH_UNAVAILABLE", message: error.message },
+          nowIso(),
+        );
+      }
+      if (error instanceof SpeechGenerationError) {
+        return this._repository.failJob(
+          job.id,
+          { code: error.code, message: error.message },
           nowIso(),
         );
       }
@@ -226,6 +250,112 @@ export class IntelligenceWorker {
     return { output, usage: generation.usage };
   }
 
+  private async executeSpeechJob(
+    job: IntelligenceJob,
+    route: ResolvedIntelligenceRoute,
+  ): Promise<{ output: JsonValue; usage?: IntelligenceUsage }> {
+    if (!this._speechClient) {
+      throw new SpeechUnavailableError(
+        "Arcadia Intelligence has no speech client configured for audio.speech.generate.",
+      );
+    }
+    if (!this._artifactStore) {
+      throw new SpeechUnavailableError(
+        "Arcadia Intelligence has no artifact store configured for speech generation.",
+      );
+    }
+
+    const speechConfig = this._config.speech;
+    // Local speech targets a direct OpenAI-compatible endpoint; cloud reuses the
+    // LiteLLM proxy. There is no fallback between them — routing already picked
+    // the location, and a missing endpoint is a clear, actionable failure.
+    const baseUrl =
+      route.location === "local" ? speechConfig?.localBaseUrl : this._config.liteLlmBaseUrl;
+    if (!baseUrl) {
+      throw new SpeechUnavailableError(
+        route.location === "local"
+          ? "No local speech endpoint is configured. Set ARCADIA_SPEECH_LOCAL_BASE_URL to the OpenAI-compatible /v1/audio/speech server."
+          : "No cloud speech endpoint is configured. Set ARCADIA_LITELLM_BASE_URL.",
+      );
+    }
+
+    const input = parseSpeechInput(job.request.input);
+    let voice: string;
+    try {
+      voice = resolveVoice(input.voiceId, speechConfig?.voiceMap ?? {});
+    } catch (error) {
+      if (error instanceof UnknownVoiceError) {
+        throw new SpeechGenerationError("SPEECH_UNKNOWN_VOICE", error.message);
+      }
+      throw error;
+    }
+
+    const generation = await this._speechClient.generateSpeech(
+      {
+        text: input.text,
+        voice,
+        format: input.format,
+        speed: input.speed,
+        language: input.language,
+        instructions: input.instructions,
+      },
+      route.liteLlmRoute,
+      baseUrl,
+    );
+
+    // Deterministic inspection happens before any bytes are persisted: an
+    // undecodable payload fails the job and never becomes an artifact.
+    const metadata = parseWavMetadata(generation.bytes);
+    if (!metadata) {
+      throw new SpeechGenerationError(
+        "SPEECH_UNDECODABLE_AUDIO",
+        "Generated audio could not be decoded as WAV; its duration and sample metadata are unavailable.",
+      );
+    }
+
+    const artifact = await this._artifactStore.saveAudioBytes({
+      jobId: job.id,
+      bytes: generation.bytes,
+      format: input.format,
+      durationSeconds: metadata.durationSeconds,
+      sampleRateHz: metadata.sampleRateHz,
+      channels: metadata.channels,
+      metadata: { voiceId: input.voiceId },
+    });
+
+    const usage: IntelligenceUsage = {
+      provider: generation.provider,
+      ...(generation.model ? { model: generation.model } : {}),
+      ...(route.location === "local" ? { estimatedCostUsd: 0 } : {}),
+    };
+
+    const output: JsonValue = {
+      artifact: artifact as unknown as JsonValue,
+      voiceId: input.voiceId,
+      routeId: route.routeId,
+      provider: generation.provider,
+      ...(generation.model ? { model: generation.model } : {}),
+      usage: {
+        routeId: route.routeId,
+        modelRoute: route.liteLlmRoute,
+        provider: generation.provider,
+        ...(generation.model ? { model: generation.model } : {}),
+        ...(route.location === "local" ? { estimatedCostUsd: 0 } : {}),
+      },
+      createdAt: nowIso(),
+    };
+
+    // Make it obvious in logs whether this used a free local route or a paid
+    // cloud route.
+    process.stdout.write(
+      `[intelligence] audio.speech.generate job ${job.id} produced ${artifact.byteSize}B ` +
+        `${artifact.format ?? "audio"} via ${route.location === "local" ? "LOCAL" : "PAID CLOUD"} ` +
+        `route ${route.routeId} (provider ${generation.provider})\n`,
+    );
+
+    return { output, usage };
+  }
+
   /**
    * Starts the polling loop and returns a function that stops it.
    */
@@ -269,4 +399,60 @@ function requestedImageCount(input: JsonValue): number | undefined {
     }
   }
   return undefined;
+}
+
+type SpeechInputFields = {
+  text: string;
+  voiceId: string;
+  format: string;
+  speed?: number;
+  language?: string;
+  instructions?: string;
+};
+
+/**
+ * Reads and validates the speech options from a request's `input`. The API
+ * layer already validates this shape (see api/server.ts), but the worker
+ * re-checks defensively — a raw request could reach the worker without passing
+ * through the HTTP validator. `format` defaults to "wav" (the only supported
+ * format this milestone).
+ */
+function parseSpeechInput(input: JsonValue): SpeechInputFields {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new SpeechGenerationError(
+      "SPEECH_INVALID_INPUT",
+      "audio.speech.generate input must be an object containing text and voiceId.",
+    );
+  }
+  const obj = input as Record<string, JsonValue>;
+  const text = typeof obj.text === "string" ? obj.text.trim() : "";
+  const voiceId = typeof obj.voiceId === "string" ? obj.voiceId.trim() : "";
+  if (!text) {
+    throw new SpeechGenerationError(
+      "SPEECH_INVALID_INPUT",
+      "audio.speech.generate requires a non-empty string input.text.",
+    );
+  }
+  if (!voiceId) {
+    throw new SpeechGenerationError(
+      "SPEECH_INVALID_INPUT",
+      "audio.speech.generate requires a non-empty string input.voiceId.",
+    );
+  }
+  const format =
+    typeof obj.format === "string" && obj.format.trim().length > 0 ? obj.format.trim() : "wav";
+  if (format !== "wav") {
+    throw new SpeechGenerationError(
+      "SPEECH_INVALID_INPUT",
+      `audio.speech.generate input.format "${format}" is not supported. Only "wav" is supported.`,
+    );
+  }
+  return {
+    text,
+    voiceId,
+    format,
+    speed: typeof obj.speed === "number" ? obj.speed : undefined,
+    language: typeof obj.language === "string" ? obj.language : undefined,
+    instructions: typeof obj.instructions === "string" ? obj.instructions : undefined,
+  };
 }

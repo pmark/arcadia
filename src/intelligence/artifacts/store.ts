@@ -1,10 +1,11 @@
-import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { createId } from "../../utils/id.js";
 import { nowIso } from "../../utils/time.js";
 import { getWorkspacePaths } from "../../workspace/paths.js";
+import { audioMimeTypeToExtension, sniffAudioMimeType } from "../speech/wavMeta.js";
 import type { IntelligenceArtifactRecord, JsonValue } from "../types.js";
 import { mimeTypeToExtension, parseImageDimensions, sniffImageMimeType } from "./imageMeta.js";
 
@@ -20,6 +21,10 @@ interface IntelligenceJobArtifactRow {
   relative_path: string;
   metadata_json: string;
   created_at: string;
+  format: string | null;
+  duration_seconds: number | null;
+  sample_rate_hz: number | null;
+  channels: number | null;
 }
 
 /**
@@ -33,6 +38,23 @@ export interface IntelligenceArtifactStore {
   saveImageBytes(input: {
     jobId: string;
     bytes: Buffer;
+    metadata?: JsonValue;
+  }): Promise<IntelligenceArtifactRecord>;
+
+  /**
+   * Persists generated speech bytes as a durable `kind = 'audio'` artifact.
+   * The bytes are written atomically (temp file + rename) so a crash mid-write
+   * never leaves a partial artifact behind. Decoded audio facts
+   * (format/duration/sampleRate/channels) are supplied by the caller after
+   * deterministic inspection and stored as first-class columns.
+   */
+  saveAudioBytes(input: {
+    jobId: string;
+    bytes: Buffer;
+    format: string;
+    durationSeconds?: number;
+    sampleRateHz?: number;
+    channels?: number;
     metadata?: JsonValue;
   }): Promise<IntelligenceArtifactRecord>;
 
@@ -94,6 +116,62 @@ export function createSqliteIntelligenceArtifactStore(
     };
   }
 
+  async function saveAudioBytes(input: {
+    jobId: string;
+    bytes: Buffer;
+    format: string;
+    durationSeconds?: number;
+    sampleRateHz?: number;
+    channels?: number;
+    metadata?: JsonValue;
+  }): Promise<IntelligenceArtifactRecord> {
+    const mimeType = sniffAudioMimeType(input.bytes);
+    const id = createId("intelligenceArtifact");
+    const fileName = `${id}.${audioMimeTypeToExtension(mimeType)}`;
+    const relativePath = ["intelligence", input.jobId, fileName].join("/");
+    const absolutePath = path.join(artifactsDir, relativePath);
+
+    mkdirSync(path.dirname(absolutePath), { recursive: true });
+    writeFileAtomic(absolutePath, input.bytes);
+
+    const sha256 = createHash("sha256").update(input.bytes).digest("hex");
+
+    db.prepare(
+      `INSERT INTO intelligence_job_artifacts (
+        id, job_id, kind, mime_type, byte_size, sha256, width, height,
+        relative_path, metadata_json, created_at,
+        format, duration_seconds, sample_rate_hz, channels
+      ) VALUES (?, ?, 'audio', ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      input.jobId,
+      mimeType,
+      input.bytes.byteLength,
+      sha256,
+      relativePath,
+      JSON.stringify(input.metadata ?? {}),
+      nowIso(),
+      input.format,
+      input.durationSeconds ?? null,
+      input.sampleRateHz ?? null,
+      input.channels ?? null,
+    );
+
+    return {
+      id,
+      kind: "audio",
+      uri: `/api/intelligence/artifacts/${id}`,
+      mimeType,
+      sha256,
+      byteSize: input.bytes.byteLength,
+      format: input.format,
+      durationSeconds: input.durationSeconds,
+      sampleRateHz: input.sampleRateHz,
+      channels: input.channels,
+      metadata: input.metadata,
+    };
+  }
+
   async function getArtifactBytes(
     artifactId: string,
   ): Promise<{ bytes: Buffer; mimeType: string } | undefined> {
@@ -108,5 +186,21 @@ export function createSqliteIntelligenceArtifactStore(
     return { bytes: readFileSync(absolutePath), mimeType: row.mime_type };
   }
 
-  return { saveImageBytes, getArtifactBytes };
+  return { saveImageBytes, saveAudioBytes, getArtifactBytes };
+}
+
+/**
+ * Writes bytes atomically: to a sibling temp file first, then renames into
+ * place (rename is atomic within a filesystem). A failure mid-write leaves only
+ * the temp file, which is removed — never a partial artifact at the real path.
+ */
+function writeFileAtomic(absolutePath: string, bytes: Buffer): void {
+  const tempPath = `${absolutePath}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(tempPath, bytes);
+    renameSync(tempPath, absolutePath);
+  } catch (error) {
+    rmSync(tempPath, { force: true });
+    throw error;
+  }
 }

@@ -6,6 +6,7 @@ import type {
   IntelligenceProfile,
   IntelligenceRequest,
   IntelligenceRequirements,
+  IntelligenceSpeechGenerationResult,
   JsonValue,
   OutputContract,
   PromptTemplateRef,
@@ -117,13 +118,37 @@ export interface ImageGenerationOperation<
   ): Promise<StructuredTextRunResult<TOutput>>;
 }
 
+export type SpeechGenerationOperationDefinition<TOutput> = {
+  operationId: string;
+  clientApp: string;
+  projectId?: string;
+  profile: IntelligenceProfile;
+  template: PromptTemplateRef;
+  outputContract: OutputContract;
+  parse?: (value: unknown) => TOutput;
+};
+
+export interface SpeechGenerationOperation<
+  TInput extends JsonValue,
+  TOutput = IntelligenceSpeechGenerationResult,
+> {
+  run(
+    input: TInput,
+    options: StructuredTextRunOptions,
+  ): Promise<StructuredTextRunResult<TOutput>>;
+  retry(
+    jobId: string,
+    options?: OperationWaitOptions,
+  ): Promise<StructuredTextRunResult<TOutput>>;
+}
+
 type IntelligenceHealthResponse = {
   liteLlm: {
     routes: Array<{
       capability: IntelligenceCapability;
       location: "local" | "cloud";
       profile: IntelligenceProfile;
-      executor: "litellm" | "codex-cli";
+      executor: "litellm" | "codex-cli" | "speech";
     }>;
   };
 };
@@ -204,6 +229,51 @@ export class ArcadiaIntelligenceClient {
             profile: definition.profile,
             input,
             requirements: definition.requirements,
+            outputContract: definition.outputContract,
+            template: definition.template,
+            executionPolicy: {
+              allowPaidUsage: options.allowPaidUsage ?? false,
+              maxRetries: options.maxRetries ?? 1,
+            },
+          };
+          return this.runOperation(request, options, parse);
+        },
+        retry: async (jobId, options = {}) =>
+          this.retryOperation(jobId, options, parse),
+      };
+    },
+  };
+
+  public readonly audio = {
+    /**
+     * Defines a text-to-speech operation. Mirrors image generation: submit +
+     * poll through the same job API. `input` carries `text` + a semantic
+     * `voiceId` (never a provider voice name) plus optional `format` ("wav"),
+     * `speed`, `language`, `instructions`. The result is an
+     * IntelligenceSpeechGenerationResult carrying a durable audio artifact.
+     */
+    defineSpeechOperation: <
+      TInput extends JsonValue,
+      TOutput = IntelligenceSpeechGenerationResult,
+    >(
+      definition: SpeechGenerationOperationDefinition<TOutput>,
+    ): SpeechGenerationOperation<TInput, TOutput> => {
+      const parse = (value: unknown): TOutput => definition.parse
+        ? definition.parse(value)
+        : value as TOutput;
+      return {
+        run: async (input, options) => {
+          this.assertExecutionPolicy(options);
+          const request: IntelligenceRequest = {
+            idempotencyKey: options.idempotencyKey,
+            operationId: definition.operationId,
+            clientApp: definition.clientApp,
+            projectId: definition.projectId,
+            capability: "audio.speech.generate",
+            execution: this.executionPreference(options.execution),
+            executionTarget: options.execution,
+            profile: definition.profile,
+            input,
             outputContract: definition.outputContract,
             template: definition.template,
             executionPolicy: {

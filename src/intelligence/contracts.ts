@@ -17,6 +17,7 @@ export type {
   IntelligenceProfile,
   IntelligenceRequest,
   IntelligenceRequirements,
+  IntelligenceSpeechGenerationResult,
   IntelligenceUsage,
   JsonPrimitive,
   JsonValue,

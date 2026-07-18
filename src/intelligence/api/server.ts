@@ -289,6 +289,18 @@ function validateIntelligenceRequestShape(body: unknown): string | undefined {
       return `capability "${request.capability}" requires a non-empty string input.prompt.`;
     }
   }
+  if (request.capability === "audio.speech.generate") {
+    const input = request.input as Record<string, unknown> | null;
+    if (!input || typeof input.text !== "string" || input.text.trim().length === 0) {
+      return 'capability "audio.speech.generate" requires a non-empty string input.text.';
+    }
+    if (typeof input.voiceId !== "string" || input.voiceId.trim().length === 0) {
+      return 'capability "audio.speech.generate" requires a non-empty string input.voiceId.';
+    }
+    if (input.format !== undefined && input.format !== "wav") {
+      return 'capability "audio.speech.generate" only supports input.format "wav".';
+    }
+  }
   if (!request.outputContract || typeof request.outputContract.jsonSchema !== "object") {
     return "outputContract.jsonSchema is required.";
   }

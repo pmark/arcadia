@@ -151,6 +151,98 @@ export function startFakeLiteLlmImages(options: {
   });
 }
 
+/**
+ * Builds a minimal, valid WAV file Buffer (PCM) with the given parameters and a
+ * silent body of the requested duration. Used as deterministic fixture audio in
+ * place of a real TTS provider.
+ */
+export function makeWavFixture(options: {
+  sampleRateHz?: number;
+  channels?: number;
+  seconds?: number;
+  bitsPerSample?: number;
+} = {}): Buffer {
+  const sampleRateHz = options.sampleRateHz ?? 24_000;
+  const channels = options.channels ?? 1;
+  const bitsPerSample = options.bitsPerSample ?? 16;
+  const seconds = options.seconds ?? 0.5;
+
+  const blockAlign = (channels * bitsPerSample) / 8;
+  const byteRate = sampleRateHz * blockAlign;
+  const dataBytes = Math.max(blockAlign, Math.round(sampleRateHz * seconds) * blockAlign);
+
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0, "latin1");
+  header.writeUInt32LE(36 + dataBytes, 4);
+  header.write("WAVE", 8, "latin1");
+  header.write("fmt ", 12, "latin1");
+  header.writeUInt32LE(16, 16); // fmt chunk size
+  header.writeUInt16LE(1, 20); // PCM
+  header.writeUInt16LE(channels, 22);
+  header.writeUInt32LE(sampleRateHz, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(bitsPerSample, 34);
+  header.write("data", 36, "latin1");
+  header.writeUInt32LE(dataBytes, 40);
+
+  return Buffer.concat([header, Buffer.alloc(dataBytes)]);
+}
+
+/**
+ * Fake OpenAI-compatible `/v1/audio/speech` server. Unlike the image server,
+ * `/v1/audio/speech` returns raw audio bytes with an audio Content-Type, so
+ * this returns `wavBytes` directly. `contentType` and `status` are overridable
+ * to exercise the non-audio / error paths.
+ */
+export function startFakeOpenAiSpeech(options: {
+  wavBytes?: Buffer;
+  contentType?: string;
+  status?: number;
+  delayMs?: number;
+  onRequest?: (body: unknown) => void;
+}): Promise<{ server: Server; baseUrl: string }> {
+  const server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", () => {
+      if (options.onRequest) {
+        try {
+          options.onRequest(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        } catch {
+          options.onRequest(undefined);
+        }
+      }
+      const respond = (): void => {
+        const status = options.status ?? 200;
+        if (status !== 200) {
+          res.writeHead(status, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: { message: "fake speech error" } }));
+          return;
+        }
+        const body = options.wavBytes ?? makeWavFixture({});
+        res.writeHead(200, {
+          "content-type": options.contentType ?? "audio/wav",
+          "content-length": body.byteLength,
+        });
+        res.end(body);
+      };
+      if (options.delayMs) {
+        setTimeout(respond, options.delayMs);
+      } else {
+        respond();
+      }
+    });
+  });
+
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address() as AddressInfo;
+      resolve({ server, baseUrl: `http://127.0.0.1:${port}` });
+    });
+  });
+}
+
 /** Returns a base URL that nothing is listening on, to simulate LiteLLM being unavailable. */
 export async function unavailableLiteLlmBaseUrl(): Promise<string> {
   const server = createServer((_req, res) => res.end());
