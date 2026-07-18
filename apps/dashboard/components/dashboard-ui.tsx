@@ -15,6 +15,8 @@ import {
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { useEnrichment } from "../hooks/use-enrichment";
+import type { EnrichmentKind } from "../lib/enrichment/registry";
 import type {
   DashboardArtifact,
   DashboardAttentionItem,
@@ -311,7 +313,11 @@ export function ReviewCard({
           label={item.missingFields.length > 0 ? "Missing Fields" : "Blocking Question"}
           value={item.missingFields.length > 0 ? item.missingFields.join(", ") : item.decisionNeeded}
         />
-        <TruncatedField label="Proposed Action" value={item.proposedAction || item.recommendation || "None"} />
+        <TruncatedField
+          label="Proposed Action"
+          value={item.proposedAction || item.recommendation || "None"}
+          enrichment={{ kind: "review.proposed-action.headline" }}
+        />
         <Field label="Choices" value={item.options.join(", ")} />
         <Field label="Created" value={`${formatDateTime(item.createdAt)} · ${item.statusLabel}`} />
       </dl>
@@ -690,23 +696,57 @@ function Field({ label, value }: { label: string; value: string }) {
 
 const TRUNCATED_FIELD_LIMIT = 280;
 
-function TruncatedField({ label, value }: { label: string; value: string }) {
+function TruncatedField({
+  label,
+  value,
+  enrichment
+}: {
+  label: string;
+  value: string;
+  enrichment?: { kind: EnrichmentKind };
+}) {
   const [expanded, setExpanded] = useState(false);
   const isLong = value.length > TRUNCATED_FIELD_LIMIT;
-  const shown = expanded || !isLong ? value : `${value.slice(0, TRUNCATED_FIELD_LIMIT)}…`;
+
+  // Enrichment is a progressive enhancement: only requested for long values,
+  // and the deterministic truncation below always stands on its own.
+  const { status: enrichStatus, value: headline } = useEnrichment(
+    enrichment?.kind ?? "review.proposed-action.headline",
+    value,
+    { enabled: Boolean(enrichment) && isLong }
+  );
+  const hasHeadline = Boolean(enrichment) && enrichStatus === "ready" && Boolean(headline);
+  const isSummarizing = Boolean(enrichment) && isLong && enrichStatus === "pending";
+
+  const truncated = expanded || !isLong ? value : `${value.slice(0, TRUNCATED_FIELD_LIMIT)}…`;
 
   return (
     <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</dt>
+      <dt className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+        {label}
+        {isSummarizing ? (
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium normal-case tracking-normal text-steel/70">
+            <Sparkles className="h-3 w-3 animate-pulse" aria-hidden="true" />
+            summarizing…
+          </span>
+        ) : null}
+      </dt>
       <dd className="mt-1 min-w-0 [overflow-wrap:anywhere] leading-5">
-        {shown}
+        {hasHeadline && !expanded ? (
+          <span className="flex items-start gap-1.5">
+            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-steel" aria-hidden="true" />
+            <span>{headline}</span>
+          </span>
+        ) : (
+          truncated
+        )}
         {isLong ? (
           <button
             type="button"
             onClick={() => setExpanded((prev) => !prev)}
             className="ml-2 inline text-xs font-semibold text-steel underline underline-offset-2"
           >
-            {expanded ? "Show less" : "Show more"}
+            {expanded ? "Show less" : hasHeadline ? "Show full report" : "Show more"}
           </button>
         ) : null}
       </dd>
