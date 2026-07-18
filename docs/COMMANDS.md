@@ -154,6 +154,17 @@ Arcadia processes `.txt` requests and media files matched by enabled Workflows o
 
 Watch mode is intentionally not implemented. For periodic processing, configure macOS `launchd` to run `arcadia ingress process` on an interval. See `docs/APPLE_INGEST.md` for the macOS Quick Action and iPhone/iPad Shortcut flow.
 
+Install and maintain that periodic macOS service through Arcadia rather than hand-editing a LaunchAgent:
+
+```sh
+pnpm arcadia ingress service install --workspace "$WORKSPACE"
+pnpm arcadia ingress service status --workspace "$WORKSPACE"
+pnpm arcadia ingress service doctor --workspace "$WORKSPACE"
+pnpm arcadia ingress service uninstall --workspace "$WORKSPACE"
+```
+
+The service uses the iCloud Drive `ArcadiaIngress` root by default, checks every 60 seconds, waits 30 seconds for Workflow media to stabilize, and passes `--run-safe` so only Workflows explicitly marked safe can execute. Standard output is discarded because Arcadia retains Run evidence; errors go to `~/Library/Logs/Arcadia/ingress-iCloudIdeas.err.log`.
+
 ## Deterministic Workflows
 
 ```sh

@@ -82,7 +82,29 @@ Pin that Shortcut to the menu bar or assign a keyboard shortcut.
 
 ## iPhone and iPad Shortcut
 
-Create a Shortcut named **Send to Arcadia** and enable **Show in Share Sheet**. Allow Files, Images, Media, URLs, and Text as accepted types.
+For Thundertonk Voice Memos, install the signed, shareable artifact:
+
+```text
+scripts/apple/Send Thundertonk Recording to Arcadia (iPhone-iPad).shortcut
+```
+
+Open it on the iPhone or iPad. During the one-time import, select the `ArcadiaIngress` folder in iCloud Drive. Then use **Share → Send Thundertonk Recording to Arcadia (iPhone-iPad)** from Voice Memos.
+
+Each run gives the recording a collision-resistant name such as:
+
+```text
+Thundertonk practice 2026-07-17-151700-123.m4a
+```
+
+The name retains the Workflow match terms, carries the recording date used for publication, and includes time through milliseconds so repeated runs never reuse the old fixed filename. Save File overwrite remains disabled, so iCloud cannot silently replace an earlier recording.
+
+The editable Shortcut source is the adjacent `.shortcut.plist`. After changing it, rebuild and publicly sign the installable artifact with:
+
+```sh
+scripts/apple/build-thundertonk-ios-shortcut
+```
+
+For the broader generic **Send to Arcadia** Shortcut, enable **Show in Share Sheet** and allow Files, Images, Media, URLs, and Text as accepted types.
 
 Use these actions:
 
@@ -119,7 +141,12 @@ pnpm arcadia ingress process \
 
 Add `--run-safe` only when deterministic safe Actions should run immediately. Without it, Arcadia plans work and preserves Decisions for human judgment.
 
-For automation, run that command periodically with `launchd`. Periodic processing is intentionally separate from capture: the Share Sheet stays fast and reliable even when Arcadia or the Mac is unavailable.
+For automation, install Arcadia's periodic macOS service. Periodic processing is intentionally separate from capture: the Share Sheet stays fast and reliable even when Arcadia or the Mac is unavailable.
+
+```sh
+pnpm arcadia ingress service install --workspace "$ARCADIA_WORKSPACE"
+pnpm arcadia ingress service doctor --workspace "$ARCADIA_WORKSPACE"
+```
 
 ## Thundertonk Practice Workflow
 
@@ -170,29 +197,16 @@ Google Drive Desktop must be running and the configured root must exist. macOS m
 
 ### launchd
 
-Use a periodic user agent rather than a separate daemon. Its `ProgramArguments` should call the repository's package manager without a shell, for example:
+Arcadia owns the periodic user agent. Do not maintain a separate mirror daemon or hand-edit a plist. The installer resolves the active repository, workspace, user, runtime, logs, and iCloud root, then uses modern `launchctl bootstrap` service management.
 
-```xml
-<key>StartInterval</key>
-<integer>60</integer>
-<key>ProgramArguments</key>
-<array>
-  <string>/opt/homebrew/bin/pnpm</string>
-  <string>--dir</string>
-  <string>/Users/pmark/Dev/MR/Arcadia/arcadia</string>
-  <string>arcadia</string>
-  <string>ingress</string>
-  <string>process</string>
-  <string>--workspace</string>
-  <string>/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover</string>
-  <string>--source</string>
-  <string>iCloudIdeas</string>
-  <string>--ingress-root</string>
-  <string>/Users/pmark/Library/Mobile Documents/com~apple~CloudDocs/ArcadiaIngress</string>
-  <string>--run-safe</string>
-  <string>--json</string>
-</array>
+```sh
+pnpm arcadia ingress service install --workspace "$ARCADIA_WORKSPACE"
+pnpm arcadia ingress service status --workspace "$ARCADIA_WORKSPACE"
+pnpm arcadia ingress service doctor --workspace "$ARCADIA_WORKSPACE"
+pnpm arcadia ingress service uninstall --workspace "$ARCADIA_WORKSPACE"
 ```
+
+The installed job runs once at login and every 60 seconds, never overlaps itself, and writes only errors to `~/Library/Logs/Arcadia/ingress-iCloudIdeas.err.log`. If `doctor` reports an iCloud or Google Drive permission failure, grant Full Disk Access to the reported Arcadia runtime and rerun the installer. Keep the iCloud Drive `ArcadiaIngress` folder downloaded on the Mac so large Voice Memo recordings are available to deterministic local tools.
 
 ## Native App Follow-up
 

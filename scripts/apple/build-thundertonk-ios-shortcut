@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+source_plist="$script_dir/Send Thundertonk Recording to Arcadia (iPhone-iPad).shortcut.plist"
+output="$script_dir/Send Thundertonk Recording to Arcadia (iPhone-iPad).shortcut"
+build_dir=$(mktemp -d "$script_dir/.thundertonk-ios-build.XXXXXX")
+trap 'rm -rf "$build_dir"' EXIT HUP INT TERM
+
+plutil -lint "$source_plist"
+plutil -convert binary1 -o "$build_dir/unsigned.shortcut" "$source_plist"
+shortcuts sign --mode anyone --input "$build_dir/unsigned.shortcut" --output "$build_dir/signed.shortcut"
+mv "$build_dir/signed.shortcut" "$output"
+
+printf '%s\n' "$output"

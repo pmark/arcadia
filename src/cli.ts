@@ -76,6 +76,16 @@ import { renderInboxImportSuccess, runInboxAddCommand, runInboxImportCommand } f
 import { renderInitSuccess, runInitCommand } from "./commands/init.js";
 import { renderIngressProcessSuccess, runIngressProcessCommand } from "./commands/ingress.js";
 import {
+  renderIngressServiceDoctorSuccess,
+  renderIngressServiceStatusSuccess,
+  renderIngressServiceTickSuccess,
+  runIngressServiceDoctorCommand,
+  runIngressServiceInstallCommand,
+  runIngressServiceStatusCommand,
+  runIngressServiceTickCommand,
+  runIngressServiceUninstallCommand
+} from "./commands/ingressService.js";
+import {
   renderExperimentBriefSuccess,
   runExperimentBriefCommand
 } from "./commands/experiment.js";
@@ -1079,6 +1089,68 @@ export function buildProgram(): Command {
     options,
     () => runIngressProcessCommand({ ...options, stableSeconds: Number(options.stableSeconds ?? 30) }),
     renderIngressProcessSuccess
+  ));
+
+  const ingressService = ingress.command("service").description("Install and inspect periodic macOS ingress processing");
+  const addIngressServiceOptions = (command: Command): Command => command
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+    .option("--source <name>", "Ingress source folder", "iCloudIdeas")
+    .option("--ingress-root <path>", "ArcadiaIngress root folder")
+    .option("--interval-seconds <seconds>", "Launch interval in seconds", "60")
+    .option("--stable-seconds <seconds>", "Minimum unchanged age for workflow files", "30")
+    .option("--run-safe", "Run deterministic Workflows marked safe automatically");
+  const normalizeIngressServiceOptions = (options: {
+    workspace: string;
+    source?: string;
+    ingressRoot?: string;
+    intervalSeconds?: string;
+    stableSeconds?: string;
+    json?: boolean;
+  }) => ({
+    ...options,
+    intervalSeconds: Number(options.intervalSeconds ?? 60),
+    stableSeconds: Number(options.stableSeconds ?? 30),
+    runSafe: true
+  });
+  addJsonOption(addIngressServiceOptions(
+    ingressService.command("install").description("Install or update the periodic macOS ingress service")
+  )).action((options) => runCliAction(
+    "ingress.service.install",
+    options,
+    () => runIngressServiceInstallCommand(normalizeIngressServiceOptions(options)),
+    renderIngressServiceStatusSuccess
+  ));
+  addJsonOption(addIngressServiceOptions(
+    ingressService.command("status").description("Show whether the periodic ingress service is installed and loaded")
+  )).action((options) => runCliAction(
+    "ingress.service.status",
+    options,
+    () => runIngressServiceStatusCommand(normalizeIngressServiceOptions(options)),
+    renderIngressServiceStatusSuccess
+  ));
+  addJsonOption(addIngressServiceOptions(
+    ingressService.command("doctor").description("Check the service, iCloud access, Workflow, and publication dependencies")
+  )).action((options) => runCliAction(
+    "ingress.service.doctor",
+    options,
+    () => runIngressServiceDoctorCommand(normalizeIngressServiceOptions(options)),
+    renderIngressServiceDoctorSuccess
+  ));
+  addJsonOption(addIngressServiceOptions(
+    ingressService.command("run").description("Run one service health check and ingress pass")
+  )).action((options) => runCliAction(
+    "ingress.service.run",
+    options,
+    () => runIngressServiceTickCommand(normalizeIngressServiceOptions(options)),
+    renderIngressServiceTickSuccess
+  ));
+  addJsonOption(addIngressServiceOptions(
+    ingressService.command("uninstall").description("Unload and remove the periodic macOS ingress service")
+  )).action((options) => runCliAction(
+    "ingress.service.uninstall",
+    options,
+    () => runIngressServiceUninstallCommand(normalizeIngressServiceOptions(options)),
+    renderIngressServiceStatusSuccess
   ));
 
   const workflow = program.command("workflow").description("Discover and run deterministic local workflows");
