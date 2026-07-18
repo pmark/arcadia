@@ -25,6 +25,7 @@ import {
   listMilestones
 } from "../db/repositories.js";
 import { CODEX_REPO_PATH_REQUIRED_MESSAGE } from "../projects/setup.js";
+import { selectDailyAdvantage, type DashboardDailyAdvantage } from "./dailyAdvantage.js";
 
 export const MISSING_REPO_PATH_WARNING = CODEX_REPO_PATH_REQUIRED_MESSAGE;
 
@@ -51,6 +52,7 @@ export interface DashboardSnapshot {
     recentArtifacts: number;
     activityEvents: number;
   };
+  dailyAdvantage: DashboardDailyAdvantage | null;
   projects: DashboardProject[];
   attentionItems: DashboardAttentionItem[];
   activityEvents: DashboardActivityEvent[];
@@ -362,6 +364,7 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
     const backBurnerItems = listBackBurnerItems(db, "all").filter((item) =>
       item.status === "incubating" || item.status === "opportunistic"
     );
+    const dailyAdvantage = selectDailyAdvantage(db);
     const lastArtifactByProject = new Map<string, DashboardArtifact>();
 
     for (const artifact of artifacts) {
@@ -417,6 +420,7 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
         recentArtifacts: Math.min(artifacts.length, artifactLimit),
         activityEvents: activityEvents.length
       },
+      dailyAdvantage,
       projects,
       attentionItems,
       activityEvents,

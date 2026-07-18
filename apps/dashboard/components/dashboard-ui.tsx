@@ -14,12 +14,14 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { useState } from "react";
 import type {
   DashboardArtifact,
   DashboardAttentionItem,
   DashboardActivityEvent,
   DashboardBackBurnerItem,
   DashboardBloggingSnapshot,
+  DashboardDailyAdvantage,
   DashboardMilestone,
   DashboardProject,
   DashboardRebusterSnapshot,
@@ -97,6 +99,61 @@ export function Section({ title, children }: { title: string; children: ReactNod
       <h2 className="min-w-0 text-base font-semibold">{title}</h2>
       {children}
     </section>
+  );
+}
+
+export function DailyAdvantageCard({
+  advantage,
+  pending,
+  onPrepare
+}: {
+  advantage: DashboardDailyAdvantage;
+  pending: boolean;
+  onPrepare: (advantage: DashboardDailyAdvantage) => void;
+}) {
+  return (
+    <article className="min-w-0 rounded-md border border-moss/40 bg-panel p-4 shadow-soft sm:p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-moss">{advantage.projectName}</p>
+          <h3 className="mt-1 break-words text-lg font-semibold leading-6">{advantage.actionTitle}</h3>
+        </div>
+        <StatusBadge status={advantage.status === "prepared" ? "open" : "ready"} label={advantage.statusLabel} />
+      </div>
+      <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+        <Field label="Milestone" value={advantage.milestoneTitle} />
+        <Field label="Expected Artifact" value={advantage.expectedArtifact} />
+        <div className="sm:col-span-2"><Field label="Why It Matters" value={advantage.whyItMatters} /></div>
+        <div className="sm:col-span-2"><Field label="Why Now" value={advantage.whyNow} /></div>
+      </dl>
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        {advantage.status === "prepared" ? (
+          <Link
+            href="/review"
+            className="inline-flex min-h-11 items-center gap-2 rounded-md border border-moss/30 bg-moss/10 px-4 text-sm font-semibold text-moss transition hover:border-moss"
+          >
+            <Sparkles className="h-4 w-4" aria-hidden="true" />
+            Open Review
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onPrepare(advantage)}
+            disabled={pending}
+            className="inline-flex min-h-11 items-center gap-2 rounded-md border border-moss/30 bg-moss/10 px-4 text-sm font-semibold text-moss transition hover:border-moss disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Sparkles className="h-4 w-4" aria-hidden="true" />
+            {pending ? "Preparing…" : "Prepare Planning Decision"}
+          </button>
+        )}
+        <Link
+          href={`/projects/${encodeURIComponent(advantage.projectId)}`}
+          className="inline-flex min-h-11 items-center rounded-md border border-line px-4 text-sm font-semibold text-muted transition hover:border-steel hover:text-steel"
+        >
+          View Project
+        </Link>
+      </div>
+    </article>
   );
 }
 
@@ -254,7 +311,7 @@ export function ReviewCard({
           label={item.missingFields.length > 0 ? "Missing Fields" : "Blocking Question"}
           value={item.missingFields.length > 0 ? item.missingFields.join(", ") : item.decisionNeeded}
         />
-        <Field label="Proposed Action" value={item.proposedAction || item.recommendation || "None"} />
+        <TruncatedField label="Proposed Action" value={item.proposedAction || item.recommendation || "None"} />
         <Field label="Choices" value={item.options.join(", ")} />
         <Field label="Created" value={`${formatDateTime(item.createdAt)} · ${item.statusLabel}`} />
       </dl>
@@ -627,6 +684,32 @@ function Field({ label, value }: { label: string; value: string }) {
     <div>
       <dt className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</dt>
       <dd className="mt-1 min-w-0 [overflow-wrap:anywhere] leading-5">{value}</dd>
+    </div>
+  );
+}
+
+const TRUNCATED_FIELD_LIMIT = 280;
+
+function TruncatedField({ label, value }: { label: string; value: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = value.length > TRUNCATED_FIELD_LIMIT;
+  const shown = expanded || !isLong ? value : `${value.slice(0, TRUNCATED_FIELD_LIMIT)}…`;
+
+  return (
+    <div>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</dt>
+      <dd className="mt-1 min-w-0 [overflow-wrap:anywhere] leading-5">
+        {shown}
+        {isLong ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((prev) => !prev)}
+            className="ml-2 inline text-xs font-semibold text-steel underline underline-offset-2"
+          >
+            {expanded ? "Show less" : "Show more"}
+          </button>
+        ) : null}
+      </dd>
     </div>
   );
 }

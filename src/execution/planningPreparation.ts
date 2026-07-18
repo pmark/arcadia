@@ -115,6 +115,7 @@ export function createPlanningApprovalDecision(
       expectedArtifact: input.expectedArtifact,
       originatingActionId: input.workItem.id,
       approvalAuthorizes: "One managed read-only Codex planning Run for this exact packet.",
+      preparationSource: existingAction ? "existing_action" : "ask",
       safetyBoundaries: [...PLANNING_SAFETY_BOUNDARIES],
       responsibility: "needs_mark"
     }

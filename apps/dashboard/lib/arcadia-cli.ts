@@ -16,6 +16,20 @@ export async function loadDashboardSnapshot(): Promise<ArcadiaJsonSuccess<Dashbo
   return runArcadiaCliJson<DashboardSnapshotResponse>(["dashboard", "snapshot"]);
 }
 
+export interface DailyAdvantagePreparationResponse {
+  plan: { id: string; work_item_id: string; status: string };
+  planningDecision: { id: string; slug: string | null; status: string } | null;
+  codexInvocation: { id: string; status: string } | null;
+  packetArtifact: { id: string; path: string | null } | null;
+  reused: boolean;
+}
+
+export async function prepareDailyAdvantage(
+  actionId: string
+): Promise<ArcadiaJsonSuccess<DailyAdvantagePreparationResponse>> {
+  return runArcadiaCliJson<DailyAdvantagePreparationResponse>(["work", "plan", actionId]);
+}
+
 export interface IntelligenceListJobsResponse {
   jobs: unknown[];
 }

@@ -15,7 +15,7 @@ interface DashboardChromeProps {
 }
 
 const navItems = [
-  { href: "/", label: "Control", icon: Activity },
+  { href: "/", label: "Today", icon: Activity },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/review", label: "Review", icon: Eye },
   { href: "/back-burner", label: "Back Burner", icon: Archive },

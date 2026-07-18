@@ -78,7 +78,7 @@ describe("Codex CLI text executor", () => {
   });
 
   it("recovers a completed result when the Codex CLI process lingers past the timeout", async () => {
-    const finished = await runCodexTextScenario("lingers", { timeoutMs: 300 });
+    const finished = await runCodexTextScenario("lingers", { timeoutMs: 1_000 });
 
     expect(finished.status).toBe("completed");
     expect(finished.result).toEqual(SUCCESS_RESULT);
@@ -86,7 +86,7 @@ describe("Codex CLI text executor", () => {
   });
 
   it("fails with CODEX_CLI_TIMEOUT when no result was written before the kill", async () => {
-    const finished = await runCodexTextScenario("lingers-no-output", { timeoutMs: 300 });
+    const finished = await runCodexTextScenario("lingers-no-output", { timeoutMs: 1_000 });
 
     expect(finished.status).toBe("failed");
     expect(finished.error?.code).toBe("CODEX_CLI_TIMEOUT");

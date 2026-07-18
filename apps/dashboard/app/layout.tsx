@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Arcadia Dashboard",
-  description: "Local Mission Control for Arcadia",
+  title: "Arcadia Today",
+  description: "Today's project advantage, Decisions, and Runs in Arcadia",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

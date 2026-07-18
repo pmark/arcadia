@@ -2,6 +2,7 @@ import { expect, test as base, type Page } from "@playwright/test";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { withDatabase } from "../../src/db/connection.js";
+import { createWorkItemWithOptionalArtifact } from "../../src/db/repositories.js";
 import { createE2EWorkspace, type E2EWorkspace } from "./fixtures/workspace.js";
 
 const CANONICAL_REQUEST = "Prepare a plan for adding Pinterest publishing to Rebuster.";
@@ -49,6 +50,80 @@ test("canonical dashboard capture completes as a Decision-gated validated planni
   expect(accepted.action?.status).toBe("done");
   expect(accepted.acceptance?.status).toBe("approved");
   await assertEvidenceFiles(page, arcadia, run.id);
+});
+
+test("Today prepares and completes one existing Daily Advantage Action", async ({ page, arcadia }) => {
+  const action = withDatabase(arcadia.root, (db) => {
+    const project = db.prepare("SELECT id FROM projects WHERE name = 'Rebuster'").get() as { id: string };
+    const milestone = db.prepare(
+      "SELECT id FROM milestones WHERE project_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1"
+    ).get(project.id) as { id: string };
+    return createWorkItemWithOptionalArtifact(db, {
+      projectId: project.id,
+      milestoneId: milestone.id,
+      title: "Define Pinterest posting support boundaries",
+      rawInput: "Define Pinterest posting support boundaries.",
+      queue: "work_queue",
+      workClassification: "codex",
+      nextAction: "Prepare a bounded Pinterest posting plan.",
+      expectedArtifact: "Pinterest implementation plan with risks and acceptance criteria"
+    }).workItem;
+  });
+
+  await page.goto(arcadia.url);
+  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Today's Advantage" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: action.title, exact: true })).toBeVisible();
+  await expect(page.getByRole("definition").filter({
+    hasText: /^Pinterest implementation plan with risks and acceptance criteria$/
+  }).first()).toBeVisible();
+  expect(withDatabase(arcadia.root, (db) => scalar(db, "SELECT COUNT(*) AS count FROM execution_runs"))).toBe(0);
+  expect(arcadia.fakeInvocationCount()).toBe(0);
+
+  await page.getByRole("button", { name: "Prepare Planning Decision" }).click();
+  await expect(page.getByText(/No Run was queued and Codex was not invoked/)).toBeVisible();
+  await expect(page.getByText("Decision Ready")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open Review" })).toBeVisible();
+
+  const prepared = withDatabase(arcadia.root, (db) => ({
+    action: db.prepare("SELECT * FROM work_items WHERE id = ?").get(action.id) as any,
+    decision: db.prepare(
+      "SELECT * FROM review_items WHERE work_item_id = ? AND resolved_intent = 'CodexPlanningRunApproval'"
+    ).get(action.id) as any,
+    invocation: db.prepare("SELECT * FROM codex_invocations WHERE work_item_id = ?").get(action.id) as any,
+    runCount: scalar(db, "SELECT COUNT(*) AS count FROM execution_runs WHERE work_item_id = ?", action.id)
+  }));
+  expect(prepared.action.status).toBe("open");
+  expect(prepared.action.work_classification).toBe("needs_mark");
+  expect(prepared.decision.status).toBe("open");
+  expect(prepared.invocation.status).toBe("packet_created");
+  expect(prepared.runCount).toBe(0);
+  expect(arcadia.fakeInvocationCount()).toBe(0);
+
+  await page.getByRole("link", { name: "Open Review" }).click();
+  await expect(page).toHaveURL(/\/review$/);
+  await expect(page.getByText(action.raw_input)).toBeVisible();
+  await page.getByRole("button", { name: "Approve & Run" }).click();
+  const run = await waitForRun(arcadia, (row) => row.work_item_id === action.id && row.status === "completed");
+  expect(run.mission_log_id).toBeTruthy();
+  expect(arcadia.fakeInvocationCount()).toBe(1);
+
+  await page.goto(`${arcadia.url}/review`);
+  await expect(page.getByRole("button", { name: "Accept Plan" })).toBeVisible();
+  await page.getByRole("button", { name: "Accept Plan" }).click();
+  await waitFor(() => withDatabase(arcadia.root, (db) =>
+    (db.prepare("SELECT status FROM work_items WHERE id = ?").get(action.id) as { status: string }).status === "done"
+  ));
+  const completed = withDatabase(arcadia.root, (db) => ({
+    actionStatus: (db.prepare("SELECT status FROM work_items WHERE id = ?").get(action.id) as { status: string }).status,
+    readyPlanCount: scalar(
+      db,
+      "SELECT COUNT(*) AS count FROM artifacts WHERE work_item_id = ? AND artifact_type = 'planning_artifact' AND status = 'ready'",
+      action.id
+    ),
+    logCount: scalar(db, "SELECT COUNT(*) AS count FROM mission_logs WHERE id = ?", run.mission_log_id)
+  }));
+  expect(completed).toEqual({ actionStatus: "done", readyPlanCount: 1, logCount: 1 });
 });
 
 test("planning approval cannot be bypassed", async ({ page, arcadia }) => {

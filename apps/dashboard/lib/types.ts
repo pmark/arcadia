@@ -110,6 +110,7 @@ export interface DashboardSnapshot {
     recentArtifacts: number;
     activityEvents: number;
   };
+  dailyAdvantage: DashboardDailyAdvantage | null;
   projects: DashboardProject[];
   attentionItems: DashboardAttentionItem[];
   activityEvents: DashboardActivityEvent[];
@@ -121,6 +122,27 @@ export interface DashboardSnapshot {
   backBurnerItems: DashboardBackBurnerItem[];
   recentRuns: DashboardRun[];
   recentArtifacts: DashboardArtifact[];
+}
+
+export interface DashboardDailyAdvantage {
+  actionId: string;
+  projectId: string;
+  projectName: string;
+  mission: string;
+  outcome: string | null;
+  milestoneId: string;
+  milestoneTitle: string;
+  actionTitle: string;
+  nextAction: string;
+  expectedArtifact: string;
+  repositoryPath: string;
+  whyItMatters: string;
+  whyNow: string;
+  status: "ready" | "prepared";
+  statusLabel: string;
+  decisionId: string | null;
+  decisionSlug: string | null;
+  packetPath: string | null;
 }
 
 export interface DashboardProject {

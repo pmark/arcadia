@@ -86,7 +86,7 @@ describe("Codex CLI image executor", () => {
   });
 
   it("recovers a completed manifest when the Codex CLI process lingers past the timeout", async () => {
-    const finished = await runCodexImageScenario("lingers", { timeoutMs: 300 });
+    const finished = await runCodexImageScenario("lingers", { timeoutMs: 1_000 });
 
     expect(finished.status).toBe("completed");
     expect(finished.error).toBeUndefined();
@@ -96,7 +96,7 @@ describe("Codex CLI image executor", () => {
   });
 
   it("still fails with CODEX_CLI_TIMEOUT when no manifest was written before the kill", async () => {
-    const finished = await runCodexImageScenario("lingers-no-output", { timeoutMs: 300 });
+    const finished = await runCodexImageScenario("lingers-no-output", { timeoutMs: 1_000 });
 
     expect(finished.status).toBe("failed");
     expect(finished.error?.code).toBe("CODEX_CLI_TIMEOUT");

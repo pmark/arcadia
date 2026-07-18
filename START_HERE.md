@@ -1,13 +1,16 @@
 # Arcadia: Start Here
 
-This is the canonical brief operator guide. On this Mac, open the **Today page** (currently labeled **Mission Control**) at <http://127.0.0.1:3020/>.
+This is the canonical brief operator guide. On this Mac, open **Today** at <http://127.0.0.1:3020/>.
 
 ## Normal daily use
 
-1. Put a new request in the **Ask** box.
-2. Use **Review** for Decisions that need approval, rejection, or deferral.
-3. Use **Runs** to follow approved work and inspect its Artifacts, Validation, and Log.
-4. When an existing stored Action specifically needs a bounded planning packet, run `pnpm arcadia work plan <ACTION_ID>`. This prepares one Decision; it does not run Codex.
+1. Read **Today's Advantage**: one ready Action, its expected Artifact, and why it matters now.
+2. Click **Prepare Planning Decision**. This creates the bounded planning packet but does not run Codex.
+3. Open **Review**, inspect the packet, and choose Approve & Run, Reject, or Defer.
+4. Use **Runs** to follow approved work and inspect its Artifacts, Validation, and Log.
+5. Return to **Review** to accept a successful plan; acceptance marks the original Action done.
+
+Use the **Ask** box for a new request that is not already an Action in Arcadia.
 
 Other CLI commands are advanced or compatibility surfaces, not part of normal daily operation unless a current task says otherwise.
 

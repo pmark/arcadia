@@ -8,6 +8,7 @@ import {
   ArtifactRow,
   AttentionCard,
   BloggingPanel,
+  DailyAdvantageCard,
   EmptyState,
   ErrorState,
   LoadingState,
@@ -18,7 +19,7 @@ import {
   SmallRunRow
 } from "../components/dashboard-ui";
 import { useArcadiaSnapshot } from "../hooks/use-arcadia-snapshot";
-import type { DashboardAttentionItem } from "../lib/types";
+import type { DashboardAttentionItem, DashboardDailyAdvantage } from "../lib/types";
 
 export default function MissionControlPage() {
   const { snapshot, error, loading, refreshing, lastLoadedAt, refresh } = useArcadiaSnapshot();
@@ -27,6 +28,9 @@ export default function MissionControlPage() {
   const [askMessage, setAskMessage] = useState<string | null>(null);
   const [askError, setAskError] = useState<string | null>(null);
   const [pendingAttentionAction, setPendingAttentionAction] = useState<string | null>(null);
+  const [advantagePending, setAdvantagePending] = useState(false);
+  const [advantageMessage, setAdvantageMessage] = useState<string | null>(null);
+  const [advantageError, setAdvantageError] = useState<string | null>(null);
 
   async function submitAsk(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -87,9 +91,32 @@ export default function MissionControlPage() {
     }
   }
 
+  async function prepareAdvantage(advantage: DashboardDailyAdvantage) {
+    setAdvantagePending(true);
+    setAdvantageMessage(null);
+    setAdvantageError(null);
+    try {
+      const response = await fetch("/api/daily-advantage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actionId: advantage.actionId })
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(errorMessageFromBody(body, "Daily Advantage preparation failed."));
+      }
+      setAdvantageMessage(typeof body.message === "string" ? body.message : "Planning Decision prepared.");
+      await refresh();
+    } catch (prepareError) {
+      setAdvantageError(prepareError instanceof Error ? prepareError.message : String(prepareError));
+    } finally {
+      setAdvantagePending(false);
+    }
+  }
+
   return (
     <DashboardChrome
-      title="Mission Control"
+      title="Today"
       subtitle={snapshot?.workspace}
       refreshing={refreshing}
       lastLoadedAt={lastLoadedAt}
@@ -97,10 +124,28 @@ export default function MissionControlPage() {
     >
       {error ? <ErrorState message={error} /> : null}
       {askError ? <ErrorState title="Ask failed" message={askError} /> : null}
+      {advantageError ? <ErrorState title="Daily Advantage failed" message={advantageError} /> : null}
       {loading && !snapshot ? (
         <LoadingState />
       ) : snapshot ? (
         <div className="grid min-w-0 gap-6">
+          <Section title="Today's Advantage">
+            {snapshot.dailyAdvantage ? (
+              <DailyAdvantageCard
+                advantage={snapshot.dailyAdvantage}
+                pending={advantagePending}
+                onPrepare={(advantage) => void prepareAdvantage(advantage)}
+              />
+            ) : (
+              <EmptyState text="No planning-ready Daily Advantage. Finish current Decisions or add a concrete Codex Action with an expected Artifact." />
+            )}
+            {advantageMessage ? (
+              <div className="rounded-md border border-moss/30 bg-moss/10 px-3 py-2 text-sm font-medium text-moss">
+                {advantageMessage}
+              </div>
+            ) : null}
+          </Section>
+
           <form onSubmit={(event) => void submitAsk(event)} className="grid min-w-0 gap-2">
             <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
               <input

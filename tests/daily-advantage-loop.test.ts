@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runReviewApproveCommand, runReviewRequiredCommand } from "../src/commands/review.js";
 import { runWorkPlanCommand } from "../src/commands/work.js";
+import { buildDashboardSnapshot } from "../src/dashboard/snapshot.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
   countRows,
@@ -27,6 +28,25 @@ afterEach(() => {
 describe("Daily Advantage existing-Action planning preparation", () => {
   it("creates one packet-bound Decision for the original eligible Rebuster Action without execution", () => {
     const fixture = createRebusterFixture();
+    const initialState = planningState(fixture.workspace, fixture.workItemId);
+    const initialSnapshot = buildDashboardSnapshot({ workspace: fixture.workspace });
+    expect(initialSnapshot.dailyAdvantage).toMatchObject({
+      actionId: fixture.workItemId,
+      projectId: fixture.projectId,
+      projectName: "Rebuster",
+      milestoneId: fixture.milestoneId,
+      milestoneTitle: "Correct text layout in generated videos",
+      actionTitle: expect.stringContaining("Eyes on the Prize"),
+      expectedArtifact: fixture.expectedArtifact,
+      repositoryPath: fixture.repo,
+      status: "ready",
+      statusLabel: "Ready to Prepare",
+      decisionId: null
+    });
+    expect(initialSnapshot.dailyAdvantage?.whyItMatters).toContain("active “Correct text layout in generated videos” Milestone");
+    expect(initialSnapshot.dailyAdvantage?.whyNow).toContain("newest eligible Action");
+    expect(planningState(fixture.workspace, fixture.workItemId).counts).toEqual(initialState.counts);
+
     const prepared = runWorkPlanCommand({ workspace: fixture.workspace, workId: fixture.workItemId });
 
     expect(prepared.data.reused).toBe(false);
@@ -63,6 +83,7 @@ describe("Daily Advantage existing-Action planning preparation", () => {
       approvalAuthorizes: "One managed read-only Codex planning Run for this exact packet.",
       responsibility: "needs_mark"
     });
+    expect(context.preparationSource).toBe("existing_action");
     expect(context.packetSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(context.safetyBoundaries).toEqual(expect.arrayContaining([
       "No implementation or repository writes",
@@ -107,6 +128,17 @@ describe("Daily Advantage existing-Action planning preparation", () => {
       planId: prepared.data.plan.id,
       project: { id: fixture.projectId, name: "Rebuster", repoPath: fixture.repo }
     });
+
+    const preparedSnapshot = buildDashboardSnapshot({ workspace: fixture.workspace });
+    expect(preparedSnapshot.dailyAdvantage).toMatchObject({
+      actionId: fixture.workItemId,
+      status: "prepared",
+      statusLabel: "Decision Ready",
+      decisionId: prepared.data.planningDecision?.id,
+      decisionSlug: prepared.data.planningDecision?.slug,
+      packetPath: prepared.data.packetArtifact?.path
+    });
+    expect(preparedSnapshot.dailyAdvantage?.whyNow).toContain("Finish this Decision");
   });
 
   it("is idempotent for repeated preparation of the same Action", () => {
@@ -182,6 +214,44 @@ describe("Daily Advantage existing-Action planning preparation", () => {
     expect(state.counts.runs).toBe(1);
     expect(state.invocationStatus).toBe("packet_created");
   });
+
+  it("selects one newest eligible Action deterministically without writing SQLite state", () => {
+    const fixture = createRebusterFixture();
+    const second = withDatabase(fixture.workspace, (db) => {
+      const created = createWorkItemWithOptionalArtifact(db, {
+        projectId: fixture.projectId,
+        milestoneId: fixture.milestoneId,
+        title: "Map the single-line answer layout boundary",
+        rawInput: "Map the single-line answer layout boundary.",
+        queue: "work_queue",
+        workClassification: "codex",
+        nextAction: "Prepare a bounded typography layout plan.",
+        expectedArtifact: "Single-line typography boundary plan"
+      }).workItem;
+      db.prepare("UPDATE work_items SET created_at = ? WHERE id = ?").run("2026-07-18T12:00:00.000Z", fixture.workItemId);
+      db.prepare("UPDATE work_items SET created_at = ? WHERE id = ?").run("2026-07-18T13:00:00.000Z", created.id);
+      return created;
+    });
+    const before = withDatabase(fixture.workspace, (db) => ({
+      plans: countRows(db, "execution_plans"),
+      decisions: countRows(db, "review_items"),
+      invocations: countRows(db, "codex_invocations"),
+      runs: countRows(db, "execution_runs"),
+      artifacts: countRows(db, "artifacts")
+    }));
+
+    const first = buildDashboardSnapshot({ workspace: fixture.workspace });
+    const repeated = buildDashboardSnapshot({ workspace: fixture.workspace });
+    expect(first.dailyAdvantage?.actionId).toBe(second.id);
+    expect(repeated.dailyAdvantage).toEqual(first.dailyAdvantage);
+    expect(withDatabase(fixture.workspace, (db) => ({
+      plans: countRows(db, "execution_plans"),
+      decisions: countRows(db, "review_items"),
+      invocations: countRows(db, "codex_invocations"),
+      runs: countRows(db, "execution_runs"),
+      artifacts: countRows(db, "artifacts")
+    }))).toEqual(before);
+  });
 });
 
 interface FixtureOptions {
@@ -217,6 +287,7 @@ function createRebusterFixture(options: FixtureOptions = {}) {
   return {
     ...createdWorkspace,
     projectId: created.project.id,
+    milestoneId: created.milestone.id,
     workItemId: created.workItem.id,
     expectedArtifact
   };
