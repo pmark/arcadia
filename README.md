@@ -2,6 +2,8 @@
 
 Arcadia is a local-first project operating system for people juggling multiple creative, technical, and entrepreneurial efforts at the same time.
 
+For normal daily use, service expectations, and the local Today page, start with [`START_HERE.md`](START_HERE.md).
+
 Arcadia Core is the open source CLI, schema, and reporting engine. Your Arcadia workspace is private operational data.
 
 Before changing user-facing terminology, data models, CLI commands, dashboard labels, or documentation, read `docs/arcadia-semantics.md` and use Arcadia's canonical terms consistently.

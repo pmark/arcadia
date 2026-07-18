@@ -1366,7 +1366,7 @@ export function buildProgram(): Command {
   addJsonOption(
     work
       .command("plan")
-      .description("Create a workflow plan for an Action")
+      .description("Create a workflow plan; stored Codex-planning Actions also get an approval Decision")
       .argument("<work-id>", "Action id")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((workId: string, options: { workspace: string; json?: boolean }) =>

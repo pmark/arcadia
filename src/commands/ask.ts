@@ -7,10 +7,8 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import {
   createApprovalGate,
-  createArtifactRecord,
   createAskRequest,
   createBackBurnerItem,
-  createCodexInvocation,
   createExecutionPlan,
   createMilestoneForProject,
   createReviewItem,
@@ -44,7 +42,10 @@ import type {
 import { isRequiresReviewValue, type ProjectStatus } from "../domain/constants.js";
 import { ensureBuiltInSkills } from "../execution/skills.js";
 import { executePlan } from "../execution/runner.js";
-import { packetSha256 } from "../execution/planningAuthorization.js";
+import {
+  createPlanningApprovalDecision,
+  persistCodexPacketRecords
+} from "../execution/planningPreparation.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import { resolveIntent, type ResolvedIntent } from "../intent/resolver.js";
 import type { IntakeProjectAttribute, IntakeProjectContext, IntakeResult, IntakeWorkspaceContext } from "../intake/index.js";
@@ -725,37 +726,13 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     : null;
 
   const data = withDatabase(workspacePath, (db) => {
-    let packetArtifact = null as ReturnType<typeof createArtifactRecord> | null;
+    let packetArtifact = null as ReturnType<typeof persistCodexPacketRecords>["packetArtifact"] | null;
     if (codexPacket) {
-      createCodexInvocation(db, {
-        id: codexPacket.invocationId,
-        purpose: codexPacket.purpose,
-        agentProfile: codexPacket.agentProfile.name,
-        workspaceScope: codexPacket.workspaceScope,
-        command: codexPacket.command,
-        promptPath: codexPacket.relativePromptPath,
-        jsonlOutputPath: codexPacket.relativeJsonlOutputPath,
-        finalMessagePath: codexPacket.relativeFinalMessagePath,
-        status: "packet_created",
-        workItemId: initial.workItem.id,
-        planId: initial.plan.id
-      });
-      packetArtifact = createArtifactRecord(db, {
-        projectId: initial.workItem.project_id,
-        workItemId: initial.workItem.id,
-        title: `Codex ${codexPacket.purpose} packet: ${initial.workItem.title}`,
-        artifactType: "codex_prompt_packet",
-        status: "drafted",
-        path: codexPacket.relativePromptPath
-      });
-      createArtifactRecord(db, {
-        projectId: initial.workItem.project_id,
-        workItemId: initial.workItem.id,
-        title: `Stewardship critique: ${initial.workItem.title}`,
-        artifactType: "stewardship_critique",
-        status: codexPacket.critique.status === "approved" ? "ready" : "drafted",
-        path: codexPacket.relativeCritiquePath
-      });
+      packetArtifact = persistCodexPacketRecords(db, {
+        packet: codexPacket,
+        workItem: initial.workItem,
+        plan: initial.plan
+      }).packetArtifact;
     }
 
     const ask = createAskRequest(db, {
@@ -771,48 +748,17 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     });
 
     const planningDecision = codexPacket?.purpose === "planning" && packetArtifact
-      ? createReviewItem(db, {
+      ? createPlanningApprovalDecision(db, {
           askRequestId: ask.id,
-          workItemId: initial.workItem.id,
-          planId: initial.plan.id,
-          projectId: initial.workItem.project_id,
-          artifactId: packetArtifact.id,
-          codexInvocationId: codexPacket.invocationId,
-          decisionNeeded: `Approve the exact planning packet for "${initial.workItem.title}".`,
-          recommendation: "Inspect the packet, then approve and queue one managed planning Run.",
+          workItem: initial.workItem,
+          plan: initial.plan,
+          packet: codexPacket,
+          packetArtifact,
           sourceInput: request,
           proposedAction: interpretationForPlanning(intake),
-          resolvedIntent: "CodexPlanningRunApproval",
-          confidenceLabel: "high",
-          confidence: 1,
-          missingFields: [],
-          context: {
-            schemaVersion: 1,
-            packetSha256: packetSha256(codexPacket.promptPath),
-            interpretation: interpretationForPlanning(intake),
-            expectedArtifact: resolved.expectedArtifact,
-            safetyBoundaries: [
-              "No publishing",
-              "No deployment",
-              "No credential use",
-              "No spending",
-              "No messaging",
-              "No merging",
-              "No destructive actions"
-            ],
-            responsibility: "needs_mark"
-          }
+          expectedArtifact: resolved.expectedArtifact ?? initial.workItem.expected_artifact ?? "Planning Artifact"
         })
       : null;
-
-    if (planningDecision) {
-      updateWorkItem(db, initial.workItem.id, {
-        queue: "needs_mark",
-        workClassification: "needs_mark",
-        status: "open",
-        nextAction: "Review the planning packet and approve, reject, or defer its Decision."
-      });
-    }
 
     return {
       ask,
