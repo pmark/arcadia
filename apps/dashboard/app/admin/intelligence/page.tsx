@@ -85,11 +85,16 @@ function AdminIntelligencePageInner() {
           <LoadingState />
         ) : capabilities ? (
           <>
-            <OfferingsPanel textOfferings={capabilities.textOfferings} imageOfferings={capabilities.imageOfferings} />
+            <OfferingsPanel
+              textOfferings={capabilities.textOfferings}
+              imageOfferings={capabilities.imageOfferings}
+              speechOfferings={capabilities.speechOfferings}
+            />
 
             <RequestForm
               textOfferings={capabilities.textOfferings}
               imageOfferings={capabilities.imageOfferings}
+              speechOfferings={capabilities.speechOfferings}
               disabled={activeJobBlocking}
               onSubmit={handleSubmit}
             />
