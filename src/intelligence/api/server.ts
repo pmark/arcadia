@@ -90,7 +90,7 @@ async function handleRequest(
 
     const artifactMatch = method === "GET" ? ARTIFACT_ID_PATTERN.exec(url.pathname) : null;
     if (artifactMatch) {
-      await handleGetArtifact(res, artifactStore, decodeURIComponent(artifactMatch[1]!));
+      await handleGetArtifact(req, res, artifactStore, decodeURIComponent(artifactMatch[1]!));
       return;
     }
 
@@ -150,7 +150,41 @@ async function handleGetJob(
   sendJson(res, 200, job);
 }
 
+/**
+ * Mobile Safari's <audio>/<video> elements require the server to support
+ * HTTP Range requests (a 206 response to a `Range:` header) — without it,
+ * playback fails outright even though a plain download of the same URL
+ * works fine. Parses a single "bytes=start-end" / "bytes=start-" /
+ * "bytes=-suffixLength" range against a known total length. Returns
+ * undefined for a missing/unparseable header (caller falls back to a full
+ * 200 response) and null for a range outside the file (caller sends 416).
+ */
+function parseRange(rangeHeader: string | undefined, totalLength: number): { start: number; end: number } | null | undefined {
+  if (!rangeHeader) return undefined;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+  if (!match) return undefined;
+  const [, startStr, endStr] = match;
+  if (startStr === "" && endStr === "") return undefined;
+
+  let start: number;
+  let end: number;
+  if (startStr === "") {
+    const suffixLength = Number(endStr);
+    start = Math.max(0, totalLength - suffixLength);
+    end = totalLength - 1;
+  } else {
+    start = Number(startStr);
+    end = endStr === "" ? totalLength - 1 : Math.min(Number(endStr), totalLength - 1);
+  }
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start < 0 || start >= totalLength) {
+    return null;
+  }
+  return { start, end };
+}
+
 async function handleGetArtifact(
+  req: IncomingMessage,
   res: ServerResponse,
   artifactStore: IntelligenceArtifactStore | undefined,
   artifactId: string,
@@ -166,11 +200,33 @@ async function handleGetArtifact(
     return;
   }
 
-  res.writeHead(200, {
+  const totalLength = artifact.bytes.byteLength;
+  const range = parseRange(req.headers.range, totalLength);
+
+  if (range === null) {
+    res.writeHead(416, { "content-range": `bytes */${totalLength}`, "accept-ranges": "bytes" });
+    res.end();
+    return;
+  }
+
+  if (range === undefined) {
+    res.writeHead(200, {
+      "content-type": artifact.mimeType,
+      "content-length": totalLength,
+      "accept-ranges": "bytes",
+    });
+    res.end(artifact.bytes);
+    return;
+  }
+
+  const { start, end } = range;
+  res.writeHead(206, {
     "content-type": artifact.mimeType,
-    "content-length": artifact.bytes.byteLength,
+    "content-length": end - start + 1,
+    "content-range": `bytes ${start}-${end}/${totalLength}`,
+    "accept-ranges": "bytes",
   });
-  res.end(artifact.bytes);
+  res.end(artifact.bytes.subarray(start, end + 1));
 }
 
 async function handleRetryJob(

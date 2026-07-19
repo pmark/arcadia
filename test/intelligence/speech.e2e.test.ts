@@ -210,6 +210,25 @@ describe("Arcadia Intelligence text-to-speech end-to-end", () => {
     const fetched = await client.getArtifact(artifact.uri);
     expect(fetched.contentType).toBe("audio/wav");
     expect(Buffer.from(fetched.bytes).equals(wav)).toBe(true);
+
+    // Mobile Safari's <audio>/<video> elements refuse to play back media
+    // unless the server honors byte-range requests with a 206 response —
+    // a plain 200 (even with the right Content-Type) is not enough.
+    const rangeResponse = await fetch(`http://127.0.0.1:${port}${artifact.uri}`, {
+      headers: { range: "bytes=10-19" },
+    });
+    expect(rangeResponse.status).toBe(206);
+    expect(rangeResponse.headers.get("accept-ranges")).toBe("bytes");
+    expect(rangeResponse.headers.get("content-range")).toBe(`bytes 10-19/${wav.byteLength}`);
+    expect(rangeResponse.headers.get("content-length")).toBe("10");
+    const rangeBytes = Buffer.from(await rangeResponse.arrayBuffer());
+    expect(rangeBytes.equals(wav.subarray(10, 20))).toBe(true);
+
+    // An out-of-bounds range is rejected with 416, not silently clamped.
+    const invalidRangeResponse = await fetch(`http://127.0.0.1:${port}${artifact.uri}`, {
+      headers: { range: `bytes=${wav.byteLength + 100}-${wav.byteLength + 200}` },
+    });
+    expect(invalidRangeResponse.status).toBe(416);
   });
 
   it("fails safely on a non-audio provider response and leaves no artifact file behind", async () => {
