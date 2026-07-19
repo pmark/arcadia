@@ -182,9 +182,14 @@ supported import paths for companion apps such as Rebuster; see
 `docs/intelligence/PNPM_LINK.md` for the local `pnpm link` workflow.
 
 The Dashboard Intelligence screen includes a read-only current-day usage and
-coding-agent-availability summary. It aggregates durable job usage only; it
-does not infer provider quotas or remaining tokens. Budget enforcement,
-quotas, caching, publishing, and automatic external fallbacks remain excluded.
+coding-agent-availability summary. It aggregates durable job usage, reads
+Codex account windows from the local app-server protocol, and reads Claude
+Code context and subscription windows from its configured status-line payload.
+The latest normalized provider snapshot is retained locally so a transient
+provider read or page refresh does not make a previously reported quota vanish.
+Profile selection avoids providers that explicitly report an exhausted limit;
+missing telemetry remains eligible and is labeled unknown. Publishing and
+automatic external fallbacks remain excluded.
 See
 `docs/intelligence/CODEX_IMAGE_EXECUTOR.md` for the local Codex image design.
 

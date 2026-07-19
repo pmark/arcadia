@@ -1,10 +1,12 @@
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
-import { codingAgentLabel } from "../codingAgents/adapters.js";
-import { observeCodexTasks } from "../codex/observer.js";
+import {
+  observeCodingAgentAvailability,
+  type CodingAgentAvailabilitySnapshot,
+} from "../codingAgents/availability.js";
 import { openDatabase } from "../db/connection.js";
-import { loadPhase3Registries, validatePhase3Registries, type CodingAgentProfile } from "../intent/registries.js";
+import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import { createIntelligenceServer } from "../intelligence/api/server.js";
 import { createSqliteIntelligenceArtifactStore } from "../intelligence/artifacts/store.js";
 import { createCodexCliImageExecutor } from "../intelligence/codex/imageExecutor.js";
@@ -203,8 +205,6 @@ export interface IntelligenceListJobsData {
   jobs: IntelligenceJob[];
 }
 
-export type CodingAgentAvailability = "unknown" | "usage_limited" | "budget_limited";
-
 export interface IntelligenceUsageSummary {
   generatedAt: string;
   periodStart: string;
@@ -234,17 +234,7 @@ export interface IntelligenceUsageSummary {
     estimatedCostUsd: number;
     measuredCostUsd: number;
   }>;
-  codingAgents: Array<{
-    provider: string;
-    profiles: string[];
-    availability: CodingAgentAvailability;
-    observedTasks: number;
-    usageLimitedTasks: number;
-    budgetLimitedTasks: number;
-    remainingTokens: null;
-    resetAt: null;
-    telemetry: string;
-  }>;
+  codingAgents: CodingAgentAvailabilitySnapshot["agents"];
 }
 
 export interface IntelligenceUsageCommandData {
@@ -278,9 +268,8 @@ export async function runIntelligenceListJobsCommand(
 
 /**
  * Returns a read-only usage summary for the current local day. It reports
- * only durable usage supplied by completed Intelligence jobs and explicit
- * local Codex goal states; provider account quota is intentionally `null`
- * until a provider exposes it authoritatively.
+ * durable usage supplied by completed Intelligence jobs together with the
+ * provider-neutral coding-agent availability snapshot used by routing.
  */
 export async function runIntelligenceUsageCommand(
   options: { workspace: string; now?: Date },
@@ -295,7 +284,7 @@ export async function runIntelligenceUsageCommand(
     const jobs = await repository.listCreatedSince(periodStart);
     const registries = loadPhase3Registries(workspacePath);
     validatePhase3Registries(registries);
-    const localCodexTasks = observeCodexTasks({ includeCloud: false });
+    const codingAgentAvailability = observeCodingAgentAvailability(registries.codingAgents.profiles, now);
 
     return createSuccess({
       command: "intelligence.usage",
@@ -303,8 +292,7 @@ export async function runIntelligenceUsageCommand(
       data: {
         summary: buildIntelligenceUsageSummary({
           jobs,
-          profiles: registries.codingAgents.profiles,
-          localCodexTasks,
+          codingAgentAvailability,
           now,
           periodStart,
         }),
@@ -350,8 +338,7 @@ export function renderIntelligenceUsageSuccess(
 
 function buildIntelligenceUsageSummary(input: {
   jobs: IntelligenceJob[];
-  profiles: CodingAgentProfile[];
-  localCodexTasks: Array<{ status: string }>;
+  codingAgentAvailability: CodingAgentAvailabilitySnapshot;
   now: Date;
   periodStart: string;
 }): IntelligenceUsageSummary {
@@ -392,51 +379,8 @@ function buildIntelligenceUsageSummary(input: {
     jobs: jobCounts,
     usage,
     providers: [...providerTotals.entries()].map(([provider, total]) => ({ provider, ...total })),
-    codingAgents: summarizeCodingAgentAvailability(input.profiles, input.localCodexTasks),
+    codingAgents: input.codingAgentAvailability.agents,
   };
-}
-
-function summarizeCodingAgentAvailability(
-  profiles: CodingAgentProfile[],
-  localCodexTasks: Array<{ status: string }>,
-): IntelligenceUsageSummary["codingAgents"] {
-  const groups = new Map<string, CodingAgentProfile[]>();
-  for (const profile of profiles) {
-    const group = groups.get(profile.provider) ?? [];
-    group.push(profile);
-    groups.set(profile.provider, group);
-  }
-
-  return [...groups.values()].map((profilesForProvider) => {
-    const representative = profilesForProvider[0]!;
-    const isCodex = representative.provider === "codex-cli";
-    const normalizedStatuses = isCodex
-      ? localCodexTasks.map((task) => task.status.toLowerCase())
-      : [];
-    const usageLimitedTasks = normalizedStatuses.filter((status) => status === "usage_limited").length;
-    const budgetLimitedTasks = normalizedStatuses.filter((status) => status === "budget_limited").length;
-    const availability: CodingAgentAvailability = budgetLimitedTasks > 0
-      ? "budget_limited"
-      : usageLimitedTasks > 0
-        ? "usage_limited"
-        : "unknown";
-
-    return {
-      provider: codingAgentLabel(representative),
-      profiles: profilesForProvider.map((profile) => profile.name),
-      availability,
-      observedTasks: normalizedStatuses.length,
-      usageLimitedTasks,
-      budgetLimitedTasks,
-      remainingTokens: null,
-      resetAt: null,
-      telemetry: isCodex
-        ? normalizedStatuses.length > 0
-          ? "Local Codex task state; remaining token budget is not reported."
-          : "No local Codex task status is available; remaining token budget is not reported."
-        : "No local provider quota telemetry is configured.",
-    };
-  });
 }
 
 function emptyUsage(): Required<Pick<IntelligenceUsage, "inputTokens" | "outputTokens" | "estimatedCostUsd" | "measuredCostUsd" | "durationMs">> {

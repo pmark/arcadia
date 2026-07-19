@@ -12,13 +12,29 @@
 
 html {
   min-height: 100%;
+  max-width: 100%;
+  overflow-x: clip;
   background: #f5f7f8;
 }
 
 body {
   min-height: 100%;
+  max-width: 100%;
   margin: 0;
+  overflow-x: clip;
   background: #f5f7f8;
+}
+
+/* Mobile layout baseline: content may wrap or shrink, but never widen the page. */
+body :where(main, section, article, aside, form, fieldset, header, footer, nav, div) {
+  min-width: 0;
+}
+
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  min-width: 0;
+  max-width: 100%;
 }
 
 button,

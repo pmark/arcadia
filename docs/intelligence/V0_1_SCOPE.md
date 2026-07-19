@@ -36,8 +36,10 @@ the app's domain.
   `executionPolicy.allowPaidUsage` — never an automatic fallback
 - One retry maximum
 - Read-only current-day job-usage and coding-agent-availability reporting for
-  the Dashboard; remaining quota and reset time remain unknown unless a
-  provider reports them authoritatively
+  the Dashboard, including on-demand Codex account windows and the latest
+  Claude Code status-line snapshot. The last normalized local snapshot is
+  retained for a transient read failure and clearly marked as last reported;
+  unsupported fields remain unknown
 
 ## Explicitly excluded
 
@@ -51,9 +53,8 @@ the app's domain.
   fallback
 - "either"/"cloud-preferred"/"frontier" execution preferences (may be added
   later without breaking the registry shape)
-- Budget or quota enforcement, provider usage polling, and any inference of
-  remaining provider quota from locally recorded usage
-- Caching
+- Automatic budget allocation, background provider polling, and any inference
+  of remaining provider quota from locally recorded usage
 - Prompt registry
 - Image *editing*, variation, or multi-turn generation (single text-to-image
   only; `image.edit` is a typed capability with no executable transport yet)

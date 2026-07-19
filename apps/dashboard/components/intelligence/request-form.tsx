@@ -25,7 +25,7 @@ export function RequestForm({
 
   return (
     <section className="rounded-md border border-line bg-panel p-4 shadow-soft">
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <ModeButton active={mode === "text"} onClick={() => setMode("text")}>
           Text generation
         </ModeButton>
@@ -114,7 +114,7 @@ function TextForm({
             setOfferingId(event.target.value);
             setPaidConfirmed(false);
           }}
-          className="min-h-10 rounded-md border border-line bg-canvas px-3 text-sm"
+          className="min-h-10 w-full min-w-0 max-w-full rounded-md border border-line bg-canvas px-3 text-sm"
         >
           {offerings.map((item) => (
             <option key={item.id} value={item.id}>
@@ -130,13 +130,13 @@ function TextForm({
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           rows={3}
-          className="rounded-md border border-line bg-canvas px-3 py-2 text-sm"
+          className="w-full min-w-0 max-w-full rounded-md border border-line bg-canvas px-3 py-2 text-sm"
           placeholder="Enter a test prompt…"
         />
       </Field>
 
       <Field label="Output mode">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <RadioPill checked={outputMode === "structured"} onClick={() => setOutputMode("structured")}>
             Structured JSON
           </RadioPill>
@@ -151,7 +151,7 @@ function TextForm({
           <select
             value={presetId}
             onChange={(event) => setPresetId(event.target.value)}
-            className="min-h-10 rounded-md border border-line bg-canvas px-3 text-sm"
+            className="min-h-10 w-full min-w-0 max-w-full rounded-md border border-line bg-canvas px-3 text-sm"
           >
             {STRUCTURED_TEXT_PRESETS.map((preset) => (
               <option key={preset.id} value={preset.id}>
@@ -166,7 +166,7 @@ function TextForm({
         <input
           value={label}
           onChange={(event) => setLabel(event.target.value)}
-          className="min-h-10 rounded-md border border-line bg-canvas px-3 text-sm"
+          className="min-h-10 w-full min-w-0 max-w-full rounded-md border border-line bg-canvas px-3 text-sm"
           placeholder="e.g. local fast-route smoke test"
         />
       </Field>
@@ -241,7 +241,7 @@ function ImageForm({
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           rows={2}
-          className="rounded-md border border-line bg-canvas px-3 py-2 text-sm"
+          className="w-full min-w-0 max-w-full rounded-md border border-line bg-canvas px-3 py-2 text-sm"
           placeholder="Describe the image to generate…"
         />
       </Field>
@@ -253,7 +253,7 @@ function ImageForm({
           max={4}
           value={count}
           onChange={(event) => setCount(Math.min(4, Math.max(1, Number(event.target.value) || 1)))}
-          className="min-h-10 w-24 rounded-md border border-line bg-canvas px-3 text-sm"
+          className="min-h-10 w-24 max-w-full rounded-md border border-line bg-canvas px-3 text-sm"
         />
       </Field>
 
@@ -261,7 +261,7 @@ function ImageForm({
         <input
           value={label}
           onChange={(event) => setLabel(event.target.value)}
-          className="min-h-10 rounded-md border border-line bg-canvas px-3 text-sm"
+          className="min-h-10 w-full min-w-0 max-w-full rounded-md border border-line bg-canvas px-3 text-sm"
           placeholder="e.g. Codex image executor smoke test"
         />
       </Field>
@@ -275,7 +275,7 @@ function ImageForm({
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="grid gap-1">
+    <label className="grid min-w-0 gap-1">
       <span className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</span>
       {children}
     </label>

@@ -82,7 +82,7 @@ function AdminIntelligencePageInner() {
       lastLoadedAt={lastLoadedAt}
       onRefresh={() => void handleRefresh()}
     >
-      <div className="grid gap-5">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5">
         {capabilitiesError ? <ErrorState title="Arcadia Intelligence unavailable" message={capabilitiesError} /> : null}
 
         <UsageSummary summary={usage} loading={usageLoading} error={usageError} />

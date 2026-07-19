@@ -27,7 +27,7 @@ export function RecentHistory({
       {error ? <p className="mt-2 text-sm text-clay">{error}</p> : null}
       {loading ? <p className="mt-2 text-sm text-muted">Loading…</p> : null}
       {!loading && jobs.length === 0 ? <p className="mt-2 text-sm text-muted">No admin test runs yet.</p> : null}
-      <ul className="mt-2 grid gap-1.5">
+      <ul className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5">
         {jobs.map((job) => (
           <li key={job.id}>
             <button

@@ -55,7 +55,7 @@ export interface AdminJobSummary {
   job: IntelligenceJob;
 }
 
-export type CodingAgentAvailability = "unknown" | "usage_limited" | "budget_limited";
+export type CodingAgentAvailability = "available" | "unknown" | "usage_limited" | "budget_limited";
 
 export interface IntelligenceUsageSummary {
   generatedAt: string;
@@ -94,7 +94,20 @@ export interface IntelligenceUsageSummary {
     usageLimitedTasks: number;
     budgetLimitedTasks: number;
     remainingTokens: null;
-    resetAt: null;
+    resetAt: string | null;
+    context: {
+      inputTokens: number;
+      outputTokens: number;
+      windowSize: number;
+      usedPercentage: number;
+      remainingPercentage: number;
+    } | null;
+    rateLimits: Array<{
+      label: string;
+      usedPercentage: number;
+      resetsAt: string | null;
+    }>;
+    capturedAt: string | null;
     telemetry: string;
   }>;
 }

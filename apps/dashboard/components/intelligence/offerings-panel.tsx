@@ -8,7 +8,7 @@ export function OfferingsPanel({
   imageOfferings: IntelligenceOffering[];
 }) {
   return (
-    <section className="grid gap-3 sm:grid-cols-2">
+    <section className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
       <OfferingGroup title="Text generation" offerings={textOfferings} emptyText="No text-generation offerings are currently available." />
       <OfferingGroup title="Image generation" offerings={imageOfferings} emptyText="No image-generation offerings are currently available." />
     </section>
@@ -25,7 +25,7 @@ function OfferingGroup({
   emptyText: string;
 }) {
   return (
-    <div className="rounded-md border border-line bg-panel p-4 shadow-soft">
+    <div className="min-w-0 rounded-md border border-line bg-panel p-4 shadow-soft">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">{title}</h3>
       {offerings.length === 0 ? (
         <p className="mt-3 text-sm text-muted">{emptyText}</p>
@@ -33,8 +33,8 @@ function OfferingGroup({
         <ul className="mt-3 grid gap-2">
           {offerings.map((offering) => (
             <li key={offering.id} className="rounded-md border border-line p-2 text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="font-mono text-xs text-ink">{offering.id}</span>
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                <span className="min-w-0 max-w-full break-all font-mono text-xs text-ink">{offering.id}</span>
                 <div className="flex flex-wrap gap-1.5">
                   <Badge>{offering.location}</Badge>
                   <Badge>{offering.profile}</Badge>

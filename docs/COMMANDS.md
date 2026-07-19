@@ -111,7 +111,13 @@ Show read-only current-day Intelligence usage and coding-agent availability:
 pnpm arcadia intelligence usage --workspace "$WORKSPACE" --json
 ```
 
-Arcadia aggregates only token and cost data recorded by completed jobs. It shows provider quota and reset time as unknown until a local provider reports them authoritatively.
+Arcadia aggregates token and cost data recorded by completed jobs and exposes a provider-neutral coding-agent availability snapshot. Codex account windows come from the local Codex app-server protocol. Claude Code context and 5-hour/7-day limits come from its status-line JSON payload, captured by:
+
+```sh
+scripts/claude-code-statusline.sh
+```
+
+Configure that script as Claude Code's `statusLine.command`. The script writes the latest payload to `~/.arcadia/telemetry/claude-code.json`; override the location with `ARCADIA_CLAUDE_USAGE_PATH`. Arcadia also retains the most recently reported normalized provider snapshots in `~/.arcadia/telemetry/coding-agent-usage.json` (override with `ARCADIA_CODING_AGENT_USAGE_CACHE_PATH`). If a live read is temporarily unavailable, the CLI and Intelligence screen show that retained value as a **Last reported snapshot**. Missing or unsupported provider fields remain explicitly unknown.
 
 Run deterministic safe steps immediately:
 

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { buildCodingAgentCommand, codingAgentLabel } from "../codingAgents/adapters.js";
+import { isCodingAgentAvailable, observeCodingAgentAvailability } from "../codingAgents/availability.js";
 import type { CodexInvocationPurpose } from "../domain/constants.js";
 import type { ProjectContext, WorkItemSummary } from "../domain/types.js";
 import type { CodingAgentProfile, TemplateDefinition } from "../intent/registries.js";
@@ -180,6 +181,20 @@ export function selectAgentProfile(
   }
   if (profile.purpose !== purpose) {
     throw new Error(`Coding agent profile ${profile.name} is configured for ${profile.purpose}, not ${purpose}.`);
+  }
+
+  const availability = observeCodingAgentAvailability(profiles);
+  if (!isCodingAgentAvailable(profile, availability)) {
+    const state = availability.agents.find((agent) => agent.profiles.includes(profile.name))?.availability;
+    if (requestedName) {
+      throw new Error(`Coding agent profile ${profile.name} is currently unavailable (${state}).`);
+    }
+    const fallback = profiles.find((candidate) =>
+      candidate.purpose === purpose && isCodingAgentAvailable(candidate, availability));
+    if (fallback) {
+      return fallback;
+    }
+    throw new Error(`No ${purpose} coding agent profile is currently available (${profile.name}: ${state}).`);
   }
 
   return profile;
