@@ -57,15 +57,17 @@ function setup(): {
   };
 }
 
+// Speech is LiteLLM-routed like text/image: both go through the same
+// liteLlmBaseUrl, distinguished only by which model alias the route
+// resolves to. Tests point liteLlmBaseUrl straight at the fake speech
+// server standing in for LiteLLM.
 function speechConfig(
   liteLlmBaseUrl: string,
-  localBaseUrl: string,
   overrides: Partial<IntelligenceV01Config["speech"]> = {},
 ): IntelligenceV01Config {
   return testIntelligenceConfig(liteLlmBaseUrl, {
     routes: buildDefaultRoutes({ localTextRoute: "arcadia-default", localSpeechRoute: "arcadia-speech" }),
     speech: {
-      localBaseUrl,
       voiceMap: { ...DEFAULT_VOICE_MAP },
       timeoutMs: 5_000,
       maxRetries: 0,
@@ -121,7 +123,7 @@ describe("Arcadia Intelligence text-to-speech end-to-end", () => {
     servers.push(server);
 
     await submitIntelligenceRequest(repository, speechRequest());
-    const config = speechConfig("http://127.0.0.1:9", speechBaseUrl);
+    const config = speechConfig(speechBaseUrl);
     const worker = new IntelligenceWorker(
       repository,
       createLiteLlmHttpClient({ baseUrl: config.liteLlmBaseUrl }),
@@ -182,7 +184,7 @@ describe("Arcadia Intelligence text-to-speech end-to-end", () => {
     const { server, baseUrl: speechBaseUrl } = await startFakeOpenAiSpeech({ wavBytes: wav });
     servers.push(server);
 
-    const config = speechConfig("http://127.0.0.1:9", speechBaseUrl);
+    const config = speechConfig(speechBaseUrl);
     const worker = new IntelligenceWorker(
       repository,
       createLiteLlmHttpClient({ baseUrl: config.liteLlmBaseUrl }),
@@ -219,7 +221,7 @@ describe("Arcadia Intelligence text-to-speech end-to-end", () => {
     servers.push(server);
 
     const { job } = await submitIntelligenceRequest(repository, speechRequest());
-    const config = speechConfig("http://127.0.0.1:9", speechBaseUrl);
+    const config = speechConfig(speechBaseUrl);
     const worker = new IntelligenceWorker(
       repository,
       createLiteLlmHttpClient({ baseUrl: config.liteLlmBaseUrl }),
@@ -245,7 +247,7 @@ describe("Arcadia Intelligence text-to-speech end-to-end", () => {
     const speechBaseUrl = await unavailableLiteLlmBaseUrl();
 
     await submitIntelligenceRequest(repository, speechRequest());
-    const config = speechConfig("http://127.0.0.1:9", speechBaseUrl);
+    const config = speechConfig(speechBaseUrl);
     const worker = new IntelligenceWorker(
       repository,
       createLiteLlmHttpClient({ baseUrl: config.liteLlmBaseUrl }),
@@ -275,7 +277,7 @@ describe("Arcadia Intelligence text-to-speech end-to-end", () => {
       repository,
       speechRequest({ input: { text: "hello", voiceId: "arcadia.nonexistent", format: "wav" } }),
     );
-    const config = speechConfig("http://127.0.0.1:9", speechBaseUrl);
+    const config = speechConfig(speechBaseUrl);
     const worker = new IntelligenceWorker(
       repository,
       createLiteLlmHttpClient({ baseUrl: config.liteLlmBaseUrl }),

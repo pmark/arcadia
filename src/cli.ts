@@ -1654,7 +1654,7 @@ export function buildProgram(): Command {
   addJsonOption(
     intelligence
       .command("smoke-speech")
-      .description("Submit and run one local text-to-speech smoke job (requires ARCADIA_SPEECH_LOCAL_BASE_URL)")
+      .description("Submit and run one local text-to-speech smoke job (requires ARCADIA_SPEECH_LOCAL_ROUTE, a LiteLLM model alias)")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--text <text>", "Text to synthesize")
       .option("--voice-id <id>", "Semantic Arcadia voice id (e.g. arcadia.narrator)")

@@ -82,12 +82,12 @@ function codexImageRouteEntries(routeName: string | undefined): IntelligenceRout
 }
 
 /**
- * Speech (text-to-speech) routes. Both local and cloud speak the
- * OpenAI-compatible `/v1/audio/speech` contract via the "speech" executor; they
- * differ only in endpoint (local = a direct MLX-Audio/Kokoro server, cloud =
- * the LiteLLM proxy) and paid-usage gating. Omitting the alias env var omits the
- * route entirely — there is no default speech route, and no local->cloud
- * fallback.
+ * Speech (text-to-speech) routes. Both local and cloud go through the same
+ * LiteLLM proxy via the "speech" executor — like text/image, they differ only
+ * in which LiteLLM model alias the route resolves to (e.g. a local "arcadia-tts"
+ * alias LiteLLM maps to a Kokoro server) and paid-usage gating. Omitting the
+ * alias env var omits the route entirely — there is no default speech route,
+ * and no local->cloud fallback.
  */
 function speechRouteEntries(
   location: IntelligenceRouteLocation,
@@ -218,8 +218,6 @@ export function loadIntelligenceConfig(
     workerPollIntervalMs: intelligenceV01Defaults.workerPollIntervalMs,
     leaseDurationMs: intelligenceV01Defaults.leaseDurationMs,
     speech: {
-      localBaseUrl: env.ARCADIA_SPEECH_LOCAL_BASE_URL?.trim() || undefined,
-      apiKey: env.ARCADIA_SPEECH_LOCAL_API_KEY?.trim() || undefined,
       voiceMap: loadVoiceMap(env.ARCADIA_SPEECH_VOICE_MAP),
       timeoutMs: env.ARCADIA_SPEECH_TIMEOUT_MS
         ? Number(env.ARCADIA_SPEECH_TIMEOUT_MS)

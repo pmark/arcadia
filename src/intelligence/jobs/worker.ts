@@ -266,18 +266,10 @@ export class IntelligenceWorker {
     }
 
     const speechConfig = this._config.speech;
-    // Local speech targets a direct OpenAI-compatible endpoint; cloud reuses the
-    // LiteLLM proxy. There is no fallback between them — routing already picked
-    // the location, and a missing endpoint is a clear, actionable failure.
-    const baseUrl =
-      route.location === "local" ? speechConfig?.localBaseUrl : this._config.liteLlmBaseUrl;
-    if (!baseUrl) {
-      throw new SpeechUnavailableError(
-        route.location === "local"
-          ? "No local speech endpoint is configured. Set ARCADIA_SPEECH_LOCAL_BASE_URL to the OpenAI-compatible /v1/audio/speech server."
-          : "No cloud speech endpoint is configured. Set ARCADIA_LITELLM_BASE_URL.",
-      );
-    }
+    // Speech is a LiteLLM-routed capability like text/image: both local and
+    // cloud go through the same proxy, distinguished only by which LiteLLM
+    // model alias (route.liteLlmRoute) the route resolves to.
+    const baseUrl = this._config.liteLlmBaseUrl;
 
     const input = parseSpeechInput(job.request.input);
     let voice: string;

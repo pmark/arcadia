@@ -87,17 +87,14 @@ export type IntelligenceV01Config = {
   };
 
   /**
-   * Local speech (text-to-speech) transport config. Distinct from
-   * `liteLlmBaseUrl`: local speech points directly at an OpenAI-compatible
-   * `/v1/audio/speech` endpoint (e.g. an MLX-Audio/Kokoro server on the same
-   * Mac), not the LiteLLM proxy. Absent/empty `localBaseUrl` means no local
-   * speech route is configured (requests resolve to a typed
-   * "route_not_configured"/"local_route_unavailable" failure — never a cloud
-   * fallback). Cloud speech, when enabled, reuses `liteLlmBaseUrl`.
+   * Speech (text-to-speech) transport config. Speech is a LiteLLM-routed
+   * capability like text and image: both local and cloud speech go through
+   * `liteLlmBaseUrl`/`liteLlmApiKey`, distinguished only by which LiteLLM
+   * model alias the route resolves to (e.g. a "arcadia-tts" alias LiteLLM
+   * maps to a local Kokoro server). Arcadia never connects to a TTS backend
+   * directly.
    */
   speech?: {
-    localBaseUrl?: string;
-    apiKey?: string;
     /** Semantic Arcadia voiceId -> provider voice name. */
     voiceMap: Record<string, string>;
     timeoutMs: number;

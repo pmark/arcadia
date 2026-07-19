@@ -67,7 +67,7 @@ export function runIntelligenceServeCommand(options: IntelligenceServeOptions): 
   });
   const codexTextExecutor = createCodexCliTextExecutor({ workspaceRoot: workspacePath, config });
   const speechClient = createOpenAiSpeechClient({
-    apiKey: config.speech?.apiKey,
+    apiKey: config.liteLlmApiKey,
     timeoutMs: config.speech?.timeoutMs,
     maxRetries: config.speech?.maxRetries,
   });
@@ -217,8 +217,10 @@ export interface IntelligenceSpeechSmokeData {
 /**
  * Runs one local text-to-speech generation through the normal worker loop
  * (submit -> resolve route -> speech adapter -> durable artifact) and reports
- * the result. Requires an already-running OpenAI-compatible /v1/audio/speech
- * server at ARCADIA_SPEECH_LOCAL_BASE_URL; does not start or manage that server.
+ * the result. Speech is LiteLLM-routed like text/image: requires
+ * ARCADIA_LITELLM_BASE_URL reachable and ARCADIA_SPEECH_LOCAL_ROUTE set to a
+ * LiteLLM model alias that resolves to a TTS backend; does not start or
+ * manage that backend.
  */
 export async function runIntelligenceSpeechSmokeCommand(
   options: IntelligenceSpeechSmokeOptions,
@@ -241,7 +243,7 @@ export async function runIntelligenceSpeechSmokeCommand(
       }),
     };
     const speechClient = createOpenAiSpeechClient({
-      apiKey: config.speech?.apiKey,
+      apiKey: config.liteLlmApiKey,
       timeoutMs: config.speech?.timeoutMs,
       maxRetries: config.speech?.maxRetries,
     });

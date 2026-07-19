@@ -3,17 +3,19 @@
  * @pmark/arcadia/intelligence/client.
  *
  * Same submit/poll shape as image-generation-example.ts, but with
- * `capability: "audio.speech.generate"`. It routes to the configured local
- * speech route (an OpenAI-compatible /v1/audio/speech server such as MLX-Audio
- * with Kokoro). The job result is never inline base64 — Arcadia receives the
- * audio bytes, hashes and stores them under the workspace's artifacts directory,
- * inspects the WAV for duration/sample-rate/channels, and returns a durable
- * artifact-reference manifest. This script submits a short speech request, waits
- * for it, verifies the artifact, and downloads the bytes for downstream video.
+ * `capability: "audio.speech.generate"`. Speech is LiteLLM-routed exactly like
+ * text/image: it posts to LiteLLM's OpenAI-compatible /audio/speech endpoint
+ * using a configured model alias, and LiteLLM's own config decides which TTS
+ * backend that alias maps to. The job result is never inline base64 — Arcadia
+ * receives the audio bytes, hashes and stores them under the workspace's
+ * artifacts directory, inspects the WAV for duration/sample-rate/channels, and
+ * returns a durable artifact-reference manifest. This script submits a short
+ * speech request, waits for it, verifies the artifact, and downloads the
+ * bytes for downstream video.
  *
- * Run the real service first, with a local speech route configured:
- *   ARCADIA_SPEECH_LOCAL_BASE_URL=http://127.0.0.1:8000 \
- *   ARCADIA_SPEECH_LOCAL_ROUTE=kokoro \
+ * Run the real service first, with LiteLLM already running and a TTS alias
+ * configured in its own config (see docs/intelligence/SPEECH_SMOKE.md):
+ *   ARCADIA_SPEECH_LOCAL_ROUTE=arcadia-tts \
  *     pnpm arcadia intelligence serve --workspace ./tmp/demo-workspace --port 4710
  *
  * Then run this script against it (after `pnpm link --global @pmark/arcadia`
