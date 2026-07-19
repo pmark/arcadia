@@ -5,6 +5,7 @@ import { findPreset, PLAIN_TEXT_SCHEMA } from "./intelligence-presets";
 import {
   ADMIN_INTELLIGENCE_CLIENT_APP,
   type AdminImageSubmission,
+  type AdminSpeechSubmission,
   type AdminSubmission,
   type AdminTextSubmission,
   type IntelligenceCapabilitiesResponse,
@@ -23,7 +24,7 @@ interface HealthRoute {
   capability: string;
   location: "local" | "cloud";
   profile: string;
-  executor: "litellm" | "codex-cli";
+  executor: "litellm" | "codex-cli" | "speech";
   requiresPaidUsage: boolean;
 }
 
@@ -58,6 +59,7 @@ export async function loadIntelligenceCapabilities(): Promise<IntelligenceCapabi
       liteLlmReachable: body.liteLlm.reachable,
       textOfferings: routes.filter((route) => route.capability === "text.generate"),
       imageOfferings: routes.filter((route) => route.capability === "image.generate"),
+      speechOfferings: routes.filter((route) => route.capability === "audio.speech.generate"),
     };
   } catch (error) {
     return unreachable(
@@ -75,6 +77,7 @@ function unreachable(error: string): IntelligenceCapabilitiesResponse {
     liteLlmReachable: false,
     textOfferings: [],
     imageOfferings: [],
+    speechOfferings: [],
     error,
   };
 }
@@ -96,6 +99,9 @@ export function buildAdminIntelligenceRequest(submission: AdminSubmission): Inte
 
   if (submission.capability === "text.generate") {
     return buildTextRequest(submission, idempotencyKey, executionPolicy);
+  }
+  if (submission.capability === "audio.speech.generate") {
+    return buildSpeechRequest(submission, idempotencyKey, executionPolicy);
   }
   return buildImageRequest(submission, idempotencyKey, executionPolicy);
 }
@@ -136,6 +142,45 @@ function buildTextRequest(
           : "arcadia-admin.plain-text",
       schemaVersion: 1,
       jsonSchema,
+    },
+    template: { id: "arcadia-admin.intelligence-bench", version: "1" },
+    executionPolicy,
+  };
+}
+
+function buildSpeechRequest(
+  submission: AdminSpeechSubmission,
+  idempotencyKey: string,
+  executionPolicy: { allowPaidUsage: boolean; maxRetries: number },
+): IntelligenceRequest {
+  if (!submission.text.trim()) {
+    throw new AdminSubmissionError("Text is required.");
+  }
+  if (!submission.voiceId.trim()) {
+    throw new AdminSubmissionError("A voice is required.");
+  }
+
+  return {
+    idempotencyKey,
+    operationId: "arcadia-admin.intelligence-bench.speech",
+    clientApp: ADMIN_INTELLIGENCE_CLIENT_APP,
+    capability: "audio.speech.generate",
+    execution: submission.execution,
+    profile: submission.profile,
+    input: { text: submission.text, voiceId: submission.voiceId, format: "wav" },
+    outputContract: {
+      schemaId: "arcadia-admin.speech-bench",
+      schemaVersion: 1,
+      jsonSchema: {
+        type: "object",
+        properties: {
+          artifact: { type: "object" },
+          voiceId: { type: "string" },
+          routeId: { type: "string" },
+          provider: { type: "string" },
+        },
+        required: ["artifact", "voiceId", "routeId", "provider"],
+      },
     },
     template: { id: "arcadia-admin.intelligence-bench", version: "1" },
     executionPolicy,

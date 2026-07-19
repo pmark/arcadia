@@ -75,3 +75,16 @@ export const PLAIN_TEXT_SCHEMA: JsonValue = {
 export function findPreset(id: string): StructuredTextPreset | undefined {
   return STRUCTURED_TEXT_PRESETS.find((preset) => preset.id === id);
 }
+
+/**
+ * Semantic Arcadia voice IDs for the speech test bench. These mirror the
+ * built-in default voice map in src/intelligence/speech/voices.ts; that
+ * module isn't part of the public package surface, so the admin UI keeps its
+ * own copy of the known IDs (overridable server-side via
+ * ARCADIA_SPEECH_VOICE_MAP without needing a dashboard change).
+ */
+export const ADMIN_SPEECH_VOICES: { id: string; label: string }[] = [
+  { id: "arcadia.narrator", label: "Narrator (default)" },
+  { id: "arcadia.narrator.warm", label: "Narrator, warm" },
+  { id: "arcadia.narrator.crisp", label: "Narrator, crisp" },
+];

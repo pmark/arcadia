@@ -97,6 +97,57 @@ describe("buildAdminIntelligenceRequest", () => {
     ).toThrow(AdminSubmissionError);
   });
 
+  it("tags speech submissions as admin capability tests without affecting routing fields", () => {
+    const request = buildAdminIntelligenceRequest({
+      capability: "audio.speech.generate",
+      offeringId: "arcadia.audio.speech.generate.local.standard",
+      execution: "local-required",
+      profile: "standard",
+      text: "Can you solve this rebus?",
+      voiceId: "arcadia.narrator",
+      allowPaidUsage: false,
+    });
+
+    expect(request.clientApp).toBe(ADMIN_INTELLIGENCE_CLIENT_APP);
+    expect(request.operationId).toBe("arcadia-admin.intelligence-bench.speech");
+    expect(request.capability).toBe("audio.speech.generate");
+    expect(request.execution).toBe("local-required");
+    expect(request.profile).toBe("standard");
+    expect(request.input).toEqual({
+      text: "Can you solve this rebus?",
+      voiceId: "arcadia.narrator",
+      format: "wav",
+    });
+  });
+
+  it("rejects an empty speech text", () => {
+    expect(() =>
+      buildAdminIntelligenceRequest({
+        capability: "audio.speech.generate",
+        offeringId: "arcadia.audio.speech.generate.local.standard",
+        execution: "local-required",
+        profile: "standard",
+        text: "   ",
+        voiceId: "arcadia.narrator",
+        allowPaidUsage: false,
+      }),
+    ).toThrow(AdminSubmissionError);
+  });
+
+  it("rejects a missing speech voiceId", () => {
+    expect(() =>
+      buildAdminIntelligenceRequest({
+        capability: "audio.speech.generate",
+        offeringId: "arcadia.audio.speech.generate.local.standard",
+        execution: "local-required",
+        profile: "standard",
+        text: "Can you solve this rebus?",
+        voiceId: "  ",
+        allowPaidUsage: false,
+      }),
+    ).toThrow(AdminSubmissionError);
+  });
+
   it("never sets allowPaidUsage true unless the caller explicitly confirmed it", () => {
     const request = buildAdminIntelligenceRequest({
       capability: "text.generate",

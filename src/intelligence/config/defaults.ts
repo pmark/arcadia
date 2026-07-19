@@ -1,4 +1,5 @@
 import type { IntelligenceProfile } from "../types.js";
+import { DEFAULT_VOICE_MAP, loadVoiceMap } from "../speech/voices.js";
 import type {
   IntelligenceRouteEntry,
   IntelligenceRouteLocation,
@@ -17,6 +18,7 @@ const LOCAL_TEXT_PROFILES: IntelligenceProfile[] = ["fast", "standard"];
 const CLOUD_TEXT_PROFILES: IntelligenceProfile[] = ["fast", "standard", "quality"];
 const LOCAL_CODEX_IMAGE_PROFILES: IntelligenceProfile[] = ["quality"];
 const CLOUD_IMAGE_PROFILES: IntelligenceProfile[] = ["quality"];
+const AUDIO_SPEECH_PROFILES: IntelligenceProfile[] = ["standard"];
 const DEFAULT_CODEX_CLI = {
   command: "codex",
   args: [
@@ -79,6 +81,30 @@ function codexImageRouteEntries(routeName: string | undefined): IntelligenceRout
   }));
 }
 
+/**
+ * Speech (text-to-speech) routes. Both local and cloud go through the same
+ * LiteLLM proxy via the "speech" executor — like text/image, they differ only
+ * in which LiteLLM model alias the route resolves to (e.g. a local "arcadia-tts"
+ * alias LiteLLM maps to a Kokoro server) and paid-usage gating. Omitting the
+ * alias env var omits the route entirely — there is no default speech route,
+ * and no local->cloud fallback.
+ */
+function speechRouteEntries(
+  location: IntelligenceRouteLocation,
+  route: string | undefined,
+  requiresPaidUsage: boolean,
+): IntelligenceRouteEntry[] {
+  if (!route) {
+    return [];
+  }
+  return AUDIO_SPEECH_PROFILES.map((profile) => ({
+    ...buildEntry("audio.speech.generate", location, profile, route, requiresPaidUsage, {
+      costClass: requiresPaidUsage ? "medium" : "free",
+    }),
+    executor: "speech" as const,
+  }));
+}
+
 function buildEntry(
   capability: IntelligenceRouteEntry["capability"],
   location: IntelligenceRouteLocation,
@@ -130,6 +156,8 @@ export function buildDefaultRoutes(options: {
   cloudImageRoute?: string;
   codexImageRoute?: string;
   codexTextRoute?: string;
+  localSpeechRoute?: string;
+  cloudSpeechRoute?: string;
 }): IntelligenceRouteEntry[] {
   return [
     ...textRouteEntries("local", options.localTextRoute, LOCAL_TEXT_PROFILES, false),
@@ -137,6 +165,8 @@ export function buildDefaultRoutes(options: {
     ...textRouteEntries("cloud", options.cloudTextRoute, CLOUD_TEXT_PROFILES, true),
     ...codexImageRouteEntries(options.codexImageRoute),
     ...imageRouteEntries(options.cloudImageRoute),
+    ...speechRouteEntries("local", options.localSpeechRoute, false),
+    ...speechRouteEntries("cloud", options.cloudSpeechRoute, true),
   ];
 }
 
@@ -147,6 +177,11 @@ export const intelligenceV01Defaults: IntelligenceV01Config = {
   workerPollIntervalMs: 500,
   leaseDurationMs: 30_000,
   codexCli: DEFAULT_CODEX_CLI,
+  speech: {
+    voiceMap: { ...DEFAULT_VOICE_MAP },
+    timeoutMs: 60_000,
+    maxRetries: 1,
+  },
 };
 
 /**
@@ -163,15 +198,32 @@ export function loadIntelligenceConfig(
   const cloudImageRoute = env.ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE?.trim() || undefined;
   const codexImageRoute = env.ARCADIA_CODEX_IMAGE_ROUTE?.trim() || undefined;
   const codexTextRoute = env.ARCADIA_CODEX_TEXT_ROUTE?.trim() || "codex-cli";
+  const localSpeechRoute = env.ARCADIA_SPEECH_LOCAL_ROUTE?.trim() || undefined;
+  const cloudSpeechRoute = env.ARCADIA_SPEECH_CLOUD_ROUTE?.trim() || undefined;
 
   return {
-    routes: buildDefaultRoutes({ localTextRoute, cloudTextRoute, cloudImageRoute, codexImageRoute, codexTextRoute }),
+    routes: buildDefaultRoutes({
+      localTextRoute,
+      cloudTextRoute,
+      cloudImageRoute,
+      codexImageRoute,
+      codexTextRoute,
+      localSpeechRoute,
+      cloudSpeechRoute,
+    }),
     liteLlmBaseUrl:
       env.ARCADIA_LITELLM_BASE_URL?.trim() || intelligenceV01Defaults.liteLlmBaseUrl,
     liteLlmApiKey: env.ARCADIA_LITELLM_API_KEY?.trim() || undefined,
     maxRetries: intelligenceV01Defaults.maxRetries,
     workerPollIntervalMs: intelligenceV01Defaults.workerPollIntervalMs,
     leaseDurationMs: intelligenceV01Defaults.leaseDurationMs,
+    speech: {
+      voiceMap: loadVoiceMap(env.ARCADIA_SPEECH_VOICE_MAP),
+      timeoutMs: env.ARCADIA_SPEECH_TIMEOUT_MS
+        ? Number(env.ARCADIA_SPEECH_TIMEOUT_MS)
+        : 60_000,
+      maxRetries: intelligenceV01Defaults.maxRetries,
+    },
     codexCli: {
       command:
         env.ARCADIA_CODEX_CLI_COMMAND?.trim() ??

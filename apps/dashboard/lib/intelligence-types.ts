@@ -11,7 +11,7 @@ export interface IntelligenceOffering {
   capability: IntelligenceCapability;
   location: "local" | "cloud";
   profile: IntelligenceProfile;
-  executor: "litellm" | "codex-cli";
+  executor: "litellm" | "codex-cli" | "speech";
   requiresPaidUsage: boolean;
 }
 
@@ -21,6 +21,7 @@ export interface IntelligenceCapabilitiesResponse {
   liteLlmReachable: boolean;
   textOfferings: IntelligenceOffering[];
   imageOfferings: IntelligenceOffering[];
+  speechOfferings: IntelligenceOffering[];
   error?: string;
 }
 
@@ -49,7 +50,18 @@ export interface AdminImageSubmission {
   allowPaidUsage: boolean;
 }
 
-export type AdminSubmission = AdminTextSubmission | AdminImageSubmission;
+export interface AdminSpeechSubmission {
+  capability: "audio.speech.generate";
+  offeringId: string;
+  execution: ExecutionPreference;
+  profile: IntelligenceProfile;
+  text: string;
+  voiceId: string;
+  label?: string;
+  allowPaidUsage: boolean;
+}
+
+export type AdminSubmission = AdminTextSubmission | AdminImageSubmission | AdminSpeechSubmission;
 
 export interface AdminJobSummary {
   job: IntelligenceJob;

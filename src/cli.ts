@@ -153,11 +153,13 @@ import { renderStatusSuccess, runStatusCommand } from "./commands/status.js";
 import {
   renderIntelligenceImageSmokeSuccess,
   renderIntelligenceListJobsSuccess,
+  renderIntelligenceSpeechSmokeSuccess,
   renderIntelligenceUsageSuccess,
   runIntelligenceImageSmokeCommand,
   runIntelligenceListJobsCommand,
-  runIntelligenceUsageCommand,
-  runIntelligenceServeCommand
+  runIntelligenceServeCommand,
+  runIntelligenceSpeechSmokeCommand,
+  runIntelligenceUsageCommand
 } from "./commands/intelligence.js";
 import {
   runWorkerInstallCommand,
@@ -1668,6 +1670,31 @@ export function buildProgram(): Command {
 
   addJsonOption(
     intelligence
+      .command("smoke-speech")
+      .description("Submit and run one local text-to-speech smoke job (requires ARCADIA_SPEECH_LOCAL_ROUTE, a LiteLLM model alias)")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--text <text>", "Text to synthesize")
+      .option("--voice-id <id>", "Semantic Arcadia voice id (e.g. arcadia.narrator)")
+      .option("--route <name>", "Local speech route/model alias")
+      .option("--idempotency-key <key>", "Optional idempotency key")
+  ).action((options: {
+    workspace: string;
+    text?: string;
+    voiceId?: string;
+    route?: string;
+    idempotencyKey?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "intelligence.smoke-speech",
+      options,
+      () => runIntelligenceSpeechSmokeCommand(options),
+      renderIntelligenceSpeechSmokeSuccess
+    )
+  );
+
+  addJsonOption(
+    intelligence
       .command("list-jobs")
       .description("List recent Arcadia Intelligence jobs for a given clientApp (read-only history)")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
@@ -1921,6 +1948,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "intelligence" && second === "smoke-image") {
     return "intelligence.smoke-image";
+  }
+
+  if (first === "intelligence" && second === "smoke-speech") {
+    return "intelligence.smoke-speech";
   }
 
   if (first === "intelligence" && second === "list-jobs") {

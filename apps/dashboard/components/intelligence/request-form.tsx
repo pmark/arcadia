@@ -1,23 +1,25 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { STRUCTURED_TEXT_PRESETS } from "../../lib/intelligence-presets";
+import { ADMIN_SPEECH_VOICES, STRUCTURED_TEXT_PRESETS } from "../../lib/intelligence-presets";
 import type {
   AdminOutputMode,
   AdminSubmission,
   IntelligenceOffering,
 } from "../../lib/intelligence-types";
 
-type Mode = "text" | "image";
+type Mode = "text" | "image" | "speech";
 
 export function RequestForm({
   textOfferings,
   imageOfferings,
+  speechOfferings,
   disabled,
   onSubmit,
 }: {
   textOfferings: IntelligenceOffering[];
   imageOfferings: IntelligenceOffering[];
+  speechOfferings: IntelligenceOffering[];
   disabled: boolean;
   onSubmit: (submission: AdminSubmission) => void;
 }) {
@@ -32,12 +34,17 @@ export function RequestForm({
         <ModeButton active={mode === "image"} onClick={() => setMode("image")}>
           Image generation
         </ModeButton>
+        <ModeButton active={mode === "speech"} onClick={() => setMode("speech")}>
+          Speech generation
+        </ModeButton>
       </div>
 
       {mode === "text" ? (
         <TextForm offerings={textOfferings} disabled={disabled} onSubmit={onSubmit} />
-      ) : (
+      ) : mode === "image" ? (
         <ImageForm offerings={imageOfferings} disabled={disabled} onSubmit={onSubmit} />
+      ) : (
+        <SpeechForm offerings={speechOfferings} disabled={disabled} onSubmit={onSubmit} />
       )}
     </section>
   );
@@ -263,6 +270,104 @@ function ImageForm({
           onChange={(event) => setLabel(event.target.value)}
           className="min-h-10 w-full min-w-0 max-w-full rounded-md border border-line bg-canvas px-3 text-sm"
           placeholder="e.g. Codex image executor smoke test"
+        />
+      </Field>
+
+      {requiresPaidConfirmation ? <PaidUsageConfirm checked={paidConfirmed} onChange={setPaidConfirmed} /> : null}
+
+      <SubmitButton disabled={!canSubmit} />
+    </form>
+  );
+}
+
+function SpeechForm({
+  offerings,
+  disabled,
+  onSubmit,
+}: {
+  offerings: IntelligenceOffering[];
+  disabled: boolean;
+  onSubmit: (submission: AdminSubmission) => void;
+}) {
+  const [offeringId, setOfferingId] = useState(offerings[0]?.id ?? "");
+  const [text, setText] = useState("");
+  const [voiceId, setVoiceId] = useState(ADMIN_SPEECH_VOICES[0]!.id);
+  const [label, setLabel] = useState("");
+  const [paidConfirmed, setPaidConfirmed] = useState(false);
+
+  const offering = useMemo(() => offerings.find((item) => item.id === offeringId), [offerings, offeringId]);
+  const requiresPaidConfirmation = Boolean(offering?.requiresPaidUsage);
+  const canSubmit = Boolean(offering) && text.trim().length > 0 && (!requiresPaidConfirmation || paidConfirmed) && !disabled;
+
+  if (offerings.length === 0) {
+    return <p className="mt-4 text-sm text-muted">No speech-generation offerings are currently available to test.</p>;
+  }
+
+  function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!offering || !canSubmit) return;
+    onSubmit({
+      capability: "audio.speech.generate",
+      offeringId: offering.id,
+      execution: offering.location === "local" ? "local-required" : "cloud-required",
+      profile: offering.profile,
+      text,
+      voiceId,
+      label: label.trim() || undefined,
+      allowPaidUsage: requiresPaidConfirmation && paidConfirmed,
+    });
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-4 grid gap-3">
+      <Field label="Offering">
+        <select
+          value={offeringId}
+          onChange={(event) => {
+            setOfferingId(event.target.value);
+            setPaidConfirmed(false);
+          }}
+          className="min-h-10 rounded-md border border-line bg-canvas px-3 text-sm"
+        >
+          {offerings.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.id} ({item.location}/{item.profile}
+              {item.requiresPaidUsage ? ", paid" : ""})
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Text to speak">
+        <textarea
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          rows={3}
+          className="rounded-md border border-line bg-canvas px-3 py-2 text-sm"
+          placeholder="Enter the text to synthesize…"
+        />
+      </Field>
+
+      <Field label="Voice">
+        <select
+          value={voiceId}
+          onChange={(event) => setVoiceId(event.target.value)}
+          className="min-h-10 rounded-md border border-line bg-canvas px-3 text-sm"
+        >
+          {ADMIN_SPEECH_VOICES.map((voice) => (
+            <option key={voice.id} value={voice.id}>
+              {voice.label} ({voice.id})
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Label / note (optional)">
+        <input
+          value={label}
+          onChange={(event) => setLabel(event.target.value)}
+          className="min-h-10 rounded-md border border-line bg-canvas px-3 text-sm"
+          placeholder="e.g. local Kokoro voice smoke test"
         />
       </Field>
 

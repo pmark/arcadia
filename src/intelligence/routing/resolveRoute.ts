@@ -19,7 +19,7 @@ export type ResolvedIntelligenceRoute = {
   location: IntelligenceRouteLocation;
   profile: IntelligenceProfile;
   liteLlmRoute: string;
-  executor: "litellm" | "codex-cli";
+  executor: "litellm" | "codex-cli" | "speech";
   requiresPaidUsage: boolean;
 };
 
@@ -68,7 +68,10 @@ export function resolveIntelligenceRoute(
   const targetExecutor = requested.executionTarget === "codex"
     ? "codex-cli"
     : requested.executionTarget === "local" || requested.executionTarget === "cloud"
-      ? "litellm"
+      // Speech routes run on the dedicated OpenAI-compatible "speech" executor,
+      // not the generic LiteLLM transport; a local/cloud target for the speech
+      // capability must therefore match "speech", not "litellm".
+      ? (requested.capability === "audio.speech.generate" ? "speech" : "litellm")
       : undefined;
 
   for (const location of candidateLocations) {

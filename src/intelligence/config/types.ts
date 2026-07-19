@@ -6,7 +6,7 @@ import type { IntelligenceCapability, IntelligenceProfile } from "../types.js";
  * deployment-time fact about a specific route.
  */
 export type IntelligenceRouteLocation = "local" | "cloud";
-export type IntelligenceRouteExecutor = "litellm" | "codex-cli";
+export type IntelligenceRouteExecutor = "litellm" | "codex-cli" | "speech";
 
 /**
  * One entry in Arcadia's route registry: a deterministic mapping from a
@@ -84,5 +84,21 @@ export type IntelligenceV01Config = {
     command: string;
     args: string[];
     timeoutMs: number;
+  };
+
+  /**
+   * Speech (text-to-speech) transport config. Speech is a LiteLLM-routed
+   * capability like text and image: both local and cloud speech go through
+   * `liteLlmBaseUrl`/`liteLlmApiKey`, distinguished only by which LiteLLM
+   * model alias the route resolves to (e.g. a "arcadia-tts" alias LiteLLM
+   * maps to a local Kokoro server). Arcadia never connects to a TTS backend
+   * directly.
+   */
+  speech?: {
+    /** Semantic Arcadia voiceId -> provider voice name. */
+    voiceMap: Record<string, string>;
+    timeoutMs: number;
+    /** Bounded transport retries for transient speech failures. */
+    maxRetries: number;
   };
 };

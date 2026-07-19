@@ -49,9 +49,9 @@ export function RecentHistory({
 }
 
 function previewLabel(job: IntelligenceJob): string {
-  const input = job.request.input as { prompt?: string } | null;
-  const prompt = typeof input?.prompt === "string" ? input.prompt : "";
-  return prompt.length > 60 ? `${prompt.slice(0, 60)}…` : prompt || job.selectedRoute || job.request.profile;
+  const input = job.request.input as { prompt?: string; text?: string } | null;
+  const preview = typeof input?.prompt === "string" ? input.prompt : typeof input?.text === "string" ? input.text : "";
+  return preview.length > 60 ? `${preview.slice(0, 60)}…` : preview || job.selectedRoute || job.request.profile;
 }
 
 function formatClock(value: string): string {

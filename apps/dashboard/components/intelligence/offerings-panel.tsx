@@ -3,14 +3,17 @@ import type { IntelligenceOffering } from "../../lib/intelligence-types";
 export function OfferingsPanel({
   textOfferings,
   imageOfferings,
+  speechOfferings,
 }: {
   textOfferings: IntelligenceOffering[];
   imageOfferings: IntelligenceOffering[];
+  speechOfferings: IntelligenceOffering[];
 }) {
   return (
-    <section className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
+    <section className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-3">
       <OfferingGroup title="Text generation" offerings={textOfferings} emptyText="No text-generation offerings are currently available." />
       <OfferingGroup title="Image generation" offerings={imageOfferings} emptyText="No image-generation offerings are currently available." />
+      <OfferingGroup title="Speech generation" offerings={speechOfferings} emptyText="No speech-generation offerings are currently available." />
     </section>
   );
 }
@@ -38,7 +41,7 @@ function OfferingGroup({
                 <div className="flex flex-wrap gap-1.5">
                   <Badge>{offering.location}</Badge>
                   <Badge>{offering.profile}</Badge>
-                  <Badge>{offering.executor === "codex-cli" ? "Codex" : "local model"}</Badge>
+                  <Badge>{executorLabel(offering.executor)}</Badge>
                   {offering.requiresPaidUsage ? <Badge tone="gold">paid usage</Badge> : null}
                 </div>
               </div>
@@ -48,6 +51,17 @@ function OfferingGroup({
       )}
     </div>
   );
+}
+
+function executorLabel(executor: IntelligenceOffering["executor"]): string {
+  switch (executor) {
+    case "codex-cli":
+      return "Codex";
+    case "speech":
+      return "TTS server";
+    default:
+      return "local model";
+  }
 }
 
 function Badge({ children, tone = "steel" }: { children: React.ReactNode; tone?: "steel" | "gold" }) {

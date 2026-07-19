@@ -95,6 +95,9 @@ function ResultPanel({ job }: { job: IntelligenceJob }) {
   if (job.request.capability === "image.generate") {
     return <ImageResult job={job} />;
   }
+  if (job.request.capability === "audio.speech.generate") {
+    return <AudioResult job={job} />;
+  }
   return <TextResult job={job} />;
 }
 
@@ -151,6 +154,39 @@ function ImageResult({ job }: { job: IntelligenceJob }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function AudioResult({ job }: { job: IntelligenceJob }) {
+  const result = job.result as { artifact?: IntelligenceArtifactRecord; voiceId?: string; routeId?: string; provider?: string } | null;
+  const artifact = result?.artifact;
+
+  if (!artifact) {
+    return <p className="text-sm text-muted">Job completed but returned no artifact.</p>;
+  }
+
+  return (
+    <div className="grid gap-3">
+      <figure className="rounded-md border border-line p-3">
+        <audio
+          controls
+          src={`/api/admin-intelligence/artifacts/${encodeURIComponent(artifact.id)}`}
+          className="w-full"
+        />
+        <figcaption className="mt-2 grid gap-0.5 text-xs text-muted">
+          <span className="font-mono">{artifact.id}</span>
+          <span>
+            {artifact.mimeType}
+            {artifact.durationSeconds !== undefined ? ` · ${artifact.durationSeconds.toFixed(2)}s` : ""}
+            {artifact.sampleRateHz !== undefined ? ` · ${artifact.sampleRateHz} Hz` : ""}
+            {artifact.channels !== undefined ? ` · ${artifact.channels}ch` : ""}
+          </span>
+          <span>voice {result?.voiceId} · provider {result?.provider}</span>
+          <span>sha256 {artifact.sha256.slice(0, 12)}…</span>
+          <span>{job.completedAt ? formatDateTime(job.completedAt) : ""}</span>
+        </figcaption>
+      </figure>
     </div>
   );
 }
