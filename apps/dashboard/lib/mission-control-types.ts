@@ -57,6 +57,22 @@ export type MissionControlNodeKind =
 export type UrgencyLevel = "critical" | "attention" | "quiet";
 
 /**
+ * Non-hierarchical relationships between nodes — independent of the
+ * containment tree (`children`/`childCount` below). A pure tree cannot
+ * express "this one thing matters to two towers" (e.g. a Life-ledger
+ * concern that is also, once promoted, a tracked Project); edges can,
+ * without forcing a single canonical home. Inert until a graph-shaped view
+ * reads it — see docs/plans/mission-control-view/02-graph-and-3d-vision.md.
+ */
+export type MissionControlEdgeType = "blocks" | "relates_to" | "same_area" | "depends_on";
+
+export interface MissionControlEdge {
+  targetId: string;
+  type: MissionControlEdgeType;
+  label?: string;
+}
+
+/**
  * Drives sort order and the badge shown at the PARENT's zoom level — never
  * rendered as prose itself; `reason` is the human-readable one-liner for
  * that.
@@ -80,6 +96,8 @@ export interface MissionControlNodeSummary {
   /** Absent/0 for a leaf node (nothing further to zoom into). */
   childCount: number;
   updatedAt: string;
+  /** Non-hierarchical links to other nodes. Optional, additive, inert today. */
+  relations?: MissionControlEdge[];
 }
 
 /**
