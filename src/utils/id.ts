@@ -28,7 +28,9 @@ const PREFIXES = {
   rebusterIntegration: "rint",
   rebusterEvent: "revt",
   intelligenceJob: "ijob",
-  intelligenceArtifact: "iart"
+  intelligenceArtifact: "iart",
+  orientationEntry: "oentry",
+  orientationPacket: "opacket"
 } as const;
 
 export type IdKind = keyof typeof PREFIXES;

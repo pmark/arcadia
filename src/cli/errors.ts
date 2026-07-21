@@ -13,6 +13,11 @@ export type ArcadiaErrorCode =
   | "EXECUTION_PLAN_NOT_FOUND"
   | "EXECUTION_RUN_NOT_FOUND"
   | "SQLITE_ERROR"
+  | "ORIENTATION_ENTRY_NOT_FOUND"
+  | "ORIENTATION_PACKET_ALREADY_SENT"
+  | "ORIENTATION_REPLY_AMBIGUOUS"
+  | "ORIENTATION_REPLY_UNPARSEABLE"
+  | "ORIENTATION_INTERPRETER_UNAVAILABLE"
   | "UNEXPECTED_ERROR";
 
 export type ArcadiaExitCode = 1 | 2 | 3;
@@ -75,6 +80,31 @@ export function executionPlanNotFound(planId: string): ArcadiaError {
 
 export function executionRunNotFound(runId: string): ArcadiaError {
   return new ArcadiaError("EXECUTION_RUN_NOT_FOUND", "Execution run not found.", 3, { runId });
+}
+
+export function orientationEntryNotFound(entryId: string): ArcadiaError {
+  return new ArcadiaError("ORIENTATION_ENTRY_NOT_FOUND", "Orientation entry not found.", 3, { entryId });
+}
+
+export function orientationPacketAlreadySent(localDate: string): ArcadiaError {
+  return new ArcadiaError(
+    "ORIENTATION_PACKET_ALREADY_SENT",
+    `An orientation packet was already composed for ${localDate}.`,
+    3,
+    { localDate }
+  );
+}
+
+export function orientationReplyAmbiguous(question: string): ArcadiaError {
+  return new ArcadiaError("ORIENTATION_REPLY_AMBIGUOUS", question, 3, { question });
+}
+
+export function orientationReplyUnparseable(message: string): ArcadiaError {
+  return new ArcadiaError("ORIENTATION_REPLY_UNPARSEABLE", message, 1, {});
+}
+
+export function orientationInterpreterUnavailable(message: string): ArcadiaError {
+  return new ArcadiaError("ORIENTATION_INTERPRETER_UNAVAILABLE", message, 1, {});
 }
 
 export function normalizeError(error: unknown): ArcadiaError {

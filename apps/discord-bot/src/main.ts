@@ -5,6 +5,9 @@ import { handleArcadiaInteraction } from "./events/interactionCreate.js";
 import { handleArcadiaMessage } from "./events/messageCreate.js";
 import { logJson } from "./logging.js";
 import { startNotificationPoller } from "./notifications/poller.js";
+import { buildOrientationReplyHandler } from "./orientation/handler.js";
+import { startOrientationScheduler } from "./orientation/scheduler.js";
+import { createDiscordReplyRouter } from "./replyRouter/router.js";
 import { discordAdapterStatusPath, removeDiscordAdapterStatus, writeDiscordAdapterStatus } from "./status.js";
 
 async function main(): Promise<void> {
@@ -24,14 +27,24 @@ async function main(): Promise<void> {
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
   });
 
+  const replyRouter = createDiscordReplyRouter({
+    workspace: config.arcadiaWorkspace,
+    allowedUserIds: config.allowedUserIds,
+    logJson
+  });
+  replyRouter.registerHandler("orientation", buildOrientationReplyHandler(cli));
+
   client.once(Events.ClientReady, (readyClient) => {
     heartbeat("connected");
     logJson("info", {
       msg: "arcadia discord bot ready",
       user: readyClient.user.tag,
-      channelId: config.discordChannelId
+      channelId: config.discordChannelId,
+      allowedUserCount: config.allowedUserIds.length,
+      orientationTargetLocalTime: config.orientationTargetLocalTime
     });
     startNotificationPoller(client, config, cli, logJson);
+    startOrientationScheduler(client, config, cli, replyRouter, logJson);
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
@@ -47,7 +60,14 @@ async function main(): Promise<void> {
   client.on(Events.MessageCreate, async (message) => {
     lastEventAt = new Date().toISOString();
     heartbeat("connected");
+    if (message.author.bot) {
+      return;
+    }
     try {
+      const handledByRouter = await replyRouter.handle(message);
+      if (handledByRouter) {
+        return;
+      }
       await handleArcadiaMessage(message, config, cli);
     } catch (error) {
       logJson("error", {

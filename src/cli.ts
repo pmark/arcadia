@@ -162,6 +162,24 @@ import {
   runIntelligenceUsageCommand
 } from "./commands/intelligence.js";
 import {
+  renderOrientationEntryListSuccess,
+  renderOrientationEntrySuccess,
+  renderOrientationPacketComposeSuccess,
+  renderOrientationPacketListSuccess,
+  renderOrientationPacketMarkSentSuccess,
+  renderOrientationReplySuccess,
+  runOrientationEntryAddCommand,
+  runOrientationEntryCompleteCommand,
+  runOrientationEntryConfirmCommand,
+  runOrientationEntryDropCommand,
+  runOrientationEntryListCommand,
+  runOrientationEntryUpdateCommand,
+  runOrientationPacketComposeCommand,
+  runOrientationPacketListCommand,
+  runOrientationPacketMarkSentCommand,
+  runOrientationReplyCommand
+} from "./commands/orientation.js";
+import {
   runWorkerInstallCommand,
   runWorkerStartCommand,
   runWorkerStatusCommand,
@@ -1724,6 +1742,221 @@ export function buildProgram(): Command {
       options,
       () => runIntelligenceUsageCommand(options),
       renderIntelligenceUsageSuccess
+    )
+  );
+
+  const orientation = program
+    .command("orientation")
+    .description("Daily Orientation Packet: a small Context Ledger, composed daily, corrected by reply");
+
+  const orientationEntry = orientation
+    .command("entry")
+    .description("Manage Context Ledger entries");
+
+  addJsonOption(
+    orientationEntry
+      .command("add")
+      .description("Add a Context Ledger entry")
+      .requiredOption("--type <type>", "active_concern|standing_responsibility|time_bound|parked_idea")
+      .requiredOption("--title <text>", "One-line orientation fact")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--area <name>", "Life area (work, art, family, ideas, ...)")
+      .option("--priority <level>", "low|normal|high|critical")
+      .option("--horizon <horizon>", "now|soon|later|someday")
+      .option("--due-at <iso>", "Hard date, ISO-8601 (time_bound entries)")
+      .option("--detail <text>", "Optional longer context")
+      .option("--source <source>", "cli|discord|admin|seed", "cli")
+  ).action((options: {
+    workspace: string;
+    type: string;
+    title: string;
+    area?: string;
+    priority?: string;
+    horizon?: string;
+    dueAt?: string;
+    detail?: string;
+    source?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "orientation.entry.add",
+      options,
+      () => runOrientationEntryAddCommand({
+        workspace: options.workspace,
+        entryType: options.type as never,
+        title: options.title,
+        area: options.area,
+        priority: options.priority as never,
+        horizon: options.horizon as never,
+        dueAt: options.dueAt,
+        detail: options.detail,
+        source: options.source as never
+      }),
+      renderOrientationEntrySuccess
+    )
+  );
+
+  addJsonOption(
+    orientationEntry
+      .command("list")
+      .description("List live Context Ledger entries (or --all for every status)")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--all", "Include completed/dropped entries")
+  ).action((options: { workspace: string; all?: boolean; json?: boolean }) =>
+    runCliAction(
+      "orientation.entry.list",
+      options,
+      () => runOrientationEntryListCommand(options),
+      renderOrientationEntryListSuccess
+    )
+  );
+
+  addJsonOption(
+    orientationEntry
+      .command("confirm <entryId>")
+      .description("Confirm an entry is still true, refreshing its staleness clock")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((entryId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "orientation.entry.confirm",
+      options,
+      () => runOrientationEntryConfirmCommand({ workspace: options.workspace, entryId }),
+      renderOrientationEntrySuccess
+    )
+  );
+
+  addJsonOption(
+    orientationEntry
+      .command("complete <entryId>")
+      .description("Mark an entry completed (leaves the live set)")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((entryId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "orientation.entry.complete",
+      options,
+      () => runOrientationEntryCompleteCommand({ workspace: options.workspace, entryId }),
+      renderOrientationEntrySuccess
+    )
+  );
+
+  addJsonOption(
+    orientationEntry
+      .command("drop <entryId>")
+      .description("Drop an entry (leaves the live set without completing it)")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((entryId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "orientation.entry.drop",
+      options,
+      () => runOrientationEntryDropCommand({ workspace: options.workspace, entryId }),
+      renderOrientationEntrySuccess
+    )
+  );
+
+  addJsonOption(
+    orientationEntry
+      .command("update <entryId>")
+      .description("Update an entry's fields, refreshing its staleness clock")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--title <text>", "New title")
+      .option("--detail <text>", "New detail")
+      .option("--area <name>", "New area")
+      .option("--priority <level>", "low|normal|high|critical")
+      .option("--horizon <horizon>", "now|soon|later|someday")
+      .option("--due-at <iso>", "New hard date, ISO-8601")
+  ).action((entryId: string, options: {
+    workspace: string;
+    title?: string;
+    detail?: string;
+    area?: string;
+    priority?: string;
+    horizon?: string;
+    dueAt?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "orientation.entry.update",
+      options,
+      () => runOrientationEntryUpdateCommand({
+        workspace: options.workspace,
+        entryId,
+        title: options.title,
+        detail: options.detail,
+        area: options.area,
+        priority: options.priority as never,
+        horizon: options.horizon as never,
+        dueAt: options.dueAt
+      }),
+      renderOrientationEntrySuccess
+    )
+  );
+
+  const orientationPacket = orientation
+    .command("packet")
+    .description("Compose and track daily Morning Packets");
+
+  addJsonOption(
+    orientationPacket
+      .command("compose")
+      .description("Compose today's packet (deterministic; --if-due is idempotent per local day)")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--if-due", "Succeed with alreadySent:true instead of erroring if today's packet already exists")
+      .option("--no-daily-advantage", "Omit the Daily Advantage project-work line")
+  ).action((options: { workspace: string; ifDue?: boolean; dailyAdvantage?: boolean; json?: boolean }) =>
+    runCliAction(
+      "orientation.packet.compose",
+      options,
+      () => runOrientationPacketComposeCommand({
+        workspace: options.workspace,
+        ifDue: options.ifDue,
+        includeDailyAdvantage: options.dailyAdvantage
+      }),
+      renderOrientationPacketComposeSuccess
+    )
+  );
+
+  addJsonOption(
+    orientationPacket
+      .command("mark-sent <packetId>")
+      .description("Record the Discord message id a composed packet was pushed as")
+      .requiredOption("--message-id <id>", "Discord message id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((packetId: string, options: { workspace: string; messageId: string; json?: boolean }) =>
+    runCliAction(
+      "orientation.packet.mark-sent",
+      options,
+      () => runOrientationPacketMarkSentCommand({ workspace: options.workspace, packetId, messageId: options.messageId }),
+      renderOrientationPacketMarkSentSuccess
+    )
+  );
+
+  addJsonOption(
+    orientationPacket
+      .command("list")
+      .description("List recently composed packets")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--limit <n>", "Maximum number to return", "10")
+  ).action((options: { workspace: string; limit?: string; json?: boolean }) =>
+    runCliAction(
+      "orientation.packet.list",
+      options,
+      () => runOrientationPacketListCommand({ workspace: options.workspace, limit: options.limit ? Number(options.limit) : undefined }),
+      renderOrientationPacketListSuccess
+    )
+  );
+
+  addJsonOption(
+    orientation
+      .command("reply <text>")
+      .description("Interpret a reply (one Intelligence call) into Context Ledger operations and apply them")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--source <source>", "cli|discord|admin", "cli")
+  ).action((text: string, options: { workspace: string; source?: string; json?: boolean }) =>
+    runCliAction(
+      "orientation.reply",
+      options,
+      () => runOrientationReplyCommand({ workspace: options.workspace, text, source: options.source as never }),
+      renderOrientationReplySuccess
     )
   );
 

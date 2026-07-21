@@ -13,6 +13,12 @@ export interface BotConfig {
   discordChannelId: string;
   arcadiaCliPath: string | null;
   pollIntervalSeconds: number;
+  /** Per-user allowlist for the shared Discord Reply Router. Empty = no one authorized (fail closed). */
+  allowedUserIds: string[];
+  /** Local "HH:MM" time the Daily Orientation Packet targets. Default 06:00. */
+  orientationTargetLocalTime: string;
+  /** How often (seconds) the orientation scheduler checks whether the packet is due. */
+  orientationCheckIntervalSeconds: number;
 }
 
 const requiredEnv = [
@@ -35,8 +41,40 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     discordGuildId: requireEnv(env, "DISCORD_GUILD_ID"),
     discordChannelId: requireEnv(env, "DISCORD_CHANNEL_ID"),
     arcadiaCliPath: env.ARCADIA_CLI_PATH?.trim() ? path.resolve(env.ARCADIA_CLI_PATH) : null,
-    pollIntervalSeconds: parsePollInterval(env.ARCADIA_DISCORD_POLL_INTERVAL_SECONDS)
+    pollIntervalSeconds: parsePollInterval(env.ARCADIA_DISCORD_POLL_INTERVAL_SECONDS),
+    allowedUserIds: parseAllowedUserIds(env.DISCORD_ALLOWED_USER_IDS),
+    orientationTargetLocalTime: parseTargetLocalTime(env.ARCADIA_ORIENTATION_TARGET_TIME),
+    orientationCheckIntervalSeconds: parseOrientationCheckInterval(env.ARCADIA_ORIENTATION_CHECK_INTERVAL_SECONDS)
   };
+}
+
+function parseAllowedUserIds(raw: string | undefined): string[] {
+  if (!raw?.trim()) {
+    return [];
+  }
+  return raw
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
+}
+
+function parseTargetLocalTime(raw: string | undefined): string {
+  const value = raw?.trim() || "06:00";
+  if (!/^\d{2}:\d{2}$/.test(value)) {
+    throw new Error(`ARCADIA_ORIENTATION_TARGET_TIME must be "HH:MM", got: ${value}`);
+  }
+  return value;
+}
+
+function parseOrientationCheckInterval(raw: string | undefined): number {
+  if (!raw?.trim()) {
+    return 60;
+  }
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isInteger(value) || value < 5) {
+    throw new Error("ARCADIA_ORIENTATION_CHECK_INTERVAL_SECONDS must be an integer of at least 5.");
+  }
+  return value;
 }
 
 function requireEnv(env: NodeJS.ProcessEnv, name: (typeof requiredEnv)[number]): string {

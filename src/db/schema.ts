@@ -45,6 +45,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureIntelligenceJobOperationIdColumn(db);
   ensureIntelligenceJobArtifactsTable(db);
   ensureIntelligenceJobArtifactAudioColumns(db);
+  ensureOrientationTables(db);
   applyCapabilityMigrations(db);
 }
 
@@ -287,6 +288,49 @@ function ensureIntelligenceJobArtifactAudioColumns(db: Database.Database): void 
       db.prepare(addition.ddl).run();
     }
   }
+}
+
+/**
+ * The Daily Orientation Packet's Context Ledger. Holds a small, curated set of
+ * orientation facts (not tasks — see docs/plans/daily-orientation-packet).
+ * `orientation_packets` is the once-per-local-day idempotency guard plus a
+ * history of what was actually composed/sent.
+ */
+function ensureOrientationTables(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS orientation_entries (
+      id TEXT PRIMARY KEY,
+      entry_type TEXT NOT NULL CHECK (
+        entry_type IN ('active_concern', 'standing_responsibility', 'time_bound', 'parked_idea')
+      ),
+      title TEXT NOT NULL,
+      detail TEXT,
+      area TEXT,
+      project_id TEXT,
+      priority TEXT NOT NULL CHECK (priority IN ('low', 'normal', 'high', 'critical')),
+      horizon TEXT NOT NULL CHECK (horizon IN ('now', 'soon', 'later', 'someday')),
+      due_at TEXT,
+      status TEXT NOT NULL CHECK (status IN ('active', 'confirmed', 'completed', 'dropped')),
+      last_confirmed_at TEXT NOT NULL,
+      asserted_at TEXT NOT NULL,
+      source TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_orientation_entries_status ON orientation_entries(status);
+    CREATE INDEX IF NOT EXISTS idx_orientation_entries_type ON orientation_entries(entry_type);
+    CREATE INDEX IF NOT EXISTS idx_orientation_entries_due ON orientation_entries(due_at);
+
+    CREATE TABLE IF NOT EXISTS orientation_packets (
+      id TEXT PRIMARY KEY,
+      local_date TEXT NOT NULL UNIQUE,
+      body TEXT NOT NULL,
+      entry_snapshot_json TEXT NOT NULL,
+      discord_message_id TEXT,
+      created_at TEXT NOT NULL
+    );
+  `);
 }
 
 function ensureBackBurnerItemsTable(db: Database.Database): void {

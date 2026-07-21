@@ -7,6 +7,13 @@ export interface ArcadiaJsonSuccess<TData> {
   warnings: string[];
 }
 
+export interface ArcadiaJsonFailure {
+  ok: false;
+  command: string;
+  workspace?: string;
+  error: { code: string; message: string; details?: unknown };
+}
+
 export interface StatusData {
   projectCount: number;
   activeProjectCount: number;
@@ -270,4 +277,36 @@ export interface CodexListData {
   tasks: CodexTask[];
   observedCount: number;
   missionLogPaths: string[];
+}
+
+export interface OrientationPacket {
+  id: string;
+  localDate: string;
+  body: string;
+  entrySnapshot: Array<{ id: string; title: string; stale: boolean }>;
+  discordMessageId: string | null;
+  createdAt: string;
+}
+
+export interface OrientationPacketComposeData {
+  packet: OrientationPacket | null;
+  alreadySent: boolean;
+}
+
+export interface OrientationPacketMarkSentData {
+  packet: OrientationPacket;
+}
+
+export interface OrientationEntry {
+  id: string;
+  title: string;
+  status: string;
+}
+
+export interface OrientationReplyData {
+  echo: string;
+  confidence: number;
+  applied: boolean;
+  ambiguousQuestion?: string;
+  touchedEntries: OrientationEntry[];
 }

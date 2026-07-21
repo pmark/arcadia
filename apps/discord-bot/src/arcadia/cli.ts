@@ -4,9 +4,13 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type {
   AskData,
+  ArcadiaJsonFailure,
   ArcadiaJsonSuccess,
   CodexListData,
   MilestoneListData,
+  OrientationPacketComposeData,
+  OrientationPacketMarkSentData,
+  OrientationReplyData,
   QueueData,
   ReviewDecisionData,
   ReviewData,
@@ -130,8 +134,60 @@ export class ArcadiaCli {
     ]));
   }
 
+  orientationPacketCompose(ifDue: boolean): Promise<ArcadiaJsonSuccess<OrientationPacketComposeData> | ArcadiaJsonFailure> {
+    return this.runJsonAllowFailure<OrientationPacketComposeData>(
+      this.withWorkspace(["orientation", "packet", "compose", ...(ifDue ? ["--if-due"] : []), "--json"])
+    );
+  }
+
+  orientationPacketMarkSent(packetId: string, messageId: string): Promise<ArcadiaJsonSuccess<OrientationPacketMarkSentData> | ArcadiaJsonFailure> {
+    return this.runJsonAllowFailure<OrientationPacketMarkSentData>(
+      this.withWorkspace(["orientation", "packet", "mark-sent", packetId, "--message-id", messageId, "--json"])
+    );
+  }
+
+  orientationReply(text: string, source = "discord"): Promise<ArcadiaJsonSuccess<OrientationReplyData> | ArcadiaJsonFailure> {
+    return this.runJsonAllowFailure<OrientationReplyData>(
+      this.withWorkspaceAfter(1, ["orientation", "reply", text, "--source", source, "--json"])
+    );
+  }
+
   buildInvocation(args: string[]): CliInvocation {
     return buildCliInvocation(args, this.options.cliPath);
+  }
+
+  /**
+   * Like runJson, but a well-formed `{ ok: false, error: { code, message } }`
+   * CLI failure envelope is returned rather than thrown, so callers (the
+   * orientation reply handler, the scheduler) can branch on `error.code`
+   * (e.g. ORIENTATION_REPLY_AMBIGUOUS) instead of string-matching an Error
+   * message. A CLI invocation that fails without producing that envelope
+   * (binary missing, crash) still throws.
+   */
+  private async runJsonAllowFailure<TData>(
+    args: string[],
+    options: { timeoutMs?: number } = {}
+  ): Promise<ArcadiaJsonSuccess<TData> | ArcadiaJsonFailure> {
+    const invocation = this.buildInvocation(args);
+    try {
+      const result = await execFileAsync(invocation.command, invocation.args, {
+        cwd: repoRoot(),
+        encoding: "utf8",
+        timeout: options.timeoutMs ?? this.options.timeoutMs ?? 30_000,
+        maxBuffer: 16 * 1024 * 1024
+      });
+      return JSON.parse(result.stdout) as ArcadiaJsonSuccess<TData>;
+    } catch (error) {
+      if (isExecError(error)) {
+        const parsed = tryParseJson<ArcadiaJsonFailure>(error.stderr) ?? tryParseJson<ArcadiaJsonFailure>(error.stdout);
+        if (parsed && parsed.ok === false) {
+          return parsed;
+        }
+        const detail = error.stderr?.trim() || error.stdout?.trim() || error.message;
+        throw new Error(`Arcadia CLI failed: ${detail}`);
+      }
+      throw error;
+    }
   }
 
   private async runJson<TData>(args: string[], options: { timeoutMs?: number } = {}): Promise<ArcadiaJsonSuccess<TData>> {
@@ -222,6 +278,17 @@ function findTsx(): string {
 
 function repoRoot(): string {
   return path.resolve(import.meta.dirname, "../../..");
+}
+
+function tryParseJson<T>(raw: string | undefined): T | undefined {
+  if (!raw?.trim()) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return undefined;
+  }
 }
 
 function isExecError(error: unknown): error is Error & { stdout?: string; stderr?: string } {
