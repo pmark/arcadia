@@ -37,6 +37,8 @@ export class OrientationOpTargetMissingError extends Error {
   }
 }
 
+const REPLY_INTERPRETATION_TIMEOUT_MS = 180_000;
+
 const REPLY_JSON_SCHEMA = {
   type: "object",
   properties: {
@@ -117,7 +119,12 @@ export async function interpretOrientationReply(
   const config = loadIntelligenceConfig(process.env);
   const liteLlmClient = createLiteLlmHttpClient({
     baseUrl: config.liteLlmBaseUrl,
-    apiKey: config.liteLlmApiKey
+    apiKey: config.liteLlmApiKey,
+    // A background correction loop can tolerate the extra latency of a cold
+    // local model load (weights not yet resident in memory) far better than
+    // an outright failure asking the operator to just retry. The default
+    // 60s client timeout is tuned for interactive requests, not this.
+    timeoutMs: REPLY_INTERPRETATION_TIMEOUT_MS
   });
   const worker = new IntelligenceWorker(repository, liteLlmClient, config, artifactStore);
 

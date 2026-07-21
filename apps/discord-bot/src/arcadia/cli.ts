@@ -148,7 +148,12 @@ export class ArcadiaCli {
 
   orientationReply(text: string, source = "discord"): Promise<ArcadiaJsonSuccess<OrientationReplyData> | ArcadiaJsonFailure> {
     return this.runJsonAllowFailure<OrientationReplyData>(
-      this.withWorkspace(["orientation", "reply", text, "--source", source, "--json"])
+      this.withWorkspace(["orientation", "reply", text, "--source", source, "--json"]),
+      // Must exceed the interpreter's own LiteLLM timeout (180s, see
+      // src/orientation/interpreter.ts) so a cold local-model load produces
+      // that command's clean typed error instead of this exec just being
+      // killed first and losing the structured response.
+      { timeoutMs: 200_000 }
     );
   }
 
