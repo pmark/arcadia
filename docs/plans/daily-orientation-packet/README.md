@@ -5,14 +5,20 @@ of what's currently true, a scheduled **Morning Packet** pushed to Discord, and 
 **Correction Loop** that improves the ledger from replies. The stated blocker to
 adopting Arcadia for personal daily use.
 
-**Specifications only. Nothing here is implemented.**
+**Status: implemented and live in production** (`src/orientation/`,
+`src/commands/orientation.ts`, `apps/discord-bot/src/orientation/`,
+`apps/discord-bot/src/replyRouter/`). Docs 00–01 are the original
+specification; doc 02 is a reliability follow-up written after the first
+night of real use surfaced real gaps between "works as specified" and "I can
+bet something important on this."
 
 ## Documents
 
 | # | Doc | Purpose |
 |---|---|---|
-| 00 | [Findings](./00-findings.md) | Scheduler/Discord/ledger-placement investigation; overlap rulings (esp. vs `work_items`, `back_burner_items`, `dailyAdvantage`); why the reply seam is extracted. **Start here.** |
+| 00 | [Findings](./00-findings.md) | Scheduler/Discord/ledger-placement investigation; overlap rulings (esp. vs `work_items`, `back_burner_items`, `dailyAdvantage`); why the reply seam is extracted. **Start here for background.** |
 | 01 | [Spec](./01-spec.md) | Scope/non-goals, ledger schema, staleness rules, packet composition, reply-parsing contract + failure behavior, test plan, open questions. |
+| 02 | [Reliability Follow-Up](./02-reliability-followup-context.md) | Portable context for continuing the design conversation elsewhere. Documents four real bugs found on the first live night (three silent/confusing failure modes, one missing capability) and the unresolved tension between Arcadia's cost-minimizing "never silently escalate to cloud" rule and this feature's actual job of never dropping something important. **Start here if picking this up fresh.** |
 
 ## Depends on
 
