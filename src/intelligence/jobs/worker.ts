@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { nowIso } from "../../utils/time.js";
 import type { IntelligenceArtifactStore } from "../artifacts/store.js";
 import {
@@ -369,9 +371,22 @@ export class IntelligenceWorker {
   /**
    * Starts the polling loop and returns a function that stops it.
    */
-  public start(): () => void {
+  public start(options: { heartbeatPath?: string } = {}): () => void {
     let stopped = false;
     let timer: NodeJS.Timeout | undefined;
+    const heartbeatPath = options.heartbeatPath;
+    const writeHeartbeat = (): void => {
+      if (!heartbeatPath) return;
+      try {
+        mkdirSync(path.dirname(heartbeatPath), { recursive: true });
+        writeFileSync(heartbeatPath, new Date().toISOString(), "utf8");
+      } catch {
+        // Health reporting must never stop job processing.
+      }
+    };
+
+    writeHeartbeat();
+    const heartbeatTimer = heartbeatPath ? setInterval(writeHeartbeat, 5_000) : undefined;
 
     const tick = (): void => {
       if (stopped) {
@@ -384,6 +399,7 @@ export class IntelligenceWorker {
           // errors are already persisted as failed/blocked by runOnce.
         })
         .finally(() => {
+          writeHeartbeat();
           if (!stopped) {
             timer = setTimeout(tick, this._config.workerPollIntervalMs);
           }
@@ -396,6 +412,12 @@ export class IntelligenceWorker {
       stopped = true;
       if (timer) {
         clearTimeout(timer);
+      }
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+      }
+      if (heartbeatPath) {
+        try { unlinkSync(heartbeatPath); } catch {}
       }
     };
   }

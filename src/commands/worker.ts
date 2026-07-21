@@ -46,6 +46,10 @@ function logPath(workspacePath: string): string {
   return path.join(arcadiaDir(workspacePath), "worker.log");
 }
 
+function heartbeatPath(workspacePath: string): string {
+  return path.join(arcadiaDir(workspacePath), "worker.heartbeat");
+}
+
 function log(logfile: string, message: string): void {
   const line = `${new Date().toISOString()} ${message}\n`;
   try { appendFileSync(logfile, line, "utf8"); } catch {}
@@ -84,17 +88,24 @@ export function runWorkerStartCommand(options: WorkerOptions): never {
 
   const logfile = logPath(workspacePath);
   writeFileSync(pidfilePath(workspacePath), String(process.pid), "utf8");
+  writeFileSync(heartbeatPath(workspacePath), new Date().toISOString(), "utf8");
+  const heartbeatTimer = setInterval(() => {
+    try { writeFileSync(heartbeatPath(workspacePath), new Date().toISOString(), "utf8"); } catch {}
+  }, 5_000);
   log(logfile, `Worker started (PID: ${process.pid}, workspace: ${workspacePath})`);
 
   const cleanup = () => {
     log(logfile, "Worker stopping.");
+    clearInterval(heartbeatTimer);
     try { unlinkSync(pidfilePath(workspacePath)); } catch {}
+    try { unlinkSync(heartbeatPath(workspacePath)); } catch {}
     process.exit(0);
   };
   process.on("SIGINT", cleanup);
   process.on("SIGTERM", cleanup);
 
   const tick = () => {
+    try { writeFileSync(heartbeatPath(workspacePath), new Date().toISOString(), "utf8"); } catch {}
     const db = openDatabase(workspacePath);
     try {
       runWorkerIteration(db, workspacePath, process.pid, logfile);

@@ -1,4 +1,5 @@
 import { resolveReadyWorkspace } from "../cli/workspace.js";
+import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import {
@@ -93,7 +94,9 @@ export function runIntelligenceServeCommand(options: IntelligenceServeOptions): 
     speechClient,
     comfyUiImageExecutor,
   );
-  const stopWorker = worker.start();
+  const stopWorker = worker.start({
+    heartbeatPath: path.join(workspacePath, ".arcadia", "intelligence-worker.heartbeat"),
+  });
 
   const server = createIntelligenceServer({ repository, config, artifactStore });
   const port = options.port ?? DEFAULT_PORT;

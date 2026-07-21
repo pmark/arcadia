@@ -2,6 +2,8 @@
 
 This is the canonical brief operator guide. On this Mac, open **Today** at <http://127.0.0.1:3020/>.
 
+Open **System Status** at <http://127.0.0.1:3020/admin/status> when you need a quick readiness check. It shows whether Arcadia is ready for normal operation, image generation, and background processing, with live dependency reachability, worker heartbeats, and Intelligence job counts.
+
 ## Normal daily use
 
 1. Read **Today's Advantage**: one ready Action, its expected Artifact, and why it matters now.
@@ -35,7 +37,7 @@ The command never reads operational state from Obsidian and never deletes vault 
 
 After you sign in following a laptop restart, Arcadia's managed launch agents start and keep these services running:
 
-- **Dashboard (core)** — Today, Review, and Runs at port 3020.
+- **Dashboard (core)** — Today, Review, Runs, and System Status at port 3020.
 - **Managed Run worker (core)** — executes only queued, authorized Runs with the coding agent bound to each packet.
 - **Intelligence API and worker (feature-specific)** — structured generation at port 4710.
 - **ComfyUI image backend (feature-specific)** — local FLUX.2 Klein generation/editing at port 8188 when configured.
