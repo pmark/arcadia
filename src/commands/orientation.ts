@@ -342,6 +342,33 @@ export interface OrientationReplyData {
   touchedEntries: OrientationEntry[];
 }
 
+/**
+ * Recognizes a plain "what's in the ledger" query so it can be answered
+ * deterministically (per AGENTS.md: prefer deterministic before AI) rather
+ * than routed through the Intelligence interpreter, which only understands
+ * write operations (add/update/complete/reprioritize/confirm/context) — it
+ * has no query intent to fall back on, so a reply like "list ledgers" would
+ * otherwise get treated as unstructured context or come back ambiguous.
+ */
+function isListRequest(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  if (normalized === "list" || normalized === "ls") {
+    return true;
+  }
+  return /\b(list|show)\b/.test(normalized) && /\b(ledgers?|entries|entry)\b/.test(normalized);
+}
+
+function formatEntryListEcho(entries: OrientationEntry[]): string {
+  if (entries.length === 0) {
+    return "The ledger is empty right now.";
+  }
+  const lines = entries.map(
+    (entry, index) =>
+      `${index + 1}. ${entry.title} [${entry.priority}/${entry.horizon}]${entry.dueAt ? ` — due ${entry.dueAt}` : ""} (id: ${entry.id})`
+  );
+  return `Current ledger:\n${lines.join("\n")}`;
+}
+
 export async function runOrientationReplyCommand(
   options: OrientationReplyOptions
 ): Promise<CommandSuccess<OrientationReplyData>> {
@@ -350,6 +377,19 @@ export async function runOrientationReplyCommand(
   const source = options.source ?? "cli";
   try {
     const liveEntries = listLiveOrientationEntries(db);
+
+    if (isListRequest(options.text)) {
+      return createSuccess({
+        command: "orientation.reply",
+        workspace: workspacePath,
+        data: {
+          echo: formatEntryListEcho(liveEntries),
+          confidence: 1,
+          applied: true,
+          touchedEntries: []
+        }
+      });
+    }
 
     let interpretation;
     try {

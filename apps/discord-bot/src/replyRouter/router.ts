@@ -99,7 +99,22 @@ export function createDiscordReplyRouter(options: DiscordReplyRouterOptions): Di
           messageId: message.id,
           inReplyTo: referenceId
         });
-        await applyAck(message, ack);
+        const sent = await applyAck(message, ack);
+        if (sent) {
+          // The conversation continues on whatever message the bot just sent
+          // (a clarifying question, a rejection reason, or an applied note) —
+          // register it too, under the same feature/entity, so a reply to
+          // *that* message keeps routing here instead of falling through to
+          // the generic handler. Without this, only the very first message
+          // (e.g. the scheduler's daily packet) was ever a valid reply
+          // target, and a multi-turn clarification thread died after one hop.
+          await this.register({
+            messageId: sent.id,
+            feature: registered.feature,
+            entityId: registered.entityId,
+            createdAt: new Date().toISOString()
+          });
+        }
       } catch (error) {
         options.logJson("error", {
           msg: "reply router handler threw",
@@ -114,21 +129,17 @@ export function createDiscordReplyRouter(options: DiscordReplyRouterOptions): Di
   };
 }
 
-async function applyAck(message: Message, ack: ReplyAck): Promise<void> {
+async function applyAck(message: Message, ack: ReplyAck): Promise<Message | undefined> {
   if (ack.kind === "applied") {
     await safeReact(message, "✅");
-    if (ack.note) {
-      await safeReply(message, ack.note);
-    }
-    return;
+    return ack.note ? safeReply(message, ack.note) : undefined;
   }
   if (ack.kind === "clarify") {
     await safeReact(message, "❓");
-    await safeReply(message, ack.question);
-    return;
+    return safeReply(message, ack.question);
   }
   await safeReact(message, "🚫");
-  await safeReply(message, ack.reason);
+  return safeReply(message, ack.reason);
 }
 
 async function safeReact(message: Message, emoji: string): Promise<void> {
@@ -140,10 +151,11 @@ async function safeReact(message: Message, emoji: string): Promise<void> {
   }
 }
 
-async function safeReply(message: Message, content: string): Promise<void> {
+async function safeReply(message: Message, content: string): Promise<Message | undefined> {
   try {
-    await message.reply({ content, allowedMentions: { repliedUser: false } });
+    return await message.reply({ content, allowedMentions: { repliedUser: false } });
   } catch {
     // Same tolerance as safeReact.
+    return undefined;
   }
 }
