@@ -23,6 +23,7 @@ after the UI/UX is crystallized, per explicit instruction.
 | 03 | [Urgency & Force Model](./03-urgency-and-force-model.md) | Continuous urgency score, the Weber-Fechner-based distance function, and the force-directed model (relationship springs + repulsion + a per-node radial urgency force whose *strength* decays with staleness). |
 | 04 | [Camera & Navigation](./04-camera-and-navigation.md) | Real depth via Three.js from the start; a fixed-height, non-rotating, translate-only camera; Cartesian lane layout; altitude as tree-depth (ground vs. overview); motion timing rules; remembered lane position. |
 | 05 | [List/Graph Parity](./05-list-view-parity.md) | The list view is the same data, permanently in parity with the spatial view — not a temporary experiment, a shared ranking and a shared camera-state. |
+| 06 | [Concrete UI Specification](./06-concrete-ui-specification.md) | The walkthrough: exactly what's visible, tappable, and doable at every screen state (Overview, Ground-ambient, Node detail per kind, List). Makes the final call on every question 00–05 left open. **Start here if you want to know what the finished thing actually looks like.** |
 
 ## The throughline, if you only read one paragraph
 
