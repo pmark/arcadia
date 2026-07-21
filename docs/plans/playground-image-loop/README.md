@@ -36,7 +36,15 @@ several places.
 
 ## Recommended disposition
 
-Decide **Q1 (evaluation = vision?)** first → build **Phase 1** → **merge Phase 2**
-into the existing admin surface (can land beside/ before 1b) → build **Phase 1b**
-→ **defer Phase 3**. No phase cut; Phase 2 merged, Phase 3 deferred, and a
-vision-transport prerequisite split out of Phase 1 only if evaluation needs vision.
+Within this plan: decide **Q1 (evaluation = vision?)** first → build **Phase 1**
+→ **merge Phase 2** into the existing admin surface (can land beside/before 1b) →
+build **Phase 1b** → **defer Phase 3**. No phase cut; Phase 2 merged, Phase 3
+deferred, and a vision-transport prerequisite split out of Phase 1 only if
+evaluation needs vision.
+
+**Cross-plan ordering** (this plan vs the Daily Orientation Packet and the shared
+Discord Reply Router) is governed by the authoritative
+[BUILD_ORDER.md](../BUILD_ORDER.md). Note: Phase 1b now **consumes** the shared
+[Discord Reply Router](../discord-reply-router/00-spec.md) instead of defining its
+own reply/allowlist/reaction machinery — that seam was extracted because the
+Orientation feature needs it too.
