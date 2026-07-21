@@ -75,10 +75,15 @@ export interface MissionControlEdge {
 /**
  * Drives sort order and the badge shown at the PARENT's zoom level — never
  * rendered as prose itself; `reason` is the human-readable one-liner for
- * that.
+ * that. `score` is the continuous 0..1 value the spatial view maps to
+ * distance (see mission-control-math.ts / 03-urgency-and-force-model.md);
+ * `level` stays a coarse label derived from it for badges/sort ties, not the
+ * spatial input itself — three discrete levels would produce three flat
+ * shells rather than a gradient.
  */
 export interface UrgencySignal {
   level: UrgencyLevel;
+  score: number;
   reason: string;
 }
 
@@ -192,3 +197,39 @@ export const MISSION_CONTROL_TOWER_IDS = {
 
 export type MissionControlTowerId =
   (typeof MISSION_CONTROL_TOWER_IDS)[keyof typeof MISSION_CONTROL_TOWER_IDS];
+
+// ---------------------------------------------------------------------------
+// Camera / navigation state (see 04-camera-and-navigation.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * "ground" = full leaf-node detail, walking within one lane.
+ * "overview" = coarse, aggregate markers across lanes — a higher level of
+ * the same node tree, not a different data source.
+ */
+export type MissionControlAltitude = "ground" | "overview";
+
+/** A position on the ground plane within a lane. Only meaningful at "ground" altitude. */
+export interface MissionControlGroundPosition {
+  x: number;
+  y: number;
+}
+
+export interface MissionControlCameraState {
+  laneId: MissionControlTowerId;
+  altitude: MissionControlAltitude;
+  position: MissionControlGroundPosition;
+}
+
+/**
+ * Shared by every view (graph and list alike — see 05-list-view-parity.md):
+ * exactly one current camera state, plus a remembered ground position per
+ * lane so re-entering restores where you left off. `rememberedPositionByLane`
+ * is a default only — the override rule (land near a newly-more-urgent item
+ * instead, when one has appeared since the last visit) is a runtime decision
+ * made when descending, not encoded in this state shape itself.
+ */
+export interface MissionControlViewState {
+  current: MissionControlCameraState;
+  rememberedPositionByLane: Partial<Record<MissionControlTowerId, MissionControlGroundPosition>>;
+}
