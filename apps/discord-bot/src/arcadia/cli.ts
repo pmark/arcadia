@@ -282,7 +282,13 @@ function findTsx(): string {
 }
 
 function repoRoot(): string {
-  return path.resolve(import.meta.dirname, "../../..");
+  // apps/discord-bot/src/arcadia -> apps/discord-bot/src -> apps/discord-bot
+  // -> apps -> <repo root>. Was previously missing this last "..", landing on
+  // apps/ instead of the repo root — harmless for commands that don't depend
+  // on the root .env, but it silently broke dotenv-loaded Intelligence config
+  // (wrong LiteLLM route, no API key) for any CLI subprocess the bot spawns
+  // that needs it, since dotenv.config() resolves relative to cwd.
+  return path.resolve(import.meta.dirname, "../../../..");
 }
 
 function tryParseJson<T>(raw: string | undefined): T | undefined {

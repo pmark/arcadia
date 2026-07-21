@@ -32,7 +32,7 @@ async function main(): Promise<void> {
     allowedUserIds: config.allowedUserIds,
     logJson
   });
-  replyRouter.registerHandler("orientation", buildOrientationReplyHandler(cli));
+  replyRouter.registerHandler("orientation", buildOrientationReplyHandler(cli, logJson));
 
   client.once(Events.ClientReady, (readyClient) => {
     heartbeat("connected");
