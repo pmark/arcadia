@@ -1,3 +1,5 @@
+import os from "node:os";
+import path from "node:path";
 import type { IntelligenceProfile } from "../types.js";
 import { DEFAULT_VOICE_MAP, loadVoiceMap } from "../speech/voices.js";
 import type {
@@ -17,6 +19,7 @@ import type {
 const LOCAL_TEXT_PROFILES: IntelligenceProfile[] = ["fast", "standard"];
 const CLOUD_TEXT_PROFILES: IntelligenceProfile[] = ["fast", "standard", "quality"];
 const LOCAL_CODEX_IMAGE_PROFILES: IntelligenceProfile[] = ["quality"];
+const LOCAL_COMFYUI_IMAGE_PROFILES: IntelligenceProfile[] = ["quality"];
 const CLOUD_IMAGE_PROFILES: IntelligenceProfile[] = ["quality"];
 const AUDIO_SPEECH_PROFILES: IntelligenceProfile[] = ["standard"];
 const DEFAULT_CODEX_CLI = {
@@ -81,6 +84,23 @@ function codexImageRouteEntries(routeName: string | undefined): IntelligenceRout
   }));
 }
 
+function comfyUiImageRouteEntries(routeName: string | undefined): IntelligenceRouteEntry[] {
+  if (!routeName) return [];
+  return ["image.generate", "image.edit"].flatMap((capability) =>
+    LOCAL_COMFYUI_IMAGE_PROFILES.map((profile) => ({
+      ...buildEntry(capability as IntelligenceRouteEntry["capability"], "local", profile, routeName, false),
+      id: `arcadia.${capability}.local.${profile}.comfyui`,
+      executor: "comfyui" as const,
+      metadata: {
+        costClass: "free" as const,
+        supportsImageInput: capability === "image.edit",
+        supportsImageEditing: capability === "image.edit",
+        weight: 4,
+      },
+    })),
+  );
+}
+
 /**
  * Speech (text-to-speech) routes. Both local and cloud go through the same
  * LiteLLM proxy via the "speech" executor — like text/image, they differ only
@@ -137,6 +157,8 @@ function buildEntry(
  *   - arcadia.text.generate.cloud.standard
  *   - arcadia.text.generate.cloud.quality
  *   - arcadia.image.generate.local.quality  (Codex CLI)
+ *   - arcadia.image.generate.local.quality.comfyui (ComfyUI)
+ *   - arcadia.image.edit.local.quality.comfyui (ComfyUI)
  *   - arcadia.image.generate.cloud.quality
  *
  * Local LLM and Codex text routes may coexist. A request with an explicit
@@ -155,6 +177,7 @@ export function buildDefaultRoutes(options: {
   cloudTextRoute?: string;
   cloudImageRoute?: string;
   codexImageRoute?: string;
+  comfyUiImageRoute?: string;
   codexTextRoute?: string;
   localSpeechRoute?: string;
   cloudSpeechRoute?: string;
@@ -163,6 +186,7 @@ export function buildDefaultRoutes(options: {
     ...textRouteEntries("local", options.localTextRoute, LOCAL_TEXT_PROFILES, false),
     ...(options.codexTextRoute ? codexTextRouteEntries(options.codexTextRoute) : []),
     ...textRouteEntries("cloud", options.cloudTextRoute, CLOUD_TEXT_PROFILES, true),
+    ...comfyUiImageRouteEntries(options.comfyUiImageRoute),
     ...codexImageRouteEntries(options.codexImageRoute),
     ...imageRouteEntries(options.cloudImageRoute),
     ...speechRouteEntries("local", options.localSpeechRoute, false),
@@ -197,6 +221,7 @@ export function loadIntelligenceConfig(
   const cloudTextRoute = env.ARCADIA_LITELLM_CLOUD_TEXT_ROUTE?.trim() || undefined;
   const cloudImageRoute = env.ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE?.trim() || undefined;
   const codexImageRoute = env.ARCADIA_CODEX_IMAGE_ROUTE?.trim() || undefined;
+  const comfyUiImageRoute = env.ARCADIA_COMFYUI_IMAGE_ROUTE?.trim() || undefined;
   const codexTextRoute = env.ARCADIA_CODEX_TEXT_ROUTE?.trim() || "codex-cli";
   const localSpeechRoute = env.ARCADIA_SPEECH_LOCAL_ROUTE?.trim() || undefined;
   const cloudSpeechRoute = env.ARCADIA_SPEECH_CLOUD_ROUTE?.trim() || undefined;
@@ -207,6 +232,7 @@ export function loadIntelligenceConfig(
       cloudTextRoute,
       cloudImageRoute,
       codexImageRoute,
+      comfyUiImageRoute,
       codexTextRoute,
       localSpeechRoute,
       cloudSpeechRoute,
@@ -234,6 +260,15 @@ export function loadIntelligenceConfig(
       timeoutMs: env.ARCADIA_CODEX_CLI_TIMEOUT_MS
         ? Number(env.ARCADIA_CODEX_CLI_TIMEOUT_MS)
         : DEFAULT_CODEX_CLI.timeoutMs,
+    },
+    comfyUi: {
+      baseUrl: env.ARCADIA_COMFYUI_BASE_URL?.trim() || "http://127.0.0.1:8188",
+      workflowDir:
+        env.ARCADIA_COMFYUI_WORKFLOW_DIR?.trim() ||
+        path.join(os.homedir(), "AI", "Arcadia-ComfyUI", "workflows"),
+      timeoutMs: env.ARCADIA_COMFYUI_TIMEOUT_MS
+        ? Number(env.ARCADIA_COMFYUI_TIMEOUT_MS)
+        : 900_000,
     },
   };
 }

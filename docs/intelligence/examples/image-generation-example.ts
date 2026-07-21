@@ -3,8 +3,8 @@
  * @pmark/arcadia/intelligence/client.
  *
  * Same shape as consumer-example.ts, but with `capability: "image.generate"`.
- * This example uses the local Codex CLI image route. Enable it with
- * `ARCADIA_CODEX_IMAGE_ROUTE=codex-cli` before starting the service.
+ * This example uses the local ComfyUI image route. Enable it with
+ * `ARCADIA_COMFYUI_IMAGE_ROUTE=comfyui` before starting the service.
  * Cloud image generation is still available by using
  * `execution: "cloud-required"` and `executionPolicy.allowPaidUsage: true`
  * with `ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE` configured. The job result is
@@ -14,8 +14,8 @@
  * instead. This script submits an image request, waits for it, and
  * downloads the resulting bytes through the artifact reference.
  *
- * Run the real service first, with the local Codex image route enabled:
- *   ARCADIA_CODEX_IMAGE_ROUTE=codex-cli \
+ * Run the real service first, with the local ComfyUI image route enabled:
+ *   ARCADIA_COMFYUI_IMAGE_ROUTE=comfyui \
  *     pnpm arcadia intelligence serve --workspace ./tmp/demo-workspace --port 4710
  *
  * Then run this script against it (after `pnpm link --global @pmark/arcadia`
@@ -81,7 +81,7 @@ const template: PromptTemplateRef = {
   sourceRef: "example-app/src/prompts/generatedImage.md",
 };
 
-// 4. Local Codex image generation does not require paid-usage authorization.
+// 4. Local image generation does not require paid-usage authorization.
 const executionPolicy: ExecutionPolicy = {
   allowPaidUsage: false,
   maxRetries: 1,

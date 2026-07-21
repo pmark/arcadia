@@ -11,6 +11,11 @@ import {
   CodexTextExecutionFailedError,
   type CodexTextExecutor,
 } from "../codex/textExecutor.js";
+import {
+  ComfyUiExecutionBlockedError,
+  ComfyUiExecutionFailedError,
+  type ComfyUiImageExecutor,
+} from "../comfyui/imageExecutor.js";
 import type { IntelligenceV01Config } from "../config/types.js";
 import type { IntelligenceJobRepository } from "../db/repository.js";
 import { LiteLlmUnavailableError } from "../litellm/httpClient.js";
@@ -53,6 +58,7 @@ export class IntelligenceWorker {
     private readonly _codexImageExecutor?: CodexImageExecutor,
     private readonly _codexTextExecutor?: CodexTextExecutor,
     private readonly _speechClient?: SpeechClient,
+    private readonly _comfyUiImageExecutor?: ComfyUiImageExecutor,
     workerId: string = randomUUID(),
   ) {
     this.workerId = workerId;
@@ -152,7 +158,8 @@ export class IntelligenceWorker {
       }
       if (
         error instanceof CodexImageExecutionBlockedError ||
-        error instanceof CodexTextExecutionBlockedError
+        error instanceof CodexTextExecutionBlockedError ||
+        error instanceof ComfyUiExecutionBlockedError
       ) {
         return this._repository.blockJob(
           job.id,
@@ -162,7 +169,8 @@ export class IntelligenceWorker {
       }
       if (
         error instanceof CodexImageExecutionFailedError ||
-        error instanceof CodexTextExecutionFailedError
+        error instanceof CodexTextExecutionFailedError ||
+        error instanceof ComfyUiExecutionFailedError
       ) {
         return this._repository.failJob(
           job.id,
@@ -214,6 +222,16 @@ export class IntelligenceWorker {
         );
       }
       return this._codexImageExecutor.execute(job);
+    }
+
+    if (route.executor === "comfyui") {
+      if (!this._comfyUiImageExecutor) {
+        throw new ComfyUiExecutionBlockedError(
+          "COMFYUI_UNAVAILABLE",
+          "Arcadia Intelligence has no ComfyUI image executor configured.",
+        );
+      }
+      return this._comfyUiImageExecutor.execute(job);
     }
 
     if (!this._artifactStore) {

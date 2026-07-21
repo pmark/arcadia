@@ -38,11 +38,16 @@ After you sign in following a laptop restart, Arcadia's managed launch agents st
 - **Dashboard (core)** — Today, Review, and Runs at port 3020.
 - **Managed Run worker (core)** — executes only queued, authorized Runs with the coding agent bound to each packet.
 - **Intelligence API and worker (feature-specific)** — structured generation at port 4710.
+- **ComfyUI image backend (feature-specific)** — local FLUX.2 Klein generation/editing at port 8188 when configured.
 - **Discord adapter (feature-specific)** — capture, status, and notifications.
 
 The optional iCloud file-ingress job also starts automatically and checks its drop folder once a minute. It is not required for the Today page.
 
 Do not start separate legacy processes manually. Anything outside this list is not part of the normal local service set.
+
+For local image generation, start ComfyUI with `scripts/comfyui/start.sh` before
+using Arcadia Intelligence. It is loopback-only; Arcadia stores generated
+images as normal Artifacts. See `docs/intelligence/COMFYUI_IMAGE_EXECUTOR.md`.
 
 If Arcadia is unavailable, ask Codex to **check or restart all Arcadia services**. The direct fallback is:
 

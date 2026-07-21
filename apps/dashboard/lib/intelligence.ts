@@ -24,7 +24,7 @@ interface HealthRoute {
   capability: string;
   location: "local" | "cloud";
   profile: string;
-  executor: "litellm" | "codex-cli" | "speech";
+  executor: "litellm" | "codex-cli" | "comfyui" | "speech";
   requiresPaidUsage: boolean;
 }
 
