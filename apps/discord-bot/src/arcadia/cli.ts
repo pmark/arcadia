@@ -148,7 +148,7 @@ export class ArcadiaCli {
 
   orientationReply(text: string, source = "discord"): Promise<ArcadiaJsonSuccess<OrientationReplyData> | ArcadiaJsonFailure> {
     return this.runJsonAllowFailure<OrientationReplyData>(
-      this.withWorkspaceAfter(1, ["orientation", "reply", text, "--source", source, "--json"])
+      this.withWorkspace(["orientation", "reply", text, "--source", source, "--json"])
     );
   }
 
