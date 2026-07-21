@@ -9,6 +9,16 @@ import type {
   FeedbackListResponse,
   FeedbackRecordResponse
 } from "./types";
+import type { MissionControlNodeDetail, MissionControlOverview } from "./mission-control-types";
+
+export type MissionControlOverviewResponse = MissionControlOverview;
+export type MissionControlNodeResponse = MissionControlNodeDetail;
+export interface MissionControlReplyResponse {
+  routedTo: "orientation" | "project";
+  echo: string;
+  confidence: number;
+  applied: boolean;
+}
 
 const execFileAsync = promisify(execFile);
 
@@ -239,6 +249,26 @@ export async function runBackBurnerAction(input: {
   action: "promote" | "archive";
 }): Promise<ArcadiaJsonSuccess<BackBurnerActionResponse>> {
   return runArcadiaCliJson<BackBurnerActionResponse>(["back-burner", input.action, input.id]);
+}
+
+export async function loadMissionControlOverview(): Promise<ArcadiaJsonSuccess<MissionControlOverviewResponse>> {
+  return runArcadiaCliJson<MissionControlOverviewResponse>(["mission-control", "overview"]);
+}
+
+export async function loadMissionControlNode(
+  nodeId: string
+): Promise<ArcadiaJsonSuccess<MissionControlNodeResponse>> {
+  return runArcadiaCliJson<MissionControlNodeResponse>(["mission-control", "node", nodeId]);
+}
+
+export async function submitMissionControlReply(input: {
+  nodeId: string;
+  text: string;
+}): Promise<ArcadiaJsonSuccess<MissionControlReplyResponse>> {
+  return runArcadiaCliJson<MissionControlReplyResponse>(
+    ["mission-control", "reply", input.nodeId, input.text, "--source", "dashboard"],
+    { timeoutMs: 200_000 }
+  );
 }
 
 export class ArcadiaCliError extends Error {

@@ -104,6 +104,7 @@ import {
   renderProjectImportSuccess,
   renderProjectListSuccess,
   renderProjectMetadataSuccess,
+  renderProjectReplySuccess,
   renderProjectSetupContextSuccess,
   renderProjectShowSuccess,
   renderProjectUpdateSuccess,
@@ -111,6 +112,7 @@ import {
   runProjectImportCommand,
   runProjectListCommand,
   runProjectMetadataCommand,
+  runProjectReplyCommand,
   runProjectSetupContextCommand,
   runProjectShowCommand,
   runProjectUpdateCommand
@@ -179,6 +181,14 @@ import {
   runOrientationPacketMarkSentCommand,
   runOrientationReplyCommand
 } from "./commands/orientation.js";
+import {
+  renderMissionControlNodeSuccess,
+  renderMissionControlOverviewSuccess,
+  renderMissionControlReplySuccess,
+  runMissionControlNodeCommand,
+  runMissionControlOverviewCommand,
+  runMissionControlReplyCommand
+} from "./commands/missionControl.js";
 import {
   runWorkerInstallCommand,
   runWorkerStartCommand,
@@ -778,6 +788,20 @@ export function buildProgram(): Command {
         validationCommands: options.validationCommand
       }),
       renderProjectMetadataSuccess
+    )
+  );
+  addJsonOption(
+    project
+      .command("reply <projectId> <text>")
+      .description("Interpret a reply (one Intelligence call) into project field updates and apply them")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--source <source>", "cli|dashboard", "cli")
+  ).action((projectId: string, text: string, options: { workspace: string; source?: string; json?: boolean }) =>
+    runCliAction(
+      "project.reply",
+      options,
+      () => runProjectReplyCommand({ workspace: options.workspace, projectId, text, source: options.source as never }),
+      renderProjectReplySuccess
     )
   );
   addJsonOption(
@@ -1951,12 +1975,65 @@ export function buildProgram(): Command {
       .description("Interpret a reply (one Intelligence call) into Context Ledger operations and apply them")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--source <source>", "cli|discord|admin", "cli")
-  ).action((text: string, options: { workspace: string; source?: string; json?: boolean }) =>
+      .option("--focused-entry-id <id>", "Prefer this entry when the reply is ambiguous between it and another")
+  ).action((text: string, options: { workspace: string; source?: string; focusedEntryId?: string; json?: boolean }) =>
     runCliAction(
       "orientation.reply",
       options,
-      () => runOrientationReplyCommand({ workspace: options.workspace, text, source: options.source as never }),
+      () => runOrientationReplyCommand({
+        workspace: options.workspace,
+        text,
+        source: options.source as never,
+        focusedEntryId: options.focusedEntryId
+      }),
       renderOrientationReplySuccess
+    )
+  );
+
+  const missionControl = program
+    .command("mission-control")
+    .description("Mission Control view: an overview across Life, Projects, and Decisions");
+
+  addJsonOption(
+    missionControl
+      .command("overview")
+      .description("Cross-tower overview: needs-you-now plus one summary per tower")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "mission-control.overview",
+      options,
+      () => runMissionControlOverviewCommand(options),
+      renderMissionControlOverviewSuccess
+    )
+  );
+
+  addJsonOption(
+    missionControl
+      .command("node <nodeId>")
+      .description("Zoom into one node: its status, action items, context channel, and children")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((nodeId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "mission-control.node",
+      options,
+      () => runMissionControlNodeCommand({ workspace: options.workspace, nodeId }),
+      renderMissionControlNodeSuccess
+    )
+  );
+
+  addJsonOption(
+    missionControl
+      .command("reply <nodeId> <text>")
+      .description("Interpret a reply for whichever node this is, dispatching to the right interpreter")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--source <source>", "cli|dashboard", "cli")
+  ).action((nodeId: string, text: string, options: { workspace: string; source?: string; json?: boolean }) =>
+    runCliAction(
+      "mission-control.reply",
+      options,
+      () => runMissionControlReplyCommand({ workspace: options.workspace, nodeId, text, source: options.source as never }),
+      renderMissionControlReplySuccess
     )
   );
 

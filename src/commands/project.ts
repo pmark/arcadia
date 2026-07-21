@@ -9,18 +9,34 @@ import {
 import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
-import { projectNotFound, validationError } from "../cli/errors.js";
+import {
+  projectInterpreterUnavailable,
+  projectNotFound,
+  projectReplyAmbiguous,
+  projectReplyUnparseable,
+  validationError
+} from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
+import { openDatabase } from "../db/connection.js";
 import { withDatabase } from "../db/connection.js";
 import {
   createMissionLog,
   createProjectWithInitialWork,
+  getProject,
   getProjectMetadata,
   listProjects,
   listProjectSummaries,
   updateProject,
   upsertProjectMetadata
 } from "../db/repositories.js";
+import {
+  applyProjectOps,
+  interpretProjectReply,
+  ProjectInterpreterUnavailableError,
+  ProjectReplyUnparseableError
+} from "../projects/interpreter.js";
+import { createId } from "../utils/id.js";
+import { nowIso } from "../utils/time.js";
 import { WORK_CLASSIFICATION_LABELS, type ProjectStatus, type WorkClassification } from "../domain/constants.js";
 import type { CreatedProjectBundle, MissionLog, Project, ProjectMetadata, ProjectSummary } from "../domain/types.js";
 import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../markdown/missionLog.js";
@@ -558,6 +574,91 @@ function writeFileIfMissing(filePath: string, content: string): void {
 
   mkdirSync(path.dirname(filePath), { recursive: true });
   writeFileSync(filePath, content, "utf8");
+}
+
+export interface ProjectReplyData {
+  echo: string;
+  confidence: number;
+  applied: boolean;
+  project: Project;
+  metadata: ProjectMetadata | null;
+}
+
+/**
+ * The Project tower's correction loop — mirrors
+ * runOrientationReplyCommand (src/commands/orientation.ts) exactly: one
+ * Intelligence call interprets free text into typed ops, applied
+ * all-or-nothing, ambiguous/unparseable/interpreter-unavailable all leave
+ * the project untouched.
+ */
+export async function runProjectReplyCommand(options: {
+  workspace: string;
+  projectId: string;
+  text: string;
+  source?: "cli" | "dashboard";
+}): Promise<CommandSuccess<ProjectReplyData>> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const db = openDatabase(workspacePath);
+  try {
+    const project = getProject(db, options.projectId);
+    if (!project) {
+      throw projectNotFound(options.projectId);
+    }
+
+    let interpretation;
+    try {
+      interpretation = await interpretProjectReply(db, workspacePath, options.text, project);
+    } catch (error) {
+      if (error instanceof ProjectInterpreterUnavailableError) {
+        throw projectInterpreterUnavailable(error.message);
+      }
+      if (error instanceof ProjectReplyUnparseableError) {
+        throw projectReplyUnparseable(error.message);
+      }
+      throw error;
+    }
+
+    if (interpretation.ops.length === 0 && interpretation.ambiguousQuestion) {
+      emitProjectEvent(db, "project.reply.ambiguous", project.id, { question: interpretation.ambiguousQuestion });
+      throw projectReplyAmbiguous(interpretation.ambiguousQuestion);
+    }
+
+    const { project: updatedProject, metadata } = applyProjectOps(db, project.id, interpretation.ops);
+    for (const op of interpretation.ops) {
+      emitProjectEvent(db, `project.reply.op.${op.op}`, project.id, { op });
+    }
+
+    return createSuccess({
+      command: "project.reply",
+      workspace: workspacePath,
+      data: {
+        echo: interpretation.echo,
+        confidence: interpretation.confidence,
+        applied: true,
+        project: updatedProject,
+        metadata
+      }
+    });
+  } finally {
+    db.close();
+  }
+}
+
+function emitProjectEvent(db: ReturnType<typeof openDatabase>, eventType: string, projectId: string, payload: Record<string, unknown>): void {
+  db.prepare(
+    `INSERT INTO events (id, event_type, source_module, project_id, work_item_id, artifact_id, review_item_id, payload_json, created_at)
+     VALUES (@id, @event_type, 'mission_control', @project_id, NULL, NULL, NULL, @payload_json, @created_at)`
+  ).run({
+    id: createId("event"),
+    event_type: eventType,
+    project_id: projectId,
+    payload_json: JSON.stringify(payload),
+    created_at: nowIso()
+  });
+}
+
+export function renderProjectReplySuccess(response: CommandSuccess<ProjectReplyData>): string[] {
+  return [response.data.echo, `Project ${response.data.project.id} updated.`];
 }
 
 function createInitialProjectMissionLog(workspacePath: string, project: Project, milestone: CreatedProjectBundle["milestone"]): MissionLog {

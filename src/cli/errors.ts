@@ -18,6 +18,10 @@ export type ArcadiaErrorCode =
   | "ORIENTATION_REPLY_AMBIGUOUS"
   | "ORIENTATION_REPLY_UNPARSEABLE"
   | "ORIENTATION_INTERPRETER_UNAVAILABLE"
+  | "PROJECT_REPLY_AMBIGUOUS"
+  | "PROJECT_REPLY_UNPARSEABLE"
+  | "PROJECT_INTERPRETER_UNAVAILABLE"
+  | "MISSION_CONTROL_NODE_NOT_FOUND"
   | "UNEXPECTED_ERROR";
 
 export type ArcadiaExitCode = 1 | 2 | 3;
@@ -105,6 +109,22 @@ export function orientationReplyUnparseable(message: string): ArcadiaError {
 
 export function orientationInterpreterUnavailable(message: string): ArcadiaError {
   return new ArcadiaError("ORIENTATION_INTERPRETER_UNAVAILABLE", message, 1, {});
+}
+
+export function projectReplyAmbiguous(question: string): ArcadiaError {
+  return new ArcadiaError("PROJECT_REPLY_AMBIGUOUS", question, 3, { question });
+}
+
+export function projectReplyUnparseable(message: string): ArcadiaError {
+  return new ArcadiaError("PROJECT_REPLY_UNPARSEABLE", message, 1, {});
+}
+
+export function projectInterpreterUnavailable(message: string): ArcadiaError {
+  return new ArcadiaError("PROJECT_INTERPRETER_UNAVAILABLE", message, 1, {});
+}
+
+export function missionControlNodeNotFound(nodeId: string): ArcadiaError {
+  return new ArcadiaError("MISSION_CONTROL_NODE_NOT_FOUND", "Mission Control node not found.", 3, { nodeId });
 }
 
 export function normalizeError(error: unknown): ArcadiaError {

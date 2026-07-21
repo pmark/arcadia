@@ -136,17 +136,18 @@ export interface MissionControlActionButton {
  * submitted text; it reuses existing capabilities rather than inventing new
  * ones:
  *
- *   life_tower / life_area / life_entry -> the existing
- *     `orientation reply` interpreter (src/orientation/interpreter.ts),
- *     scoped by the reply text alone today; a specific `entityId` here is
- *     forward-looking (see open question in the companion doc).
- *   project / decision                 -> existing `ask` / review
- *     approve|reject|defer commands.
+ *   life_tower / life_entry -> the real `orientation reply` interpreter
+ *     (src/orientation/interpreter.ts), scoped by the reply text alone
+ *     today, not yet by entityId (see open question in the companion doc).
+ *   project                 -> the real `project reply` interpreter
+ *     (src/projects/interpreter.ts) — full parity with Life.
+ *   decisions_tower / decision -> "none" for now; Decisions stays
+ *     Approve/Reject/Defer only until it earns the same interpreter loop.
  */
 export interface MissionControlContextChannel {
   placeholder: string;
   routesTo: {
-    feature: "orientation" | "ask" | "review";
+    feature: "orientation" | "project" | "none";
     entityId: string;
   };
 }
@@ -165,6 +166,28 @@ export interface MissionControlNodeDetail extends MissionControlNodeSummary {
   actionItems: MissionControlActionItem[];
   contextChannel: MissionControlContextChannel;
   children: MissionControlNodeSummary[];
+  /** Present only for kind === "life_entry". */
+  orientationEntry?: MissionControlOrientationEntry;
+  /** Present only for kind === "project". Reuses the existing DashboardProject shape (lib/types.ts). */
+  project?: import("./types").DashboardProject;
+  /** Present only for kind === "decision". Reuses the existing DashboardReviewItem shape (lib/types.ts). */
+  decision?: import("./types").DashboardReviewItem;
+}
+
+/** Mirrors src/orientation/types.ts's OrientationEntry, plus the derived `stale` flag. */
+export interface MissionControlOrientationEntry {
+  id: string;
+  entryType: string;
+  title: string;
+  detail: string | null;
+  area: string | null;
+  priority: string;
+  horizon: string;
+  dueAt: string | null;
+  status: string;
+  lastConfirmedAt: string;
+  source: string;
+  stale: boolean;
 }
 
 // ---------------------------------------------------------------------------

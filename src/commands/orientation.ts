@@ -332,6 +332,17 @@ export interface OrientationReplyOptions {
   workspace: string;
   text: string;
   source?: "cli" | "discord" | "admin";
+  /**
+   * When the reply is submitted from a specific entry's own detail view
+   * (rather than the ledger/tower level), the interpreter is told to prefer
+   * this entry over any other similarly-worded one. Without this, a reply
+   * like "the plumber is coming Thursday to fix it" typed from "Fix garbage
+   * disposal"'s detail view can land on the wrong entry (e.g. "Fix car
+   * mirror") since the interpreter otherwise sees only the raw text against
+   * the whole ledger with no notion of which entry the operator was looking
+   * at.
+   */
+  focusedEntryId?: string;
 }
 
 export interface OrientationReplyData {
@@ -393,7 +404,7 @@ export async function runOrientationReplyCommand(
 
     let interpretation;
     try {
-      interpretation = await interpretOrientationReply(db, workspacePath, options.text, liveEntries);
+      interpretation = await interpretOrientationReply(db, workspacePath, options.text, liveEntries, options.focusedEntryId);
     } catch (error) {
       if (error instanceof OrientationInterpreterUnavailableError) {
         throw orientationInterpreterUnavailable(error.message);

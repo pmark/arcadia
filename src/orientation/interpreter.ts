@@ -64,7 +64,11 @@ const REPLY_JSON_SCHEMA = {
   required: ["ops", "echo", "confidence"]
 };
 
-function buildInterpretationRequest(replyText: string, entries: OrientationEntry[]): IntelligenceRequest {
+function buildInterpretationRequest(
+  replyText: string,
+  entries: OrientationEntry[],
+  focusedEntryId?: string
+): IntelligenceRequest {
   const ledgerSummary = entries.map((entry) => ({
     id: entry.id,
     title: entry.title,
@@ -74,10 +78,18 @@ function buildInterpretationRequest(replyText: string, entries: OrientationEntry
     status: entry.status
   }));
 
+  const focusedEntry = focusedEntryId ? entries.find((entry) => entry.id === focusedEntryId) : undefined;
+  const focusHint = focusedEntry
+    ? ` The operator currently has this specific entry open: {"id":"${focusedEntry.id}","title":"${focusedEntry.title}"}. ` +
+      "Assume the reply refers to THIS entry — not any other similarly-worded entry in the ledger — unless the reply " +
+      "unambiguously names or describes a different one."
+    : "";
+
   const instructions =
     "You maintain a small personal orientation ledger (not a task manager). " +
-    "Given the current ledger and a reply from the operator, produce ledger operations. " +
-    'Valid ops: {"op":"add","entry":{"title":string,"entryType":"active_concern"|"standing_responsibility"|"time_bound"|"parked_idea","area"?:string,"priority"?:"low"|"normal"|"high"|"critical","horizon"?:"now"|"soon"|"later"|"someday","dueAt"?:string,"detail"?:string}}, ' +
+    "Given the current ledger and a reply from the operator, produce ledger operations." +
+    focusHint +
+    ' Valid ops: {"op":"add","entry":{"title":string,"entryType":"active_concern"|"standing_responsibility"|"time_bound"|"parked_idea","area"?:string,"priority"?:"low"|"normal"|"high"|"critical","horizon"?:"now"|"soon"|"later"|"someday","dueAt"?:string,"detail"?:string}}, ' +
     '{"op":"update","entryId":string,"fields":{...same optional fields as add.entry excluding entryType}}, ' +
     '{"op":"complete","entryId":string}, {"op":"reprioritize","entryId":string,"priority":string}, ' +
     '{"op":"confirm","entryId":string}, {"op":"context","text":string}. ' +
@@ -112,7 +124,8 @@ export async function interpretOrientationReply(
   db: Database.Database,
   workspacePath: string,
   replyText: string,
-  liveEntries: OrientationEntry[]
+  liveEntries: OrientationEntry[],
+  focusedEntryId?: string
 ): Promise<ReplyInterpretation> {
   const repository = createSqliteIntelligenceJobRepository(db);
   const artifactStore = createSqliteIntelligenceArtifactStore(db, workspacePath);
@@ -128,7 +141,7 @@ export async function interpretOrientationReply(
   });
   const worker = new IntelligenceWorker(repository, liteLlmClient, config, artifactStore);
 
-  const request = buildInterpretationRequest(replyText, liveEntries);
+  const request = buildInterpretationRequest(replyText, liveEntries, focusedEntryId);
   const { job: submitted } = await submitIntelligenceRequest(repository, request);
   const finished = await worker.runOnce();
   const job: IntelligenceJob | undefined =
