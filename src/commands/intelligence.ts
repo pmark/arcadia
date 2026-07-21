@@ -1,4 +1,5 @@
 import { resolveReadyWorkspace } from "../cli/workspace.js";
+import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import {
@@ -11,6 +12,7 @@ import { createIntelligenceServer } from "../intelligence/api/server.js";
 import { createSqliteIntelligenceArtifactStore } from "../intelligence/artifacts/store.js";
 import { createCodexCliImageExecutor } from "../intelligence/codex/imageExecutor.js";
 import { createCodexCliTextExecutor } from "../intelligence/codex/textExecutor.js";
+import { createComfyUiImageExecutor } from "../intelligence/comfyui/imageExecutor.js";
 import { buildDefaultRoutes, loadIntelligenceConfig } from "../intelligence/config/defaults.js";
 import { createSqliteIntelligenceJobRepository } from "../intelligence/db/sqliteRepository.js";
 import { IntelligenceWorker } from "../intelligence/jobs/worker.js";
@@ -72,6 +74,11 @@ export function runIntelligenceServeCommand(options: IntelligenceServeOptions): 
     config,
   });
   const codexTextExecutor = createCodexCliTextExecutor({ workspaceRoot: workspacePath, config });
+  const comfyUiImageExecutor = createComfyUiImageExecutor({
+    workspaceRoot: workspacePath,
+    artifactStore,
+    config,
+  });
   const speechClient = createOpenAiSpeechClient({
     apiKey: config.liteLlmApiKey,
     timeoutMs: config.speech?.timeoutMs,
@@ -85,8 +92,11 @@ export function runIntelligenceServeCommand(options: IntelligenceServeOptions): 
     codexImageExecutor,
     codexTextExecutor,
     speechClient,
+    comfyUiImageExecutor,
   );
-  const stopWorker = worker.start();
+  const stopWorker = worker.start({
+    heartbeatPath: path.join(workspacePath, ".arcadia", "intelligence-worker.heartbeat"),
+  });
 
   const server = createIntelligenceServer({ repository, config, artifactStore });
   const port = options.port ?? DEFAULT_PORT;
@@ -120,7 +130,8 @@ export async function runIntelligenceImageSmokeCommand(
     const repository = createSqliteIntelligenceJobRepository(db);
     const artifactStore = createSqliteIntelligenceArtifactStore(db, workspacePath);
     const loadedConfig = loadIntelligenceConfig(process.env);
-    const codexImageRoute = options.route?.trim() || process.env.ARCADIA_CODEX_IMAGE_ROUTE?.trim() || DEFAULT_CODEX_IMAGE_ROUTE;
+    const comfyUiImageRoute = process.env.ARCADIA_COMFYUI_IMAGE_ROUTE?.trim() || undefined;
+    const codexImageRoute = options.route?.trim() || process.env.ARCADIA_CODEX_IMAGE_ROUTE?.trim() || (comfyUiImageRoute ? undefined : DEFAULT_CODEX_IMAGE_ROUTE);
     const config = {
       ...loadedConfig,
       routes: buildDefaultRoutes({
@@ -128,6 +139,7 @@ export async function runIntelligenceImageSmokeCommand(
         cloudTextRoute: process.env.ARCADIA_LITELLM_CLOUD_TEXT_ROUTE?.trim() || undefined,
         cloudImageRoute: process.env.ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE?.trim() || undefined,
         codexImageRoute,
+        comfyUiImageRoute,
       }),
     };
     const liteLlmClient = createLiteLlmHttpClient({
@@ -140,6 +152,11 @@ export async function runIntelligenceImageSmokeCommand(
       config,
     });
     const codexTextExecutor = createCodexCliTextExecutor({ workspaceRoot: workspacePath, config });
+    const comfyUiImageExecutor = createComfyUiImageExecutor({
+      workspaceRoot: workspacePath,
+      artifactStore,
+      config,
+    });
     const worker = new IntelligenceWorker(
       repository,
       liteLlmClient,
@@ -147,6 +164,8 @@ export async function runIntelligenceImageSmokeCommand(
       artifactStore,
       codexImageExecutor,
       codexTextExecutor,
+      undefined,
+      comfyUiImageExecutor,
     );
 
     const request = buildSmokeRequest({
@@ -544,7 +563,7 @@ function buildSmokeRequest(input: {
   idempotencyKey?: string;
 }): IntelligenceRequest {
   return {
-    idempotencyKey: input.idempotencyKey ?? `arcadia-codex-image-smoke-${Date.now()}`,
+    idempotencyKey: input.idempotencyKey ?? `arcadia-image-smoke-${Date.now()}`,
     operationId: "arcadia.smoke-image",
     clientApp: "arcadia",
     capability: "image.generate",

@@ -127,6 +127,34 @@ describe("resolveIntelligenceRoute", () => {
     }
   });
 
+  it("resolves image generation and editing to the local ComfyUI route", () => {
+    const routes = buildDefaultRoutes({ comfyUiImageRoute: "comfyui" });
+
+    for (const capability of ["image.generate", "image.edit"] as const) {
+      const resolution = resolveIntelligenceRoute(
+        { capability, execution: "local-required", profile: "quality" },
+        routes,
+        { allowPaidUsage: false },
+      );
+
+      expect(resolution.ok).toBe(true);
+      if (resolution.ok) {
+        expect(resolution.route.executor).toBe("comfyui");
+        expect(resolution.route.location).toBe("local");
+      }
+    }
+  });
+
+  it("keeps configured image backend route IDs unique", () => {
+    const routes = buildDefaultRoutes({ codexImageRoute: "codex-cli", comfyUiImageRoute: "comfyui" });
+    const ids = routes.map((route) => route.id);
+
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toContain("arcadia.image.generate.local.quality");
+    expect(ids).toContain("arcadia.image.generate.local.quality.comfyui");
+    expect(ids).toContain("arcadia.image.edit.local.quality.comfyui");
+  });
+
   it("fails cloud-required when paid usage is disallowed and the route requires paid use", () => {
     const routes = buildDefaultRoutes({ cloudTextRoute: "arcadia-cloud" });
 

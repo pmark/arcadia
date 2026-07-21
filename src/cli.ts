@@ -1648,10 +1648,10 @@ export function buildProgram(): Command {
   addJsonOption(
     intelligence
       .command("smoke-image")
-      .description("Submit and run one local Codex image-generation smoke job")
+      .description("Submit and run one local image-generation smoke job")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--prompt <text>", "Image prompt")
-      .option("--route <name>", "Local Codex image route name", "codex-cli")
+      .option("--route <name>", "Local image route name")
       .option("--idempotency-key <key>", "Optional idempotency key")
   ).action((options: {
     workspace: string;

@@ -5,9 +5,16 @@ import { handleArcadiaInteraction } from "./events/interactionCreate.js";
 import { handleArcadiaMessage } from "./events/messageCreate.js";
 import { logJson } from "./logging.js";
 import { startNotificationPoller } from "./notifications/poller.js";
+import { discordAdapterStatusPath, removeDiscordAdapterStatus, writeDiscordAdapterStatus } from "./status.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
+  const statusPath = discordAdapterStatusPath(config.arcadiaWorkspace);
+  let lastEventAt: string | null = null;
+  const heartbeat = (connectionState: "connected" | "connecting" | "disconnected" | "error", state: "running" | "stopped" = "running") => {
+    writeDiscordAdapterStatus(statusPath, { state, connectionState, lastEventAt });
+  };
+  heartbeat("connecting");
   const cli = new ArcadiaCli({
     workspace: config.arcadiaWorkspace,
     cliPath: config.arcadiaCliPath
@@ -18,6 +25,7 @@ async function main(): Promise<void> {
   });
 
   client.once(Events.ClientReady, (readyClient) => {
+    heartbeat("connected");
     logJson("info", {
       msg: "arcadia discord bot ready",
       user: readyClient.user.tag,
@@ -27,6 +35,8 @@ async function main(): Promise<void> {
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
+    lastEventAt = new Date().toISOString();
+    heartbeat("connected");
     if (!interaction.isChatInputCommand()) {
       return;
     }
@@ -35,6 +45,8 @@ async function main(): Promise<void> {
   });
 
   client.on(Events.MessageCreate, async (message) => {
+    lastEventAt = new Date().toISOString();
+    heartbeat("connected");
     try {
       await handleArcadiaMessage(message, config, cli);
     } catch (error) {
@@ -46,13 +58,34 @@ async function main(): Promise<void> {
   });
 
   client.on(Events.Error, (error) => {
+    heartbeat("error");
     logJson("error", {
       msg: "discord client error",
       error: error.message
     });
   });
 
-  await client.login(config.discordBotToken);
+  const heartbeatTimer = setInterval(() => heartbeat(client.isReady() ? "connected" : "connecting"), 5_000);
+  const cleanup = () => {
+    clearInterval(heartbeatTimer);
+    removeDiscordAdapterStatus(statusPath);
+  };
+  process.once("exit", cleanup);
+  process.once("SIGINT", () => {
+    cleanup();
+    process.exit(0);
+  });
+  process.once("SIGTERM", () => {
+    cleanup();
+    process.exit(0);
+  });
+  try {
+    await client.login(config.discordBotToken);
+  } catch (error) {
+    heartbeat("error", "stopped");
+    cleanup();
+    throw error;
+  }
 }
 
 main().catch((error: unknown) => {

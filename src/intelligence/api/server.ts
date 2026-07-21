@@ -72,7 +72,7 @@ async function handleRequest(
     }
 
     if (method === "GET" && url.pathname === "/api/intelligence/health") {
-      await handleHealth(res, config, fetchImpl);
+      await handleHealth(res, config, fetchImpl, repository);
       return;
     }
 
@@ -255,8 +255,12 @@ async function handleHealth(
   res: ServerResponse,
   config: IntelligenceV01Config,
   fetchImpl: typeof fetch,
+  repository: IntelligenceJobRepository,
 ): Promise<void> {
   const liteLlmReachable = await pingLiteLlm(config.liteLlmBaseUrl, fetchImpl);
+  const operationalSummary = repository.getOperationalSummary
+    ? await repository.getOperationalSummary()
+    : { queuedCount: 0, activeCount: 0, failedCount: 0, lastSuccessfulRequest: null };
   const routes = config.routes
     .filter((route) => route.enabled)
     .map((route) => ({
@@ -269,11 +273,13 @@ async function handleHealth(
     }));
   sendJson(res, 200, {
     ok: true,
+    version: process.env.ARCADIA_VERSION?.trim() || "0.1.0",
     liteLlm: {
       baseUrl: config.liteLlmBaseUrl,
       reachable: liteLlmReachable,
       routes,
     },
+    jobs: operationalSummary,
   });
 }
 

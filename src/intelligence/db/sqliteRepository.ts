@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { createId } from "../../utils/id.js";
 import { nowIso } from "../../utils/time.js";
-import type { IntelligenceJobRepository } from "./repository.js";
+import type { IntelligenceJobRepository, IntelligenceOperationalSummary } from "./repository.js";
 import type {
   IntelligenceJob,
   IntelligenceJobStatus,
@@ -241,6 +241,34 @@ export function createSqliteIntelligenceJobRepository(
     return Promise.resolve(rows.map(rowToJob));
   }
 
+  function getOperationalSummary(): Promise<IntelligenceOperationalSummary> {
+    const counts = db
+      .prepare(
+        `SELECT
+           SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END) AS queued_count,
+           SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS active_count,
+           SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_count
+         FROM intelligence_jobs`,
+      )
+      .get() as { queued_count: number | null; active_count: number | null; failed_count: number | null };
+    const lastSuccessful = db
+      .prepare(
+        `SELECT completed_at
+         FROM intelligence_jobs
+         WHERE status = 'completed' AND completed_at IS NOT NULL
+         ORDER BY completed_at DESC, rowid DESC
+         LIMIT 1`,
+      )
+      .get() as { completed_at: string } | undefined;
+
+    return Promise.resolve({
+      queuedCount: counts.queued_count ?? 0,
+      activeCount: counts.active_count ?? 0,
+      failedCount: counts.failed_count ?? 0,
+      lastSuccessfulRequest: lastSuccessful?.completed_at ?? null,
+    });
+  }
+
   function requireJob(jobId: string): Promise<IntelligenceJob> {
     const row = db
       .prepare("SELECT * FROM intelligence_jobs WHERE id = ?")
@@ -262,5 +290,6 @@ export function createSqliteIntelligenceJobRepository(
     retryJob,
     listRecentByClientApp,
     listCreatedSince,
+    getOperationalSummary,
   };
 }

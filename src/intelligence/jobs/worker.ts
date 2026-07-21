@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { nowIso } from "../../utils/time.js";
 import type { IntelligenceArtifactStore } from "../artifacts/store.js";
 import {
@@ -11,6 +13,11 @@ import {
   CodexTextExecutionFailedError,
   type CodexTextExecutor,
 } from "../codex/textExecutor.js";
+import {
+  ComfyUiExecutionBlockedError,
+  ComfyUiExecutionFailedError,
+  type ComfyUiImageExecutor,
+} from "../comfyui/imageExecutor.js";
 import type { IntelligenceV01Config } from "../config/types.js";
 import type { IntelligenceJobRepository } from "../db/repository.js";
 import { LiteLlmUnavailableError } from "../litellm/httpClient.js";
@@ -53,6 +60,7 @@ export class IntelligenceWorker {
     private readonly _codexImageExecutor?: CodexImageExecutor,
     private readonly _codexTextExecutor?: CodexTextExecutor,
     private readonly _speechClient?: SpeechClient,
+    private readonly _comfyUiImageExecutor?: ComfyUiImageExecutor,
     workerId: string = randomUUID(),
   ) {
     this.workerId = workerId;
@@ -152,7 +160,8 @@ export class IntelligenceWorker {
       }
       if (
         error instanceof CodexImageExecutionBlockedError ||
-        error instanceof CodexTextExecutionBlockedError
+        error instanceof CodexTextExecutionBlockedError ||
+        error instanceof ComfyUiExecutionBlockedError
       ) {
         return this._repository.blockJob(
           job.id,
@@ -162,7 +171,8 @@ export class IntelligenceWorker {
       }
       if (
         error instanceof CodexImageExecutionFailedError ||
-        error instanceof CodexTextExecutionFailedError
+        error instanceof CodexTextExecutionFailedError ||
+        error instanceof ComfyUiExecutionFailedError
       ) {
         return this._repository.failJob(
           job.id,
@@ -214,6 +224,16 @@ export class IntelligenceWorker {
         );
       }
       return this._codexImageExecutor.execute(job);
+    }
+
+    if (route.executor === "comfyui") {
+      if (!this._comfyUiImageExecutor) {
+        throw new ComfyUiExecutionBlockedError(
+          "COMFYUI_UNAVAILABLE",
+          "Arcadia Intelligence has no ComfyUI image executor configured.",
+        );
+      }
+      return this._comfyUiImageExecutor.execute(job);
     }
 
     if (!this._artifactStore) {
@@ -351,9 +371,22 @@ export class IntelligenceWorker {
   /**
    * Starts the polling loop and returns a function that stops it.
    */
-  public start(): () => void {
+  public start(options: { heartbeatPath?: string } = {}): () => void {
     let stopped = false;
     let timer: NodeJS.Timeout | undefined;
+    const heartbeatPath = options.heartbeatPath;
+    const writeHeartbeat = (): void => {
+      if (!heartbeatPath) return;
+      try {
+        mkdirSync(path.dirname(heartbeatPath), { recursive: true });
+        writeFileSync(heartbeatPath, new Date().toISOString(), "utf8");
+      } catch {
+        // Health reporting must never stop job processing.
+      }
+    };
+
+    writeHeartbeat();
+    const heartbeatTimer = heartbeatPath ? setInterval(writeHeartbeat, 5_000) : undefined;
 
     const tick = (): void => {
       if (stopped) {
@@ -366,6 +399,7 @@ export class IntelligenceWorker {
           // errors are already persisted as failed/blocked by runOnce.
         })
         .finally(() => {
+          writeHeartbeat();
           if (!stopped) {
             timer = setTimeout(tick, this._config.workerPollIntervalMs);
           }
@@ -378,6 +412,12 @@ export class IntelligenceWorker {
       stopped = true;
       if (timer) {
         clearTimeout(timer);
+      }
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+      }
+      if (heartbeatPath) {
+        try { unlinkSync(heartbeatPath); } catch {}
       }
     };
   }

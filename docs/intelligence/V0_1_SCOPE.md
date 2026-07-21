@@ -56,8 +56,8 @@ the app's domain.
 - Automatic budget allocation, background provider polling, and any inference
   of remaining provider quota from locally recorded usage
 - Prompt registry
-- Image *editing*, variation, or multi-turn generation (single text-to-image
-  only; `image.edit` is a typed capability with no executable transport yet)
+- Multi-turn image workflows; local `image.edit` is supported through the
+  ComfyUI route with one staged reference image today
 - Vision, audio, and video capabilities are typed but unconfigured by
   default — they resolve as a typed "route_not_configured" failure rather
   than executing

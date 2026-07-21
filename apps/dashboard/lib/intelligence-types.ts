@@ -11,7 +11,7 @@ export interface IntelligenceOffering {
   capability: IntelligenceCapability;
   location: "local" | "cloud";
   profile: IntelligenceProfile;
-  executor: "litellm" | "codex-cli" | "speech";
+  executor: "litellm" | "codex-cli" | "comfyui" | "speech";
   requiresPaidUsage: boolean;
 }
 

@@ -3,6 +3,13 @@ import type {
   IntelligenceRequest,
 } from "../types.js";
 
+export interface IntelligenceOperationalSummary {
+  queuedCount: number;
+  activeCount: number;
+  failedCount: number;
+  lastSuccessfulRequest: string | null;
+}
+
 /**
  * Storage seam, implemented by ./sqliteRepository.ts against the shared
  * Arcadia workspace database (see ../../db/connection.js and
@@ -70,4 +77,7 @@ export interface IntelligenceJobRepository {
    * one explicit reporting period without guessing provider quotas.
    */
   listCreatedSince(sinceIso: string): Promise<IntelligenceJob[]>;
+
+  /** Read-only counts used by the local admin Status page. */
+  getOperationalSummary?: () => Promise<IntelligenceOperationalSummary>;
 }

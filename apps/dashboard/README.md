@@ -8,6 +8,7 @@ It shows:
 - current milestones
 - Requires Review items
 - recent execution runs and artifacts
+- System Status at `/admin/status`, including readiness for normal operation, image generation, and background processing
 
 It can approve, reject, defer, or resolve Decisions through the same CLI commands used in a terminal. Planning approval atomically queues one managed Run for the existing Arcadia worker; the dashboard never invokes a planning provider directly and maintains no dashboard-only approval state.
 

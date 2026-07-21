@@ -26,9 +26,8 @@ A request carries three routing fields, plus the existing
 - **`capability`** — the operation needed: `text.generate`, `text.classify`,
   `text.extract`, `text.reason`, `vision.analyze`, `image.generate`,
   `image.edit`, `audio.transcribe`, `audio.synthesize`, `video.generate`.
-  Only `text.generate` and `image.generate` have a default route configured
-  today; the rest are typed for forward-compatibility and resolve as a typed
-  `route_not_configured` failure until a transport and registry entry exist.
+  Local `image.generate` and `image.edit` routes are enabled when ComfyUI is
+  configured; cloud image generation remains a separate explicit route.
 - **`execution`** — where the request is allowed/preferred to run:
   - `local-required`: only a local route may resolve.
   - `local-preferred`: use local when configured and available; **never**
@@ -70,12 +69,14 @@ profile." The default registry (`buildDefaultRoutes` in
 | `arcadia.text.generate.cloud.standard`      | `text.generate`  | cloud    | standard | yes                   |
 | `arcadia.text.generate.cloud.quality`       | `text.generate`  | cloud    | quality  | yes                   |
 | `arcadia.image.generate.local.quality`      | `image.generate` | local    | quality  | no                    |
+| `arcadia.image.generate.local.quality.comfyui` | `image.generate` | local | quality | no |
+| `arcadia.image.edit.local.quality.comfyui`  | `image.edit`     | local    | quality  | no                    |
 | `arcadia.image.generate.cloud.quality`      | `image.generate` | cloud    | quality  | yes                   |
 
 Every other (capability, location, profile) combination — `text.generate`
 local/cloud `economy`, any image profile other than `quality`,
 `text.classify`/`text.extract`/`text.reason`, `vision.analyze`,
-`image.edit`, audio, video — is a **valid enum value with no configured
+audio, video — is a **valid enum value with no configured
 route**. Requesting one resolves as a typed `route_not_configured` (or
 `*_route_unavailable`) failure rather than guessing a route name or falling
 back to a different combination. Expanding this matrix is a deliberate
@@ -118,7 +119,8 @@ provider/model/LiteLLM detail:
    `getJob`/`waitForCompletion`, when the request shape was valid but could
    not run — route resolution failed (`job.error.code` is one of the five
    route codes above), LiteLLM was unreachable (`LITELLM_UNAVAILABLE`),
-   Codex CLI was unavailable (`CODEX_CLI_UNAVAILABLE`), Codex image output
+   ComfyUI was unavailable (`COMFYUI_*`), Codex CLI was unavailable
+   (`CODEX_CLI_UNAVAILABLE`), Codex image output
    was invalid (`CODEX_*` failure codes), or the result failed schema
    validation (`VALIDATION_FAILED`).
 
@@ -149,8 +151,8 @@ the job is queued — never silently ignored.
 
 ## Configuration
 
-The route registry is built from the configured LiteLLM aliases plus an
-optional local Codex image route, configured via environment variables
+The route registry is built from the configured LiteLLM aliases plus optional
+local ComfyUI and Codex image routes, configured via environment variables
 (`src/intelligence/config/defaults.ts`):
 
 | Variable                          | Default            | Used for                                   |
@@ -162,6 +164,10 @@ optional local Codex image route, configured via environment variables
 | `ARCADIA_CODEX_CLI_COMMAND`         | `codex`             | Codex CLI executable                         |
 | `ARCADIA_CODEX_CLI_ARGS`            | JSON args for `codex exec` | Codex invocation; `{workspace}` is replaced with the isolated job workspace |
 | `ARCADIA_CODEX_CLI_TIMEOUT_MS`      | `120000`            | Codex CLI timeout for one image job          |
+| `ARCADIA_COMFYUI_IMAGE_ROUTE`       | *(unset = disabled)* | local `image.generate` + `image.edit`, quality |
+| `ARCADIA_COMFYUI_BASE_URL`          | `http://127.0.0.1:8188` | ComfyUI API endpoint |
+| `ARCADIA_COMFYUI_WORKFLOW_DIR`      | `~/AI/Arcadia-ComfyUI/workflows` | Arcadia API workflows |
+| `ARCADIA_COMFYUI_TIMEOUT_MS`        | `900000`            | ComfyUI timeout for one image job |
 
 Leaving an alias unset omits its entries entirely; requests targeting it get
 a typed failure rather than a guessed route name.
@@ -175,7 +181,8 @@ than a generic rules engine or one environment variable per route.
 ARCADIA_LITELLM_LOCAL_TEXT_ROUTE=arcadia-default   # local text generation
 ARCADIA_LITELLM_CLOUD_TEXT_ROUTE=arcadia-cloud      # GPT-4o Mini
 ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE=arcadia-image     # GPT Image
-ARCADIA_CODEX_IMAGE_ROUTE=codex-cli                 # local Codex image generation
+ARCADIA_COMFYUI_IMAGE_ROUTE=comfyui                 # local FLUX.2 Klein generation/editing
+ARCADIA_CODEX_IMAGE_ROUTE=codex-cli                 # optional local Codex image generation
 ```
 
 With that configuration, here are four representative requests and the route
@@ -186,7 +193,8 @@ each resolves to:
 | `text.generate` / `local-required` / `fast`              | `arcadia.text.generate.local.fast` → `arcadia-default` |
 | `text.generate` / `local-preferred` / `standard`          | `arcadia.text.generate.local.standard` → `arcadia-default` |
 | `text.generate` / `cloud-required` / `quality` (paid usage allowed) | `arcadia.text.generate.cloud.quality` → `arcadia-cloud` |
-| `image.generate` / `local-required` / `quality`           | `arcadia.image.generate.local.quality` → Codex CLI |
+| `image.generate` / `local-required` / `quality`           | `arcadia.image.generate.local.quality.comfyui` → ComfyUI |
+| `image.edit` / `local-required` / `quality`               | `arcadia.image.edit.local.quality.comfyui` → ComfyUI |
 | `image.generate` / `cloud-required` / `quality` (paid usage allowed) | `arcadia.image.generate.cloud.quality` → `arcadia-image` |
 
 ## What Rebuster should send

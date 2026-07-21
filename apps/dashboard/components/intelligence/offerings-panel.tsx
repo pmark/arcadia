@@ -57,6 +57,8 @@ function executorLabel(executor: IntelligenceOffering["executor"]): string {
   switch (executor) {
     case "codex-cli":
       return "Codex";
+    case "comfyui":
+      return "ComfyUI";
     case "speech":
       return "TTS server";
     default:

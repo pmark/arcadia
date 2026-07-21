@@ -19,7 +19,7 @@ export type ResolvedIntelligenceRoute = {
   location: IntelligenceRouteLocation;
   profile: IntelligenceProfile;
   liteLlmRoute: string;
-  executor: "litellm" | "codex-cli" | "speech";
+  executor: "litellm" | "codex-cli" | "comfyui" | "speech";
   requiresPaidUsage: boolean;
 };
 

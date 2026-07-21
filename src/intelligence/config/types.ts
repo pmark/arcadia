@@ -6,7 +6,7 @@ import type { IntelligenceCapability, IntelligenceProfile } from "../types.js";
  * deployment-time fact about a specific route.
  */
 export type IntelligenceRouteLocation = "local" | "cloud";
-export type IntelligenceRouteExecutor = "litellm" | "codex-cli" | "speech";
+export type IntelligenceRouteExecutor = "litellm" | "codex-cli" | "comfyui" | "speech";
 
 /**
  * One entry in Arcadia's route registry: a deterministic mapping from a
@@ -83,6 +83,13 @@ export type IntelligenceV01Config = {
   codexCli?: {
     command: string;
     args: string[];
+    timeoutMs: number;
+  };
+
+  /** Local ComfyUI server and Arcadia-owned workflow templates. */
+  comfyUi?: {
+    baseUrl: string;
+    workflowDir: string;
     timeoutMs: number;
   };
 
