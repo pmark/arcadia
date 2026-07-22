@@ -7,10 +7,11 @@ describe("action.advice enrichment", () => {
     expect(getEnrichment("action.advice").id).toBe("action.advice");
   });
 
-  it("stays local and accepts short action titles", () => {
+  it("uses cloud and accepts short action titles", () => {
     const advice = getEnrichment("action.advice");
-    // Advice must never bill the user, so it resolves to a local route.
-    expect(advice.execution).toBe("local");
+    // Advice uses cloud text AI for better quality.
+    expect(advice.execution).toBe("cloud");
+    expect(advice.allowPaidUsage).toBe(true);
     // A terse action title should still qualify for advice.
     expect(advice.minInputChars).toBeLessThanOrEqual(8);
   });
