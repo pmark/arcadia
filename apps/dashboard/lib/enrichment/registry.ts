@@ -45,8 +45,8 @@ export interface EnrichmentDefinition {
   /** Optimization profile. Enrichments are latency-sensitive → "fast". */
   profile: IntelligenceProfile;
   /**
-   * Where the job runs. Enrichments must stay local (never bill the user for
-   * a decorative summary); "codex" or "local" both resolve to a local route.
+   * Where the job runs. "codex" or "local" both resolve to a local route;
+   * "cloud" uses a cloud provider when configured.
    */
   execution: IntelligenceExecutionTarget;
   /**
@@ -54,6 +54,11 @@ export interface EnrichmentDefinition {
    * circuits to a "skipped" result and the deterministic UI stands alone.
    */
   minInputChars: number;
+  /**
+   * Whether to allow paid cloud usage. Defaults to false (free enrichments
+   * only). Ignored for local execution.
+   */
+  allowPaidUsage?: boolean;
   /** Renders the prompt sent to the model from the source text. */
   buildPrompt: (text: string) => string;
   /** JSON Schema the model output is validated against. */
@@ -145,11 +150,9 @@ function toStringList(value: JsonValue | undefined): string[] {
 const ACTION_ADVICE: EnrichmentDefinition = {
   id: "action.advice",
   operationId: "arcadia-admin.enrich.action-advice",
-  // Advice is more substantive than a headline; "standard" picks a reliable
-  // local route without ever billing (the /api/enrich route pins
-  // allowPaidUsage: false).
   profile: "standard",
-  execution: "local",
+  execution: "cloud",
+  allowPaidUsage: true,
   // Even a terse action title ("Ship the release notes") is a valid target for
   // advice, so only skip genuinely empty input.
   minInputChars: 8,
