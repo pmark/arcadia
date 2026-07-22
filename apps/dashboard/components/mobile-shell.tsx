@@ -1,13 +1,13 @@
 "use client";
 
-import { Eye, MessageSquarePlus, TrendingUp } from "lucide-react";
+import { Eye, MessageSquarePlus, Radar } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 const TABS = [
   { href: "/capture", label: "Capture", icon: MessageSquarePlus },
-  { href: "/momentum", label: "Momentum", icon: TrendingUp },
+  { href: "/mission-control", label: "Mission Control", icon: Radar },
   { href: "/review", label: "Decisions", icon: Eye }
 ];
 
