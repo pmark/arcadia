@@ -15,6 +15,7 @@ import {
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { ActionAdvice } from "./action-advice";
 import { useEnrichment } from "../hooks/use-enrichment";
 import type { EnrichmentKind } from "../lib/enrichment/registry";
 import type {
@@ -155,6 +156,18 @@ export function DailyAdvantageCard({
           View Project
         </Link>
       </div>
+      <div className="mt-3">
+        <ActionAdvice
+          target={composeAdviceTarget([
+            ["Action", advantage.actionTitle],
+            ["Project", advantage.projectName],
+            ["Milestone", advantage.milestoneTitle],
+            ["Expected Artifact", advantage.expectedArtifact],
+            ["Why It Matters", advantage.whyItMatters],
+            ["Why Now", advantage.whyNow]
+          ])}
+        />
+      </div>
     </article>
   );
 }
@@ -272,6 +285,19 @@ export function AttentionCard({
                 </code>
               ) : null;
             })}
+          </div>
+          <div className="mt-3">
+            <ActionAdvice
+              target={composeAdviceTarget([
+                ["Attention", item.reason],
+                ["Project", item.projectName],
+                ["Action", item.actionTitle ?? item.workItemTitle],
+                ["Interpretation", item.interpretation],
+                ["Outcome", item.outcome],
+                ["Expected Artifact", item.expectedArtifact],
+                ["Next Action", item.nextAction]
+              ])}
+            />
           </div>
         </div>
       </div>
@@ -752,6 +778,17 @@ function TruncatedField({
       </dd>
     </div>
   );
+}
+
+/**
+ * Builds the labeled, newline-joined context string handed to the AI advice
+ * affordance, dropping any empty fields so the model only sees real signal.
+ */
+function composeAdviceTarget(lines: Array<[string, string | null | undefined]>): string {
+  return lines
+    .filter((entry): entry is [string, string] => Boolean(entry[1] && entry[1].trim().length > 0))
+    .map(([label, value]) => `${label}: ${value.trim()}`)
+    .join("\n");
 }
 
 function formatDateTime(value: string): string {
