@@ -6,6 +6,8 @@ export function openDatabase(workspace: string): Database.Database {
   const paths = getWorkspacePaths(workspace);
   const db = new Database(paths.databaseFile);
   db.pragma("foreign_keys = ON");
+  db.pragma("journal_mode = WAL");
+  db.pragma("busy_timeout = 5000");
   applyInitialSchema(db);
   return db;
 }

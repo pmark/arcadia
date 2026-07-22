@@ -60,7 +60,7 @@ function externalInputs(graph, subgraphNode, subgraph, kind) {
     ["text", widgets[0]],
     ["value", widgets[1] ?? 1024],
     ["value_1", widgets[2] ?? 1024],
-    ["unet_name", kind === "generate" ? "flux-2-klein-4b-fp8.safetensors" : normalizeModelName(widgets[3] ?? "flux-2-klein-4b-fp8.safetensors")],
+    ["unet_name", kind === "generate" ? "flux-2-klein-4b.safetensors" : normalizeModelName(widgets[3] ?? "flux-2-klein-4b.safetensors")],
     ["clip_name", widgets[4] ?? "qwen_3_4b.safetensors"],
     ["vae_name", widgets[5] ?? "flux2-vae.safetensors"],
   ]);
@@ -74,9 +74,7 @@ function externalInputs(graph, subgraphNode, subgraph, kind) {
 }
 
 function normalizeModelName(name) {
-  return name.endsWith(".safetensors") && !name.includes("-fp8") && name.startsWith("flux-2-klein-")
-    ? name.replace(/\.safetensors$/, "-fp8.safetensors")
-    : name;
+  return name.replace(/-fp8\.safetensors$/, ".safetensors");
 }
 
 function nodeInputs(node, links, externalValues, kind) {

@@ -3,8 +3,10 @@ import path from "node:path";
 import type { IntelligenceProfile } from "../types.js";
 import { DEFAULT_VOICE_MAP, loadVoiceMap } from "../speech/voices.js";
 import type {
+  IntelligenceResourceGroup,
   IntelligenceRouteEntry,
   IntelligenceRouteLocation,
+  IntelligenceSchedulerConfig,
   IntelligenceV01Config,
 } from "./types.js";
 
@@ -36,6 +38,49 @@ const DEFAULT_CODEX_CLI = {
   ],
   timeoutMs: 120_000,
 };
+
+export const intelligenceSchedulerDefaults: IntelligenceSchedulerConfig = {
+  scanLimit: 100,
+  pools: {
+    "litellm-local": { concurrency: 1 },
+    "litellm-cloud-text": { concurrency: 4 },
+    "litellm-cloud-image": { concurrency: 2 },
+    "codex-cli": { concurrency: 3 },
+    comfyui: { concurrency: 1 },
+    "speech-local": { concurrency: 1 },
+    "speech-cloud": { concurrency: 4 },
+  },
+};
+
+export function resolveIntelligenceSchedulerConfig(
+  config: IntelligenceV01Config,
+): IntelligenceSchedulerConfig {
+  const pools = Object.fromEntries(
+    Object.entries(intelligenceSchedulerDefaults.pools).map(([group, defaults]) => {
+      const overrides = config.scheduler?.pools?.[group as IntelligenceResourceGroup];
+      return [group, { ...defaults, ...overrides }];
+    }),
+  ) as unknown as IntelligenceSchedulerConfig["pools"];
+
+  return {
+    scanLimit: positiveInteger(config.scheduler?.scanLimit, intelligenceSchedulerDefaults.scanLimit),
+    pools: Object.fromEntries(
+      Object.entries(pools).map(([group, pool]) => [
+        group,
+        {
+          ...pool,
+          concurrency: positiveInteger(pool.concurrency, 1),
+        },
+      ]),
+    ) as unknown as IntelligenceSchedulerConfig["pools"],
+  };
+}
+
+function positiveInteger(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 1
+    ? Math.floor(value)
+    : fallback;
+}
 
 function textRouteEntries(
   location: IntelligenceRouteLocation,
@@ -200,6 +245,7 @@ export const intelligenceV01Defaults: IntelligenceV01Config = {
   maxRetries: 1,
   workerPollIntervalMs: 500,
   leaseDurationMs: 30_000,
+  scheduler: intelligenceSchedulerDefaults,
   codexCli: DEFAULT_CODEX_CLI,
   speech: {
     voiceMap: { ...DEFAULT_VOICE_MAP },
@@ -243,6 +289,56 @@ export function loadIntelligenceConfig(
     maxRetries: intelligenceV01Defaults.maxRetries,
     workerPollIntervalMs: intelligenceV01Defaults.workerPollIntervalMs,
     leaseDurationMs: intelligenceV01Defaults.leaseDurationMs,
+    scheduler: {
+      scanLimit: readPositiveInteger(
+        env.ARCADIA_INTELLIGENCE_SCAN_LIMIT,
+        intelligenceSchedulerDefaults.scanLimit,
+      ),
+      pools: {
+        "litellm-local": {
+          concurrency: readPositiveInteger(
+            env.ARCADIA_INTELLIGENCE_LOCAL_CONCURRENCY,
+            intelligenceSchedulerDefaults.pools["litellm-local"].concurrency,
+          ),
+        },
+        "litellm-cloud-text": {
+          concurrency: readPositiveInteger(
+            env.ARCADIA_INTELLIGENCE_CLOUD_TEXT_CONCURRENCY,
+            intelligenceSchedulerDefaults.pools["litellm-cloud-text"].concurrency,
+          ),
+        },
+        "litellm-cloud-image": {
+          concurrency: readPositiveInteger(
+            env.ARCADIA_INTELLIGENCE_CLOUD_IMAGE_CONCURRENCY,
+            intelligenceSchedulerDefaults.pools["litellm-cloud-image"].concurrency,
+          ),
+        },
+        "codex-cli": {
+          concurrency: readPositiveInteger(
+            env.ARCADIA_INTELLIGENCE_CODEX_CONCURRENCY,
+            intelligenceSchedulerDefaults.pools["codex-cli"].concurrency,
+          ),
+        },
+        comfyui: {
+          concurrency: readPositiveInteger(
+            env.ARCADIA_INTELLIGENCE_COMFYUI_CONCURRENCY,
+            intelligenceSchedulerDefaults.pools.comfyui.concurrency,
+          ),
+        },
+        "speech-local": {
+          concurrency: readPositiveInteger(
+            env.ARCADIA_INTELLIGENCE_LOCAL_SPEECH_CONCURRENCY,
+            intelligenceSchedulerDefaults.pools["speech-local"].concurrency,
+          ),
+        },
+        "speech-cloud": {
+          concurrency: readPositiveInteger(
+            env.ARCADIA_INTELLIGENCE_CLOUD_SPEECH_CONCURRENCY,
+            intelligenceSchedulerDefaults.pools["speech-cloud"].concurrency,
+          ),
+        },
+      },
+    },
     speech: {
       voiceMap: loadVoiceMap(env.ARCADIA_SPEECH_VOICE_MAP),
       timeoutMs: env.ARCADIA_SPEECH_TIMEOUT_MS
@@ -271,4 +367,10 @@ export function loadIntelligenceConfig(
         : 900_000,
     },
   };
+}
+
+function readPositiveInteger(value: string | undefined, fallback: number): number {
+  if (!value?.trim()) return fallback;
+  const parsed = Number(value);
+  return positiveInteger(parsed, fallback);
 }

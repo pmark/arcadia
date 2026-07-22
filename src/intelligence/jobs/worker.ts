@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import PQueue from "p-queue";
 import { nowIso } from "../../utils/time.js";
 import type { IntelligenceArtifactStore } from "../artifacts/store.js";
 import {
@@ -18,8 +19,17 @@ import {
   ComfyUiExecutionFailedError,
   type ComfyUiImageExecutor,
 } from "../comfyui/imageExecutor.js";
-import type { IntelligenceV01Config } from "../config/types.js";
-import type { IntelligenceJobRepository } from "../db/repository.js";
+import { resolveIntelligenceSchedulerConfig } from "../config/defaults.js";
+import type {
+  IntelligenceResourceGroup,
+  IntelligenceSchedulerConfig,
+  IntelligenceV01Config,
+} from "../config/types.js";
+import {
+  IntelligenceJobLeaseLostError,
+  type ClaimedIntelligenceJob,
+  type IntelligenceJobRepository,
+} from "../db/repository.js";
 import { LiteLlmUnavailableError } from "../litellm/httpClient.js";
 import type { LiteLlmClient } from "../litellm/client.js";
 import { resolveIntelligenceRoute, type ResolvedIntelligenceRoute } from "../routing/resolveRoute.js";
@@ -31,6 +41,7 @@ import {
 import { parseWavMetadata } from "../speech/wavMeta.js";
 import { UnknownVoiceError, resolveVoice } from "../speech/voices.js";
 import { validateOutput } from "../validation/validateOutput.js";
+import { resolveIntelligenceResourceGroup } from "./resourceGroup.js";
 import type {
   IntelligenceArtifactRecord,
   IntelligenceJob,
@@ -41,8 +52,8 @@ import type {
 /**
  * In-process worker for Arcadia Intelligence v0.1.
  *
- * Claims one durable SQLite job at a time via a lease (see
- * IntelligenceJobRepository.claimNextQueuedJob), resolves its
+ * Claims durable SQLite jobs only when their bounded resource pool has
+ * capacity, renews each active lease, resolves its
  * capability/execution/profile to exactly one configured execution route
  * (see resolveIntelligenceRoute), executes it, validates the result against
  * the app-supplied JSON Schema, and persists a terminal status. There is no
@@ -51,6 +62,11 @@ import type {
  */
 export class IntelligenceWorker {
   private readonly workerId: string;
+  private readonly schedulerConfig: IntelligenceSchedulerConfig;
+  private readonly queues: Map<IntelligenceResourceGroup, PQueue>;
+  private dispatchTimer: NodeJS.Timeout | undefined;
+  private dispatching = false;
+  private stopped = true;
 
   public constructor(
     private readonly _repository: IntelligenceJobRepository,
@@ -64,6 +80,13 @@ export class IntelligenceWorker {
     workerId: string = randomUUID(),
   ) {
     this.workerId = workerId;
+    this.schedulerConfig = resolveIntelligenceSchedulerConfig(_config);
+    this.queues = new Map(
+      Object.entries(this.schedulerConfig.pools).map(([group, pool]) => [
+        group as IntelligenceResourceGroup,
+        new PQueue({ concurrency: pool.concurrency }),
+      ]),
+    );
   }
 
   /**
@@ -71,18 +94,20 @@ export class IntelligenceWorker {
    * undefined if no job was available to claim.
    */
   public async runOnce(): Promise<IntelligenceJob | undefined> {
-    const job = await this._repository.claimNextQueuedJob(
+    const claimed = await this._repository.claimNextQueuedJob(
       this.workerId,
       nowIso(),
       this._config.leaseDurationMs,
     );
-    if (!job) {
+    if (!claimed) {
       return undefined;
     }
 
-    const startedAt = Date.now();
+    return this.executeClaimedJob(claimed);
+  }
 
-    const resolution = resolveIntelligenceRoute(
+  private resolveJobRoute(job: IntelligenceJob) {
+    return resolveIntelligenceRoute(
       {
         capability: job.request.capability,
         execution: job.request.execution,
@@ -92,12 +117,54 @@ export class IntelligenceWorker {
       this._config.routes,
       { allowPaidUsage: job.request.executionPolicy.allowPaidUsage },
     );
+  }
+
+  private async executeClaimedJob(
+    claimed: ClaimedIntelligenceJob,
+    preResolved?: ReturnType<typeof resolveIntelligenceRoute>,
+  ): Promise<IntelligenceJob> {
+    const heartbeatIntervalMs = Math.max(5, Math.floor(this._config.leaseDurationMs / 3));
+    let renewing = false;
+    const heartbeat = setInterval(() => {
+      if (renewing) return;
+      renewing = true;
+      void this._repository.renewJobLease(
+        claimed.job.id,
+        claimed.lease,
+        nowIso(),
+        this._config.leaseDurationMs,
+      ).catch(() => false).finally(() => {
+        renewing = false;
+      });
+    }, heartbeatIntervalMs);
+
+    try {
+      return await this.executeClaimedAttempt(claimed, preResolved);
+    } catch (error) {
+      if (error instanceof IntelligenceJobLeaseLostError) {
+        return (await this._repository.findById(claimed.job.id)) ?? claimed.job;
+      }
+      throw error;
+    } finally {
+      clearInterval(heartbeat);
+    }
+  }
+
+  private async executeClaimedAttempt(
+    claimed: ClaimedIntelligenceJob,
+    preResolved?: ReturnType<typeof resolveIntelligenceRoute>,
+  ): Promise<IntelligenceJob> {
+    const { job, lease } = claimed;
+
+    const startedAt = Date.now();
+    const resolution = preResolved ?? this.resolveJobRoute(job);
 
     if (!resolution.ok) {
       return this._repository.blockJob(
         job.id,
         { code: resolution.code.toUpperCase(), message: resolution.message },
         nowIso(),
+        lease,
       );
     }
 
@@ -121,6 +188,7 @@ export class IntelligenceWorker {
               "LiteLLM output failed validation against the app-supplied JSON Schema.",
           },
           nowIso(),
+          lease,
         );
       }
 
@@ -135,13 +203,17 @@ export class IntelligenceWorker {
         },
         selectedRoute: resolution.route.liteLlmRoute,
         completedAt: nowIso(),
-      });
+      }, lease);
     } catch (error) {
+      if (error instanceof IntelligenceJobLeaseLostError) {
+        throw error;
+      }
       if (error instanceof LiteLlmUnavailableError) {
         return this._repository.blockJob(
           job.id,
           { code: "LITELLM_UNAVAILABLE", message: error.message },
           nowIso(),
+          lease,
         );
       }
       if (error instanceof SpeechUnavailableError) {
@@ -149,6 +221,7 @@ export class IntelligenceWorker {
           job.id,
           { code: "SPEECH_UNAVAILABLE", message: error.message },
           nowIso(),
+          lease,
         );
       }
       if (error instanceof SpeechGenerationError) {
@@ -156,6 +229,7 @@ export class IntelligenceWorker {
           job.id,
           { code: error.code, message: error.message },
           nowIso(),
+          lease,
         );
       }
       if (
@@ -167,6 +241,7 @@ export class IntelligenceWorker {
           job.id,
           { code: error.code, message: error.message },
           nowIso(),
+          lease,
         );
       }
       if (
@@ -178,6 +253,7 @@ export class IntelligenceWorker {
           job.id,
           { code: error.code, message: error.message },
           nowIso(),
+          lease,
         );
       }
 
@@ -188,6 +264,7 @@ export class IntelligenceWorker {
           message: error instanceof Error ? error.message : String(error),
         },
         nowIso(),
+        lease,
       );
     }
   }
@@ -368,12 +445,12 @@ export class IntelligenceWorker {
     return { output, usage };
   }
 
-  /**
-   * Starts the polling loop and returns a function that stops it.
-   */
+  /** Starts bounded dispatch and returns a function that stops new claims. */
   public start(options: { heartbeatPath?: string } = {}): () => void {
-    let stopped = false;
-    let timer: NodeJS.Timeout | undefined;
+    if (!this.stopped) {
+      throw new Error("Arcadia Intelligence worker is already running.");
+    }
+    this.stopped = false;
     const heartbeatPath = options.heartbeatPath;
     const writeHeartbeat = (): void => {
       if (!heartbeatPath) return;
@@ -387,31 +464,13 @@ export class IntelligenceWorker {
 
     writeHeartbeat();
     const heartbeatTimer = heartbeatPath ? setInterval(writeHeartbeat, 5_000) : undefined;
-
-    const tick = (): void => {
-      if (stopped) {
-        return;
-      }
-
-      this.runOnce()
-        .catch(() => {
-          // A single tick's failure should not stop the loop; job-level
-          // errors are already persisted as failed/blocked by runOnce.
-        })
-        .finally(() => {
-          writeHeartbeat();
-          if (!stopped) {
-            timer = setTimeout(tick, this._config.workerPollIntervalMs);
-          }
-        });
-    };
-
-    timer = setTimeout(tick, 0);
+    this.scheduleDispatch(0, writeHeartbeat);
 
     return () => {
-      stopped = true;
-      if (timer) {
-        clearTimeout(timer);
+      this.stopped = true;
+      if (this.dispatchTimer) {
+        clearTimeout(this.dispatchTimer);
+        this.dispatchTimer = undefined;
       }
       if (heartbeatTimer) {
         clearInterval(heartbeatTimer);
@@ -420,6 +479,114 @@ export class IntelligenceWorker {
         try { unlinkSync(heartbeatPath); } catch {}
       }
     };
+  }
+
+  /** Wakes a running worker after submission/retry instead of waiting for polling. */
+  public wake(): void {
+    this.scheduleDispatch(0);
+  }
+
+  /** Waits for the current dispatch pass and all already-claimed work. */
+  public async onIdle(): Promise<void> {
+    while (this.dispatching) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 1));
+    }
+    await Promise.all([...this.queues.values()].map((queue) => queue.onIdle()));
+  }
+
+  public getSchedulerSummary(): {
+    dispatching: boolean;
+    pools: Record<string, { concurrency: number; active: number; waiting: number }>;
+  } {
+    return {
+      dispatching: this.dispatching,
+      pools: Object.fromEntries(
+        [...this.queues.entries()].map(([group, queue]) => [
+          group,
+          {
+            concurrency: this.schedulerConfig.pools[group].concurrency,
+            active: queue.pending,
+            waiting: queue.size,
+          },
+        ]),
+      ),
+    };
+  }
+
+  private scheduleDispatch(delayMs: number, writeHeartbeat?: () => void): void {
+    if (this.stopped) return;
+    if (this.dispatchTimer) {
+      if (delayMs > 0) return;
+      clearTimeout(this.dispatchTimer);
+    }
+    this.dispatchTimer = setTimeout(() => {
+      this.dispatchTimer = undefined;
+      void this.dispatchAvailable(writeHeartbeat);
+    }, delayMs);
+  }
+
+  private async dispatchAvailable(writeHeartbeat?: () => void): Promise<void> {
+    if (this.stopped || this.dispatching) return;
+    this.dispatching = true;
+
+    try {
+      const candidates = await this._repository.listClaimableJobs(
+        nowIso(),
+        this.schedulerConfig.scanLimit,
+      );
+
+      for (const candidate of candidates) {
+        if (this.stopped) break;
+        const resolution = this.resolveJobRoute(candidate);
+
+        if (!resolution.ok) {
+          const claimed = await this._repository.claimJob(
+            candidate.id,
+            this.workerId,
+            nowIso(),
+            this._config.leaseDurationMs,
+          );
+          if (claimed) {
+            await this.executeClaimedJob(claimed, resolution);
+          }
+          continue;
+        }
+
+        const group = resolveIntelligenceResourceGroup(resolution.route);
+        const queue = this.queues.get(group);
+        if (!queue) {
+          throw new Error(`Arcadia Intelligence scheduler pool is missing: ${group}`);
+        }
+        if (queue.pending >= this.schedulerConfig.pools[group].concurrency || queue.size > 0) {
+          continue;
+        }
+
+        const claimed = await this._repository.claimJob(
+          candidate.id,
+          this.workerId,
+          nowIso(),
+          this._config.leaseDurationMs,
+        );
+        if (!claimed) continue;
+
+        void queue.add(async () => {
+          await this.executeClaimedJob(claimed, resolution);
+        }).catch(() => {
+          // Job-level failures are persisted by executeClaimedJob. A queue
+          // task rejection must not stop other resource groups.
+        }).finally(() => {
+          writeHeartbeat?.();
+          this.scheduleDispatch(0, writeHeartbeat);
+        });
+      }
+    } catch {
+      // A dispatch-level failure is retried on the next poll. Claimed jobs
+      // retain their leases and are independently finalized by their tasks.
+    } finally {
+      this.dispatching = false;
+      writeHeartbeat?.();
+      this.scheduleDispatch(this._config.workerPollIntervalMs, writeHeartbeat);
+    }
   }
 }
 

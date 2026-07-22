@@ -23,7 +23,10 @@ the app's domain.
   `transparency`) validated before a job runs — not a generic
   capability-negotiation system
 - SQLite-backed durable jobs
-- In-process worker loop
+- One in-process dispatcher with independent bounded resource pools for local
+  LiteLLM, cloud text/image, Codex CLI, ComfyUI, and local/cloud speech
+- Renewable SQLite leases and per-claim fencing tokens so long executions stay
+  owned and stale attempts cannot overwrite a reclaimed job
 - Generic JSON Schema validation
 - Submit, status, retry, and health API endpoints
 - A local artifact store for generated binary results (currently images):

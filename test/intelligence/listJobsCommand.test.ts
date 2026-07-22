@@ -57,6 +57,12 @@ describe("intelligence list-jobs command", () => {
           repository,
           buildIntelligenceRequest({ idempotencyKey: "idem-usage-completed" }),
         );
+        const claimed = await repository.claimNextQueuedJob(
+          "usage-test-worker",
+          new Date().toISOString(),
+          30_000,
+        );
+        expect(claimed?.job.id).toBe(completed.job.id);
         await repository.completeJob(completed.job.id, {
           result: { greeting: "hello" },
           validation: { passed: true },
@@ -70,7 +76,7 @@ describe("intelligence list-jobs command", () => {
           },
           selectedRoute: "arcadia.text.generate.local.standard",
           completedAt: new Date().toISOString(),
-        });
+        }, claimed!.lease);
         await submitIntelligenceRequest(
           repository,
           buildIntelligenceRequest({ idempotencyKey: "idem-usage-queued" }),

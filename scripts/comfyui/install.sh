@@ -48,10 +48,10 @@ PY
 
 download https://huggingface.co/Comfy-Org/flux2-klein-4B/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors \
   "${MODEL_ROOT}/text_encoders/qwen_3_4b.safetensors"
-download https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/resolve/main/flux-2-klein-4b-fp8.safetensors \
-  "${MODEL_ROOT}/diffusion_models/flux-2-klein-4b-fp8.safetensors"
-download https://huggingface.co/black-forest-labs/FLUX.2-klein-base-4b-fp8/resolve/main/flux-2-klein-base-4b-fp8.safetensors \
-  "${MODEL_ROOT}/diffusion_models/flux-2-klein-base-4b-fp8.safetensors"
+download https://huggingface.co/Comfy-Org/flux2-klein/resolve/main/split_files/diffusion_models/flux-2-klein-4b.safetensors \
+  "${MODEL_ROOT}/diffusion_models/flux-2-klein-4b.safetensors"
+download https://huggingface.co/Comfy-Org/flux2-klein/resolve/main/split_files/diffusion_models/flux-2-klein-base-4b.safetensors \
+  "${MODEL_ROOT}/diffusion_models/flux-2-klein-base-4b.safetensors"
 download https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors \
   "${MODEL_ROOT}/vae/flux2-vae.safetensors"
 

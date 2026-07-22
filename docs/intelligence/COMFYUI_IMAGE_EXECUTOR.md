@@ -17,6 +17,8 @@ Arcadia uses ComfyUI as the local workflow engine and FLUX.2 Klein 4B as the
 default unified generation/editing model. The committed source workflows are
 the official ComfyUI templates in `config/intelligence/comfyui/`; Arcadia's
 API-form workflows are generated into the configured workflow directory.
+The installer selects the standard non-FP8 diffusion weights for Apple MPS;
+the FP8 weights are not a reliable execution format on this Mac backend.
 
 On this Mac the backend is installed at `/Users/pmark/AI/Arcadia-ComfyUI` and
 uses MPS on the Apple M4. Start it with:

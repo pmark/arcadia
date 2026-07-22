@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import type { IntelligenceArtifactStore } from "../artifacts/store.js";
 import type { IntelligenceV01Config } from "../config/types.js";
+import { resolveIntelligenceSchedulerConfig } from "../config/defaults.js";
 import type { IntelligenceJobRepository } from "../db/repository.js";
 import {
   InvalidExecutionTargetError,
@@ -39,6 +40,13 @@ export interface IntelligenceServerOptions {
   config: IntelligenceV01Config;
   artifactStore?: IntelligenceArtifactStore;
   fetchImpl?: typeof fetch;
+  scheduler?: {
+    wake(): void;
+    getSchedulerSummary(): {
+      dispatching: boolean;
+      pools: Record<string, { concurrency: number; active: number; waiting: number }>;
+    };
+  };
 }
 
 const JOB_ID_PATTERN = /^\/api\/intelligence\/jobs\/([^/]+)$/;
@@ -46,11 +54,11 @@ const RETRY_PATTERN = /^\/api\/intelligence\/jobs\/([^/]+)\/retry$/;
 const ARTIFACT_ID_PATTERN = /^\/api\/intelligence\/artifacts\/([^/]+)$/;
 
 export function createIntelligenceServer(options: IntelligenceServerOptions): Server {
-  const { repository, config, artifactStore } = options;
+  const { repository, config, artifactStore, scheduler } = options;
   const fetchImpl = options.fetchImpl ?? fetch;
 
   return createServer((req, res) => {
-    void handleRequest(req, res, repository, config, artifactStore, fetchImpl);
+    void handleRequest(req, res, repository, config, artifactStore, fetchImpl, scheduler);
   });
 }
 
@@ -61,24 +69,25 @@ async function handleRequest(
   config: IntelligenceV01Config,
   artifactStore: IntelligenceArtifactStore | undefined,
   fetchImpl: typeof fetch,
+  scheduler: IntelligenceServerOptions["scheduler"],
 ): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
   const method = req.method ?? "GET";
 
   try {
     if (method === "POST" && url.pathname === "/api/intelligence/jobs") {
-      await handleSubmitJob(req, res, repository);
+      await handleSubmitJob(req, res, repository, scheduler);
       return;
     }
 
     if (method === "GET" && url.pathname === "/api/intelligence/health") {
-      await handleHealth(res, config, fetchImpl, repository);
+      await handleHealth(res, config, fetchImpl, repository, scheduler);
       return;
     }
 
     const retryMatch = method === "POST" ? RETRY_PATTERN.exec(url.pathname) : null;
     if (retryMatch) {
-      await handleRetryJob(res, repository, config, decodeURIComponent(retryMatch[1]!));
+      await handleRetryJob(res, repository, config, decodeURIComponent(retryMatch[1]!), scheduler);
       return;
     }
 
@@ -106,6 +115,7 @@ async function handleSubmitJob(
   req: IncomingMessage,
   res: ServerResponse,
   repository: IntelligenceJobRepository,
+  scheduler: IntelligenceServerOptions["scheduler"],
 ): Promise<void> {
   let body: unknown;
   try {
@@ -123,6 +133,7 @@ async function handleSubmitJob(
 
   try {
     const response = await submitIntelligenceRequest(repository, body as IntelligenceRequest);
+    scheduler?.wake();
     sendJson(res, response.created ? 201 : 200, response);
   } catch (error) {
     if (
@@ -234,9 +245,11 @@ async function handleRetryJob(
   repository: IntelligenceJobRepository,
   config: IntelligenceV01Config,
   jobId: string,
+  scheduler: IntelligenceServerOptions["scheduler"],
 ): Promise<void> {
   try {
     const job = await retryIntelligenceJob(repository, jobId, config.maxRetries);
+    scheduler?.wake();
     sendJson(res, 200, { job });
   } catch (error) {
     if (error instanceof IntelligenceJobNotFoundError) {
@@ -256,6 +269,7 @@ async function handleHealth(
   config: IntelligenceV01Config,
   fetchImpl: typeof fetch,
   repository: IntelligenceJobRepository,
+  scheduler: IntelligenceServerOptions["scheduler"],
 ): Promise<void> {
   const liteLlmReachable = await pingLiteLlm(config.liteLlmBaseUrl, fetchImpl);
   const operationalSummary = repository.getOperationalSummary
@@ -271,6 +285,16 @@ async function handleHealth(
       executor: route.executor ?? "litellm",
       requiresPaidUsage: route.requiresPaidUsage,
     }));
+  const configuredScheduler = resolveIntelligenceSchedulerConfig(config);
+  const schedulerSummary = scheduler?.getSchedulerSummary() ?? {
+    dispatching: false,
+    pools: Object.fromEntries(
+      Object.entries(configuredScheduler.pools).map(([group, pool]) => [
+        group,
+        { concurrency: pool.concurrency, active: 0, waiting: 0 },
+      ]),
+    ),
+  };
   sendJson(res, 200, {
     ok: true,
     version: process.env.ARCADIA_VERSION?.trim() || "0.1.0",
@@ -280,6 +304,7 @@ async function handleHealth(
       routes,
     },
     jobs: operationalSummary,
+    scheduler: schedulerSummary,
   });
 }
 

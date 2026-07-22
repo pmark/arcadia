@@ -74,10 +74,15 @@ before extending it.
   `http://127.0.0.1:4000`) — never a direct backend URL. Speech and images have
   dedicated executors but still resolve via the registry. (LiteLLM sits in front
   of a local model server; see `docs/intelligence/`.)
-- **Worker model:** `IntelligenceWorker` (`jobs/worker.ts`) is a single
-  in-process, lease-based loop that claims **one job at a time**. A ComfyUI job
-  blocks the worker for up to its timeout (default **15 min**). There is **no
-  job cancellation** (ComfyUI has no interrupt hook wired).
+- **Worker model:** `IntelligenceWorker` (`jobs/worker.ts`) is one in-process
+  dispatcher with independent, bounded `p-queue` resource pools. Cloud text,
+  cloud image, Codex CLI, local LiteLLM, ComfyUI, and local/cloud speech can
+  progress concurrently without one long image job blocking every route.
+  Defaults are conservative for local executors and configurable with
+  `ARCADIA_INTELLIGENCE_*_CONCURRENCY` variables. Claims remain durable in
+  SQLite: active jobs renew their leases, and an opaque claim token fences a
+  stale/reclaimed attempt from committing. There is **no job cancellation**
+  (ComfyUI has no interrupt hook wired).
 - **Jobs are durable + idempotent:** `intelligence_jobs`, keyed by
   `idempotency_key` (unique), status `queued → running → {completed | failed |
   blocked}`, one retry max.

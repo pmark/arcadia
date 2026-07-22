@@ -114,12 +114,38 @@ describe("health endpoint", () => {
     const response = await fetch(`http://127.0.0.1:${port}/api/intelligence/health`);
     const body = (await response.json()) as {
       liteLlm: { routes: Array<{ id: string; requiresPaidUsage: boolean }> };
+      scheduler: { pools: Record<string, { concurrency: number }> };
     };
 
     expect(body.liteLlm.routes.map((route) => route.id).sort()).toEqual(
       ["arcadia.text.generate.local.fast", "arcadia.text.generate.local.standard", "arcadia.image.generate.cloud.quality"].sort(),
     );
+    expect(body.scheduler.pools["litellm-local"]?.concurrency).toBe(1);
+    expect(body.scheduler.pools["litellm-cloud-text"]?.concurrency).toBe(4);
     expect(JSON.stringify(body)).not.toMatch(/arcadia-default|arcadia-image/);
+  });
+
+  it("wakes the scheduler immediately after a job is submitted", async () => {
+    const repository = setupRepository();
+    const config = testIntelligenceConfig("http://127.0.0.1:1");
+    let wakeCount = 0;
+    const scheduler = {
+      wake: () => { wakeCount += 1; },
+      getSchedulerSummary: () => ({ dispatching: false, pools: {} }),
+    };
+    const apiServer = createIntelligenceServer({ repository, config, scheduler });
+    await new Promise<void>((resolve) => apiServer.listen(0, "127.0.0.1", resolve));
+    servers.push(apiServer);
+    const { port } = apiServer.address() as { port: number };
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/intelligence/jobs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(buildIntelligenceRequest()),
+    });
+
+    expect(response.status).toBe(201);
+    expect(wakeCount).toBe(1);
   });
 });
 

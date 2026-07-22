@@ -10,6 +10,25 @@ export interface IntelligenceOperationalSummary {
   lastSuccessfulRequest: string | null;
 }
 
+/** Opaque ownership proof for one claimed execution attempt. */
+export interface IntelligenceJobLease {
+  workerId: string;
+  token: string;
+}
+
+export interface ClaimedIntelligenceJob {
+  job: IntelligenceJob;
+  lease: IntelligenceJobLease;
+}
+
+/** Raised when an expired/reclaimed attempt tries to commit a result. */
+export class IntelligenceJobLeaseLostError extends Error {
+  public constructor(jobId: string) {
+    super(`Arcadia Intelligence lease was lost for job ${jobId}.`);
+    this.name = "IntelligenceJobLeaseLostError";
+  }
+}
+
 /**
  * Storage seam, implemented by ./sqliteRepository.ts against the shared
  * Arcadia workspace database (see ../../db/connection.js and
@@ -33,7 +52,26 @@ export interface IntelligenceJobRepository {
     workerId: string,
     nowIso: string,
     leaseDurationMs: number,
-  ): Promise<IntelligenceJob | undefined>;
+  ): Promise<ClaimedIntelligenceJob | undefined>;
+
+  /** Returns oldest-first jobs that are currently eligible for a claim. */
+  listClaimableJobs(nowIso: string, limit: number): Promise<IntelligenceJob[]>;
+
+  /** Atomically claims one known candidate if it is still eligible. */
+  claimJob(
+    jobId: string,
+    workerId: string,
+    nowIso: string,
+    leaseDurationMs: number,
+  ): Promise<ClaimedIntelligenceJob | undefined>;
+
+  /** Extends a live claim. False means another attempt now owns the job. */
+  renewJobLease(
+    jobId: string,
+    lease: IntelligenceJobLease,
+    nowIso: string,
+    leaseDurationMs: number,
+  ): Promise<boolean>;
 
   completeJob(
     jobId: string,
@@ -41,18 +79,21 @@ export interface IntelligenceJobRepository {
       IntelligenceJob,
       "result" | "validation" | "usage" | "selectedRoute" | "completedAt"
     >,
+    lease: IntelligenceJobLease,
   ): Promise<IntelligenceJob>;
 
   failJob(
     jobId: string,
     error: NonNullable<IntelligenceJob["error"]>,
     completedAt: string,
+    lease: IntelligenceJobLease,
   ): Promise<IntelligenceJob>;
 
   blockJob(
     jobId: string,
     error: NonNullable<IntelligenceJob["error"]>,
     completedAt: string,
+    lease: IntelligenceJobLease,
   ): Promise<IntelligenceJob>;
 
   /**

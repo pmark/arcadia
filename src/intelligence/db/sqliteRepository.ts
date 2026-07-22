@@ -1,7 +1,14 @@
+import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { createId } from "../../utils/id.js";
 import { nowIso } from "../../utils/time.js";
-import type { IntelligenceJobRepository, IntelligenceOperationalSummary } from "./repository.js";
+import {
+  IntelligenceJobLeaseLostError,
+  type ClaimedIntelligenceJob,
+  type IntelligenceJobLease,
+  type IntelligenceJobRepository,
+  type IntelligenceOperationalSummary,
+} from "./repository.js";
 import type {
   IntelligenceJob,
   IntelligenceJobStatus,
@@ -27,6 +34,7 @@ interface IntelligenceJobRow {
   error_message: string | null;
   retry_count: number;
   lease_owner: string | null;
+  lease_token: string | null;
   lease_expires_at: string | null;
   created_at: string;
   started_at: string | null;
@@ -93,6 +101,7 @@ export function createSqliteIntelligenceJobRepository(
       error_message: null,
       retry_count: 0,
       lease_owner: null,
+      lease_token: null,
       lease_expires_at: null,
       created_at: timestamp,
       started_at: null,
@@ -103,12 +112,12 @@ export function createSqliteIntelligenceJobRepository(
       `INSERT INTO intelligence_jobs (
         id, idempotency_key, operation_id, client_app, project_id, mission_id, request_json,
         status, selected_route, result_json, validation_json, usage_json, error_code,
-        error_message, retry_count, lease_owner, lease_expires_at, created_at, started_at,
+        error_message, retry_count, lease_owner, lease_token, lease_expires_at, created_at, started_at,
         completed_at
       ) VALUES (
         @id, @idempotency_key, @operation_id, @client_app, @project_id, @mission_id, @request_json,
         @status, @selected_route, @result_json, @validation_json, @usage_json, @error_code,
-        @error_message, @retry_count, @lease_owner, @lease_expires_at, @created_at, @started_at,
+        @error_message, @retry_count, @lease_owner, @lease_token, @lease_expires_at, @created_at, @started_at,
         @completed_at
       )`,
     ).run(row);
@@ -120,7 +129,7 @@ export function createSqliteIntelligenceJobRepository(
     workerId: string,
     nowIsoValue: string,
     leaseDurationMs: number,
-  ): Promise<IntelligenceJob | undefined> {
+  ): Promise<ClaimedIntelligenceJob | undefined> {
     const claimed = db.transaction(() => {
       const candidate = db
         .prepare(
@@ -136,34 +145,86 @@ export function createSqliteIntelligenceJobRepository(
         return undefined;
       }
 
-      const leaseExpiresAt = new Date(Date.parse(nowIsoValue) + leaseDurationMs).toISOString();
-      db.prepare(
-        `UPDATE intelligence_jobs
-         SET status = 'running', lease_owner = ?, lease_expires_at = ?,
-             started_at = COALESCE(started_at, ?)
-         WHERE id = ?`,
-      ).run(workerId, leaseExpiresAt, nowIsoValue, candidate.id);
-
-      return db
-        .prepare("SELECT * FROM intelligence_jobs WHERE id = ?")
-        .get(candidate.id) as IntelligenceJobRow;
+      return claimCandidate(candidate.id, workerId, nowIsoValue, leaseDurationMs);
     })();
 
-    return Promise.resolve(claimed ? rowToJob(claimed) : undefined);
+    return Promise.resolve(claimed);
   }
 
-  function completeJob(
+  function listClaimableJobs(nowIsoValue: string, limit: number): Promise<IntelligenceJob[]> {
+    const rows = db.prepare(
+      `SELECT * FROM intelligence_jobs
+       WHERE status = 'queued'
+          OR (status = 'running' AND (lease_expires_at IS NULL OR lease_expires_at < ?))
+       ORDER BY created_at ASC, rowid ASC
+       LIMIT ?`,
+    ).all(nowIsoValue, Math.max(1, Math.floor(limit))) as IntelligenceJobRow[];
+    return Promise.resolve(rows.map(rowToJob));
+  }
+
+  function claimJob(
+    jobId: string,
+    workerId: string,
+    nowIsoValue: string,
+    leaseDurationMs: number,
+  ): Promise<ClaimedIntelligenceJob | undefined> {
+    const claimed = db.transaction(() =>
+      claimCandidate(jobId, workerId, nowIsoValue, leaseDurationMs)
+    )();
+    return Promise.resolve(claimed);
+  }
+
+  function claimCandidate(
+    jobId: string,
+    workerId: string,
+    nowIsoValue: string,
+    leaseDurationMs: number,
+  ): ClaimedIntelligenceJob | undefined {
+    const lease: IntelligenceJobLease = { workerId, token: randomUUID() };
+    const leaseExpiresAt = new Date(Date.parse(nowIsoValue) + leaseDurationMs).toISOString();
+    const result = db.prepare(
+      `UPDATE intelligence_jobs
+       SET status = 'running', lease_owner = ?, lease_token = ?, lease_expires_at = ?,
+           started_at = COALESCE(started_at, ?)
+       WHERE id = ?
+         AND (status = 'queued'
+           OR (status = 'running' AND (lease_expires_at IS NULL OR lease_expires_at < ?)))`,
+    ).run(workerId, lease.token, leaseExpiresAt, nowIsoValue, jobId, nowIsoValue);
+    if (result.changes !== 1) {
+      return undefined;
+    }
+    const row = db.prepare("SELECT * FROM intelligence_jobs WHERE id = ?").get(jobId) as IntelligenceJobRow;
+    return { job: rowToJob(row), lease };
+  }
+
+  function renewJobLease(
+    jobId: string,
+    lease: IntelligenceJobLease,
+    nowIsoValue: string,
+    leaseDurationMs: number,
+  ): Promise<boolean> {
+    const leaseExpiresAt = new Date(Date.parse(nowIsoValue) + leaseDurationMs).toISOString();
+    const result = db.prepare(
+      `UPDATE intelligence_jobs SET lease_expires_at = ?
+       WHERE id = ? AND status = 'running' AND lease_owner = ? AND lease_token = ?`,
+    ).run(leaseExpiresAt, jobId, lease.workerId, lease.token);
+    return Promise.resolve(result.changes === 1);
+  }
+
+  async function completeJob(
     jobId: string,
     update: Pick<
       IntelligenceJob,
       "result" | "validation" | "usage" | "selectedRoute" | "completedAt"
     >,
+    lease: IntelligenceJobLease,
   ): Promise<IntelligenceJob> {
-    db.prepare(
+    const result = db.prepare(
       `UPDATE intelligence_jobs
        SET status = 'completed', result_json = ?, validation_json = ?, usage_json = ?,
-           selected_route = ?, completed_at = ?, lease_owner = NULL, lease_expires_at = NULL
-       WHERE id = ?`,
+           selected_route = ?, completed_at = ?, lease_owner = NULL, lease_token = NULL,
+           lease_expires_at = NULL
+       WHERE id = ? AND status = 'running' AND lease_owner = ? AND lease_token = ?`,
     ).run(
       JSON.stringify(update.result ?? null),
       JSON.stringify(update.validation ?? null),
@@ -171,7 +232,10 @@ export function createSqliteIntelligenceJobRepository(
       update.selectedRoute ?? null,
       update.completedAt,
       jobId,
+      lease.workerId,
+      lease.token,
     );
+    assertLeaseHeld(jobId, result.changes);
     return requireJob(jobId);
   }
 
@@ -179,31 +243,44 @@ export function createSqliteIntelligenceJobRepository(
     jobId: string,
     error: NonNullable<IntelligenceJob["error"]>,
     completedAt: string,
+    lease: IntelligenceJobLease,
   ): Promise<IntelligenceJob> {
-    return finalizeWithError("failed", jobId, error, completedAt);
+    return finalizeWithError("failed", jobId, error, completedAt, lease);
   }
 
   function blockJob(
     jobId: string,
     error: NonNullable<IntelligenceJob["error"]>,
     completedAt: string,
+    lease: IntelligenceJobLease,
   ): Promise<IntelligenceJob> {
-    return finalizeWithError("blocked", jobId, error, completedAt);
+    return finalizeWithError("blocked", jobId, error, completedAt, lease);
   }
 
-  function finalizeWithError(
+  async function finalizeWithError(
     status: "failed" | "blocked",
     jobId: string,
     error: NonNullable<IntelligenceJob["error"]>,
     completedAt: string,
+    lease: IntelligenceJobLease,
   ): Promise<IntelligenceJob> {
-    db.prepare(
+    const result = db.prepare(
       `UPDATE intelligence_jobs
        SET status = ?, error_code = ?, error_message = ?, completed_at = ?,
-           lease_owner = NULL, lease_expires_at = NULL
-       WHERE id = ?`,
-    ).run(status, error.code, error.message, completedAt, jobId);
+           lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL
+       WHERE id = ? AND status = 'running' AND lease_owner = ? AND lease_token = ?`,
+    ).run(status, error.code, error.message, completedAt, jobId, lease.workerId, lease.token);
+    assertLeaseHeld(jobId, result.changes);
     return requireJob(jobId);
+  }
+
+  function assertLeaseHeld(
+    jobId: string,
+    changes: number,
+  ): void {
+    if (changes !== 1) {
+      throw new IntelligenceJobLeaseLostError(jobId);
+    }
   }
 
   function retryJob(jobId: string, _nowIso: string): Promise<IntelligenceJob> {
@@ -211,7 +288,7 @@ export function createSqliteIntelligenceJobRepository(
       `UPDATE intelligence_jobs
        SET status = 'queued', retry_count = retry_count + 1, error_code = NULL,
            error_message = NULL, result_json = NULL, validation_json = NULL,
-           usage_json = NULL, selected_route = NULL, lease_owner = NULL,
+           usage_json = NULL, selected_route = NULL, lease_owner = NULL, lease_token = NULL,
            lease_expires_at = NULL, started_at = NULL, completed_at = NULL
        WHERE id = ?`,
     ).run(jobId);
@@ -284,6 +361,9 @@ export function createSqliteIntelligenceJobRepository(
     findByIdempotencyKey,
     createQueuedJob,
     claimNextQueuedJob,
+    listClaimableJobs,
+    claimJob,
+    renewJobLease,
     completeJob,
     failJob,
     blockJob,

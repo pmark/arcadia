@@ -19,3 +19,6 @@ This stays:
   an automatic fallback
 - one retry maximum
 - SQLite-backed durable jobs
+- independent bounded execution pools, with conservative local concurrency
+  and parallel cloud/Codex defaults
+- renewable leases and fenced completion for reliable long-running jobs

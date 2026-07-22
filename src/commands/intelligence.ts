@@ -98,14 +98,19 @@ export function runIntelligenceServeCommand(options: IntelligenceServeOptions): 
     heartbeatPath: path.join(workspacePath, ".arcadia", "intelligence-worker.heartbeat"),
   });
 
-  const server = createIntelligenceServer({ repository, config, artifactStore });
+  const server = createIntelligenceServer({ repository, config, artifactStore, scheduler: worker });
   const port = options.port ?? DEFAULT_PORT;
 
+  let shuttingDown = false;
   const shutdown = (): void => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     stopWorker();
     server.close(() => {
-      db.close();
-      process.exit(0);
+      void worker.onIdle().finally(() => {
+        db.close();
+        process.exit(0);
+      });
     });
   };
   process.on("SIGINT", shutdown);

@@ -8,6 +8,28 @@ import type { IntelligenceCapability, IntelligenceProfile } from "../types.js";
 export type IntelligenceRouteLocation = "local" | "cloud";
 export type IntelligenceRouteExecutor = "litellm" | "codex-cli" | "comfyui" | "speech";
 
+export const INTELLIGENCE_RESOURCE_GROUPS = [
+  "litellm-local",
+  "litellm-cloud-text",
+  "litellm-cloud-image",
+  "codex-cli",
+  "comfyui",
+  "speech-local",
+  "speech-cloud",
+] as const;
+export type IntelligenceResourceGroup = (typeof INTELLIGENCE_RESOURCE_GROUPS)[number];
+
+export type IntelligenceSchedulerPoolConfig = {
+  /** Maximum simultaneously executing jobs in this resource group. */
+  concurrency: number;
+};
+
+export type IntelligenceSchedulerConfig = {
+  /** Number of durable candidates inspected during each dispatch pass. */
+  scanLimit: number;
+  pools: Record<IntelligenceResourceGroup, IntelligenceSchedulerPoolConfig>;
+};
+
 /**
  * One entry in Arcadia's route registry: a deterministic mapping from a
  * semantic (capability, location, profile) tuple to a single LiteLLM
@@ -79,6 +101,15 @@ export type IntelligenceV01Config = {
    * reclaim it. Makes job execution restart-safe.
    */
   leaseDurationMs: number;
+
+  /**
+   * Bounded, independent execution pools. Optional for programmatic callers;
+   * omitted values use the production defaults from config/defaults.ts.
+   */
+  scheduler?: {
+    scanLimit?: number;
+    pools?: Partial<Record<IntelligenceResourceGroup, Partial<IntelligenceSchedulerPoolConfig>>>;
+  };
 
   codexCli?: {
     command: string;

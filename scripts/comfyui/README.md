@@ -12,7 +12,9 @@ scripts/comfyui/install.sh
 
 The installer uses resumable downloads and validates each safetensors file
 before placing it in ComfyUI's model directories. The FLUX.2 Klein 4B files
-are large; rerunning the installer safely resumes an interrupted transfer.
+are large; rerunning the installer safely resumes an interrupted transfer. It
+uses the standard non-FP8 weights because Apple MPS cannot execute the FP8
+dequantization path reliably.
 
 Then
 regenerate the API workflows whenever the committed source workflow templates

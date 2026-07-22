@@ -43,6 +43,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureAskFeedbackTable(db);
   ensureIntelligenceJobsTable(db);
   ensureIntelligenceJobOperationIdColumn(db);
+  ensureIntelligenceJobLeaseTokenColumn(db);
   ensureIntelligenceJobArtifactsTable(db);
   ensureIntelligenceJobArtifactAudioColumns(db);
   ensureOrientationTables(db);
@@ -220,6 +221,7 @@ function ensureIntelligenceJobsTable(db: Database.Database): void {
       error_message TEXT,
       retry_count INTEGER NOT NULL DEFAULT 0,
       lease_owner TEXT,
+      lease_token TEXT,
       lease_expires_at TEXT,
       created_at TEXT NOT NULL,
       started_at TEXT,
@@ -228,6 +230,14 @@ function ensureIntelligenceJobsTable(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_intelligence_jobs_status ON intelligence_jobs(status);
     CREATE INDEX IF NOT EXISTS idx_intelligence_jobs_created_at ON intelligence_jobs(created_at);
   `);
+}
+
+/** Adds per-attempt fencing to databases created before parallel execution. */
+function ensureIntelligenceJobLeaseTokenColumn(db: Database.Database): void {
+  const columns = db.prepare("PRAGMA table_info(intelligence_jobs)").all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === "lease_token")) {
+    db.prepare("ALTER TABLE intelligence_jobs ADD COLUMN lease_token TEXT").run();
+  }
 }
 
 /**

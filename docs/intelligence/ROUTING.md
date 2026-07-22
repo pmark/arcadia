@@ -175,6 +175,33 @@ a typed failure rather than a guessed route name.
 This stays a small, explicit, in-code registry (`buildDefaultRoutes`) rather
 than a generic rules engine or one environment variable per route.
 
+### Parallel execution pools
+
+Routing remains deterministic; scheduling only controls when the already
+resolved route may execute. The in-process worker uses independent bounded
+`p-queue` pools backed by the durable SQLite job table. It claims a job only
+when that route's pool has capacity, renews the active lease, and fences every
+terminal write with the claim token. Submitting or retrying through the HTTP
+API wakes the dispatcher immediately; polling remains the recovery path for
+jobs inserted while the process is down or by another process.
+
+| Variable | Default | Resource pool |
+| --- | ---: | --- |
+| `ARCADIA_INTELLIGENCE_LOCAL_CONCURRENCY` | `1` | local LiteLLM text/image |
+| `ARCADIA_INTELLIGENCE_CLOUD_TEXT_CONCURRENCY` | `4` | cloud LiteLLM text |
+| `ARCADIA_INTELLIGENCE_CLOUD_IMAGE_CONCURRENCY` | `2` | cloud LiteLLM image |
+| `ARCADIA_INTELLIGENCE_CODEX_CONCURRENCY` | `3` | Codex CLI text/image |
+| `ARCADIA_INTELLIGENCE_COMFYUI_CONCURRENCY` | `1` | local ComfyUI image |
+| `ARCADIA_INTELLIGENCE_LOCAL_SPEECH_CONCURRENCY` | `1` | local speech |
+| `ARCADIA_INTELLIGENCE_CLOUD_SPEECH_CONCURRENCY` | `4` | cloud speech |
+| `ARCADIA_INTELLIGENCE_SCAN_LIMIT` | `100` | oldest claimable jobs inspected per dispatch pass |
+
+Lower a cloud limit to match provider/account quotas. Raise a local limit only
+after verifying RAM/VRAM headroom and backend support for simultaneous work.
+These are execution limits, not route-selection weights, retries, or fallback
+rules. The health endpoint exposes configured, active, and waiting counts for
+each pool.
+
 ### Example: this repo's current local LiteLLM setup
 
 ```sh

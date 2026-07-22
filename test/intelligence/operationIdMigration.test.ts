@@ -48,4 +48,21 @@ describe("intelligence_jobs.capability -> operation_id migration", () => {
       removeWorkspace(workspace);
     }
   });
+
+  it("adds lease_token to an existing jobs table idempotently", () => {
+    const workspace = createTempWorkspace();
+    try {
+      const db = openWorkspaceDatabase(workspace);
+      db.exec("ALTER TABLE intelligence_jobs DROP COLUMN lease_token");
+
+      applyMigrations(db);
+      applyMigrations(db);
+
+      const columns = db.prepare("PRAGMA table_info(intelligence_jobs)").all() as Array<{ name: string }>;
+      expect(columns.some((column) => column.name === "lease_token")).toBe(true);
+      db.close();
+    } finally {
+      removeWorkspace(workspace);
+    }
+  });
 });
