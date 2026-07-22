@@ -1417,7 +1417,7 @@ describe("CLI response contract", () => {
     expect(json.ok).toBe(false);
     expect(json.command).toBe("work.update");
     expect(json.error.code).toBe("VALIDATION_ERROR");
-    expect(json.error.details.fields).toEqual(["queue", "classification", "nextAction", "status"]);
+    expect(json.error.details.fields).toEqual(["queue", "classification", "nextAction", "status", "effort"]);
   });
 
   it("emits stable JSON for missing work item updates", () => {

@@ -5,11 +5,15 @@ import { useSearchParams } from "next/navigation";
 import { MobileShell } from "../../components/mobile-shell";
 import { EmptyState, ErrorState, LoadingState, Section } from "../../components/dashboard-ui";
 import type {
+  DailyCapacity,
   MissionControlActionItem,
+  MissionControlFits,
   MissionControlNodeDetail,
   MissionControlNodeSummary,
-  MissionControlOverview
+  MissionControlOverview,
+  OrientationEffort
 } from "../../lib/mission-control-types";
+import { EFFORT_LABELS } from "../../lib/mission-control-types";
 
 type UrgencyLevel = "critical" | "attention" | "quiet";
 
@@ -19,10 +23,21 @@ const URGENCY_CLASS: Record<UrgencyLevel, string> = {
   quiet: "border-line text-muted"
 };
 
+const EFFORTS: OrientationEffort[] = ["quick", "short", "session", "project"];
+
 function UrgencyBadge({ level }: { level: UrgencyLevel }) {
   return (
     <span className={`inline-flex h-6 items-center rounded-md border px-2 text-xs font-semibold ${URGENCY_CLASS[level]}`}>
       {level}
+    </span>
+  );
+}
+
+/** Only ever rendered for a sized item — un-sized rows look exactly as they did. */
+function EffortBadge({ effort }: { effort: OrientationEffort }) {
+  return (
+    <span className="inline-flex h-6 items-center rounded-md border border-line px-2 text-xs font-medium text-muted">
+      {effort} · {EFFORT_LABELS[effort]}
     </span>
   );
 }
@@ -35,7 +50,10 @@ function ActionItemRow({ item, onSelect }: { item: MissionControlActionItem; onS
       className="flex w-full min-w-0 items-center justify-between gap-3 rounded-md border border-line bg-panel p-3 text-left shadow-soft"
     >
       <span className="min-w-0 truncate text-sm font-medium text-ink">{item.title}</span>
-      <UrgencyBadge level={item.urgency.level} />
+      <span className="flex shrink-0 items-center gap-2">
+        {item.effort ? <EffortBadge effort={item.effort} /> : null}
+        <UrgencyBadge level={item.urgency.level} />
+      </span>
     </button>
   );
 }
@@ -53,6 +71,167 @@ function NodeSummaryRow({ node, onSelect }: { node: MissionControlNodeSummary; o
       </span>
       <UrgencyBadge level={node.urgency.level} />
     </button>
+  );
+}
+
+/**
+ * The dead-20-minute-gap affordance: state the window, get back only what
+ * honestly fits it, ranked by the urgency the rest of the view already uses.
+ * The answer is deterministic on the CLI side, so it comes back immediately.
+ */
+function WhatFitsPanel({ capacity, onSelect }: { capacity: DailyCapacity | null; onSelect: (id: string) => void }) {
+  const [minutes, setMinutes] = useState(20);
+  const [result, setResult] = useState<MissionControlFits | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const ask = useCallback(
+    async (windowMinutes: number) => {
+      setMinutes(windowMinutes);
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/mission-control/fits?minutes=${windowMinutes}`, { cache: "no-store" });
+        const body = await res.json();
+        if (!res.ok) {
+          setError(body?.error ?? "Could not work out what fits.");
+          setResult(null);
+        } else {
+          setResult(body as MissionControlFits);
+        }
+      } catch (fetchError) {
+        setError(fetchError instanceof Error ? fetchError.message : String(fetchError));
+        setResult(null);
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  return (
+    <div className="grid min-w-0 gap-3 rounded-md border border-line bg-panel p-4 shadow-soft">
+      <div>
+        <h2 className="text-sm font-semibold text-ink">What fits?</h2>
+        {capacity ? (
+          <p className="mt-1 text-xs text-muted">Today: {capacity.note}</p>
+        ) : (
+          <p className="mt-1 text-xs text-muted">Tell Arcadia what today holds and the morning packet becomes a plan.</p>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {[15, 20, 30, 60, 120].map((window) => (
+          <button
+            key={window}
+            type="button"
+            onClick={() => ask(window)}
+            disabled={loading}
+            className={`h-8 rounded-md border px-3 text-xs font-semibold disabled:opacity-50 ${
+              result && minutes === window ? "border-moss text-moss" : "border-line text-ink"
+            }`}
+          >
+            {window < 60 ? `${window}m` : `${window / 60}h`}
+          </button>
+        ))}
+      </div>
+
+      {loading ? <p className="text-xs text-muted">Checking…</p> : null}
+      {error ? <p className="text-sm text-clay">🚫 {error}</p> : null}
+
+      {result && !loading ? (
+        result.items.length === 0 ? (
+          <p className="text-sm text-muted">
+            {result.unsizedCount > 0
+              ? `Nothing sized fits ${result.availableMinutes}m — ${result.unsizedCount} entr${result.unsizedCount === 1 ? "y has" : "ies have"} no size yet.`
+              : `Nothing fits ${result.availableMinutes}m.`}
+          </p>
+        ) : (
+          <div className="grid gap-2">
+            {result.items.map((item) => (
+              <ActionItemRow key={item.id} item={item} onSelect={onSelect} />
+            ))}
+            {result.unsizedCount > 0 ? (
+              <p className="text-xs text-muted">
+                {result.unsizedCount} un-sized entr{result.unsizedCount === 1 ? "y" : "ies"} not considered.
+              </p>
+            ) : null}
+          </div>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Sizing an entry by hand. Goes to the deterministic update command rather
+ * than the reply interpreter — a click is already unambiguous.
+ */
+function EffortEditor({
+  nodeId,
+  effort,
+  onChanged
+}: {
+  nodeId: string;
+  effort: OrientationEffort | null;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const set = useCallback(
+    async (next: OrientationEffort | null) => {
+      setBusy(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/mission-control/${encodeURIComponent(nodeId)}/effort`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ effort: next })
+        });
+        if (!res.ok) {
+          const body = await res.json();
+          setError(body?.error ?? "Could not set that size.");
+          return;
+        }
+        onChanged();
+      } finally {
+        setBusy(false);
+      }
+    },
+    [nodeId, onChanged]
+  );
+
+  return (
+    <div className="grid gap-2">
+      <span className="text-xs font-semibold uppercase tracking-wide text-muted">How long does this take?</span>
+      <div className="flex flex-wrap gap-2">
+        {EFFORTS.map((option) => (
+          <button
+            key={option}
+            type="button"
+            onClick={() => set(option)}
+            disabled={busy}
+            className={`h-8 rounded-md border px-3 text-xs font-semibold disabled:opacity-50 ${
+              effort === option ? "border-moss text-moss" : "border-line text-ink"
+            }`}
+          >
+            {option} ({EFFORT_LABELS[option]})
+          </button>
+        ))}
+        {effort ? (
+          <button
+            type="button"
+            onClick={() => set(null)}
+            disabled={busy}
+            className="h-8 rounded-md border border-line px-3 text-xs font-semibold text-muted disabled:opacity-50"
+          >
+            clear
+          </button>
+        ) : null}
+      </div>
+      {error ? <p className="text-sm text-clay">🚫 {error}</p> : null}
+    </div>
   );
 }
 
@@ -233,7 +412,12 @@ function NodeDetailPanel({
         {detail.status.detail ? <p className="mt-1 text-xs text-muted">{detail.status.detail}</p> : null}
       </div>
 
-      {detail.kind === "life_entry" ? <LifeEntryActions nodeId={detail.id} onChanged={onChanged} /> : null}
+      {detail.kind === "life_entry" ? (
+        <>
+          <LifeEntryActions nodeId={detail.id} onChanged={onChanged} />
+          <EffortEditor nodeId={detail.id} effort={detail.orientationEntry?.effort ?? null} onChanged={onChanged} />
+        </>
+      ) : null}
       {detail.kind === "decision" ? <DecisionActions nodeId={detail.id} onChanged={onChanged} /> : null}
 
       {detail.actionItems.length > 0 ? (
@@ -360,6 +544,8 @@ function MissionControlPageInner() {
             </>
           ) : (
             <>
+              <WhatFitsPanel capacity={overview.capacity} onSelect={openNode} />
+
               <Section title="Needs You Now">
                 {overview.needsYouNow.length === 0 ? (
                   <EmptyState text="Nothing pressing." />

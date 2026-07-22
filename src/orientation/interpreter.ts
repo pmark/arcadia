@@ -6,15 +6,23 @@ import { IntelligenceWorker } from "../intelligence/jobs/worker.js";
 import { createLiteLlmHttpClient } from "../intelligence/litellm/httpClient.js";
 import { submitIntelligenceRequest } from "../intelligence/service/jobService.js";
 import type { IntelligenceJob, IntelligenceRequest, JsonValue } from "../intelligence/types.js";
+import { localDateStamp } from "../utils/time.js";
 import {
   completeOrientationEntry,
   confirmOrientationEntry,
   createOrientationEntry,
   findOrientationEntry,
   reprioritizeOrientationEntry,
+  setDailyCapacity,
   updateOrientationEntry
 } from "./repository.js";
-import type { LedgerOp, OrientationEntry, ReplyInterpretation } from "./types.js";
+import {
+  ORIENTATION_EFFORTS,
+  type LedgerOp,
+  type OrientationEffort,
+  type OrientationEntry,
+  type ReplyInterpretation
+} from "./types.js";
 
 export class OrientationInterpreterUnavailableError extends Error {
   public constructor(message: string) {
@@ -47,11 +55,14 @@ const REPLY_JSON_SCHEMA = {
       items: {
         type: "object",
         properties: {
-          op: { type: "string", enum: ["add", "update", "complete", "reprioritize", "confirm", "context"] },
+          op: { type: "string", enum: ["add", "update", "complete", "reprioritize", "confirm", "capacity", "context"] },
           entryId: { type: "string" },
           entry: { type: "object" },
           fields: { type: "object" },
           priority: { type: "string", enum: ["low", "normal", "high", "critical"] },
+          note: { type: "string" },
+          sessionBlocks: { type: "number" },
+          fragmentMinutes: { type: "number" },
           text: { type: "string" }
         },
         required: ["op"]
@@ -64,6 +75,32 @@ const REPLY_JSON_SCHEMA = {
   required: ["ops", "echo", "confidence"]
 };
 
+/**
+ * Capturing effort from free text is the ONE place a model is involved in
+ * this feature — "register the kids for baseball, quick" and "the disposal's
+ * a whole afternoon" already read as effort to a human. Everything
+ * downstream (fit-to-gap, the day slate, the packet) is pure deterministic
+ * logic over the stored value.
+ */
+const EFFORT_GUIDANCE =
+  "effort is an OPTIONAL coarse time cost, and you must only set it when the operator actually implied one — " +
+  'never guess a size for an entry they said nothing about. "quick" = 15 minutes or less (a phone call, one form); ' +
+  '"short" = up to an hour; "session" = a 1-3 hour block ("a whole afternoon", "a real chunk of time"); ' +
+  '"project" = multi-session work that needs breaking down. Phrases like "that\'s a quick one", "ten minutes", ' +
+  '"takes an afternoon", or "that\'s a big one" are effort, not priority. ';
+
+/**
+ * The daily capacity note. `note` must stay the operator's own words — it is
+ * what gets read back to them — while the two numbers are what the packet
+ * budgets against. Omit a number rather than inventing one; unknown is a
+ * meaningful, safe state, whereas a wrong number silently defers real work.
+ */
+const CAPACITY_GUIDANCE =
+  'Use "capacity" only when the operator is describing how much time TODAY holds (e.g. "one client session plus about an hour of gaps, ' +
+  'evening is gone", "today is packed", "I have a free afternoon"). note is their own wording, lightly cleaned up. ' +
+  "sessionBlocks is how many protected 1-3 hour blocks the day holds (0 is a valid and useful answer). " +
+  "fragmentMinutes is the total minutes of small gaps between commitments. Omit either number if they did not imply it. ";
+
 function buildInterpretationRequest(
   replyText: string,
   entries: OrientationEntry[],
@@ -75,6 +112,7 @@ function buildInterpretationRequest(
     entryType: entry.entryType,
     priority: entry.priority,
     horizon: entry.horizon,
+    effort: entry.effort,
     status: entry.status
   }));
 
@@ -89,11 +127,14 @@ function buildInterpretationRequest(
     "You maintain a small personal orientation ledger (not a task manager). " +
     "Given the current ledger and a reply from the operator, produce ledger operations." +
     focusHint +
-    ' Valid ops: {"op":"add","entry":{"title":string,"entryType":"active_concern"|"standing_responsibility"|"time_bound"|"parked_idea","area"?:string,"priority"?:"low"|"normal"|"high"|"critical","horizon"?:"now"|"soon"|"later"|"someday","dueAt"?:string,"detail"?:string}}, ' +
+    ' Valid ops: {"op":"add","entry":{"title":string,"entryType":"active_concern"|"standing_responsibility"|"time_bound"|"parked_idea","area"?:string,"priority"?:"low"|"normal"|"high"|"critical","horizon"?:"now"|"soon"|"later"|"someday","dueAt"?:string,"effort"?:"quick"|"short"|"session"|"project","detail"?:string}}, ' +
     '{"op":"update","entryId":string,"fields":{...same optional fields as add.entry excluding entryType}}, ' +
     '{"op":"complete","entryId":string}, {"op":"reprioritize","entryId":string,"priority":string}, ' +
-    '{"op":"confirm","entryId":string}, {"op":"context","text":string}. ' +
+    '{"op":"confirm","entryId":string}, ' +
+    '{"op":"capacity","note":string,"sessionBlocks"?:number,"fragmentMinutes"?:number}, {"op":"context","text":string}. ' +
     "entryId MUST be one of the ids in the provided ledger — never invent one. " +
+    EFFORT_GUIDANCE +
+    CAPACITY_GUIDANCE +
     "If the reply is too ambiguous to confidently produce ops, return ops: [] and set ambiguousQuestion to a short clarifying question. " +
     "confidence is 0..1. echo is a one-sentence human-readable summary of what you understood.";
 
@@ -179,6 +220,30 @@ export async function interpretOrientationReply(
 }
 
 /**
+ * Guards against a model returning a plausible-sounding size that isn't one
+ * of the four ("medium", "1h"). An unrecognized value is dropped rather than
+ * stored — an un-sized entry degrades cleanly, a garbage-sized one would
+ * quietly corrupt every fit-to-gap answer after it.
+ */
+function normalizeEffort(value: unknown): OrientationEffort | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  const candidate = String(value).trim().toLowerCase();
+  return (ORIENTATION_EFFORTS as readonly string[]).includes(candidate) ? (candidate as OrientationEffort) : undefined;
+}
+
+function normalizeCount(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return Math.round(value);
+}
+
+/**
  * Validates every op against the current ledger before writing any (per
  * 01-spec.md's all-or-nothing rule), then applies them. Every touched entry's
  * last_confirmed_at is refreshed by the underlying repository calls.
@@ -186,7 +251,8 @@ export async function interpretOrientationReply(
 export function applyLedgerOps(
   db: Database.Database,
   ops: LedgerOp[],
-  source: "cli" | "discord" | "admin"
+  source: "cli" | "discord" | "admin",
+  now: Date = new Date()
 ): OrientationEntry[] {
   for (const op of ops) {
     if ("entryId" in op) {
@@ -209,13 +275,25 @@ export function applyLedgerOps(
             priority: op.entry.priority,
             horizon: op.entry.horizon,
             dueAt: op.entry.dueAt ?? null,
+            effort: normalizeEffort(op.entry.effort) ?? null,
             detail: op.entry.detail ?? null,
             source
           })
         );
         break;
       case "update":
-        touched.push(updateOrientationEntry(db, op.entryId, op.fields));
+        touched.push(
+          updateOrientationEntry(db, op.entryId, { ...op.fields, effort: normalizeEffort(op.fields.effort) })
+        );
+        break;
+      case "capacity":
+        setDailyCapacity(db, {
+          localDate: localDateStamp(now),
+          note: op.note,
+          sessionBlocks: normalizeCount(op.sessionBlocks),
+          fragmentMinutes: normalizeCount(op.fragmentMinutes),
+          source
+        });
         break;
       case "complete":
         touched.push(completeOrientationEntry(db, op.entryId));

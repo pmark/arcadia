@@ -5,8 +5,10 @@ import {
   OrientationEntryNotFoundError,
   OrientationPacketAlreadySentError,
   type CreateOrientationEntryInput,
+  type DailyCapacity,
   type OrientationEntry,
   type OrientationPacket,
+  type SetDailyCapacityInput,
   type UpdateOrientationEntryInput
 } from "./types.js";
 
@@ -20,6 +22,7 @@ interface OrientationEntryRow {
   priority: string;
   horizon: string;
   due_at: string | null;
+  effort: string | null;
   status: string;
   last_confirmed_at: string;
   asserted_at: string;
@@ -48,6 +51,7 @@ function toEntry(row: OrientationEntryRow): OrientationEntry {
     priority: row.priority as OrientationEntry["priority"],
     horizon: row.horizon as OrientationEntry["horizon"],
     dueAt: row.due_at,
+    effort: (row.effort as OrientationEntry["effort"]) ?? null,
     status: row.status as OrientationEntry["status"],
     lastConfirmedAt: row.last_confirmed_at,
     assertedAt: row.asserted_at,
@@ -73,10 +77,10 @@ export function createOrientationEntry(db: Database.Database, input: CreateOrien
   const id = createId("orientationEntry");
   db.prepare(
     `INSERT INTO orientation_entries (
-      id, entry_type, title, detail, area, project_id, priority, horizon, due_at,
+      id, entry_type, title, detail, area, project_id, priority, horizon, due_at, effort,
       status, last_confirmed_at, asserted_at, source, created_at, updated_at
     ) VALUES (
-      @id, @entry_type, @title, @detail, @area, @project_id, @priority, @horizon, @due_at,
+      @id, @entry_type, @title, @detail, @area, @project_id, @priority, @horizon, @due_at, @effort,
       'active', @now, @now, @source, @now, @now
     )`
   ).run({
@@ -89,6 +93,7 @@ export function createOrientationEntry(db: Database.Database, input: CreateOrien
     priority: input.priority ?? "normal",
     horizon: input.horizon ?? "soon",
     due_at: input.dueAt ?? null,
+    effort: input.effort ?? null,
     source: input.source,
     now
   });
@@ -157,6 +162,7 @@ export function updateOrientationEntry(
   if (fields.priority !== undefined) patch.priority = fields.priority;
   if (fields.horizon !== undefined) patch.horizon = fields.horizon;
   if (fields.dueAt !== undefined) patch.due_at = fields.dueAt;
+  if (fields.effort !== undefined) patch.effort = fields.effort;
   return touch(db, entryId, patch);
 }
 
@@ -221,6 +227,78 @@ export function markPacketSent(db: Database.Database, packetId: string, discordM
     throw new Error(`Orientation packet not found after mark-sent: ${packetId}`);
   }
   return toPacket(row);
+}
+
+// ---------------------------------------------------------------------------
+// Daily capacity — one row per local day, amendable all day long
+// ---------------------------------------------------------------------------
+
+interface DailyCapacityRow {
+  local_date: string;
+  note: string;
+  session_blocks: number | null;
+  fragment_minutes: number | null;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+function toCapacity(row: DailyCapacityRow): DailyCapacity {
+  return {
+    localDate: row.local_date,
+    note: row.note,
+    sessionBlocks: row.session_blocks,
+    fragmentMinutes: row.fragment_minutes,
+    source: row.source as DailyCapacity["source"],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+export function findDailyCapacity(db: Database.Database, localDate: string): DailyCapacity | null {
+  const row = db.prepare("SELECT * FROM orientation_daily_capacity WHERE local_date = ?").get(localDate) as
+    | DailyCapacityRow
+    | undefined;
+  return row ? toCapacity(row) : null;
+}
+
+/**
+ * Upsert for the day. Amending is the normal case ("actually the client
+ * session got cancelled"), so an omitted number keeps whatever was already
+ * stated rather than resetting it to unknown — only an explicit null clears.
+ */
+export function setDailyCapacity(db: Database.Database, input: SetDailyCapacityInput): DailyCapacity {
+  const now = nowIso();
+  const existing = findDailyCapacity(db, input.localDate);
+  const sessionBlocks = input.sessionBlocks === undefined ? existing?.sessionBlocks ?? null : input.sessionBlocks;
+  const fragmentMinutes =
+    input.fragmentMinutes === undefined ? existing?.fragmentMinutes ?? null : input.fragmentMinutes;
+
+  db.prepare(
+    `INSERT INTO orientation_daily_capacity (local_date, note, session_blocks, fragment_minutes, source, created_at, updated_at)
+     VALUES (@local_date, @note, @session_blocks, @fragment_minutes, @source, @created_at, @updated_at)
+     ON CONFLICT(local_date) DO UPDATE SET
+       note = excluded.note,
+       session_blocks = excluded.session_blocks,
+       fragment_minutes = excluded.fragment_minutes,
+       source = excluded.source,
+       updated_at = excluded.updated_at`
+  ).run({
+    local_date: input.localDate,
+    note: input.note,
+    session_blocks: sessionBlocks,
+    fragment_minutes: fragmentMinutes,
+    source: input.source,
+    created_at: existing?.createdAt ?? now,
+    updated_at: now
+  });
+
+  return findDailyCapacity(db, input.localDate) as DailyCapacity;
+}
+
+export function clearDailyCapacity(db: Database.Database, localDate: string): boolean {
+  const result = db.prepare("DELETE FROM orientation_daily_capacity WHERE local_date = ?").run(localDate);
+  return result.changes > 0;
 }
 
 export function listRecentPackets(db: Database.Database, limit = 10): OrientationPacket[] {

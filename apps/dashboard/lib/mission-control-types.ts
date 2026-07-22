@@ -57,6 +57,32 @@ export type MissionControlNodeKind =
 export type UrgencyLevel = "critical" | "attention" | "quiet";
 
 /**
+ * Optional coarse time cost — the one dimension the ledger had no notion of,
+ * and the thing that turns "what matters?" into "what fits the time I have?".
+ * Mirrors src/orientation/types.ts; semantics live in src/orientation/effort.ts.
+ * Absent means un-sized, which is a normal, fully-supported state.
+ */
+export type OrientationEffort = "quick" | "short" | "session" | "project";
+
+export const EFFORT_LABELS: Record<OrientationEffort, string> = {
+  quick: "≤15m",
+  short: "≤1h",
+  session: "1–3h",
+  project: "multi-session"
+};
+
+/** Mirrors src/orientation/types.ts's DailyCapacity. Null numbers mean unknown, not zero. */
+export interface DailyCapacity {
+  localDate: string;
+  note: string;
+  sessionBlocks: number | null;
+  fragmentMinutes: number | null;
+  source: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
  * Non-hierarchical relationships between nodes — independent of the
  * containment tree (`children`/`childCount` below). A pure tree cannot
  * express "this one thing matters to two towers" (e.g. a Life-ledger
@@ -98,6 +124,8 @@ export interface MissionControlNodeSummary {
   label: string;
   statusHeadline: string;
   urgency: UrgencySignal;
+  /** Absent when the node carries no size. Un-sized nodes render exactly as before. */
+  effort?: OrientationEffort;
   /** Absent/0 for a leaf node (nothing further to zoom into). */
   childCount: number;
   updatedAt: string;
@@ -117,6 +145,7 @@ export interface MissionControlActionItem {
   title: string;
   urgency: UrgencySignal;
   dueAt?: string;
+  effort?: OrientationEffort;
   detail?: string;
   primaryAction?: MissionControlActionButton;
   updatedAt: string;
@@ -185,6 +214,7 @@ export interface MissionControlOrientationEntry {
   priority: string;
   horizon: string;
   dueAt: string | null;
+  effort: OrientationEffort | null;
   status: string;
   lastConfirmedAt: string;
   source: string;
@@ -208,6 +238,20 @@ export interface MissionControlOverview {
   /** Most recently updated items across every tower — the sidebar's "Recent" section. */
   recentlyUpdated: MissionControlActionItem[];
   towers: MissionControlNodeSummary[];
+  /** What the operator said today holds; null until they say something. */
+  capacity: DailyCapacity | null;
+}
+
+/**
+ * The answer to "I have N minutes — what fits?". Produced entirely
+ * deterministically by the CLI (a filter over effort, a sort by the existing
+ * urgency score) — no model call, so it returns instantly and identically.
+ */
+export interface MissionControlFits {
+  availableMinutes: number;
+  items: Array<MissionControlActionItem & { effort: OrientationEffort; effortLabel: string; stale: boolean }>;
+  /** Live entries carrying no size yet: why the answer may be thinner than expected. */
+  unsizedCount: number;
 }
 
 // ---------------------------------------------------------------------------

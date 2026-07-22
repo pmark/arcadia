@@ -71,6 +71,8 @@ export interface WorkItem {
   next_action: string;
   expected_artifact: string | null;
   status: WorkItemStatus;
+  /** Optional coarse time cost (quick|short|session|project). See src/orientation/effort.ts. */
+  effort: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -504,6 +506,8 @@ export interface UpdateWorkItemInput {
   workClassification?: string;
   nextAction?: string;
   status?: string;
+  /** Coarse time cost; `null` clears it. See src/orientation/effort.ts. */
+  effort?: string | null;
 }
 
 export interface UpdateArtifactInput {

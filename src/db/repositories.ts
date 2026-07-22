@@ -37,6 +37,7 @@ import {
   type WorkClassification,
   type WorkItemStatus
 } from "../domain/constants.js";
+import { ORIENTATION_EFFORTS } from "../orientation/types.js";
 import type {
   Artifact,
   ArtifactGroups,
@@ -161,6 +162,11 @@ function validateQueue(value: string): QueueName {
 
 function validateWorkClassification(value: string): WorkClassification {
   assertAllowedValue("Work classification", value, WORK_CLASSIFICATIONS);
+  return value;
+}
+
+function validateEffort(value: string): string {
+  assertAllowedValue("Effort", value, ORIENTATION_EFFORTS);
   return value;
 }
 
@@ -306,6 +312,9 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
     next_action: required(input.nextAction, "Next action"),
     expected_artifact: nullable(input.expectedArtifact),
     status,
+    // Actions are sized after the fact (`work update --effort`), never guessed
+    // at intake — the same optional-and-additive rule the ledger follows.
+    effort: null,
     created_at: timestamp,
     updated_at: timestamp
   };
@@ -313,10 +322,10 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
   db.prepare(
     `INSERT INTO work_items (
       id, project_id, milestone_id, title, raw_input, queue, work_classification,
-      next_action, expected_artifact, status, created_at, updated_at
+      next_action, expected_artifact, status, effort, created_at, updated_at
     ) VALUES (
       @id, @project_id, @milestone_id, @title, @raw_input, @queue, @work_classification,
-      @next_action, @expected_artifact, @status, @created_at, @updated_at
+      @next_action, @expected_artifact, @status, @effort, @created_at, @updated_at
     )`
   ).run(workItem);
 
@@ -852,7 +861,7 @@ export function updateWorkItem(
   input: UpdateWorkItemInput
 ): WorkItemSummary | null {
   const updates: string[] = [];
-  const parameters: Record<string, string> = { id };
+  const parameters: Record<string, string | null> = { id };
 
   if (input.queue !== undefined) {
     parameters.queue = validateQueue(input.queue);
@@ -872,6 +881,11 @@ export function updateWorkItem(
   if (input.status !== undefined) {
     parameters.status = validateWorkItemStatus(input.status);
     updates.push("status = @status");
+  }
+
+  if (input.effort !== undefined) {
+    parameters.effort = input.effort === null ? null : validateEffort(input.effort);
+    updates.push("effort = @effort");
   }
 
   if (updates.length === 0) {

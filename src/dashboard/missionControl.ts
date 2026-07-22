@@ -1,7 +1,10 @@
 import type Database from "better-sqlite3";
-import { listLiveOrientationEntries } from "../orientation/repository.js";
+import { localDateStamp } from "../utils/time.js";
+import { EFFORT_LABELS } from "../orientation/effort.js";
+import { selectFittingEntries } from "../orientation/fit.js";
+import { findDailyCapacity, listLiveOrientationEntries } from "../orientation/repository.js";
 import { isStale } from "../orientation/staleness.js";
-import type { OrientationEntry } from "../orientation/types.js";
+import type { DailyCapacity, OrientationEffort, OrientationEntry } from "../orientation/types.js";
 import { computeOrientationUrgencyScore, urgencyLevelForScore } from "../orientation/urgency.js";
 import { buildDashboardSnapshot, type DashboardProject, type DashboardReviewItem } from "./snapshot.js";
 
@@ -18,6 +21,8 @@ export interface MissionControlActionItemData {
   title: string;
   urgency: MissionControlUrgency;
   dueAt?: string;
+  /** Absent when the item carries no size — un-sized items render exactly as before. */
+  effort?: OrientationEffort;
   updatedAt: string;
 }
 
@@ -27,6 +32,7 @@ export interface MissionControlNodeSummaryData {
   label: string;
   statusHeadline: string;
   urgency: MissionControlUrgency;
+  effort?: OrientationEffort;
   childCount: number;
   updatedAt: string;
 }
@@ -55,6 +61,22 @@ export interface MissionControlOverviewData {
   needsYouNow: MissionControlActionItemData[];
   recentlyUpdated: MissionControlActionItemData[];
   towers: MissionControlNodeSummaryData[];
+  /** What the operator said today holds. Null until they say something. */
+  capacity: DailyCapacity | null;
+}
+
+export interface MissionControlFitItemData extends MissionControlActionItemData {
+  effort: OrientationEffort;
+  effortLabel: string;
+  /** Unconfirmed for longer than its horizon allows — shown, never silently dropped. */
+  stale: boolean;
+}
+
+export interface MissionControlFitsData {
+  availableMinutes: number;
+  items: MissionControlFitItemData[];
+  /** Live entries with no effort yet: why the answer may be thinner than expected. */
+  unsizedCount: number;
 }
 
 const TOWER_IDS = {
@@ -81,7 +103,32 @@ function orientationEntryToActionItem(entry: OrientationEntry, now: Date): Missi
     title: entry.title,
     urgency: urgency(score, reason),
     dueAt: entry.dueAt ?? undefined,
+    effort: entry.effort ?? undefined,
     updatedAt: entry.updatedAt
+  };
+}
+
+/**
+ * "I have N minutes — what fits?" for the Mission Control view. A thin
+ * adapter over the shared deterministic selector, so the dashboard, the CLI
+ * and the Discord reply loop can never disagree about what fits.
+ */
+export function buildMissionControlFits(
+  db: Database.Database,
+  availableMinutes: number,
+  limit?: number
+): MissionControlFitsData {
+  const now = new Date();
+  const result = selectFittingEntries(listLiveOrientationEntries(db), availableMinutes, now, { limit });
+  return {
+    availableMinutes: result.availableMinutes,
+    unsizedCount: result.unsizedCount,
+    items: result.fits.map((item) => ({
+      ...orientationEntryToActionItem(item.entry, now),
+      effort: item.effort,
+      effortLabel: EFFORT_LABELS[item.effort],
+      stale: item.stale
+    }))
   };
 }
 
@@ -162,7 +209,8 @@ export function buildMissionControlOverview(db: Database.Database, workspace: st
     headline: needsYouNow.length > 0 ? `${needsYouNow.length} thing(s) need you` : "Nothing pressing",
     needsYouNow,
     recentlyUpdated,
-    towers
+    towers,
+    capacity: findDailyCapacity(db, localDateStamp(now))
   };
 }
 
@@ -245,8 +293,9 @@ export function buildMissionControlNodeDetail(
       id: entry.id,
       kind: "life_entry",
       label: entry.title,
-      statusHeadline: `${entry.priority}/${entry.horizon}`,
+      statusHeadline: entryStatusHeadline(entry),
       urgency: urgency(computeOrientationUrgencyScore(entry, now), entry.dueAt ? `Due ${entry.dueAt}` : entry.priority),
+      effort: entry.effort ?? undefined,
       childCount: 0,
       updatedAt: entry.updatedAt,
       status: {
@@ -312,11 +361,18 @@ function entryToSummary(entry: OrientationEntry, now: Date): MissionControlNodeS
     id: entry.id,
     kind: "life_entry",
     label: entry.title,
-    statusHeadline: `${entry.priority}/${entry.horizon}`,
+    statusHeadline: entryStatusHeadline(entry),
     urgency: urgency(computeOrientationUrgencyScore(entry, now), entry.dueAt ? `Due ${entry.dueAt}` : entry.priority),
+    effort: entry.effort ?? undefined,
     childCount: 0,
     updatedAt: entry.updatedAt
   };
+}
+
+/** `priority/horizon` as before, with the size appended only once one exists. */
+function entryStatusHeadline(entry: OrientationEntry): string {
+  const base = `${entry.priority}/${entry.horizon}`;
+  return entry.effort ? `${base} · ${entry.effort} (${EFFORT_LABELS[entry.effort]})` : base;
 }
 
 function projectToSummary(project: DashboardProject): MissionControlNodeSummaryData {

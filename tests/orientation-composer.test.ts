@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { composePacket } from "../src/orientation/composer.js";
-import type { OrientationEntry } from "../src/orientation/types.js";
+import type { DailyCapacity, OrientationEntry } from "../src/orientation/types.js";
 
 function entry(overrides: Partial<OrientationEntry>): OrientationEntry {
   return {
@@ -13,6 +13,7 @@ function entry(overrides: Partial<OrientationEntry>): OrientationEntry {
     priority: "normal",
     horizon: "soon",
     dueAt: null,
+    effort: null,
     status: "active",
     lastConfirmedAt: new Date().toISOString(),
     assertedAt: new Date().toISOString(),
@@ -90,6 +91,15 @@ describe("orientation packet composition", () => {
     expect(body).toContain("Project work: Do the thing (Project X)");
   });
 
+  it("annotates a line with its size, and leaves un-sized lines exactly as before", () => {
+    const sized = entry({ title: "Register kids for baseball", area: "family", effort: "quick" });
+    const unsized = entry({ title: "Clean the house", area: "home" });
+    const { body } = composePacket([sized, unsized], now);
+    expect(body).toContain("family: Register kids for baseball (≤15m)");
+    expect(body).toContain("home: Clean the house");
+    expect(body).not.toContain("Clean the house (");
+  });
+
   it("returns an entry snapshot with stale flags for provenance", () => {
     const fresh = entry({ title: "fresh" });
     const stale = entry({
@@ -100,5 +110,95 @@ describe("orientation packet composition", () => {
     const snapshotById = new Map(entrySnapshot.map((item) => [item.title, item.stale]));
     expect(snapshotById.get("fresh")).toBe(false);
     expect(snapshotById.get("stale")).toBe(true);
+  });
+});
+
+describe("orientation packet composition with a capacity note", () => {
+  const now = new Date("2026-07-21T12:00:00Z");
+
+  function capacity(overrides: Partial<DailyCapacity> = {}): DailyCapacity {
+    return {
+      localDate: "2026-07-21",
+      note: "one client session + ~1h of fragments; evening gone",
+      sessionBlocks: 1,
+      fragmentMinutes: 60,
+      source: "cli",
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      ...overrides
+    };
+  }
+
+  const website = entry({ title: "Private practice website work", area: "work", priority: "high", effort: "session" });
+  const baseball = entry({ title: "Register kids for baseball", area: "family", priority: "high", effort: "quick" });
+  const disposal = entry({ title: "Fix garbage disposal", area: "home", priority: "normal", effort: "session" });
+  const party = entry({ title: "Prepare for MacKaylee's party", area: "family", priority: "high", effort: "project" });
+
+  it("reads the operator's own capacity words back to them", () => {
+    const { body } = composePacket([baseball], now, { capacity: capacity() });
+    expect(body).toContain("**Today** — one client session + ~1h of fragments; evening gone");
+  });
+
+  it("separates protected work, what fits today, and honest deferral", () => {
+    const { body } = composePacket([website, baseball, disposal, party], now, { capacity: capacity() });
+
+    expect(body).toContain("**Protect**");
+    expect(body).toContain("Private practice website work");
+    expect(body).toContain("**Fits today**");
+    expect(body).toContain("Register kids for baseball");
+    expect(body).toContain("**Not today**");
+
+    const protectIndex = body.indexOf("**Protect**");
+    const fitsIndex = body.indexOf("**Fits today**");
+    const notTodayIndex = body.indexOf("**Not today**");
+    expect(protectIndex).toBeLessThan(fitsIndex);
+    expect(fitsIndex).toBeLessThan(notTodayIndex);
+  });
+
+  it("never proposes a session into a day with none, and says why out loud", () => {
+    const { body } = composePacket([disposal], now, { capacity: capacity({ sessionBlocks: 0 }) });
+    expect(body).not.toContain("**Protect**");
+    expect(body).toContain("Fix garbage disposal — needs a 1–3h session; today has none");
+  });
+
+  it("plans each sized entry exactly once — never in both the plan and the classic sections", () => {
+    const { body } = composePacket([website, baseball, disposal, party], now, { capacity: capacity() });
+    const occurrences = body.split("Register kids for baseball").length - 1;
+    expect(occurrences).toBe(1);
+  });
+
+  it("still routes un-sized entries through the classic importance/urgency sections", () => {
+    const unsizedCritical = entry({ title: "Ship the release", priority: "critical", entryType: "time_bound" });
+    const { body } = composePacket([baseball, unsizedCritical], now, { capacity: capacity() });
+    expect(body).toContain("**Fits today**");
+    expect(body).toContain("**Due / urgent**");
+    expect(body).toContain("Ship the release (critical)");
+  });
+
+  it("still asks about a stale entry instead of planning the day around it", () => {
+    const staleSized = entry({
+      title: "Old assumption",
+      effort: "quick",
+      lastConfirmedAt: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    });
+    const { body } = composePacket([staleSized], now, { capacity: capacity() });
+    expect(body).toContain("Still true?");
+    expect(body).toContain("Old assumption?");
+    expect(body).not.toContain("**Fits today**");
+  });
+
+  it("degrades to exactly the pre-capacity packet when no capacity is stated", () => {
+    const withCapacity = composePacket([website, baseball, disposal, party], now, { capacity: null }).body;
+    const before = composePacket([website, baseball, disposal, party], now).body;
+    expect(withCapacity).toBe(before);
+    expect(withCapacity).not.toContain("**Today**");
+    expect(withCapacity).not.toContain("**Protect**");
+  });
+
+  it("says so plainly when capacity is stated but nothing is sized yet", () => {
+    const unsized = entry({ title: "Clean the house", area: "home" });
+    const { body } = composePacket([unsized], now, { capacity: capacity() });
+    expect(body).toContain("No sized work to plan today");
+    expect(body).toContain("home: Clean the house");
   });
 });

@@ -62,6 +62,7 @@ export interface WorkUpdateOptions {
   classification?: string;
   nextAction?: string;
   status?: string;
+  effort?: string | null;
 }
 
 export interface WorkUpdateCommandData {
@@ -110,7 +111,8 @@ export function runWorkUpdateCommand(options: WorkUpdateOptions): CommandSuccess
       queue: options.queue,
       workClassification: options.classification,
       nextAction: options.nextAction,
-      status: options.status
+      status: options.status,
+      effort: options.effort
     })
   );
 
@@ -602,7 +604,7 @@ export function renderWorkRunSuccess(response: CommandSuccess<WorkRunCommandData
   ];
 }
 
-const updateableFields = ["queue", "classification", "nextAction", "status"] as const;
+const updateableFields = ["queue", "classification", "nextAction", "status", "effort"] as const;
 
 function updatedFields(options: WorkUpdateOptions): string[] {
   const fields: string[] = [];
@@ -621,6 +623,10 @@ function updatedFields(options: WorkUpdateOptions): string[] {
 
   if (options.status !== undefined) {
     fields.push("status");
+  }
+
+  if (options.effort !== undefined) {
+    fields.push("effort");
   }
 
   return fields;

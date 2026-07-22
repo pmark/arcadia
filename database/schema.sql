@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS work_items (
   next_action TEXT NOT NULL,
   expected_artifact TEXT,
   status TEXT NOT NULL CHECK (status IN ('open', 'in_progress', 'done', 'blocked')),
+  effort TEXT CHECK (effort IS NULL OR effort IN ('quick', 'short', 'session', 'project')),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,

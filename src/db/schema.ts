@@ -47,6 +47,8 @@ export function applyMigrations(db: Database.Database): void {
   ensureIntelligenceJobArtifactsTable(db);
   ensureIntelligenceJobArtifactAudioColumns(db);
   ensureOrientationTables(db);
+  ensureEffortColumns(db);
+  ensureDailyCapacityTable(db);
   applyCapabilityMigrations(db);
 }
 
@@ -320,6 +322,7 @@ function ensureOrientationTables(db: Database.Database): void {
       priority TEXT NOT NULL CHECK (priority IN ('low', 'normal', 'high', 'critical')),
       horizon TEXT NOT NULL CHECK (horizon IN ('now', 'soon', 'later', 'someday')),
       due_at TEXT,
+      effort TEXT CHECK (effort IS NULL OR effort IN ('quick', 'short', 'session', 'project')),
       status TEXT NOT NULL CHECK (status IN ('active', 'confirmed', 'completed', 'dropped')),
       last_confirmed_at TEXT NOT NULL,
       asserted_at TEXT NOT NULL,
@@ -339,6 +342,56 @@ function ensureOrientationTables(db: Database.Database): void {
       entry_snapshot_json TEXT NOT NULL,
       discord_message_id TEXT,
       created_at TEXT NOT NULL
+    );
+  `);
+}
+
+/**
+ * Optional coarse effort sizing (quick|short|session|project) on the two
+ * things the operator actually spends time on: Context Ledger entries and
+ * Actions. Purely additive — every existing row keeps NULL and behaves
+ * exactly as it did before. Fresh databases get the column (and its CHECK)
+ * from the CREATE TABLE above / database/schema.sql; this backfills the
+ * column onto databases created before effort existed.
+ */
+function ensureEffortColumns(db: Database.Database): void {
+  const orientationColumns = new Set(
+    (db.prepare("PRAGMA table_info(orientation_entries)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!orientationColumns.has("effort")) {
+    db.prepare(
+      "ALTER TABLE orientation_entries ADD COLUMN effort TEXT CHECK (effort IS NULL OR effort IN ('quick', 'short', 'session', 'project'))"
+    ).run();
+  }
+
+  const workItemColumns = new Set(
+    (db.prepare("PRAGMA table_info(work_items)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!workItemColumns.has("effort")) {
+    db.prepare(
+      "ALTER TABLE work_items ADD COLUMN effort TEXT CHECK (effort IS NULL OR effort IN ('quick', 'short', 'session', 'project'))"
+    ).run();
+  }
+}
+
+/**
+ * One row per local day holding the operator's own one-line answer to "how
+ * much time does today actually hold". Not a calendar and not a scheduler —
+ * `note` is what they read back, and the two nullable numbers are the only
+ * inputs the deterministic packet composer budgets against. NULL means
+ * "unknown" (degrade to pre-capacity behavior), which is why neither number
+ * carries a DEFAULT 0.
+ */
+function ensureDailyCapacityTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS orientation_daily_capacity (
+      local_date TEXT PRIMARY KEY,
+      note TEXT NOT NULL,
+      session_blocks INTEGER,
+      fragment_minutes INTEGER,
+      source TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     );
   `);
 }

@@ -167,24 +167,34 @@ import {
   renderOrientationEntryListSuccess,
   renderOrientationEntrySuccess,
   renderOrientationPacketComposeSuccess,
+  renderOrientationCapacityClearSuccess,
+  renderOrientationCapacityShowSuccess,
+  renderOrientationCapacitySuccess,
+  renderOrientationFitsSuccess,
   renderOrientationPacketListSuccess,
   renderOrientationPacketMarkSentSuccess,
   renderOrientationReplySuccess,
+  runOrientationCapacityClearCommand,
+  runOrientationCapacitySetCommand,
+  runOrientationCapacityShowCommand,
   runOrientationEntryAddCommand,
   runOrientationEntryCompleteCommand,
   runOrientationEntryConfirmCommand,
   runOrientationEntryDropCommand,
   runOrientationEntryListCommand,
   runOrientationEntryUpdateCommand,
+  runOrientationFitsCommand,
   runOrientationPacketComposeCommand,
   runOrientationPacketListCommand,
   runOrientationPacketMarkSentCommand,
   runOrientationReplyCommand
 } from "./commands/orientation.js";
 import {
+  renderMissionControlFitsSuccess,
   renderMissionControlNodeSuccess,
   renderMissionControlOverviewSuccess,
   renderMissionControlReplySuccess,
+  runMissionControlFitsCommand,
   runMissionControlNodeCommand,
   runMissionControlOverviewCommand,
   runMissionControlReplyCommand
@@ -226,6 +236,7 @@ import {
   runWorkflowValidateCommand
 } from "./commands/workflow.js";
 import { normalizeError, validationError } from "./cli/errors.js";
+import { ORIENTATION_EFFORTS, type OrientationEffort } from "./orientation/types.js";
 import {
   createFailure,
   createSuccess,
@@ -1387,6 +1398,7 @@ export function buildProgram(): Command {
       .option("--responsibility <responsibility>", "Responsibility: autonomous, codex, requires_review, blocked")
       .option("--next-action <action>", "Next action")
       .option("--status <status>", "Status: open, in_progress, done, blocked")
+      .option("--effort <size>", "Coarse time cost: quick|short|session|project, or none to clear")
   ).action((workId: string, options: {
     workspace: string;
     queue?: string;
@@ -1394,12 +1406,17 @@ export function buildProgram(): Command {
     responsibility?: string;
     nextAction?: string;
     status?: string;
+    effort?: string;
     json?: boolean;
   }) =>
     runCliAction(
       "work.update",
       options,
-      () => runWorkUpdateCommand({ ...normalizeResponsibilityOption(options), workId }),
+      () => runWorkUpdateCommand({
+        ...normalizeResponsibilityOption(options),
+        workId,
+        effort: parseEffortOption(options.effort)
+      }),
       renderWorkUpdateSuccess
     )
   );
@@ -1789,6 +1806,7 @@ export function buildProgram(): Command {
       .option("--priority <level>", "low|normal|high|critical")
       .option("--horizon <horizon>", "now|soon|later|someday")
       .option("--due-at <iso>", "Hard date, ISO-8601 (time_bound entries)")
+      .option("--effort <size>", "Coarse time cost: quick (≤15m) | short (≤1h) | session (1–3h) | project (multi-session)")
       .option("--detail <text>", "Optional longer context")
       .option("--source <source>", "cli|discord|admin|seed", "cli")
   ).action((options: {
@@ -1799,6 +1817,7 @@ export function buildProgram(): Command {
     priority?: string;
     horizon?: string;
     dueAt?: string;
+    effort?: string;
     detail?: string;
     source?: string;
     json?: boolean;
@@ -1814,6 +1833,7 @@ export function buildProgram(): Command {
         priority: options.priority as never,
         horizon: options.horizon as never,
         dueAt: options.dueAt,
+        effort: parseEffortOption(options.effort) ?? undefined,
         detail: options.detail,
         source: options.source as never
       }),
@@ -1889,6 +1909,7 @@ export function buildProgram(): Command {
       .option("--priority <level>", "low|normal|high|critical")
       .option("--horizon <horizon>", "now|soon|later|someday")
       .option("--due-at <iso>", "New hard date, ISO-8601")
+      .option("--effort <size>", "quick|short|session|project, or none to clear the size")
   ).action((entryId: string, options: {
     workspace: string;
     title?: string;
@@ -1897,6 +1918,7 @@ export function buildProgram(): Command {
     priority?: string;
     horizon?: string;
     dueAt?: string;
+    effort?: string;
     json?: boolean;
   }) =>
     runCliAction(
@@ -1910,9 +1932,95 @@ export function buildProgram(): Command {
         area: options.area,
         priority: options.priority as never,
         horizon: options.horizon as never,
-        dueAt: options.dueAt
+        dueAt: options.dueAt,
+        effort: parseEffortOption(options.effort)
       }),
       renderOrientationEntrySuccess
+    )
+  );
+
+  addJsonOption(
+    orientation
+      .command("fits")
+      .description("\"I have N minutes — what fits?\" Deterministic: filters by effort, ranks by urgency")
+      .requiredOption("--minutes <n>", "Minutes actually available right now")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--limit <n>", "Maximum number of suggestions", "3")
+  ).action((options: { workspace: string; minutes: string; limit?: string; json?: boolean }) =>
+    runCliAction(
+      "orientation.fits",
+      options,
+      () => runOrientationFitsCommand({
+        workspace: options.workspace,
+        minutes: Number(options.minutes),
+        limit: options.limit ? Number(options.limit) : undefined
+      }),
+      renderOrientationFitsSuccess
+    )
+  );
+
+  const orientationCapacity = orientation
+    .command("capacity")
+    .description("The one-line daily note of how much time today actually holds");
+
+  addJsonOption(
+    orientationCapacity
+      .command("set")
+      .description("State (or amend) today's capacity")
+      .requiredOption("--note <text>", "One line in your own words, e.g. \"one client session + ~1h of gaps; evening gone\"")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--session-blocks <n>", "How many protected 1–3h blocks today holds (0 is meaningful)")
+      .option("--fragment-minutes <n>", "Total minutes of small gaps between commitments")
+      .option("--date <yyyy-mm-dd>", "Local date, defaults to today")
+  ).action((options: {
+    workspace: string;
+    note: string;
+    sessionBlocks?: string;
+    fragmentMinutes?: string;
+    date?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "orientation.capacity.set",
+      options,
+      () => runOrientationCapacitySetCommand({
+        workspace: options.workspace,
+        note: options.note,
+        sessionBlocks: options.sessionBlocks === undefined ? undefined : Number(options.sessionBlocks),
+        fragmentMinutes: options.fragmentMinutes === undefined ? undefined : Number(options.fragmentMinutes),
+        localDate: options.date
+      }),
+      renderOrientationCapacitySuccess
+    )
+  );
+
+  addJsonOption(
+    orientationCapacity
+      .command("show")
+      .description("Show the capacity stated for a local day")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--date <yyyy-mm-dd>", "Local date, defaults to today")
+  ).action((options: { workspace: string; date?: string; json?: boolean }) =>
+    runCliAction(
+      "orientation.capacity.show",
+      options,
+      () => runOrientationCapacityShowCommand({ workspace: options.workspace, localDate: options.date }),
+      renderOrientationCapacityShowSuccess
+    )
+  );
+
+  addJsonOption(
+    orientationCapacity
+      .command("clear")
+      .description("Remove a day's capacity note (the packet falls back to its pre-capacity form)")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--date <yyyy-mm-dd>", "Local date, defaults to today")
+  ).action((options: { workspace: string; date?: string; json?: boolean }) =>
+    runCliAction(
+      "orientation.capacity.clear",
+      options,
+      () => runOrientationCapacityClearCommand({ workspace: options.workspace, localDate: options.date }),
+      renderOrientationCapacityClearSuccess
     )
   );
 
@@ -2025,6 +2133,26 @@ export function buildProgram(): Command {
 
   addJsonOption(
     missionControl
+      .command("fits")
+      .description("What fits the time you actually have right now — deterministic, no model call")
+      .requiredOption("--minutes <n>", "Minutes actually available")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--limit <n>", "Maximum number of suggestions", "3")
+  ).action((options: { workspace: string; minutes: string; limit?: string; json?: boolean }) =>
+    runCliAction(
+      "mission-control.fits",
+      options,
+      () => runMissionControlFitsCommand({
+        workspace: options.workspace,
+        minutes: Number(options.minutes),
+        limit: options.limit ? Number(options.limit) : undefined
+      }),
+      renderMissionControlFitsSuccess
+    )
+  );
+
+  addJsonOption(
+    missionControl
       .command("reply <nodeId> <text>")
       .description("Interpret a reply for whichever node this is, dispatching to the right interpreter")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
@@ -2068,6 +2196,27 @@ function addJsonOption(command: Command): Command {
 
 function defaultWorkspace(): string {
   return undefined as unknown as string;
+}
+
+/**
+ * Shared by every `--effort` flag. Returns undefined for "leave it alone" and
+ * null for the explicit `none`, which is how a size gets cleared back to
+ * un-sized — the same two-state distinction the repository update honors.
+ */
+function parseEffortOption(value: string | undefined): OrientationEffort | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "none" || normalized === "") {
+    return null;
+  }
+  if (!(ORIENTATION_EFFORTS as readonly string[]).includes(normalized)) {
+    throw validationError(`Unknown effort "${value}". Expected one of: ${ORIENTATION_EFFORTS.join(", ")}, none.`, {
+      effort: value
+    });
+  }
+  return normalized as OrientationEffort;
 }
 
 function resolveProjectCreateArguments(

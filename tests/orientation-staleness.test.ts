@@ -19,6 +19,7 @@ function baseEntry(overrides: Partial<OrientationEntry> = {}): OrientationEntry 
     priority: "normal",
     horizon: "soon",
     dueAt: null,
+    effort: null,
     status: "active",
     lastConfirmedAt: new Date().toISOString(),
     assertedAt: new Date().toISOString(),

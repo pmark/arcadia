@@ -4,8 +4,10 @@ import { missionControlNodeNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { openDatabase } from "../db/connection.js";
 import {
+  buildMissionControlFits,
   buildMissionControlNodeDetail,
   buildMissionControlOverview,
+  type MissionControlFitsData,
   type MissionControlNodeDetailData,
   type MissionControlOverviewData
 } from "../dashboard/missionControl.js";
@@ -37,6 +39,31 @@ export function runMissionControlNodeCommand(options: {
       throw missionControlNodeNotFound(options.nodeId);
     }
     return createSuccess({ command: "mission-control.node", workspace: workspacePath, data: detail });
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * The "what fits?" affordance for the Mission Control view. Deterministic —
+ * no Intelligence call — so it answers instantly and identically every time.
+ */
+export function runMissionControlFitsCommand(options: {
+  workspace: string;
+  minutes: number;
+  limit?: number;
+}): CommandSuccess<MissionControlFitsData> {
+  if (!Number.isFinite(options.minutes) || options.minutes <= 0) {
+    throw validationError("Available minutes must be a positive number.", { minutes: options.minutes });
+  }
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const db = openDatabase(workspacePath);
+  try {
+    return createSuccess({
+      command: "mission-control.fits",
+      workspace: workspacePath,
+      data: buildMissionControlFits(db, options.minutes, options.limit)
+    });
   } finally {
     db.close();
   }
@@ -109,6 +136,18 @@ export function renderMissionControlOverviewSuccess(response: CommandSuccess<Mis
 
 export function renderMissionControlNodeSuccess(response: CommandSuccess<MissionControlNodeDetailData>): string[] {
   return [`${response.data.label} — ${response.data.status.headline}`];
+}
+
+export function renderMissionControlFitsSuccess(response: CommandSuccess<MissionControlFitsData>): string[] {
+  const { availableMinutes, items, unsizedCount } = response.data;
+  if (items.length === 0) {
+    return [
+      unsizedCount > 0
+        ? `Nothing sized fits ${availableMinutes}m (${unsizedCount} un-sized).`
+        : `Nothing fits ${availableMinutes}m.`
+    ];
+  }
+  return [`Fits in ${availableMinutes}m:`, ...items.map((item) => `  [${item.effort}] ${item.title}`)];
 }
 
 export function renderMissionControlReplySuccess(response: CommandSuccess<MissionControlReplyData>): string[] {

@@ -7,7 +7,8 @@ import {
   orientationInterpreterUnavailable,
   orientationPacketAlreadySent,
   orientationReplyAmbiguous,
-  orientationReplyUnparseable
+  orientationReplyUnparseable,
+  validationError
 } from "../cli/errors.js";
 import { openDatabase } from "../db/connection.js";
 import { createId } from "../utils/id.js";
@@ -22,23 +23,29 @@ import {
   OrientationReplyUnparseableError
 } from "../orientation/interpreter.js";
 import {
+  clearDailyCapacity,
   completeOrientationEntry,
   confirmOrientationEntry,
   createOrientationEntry,
   createOrientationPacket,
   dropOrientationEntry,
+  findDailyCapacity,
   findOrientationEntry,
   findPacketForLocalDate,
   listAllOrientationEntries,
   listLiveOrientationEntries,
   listRecentPackets,
   markPacketSent,
+  setDailyCapacity,
   updateOrientationEntry
 } from "../orientation/repository.js";
 import { isStale } from "../orientation/staleness.js";
+import { formatFitResult, parseAvailableMinutesRequest, selectFittingEntries, type FitToGapResult } from "../orientation/fit.js";
 import {
   OrientationEntryNotFoundError,
   OrientationPacketAlreadySentError,
+  type DailyCapacity,
+  type OrientationEffort,
   type OrientationEntry,
   type OrientationEntryType,
   type OrientationHorizon,
@@ -75,6 +82,7 @@ export interface OrientationEntryAddOptions {
   priority?: OrientationPriority;
   horizon?: OrientationHorizon;
   dueAt?: string;
+  effort?: OrientationEffort;
   detail?: string;
   source?: OrientationSource;
 }
@@ -92,6 +100,7 @@ export function runOrientationEntryAddCommand(
       priority: options.priority,
       horizon: options.horizon,
       dueAt: options.dueAt ?? null,
+      effort: options.effort ?? null,
       detail: options.detail ?? null,
       source: options.source ?? "cli"
     });
@@ -186,6 +195,8 @@ export interface OrientationEntryUpdateOptions extends OrientationEntryMutateOpt
   priority?: OrientationPriority;
   horizon?: OrientationHorizon;
   dueAt?: string;
+  /** `null` clears the size back to un-sized (`--effort none`). */
+  effort?: OrientationEffort | null;
 }
 
 export function runOrientationEntryUpdateCommand(
@@ -201,7 +212,8 @@ export function runOrientationEntryUpdateCommand(
         area: options.area,
         priority: options.priority,
         horizon: options.horizon,
-        dueAt: options.dueAt
+        dueAt: options.dueAt,
+        effort: options.effort
       })
     );
     emitOrientationEvent(db, "orientation.entry.updated", { entryId: options.entryId });
@@ -239,7 +251,10 @@ export function runOrientationPacketComposeCommand(
       }
     }
 
-    const composed = composePacket(entries, now, { dailyAdvantageLine });
+    // One new input: what today actually holds. Absent -> the packet composes
+    // exactly as it did before capacity existed.
+    const capacity = findDailyCapacity(db, localDate);
+    const composed = composePacket(entries, now, { dailyAdvantageLine, capacity });
 
     try {
       const packet = createOrientationPacket(db, {
@@ -325,6 +340,143 @@ export function runOrientationPacketListCommand(
 }
 
 // ---------------------------------------------------------------------------
+// Fit-to-gap and daily capacity
+// ---------------------------------------------------------------------------
+
+export interface OrientationFitsOptions {
+  workspace: string;
+  minutes: number;
+  limit?: number;
+}
+
+export interface OrientationFitsData {
+  availableMinutes: number;
+  fits: Array<{
+    id: string;
+    title: string;
+    effort: OrientationEffort;
+    urgencyScore: number;
+    dueAt: string | null;
+    area: string | null;
+    stale: boolean;
+  }>;
+  tooBig: Array<{ id: string; title: string; effort: OrientationEffort; reason: string }>;
+  unsizedCount: number;
+}
+
+function toFitsData(result: FitToGapResult): OrientationFitsData {
+  return {
+    availableMinutes: result.availableMinutes,
+    fits: result.fits.map((item) => ({
+      id: item.entry.id,
+      title: item.entry.title,
+      effort: item.effort,
+      urgencyScore: item.urgencyScore,
+      dueAt: item.entry.dueAt,
+      area: item.entry.area,
+      stale: item.stale
+    })),
+    tooBig: result.tooBig.map((item) => ({
+      id: item.entry.id,
+      title: item.entry.title,
+      effort: item.effort,
+      reason: item.reason
+    })),
+    unsizedCount: result.unsizedCount
+  };
+}
+
+/**
+ * "I have N minutes — what fits?" Entirely deterministic: a filter over the
+ * effort column and a sort by the existing urgency score. No model call.
+ */
+export function runOrientationFitsCommand(options: OrientationFitsOptions): CommandSuccess<OrientationFitsData> {
+  if (!Number.isFinite(options.minutes) || options.minutes <= 0) {
+    throw validationError("Available minutes must be a positive number.", { minutes: options.minutes });
+  }
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const db = openDatabase(workspacePath);
+  try {
+    const result = selectFittingEntries(listLiveOrientationEntries(db), options.minutes, new Date(), {
+      limit: options.limit
+    });
+    return createSuccess({ command: "orientation.fits", workspace: workspacePath, data: toFitsData(result) });
+  } finally {
+    db.close();
+  }
+}
+
+export interface OrientationCapacitySetOptions {
+  workspace: string;
+  note: string;
+  sessionBlocks?: number | null;
+  fragmentMinutes?: number | null;
+  localDate?: string;
+  source?: OrientationSource;
+}
+
+export function runOrientationCapacitySetCommand(
+  options: OrientationCapacitySetOptions
+): CommandSuccess<{ capacity: DailyCapacity }> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const db = openDatabase(workspacePath);
+  try {
+    const localDate = options.localDate ?? localDateStamp(new Date());
+    const capacity = setDailyCapacity(db, {
+      localDate,
+      note: options.note,
+      sessionBlocks: options.sessionBlocks,
+      fragmentMinutes: options.fragmentMinutes,
+      source: options.source ?? "cli"
+    });
+    emitOrientationEvent(db, "orientation.capacity.set", { localDate, source: capacity.source });
+    return createSuccess({ command: "orientation.capacity.set", workspace: workspacePath, data: { capacity } });
+  } finally {
+    db.close();
+  }
+}
+
+export function runOrientationCapacityShowCommand(options: {
+  workspace: string;
+  localDate?: string;
+}): CommandSuccess<{ capacity: DailyCapacity | null; localDate: string }> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const db = openDatabase(workspacePath);
+  try {
+    const localDate = options.localDate ?? localDateStamp(new Date());
+    return createSuccess({
+      command: "orientation.capacity.show",
+      workspace: workspacePath,
+      data: { capacity: findDailyCapacity(db, localDate), localDate }
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export function runOrientationCapacityClearCommand(options: {
+  workspace: string;
+  localDate?: string;
+}): CommandSuccess<{ cleared: boolean; localDate: string }> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const db = openDatabase(workspacePath);
+  try {
+    const localDate = options.localDate ?? localDateStamp(new Date());
+    const cleared = clearDailyCapacity(db, localDate);
+    if (cleared) {
+      emitOrientationEvent(db, "orientation.capacity.cleared", { localDate });
+    }
+    return createSuccess({
+      command: "orientation.capacity.clear",
+      workspace: workspacePath,
+      data: { cleared, localDate }
+    });
+  } finally {
+    db.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Reply / correction loop
 // ---------------------------------------------------------------------------
 
@@ -351,6 +503,8 @@ export interface OrientationReplyData {
   applied: boolean;
   ambiguousQuestion?: string;
   touchedEntries: OrientationEntry[];
+  /** Present when the reply was a deterministic "what fits in N minutes?" question. */
+  fits?: OrientationFitsData;
 }
 
 /**
@@ -375,7 +529,7 @@ function formatEntryListEcho(entries: OrientationEntry[]): string {
   }
   const lines = entries.map(
     (entry, index) =>
-      `${index + 1}. ${entry.title} [${entry.priority}/${entry.horizon}]${entry.dueAt ? ` — due ${entry.dueAt}` : ""} (id: ${entry.id})`
+      `${index + 1}. ${entry.title} [${entry.priority}/${entry.horizon}${entry.effort ? `/${entry.effort}` : ""}]${entry.dueAt ? ` — due ${entry.dueAt}` : ""} (id: ${entry.id})`
   );
   return `Current ledger:\n${lines.join("\n")}`;
 }
@@ -398,6 +552,32 @@ export async function runOrientationReplyCommand(
           confidence: 1,
           applied: true,
           touchedEntries: []
+        }
+      });
+    }
+
+    // "I have 20 minutes — what fits?" is a query, not a ledger write, and it
+    // is answerable by a filter and a sort. Answering it here keeps the
+    // guardrail honest (only *capturing* effort uses the model) and gives the
+    // Discord packet flow fit-to-gap for free — a reply to the morning packet
+    // routes straight through this path.
+    const availableMinutes = parseAvailableMinutesRequest(options.text);
+    if (availableMinutes !== null) {
+      const result = selectFittingEntries(liveEntries, availableMinutes, new Date());
+      emitOrientationEvent(db, "orientation.fits.asked", {
+        availableMinutes,
+        matched: result.fits.length,
+        source
+      });
+      return createSuccess({
+        command: "orientation.reply",
+        workspace: workspacePath,
+        data: {
+          echo: formatFitResult(result),
+          confidence: 1,
+          applied: true,
+          touchedEntries: [],
+          fits: toFitsData(result)
         }
       });
     }
@@ -461,8 +641,53 @@ export function renderOrientationEntryListSuccess(
     return ["No live orientation entries."];
   }
   return response.data.entries.map(
-    (entry) => `${entry.id}  [${entry.priority}/${entry.horizon}]${entry.stale ? " (stale)" : ""}  ${entry.title}`
+    (entry) =>
+      `${entry.id}  [${entry.priority}/${entry.horizon}${entry.effort ? `/${entry.effort}` : ""}]${entry.stale ? " (stale)" : ""}  ${entry.title}`
   );
+}
+
+export function renderOrientationFitsSuccess(response: CommandSuccess<OrientationFitsData>): string[] {
+  const { availableMinutes, fits, unsizedCount } = response.data;
+  if (fits.length === 0) {
+    return [
+      unsizedCount > 0
+        ? `Nothing sized fits ${availableMinutes}m (${unsizedCount} entr${unsizedCount === 1 ? "y has" : "ies have"} no effort yet).`
+        : `Nothing fits ${availableMinutes}m.`
+    ];
+  }
+  return [
+    `Fits in ${availableMinutes}m:`,
+    ...fits.map((item) => `  ${item.id}  [${item.effort}]  ${item.title}${item.stale ? " (unconfirmed)" : ""}`)
+  ];
+}
+
+function formatCapacityLine(capacity: DailyCapacity): string {
+  const sessions =
+    capacity.sessionBlocks === null ? "sessions: unknown" : `sessions: ${capacity.sessionBlocks}`;
+  const fragments =
+    capacity.fragmentMinutes === null ? "gaps: unknown" : `gaps: ${capacity.fragmentMinutes}m`;
+  return `${capacity.localDate}  ${capacity.note}  (${sessions}, ${fragments})`;
+}
+
+export function renderOrientationCapacitySuccess(response: CommandSuccess<{ capacity: DailyCapacity }>): string[] {
+  return [formatCapacityLine(response.data.capacity)];
+}
+
+export function renderOrientationCapacityShowSuccess(
+  response: CommandSuccess<{ capacity: DailyCapacity | null; localDate: string }>
+): string[] {
+  const { capacity, localDate } = response.data;
+  return capacity ? [formatCapacityLine(capacity)] : [`No capacity stated for ${localDate}.`];
+}
+
+export function renderOrientationCapacityClearSuccess(
+  response: CommandSuccess<{ cleared: boolean; localDate: string }>
+): string[] {
+  return [
+    response.data.cleared
+      ? `Cleared capacity for ${response.data.localDate}.`
+      : `No capacity was set for ${response.data.localDate}.`
+  ];
 }
 
 export function renderOrientationPacketComposeSuccess(
@@ -483,5 +708,14 @@ export function renderOrientationPacketListSuccess(response: CommandSuccess<{ pa
 }
 
 export function renderOrientationReplySuccess(response: CommandSuccess<OrientationReplyData>): string[] {
-  return [response.data.echo, `Touched ${response.data.touchedEntries.length} entr${response.data.touchedEntries.length === 1 ? "y" : "ies"}.`];
+  const lines = response.data.echo.split("\n");
+  if (response.data.fits) {
+    // A "what fits?" reply is a query — reporting "touched 0 entries" would
+    // read as a failure rather than an answer.
+    return lines;
+  }
+  return [
+    ...lines,
+    `Touched ${response.data.touchedEntries.length} entr${response.data.touchedEntries.length === 1 ? "y" : "ies"}.`
+  ];
 }

@@ -9,10 +9,16 @@ import type {
   FeedbackListResponse,
   FeedbackRecordResponse
 } from "./types";
-import type { MissionControlNodeDetail, MissionControlOverview } from "./mission-control-types";
+import type {
+  MissionControlFits,
+  MissionControlNodeDetail,
+  MissionControlOverview,
+  OrientationEffort
+} from "./mission-control-types";
 
 export type MissionControlOverviewResponse = MissionControlOverview;
 export type MissionControlNodeResponse = MissionControlNodeDetail;
+export type MissionControlFitsResponse = MissionControlFits;
 export interface MissionControlReplyResponse {
   routedTo: "orientation" | "project";
   echo: string;
@@ -261,6 +267,40 @@ export async function loadMissionControlNode(
   nodeId: string
 ): Promise<ArcadiaJsonSuccess<MissionControlNodeResponse>> {
   return runArcadiaCliJson<MissionControlNodeResponse>(["mission-control", "node", nodeId]);
+}
+
+/**
+ * "I have N minutes — what fits?". Deterministic on the CLI side, so unlike
+ * the reply channel this needs no generous timeout: there is no model call.
+ */
+export async function loadMissionControlFits(
+  minutes: number,
+  limit?: number
+): Promise<ArcadiaJsonSuccess<MissionControlFitsResponse>> {
+  const args = ["mission-control", "fits", "--minutes", String(minutes)];
+  if (limit !== undefined) {
+    args.push("--limit", String(limit));
+  }
+  return runArcadiaCliJson<MissionControlFitsResponse>(args);
+}
+
+/**
+ * Sizing an entry from the UI goes straight to the deterministic update
+ * command — a UI edit is already unambiguous, so routing it through the
+ * reply interpreter would spend a model call to re-derive what was clicked.
+ */
+export async function setOrientationEntryEffort(input: {
+  entryId: string;
+  effort: OrientationEffort | null;
+}): Promise<ArcadiaJsonSuccess<{ entry: { id: string; effort: string | null } }>> {
+  return runArcadiaCliJson<{ entry: { id: string; effort: string | null } }>([
+    "orientation",
+    "entry",
+    "update",
+    input.entryId,
+    "--effort",
+    input.effort ?? "none"
+  ]);
 }
 
 export async function submitMissionControlReply(input: {
