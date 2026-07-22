@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { MobileShell } from "../../components/mobile-shell";
 import { EmptyState, ErrorState, LoadingState, Section } from "../../components/dashboard-ui";
 import type {
@@ -259,6 +260,16 @@ function NodeDetailPanel({
 }
 
 export default function MissionControlPage() {
+  return (
+    <Suspense fallback={<MobileShell><LoadingState /></MobileShell>}>
+      <MissionControlPageInner />
+    </Suspense>
+  );
+}
+
+function MissionControlPageInner() {
+  const searchParams = useSearchParams();
+  const initialNodeId = searchParams.get("node");
   const [overview, setOverview] = useState<MissionControlOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -300,6 +311,16 @@ export default function MissionControlPage() {
       })
       .catch((fetchError) => setDetailError(fetchError instanceof Error ? fetchError.message : String(fetchError)));
   }, []);
+
+  // Deep-link support: the sidebar's Urgent/Recent rows link here with
+  // ?node=<id> so tapping one opens straight to that item's detail instead
+  // of landing back on the towers list.
+  useEffect(() => {
+    if (initialNodeId) {
+      openNode(initialNodeId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialNodeId]);
 
   const goBack = useCallback(() => {
     setStack((prev) => {

@@ -119,6 +119,7 @@ export interface MissionControlActionItem {
   dueAt?: string;
   detail?: string;
   primaryAction?: MissionControlActionButton;
+  updatedAt: string;
 }
 
 export interface MissionControlActionButton {
@@ -204,6 +205,8 @@ export interface MissionControlOverview {
   generatedAt: string;
   headline: string;
   needsYouNow: MissionControlActionItem[];
+  /** Most recently updated items across every tower — the sidebar's "Recent" section. */
+  recentlyUpdated: MissionControlActionItem[];
   towers: MissionControlNodeSummary[];
 }
 

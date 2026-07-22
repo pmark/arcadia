@@ -18,6 +18,7 @@ export interface MissionControlActionItemData {
   title: string;
   urgency: MissionControlUrgency;
   dueAt?: string;
+  updatedAt: string;
 }
 
 export interface MissionControlNodeSummaryData {
@@ -52,6 +53,7 @@ export interface MissionControlOverviewData {
   generatedAt: string;
   headline: string;
   needsYouNow: MissionControlActionItemData[];
+  recentlyUpdated: MissionControlActionItemData[];
   towers: MissionControlNodeSummaryData[];
 }
 
@@ -78,7 +80,8 @@ function orientationEntryToActionItem(entry: OrientationEntry, now: Date): Missi
     id: entry.id,
     title: entry.title,
     urgency: urgency(score, reason),
-    dueAt: entry.dueAt ?? undefined
+    dueAt: entry.dueAt ?? undefined,
+    updatedAt: entry.updatedAt
   };
 }
 
@@ -107,16 +110,21 @@ export function buildMissionControlOverview(db: Database.Database, workspace: st
       : isDailyAdvantage
         ? "Today's Daily Advantage"
         : `${project.statusLabel}`;
-    return { id: project.id, title: project.name, urgency: urgency(score, reason) };
+    return { id: project.id, title: project.name, urgency: urgency(score, reason), updatedAt: project.updatedAt };
   });
   const decisionActionItems: MissionControlActionItemData[] = snapshot.requiresReviewItems.map((item) => ({
     id: item.id,
     title: item.decisionNeeded,
-    urgency: urgency(0.6, "Awaiting your decision")
+    urgency: urgency(0.6, "Awaiting your decision"),
+    updatedAt: item.updatedAt
   }));
 
-  const needsYouNow = [...lifeActionItems, ...projectActionItems, ...decisionActionItems]
-    .sort((a, b) => b.urgency.score - a.urgency.score)
+  const allActionItems = [...lifeActionItems, ...projectActionItems, ...decisionActionItems];
+
+  const needsYouNow = [...allActionItems].sort((a, b) => b.urgency.score - a.urgency.score).slice(0, 5);
+
+  const recentlyUpdated = [...allActionItems]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, 5);
 
   const towers: MissionControlNodeSummaryData[] = [
@@ -153,6 +161,7 @@ export function buildMissionControlOverview(db: Database.Database, workspace: st
     generatedAt: now.toISOString(),
     headline: needsYouNow.length > 0 ? `${needsYouNow.length} thing(s) need you` : "Nothing pressing",
     needsYouNow,
+    recentlyUpdated,
     towers
   };
 }
@@ -190,7 +199,8 @@ export function buildMissionControlNodeDetail(
     const actionItems = snapshot.projects.map((project) => ({
       id: project.id,
       title: project.name,
-      urgency: urgency(0.4, project.statusLabel)
+      urgency: urgency(0.4, project.statusLabel),
+      updatedAt: project.updatedAt
     }));
     return {
       id: nodeId,
@@ -211,7 +221,8 @@ export function buildMissionControlNodeDetail(
     const actionItems = snapshot.requiresReviewItems.map((item) => ({
       id: item.id,
       title: item.decisionNeeded,
-      urgency: urgency(0.6, "Awaiting your decision")
+      urgency: urgency(0.6, "Awaiting your decision"),
+      updatedAt: item.updatedAt
     }));
     return {
       id: nodeId,
