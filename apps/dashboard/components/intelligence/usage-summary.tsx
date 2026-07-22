@@ -1,3 +1,4 @@
+import { RefreshCw } from "lucide-react";
 import type { CodingAgentAvailability, IntelligenceUsageSummary } from "../../lib/intelligence-types";
 
 const AVAILABILITY: Record<CodingAgentAvailability, { label: string; className: string }> = {
@@ -10,19 +11,34 @@ const AVAILABILITY: Record<CodingAgentAvailability, { label: string; className: 
 export function UsageSummary({
   summary,
   loading,
+  refreshing,
   error,
+  onRefresh,
 }: {
   summary: IntelligenceUsageSummary | null;
   loading: boolean;
+  refreshing: boolean;
   error: string | null;
+  onRefresh: () => void;
 }) {
   return (
     <section className="grid min-w-0 gap-4 rounded-md border border-line bg-panel p-4 shadow-soft">
-      <div>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Usage & availability</h2>
-        <p className="mt-1 text-sm text-muted">
-          Reported current-day Intelligence usage and local coding-agent availability. Provider account quotas are shown only when reported.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Usage & availability</h2>
+          <p className="mt-1 text-sm text-muted">
+            Reported current-day Intelligence usage and local coding-agent availability. Provider account quotas are shown only when reported.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={loading || refreshing}
+          className="inline-flex min-h-10 items-center gap-2 rounded-md border border-line bg-canvas px-3 text-sm font-medium text-ink shadow-soft transition hover:border-steel hover:text-steel disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <RefreshCw className={refreshing ? "h-4 w-4 animate-spin" : "h-4 w-4"} aria-hidden="true" />
+          {refreshing ? "Refreshing…" : "Refresh usage"}
+        </button>
       </div>
 
       {loading ? <p className="text-sm text-muted">Loading usage…</p> : null}

@@ -1760,7 +1760,8 @@ export function buildProgram(): Command {
       .command("usage")
       .description("Show read-only current-day Intelligence usage and coding-agent availability")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((options: { workspace: string; json?: boolean }) =>
+      .option("--refresh", "Request a fresh provider usage snapshot")
+  ).action((options: { workspace: string; refresh?: boolean; json?: boolean }) =>
     runCliAction(
       "intelligence.usage",
       options,

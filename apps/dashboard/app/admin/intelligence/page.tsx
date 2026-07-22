@@ -32,7 +32,13 @@ function AdminIntelligencePageInner() {
     useIntelligenceCapabilities();
   const { job, submit, submitting, error: jobError, pollingStopped, refresh: refreshJob } = useIntelligenceJob(jobIdParam);
   const { jobs: recentJobs, loading: recentLoading, error: recentError, refresh: refreshRecent } = useIntelligenceRecent();
-  const { summary: usage, loading: usageLoading, error: usageError, refresh: refreshUsage } = useIntelligenceUsage();
+  const {
+    summary: usage,
+    loading: usageLoading,
+    refreshing: usageRefreshing,
+    error: usageError,
+    refresh: refreshUsage,
+  } = useIntelligenceUsage();
 
   const selectJob = useCallback(
     (jobId: string) => {
@@ -70,7 +76,7 @@ function AdminIntelligencePageInner() {
 
   async function handleRefresh() {
     setRefreshing(true);
-    await Promise.all([refreshCapabilities(), refreshRecent(), refreshUsage()]);
+    await Promise.all([refreshCapabilities(), refreshRecent(), refreshUsage({ force: true })]);
     setRefreshing(false);
   }
 
@@ -85,7 +91,13 @@ function AdminIntelligencePageInner() {
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5">
         {capabilitiesError ? <ErrorState title="Arcadia Intelligence unavailable" message={capabilitiesError} /> : null}
 
-        <UsageSummary summary={usage} loading={usageLoading} error={usageError} />
+        <UsageSummary
+          summary={usage}
+          loading={usageLoading}
+          refreshing={usageRefreshing}
+          error={usageError}
+          onRefresh={() => void refreshUsage({ force: true })}
+        />
 
         {capabilitiesLoading && !capabilities ? (
           <LoadingState />

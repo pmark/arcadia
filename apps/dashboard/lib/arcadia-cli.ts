@@ -62,8 +62,10 @@ export async function listIntelligenceTestJobs(
   ]);
 }
 
-export async function getIntelligenceUsage(): Promise<ArcadiaJsonSuccess<IntelligenceUsageResponse>> {
-  return runArcadiaCliJson<IntelligenceUsageResponse>(["intelligence", "usage"]);
+export async function getIntelligenceUsage(options: { refresh?: boolean } = {}): Promise<ArcadiaJsonSuccess<IntelligenceUsageResponse>> {
+  const args = ["intelligence", "usage"];
+  if (options.refresh) args.push("--refresh");
+  return runArcadiaCliJson<IntelligenceUsageResponse>(args);
 }
 
 export async function resolveDashboardWorkspace(): Promise<string> {

@@ -39,10 +39,10 @@ the app's domain.
   `executionPolicy.allowPaidUsage` — never an automatic fallback
 - One retry maximum
 - Read-only current-day job-usage and coding-agent-availability reporting for
-  the Dashboard, including on-demand Codex account windows and the latest
-  Claude Code status-line snapshot. The last normalized local snapshot is
-  retained for a transient read failure and clearly marked as last reported;
-  unsupported fields remain unknown
+  the Dashboard, including on-demand Codex account windows and Claude Code
+  account windows refreshed from local OAuth credentials when available. The
+  Claude Code status-line snapshot supplies context data and remains the
+  fallback for transient live-read failures; unsupported fields remain unknown
 
 ## Explicitly excluded
 

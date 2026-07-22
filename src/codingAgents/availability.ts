@@ -1,10 +1,18 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { observeCodexTasks } from "../codex/observer.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { codingAgentLabel } from "./adapters.js";
+
+const execFileAsync = promisify(execFile);
+const CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
+const CLAUDE_OAUTH_TOKEN_URL = "https://api.anthropic.com/v1/oauth/token";
+const CLAUDE_OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
+const CLAUDE_USAGE_REFRESH_COOLDOWN_MS = 5 * 60_000;
+const CLAUDE_KEYCHAIN_SERVICES = ["Claude Code-credentials"];
 
 export type CodingAgentAvailability = "available" | "unknown" | "usage_limited" | "budget_limited";
 
@@ -40,6 +48,21 @@ export interface CodingAgentAvailabilityRecord {
 export interface CodingAgentAvailabilitySnapshot {
   generatedAt: string;
   agents: CodingAgentAvailabilityRecord[];
+}
+
+interface ClaudeOAuthCredentials {
+  accessToken: string;
+  refreshToken: string | null;
+}
+
+interface ClaudeUsageResponse {
+  five_hour?: ClaudeUsageWindow | null;
+  seven_day?: ClaudeUsageWindow | null;
+}
+
+interface ClaudeUsageWindow {
+  utilization?: number;
+  resets_at?: string | null;
 }
 
 interface ProviderTelemetry {
@@ -121,6 +144,62 @@ export function observeCodingAgentAvailability(
   return snapshot;
 }
 
+/**
+ * Ask Claude's own usage service for a current account snapshot before the
+ * Intelligence usage command observes provider state. The endpoint is
+ * deliberately polled slowly because it has a much tighter request budget
+ * than the local status-line file. Failures leave the last reported snapshot
+ * intact.
+ */
+export async function refreshClaudeCodeUsageTelemetry(
+  now = new Date(),
+  options: { force?: boolean } = {},
+): Promise<void> {
+  if (process.env.VITEST) return;
+
+  const snapshotPath = claudeStatusLinePath();
+  const existing = readJsonRecord(snapshotPath);
+  const lastCheckedAt = stringValue(existing?.arcadia_usage_checked_at);
+  if (!options.force && lastCheckedAt && Date.now() - Date.parse(lastCheckedAt) < CLAUDE_USAGE_REFRESH_COOLDOWN_MS) {
+    return;
+  }
+
+  writeClaudeSnapshot(snapshotPath, {
+    ...(existing ?? {}),
+    arcadia_usage_checked_at: now.toISOString(),
+  });
+
+  const credentials = await loadClaudeOAuthCredentials();
+  if (!credentials) return;
+
+  let response = await requestClaudeUsage(credentials.accessToken);
+  if (response.status === 401 && credentials.refreshToken) {
+    const refreshed = await refreshClaudeOAuthToken(credentials.refreshToken);
+    if (refreshed) response = await requestClaudeUsage(refreshed.accessToken);
+  }
+
+  if (!response.body || (!response.body.five_hour && !response.body.seven_day)) return;
+
+  const current = readJsonRecord(snapshotPath) ?? existing ?? {};
+  const currentRateLimits = objectValue(current.rate_limits);
+  writeClaudeSnapshot(snapshotPath, {
+    ...current,
+    arcadia_captured_at: now.toISOString(),
+    arcadia_usage_checked_at: now.toISOString(),
+    rate_limits: {
+      ...(currentRateLimits ?? {}),
+      five_hour: mergeClaudeUsageWindow(
+        objectValue(currentRateLimits?.five_hour),
+        response.body.five_hour,
+      ),
+      seven_day: mergeClaudeUsageWindow(
+        objectValue(currentRateLimits?.seven_day),
+        response.body.seven_day,
+      ),
+    },
+  });
+}
+
 export function isCodingAgentAvailable(
   profile: CodingAgentProfile,
   snapshot: CodingAgentAvailabilitySnapshot,
@@ -139,9 +218,125 @@ function readProviderTelemetry(provider: string, now: Date): ProviderTelemetry |
   return null;
 }
 
+async function loadClaudeOAuthCredentials(): Promise<ClaudeOAuthCredentials | null> {
+  const environmentToken = stringValue(process.env.CLAUDE_CODE_OAUTH_TOKEN);
+  if (environmentToken) return { accessToken: environmentToken, refreshToken: null };
+
+  const credentialsPath = process.env.ARCADIA_CLAUDE_CREDENTIALS_PATH
+    ?? path.join(os.homedir(), ".claude", ".credentials.json");
+  const fromFile = credentialsFromRecord(readJsonRecord(credentialsPath));
+  if (fromFile) return fromFile;
+
+  if (process.platform !== "darwin") return null;
+  for (const service of CLAUDE_KEYCHAIN_SERVICES) {
+    try {
+      const result = await execFileAsync("security", ["find-generic-password", "-s", service, "-w"], {
+        encoding: "utf8",
+        timeout: 2_000,
+        maxBuffer: 1024 * 1024,
+      });
+      const fromKeychain = credentialsFromRecord(JSON.parse(result.stdout) as Record<string, unknown>);
+      if (fromKeychain) return fromKeychain;
+    } catch {
+      // Try the next credential source, then retain the snapshot fallback.
+    }
+  }
+  return null;
+}
+
+function credentialsFromRecord(record: Record<string, unknown> | null): ClaudeOAuthCredentials | null {
+  const oauth = objectValue(record?.claudeAiOauth);
+  const accessToken = stringValue(oauth?.accessToken);
+  if (!accessToken) return null;
+  return {
+    accessToken,
+    refreshToken: stringValue(oauth?.refreshToken),
+  };
+}
+
+async function requestClaudeUsage(accessToken: string): Promise<{
+  status: number;
+  body: ClaudeUsageResponse | null;
+}> {
+  try {
+    const response = await fetch(CLAUDE_USAGE_URL, {
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "claude-code/2.1.205",
+        Authorization: `Bearer ${accessToken}`,
+        "anthropic-beta": "oauth-2025-04-20",
+      },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) return { status: response.status, body: null };
+    return { status: response.status, body: await response.json() as ClaudeUsageResponse };
+  } catch {
+    return { status: 0, body: null };
+  }
+}
+
+async function refreshClaudeOAuthToken(refreshToken: string): Promise<{ accessToken: string } | null> {
+  try {
+    const response = await fetch(CLAUDE_OAUTH_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: process.env.ARCADIA_CLAUDE_OAUTH_CLIENT_ID ?? CLAUDE_OAUTH_CLIENT_ID,
+        refresh_token: refreshToken,
+      }),
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) return null;
+    const body = await response.json() as { access_token?: unknown };
+    const accessToken = stringValue(body.access_token);
+    return accessToken ? { accessToken } : null;
+  } catch {
+    return null;
+  }
+}
+
+function mergeClaudeUsageWindow(
+  current: Record<string, unknown> | null,
+  latest: ClaudeUsageWindow | null | undefined,
+): Record<string, unknown> | null {
+  if (!latest || typeof latest.utilization !== "number") return current;
+  return {
+    ...(current ?? {}),
+    used_percentage: latest.utilization <= 1 ? latest.utilization * 100 : latest.utilization,
+    ...(latest.resets_at ? { resets_at: latest.resets_at } : {}),
+  };
+}
+
 function telemetryCachePath(): string {
   return process.env.ARCADIA_CODING_AGENT_USAGE_CACHE_PATH
     ?? path.join(os.homedir(), ".arcadia", "telemetry", "coding-agent-usage.json");
+}
+
+function claudeStatusLinePath(): string {
+  return process.env.ARCADIA_CLAUDE_USAGE_PATH
+    ?? path.join(os.homedir(), ".arcadia", "telemetry", "claude-code.json");
+}
+
+function readJsonRecord(filePath: string): Record<string, unknown> | null {
+  if (!existsSync(filePath)) return null;
+  try {
+    return JSON.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function writeClaudeSnapshot(filePath: string, snapshot: Record<string, unknown>): void {
+  try {
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    const temporaryPath = `${filePath}.tmp-${process.pid}`;
+    writeFileSync(temporaryPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+    renameSync(temporaryPath, filePath);
+  } catch {
+    // Preserve the existing snapshot when the telemetry path is unavailable.
+  }
 }
 
 function readTelemetryCache(): CodingAgentTelemetryCache {
@@ -177,8 +372,7 @@ function writeTelemetryCache(cache: CodingAgentTelemetryCache): void {
 }
 
 function readClaudeStatusLineTelemetry(now: Date): ProviderTelemetry | null {
-  const filePath = process.env.ARCADIA_CLAUDE_USAGE_PATH
-    ?? path.join(os.homedir(), ".arcadia", "telemetry", "claude-code.json");
+  const filePath = claudeStatusLinePath();
   if (!existsSync(filePath)) return null;
 
   try {
@@ -301,7 +495,9 @@ function numberValue(value: unknown): number {
 }
 
 function epochToIso(value: unknown): string | null {
-  return typeof value === "number" && Number.isFinite(value) ? new Date(value * 1_000).toISOString() : null;
+  if (typeof value === "number" && Number.isFinite(value)) return new Date(value * 1_000).toISOString();
+  if (typeof value === "string" && Number.isFinite(Date.parse(value))) return new Date(value).toISOString();
+  return null;
 }
 
 function relativeAge(capturedAt: string, now: Date): string {

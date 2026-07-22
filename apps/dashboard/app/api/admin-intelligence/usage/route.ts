@@ -4,9 +4,10 @@ import { ArcadiaCliError, getIntelligenceUsage } from "../../../../lib/arcadia-c
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const response = await getIntelligenceUsage();
+    const refresh = new URL(request.url).searchParams.get("refresh") === "1";
+    const response = await getIntelligenceUsage({ refresh });
     return NextResponse.json(response.data);
   } catch (error) {
     return NextResponse.json(

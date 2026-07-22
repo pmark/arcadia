@@ -4,6 +4,7 @@ import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import {
   observeCodingAgentAvailability,
+  refreshClaudeCodeUsageTelemetry,
   type CodingAgentAvailabilitySnapshot,
 } from "../codingAgents/availability.js";
 import { openDatabase } from "../db/connection.js";
@@ -420,7 +421,7 @@ export async function runIntelligenceListJobsCommand(
  * provider-neutral coding-agent availability snapshot used by routing.
  */
 export async function runIntelligenceUsageCommand(
-  options: { workspace: string; now?: Date },
+  options: { workspace: string; now?: Date; refresh?: boolean },
 ): Promise<CommandSuccess<IntelligenceUsageCommandData>> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const db = openDatabase(workspacePath);
@@ -432,6 +433,7 @@ export async function runIntelligenceUsageCommand(
     const jobs = await repository.listCreatedSince(periodStart);
     const registries = loadPhase3Registries(workspacePath);
     validatePhase3Registries(registries);
+    await refreshClaudeCodeUsageTelemetry(now, { force: options.refresh });
     const codingAgentAvailability = observeCodingAgentAvailability(registries.codingAgents.profiles, now);
 
     return createSuccess({

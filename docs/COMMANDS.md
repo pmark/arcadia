@@ -111,7 +111,7 @@ Show read-only current-day Intelligence usage and coding-agent availability:
 pnpm arcadia intelligence usage --workspace "$WORKSPACE" --json
 ```
 
-Arcadia aggregates token and cost data recorded by completed jobs and exposes a provider-neutral coding-agent availability snapshot. Codex account windows come from the local Codex app-server protocol. Claude Code context and 5-hour/7-day limits come from its status-line JSON payload, captured by:
+Arcadia aggregates token and cost data recorded by completed jobs and exposes a provider-neutral coding-agent availability snapshot. Codex account windows come from the local Codex app-server protocol. Claude Code 5-hour/7-day account limits are refreshed from Claude Code's local OAuth credentials when available; its context data still comes from the status-line JSON payload, captured by:
 
 ```sh
 scripts/claude-code-statusline.sh
