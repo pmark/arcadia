@@ -239,6 +239,17 @@ import {
 } from "./commands/workflow.js";
 import { normalizeError, validationError } from "./cli/errors.js";
 import { ORIENTATION_EFFORTS, type OrientationEffort } from "./orientation/types.js";
+import { recordCliActivity } from "./activity/recorder.js";
+import {
+  renderActivityListSuccess,
+  renderReportSuccess,
+  renderTimeListSuccess,
+  renderTimeLogSuccess,
+  runActivityListCommand,
+  runReportCommand,
+  runTimeListCommand,
+  runTimeLogCommand
+} from "./commands/activity.js";
 import {
   createFailure,
   createSuccess,
@@ -2116,6 +2127,103 @@ export function buildProgram(): Command {
     )
   );
 
+  const time = program
+    .command("time")
+    .description("Log and review real time spent — described roughly, never clocked precisely");
+
+  addJsonOption(
+    time
+      .command("log")
+      .description("Log a block of work you already did")
+      .requiredOption("--minutes <n>", "Roughly how long it took")
+      .requiredOption("--description <text>", "What you did, in your own words")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--at <hh:mm>", "Roughly when it started, local clock")
+      .option("--entry <entryId>", "Ledger entry this work was about")
+      .option("--date <yyyy-mm-dd>", "Local date the work happened, defaults to today")
+  ).action((options: {
+    workspace: string;
+    minutes: string;
+    description: string;
+    at?: string;
+    entry?: string;
+    date?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "time.log",
+      options,
+      () => runTimeLogCommand({
+        workspace: options.workspace,
+        minutes: Number(options.minutes),
+        description: options.description,
+        at: options.at,
+        entryId: options.entry,
+        localDate: options.date
+      }),
+      renderTimeLogSuccess
+    )
+  );
+
+  addJsonOption(
+    time
+      .command("list")
+      .description("Show logged time")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--days <n>", "How many days back to include, including today", "1")
+      .option("--date <yyyy-mm-dd>", "Last day of the window, defaults to today")
+  ).action((options: { workspace: string; days?: string; date?: string; json?: boolean }) =>
+    runCliAction(
+      "time.list",
+      options,
+      () => runTimeListCommand({
+        workspace: options.workspace,
+        days: options.days ? Number(options.days) : undefined,
+        localDate: options.date
+      }),
+      renderTimeListSuccess
+    )
+  );
+
+  addJsonOption(
+    program
+      .command("activity")
+      .description("The interaction log Arcadia keeps for free — when you were in it, and about what")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--days <n>", "How many days back to include, including today", "1")
+      .option("--date <yyyy-mm-dd>", "Last day of the window, defaults to today")
+  ).action((options: { workspace: string; days?: string; date?: string; json?: boolean }) =>
+    runCliAction(
+      "activity.list",
+      options,
+      () => runActivityListCommand({
+        workspace: options.workspace,
+        days: options.days ? Number(options.days) : undefined,
+        localDate: options.date
+      }),
+      renderActivityListSuccess
+    )
+  );
+
+  // Joins the existing `report` group (report status) rather than starting a
+  // rival one — these are the same question at different time scales.
+  for (const kind of ["daily", "weekly"] as const) {
+    addJsonOption(
+      report
+        .command(kind)
+        .description(kind === "daily" ? "Today's story" : "The last seven days")
+        .option("--workspace <path>", "Workspace path", defaultWorkspace())
+        .option("--date <yyyy-mm-dd>", "Last day of the window, defaults to today")
+    ).action((options: { workspace: string; date?: string; json?: boolean }) =>
+      runCliAction(
+        `report.${kind}`,
+        options,
+        () => runReportCommand({ workspace: options.workspace, kind, localDate: options.date }),
+        renderReportSuccess
+      )
+    );
+  }
+
   const missionControl = program
     .command("mission-control")
     .description("Mission Control view: an overview across Life, Projects, and Decisions");
@@ -2329,14 +2437,31 @@ async function runCliAction<TData>(
   renderHuman: HumanRenderer<TData>
 ): Promise<void> {
   const context = { json: Boolean(options.json) };
+  const startedAt = Date.now();
 
   try {
     const response = await action();
     writeSuccess(response, context, renderHuman);
+    // Every surface reaches Arcadia through this one function, so recording
+    // here is the whole of the interaction log — no per-command wiring, and
+    // nothing that can drift out of date as commands are added.
+    recordCliActivity({
+      command,
+      workspace: response.workspace ?? options.workspace,
+      outcome: "ok",
+      durationMs: Date.now() - startedAt,
+      data: response.data
+    });
   } catch (error) {
     const normalized = normalizeError(error);
     writeFailure(createFailure(command, normalized, options.workspace ? path.resolve(options.workspace) : undefined), context);
     process.exitCode = normalized.exitCode;
+    recordCliActivity({
+      command,
+      workspace: options.workspace,
+      outcome: "error",
+      durationMs: Date.now() - startedAt
+    });
   }
 }
 

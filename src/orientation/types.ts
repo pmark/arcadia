@@ -129,6 +129,7 @@ export type LedgerOp =
   | { op: "reprioritize"; entryId: string; priority: OrientationPriority }
   | { op: "confirm"; entryId: string }
   | { op: "capacity"; note: string; sessionBlocks?: number; fragmentMinutes?: number }
+  | { op: "log_time"; minutes: number; description: string; startedAtLocal?: string; entryId?: string }
   | { op: "context"; text: string };
 
 export interface ReplyInterpretation {

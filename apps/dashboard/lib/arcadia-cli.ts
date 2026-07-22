@@ -309,6 +309,43 @@ export async function loadTimeline(): Promise<ArcadiaJsonSuccess<TimelineRespons
   return runArcadiaCliJson<TimelineResponse>(["orientation", "timeline"]);
 }
 
+export interface ActivityReportResponse {
+  kind: "daily" | "weekly";
+  startLocalDate: string;
+  endLocalDate: string;
+  headline: string;
+  engagement: { totalMinutes: number };
+  logged: { totalMinutes: number; byFocus: Array<{ focus: string; minutes: number }> };
+  progressed: Array<{ title: string; what: string; why: string }>;
+  urgent: Array<{ title: string; why: string }>;
+  becomingUrgent: Array<{ title: string; why: string }>;
+  backlog: { totalMinutes: number; daysAtCapacity: number | null } | null;
+  encouragement: { mood: string; line: string; attribution?: string };
+  lines: string[];
+}
+
+/** The daily or weekly story. Deterministic on the CLI side. */
+export async function loadReport(kind: "daily" | "weekly"): Promise<ArcadiaJsonSuccess<ActivityReportResponse>> {
+  return runArcadiaCliJson<ActivityReportResponse>(["report", kind]);
+}
+
+export interface LogTimeResponse {
+  timeEntry: { id: string; minutes: number; description: string; startedAt: string | null };
+}
+
+/** Deterministic time logging from the UI — the description is the operator's own words. */
+export async function logTime(input: {
+  minutes: number;
+  description: string;
+  at?: string;
+}): Promise<ArcadiaJsonSuccess<LogTimeResponse>> {
+  const args = ["time", "log", "--minutes", String(input.minutes), "--description", input.description];
+  if (input.at) {
+    args.push("--at", input.at);
+  }
+  return runArcadiaCliJson<LogTimeResponse>(args);
+}
+
 export async function submitMissionControlReply(input: {
   nodeId: string;
   text: string;
@@ -348,6 +385,9 @@ async function runArcadiaCliJson<TData>(
   try {
     const result = await execFileAsync(command, cliArgs, {
       cwd: repoRoot,
+      // Tells the activity log where the operator actually was; without it
+      // every dashboard tap would be recorded as terminal use.
+      env: { ...process.env, ARCADIA_SURFACE: "dashboard" },
       encoding: "utf8",
       timeout: options.timeoutMs ?? 60_000,
       maxBuffer: 16 * 1024 * 1024

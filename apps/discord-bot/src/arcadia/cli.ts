@@ -23,6 +23,18 @@ import type {
 
 const execFileAsync = promisify(execFile);
 
+/**
+ * Which surface the activity log should attribute a call to. This process is
+ * mostly a daemon — schedulers and pollers — so "automation" is the safe
+ * default; only calls the operator actually triggered say "discord", or the
+ * report would show a night of polling as a night of engagement.
+ */
+type CliSurface = "discord" | "automation";
+
+function surfaceEnv(surface: CliSurface = "automation"): NodeJS.ProcessEnv {
+  return { ...process.env, ARCADIA_SURFACE: surface };
+}
+
 export interface ArcadiaCliOptions {
   workspace: string | null;
   cliPath: string | null;
@@ -60,22 +72,22 @@ export class ArcadiaCli {
   }
 
   reviewApprove(id: string): Promise<ArcadiaJsonSuccess<ReviewDecisionData>> {
-    return this.runJson<ReviewDecisionData>(this.withWorkspace(["review", "approve", id, "--json"]));
+    return this.runJson<ReviewDecisionData>(this.withWorkspace(["review", "approve", id, "--json"]), { surface: "discord" });
   }
 
   reviewApproveWithExecute(id: string, executor = "codex"): Promise<ArcadiaJsonSuccess<ReviewDecisionData>> {
     return this.runJson<ReviewDecisionData>(
       this.withWorkspace(["review", "approve", id, "--execute", "--executor", executor, "--json"]),
-      { timeoutMs: 35 * 60 * 1000 }
+      { timeoutMs: 35 * 60 * 1000, surface: "discord" }
     );
   }
 
   reviewReject(id: string): Promise<ArcadiaJsonSuccess<ReviewDecisionData>> {
-    return this.runJson<ReviewDecisionData>(this.withWorkspace(["review", "reject", id, "--json"]));
+    return this.runJson<ReviewDecisionData>(this.withWorkspace(["review", "reject", id, "--json"]), { surface: "discord" });
   }
 
   reviewDefer(id: string): Promise<ArcadiaJsonSuccess<ReviewDecisionData>> {
-    return this.runJson<ReviewDecisionData>(this.withWorkspace(["review", "defer", id, "--json"]));
+    return this.runJson<ReviewDecisionData>(this.withWorkspace(["review", "defer", id, "--json"]), { surface: "discord" });
   }
 
   reviewResolveReply(reply: string, id?: string | null): Promise<ArcadiaJsonSuccess<ReviewResolveReplyData>> {
@@ -85,7 +97,7 @@ export class ArcadiaCli {
       reply,
       ...(id ? ["--id", id] : []),
       "--json"
-    ]));
+    ]), { surface: "discord" });
   }
 
   ask(request: string, askOptions: AskCliOptions = {}): Promise<ArcadiaJsonSuccess<AskData>> {
@@ -96,7 +108,7 @@ export class ArcadiaCli {
       ...(askOptions.replyReviewId ? ["--reply-review-id", askOptions.replyReviewId] : []),
       ...(askOptions.runSafe ? ["--run-safe"] : []),
       "--json"
-    ]));
+    ]), { surface: "discord" });
   }
 
   runs(limit = 10): Promise<ArcadiaJsonSuccess<RunListData>> {
@@ -153,7 +165,8 @@ export class ArcadiaCli {
       // src/orientation/interpreter.ts) so a cold local-model load produces
       // that command's clean typed error instead of this exec just being
       // killed first and losing the structured response.
-      { timeoutMs: 200_000 }
+      // The one call in this file that is unambiguously the operator typing.
+      { timeoutMs: 200_000, surface: "discord" }
     );
   }
 
@@ -171,12 +184,13 @@ export class ArcadiaCli {
    */
   private async runJsonAllowFailure<TData>(
     args: string[],
-    options: { timeoutMs?: number } = {}
+    options: { timeoutMs?: number; surface?: CliSurface } = {}
   ): Promise<ArcadiaJsonSuccess<TData> | ArcadiaJsonFailure> {
     const invocation = this.buildInvocation(args);
     try {
       const result = await execFileAsync(invocation.command, invocation.args, {
         cwd: repoRoot(),
+        env: surfaceEnv(options.surface),
         encoding: "utf8",
         timeout: options.timeoutMs ?? this.options.timeoutMs ?? 30_000,
         maxBuffer: 16 * 1024 * 1024
@@ -195,11 +209,15 @@ export class ArcadiaCli {
     }
   }
 
-  private async runJson<TData>(args: string[], options: { timeoutMs?: number } = {}): Promise<ArcadiaJsonSuccess<TData>> {
+  private async runJson<TData>(
+    args: string[],
+    options: { timeoutMs?: number; surface?: CliSurface } = {}
+  ): Promise<ArcadiaJsonSuccess<TData>> {
     const invocation = this.buildInvocation(args);
     try {
       const result = await execFileAsync(invocation.command, invocation.args, {
         cwd: repoRoot(),
+        env: surfaceEnv(options.surface),
         encoding: "utf8",
         timeout: options.timeoutMs ?? this.options.timeoutMs ?? 30_000,
         maxBuffer: 16 * 1024 * 1024

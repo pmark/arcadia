@@ -1,6 +1,17 @@
 "use client";
 
-import { AlertTriangle, Clock, Eye, LayoutGrid, Menu, MessageSquarePlus, Radar, X, type LucideIcon } from "lucide-react";
+import {
+  AlertTriangle,
+  Clock,
+  Eye,
+  LayoutGrid,
+  Menu,
+  MessageSquarePlus,
+  NotebookText,
+  Radar,
+  X,
+  type LucideIcon
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -10,6 +21,7 @@ import type { MissionControlOverview } from "../lib/mission-control-types";
 const PRIMARY_NAV = [
   { href: "/mission-control", label: "Mission Control", icon: Radar },
   { href: "/capture", label: "Capture", icon: MessageSquarePlus },
+  { href: "/reports", label: "Reports", icon: NotebookText },
   { href: "/review", label: "Decisions", icon: Eye },
   { href: "/dashboard", label: "Full Dashboard", icon: LayoutGrid }
 ];

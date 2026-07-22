@@ -321,3 +321,55 @@ Mark an Action done:
 ```sh
 pnpm arcadia work done work_example --workspace "$WORKSPACE" --json
 ```
+
+## Time, Scale, And Reports
+
+Give a ledger entry a coarse size so Arcadia can reason about time cost.
+Sizes are `quick` (≤15m), `short` (≤1h), `session` (1–3h), and `project`
+(multi-session). Use `none` to clear one.
+
+```sh
+pnpm arcadia orientation entry update oentry_example --workspace "$WORKSPACE" --effort session
+pnpm arcadia work update work_example --workspace "$WORKSPACE" --effort short
+```
+
+Say what today actually holds, then ask what fits a real gap. Both the fit
+query and the packet's plan are deterministic — no model call.
+
+```sh
+pnpm arcadia orientation capacity set --workspace "$WORKSPACE" \
+  --note "one client session + ~1h of fragments; evening gone" \
+  --session-blocks 1 --fragment-minutes 60
+pnpm arcadia orientation fits --workspace "$WORKSPACE" --minutes 20
+pnpm arcadia orientation timeline --workspace "$WORKSPACE"
+```
+
+Log real work you already did. `--at` is a local clock time and is optional;
+so is linking the block to a ledger entry.
+
+```sh
+pnpm arcadia time log --workspace "$WORKSPACE" \
+  --minutes 90 --description "Nav and contact form on the practice site" \
+  --at 09:00 --entry oentry_example
+pnpm arcadia time list --workspace "$WORKSPACE" --days 7
+```
+
+Read the story back. `activity` shows the raw interaction log Arcadia keeps
+for free; the reports compose it into what moved, where the time went, and
+what is becoming urgent.
+
+```sh
+pnpm arcadia activity --workspace "$WORKSPACE" --days 7
+pnpm arcadia report daily --workspace "$WORKSPACE"
+pnpm arcadia report weekly --workspace "$WORKSPACE"
+```
+
+The same natural-language reply loop understands all of it — sizes, capacity,
+and time already spent:
+
+```sh
+pnpm arcadia orientation reply "the disposal's a whole afternoon" --workspace "$WORKSPACE"
+pnpm arcadia orientation reply "today I have one client session and about an hour of gaps" --workspace "$WORKSPACE"
+pnpm arcadia orientation reply "I spent about an hour on the car mirror this morning" --workspace "$WORKSPACE"
+pnpm arcadia orientation reply "I have 20 minutes, what fits?" --workspace "$WORKSPACE"
+```

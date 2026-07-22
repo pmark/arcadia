@@ -49,6 +49,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureOrientationTables(db);
   ensureEffortColumns(db);
   ensureDailyCapacityTable(db);
+  ensureActivityTables(db);
   applyCapabilityMigrations(db);
 }
 
@@ -393,6 +394,55 @@ function ensureDailyCapacityTable(db: Database.Database): void {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+  `);
+}
+
+/**
+ * How the operator's time actually went, from two independent sources.
+ *
+ * `activity_events` is observed for free — one row per command, from any
+ * surface. It is the only record that costs nothing to keep, so it is the
+ * backbone of "when was I engaged". Deliberately carries no foreign keys: a
+ * completed entry must not erase the history of having worked on it.
+ *
+ * `time_entries` is what the operator described in passing. Everything about
+ * it is optional or approximate on purpose — started_at may be null, minutes
+ * are rough — because a tracker that demands precision is a tracker that
+ * stops being used by Wednesday.
+ */
+function ensureActivityTables(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS activity_events (
+      id TEXT PRIMARY KEY,
+      occurred_at TEXT NOT NULL,
+      local_date TEXT NOT NULL,
+      surface TEXT NOT NULL,
+      command TEXT NOT NULL,
+      focus TEXT,
+      entry_id TEXT,
+      project_id TEXT,
+      outcome TEXT NOT NULL CHECK (outcome IN ('ok', 'error')),
+      duration_ms INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_activity_events_local_date ON activity_events(local_date);
+    CREATE INDEX IF NOT EXISTS idx_activity_events_occurred_at ON activity_events(occurred_at);
+
+    CREATE TABLE IF NOT EXISTS time_entries (
+      id TEXT PRIMARY KEY,
+      local_date TEXT NOT NULL,
+      started_at TEXT,
+      ended_at TEXT,
+      minutes INTEGER NOT NULL,
+      description TEXT NOT NULL,
+      focus TEXT,
+      entry_id TEXT,
+      project_id TEXT,
+      area TEXT,
+      source TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_time_entries_local_date ON time_entries(local_date);
   `);
 }
 

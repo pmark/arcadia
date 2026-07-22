@@ -7,6 +7,7 @@ import { createLiteLlmHttpClient } from "../intelligence/litellm/httpClient.js";
 import { submitIntelligenceRequest } from "../intelligence/service/jobService.js";
 import type { IntelligenceJob, IntelligenceRequest, JsonValue } from "../intelligence/types.js";
 import { localDateStamp } from "../utils/time.js";
+import { createTimeEntry } from "../activity/repository.js";
 import {
   completeOrientationEntry,
   confirmOrientationEntry,
@@ -55,7 +56,10 @@ const REPLY_JSON_SCHEMA = {
       items: {
         type: "object",
         properties: {
-          op: { type: "string", enum: ["add", "update", "complete", "reprioritize", "confirm", "capacity", "context"] },
+          op: {
+            type: "string",
+            enum: ["add", "update", "complete", "reprioritize", "confirm", "capacity", "log_time", "context"]
+          },
           entryId: { type: "string" },
           entry: { type: "object" },
           fields: { type: "object" },
@@ -63,6 +67,9 @@ const REPLY_JSON_SCHEMA = {
           note: { type: "string" },
           sessionBlocks: { type: "number" },
           fragmentMinutes: { type: "number" },
+          minutes: { type: "number" },
+          description: { type: "string" },
+          startedAtLocal: { type: "string" },
           text: { type: "string" }
         },
         required: ["op"]
@@ -101,6 +108,29 @@ const CAPACITY_GUIDANCE =
   "sessionBlocks is how many protected 1-3 hour blocks the day holds (0 is a valid and useful answer). " +
   "fragmentMinutes is the total minutes of small gaps between commitments. Omit either number if they did not imply it. ";
 
+/**
+ * Time logging has to survive being vague, because vague is how people
+ * actually remember their own day. "Spent the morning on the website" is a
+ * usable fact; refusing it until the operator produces exact clock times is
+ * how a tracker dies in its first week.
+ */
+const TIME_LOG_GUIDANCE =
+  'Use "log_time" when the operator is describing work they ALREADY did, with any sense of how long ' +
+  '("spent the morning on the website", "an hour on the disposal", "I was at the taxes for about 90 minutes"). ' +
+  "minutes is your best reading of the duration they implied. description is their own words. " +
+  'startedAtLocal is the operator\'s LOCAL wall-clock time in "YYYY-MM-DDTHH:MM" form with NO timezone suffix — ' +
+  "never a UTC instant, never a trailing Z. Resolve it against the local date and time given below, and only when " +
+  'they indicated roughly when ("this morning" -> around 09:00, "after lunch" -> around 13:00, "last night" -> ' +
+  "around 20:00 of the previous day). Omit it rather than guessing a time they did not imply. " +
+  "Set entryId when the work clearly maps to a ledger entry. Note the difference from \"capacity\": capacity is " +
+  "time the operator EXPECTS TO HAVE today, log_time is work they have ALREADY DONE. ";
+
+/** "YYYY-MM-DDTHH:MM" in the operator's own timezone — the only clock they think in. */
+function localWallClock(date: Date): string {
+  const pad = (value: number): string => `${value}`.padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 function buildInterpretationRequest(
   replyText: string,
   entries: OrientationEntry[],
@@ -131,10 +161,12 @@ function buildInterpretationRequest(
     '{"op":"update","entryId":string,"fields":{...same optional fields as add.entry excluding entryType}}, ' +
     '{"op":"complete","entryId":string}, {"op":"reprioritize","entryId":string,"priority":string}, ' +
     '{"op":"confirm","entryId":string}, ' +
-    '{"op":"capacity","note":string,"sessionBlocks"?:number,"fragmentMinutes"?:number}, {"op":"context","text":string}. ' +
+    '{"op":"capacity","note":string,"sessionBlocks"?:number,"fragmentMinutes"?:number}, ' +
+    '{"op":"log_time","minutes":number,"description":string,"startedAtLocal"?:string,"entryId"?:string}, {"op":"context","text":string}. ' +
     "entryId MUST be one of the ids in the provided ledger — never invent one. " +
     EFFORT_GUIDANCE +
     CAPACITY_GUIDANCE +
+    TIME_LOG_GUIDANCE +
     "If the reply is too ambiguous to confidently produce ops, return ops: [] and set ambiguousQuestion to a short clarifying question. " +
     "confidence is 0..1. echo is a one-sentence human-readable summary of what you understood.";
 
@@ -145,7 +177,10 @@ function buildInterpretationRequest(
     capability: "text.generate",
     execution: "local-preferred",
     profile: "fast",
-    input: { instructions, ledger: ledgerSummary, reply: replyText },
+    // "This morning" is only resolvable against the operator's own clock, and
+    // a model handed a UTC instant will anchor to UTC and land the block
+    // hours away from when the work actually happened.
+    input: { instructions, ledger: ledgerSummary, reply: replyText, nowLocal: localWallClock(new Date()) },
     outputContract: {
       schemaId: "arcadia.orientation.reply-interpretation.v1",
       schemaVersion: 1,
@@ -236,6 +271,24 @@ function normalizeEffort(value: unknown): OrientationEffort | null | undefined {
   return (ORIENTATION_EFFORTS as readonly string[]).includes(candidate) ? (candidate as OrientationEffort) : undefined;
 }
 
+/**
+ * Reads a local wall-clock string into a real instant.
+ *
+ * Any timezone suffix is stripped first: the model is asked for local time and
+ * has no basis for an offset, so a trailing "Z" is a formatting tic rather
+ * than a claim about UTC — honoring it would silently move the work by hours.
+ * A zone-less string is parsed by JS in the local timezone, which is exactly
+ * what is wanted.
+ */
+function normalizeLocalTimestamp(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+  const local = value.trim().replace(/(?:Z|[+-]\d{2}:?\d{2})$/i, "");
+  const parsed = new Date(local);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
 function normalizeCount(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     return undefined;
@@ -255,11 +308,15 @@ export function applyLedgerOps(
   now: Date = new Date()
 ): OrientationEntry[] {
   for (const op of ops) {
-    if ("entryId" in op) {
-      const existing = findOrientationEntry(db, op.entryId);
-      if (!existing) {
-        throw new OrientationOpTargetMissingError(op.entryId);
-      }
+    // Only ops that MUTATE a specific entry are all-or-nothing. A time entry
+    // whose suggested link happens to be wrong is still a true fact about the
+    // operator's day, so it must not be able to abort the whole reply — it
+    // just loses the link below.
+    if (op.op === "log_time" || !("entryId" in op) || op.entryId === undefined) {
+      continue;
+    }
+    if (!findOrientationEntry(db, op.entryId)) {
+      throw new OrientationOpTargetMissingError(op.entryId);
     }
   }
 
@@ -295,6 +352,31 @@ export function applyLedgerOps(
           source
         });
         break;
+      case "log_time": {
+        const minutes = normalizeCount(op.minutes);
+        if (!minutes) {
+          // A duration is the one thing a time entry cannot do without; a
+          // zero-minute block would silently distort every total after it.
+          break;
+        }
+        const startedAt = normalizeLocalTimestamp(op.startedAtLocal);
+        const entry = op.entryId ? findOrientationEntry(db, op.entryId) : null;
+        createTimeEntry(db, {
+          // The day the work happened, which is not always the day it gets
+          // mentioned — "I was at it last night" lands on last night.
+          localDate: localDateStamp(startedAt ? new Date(startedAt) : now),
+          startedAt,
+          endedAt: startedAt ? new Date(new Date(startedAt).getTime() + minutes * 60_000).toISOString() : null,
+          minutes,
+          description: op.description,
+          focus: entry?.title ?? null,
+          entryId: entry?.id ?? null,
+          projectId: entry?.projectId ?? null,
+          area: entry?.area ?? null,
+          source
+        });
+        break;
+      }
       case "complete":
         touched.push(completeOrientationEntry(db, op.entryId));
         break;
