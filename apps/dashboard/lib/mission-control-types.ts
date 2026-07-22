@@ -83,6 +83,35 @@ export interface DailyCapacity {
 }
 
 /**
+ * The scale-of-time picture. Mirrors src/orientation/timeline.ts: every sized
+ * item measured on one scale, against how much time the day actually holds.
+ * `unbounded` items are multi-session and deliberately carry no length.
+ */
+export interface TimelineItem {
+  id: string;
+  title: string;
+  effort: OrientationEffort;
+  minutes: number;
+  area: string | null;
+  urgencyScore: number;
+  startMinute: number;
+}
+
+export interface Timeline {
+  items: TimelineItem[];
+  unbounded: Array<{ id: string; title: string; area: string | null; urgencyScore: number }>;
+  totalMinutes: number;
+  unsizedCount: number;
+  capacity: { note: string; minutes: number; sessionBlocks: number | null; fragmentMinutes: number | null } | null;
+  daysAtCurrentCapacity: number | null;
+}
+
+export interface TimelineResponse {
+  timeline: Timeline;
+  lines: string[];
+}
+
+/**
  * Non-hierarchical relationships between nodes — independent of the
  * containment tree (`children`/`childCount` below). A pure tree cannot
  * express "this one thing matters to two towers" (e.g. a Life-ledger

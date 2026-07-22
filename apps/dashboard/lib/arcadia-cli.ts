@@ -13,7 +13,8 @@ import type {
   MissionControlFits,
   MissionControlNodeDetail,
   MissionControlOverview,
-  OrientationEffort
+  OrientationEffort,
+  TimelineResponse
 } from "./mission-control-types";
 
 export type MissionControlOverviewResponse = MissionControlOverview;
@@ -301,6 +302,11 @@ export async function setOrientationEntryEffort(input: {
     "--effort",
     input.effort ?? "none"
   ]);
+}
+
+/** The scale-of-time picture. Deterministic arithmetic on the CLI side. */
+export async function loadTimeline(): Promise<ArcadiaJsonSuccess<TimelineResponse>> {
+  return runArcadiaCliJson<TimelineResponse>(["orientation", "timeline"]);
 }
 
 export async function submitMissionControlReply(input: {

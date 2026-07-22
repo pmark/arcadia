@@ -174,6 +174,7 @@ import {
   renderOrientationPacketListSuccess,
   renderOrientationPacketMarkSentSuccess,
   renderOrientationReplySuccess,
+  renderOrientationTimelineSuccess,
   runOrientationCapacityClearCommand,
   runOrientationCapacitySetCommand,
   runOrientationCapacityShowCommand,
@@ -187,7 +188,8 @@ import {
   runOrientationPacketComposeCommand,
   runOrientationPacketListCommand,
   runOrientationPacketMarkSentCommand,
-  runOrientationReplyCommand
+  runOrientationReplyCommand,
+  runOrientationTimelineCommand
 } from "./commands/orientation.js";
 import {
   renderMissionControlFitsSuccess,
@@ -1956,6 +1958,21 @@ export function buildProgram(): Command {
         limit: options.limit ? Number(options.limit) : undefined
       }),
       renderOrientationFitsSuccess
+    )
+  );
+
+  addJsonOption(
+    orientation
+      .command("timeline")
+      .description("Every sized item drawn to the same scale, measured against what today holds")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--date <yyyy-mm-dd>", "Compare against this day's capacity, defaults to today")
+  ).action((options: { workspace: string; date?: string; json?: boolean }) =>
+    runCliAction(
+      "orientation.timeline",
+      options,
+      () => runOrientationTimelineCommand({ workspace: options.workspace, localDate: options.date }),
+      renderOrientationTimelineSuccess
     )
   );
 

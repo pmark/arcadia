@@ -11,7 +11,8 @@ import type {
   MissionControlNodeDetail,
   MissionControlNodeSummary,
   MissionControlOverview,
-  OrientationEffort
+  OrientationEffort,
+  TimelineResponse
 } from "../../lib/mission-control-types";
 import { EFFORT_LABELS } from "../../lib/mission-control-types";
 
@@ -158,6 +159,118 @@ function WhatFitsPanel({ capacity, onSelect }: { capacity: DailyCapacity | null;
             ) : null}
           </div>
         )
+      ) : null}
+    </div>
+  );
+}
+
+function formatMinutes(minutes: number): string {
+  if (minutes < 60) return `${Math.round(minutes)}m`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = Math.round(minutes % 60);
+  return remainder === 0 ? `${hours}h` : `${hours}h${remainder}m`;
+}
+
+/**
+ * The scale-of-time picture. Every bar shares one scale — the widest item
+ * sets the full width — so the eye reads proportion directly. A list can tell
+ * you there are six things; only this can tell you they are two days of work.
+ */
+function TimelinePanel() {
+  const [data, setData] = useState<TimelineResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/mission-control/timeline", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((body) => {
+        if (body?.error) setError(body.error);
+        else setData(body as TimelineResponse);
+      })
+      .catch((fetchError) => setError(fetchError instanceof Error ? fetchError.message : String(fetchError)))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return null;
+  if (error) return <ErrorState message={error} title="Could not build the timeline" />;
+  if (!data) return null;
+
+  const { timeline } = data;
+  const widest = Math.max(1, ...timeline.items.map((item) => item.minutes));
+
+  return (
+    <div className="grid min-w-0 gap-3 rounded-md border border-line bg-panel p-4 shadow-soft">
+      <div>
+        <h2 className="text-sm font-semibold text-ink">How much time is this, really?</h2>
+        {timeline.items.length === 0 ? (
+          <p className="mt-1 text-xs text-muted">
+            {timeline.unsizedCount > 0
+              ? `Nothing is sized yet — ${timeline.unsizedCount} entr${timeline.unsizedCount === 1 ? "y is" : "ies are"} waiting for a size.`
+              : "Nothing to show."}
+          </p>
+        ) : null}
+      </div>
+
+      {timeline.items.length > 0 ? (
+        <>
+          <div className="grid gap-1.5">
+            {timeline.items.map((item) => (
+              <div key={item.id} className="grid min-w-0 gap-0.5">
+                <div className="flex min-w-0 items-baseline justify-between gap-2">
+                  <span className="min-w-0 truncate text-xs text-ink">{item.title}</span>
+                  <span className="shrink-0 text-xs tabular-nums text-muted">{formatMinutes(item.minutes)}</span>
+                </div>
+                <div className="h-2 w-full rounded-sm bg-canvas">
+                  <div
+                    className="h-2 rounded-sm bg-steel"
+                    style={{ width: `${Math.max(2, (item.minutes / widest) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t border-line pt-2">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-xs font-semibold text-ink">Total sized work</span>
+              <span className="text-sm font-semibold tabular-nums text-ink">{formatMinutes(timeline.totalMinutes)}</span>
+            </div>
+            {timeline.capacity && timeline.daysAtCurrentCapacity !== null ? (
+              <p className="mt-1 text-xs text-muted">
+                Today holds {formatMinutes(timeline.capacity.minutes)} — that is{" "}
+                <span className="font-semibold text-ink">
+                  {timeline.daysAtCurrentCapacity < 1
+                    ? "less than a day"
+                    : `about ${Math.round(timeline.daysAtCurrentCapacity * 2) / 2} days`}
+                </span>{" "}
+                at today&apos;s capacity.
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-muted">Tell Arcadia what today holds to see how that compares.</p>
+            )}
+          </div>
+        </>
+      ) : null}
+
+      {timeline.unbounded.length > 0 ? (
+        <div className="border-t border-line pt-2">
+          <p className="text-xs font-semibold text-muted">Off the scale — multi-session, unbounded until broken down</p>
+          <ul className="mt-1 grid gap-0.5">
+            {timeline.unbounded.map((item) => (
+              <li key={item.id} className="truncate text-xs text-ink">
+                {item.title}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {timeline.unsizedCount > 0 && timeline.items.length > 0 ? (
+        <p className="text-xs text-muted">
+          {timeline.unsizedCount} un-sized entr{timeline.unsizedCount === 1 ? "y is" : "ies are"} not counted — the total
+          is a floor.
+        </p>
       ) : null}
     </div>
   );
@@ -545,6 +658,8 @@ function MissionControlPageInner() {
           ) : (
             <>
               <WhatFitsPanel capacity={overview.capacity} onSelect={openNode} />
+
+              <TimelinePanel />
 
               <Section title="Needs You Now">
                 {overview.needsYouNow.length === 0 ? (

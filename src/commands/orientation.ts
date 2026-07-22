@@ -41,6 +41,7 @@ import {
 } from "../orientation/repository.js";
 import { isStale } from "../orientation/staleness.js";
 import { formatFitResult, parseAvailableMinutesRequest, selectFittingEntries, type FitToGapResult } from "../orientation/fit.js";
+import { buildTimeline, renderTimelineAscii, type Timeline } from "../orientation/timeline.js";
 import {
   OrientationEntryNotFoundError,
   OrientationPacketAlreadySentError,
@@ -404,6 +405,40 @@ export function runOrientationFitsCommand(options: OrientationFitsOptions): Comm
   } finally {
     db.close();
   }
+}
+
+export interface OrientationTimelineData {
+  timeline: Timeline;
+  /** Pre-rendered text so every surface shows the same picture. */
+  lines: string[];
+}
+
+/**
+ * The scale-of-time picture. Deterministic arithmetic over stored effort —
+ * this is a proportion, not a schedule.
+ */
+export function runOrientationTimelineCommand(options: {
+  workspace: string;
+  localDate?: string;
+}): CommandSuccess<OrientationTimelineData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const db = openDatabase(workspacePath);
+  try {
+    const now = new Date();
+    const capacity = findDailyCapacity(db, options.localDate ?? localDateStamp(now));
+    const timeline = buildTimeline(listLiveOrientationEntries(db), now, { capacity });
+    return createSuccess({
+      command: "orientation.timeline",
+      workspace: workspacePath,
+      data: { timeline, lines: renderTimelineAscii(timeline) }
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export function renderOrientationTimelineSuccess(response: CommandSuccess<OrientationTimelineData>): string[] {
+  return response.data.lines;
 }
 
 export interface OrientationCapacitySetOptions {
