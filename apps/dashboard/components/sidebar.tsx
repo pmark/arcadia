@@ -155,7 +155,7 @@ function SidebarSection({
         {items.map((item) => (
           <Link
             key={item.id}
-            href={`/mission-control?node=${encodeURIComponent(item.id)}`}
+            href={`/mission-control/${encodeURIComponent(item.id)}`}
             className="truncate rounded-md px-3 py-2 text-sm text-ink hover:bg-line/50"
           >
             {item.title}

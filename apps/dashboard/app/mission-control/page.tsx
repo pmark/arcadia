@@ -1,7 +1,8 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { MobileShell } from "../../components/mobile-shell";
 import { EmptyState, ErrorState, LoadingState, Section } from "../../components/dashboard-ui";
 import type {
@@ -499,21 +500,21 @@ function DecisionActions({ nodeId, onChanged }: { nodeId: string; onChanged: () 
 function NodeDetailPanel({
   detail,
   onSelect,
-  onBack,
+  backHref,
   onChanged
 }: {
   detail: MissionControlNodeDetail;
   onSelect: (id: string) => void;
-  onBack: (() => void) | null;
+  backHref: string | null;
   onChanged: () => void;
 }) {
   return (
     <div className="grid min-w-0 gap-3 rounded-md border border-line bg-panel p-4 shadow-soft">
       <div className="flex items-center justify-between gap-2">
-        {onBack ? (
-          <button type="button" onClick={onBack} className="text-xs font-semibold text-steel">
+        {backHref ? (
+          <Link href={backHref} className="text-xs font-semibold text-steel">
             ← Back
-          </button>
+          </Link>
         ) : (
           <span />
         )}
@@ -557,20 +558,18 @@ function NodeDetailPanel({
 }
 
 export default function MissionControlPage() {
-  return (
-    <Suspense fallback={<MobileShell><LoadingState /></MobileShell>}>
-      <MissionControlPageInner />
-    </Suspense>
-  );
+  return <MissionControlPageInner nodeId={null} />;
 }
 
-function MissionControlPageInner() {
-  const searchParams = useSearchParams();
-  const initialNodeId = searchParams.get("node");
+export function MissionControlNodePage({ nodeId }: { nodeId: string }) {
+  return <MissionControlPageInner nodeId={nodeId} />;
+}
+
+function MissionControlPageInner({ nodeId }: { nodeId: string | null }) {
+  const router = useRouter();
   const [overview, setOverview] = useState<MissionControlOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [stack, setStack] = useState<string[]>([]);
   const [detail, setDetail] = useState<MissionControlNodeDetail | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
 
@@ -594,7 +593,7 @@ function MissionControlPageInner() {
     loadOverview();
   }, [loadOverview]);
 
-  const openNode = useCallback((id: string) => {
+  const loadDetail = useCallback((id: string) => {
     setDetailError(null);
     fetch(`/api/mission-control/${encodeURIComponent(id)}`, { cache: "no-store" })
       .then((res) => res.json())
@@ -603,42 +602,31 @@ function MissionControlPageInner() {
           setDetailError(body.error);
         } else {
           setDetail(body as MissionControlNodeDetail);
-          setStack((prev) => [...prev, id]);
         }
       })
       .catch((fetchError) => setDetailError(fetchError instanceof Error ? fetchError.message : String(fetchError)));
   }, []);
 
-  // Deep-link support: the sidebar's Urgent/Recent rows link here with
-  // ?node=<id> so tapping one opens straight to that item's detail instead
-  // of landing back on the towers list.
   useEffect(() => {
-    if (initialNodeId) {
-      openNode(initialNodeId);
+    if (nodeId) {
+      setDetail(null);
+      loadDetail(nodeId);
+    } else {
+      setDetail(null);
+      setDetailError(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialNodeId]);
+  }, [nodeId, loadDetail]);
 
-  const goBack = useCallback(() => {
-    setStack((prev) => {
-      const next = prev.slice(0, -1);
-      const targetId = next[next.length - 1];
-      if (targetId) {
-        openNode(targetId);
-      } else {
-        setDetail(null);
-      }
-      return next;
-    });
-  }, [openNode]);
+  const openNode = useCallback((id: string) => {
+    router.push(`/mission-control/${encodeURIComponent(id)}`);
+  }, [router]);
 
   const refreshCurrent = useCallback(() => {
-    const currentId = stack[stack.length - 1];
-    if (currentId) {
-      openNode(currentId);
+    if (nodeId) {
+      loadDetail(nodeId);
     }
     loadOverview();
-  }, [stack, openNode, loadOverview]);
+  }, [nodeId, loadDetail, loadOverview]);
 
   return (
     <MobileShell>
@@ -653,7 +641,7 @@ function MissionControlPageInner() {
           {detail ? (
             <>
               {detailError ? <ErrorState message={detailError} title="Could not open that" /> : null}
-              <NodeDetailPanel detail={detail} onSelect={openNode} onBack={stack.length > 0 ? goBack : null} onChanged={refreshCurrent} />
+              <NodeDetailPanel detail={detail} onSelect={openNode} backHref="/mission-control" onChanged={refreshCurrent} />
             </>
           ) : (
             <>

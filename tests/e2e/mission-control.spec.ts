@@ -227,6 +227,22 @@ test("ambiguous Pinterest input remains recoverable in Back Burner", async ({ pa
   expect(arcadia.fakeInvocationCount()).toBe(0);
 });
 
+test("Mission Control node navigation uses routes and preserves browser history", async ({ page, arcadia }) => {
+  await page.goto(arcadia.url);
+
+  await page.getByRole("heading", { name: "Towers" }).locator("..").getByRole("button", { name: /^Projects / }).click();
+  await expect(page).toHaveURL(/\/mission-control\/tower%3Aprojects$/);
+
+  await page.getByRole("button", { name: /^Rebuster/ }).first().click();
+  await expect(page).toHaveURL(/\/mission-control\/proj_/);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/mission-control\/tower%3Aprojects$/);
+
+  await page.getByRole("link", { name: "← Back" }).click();
+  await expect(page).toHaveURL(/\/mission-control$/);
+});
+
 test("exact status-report request uses Autonomous deterministic execution", async ({ page, arcadia }) => {
   await submitAsk(page, arcadia, STATUS_REQUEST);
   const state = withDatabase(arcadia.root, (db) => ({
