@@ -12,6 +12,17 @@ It shows:
 
 It can approve, reject, defer, or resolve Decisions through the same CLI commands used in a terminal. Planning approval atomically queues one managed Run for the existing Arcadia worker; the dashboard never invokes a planning provider directly and maintains no dashboard-only approval state.
 
+## AI Advice
+
+Action-item cards (Today's Advantage and Attention) carry a common AI advice
+affordance. Clicking its icon invokes the most useful plan the AI can perform
+with that item: by default it surfaces the obstacles to clear and insightful
+recommendations for excellent execution. It runs on demand only (never on
+mount), routes through the local-first Arcadia Intelligence service without
+billing, and is a progressive enhancement — the surrounding deterministic UI
+stands on its own when advice is skipped, pending, or unavailable. Add or adjust
+advice-style operations in `lib/enrichment/registry.ts`.
+
 ## Workspace
 
 The dashboard lets the Arcadia CLI resolve the workspace. Resolution order is:

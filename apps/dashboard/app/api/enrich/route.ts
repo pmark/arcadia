@@ -107,6 +107,6 @@ function buildEnrichmentRequest(
     requirements: { structuredOutput: true },
     outputContract: definition.outputContract,
     template: { id: definition.operationId, version: "1" },
-    executionPolicy: { allowPaidUsage: false, maxRetries: 1 },
+    executionPolicy: { allowPaidUsage: definition.allowPaidUsage ?? false, maxRetries: 1 },
   };
 }

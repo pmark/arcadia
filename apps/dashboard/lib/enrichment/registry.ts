@@ -22,6 +22,7 @@ import type {
  */
 export const ENRICHMENT_KINDS = [
   "review.proposed-action.headline",
+  "action.advice",
 ] as const;
 
 export type EnrichmentKind = (typeof ENRICHMENT_KINDS)[number];
@@ -44,8 +45,8 @@ export interface EnrichmentDefinition {
   /** Optimization profile. Enrichments are latency-sensitive → "fast". */
   profile: IntelligenceProfile;
   /**
-   * Where the job runs. Enrichments must stay local (never bill the user for
-   * a decorative summary); "codex" or "local" both resolve to a local route.
+   * Where the job runs. "codex" or "local" both resolve to a local route;
+   * "cloud" uses a cloud provider when configured.
    */
   execution: IntelligenceExecutionTarget;
   /**
@@ -53,6 +54,11 @@ export interface EnrichmentDefinition {
    * circuits to a "skipped" result and the deterministic UI stands alone.
    */
   minInputChars: number;
+  /**
+   * Whether to allow paid cloud usage. Defaults to false (free enrichments
+   * only). Ignored for local execution.
+   */
+  allowPaidUsage?: boolean;
   /** Renders the prompt sent to the model from the source text. */
   buildPrompt: (text: string) => string;
   /** JSON Schema the model output is validated against. */
@@ -107,8 +113,102 @@ const REVIEW_PROPOSED_ACTION_HEADLINE: EnrichmentDefinition = {
   },
 };
 
+/**
+ * Advice output: obstacles the operator should clear, and insightful
+ * recommendations for executing the item excellently. `obstacles` is optional
+ * (a clean item may have none); at least one recommendation is required for the
+ * result to be usable.
+ */
+const ADVICE_SCHEMA: JsonValue = {
+  type: "object",
+  properties: {
+    obstacles: { type: "array", items: { type: "string" }, maxItems: 4 },
+    recommendations: { type: "array", items: { type: "string" }, maxItems: 5 },
+  },
+  required: ["recommendations"],
+  additionalProperties: false,
+};
+
+function toStringList(value: JsonValue | undefined): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+/**
+ * On-demand "most useful plan the AI can perform with this item": by default,
+ * surface the obstacles standing in the way of excellent execution and a few
+ * insightful recommendations. Unlike the headline summarizer, advice is
+ * valuable even for a short action title, so the input threshold is low.
+ * The structured obstacle/recommendation output is flattened into a single
+ * sectioned string so the generic enrichment pipeline stays unchanged.
+ */
+const ACTION_ADVICE: EnrichmentDefinition = {
+  id: "action.advice",
+  operationId: "arcadia-admin.enrich.action-advice",
+  profile: "standard",
+  execution: "cloud",
+  allowPaidUsage: true,
+  // Even a terse action title ("Ship the release notes") is a valid target for
+  // advice, so only skip genuinely empty input.
+  minInputChars: 8,
+  buildPrompt: (text: string) =>
+    [
+      "You are an expert operator and advisor helping the user execute one",
+      "specific action item with excellence. Given the action item and any",
+      "context below:",
+      "1. Identify the most likely obstacles or blockers standing in the way of",
+      "   completing it, and phrase each as the concrete way to clear it.",
+      "2. Give a few insightful, specific recommendations for executing it",
+      "   excellently — non-obvious leverage, sequencing, or a quality bar to",
+      "   hold.",
+      "",
+      "Be concrete and specific to THIS item; avoid generic platitudes and",
+      "filler. Keep every point to a single sentence. Return 0-4 obstacles and",
+      "2-5 recommendations.",
+      "",
+      "Action item and context:",
+      text,
+    ].join("\n"),
+  outputContract: {
+    schemaId: "arcadia-admin.enrich.action-advice",
+    schemaVersion: 1,
+    jsonSchema: ADVICE_SCHEMA,
+  },
+  parse: (result: JsonValue): string | null => {
+    if (!result || typeof result !== "object" || Array.isArray(result)) {
+      return null;
+    }
+    const record = result as Record<string, JsonValue>;
+    const obstacles = toStringList(record.obstacles);
+    const recommendations = toStringList(record.recommendations);
+    if (recommendations.length === 0) {
+      return null;
+    }
+
+    const sections: string[] = [];
+    if (obstacles.length > 0) {
+      sections.push(
+        ["Clear these obstacles:", ...obstacles.map((line) => `• ${line}`)].join("\n"),
+      );
+    }
+    sections.push(
+      [
+        "Recommendations for excellent execution:",
+        ...recommendations.map((line) => `• ${line}`),
+      ].join("\n"),
+    );
+    return sections.join("\n\n");
+  },
+};
+
 const ENRICHMENTS: Record<EnrichmentKind, EnrichmentDefinition> = {
   "review.proposed-action.headline": REVIEW_PROPOSED_ACTION_HEADLINE,
+  "action.advice": ACTION_ADVICE,
 };
 
 export function getEnrichment(kind: EnrichmentKind): EnrichmentDefinition {
