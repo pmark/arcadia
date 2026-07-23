@@ -531,7 +531,7 @@ describe("discord bot formatters", () => {
       activeProjectCount: 2,
       runningWorkCount: 1,
       queuedWorkCount: 4,
-      needsMarkCount: 2,
+      requiresReviewWorkCount: 2,
       requiresReviewCount: 2,
       autonomousCount: 1,
       codexCount: 3,
@@ -1064,12 +1064,12 @@ function emptyNotificationStateForTest(): NotificationState {
   };
 }
 
-function runShowResponse(run: ExecutionRun, needsMark: string[]): ArcadiaJsonSuccess<RunShowData> {
+function runShowResponse(run: ExecutionRun, needsOperator: string[]): ArcadiaJsonSuccess<RunShowData> {
   return {
     ok: true,
     command: "run.show",
     workspace: "/tmp/workspace",
-    data: { run, needsMark },
+    data: { run, needsOperator },
     artifacts: [
       ...(run.mission_log_path ? [run.mission_log_path] : []),
       ...run.artifacts.flatMap((artifact) => artifact.path ? [artifact.path] : [])
@@ -1246,7 +1246,7 @@ process.stdout.write(JSON.stringify({
       steps: [],
       artifacts: []
     },
-    needsMark: []
+    needsOperator: []
   },
   artifacts: [],
   warnings: []

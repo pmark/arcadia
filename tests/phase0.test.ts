@@ -312,29 +312,27 @@ describe("Phase 0 data operations", () => {
       expect(groups.inbox).toHaveLength(1);
       expect(groups.work_queue).toHaveLength(1);
       expect(groups.requires_review).toHaveLength(1);
-      expect(groups.needs_mark).toHaveLength(1);
       expect(groups.blocked).toHaveLength(1);
     });
   });
 
-  it("keeps legacy needs_mark records in Requires Review compatibility views", () => {
+  it("keeps requires-review records in Requires Review compatibility views", () => {
     const workspace = initializedWorkspace();
 
     withDatabase(workspace, (db) => {
       const legacy = createWorkItemWithOptionalArtifact(db, {
         title: "Legacy review decision",
         rawInput: "Legacy review decision",
-        queue: "needs_mark",
-        workClassification: "needs_mark",
+        queue: "requires_review",
+        workClassification: "requires_review",
         nextAction: "Choose an option"
       });
 
       const groups = listQueueGroups(db);
       expect(groups.requires_review.map((item) => item.id)).toContain(legacy.workItem.id);
-      expect(groups.needs_mark.map((item) => item.id)).toContain(legacy.workItem.id);
 
       const report = buildStatusReportData(db, workspace);
-      expect(report.needsMarkItems.map((item) => item.id)).toContain(legacy.workItem.id);
+      expect(report.requiresReviewItems.map((item) => item.id)).toContain(legacy.workItem.id);
     });
   });
 
@@ -803,7 +801,7 @@ describe("Phase 0 data operations", () => {
       expect(data.completedWorkItems.map((item) => item.title)).toContain("Run the first smoke test");
       expect(data.completedWorkItems.map((item) => item.title)).not.toContain("Old completed work");
       expect(data.missionLogs).toHaveLength(1);
-      expect(data.needsMarkItems.map((item) => item.title)).toContain("Needs a review decision");
+      expect(data.requiresReviewItems.map((item) => item.title)).toContain("Needs a review decision");
       expect(data.blockedItems.map((item) => item.title)).toContain("Blocked dependency");
       expect(data.autonomousItems.map((item) => item.title)).toContain("Autonomous local script");
       expect(data.codexItems.map((item) => item.title)).toContain("Codex implementation");

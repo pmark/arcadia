@@ -53,7 +53,7 @@ This report follows `docs/arcadia-semantics.md`:
 - Log is the user-facing concept implemented as `mission_logs`.
 - Run is a concrete execution attempt implemented as `execution_runs`.
 - "Requires Review" is retained when naming the current dashboard view, CLI label, or compatibility value.
-- "Needs Mark" is the canonical Responsibility value for human work. The current schema still stores `requires_review` and legacy `needs_mark`.
+- "Requires Review" is the canonical Responsibility value for human work. The current schema still stores `requires_review` and legacy `requires_review`.
 
 The request's "Needs Review" value is not a current canonical Responsibility. Exact implementation names remain in code-path and persistence descriptions where changing them would obscure the evidence.
 
@@ -273,7 +273,7 @@ Project resolution is correct, but the plan subject extraction is malformed.
 | Persistent state | None. No Decision status, approval gate status, invocation status, or Run changes. |
 | User-visible result | A raw command must be copied manually. It is not a button. |
 | Approval boundary | Not durable or auditable. |
-| Responsibility | Effectively Needs Mark, but stored Responsibility remains Codex. |
+| Responsibility | Effectively Requires Review, but stored Responsibility remains Codex. |
 | Artifact or Log | None created by approval because approval does not exist. |
 | Failure behavior | Operator command errors occur outside Arcadia if the displayed raw command is used. |
 | Existing automated coverage | Snapshot tests assert that the label "Approve & Run" exists, but do not assert that it is actionable or persisted. |
@@ -297,7 +297,7 @@ It bypasses Arcadia's Run and Validation path.
 | Persistent state | Creates `execution_runs`, Run steps, and links completed invocations to the Run. |
 | User-visible result | CLI shows Run status and Log. Dashboard shows the Run after refresh. |
 | Approval boundary | The allow flag is treated as authorization; pending `approval_gates` are not evaluated and no Decision is required. |
-| Responsibility | Codex during execution; becomes Needs Mark on Validation review or Blocked on failure. |
+| Responsibility | Codex during execution; becomes Requires Review on Validation review or Blocked on failure. |
 | Artifact or Log | Output JSONL/final file are written; later steps create Validation evidence and a Log. |
 | Failure behavior | Spawn errors and missing packets become failed Run steps. |
 | Existing automated coverage | Fake-agent integration tests cover this internal command path. No real dashboard approval-to-dispatch test exists. |
@@ -315,7 +315,7 @@ The separate `review approve --execute` worker cannot execute the canonical pack
 | Persistent state | Creates a `planning_artifact_validation` Artifact and links it through `run_artifacts`. Validation failure also creates a Decision. |
 | User-visible result | Run output and Attention show pass, warning, failure, or not-run summary. |
 | Approval boundary | Failed planning quality becomes Requires Review. |
-| Responsibility | Needs Mark for failed content; Blocked when Validation cannot run. |
+| Responsibility | Requires Review for failed content; Blocked when Validation cannot run. |
 | Artifact or Log | `planning-validation.json` is durable and served through `/api/file`. |
 | Failure behavior | Missing packet produced a `failed` Run, a drafted not-run Validation Artifact, and blocked Action. |
 | Existing automated coverage | `tests/planning-artifact-workflow.test.ts` covers pass, warning, quality failure, and not-run cases with fake executors or a deleted packet. |
@@ -552,13 +552,13 @@ It also creates the seam needed to protect the rest of the loop with one real br
 
 1. The exact canonical request resolves to Rebuster with a clean planning subject and expected Artifact.
 2. Packet creation also creates one open Decision linked to the Action, plan, Project, packet Artifact, and safety boundaries.
-3. The Action's user-facing Responsibility is Needs Mark while that Decision is open.
+3. The Action's user-facing Responsibility is Requires Review while that Decision is open.
 4. Mission Control and `/review` show the same Decision and evidence.
 5. Approval is persisted before execution and cannot be bypassed by a dashboard provider-command link.
 6. Approval dispatches the existing Action-plan runner with a configured fake/local planning executor in tests.
 7. A passed planning Artifact creates a final ready Artifact, links it to the Run and Action, writes and attaches a Log, and leaves a final plan-acceptance Decision.
 8. Failed or unavailable Validation cannot produce a completed Run or ready Artifact.
-9. Failed execution sets the Action Blocked or Needs Mark with an explicit Next Action and retained diagnostic Artifact.
+9. Failed execution sets the Action Blocked or Requires Review with an explicit Next Action and retained diagnostic Artifact.
 10. Attention and `/runs/[id]` show the same truthful state, Log, Artifacts, and recovery action.
 
 ### Proposed Artifacts

@@ -38,6 +38,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureBackBurnerItemsTable(db);
   ensureAskRequestStewardshipColumn(db);
   ensureRequiresReviewCompatibility(db);
+  ensureOperatorAgnosticSchema(db);
   ensureExecutionRunWorkerColumns(db);
   ensureDecisionGatedPlanningColumns(db);
   ensureAskFeedbackTable(db);
@@ -353,6 +354,74 @@ function ensureRequiresReviewCompatibility(db: Database.Database): void {
   }
 
   repairLegacyRequiresReviewReferences(db);
+}
+
+function ensureOperatorAgnosticSchema(db: Database.Database): void {
+  // Retire operator-named enum values and identifiers from earlier schemas so the
+  // public data model carries no personal name. `needs_mark` collapses into the
+  // equivalent `requires_review` value (they already rendered identically), the
+  // `mark` executor becomes `operator`, and the `needs_mark` step column becomes
+  // `needs_operator`. Existing rows are rewritten to valid values before the
+  // CHECK constraints are tightened by rebuilding from the current schema.
+  const valueUpdates: Array<{ table: string; column: string; from: string; to: string }> = [
+    { table: "work_items", column: "queue", from: "needs_mark", to: "requires_review" },
+    { table: "work_items", column: "work_classification", from: "needs_mark", to: "requires_review" },
+    { table: "execution_plans", column: "status", from: "needs_mark", to: "requires_review" },
+    { table: "execution_plan_steps", column: "status", from: "needs_mark", to: "requires_review" },
+    { table: "execution_runs", column: "status", from: "needs_mark", to: "requires_review" },
+    { table: "execution_run_steps", column: "status", from: "needs_mark", to: "requires_review" },
+    { table: "ask_requests", column: "status", from: "needs_mark", to: "requires_review" },
+    { table: "skill_definitions", column: "executor_type", from: "mark", to: "operator" },
+    { table: "execution_plan_steps", column: "executor_type", from: "mark", to: "operator" }
+  ];
+
+  for (const update of valueUpdates) {
+    if (!migrationColumnExists(db, update.table, update.column)) {
+      continue;
+    }
+    db.prepare(
+      `UPDATE ${quoteIdentifier(update.table)} SET ${quoteIdentifier(update.column)} = ? WHERE ${quoteIdentifier(update.column)} = ?`
+    ).run(update.to, update.from);
+  }
+
+  if (
+    migrationColumnExists(db, "execution_plan_steps", "needs_mark") &&
+    !migrationColumnExists(db, "execution_plan_steps", "needs_operator")
+  ) {
+    db.prepare("ALTER TABLE execution_plan_steps RENAME COLUMN needs_mark TO needs_operator").run();
+  }
+
+  const constrainedTables = [
+    "work_items",
+    "execution_plans",
+    "execution_plan_steps",
+    "execution_runs",
+    "execution_run_steps",
+    "ask_requests",
+    "skill_definitions"
+  ];
+  for (const table of constrainedTables) {
+    const row = db
+      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .get(table) as { sql: string } | undefined;
+    if (!row?.sql) {
+      continue;
+    }
+    if (row.sql.includes("'needs_mark'") || row.sql.includes("'mark'")) {
+      rebuildTableWithCurrentSchema(db, table);
+    }
+  }
+}
+
+function migrationColumnExists(db: Database.Database, table: string, column: string): boolean {
+  const tableRow = db
+    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(table);
+  if (!tableRow) {
+    return false;
+  }
+  const columns = db.prepare(`PRAGMA table_info(${quoteIdentifier(table)})`).all() as Array<{ name: string }>;
+  return columns.some((entry) => entry.name === column);
 }
 
 function ensureExecutionRunWorkerColumns(db: Database.Database): void {

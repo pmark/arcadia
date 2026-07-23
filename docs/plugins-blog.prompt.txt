@@ -74,7 +74,7 @@ Blogging actions should create artifacts and review items, not publish automatic
 
 * Autonomous: deterministic scheduling, idea organization, draft scaffolds, metadata generation
 * Codex: code changes, route creation, content pipeline implementation, tests
-* Needs Mark: voice approval, strategic positioning, publishing approval, sensitive claims
+* Requires Review: voice approval, strategic positioning, publishing approval, sensitive claims
 * Blocked: missing repo, missing site, missing credentials, missing decision
 
 No deployment, publishing, spending, or destructive action without explicit approval.

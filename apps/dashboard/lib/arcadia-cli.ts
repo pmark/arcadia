@@ -161,7 +161,7 @@ export interface RunShowResponse {
     updated_at: string;
     pid: number | null;
   };
-  needsMark: string[];
+  needsOperator: string[];
   executorOutputPath: string | null;
   artifactRoot: string | null;
   followUpReview: FollowUpReview | null;

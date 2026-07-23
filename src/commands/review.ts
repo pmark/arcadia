@@ -365,7 +365,7 @@ export function runReviewApproveCommand(
         updateArtifact(db, specialized.artifact_id as string, { status: "ready" });
         updateWorkItem(db, specialized.work_item_id as string, {
           queue: "work_queue",
-          workClassification: "needs_mark",
+          workClassification: "requires_review",
           status: "done",
           nextAction: "Plan accepted; choose the next implementation Action when ready."
         });
@@ -430,8 +430,8 @@ export function runReviewApproveCommand(
       }) as ReviewItemSummary;
       if (specialized.work_item_id) {
         updateWorkItem(db, specialized.work_item_id, {
-          queue: "needs_mark",
-          workClassification: "needs_mark",
+          queue: "requires_review",
+          workClassification: "requires_review",
           status: "in_progress",
           nextAction: "Review and approve or reject the retry Decision."
         });
@@ -631,7 +631,7 @@ export function runReviewWeeklyCommand(
         completedWork: data.completedWorkItems.length,
         missionLogs: data.missionLogs.length,
         blockedWork: data.blockedItems.length,
-        requiresReview: data.needsMarkItems.length,
+        requiresReview: data.requiresReviewItems.length,
         codexWork: data.codexItems.length,
         autonomousWork: data.autonomousItems.length,
         artifacts: data.artifactItems.length,
@@ -899,8 +899,8 @@ function runReviewDecisionCommand(
       "codex_planning_artifact_validation"
     ].includes(item.resolved_intent)) {
       updateWorkItem(db, item.work_item_id, {
-        queue: "needs_mark",
-        workClassification: "needs_mark",
+        queue: "requires_review",
+        workClassification: "requires_review",
         status: "in_progress",
         nextAction: status === "deferred"
           ? "Return to the deferred planning Decision when ready."

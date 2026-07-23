@@ -23,7 +23,7 @@ test("canonical dashboard capture completes as a Decision-gated validated planni
   await submitAsk(page, arcadia, CANONICAL_REQUEST);
   await expect(page.getByText("Prepare a Pinterest publishing plan for Rebuster.")).toBeVisible();
   await expect(page.getByText("Reliable publishing workflow").first()).toBeVisible();
-  await expect(page.getByText("Needs Mark").first()).toBeVisible();
+  await expect(page.getByText("Requires Review").first()).toBeVisible();
   await expect(page.getByText(/No publishing/).first()).toBeVisible();
 
   const before = planningState(arcadia);
@@ -94,7 +94,7 @@ test("Today prepares and completes one existing Daily Advantage Action", async (
     runCount: scalar(db, "SELECT COUNT(*) AS count FROM execution_runs WHERE work_item_id = ?", action.id)
   }));
   expect(prepared.action.status).toBe("open");
-  expect(prepared.action.work_classification).toBe("needs_mark");
+  expect(prepared.action.work_classification).toBe("requires_review");
   expect(prepared.decision.status).toBe("open");
   expect(prepared.invocation.status).toBe("packet_created");
   expect(prepared.runCount).toBe(0);
@@ -160,7 +160,7 @@ test("failed planning Validation cannot be marked complete", async ({ page, arca
   await page.getByRole("button", { name: "Approve & Run" }).click();
   const run = await waitForRun(arcadia, (row) => row.status === "requires_review");
   const state = planningState(arcadia);
-  expect(state.action?.work_classification).toBe("needs_mark");
+  expect(state.action?.work_classification).toBe("requires_review");
   expect(state.finalArtifact?.status).toBe("drafted");
   expect(state.validationArtifact?.status).toBe("drafted");
   expect(state.validationDecision?.status).toBe("open");
@@ -187,7 +187,7 @@ test("final planning Artifact and Log are linked", async ({ page, arcadia }) => 
   await assertEvidenceFiles(page, arcadia, run.id);
 });
 
-test("failed and Needs Mark Runs agree in Attention and Run detail", async ({ page, arcadia }) => {
+test("failed and Requires Review Runs agree in Attention and Run detail", async ({ page, arcadia }) => {
   arcadia.setMode("invalid");
   await submitAsk(page, arcadia, CANONICAL_REQUEST);
   await page.getByRole("button", { name: "Approve & Run" }).click();

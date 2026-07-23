@@ -20,7 +20,7 @@ The slice accepts a `structured_text.generate` request with Project attribution 
 
 - Feature disabled: request is denied before executor call.
 - Missing Project: validation error.
-- Missing LiteLLM config: unavailable or Needs Mark.
+- Missing LiteLLM config: unavailable or Requires Review.
 - Paid fallback denied: denied before executor call.
 - Endpoint unavailable: failed execution with retry-safe status.
 - Invalid JSON or schema mismatch: `invalid_result`, no ready Artifact.

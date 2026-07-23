@@ -118,7 +118,7 @@ At packet creation:
     "No merging",
     "No destructive actions"
   ],
-  "responsibility": "needs_mark"
+  "responsibility": "requires_review"
 }
 ```
 
@@ -203,14 +203,14 @@ Use one pure reducer for planning outcomes:
 
 | Executor outcome | Planning Validation | Run | Invocation | Action | Final Artifact |
 | --- | --- | --- | --- | --- | --- |
-| exit 0 | passed, warnings allowed | `completed` | `completed` | Needs Mark, `in_progress` | `drafted`; acceptance Decision open |
-| exit 0 | failed content | `requires_review` | `completed` | Needs Mark, `in_progress` | `drafted`; Validation recovery Decision open |
+| exit 0 | passed, warnings allowed | `completed` | `completed` | Requires Review, `in_progress` | `drafted`; acceptance Decision open |
+| exit 0 | failed content | `requires_review` | `completed` | Requires Review, `in_progress` | `drafted`; Validation recovery Decision open |
 | exit 0 | not run/unavailable | `failed` | `failed` | Blocked | `drafted` only if a file exists |
 | non-zero, signal, timeout, spawn error | not run | `failed` | `failed` | Blocked | diagnostic/partial Artifact only if a file exists |
 
 A Run is never completed merely because the provider process returned. Planning Validation is mandatory.
 
-For generic review execution, completed requires executor exit 0 and all configured Validation commands present and exit 0. A non-zero executor result is failed. Missing or failed Validation is `requires_review`, with Needs Mark Responsibility and a follow-up Decision.
+For generic review execution, completed requires executor exit 0 and all configured Validation commands present and exit 0. A non-zero executor result is failed. Missing or failed Validation is `requires_review`, with Requires Review Responsibility and a follow-up Decision.
 
 ### 2.7 Final planning Artifact and acceptance
 
@@ -222,13 +222,13 @@ After any attempt that produced a non-empty final plan file:
 - Attach the attempt's planning Artifact and Validation Artifact through `run_artifacts`.
 - Keep the planning Artifact `drafted` until final acceptance.
 
-After passed Validation, create exactly one open `CodexPlanningArtifactAcceptance` Decision linked to the Action, plan, Project, final planning Artifact, packet invocation, and Run ID in context. The completed Run remains completed because execution and Validation succeeded; the Action remains Needs Mark until the operator accepts the plan.
+After passed Validation, create exactly one open `CodexPlanningArtifactAcceptance` Decision linked to the Action, plan, Project, final planning Artifact, packet invocation, and Run ID in context. The completed Run remains completed because execution and Validation succeeded; the Action remains Requires Review until the operator accepts the plan.
 
 Acceptance outcomes:
 
 - Approve: Artifact -> `ready`; Action -> `done`; Next Action -> `Plan accepted; choose the next implementation Action when ready.`
-- Reject: Artifact remains `drafted`; Action remains Needs Mark; Next Action -> `Revise or retry the planning Run.`
-- Defer: Artifact remains `drafted`; Action remains Needs Mark; Decision stays actionable as deferred.
+- Reject: Artifact remains `drafted`; Action remains Requires Review; Next Action -> `Revise or retry the planning Run.`
+- Defer: Artifact remains `drafted`; Action remains Requires Review; Decision stays actionable as deferred.
 
 Final acceptance never invokes an executor and never changes the historical Run result.
 
@@ -297,16 +297,16 @@ Retain PID-based recovery, but make it deterministic and attempt-safe:
 
 | Event | Action | Initial/retry Decision | Plan / step | Run / step | Invocation | Artifact and Validation | Log |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Canonical capture | `open`; queue `needs_mark`; Responsibility Needs Mark; clean Next Action to review Decision | open `CodexPlanningRunApproval` | `planned` / `pending` | none | `packet_created` | expected planned; packet drafted; critique ready/drafted | none |
-| Initial Decision deferred | unchanged Needs Mark | `deferred` | unchanged | none | unchanged | unchanged | none |
-| Initial Decision rejected | `open`; Needs Mark; Next Action revise or archive | `rejected` | `planned` / `pending` | none | `packet_created` | unchanged | none |
-| Approval without execute | unchanged Needs Mark | `approved` | unchanged | none | unchanged | unchanged | none |
+| Canonical capture | `open`; queue `requires_review`; Responsibility Requires Review; clean Next Action to review Decision | open `CodexPlanningRunApproval` | `planned` / `pending` | none | `packet_created` | expected planned; packet drafted; critique ready/drafted | none |
+| Initial Decision deferred | unchanged Requires Review | `deferred` | unchanged | none | unchanged | unchanged | none |
+| Initial Decision rejected | `open`; Requires Review; Next Action revise or archive | `rejected` | `planned` / `pending` | none | `packet_created` | unchanged | none |
+| Approval without execute | unchanged Requires Review | `approved` | unchanged | none | unchanged | unchanged | none |
 | Approval and queue | `in_progress`; queue `work_queue`; Responsibility Codex | `approved` | `planned` / `pending` | `pending_execution` / `pending` | `packet_created` | unchanged | none |
 | Worker claim | unchanged Codex | approved | `running` / `running` | `running` / `running` | changes to `running` immediately before spawn | unchanged | none |
-| Provider exit 0, Validation passed | `in_progress`; queue `needs_mark`; Responsibility Needs Mark | approved; acceptance Decision open | `completed` / `completed` | `completed` / `completed` | `completed`, linked to Run | final plan drafted; Validation ready; both linked | created and linked before terminal status |
+| Provider exit 0, Validation passed | `in_progress`; queue `requires_review`; Responsibility Requires Review | approved; acceptance Decision open | `completed` / `completed` | `completed` / `completed` | `completed`, linked to Run | final plan drafted; Validation ready; both linked | created and linked before terminal status |
 | Final acceptance approved | `done`; accepted Next Action | acceptance Decision `approved` | unchanged completed | unchanged completed | unchanged | final plan `ready` | unchanged |
-| Final acceptance rejected/deferred | stays `in_progress`, Needs Mark | `rejected` or `deferred` | unchanged | unchanged completed | unchanged | final plan drafted | unchanged |
-| Provider exit 0, Validation failed | `in_progress`; queue `needs_mark`; Responsibility Needs Mark | approval approved; recovery Decision open | `requires_review` / `requires_review` | `requires_review` / `requires_review` | `completed`, linked to Run | final plan drafted; Validation drafted with failure codes | created and linked |
+| Final acceptance rejected/deferred | stays `in_progress`, Requires Review | `rejected` or `deferred` | unchanged | unchanged completed | unchanged | final plan drafted | unchanged |
+| Provider exit 0, Validation failed | `in_progress`; queue `requires_review`; Responsibility Requires Review | approval approved; recovery Decision open | `requires_review` / `requires_review` | `requires_review` / `requires_review` | `completed`, linked to Run | final plan drafted; Validation drafted with failure codes | created and linked |
 | Provider exit 0, Validation unavailable | `blocked`; queue/Responsibility Blocked | approval approved | `failed` / `failed` | `failed` / `failed` | `failed`, linked to Run | available plan drafted; not-run Validation drafted | created and linked |
 | Provider non-zero/spawn failure | `blocked`; queue/Responsibility Blocked | approval approved | `failed` / `failed` | `failed` / `failed` | `failed`, linked to Run | executor diagnostic and non-empty partial output drafted; not-run Validation drafted | created and linked |
 | Retry requested | existing failed/review state remains until approval | open `CodexPlanningRetryApproval` | original status retained until new attempt starts | original immutable; no new Run yet | original immutable | original immutable | original immutable |
@@ -320,7 +320,7 @@ Project lifecycle status and Milestone status do not change in this mission. The
 ### CLI
 
 - `ask` response for the canonical request returns non-null `reviewItemId` and `decisionId`, plus the same Action, plan, packet invocation, and Artifact paths as today.
-- Human output says `Decision created` and shows Project, Milestone, interpretation, expected Artifact, safety boundaries, Responsibility Needs Mark, and Decision slug.
+- Human output says `Decision created` and shows Project, Milestone, interpretation, expected Artifact, safety boundaries, Responsibility Requires Review, and Decision slug.
 - `review show`, `review`, and JSON include packet Artifact and invocation IDs as additive fields.
 - `review approve <id>` retains its current default-to-execute behavior. Planning Decisions queue the Action-plan Run; generic Decisions retain current dispatch.
 - `review approve <id> --no-execute` records approval only.
@@ -480,7 +480,7 @@ Files:
 - `tests/mission-control.integration.test.ts`
 - `tests/stewardship-quality.integration.test.ts`
 
-Create the packet, digest, invocation, packet Artifact, critique Artifact, ask request, and linked Decision as one logical operation. If file creation succeeds but the database transaction fails, remove only the newly created packet directory. Set the Action to Needs Mark. Return Decision IDs and consistent evidence.
+Create the packet, digest, invocation, packet Artifact, critique Artifact, ask request, and linked Decision as one logical operation. If file creation succeeds but the database transaction fails, remove only the newly created packet directory. Set the Action to Requires Review. Return Decision IDs and consistent evidence.
 
 Verification: exact canonical capture creates one and only one linked Decision and clean wording; missing repo still creates only the setup Decision and no packet.
 
@@ -575,7 +575,7 @@ These eight browser/process tests are added first.
 ### 1. `canonical dashboard capture completes as a Decision-gated validated planning Run`
 
 - Browser submits the exact canonical request on `/` at 390x844.
-- Assert clean interpretation, Rebuster, current Milestone, expected Artifact, boundaries, and Needs Mark in Attention and `/review`.
+- Assert clean interpretation, Rebuster, current Milestone, expected Artifact, boundaries, and Requires Review in Attention and `/review`.
 - Assert one linked open Decision and zero Runs/provider invocations before approval.
 - Click `Approve & Run`; observe pending/running and then completed.
 - Assert approved Decision predates invocation `running`.
@@ -595,7 +595,7 @@ These eight browser/process tests are added first.
 
 - Fake executor exits 0 and writes a plan missing ordered phases/approval boundaries.
 - Approve through the browser.
-- Assert Run/step `requires_review`, invocation completed, Action Needs Mark, final Artifact drafted, failed Validation Artifact, open recovery Decision, and linked Log.
+- Assert Run/step `requires_review`, invocation completed, Action Requires Review, final Artifact drafted, failed Validation Artifact, open recovery Decision, and linked Log.
 - Assert no completed label appears in Attention or Run detail.
 
 ### 4. `final planning Artifact and Log are linked`
@@ -606,10 +606,10 @@ These eight browser/process tests are added first.
 - Assert the same title/path is discoverable and every file link returns 200.
 - Assert no pathless `expected_artifact` remains for the produced result.
 
-### 5. `failed and Needs Mark Runs agree in Attention and Run detail`
+### 5. `failed and Requires Review Runs agree in Attention and Run detail`
 
 - Run two isolated fixtures: invalid plan and non-zero executor.
-- Assert invalid plan is Needs Mark/`requires_review`; executor failure is Blocked/`failed`.
+- Assert invalid plan is Requires Review/`requires_review`; executor failure is Blocked/`failed`.
 - Assert status, reason, evidence, Responsibility, and Next Action match between snapshot, Attention, `/runs`, and `/runs/[id]`.
 - Assert one authoritative recovery card per Run and no contradictory duplicates.
 - Assert no horizontal document overflow at 390 pixels.

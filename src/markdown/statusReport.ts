@@ -46,7 +46,7 @@ export function renderStatusReport(data: StatusReportData): string {
   lines.push("");
   lines.push("### Requires Review");
   lines.push("");
-  lines.push(renderWorkItems(data.needsMarkItems));
+  lines.push(renderWorkItems(data.requiresReviewItems));
   lines.push("");
   lines.push("### Autonomous Actions");
   lines.push("");

@@ -146,7 +146,7 @@ Run the M1 planning-and-implementation prompt from the prompt library. The agent
 
 ## Responsibility
 
-Codex for M0 and M1 implementation. Needs Mark only for the explicit Decisions listed in the architecture document or if repository evidence contradicts the assumptions above.
+Codex for M0 and M1 implementation. Requires Review only for the explicit Decisions listed in the architecture document or if repository evidence contradicts the assumptions above.
 
 ## Required Artifacts
 

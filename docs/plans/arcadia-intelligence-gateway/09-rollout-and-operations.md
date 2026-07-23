@@ -56,4 +56,4 @@ Rollback should be simple:
 - If requests are denied, run `arcadia intelligence show <id> --json` and inspect policy reason.
 - If costs are unexpected, disable the feature and inspect LiteLLM budgets/virtual keys.
 - If validation fails, inspect the Artifact or output summary and contract version.
-- If credentials are missing, set the environment variable or keep the request Needs Mark.
+- If credentials are missing, set the environment variable or keep the request Requires Review.

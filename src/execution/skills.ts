@@ -17,7 +17,7 @@ export interface PlannedSkillStep {
   command: string | null;
   executorType: ExecutorType;
   safeToRun: boolean;
-  needsMark: string | null;
+  needsOperator: string | null;
 }
 
 export interface IntentClassification {
@@ -96,14 +96,7 @@ export const BUILT_IN_SKILLS: BuiltInSkill[] = [
     name: "requires_review_decision",
     title: "Surface required review",
     description: "Pause execution until the user provides direction, approval, or missing context.",
-    executorType: "mark",
-    safeToRun: false
-  },
-  {
-    name: "needs_mark_decision",
-    title: "Surface required review",
-    description: "Legacy alias for required-review pauses.",
-    executorType: "mark",
+    executorType: "operator",
     safeToRun: false
   }
 ];
@@ -154,9 +147,9 @@ export function planStepsForWorkItem(workItem: WorkItemSummary): PlannedSkillSte
         skillName: "requires_review_decision",
         title: "Surface required review",
         command: null,
-        executorType: "mark",
+        executorType: "operator",
         safeToRun: false,
-        needsMark: workItem.next_action
+        needsOperator: workItem.next_action
       }
     ];
   }
@@ -173,7 +166,7 @@ export function planStepsForWorkItem(workItem: WorkItemSummary): PlannedSkillSte
           ? "codex_build"
           : "codex_planning",
         safeToRun: false,
-        needsMark: "Codex execution requires explicit review or invocation."
+        needsOperator: "Codex execution requires explicit review or invocation."
       }
     ];
   }
@@ -184,9 +177,9 @@ export function planStepsForWorkItem(workItem: WorkItemSummary): PlannedSkillSte
         skillName: "requires_review_decision",
         title: "Surface missing execution path",
         command: null,
-        executorType: "mark",
+        executorType: "operator",
         safeToRun: false,
-        needsMark: "No deterministic skill matched this Action."
+        needsOperator: "No deterministic skill matched this Action."
       }
     ];
   }
@@ -198,7 +191,7 @@ export function planStepsForWorkItem(workItem: WorkItemSummary): PlannedSkillSte
       command: commandForSkill(safeSkillName),
       executorType: "deterministic",
       safeToRun: true,
-      needsMark: null
+      needsOperator: null
     },
     {
       skillName: "create_mission_log_from_run",
@@ -206,7 +199,7 @@ export function planStepsForWorkItem(workItem: WorkItemSummary): PlannedSkillSte
       command: "arcadia log create <deterministic-run-outcome>",
       executorType: "deterministic",
       safeToRun: true,
-      needsMark: null
+      needsOperator: null
     }
   ];
 }

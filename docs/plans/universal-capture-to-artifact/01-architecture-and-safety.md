@@ -211,13 +211,13 @@ Policy evaluates both epistemic confidence and capability risk.
 | Route to a Project above configured confidence with no conflicting evidence | Autonomous, with visible correction path |
 | Execute allowlisted read-only validation command | Autonomous |
 | Execute allowlisted reversible local transformation | Autonomous when Workflow explicitly permits it |
-| Ambiguous Project, intent, or Action | Needs Mark Decision or safe Back Burner capture |
+| Ambiguous Project, intent, or Action | Requires Review Decision or safe Back Burner capture |
 | Code or repository mutation | Codex or configured local executor under existing approval policy |
-| Credentials or production data | Needs Mark Decision |
-| External publication, deployment, messages, social posting | Needs Mark Decision |
-| Destructive filesystem operation or overwrite with different content | Needs Mark Decision or blocked |
-| Spending, purchasing, financial commitment | Needs Mark Decision |
-| Merge to main or release submission | Needs Mark Decision |
+| Credentials or production data | Requires Review Decision |
+| External publication, deployment, messages, social posting | Requires Review Decision |
+| Destructive filesystem operation or overwrite with different content | Requires Review Decision or blocked |
+| Spending, purchasing, financial commitment | Requires Review Decision |
+| Merge to main or release submission | Requires Review Decision |
 
 Recommended initial confidence behavior:
 

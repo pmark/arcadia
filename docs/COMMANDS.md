@@ -275,7 +275,7 @@ pnpm arcadia run show run_example \
   --json
 ```
 
-This includes run status, plan steps, step outcomes, mission log path, linked artifacts, and the compact `needsMark` compatibility list.
+This includes run status, plan steps, step outcomes, mission log path, linked artifacts, and the compact `needsOperator` compatibility list.
 
 ## Common Execution Loop
 

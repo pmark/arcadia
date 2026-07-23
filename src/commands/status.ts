@@ -11,7 +11,7 @@ export interface StatusCommandData {
   activeProjectCount: number;
   runningWorkCount: number;
   queuedWorkCount: number;
-  needsMarkCount: number;
+  requiresReviewWorkCount: number;
   requiresReviewCount: number;
   autonomousCount: number;
   codexCount: number;
@@ -46,8 +46,8 @@ export function runStatusCommand(options: { workspace: string }): CommandSuccess
       activeProjectCount: data.projects.filter((project) => project.status === "active").length,
       runningWorkCount: Object.values(data.queues).flat().filter((item) => item.status === "in_progress").length,
       queuedWorkCount: data.queues.work_queue.length,
-      needsMarkCount: data.needsMarkItems.length,
-      requiresReviewCount: reviewItemCount + data.needsMarkItems.length,
+      requiresReviewWorkCount: data.requiresReviewItems.length,
+      requiresReviewCount: reviewItemCount + data.requiresReviewItems.length,
       autonomousCount: data.autonomousItems.length,
       codexCount: data.codexItems.length,
       blockedCount: data.blockedItems.length,

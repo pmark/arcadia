@@ -928,7 +928,7 @@ function buildAttentionItems(
       nextAction: dashboardRun.failureReason ?? dashboardRun.reviewReason ?? "Open the run detail and decide the next step.",
       interpretation: null,
       safetyBoundaries: [],
-      responsibility: run.status === "failed" ? "blocked" : "needs_mark",
+      responsibility: run.status === "failed" ? "blocked" : "requires_review",
       primaryActions: [
         {
           label: "View Run",
@@ -998,7 +998,7 @@ function buildAttentionItems(
 }
 
 function isRequiresReviewStatus(value: string | null | undefined): boolean {
-  return value === "requires_review" || value === "needs_mark";
+  return value === "requires_review";
 }
 
 function reviewActions(reviewId: string): DashboardAttentionAction[] {

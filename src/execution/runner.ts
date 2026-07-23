@@ -135,8 +135,8 @@ export function executePlan(
           planStepId: step.id,
           status: "requires_review",
           command: step.command,
-          output: step.needs_mark ?? "This Codex step requires explicit approval.",
-          error: step.needs_mark ?? "Execution paused for explicit Codex approval.",
+          output: step.needs_operator ?? "This Codex step requires explicit approval.",
+          error: step.needs_operator ?? "Execution paused for explicit Codex approval.",
           artifactPath: null
         });
         runStatus = "requires_review";
@@ -182,8 +182,8 @@ export function executePlan(
         planStepId: step.id,
         status: "requires_review",
         command: step.command,
-        output: step.needs_mark ?? "This step requires review or Codex.",
-        error: step.needs_mark ?? "Execution paused for explicit input.",
+        output: step.needs_operator ?? "This step requires review or Codex.",
+        error: step.needs_operator ?? "Execution paused for explicit input.",
         artifactPath: null
       });
       runStatus = "requires_review";
@@ -261,8 +261,8 @@ export function executePlan(
   if (runStatus === "completed") {
     if (protectedPlanning) {
       updateWorkItem(db, workItem.id, {
-        queue: "needs_mark",
-        workClassification: "needs_mark",
+        queue: "requires_review",
+        workClassification: "requires_review",
         status: "in_progress",
         nextAction: "Review Validation and accept or reject the final planning Artifact."
       });
@@ -272,7 +272,7 @@ export function executePlan(
   } else if (runStatus === "requires_review") {
     updateWorkItem(db, workItem.id, {
       queue: "requires_review",
-      workClassification: "needs_mark",
+      workClassification: "requires_review",
       nextAction: "Review the failed Validation and request a revised planning Run."
     });
   } else {
@@ -750,7 +750,7 @@ function createPlanningAcceptanceDecision(
       runId,
       artifactPath: planningArtifact.path,
       validationResultPath: path.join(path.dirname(invocation.final_message_path), "planning-validation.json"),
-      responsibility: "needs_mark"
+      responsibility: "requires_review"
     }
   });
 }

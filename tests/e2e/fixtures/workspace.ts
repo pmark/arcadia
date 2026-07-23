@@ -39,7 +39,7 @@ export async function createE2EWorkspace(): Promise<E2EWorkspace> {
       status: "active",
       currentMilestone: "Reliable publishing workflow",
       nextAction: "Choose the next publishing improvement.",
-      workClassification: "needs_mark"
+      workClassification: "requires_review"
     });
     upsertProjectMetadata(db, {
       projectId: rebuster.project.id,

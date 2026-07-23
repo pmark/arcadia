@@ -81,7 +81,7 @@ describe("Daily Advantage existing-Action planning preparation", () => {
       originatingActionId: fixture.workItemId,
       expectedArtifact: fixture.expectedArtifact,
       approvalAuthorizes: "One managed read-only Codex planning Run for this exact packet.",
-      responsibility: "needs_mark"
+      responsibility: "requires_review"
     });
     expect(context.preparationSource).toBe("existing_action");
     expect(context.packetSha256).toMatch(/^[a-f0-9]{64}$/);
@@ -109,8 +109,8 @@ describe("Daily Advantage existing-Action planning preparation", () => {
     expect(state.counts).toEqual({ actions: 1, plans: 1, invocations: 1, decisions: 1, runs: 0, artifacts: 3 });
     expect(state.action).toMatchObject({
       id: fixture.workItemId,
-      queue: "needs_mark",
-      work_classification: "needs_mark",
+      queue: "requires_review",
+      work_classification: "requires_review",
       status: "open",
       expected_artifact: fixture.expectedArtifact
     });

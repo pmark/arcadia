@@ -157,7 +157,7 @@ function fixtureWorkspace(): string {
       status: "active",
       currentMilestone: "Reliable publishing workflow",
       nextAction: "Choose the next publishing improvement.",
-      workClassification: "needs_mark"
+      workClassification: "requires_review"
     });
     upsertProjectMetadata(db, {
       projectId: created.project.id,

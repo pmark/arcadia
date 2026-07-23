@@ -108,7 +108,7 @@ The first startup initializes this state silently so old workspace history is no
 
 ## Requires Review
 
-Arcadia may still store legacy internal values such as `needs_mark` for compatibility. Discord output uses the user-name-agnostic phrase `Requires Review`.
+Arcadia uses the internal value `requires_review` for work that needs human judgment, and Discord output uses the user-name-agnostic phrase `Requires Review`.
 
 Arcadia remains authoritative for approvals, planning, implementation, and artifact review.
 

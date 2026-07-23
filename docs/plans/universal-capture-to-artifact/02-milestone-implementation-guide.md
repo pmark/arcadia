@@ -51,7 +51,7 @@ Reconcile this program with the actual repository and freeze the first versioned
 
 ### Responsibility
 
-Codex. Needs Mark only for decisions that materially alter capture retention, privacy, or public contracts.
+Codex. Requires Review only for decisions that materially alter capture retention, privacy, or public contracts.
 
 ## M1: Durable Capture Envelope And Receipt
 
@@ -143,7 +143,7 @@ Give Mark complete, inspectable control over enabled workflows without expanding
 
 ### Responsibility
 
-Codex. Needs Mark only for the initial executable allowlist policy.
+Codex. Requires Review only for the initial executable allowlist policy.
 
 ## M3: Universal Ingress And Claiming
 
@@ -204,7 +204,7 @@ Derive observable facts and normalized representations without inferring intent.
 
 ### Responsibility
 
-Codex. Needs Mark for choosing installed OCR/transcription tools after deterministic metadata support lands.
+Codex. Requires Review for choosing installed OCR/transcription tools after deterministic metadata support lands.
 
 ## M5: Interpretation And Action Projection
 
@@ -236,7 +236,7 @@ Propose meaning, Project attribution, and candidate Actions without executing or
 
 ### Responsibility
 
-Codex. Needs Mark to review the golden corpus and correction UX before policy automation.
+Codex. Requires Review to review the golden corpus and correction UX before policy automation.
 
 ## M6: Automation Policy And Decisions
 
@@ -267,7 +267,7 @@ Convert projected Actions into predictable authorization outcomes.
 
 ### Responsibility
 
-Codex for implementation; Needs Mark to approve initial thresholds and capability defaults.
+Codex for implementation; Requires Review to approve initial thresholds and capability defaults.
 
 ## M7: Safe Orchestration And Recovery
 
@@ -330,7 +330,7 @@ Deliver verified Artifacts through reusable local, iCloud Drive, and Google Driv
 
 ### Responsibility
 
-Codex. Needs Mark to confirm real target roots and collision preferences.
+Codex. Requires Review to confirm real target roots and collision preferences.
 
 ## M9: HTTP Artifact Access
 
@@ -359,7 +359,7 @@ Return immediately usable HTTP URLs for authorized Artifacts on the MacBook Air 
 
 ### Responsibility
 
-Codex. Needs Mark before LAN exposure or deployed hosting.
+Codex. Requires Review before LAN exposure or deployed hosting.
 
 ## M10: Obsidian Vault Handoff
 
@@ -391,7 +391,7 @@ Position complete, deterministic handoff packages in one or more configured Obsi
 
 ### Responsibility
 
-Codex after Needs Mark supplies vault roots and copy/link policy.
+Codex after Requires Review supplies vault roots and copy/link policy.
 
 ## M11: Receipts, Dashboard, Digest, And Recovery
 
@@ -421,7 +421,7 @@ Make the system understandable at a glance from CLI, sidecar, Dashboard, and opt
 
 ### Responsibility
 
-Codex. Needs Mark to choose notification defaults.
+Codex. Requires Review to choose notification defaults.
 
 ## M12: Quick Thought And Idea Workflow
 
@@ -562,4 +562,4 @@ Turn recent Captures, Actions, Runs, Logs, Decisions, Milestones, and Artifacts 
 
 ### Responsibility
 
-Codex. Needs Mark only for report prioritization preferences after dogfooding.
+Codex. Requires Review only for report prioritization preferences after dogfooding.

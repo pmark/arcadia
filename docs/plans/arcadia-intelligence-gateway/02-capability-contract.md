@@ -34,7 +34,7 @@ Reserve but do not implement yet:
 
 ## Request Semantics
 
-Client-facing capabilities must remain separate from executor/provider names. A future companion app asks for `structured_text.generate` with a contract like `rebuster_candidate_list_v1`; Arcadia policy decides whether a deterministic local tool, cache, local model, LiteLLM-backed model, or Needs Mark outcome is compliant.
+Client-facing capabilities must remain separate from executor/provider names. A future companion app asks for `structured_text.generate` with a contract like `rebuster_candidate_list_v1`; Arcadia policy decides whether a deterministic local tool, cache, local model, LiteLLM-backed model, or Requires Review outcome is compliant.
 
 ## Result Status
 
@@ -42,7 +42,7 @@ Statuses should be small and operational:
 
 - `accepted`: validated output recorded.
 - `denied`: policy denied before executor call.
-- `needs_mark`: approval or Decision required.
+- `requires_review`: approval or Decision required.
 - `unavailable`: no compliant executor was available.
 - `failed`: executor or transport failed.
 - `invalid_result`: executor returned a result that failed validation.

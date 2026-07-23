@@ -55,7 +55,7 @@ export function formatRunCompletedNotification(run: ExecutionRun): string {
 export function formatRunDetail(data: RunShowData): string {
   const run = data.run;
   const blockingStep = run.steps.find((step) => step.status === "failed" || isRequiresReviewStatus(step.status));
-  const reviewCount = data.needsMark.length;
+  const reviewCount = data.needsOperator.length;
   const lines = [
     "**Arcadia run detail**",
     `Run: \`${run.id}\``,
@@ -72,8 +72,8 @@ export function formatRunDetail(data: RunShowData): string {
     lines.push(`Reason: ${blockingStep.error ?? blockingStep.output}`);
   }
 
-  if (data.needsMark.length > 0) {
-    lines.push(`Decisions: ${data.needsMark.join(" | ")}`);
+  if (data.needsOperator.length > 0) {
+    lines.push(`Decisions: ${data.needsOperator.join(" | ")}`);
   }
 
   lines.push("Final reporting depends on completed validation artifacts.");
@@ -96,7 +96,7 @@ function labelStatus(status: string): string {
 }
 
 function isRequiresReviewStatus(value: string | null | undefined): boolean {
-  return value === "requires_review" || value === "needs_mark";
+  return value === "requires_review";
 }
 
 function formatArtifacts(run: ExecutionRun): string {

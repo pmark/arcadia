@@ -722,7 +722,7 @@ function resolvedIntentForWorkPlan(
       command: step.command,
       executorType: step.executor_type,
       safeToRun: step.safe_to_run === 1,
-      needsMark: step.needs_mark
+      needsOperator: step.needs_operator
     })),
     approvalGates: [],
     templates: [],

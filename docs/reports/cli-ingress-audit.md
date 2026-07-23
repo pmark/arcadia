@@ -18,7 +18,7 @@ What works today:
 
 Current compatibility notes:
 
-- Review approval resumes ask workflow for `review_items`, but legacy `needs_mark` work items shown by `review` cannot be approved by `review approve`.
+- Review approval resumes ask workflow for `review_items`, but legacy `requires_review` work items shown by `review` cannot be approved by `review approve`.
 - `ask` supports deterministic Intake patterns, but it is not yet a broad arbitrary natural-language planner. Unsupported vague input is preserved as Requires Review, which is safe but limited.
 - Ingress adapters can use JSON responses through the adapter contract in `docs/ADAPTER_CONTRACT.md`.
 
@@ -103,7 +103,7 @@ Review commands:
 
 | Command | Required inputs | Result |
 | --- | --- | --- |
-| `review` | `--workspace`; `--json` works but is not shown in help | lists open/deferred `review_items` plus legacy `needs_mark` work items |
+| `review` | `--workspace`; `--json` works but is not shown in help | lists open/deferred `review_items` plus legacy `requires_review` work items |
 | `review show <id>` | review item id, `--workspace`, optional `--json` | shows a persisted `review_items` item |
 | `review approve <id>` | review item id, `--workspace`, optional `--json` | reruns ask from the original source input and stores `resulting_ask_request_id` |
 | `review reject <id>` | review item id, `--workspace`, optional `--json` | marks item rejected |
@@ -198,9 +198,9 @@ Approval behavior:
 
 Review gaps:
 
-- `review` list includes legacy `needs_mark` work items, but `review show/approve/reject/defer` only operate on `review_items` ids. A legacy work item id shown in `review` cannot be approved by `review approve`.
+- `review` list includes legacy `requires_review` work items, but `review show/approve/reject/defer` only operate on `review_items` ids. A legacy work item id shown in `review` cannot be approved by `review approve`.
 - `review --help` omits `--workspace` and `--json` even though the top-level action accepts both through permissive parsing.
-- The term `needs_mark` still appears in internal JSON fields such as `ask.status`, `work_classification`, step status, and weekly-review count names. User-facing copy mostly says Requires Review.
+- The term `requires_review` still appears in internal JSON fields such as `ask.status`, `work_classification`, step status, and weekly-review count names. User-facing copy mostly says Requires Review.
 
 ## Repo-Local Compatibility Assessment
 
@@ -238,7 +238,7 @@ Operational risks:
 Terminology risks:
 
 - CLI human output mostly uses Requires Review.
-- JSON and database fields still expose `needs_mark`, which is acceptable as internal compatibility only if documented.
+- JSON and database fields still expose `requires_review`, which is acceptable as internal compatibility only if documented.
 
 Docs risks:
 
@@ -255,8 +255,8 @@ Resolved during single-workspace alignment:
 
 Should fix soon:
 
-1. Make every item emitted by `review` actionable by `review show/approve/reject/defer`, or clearly separate legacy `needs_mark` work items from persisted `review_items`.
-2. Reduce user-visible `needs_mark` leakage in JSON aliases where practical, while preserving database compatibility.
+1. Make every item emitted by `review` actionable by `review show/approve/reject/defer`, or clearly separate legacy `requires_review` work items from persisted `review_items`.
+2. Reduce user-visible `requires_review` leakage in JSON aliases where practical, while preserving database compatibility.
 
 Nice to have:
 
