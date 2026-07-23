@@ -887,6 +887,11 @@ export function updateWorkItem(
     updates.push("effort = @effort");
   }
 
+  if (input.expectedArtifact !== undefined) {
+    parameters.expected_artifact = nullable(input.expectedArtifact);
+    updates.push("expected_artifact = @expected_artifact");
+  }
+
   if (updates.length === 0) {
     throw new Error("At least one Action field is required");
   }

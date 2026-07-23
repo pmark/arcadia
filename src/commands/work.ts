@@ -63,6 +63,7 @@ export interface WorkUpdateOptions {
   nextAction?: string;
   status?: string;
   effort?: string | null;
+  expectedArtifact?: string | null;
 }
 
 export interface WorkUpdateCommandData {
@@ -112,7 +113,8 @@ export function runWorkUpdateCommand(options: WorkUpdateOptions): CommandSuccess
       workClassification: options.classification,
       nextAction: options.nextAction,
       status: options.status,
-      effort: options.effort
+      effort: options.effort,
+      expectedArtifact: options.expectedArtifact
     })
   );
 
@@ -564,7 +566,8 @@ export function renderWorkUpdateSuccess(response: CommandSuccess<WorkUpdateComma
     `Queue: ${response.data.workItem.queue}`,
     `Responsibility: ${WORK_CLASSIFICATION_LABELS[response.data.workItem.work_classification]}`,
     `Status: ${response.data.workItem.status}`,
-    `Next action: ${response.data.workItem.next_action}`
+    `Next action: ${response.data.workItem.next_action}`,
+    `Expected artifact: ${response.data.workItem.expected_artifact ?? "None"}`
   ];
 }
 
@@ -604,7 +607,7 @@ export function renderWorkRunSuccess(response: CommandSuccess<WorkRunCommandData
   ];
 }
 
-const updateableFields = ["queue", "classification", "nextAction", "status", "effort"] as const;
+const updateableFields = ["queue", "classification", "nextAction", "status", "effort", "expectedArtifact"] as const;
 
 function updatedFields(options: WorkUpdateOptions): string[] {
   const fields: string[] = [];
@@ -627,6 +630,10 @@ function updatedFields(options: WorkUpdateOptions): string[] {
 
   if (options.effort !== undefined) {
     fields.push("effort");
+  }
+
+  if (options.expectedArtifact !== undefined) {
+    fields.push("expectedArtifact");
   }
 
   return fields;

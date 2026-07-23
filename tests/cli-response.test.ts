@@ -1016,6 +1016,77 @@ describe("CLI response contract", () => {
     expect(json.data.artifact.path).toBe("artifacts/cli-fixture.md");
   });
 
+  it("creates an artifact linked to a project and Action with JSON output", () => {
+    const workspace = initializedWorkspace();
+    const created = createProject(workspace);
+    const workItem = importWorkItem(workspace, {
+      title: "Link this artifact",
+      queue: "work_queue",
+      classification: "codex",
+      nextAction: "Produce the artifact"
+    });
+
+    const result = runCli([
+      "artifact",
+      "create",
+      "--workspace",
+      workspace,
+      "--title",
+      "New CLI Artifact",
+      "--type",
+      "document",
+      "--status",
+      "drafted",
+      "--path",
+      "artifacts/new-cli-artifact.md",
+      "--project",
+      created.project.id,
+      "--work-item",
+      workItem.id,
+      "--json"
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const json = parseJson(result.stdout);
+    expect(json.ok).toBe(true);
+    expect(json.command).toBe("artifact.create");
+    expect(json.data.artifact.title).toBe("New CLI Artifact");
+    expect(json.data.artifact.artifact_type).toBe("document");
+    expect(json.data.artifact.status).toBe("drafted");
+    expect(json.data.artifact.path).toBe("artifacts/new-cli-artifact.md");
+    expect(json.data.artifact.project_id).toBe(created.project.id);
+    expect(json.data.artifact.work_item_id).toBe(workItem.id);
+
+    const listed = parseJson(runCli(["artifact", "list", "--workspace", workspace, "--json"]).stdout);
+    expect(listed.data.artifacts.some((artifact: { id: string }) => artifact.id === json.data.artifact.id)).toBe(true);
+  });
+
+  it("emits stable JSON for artifact create with an unknown project", () => {
+    const workspace = initializedWorkspace();
+
+    const result = runCli([
+      "artifact",
+      "create",
+      "--workspace",
+      workspace,
+      "--title",
+      "Orphan Artifact",
+      "--type",
+      "document",
+      "--project",
+      "project_missing",
+      "--json"
+    ]);
+
+    expect(result.status).toBe(3);
+    expect(result.stdout).toBe("");
+    const json = parseJson(result.stderr);
+    expect(json.ok).toBe(false);
+    expect(json.command).toBe("artifact.create");
+    expect(json.error.code).toBe("PROJECT_NOT_FOUND");
+  });
+
   it("lists work items with JSON output", () => {
     const workspace = initializedWorkspace();
     importWorkItem(workspace, {
@@ -1075,6 +1146,45 @@ describe("CLI response contract", () => {
     expect(json.data.workItem.responsibility).toBe("codex");
     expect(json.data.workItem.next_action).toBe("Implement the update");
     expect(json.data.workItem.status).toBe("in_progress");
+  });
+
+  it("round-trips --expected-artifact on work update, including clearing it", () => {
+    const workspace = initializedWorkspace();
+    const workItem = importWorkItem(workspace, {
+      title: "Set an expected artifact",
+      queue: "work_queue",
+      classification: "codex",
+      nextAction: "Produce the artifact"
+    });
+
+    const set = parseJson(runCli([
+      "work",
+      "update",
+      workItem.id,
+      "--workspace",
+      workspace,
+      "--expected-artifact",
+      "A published CLI Phase 1 write-up",
+      "--json"
+    ]).stdout);
+
+    expect(set.ok).toBe(true);
+    expect(set.data.updated).toEqual(["expectedArtifact"]);
+    expect(set.data.workItem.expected_artifact).toBe("A published CLI Phase 1 write-up");
+
+    const cleared = parseJson(runCli([
+      "work",
+      "update",
+      workItem.id,
+      "--workspace",
+      workspace,
+      "--expected-artifact",
+      "none",
+      "--json"
+    ]).stdout);
+
+    expect(cleared.ok).toBe(true);
+    expect(cleared.data.workItem.expected_artifact).toBeNull();
   });
 
   it("marks work items done with JSON output", () => {
@@ -1416,7 +1526,14 @@ describe("CLI response contract", () => {
     expect(json.ok).toBe(false);
     expect(json.command).toBe("work.update");
     expect(json.error.code).toBe("VALIDATION_ERROR");
-    expect(json.error.details.fields).toEqual(["queue", "classification", "nextAction", "status", "effort"]);
+    expect(json.error.details.fields).toEqual([
+      "queue",
+      "classification",
+      "nextAction",
+      "status",
+      "effort",
+      "expectedArtifact"
+    ]);
   });
 
   it("emits stable JSON for missing work item updates", () => {
