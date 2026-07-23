@@ -33,6 +33,22 @@ of persisted fields, and reuse of building blocks that already exist
 (`createReviewItem`, `createArtifactRecord`, the Arcadia Intelligence
 structured-generation service).
 
+## Status
+
+- Milestone: Milestone 0 (operator-agnostic naming refactor) — complete,
+  pending PR merge. Phase 1 (CLI plumbing) not started.
+- Next Action: Merge the refactor + this plan, then implement Phase 1
+  (`artifact create` + `work update --expected-artifact`).
+- Responsibility: Requires Review (Phase 1 is Codex-doable but gated on
+  go-ahead).
+- Required Artifact: merged PR for the refactor and this plan; then a
+  Phase 1 PR.
+- Decisions open: 3 — see "Open questions" below (plan gate, effort scope,
+  re-clarify trigger). Engine and subtask policy defaulted in "Design
+  decisions".
+- Last Log: 2026-07-23 — dogfood session produced the refactor and this plan.
+- Updated: 2026-07-23
+
 ## The clarification rubric
 
 For each Action, answer: *Can I name one concrete, physical next action —
