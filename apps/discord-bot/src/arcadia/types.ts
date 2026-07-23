@@ -19,7 +19,7 @@ export interface StatusData {
   activeProjectCount: number;
   runningWorkCount: number;
   queuedWorkCount: number;
-  needsMarkCount: number;
+  requiresReviewWorkCount: number;
   requiresReviewCount: number;
   autonomousCount: number;
   codexCount: number;
@@ -50,7 +50,6 @@ export interface QueueData {
     inbox: WorkItem[];
     work_queue: WorkItem[];
     requires_review: WorkItem[];
-    needs_mark: WorkItem[];
     blocked: WorkItem[];
   };
 }
@@ -87,7 +86,7 @@ export interface RunListData {
 
 export interface RunShowData {
   run: ExecutionRun;
-  needsMark: string[];
+  needsOperator: string[];
 }
 
 export interface Milestone {

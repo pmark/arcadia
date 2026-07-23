@@ -15,7 +15,7 @@ Policy should evaluate in this order and record each decision:
 9. Check included-plan or local executor eligibility.
 10. Check low-cost cloud model through LiteLLM.
 11. Check premium cloud model through LiteLLM.
-12. Return Needs Mark when no compliant executor is available or approval is required.
+12. Return Requires Review when no compliant executor is available or approval is required.
 
 This preserves Arcadia's execution preference:
 
@@ -25,7 +25,7 @@ This preserves Arcadia's execution preference:
 4. approved included-plan or local executors where technically feasible,
 5. low-cost cloud models,
 6. premium cloud models,
-7. Needs Mark.
+7. Requires Review.
 
 ## Allowed Executor Classes
 
@@ -34,7 +34,7 @@ This preserves Arcadia's execution preference:
 - `local_model`
 - `external_gateway_cloud_model`
 - `future_codex_style_executor`
-- `needs_mark`
+- `requires_review`
 
 These classes are Arcadia policy labels. Provider and model names remain behind configuration.
 
@@ -48,7 +48,7 @@ Paid fallback must be denied unless all are true:
 - The executor health check is passing.
 - Any required approval gate is approved.
 
-If cost cannot be estimated and paid execution is required, route to Needs Mark unless Project policy explicitly permits unknown low-cost usage.
+If cost cannot be estimated and paid execution is required, route to Requires Review unless Project policy explicitly permits unknown low-cost usage.
 
 ## Approval Gates
 
@@ -62,7 +62,7 @@ Do not hide approvals in config. If an override changes routing from local-only 
 
 ## No Compliant Executor
 
-When no compliant executor is available, create a denied or Needs Mark result with:
+When no compliant executor is available, create a denied or Requires Review result with:
 
 - requested capability,
 - Project,
@@ -82,5 +82,5 @@ Project overrides should be explicit, inspectable config such as `config/intelli
 - The same request and config produce the same routing decision.
 - A denied request records no executor call.
 - Paid fallback never occurs without an explicit allow path.
-- Missing LiteLLM config routes to Needs Mark or unavailable, not provider-specific errors.
+- Missing LiteLLM config routes to Requires Review or unavailable, not provider-specific errors.
 - Policy decisions can be listed and inspected by Project.

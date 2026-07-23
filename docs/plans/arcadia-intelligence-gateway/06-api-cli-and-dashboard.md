@@ -45,7 +45,7 @@ Extend the dashboard snapshot with:
 - configured endpoint label,
 - recent request count,
 - recent failures,
-- blocked/Needs Mark requests,
+- blocked/Requires Review requests,
 - recent high-cost work,
 - budget status when available,
 - Project attribution for recent requests.

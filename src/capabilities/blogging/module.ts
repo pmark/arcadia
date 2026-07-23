@@ -95,10 +95,10 @@ export const bloggingModule: CapabilityModule = {
     { id: "blog.draft_post", title: "Draft blog post", permission: "autonomous", approvalGates: ["publication"] },
     { id: "blog.prepare_schedule", title: "Prepare blog schedule", permission: "autonomous", approvalGates: ["publication"] },
     { id: "blog.list_review_needed", title: "List blog review items", permission: "autonomous", approvalGates: [] },
-    { id: "blog.record_published", title: "Record published blog post", permission: "needs_mark", approvalGates: ["publication"] }
+    { id: "blog.record_published", title: "Record published blog post", permission: "requires_review", approvalGates: ["publication"] }
   ],
   eventHandlers: [],
-  permissions: ["autonomous", "codex", "needs_mark", "blocked"],
+  permissions: ["autonomous", "codex", "requires_review", "blocked"],
   artifactTypes: [
     { type: "blog_idea", title: "Blog idea" },
     { type: "blog_brief", title: "Blog brief" },

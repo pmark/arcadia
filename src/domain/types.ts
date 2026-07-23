@@ -133,7 +133,7 @@ export interface ExecutionPlanStep {
   executor_type: ExecutorType;
   safe_to_run: number;
   status: ExecutionStepStatus;
-  needs_mark: string | null;
+  needs_operator: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -396,7 +396,6 @@ export interface QueueGroups {
   inbox: WorkItemSummary[];
   work_queue: WorkItemSummary[];
   requires_review: WorkItemSummary[];
-  needs_mark: WorkItemSummary[];
   blocked: WorkItemSummary[];
 }
 
@@ -407,7 +406,7 @@ export interface StatusReportData {
   generatedAt: string;
   projects: ProjectSummary[];
   queues: QueueGroups;
-  needsMarkItems: WorkItemSummary[];
+  requiresReviewItems: WorkItemSummary[];
   autonomousItems: WorkItemSummary[];
   codexItems: WorkItemSummary[];
   blockedItems: WorkItemSummary[];
@@ -436,7 +435,7 @@ export interface WeeklyReviewData {
   completedWorkItems: WorkItemSummary[];
   missionLogs: MissionLogSummary[];
   blockedItems: WorkItemSummary[];
-  needsMarkItems: WorkItemSummary[];
+  requiresReviewItems: WorkItemSummary[];
   autonomousItems: WorkItemSummary[];
   codexItems: WorkItemSummary[];
   artifactItems: ArtifactSummary[];

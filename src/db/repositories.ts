@@ -793,12 +793,11 @@ function listOpenWorkItems(db: Database.Database, whereSql: string, parameters: 
 }
 
 export function listQueueGroups(db: Database.Database): QueueGroups {
-  const requiresReview = listOpenWorkItems(db, "wi.queue IN (?, ?)", ["requires_review", "needs_mark"]);
+  const requiresReview = listOpenWorkItems(db, "wi.queue = ?", ["requires_review"]);
   return {
     inbox: listOpenWorkItems(db, "wi.queue = ?", ["inbox"]),
     work_queue: listOpenWorkItems(db, "wi.queue = ?", ["work_queue"]),
     requires_review: requiresReview,
-    needs_mark: requiresReview,
     blocked: listOpenWorkItems(db, "wi.queue = ?", ["blocked"])
   };
 }
@@ -1084,7 +1083,7 @@ export interface CreateExecutionPlanInput {
     command?: string | null;
     executorType: string;
     safeToRun: boolean;
-    needsMark?: string | null;
+    needsOperator?: string | null;
   }>;
 }
 
@@ -1180,7 +1179,7 @@ export function createExecutionPlan(db: Database.Database, input: CreateExecutio
         executor_type: validateExecutorType(step.executorType),
         safe_to_run: step.safeToRun ? 1 : 0,
         status: validateExecutionStepStatus("pending"),
-        needs_mark: nullable(step.needsMark),
+        needs_operator: nullable(step.needsOperator),
         created_at: timestamp,
         updated_at: timestamp
       };
@@ -1188,10 +1187,10 @@ export function createExecutionPlan(db: Database.Database, input: CreateExecutio
       db.prepare(
         `INSERT INTO execution_plan_steps (
           id, plan_id, skill_id, position, title, command, executor_type, safe_to_run,
-          status, needs_mark, created_at, updated_at
+          status, needs_operator, created_at, updated_at
         ) VALUES (
           @id, @plan_id, @skill_id, @position, @title, @command, @executor_type, @safe_to_run,
-          @status, @needs_mark, @created_at, @updated_at
+          @status, @needs_operator, @created_at, @updated_at
         )`
       ).run(planStep);
     }
@@ -2140,7 +2139,7 @@ export function claimNextPendingRun(
 export function updateExecutionRunStatus(
   db: Database.Database,
   runId: string,
-  status: "pending_execution" | "running" | "completed" | "requires_review" | "needs_mark" | "failed",
+  status: "pending_execution" | "running" | "completed" | "requires_review" | "failed",
   extra: { pid?: number | null; summary?: string } = {}
 ): void {
   const timestamp = nowIso();
@@ -2258,9 +2257,9 @@ export function buildStatusReportData(db: Database.Database, workspacePath: stri
     generatedAt: nowIso(),
     projects: listProjectSummaries(db),
     queues: listQueueGroups(db),
-    needsMarkItems: listOpenWorkItems(
+    requiresReviewItems: listOpenWorkItems(
       db,
-      "wi.queue IN ('requires_review', 'needs_mark') OR wi.work_classification IN ('requires_review', 'needs_mark')"
+      "wi.queue = 'requires_review' OR wi.work_classification = 'requires_review'"
     ),
     autonomousItems: listOpenWorkItems(
       db,
@@ -2289,9 +2288,9 @@ export function buildWeeklyReviewData(
     db,
     "wi.queue = 'blocked' OR wi.work_classification = 'blocked' OR wi.status = 'blocked'"
   );
-  const needsMarkItems = listOpenWorkItems(
+  const requiresReviewItems = listOpenWorkItems(
     db,
-    "wi.queue IN ('requires_review', 'needs_mark') OR wi.work_classification IN ('requires_review', 'needs_mark')"
+    "wi.queue = 'requires_review' OR wi.work_classification = 'requires_review'"
   );
   const autonomousItems = listOpenWorkItems(
     db,
@@ -2308,14 +2307,14 @@ export function buildWeeklyReviewData(
     completedWorkItems,
     missionLogs,
     blockedItems,
-    needsMarkItems,
+    requiresReviewItems,
     autonomousItems,
     codexItems,
     artifactItems,
     projectsWithoutOpenNextActions,
     suggestedNextActions: buildSuggestedNextActions({
       projectsWithoutOpenNextActions,
-      needsMarkItems,
+      requiresReviewItems,
       blockedItems,
       codexItems,
       autonomousItems,
@@ -2468,7 +2467,7 @@ function listProjectsWithoutOpenNextActions(db: Database.Database): ProjectSumma
 
 function buildSuggestedNextActions(input: {
   projectsWithoutOpenNextActions: ProjectSummary[];
-  needsMarkItems: WorkItemSummary[];
+  requiresReviewItems: WorkItemSummary[];
   blockedItems: WorkItemSummary[];
   codexItems: WorkItemSummary[];
   autonomousItems: WorkItemSummary[];
@@ -2486,7 +2485,7 @@ function buildSuggestedNextActions(input: {
     });
   }
 
-  for (const item of input.needsMarkItems) {
+  for (const item of input.requiresReviewItems) {
     seenWorkItems.add(item.id);
     suggestions.push(workItemSuggestion(item, "Requires Review"));
   }

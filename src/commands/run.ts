@@ -23,7 +23,7 @@ import { parseDecisionContext } from "../execution/planningAuthorization.js";
 
 export interface RunShowCommandData {
   run: ExecutionRunSummary;
-  needsMark: string[];
+  needsOperator: string[];
   executorOutputPath: string | null;
   artifactRoot: string | null;
   followUpReview: RequiresReviewPacket | null;
@@ -87,7 +87,7 @@ export function runRunShowCommand(options: {
   return createSuccess({
     command: "run.show",
     workspace: workspacePath,
-    data: { run, needsMark: needsMarkItems(run), executorOutputPath, artifactRoot, followUpReview },
+    data: { run, needsOperator: requiresReviewItems(run), executorOutputPath, artifactRoot, followUpReview },
     artifacts: [
       ...(run.mission_log_path ? [path.join(workspacePath, run.mission_log_path)] : []),
       ...(outputFileAbs && existsSync(outputFileAbs) ? [outputFileAbs] : []),
@@ -146,8 +146,8 @@ export function runRunRetryCommand(options: {
     });
     if (run.work_item_id) {
       updateWorkItem(db, run.work_item_id, {
-        queue: "needs_mark",
-        workClassification: "needs_mark",
+        queue: "requires_review",
+        workClassification: "requires_review",
         status: "in_progress",
         nextAction: "Review and approve or reject the retry Decision."
       });
@@ -191,10 +191,10 @@ export function renderRunShowSuccess(response: CommandSuccess<RunShowCommandData
   }
 
   lines.push("Requires Review:");
-  if (response.data.needsMark.length === 0) {
+  if (response.data.needsOperator.length === 0) {
     lines.push("  None");
   } else {
-    for (const item of response.data.needsMark) {
+    for (const item of response.data.needsOperator) {
       lines.push(`  ${item}`);
     }
   }
@@ -202,7 +202,7 @@ export function renderRunShowSuccess(response: CommandSuccess<RunShowCommandData
   return lines;
 }
 
-function needsMarkItems(run: ExecutionRunSummary): string[] {
+function requiresReviewItems(run: ExecutionRunSummary): string[] {
   return run.steps
     .filter((step) => isRequiresReviewValue(step.status))
     .map((step) => step.error ?? step.output ?? step.plan_step_title);

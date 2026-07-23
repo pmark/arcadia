@@ -68,7 +68,7 @@ export const rebusterModule: CapabilityModule = {
     { id: "rebuster.ingest_event", title: "Ingest Rebuster event", permission: "autonomous", approvalGates: [] }
   ],
   eventHandlers: [{ eventType: "rebuster.*", handlerId: "rebuster.event_snapshot" }],
-  permissions: ["autonomous", "codex", "needs_mark", "blocked"],
+  permissions: ["autonomous", "codex", "requires_review", "blocked"],
   artifactTypes: [
     { type: "rebuster_external_artifact", title: "Rebuster external artifact" },
     { type: "rebuster_decision_reference", title: "Rebuster Decision reference" }

@@ -105,7 +105,7 @@ Mission 1 is the exact first implementation mission: add disabled-by-default Int
 
 ## Mission 10: Companion App Contract Draft
 
-- Responsibility: Needs Mark
+- Responsibility: Requires Review
 - Objective: Decide the first companion-app ingress shape after the local slice works.
 - Scope: adapter contract documentation only.
 - Likely files: `docs/ADAPTER_CONTRACT.md`, possibly this plan package.

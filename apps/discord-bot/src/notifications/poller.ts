@@ -215,7 +215,7 @@ export function evaluateNotifications(
 }
 
 function isRequiresReviewStatus(value: string | null | undefined): boolean {
-  return value === "requires_review" || value === "needs_mark";
+  return value === "requires_review";
 }
 
 function requiresReviewItemMessage(item: ReviewItem): string {

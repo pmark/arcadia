@@ -56,7 +56,7 @@ describe("CLI response contract", () => {
     expect(json.data.runningWorkCount).toBe(0);
     expect(json.data.queuedWorkCount).toBe(1);
     expect(json.data.requiresReviewCount).toBe(0);
-    expect(json.data.needsMarkCount).toBe(0);
+    expect(json.data.requiresReviewWorkCount).toBe(0);
     expect(json.data.recentArtifactCount).toBe(1);
     expect(json.data.reportPath).toBe(path.join(path.resolve(workspace), "reports", "status.md"));
     expect(json.artifacts).toContain(path.join(path.resolve(workspace), "reports", "status.md"));
@@ -614,7 +614,6 @@ describe("CLI response contract", () => {
     expect(json.command).toBe("queue");
     expect(json.data.queues.inbox).toEqual([]);
     expect(json.data.queues.work_queue).toEqual([]);
-    expect(json.data.queues.needs_mark).toEqual([]);
     expect(json.data.queues.blocked).toEqual([]);
   });
 
@@ -719,7 +718,7 @@ describe("CLI response contract", () => {
     expect(showJson.ok).toBe(true);
     expect(showJson.command).toBe("run.show");
     expect(showJson.data.run.id).toBe(runJson.data.run.id);
-    expect(showJson.data.needsMark).toEqual([]);
+    expect(showJson.data.needsOperator).toEqual([]);
 
     const listResult = runCli(["run", "list", "--workspace", workspace, "--limit", "5", "--json"]);
     expect(listResult.status).toBe(0);

@@ -328,7 +328,7 @@ function setupCodexRun(
         command: null,
         executorType: input.purpose === "planning" ? "codex_planning" : "codex_build",
         safeToRun: false,
-        needsMark: null
+        needsOperator: null
       }]
     });
     if (!plan) {

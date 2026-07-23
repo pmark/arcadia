@@ -1060,7 +1060,7 @@ function resolvedIntentForStewardship(
           command: null,
           executorType: "codex_planning",
           safeToRun: false,
-          needsMark: "Planning output should be reviewed before implementation."
+          needsOperator: "Planning output should be reviewed before implementation."
         }
       ],
       approvalGates: [],
@@ -1091,9 +1091,9 @@ function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = fal
           skillName: "requires_review_decision",
           title: "Review intake interpretation",
           command: null,
-          executorType: "mark",
+          executorType: "operator",
           safeToRun: false,
-          needsMark: reviewNextAction(intake)
+          needsOperator: reviewNextAction(intake)
         }
       ],
       approvalGates: [],
@@ -1122,7 +1122,7 @@ function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = fal
           command: null,
           executorType: "codex_build",
           safeToRun: false,
-          needsMark: "Codex build requires explicit review before repository changes."
+          needsOperator: "Codex build requires explicit review before repository changes."
         }
       ],
       approvalGates: approvalGatesForIntake(intake).map((gateType) => ({
@@ -1171,7 +1171,7 @@ function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = fal
           command: "arcadia status",
           executorType: "deterministic",
           safeToRun: true,
-          needsMark: null
+          needsOperator: null
         }],
         approvalGates: [],
         templates: [],
@@ -1195,7 +1195,7 @@ function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = fal
           command: null,
           executorType: "codex_build",
           safeToRun: false,
-          needsMark: "Codex build requires explicit review before repository changes."
+          needsOperator: "Codex build requires explicit review before repository changes."
         }
       ],
       approvalGates: approvalGatesForIntake(intake).map((gateType) => ({

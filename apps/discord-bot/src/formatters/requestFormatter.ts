@@ -62,5 +62,5 @@ export function formatRequest(data: AskData): string {
 }
 
 function labelStatus(status: string): string {
-  return status === "requires_review" || status === "needs_mark" ? "Requires Review" : status.replaceAll("_", " ");
+  return status === "requires_review" ? "Requires Review" : status.replaceAll("_", " ");
 }

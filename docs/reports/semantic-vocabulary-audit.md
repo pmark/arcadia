@@ -70,7 +70,7 @@ Counts are directional, not migration counts. Many occurrences are tests, implem
 | Work Packet | Rare execution input phrase | Sparse references | Artifact / execution input | RENAME | Avoid as a primary term | Low |
 | Packet | Prompt/context payload | `prompt_packet_path`, `Codex Packet`, `packet_created`, `packets.ts` | Artifact | IMPLEMENTATION / LEGACY | Keep internally; user-facing copy should say Artifact where durable output matters | Medium |
 | Review | Human judgment workflow and weekly review report | `src/commands/review.ts`, `review_items`, `review_feedback`, Dashboard review pages, Discord review commands | Decision, Log/report review | RENAME / AMBIGUOUS | Rename judgment records to Decision; keep weekly review where it means retrospective report | High |
-| Requires Review | Queue/status/view for work needing human judgment | constants, CLI output, Dashboard, Discord docs | Decision, Needs Mark | LEGACY / RENAME | Accept as transitional status/view; pair with Decision in future UI | Medium |
+| Requires Review | Queue/status/view for work needing human judgment | constants, CLI output, Dashboard, Discord docs | Decision, Requires Review | LEGACY / RENAME | Accept as transitional status/view; pair with Decision in future UI | Medium |
 | Review Item | Persisted item awaiting approval/rejection/deferral | `review_items`, `ReviewItem`, `review show/approve/reject/defer` | Decision | RENAME / LEGACY | Future user-facing name: Decision. Schema remains legacy until migration | High |
 | Decision | Existing field names `decision_needed`, `decision_note`; not first-class object name | `review_items.decision_needed`, Dashboard run follow-up review | Review Item | MISSING / KEEP | Promote as canonical user-facing concept | High |
 | Mission Log | Durable project history record | `mission_logs`, `MissionLog`, `arcadia log create`, `MISSION_LOG.md`, docs | Log | RENAME / LEGACY | Prefer Log in new user-facing docs; preserve `mission_logs` until planned migration | Medium |
@@ -114,7 +114,7 @@ Action Responsibility values:
 
 - Autonomous
 - Codex
-- Needs Mark
+- Requires Review
 - Blocked
 
 ## Findings
@@ -222,7 +222,7 @@ The following names are acceptable internal compatibility names until a planned 
 - `prompt_packet_path`
 - `execution_*`
 - `back_burner_items`
-- `needs_mark`
+- `requires_review`
 
 Compatibility should be explicit in tests and migration notes. New user-facing copy should avoid expanding the legacy surface.
 
@@ -234,7 +234,7 @@ The product owner should decide:
 - Whether "Back Burner" remains as a friendly view name for Incubating material.
 - Whether `arcadia work` remains the command name while UI labels say Action.
 - Whether `arcadia review` remains the command group while records become Decisions.
-- Whether `Needs Mark` should appear as a canonical Responsibility or whether user-facing labels continue to prefer "Requires Review".
+- Whether `Requires Review` should appear as a canonical Responsibility or whether user-facing labels continue to prefer "Requires Review".
 - Whether Domain is needed soon or should remain documented but unimplemented.
 - Whether existing JSON responses should expose canonical aliases before database migration.
 
@@ -258,7 +258,7 @@ Mission Log is consistently implemented but conflicts with the proposed simpler 
 
 ### Classification vs Responsibility
 
-`work_classification` values answer who can act: autonomous, Codex, needs review/Needs Mark, blocked. That is Responsibility. `IntakeClassification` is different: it categorizes incoming text. Both should not share the same user-facing label.
+`work_classification` values answer who can act: autonomous, Codex, needs review/Requires Review, blocked. That is Responsibility. `IntakeClassification` is different: it categorizes incoming text. Both should not share the same user-facing label.
 
 ### Back Burner vs Incubating
 
@@ -435,7 +435,7 @@ LEGACY:
 
 - Existing schema fields and table names listed above
 - Existing CLI command names and flags until aliases exist
-- `needs_mark` compatibility values
+- `requires_review` compatibility values
 - `Requires Review` transitional view/status
 
 IMPLEMENTATION:

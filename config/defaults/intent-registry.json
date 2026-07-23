@@ -14,7 +14,7 @@
           "title": "Prepare Codex planning packet",
           "executorType": "codex_planning",
           "safeToRun": false,
-          "needsMark": "Codex planning requires explicit review before execution."
+          "needsOperator": "Codex planning requires explicit review before execution."
         }
       ],
       "approvalGates": []
@@ -32,7 +32,7 @@
           "title": "Prepare Codex planning packet",
           "executorType": "codex_planning",
           "safeToRun": false,
-          "needsMark": "Codex planning requires explicit review before execution."
+          "needsOperator": "Codex planning requires explicit review before execution."
         }
       ],
       "approvalGates": ["external_deployment"]
@@ -60,7 +60,7 @@
           "title": "Prepare Codex build packet for Astro Field Notes site",
           "executorType": "codex_build",
           "safeToRun": false,
-          "needsMark": "Codex build requires explicit approval before repository changes."
+          "needsOperator": "Codex build requires explicit approval before repository changes."
         }
       ],
       "approvalGates": ["external_deployment", "destructive_filesystem_changes"]
@@ -109,7 +109,7 @@
           "title": "Prepare Codex build packet for social posting support",
           "executorType": "codex_build",
           "safeToRun": false,
-          "needsMark": "Codex build requires explicit review before credentialed social posting work."
+          "needsOperator": "Codex build requires explicit review before credentialed social posting work."
         }
       ],
       "approvalGates": ["credentials_required", "publication", "send_email_or_messages"]
@@ -141,7 +141,7 @@
           "title": "Prepare Codex build packet for Rebuster Studio bridge work",
           "executorType": "codex_build",
           "safeToRun": false,
-          "needsMark": "Codex build requires explicit review before Rebuster Studio workflow changes."
+          "needsOperator": "Codex build requires explicit review before Rebuster Studio workflow changes."
         }
       ],
       "approvalGates": ["destructive_filesystem_changes"]
@@ -174,7 +174,7 @@
           "title": "Prepare Codex planning packet for analytics pipeline",
           "executorType": "codex_planning",
           "safeToRun": false,
-          "needsMark": "Codex planning requires review before credentialed analytics work."
+          "needsOperator": "Codex planning requires review before credentialed analytics work."
         }
       ],
       "approvalGates": ["credentials_required", "production_data_access"]
@@ -203,14 +203,14 @@
       "examples": ["Progress all safe work."],
       "outputKind": "requires_review",
       "workClassification": "requires_review",
-      "nextAction": "Mark must approve the first portfolio-wide safe-work progression implementation.",
+      "nextAction": "The operator must approve the first portfolio-wide safe-work progression implementation.",
       "skillSequence": [
         {
           "skillName": "requires_review_decision",
           "title": "Surface portfolio-wide progression decision",
-          "executorType": "mark",
+          "executorType": "operator",
           "safeToRun": false,
-          "needsMark": "Portfolio-wide progress-safe is not implemented yet."
+          "needsOperator": "Portfolio-wide progress-safe is not implemented yet."
         }
       ],
       "approvalGates": []
@@ -246,7 +246,7 @@
           "title": "Prepare Codex planning packet",
           "executorType": "codex_planning",
           "safeToRun": false,
-          "needsMark": "Codex planning requires explicit review before execution."
+          "needsOperator": "Codex planning requires explicit review before execution."
         }
       ],
       "approvalGates": []
@@ -264,7 +264,7 @@
           "title": "Prepare Codex build packet",
           "executorType": "codex_build",
           "safeToRun": false,
-          "needsMark": "Codex build requires explicit approval before repository changes."
+          "needsOperator": "Codex build requires explicit approval before repository changes."
         }
       ],
       "approvalGates": ["destructive_filesystem_changes"]

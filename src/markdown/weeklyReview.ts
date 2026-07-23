@@ -45,7 +45,7 @@ export function renderWeeklyReviewReport(data: WeeklyReviewData): string {
     "",
     "## Requires Review Decisions",
     "",
-    renderWorkItems(data.needsMarkItems),
+    renderWorkItems(data.requiresReviewItems),
     "",
     "## Active Codex/Autonomous Actions",
     "",

@@ -165,7 +165,7 @@ pnpm arcadia queue --workspace .arcadia-workspace --json
 pnpm arcadia run list --workspace .arcadia-workspace --json
 ```
 
-User-facing output should say `Requires Review`, not `needs_mark`.
+User-facing output should say `Requires Review`, not `requires_review`.
 
 ## Generate A Status Report Artifact
 

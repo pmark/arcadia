@@ -103,7 +103,7 @@ export function blogDraftMarkdown(input: {
     "",
     "## Review Notes",
     "",
-    "- Needs Mark voice approval.",
+    "- Needs voice approval before publishing.",
     "- Needs publishing approval before external release.",
     ""
   ].join("\n");

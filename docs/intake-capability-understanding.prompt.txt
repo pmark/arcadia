@@ -126,7 +126,7 @@ Each action definition should include:
 - optional slots
 - slot extractors
 - project required: yes/no
-- safe execution class: autonomous/codex/needs_mark/blocked
+- safe execution class: autonomous/codex/requires_review/blocked
 - approval gates
 - produced artifact types
 - whether command mutates state
@@ -249,7 +249,7 @@ Expected routing:
 - "prepare/schedule/editorial calendar" + project/blog terms -> schedule artifact + review item
 - "draft/write post/update" + project/blog terms -> draft scaffold if topic/idea exists, otherwise specific review/blocked setup
 - "idea/from recent mission logs" -> idea artifact from local mission logs
-- "publish/post/go live/deploy" -> Needs Mark / publication approval, no external action
+- "publish/post/go live/deploy" -> Requires Review / publication approval, no external action
 
 7. Safety Model
 

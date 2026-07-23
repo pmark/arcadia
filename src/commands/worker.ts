@@ -248,8 +248,8 @@ function finalizeGenericRun(
     updateWorkItem(db, workItem.id, status === "failed"
       ? { queue: "blocked", workClassification: "blocked", status: "blocked", nextAction: "Inspect the failed Run and request retry." }
       : status === "requires_review"
-        ? { queue: "needs_mark", workClassification: "needs_mark", status: "in_progress", nextAction: "Review failed Validation." }
-        : { queue: "needs_mark", workClassification: "needs_mark", status: "in_progress", nextAction: "Review the executor result." });
+        ? { queue: "requires_review", workClassification: "requires_review", status: "in_progress", nextAction: "Review failed Validation." }
+        : { queue: "requires_review", workClassification: "requires_review", status: "in_progress", nextAction: "Review the executor result." });
   }
 }
 

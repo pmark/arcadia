@@ -119,12 +119,12 @@ export function createPlanningApprovalDecision(
       approvalAuthorizes: `One managed read-only ${agentLabel} planning Run for this exact packet.`,
       preparationSource: existingAction ? "existing_action" : "ask",
       safetyBoundaries: [...PLANNING_SAFETY_BOUNDARIES],
-      responsibility: "needs_mark"
+      responsibility: "requires_review"
     }
   });
   updateWorkItem(db, input.workItem.id, {
-    queue: "needs_mark",
-    workClassification: "needs_mark",
+    queue: "requires_review",
+    workClassification: "requires_review",
     status: "open",
     nextAction: "Review the planning packet and approve, reject, or defer its Decision."
   });

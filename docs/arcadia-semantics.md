@@ -141,7 +141,7 @@ Canonical values:
 
 - Autonomous
 - Codex
-- Needs Mark
+- Requires Review
 - Blocked
 
 Responsibility replaces user-facing "Classification" when the value answers who can do the work. Existing internal `work_classification` fields may remain as compatibility names until a deliberate migration.
@@ -166,7 +166,7 @@ Validation is a supporting property, not a top-level Arcadia object. Use "valida
 | Work Packet | Artifact or execution input | Avoid making this a primary concept. |
 | Packet | Artifact | Use only as a low-level implementation/detail word. |
 | Back Burner | Incubating status/view | Keep as a view name only if desired; the semantic state is Incubating. |
-| Classification | Responsibility | Use Responsibility when values are Autonomous, Codex, Needs Mark, or Blocked. |
+| Classification | Responsibility | Use Responsibility when values are Autonomous, Codex, Requires Review, or Blocked. |
 | Execution | Workflow or Run | Use Run for a concrete execution instance; Workflow for a process. |
 | Stewardship | Routing/governance behavior | Keep for internal AI/request-routing behavior, not as a primary user object. |
 

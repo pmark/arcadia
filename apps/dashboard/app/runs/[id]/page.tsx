@@ -54,7 +54,7 @@ interface RunDetail {
       path: string | null;
     }>;
   };
-  needsMark: string[];
+  needsOperator: string[];
   executorOutputPath: string | null;
   artifactRoot: string | null;
   followUpReview: FollowUpReview | null;
@@ -298,11 +298,11 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
           />
         ) : null}
 
-        {detail?.needsMark.length ? (
+        {detail?.needsOperator.length ? (
           <section>
             <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">Requires Mark</h2>
             <ul className="grid gap-2">
-              {detail.needsMark.map((item, i) => (
+              {detail.needsOperator.map((item, i) => (
                 <li key={i} className="rounded-md border border-clay/30 bg-clay/10 p-3 text-sm text-clay">
                   {item}
                 </li>
@@ -505,7 +505,7 @@ function statusLabel(status: string): string {
     case "completed": return "Completed";
     case "failed": return "Failed";
     case "requires_review": return "Requires Review";
-    case "needs_mark": return "Requires Review";
+    case "requires_review": return "Requires Review";
     default: return status;
   }
 }

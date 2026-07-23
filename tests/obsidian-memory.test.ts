@@ -174,7 +174,7 @@ function planningFixture(options: { memory: boolean; validationStatus?: "passed"
       currentMilestone: "Accepted planning memory",
       nextAction: "Create the Obsidian memory exporter",
       expectedArtifact: "Complete implementation plan",
-      workClassification: "needs_mark"
+      workClassification: "requires_review"
     });
     db.prepare("UPDATE work_items SET status = 'in_progress' WHERE id = ?").run(created.workItem.id);
     const artifact = createArtifactRecord(db, {
@@ -226,7 +226,7 @@ function initialApprovalFixture(): Fixture {
       status: "active",
       currentMilestone: "Reliable publishing workflow",
       nextAction: "Choose the next publishing improvement.",
-      workClassification: "needs_mark"
+      workClassification: "requires_review"
     });
     upsertProjectMetadata(db, {
       projectId: created.project.id,

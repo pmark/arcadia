@@ -6,7 +6,7 @@ Arcadia owns durable Project context and work visibility:
 
 - Project, Mission, Outcome, Milestone, Action, Artifact, Decision, and Log linkage.
 - Project-aware policy and explicit overrides.
-- Approval gates and Needs Mark outcomes.
+- Approval gates and Requires Review outcomes.
 - Request attribution, correlation IDs, idempotency keys, hashes, and provenance summaries.
 - Operator visibility through CLI, dashboard snapshot, events, and Logs.
 - Result validation status and Artifact creation for accepted outputs.

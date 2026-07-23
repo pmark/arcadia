@@ -74,7 +74,7 @@ function unknownIntent(request: string): ResolvedIntent {
         command: null,
         executorType: "codex_planning",
         safeToRun: false,
-        needsMark: "Codex planning requires explicit review before execution."
+        needsOperator: "Codex planning requires explicit review before execution."
       }
     ],
     approvalGates: [],
