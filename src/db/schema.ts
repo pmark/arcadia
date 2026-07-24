@@ -532,15 +532,6 @@ function ensureOperatorAgnosticSchema(db: Database.Database): void {
     { table: "execution_plan_steps", column: "executor_type", from: "mark", to: "operator" }
   ];
 
-  for (const update of valueUpdates) {
-    if (!migrationColumnExists(db, update.table, update.column)) {
-      continue;
-    }
-    db.prepare(
-      `UPDATE ${quoteIdentifier(update.table)} SET ${quoteIdentifier(update.column)} = ? WHERE ${quoteIdentifier(update.column)} = ?`
-    ).run(update.to, update.from);
-  }
-
   if (
     migrationColumnExists(db, "execution_plan_steps", "needs_mark") &&
     !migrationColumnExists(db, "execution_plan_steps", "needs_operator")
@@ -548,6 +539,12 @@ function ensureOperatorAgnosticSchema(db: Database.Database): void {
     db.prepare("ALTER TABLE execution_plan_steps RENAME COLUMN needs_mark TO needs_operator").run();
   }
 
+  // Rebuild tables whose stored CREATE TABLE still references a retired
+  // identifier before touching row values: the current schema's CHECK
+  // constraints reject the new values, and the old schema's CHECK
+  // constraints reject the new values just as much as the old ones once
+  // they're gone, so the value remap has to happen as part of the same
+  // copy that swaps in the new table definition.
   const constrainedTables = [
     "work_items",
     "execution_plans",
@@ -557,6 +554,7 @@ function ensureOperatorAgnosticSchema(db: Database.Database): void {
     "ask_requests",
     "skill_definitions"
   ];
+  const rebuiltTables = new Set<string>();
   for (const table of constrainedTables) {
     const row = db
       .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
@@ -565,8 +563,22 @@ function ensureOperatorAgnosticSchema(db: Database.Database): void {
       continue;
     }
     if (row.sql.includes("'needs_mark'") || row.sql.includes("'mark'")) {
-      rebuildTableWithCurrentSchema(db, table);
+      const remaps = valueUpdates.filter((update) => update.table === table);
+      rebuildTableWithCurrentSchema(db, table, remaps);
+      rebuiltTables.add(table);
     }
+  }
+
+  for (const update of valueUpdates) {
+    if (rebuiltTables.has(update.table)) {
+      continue;
+    }
+    if (!migrationColumnExists(db, update.table, update.column)) {
+      continue;
+    }
+    db.prepare(
+      `UPDATE ${quoteIdentifier(update.table)} SET ${quoteIdentifier(update.column)} = ? WHERE ${quoteIdentifier(update.column)} = ?`
+    ).run(update.to, update.from);
   }
 }
 
@@ -682,20 +694,33 @@ function repairLegacyRequiresReviewReferences(db: Database.Database): void {
   }
 }
 
-function rebuildTableWithCurrentSchema(db: Database.Database, table: string): void {
+function rebuildTableWithCurrentSchema(
+  db: Database.Database,
+  table: string,
+  valueRemaps: Array<{ column: string; from: string; to: string }> = []
+): void {
   const schema = readInitialSchema();
   const tempTable = `${table}__requires_review_rebuild`;
   const createStatement = createStatementForTableName(extractCreateTableStatement(schema, table), table, tempTable);
   const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
   const columnNames = columns.map((column) => column.name);
   const quotedColumns = columnNames.map((column) => `"${column}"`).join(", ");
+  const selectColumns = columnNames
+    .map((column) => {
+      const remap = valueRemaps.find((entry) => entry.column === column);
+      if (!remap) {
+        return `"${column}"`;
+      }
+      return `CASE WHEN "${column}" = '${remap.from}' THEN '${remap.to}' ELSE "${column}" END AS "${column}"`;
+    })
+    .join(", ");
 
   db.exec("PRAGMA foreign_keys = OFF");
   try {
     db.transaction(() => {
       db.prepare(`DROP TABLE IF EXISTS ${quoteIdentifier(tempTable)}`).run();
       db.exec(createStatement);
-      db.prepare(`INSERT INTO ${quoteIdentifier(tempTable)} (${quotedColumns}) SELECT ${quotedColumns} FROM ${quoteIdentifier(table)}`).run();
+      db.prepare(`INSERT INTO ${quoteIdentifier(tempTable)} (${quotedColumns}) SELECT ${selectColumns} FROM ${quoteIdentifier(table)}`).run();
       db.prepare(`DROP TABLE ${quoteIdentifier(table)}`).run();
       db.prepare(`ALTER TABLE ${quoteIdentifier(tempTable)} RENAME TO ${quoteIdentifier(table)}`).run();
     })();
