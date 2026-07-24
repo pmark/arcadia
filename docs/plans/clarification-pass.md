@@ -233,3 +233,23 @@ Total ~1.5–2 focused weeks, shippable incrementally.
 - Should a resolved clarification Decision automatically re-run `clarify` on
   its Action, or wait for an explicit `clarify` call? Proposed: explicit, to
   keep the loop observable.
+
+## Future: PR-driven memory (not scoped, not scheduled)
+
+The Obsidian Vault memory this program feeds is currently empty in practice,
+because vault-writing is coupled to Mark using Arcadia for decisions, and
+that habit is infrequent. Merged PRs are not infrequent — they're the actual
+unit of work already happening. Idea for a later phase: make a merged PR the
+memory-writing trigger, not a decision resolution.
+
+Concretely: a `CHANGELOG.md` per repo, appended to on merge with a durable
+summary of the PR (what changed, why, links to the originating Action /
+Decision where one exists). `OVERVIEW.md` files at any grouping level
+(project, repo group, workspace) would then be *derived rollups* over those
+ledgers rather than hand-maintained documents — same relationship the
+Dashboard snapshot already has to raw `work_items`/`artifacts` rows.
+
+This is additive to, not a dependency of, Phases 1–4 above: the clarify
+engine populates the vault with *why an Action exists*; a PR-driven ledger
+would populate it with *what shipped*. Worth revisiting once Phase 4 lands
+and the clarify loop has real usage data to react to — not before.
