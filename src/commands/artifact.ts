@@ -1,11 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { artifactNotFound, validationError } from "../cli/errors.js";
+import { artifactNotFound, projectNotFound, validationError, workItemNotFound } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
-import { listArtifacts, updateArtifact } from "../db/repositories.js";
+import { createArtifactRecord, getArtifact, getProject, getWorkItem, listArtifacts, updateArtifact } from "../db/repositories.js";
 import type { ArtifactSummary } from "../domain/types.js";
 import {
   validatePlanningArtifact,
@@ -19,6 +19,10 @@ export interface ArtifactListCommandData {
 export interface ArtifactUpdateCommandData {
   artifact: ArtifactSummary;
   updated: string[];
+}
+
+export interface ArtifactCreateCommandData {
+  artifact: ArtifactSummary;
 }
 
 export interface ArtifactValidatePlanningCommandData {
@@ -35,6 +39,44 @@ export function runArtifactListCommand(options: { workspace: string }): CommandS
     command: "artifact.list",
     workspace: workspacePath,
     data: { artifacts }
+  });
+}
+
+export function runArtifactCreateCommand(options: {
+  workspace: string;
+  projectId?: string;
+  workItemId?: string;
+  title: string;
+  artifactType: string;
+  status?: string;
+  path?: string;
+}): CommandSuccess<ArtifactCreateCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+
+  const artifact = withDatabase(workspacePath, (db) => {
+    if (options.projectId && !getProject(db, options.projectId)) {
+      throw projectNotFound(options.projectId);
+    }
+    if (options.workItemId && !getWorkItem(db, options.workItemId)) {
+      throw workItemNotFound(options.workItemId);
+    }
+
+    const created = createArtifactRecord(db, {
+      projectId: options.projectId,
+      workItemId: options.workItemId,
+      title: options.title,
+      artifactType: options.artifactType,
+      status: options.status as ArtifactSummary["status"] | undefined,
+      path: options.path
+    });
+
+    return getArtifact(db, created.id) as ArtifactSummary;
+  });
+
+  return createSuccess({
+    command: "artifact.create",
+    workspace: workspacePath,
+    data: { artifact }
   });
 }
 
@@ -99,6 +141,10 @@ export function renderArtifactListSuccess(response: CommandSuccess<ArtifactListC
   }
 
   return response.data.artifacts.flatMap((artifact) => renderArtifact(artifact));
+}
+
+export function renderArtifactCreateSuccess(response: CommandSuccess<ArtifactCreateCommandData>): string[] {
+  return renderArtifact(response.data.artifact);
 }
 
 export function renderArtifactUpdateSuccess(response: CommandSuccess<ArtifactUpdateCommandData>): string[] {

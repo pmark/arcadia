@@ -8,9 +8,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import {
+  renderArtifactCreateSuccess,
   renderArtifactListSuccess,
   renderArtifactValidatePlanningSuccess,
   renderArtifactUpdateSuccess,
+  runArtifactCreateCommand,
   runArtifactValidatePlanningCommand,
   runArtifactListCommand,
   runArtifactUpdateCommand
@@ -1349,6 +1351,42 @@ export function buildProgram(): Command {
   const artifact = program.command("artifact").description("Artifact commands");
   addJsonOption(
     artifact
+      .command("create")
+      .description("Create an artifact, optionally linked to a project and/or Action")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .requiredOption("--title <title>", "Artifact title")
+      .requiredOption("--type <type>", "Artifact type")
+      .option("--status <status>", "Status: planned, drafted, ready, published", "planned")
+      .option("--path <path>", "Artifact path")
+      .option("--project <project-id>", "Project id to link")
+      .option("--work-item <work-item-id>", "Action id to link")
+  ).action((options: {
+    workspace: string;
+    title: string;
+    type: string;
+    status?: string;
+    path?: string;
+    project?: string;
+    workItem?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "artifact.create",
+      options,
+      () => runArtifactCreateCommand({
+        workspace: options.workspace,
+        projectId: options.project,
+        workItemId: options.workItem,
+        title: options.title,
+        artifactType: options.type,
+        status: options.status,
+        path: options.path
+      }),
+      renderArtifactCreateSuccess
+    )
+  );
+  addJsonOption(
+    artifact
       .command("list")
       .description("List artifacts")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
@@ -1412,6 +1450,7 @@ export function buildProgram(): Command {
       .option("--next-action <action>", "Next action")
       .option("--status <status>", "Status: open, in_progress, done, blocked")
       .option("--effort <size>", "Coarse time cost: quick|short|session|project, or none to clear")
+      .option("--expected-artifact <artifact>", "Expected artifact, or none to clear")
   ).action((workId: string, options: {
     workspace: string;
     queue?: string;
@@ -1420,6 +1459,7 @@ export function buildProgram(): Command {
     nextAction?: string;
     status?: string;
     effort?: string;
+    expectedArtifact?: string;
     json?: boolean;
   }) =>
     runCliAction(
@@ -1428,7 +1468,8 @@ export function buildProgram(): Command {
       () => runWorkUpdateCommand({
         ...normalizeResponsibilityOption(options),
         workId,
-        effort: parseEffortOption(options.effort)
+        effort: parseEffortOption(options.effort),
+        expectedArtifact: options.expectedArtifact === "none" ? null : options.expectedArtifact
       }),
       renderWorkUpdateSuccess
     )
@@ -2501,7 +2542,7 @@ function commandNameFromArgv(argv: string[]): string {
     return `milestone.${second}`;
   }
 
-  if (first === "artifact" && ["list", "update", "validate-planning"].includes(second ?? "")) {
+  if (first === "artifact" && ["create", "list", "update", "validate-planning"].includes(second ?? "")) {
     return `artifact.${second}`;
   }
 

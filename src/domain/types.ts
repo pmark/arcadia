@@ -507,6 +507,8 @@ export interface UpdateWorkItemInput {
   status?: string;
   /** Coarse time cost; `null` clears it. See src/orientation/effort.ts. */
   effort?: string | null;
+  /** `null` clears it. */
+  expectedArtifact?: string | null;
 }
 
 export interface UpdateArtifactInput {
