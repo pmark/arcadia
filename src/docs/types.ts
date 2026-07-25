@@ -63,6 +63,13 @@ export interface ProjectDoc extends DocLocation {
    * which is exactly what the continuation contract forbids.
    */
   activePlan: string | null;
+  /**
+   * The action to work on now. The continuation contract puts both pointers on
+   * the project, which also makes two competing current actions structurally
+   * impossible. A plan may still carry one for a project that has not adopted
+   * the project-level pointer.
+   */
+  currentAction: string | null;
   updated: string;
   body: string;
 }

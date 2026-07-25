@@ -117,9 +117,19 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
 
   switch (type) {
     case "project": {
-      const name = requiredString(problems, data, "name");
       const status = enumField(problems, data, "status", PROJECT_STATUSES);
-      const goal = requiredString(problems, data, "goal");
+      // Human-written project docs put the name in the H1 and the mission in a
+      // section, not in frontmatter. Both are recoverable without guessing, and
+      // rejecting an otherwise-valid document over a duplicated heading would
+      // make the protocol expensive to adopt.
+      const name = optionalString(data, "name") ?? headingTitle(body);
+      if (!name) {
+        problems.add("name", "`name` is required, or provide it as the document's first `#` heading.");
+      }
+      const goal = optionalString(data, "goal") ?? sectionParagraph(body, "Mission");
+      if (!goal) {
+        problems.add("goal", "`goal` is required, or provide it as the first paragraph under `## Mission`.");
+      }
       if (!problems.ok) {
         return { doc: null, errors: problems.errors };
       }
@@ -134,6 +144,7 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
           outcome: optionalString(data, "outcome"),
           milestone: optionalString(data, "milestone"),
           activePlan: optionalSlug(problems, data, "active_plan"),
+          currentAction: optionalSlug(problems, data, "current_action"),
           updated: updated!,
           body
         },
@@ -170,9 +181,18 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
     }
 
     case "decision": {
-      const id = requiredString(problems, data, "id");
       const status = enumField(problems, data, "status", DECISION_DOC_STATUSES);
-      const question = requiredString(problems, data, "question");
+      // The protocol names decision files `NNNN-<slug>.md`, so the id is already
+      // in the path. ADR-style documents state the decision in the heading
+      // rather than as a question field; both are recoverable.
+      const id = optionalString(data, "id") ?? idFromFilename(relativePath);
+      if (!id) {
+        problems.add("id", "`id` is required, or name the file `NNNN-<slug>.md`.");
+      }
+      const question = optionalString(data, "question") ?? headingTitle(body);
+      if (!question) {
+        problems.add("question", "`question` is required, or state it as the document's first `#` heading.");
+      }
       const gapType = optionalEnum(problems, data, "gap_type", GAP_TYPES);
       const confidence = optionalEnum(problems, data, "confidence", CLARIFICATION_CONFIDENCE_LEVELS);
       const decided = optionalDate(problems, data, "decided");
@@ -272,7 +292,14 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
     const id = slugField(problems, value, "id", field);
     const title = requiredString(problems, value, "title", field);
     const status = enumField(problems, value, "status", WORK_ITEM_STATUSES, field);
-    const responsibility = enumField(problems, value, "responsibility", WORK_CLASSIFICATIONS, field);
+    // An action nobody can start yet often has no meaningful owner. Defaulting
+    // to requires_review routes it to a human, which is the safe direction; the
+    // unsafe one would be defaulting to codex and handing an undecided task to
+    // an executor.
+    const responsibility =
+      value.responsibility === undefined || value.responsibility === null
+        ? "requires_review"
+        : enumField(problems, value, "responsibility", WORK_CLASSIFICATIONS, field);
     const effort = optionalEnum(problems, value, "effort", ORIENTATION_EFFORTS, field);
     const clarification = optionalEnum(problems, value, "clarification", CLARIFICATION_STATUSES, field);
     const gapType = optionalEnum(problems, value, "gap_type", GAP_TYPES, field);
@@ -460,6 +487,40 @@ function parseLogEntries(problems: Problems, body: string): LogEntryDoc[] {
   flush();
 
   return entries;
+}
+
+/**
+ * The document's first `#` heading, with a leading `ADR 0011:`-style prefix
+ * removed. Deterministic recovery, not inference: if there is no heading the
+ * caller reports the field as missing rather than inventing one.
+ */
+function headingTitle(body: string): string | null {
+  const match = /^#\s+(.+?)\s*$/m.exec(body);
+  if (!match) {
+    return null;
+  }
+  return match[1].replace(/^ADR\s+\d+\s*[:\u2014-]\s*/i, "").trim() || null;
+}
+
+/** First paragraph under a named `##` section. */
+function sectionParagraph(body: string, heading: string): string | null {
+  const pattern = new RegExp(`^##\\s+${heading}\\s*$([\\s\\S]*?)(?=^##\\s|\\Z)`, "mi");
+  const match = pattern.exec(body);
+  if (!match) {
+    return null;
+  }
+  const paragraph = match[1]
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .find((block) => block.length > 0);
+  return paragraph ? paragraph.replace(/\s+/g, " ") : null;
+}
+
+/** The `NNNN` prefix the protocol already requires in a decision filename. */
+function idFromFilename(relativePath: string): string | null {
+  const base = relativePath.split(/[\\/]/).pop() ?? "";
+  const match = /^(\d{3,})-/.exec(base);
+  return match ? match[1] : null;
 }
 
 function requiredString(

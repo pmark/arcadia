@@ -126,7 +126,7 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
   // the active plan resolves: if `active_plan` itself is wrong, saying "this
   // other plan is competing" sends the operator to fix the wrong file.
   for (const other of plans) {
-    if (other.currentAction && other.slug.toLowerCase() !== plan.slug.toLowerCase()) {
+    if (other.currentAction && other.slug.toLowerCase() !== plan.slug.toLowerCase() && !project.currentAction) {
       blockers.push({
         relativePath: other.relativePath,
         field: "current_action",
@@ -136,7 +136,20 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
     }
   }
 
-  if (!plan.currentAction) {
+  // The contract puts both pointers on the project. A plan-level pointer is
+  // still honored for projects that have not adopted that, but the project's
+  // wins and a disagreement is reported rather than silently resolved.
+  const currentActionId = project.currentAction ?? plan.currentAction;
+  if (project.currentAction && plan.currentAction && project.currentAction !== plan.currentAction) {
+    blockers.push({
+      relativePath: plan.relativePath,
+      field: "current_action",
+      message: `PROJECT.md names "${project.currentAction}" but plan "${plan.slug}" names "${plan.currentAction}".`,
+      remedy: "Remove the plan's current_action, or make the two agree. PROJECT.md is authoritative."
+    });
+  }
+
+  if (!currentActionId) {
     blockers.push({
       relativePath: plan.relativePath,
       field: "current_action",
@@ -151,12 +164,12 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
 
   // A dangling pointer is already reported per-file by the parser, which means
   // the plan never became a doc; reaching here with no match would be a bug.
-  const action = plan.actions.find((candidate) => candidate.id === plan.currentAction) ?? null;
+  const action = plan.actions.find((candidate) => candidate.id === currentActionId) ?? null;
   if (!action) {
     blockers.push({
-      relativePath: plan.relativePath,
+      relativePath: project.currentAction ? project.relativePath : plan.relativePath,
       field: "current_action",
-      message: `current_action "${plan.currentAction}" matches no action in this plan.`,
+      message: `current_action "${currentActionId}" matches no action in plan "${plan.slug}".`,
       remedy: "Point current_action at an existing action id."
     });
     return { context: null, blockers, operatorQuestion: null };
