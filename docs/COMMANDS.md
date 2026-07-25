@@ -265,6 +265,88 @@ one. `artifact create --path <vault path> --work-item <id>` registers that
 memo as the Action's real output, so `artifact list` and the Dashboard
 reflect what actually happened instead of showing the Action as artifact-less.
 
+## Clarify Actions
+
+Capture is not clarify. `capture` routes an Action into a queue and writes a
+placeholder next action — usually *"Clarify the desired outcome or approve a
+Codex execution path."* — but nobody has yet decided what to actually do. The
+`next_action` column can't record that, because it is `NOT NULL` and always
+holds *some* string. So `clarification_status` is the field that carries GTD's
+"clarify" step: it, not the text, is the source of truth for whether an Action
+has a real next action.
+
+Every Action captured from now on lands as `unclarified`. The three states:
+
+| Status | Meaning |
+| ------ | ------- |
+| `unclarified` | No concrete next action has been named yet. The `next_action` text is a placeholder — listings mark it `— (pending clarification)`. |
+| `question_open` | Someone looked, and something is missing. `gap_type` says what kind, `open_question` holds the single question whose answer unblocks it. |
+| `clarified` | A real, physically doable next action is recorded, with `clarification_source` for what justified it and `confidence` for how far to trust it. |
+
+A `NULL` status is a fourth, distinct case: the Action predates clarification
+or was never evaluated. That is deliberately *not* the same as `unclarified`,
+which asserts that the Action is known to lack a next action.
+
+Why the field matters beyond bookkeeping: it is what makes "which Actions are
+actually ready to work?" answerable without reading every row by eye, and it is
+the input any later automation gates on — a policy like *"a clarified Action
+with high confidence and effort ≤ short may dispatch without a per-instance
+Decision"* is expressible only because these columns exist.
+
+Record a gap and the one question that unblocks it:
+
+```sh
+pnpm arcadia work update work_example \
+  --workspace "$WORKSPACE" \
+  --clarification-status question_open \
+  --gap-type missing-decision \
+  --question "Should the nightly sync retry on partial failure, or fail the whole run?" \
+  --confidence medium \
+  --json
+```
+
+`--gap-type` takes exactly one of the rubric's four kinds, because each one
+implies a different question:
+
+| Gap type | The Action is blocked because… | What the question should ask for |
+| -------- | ------------------------------ | -------------------------------- |
+| `missing-decision` | a choice hasn't been made | the decision, plus the 2–4 criteria that matter |
+| `missing-external-input` | you're waiting on someone or something outside | who/what, plus a draft of the ask |
+| `missing-definition` | it's a problem label, not an action | a proposed decomposition into 2–5 subtasks, as a proposal to approve |
+| `missing-success-criteria` | the action is clear but "done" is not | what finished looks like, specific to this Action |
+
+Record a resolved clarification once the answer arrives:
+
+```sh
+pnpm arcadia work update work_example \
+  --workspace "$WORKSPACE" \
+  --clarification-status clarified \
+  --next-action "Add a per-batch retry to the nightly sync and log partial failures" \
+  --source "Decision review_0007; docs/plans/nightly-sync.md" \
+  --confidence high \
+  --gap-type none \
+  --question none \
+  --json
+```
+
+`--source` records *what justified* the next action — an Action detail, a
+linked doc, a resolved Decision — so a later reader can tell a considered call
+from a guess. `--confidence` is `high`, `medium`, or `low`; it is a coarse
+label on an Action, distinct from the `0–1` confidence score on a Decision.
+Every one of these flags takes `none` to clear it, which is how an Action that
+was `question_open` sheds its stale gap when it becomes `clarified`.
+
+**Example scenario:** you capture "Fix the flaky checkout test" on a walk. It
+lands `unclarified`, and `work list` shows its next action as pending, so it
+never looks ready. Reviewing the queue later you realize you can't name a fix
+until you know whether flakiness is a timing issue or a fixture issue —
+`--gap-type missing-definition --question "Which of the three failing
+assertions fails in isolation?"` puts that question on the record instead of
+letting the Action rot in the queue looking actionable. When you find the
+answer, `--clarification-status clarified --next-action …` promotes it, and the
+`[GAP …]` prefixes an earlier dogfood pass had to jam into the next-action text
+are no longer needed.
+
 ## Plan Work
 
 ```sh

@@ -35,22 +35,25 @@ structured-generation service).
 
 ## Status
 
-- Milestone: Milestone 0 (operator-agnostic naming refactor) — complete,
-  pending PR merge. Phase 1 (CLI plumbing) — implemented and tested, PR open
-  ([pmark/arcadia#3](https://github.com/pmark/arcadia/pull/3)), not yet
-  merged.
-- Next Action: Merge PR #3, then implement Phase 2 (structured clarification
-  fields: `clarification_status`, `gap_type`, `open_question`,
-  `clarification_source`, `confidence`).
-- Responsibility: Requires Review (Phase 2 is Codex-doable but gated on
-  go-ahead, same as Phase 1 was).
-- Required Artifact: merged PR #3; then a Phase 2 PR.
-- Decisions open: 3 — see "Open questions" below (plan gate, effort scope,
-  re-clarify trigger). Engine and subtask policy defaulted in "Design
+- Milestone: Milestone 0 (operator-agnostic naming refactor) — complete.
+  Phase 1 (CLI plumbing) — merged
+  ([pmark/arcadia#3](https://github.com/pmark/arcadia/pull/3), docs in #5).
+  Phase 2 (structured clarification fields) — implemented and tested, PR open.
+- Next Action: Merge the Phase 2 PR, then implement Phase 3 (`review open`
+  authoring a Decision, plus `parent_work_item_id` and subtasks).
+- Responsibility: Requires Review (Phase 3 is Codex-doable but gated on
+  go-ahead, same as Phases 1–2 were).
+- Required Artifact: merged Phase 2 PR; then a Phase 3 PR.
+- Decisions open: 2 — see "Open questions" below (plan gate, re-clarify
+  trigger). Effort scope is resolved: Phase 1 shipped `effort` on every Action,
+  nullable, as proposed. Engine and subtask policy defaulted in "Design
   decisions".
-- Last Log: 2026-07-24 — Phase 1 implemented (`artifact create`,
-  `work update --expected-artifact`), tested, documented in
-  `docs/COMMANDS.md`, and opened as PR #3.
+- Last Log: 2026-07-24 — Phase 2 implemented: `clarification_status`,
+  `gap_type`, `open_question`, `clarification_source`, and `confidence` added
+  to `work_items` behind a guarded migration, threaded through
+  `updateWorkItem` / `WorkItemSummary` / `renderWorkItem`, exposed as
+  `work update --clarification-status|--gap-type|--question|--confidence|--source`,
+  written as `unclarified` by `capture`, and documented in `docs/COMMANDS.md`.
 - Updated: 2026-07-24
 
 ## The clarification rubric
@@ -159,11 +162,16 @@ which today handles only `queue` / `workClassification` / `nextAction` /
 
 Gaps #2, #3, #6. One migration adds nullable columns to `work_items`:
 `clarification_status`, `gap_type`, `open_question`, `clarification_source`,
-`confidence`, `effort`. Thread them through `updateWorkItem`, the
+`confidence`. (`effort` and `--effort` landed earlier as Phase 1 groundwork, so
+gap #6 needed nothing here.) Thread them through `updateWorkItem`, the
 `WorkItemSummary` type, and `renderWorkItem`. New `work update` flags:
-`--gap-type`, `--question`, `--confidence`, `--source`, `--effort`. `capture`
-writes `clarification_status = 'unclarified'`. This retires the
-`[GAP …]`-string-mangling of `next_action` the dogfood had to use.
+`--clarification-status`, `--gap-type`, `--question`, `--confidence`,
+`--source`. `capture` writes `clarification_status = 'unclarified'`. This
+retires the `[GAP …]`-string-mangling of `next_action` the dogfood had to use.
+
+A NULL `clarification_status` is kept distinct from `unclarified`: NULL means
+the Action predates clarification or was never evaluated, `unclarified` asserts
+it is known to lack a concrete next action.
 
 *Tests:* migration idempotency; field round-trip; capture sets `unclarified`.
 
@@ -232,8 +240,9 @@ Total ~1.5–2 focused weeks, shippable incrementally.
 
 - Should `clarification_status` gate `work plan` (i.e. can only a `clarified`
   Action be planned)? Leaning yes, but it changes existing planning tests.
-- Does `effort` belong on every Action or only on clarified ones? Proposed:
-  every Action, nullable.
+- ~~Does `effort` belong on every Action or only on clarified ones?~~
+  **Resolved** — Phase 1 shipped `effort` on every Action, nullable, sized
+  after the fact via `work update --effort` rather than guessed at intake.
 - Should a resolved clarification Decision automatically re-run `clarify` on
   its Action, or wait for an explicit `clarify` call? Proposed: explicit, to
   keep the loop observable.

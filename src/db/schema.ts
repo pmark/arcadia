@@ -49,6 +49,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureIntelligenceJobArtifactAudioColumns(db);
   ensureOrientationTables(db);
   ensureEffortColumns(db);
+  ensureClarificationColumns(db);
   ensureDailyCapacityTable(db);
   ensureActivityTables(db);
   applyCapabilityMigrations(db);
@@ -373,6 +374,58 @@ function ensureEffortColumns(db: Database.Database): void {
     db.prepare(
       "ALTER TABLE work_items ADD COLUMN effort TEXT CHECK (effort IS NULL OR effort IN ('quick', 'short', 'session', 'project'))"
     ).run();
+  }
+}
+
+/**
+ * The structured result of GTD's "clarify" step on an Action.
+ *
+ * `next_action` is NOT NULL, so a captured Action always holds *some* string —
+ * usually the "Clarify the desired outcome…" placeholder. Rather than fight
+ * that constraint (or keep mangling the text with `[GAP …]` prefixes, as the
+ * dogfood pass had to), `clarification_status` becomes the source of truth for
+ * whether an Action has a real next action. The remaining four columns hold the
+ * rubric's output: which kind of gap blocks it, the single question whose answer
+ * unblocks it, what justified the verdict, and how far to trust it.
+ *
+ * All five are nullable and purely additive: every pre-existing row keeps NULL
+ * and behaves exactly as it did. NULL `clarification_status` means "never
+ * evaluated", which is deliberately distinct from `unclarified` ("evaluated or
+ * captured, and known to lack a concrete next action").
+ * See docs/plans/clarification-pass.md.
+ */
+function ensureClarificationColumns(db: Database.Database): void {
+  const existing = new Set(
+    (db.prepare("PRAGMA table_info(work_items)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+
+  const additions = [
+    {
+      name: "clarification_status",
+      ddl:
+        "ALTER TABLE work_items ADD COLUMN clarification_status TEXT CHECK (clarification_status IS NULL OR " +
+        "clarification_status IN ('unclarified', 'clarified', 'question_open'))"
+    },
+    {
+      name: "gap_type",
+      ddl:
+        "ALTER TABLE work_items ADD COLUMN gap_type TEXT CHECK (gap_type IS NULL OR gap_type IN " +
+        "('missing-decision', 'missing-external-input', 'missing-definition', 'missing-success-criteria'))"
+    },
+    { name: "open_question", ddl: "ALTER TABLE work_items ADD COLUMN open_question TEXT" },
+    { name: "clarification_source", ddl: "ALTER TABLE work_items ADD COLUMN clarification_source TEXT" },
+    {
+      name: "confidence",
+      ddl:
+        "ALTER TABLE work_items ADD COLUMN confidence TEXT CHECK (confidence IS NULL OR " +
+        "confidence IN ('high', 'medium', 'low'))"
+    }
+  ];
+
+  for (const addition of additions) {
+    if (!existing.has(addition.name)) {
+      db.prepare(addition.ddl).run();
+    }
   }
 }
 

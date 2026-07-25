@@ -5,12 +5,15 @@ import type {
   AskFeedbackDecision,
   AskRequestStatus,
   BackBurnerStatus,
+  ClarificationConfidence,
+  ClarificationStatus,
   CodexInvocationPurpose,
   CodexInvocationStatus,
   ExecutionPlanStatus,
   ExecutionRunStatus,
   ExecutionStepStatus,
   ExecutorType,
+  GapType,
   MilestoneStatus,
   ProjectStatus,
   QueueName,
@@ -73,6 +76,20 @@ export interface WorkItem {
   status: WorkItemStatus;
   /** Optional coarse time cost (quick|short|session|project). See src/orientation/effort.ts. */
   effort: string | null;
+  /**
+   * Source of truth for GTD's "clarify" step; `null` means never evaluated.
+   * `next_action` is NOT NULL and may hold only a placeholder, so this — not the
+   * text — says whether the Action has a real next action.
+   */
+  clarification_status: ClarificationStatus | null;
+  /** Which kind of gap blocks clarification, when one does. */
+  gap_type: GapType | null;
+  /** The single highest-leverage question whose answer unblocks the Action. */
+  open_question: string | null;
+  /** What justified the clarification verdict (an Action detail, a linked doc). */
+  clarification_source: string | null;
+  /** How far to trust the clarification verdict (high|medium|low). */
+  confidence: ClarificationConfidence | null;
   created_at: string;
   updated_at: string;
 }
@@ -498,6 +515,11 @@ export interface CreateWorkItemInput {
   nextAction: string;
   expectedArtifact?: string;
   status?: WorkItemStatus;
+  /**
+   * Clarify-step state at intake. `capture` passes `unclarified`; omit it for
+   * paths that create an Action from an already-decided next action.
+   */
+  clarificationStatus?: string;
 }
 
 export interface UpdateWorkItemInput {
@@ -509,6 +531,16 @@ export interface UpdateWorkItemInput {
   effort?: string | null;
   /** `null` clears it. */
   expectedArtifact?: string | null;
+  /** Clarify-step state (unclarified|clarified|question_open); `null` clears it. */
+  clarificationStatus?: string | null;
+  /** Which kind of gap blocks clarification; `null` clears it. */
+  gapType?: string | null;
+  /** The one question whose answer unblocks the Action; `null` clears it. */
+  openQuestion?: string | null;
+  /** What justified the clarification verdict; `null` clears it. */
+  clarificationSource?: string | null;
+  /** Trust in the clarification verdict (high|medium|low); `null` clears it. */
+  confidence?: string | null;
 }
 
 export interface UpdateArtifactInput {
