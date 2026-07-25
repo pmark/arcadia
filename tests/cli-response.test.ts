@@ -1309,6 +1309,208 @@ describe("CLI response contract", () => {
     expect(found.clarification_status).toBe("unclarified");
   });
 
+  it("runs a clarification Decision through open, list, and resolve", () => {
+    const workspace = initializedWorkspace();
+    const workItem = importWorkItem(workspace, {
+      title: "Fix the flaky checkout test",
+      queue: "requires_review",
+      classification: "requires_review",
+      nextAction: "Clarify the desired outcome or approve a Codex execution path."
+    });
+
+    const opened = parseJson(runCli([
+      "review",
+      "open",
+      workItem.id,
+      "--workspace",
+      workspace,
+      "--question",
+      "Which of the three failing assertions fails in isolation?",
+      "--gap-type",
+      "missing-definition",
+      "--json"
+    ]).stdout);
+
+    expect(opened.ok).toBe(true);
+    expect(opened.command).toBe("review.open");
+    expect(opened.data.item.resolvedIntent).toBe("ActionClarification");
+    expect(opened.data.item.decisionNeeded).toBe(
+      "Which of the three failing assertions fails in isolation?"
+    );
+    // The Decision holds the question; the Action records that it is blocked on one.
+    expect(opened.data.workItem.clarification_status).toBe("question_open");
+    expect(opened.data.workItem.gap_type).toBe("missing-definition");
+    expect(opened.data.workItem.open_question).toBe(
+      "Which of the three failing assertions fails in isolation?"
+    );
+
+    const listed = parseJson(runCli(["review", "--workspace", workspace, "--json"]).stdout);
+    const found = listed.data.items.find((item: { id: string }) => item.id === opened.data.item.id);
+    expect(found).toBeDefined();
+    expect(found.status).toBe("open");
+
+    const resolved = parseJson(runCli([
+      "review",
+      "approve",
+      opened.data.item.slug,
+      "--workspace",
+      workspace,
+      "--answer",
+      "Only the shipping-estimate assertion fails in isolation.",
+      "--json"
+    ]).stdout);
+
+    expect(resolved.ok).toBe(true);
+    // Answering is information, not execution: no run, no ask.
+    expect(resolved.data.run).toBeNull();
+    expect(resolved.data.approval).toBeNull();
+    expect(resolved.data.item.status).toBe("approved");
+
+    const after = parseJson(runCli(["work", "list", "--workspace", workspace, "--json"]).stdout);
+    const action = after.data.workItems.find((item: { id: string }) => item.id === workItem.id);
+    // The answer is an input to clarification, not the next action itself, so
+    // the Action returns to unclarified for an explicit re-clarify.
+    expect(action.clarification_status).toBe("unclarified");
+    expect(action.open_question).toBeNull();
+    expect(action.clarification_source).toContain("Only the shipping-estimate assertion fails in isolation.");
+
+    const closed = parseJson(runCli(["review", "--workspace", workspace, "--json"]).stdout);
+    expect(closed.data.items.some((item: { id: string }) => item.id === opened.data.item.id)).toBe(false);
+  });
+
+  it("refuses to resolve a clarification Decision without an answer", () => {
+    const workspace = initializedWorkspace();
+    const workItem = importWorkItem(workspace, {
+      title: "Decide the retention window",
+      queue: "requires_review",
+      classification: "requires_review",
+      nextAction: "Clarify the desired outcome."
+    });
+
+    const opened = parseJson(runCli([
+      "review",
+      "open",
+      workItem.id,
+      "--workspace",
+      workspace,
+      "--question",
+      "How long should audit logs be retained?",
+      "--gap-type",
+      "missing-decision",
+      "--json"
+    ]).stdout);
+
+    const result = runCli(["review", "approve", opened.data.item.slug, "--workspace", workspace, "--json"]);
+
+    expect(result.status).not.toBe(0);
+    const json = parseJson(result.stderr);
+    expect(json.ok).toBe(false);
+    expect(json.error.message).toContain("--answer");
+  });
+
+  it("rejecting a clarification Decision releases the Action's open question", () => {
+    const workspace = initializedWorkspace();
+    const workItem = importWorkItem(workspace, {
+      title: "Rework the onboarding email",
+      queue: "requires_review",
+      classification: "requires_review",
+      nextAction: "Clarify the desired outcome."
+    });
+
+    const opened = parseJson(runCli([
+      "review",
+      "open",
+      workItem.id,
+      "--workspace",
+      workspace,
+      "--question",
+      "Should the email mention pricing?",
+      "--json"
+    ]).stdout);
+
+    const rejected = parseJson(runCli([
+      "review",
+      "reject",
+      opened.data.item.slug,
+      "--workspace",
+      workspace,
+      "--json"
+    ]).stdout);
+    expect(rejected.ok).toBe(true);
+
+    const after = parseJson(runCli(["work", "list", "--workspace", workspace, "--json"]).stdout);
+    const action = after.data.workItems.find((item: { id: string }) => item.id === workItem.id);
+    expect(action.clarification_status).toBe("unclarified");
+    expect(action.open_question).toBeNull();
+  });
+
+  it("adds subtasks that inherit the parent's context and list beneath it", () => {
+    const workspace = initializedWorkspace();
+    const created = createProject(workspace);
+    const parentId = created.workItem.id;
+
+    const first = parseJson(runCli([
+      "work",
+      "add-subtask",
+      parentId,
+      "--workspace",
+      workspace,
+      "--title",
+      "Migrate the invoice table",
+      "--json"
+    ]).stdout);
+
+    expect(first.ok).toBe(true);
+    expect(first.command).toBe("work.add-subtask");
+    expect(first.data.workItem.parent_work_item_id).toBe(parentId);
+    expect(first.data.workItem.project_id).toBe(created.project.id);
+    // Naming a subtask is not deciding how to do it.
+    expect(first.data.workItem.clarification_status).toBe("unclarified");
+
+    const second = parseJson(runCli([
+      "work",
+      "add-subtask",
+      parentId,
+      "--workspace",
+      workspace,
+      "--title",
+      "Backfill historical invoices",
+      "--next-action",
+      "Run the backfill script against staging",
+      "--json"
+    ]).stdout);
+    expect(second.data.workItem.next_action).toBe("Run the backfill script against staging");
+
+    const listed = runCli(["work", "list", "--workspace", workspace]);
+    expect(listed.status).toBe(0);
+    const parentLine = listed.stdout.split("\n").findIndex((line) => line.includes(parentId));
+    const childLine = listed.stdout.split("\n").findIndex((line) => line.includes(first.data.workItem.id));
+    expect(childLine).toBeGreaterThan(parentLine);
+    expect(listed.stdout).toContain("  - Migrate the invoice table");
+    expect(listed.stdout).toContain("  - Backfill historical invoices");
+  });
+
+  it("emits stable JSON when adding a subtask to a missing parent", () => {
+    const workspace = initializedWorkspace();
+
+    const result = runCli([
+      "work",
+      "add-subtask",
+      "work_missing",
+      "--workspace",
+      workspace,
+      "--title",
+      "Orphan subtask",
+      "--json"
+    ]);
+
+    expect(result.status).toBe(3);
+    const json = parseJson(result.stderr);
+    expect(json.ok).toBe(false);
+    expect(json.command).toBe("work.add-subtask");
+    expect(json.error.code).toBe("WORK_ITEM_NOT_FOUND");
+  });
+
   it("marks work items done with JSON output", () => {
     const workspace = initializedWorkspace();
     const workItem = importWorkItem(workspace, {
@@ -1659,7 +1861,8 @@ describe("CLI response contract", () => {
       "gapType",
       "openQuestion",
       "clarificationSource",
-      "confidence"
+      "confidence",
+      "parentWorkItemId"
     ]);
   });
 

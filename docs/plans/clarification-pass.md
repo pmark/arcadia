@@ -39,21 +39,24 @@ structured-generation service).
   Phase 1 (CLI plumbing) — merged
   ([pmark/arcadia#3](https://github.com/pmark/arcadia/pull/3), docs in #5).
   Phase 2 (structured clarification fields) — implemented and tested, PR open.
-- Next Action: Merge the Phase 2 PR, then implement Phase 3 (`review open`
-  authoring a Decision, plus `parent_work_item_id` and subtasks).
-- Responsibility: Requires Review (Phase 3 is Codex-doable but gated on
-  go-ahead, same as Phases 1–2 were).
-- Required Artifact: merged Phase 2 PR; then a Phase 3 PR.
-- Decisions open: 2 — see "Open questions" below (plan gate, re-clarify
-  trigger). Effort scope is resolved: Phase 1 shipped `effort` on every Action,
-  nullable, as proposed. Engine and subtask policy defaulted in "Design
-  decisions".
-- Last Log: 2026-07-24 — Phase 2 implemented: `clarification_status`,
-  `gap_type`, `open_question`, `clarification_source`, and `confidence` added
-  to `work_items` behind a guarded migration, threaded through
-  `updateWorkItem` / `WorkItemSummary` / `renderWorkItem`, exposed as
-  `work update --clarification-status|--gap-type|--question|--confidence|--source`,
-  written as `unclarified` by `capture`, and documented in `docs/COMMANDS.md`.
+  Phase 3 (Decisions + subtasks) — implemented and tested, PR open, stacked on
+  the Phase 2 branch.
+- Next Action: Merge the Phase 2 and Phase 3 PRs, then implement Phase 4 (the
+  `arcadia clarify` orchestrator over Arcadia Intelligence).
+- Responsibility: Requires Review (Phase 4 is Codex-doable but gated on
+  go-ahead, same as Phases 1–3 were).
+- Required Artifact: merged Phase 2 and Phase 3 PRs; then a Phase 4 PR.
+- Decisions open: 1 — see "Open questions" below (plan gate). Effort scope is
+  resolved (Phase 1 shipped `effort` on every Action, nullable, as proposed);
+  the re-clarify trigger is resolved as proposed — answering a clarification
+  Decision returns its Action to `unclarified` and waits for an explicit
+  `clarify`. Engine and subtask policy defaulted in "Design decisions".
+- Last Log: 2026-07-24 — Phase 3 implemented: `review open` authors an
+  `ActionClarification` Decision and moves its Action to `question_open`;
+  approving one requires `--answer` and never invokes an executor;
+  `parent_work_item_id` added behind a guarded migration with
+  `work add-subtask`, `work update --parent`, and indented children in
+  `work list` / `queue`. Documented in `docs/COMMANDS.md`.
 - Updated: 2026-07-24
 
 ## The clarification rubric
@@ -243,9 +246,11 @@ Total ~1.5–2 focused weeks, shippable incrementally.
 - ~~Does `effort` belong on every Action or only on clarified ones?~~
   **Resolved** — Phase 1 shipped `effort` on every Action, nullable, sized
   after the fact via `work update --effort` rather than guessed at intake.
-- Should a resolved clarification Decision automatically re-run `clarify` on
-  its Action, or wait for an explicit `clarify` call? Proposed: explicit, to
-  keep the loop observable.
+- ~~Should a resolved clarification Decision automatically re-run `clarify` on
+  its Action, or wait for an explicit `clarify` call?~~ **Resolved** — Phase 3
+  shipped the explicit version: answering returns the Action to `unclarified`
+  with the answer in `clarification_source`, and nothing re-evaluates until
+  `clarify` is called.
 
 ## Future: PR-driven memory (not scoped, not scheduled)
 
