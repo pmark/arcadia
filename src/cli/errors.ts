@@ -22,6 +22,7 @@ export type ArcadiaErrorCode =
   | "PROJECT_REPLY_UNPARSEABLE"
   | "PROJECT_INTERPRETER_UNAVAILABLE"
   | "MISSION_CONTROL_NODE_NOT_FOUND"
+  | "CLARIFY_ENGINE_UNAVAILABLE"
   | "UNEXPECTED_ERROR";
 
 export type ArcadiaExitCode = 1 | 2 | 3;
@@ -109,6 +110,15 @@ export function orientationReplyUnparseable(message: string): ArcadiaError {
 
 export function orientationInterpreterUnavailable(message: string): ArcadiaError {
   return new ArcadiaError("ORIENTATION_INTERPRETER_UNAVAILABLE", message, 1, {});
+}
+
+/**
+ * The local model is unreachable. Exit 1 rather than 3: nothing is wrong with
+ * what the operator asked for, so the fix is to start the model, not to change
+ * the command.
+ */
+export function clarifyEngineUnavailable(message: string): ArcadiaError {
+  return new ArcadiaError("CLARIFY_ENGINE_UNAVAILABLE", message, 1, {});
 }
 
 export function projectReplyAmbiguous(question: string): ArcadiaError {
