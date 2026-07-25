@@ -347,6 +347,159 @@ answer, `--clarification-status clarified --next-action …` promotes it, and th
 `[GAP …]` prefixes an earlier dogfood pass had to jam into the next-action text
 are no longer needed.
 
+## Clarify Automatically
+
+Everything above is the manual version of the clarify step. `arcadia clarify`
+runs the same rubric over every `unclarified` Action for you.
+
+```sh
+pnpm arcadia clarify --workspace "$WORKSPACE"
+```
+
+**This is a dry run.** It prints what it would write and changes nothing. That
+is the default on purpose: clarification rewrites `next_action` and
+Responsibility — the two fields that decide whether work gets dispatched — and a
+batch pass that silently re-routed your queue would be exactly the kind of
+unobservable automation Arcadia is built to avoid. Add `--apply` when the
+preview looks right:
+
+```sh
+pnpm arcadia clarify --workspace "$WORKSPACE" --project proj_example --apply
+```
+
+Scope it with `--project <id>`, `--limit <n>`, or `--work <id>` for a single
+Action. `--work` evaluates that Action whatever its current state; without it,
+a pass only considers Actions that are `unclarified` and not done. Actions with
+a `NULL` clarification status are skipped — those predate the feature, and
+sweeping your whole history into a model pass on first run would be a surprise
+rather than a feature.
+
+For each Action the rubric produces one of two outcomes, and `--apply` writes
+it:
+
+| Verdict | What gets written |
+| ------- | ----------------- |
+| **YES** — a concrete next action exists | `next_action` is replaced, `clarification_status` becomes `clarified`, `clarification_source` records what justified it, `confidence` records how far to trust it, and the rubric's `actor` sets Responsibility (`operator` → Requires Review, `coding-agent` → Codex, `external-party` → Blocked), which moves the Action to the matching queue. |
+| **NO** — something is missing | A clarification Decision is opened with the single question (exactly what `review open` does by hand), and the Action moves to `question_open` with its `gap_type`. |
+
+A `missing-definition` verdict comes back with a proposed decomposition.
+**`clarify` never creates those subtasks.** They are printed and returned so you
+can act on them, and `work add-subtask` is how they become real. Decomposition
+is a proposal until you approve it.
+
+The engine is Arcadia Intelligence — the local structured-generation service —
+requested as `local-preferred` with `allowPaidUsage: false`. A pass runs over
+every unclarified Action, and one that quietly billed a frontier model per
+Action is not one anybody would leave running. If the local model is
+unreachable, the command fails with `CLARIFY_ENGINE_UNAVAILABLE` and writes
+nothing.
+
+A verdict that comes back unusable — a "clarified" with no next action, a gap
+type outside the taxonomy — is skipped and reported, and that Action keeps
+exactly the state it had. One bad response does not abandon the rest of the
+pass.
+
+**Example scenario:** you capture six things on a walk. `clarify` names concrete
+next actions for four of them and routes two to Codex; the other two come back
+as questions — one `missing-decision`, one `missing-definition` with a proposed
+three-way split. You answer the first with `review approve … --answer`, and turn
+the second into real subtasks with `work add-subtask`. Nothing moved without
+you seeing it first.
+
+## Ask One Question As A Decision
+
+Recording a gap on the Action (above) says *that* it is blocked. Opening a
+Decision puts the question where the operator will actually see it — `review`,
+`attention`, and the Dashboard all list open Decisions, so a clarification
+question queues alongside every other thing waiting on a human instead of
+sitting in a field nobody reads.
+
+```sh
+pnpm arcadia review open work_example \
+  --workspace "$WORKSPACE" \
+  --question "Do we cut over per-tenant or all at once?" \
+  --gap-type missing-decision \
+  --recommendation "Per-tenant keeps rollback cheap." \
+  --json
+```
+
+This writes both records at once: a Decision carrying the question, and the
+Action moved to `question_open` with the same `gap_type` and `open_question`.
+The rubric's rule holds here — **one** question, the single highest-leverage
+one. If you find yourself wanting `--question` twice, the Action probably needs
+decomposing (`missing-definition`) rather than a longer interrogation.
+
+Answer it when you know:
+
+```sh
+pnpm arcadia review approve R1 \
+  --workspace "$WORKSPACE" \
+  --answer "Per-tenant, starting with the three smallest accounts." \
+  --json
+```
+
+`--answer` is **required** for a clarification Decision, and no executor runs —
+unlike approving a planning Decision, answering a question is information, not
+authorization to do work. The answer lands in `clarification_source`, the open
+question is cleared, and the Action returns to `unclarified` rather than jumping
+to `clarified`: an answer is an *input* to clarification, not the concrete next
+action itself. Re-clarifying stays an explicit step so the loop remains
+observable.
+
+`review reject R1` withdraws a question that turned out to be wrong — the
+Decision keeps the history, and the Action drops back to `unclarified` so it
+stops advertising a question nobody will answer. `review defer R1` leaves it
+`question_open`, because the question is still live.
+
+## Break An Action Into Subtasks
+
+When the gap is `missing-definition` — the Action is a problem label, not a
+task — the fix is decomposition. Subtasks are real Actions with a
+`parent_work_item_id`, not checklist strings, so each one can be queued,
+planned, and run on its own.
+
+```sh
+pnpm arcadia work add-subtask work_example \
+  --workspace "$WORKSPACE" \
+  --title "Migrate the invoice table" \
+  --json
+```
+
+One subtask per call, on purpose: a proposed decomposition stays a *proposal*
+until you approve it, and creating children one at a time keeps that boundary in
+your hands rather than letting a whole tree materialize from a suggestion.
+
+A subtask inherits the parent's Project and Milestone, defaults to the parent's
+Responsibility, and starts `unclarified` — naming a subtask is not the same as
+deciding how to do it. Pass `--next-action` when you already know the concrete
+step, and it is recorded as given instead:
+
+```sh
+pnpm arcadia work add-subtask work_example \
+  --workspace "$WORKSPACE" \
+  --title "Backfill historical invoices" \
+  --next-action "Run the backfill script against staging" \
+  --json
+```
+
+`work list` and `queue` indent children beneath their parent, so a decomposition
+reads as one piece of work. A queue view is filtered, so a subtask sitting in a
+different queue from its parent renders at top level there rather than
+disappearing.
+
+Re-parent or promote an existing Action with `work update --parent <id>`, or
+`--parent none` to make it top-level again. Arcadia refuses a parent that
+doesn't exist, self-parenting, and any cycle. Deleting a parent clears its
+children's link rather than cascading — a child is independently captured work,
+and losing a parent should never destroy it.
+
+**Example scenario:** "Improve onboarding" is a label, not an action. You open a
+`missing-definition` Decision asking which step actually loses people; the
+answer is the email verification step. You then add two subtasks — "Instrument
+the verification screen" and "Draft a fallback email" — each of which is small
+enough to clarify, size, and plan on its own, while the parent keeps the
+history of why they exist.
+
 ## Plan Work
 
 ```sh

@@ -39,21 +39,26 @@ structured-generation service).
   Phase 1 (CLI plumbing) — merged
   ([pmark/arcadia#3](https://github.com/pmark/arcadia/pull/3), docs in #5).
   Phase 2 (structured clarification fields) — implemented and tested, PR open.
-- Next Action: Merge the Phase 2 PR, then implement Phase 3 (`review open`
-  authoring a Decision, plus `parent_work_item_id` and subtasks).
-- Responsibility: Requires Review (Phase 3 is Codex-doable but gated on
-  go-ahead, same as Phases 1–2 were).
-- Required Artifact: merged Phase 2 PR; then a Phase 3 PR.
-- Decisions open: 2 — see "Open questions" below (plan gate, re-clarify
-  trigger). Effort scope is resolved: Phase 1 shipped `effort` on every Action,
-  nullable, as proposed. Engine and subtask policy defaulted in "Design
-  decisions".
-- Last Log: 2026-07-24 — Phase 2 implemented: `clarification_status`,
-  `gap_type`, `open_question`, `clarification_source`, and `confidence` added
-  to `work_items` behind a guarded migration, threaded through
-  `updateWorkItem` / `WorkItemSummary` / `renderWorkItem`, exposed as
-  `work update --clarification-status|--gap-type|--question|--confidence|--source`,
-  written as `unclarified` by `capture`, and documented in `docs/COMMANDS.md`.
+  Phase 3 (Decisions + subtasks) — implemented and tested, PR open, stacked on
+  the Phase 2 branch. Phase 4 (the `arcadia clarify` orchestrator) — implemented
+  and tested, PR open, stacked on the Phase 3 branch. **All four phases of this
+  program are now built.**
+- Next Action: Merge the Phase 2, 3, and 4 PRs in order, then use the loop on
+  real captured work before scoping anything further.
+- Responsibility: Requires Review (merge order and real-usage validation are
+  operator calls).
+- Required Artifact: merged Phase 2, 3, and 4 PRs.
+- Decisions open: 1 — see "Open questions" below (whether
+  `clarification_status` should gate `work plan`; deliberately left unbuilt
+  because it changes existing planning tests). Effort scope and the re-clarify
+  trigger are both resolved. Engine and subtask policy defaulted in "Design
+  decisions" and shipped as defaulted.
+- Last Log: 2026-07-24 — Phase 4 implemented: `arcadia clarify [--project]
+  [--work] [--limit] [--apply]` evaluates unclarified Actions against the
+  rubric via Arcadia Intelligence (`local-preferred`, unpaid), dry-run by
+  default. A YES rewrites `next_action` and maps the rubric's `actor` onto
+  Responsibility; a NO opens a clarification Decision. Proposed decompositions
+  are reported, never created. Verified end to end against the local model.
 - Updated: 2026-07-24
 
 ## The clarification rubric
@@ -243,9 +248,11 @@ Total ~1.5–2 focused weeks, shippable incrementally.
 - ~~Does `effort` belong on every Action or only on clarified ones?~~
   **Resolved** — Phase 1 shipped `effort` on every Action, nullable, sized
   after the fact via `work update --effort` rather than guessed at intake.
-- Should a resolved clarification Decision automatically re-run `clarify` on
-  its Action, or wait for an explicit `clarify` call? Proposed: explicit, to
-  keep the loop observable.
+- ~~Should a resolved clarification Decision automatically re-run `clarify` on
+  its Action, or wait for an explicit `clarify` call?~~ **Resolved** — Phase 3
+  shipped the explicit version: answering returns the Action to `unclarified`
+  with the answer in `clarification_source`, and nothing re-evaluates until
+  `clarify` is called.
 
 ## Future: PR-driven memory (not scoped, not scheduled)
 

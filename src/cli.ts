@@ -125,10 +125,12 @@ import {
   renderReviewRequiredSuccess,
   renderReviewDecisionSuccess,
   renderReviewResolveReplySuccess,
+  renderReviewOpenSuccess,
   renderReviewShowSuccess,
   renderReviewWeeklySuccess,
   runReviewApproveCommand,
   runReviewDeferCommand,
+  runReviewOpenCommand,
   runReviewRejectCommand,
   runReviewResolveReplyCommand,
   runReviewRequiredCommand,
@@ -210,12 +212,15 @@ import {
   runWorkerStopCommand,
   runWorkerUninstallCommand
 } from "./commands/worker.js";
+import { renderClarifySuccess, runClarifyCommand } from "./commands/clarify.js";
 import {
+  renderWorkAddSubtaskSuccess,
   renderWorkDoneSuccess,
   renderWorkListSuccess,
   renderWorkPlanSuccess,
   renderWorkRunSuccess,
   renderWorkUpdateSuccess,
+  runWorkAddSubtaskCommand,
   runWorkDoneCommand,
   runWorkListCommand,
   runWorkPlanCommand,
@@ -1462,6 +1467,7 @@ export function buildProgram(): Command {
       .option("--question <question>", "The one question whose answer unblocks this Action, or none to clear")
       .option("--confidence <level>", "Trust in the clarification: high|medium|low, or none to clear")
       .option("--source <source>", "What justified the clarification (an Action detail, a linked doc), or none to clear")
+      .option("--parent <work-id>", "Re-parent under another Action, or none to promote to top level")
   ).action((workId: string, options: {
     workspace: string;
     queue?: string;
@@ -1476,6 +1482,7 @@ export function buildProgram(): Command {
     question?: string;
     confidence?: string;
     source?: string;
+    parent?: string;
     json?: boolean;
   }) =>
     runCliAction(
@@ -1490,9 +1497,45 @@ export function buildProgram(): Command {
         gapType: parseClearableOption(options.gapType),
         openQuestion: parseClearableOption(options.question),
         confidence: parseClearableOption(options.confidence),
-        clarificationSource: parseClearableOption(options.source)
+        clarificationSource: parseClearableOption(options.source),
+        parentWorkItemId: parseClearableOption(options.parent)
       }),
       renderWorkUpdateSuccess
+    )
+  );
+  addJsonOption(
+    work
+      .command("add-subtask")
+      .description("Create a child Action under an existing one")
+      .argument("<parent-id>", "Parent Action id")
+      .requiredOption("--title <title>", "Subtask title")
+      .option("--next-action <action>", "Concrete next action; defaults to the title, left unclarified")
+      .option("--queue <queue>", "Queue: inbox, work_queue, requires_review, blocked")
+      .option("--responsibility <responsibility>", "Responsibility: autonomous, codex, requires_review, blocked")
+      .option("--expected-artifact <artifact>", "Optional expected artifact")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((parentId: string, options: {
+    workspace: string;
+    title: string;
+    nextAction?: string;
+    queue?: string;
+    responsibility?: string;
+    expectedArtifact?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "work.add-subtask",
+      options,
+      () => runWorkAddSubtaskCommand({
+        workspace: options.workspace,
+        parentId,
+        title: options.title,
+        nextAction: options.nextAction,
+        queue: options.queue,
+        classification: options.responsibility,
+        expectedArtifact: options.expectedArtifact
+      }),
+      renderWorkAddSubtaskSuccess
     )
   );
   addJsonOption(
@@ -1648,6 +1691,41 @@ export function buildProgram(): Command {
   );
   addJsonOption(
     review
+      .command("open")
+      .description("Open a clarification Decision holding one question about an Action")
+      .argument("<work-id>", "Action id")
+      .requiredOption("--question <question>", "The single question whose answer unblocks the Action")
+      .option(
+        "--gap-type <type>",
+        "Why it is blocked: missing-decision|missing-external-input|missing-definition|missing-success-criteria"
+      )
+      .option("--recommendation <text>", "Optional recommendation to accompany the question")
+      .option("--confidence <level>", "Confidence in the Action so far: high|medium|low")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((workId: string, options: {
+    workspace: string;
+    question: string;
+    gapType?: string;
+    recommendation?: string;
+    confidence?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "review.open",
+      reviewOptionsFromArgv(options),
+      () => runReviewOpenCommand({
+        ...reviewOptionsFromArgv(options),
+        workId,
+        question: options.question,
+        gapType: options.gapType,
+        recommendation: options.recommendation,
+        confidence: options.confidence
+      }),
+      renderReviewOpenSuccess
+    )
+  );
+  addJsonOption(
+    review
       .command("show")
       .description("Show detailed Requires Review context")
       .argument("<id>", "Requires Review item id")
@@ -1668,12 +1746,13 @@ export function buildProgram(): Command {
       .option("--execute", "Execute the approved review item with an agent executor")
       .option("--no-execute", "Approve without executor execution and leave an execution review item")
       .option("--executor <name>", "Executor adapter to use when execution runs", "codex")
+      .option("--answer <text>", "Answer to a clarification Decision (required for those; no executor runs)")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((id: string, options: { workspace: string; execute?: boolean; executor?: string; json?: boolean }) =>
+  ).action((id: string, options: { workspace: string; execute?: boolean; executor?: string; answer?: string; json?: boolean }) =>
     runCliAction(
       "review.approve",
       reviewOptionsFromArgv(options),
-      () => runReviewApproveCommand({ ...reviewOptionsFromArgv(options), id, execute: options.execute, executor: options.executor }),
+      () => runReviewApproveCommand({ ...reviewOptionsFromArgv(options), id, execute: options.execute, executor: options.executor, answer: options.answer }),
       renderReviewDecisionSuccess
     )
   );
@@ -1733,6 +1812,37 @@ export function buildProgram(): Command {
       reviewOptionsFromArgv(options),
       () => runReviewWeeklyCommand({ ...options, ...reviewOptionsFromArgv(options) }),
       renderReviewWeeklySuccess
+    )
+  );
+
+  addJsonOption(
+    program
+      .command("clarify")
+      .description("Evaluate unclarified Actions against the clarification rubric (dry run unless --apply)")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--project <project-id>", "Only clarify Actions in this Project")
+      .option("--work <work-id>", "Clarify one Action by id, whatever its current state")
+      .option("--limit <count>", "Evaluate at most this many Actions")
+      .option("--apply", "Persist the results; without it nothing is written")
+  ).action((options: {
+    workspace: string;
+    project?: string;
+    work?: string;
+    limit?: string;
+    apply?: boolean;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "clarify",
+      options,
+      () => runClarifyCommand({
+        workspace: options.workspace,
+        projectId: options.project,
+        workId: options.work,
+        limit: options.limit ? Number.parseInt(options.limit, 10) : undefined,
+        apply: options.apply
+      }),
+      renderClarifySuccess
     )
   );
 

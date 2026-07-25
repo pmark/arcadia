@@ -21,7 +21,8 @@ import {
   updateReviewItemStatus,
   updateWorkItem
 } from "../db/repositories.js";
-import type { ReviewFeedback, ReviewItemSummary } from "../domain/types.js";
+import { GAP_TYPES } from "../domain/constants.js";
+import type { ReviewFeedback, ReviewItemSummary, WorkItemSummary } from "../domain/types.js";
 import { executeApprovedReview, type ReviewExecutionResult } from "../execution/reviewExecutor.js";
 import { isPlanningApprovalDecision, queueApprovedPlanningRun } from "../execution/planningAuthorization.js";
 import { parseDecisionContext } from "../execution/planningAuthorization.js";
@@ -83,6 +84,20 @@ export interface ReviewShowCommandOptions {
   id: string;
 }
 
+export interface ReviewOpenCommandOptions {
+  workspace: string;
+  workId: string;
+  question: string;
+  gapType?: string;
+  recommendation?: string;
+  confidence?: string;
+}
+
+export interface ReviewOpenCommandData {
+  item: RequiresReviewPacket;
+  workItem: WorkItemSummary;
+}
+
 export interface ReviewShowCommandData {
   item: RequiresReviewPacket;
 }
@@ -92,6 +107,8 @@ export interface ReviewDecisionCommandOptions {
   id: string;
   execute?: boolean;
   executor?: string;
+  /** The operator's answer, when resolving a clarification Decision. */
+  answer?: string;
 }
 
 export interface ReviewDecisionCommandData {
@@ -187,6 +204,98 @@ export function runReviewRequiredCommand(
       items
     }
   });
+}
+
+/**
+ * The intent that marks a Decision as "an Action needs clarifying", rather than
+ * one of the planning/execution approvals the rest of `review` handles. It is a
+ * question awaiting an answer, so approving it must never invoke an executor.
+ */
+export const ACTION_CLARIFICATION_INTENT = "ActionClarification";
+
+/**
+ * Author a clarification question against an Action.
+ *
+ * Everything a good question needs already existed on `createReviewItem` —
+ * nothing surfaced it. Opening one here means an exact, human- or agent-written
+ * question becomes a real Decision that shows up in `review`, `attention`, and
+ * the Dashboard alongside every other thing waiting on the operator, instead of
+ * living as prose in a next-action field.
+ *
+ * The Action is moved to `question_open` at the same time, so the two records
+ * agree: the Decision holds the question, and the Action's Phase 2 columns say
+ * it is blocked on one.
+ */
+export function runReviewOpenCommand(
+  options: ReviewOpenCommandOptions
+): CommandSuccess<ReviewOpenCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+
+  const question = options.question?.trim();
+  if (!question) {
+    throw validationError("A clarification question is required.", { workId: options.workId });
+  }
+
+  if (options.gapType && !(GAP_TYPES as readonly string[]).includes(options.gapType)) {
+    throw validationError(`Gap type must be one of: ${GAP_TYPES.join(", ")}`, { gapType: options.gapType });
+  }
+
+  const created = withDatabase(workspacePath, (db) => {
+    const workItem = getWorkItem(db, options.workId);
+    if (!workItem) {
+      throw validationError("Action was not found.", { workId: options.workId });
+    }
+
+    return db.transaction(() => {
+      const item = createReviewItem(db, {
+        workItemId: workItem.id,
+        projectId: workItem.project_id,
+        decisionNeeded: question,
+        recommendation: options.recommendation ?? null,
+        sourceInput: workItem.raw_input,
+        proposedAction: `Answer the clarification question for Action ${workItem.id}.`,
+        resolvedIntent: ACTION_CLARIFICATION_INTENT,
+        // A clarification Decision is a question, not a proposal Arcadia is
+        // confident about, so it carries the operator's own confidence in the
+        // Action rather than a machine score.
+        confidenceLabel: options.confidence ?? workItem.confidence ?? "medium",
+        confidence: 0,
+        missingFields: options.gapType ? [options.gapType] : [],
+        context: {
+          schemaVersion: 1,
+          gapType: options.gapType ?? null,
+          workItemTitle: workItem.title
+        }
+      });
+
+      const updatedWorkItem = updateWorkItem(db, workItem.id, {
+        clarificationStatus: "question_open",
+        openQuestion: question,
+        gapType: options.gapType ?? undefined
+      });
+
+      return { item, workItem: updatedWorkItem as WorkItemSummary };
+    })();
+  });
+
+  return createSuccess({
+    command: "review.open",
+    workspace: workspacePath,
+    data: {
+      item: reviewPacketForReviewItem(created.item),
+      workItem: created.workItem
+    }
+  });
+}
+
+export function renderReviewOpenSuccess(response: CommandSuccess<ReviewOpenCommandData>): string[] {
+  return [
+    `Opened clarification Decision: ${response.data.item.slug}`,
+    `Action: ${response.data.workItem.title} (${response.data.workItem.id})`,
+    `Gap: ${response.data.workItem.gap_type ?? "unspecified"}`,
+    `Question: ${response.data.item.decisionNeeded}`,
+    `Clarification: ${response.data.workItem.clarification_status}`
+  ];
 }
 
 export function runReviewShowCommand(
@@ -301,6 +410,9 @@ export function runReviewApproveCommand(
 ): CommandSuccess<ReviewDecisionCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const specialized = withDatabase(workspacePath, (db) => getReviewItemByIdOrSlug(db, options.id));
+  if (specialized?.resolved_intent === ACTION_CLARIFICATION_INTENT) {
+    return resolveClarificationDecision(workspacePath, specialized, options.answer);
+  }
   if (specialized && isPlanningApprovalDecision(specialized)) {
     try {
       const queued = withDatabase(workspacePath, (db) => queueApprovedPlanningRun(db, workspacePath, {
@@ -568,6 +680,74 @@ function runReviewApproveExecuteCommand(
       run: { id: run.id }
     },
     artifacts: []
+  });
+}
+
+/**
+ * Resolve a clarification Decision by recording the answer.
+ *
+ * No executor runs and no ask is created: the answer is information, and the
+ * only thing it changes is the Action's clarify state. The Action drops back to
+ * `unclarified` with the answer kept in `clarification_source`, rather than
+ * being marked `clarified` here — an answer is an input to clarification, not
+ * the concrete next action itself. Re-running `clarify` is left explicit so the
+ * loop stays observable, per the plan's "Open questions".
+ */
+function resolveClarificationDecision(
+  workspacePath: string,
+  decision: ReviewItemSummary,
+  answer: string | undefined
+): CommandSuccess<ReviewDecisionCommandData> {
+  const recorded = answer?.trim();
+  if (!recorded) {
+    throw validationError("Answering a clarification Decision requires --answer.", {
+      id: decision.id,
+      question: decision.decision_needed
+    });
+  }
+
+  if (decision.status !== "open" && decision.status !== "deferred") {
+    throw validationError("Clarification Decision is already decided.", {
+      id: decision.id,
+      status: decision.status
+    });
+  }
+
+  const updated = withDatabase(workspacePath, (db) =>
+    db.transaction(() => {
+      const next = updateReviewItemStatus(db, decision.id, {
+        status: "approved",
+        decisionNote: recorded
+      });
+      if (!next) {
+        throw validationError("Clarification Decision was not found.", { id: decision.id });
+      }
+
+      if (decision.work_item_id) {
+        updateWorkItem(db, decision.work_item_id, {
+          clarificationStatus: "unclarified",
+          openQuestion: null,
+          clarificationSource: `Answered ${decision.slug ?? decision.id}: ${recorded}`
+        });
+      }
+
+      return next;
+    })()
+  );
+
+  return createSuccess({
+    command: "review.approve",
+    workspace: workspacePath,
+    data: {
+      item: reviewPacketForReviewItem(updated),
+      result: {
+        status: "approved",
+        summary: `Clarification answered; Action returned to unclarified for an explicit re-clarify. No executor was invoked.`
+      },
+      approval: null,
+      execution: null,
+      run: null
+    }
   });
 }
 
@@ -891,6 +1071,16 @@ function runReviewDecisionCommand(
     });
     if (!next) {
       throw validationError("Requires Review Decision was not found.", { id: item.id });
+    }
+    // A withdrawn question stops blocking its Action: the Decision keeps the
+    // history, but the Action drops back to plain `unclarified` rather than
+    // advertising a question nobody is going to answer. Deferring leaves it
+    // `question_open`, because the question is still live.
+    if (item.work_item_id && item.resolved_intent === ACTION_CLARIFICATION_INTENT && status === "rejected") {
+      updateWorkItem(db, item.work_item_id, {
+        clarificationStatus: "unclarified",
+        openQuestion: null
+      });
     }
     if (item.work_item_id && [
       "CodexPlanningRunApproval",

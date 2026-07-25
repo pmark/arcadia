@@ -55,10 +55,12 @@ CREATE TABLE IF NOT EXISTS work_items (
   open_question TEXT,
   clarification_source TEXT,
   confidence TEXT CHECK (confidence IS NULL OR confidence IN ('high', 'medium', 'low')),
+  parent_work_item_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
-  FOREIGN KEY (milestone_id) REFERENCES milestones(id) ON DELETE SET NULL
+  FOREIGN KEY (milestone_id) REFERENCES milestones(id) ON DELETE SET NULL,
+  FOREIGN KEY (parent_work_item_id) REFERENCES work_items(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS mission_logs (

@@ -11,6 +11,7 @@ import {
   completeWorkItem,
   createArtifactRecord,
   createCodexInvocation,
+  createWorkItemWithOptionalArtifact,
   createExecutionPlan,
   getArtifact,
   getCodexInvocation,
@@ -25,8 +26,13 @@ import {
   updateWorkItem
 } from "../db/repositories.js";
 import {
+  QUEUES,
   QUEUE_LABELS,
-  WORK_CLASSIFICATION_LABELS
+  WORK_CLASSIFICATIONS,
+  WORK_CLASSIFICATION_LABELS,
+  queueForWorkClassification,
+  type QueueName,
+  type WorkClassification
 } from "../domain/constants.js";
 import type {
   ArtifactSummary,
@@ -36,6 +42,7 @@ import type {
   ReviewItemSummary,
   WorkItemSummary
 } from "../domain/types.js";
+import { orderByParent } from "../domain/workTree.js";
 import { ensureBuiltInSkills, planStepsForWorkItem } from "../execution/skills.js";
 import { executePlan, resolvePlanForRun } from "../execution/runner.js";
 import {
@@ -69,6 +76,22 @@ export interface WorkUpdateOptions {
   openQuestion?: string | null;
   clarificationSource?: string | null;
   confidence?: string | null;
+  parentWorkItemId?: string | null;
+}
+
+export interface WorkAddSubtaskOptions {
+  workspace: string;
+  parentId: string;
+  title: string;
+  nextAction?: string;
+  queue?: string;
+  classification?: string;
+  expectedArtifact?: string;
+}
+
+export interface WorkAddSubtaskCommandData {
+  workItem: WorkItemSummary;
+  parent: WorkItemSummary;
 }
 
 export interface WorkUpdateCommandData {
@@ -124,7 +147,8 @@ export function runWorkUpdateCommand(options: WorkUpdateOptions): CommandSuccess
       gapType: options.gapType,
       openQuestion: options.openQuestion,
       clarificationSource: options.clarificationSource,
-      confidence: options.confidence
+      confidence: options.confidence,
+      parentWorkItemId: options.parentWorkItemId
     })
   );
 
@@ -136,6 +160,76 @@ export function runWorkUpdateCommand(options: WorkUpdateOptions): CommandSuccess
     command: "work.update",
     workspace: workspacePath,
     data: { workItem, updated }
+  });
+}
+
+/**
+ * Create one child Action under an existing one.
+ *
+ * Deliberately one subtask per call rather than a batch: a `missing-definition`
+ * decomposition is a *proposal* until the operator approves it, and creating
+ * children one at a time keeps that approval boundary in the operator's hands
+ * instead of letting a decomposition materialize wholesale.
+ *
+ * A subtask inherits the parent's Project and Milestone — a child that drifted
+ * to another Project would break the rollups the Dashboard builds — and starts
+ * `unclarified`, because naming a subtask is not the same as deciding how to do
+ * it.
+ */
+export function runWorkAddSubtaskCommand(
+  options: WorkAddSubtaskOptions
+): CommandSuccess<WorkAddSubtaskCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+
+  const created = withDatabase(workspacePath, (db) => {
+    const parent = getWorkItem(db, options.parentId);
+    if (!parent) {
+      throw workItemNotFound(options.parentId);
+    }
+
+    const title = options.title?.trim();
+    if (!title) {
+      throw validationError("Subtask title is required.", { parentId: options.parentId });
+    }
+
+    // A subtask defaults to the parent's Responsibility: a decomposition of
+    // operator work is operator work until someone says otherwise.
+    const workClassification = options.classification ?? parent.work_classification;
+    if (!(WORK_CLASSIFICATIONS as readonly string[]).includes(workClassification)) {
+      throw validationError(`Responsibility must be one of: ${WORK_CLASSIFICATIONS.join(", ")}`, {
+        responsibility: workClassification
+      });
+    }
+
+    if (options.queue && !(QUEUES as readonly string[]).includes(options.queue)) {
+      throw validationError(`Queue must be one of: ${QUEUES.join(", ")}`, { queue: options.queue });
+    }
+
+    const result = createWorkItemWithOptionalArtifact(db, {
+      projectId: parent.project_id,
+      milestoneId: parent.milestone_id,
+      title,
+      rawInput: title,
+      queue: (options.queue as QueueName | undefined) ?? queueForWorkClassification(workClassification as WorkClassification),
+      workClassification: workClassification as WorkClassification,
+      nextAction: options.nextAction ?? title,
+      expectedArtifact: options.expectedArtifact,
+      clarificationStatus: options.nextAction ? undefined : "unclarified",
+      parentWorkItemId: parent.id
+    });
+
+    const workItem = getWorkItem(db, result.workItem.id);
+    if (!workItem) {
+      throw workItemNotFound(result.workItem.id);
+    }
+
+    return { workItem, parent };
+  });
+
+  return createSuccess({
+    command: "work.add-subtask",
+    workspace: workspacePath,
+    data: created
   });
 }
 
@@ -565,7 +659,18 @@ export function renderWorkListSuccess(response: CommandSuccess<WorkListCommandDa
     return ["No Actions yet."];
   }
 
-  return response.data.workItems.flatMap((item) => renderWorkItem(item));
+  return orderByParent(response.data.workItems).flatMap(({ item, depth }) => renderWorkItem(item, depth));
+}
+
+export function renderWorkAddSubtaskSuccess(response: CommandSuccess<WorkAddSubtaskCommandData>): string[] {
+  return [
+    `Added subtask: ${response.data.workItem.title}`,
+    `ID: ${response.data.workItem.id}`,
+    `Parent: ${response.data.parent.title} (${response.data.parent.id})`,
+    `Queue: ${QUEUE_LABELS[response.data.workItem.queue]}`,
+    `Responsibility: ${WORK_CLASSIFICATION_LABELS[response.data.workItem.work_classification]}`,
+    `Next action: ${response.data.workItem.next_action}`
+  ];
 }
 
 export function renderWorkUpdateSuccess(response: CommandSuccess<WorkUpdateCommandData>): string[] {
@@ -629,7 +734,8 @@ const updateableFields = [
   "gapType",
   "openQuestion",
   "clarificationSource",
-  "confidence"
+  "confidence",
+  "parentWorkItemId"
 ] as const;
 
 function updatedFields(options: WorkUpdateOptions): string[] {
@@ -677,6 +783,10 @@ function updatedFields(options: WorkUpdateOptions): string[] {
 
   if (options.confidence !== undefined) {
     fields.push("confidence");
+  }
+
+  if (options.parentWorkItemId !== undefined) {
+    fields.push("parentWorkItemId");
   }
 
   return fields;
@@ -787,18 +897,23 @@ function resolvedIntentForWorkPlan(
   };
 }
 
-function renderWorkItem(item: WorkItemSummary): string[] {
+function renderWorkItem(item: WorkItemSummary, depth = 0): string[] {
   const project = item.project_name ? ` [${item.project_name}]` : "";
   const milestone = item.milestone_title ? ` (${item.milestone_title})` : "";
+  // Subtasks are indented under their parent and bulleted, so a decomposition
+  // reads as one piece of work rather than as several unrelated Actions.
+  const pad = "  ".repeat(depth);
+  const bullet = depth > 0 ? "- " : "";
+  const detail = `${pad}  `;
 
   return [
-    `${item.title}${project}${milestone}`,
-    `  ID: ${item.id}`,
-    `  Queue: ${QUEUE_LABELS[item.queue]}`,
-    `  Responsibility: ${WORK_CLASSIFICATION_LABELS[item.work_classification]}`,
-    `  Status: ${item.status}`,
-    `  Next action: ${item.next_action}${pendingClarificationSuffix(item)}`,
-    ...renderClarification(item, "  ")
+    `${pad}${bullet}${item.title}${project}${milestone}`,
+    `${detail}ID: ${item.id}`,
+    `${detail}Queue: ${QUEUE_LABELS[item.queue]}`,
+    `${detail}Responsibility: ${WORK_CLASSIFICATION_LABELS[item.work_classification]}`,
+    `${detail}Status: ${item.status}`,
+    `${detail}Next action: ${item.next_action}${pendingClarificationSuffix(item)}`,
+    ...renderClarification(item, detail)
   ];
 }
 
