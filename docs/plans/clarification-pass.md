@@ -36,18 +36,22 @@ structured-generation service).
 ## Status
 
 - Milestone: Milestone 0 (operator-agnostic naming refactor) — complete,
-  pending PR merge. Phase 1 (CLI plumbing) not started.
-- Next Action: Merge the refactor + this plan, then implement Phase 1
-  (`artifact create` + `work update --expected-artifact`).
-- Responsibility: Requires Review (Phase 1 is Codex-doable but gated on
-  go-ahead).
-- Required Artifact: merged PR for the refactor and this plan; then a
-  Phase 1 PR.
+  pending PR merge. Phase 1 (CLI plumbing) — implemented and tested, PR open
+  ([pmark/arcadia#3](https://github.com/pmark/arcadia/pull/3)), not yet
+  merged.
+- Next Action: Merge PR #3, then implement Phase 2 (structured clarification
+  fields: `clarification_status`, `gap_type`, `open_question`,
+  `clarification_source`, `confidence`).
+- Responsibility: Requires Review (Phase 2 is Codex-doable but gated on
+  go-ahead, same as Phase 1 was).
+- Required Artifact: merged PR #3; then a Phase 2 PR.
 - Decisions open: 3 — see "Open questions" below (plan gate, effort scope,
   re-clarify trigger). Engine and subtask policy defaulted in "Design
   decisions".
-- Last Log: 2026-07-23 — dogfood session produced the refactor and this plan.
-- Updated: 2026-07-23
+- Last Log: 2026-07-24 — Phase 1 implemented (`artifact create`,
+  `work update --expected-artifact`), tested, documented in
+  `docs/COMMANDS.md`, and opened as PR #3.
+- Updated: 2026-07-24
 
 ## The clarification rubric
 
@@ -253,3 +257,71 @@ This is additive to, not a dependency of, Phases 1–4 above: the clarify
 engine populates the vault with *why an Action exists*; a PR-driven ledger
 would populate it with *what shipped*. Worth revisiting once Phase 4 lands
 and the clarify loop has real usage data to react to — not before.
+
+## Future: continuous agent operation (not scoped, not scheduled)
+
+The end-state Mark described: tell Arcadia a desired outcome; Arcadia
+extracts intent, routes it to the right Project(s), works with coding agents
+to design and plan the work, asks for clarification or review when
+appropriate, then drives the agents and reports back over Discord.
+
+The clarification pass is the spine of that loop, but it is not the whole
+loop. Honest status of each step against the code as of 2026-07-24:
+
+| Step | Status |
+| ---- | ------ |
+| State a desired outcome | **Exists** — `capture`, `ask` |
+| Extract intent | **Exists** — Phase 3 registries + `intent/resolver.ts`, Arcadia Intelligence for structured generation |
+| Choose the right Project(s) | **Missing** — `capture` takes a manual `--project` flag only (`commands/capture.ts`); nothing infers a Project from intent |
+| Design and plan work with agents | **Exists, gated** — `work plan` builds packets behind an approval Decision |
+| Ask for clarification / review | **In progress** — Phases 1–4 of this plan; Phase 1 shipped |
+| Drive the agents continuously | **Partial** — see below |
+| Report back over Discord | **Exists, pull-shaped** — the bot has `status`, `runs`, `requiresReview`, `request` commands; the operator asks, Arcadia does not yet initiate |
+
+### What "drive the agents continuously" needs
+
+Two pieces of this are already stronger than expected:
+
+- **Token/budget awareness.** `codingAgents/availability.ts` models
+  `available | unknown | usage_limited | budget_limited` from real
+  rate-limit percentages, and `selectAgentProfile` already refuses a
+  saturated profile and falls back to another of the same purpose.
+- **Durable execution.** The `worker` daemon claims Runs by PID, heartbeats,
+  and recovers orphans.
+
+Three pieces do not exist:
+
+1. **Nothing fills the queue.** The worker only calls
+   `claimNextPendingRun` — it drains. The only two enqueue sites are
+   `work run --allow-codex-planning` and `review approve --execute`, each
+   one operator action producing one Run. The loop is therefore: approve one
+   thing, one Run executes, worker idles. Saturation fails at the fill step,
+   not the execute step.
+2. **No standing approval.** "Approved work" today is one Decision per Run,
+   operator in the loop each time. Continuous operation needs approval
+   attached to a *class* of work rather than an instance — e.g. "any
+   clarified Action in Project X with high confidence and effort ≤ short may
+   dispatch to `claude_build` without a per-instance Decision." Note that
+   `clarification_status`, `confidence`, and `effort` — the Phase 2 columns —
+   are exactly the inputs such a policy would gate on. The substrate is being
+   built already; only the policy layer is missing.
+3. **No cross-project dispatch or concurrency.** `selectDailyAdvantage` is
+   `LIMIT 1`, returning a single item for a human to consider. Nothing ranks
+   candidate Actions across all Projects and dispatches several, and
+   `runWorkerIteration` claims one Run per iteration — so keeping Codex *and*
+   Claude busy simultaneously needs per-profile dispatch that does not exist.
+
+### Why this is where the risk posture gets written down
+
+Arcadia's stated preference is to err stable and reliable, taking measured
+rather than opportunistic risk. Standing approval is the first place that
+preference stops being a disposition and becomes an enforceable policy: it is
+literally a rule about which work may proceed without a human. It should be
+designed as such — explicit, inspectable, per-Project, and revocable — rather
+than emerging as a convenience flag.
+
+Sequencing: Phase 4 first regardless. A dispatcher with nothing well-specified
+to dispatch, and a standing-approval policy with no `confidence`/`effort`
+fields to gate on, are both premature. Project routing (row 3 above) is an
+independent gap and could be picked up sooner if capture-to-the-wrong-place
+becomes the friction that hurts most.
