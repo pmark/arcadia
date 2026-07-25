@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS milestones (
   project_id TEXT NOT NULL,
   title TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('active', 'paused', 'completed')),
+  doc_ref TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
@@ -56,6 +57,7 @@ CREATE TABLE IF NOT EXISTS work_items (
   clarification_source TEXT,
   confidence TEXT CHECK (confidence IS NULL OR confidence IN ('high', 'medium', 'low')),
   parent_work_item_id TEXT,
+  doc_ref TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
@@ -211,6 +213,7 @@ CREATE TABLE IF NOT EXISTS review_items (
   confidence REAL NOT NULL,
   missing_fields TEXT NOT NULL DEFAULT '[]',
   context_json TEXT NOT NULL DEFAULT '{}',
+  doc_ref TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   decided_at TEXT,

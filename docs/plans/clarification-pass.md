@@ -1,3 +1,69 @@
+---
+arcadia: v1
+type: plan
+slug: clarification-pass
+project: arcadia
+status: complete
+milestone: Clarification loop shipped
+updated: 2026-07-25
+actions:
+  - id: phase-1-plumbing
+    title: Thin CLI plumbing — artifact create and work update --expected-artifact
+    status: done
+    responsibility: codex
+    effort: session
+    next_action: Merged as PR #3; no further work.
+    expected_artifact: Merged PR adding artifact create and --expected-artifact
+    clarification: clarified
+    confidence: high
+    source: docs/plans/clarification-pass.md, Phase 1 section
+    depends_on: []
+  - id: phase-2-fields
+    title: Structured clarification fields on work_items
+    status: done
+    responsibility: codex
+    effort: session
+    next_action: Merged as PR #6; no further work.
+    expected_artifact: Merged PR adding the five clarification columns
+    clarification: clarified
+    confidence: high
+    source: docs/plans/clarification-pass.md, Phase 2 section
+    depends_on: [phase-1-plumbing]
+  - id: phase-3-decisions-subtasks
+    title: Clarification Decisions and Action subtasks
+    status: done
+    responsibility: codex
+    effort: session
+    next_action: Merged as PR #10; no further work.
+    expected_artifact: Merged PR adding review open and parent_work_item_id
+    clarification: clarified
+    confidence: high
+    source: docs/plans/clarification-pass.md, Phase 3 section
+    depends_on: [phase-2-fields]
+  - id: phase-4-orchestrator
+    title: The arcadia clarify orchestrator over Arcadia Intelligence
+    status: done
+    responsibility: codex
+    effort: project
+    next_action: Merged as PR #8; no further work.
+    expected_artifact: Merged PR adding the clarify command
+    clarification: clarified
+    confidence: high
+    source: docs/plans/clarification-pass.md, Phase 4 section
+    depends_on: [phase-3-decisions-subtasks]
+  - id: plan-gate
+    title: Gate work plan on clarified Actions
+    status: open
+    responsibility: requires_review
+    effort: short
+    clarification: question_open
+    gap_type: missing-decision
+    question: Should only a clarified Action be plannable, given that gating changes existing planning tests?
+    depends_on: [phase-4-orchestrator]
+questions: []
+decisions: []
+---
+
 # Next-Action Clarification Pass
 
 ## Executive Summary
@@ -35,31 +101,24 @@ structured-generation service).
 
 ## Status
 
-- Milestone: Milestone 0 (operator-agnostic naming refactor) — complete.
-  Phase 1 (CLI plumbing) — merged
-  ([pmark/arcadia#3](https://github.com/pmark/arcadia/pull/3), docs in #5).
-  Phase 2 (structured clarification fields) — implemented and tested, PR open.
-  Phase 3 (Decisions + subtasks) — implemented and tested, PR open, stacked on
-  the Phase 2 branch. Phase 4 (the `arcadia clarify` orchestrator) — implemented
-  and tested, PR open, stacked on the Phase 3 branch. **All four phases of this
-  program are now built.**
-- Next Action: Merge the Phase 2, 3, and 4 PRs in order, then use the loop on
-  real captured work before scoping anything further.
-- Responsibility: Requires Review (merge order and real-usage validation are
-  operator calls).
-- Required Artifact: merged Phase 2, 3, and 4 PRs.
-- Decisions open: 1 — see "Open questions" below (whether
-  `clarification_status` should gate `work plan`; deliberately left unbuilt
-  because it changes existing planning tests). Effort scope and the re-clarify
-  trigger are both resolved. Engine and subtask policy defaulted in "Design
-  decisions" and shipped as defaulted.
-- Last Log: 2026-07-24 — Phase 4 implemented: `arcadia clarify [--project]
-  [--work] [--limit] [--apply]` evaluates unclarified Actions against the
-  rubric via Arcadia Intelligence (`local-preferred`, unpaid), dry-run by
-  default. A YES rewrites `next_action` and maps the rubric's `actor` onto
-  Responsibility; a NO opens a clarification Decision. Proposed decompositions
-  are reported, never created. Verified end to end against the local model.
-- Updated: 2026-07-24
+**This section is now derived data.** The frontmatter above is the authoritative
+record; `arcadia portfolio` reads it after `docs sync`. It is kept in prose for
+readers who open the file directly.
+
+- Milestone: **complete.** Milestone 0 (operator-agnostic naming refactor),
+  then all four phases: Phase 1 (CLI plumbing, PR #3), Phase 2 (structured
+  clarification fields, PR #6), Phase 3 (Decisions + subtasks, PR #10), and
+  Phase 4 (the `arcadia clarify` orchestrator, PR #8) are merged to `main`.
+- Next Action: none for this plan. The one remaining item — whether
+  `clarification_status` should gate `work plan` — is an open question, not a
+  decided action, and is recorded as such in the frontmatter.
+- Responsibility: Requires Review (the plan gate is an operator decision).
+- Required Artifact: delivered — the full capture → clarify → decide loop.
+- Decisions open: 1 (the plan gate). Effort scope and the re-clarify trigger
+  are both resolved. Engine and subtask policy shipped as defaulted.
+- Last Log: 2026-07-25 — all four phases merged; this plan converted to a
+  managed document so `docs sync` can ingest it.
+- Updated: 2026-07-25
 
 ## The clarification rubric
 

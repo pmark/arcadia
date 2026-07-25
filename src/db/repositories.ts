@@ -2635,3 +2635,225 @@ function workItemSuggestion(item: WorkItemSummary, prefix: string): SuggestedNex
     nextAction: `${prefix}: ${item.next_action}`
   };
 }
+
+/**
+ * Document-keyed lookups for `docs sync`.
+ *
+ * Ingestion resolves rows by `doc_ref` and never by title, so rewording a
+ * heading updates the row it already owns instead of forking a new one. Rows
+ * with a NULL doc_ref — everything Arcadia captured itself — are invisible to
+ * these lookups and therefore can never be overwritten by a document.
+ * See docs/plans/portfolio-docs-protocol.md.
+ */
+export function getProjectBySlug(db: Database.Database, slug: string): Project | null {
+  return (
+    (db.prepare("SELECT * FROM projects WHERE lower(slug) = lower(?)").get(slug) as Project | undefined) ?? null
+  );
+}
+
+export function getMilestoneByDocRef(
+  db: Database.Database,
+  projectId: string,
+  docRef: string
+): Milestone | null {
+  return (
+    (db
+      .prepare("SELECT * FROM milestones WHERE project_id = ? AND doc_ref = ?")
+      .get(projectId, docRef) as Milestone | undefined) ?? null
+  );
+}
+
+export function getMilestoneByTitle(
+  db: Database.Database,
+  projectId: string,
+  title: string
+): Milestone | null {
+  return (
+    (db
+      .prepare("SELECT * FROM milestones WHERE project_id = ? AND lower(title) = lower(?)")
+      .get(projectId, title) as Milestone | undefined) ?? null
+  );
+}
+
+export function setMilestoneDocRef(db: Database.Database, id: string, docRef: string): void {
+  db.prepare("UPDATE milestones SET doc_ref = ?, updated_at = ? WHERE id = ?").run(docRef, nowIso(), id);
+}
+
+export function updateMilestoneTitle(db: Database.Database, id: string, title: string): void {
+  db.prepare("UPDATE milestones SET title = ?, updated_at = ? WHERE id = ?").run(
+    required(title, "Milestone title"),
+    nowIso(),
+    id
+  );
+}
+
+export function getWorkItemByDocRef(db: Database.Database, docRef: string): WorkItemSummary | null {
+  const row = db.prepare("SELECT id FROM work_items WHERE doc_ref = ?").get(docRef) as
+    | { id: string }
+    | undefined;
+  return row ? getWorkItem(db, row.id) : null;
+}
+
+export function setWorkItemDocRef(db: Database.Database, id: string, docRef: string): void {
+  db.prepare("UPDATE work_items SET doc_ref = ? WHERE id = ?").run(docRef, id);
+}
+
+export function getReviewItemByDocRef(db: Database.Database, docRef: string): ReviewItemSummary | null {
+  const row = db.prepare("SELECT id FROM review_items WHERE doc_ref = ?").get(docRef) as
+    | { id: string }
+    | undefined;
+  return row ? getReviewItem(db, row.id) : null;
+}
+
+export function setReviewItemDocRef(db: Database.Database, id: string, docRef: string): void {
+  db.prepare("UPDATE review_items SET doc_ref = ? WHERE id = ?").run(docRef, id);
+}
+
+export interface UpdateReviewItemFromDocInput {
+  decisionNeeded: string;
+  recommendation: string | null;
+  status: ReviewItemStatus;
+  decisionNote: string | null;
+  decidedAt: string | null;
+  confidenceLabel: string;
+  missingFields: string[];
+}
+
+/**
+ * Rewrite the document-owned fields of a Decision.
+ *
+ * Deliberately narrow: it touches only what a document is the source of truth
+ * for. Execution-side columns (`ask_request_id`, `plan_id`, the Codex links)
+ * belong to Arcadia and are never overwritten by a sync.
+ */
+export function updateReviewItemFromDoc(
+  db: Database.Database,
+  id: string,
+  input: UpdateReviewItemFromDocInput
+): ReviewItemSummary | null {
+  db.prepare(
+    `UPDATE review_items SET
+       decision_needed = @decision_needed,
+       recommendation = @recommendation,
+       status = @status,
+       decision_note = @decision_note,
+       decided_at = @decided_at,
+       confidence_label = @confidence_label,
+       missing_fields = @missing_fields,
+       updated_at = @updated_at
+     WHERE id = @id`
+  ).run({
+    id,
+    decision_needed: required(input.decisionNeeded, "Decision question"),
+    recommendation: nullable(input.recommendation),
+    status: validateReviewItemStatus(input.status),
+    decision_note: nullable(input.decisionNote),
+    decided_at: nullable(input.decidedAt),
+    confidence_label: required(input.confidenceLabel, "Confidence label"),
+    missing_fields: encodeStringArray(input.missingFields),
+    updated_at: nowIso()
+  });
+
+  return getReviewItem(db, id);
+}
+
+export function findMissionLogByEntry(
+  db: Database.Database,
+  projectId: string | null,
+  markdownPath: string
+): MissionLog | null {
+  return (
+    (db
+      .prepare("SELECT * FROM mission_logs WHERE markdown_path = ? AND (project_id IS ? OR project_id = ?)")
+      .get(markdownPath, projectId, projectId) as MissionLog | undefined) ?? null
+  );
+}
+
+export interface PortfolioProjectRow {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  goal: string | null;
+  current_milestone: string | null;
+  open_actions: number;
+  in_progress_actions: number;
+  done_actions: number;
+  blocked_actions: number;
+  clarified: number;
+  unclarified: number;
+  question_open: number;
+  unevaluated: number;
+  open_decisions: number;
+  doc_backed_actions: number;
+}
+
+/**
+ * One row per Project for the executive view.
+ *
+ * The clarity counts are the point. "12 open Actions" says nothing about
+ * whether the portfolio is workable; "3 of them are still unclarified and 2 are
+ * waiting on an answer" is the number that decides where the operator's next
+ * hour goes. `unevaluated` counts rows that predate clarification entirely
+ * (NULL status) and is kept distinct from `unclarified` for the same reason the
+ * column does.
+ */
+export function listPortfolioProjects(db: Database.Database): PortfolioProjectRow[] {
+  return db
+    .prepare(
+      `SELECT
+        p.id,
+        p.name,
+        p.slug,
+        p.status,
+        p.goal,
+        (
+          SELECT m.title FROM milestones m
+          WHERE m.project_id = p.id AND m.status = 'active'
+          ORDER BY m.created_at DESC LIMIT 1
+        ) AS current_milestone,
+        COALESCE(SUM(CASE WHEN wi.status = 'open' THEN 1 ELSE 0 END), 0) AS open_actions,
+        COALESCE(SUM(CASE WHEN wi.status = 'in_progress' THEN 1 ELSE 0 END), 0) AS in_progress_actions,
+        COALESCE(SUM(CASE WHEN wi.status = 'done' THEN 1 ELSE 0 END), 0) AS done_actions,
+        COALESCE(SUM(CASE WHEN wi.status = 'blocked' THEN 1 ELSE 0 END), 0) AS blocked_actions,
+        COALESCE(SUM(CASE WHEN wi.status != 'done' AND wi.clarification_status = 'clarified' THEN 1 ELSE 0 END), 0) AS clarified,
+        COALESCE(SUM(CASE WHEN wi.status != 'done' AND wi.clarification_status = 'unclarified' THEN 1 ELSE 0 END), 0) AS unclarified,
+        COALESCE(SUM(CASE WHEN wi.status != 'done' AND wi.clarification_status = 'question_open' THEN 1 ELSE 0 END), 0) AS question_open,
+        COALESCE(SUM(CASE WHEN wi.status != 'done' AND wi.clarification_status IS NULL THEN 1 ELSE 0 END), 0) AS unevaluated,
+        COALESCE(SUM(CASE WHEN wi.doc_ref IS NOT NULL THEN 1 ELSE 0 END), 0) AS doc_backed_actions,
+        (
+          SELECT COUNT(*) FROM review_items ri
+          WHERE ri.project_id = p.id AND ri.status IN ('open', 'deferred')
+        ) AS open_decisions
+      FROM projects p
+      LEFT JOIN work_items wi ON wi.project_id = p.id
+      GROUP BY p.id
+      ORDER BY
+        CASE p.status WHEN 'active' THEN 0 WHEN 'incubating' THEN 1 WHEN 'paused' THEN 2 ELSE 3 END,
+        p.name COLLATE NOCASE`
+    )
+    .all() as PortfolioProjectRow[];
+}
+
+export interface PortfolioDecisionRow {
+  id: string;
+  slug: string | null;
+  project_name: string | null;
+  decision_needed: string;
+  status: string;
+  created_at: string;
+}
+
+/** Every Decision waiting on a human, newest last so the oldest debt reads first. */
+export function listPortfolioOpenDecisions(db: Database.Database, limit = 20): PortfolioDecisionRow[] {
+  return db
+    .prepare(
+      `SELECT ri.id, ri.slug, p.name AS project_name, ri.decision_needed, ri.status, ri.created_at
+       FROM review_items ri
+       LEFT JOIN projects p ON p.id = ri.project_id
+       WHERE ri.status IN ('open', 'deferred')
+       ORDER BY ri.created_at ASC
+       LIMIT ?`
+    )
+    .all(limit) as PortfolioDecisionRow[];
+}

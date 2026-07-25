@@ -1,13 +1,43 @@
-# Arcadia
+---
+arcadia: v1
+type: project
+slug: arcadia
+name: Arcadia
+status: active
+goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
+outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
+milestone: docs sync ingests a real project's markdown
+updated: 2026-07-25
+---
 
-ID: proj_ccdbfb22a7e4415ca7
-Slug: arcadia
-Status: incubating
+# Arcadia
 
 ## Mission
 
-Mission needs definition.
+Arcadia is the operator's execution system. It captures raw intent, runs GTD's
+clarify step over it with local AI, routes each Action to whoever should do it
+(the operator, a coding agent, or an outside party), and surfaces exactly one
+question when it cannot proceed without an answer.
 
-## Next Action
+The system errs stable and reliable over opportunistic. Approval boundaries are
+explicit, automation is observable, and every batch operation previews before it
+writes.
 
-Clarify the project mission and first concrete next action.
+## Current State
+
+The clarification loop is complete end to end: `capture` marks new Actions
+unclarified, `clarify` evaluates them against the rubric via local Intelligence,
+a verdict either names a concrete next action or opens exactly one Decision, and
+subtasks exist for decompositions.
+
+The current work is making documentation a first-class input — see
+`docs/plans/portfolio-docs-protocol.md`. Conversations with frontier models
+produce markdown; `docs sync` turns that markdown into Projects, Milestones,
+Actions and Decisions, so the portfolio can be managed at executive level from
+`arcadia portfolio`.
+
+## Links
+
+- `docs/COMMANDS.md` — the operator-facing command guide
+- `docs/plans/` — one file per initiative, each a managed document
+- `CONSTITUTION.md`, `OPERATOR_CONTEXT.md` — standing constraints and context

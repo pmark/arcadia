@@ -213,6 +213,8 @@ import {
   runWorkerUninstallCommand
 } from "./commands/worker.js";
 import { renderClarifySuccess, runClarifyCommand } from "./commands/clarify.js";
+import { renderDocsSyncSuccess, runDocsSyncCommand } from "./commands/docs.js";
+import { renderPortfolioSuccess, runPortfolioCommand } from "./commands/portfolio.js";
 import {
   renderWorkAddSubtaskSuccess,
   renderWorkDoneSuccess,
@@ -1844,6 +1846,32 @@ export function buildProgram(): Command {
       }),
       renderClarifySuccess
     )
+  );
+
+  const docs = program.command("docs").description("Managed documentation across every Project repository");
+  addJsonOption(
+    docs
+      .command("sync")
+      .description("Ingest managed docs into Arcadia (dry run unless --apply)")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--project <project>", "Only crawl one Project, by id or slug")
+      .option("--apply", "Persist the changes; without it nothing is written")
+  ).action((options: { workspace: string; project?: string; apply?: boolean; json?: boolean }) =>
+    runCliAction(
+      "docs.sync",
+      options,
+      () => runDocsSyncCommand(options),
+      renderDocsSyncSuccess
+    )
+  );
+
+  addJsonOption(
+    program
+      .command("portfolio")
+      .description("Executive view of every Project: work in flight, clarity, and Decisions waiting")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("portfolio", options, () => runPortfolioCommand(options), renderPortfolioSuccess)
   );
 
   const worker = program.command("worker").description("Background execution worker daemon");
