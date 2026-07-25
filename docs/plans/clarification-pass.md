@@ -36,18 +36,22 @@ structured-generation service).
 ## Status
 
 - Milestone: Milestone 0 (operator-agnostic naming refactor) — complete,
-  pending PR merge. Phase 1 (CLI plumbing) not started.
-- Next Action: Merge the refactor + this plan, then implement Phase 1
-  (`artifact create` + `work update --expected-artifact`).
-- Responsibility: Requires Review (Phase 1 is Codex-doable but gated on
-  go-ahead).
-- Required Artifact: merged PR for the refactor and this plan; then a
-  Phase 1 PR.
+  pending PR merge. Phase 1 (CLI plumbing) — implemented and tested, PR open
+  ([pmark/arcadia#3](https://github.com/pmark/arcadia/pull/3)), not yet
+  merged.
+- Next Action: Merge PR #3, then implement Phase 2 (structured clarification
+  fields: `clarification_status`, `gap_type`, `open_question`,
+  `clarification_source`, `confidence`).
+- Responsibility: Requires Review (Phase 2 is Codex-doable but gated on
+  go-ahead, same as Phase 1 was).
+- Required Artifact: merged PR #3; then a Phase 2 PR.
 - Decisions open: 3 — see "Open questions" below (plan gate, effort scope,
   re-clarify trigger). Engine and subtask policy defaulted in "Design
   decisions".
-- Last Log: 2026-07-23 — dogfood session produced the refactor and this plan.
-- Updated: 2026-07-23
+- Last Log: 2026-07-24 — Phase 1 implemented (`artifact create`,
+  `work update --expected-artifact`), tested, documented in
+  `docs/COMMANDS.md`, and opened as PR #3.
+- Updated: 2026-07-24
 
 ## The clarification rubric
 

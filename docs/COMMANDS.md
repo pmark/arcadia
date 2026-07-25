@@ -208,6 +208,63 @@ pnpm arcadia capture \
   --json
 ```
 
+## Manage Artifacts And Expected Outcomes
+
+An Action's `expected_artifact` is the concrete "done" signal — the thing
+that should exist when the Action is finished. It matters beyond
+description: coding-agent planning preparation refuses to run without one
+(`work plan` requires `expectedArtifact` to be set on the Action before a
+managed Codex/Claude planning packet can be created), and it is what tells
+you and any reviewing agent whether a Run actually finished the job or just
+did *something*.
+
+Set or change it after capture, without re-writing the whole Action:
+
+```sh
+pnpm arcadia work update work_example \
+  --workspace "$WORKSPACE" \
+  --expected-artifact "Published status report at reports/2026-07-status.md" \
+  --json
+```
+
+Use `--expected-artifact none` to clear it (for example, if an Action turns
+out to be exploratory and has no single deliverable).
+
+**Example scenario:** you `capture` "Investigate why the nightly sync job
+is slow" with no expected artifact. A day into investigating, you realize
+the real deliverable is a short root-cause writeup. `work update
+--expected-artifact "Root-cause writeup for nightly sync slowness"` turns
+that vague Action into one that can pass through planning preparation,
+without losing its history or requiring you to re-capture it.
+
+Create an Artifact directly — for a deliverable that already exists (a
+document you wrote by hand, a design doc from a call), or to link a
+Milestone/Action to a piece of evidence before Arcadia produces one itself:
+
+```sh
+pnpm arcadia artifact create \
+  --workspace "$WORKSPACE" \
+  --title "Nightly sync root-cause writeup" \
+  --type document \
+  --status ready \
+  --path reports/nightly-sync-root-cause.md \
+  --project proj_example \
+  --work-item work_example \
+  --json
+```
+
+`--project` and `--work-item` are both optional, but if given they must
+refer to Actions/Projects that already exist — Arcadia validates the link
+rather than silently dropping it. `--status` defaults to `planned`; omit
+`--path` for an Artifact that is expected but not produced yet (planning
+packets do this automatically for the Action's `expected_artifact`).
+
+**Example scenario:** during a dogfood session you manually write a
+decision memo in Obsidian before Arcadia has any orchestrator to produce
+one. `artifact create --path <vault path> --work-item <id>` registers that
+memo as the Action's real output, so `artifact list` and the Dashboard
+reflect what actually happened instead of showing the Action as artifact-less.
+
 ## Plan Work
 
 ```sh
