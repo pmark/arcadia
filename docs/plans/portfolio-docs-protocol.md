@@ -5,6 +5,7 @@ slug: portfolio-docs-protocol
 project: arcadia
 status: active
 milestone: docs sync ingests a real project's markdown
+current_action: second-project-validation
 updated: 2026-07-25
 actions:
   - id: build-parser
@@ -40,11 +41,43 @@ actions:
     confidence: high
     source: dogfooding pass against Arcadia's own repository
     depends_on: [build-upsert]
+  - id: contract-work-pointer
+    title: Add the authoritative work pointer and dispatch resolution
+    status: done
+    responsibility: codex
+    effort: session
+    next_action: Delivered as active_plan, current_action, acceptance_criteria, and arcadia next.
+    expected_artifact: arcadia next resolving or refusing a dispatch with named remedies
+    acceptance_criteria:
+      - PROJECT.md carries active_plan and the active plan carries current_action.
+      - arcadia next resolves exactly one action, or lists blockers naming file, field, and remedy.
+      - A clarified current action without acceptance criteria fails validation.
+      - A second plan designating a current_action is reported as a competing objective.
+    clarification: clarified
+    confidence: high
+    source: Arcadia Coding-Agent Continuation Contract
+    depends_on: [wire-docs-sync-command]
+  - id: second-project-validation
+    title: Validate the protocol against a non-Arcadia repository
+    status: open
+    responsibility: requires_review
+    effort: session
+    clarification: question_open
+    gap_type: missing-decision
+    question: Which non-Arcadia repository should be the first foreign project docs sync is tested against?
+    decisions: ["0002"]
+    references:
+      - docs/plans/portfolio-docs-protocol.md
+      - docs/COMMANDS.md
+    depends_on: [contract-work-pointer]
   - id: ingest-mission-logs
     title: Ingest MISSION_LOG.md entries as mission_logs rows
     status: open
     responsibility: codex
     effort: short
+    acceptance_criteria:
+      - Each dated MISSION_LOG.md entry becomes one mission_logs row, keyed so re-running creates no duplicates.
+      - docs sync stops reporting log files as skipped.
     clarification: unclarified
     depends_on: [build-upsert]
   - id: persist-dependencies
@@ -52,6 +85,9 @@ actions:
     status: open
     responsibility: codex
     effort: short
+    acceptance_criteria:
+      - depends_on edges survive a docs sync round trip.
+      - An Action cannot be dispatched while an Action it depends on is unfinished.
     clarification: unclarified
     depends_on: [build-upsert]
   - id: narrative-summarization
@@ -59,6 +95,9 @@ actions:
     status: open
     responsibility: codex
     effort: short
+    acceptance_criteria:
+      - A narrative doc produces an Artifact holding its summary.
+      - The summary is never written back into the source document.
     clarification: unclarified
     depends_on: [wire-docs-sync-command]
 questions:
@@ -86,9 +125,8 @@ transitions. Sync is one-way (docs → Arcadia), idempotent, and never edits a
 doc.
 
 This plan is itself the first file that conforms to the protocol it defines —
-the frontmatter above is a real `type: plan` record, and its four actions are
-what remains to make `arcadia docs sync` real. Everything else in this
-document is the schema, not yet implemented.
+the frontmatter above is a real `type: plan` record, carrying the work pointer
+that `arcadia next` resolves.
 
 ## Status
 
@@ -97,16 +135,17 @@ document is the schema, not yet implemented.
 
 - Milestone: `docs sync` ingests a real project's markdown — **reached.**
   Arcadia's own repository is the first project ingested by this protocol.
-- Next Action: run `docs sync --apply` against a second, non-Arcadia project,
-  to test the schema against documentation nobody wrote with it in mind.
-- Responsibility: Requires Review (choosing that project is an operator call).
-- Required Artifact: delivered — `docs sync`, `portfolio`, and Arcadia's own
-  conforming documents.
-- Decisions open: 2 — see `questions` in the frontmatter above.
-- Last Log: 2026-07-25 — built the parser, validator, crawler, `doc_ref`-keyed
-  upsert, `docs sync`, and `arcadia portfolio`; converted Arcadia's own
-  `PROJECT.md`, `MISSION_LOG.md`, and both plans into managed documents; made
-  `project create` seed conforming stubs.
+- Current Action: `second-project-validation`, which is `question_open` and
+  blocked on decision 0002. `arcadia next` returns that one question rather
+  than promoting another action to fill the gap.
+- Responsibility: Requires Review (choosing the repository is an operator call).
+- Required Artifact: delivered — `docs sync`, `portfolio`, `next`, and
+  Arcadia's own conforming documents carrying a resolvable work pointer.
+- Decisions open: 3 — decision 0002, plus the two plan-level `questions` above.
+- Last Log: 2026-07-25 — added the authoritative work pointer (`active_plan`,
+  `current_action`, `acceptance_criteria`, action-level `decisions` and
+  `references`) and `arcadia next`, which resolves the objective or refuses
+  with named remedies.
 - Updated: 2026-07-25
 
 ### What dogfooding changed
@@ -127,6 +166,11 @@ anticipate:
    treated as managed so the parse error surfaces.
 3. **`project create` seeded documents the protocol rejects.** New Projects now
    get conforming frontmatter, with scalars quoted when a name contains a colon.
+4. **The protocol had no way to say what to work on next.** Documents recorded
+   plans and actions but nothing designated an objective, so a dispatched agent
+   would have had to infer priority from commits or backlog order. Adding the
+   work pointer was the first thing the continuation contract required, and
+   Arcadia's own documents could not satisfy it until this change.
 
 ## Design principles
 
@@ -148,7 +192,12 @@ anticipate:
    Either `next_action` is verb-first and physically doable, or the item
    carries `question` + `gap_type` instead. The clarification rubric runs in
    the chatbot conversation, not after the fact.
-6. **Last write wins by `updated`.** Every managed doc carries an `updated:`
+6. **Exactly one action is current.** `PROJECT.md` names an `active_plan`; that
+   plan names a `current_action`. Together they are the authoritative work
+   pointer — the single documented answer to "what should be worked on now".
+   Without it, a dispatched agent falls back to inferring priority from commits
+   or backlog order, which is precisely what the continuation contract forbids.
+7. **Last write wins by `updated`.** Every managed doc carries an `updated:`
    date. Ingestion overwrites a DB row only when the doc is newer; regressions
    are warned, not applied.
 
@@ -198,12 +247,16 @@ status: active
 goal: One sentence -- why this project exists.
 outcome: What finished looks like, concretely.        # optional
 milestone: Marketing site v1 live                     # current milestone title
+active_plan: nightly-sync-rework                      # the plan governing current work
 updated: 2026-07-25
 ---
 ```
 
 Body sections (all optional, `##` headings): **Mission**, **Current State**,
 **Links**. Maps to `projects` + the current active milestone.
+
+`active_plan` is half the work pointer. `arcadia next` refuses to resolve an
+objective without it rather than picking a plan on the operator's behalf.
 
 ## Schema: docs/plans/&lt;slug&gt;.md
 
@@ -220,6 +273,7 @@ slug: clarification-pass
 project: arcadia                  # PROJECT.md slug
 status: active                    # draft | active | complete | superseded
 milestone: Clarification loop shipped
+current_action: plan-gate         # exactly one action id in this plan
 updated: 2026-07-25
 actions:
   - id: phase-2-fields            # stable within this plan
@@ -232,6 +286,12 @@ actions:
     clarification: clarified
     confidence: high
     source: docs/plans/clarification-pass.md, phase table
+    acceptance_criteria:            # required on the current action
+      - The five columns exist and a re-run adds no duplicates.
+      - Round-trip tests cover every new field and flag.
+    decisions: ["0001"]             # decisions this action requires
+    references:                     # paths the action depends on
+      - docs/COMMANDS.md
     depends_on: []
   - id: plan-gate
     title: Gate work plan on clarified Actions
@@ -259,6 +319,15 @@ Rules:
 - Exactly one `question` per item — the single highest-leverage one.
 - `responsibility` routes the queue: `requires_review` → operator,
   `codex` → coding agent, `blocked` → waiting on outside.
+- `current_action` must name an action id in this plan. A dangling pointer
+  fails validation: leaving an agent with no objective is worse than leaving it
+  with no pointer.
+- The **current action** must carry `acceptance_criteria` when it is
+  `clarified`. Other actions may omit them — requiring criteria on completed
+  history would invalidate it retroactively — but work about to be started must
+  say what finished means before anyone starts it.
+- Only the plan named by `active_plan` may declare `current_action`. A second
+  plan declaring one is a competing objective and is reported as a blocker.
 
 Body sections: **Executive Summary**, **Design**, **Log** (dated bullets,
 newest first). Maps to a milestone plus `work_items` (with dependency links
@@ -365,6 +434,26 @@ files were shown to you, reuse their slugs and ids exactly.
 `project` slug (except in PROJECT.md itself), and `updated: YYYY-MM-DD`.
 Frontmatter is the authoritative data; never restate its values in the body.
 
+**Quote any scalar containing a colon, `#`, or a leading `-`.** An unquoted
+value like `question: Should we do X: the fast way?` is invalid YAML and makes
+the whole document unusable. This is the single most common way generated
+frontmatter breaks.
+
+**The work pointer.** `PROJECT.md` sets `active_plan` to the slug of the plan
+governing current work. That plan sets `current_action` to exactly one of its
+own action ids. Across the entire project, only that one plan may declare a
+`current_action` — never designate a second. If you cannot tell which action
+should be current, do not guess: write the candidates into a decision file with
+`status: open` and leave `current_action` pointing at the action that is
+blocked on it.
+
+**Acceptance criteria.** The action named by `current_action` must carry
+`acceptance_criteria` — a list of objective, checkable conditions — whenever it
+is `clarified`. "Works correctly" is not a criterion; "the migration runs twice
+without duplicating a column" is. Other actions may omit them. An action may
+also list `decisions: ["0007"]` for decisions that must be answered before it
+starts, and `references:` for paths a worker needs to read.
+
 **Vocabularies — use these exact values and no others:**
 - project status: `active` `paused` `incubating` `completed`
 - plan status: `draft` `active` `complete` `superseded`
@@ -403,6 +492,9 @@ session?*
 made, record it as a decision file with `status: approved`, the `answer`,
 and `decided` date. When a choice was identified but not made, record it
 with `status: open`. Every open decision must appear in exactly one file.
+An `approved` decision must record an `answer`; one that does not is rejected,
+because it reads as resolved in every rollup while recording nothing anyone can
+act on.
 
 **Style.**
 - Dates ISO (`YYYY-MM-DD`). Slugs kebab-case, stable — never rename one.

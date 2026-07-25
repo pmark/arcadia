@@ -56,6 +56,13 @@ export interface ProjectDoc extends DocLocation {
   outcome: string | null;
   /** Title of the current milestone, matched or created on ingest. */
   milestone: string | null;
+  /**
+   * Slug of the plan governing current work. Half of the authoritative work
+   * pointer: without it a dispatched agent has no documented objective and
+   * must fall back to guessing from commits or whichever task looks easiest,
+   * which is exactly what the continuation contract forbids.
+   */
+  activePlan: string | null;
   updated: string;
   body: string;
 }
@@ -74,6 +81,16 @@ export interface PlanActionDoc {
   confidence: ClarificationConfidence | null;
   source: string | null;
   dependsOn: string[];
+  /**
+   * Objective conditions that decide when this action is finished. Required on
+   * the current action: "done" that only exists in someone's head is how an
+   * agent declares victory on work nobody agreed was complete.
+   */
+  acceptanceCriteria: string[];
+  /** Decision ids this action requires; a dispatched agent must read them first. */
+  decisions: string[];
+  /** Repository paths or URLs the action depends on for context. */
+  references: string[];
 }
 
 export interface PlanQuestionDoc {
@@ -88,6 +105,11 @@ export interface PlanDoc extends DocLocation {
   project: string;
   status: PlanStatus;
   milestone: string | null;
+  /**
+   * The one action in this plan that is the objective. The other half of the
+   * work pointer; exactly one action may hold it across the whole project.
+   */
+  currentAction: string | null;
   updated: string;
   actions: PlanActionDoc[];
   questions: PlanQuestionDoc[];

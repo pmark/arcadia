@@ -133,6 +133,7 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
           goal: goal!,
           outcome: optionalString(data, "outcome"),
           milestone: optionalString(data, "milestone"),
+          activePlan: optionalSlug(problems, data, "active_plan"),
           updated: updated!,
           body
         },
@@ -142,7 +143,8 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
 
     case "plan": {
       const status = enumField(problems, data, "status", PLAN_STATUSES);
-      const actions = parseActions(problems, data.actions);
+      const currentAction = optionalSlug(problems, data, "current_action");
+      const actions = parseActions(problems, data.actions, currentAction);
       const questions = parseQuestions(problems, data.questions);
       const decisions = stringArray(data.decisions);
       if (!problems.ok) {
@@ -156,6 +158,7 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
           project: project!,
           status: status as never,
           milestone: optionalString(data, "milestone"),
+          currentAction,
           updated: updated!,
           actions,
           questions,
@@ -246,7 +249,7 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
   }
 }
 
-function parseActions(problems: Problems, raw: unknown): PlanActionDoc[] {
+function parseActions(problems: Problems, raw: unknown, currentAction: string | null): PlanActionDoc[] {
   if (raw === undefined || raw === null) {
     return [];
   }
@@ -312,6 +315,27 @@ function parseActions(problems: Problems, raw: unknown): PlanActionDoc[] {
       return;
     }
 
+    // The continuation contract's executable-action test, enforced where it
+    // matters most. Applied only to the current action: requiring criteria on
+    // every clarified action would retroactively invalidate completed history,
+    // while the objective a coding agent is about to start must say what
+    // finished means before anyone starts it.
+    const acceptanceCriteria = stringArray(value.acceptance_criteria);
+    if (id && id === currentAction) {
+      if (clarification === "clarified" && acceptanceCriteria.length === 0) {
+        problems.add(
+          `${field}.acceptance_criteria`,
+          "The current action must define objective acceptance criteria before it can be dispatched."
+        );
+      }
+      if (!clarification) {
+        problems.add(
+          `${field}.clarification`,
+          'The current action must declare `clarification` as "clarified" or "question_open".'
+        );
+      }
+    }
+
     actions.push({
       id,
       title,
@@ -325,12 +349,25 @@ function parseActions(problems: Problems, raw: unknown): PlanActionDoc[] {
       question: question ?? null,
       confidence: (confidence ?? null) as never,
       source: optionalString(value, "source"),
-      dependsOn: stringArray(value.depends_on)
+      dependsOn: stringArray(value.depends_on),
+      acceptanceCriteria,
+      decisions: stringArray(value.decisions),
+      references: stringArray(value.references)
     });
   });
 
-  // Dangling dependencies silently break ordering, so name them.
   const ids = new Set(actions.map((action) => action.id));
+
+  // A pointer to an action that does not exist leaves a dispatched agent with
+  // no objective at all, which is worse than having no pointer.
+  if (currentAction && !ids.has(currentAction)) {
+    problems.add(
+      "current_action",
+      `\`current_action\` is "${currentAction}", which is not an action id in this plan.`
+    );
+  }
+
+  // Dangling dependencies silently break ordering, so name them.
   for (const action of actions) {
     for (const dependency of action.dependsOn) {
       if (!ids.has(dependency)) {
@@ -459,6 +496,14 @@ function slugField(
     return null;
   }
   return value;
+}
+
+function optionalSlug(problems: Problems, data: Record<string, unknown>, key: string): string | null {
+  const raw = data[key];
+  if (raw === undefined || raw === null || raw === "") {
+    return null;
+  }
+  return slugField(problems, data, key);
 }
 
 function dateField(problems: Problems, data: Record<string, unknown>, key: string): string | null {

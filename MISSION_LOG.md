@@ -8,6 +8,13 @@ updated: 2026-07-25
 
 # Mission Log: Arcadia
 
+## 2026-07-25 — Added the authoritative work pointer
+
+- **Did:** Implemented the Arcadia Coding-Agent Continuation Contract's control fields — `active_plan`, `current_action`, per-action `acceptance_criteria`, `decisions`, and `references` — plus `arcadia next`, which resolves the objective from the repository or refuses with a named remedy per blocker.
+- **Result:** Arcadia's own documents now carry a resolvable pointer. `arcadia next` reports the current action as `second-project-validation`, blocked on open decision 0002, and returns exactly one operator question instead of a request for direction.
+- **Next:** Answer decision 0002 — which non-Arcadia repository to validate the protocol against — then dispatch `second-project-validation`.
+- **Blockers:** Decision 0002 is open; choosing the repository is an operator call and materially changes direction, so no implementation proceeded past it.
+
 ## 2026-07-25 — Dogfooded the docs protocol against Arcadia itself
 
 - **Did:** Built `docs sync` (frontmatter parser, vocabulary validator, repo crawler, doc_ref-keyed upsert) and `arcadia portfolio`, then converted Arcadia's own PROJECT.md, MISSION_LOG.md, and both plan documents into managed documents.
