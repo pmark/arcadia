@@ -234,7 +234,7 @@ export function buildMissionControlNodeDetail(
       childCount: entries.length,
       updatedAt: now.toISOString(),
       status: { headline: `${entries.length} live entries` },
-      actionItems,
+      actionItems: [],
       contextChannel: {
         placeholder: "Add a new life item, or tell Arcadia what's true",
         routesTo: { feature: "orientation", entityId: "ledger" }
@@ -259,7 +259,7 @@ export function buildMissionControlNodeDetail(
       childCount: snapshot.projects.length,
       updatedAt: now.toISOString(),
       status: { headline: `${snapshot.projects.length} tracked project(s)` },
-      actionItems,
+      actionItems: [],
       contextChannel: { placeholder: "Ask Arcadia about your projects", routesTo: { feature: "none", entityId: "" } },
       children: snapshot.projects.map((project) => projectToSummary(project))
     };
@@ -281,7 +281,7 @@ export function buildMissionControlNodeDetail(
       childCount: actionItems.length,
       updatedAt: now.toISOString(),
       status: { headline: `${actionItems.length} decision(s) waiting` },
-      actionItems,
+      actionItems: [],
       contextChannel: { placeholder: "", routesTo: { feature: "none", entityId: "" } },
       children: snapshot.requiresReviewItems.map((item) => decisionToSummary(item))
     };
