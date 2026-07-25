@@ -49,7 +49,12 @@ export function runCaptureCommand(options: CaptureOptions): CommandSuccess<Captu
       queue: classification.queue,
       workClassification: classification.workClassification,
       nextAction: classification.nextAction,
-      expectedArtifact: options.expectedArtifact
+      expectedArtifact: options.expectedArtifact,
+      // Capture is not clarify. Whatever `classifyCapturedIntent` produced for
+      // `next_action` is a routing guess (often the "Clarify the desired
+      // outcome…" placeholder), not a decided next action — so every captured
+      // Action starts life explicitly un-clarified.
+      clarificationStatus: "unclarified"
     });
   });
 

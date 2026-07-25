@@ -44,6 +44,17 @@ CREATE TABLE IF NOT EXISTS work_items (
   expected_artifact TEXT,
   status TEXT NOT NULL CHECK (status IN ('open', 'in_progress', 'done', 'blocked')),
   effort TEXT CHECK (effort IS NULL OR effort IN ('quick', 'short', 'session', 'project')),
+  clarification_status TEXT CHECK (
+    clarification_status IS NULL
+    OR clarification_status IN ('unclarified', 'clarified', 'question_open')
+  ),
+  gap_type TEXT CHECK (
+    gap_type IS NULL
+    OR gap_type IN ('missing-decision', 'missing-external-input', 'missing-definition', 'missing-success-criteria')
+  ),
+  open_question TEXT,
+  clarification_source TEXT,
+  confidence TEXT CHECK (confidence IS NULL OR confidence IN ('high', 'medium', 'low')),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,

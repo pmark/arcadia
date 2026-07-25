@@ -1187,6 +1187,128 @@ describe("CLI response contract", () => {
     expect(cleared.data.workItem.expected_artifact).toBeNull();
   });
 
+  it("round-trips every clarification flag on work update, including clearing them", () => {
+    const workspace = initializedWorkspace();
+    const workItem = importWorkItem(workspace, {
+      title: "Sort out the sync job",
+      queue: "requires_review",
+      classification: "requires_review",
+      nextAction: "Clarify the desired outcome or approve a Codex execution path."
+    });
+
+    const set = parseJson(runCli([
+      "work",
+      "update",
+      workItem.id,
+      "--workspace",
+      workspace,
+      "--clarification-status",
+      "question_open",
+      "--gap-type",
+      "missing-decision",
+      "--question",
+      "Should the nightly sync retry on partial failure, or fail the whole run?",
+      "--confidence",
+      "medium",
+      "--source",
+      "docs/plans/nightly-sync.md",
+      "--json"
+    ]).stdout);
+
+    expect(set.ok).toBe(true);
+    expect(set.data.updated).toEqual([
+      "clarificationStatus",
+      "gapType",
+      "openQuestion",
+      "clarificationSource",
+      "confidence"
+    ]);
+    expect(set.data.workItem.clarification_status).toBe("question_open");
+    expect(set.data.workItem.gap_type).toBe("missing-decision");
+    expect(set.data.workItem.open_question).toBe(
+      "Should the nightly sync retry on partial failure, or fail the whole run?"
+    );
+    expect(set.data.workItem.clarification_source).toBe("docs/plans/nightly-sync.md");
+    expect(set.data.workItem.confidence).toBe("medium");
+
+    const cleared = parseJson(runCli([
+      "work",
+      "update",
+      workItem.id,
+      "--workspace",
+      workspace,
+      "--clarification-status",
+      "none",
+      "--gap-type",
+      "none",
+      "--question",
+      "none",
+      "--confidence",
+      "none",
+      "--source",
+      "none",
+      "--json"
+    ]).stdout);
+
+    expect(cleared.ok).toBe(true);
+    expect(cleared.data.workItem.clarification_status).toBeNull();
+    expect(cleared.data.workItem.gap_type).toBeNull();
+    expect(cleared.data.workItem.open_question).toBeNull();
+    expect(cleared.data.workItem.clarification_source).toBeNull();
+    expect(cleared.data.workItem.confidence).toBeNull();
+  });
+
+  it("rejects clarification values outside the rubric vocabulary", () => {
+    const workspace = initializedWorkspace();
+    const workItem = importWorkItem(workspace, {
+      title: "Reject bad gap types",
+      queue: "inbox",
+      classification: "autonomous",
+      nextAction: "Do the thing"
+    });
+
+    const result = runCli([
+      "work",
+      "update",
+      workItem.id,
+      "--workspace",
+      workspace,
+      "--gap-type",
+      "missing-everything",
+      "--json"
+    ]);
+
+    expect(result.status).not.toBe(0);
+    const json = parseJson(result.stderr);
+    expect(json.ok).toBe(false);
+    expect(json.command).toBe("work.update");
+    expect(json.error.message).toContain("Gap type must be one of");
+  });
+
+  it("captures every new Action as unclarified", () => {
+    const workspace = initializedWorkspace();
+
+    const captured = parseJson(runCli([
+      "capture",
+      "--workspace",
+      workspace,
+      "--text",
+      "Something vague about the billing rewrite",
+      "--json"
+    ]).stdout);
+
+    expect(captured.ok).toBe(true);
+    // capture is not clarify: the Action lands with a placeholder next action,
+    // and clarification_status — not that text — is what says so.
+    expect(captured.data.workItem.clarification_status).toBe("unclarified");
+    expect(captured.data.workItem.gap_type).toBeNull();
+    expect(captured.data.workItem.open_question).toBeNull();
+
+    const listed = parseJson(runCli(["work", "list", "--workspace", workspace, "--json"]).stdout);
+    const found = listed.data.workItems.find((item: { id: string }) => item.id === captured.data.workItem.id);
+    expect(found.clarification_status).toBe("unclarified");
+  });
+
   it("marks work items done with JSON output", () => {
     const workspace = initializedWorkspace();
     const workItem = importWorkItem(workspace, {
@@ -1532,7 +1654,12 @@ describe("CLI response contract", () => {
       "nextAction",
       "status",
       "effort",
-      "expectedArtifact"
+      "expectedArtifact",
+      "clarificationStatus",
+      "gapType",
+      "openQuestion",
+      "clarificationSource",
+      "confidence"
     ]);
   });
 

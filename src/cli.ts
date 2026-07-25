@@ -1451,6 +1451,17 @@ export function buildProgram(): Command {
       .option("--status <status>", "Status: open, in_progress, done, blocked")
       .option("--effort <size>", "Coarse time cost: quick|short|session|project, or none to clear")
       .option("--expected-artifact <artifact>", "Expected artifact, or none to clear")
+      .option(
+        "--clarification-status <status>",
+        "Clarify-step state: unclarified|clarified|question_open, or none to clear"
+      )
+      .option(
+        "--gap-type <type>",
+        "What blocks clarification: missing-decision|missing-external-input|missing-definition|missing-success-criteria, or none to clear"
+      )
+      .option("--question <question>", "The one question whose answer unblocks this Action, or none to clear")
+      .option("--confidence <level>", "Trust in the clarification: high|medium|low, or none to clear")
+      .option("--source <source>", "What justified the clarification (an Action detail, a linked doc), or none to clear")
   ).action((workId: string, options: {
     workspace: string;
     queue?: string;
@@ -1460,6 +1471,11 @@ export function buildProgram(): Command {
     status?: string;
     effort?: string;
     expectedArtifact?: string;
+    clarificationStatus?: string;
+    gapType?: string;
+    question?: string;
+    confidence?: string;
+    source?: string;
     json?: boolean;
   }) =>
     runCliAction(
@@ -1469,7 +1485,12 @@ export function buildProgram(): Command {
         ...normalizeResponsibilityOption(options),
         workId,
         effort: parseEffortOption(options.effort),
-        expectedArtifact: options.expectedArtifact === "none" ? null : options.expectedArtifact
+        expectedArtifact: parseClearableOption(options.expectedArtifact),
+        clarificationStatus: parseClearableOption(options.clarificationStatus),
+        gapType: parseClearableOption(options.gapType),
+        openQuestion: parseClearableOption(options.question),
+        confidence: parseClearableOption(options.confidence),
+        clarificationSource: parseClearableOption(options.source)
       }),
       renderWorkUpdateSuccess
     )
@@ -2362,6 +2383,21 @@ function addJsonOption(command: Command): Command {
 
 function defaultWorkspace(): string {
   return undefined as unknown as string;
+}
+
+/**
+ * The same two-state distinction `parseEffortOption` makes, for free-text and
+ * enum flags that have no validation to do at the CLI layer: undefined means
+ * "leave it alone", the literal `none` means "clear it". Value validation stays
+ * in the repository so every caller — CLI, Discord bot, future `clarify` — is
+ * held to the same vocabulary.
+ */
+function parseClearableOption(value: string | undefined): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return value === "none" ? null : value;
 }
 
 /**

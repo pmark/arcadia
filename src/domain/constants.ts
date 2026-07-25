@@ -37,6 +37,36 @@ export const CODEX_INVOCATION_STATUSES = ["packet_created", "running", "complete
 export const BACK_BURNER_STATUSES = ["incubating", "opportunistic", "promoted", "archived"] as const;
 export const ASK_FEEDBACK_DECISIONS = ["up", "down"] as const;
 
+/**
+ * Where an Action sits in GTD's "clarify" step. `next_action` is NOT NULL, so a
+ * captured Action always carries *some* string — usually a placeholder — which
+ * makes the text itself useless as a signal. This column is the real source of
+ * truth for "has anyone decided what to actually do here?".
+ * See docs/plans/clarification-pass.md.
+ */
+export const CLARIFICATION_STATUSES = ["unclarified", "clarified", "question_open"] as const;
+
+/**
+ * The clarification rubric's gap taxonomy: when no concrete next action can be
+ * named, exactly one of these says why. Each implies a different question shape
+ * (a decision to make, an ask to send, a decomposition to approve, a definition
+ * of done), which is what lets a clarification pass author one useful question
+ * instead of a generic "needs more detail".
+ */
+export const GAP_TYPES = [
+  "missing-decision",
+  "missing-external-input",
+  "missing-definition",
+  "missing-success-criteria"
+] as const;
+
+/**
+ * How far to trust a clarification verdict. Deliberately coarse, and distinct
+ * from `review_items.confidence` (a REAL 0–1 score on a Decision) — this is the
+ * rubric's own three-bucket label on an Action.
+ */
+export const CLARIFICATION_CONFIDENCE_LEVELS = ["high", "medium", "low"] as const;
+
 export const QUEUE_LABELS: Record<QueueName, string> = {
   inbox: "Inbox",
   work_queue: "Work Queue",
@@ -68,6 +98,9 @@ export type CodexInvocationPurpose = (typeof CODEX_INVOCATION_PURPOSES)[number];
 export type CodexInvocationStatus = (typeof CODEX_INVOCATION_STATUSES)[number];
 export type BackBurnerStatus = (typeof BACK_BURNER_STATUSES)[number];
 export type AskFeedbackDecision = (typeof ASK_FEEDBACK_DECISIONS)[number];
+export type ClarificationStatus = (typeof CLARIFICATION_STATUSES)[number];
+export type GapType = (typeof GAP_TYPES)[number];
+export type ClarificationConfidence = (typeof CLARIFICATION_CONFIDENCE_LEVELS)[number];
 
 export function isRequiresReviewValue(value: string | null | undefined): boolean {
   return value === "requires_review";

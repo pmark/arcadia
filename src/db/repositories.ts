@@ -6,12 +6,15 @@ import {
   ASK_FEEDBACK_DECISIONS,
   ASK_REQUEST_STATUSES,
   BACK_BURNER_STATUSES,
+  CLARIFICATION_CONFIDENCE_LEVELS,
+  CLARIFICATION_STATUSES,
   CODEX_INVOCATION_PURPOSES,
   CODEX_INVOCATION_STATUSES,
   EXECUTION_PLAN_STATUSES,
   EXECUTION_RUN_STATUSES,
   EXECUTION_STEP_STATUSES,
   EXECUTOR_TYPES,
+  GAP_TYPES,
   MILESTONE_STATUSES,
   PROJECT_STATUSES,
   QUEUES,
@@ -25,6 +28,7 @@ import {
   type AskFeedbackDecision,
   type AskRequestStatus,
   type BackBurnerStatus,
+  type ClarificationStatus,
   type CodexInvocationPurpose,
   type CodexInvocationStatus,
   type ExecutionPlanStatus,
@@ -167,6 +171,21 @@ function validateWorkClassification(value: string): WorkClassification {
 
 function validateEffort(value: string): string {
   assertAllowedValue("Effort", value, ORIENTATION_EFFORTS);
+  return value;
+}
+
+function validateClarificationStatus(value: string): string {
+  assertAllowedValue("Clarification status", value, CLARIFICATION_STATUSES);
+  return value;
+}
+
+function validateGapType(value: string): string {
+  assertAllowedValue("Gap type", value, GAP_TYPES);
+  return value;
+}
+
+function validateClarificationConfidence(value: string): string {
+  assertAllowedValue("Confidence", value, CLARIFICATION_CONFIDENCE_LEVELS);
   return value;
 }
 
@@ -315,6 +334,15 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
     // Actions are sized after the fact (`work update --effort`), never guessed
     // at intake — the same optional-and-additive rule the ledger follows.
     effort: null,
+    // Callers that know an Action arrives un-clarified say so (`capture` does);
+    // everything else leaves NULL, meaning "never evaluated".
+    clarification_status: input.clarificationStatus
+      ? (validateClarificationStatus(input.clarificationStatus) as ClarificationStatus)
+      : null,
+    gap_type: null,
+    open_question: null,
+    clarification_source: null,
+    confidence: null,
     created_at: timestamp,
     updated_at: timestamp
   };
@@ -322,10 +350,12 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
   db.prepare(
     `INSERT INTO work_items (
       id, project_id, milestone_id, title, raw_input, queue, work_classification,
-      next_action, expected_artifact, status, effort, created_at, updated_at
+      next_action, expected_artifact, status, effort, clarification_status, gap_type,
+      open_question, clarification_source, confidence, created_at, updated_at
     ) VALUES (
       @id, @project_id, @milestone_id, @title, @raw_input, @queue, @work_classification,
-      @next_action, @expected_artifact, @status, @effort, @created_at, @updated_at
+      @next_action, @expected_artifact, @status, @effort, @clarification_status, @gap_type,
+      @open_question, @clarification_source, @confidence, @created_at, @updated_at
     )`
   ).run(workItem);
 
@@ -890,6 +920,32 @@ export function updateWorkItem(
   if (input.expectedArtifact !== undefined) {
     parameters.expected_artifact = nullable(input.expectedArtifact);
     updates.push("expected_artifact = @expected_artifact");
+  }
+
+  if (input.clarificationStatus !== undefined) {
+    parameters.clarification_status =
+      input.clarificationStatus === null ? null : validateClarificationStatus(input.clarificationStatus);
+    updates.push("clarification_status = @clarification_status");
+  }
+
+  if (input.gapType !== undefined) {
+    parameters.gap_type = input.gapType === null ? null : validateGapType(input.gapType);
+    updates.push("gap_type = @gap_type");
+  }
+
+  if (input.openQuestion !== undefined) {
+    parameters.open_question = nullable(input.openQuestion);
+    updates.push("open_question = @open_question");
+  }
+
+  if (input.clarificationSource !== undefined) {
+    parameters.clarification_source = nullable(input.clarificationSource);
+    updates.push("clarification_source = @clarification_source");
+  }
+
+  if (input.confidence !== undefined) {
+    parameters.confidence = input.confidence === null ? null : validateClarificationConfidence(input.confidence);
+    updates.push("confidence = @confidence");
   }
 
   if (updates.length === 0) {

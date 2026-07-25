@@ -336,6 +336,108 @@ describe("Phase 0 data operations", () => {
     });
   });
 
+  describe("clarification column migration", () => {
+    const clarificationColumns = [
+      "clarification_status",
+      "gap_type",
+      "open_question",
+      "clarification_source",
+      "confidence"
+    ];
+
+    function workItemColumns(db: Database.Database): string[] {
+      return (db.prepare("PRAGMA table_info(work_items)").all() as Array<{ name: string }>).map(
+        (column) => column.name
+      );
+    }
+
+    /** A database created before Phase 2, i.e. with the five columns stripped out. */
+    function legacyWorkItemsSchema(): string {
+      const schema = readInitialSchema();
+      const start = schema.indexOf("  clarification_status TEXT CHECK (");
+      const end = schema.indexOf("  created_at TEXT NOT NULL,", start);
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      return schema.slice(0, start) + schema.slice(end);
+    }
+
+    it("is a no-op on a fresh database that already has the columns", () => {
+      const db = new Database(":memory:");
+      try {
+        db.exec(readInitialSchema());
+        const before = workItemColumns(db);
+        expect(before).toEqual(expect.arrayContaining(clarificationColumns));
+
+        applyMigrations(db);
+
+        expect(workItemColumns(db)).toEqual(before);
+      } finally {
+        db.close();
+      }
+    });
+
+    it("adds the columns to a legacy database, and adding them twice is not an error", () => {
+      const db = new Database(":memory:");
+      try {
+        db.exec(legacyWorkItemsSchema());
+        expect(workItemColumns(db)).not.toEqual(expect.arrayContaining(clarificationColumns));
+
+        applyMigrations(db);
+        const upgraded = workItemColumns(db);
+        expect(upgraded).toEqual(expect.arrayContaining(clarificationColumns));
+
+        // Re-running must not attempt a duplicate ALTER (SQLite would throw)
+        // and must not leave a second copy of any column behind.
+        applyMigrations(db);
+        applyMigrations(db);
+        expect(workItemColumns(db)).toEqual(upgraded);
+        for (const column of clarificationColumns) {
+          expect(upgraded.filter((name) => name === column)).toHaveLength(1);
+        }
+      } finally {
+        db.close();
+      }
+    });
+
+    it("preserves existing rows and enforces the new vocabularies after upgrading", () => {
+      const db = new Database(":memory:");
+      try {
+        db.exec(legacyWorkItemsSchema());
+        db.prepare(`
+          INSERT INTO work_items (
+            id, title, raw_input, queue, work_classification, next_action, status, created_at, updated_at
+          )
+          VALUES (
+            'wi_legacy', 'Pre-clarification Action', 'Pre-clarification Action', 'inbox',
+            'autonomous', 'Do the legacy thing.', 'open',
+            '2026-06-11T00:00:00.000Z', '2026-06-11T00:00:00.000Z'
+          )
+        `).run();
+
+        applyMigrations(db);
+
+        // Rows that predate clarification read as NULL — "never evaluated",
+        // which is deliberately distinct from "unclarified".
+        expect(db.prepare("SELECT clarification_status, gap_type, confidence FROM work_items WHERE id = ?")
+          .get("wi_legacy")).toMatchObject({ clarification_status: null, gap_type: null, confidence: null });
+
+        expect(updateWorkItem(db, "wi_legacy", { clarificationStatus: "question_open" })?.clarification_status)
+          .toBe("question_open");
+        expect(() => updateWorkItem(db, "wi_legacy", { clarificationStatus: "sort-of" })).toThrow(
+          /Clarification status must be one of/
+        );
+        expect(() => updateWorkItem(db, "wi_legacy", { gapType: "missing-everything" })).toThrow(
+          /Gap type must be one of/
+        );
+        expect(() => updateWorkItem(db, "wi_legacy", { confidence: "extremely" })).toThrow(
+          /Confidence must be one of/
+        );
+      } finally {
+        db.close();
+      }
+    });
+  });
+
   it("migrates legacy review CHECK constraints to accept requires_review", () => {
     const db = new Database(":memory:");
     try {

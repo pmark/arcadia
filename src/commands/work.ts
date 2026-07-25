@@ -64,6 +64,11 @@ export interface WorkUpdateOptions {
   status?: string;
   effort?: string | null;
   expectedArtifact?: string | null;
+  clarificationStatus?: string | null;
+  gapType?: string | null;
+  openQuestion?: string | null;
+  clarificationSource?: string | null;
+  confidence?: string | null;
 }
 
 export interface WorkUpdateCommandData {
@@ -114,7 +119,12 @@ export function runWorkUpdateCommand(options: WorkUpdateOptions): CommandSuccess
       nextAction: options.nextAction,
       status: options.status,
       effort: options.effort,
-      expectedArtifact: options.expectedArtifact
+      expectedArtifact: options.expectedArtifact,
+      clarificationStatus: options.clarificationStatus,
+      gapType: options.gapType,
+      openQuestion: options.openQuestion,
+      clarificationSource: options.clarificationSource,
+      confidence: options.confidence
     })
   );
 
@@ -567,7 +577,8 @@ export function renderWorkUpdateSuccess(response: CommandSuccess<WorkUpdateComma
     `Responsibility: ${WORK_CLASSIFICATION_LABELS[response.data.workItem.work_classification]}`,
     `Status: ${response.data.workItem.status}`,
     `Next action: ${response.data.workItem.next_action}`,
-    `Expected artifact: ${response.data.workItem.expected_artifact ?? "None"}`
+    `Expected artifact: ${response.data.workItem.expected_artifact ?? "None"}`,
+    ...renderClarification(response.data.workItem, "")
   ];
 }
 
@@ -607,7 +618,19 @@ export function renderWorkRunSuccess(response: CommandSuccess<WorkRunCommandData
   ];
 }
 
-const updateableFields = ["queue", "classification", "nextAction", "status", "effort", "expectedArtifact"] as const;
+const updateableFields = [
+  "queue",
+  "classification",
+  "nextAction",
+  "status",
+  "effort",
+  "expectedArtifact",
+  "clarificationStatus",
+  "gapType",
+  "openQuestion",
+  "clarificationSource",
+  "confidence"
+] as const;
 
 function updatedFields(options: WorkUpdateOptions): string[] {
   const fields: string[] = [];
@@ -634,6 +657,26 @@ function updatedFields(options: WorkUpdateOptions): string[] {
 
   if (options.expectedArtifact !== undefined) {
     fields.push("expectedArtifact");
+  }
+
+  if (options.clarificationStatus !== undefined) {
+    fields.push("clarificationStatus");
+  }
+
+  if (options.gapType !== undefined) {
+    fields.push("gapType");
+  }
+
+  if (options.openQuestion !== undefined) {
+    fields.push("openQuestion");
+  }
+
+  if (options.clarificationSource !== undefined) {
+    fields.push("clarificationSource");
+  }
+
+  if (options.confidence !== undefined) {
+    fields.push("confidence");
   }
 
   return fields;
@@ -754,6 +797,47 @@ function renderWorkItem(item: WorkItemSummary): string[] {
     `  Queue: ${QUEUE_LABELS[item.queue]}`,
     `  Responsibility: ${WORK_CLASSIFICATION_LABELS[item.work_classification]}`,
     `  Status: ${item.status}`,
-    `  Next action: ${item.next_action}`
+    `  Next action: ${item.next_action}${pendingClarificationSuffix(item)}`,
+    ...renderClarification(item, "  ")
   ];
+}
+
+/**
+ * An un-clarified Action's `next_action` is a placeholder, not a commitment.
+ * Saying so inline stops a listing from reading like the work is decided.
+ */
+function pendingClarificationSuffix(item: WorkItemSummary): string {
+  return item.clarification_status === "unclarified" ? " — (pending clarification)" : "";
+}
+
+/**
+ * Only surface clarification detail that exists. A NULL `clarification_status`
+ * means the Action predates clarification or was never evaluated, and padding
+ * every listing with "Gap: none" lines would bury the Actions that do carry a
+ * real open question.
+ */
+function renderClarification(item: WorkItemSummary, indent: string): string[] {
+  const lines: string[] = [];
+
+  if (item.clarification_status) {
+    lines.push(`${indent}Clarification: ${item.clarification_status}`);
+  }
+
+  if (item.gap_type) {
+    lines.push(`${indent}Gap: ${item.gap_type}`);
+  }
+
+  if (item.open_question) {
+    lines.push(`${indent}Open question: ${item.open_question}`);
+  }
+
+  if (item.clarification_source) {
+    lines.push(`${indent}Source: ${item.clarification_source}`);
+  }
+
+  if (item.confidence) {
+    lines.push(`${indent}Confidence: ${item.confidence}`);
+  }
+
+  return lines;
 }
