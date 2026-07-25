@@ -214,6 +214,7 @@ import {
 } from "./commands/worker.js";
 import { renderClarifySuccess, runClarifyCommand } from "./commands/clarify.js";
 import { renderDocsSyncSuccess, runDocsSyncCommand } from "./commands/docs.js";
+import { renderNextSuccess, runNextCommand } from "./commands/next.js";
 import { renderPortfolioSuccess, runPortfolioCommand } from "./commands/portfolio.js";
 import {
   renderWorkAddSubtaskSuccess,
@@ -1846,6 +1847,16 @@ export function buildProgram(): Command {
       }),
       renderClarifySuccess
     )
+  );
+
+  addJsonOption(
+    program
+      .command("next")
+      .description("Resolve the authoritative current action a coding agent should advance")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--project <project>", "Project id or slug")
+  ).action((options: { workspace: string; project?: string; json?: boolean }) =>
+    runCliAction("next", options, () => runNextCommand(options), renderNextSuccess)
   );
 
   const docs = program.command("docs").description("Managed documentation across every Project repository");

@@ -561,6 +561,51 @@ skipped. An unquoted value containing a colon is the way generated frontmatter
 most often breaks, and a document that silently vanished from the portfolio
 would be far worse than one that loudly failed.
 
+### What to work on next
+
+`docs sync` and `portfolio` answer "what exists" and "how healthy is it".
+`arcadia next` answers the only question a dispatched coding agent needs:
+
+```sh
+pnpm arcadia next --workspace "$WORKSPACE" --project arcadia
+```
+
+It resolves the **authoritative work pointer** — `PROJECT.md`'s `active_plan`,
+then that plan's `current_action` — and prints the objective with its
+acceptance criteria, required decisions, references, and what the agent is
+authorized to do. It reads the repository, not the database, because
+checked-in documentation is authoritative when the two disagree.
+
+Exactly one action may be current across a project. A second plan declaring
+`current_action` is reported as a competing objective rather than silently
+losing to the active plan.
+
+When the pointer cannot be resolved, `next` refuses and names the repair:
+
+```text
+No current action could be resolved.
+
+  ! PROJECT.md [active_plan]: PROJECT.md declares no active_plan, so no plan governs current work.
+      Set `active_plan` to one of: clarification-pass, portfolio-docs-protocol.
+
+Repairing the control documentation is the immediate work.
+```
+
+That is the intended behavior, not a failure: incomplete control documentation
+*is* the work, and guessing an objective from commit history or backlog order
+is exactly what this command exists to prevent.
+
+Three outcomes are possible, and each is a complete answer:
+
+| Outcome | Meaning |
+| ------- | ------- |
+| **Dispatchable** | One action resolved, no blockers, responsibility is `codex` or `autonomous`. An agent may begin. |
+| **One operator question** | The current action is `question_open`. The single question is surfaced; no other action is promoted to fill the gap. |
+| **Blockers** | Named file, field, and remedy for each. Repair those first. |
+
+An action owned by `requires_review` or `blocked` resolves cleanly but is never
+dispatchable — the pointer is valid, the work simply is not a coding agent's.
+
 ### The executive view
 
 ```sh
