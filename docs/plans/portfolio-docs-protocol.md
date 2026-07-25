@@ -3,26 +3,52 @@ arcadia: v1
 type: plan
 slug: portfolio-docs-protocol
 project: arcadia
-status: draft
+status: active
 milestone: docs sync ingests a real project's markdown
 updated: 2026-07-25
 actions:
   - id: build-parser
     title: Build the frontmatter parser and vocabulary validator
-    status: open
+    status: done
     responsibility: codex
     effort: session
-    clarification: unclarified
+    next_action: Delivered in src/docs/parse.ts; no further work.
+    expected_artifact: Frontmatter parser reporting per-field validation errors
+    clarification: clarified
+    confidence: high
+    source: dogfooding pass against Arcadia's own repository
     depends_on: []
   - id: build-upsert
-    title: Build the upsert layer (project/plan/decision/log -> DB rows)
-    status: open
+    title: Build the upsert layer (project/plan/decision -> DB rows)
+    status: done
     responsibility: codex
     effort: session
-    clarification: unclarified
+    next_action: Delivered in src/docs/sync.ts, keyed by doc_ref; no further work.
+    expected_artifact: Idempotent doc_ref-keyed upsert
+    clarification: clarified
+    confidence: high
+    source: dogfooding pass against Arcadia's own repository
     depends_on: [build-parser]
   - id: wire-docs-sync-command
     title: Wire arcadia docs sync [--project] [--apply] into the CLI
+    status: done
+    responsibility: codex
+    effort: short
+    next_action: Delivered alongside arcadia portfolio; no further work.
+    expected_artifact: docs sync and portfolio commands
+    clarification: clarified
+    confidence: high
+    source: dogfooding pass against Arcadia's own repository
+    depends_on: [build-upsert]
+  - id: ingest-mission-logs
+    title: Ingest MISSION_LOG.md entries as mission_logs rows
+    status: open
+    responsibility: codex
+    effort: short
+    clarification: unclarified
+    depends_on: [build-upsert]
+  - id: persist-dependencies
+    title: Persist action depends_on ordering rather than only validating it
     status: open
     responsibility: codex
     effort: short
@@ -66,20 +92,41 @@ document is the schema, not yet implemented.
 
 ## Status
 
-- Milestone: protocol specified. Nothing below is implemented — `docs sync`
-  does not exist yet.
-- Next Action: `build-parser` — the frontmatter parser and vocabulary
-  validator, since everything else in this plan depends on it.
-- Responsibility: Requires Review (spec is done; go-ahead to build is an
-  operator call, same posture as Phases 1–4 of `clarification-pass.md`).
-- Required Artifact: a merged PR wiring `arcadia docs sync` end to end
-  against at least one real project's markdown.
+**This section is derived data.** The frontmatter above is authoritative;
+`arcadia portfolio` reads it after `docs sync`.
+
+- Milestone: `docs sync` ingests a real project's markdown — **reached.**
+  Arcadia's own repository is the first project ingested by this protocol.
+- Next Action: run `docs sync --apply` against a second, non-Arcadia project,
+  to test the schema against documentation nobody wrote with it in mind.
+- Responsibility: Requires Review (choosing that project is an operator call).
+- Required Artifact: delivered — `docs sync`, `portfolio`, and Arcadia's own
+  conforming documents.
 - Decisions open: 2 — see `questions` in the frontmatter above.
-- Last Log: 2026-07-25 — protocol drafted: file schemas, vocabularies (reused
-  verbatim from `src/domain/constants.ts`), the ingestion contract, and a
-  paste-able chatbot prompt that performs the clarification rubric at write
-  time.
+- Last Log: 2026-07-25 — built the parser, validator, crawler, `doc_ref`-keyed
+  upsert, `docs sync`, and `arcadia portfolio`; converted Arcadia's own
+  `PROJECT.md`, `MISSION_LOG.md`, and both plans into managed documents; made
+  `project create` seed conforming stubs.
 - Updated: 2026-07-25
+
+### What dogfooding changed
+
+Using the protocol on Arcadia itself found three things the spec did not
+anticipate:
+
+1. **Dry run and apply could disagree.** `PROJECT.md` and a plan can name the
+   same milestone. The preview reported two creates where `--apply` did one
+   create and one adopt, because nothing written during a dry run is visible to
+   the next lookup. Fixed by tracking milestones planned within a run, which is
+   what makes "the preview is the real thing with writes withheld" true rather
+   than merely intended.
+2. **A malformed document disappeared silently.** A question containing an
+   unquoted colon is invalid YAML, and the crawler treated the unparseable file
+   as "not ours" — no error, no row, no explanation. Generated frontmatter
+   breaks this way constantly. A file claiming `arcadia: v1` is now always
+   treated as managed so the parse error surfaces.
+3. **`project create` seeded documents the protocol rejects.** New Projects now
+   get conforming frontmatter, with scalars quoted when a name contains a colon.
 
 ## Design principles
 

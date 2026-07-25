@@ -500,6 +500,95 @@ the verification screen" and "Draft a fallback email" — each of which is small
 enough to clarify, size, and plan on its own, while the parent keeps the
 history of why they exist.
 
+## Ingest Documentation As Data
+
+Conversations with frontier models produce Markdown. `docs sync` turns that
+Markdown into Projects, Milestones, Actions, and Decisions, so the portfolio can
+be managed from Arcadia rather than by re-reading files. The schema and the
+paste-able chatbot prompt live in
+[docs/plans/portfolio-docs-protocol.md](plans/portfolio-docs-protocol.md).
+
+```sh
+pnpm arcadia docs sync --workspace "$WORKSPACE"
+```
+
+**Dry run by default**, the same posture as `clarify`: ingestion rewrites the
+Actions and Decisions you plan against, and a job that silently rewrote a queue
+from a file someone edited is exactly the unobservable automation Arcadia
+avoids. The preview runs the identical code path with the writes withheld, so it
+cannot drift from what `--apply` does.
+
+```sh
+pnpm arcadia docs sync --workspace "$WORKSPACE" --project arcadia --apply
+```
+
+Arcadia crawls each Project's recorded `repo_path`, so point a Project at a real
+repository first:
+
+```sh
+pnpm arcadia project metadata proj_example --workspace "$WORKSPACE" --repo-path ~/Dev/example
+```
+
+Discovery is **by marker, not by path**: any `.md` file whose frontmatter
+contains `arcadia: v1` is managed, wherever it sits. Organize `docs/` however
+you like; a file becomes Arcadia's business only when it opts in.
+
+### What survives a re-run
+
+Every ingested row carries a `doc_ref` — `plan/<slug>#<action-id>`,
+`decision/<slug>` — built only from identifiers the protocol promises never
+change. Reword an action's title and the existing Action is **updated**; it does
+not fork a duplicate. Re-running with no document changes reports everything as
+unchanged and writes nothing.
+
+Rows with **no** `doc_ref` — everything you captured by hand, or that `clarify`
+produced — are invisible to ingestion and can never be overwritten by a document
+that happens to describe something similar.
+
+A document older than the record it describes is **skipped**, not applied: if
+`clarify` moved an Action on Tuesday and the file is dated Monday, the file
+describes a world that no longer exists.
+
+### When a document is wrong
+
+Validation refuses rather than guesses. An out-of-vocabulary enum, a
+non-kebab-case slug, an action marked `clarified` with no `next_action`, or two
+files claiming the same reference are all reported per-file with the field path,
+and that file is not ingested — the rest of the crawl continues.
+
+Malformed YAML in a file that claims `arcadia: v1` is reported as an error, not
+skipped. An unquoted value containing a colon is the way generated frontmatter
+most often breaks, and a document that silently vanished from the portfolio
+would be far worse than one that loudly failed.
+
+### The executive view
+
+```sh
+pnpm arcadia portfolio --workspace "$WORKSPACE"
+```
+
+One block per Project: status, goal, current milestone, Actions in flight, and —
+the number that actually decides where the next hour goes — the **clarity**
+breakdown. "12 open Actions" flatters a portfolio; "4 ready, 6 unclarified, 2
+awaiting an answer" tells you whether any of it is workable. Decisions waiting on
+you are listed oldest-first, because the oldest unanswered question is usually
+the most expensive one.
+
+**Example scenario:** you spend an hour with a chatbot designing a migration. It
+emits `docs/plans/nightly-sync-rework.md` with six actions, two of them carrying
+questions instead of next actions. `docs sync --apply` creates six Actions and
+two Decisions. `arcadia portfolio` then shows the project as four ready and two
+blocked, and answering the two Decisions is visibly the thing standing between
+you and a workable queue.
+
+### Not yet ingested
+
+`MISSION_LOG.md` files and narrative docs (`type: architecture | strategy |
+reference`) are parsed and validated but not yet turned into rows; `docs sync`
+reports them as skipped so you can see the protocol recognizes them. Action
+`depends_on` links are validated — a dependency on an id that does not exist is
+an error — but ordering is not yet persisted.
+
 ## Plan Work
 
 ```sh

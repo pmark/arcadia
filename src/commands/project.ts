@@ -38,6 +38,7 @@ import {
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
 import { WORK_CLASSIFICATION_LABELS, type ProjectStatus, type WorkClassification } from "../domain/constants.js";
+import { localDateStamp } from "../utils/time.js";
 import type { CreatedProjectBundle, MissionLog, Project, ProjectMetadata, ProjectSummary } from "../domain/types.js";
 import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../markdown/missionLog.js";
 import { promptForProjectCreate } from "../prompts/index.js";
@@ -509,14 +510,24 @@ function materializeProjectFiles(input: {
     return toWorkspaceRelativePath(input.workspacePath, template);
   }
 
+  // Seeded as managed documents so a new Project is ingestable by `docs sync`
+  // from the moment it exists. `writeFileIfMissing` means this never overwrites
+  // a document the operator has already written — the protocol stays one-way.
+  const today = localDateStamp(new Date());
   writeFileIfMissing(
     path.join(input.projectPath, "PROJECT.md"),
     [
-      `# ${input.project.name}`,
+      "---",
+      "arcadia: v1",
+      "type: project",
+      `slug: ${input.project.slug}`,
+      `name: ${yamlScalar(input.project.name)}`,
+      `status: ${input.project.status}`,
+      `goal: ${yamlScalar(input.project.mission)}`,
+      `updated: ${today}`,
+      "---",
       "",
-      `ID: ${input.project.id}`,
-      `Slug: ${input.project.slug}`,
-      `Status: ${input.project.status}`,
+      `# ${input.project.name}`,
       "",
       "## Mission",
       "",
@@ -531,14 +542,36 @@ function materializeProjectFiles(input: {
   writeFileIfMissing(
     path.join(input.projectPath, "MISSION_LOG.md"),
     [
+      "---",
+      "arcadia: v1",
+      "type: log",
+      `slug: ${input.project.slug}-mission-log`,
+      `project: ${input.project.slug}`,
+      `updated: ${today}`,
+      "---",
+      "",
       `# Mission Log: ${input.project.name}`,
       "",
-      "- Project created with Arcadia built-in defaults.",
-      `- Next action: ${input.nextAction}`,
+      `## ${today} — Project created`,
+      "",
+      "- **Did:** Created the Project with Arcadia built-in defaults.",
+      `- **Result:** ${input.project.name} exists with a first Action.`,
+      `- **Next:** ${input.nextAction}`,
+      "- **Blockers:** none",
       ""
     ].join("\n")
   );
   return null;
+}
+
+/**
+ * Quote a scalar only when it would otherwise change meaning — a project name
+ * or mission containing `: ` is the single most common way generated
+ * frontmatter becomes unparseable.
+ */
+function yamlScalar(value: string): string {
+  const trimmed = value.trim();
+  return /[:#]|^[-?&*!|>%@`"']/.test(trimmed) ? JSON.stringify(trimmed) : trimmed;
 }
 
 function findProjectTemplate(workspacePath: string): string | null {

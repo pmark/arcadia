@@ -51,6 +51,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureEffortColumns(db);
   ensureClarificationColumns(db);
   ensureParentWorkItemColumn(db);
+  ensureDocRefColumns(db);
   ensureDailyCapacityTable(db);
   ensureActivityTables(db);
   applyCapabilityMigrations(db);
@@ -455,6 +456,42 @@ function ensureParentWorkItemColumn(db: Database.Database): void {
   }
 
   db.exec("CREATE INDEX IF NOT EXISTS idx_work_items_parent ON work_items(parent_work_item_id)");
+}
+
+/**
+ * A stable external key tying a row back to the document that declared it.
+ *
+ * `docs sync` re-runs constantly, and matching an ingested row by title would
+ * duplicate every entity the moment somebody rewords a heading — which is
+ * exactly what a chatbot rewriting a plan does. The doc_ref is derived from
+ * identifiers the protocol promises never change (`plan/<slug>#<action-id>`,
+ * `decision/<slug>`, `plan/<slug>` for a milestone), so a reworded title
+ * updates a row instead of forking it.
+ *
+ * NULL means "not from a document" — every row Arcadia created itself through
+ * `capture`, `work add-subtask`, or the clarify loop. Ingestion only ever
+ * touches rows carrying a doc_ref, so hand-captured work can never be
+ * clobbered by a document that happens to describe something similar.
+ *
+ * The indexes are deliberately non-unique: a malformed pair of documents
+ * claiming the same ref is a validation error reported per-file, not a write
+ * that explodes mid-transaction.
+ * See docs/plans/portfolio-docs-protocol.md.
+ */
+function ensureDocRefColumns(db: Database.Database): void {
+  const targets = ["work_items", "milestones", "review_items"];
+
+  for (const table of targets) {
+    const columns = new Set(
+      (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((column) => column.name)
+    );
+
+    if (!columns.has("doc_ref")) {
+      db.prepare(`ALTER TABLE ${table} ADD COLUMN doc_ref TEXT`).run();
+    }
+
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_doc_ref ON ${table}(doc_ref)`);
+  }
 }
 
 /**
