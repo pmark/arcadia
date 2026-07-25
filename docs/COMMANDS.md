@@ -347,6 +347,65 @@ answer, `--clarification-status clarified --next-action …` promotes it, and th
 `[GAP …]` prefixes an earlier dogfood pass had to jam into the next-action text
 are no longer needed.
 
+## Clarify Automatically
+
+Everything above is the manual version of the clarify step. `arcadia clarify`
+runs the same rubric over every `unclarified` Action for you.
+
+```sh
+pnpm arcadia clarify --workspace "$WORKSPACE"
+```
+
+**This is a dry run.** It prints what it would write and changes nothing. That
+is the default on purpose: clarification rewrites `next_action` and
+Responsibility — the two fields that decide whether work gets dispatched — and a
+batch pass that silently re-routed your queue would be exactly the kind of
+unobservable automation Arcadia is built to avoid. Add `--apply` when the
+preview looks right:
+
+```sh
+pnpm arcadia clarify --workspace "$WORKSPACE" --project proj_example --apply
+```
+
+Scope it with `--project <id>`, `--limit <n>`, or `--work <id>` for a single
+Action. `--work` evaluates that Action whatever its current state; without it,
+a pass only considers Actions that are `unclarified` and not done. Actions with
+a `NULL` clarification status are skipped — those predate the feature, and
+sweeping your whole history into a model pass on first run would be a surprise
+rather than a feature.
+
+For each Action the rubric produces one of two outcomes, and `--apply` writes
+it:
+
+| Verdict | What gets written |
+| ------- | ----------------- |
+| **YES** — a concrete next action exists | `next_action` is replaced, `clarification_status` becomes `clarified`, `clarification_source` records what justified it, `confidence` records how far to trust it, and the rubric's `actor` sets Responsibility (`operator` → Requires Review, `coding-agent` → Codex, `external-party` → Blocked), which moves the Action to the matching queue. |
+| **NO** — something is missing | A clarification Decision is opened with the single question (exactly what `review open` does by hand), and the Action moves to `question_open` with its `gap_type`. |
+
+A `missing-definition` verdict comes back with a proposed decomposition.
+**`clarify` never creates those subtasks.** They are printed and returned so you
+can act on them, and `work add-subtask` is how they become real. Decomposition
+is a proposal until you approve it.
+
+The engine is Arcadia Intelligence — the local structured-generation service —
+requested as `local-preferred` with `allowPaidUsage: false`. A pass runs over
+every unclarified Action, and one that quietly billed a frontier model per
+Action is not one anybody would leave running. If the local model is
+unreachable, the command fails with `CLARIFY_ENGINE_UNAVAILABLE` and writes
+nothing.
+
+A verdict that comes back unusable — a "clarified" with no next action, a gap
+type outside the taxonomy — is skipped and reported, and that Action keeps
+exactly the state it had. One bad response does not abandon the rest of the
+pass.
+
+**Example scenario:** you capture six things on a walk. `clarify` names concrete
+next actions for four of them and routes two to Codex; the other two come back
+as questions — one `missing-decision`, one `missing-definition` with a proposed
+three-way split. You answer the first with `review approve … --answer`, and turn
+the second into real subtasks with `work add-subtask`. Nothing moved without
+you seeing it first.
+
 ## Ask One Question As A Decision
 
 Recording a gap on the Action (above) says *that* it is blocked. Opening a

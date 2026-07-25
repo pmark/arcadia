@@ -212,6 +212,7 @@ import {
   runWorkerStopCommand,
   runWorkerUninstallCommand
 } from "./commands/worker.js";
+import { renderClarifySuccess, runClarifyCommand } from "./commands/clarify.js";
 import {
   renderWorkAddSubtaskSuccess,
   renderWorkDoneSuccess,
@@ -1811,6 +1812,37 @@ export function buildProgram(): Command {
       reviewOptionsFromArgv(options),
       () => runReviewWeeklyCommand({ ...options, ...reviewOptionsFromArgv(options) }),
       renderReviewWeeklySuccess
+    )
+  );
+
+  addJsonOption(
+    program
+      .command("clarify")
+      .description("Evaluate unclarified Actions against the clarification rubric (dry run unless --apply)")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--project <project-id>", "Only clarify Actions in this Project")
+      .option("--work <work-id>", "Clarify one Action by id, whatever its current state")
+      .option("--limit <count>", "Evaluate at most this many Actions")
+      .option("--apply", "Persist the results; without it nothing is written")
+  ).action((options: {
+    workspace: string;
+    project?: string;
+    work?: string;
+    limit?: string;
+    apply?: boolean;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "clarify",
+      options,
+      () => runClarifyCommand({
+        workspace: options.workspace,
+        projectId: options.project,
+        workId: options.work,
+        limit: options.limit ? Number.parseInt(options.limit, 10) : undefined,
+        apply: options.apply
+      }),
+      renderClarifySuccess
     )
   );
 
