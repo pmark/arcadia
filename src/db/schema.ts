@@ -50,6 +50,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureOrientationTables(db);
   ensureEffortColumns(db);
   ensureClarificationColumns(db);
+  ensureParentWorkItemColumn(db);
   ensureDailyCapacityTable(db);
   ensureActivityTables(db);
   applyCapabilityMigrations(db);
@@ -427,6 +428,33 @@ function ensureClarificationColumns(db: Database.Database): void {
       db.prepare(addition.ddl).run();
     }
   }
+}
+
+/**
+ * Parent/child links between Actions, so a `missing-definition` decomposition
+ * has somewhere real to live instead of living in prose.
+ *
+ * `ON DELETE SET NULL` rather than `CASCADE` on purpose: deleting a parent must
+ * not silently destroy the children, which are independently captured work with
+ * their own history. An orphaned child simply becomes a top-level Action again.
+ *
+ * SQLite permits a REFERENCES clause on ADD COLUMN only when the column
+ * defaults to NULL, which is exactly what this is — purely additive, every
+ * existing row keeps NULL and stays top-level.
+ * See docs/plans/clarification-pass.md.
+ */
+function ensureParentWorkItemColumn(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(work_items)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+
+  if (!columns.has("parent_work_item_id")) {
+    db.prepare(
+      "ALTER TABLE work_items ADD COLUMN parent_work_item_id TEXT REFERENCES work_items(id) ON DELETE SET NULL"
+    ).run();
+  }
+
+  db.exec("CREATE INDEX IF NOT EXISTS idx_work_items_parent ON work_items(parent_work_item_id)");
 }
 
 /**

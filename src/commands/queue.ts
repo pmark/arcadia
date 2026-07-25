@@ -5,6 +5,7 @@ import { withDatabase } from "../db/connection.js";
 import { listQueueGroups } from "../db/repositories.js";
 import { QUEUE_LABELS, WORK_CLASSIFICATION_LABELS, type QueueName } from "../domain/constants.js";
 import type { QueueGroups, WorkItemSummary } from "../domain/types.js";
+import { orderByParent } from "../domain/workTree.js";
 
 const ORDERED_QUEUES: QueueName[] = ["inbox", "work_queue", "requires_review", "blocked"];
 
@@ -40,12 +41,15 @@ function renderItems(items: WorkItemSummary[]): string[] {
   }
 
   const lines: string[] = [];
-  for (const item of items) {
+  for (const { item, depth } of orderByParent(items)) {
+    // A queue view is filtered, so a subtask only indents when its parent is in
+    // the same queue; otherwise it stands on its own rather than disappearing.
+    const pad = "  ".repeat(depth);
     const project = item.project_name ? ` [${item.project_name}]` : "";
-    lines.push(`  - ${item.title}${project}`);
-    lines.push(`    Responsibility: ${WORK_CLASSIFICATION_LABELS[item.work_classification]}`);
-    lines.push(`    Next action: ${item.next_action}`);
-    lines.push(`    Status: ${item.status}`);
+    lines.push(`  ${pad}- ${item.title}${project}`);
+    lines.push(`    ${pad}Responsibility: ${WORK_CLASSIFICATION_LABELS[item.work_classification]}`);
+    lines.push(`    ${pad}Next action: ${item.next_action}`);
+    lines.push(`    ${pad}Status: ${item.status}`);
   }
 
   return lines;

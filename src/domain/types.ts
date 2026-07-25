@@ -90,6 +90,11 @@ export interface WorkItem {
   clarification_source: string | null;
   /** How far to trust the clarification verdict (high|medium|low). */
   confidence: ClarificationConfidence | null;
+  /**
+   * The Action this one decomposes. `null` for top-level Actions. Cleared
+   * rather than cascaded if the parent is deleted, so a child is never lost.
+   */
+  parent_work_item_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -520,6 +525,8 @@ export interface CreateWorkItemInput {
    * paths that create an Action from an already-decided next action.
    */
   clarificationStatus?: string;
+  /** The Action this one decomposes, for subtasks created by `work add-subtask`. */
+  parentWorkItemId?: string | null;
 }
 
 export interface UpdateWorkItemInput {
@@ -541,6 +548,8 @@ export interface UpdateWorkItemInput {
   clarificationSource?: string | null;
   /** Trust in the clarification verdict (high|medium|low); `null` clears it. */
   confidence?: string | null;
+  /** Re-parent this Action, or `null` to promote it back to top-level. */
+  parentWorkItemId?: string | null;
 }
 
 export interface UpdateArtifactInput {

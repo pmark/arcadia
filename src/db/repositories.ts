@@ -189,6 +189,44 @@ function validateClarificationConfidence(value: string): string {
   return value;
 }
 
+/**
+ * A parent must exist, must not be the Action itself, and must not already sit
+ * below it — otherwise a listing that walks the tree would loop forever. Walking
+ * up from the proposed parent catches every cycle, not just the one-hop case.
+ */
+function assertUsableParent(db: Database.Database, parentId: string, childId: string | null): string {
+  const parent = required(parentId, "Parent Action id");
+
+  if (childId && parent === childId) {
+    throw new Error("An Action cannot be its own parent");
+  }
+
+  if (!db.prepare("SELECT id FROM work_items WHERE id = ?").get(parent)) {
+    throw new Error(`Parent Action was not found: ${parent}`);
+  }
+
+  if (!childId) {
+    return parent;
+  }
+
+  const seen = new Set<string>();
+  let ancestor: string | null = parent;
+  while (ancestor) {
+    if (ancestor === childId) {
+      throw new Error("An Action cannot be parented to one of its own subtasks");
+    }
+    if (seen.has(ancestor)) {
+      break;
+    }
+    seen.add(ancestor);
+    ancestor = (db.prepare("SELECT parent_work_item_id FROM work_items WHERE id = ?").get(ancestor) as
+      | { parent_work_item_id: string | null }
+      | undefined)?.parent_work_item_id ?? null;
+  }
+
+  return parent;
+}
+
 function validateWorkItemStatus(value: string): WorkItemStatus {
   assertAllowedValue("Action status", value, WORK_ITEM_STATUSES);
   return value;
@@ -343,6 +381,7 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
     open_question: null,
     clarification_source: null,
     confidence: null,
+    parent_work_item_id: input.parentWorkItemId ? assertUsableParent(db, input.parentWorkItemId, null) : null,
     created_at: timestamp,
     updated_at: timestamp
   };
@@ -351,11 +390,11 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
     `INSERT INTO work_items (
       id, project_id, milestone_id, title, raw_input, queue, work_classification,
       next_action, expected_artifact, status, effort, clarification_status, gap_type,
-      open_question, clarification_source, confidence, created_at, updated_at
+      open_question, clarification_source, confidence, parent_work_item_id, created_at, updated_at
     ) VALUES (
       @id, @project_id, @milestone_id, @title, @raw_input, @queue, @work_classification,
       @next_action, @expected_artifact, @status, @effort, @clarification_status, @gap_type,
-      @open_question, @clarification_source, @confidence, @created_at, @updated_at
+      @open_question, @clarification_source, @confidence, @parent_work_item_id, @created_at, @updated_at
     )`
   ).run(workItem);
 
@@ -946,6 +985,12 @@ export function updateWorkItem(
   if (input.confidence !== undefined) {
     parameters.confidence = input.confidence === null ? null : validateClarificationConfidence(input.confidence);
     updates.push("confidence = @confidence");
+  }
+
+  if (input.parentWorkItemId !== undefined) {
+    parameters.parent_work_item_id =
+      input.parentWorkItemId === null ? null : assertUsableParent(db, input.parentWorkItemId, id);
+    updates.push("parent_work_item_id = @parent_work_item_id");
   }
 
   if (updates.length === 0) {

@@ -351,14 +351,20 @@ describe("Phase 0 data operations", () => {
       );
     }
 
-    /** A database created before Phase 2, i.e. with the five columns stripped out. */
+    /**
+     * A database created before Phase 2/3: the clarification columns and the
+     * subtask column (plus its foreign key) stripped back out of work_items.
+     */
     function legacyWorkItemsSchema(): string {
       const schema = readInitialSchema();
       const start = schema.indexOf("  clarification_status TEXT CHECK (");
       const end = schema.indexOf("  created_at TEXT NOT NULL,", start);
       expect(start).toBeGreaterThan(-1);
       expect(end).toBeGreaterThan(start);
-      return schema.slice(0, start) + schema.slice(end);
+      return (schema.slice(0, start) + schema.slice(end)).replace(
+        ",\n  FOREIGN KEY (parent_work_item_id) REFERENCES work_items(id) ON DELETE SET NULL",
+        ""
+      );
     }
 
     it("is a no-op on a fresh database that already has the columns", () => {
@@ -435,6 +441,100 @@ describe("Phase 0 data operations", () => {
       } finally {
         db.close();
       }
+    });
+  });
+
+  describe("subtask parent links", () => {
+    it("adds parent_work_item_id to a legacy database idempotently", () => {
+      const db = new Database(":memory:");
+      try {
+        const schema = readInitialSchema()
+          .replace("  parent_work_item_id TEXT,\n", "")
+          .replace(",\n  FOREIGN KEY (parent_work_item_id) REFERENCES work_items(id) ON DELETE SET NULL", "");
+        db.exec(schema);
+
+        const columns = () =>
+          (db.prepare("PRAGMA table_info(work_items)").all() as Array<{ name: string }>).map((c) => c.name);
+        expect(columns()).not.toContain("parent_work_item_id");
+
+        applyMigrations(db);
+        const upgraded = columns();
+        expect(upgraded).toContain("parent_work_item_id");
+
+        applyMigrations(db);
+        expect(columns()).toEqual(upgraded);
+      } finally {
+        db.close();
+      }
+    });
+
+    it("clears the link instead of cascading when a parent is deleted", () => {
+      const workspace = initializedWorkspace();
+
+      withDatabase(workspace, (db) => {
+        const parent = createWorkItemWithOptionalArtifact(db, {
+          title: "Ship the billing rewrite",
+          rawInput: "Ship the billing rewrite",
+          queue: "work_queue",
+          workClassification: "codex",
+          nextAction: "Decompose the rewrite"
+        });
+        const child = createWorkItemWithOptionalArtifact(db, {
+          title: "Migrate the invoice table",
+          rawInput: "Migrate the invoice table",
+          queue: "work_queue",
+          workClassification: "codex",
+          nextAction: "Write the migration",
+          parentWorkItemId: parent.workItem.id
+        });
+
+        expect(getWorkItem(db, child.workItem.id)?.parent_work_item_id).toBe(parent.workItem.id);
+
+        db.prepare("DELETE FROM work_items WHERE id = ?").run(parent.workItem.id);
+
+        // The child is independently captured work; losing its parent must not
+        // lose the child.
+        const orphan = getWorkItem(db, child.workItem.id);
+        expect(orphan).not.toBeNull();
+        expect(orphan?.parent_work_item_id).toBeNull();
+      });
+    });
+
+    it("refuses parents that do not exist, self-parenting, and cycles", () => {
+      const workspace = initializedWorkspace();
+
+      withDatabase(workspace, (db) => {
+        const parent = createWorkItemWithOptionalArtifact(db, {
+          title: "Parent Action",
+          rawInput: "Parent Action",
+          queue: "work_queue",
+          workClassification: "codex",
+          nextAction: "Do the parent work"
+        });
+        const child = createWorkItemWithOptionalArtifact(db, {
+          title: "Child Action",
+          rawInput: "Child Action",
+          queue: "work_queue",
+          workClassification: "codex",
+          nextAction: "Do the child work",
+          parentWorkItemId: parent.workItem.id
+        });
+
+        expect(() =>
+          updateWorkItem(db, child.workItem.id, { parentWorkItemId: "work_missing" })
+        ).toThrow(/Parent Action was not found/);
+
+        expect(() =>
+          updateWorkItem(db, child.workItem.id, { parentWorkItemId: child.workItem.id })
+        ).toThrow(/cannot be its own parent/);
+
+        // parent -> child -> parent would make any tree walk loop forever.
+        expect(() =>
+          updateWorkItem(db, parent.workItem.id, { parentWorkItemId: child.workItem.id })
+        ).toThrow(/cannot be parented to one of its own subtasks/);
+
+        expect(updateWorkItem(db, child.workItem.id, { parentWorkItemId: null })?.parent_work_item_id).toBeNull();
+      });
     });
   });
 
