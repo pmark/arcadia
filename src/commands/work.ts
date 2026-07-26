@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
+import type Database from "better-sqlite3";
 import { createCodexPacket, selectAgentProfileForWorkItem } from "../codex/packets.js";
 import { codingAgentLabel } from "../codingAgents/adapters.js";
 import { executionPlanNotFound, validationError, workItemNotFound } from "../cli/errors.js";
@@ -43,6 +44,8 @@ import type {
   WorkItemSummary
 } from "../domain/types.js";
 import { orderByParent } from "../domain/workTree.js";
+import { resolveActionReadiness, type DispatchBlocker } from "../docs/dispatch.js";
+import { recordDispatchEvent } from "../docs/journal.js";
 import { ensureBuiltInSkills, planStepsForWorkItem } from "../execution/skills.js";
 import { executePlan, resolvePlanForRun } from "../execution/runner.js";
 import {
@@ -252,6 +255,16 @@ export function runWorkDoneCommand(options: { workspace: string; workId: string 
 export function runWorkPlanCommand(options: { workspace: string; workId: string; agentProfile?: string }): CommandSuccess<WorkPlanCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const prepared = withDatabase(workspacePath, (db) => {
+    // Checked before the transaction opens, because this one writes a journal
+    // row and then usually throws. Inside the transaction the refusal would
+    // roll back the record of itself, and a journal that only remembers the
+    // permitted dispatches answers none of the questions it exists for.
+    const candidate = getWorkItem(db, options.workId);
+    if (candidate) {
+      assertActionCanBePlanned(candidate);
+      assertManagedDocumentReadiness(db, candidate);
+    }
+
     const transaction = db.transaction(() => {
       ensureBuiltInSkills(db);
       const workItem = getWorkItem(db, options.workId);
@@ -379,6 +392,91 @@ function assertActionCanBePlanned(workItem: WorkItemSummary): void {
       responsibility: workItem.work_classification
     });
   }
+}
+
+/**
+ * Hold an Action that came from a managed plan to what its plan actually says.
+ *
+ * `arcadia next` refuses a dispatch whose prerequisites are unfinished or whose
+ * required Decisions are unanswered, but preparing a Run went around it
+ * entirely: the pointer was advisory, and the looser path was the one real work
+ * travelled. Same rules, both paths, so the documents mean something.
+ *
+ * Applies only to doc-backed Actions. Everything Arcadia captured itself has no
+ * plan to be checked against, and inventing rules for those would turn a
+ * consistency fix into a new restriction on ordinary capture.
+ */
+function assertManagedDocumentReadiness(db: Database.Database, workItem: WorkItemSummary): void {
+  const docRef = workItem.doc_ref?.trim();
+  if (!docRef || !workItem.project_id) {
+    return;
+  }
+
+  const parsed = parseActionDocRef(docRef);
+  if (!parsed) {
+    return;
+  }
+
+  const context = getProjectContext(db, workItem.project_id);
+  const repoRoot = context?.metadata?.repo_path?.trim();
+  const projectSlug = context?.project.slug;
+  // Without a repository there are no documents to consult. `work plan` already
+  // refuses later for the same reason, with a message about the repo path.
+  if (!repoRoot || !projectSlug || !existsSync(repoRoot)) {
+    return;
+  }
+
+  const readiness = resolveActionReadiness(repoRoot, projectSlug, parsed.actionId);
+  // The plan may have been deleted or the action removed since ingestion. That
+  // is a real drift worth surfacing, but `docs sync` is where it gets reported;
+  // blocking planning on it would strand an Action with no way to repair it.
+  if (!readiness.found) {
+    return;
+  }
+
+  const blocked = readiness.blockers.length > 0 || readiness.operatorQuestion !== null;
+
+  recordDispatchEvent(db, {
+    command: "work.plan",
+    projectId: workItem.project_id,
+    projectSlug,
+    planSlug: readiness.planSlug,
+    actionId: parsed.actionId,
+    dispatchable: !blocked,
+    blockers: readiness.blockers,
+    operatorQuestion: readiness.operatorQuestion
+  });
+
+  if (readiness.operatorQuestion) {
+    throw validationError(
+      "Action has an open clarification question in its plan; answer it before preparing a Run.",
+      {
+        actionId: workItem.id,
+        docRef,
+        plan: readiness.planPath,
+        question: readiness.operatorQuestion
+      }
+    );
+  }
+
+  if (readiness.blockers.length > 0) {
+    throw validationError("Action is not ready in its managed plan.", {
+      actionId: workItem.id,
+      docRef,
+      plan: readiness.planPath,
+      blockers: readiness.blockers.map((blocker: DispatchBlocker) => ({
+        field: blocker.field,
+        message: blocker.message,
+        remedy: blocker.remedy
+      }))
+    });
+  }
+}
+
+/** `plan/<plan-slug>#<action-id>` — the shape `docs sync` writes for an Action. */
+function parseActionDocRef(docRef: string): { planSlug: string; actionId: string } | null {
+  const match = /^plan\/([^#]+)#(.+)$/.exec(docRef);
+  return match ? { planSlug: match[1], actionId: match[2] } : null;
 }
 
 function assertNoManagedPlanningRun(

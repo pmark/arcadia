@@ -5,6 +5,13 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import { getProject, getProjectBySlug, getProjectMetadata, listProjects } from "../db/repositories.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
+import {
+  listDispatchEvents,
+  recordDispatchEvent,
+  summarizeDispatchEvents,
+  type DispatchEvent,
+  type DispatchJournalSummary
+} from "../docs/journal.js";
 
 export interface NextCommandOptions {
   workspace: string;
@@ -63,13 +70,27 @@ export function runNextCommand(options: NextCommandOptions): CommandSuccess<Next
   });
 
   const resolution = resolveDispatch(repoRoot, project.slug);
+  const dispatchable = isDispatchable(resolution);
+
+  withDatabase(workspacePath, (db) =>
+    recordDispatchEvent(db, {
+      command: "next",
+      projectId: project.id,
+      projectSlug: project.slug,
+      planSlug: resolution.context?.activePlan ?? null,
+      actionId: resolution.context?.action.id ?? null,
+      dispatchable,
+      blockers: resolution.blockers,
+      operatorQuestion: resolution.operatorQuestion
+    })
+  );
 
   return createSuccess({
     command: "next",
     workspace: workspacePath,
     data: {
       ...resolution,
-      dispatchable: isDispatchable(resolution),
+      dispatchable,
       projectId: project.id,
       repoRoot
     }
@@ -168,4 +189,72 @@ function renderBlockers(blockers: DispatchResolution["blockers"]): string[] {
     `  ! ${blocker.relativePath} [${blocker.field}]: ${blocker.message}`,
     `      ${blocker.remedy}`
   ]);
+}
+
+export interface NextHistoryCommandData {
+  events: DispatchEvent[];
+  summary: DispatchJournalSummary;
+}
+
+/**
+ * Read the dispatch journal.
+ *
+ * The control documents earn their overhead only if refusals are rare and for
+ * good reasons. This is where that is checked: a field that blocks most
+ * resolutions is either a rule worth relaxing or a habit worth fixing, and
+ * nobody can tell which from memory.
+ */
+export function runNextHistoryCommand(options: {
+  workspace: string;
+  limit?: number;
+}): CommandSuccess<NextHistoryCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const limit = options.limit ?? 20;
+
+  const data = withDatabase(workspacePath, (db) => ({
+    events: listDispatchEvents(db, limit),
+    // Summarized over a wider window than is listed: the tally is about the
+    // trend, and twenty rows is too few to see one.
+    summary: summarizeDispatchEvents(db, Math.max(limit, 200))
+  }));
+
+  return createSuccess({ command: "next.history", workspace: workspacePath, data });
+}
+
+export function renderNextHistorySuccess(response: CommandSuccess<NextHistoryCommandData>): string[] {
+  const { events, summary } = response.data;
+
+  if (summary.total === 0) {
+    return ["No dispatch resolutions recorded yet.", "", "Run `arcadia next` to start the journal."];
+  }
+
+  const lines = [
+    `Dispatch resolutions: ${summary.total} · dispatchable ${summary.dispatchable} · blocked ${summary.blocked}`,
+    ""
+  ];
+
+  if (summary.byField.length > 0) {
+    lines.push("Blocked on:");
+    for (const entry of summary.byField) {
+      const share = Math.round((entry.resolutions / summary.total) * 100);
+      lines.push(`  ${entry.field} — ${entry.resolutions} of ${summary.total} resolutions (${share}%)`);
+    }
+    lines.push("");
+  }
+
+  lines.push("Recent:");
+  for (const event of events) {
+    const verdict = event.operatorQuestion
+      ? "question"
+      : event.dispatchable
+        ? "dispatchable"
+        : `blocked (${event.blockerCount})`;
+    const subject = [event.projectSlug, event.planSlug, event.actionId].filter(Boolean).join(" / ") || "unresolved";
+    lines.push(`  ${event.occurredAt} ${event.command} ${subject} — ${verdict}`);
+    if (event.blockerFields.length > 0) {
+      lines.push(`      ${event.blockerFields.join(", ")}`);
+    }
+  }
+
+  return lines;
 }

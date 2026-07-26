@@ -53,9 +53,11 @@ export function applyMigrations(db: Database.Database): void {
   ensureParentWorkItemColumn(db);
   ensureDocRefColumns(db);
   ensureExecutionRequirementColumn(db);
+  ensureAcceptanceCriteriaColumn(db);
   ensureExecutionProfileProvenanceColumns(db);
   ensureDailyCapacityTable(db);
   ensureActivityTables(db);
+  ensureDispatchEventsTable(db);
   applyCapabilityMigrations(db);
 }
 
@@ -65,6 +67,22 @@ function ensureExecutionRequirementColumn(db: Database.Database): void {
   );
   if (!columns.has("execution_requirement_json")) {
     db.prepare("ALTER TABLE work_items ADD COLUMN execution_requirement_json TEXT").run();
+  }
+}
+
+/**
+ * Carry a managed plan's declared acceptance criteria into the Action.
+ *
+ * Without this the criteria stop at the document boundary: the parser requires
+ * them on the current action, and the coding agent that has to satisfy them
+ * never sees them.
+ */
+function ensureAcceptanceCriteriaColumn(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(work_items)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("acceptance_criteria_json")) {
+    db.prepare("ALTER TABLE work_items ADD COLUMN acceptance_criteria_json TEXT").run();
   }
 }
 
@@ -601,6 +619,38 @@ function ensureActivityTables(db: Database.Database): void {
       updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_time_entries_local_date ON time_entries(local_date);
+  `);
+}
+
+/**
+ * One row per time Arcadia resolved whether work could be dispatched from the
+ * managed documents.
+ *
+ * The control documents are only worth their overhead if refusals are rare and
+ * for good reasons, and that is not answerable from anecdote — it needs the
+ * refusals counted and attributed to a field. Carries no foreign keys, on the
+ * same reasoning as `activity_events`: finishing an Action must not erase the
+ * record of how often dispatching it was blocked.
+ */
+function ensureDispatchEventsTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS dispatch_events (
+      id TEXT PRIMARY KEY,
+      occurred_at TEXT NOT NULL,
+      local_date TEXT NOT NULL,
+      command TEXT NOT NULL,
+      project_id TEXT,
+      project_slug TEXT,
+      plan_slug TEXT,
+      action_id TEXT,
+      dispatchable INTEGER NOT NULL CHECK (dispatchable IN (0, 1)),
+      blocker_count INTEGER NOT NULL,
+      -- Distinct blocker fields, as a JSON string array; the tally reads this.
+      blocker_fields TEXT NOT NULL,
+      operator_question INTEGER NOT NULL CHECK (operator_question IN (0, 1))
+    );
+    CREATE INDEX IF NOT EXISTS idx_dispatch_events_occurred_at ON dispatch_events(occurred_at);
+    CREATE INDEX IF NOT EXISTS idx_dispatch_events_local_date ON dispatch_events(local_date);
   `);
 }
 

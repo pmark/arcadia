@@ -415,7 +415,64 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
     }
   }
 
+  reportDependencyCycles(problems, actions);
+
   return actions;
+}
+
+/**
+ * Report every dependency cycle in the plan's action graph.
+ *
+ * A cycle is not a dispatch problem to discover later: no action in it can ever
+ * become ready, so the plan describes work that can never start. Reported at
+ * parse time, next to the dangling-reference check, because both are the same
+ * class of defect — an ordering the document claims but cannot satisfy.
+ */
+function reportDependencyCycles(problems: Problems, actions: PlanActionDoc[]): void {
+  const byId = new Map(actions.map((action) => [action.id, action]));
+  // 0 = unvisited, 1 = on the current path, 2 = fully explored.
+  const state = new Map<string, 0 | 1 | 2>();
+  const path: string[] = [];
+  const reported = new Set<string>();
+
+  const visit = (id: string): void => {
+    const action = byId.get(id);
+    if (!action) {
+      // Dangling; already reported above.
+      return;
+    }
+    if (state.get(id) === 2) {
+      return;
+    }
+    if (state.get(id) === 1) {
+      const cycle = path.slice(path.indexOf(id));
+      // One cycle, one problem: key on the members so the same loop reached
+      // from two entry points is not reported twice.
+      const key = [...cycle].sort().join(",");
+      if (!reported.has(key)) {
+        reported.add(key);
+        problems.add(
+          `actions.${cycle[0]}.depends_on`,
+          `Dependency cycle: ${[...cycle, cycle[0]].join(" -> ")}. No action in a cycle can ever become ready.`
+        );
+      }
+      return;
+    }
+
+    state.set(id, 1);
+    path.push(id);
+    for (const dependency of action.dependsOn) {
+      visit(dependency);
+    }
+    path.pop();
+    state.set(id, 2);
+  };
+
+  // Sorted so the reported entry point is stable across runs rather than
+  // dependent on document order.
+  for (const id of [...byId.keys()].sort()) {
+    visit(id);
+  }
 }
 
 function parseQuestions(problems: Problems, raw: unknown): PlanQuestionDoc[] {

@@ -264,6 +264,61 @@ describe("discovery", () => {
 });
 
 describe("docs sync", () => {
+  it("carries declared acceptance criteria onto the Action, in order", () => {
+    const repo = scratch();
+    writeDoc(
+      repo,
+      "docs/plans/sample-plan.md",
+      PLAN.replace(
+        "    source: conversation",
+        [
+          "    source: conversation",
+          "    acceptance_criteria:",
+          "      - The migration runs twice without duplicating a column.",
+          "      - The command is covered by a test."
+        ].join("\n")
+      )
+    );
+    const workspace = workspaceWithProject(repo);
+
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const item = withDatabase(workspace, (db) => getWorkItemByDocRef(db, "plan/sample-plan#do-the-thing"));
+    expect(JSON.parse(item!.acceptance_criteria_json!)).toEqual([
+      "The migration runs twice without duplicating a column.",
+      "The command is covered by a test."
+    ]);
+
+    // An action that declares none is explicitly empty, not an empty list, so
+    // downstream cannot mistake "declared nothing" for "declared something".
+    const blocked = withDatabase(workspace, (db) => getWorkItemByDocRef(db, "plan/sample-plan#blocked-thing"));
+    expect(blocked!.acceptance_criteria_json).toBeNull();
+  });
+
+  it("updates the Action when the plan's acceptance criteria change", () => {
+    const repo = scratch();
+    const withCriteria = (criterion: string): string =>
+      PLAN.replace(
+        "    source: conversation",
+        ["    source: conversation", "    acceptance_criteria:", `      - ${criterion}`].join("\n")
+      );
+
+    writeDoc(repo, "docs/plans/sample-plan.md", withCriteria("The old bar is cleared."));
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    writeDoc(
+      repo,
+      "docs/plans/sample-plan.md",
+      withCriteria("The new bar is cleared.").replace("updated: 2026-07-25", "updated: 2026-07-26")
+    );
+    const second = runDocsSyncCommand({ workspace, apply: true });
+
+    expect(second.data.totals.update).toBeGreaterThan(0);
+    const item = withDatabase(workspace, (db) => getWorkItemByDocRef(db, "plan/sample-plan#do-the-thing"));
+    expect(JSON.parse(item!.acceptance_criteria_json!)).toEqual(["The new bar is cleared."]);
+  });
+
   it("creates rows, then re-runs as a no-op", () => {
     const repo = scratch();
     writeDoc(repo, "docs/plans/sample-plan.md", PLAN);

@@ -280,3 +280,136 @@ describe("dispatch resolution", () => {
     expect(resolution.blockers[0].message).toContain("No PROJECT.md");
   });
 });
+
+/**
+ * Build a plan whose actions are exactly the given graph, so a test can state
+ * the ordering it means without editing the shared clean-plan fixture.
+ */
+function graphPlanDoc(
+  current: string,
+  actions: Array<{ id: string; status?: string; dependsOn?: string[] }>
+): string {
+  const lines = [
+    "---",
+    "arcadia: v1",
+    "type: plan",
+    "slug: main-plan",
+    "project: demo",
+    "status: active",
+    "milestone: First milestone",
+    `current_action: ${current}`,
+    "updated: 2026-07-25",
+    "actions:"
+  ];
+  for (const action of actions) {
+    lines.push(
+      `  - id: ${action.id}`,
+      `    title: Action ${action.id}`,
+      `    status: ${action.status ?? "open"}`,
+      "    responsibility: codex",
+      `    next_action: Do ${action.id}.`,
+      "    clarification: clarified",
+      "    acceptance_criteria:",
+      `      - ${action.id} is finished and covered by a test.`,
+      `    depends_on: [${(action.dependsOn ?? []).join(", ")}]`
+    );
+  }
+  lines.push("---", "");
+  return lines.join("\n");
+}
+
+describe("dependency readiness", () => {
+  it("blocks the current action while a direct dependency is unfinished", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("ship-it", [
+        { id: "migrate", status: "in_progress" },
+        { id: "ship-it", dependsOn: ["migrate"] }
+      ])
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    const blocker = resolution.blockers.find((entry) => entry.field === "actions.ship-it.depends_on");
+    expect(blocker?.message).toContain('"migrate"');
+    expect(blocker?.message).toContain("in_progress");
+    expect(blocker?.remedy).toContain('Finish "migrate" first');
+    // The action still resolves; the operator needs to see what is blocked.
+    expect(resolution.context?.action.id).toBe("ship-it");
+    expect(isDispatchable(resolution)).toBe(false);
+  });
+
+  it("follows the chain and names the transitive dependency that is not done", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("ship-it", [
+        { id: "schema", status: "open" },
+        { id: "migrate", status: "done", dependsOn: ["schema"] },
+        { id: "ship-it", dependsOn: ["migrate"] }
+      ])
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    const blockers = resolution.blockers.filter((entry) => entry.field === "actions.ship-it.depends_on");
+    expect(blockers).toHaveLength(1);
+    expect(blockers[0].message).toContain('"schema"');
+    expect(blockers[0].message).toContain("via migrate");
+  });
+
+  it("dispatches once every dependency is done", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("ship-it", [
+        { id: "schema", status: "done" },
+        { id: "migrate", status: "done", dependsOn: ["schema"] },
+        { id: "ship-it", dependsOn: ["migrate"] }
+      ])
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    expect(resolution.blockers).toEqual([]);
+    expect(isDispatchable(resolution)).toBe(true);
+  });
+
+  it("rejects a dependency cycle instead of dispatching work that can never be ready", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("ship-it", [
+        { id: "ship-it", dependsOn: ["migrate"] },
+        { id: "migrate", dependsOn: ["ship-it"] }
+      ])
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    const cycle = resolution.blockers.find((entry) => entry.message.includes("Dependency cycle"));
+    expect(cycle).toBeDefined();
+    expect(cycle?.message).toContain("migrate");
+    expect(cycle?.message).toContain("ship-it");
+    expect(isDispatchable(resolution)).toBe(false);
+  });
+
+  it("reports a self-dependency as a cycle", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(root, "docs/plans/main-plan.md", graphPlanDoc("ship-it", [{ id: "ship-it", dependsOn: ["ship-it"] }]));
+
+    const resolution = resolveDispatch(root, "demo");
+
+    expect(resolution.blockers.some((entry) => entry.message.includes("ship-it -> ship-it"))).toBe(true);
+  });
+});
