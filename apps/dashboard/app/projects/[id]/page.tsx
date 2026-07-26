@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { AlertTriangle, ArrowLeft, Save } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Play, Save } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { DashboardChrome } from "../../../components/chrome";
 import {
@@ -12,12 +12,13 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
+  ReviewCard,
   RunCard,
   Section,
   StatusBadge
 } from "../../../components/dashboard-ui";
 import { useArcadiaSnapshot } from "../../../hooks/use-arcadia-snapshot";
-import type { DashboardProject } from "../../../lib/types";
+import type { DashboardProject, DashboardReviewItem, ProjectContinuation } from "../../../lib/types";
 
 const PROJECT_STATUSES = ["active", "paused", "incubating", "completed"] as const;
 
@@ -30,12 +31,52 @@ export default function ProjectDetailsPage() {
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [continuation, setContinuation] = useState<ProjectContinuation | null>(null);
+  const [projectReviews, setProjectReviews] = useState<DashboardReviewItem[]>([]);
+  const [contextLoading, setContextLoading] = useState(false);
+  const [contextError, setContextError] = useState<string | null>(null);
+  const [workPending, setWorkPending] = useState(false);
+  const [workMessage, setWorkMessage] = useState<string | null>(null);
+  const [workError, setWorkError] = useState<string | null>(null);
+  const [reviewPending, setReviewPending] = useState<string | null>(null);
 
   useEffect(() => {
     if (project) {
       setForm(formFromProject(project));
     }
   }, [project]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setContextLoading(true);
+    setContextError(null);
+    fetch(`/api/projects/${encodeURIComponent(projectId)}/continuation`)
+      .then(async (response) => {
+        const body = await response.json();
+        if (!response.ok) {
+          throw new Error(errorMessageFromBody(body, "Project continuation could not be loaded."));
+        }
+        return body as { continuation: ProjectContinuation; reviewItems: DashboardReviewItem[] };
+      })
+      .then((body) => {
+        if (!cancelled) {
+          setContinuation(body.continuation);
+          setProjectReviews(body.reviewItems);
+        }
+      })
+      .catch((loadError) => {
+        if (!cancelled) {
+          setContextError(loadError instanceof Error ? loadError.message : String(loadError));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setContextLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   const related = useMemo(() => {
     if (!snapshot) {
@@ -88,6 +129,60 @@ export default function ProjectDetailsPage() {
     }
   }
 
+  async function getToWork() {
+    const actionId = continuation?.context?.action.id;
+    if (!actionId) return;
+    setWorkPending(true);
+    setWorkMessage(null);
+    setWorkError(null);
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/continuation`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actionId })
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(errorMessageFromBody(body, "Arcadia could not prepare this Action."));
+      setWorkMessage(typeof body.message === "string" ? body.message : "Planning Decision prepared in Review.");
+      await loadContinuation();
+      await refresh();
+    } catch (error) {
+      setWorkError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setWorkPending(false);
+    }
+  }
+
+  async function loadContinuation() {
+    const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/continuation`);
+    const body = await response.json();
+    if (!response.ok) throw new Error(errorMessageFromBody(body, "Project continuation could not be loaded."));
+    setContinuation(body.continuation as ProjectContinuation);
+    setProjectReviews(body.reviewItems as DashboardReviewItem[]);
+  }
+
+  async function submitReviewAction(item: DashboardReviewItem, action: "approve" | "reject" | "defer" | "resolve", reply?: string) {
+    const key = action === "resolve" ? `${item.id}:resolve` : `${item.id}:${action}`;
+    setReviewPending(key);
+    setWorkError(null);
+    try {
+      const response = await fetch("/api/review-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id, action, reply })
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(errorMessageFromBody(body, "Review action failed."));
+      setWorkMessage(typeof body.message === "string" ? body.message : "Review response recorded.");
+      await loadContinuation();
+      await refresh();
+    } catch (error) {
+      setWorkError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setReviewPending(null);
+    }
+  }
+
   return (
     <DashboardChrome
       title={project?.name ?? "Project"}
@@ -108,9 +203,16 @@ export default function ProjectDetailsPage() {
 
       {error ? <ErrorState message={error} /> : null}
       {saveError ? <ErrorState title="Save failed" message={saveError} /> : null}
+      {contextError ? <ErrorState title="Continuation unavailable" message={contextError} /> : null}
+      {workError ? <ErrorState title="Get to work failed" message={workError} /> : null}
       {saveMessage ? (
         <div className="mb-4 rounded-md border border-moss/30 bg-moss/10 px-4 py-3 text-sm font-semibold text-moss">
           {saveMessage}
+        </div>
+      ) : null}
+      {workMessage ? (
+        <div className="mb-4 rounded-md border border-moss/30 bg-moss/10 px-4 py-3 text-sm font-semibold text-moss">
+          {workMessage} <Link className="ml-2 underline" href="/review">Open Review</Link>
         </div>
       ) : null}
 
@@ -153,6 +255,93 @@ export default function ProjectDetailsPage() {
               <ReadOnlyField label="Last Artifact" value={project.lastArtifact?.title ?? "None"} />
             </dl>
           </section>
+
+          <section id="get-to-work" className="grid min-w-0 gap-4 rounded-md border border-steel/30 bg-panel p-4 shadow-soft">
+            <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-steel">Continuation</p>
+                <h2 className="mt-1 text-xl font-semibold">Get to work</h2>
+                <p className="mt-1 max-w-3xl text-sm text-muted">The checked-in project documents below determine whether Arcadia can prepare meaningful work.</p>
+              </div>
+              <StatusBadge
+                status={readinessStatus(continuation)}
+                label={readinessLabel(continuation, contextLoading)}
+              />
+            </div>
+
+            {continuation?.context ? (
+              <>
+                <dl className="grid gap-3 text-sm md:grid-cols-2">
+                  <ReadOnlyField label="Current Milestone" value={continuation.context.milestone ?? "None"} />
+                  <ReadOnlyField label="Current Action" value={continuation.context.action.title} />
+                  <ReadOnlyField label="Responsibility" value={continuation.context.action.responsibility} />
+                  <ReadOnlyField label="Expected Artifact" value={continuation.context.action.expectedArtifact ?? "Missing"} />
+                  <ReadOnlyField label="Execution Profile" value={executionProfile(continuation.context.action.resolvedExecution)} />
+                  <ReadOnlyField label="Documentation Source" value={`${continuation.context.actionPath} · ${continuation.context.activePlan}`} />
+                </dl>
+                {continuation.context.action.nextAction ? <ReadOnlyField label="Next Action" value={continuation.context.action.nextAction} /> : null}
+                {continuation.context.action.source ? <ReadOnlyField label="Why This Action" value={continuation.context.action.source} /> : null}
+                {continuation.context.action.acceptanceCriteria.length > 0 ? (
+                  <div className="rounded-md border border-line bg-canvas p-3 text-sm">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-muted">Required Artifact evidence</div>
+                    <ul className="mt-2 grid gap-1 pl-5 text-muted">
+                      {continuation.context.action.acceptanceCriteria.map((criterion) => <li key={criterion} className="list-disc">{criterion}</li>)}
+                    </ul>
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void getToWork()}
+                    disabled={!continuation.dispatchable || workPending}
+                    className="inline-flex min-h-11 items-center gap-2 rounded-md border border-moss/30 bg-moss/10 px-4 text-sm font-semibold text-moss transition hover:border-moss disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Play className="h-4 w-4" aria-hidden="true" />
+                    {workPending ? "Preparing..." : "Get to work"}
+                  </button>
+                  <span className="text-xs text-muted">Prepares a planning Decision; it does not run code or deploy.</span>
+                </div>
+              </>
+            ) : null}
+
+            {continuation?.operatorQuestion ? (
+              <div className="rounded-md border border-gold/40 bg-gold/10 p-3 text-sm">
+                <div className="font-semibold text-gold">Your answer is needed</div>
+                <p className="mt-1 break-words">{continuation.operatorQuestion}</p>
+                <Link href="/review" className="mt-3 inline-flex min-h-10 items-center rounded-md border border-gold/40 bg-panel px-3 text-sm font-semibold text-gold">Resolve in Review</Link>
+              </div>
+            ) : null}
+            {continuation && continuation.blockers.length > 0 ? (
+              <div className="grid gap-2">
+                <div className="text-sm font-semibold text-clay">What is preventing progress</div>
+                {continuation.blockers.map((blocker) => (
+                  <div key={`${blocker.relativePath}:${blocker.field}`} className="rounded-md border border-clay/30 bg-clay/10 p-3 text-sm">
+                    <div className="font-semibold">{blocker.message}</div>
+                    <div className="mt-1 text-muted">{blocker.relativePath} · {blocker.field}</div>
+                    <div className="mt-2">Next: {blocker.remedy}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {!contextLoading && continuation?.context === null && continuation?.blockers.length === 0 ? <EmptyState text="No current Action could be resolved from the project documents." /> : null}
+          </section>
+
+          {projectReviews.length > 0 ? (
+            <Section title="Resolve open questions for this project">
+              <div className="grid min-w-0 gap-3">
+                {projectReviews.map((item) => (
+                  <ReviewCard
+                    key={item.id}
+                    item={item}
+                    pendingAction={reviewPending?.startsWith(`${item.id}:`) ? reviewPending.slice(item.id.length + 1) : null}
+                    onAction={(reviewItem, action) => void submitReviewAction(reviewItem, action)}
+                    onResolveOption={(reviewItem, option) => void submitReviewAction(reviewItem, "resolve", option)}
+                    onResolveReply={(reviewItem, reply) => void submitReviewAction(reviewItem, "resolve", reply)}
+                  />
+                ))}
+              </div>
+            </Section>
+          ) : null}
 
           <section id="project-setup" className="grid min-w-0 gap-3">
             <h2 className="text-base font-semibold">Project Setup</h2>
@@ -343,4 +532,29 @@ function errorMessageFromBody(body: unknown, fallback: string): string {
   }
 
   return `${error}\n${JSON.stringify(details, null, 2)}`;
+}
+
+function readinessStatus(continuation: ProjectContinuation | null): string {
+  if (!continuation) return "pending";
+  if (continuation.blockers.length > 0) return "blocked";
+  if (continuation.operatorQuestion) return "question_open";
+  if (continuation.dispatchable) return "ready";
+  return "requires_review";
+}
+
+function readinessLabel(continuation: ProjectContinuation | null, loading: boolean): string {
+  if (loading) return "Checking documents";
+  if (!continuation) return "Unavailable";
+  if (continuation.blockers.length > 0) return "Blocked by documentation";
+  if (continuation.operatorQuestion) return "Waiting for your answer";
+  if (continuation.dispatchable) return "Ready to prepare";
+  return "Requires review";
+}
+
+function executionProfile(value: unknown): string {
+  if (!value || typeof value !== "object") return "Not resolved";
+  const profile = "profile" in value && typeof value.profile === "string" ? value.profile : null;
+  if (profile) return profile;
+  const schema = "schema" in value && typeof value.schema === "string" ? value.schema : null;
+  return schema ?? "Resolved (profile not named)";
 }

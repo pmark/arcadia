@@ -345,6 +345,40 @@ Remaining incompatibilities and recommended patches:
   audit note. Add a first-class cancel transition and refuse execution approval
   when a Run has neither a Project nor executable steps.
 
+## Project continuation UX findings — Private Practice Now
+
+The first foreign-repository validation exposed a separate readiness gap: the
+portfolio Daily Advantage query intentionally selects only `open` Actions, but
+PPN's docs-authoritative current Action is already `in_progress`, clarified,
+and dispatchable. The old Project view therefore showed a stale summary without
+the information needed to understand why work was not starting.
+
+The Project view now resolves `arcadia next --project` on demand and presents
+the checked-in Milestone, current Action, source plan, responsibility, expected
+Artifact, acceptance criteria, and resolved execution profile. A guarded
+**Get to work** control prepares a planning Decision for that exact Action. It
+does not queue a Run, invoke Codex, modify the foreign repository, or weaken
+execution requirements. When continuation is unsafe, the panel lists every
+document blocker with its file, field, message, and remedy. Operator questions
+and project Decisions remain answerable inline through the existing
+intent-specific Review resolver.
+
+In the live PPN check, the guarded preparation reached execution-profile
+resolution and refused deterministically: no configured planning provider met
+`c3_systems/e3_deep` while honoring the Action's `local_only` locality. The UI
+now preserves that exact refusal and rejected-mapping explanation, so “Ready to
+prepare” cannot be mistaken for permission to weaken the profile or use
+credentials that are not configured.
+
+Recommended follow-ups:
+
+- Keep repository document resolution authoritative; never infer a current
+  Action from database recency or backlog order when the docs pointer refuses.
+- Add an explicit docs-sync timestamp/result to this panel once narrative and
+  mission-Log ingestion can report more than intentional skips.
+- Add a first-class project-scoped Review filter if inline Decisions become too
+  dense for a large project; preserve the same answer-versus-approval contract.
+
 ### What dogfooding changed
 
 Using the protocol on Arcadia itself found three things the spec did not

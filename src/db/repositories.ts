@@ -382,6 +382,7 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
     clarification_source: null,
     confidence: null,
     parent_work_item_id: input.parentWorkItemId ? assertUsableParent(db, input.parentWorkItemId, null) : null,
+    doc_ref: null,
     execution_requirement_json: input.executionRequirementJson ?? null,
     created_at: timestamp,
     updated_at: timestamp

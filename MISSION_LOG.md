@@ -8,6 +8,31 @@ updated: 2026-07-25
 
 # Mission Log: Arcadia
 
+## 2026-07-26 — Made project continuation actionable
+
+- **Did:** Pulled `main` to the latest merge, then added a project-scoped
+  continuation API and Project view panel. The panel resolves the current
+  Milestone and Action from the repository's managed documents, displays the
+  source plan, expected Artifact, responsibility, resolved execution profile,
+  acceptance evidence, operator questions, and deterministic document
+  blockers. Added guarded **Get to work** preparation for the exact current
+  Action and inline project Decision responses.
+- **Result:** Private Practice Now no longer appears idle merely because its
+  docs-authoritative Action is `in_progress` and therefore not eligible for the
+  portfolio-wide Daily Advantage query. Its valid `systems_change` continuation
+  is visible and can prepare a planning Decision without modifying PPN code or
+  starting a Run. Refusal remains explicit when a pointer, question, required
+  field, or responsibility prevents dispatch.
+- **Next:** Keep `ingest-mission-logs` as Arcadia's authoritative current
+  Action; this UX increment does not silently change protocol priority. Resolve
+  the PPN planning profile only when an approved provider mapping satisfies its
+  declared capability and locality requirements.
+- **Blockers:** PPN's `systems_change` profile currently refuses preparation:
+  no configured planning provider satisfies `c3_systems/e3_deep` while honoring
+  `local_only`. Arcadia names every rejected mapping and makes no weaker
+  substitution. Narrative and mission-Log persistence plus dependency
+  persistence remain documented protocol gaps.
+
 ## 2026-07-25 — Made clarification Decisions conversational
 
 - **Did:** Repaired the shared Decision-response contract, Mission Control
