@@ -168,6 +168,47 @@ export interface DashboardProject {
   updatedAt: string;
 }
 
+export interface ProjectContinuation {
+  context: {
+    repoRoot: string;
+    projectSlug: string;
+    projectName: string;
+    projectStatus: string;
+    activePlan: string;
+    planPath: string;
+    planStatus: string;
+    milestone: string | null;
+    action: {
+      id: string;
+      title: string;
+      status: string;
+      responsibility: string;
+      effort: string | null;
+      nextAction: string | null;
+      expectedArtifact: string | null;
+      clarification: string | null;
+      gapType: string | null;
+      question: string | null;
+      confidence: string | null;
+      source: string | null;
+      dependsOn: string[];
+      acceptanceCriteria: string[];
+      decisions: string[];
+      references: string[];
+      execution: unknown;
+      resolvedExecution: unknown;
+    };
+    actionPath: string;
+    requiredDecisions: Array<{ id: string; slug: string; status: string; question: string; resolved: boolean }>;
+    authorization: string;
+  } | null;
+  blockers: Array<{ relativePath: string; field: string; message: string; remedy: string }>;
+  operatorQuestion: string | null;
+  dispatchable: boolean;
+  projectId: string;
+  repoRoot: string;
+}
+
 export interface DashboardCapability {
   id: string;
   name: string;

@@ -560,10 +560,16 @@ function assertPlanningPreparationEligibility(
   db: Parameters<typeof getWorkItem>[0],
   workItem: WorkItemSummary
 ): void {
-  if (workItem.status !== "open") {
-    throw validationError("Action must be open and not already in progress before planning preparation.", {
+  // A docs-backed current Action may legitimately be `in_progress` before its
+  // planning packet exists (for example after a foreign-repository sync). The
+  // Project continuation surface is the explicit handoff in that case; keep
+  // ad-hoc, database-only Actions on the stricter open-only path.
+  const docsBackedInProgress = workItem.status === "in_progress" && Boolean(workItem.doc_ref);
+  if (workItem.status !== "open" && !docsBackedInProgress) {
+    throw validationError("Action must be open before planning preparation unless it is a docs-backed current Action.", {
       actionId: workItem.id,
-      status: workItem.status
+      status: workItem.status,
+      docRef: workItem.doc_ref
     });
   }
   if (workItem.work_classification !== "codex" || workItem.queue !== "work_queue") {
