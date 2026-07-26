@@ -617,6 +617,33 @@ Three outcomes are possible, and each is a complete answer:
 An action owned by `requires_review` or `blocked` resolves cleanly but is never
 dispatchable — the pointer is valid, the work simply is not a coding agent's.
 
+### Whether the documents are earning their keep
+
+Every resolution — from `next` and from `work plan` alike — is journalled:
+what was asked, whether it was allowed, and which fields blocked it.
+
+```sh
+pnpm arcadia next history --workspace "$WORKSPACE" --limit 20
+```
+
+```text
+Dispatch resolutions: 34 · dispatchable 21 · blocked 13
+
+Blocked on:
+  actions.ship-it.depends_on — 9 of 34 resolutions (26%)
+  current_action — 4 of 34 resolutions (12%)
+
+Recent:
+  2026-07-26T05:43:24.205Z work.plan arcadia / portfolio-docs-protocol / ingest-mission-logs — question
+```
+
+The control documents are worth their overhead only if refusals are rare and for
+good reasons, and that is not answerable from memory. A field that blocks a
+quarter of all resolutions is either a rule worth relaxing or a habit worth
+fixing; the tally is what tells the two apart. Fields are counted once per
+resolution, so a plan with many dependencies does not outrank a rule that
+quietly blocks everything.
+
 ### The executive view
 
 ```sh
@@ -641,9 +668,32 @@ you and a workable queue.
 
 `MISSION_LOG.md` files and narrative docs (`type: architecture | strategy |
 reference`) are parsed and validated but not yet turned into rows; `docs sync`
-reports them as skipped so you can see the protocol recognizes them. Action
-`depends_on` links are validated — a dependency on an id that does not exist is
-an error — but ordering is not yet persisted.
+reports them as skipped so you can see the protocol recognizes them.
+
+### Action ordering and acceptance criteria
+
+Action `depends_on` links are validated at parse time: a dependency on an id
+that does not exist is an error, and so is a dependency cycle — no action in a
+cycle can ever become ready, so the plan describes work that cannot start.
+
+`arcadia next` enforces the ordering. If the current action depends, directly or
+transitively, on an action that is not `done`, the dispatch is blocked and each
+unmet prerequisite is named with its status and the chain that reached it.
+Finish it, make it the current action, or drop the dependency. Ordering is still
+not persisted to the database — it is enforced from the documents, which are
+authoritative.
+
+`arcadia work plan` enforces the same rules for any Action that came from a
+managed plan, whether or not it is the current action: unfinished prerequisites,
+unanswered required Decisions, and an open clarification question all refuse the
+preparation and name the file and field to repair. Actions Arcadia captured
+itself have no plan to be judged against and are unaffected.
+
+An action's `acceptance_criteria` are carried through `docs sync` onto the
+Action and quoted verbatim to the coding agent in the packet's Acceptance
+Criteria section, ahead of Arcadia's generated guardrails. Write them as the
+conditions you would check at review; they are what the agent is asked to
+satisfy.
 
 ## Plan Work
 

@@ -382,7 +382,11 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
     clarification_source: null,
     confidence: null,
     parent_work_item_id: input.parentWorkItemId ? assertUsableParent(db, input.parentWorkItemId, null) : null,
+    // Set by ingestion via setWorkItemDocRef once the row exists; an Action
+    // Arcadia captured itself never gets one.
+    doc_ref: null,
     execution_requirement_json: input.executionRequirementJson ?? null,
+    acceptance_criteria_json: input.acceptanceCriteriaJson ?? null,
     created_at: timestamp,
     updated_at: timestamp
   };
@@ -391,13 +395,13 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
     `INSERT INTO work_items (
       id, project_id, milestone_id, title, raw_input, queue, work_classification,
       next_action, expected_artifact, status, effort, clarification_status, gap_type,
-      open_question, clarification_source, confidence, parent_work_item_id,
-      execution_requirement_json, created_at, updated_at
+      open_question, clarification_source, confidence, parent_work_item_id, doc_ref,
+      execution_requirement_json, acceptance_criteria_json, created_at, updated_at
     ) VALUES (
       @id, @project_id, @milestone_id, @title, @raw_input, @queue, @work_classification,
       @next_action, @expected_artifact, @status, @effort, @clarification_status, @gap_type,
-      @open_question, @clarification_source, @confidence, @parent_work_item_id,
-      @execution_requirement_json, @created_at, @updated_at
+      @open_question, @clarification_source, @confidence, @parent_work_item_id, @doc_ref,
+      @execution_requirement_json, @acceptance_criteria_json, @created_at, @updated_at
     )`
   ).run(workItem);
 
@@ -999,6 +1003,11 @@ export function updateWorkItem(
   if (input.executionRequirementJson !== undefined) {
     parameters.execution_requirement_json = nullable(input.executionRequirementJson);
     updates.push("execution_requirement_json = @execution_requirement_json");
+  }
+
+  if (input.acceptanceCriteriaJson !== undefined) {
+    parameters.acceptance_criteria_json = nullable(input.acceptanceCriteriaJson);
+    updates.push("acceptance_criteria_json = @acceptance_criteria_json");
   }
 
   if (updates.length === 0) {
