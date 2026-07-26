@@ -8,10 +8,13 @@ import { withDatabase } from "../src/db/connection.js";
 import {
   createWorkItemWithOptionalArtifact,
   getWorkItem,
+  getReviewItemByDocRef,
   getWorkItemByDocRef,
+  listMilestonesForProject,
   listPortfolioProjects,
   listProjects,
   listReviewItems,
+  listWorkItemDependencies,
   updateWorkItem,
   upsertProject,
   upsertProjectMetadata
@@ -276,6 +279,244 @@ describe("docs sync", () => {
     expect(again.data.totals.create).toBe(0);
     expect(again.data.totals.update).toBe(0);
     expect(again.data.totals.unchanged).toBeGreaterThan(0);
+  });
+
+  it("persists depends_on edges across a sync round trip", () => {
+    const repo = scratch();
+    writeDoc(repo, "docs/plans/sample-plan.md", PLAN);
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const edges = withDatabase(workspace, (db) => {
+      const dependent = getWorkItemByDocRef(db, "plan/sample-plan#blocked-thing");
+      return listWorkItemDependencies(db, dependent!.id);
+    });
+
+    expect(edges).toHaveLength(1);
+    expect(edges[0]).toMatchObject({ title: "Do the thing", status: "open" });
+    expect(edges[0].docRef).toBe("plan/sample-plan#do-the-thing");
+
+    // Re-running must not fork the edge; the composite key is what guarantees it.
+    runDocsSyncCommand({ workspace, apply: true });
+    const afterRerun = withDatabase(workspace, (db) => {
+      const dependent = getWorkItemByDocRef(db, "plan/sample-plan#blocked-thing");
+      return listWorkItemDependencies(db, dependent!.id);
+    });
+    expect(afterRerun).toHaveLength(1);
+  });
+
+  it("removes an edge the document stopped declaring", () => {
+    const repo = scratch();
+    writeDoc(repo, "docs/plans/sample-plan.md", PLAN);
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    // The operator deleted the dependency, which is an instruction to drop it.
+    writeDoc(
+      repo,
+      "docs/plans/sample-plan.md",
+      PLAN.replace("    depends_on: [do-the-thing]", "    depends_on: []").replace(
+        "updated: 2026-07-25",
+        "updated: 2026-07-26"
+      )
+    );
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const edges = withDatabase(workspace, (db) => {
+      const dependent = getWorkItemByDocRef(db, "plan/sample-plan#blocked-thing");
+      return listWorkItemDependencies(db, dependent!.id);
+    });
+    expect(edges).toEqual([]);
+  });
+
+  it("leaves a dependency Arcadia recorded outside ingestion alone", () => {
+    const repo = scratch();
+    writeDoc(repo, "docs/plans/sample-plan.md", PLAN);
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    withDatabase(workspace, (db) => {
+      const dependent = getWorkItemByDocRef(db, "plan/sample-plan#blocked-thing")!;
+      const other = getWorkItemByDocRef(db, "plan/sample-plan#do-the-thing")!;
+      const unmanaged = createWorkItemWithOptionalArtifact(db, {
+        title: "Hand-captured prerequisite",
+        rawInput: "captured by hand",
+        queue: "work_queue",
+        workClassification: "codex",
+        nextAction: "Do it.",
+        status: "open"
+      });
+      db.prepare(
+        `INSERT INTO work_item_dependencies (work_item_id, depends_on_work_item_id, doc_ref, created_at)
+         VALUES (?, ?, NULL, ?)`
+      ).run(dependent.id, unmanaged.workItem.id, "2026-07-26T00:00:00.000Z");
+      expect(other.id).not.toBe(unmanaged.workItem.id);
+    });
+
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const edges = withDatabase(workspace, (db) => {
+      const dependent = getWorkItemByDocRef(db, "plan/sample-plan#blocked-thing");
+      return listWorkItemDependencies(db, dependent!.id);
+    });
+    // Both survive: the managed edge is rewritten, the unmanaged one is untouched.
+    expect(edges).toHaveLength(2);
+    expect(edges.filter((edge) => edge.docRef === null)).toHaveLength(1);
+  });
+
+  it("ends a milestone when its plan is complete, and keeps it active otherwise", () => {
+    const repo = scratch();
+    writeDoc(repo, "docs/plans/sample-plan.md", PLAN);
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const whileActive = withDatabase(workspace, (db) =>
+      listMilestonesForProject(db, listProjects(db)[0].id).find((m) => m.title === "First milestone")
+    );
+    expect(whileActive?.status).toBe("active");
+
+    writeDoc(
+      repo,
+      "docs/plans/sample-plan.md",
+      PLAN.replace("status: active", "status: complete").replace("updated: 2026-07-25", "updated: 2026-07-26")
+    );
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const afterComplete = withDatabase(workspace, (db) =>
+      listMilestonesForProject(db, listProjects(db)[0].id).find((m) => m.title === "First milestone")
+    );
+    // Left active, this milestone would keep winning `current_milestone`, which
+    // picks the newest active one regardless of whether its plan is over.
+    expect(afterComplete?.status).toBe("completed");
+  });
+
+  it("gives an action its own milestone when it names one", () => {
+    const repo = scratch();
+    writeDoc(
+      repo,
+      "docs/plans/sample-plan.md",
+      PLAN.replace(
+        "  - id: blocked-thing\n    title: Blocked thing",
+        "  - id: blocked-thing\n    title: Blocked thing\n    milestone: Second milestone"
+      )
+    );
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    withDatabase(workspace, (db) => {
+      const projectId = listProjects(db)[0].id;
+      const milestones = listMilestonesForProject(db, projectId);
+      const second = milestones.find((m) => m.title === "Second milestone");
+      expect(second).toBeDefined();
+
+      // The plan's own milestone keeps the bare ref, so nothing is migrated.
+      const first = milestones.find((m) => m.title === "First milestone");
+      expect(first?.doc_ref).toBe("plan/sample-plan");
+
+      const overridden = getWorkItemByDocRef(db, "plan/sample-plan#blocked-thing");
+      const plain = getWorkItemByDocRef(db, "plan/sample-plan#do-the-thing");
+      expect(overridden?.milestone_id).toBe(second!.id);
+      expect(plain?.milestone_id).toBe(first!.id);
+    });
+  });
+
+  it("resolves an already-raised plan question through the decision that answers it", () => {
+    const repo = scratch();
+    writeDoc(repo, "docs/plans/sample-plan.md", PLAN);
+    const workspace = workspaceWithProject(repo);
+    // The question is raised first, as it was before decisions could answer one.
+    runDocsSyncCommand({ workspace, apply: true });
+    expect(
+      withDatabase(workspace, (db) => getReviewItemByDocRef(db, "plan/sample-plan?question=rollout"))?.status
+    ).toBe("open");
+
+    writeDoc(
+      repo,
+      "docs/plans/sample-plan.md",
+      PLAN.replace("    gap_type: missing-decision\ndecisions: []", '    gap_type: missing-decision\n    decision: "0009"\ndecisions: []')
+    );
+    writeDoc(
+      repo,
+      "docs/decisions/0009-rollout.md",
+      [
+        "---",
+        "arcadia: v1",
+        "type: decision",
+        'id: "0009"',
+        "slug: rollout-order",
+        "project: demo",
+        "status: approved",
+        "question: Do we cut over per-tenant or all at once?",
+        "answer: Per-tenant.",
+        "decided: 2026-07-26",
+        "updated: 2026-07-26",
+        "---",
+        ""
+      ].join("\n")
+    );
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const question = withDatabase(workspace, (db) =>
+      getReviewItemByDocRef(db, "plan/sample-plan?question=rollout")
+    );
+    // Answered elsewhere must not keep sitting in the queue as open.
+    expect(question?.status).toBe("approved");
+    expect(question?.decision_note).toBe("Per-tenant.");
+  });
+
+  it("does not raise a second Decision for a question its decision already surfaces", () => {
+    const repo = scratch();
+    writeDoc(
+      repo,
+      "docs/plans/sample-plan.md",
+      PLAN.replace("    gap_type: missing-decision\ndecisions: []", '    gap_type: missing-decision\n    decision: "0009"\ndecisions: []')
+    );
+    writeDoc(
+      repo,
+      "docs/decisions/0009-rollout.md",
+      [
+        "---",
+        "arcadia: v1",
+        "type: decision",
+        'id: "0009"',
+        "slug: rollout-order",
+        "project: demo",
+        "status: open",
+        "question: Do we cut over per-tenant or all at once?",
+        "updated: 2026-07-26",
+        "---",
+        ""
+      ].join("\n")
+    );
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const question = withDatabase(workspace, (db) =>
+      getReviewItemByDocRef(db, "plan/sample-plan?question=rollout")
+    );
+    expect(question).toBeNull();
+
+    // Exactly one open Decision for the one question, raised by the decision doc.
+    const open = withDatabase(workspace, (db) =>
+      listReviewItems(db, "open").filter((item) => item.decision_needed.includes("cut over per-tenant"))
+    );
+    expect(open).toHaveLength(1);
+  });
+
+  it("refuses to resolve a question naming a decision that does not exist", () => {
+    const repo = scratch();
+    writeDoc(
+      repo,
+      "docs/plans/sample-plan.md",
+      PLAN.replace("    gap_type: missing-decision\ndecisions: []", '    gap_type: missing-decision\n    decision: "0099"\ndecisions: []')
+    );
+    const workspace = workspaceWithProject(repo);
+    const result = runDocsSyncCommand({ workspace, apply: true });
+
+    const skipped = result.data.projects
+      .flatMap((project) => project.changes)
+      .find((change) => change.entity === "question" && change.action === "skipped");
+    expect(skipped?.reason).toContain("0099");
   });
 
   it("writes nothing on a dry run, and previews exactly what apply does", () => {

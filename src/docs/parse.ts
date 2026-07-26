@@ -383,6 +383,7 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
       question: question ?? null,
       confidence: (confidence ?? null) as never,
       source: optionalString(value, "source"),
+      milestone: optionalString(value, "milestone"),
       dependsOn: stringArray(value.depends_on),
       acceptanceCriteria,
       decisions: stringArray(value.decisions),
@@ -438,10 +439,11 @@ function parseQuestions(problems: Problems, raw: unknown): PlanQuestionDoc[] {
     const id = slugField(problems, value, "id", field);
     const question = requiredString(problems, value, "question", field);
     const gapType = optionalEnum(problems, value, "gap_type", GAP_TYPES, field);
+    const decision = optionalString(value, "decision");
     if (!id || !question) {
       return;
     }
-    questions.push({ id, question, gapType: (gapType ?? null) as never });
+    questions.push({ id, question, gapType: (gapType ?? null) as never, decision });
   });
 
   return questions;

@@ -591,6 +591,33 @@ Exactly one action may be current across a project. A second plan declaring
 `current_action` is reported as a competing objective rather than silently
 losing to the active plan.
 
+An action's `depends_on` ordering is a dispatch constraint, not a note. `next`
+refuses while any Action the current one depends on is unfinished, naming the
+prerequisite and offering three repairs — finish it, point `current_action` at
+it, or delete the dependency if it no longer holds:
+
+```text
+  ! docs/plans/portfolio-docs-protocol.md [actions.persist-dependencies.depends_on]: Depends on "build-upsert" ("Build the upsert layer"), which is "open", not done.
+      Finish "build-upsert" first, or point current_action at it, or remove the dependency if it no longer holds.
+```
+
+`docs sync` persists those edges, replacing the set each run so deleting a
+`depends_on` line in a document actually removes the constraint. A dependency
+recorded outside ingestion is never removed by a document that fails to mention
+it.
+
+An action may also name its own `milestone:` when a plan spans more than one
+(Decision 0005). It inherits the plan's otherwise, and the plan's own milestone
+keeps its existing identity, so adding an override migrates nothing. A plan's
+status decides its milestone's: a `complete` or `superseded` plan ends its
+milestone rather than leaving it active forever.
+
+A plan-level question may name the `decision:` that answers it, and ingestion
+mirrors that decision's resolution onto the question. This is how an answered
+question leaves the review queue: ingestion never deletes, and treating a
+question's absence as resolution would let a document that merely trails reality
+silently close live work.
+
 When the pointer cannot be resolved, `next` refuses and names the repair:
 
 ```text
@@ -641,9 +668,7 @@ you and a workable queue.
 
 `MISSION_LOG.md` files and narrative docs (`type: architecture | strategy |
 reference`) are parsed and validated but not yet turned into rows; `docs sync`
-reports them as skipped so you can see the protocol recognizes them. Action
-`depends_on` links are validated — a dependency on an id that does not exist is
-an error — but ordering is not yet persisted.
+reports them as skipped so you can see the protocol recognizes them.
 
 ## Plan Work
 

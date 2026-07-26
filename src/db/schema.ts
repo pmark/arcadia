@@ -52,6 +52,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureClarificationColumns(db);
   ensureParentWorkItemColumn(db);
   ensureDocRefColumns(db);
+  ensureWorkItemDependencyTable(db);
   ensureExecutionRequirementColumn(db);
   ensureExecutionProfileProvenanceColumns(db);
   ensureDailyCapacityTable(db);
@@ -531,6 +532,39 @@ function ensureDocRefColumns(db: Database.Database): void {
 
     db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_doc_ref ON ${table}(doc_ref)`);
   }
+}
+
+/**
+ * The `depends_on` ordering a plan document declares, as edges rather than a
+ * column, because an Action may depend on several others.
+ *
+ * The composite primary key is what makes ingestion idempotent: `docs sync`
+ * re-runs constantly, and an edge is fully identified by its two endpoints, so
+ * re-inserting one is a no-op instead of a duplicate. Both foreign keys cascade
+ * because an edge to a deleted Action orders nothing.
+ *
+ * Only rows carrying a `doc_ref` are managed by ingestion, matching the rest of
+ * the protocol: a dependency Arcadia recorded some other way is never removed
+ * because a document failed to mention it.
+ * See docs/plans/portfolio-docs-protocol.md.
+ */
+function ensureWorkItemDependencyTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS work_item_dependencies (
+      work_item_id TEXT NOT NULL,
+      depends_on_work_item_id TEXT NOT NULL,
+      doc_ref TEXT,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (work_item_id, depends_on_work_item_id),
+      FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE CASCADE,
+      FOREIGN KEY (depends_on_work_item_id) REFERENCES work_items(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_work_item_dependencies_depends_on
+      ON work_item_dependencies(depends_on_work_item_id);
+    CREATE INDEX IF NOT EXISTS idx_work_item_dependencies_doc_ref
+      ON work_item_dependencies(doc_ref);
+  `);
 }
 
 /**

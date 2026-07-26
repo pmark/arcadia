@@ -2721,6 +2721,70 @@ export function setWorkItemDocRef(db: Database.Database, id: string, docRef: str
   db.prepare("UPDATE work_items SET doc_ref = ? WHERE id = ?").run(docRef, id);
 }
 
+export interface WorkItemDependency {
+  workItemId: string;
+  title: string;
+  status: string;
+  docRef: string | null;
+}
+
+/** The Actions `workItemId` waits on, in stable title order. */
+export function listWorkItemDependencies(db: Database.Database, workItemId: string): WorkItemDependency[] {
+  const rows = db
+    .prepare(
+      `SELECT w.id AS id, w.title AS title, w.status AS status, w.doc_ref AS doc_ref
+       FROM work_item_dependencies d
+       JOIN work_items w ON w.id = d.depends_on_work_item_id
+       WHERE d.work_item_id = ?
+       ORDER BY w.title`
+    )
+    .all(workItemId) as Array<{ id: string; title: string; status: string; doc_ref: string | null }>;
+
+  return rows.map((row) => ({
+    workItemId: row.id,
+    title: row.title,
+    status: row.status,
+    docRef: row.doc_ref
+  }));
+}
+
+/**
+ * Make the document-declared edges out of `workItemId` exactly `dependsOnWorkItemIds`.
+ *
+ * Full replacement rather than insert-only, because documents own intent: an
+ * operator who deletes a `depends_on` line is removing the dependency, and an
+ * edge that survived that deletion would block dispatch forever with nothing in
+ * any file explaining why. Only rows carrying a `doc_ref` are cleared, so an
+ * edge recorded outside ingestion is left alone.
+ */
+export function replaceDocumentWorkItemDependencies(
+  db: Database.Database,
+  workItemId: string,
+  docRef: string,
+  dependsOnWorkItemIds: string[]
+): void {
+  const timestamp = nowIso();
+
+  db.transaction(() => {
+    db.prepare("DELETE FROM work_item_dependencies WHERE work_item_id = ? AND doc_ref IS NOT NULL").run(workItemId);
+
+    const insert = db.prepare(
+      `INSERT OR REPLACE INTO work_item_dependencies
+         (work_item_id, depends_on_work_item_id, doc_ref, created_at)
+       VALUES (?, ?, ?, ?)`
+    );
+
+    for (const dependsOn of dependsOnWorkItemIds) {
+      // A self-edge would make an Action permanently undispatchable. The parser
+      // cannot catch it without knowing ids, so refuse it at the write.
+      if (dependsOn === workItemId) {
+        continue;
+      }
+      insert.run(workItemId, dependsOn, docRef, timestamp);
+    }
+  })();
+}
+
 export function getReviewItemByDocRef(db: Database.Database, docRef: string): ReviewItemSummary | null {
   const row = db.prepare("SELECT id FROM review_items WHERE doc_ref = ?").get(docRef) as
     | { id: string }

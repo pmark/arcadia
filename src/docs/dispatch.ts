@@ -211,6 +211,23 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
     return { id: found.id, slug: found.slug, status: found.status, question: found.question, resolved };
   });
 
+  // Ordering is a dispatch constraint, not documentation. Handing an agent an
+  // Action whose prerequisite is unfinished is how a plan gets built out of
+  // order, so an unfinished dependency blocks the objective rather than being
+  // reported as context the agent is free to ignore.
+  const unfinishedDependencies = action.dependsOn
+    .map((id) => plan.actions.find((candidate) => candidate.id === id) ?? null)
+    .filter((candidate): candidate is PlanActionDoc => candidate !== null && candidate.status !== "done");
+
+  for (const dependency of unfinishedDependencies) {
+    blockers.push({
+      relativePath: plan.relativePath,
+      field: `actions.${action.id}.depends_on`,
+      message: `Depends on "${dependency.id}" ("${dependency.title}"), which is "${dependency.status}", not done.`,
+      remedy: `Finish "${dependency.id}" first, or point current_action at it, or remove the dependency if it no longer holds.`
+    });
+  }
+
   const operatorQuestion = action.clarification === "question_open" ? action.question : null;
 
   const context: DispatchContext = {

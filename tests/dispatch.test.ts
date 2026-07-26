@@ -270,6 +270,66 @@ describe("dispatch resolution", () => {
     expect(resolution.blockers.some((entry) => entry.message.includes("already done"))).toBe(true);
   });
 
+  it("refuses to dispatch an action whose dependency is unfinished", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      planDoc({
+        extra: [
+          "  - id: lay-groundwork",
+          "    title: Lay the groundwork",
+          "    status: open",
+          "    responsibility: codex",
+          "    effort: short",
+          "    next_action: Write the migration.",
+          "    clarification: clarified",
+          "    confidence: high",
+          "    source: conversation",
+          "    depends_on: []"
+        ].join("\n")
+      }).replace("    depends_on: []\n", "    depends_on: [lay-groundwork]\n")
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    const blocker = resolution.blockers.find((entry) => entry.field === "actions.ship-it.depends_on");
+    expect(blocker?.message).toContain("lay-groundwork");
+    expect(blocker?.message).toContain('is "open", not done');
+    expect(blocker?.remedy).toContain("Finish");
+    // The whole point: an unfinished prerequisite must stop the handoff.
+    expect(isDispatchable(resolution)).toBe(false);
+  });
+
+  it("dispatches once the dependency is done", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      planDoc({
+        extra: [
+          "  - id: lay-groundwork",
+          "    title: Lay the groundwork",
+          "    status: done",
+          "    responsibility: codex",
+          "    effort: short",
+          "    next_action: Delivered; no further work.",
+          "    clarification: clarified",
+          "    confidence: high",
+          "    source: conversation",
+          "    depends_on: []"
+        ].join("\n")
+      }).replace("    depends_on: []\n", "    depends_on: [lay-groundwork]\n")
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    expect(resolution.blockers).toEqual([]);
+    expect(isDispatchable(resolution)).toBe(true);
+  });
+
   it("reports a repository with no managed PROJECT.md", () => {
     const root = repo();
     write(root, "README.md", "# Nothing managed here\n");

@@ -3,10 +3,89 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-07-25
+updated: 2026-07-26
 ---
 
 # Mission Log: Arcadia
+
+## 2026-07-26 — Made Private Practice Now dispatchable again
+
+- **Did:** Repaired Private Practice Now's control documentation. Retyped seven
+  research and guide documents onto the shipped narrative vocabulary, added the
+  plan and Project milestone, replaced the dangling `current_action: none` with
+  the action carrying the open question, and recorded the unmade milestone choice
+  as ADR 0012 rather than deciding it. Fixed a defect introduced earlier the same
+  day where a plan question naming a decision raised a second Decision alongside
+  the decision's own.
+- **Result:** `arcadia next` went from eight blockers and no resolvable objective
+  to one Project-level question for the operator. The seven refused documents
+  were the larger problem: every discovery error is a dispatch blocker, so
+  out-of-vocabulary `type:` values had made the entire Project undispatchable
+  rather than merely unindexed. PPN now syncs with zero validation errors and
+  re-runs as 0 created, 0 updated, 19 unchanged. Full suite passed 638 tests with
+  2 skipped and both TypeScript builds passed. No deployment, publish, commit,
+  push, credentials, or production access occurred.
+- **Next:** Answer ADR 0012 to choose between `define-shared-inquiry-service` and
+  `define-first-pilot-success`. Whichever wins still needs `acceptance_criteria`
+  before it is dispatchable.
+- **Blockers:** None. One duplicate Decision row created by the same-day defect
+  was deleted from the workspace database after the code fix; it was minutes old,
+  document-derived, and an exact duplicate of the surviving decision record.
+  Deciding PPN's milestone order remains the operator's and was left open.
+
+## 2026-07-26 — Cleared the open Decisions and fixed milestone lifecycle
+
+- **Did:** Answered the three standing questions — Decision 0004 (docs sync stays
+  strictly one-way, with execution history allowed only in a generated namespace
+  ingestion never reads), Decision 0005 (a plan may span milestones through an
+  optional per-action `milestone:` override), and Private Practice Now's ADR 0006
+  (defer the editor-hosting choice until three clients are live concurrently).
+  Implemented the milestone-status derivation, the per-action override, and
+  question-to-decision resolution.
+- **Result:** The Decision queue is empty across both Projects, down from three.
+  Milestone status is now derived from plan status, so `arcadia portfolio`
+  reports Arcadia's milestone as "docs sync ingests a real project's markdown"
+  instead of one belonging to a completed plan — the old value was selected by a
+  two-millisecond gap in insertion order, because `current_milestone` takes the
+  newest active milestone and no plan ever ended one. A plan question naming its
+  `decision:` inherits that decision's resolution, which is how an answered
+  question leaves the queue without ingestion ever deleting. Full suite passed
+  637 tests with 2 skipped, up from 633, and both TypeScript builds passed. No
+  deployment, publish, commit, push, credentials, production access, or
+  destructive action occurred.
+- **Next:** `ingest-mission-logs` remains the current Action, now fully specified
+  by Decision 0004: the entry key is the heading date plus a title slug, because
+  Arcadia may not stamp an id into a human-authored file.
+- **Blockers:** None for Arcadia. Two findings in Private Practice Now, reported
+  and not fixed: its active plan declares no `milestone:`, so Arcadia fell back
+  to the plan slug as a milestone title, and seven of its documents use `type:`
+  values outside the vocabulary and were refused. Both are that repository's to
+  resolve.
+
+## 2026-07-26 — Made depends_on ordering constrain dispatch
+
+- **Did:** Answered the open increment-selection question as Decision 0003 and
+  implemented `persist-dependencies`. Added a `work_item_dependencies` edge
+  table, a second `docs sync` pass that replaces each Action's document-declared
+  edges, and a dispatch blocker in `resolveDispatch` for any unfinished
+  prerequisite. Corrected the two stale claims in `docs/COMMANDS.md`.
+- **Result:** `depends_on` now constrains what Arcadia hands a coding agent
+  instead of only being validated. Sync applied 14 real edges across three plans
+  and re-ran as 0 created, 0 updated, 42 unchanged; the composite primary key is
+  what makes the re-run a no-op. Deleting a `depends_on` line removes the edge,
+  while a dependency recorded outside ingestion survives. Refusal was verified
+  against Arcadia's real documents, naming the file, field, prerequisite, and
+  three repairs. Full suite passed 633 tests with 2 skipped, up from 628, and
+  TypeScript passed. No deployment, publish, commit, push, credentials,
+  production access, or destructive action occurred.
+- **Next:** `ingest-mission-logs` is the current Action — the log parser and the
+  `mission_logs` table already exist, so the gap is the upsert plus a duplicate
+  key. It needs an entry key before implementation, since `mission_logs` has no
+  `doc_ref` or entry-date column today.
+- **Blockers:** None. Decision 0003 selected one increment and deliberately did
+  not order the remaining two; the pointer now names `ingest-mission-logs` by
+  applying the operator's stated criterion rather than stalling on a second
+  question, and the operator may redirect it to `narrative-summarization`.
 
 ## 2026-07-25 — Made clarification Decisions conversational
 
