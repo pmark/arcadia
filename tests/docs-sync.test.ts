@@ -119,6 +119,44 @@ describe("document parsing", () => {
     expect(plan.questions).toHaveLength(1);
   });
 
+  it("parses and resolves vendor-neutral execution metadata", () => {
+    const profiled = PLAN.replace(
+      "    depends_on: []",
+      [
+        "    depends_on: []",
+        "    execution:",
+        "      schema: arcadia.execution/v1",
+        "      profile: routine_implementation",
+        "      phases:",
+        "        review:",
+        "          capability: c3_systems",
+        "          effort: e3_deep",
+        "          review_independence: separate_run"
+      ].join("\n")
+    );
+    const { doc, errors } = parseDoc("docs/plans/sample-plan.md", "/abs/sample-plan.md", profiled);
+
+    expect(errors).toEqual([]);
+    const plan = doc as never as {
+      actions: Array<{
+        execution: { profile: string } | null;
+        resolvedExecution: {
+          baseline: { capability: string; effort: string };
+          phases: { review: { capability: string; reviewIndependence: string } };
+        } | null;
+      }>;
+    };
+    expect(plan.actions[0].execution?.profile).toBe("routine_implementation");
+    expect(plan.actions[0].resolvedExecution?.baseline).toMatchObject({
+      capability: "c2_integrated",
+      effort: "e2_standard"
+    });
+    expect(plan.actions[0].resolvedExecution?.phases.review).toMatchObject({
+      capability: "c3_systems",
+      reviewIndependence: "separate_run"
+    });
+  });
+
   it("accepts an unquoted date, which YAML resolves to a Date object", () => {
     const { doc, errors } = parseDoc("PROJECT.md", "/abs/PROJECT.md", [
       "---",
@@ -297,6 +335,30 @@ describe("docs sync", () => {
     });
     // An Action the document has not decided must not read as decided.
     expect(blocked?.next_action).toContain("Clarify the desired outcome");
+  });
+
+  it("persists a portable execution requirement for compliant runner selection", () => {
+    const repo = scratch();
+    const profiled = PLAN.replace(
+      "    depends_on: []",
+      [
+        "    depends_on: []",
+        "    execution:",
+        "      schema: arcadia.execution/v1",
+        "      profile: routine_implementation"
+      ].join("\n")
+    );
+    writeDoc(repo, "docs/plans/sample-plan.md", profiled);
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const action = withDatabase(workspace, (db) =>
+      getWorkItemByDocRef(db, "plan/sample-plan#do-the-thing")
+    );
+    expect(JSON.parse(action?.execution_requirement_json as string)).toMatchObject({
+      schema: "arcadia.execution/v1",
+      profile: "routine_implementation"
+    });
   });
 
   it("follows a renamed title without forking a second Action", () => {

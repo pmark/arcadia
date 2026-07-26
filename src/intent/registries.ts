@@ -5,6 +5,10 @@ import { validationError } from "../cli/errors.js";
 import type { ApprovalGateType, ExecutorType, WorkClassification } from "../domain/constants.js";
 import { APPROVAL_GATE_TYPES, EXECUTOR_TYPES, WORK_CLASSIFICATIONS, assertAllowedValue } from "../domain/constants.js";
 import type { PlannedSkillStep } from "../execution/skills.js";
+import {
+  validateProviderAdapterRegistry,
+  type ProviderAdapterRegistry
+} from "../codingAgents/providerAdapters.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 
 export interface IntentRegistry {
@@ -60,13 +64,15 @@ export interface Phase3Registries {
   intents: IntentRegistry;
   templates: TemplateRegistry;
   codingAgents: CodingAgentProfileRegistry;
+  providerAdapters?: ProviderAdapterRegistry;
 }
 
 export function loadPhase3Registries(workspace: string): Phase3Registries {
   return {
     intents: readRegistry<IntentRegistry>(registryPath(workspace, "intent-registry.json")),
     templates: readRegistry<TemplateRegistry>(registryPath(workspace, "template-registry.json")),
-    codingAgents: readRegistry<CodingAgentProfileRegistry>(registryPath(workspace, "coding-agent-profiles.json"))
+    codingAgents: readRegistry<CodingAgentProfileRegistry>(registryPath(workspace, "coding-agent-profiles.json")),
+    providerAdapters: readRegistry<ProviderAdapterRegistry>(registryPath(workspace, "provider-adapters.json"))
   };
 }
 
@@ -74,6 +80,9 @@ export function validatePhase3Registries(registries: Phase3Registries): void {
   validateIntentRegistry(registries.intents);
   validateTemplateRegistry(registries.templates);
   validateCodingAgentProfileRegistry(registries.codingAgents);
+  if (registries.providerAdapters) {
+    validateProviderAdapterRegistry(registries.providerAdapters, registries.codingAgents.profiles);
+  }
 }
 
 export function getDefaultRegistryPath(fileName: string): string {

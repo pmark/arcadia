@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "mappingId": "bundled-2026-07-25.1",
+  "observedAt": "2026-07-25",
+  "providers": [
+    {
+      "id": "codex-cli",
+      "enabled": true
+    },
+    {
+      "id": "claude-code-cli",
+      "enabled": true
+    },
+    {
+      "id": "gemini-cli",
+      "enabled": false,
+      "unavailableReason": "No Gemini CLI coding-agent profile is configured in this Arcadia installation."
+    }
+  ],
+  "bindings": [
+    {
+      "id": "codex-terra",
+      "provider": "codex-cli",
+      "agentProfiles": ["codex_planning", "codex_build"],
+      "capability": "c2_integrated",
+      "model": "gpt-5.6-terra",
+      "modelArgs": ["--model", "gpt-5.6-terra"],
+      "effortArgs": {
+        "e1_brief": ["--config", "model_reasoning_effort=\"low\""],
+        "e2_standard": ["--config", "model_reasoning_effort=\"medium\""],
+        "e3_deep": ["--config", "model_reasoning_effort=\"high\""],
+        "e4_rigorous": ["--config", "model_reasoning_effort=\"xhigh\""]
+      },
+      "tools": true,
+      "contextScopes": ["local", "project"],
+      "locality": "remote",
+      "costRank": 1,
+      "enabled": true
+    },
+    {
+      "id": "codex-sol",
+      "provider": "codex-cli",
+      "agentProfiles": ["codex_planning", "codex_build"],
+      "capability": "c3_systems",
+      "model": "gpt-5.6-sol",
+      "modelArgs": ["--model", "gpt-5.6-sol"],
+      "effortArgs": {
+        "e1_brief": ["--config", "model_reasoning_effort=\"low\""],
+        "e2_standard": ["--config", "model_reasoning_effort=\"medium\""],
+        "e3_deep": ["--config", "model_reasoning_effort=\"high\""],
+        "e4_rigorous": ["--config", "model_reasoning_effort=\"xhigh\""]
+      },
+      "tools": true,
+      "contextScopes": ["local", "project", "cross_system"],
+      "locality": "remote",
+      "costRank": 3,
+      "enabled": true
+    },
+    {
+      "id": "claude-sonnet",
+      "provider": "claude-code-cli",
+      "agentProfiles": ["claude_planning", "claude_build"],
+      "capability": "c2_integrated",
+      "model": "sonnet",
+      "modelArgs": ["--model", "sonnet"],
+      "effortArgs": {
+        "e1_brief": ["--effort", "low"],
+        "e2_standard": ["--effort", "medium"],
+        "e3_deep": ["--effort", "high"],
+        "e4_rigorous": ["--effort", "xhigh"]
+      },
+      "tools": true,
+      "contextScopes": ["local", "project"],
+      "locality": "remote",
+      "costRank": 2,
+      "enabled": true
+    },
+    {
+      "id": "claude-opus",
+      "provider": "claude-code-cli",
+      "agentProfiles": ["claude_planning", "claude_build"],
+      "capability": "c3_systems",
+      "model": "opus",
+      "modelArgs": ["--model", "opus"],
+      "effortArgs": {
+        "e1_brief": ["--effort", "low"],
+        "e2_standard": ["--effort", "medium"],
+        "e3_deep": ["--effort", "high"],
+        "e4_rigorous": ["--effort", "xhigh"]
+      },
+      "tools": true,
+      "contextScopes": ["local", "project", "cross_system"],
+      "locality": "remote",
+      "costRank": 4,
+      "enabled": true
+    }
+  ]
+}

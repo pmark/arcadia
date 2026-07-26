@@ -95,6 +95,8 @@ export interface WorkItem {
    * rather than cascaded if the parent is deleted, so a child is never lost.
    */
   parent_work_item_id: string | null;
+  /** Declared vendor-neutral execution requirement serialized from a managed plan. */
+  execution_requirement_json: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -171,6 +173,9 @@ export interface ExecutionRun {
   executor_name: string | null;
   pid: number | null;
   retry_of_run_id: string | null;
+  execution_profile_json: string | null;
+  provider_mapping_id: string | null;
+  provider_binding_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -316,6 +321,9 @@ export interface CodexInvocation {
   plan_id: string | null;
   plan_step_id: string | null;
   run_id: string | null;
+  execution_profile_json: string | null;
+  provider_mapping_id: string | null;
+  provider_binding_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -527,6 +535,8 @@ export interface CreateWorkItemInput {
   clarificationStatus?: string;
   /** The Action this one decomposes, for subtasks created by `work add-subtask`. */
   parentWorkItemId?: string | null;
+  /** Vendor-neutral execution requirement JSON; `null` clears it. */
+  executionRequirementJson?: string | null;
 }
 
 export interface UpdateWorkItemInput {
@@ -550,6 +560,8 @@ export interface UpdateWorkItemInput {
   confidence?: string | null;
   /** Re-parent this Action, or `null` to promote it back to top-level. */
   parentWorkItemId?: string | null;
+  /** Vendor-neutral execution requirement JSON; `null` clears it. */
+  executionRequirementJson?: string | null;
 }
 
 export interface UpdateArtifactInput {
@@ -658,6 +670,9 @@ export interface CreateCodexInvocationInput {
   planId?: string | null;
   planStepId?: string | null;
   runId?: string | null;
+  executionProfileJson?: string | null;
+  providerMappingId?: string | null;
+  providerBindingId?: string | null;
 }
 
 export interface CreatedProjectBundle {

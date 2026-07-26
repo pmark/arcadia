@@ -32,10 +32,12 @@ a verdict either names a concrete next action or opens exactly one Decision, and
 subtasks exist for decompositions.
 
 The current work is making documentation a first-class input — see
-`docs/plans/portfolio-docs-protocol.md`. Conversations with frontier models
+`docs/plans/portfolio-docs-protocol.md`. Conversations with coding agents
 produce markdown; `docs sync` turns that markdown into Projects, Milestones,
 Actions and Decisions, so the portfolio can be managed at executive level from
-`arcadia portfolio`.
+`arcadia portfolio`. Vendor-neutral execution profiles now let Arcadia select
+the least costly compliant coding-agent configuration without putting provider
+model names in those plans.
 
 ## Links
 

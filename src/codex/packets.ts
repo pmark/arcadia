@@ -5,6 +5,13 @@ import { isCodingAgentAvailable, observeCodingAgentAvailability } from "../codin
 import type { CodexInvocationPurpose } from "../domain/constants.js";
 import type { ProjectContext, WorkItemSummary } from "../domain/types.js";
 import type { CodingAgentProfile, TemplateDefinition } from "../intent/registries.js";
+import type { ProviderAdapterRegistry, SelectedCodingAgentConfiguration } from "../codingAgents/providerAdapters.js";
+import { selectCompliantCodingAgent } from "../codingAgents/providerAdapters.js";
+import {
+  parseExecutionRequirement,
+  type ExecutionPhase,
+  type ResolvedExecutionRequirement
+} from "../execution/profiles.js";
 import type { ResolvedIntent } from "../intent/resolver.js";
 import {
   createStewardshipCritic,
@@ -34,6 +41,14 @@ export interface CodexPacket {
   relativeFinalMessagePath: string;
   relativeCritiquePath: string;
   critique: StewardshipCritiqueResult;
+  agentConfiguration: SelectedCodingAgentConfiguration | null;
+  executionRequirement: ResolvedExecutionRequirement | null;
+}
+
+export interface AgentProfileSelection {
+  profile: CodingAgentProfile;
+  configuration: SelectedCodingAgentConfiguration | null;
+  executionRequirement: ResolvedExecutionRequirement | null;
 }
 
 export function createCodexPacket(input: {
@@ -44,6 +59,8 @@ export function createCodexPacket(input: {
   planId: string;
   projectContext: ProjectContext | null;
   agentProfile: CodingAgentProfile;
+  agentConfiguration?: SelectedCodingAgentConfiguration | null;
+  executionRequirement?: ResolvedExecutionRequirement | null;
   stewardship?: GoalStewardshipResult | null;
 }): CodexPacket {
   if (input.projectContext && !input.projectContext.metadata?.repo_path) {
@@ -60,7 +77,12 @@ export function createCodexPacket(input: {
   const metadataPath = path.join(packetDir, "metadata.json");
   const critiquePath = path.join(packetDir, "critique.md");
   const workspaceScope = input.projectContext?.metadata?.repo_path ?? input.workspace;
-  const command = buildCodingAgentCommand(input.agentProfile, workspaceScope, finalMessagePath).displayCommand;
+  const command = buildCodingAgentCommand(
+    input.agentProfile,
+    workspaceScope,
+    finalMessagePath,
+    input.agentConfiguration?.args
+  ).displayCommand;
   const promptText = renderPrompt(input);
   const stewardship = input.stewardship ?? defaultStewardshipForPacket(input);
   const validationCommands = decodeStringArray(input.projectContext?.metadata?.validation_commands);
@@ -111,6 +133,17 @@ export function createCodexPacket(input: {
         createdAt: nowIso(),
         purpose: input.agentProfile.purpose,
         agentProfile: input.agentProfile.name,
+        executionProfile: input.executionRequirement ?? null,
+        providerSelection: input.agentConfiguration
+          ? {
+              mappingId: input.agentConfiguration.mappingId,
+              bindingId: input.agentConfiguration.bindingId,
+              provider: input.agentConfiguration.provider,
+              model: input.agentConfiguration.model,
+              capability: input.agentConfiguration.capability,
+              effort: input.agentConfiguration.effort
+            }
+          : null,
         command,
         workspaceScope,
         workItemId: input.workItem.id,
@@ -160,7 +193,60 @@ export function createCodexPacket(input: {
     relativeJsonlOutputPath: toWorkspaceRelativePath(input.workspace, jsonlOutputPath),
     relativeFinalMessagePath: toWorkspaceRelativePath(input.workspace, finalMessagePath),
     relativeCritiquePath: toWorkspaceRelativePath(input.workspace, critiquePath),
-    critique
+    critique,
+    agentConfiguration: input.agentConfiguration ?? null,
+    executionRequirement: input.executionRequirement ?? null
+  };
+}
+
+export function selectAgentProfileForWorkItem(input: {
+  profiles: CodingAgentProfile[];
+  adapters?: ProviderAdapterRegistry;
+  workItem: WorkItemSummary;
+  purpose: CodexInvocationPurpose;
+  requestedName?: string;
+  defaults?: Partial<Record<"planning" | "build", string>>;
+}): AgentProfileSelection {
+  if (!input.workItem.execution_requirement_json || !input.adapters) {
+    return {
+      profile: selectAgentProfile(
+        input.profiles,
+        input.purpose,
+        input.requestedName,
+        input.defaults
+      ),
+      configuration: null,
+      executionRequirement: null
+    };
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(input.workItem.execution_requirement_json);
+  } catch {
+    throw new Error(`Action ${input.workItem.id} has invalid execution requirement JSON.`);
+  }
+  const parsed = parseExecutionRequirement(raw, input.workItem.work_classification);
+  if (!parsed.resolved) {
+    throw new Error(
+      `Action ${input.workItem.id} has an invalid execution requirement: ` +
+        parsed.issues.map((issue) => `${issue.field}: ${issue.message}`).join("; ")
+    );
+  }
+  const phase: ExecutionPhase = input.purpose === "planning" ? "planning" : "implementation";
+  const configuration = selectCompliantCodingAgent({
+    profiles: input.profiles,
+    adapters: input.adapters,
+    requirement: parsed.resolved,
+    phase,
+    purpose: input.purpose,
+    availability: observeCodingAgentAvailability(input.profiles),
+    requestedProfile: input.requestedName
+  });
+  return {
+    profile: configuration.profile,
+    configuration,
+    executionRequirement: parsed.resolved
   };
 }
 
@@ -208,6 +294,8 @@ function renderPrompt(input: {
   planId: string;
   projectContext: ProjectContext | null;
   agentProfile: CodingAgentProfile;
+  agentConfiguration?: SelectedCodingAgentConfiguration | null;
+  executionRequirement?: ResolvedExecutionRequirement | null;
   stewardship?: GoalStewardshipResult | null;
 }): string {
   const stewardship = input.stewardship ?? defaultStewardshipForPacket(input);
@@ -228,6 +316,7 @@ function renderPrompt(input: {
   const repositoryImpact = renderRepositoryImpactAssessment(input);
   const followUpGoal = renderSmallestFollowUpGoal(input, expectedArtifact);
   const finalReportingRequirements = renderFinalReportingRequirements(isPlanningPacket);
+  const executionProfile = renderExecutionProfile(input.executionRequirement, input.agentConfiguration, input.agentProfile.purpose);
 
   return `# Arcadia ${codingAgentLabel(input.agentProfile)} ${input.agentProfile.purpose === "build" ? "Build" : "Planning"} Packet
 
@@ -254,6 +343,9 @@ ${input.request}
 - Action: ${input.workItem.id}
 - Plan: ${input.planId}
 - Responsibility: ${input.workItem.work_classification}
+
+## Execution Profile
+${executionProfile}
 
 ## Target Project Context
 ${projectContext}
@@ -313,6 +405,32 @@ ${validationGuidance}
 ## Final Reporting Requirements
 ${finalReportingRequirements}
 `;
+}
+
+function renderExecutionProfile(
+  requirement: ResolvedExecutionRequirement | null | undefined,
+  selection: SelectedCodingAgentConfiguration | null | undefined,
+  purpose: CodexInvocationPurpose
+): string {
+  if (!requirement || !selection) {
+    return "- Legacy Action: no vendor-neutral execution profile was declared.";
+  }
+  const phase = purpose === "planning" ? "planning" : "implementation";
+  const effective = requirement.phases[phase] ?? requirement.baseline;
+  return [
+    `- Schema: ${requirement.schema}`,
+    `- Named profile: ${requirement.profile}`,
+    `- Phase: ${phase}`,
+    `- Minimum capability: ${effective.capability}`,
+    `- Minimum reasoning effort: ${effective.effort}`,
+    `- Context scope: ${effective.context.scope}`,
+    `- Tools: ${effective.tools}`,
+    `- Autonomy: ${effective.autonomy}`,
+    `- Data locality: ${effective.dataLocality}`,
+    `- Underpowered-model risk: ${effective.underpoweredRisk}`,
+    `- Provider mapping: ${selection.mappingId}/${selection.bindingId}`,
+    "- Capability selection does not expand Responsibility or approval authority."
+  ].join("\n");
 }
 
 function renderProjectContext(projectContext: ProjectContext | null, workItem: WorkItemSummary): string {

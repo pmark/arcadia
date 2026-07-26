@@ -217,11 +217,18 @@ export function executePlan(
     }
   }
 
+  const provenanceInvocation = completedCodexInvocationIds[0]
+    ? getCodexInvocation(db, completedCodexInvocationIds[0])
+    : null;
   const run = existingRun ?? createExecutionRun(db, {
       workItemId: workItem.id,
       planId: plan.id,
-      status: runStatus,
-      summary: summaryForRunStatus(runStatus, workItem),
+    status: runStatus,
+    summary: summaryForRunStatus(runStatus, workItem),
+    executorName: provenanceInvocation?.agent_profile ?? null,
+    executionProfileJson: provenanceInvocation?.execution_profile_json ?? null,
+    providerMappingId: provenanceInvocation?.provider_mapping_id ?? null,
+    providerBindingId: provenanceInvocation?.provider_binding_id ?? null,
       steps: stepResults,
       artifactIds: artifacts.map((artifact) => artifact.id)
     });

@@ -186,7 +186,10 @@ export function queueApprovedPlanningRun(
         finalMessagePath: attemptPath(invocation.final_message_path, newInvocationId),
         status: "packet_created",
         workItemId: action.id,
-        planId: plan.id
+        planId: plan.id,
+        executionProfileJson: invocation.execution_profile_json,
+        providerMappingId: invocation.provider_mapping_id,
+        providerBindingId: invocation.provider_binding_id
       });
       db.prepare("UPDATE review_items SET codex_invocation_id = ?, updated_at = ? WHERE id = ?")
         .run(invocation.id, nowIso(), decision.id);
@@ -219,6 +222,9 @@ export function queueApprovedPlanningRun(
       reviewItemId: decision.id,
       executorName: input.executorName ?? invocation.agent_profile,
       retryOfRunId: priorRunId,
+      executionProfileJson: invocation.execution_profile_json,
+      providerMappingId: invocation.provider_mapping_id,
+      providerBindingId: invocation.provider_binding_id,
       steps: [{
         planStepId: planningStep.id,
         status: "pending",

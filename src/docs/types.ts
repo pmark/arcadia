@@ -8,6 +8,10 @@ import type {
   WorkItemStatus
 } from "../domain/constants.js";
 import type { OrientationEffort } from "../orientation/types.js";
+import type {
+  ExecutionRequirement,
+  ResolvedExecutionRequirement
+} from "../execution/profiles.js";
 
 /** The marker every managed document carries in its frontmatter. */
 export const ARCADIA_DOC_MARKER = "arcadia";
@@ -98,6 +102,10 @@ export interface PlanActionDoc {
   decisions: string[];
   /** Repository paths or URLs the action depends on for context. */
   references: string[];
+  /** Vendor-neutral execution requirements declared by the plan author. */
+  execution: ExecutionRequirement | null;
+  /** Complete effective requirements after expanding the named profile. */
+  resolvedExecution: ResolvedExecutionRequirement | null;
 }
 
 export interface PlanQuestionDoc {

@@ -20,11 +20,12 @@ export function codingAgentLabel(profile: CodingAgentProfile): string {
 export function buildCodingAgentCommand(
   profile: CodingAgentProfile,
   workspace: string,
-  finalMessagePath: string
+  finalMessagePath: string,
+  configurationArgs: string[] = []
 ): CodingAgentInvocationCommand {
   const args = profile.provider === "codex-cli"
-    ? [...profile.args, "--cd", workspace, "--output-last-message", finalMessagePath, "-"]
-    : [...profile.args];
+    ? [...profile.args, ...configurationArgs, "--cd", workspace, "--output-last-message", finalMessagePath, "-"]
+    : [...profile.args, ...configurationArgs];
 
   return {
     args,
