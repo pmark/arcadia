@@ -18,8 +18,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test
       - run: pnpm build
+      - run: pnpm test
       - run: pnpm dashboard:build
 
   e2e:
@@ -37,6 +37,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm dashboard:build
       - run: pnpm test:e2e
