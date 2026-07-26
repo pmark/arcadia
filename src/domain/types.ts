@@ -95,6 +95,13 @@ export interface WorkItem {
    * rather than cascaded if the parent is deleted, so a child is never lost.
    */
   parent_work_item_id: string | null;
+  /**
+   * Where this Action came from in managed documentation
+   * (`plan/<plan-slug>#<action-id>`), or `null` for Actions Arcadia captured
+   * itself. Ingestion keys on it, and it is what makes the originating plan
+   * findable when a run is prepared.
+   */
+  doc_ref: string | null;
   /** Declared vendor-neutral execution requirement serialized from a managed plan. */
   execution_requirement_json: string | null;
   /**

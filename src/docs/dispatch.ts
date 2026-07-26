@@ -184,12 +184,61 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
     });
   }
 
+  const decisionDocs = discovered.docs.filter(
+    (doc): doc is DecisionDoc =>
+      doc.type === "decision" && doc.project.toLowerCase() === project.slug.toLowerCase()
+  );
+
+  const readiness = checkActionReadiness(plan, action, decisionDocs);
+  blockers.push(...readiness.blockers);
+  const { requiredDecisions, operatorQuestion } = readiness;
+
+  const context: DispatchContext = {
+    repoRoot,
+    projectSlug: project.slug,
+    projectName: project.name,
+    projectStatus: project.status,
+    activePlan: plan.slug,
+    planPath: plan.relativePath,
+    planStatus: plan.status,
+    milestone: plan.milestone ?? project.milestone,
+    action,
+    actionPath: plan.relativePath,
+    requiredDecisions,
+    authorization: AUTHORIZATION[action.responsibility] ?? "Unknown responsibility; treat as requires_review."
+  };
+
+  return { context, blockers, operatorQuestion };
+}
+
+/** Everything the documents say about whether one action may start. */
+interface ActionReadinessResult {
+  blockers: DispatchBlocker[];
+  requiredDecisions: DispatchContext["requiredDecisions"];
+  operatorQuestion: string | null;
+}
+
+/**
+ * The per-action half of dispatch: unmet prerequisites, unanswered required
+ * decisions, and an open clarification question.
+ *
+ * Shared by the work-pointer resolution and the action-scoped check so a run
+ * prepared for a specific Action is held to exactly the same document rules as
+ * one dispatched through the pointer. Two implementations would drift, and the
+ * looser one would become the way to get work through.
+ */
+function checkActionReadiness(
+  plan: PlanDoc,
+  action: PlanActionDoc,
+  decisionDocs: DecisionDoc[]
+): ActionReadinessResult {
+  const blockers: DispatchBlocker[] = [];
+
   // The plan's `depends_on` edges are an ordering claim, and dispatching past
   // them hands an agent work whose prerequisites do not exist yet. Transitive,
   // because a dependency that is itself blocked blocks this action just as
   // hard. Cycles are rejected at parse time, so this cannot loop forever.
-  const unmetDependencies = collectUnmetDependencies(plan, action);
-  for (const dependency of unmetDependencies) {
+  for (const dependency of collectUnmetDependencies(plan, action)) {
     blockers.push({
       relativePath: plan.relativePath,
       field: `actions.${action.id}.depends_on`,
@@ -201,10 +250,6 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
     });
   }
 
-  const decisionDocs = discovered.docs.filter(
-    (doc): doc is DecisionDoc =>
-      doc.type === "decision" && doc.project.toLowerCase() === project.slug.toLowerCase()
-  );
   const requiredDecisions = action.decisions.map((id) => {
     const found = decisionDocs.find((doc) => doc.id === id || doc.slug === id);
     if (!found) {
@@ -228,24 +273,90 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
     return { id: found.id, slug: found.slug, status: found.status, question: found.question, resolved };
   });
 
-  const operatorQuestion = action.clarification === "question_open" ? action.question : null;
-
-  const context: DispatchContext = {
-    repoRoot,
-    projectSlug: project.slug,
-    projectName: project.name,
-    projectStatus: project.status,
-    activePlan: plan.slug,
-    planPath: plan.relativePath,
-    planStatus: plan.status,
-    milestone: plan.milestone ?? project.milestone,
-    action,
-    actionPath: plan.relativePath,
+  return {
+    blockers,
     requiredDecisions,
-    authorization: AUTHORIZATION[action.responsibility] ?? "Unknown responsibility; treat as requires_review."
+    operatorQuestion: action.clarification === "question_open" ? action.question : null
+  };
+}
+
+/** What the documents say about one named action, independent of the pointer. */
+export interface ActionReadiness {
+  /** False when the repository has no such action; nothing was checked. */
+  found: boolean;
+  planSlug: string | null;
+  planPath: string | null;
+  action: PlanActionDoc | null;
+  blockers: DispatchBlocker[];
+  operatorQuestion: string | null;
+  requiredDecisions: DispatchContext["requiredDecisions"];
+}
+
+/**
+ * Resolve whether one specific action may start, by id, from the documents.
+ *
+ * The pointer answers "what should I work on"; this answers "may this
+ * particular thing start", which is the question a run prepared against an
+ * existing Action actually asks. Searches every plan in the project rather than
+ * only the active one: an Action can outlive the plan being pointed at, and
+ * refusing to check it would leave the looser path unguarded.
+ *
+ * Deliberately does not require the action to be the current_action. Preparing
+ * work off the pointer is a real workflow; preparing work whose prerequisites
+ * are unfinished is not.
+ */
+export function resolveActionReadiness(
+  repoRoot: string,
+  projectSlug: string,
+  actionId: string
+): ActionReadiness {
+  const empty: ActionReadiness = {
+    found: false,
+    planSlug: null,
+    planPath: null,
+    action: null,
+    blockers: [],
+    operatorQuestion: null,
+    requiredDecisions: []
   };
 
-  return { context, blockers, operatorQuestion };
+  const discovered = discoverDocs(repoRoot);
+  const plans = discovered.docs.filter(
+    (doc): doc is PlanDoc => doc.type === "plan" && doc.project.toLowerCase() === projectSlug.toLowerCase()
+  );
+
+  const plan = plans.find((candidate) => candidate.actions.some((entry) => entry.id === actionId)) ?? null;
+  const action = plan?.actions.find((entry) => entry.id === actionId) ?? null;
+  if (!plan || !action) {
+    return empty;
+  }
+
+  const decisionDocs = discovered.docs.filter(
+    (doc): doc is DecisionDoc =>
+      doc.type === "decision" && doc.project.toLowerCase() === projectSlug.toLowerCase()
+  );
+
+  // A plan that no longer parses cannot be trusted to say this action is
+  // ready, so its parse errors are blockers here too.
+  const parseBlockers: DispatchBlocker[] = discovered.errors
+    .filter((error) => error.relativePath === plan.relativePath)
+    .map((error) => ({
+      relativePath: error.relativePath,
+      field: error.field,
+      message: error.message,
+      remedy: "Fix the document so it parses and validates before starting work from it."
+    }));
+
+  const readiness = checkActionReadiness(plan, action, decisionDocs);
+  return {
+    found: true,
+    planSlug: plan.slug,
+    planPath: plan.relativePath,
+    action,
+    blockers: [...parseBlockers, ...readiness.blockers],
+    operatorQuestion: readiness.operatorQuestion,
+    requiredDecisions: readiness.requiredDecisions
+  };
 }
 
 /** An unfinished prerequisite, with the dependency chain that reached it. */

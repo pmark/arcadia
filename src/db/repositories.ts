@@ -382,6 +382,9 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
     clarification_source: null,
     confidence: null,
     parent_work_item_id: input.parentWorkItemId ? assertUsableParent(db, input.parentWorkItemId, null) : null,
+    // Set by ingestion via setWorkItemDocRef once the row exists; an Action
+    // Arcadia captured itself never gets one.
+    doc_ref: null,
     execution_requirement_json: input.executionRequirementJson ?? null,
     acceptance_criteria_json: input.acceptanceCriteriaJson ?? null,
     created_at: timestamp,
@@ -392,12 +395,12 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
     `INSERT INTO work_items (
       id, project_id, milestone_id, title, raw_input, queue, work_classification,
       next_action, expected_artifact, status, effort, clarification_status, gap_type,
-      open_question, clarification_source, confidence, parent_work_item_id,
+      open_question, clarification_source, confidence, parent_work_item_id, doc_ref,
       execution_requirement_json, acceptance_criteria_json, created_at, updated_at
     ) VALUES (
       @id, @project_id, @milestone_id, @title, @raw_input, @queue, @work_classification,
       @next_action, @expected_artifact, @status, @effort, @clarification_status, @gap_type,
-      @open_question, @clarification_source, @confidence, @parent_work_item_id,
+      @open_question, @clarification_source, @confidence, @parent_work_item_id, @doc_ref,
       @execution_requirement_json, @acceptance_criteria_json, @created_at, @updated_at
     )`
   ).run(workItem);
