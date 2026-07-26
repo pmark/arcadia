@@ -42,7 +42,7 @@ test("canonical dashboard capture completes as a Decision-gated validated planni
     new Date(terminal.invocation!.updated_at).getTime()
   );
 
-  await page.goto(arcadia.url);
+  await page.goto(`${arcadia.url}/review`);
   await expect(page.getByRole("button", { name: "Accept Plan" })).toBeVisible();
   await page.getByRole("button", { name: "Accept Plan" }).click();
   await waitFor(() => planningState(arcadia).finalArtifact?.status === "ready");
@@ -70,7 +70,7 @@ test("Today prepares and completes one existing Daily Advantage Action", async (
     }).workItem;
   });
 
-  await page.goto(arcadia.url);
+  await page.goto(`${arcadia.url}/dashboard`);
   await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Today's Advantage" })).toBeVisible();
   await expect(page.getByRole("heading", { name: action.title, exact: true })).toBeVisible();
@@ -199,7 +199,7 @@ test("failed and Requires Review Runs agree in Attention and Run detail", async 
   await submitAsk(page, arcadia, CANONICAL_REQUEST);
   await page.getByRole("button", { name: "Approve & Run" }).click();
   const failedRun = await waitForRun(arcadia, (row) => row.status === "failed" && row.id !== reviewRun.id);
-  await page.goto(arcadia.url);
+  await page.goto(`${arcadia.url}/dashboard`);
   await expect(page.getByText("Execution run failed.")).toBeVisible();
   await page.goto(`${arcadia.url}/runs/${failedRun.id}`);
   await expect(page.getByText("Failed", { exact: true })).toBeVisible();
@@ -308,7 +308,7 @@ test("non-zero planning executor exit remains failed and recoverable", async ({ 
 });
 
 async function submitAsk(page: Page, arcadia: E2EWorkspace, request: string) {
-  await page.goto(arcadia.url);
+  await page.goto(`${arcadia.url}/dashboard`);
   await page.getByPlaceholder("Ask Arcadia").fill(request);
   await page.getByRole("button", { name: "Ask" }).click();
   await expect(page.getByText(/Action created\.|Captured in Back Burner\./)).toBeVisible();
