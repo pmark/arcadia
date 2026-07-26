@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcadia.local/schemas/arcadia-execution-profile-v1.schema.json",
+  "title": "Arcadia execution profile requirement",
+  "type": "object",
+  "required": ["schema", "profile"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "arcadia.execution/v1"
+    },
+    "profile": {
+      "enum": [
+        "localized_edit",
+        "routine_implementation",
+        "systems_change",
+        "sensitive_change",
+        "operator_decision_framing"
+      ]
+    },
+    "context": {
+      "$ref": "#/$defs/context"
+    },
+    "underpowered_risk": {
+      "type": "string",
+      "minLength": 1
+    },
+    "phases": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "planning": {"$ref": "#/$defs/override"},
+        "implementation": {"$ref": "#/$defs/override"},
+        "review": {"$ref": "#/$defs/override"},
+        "verification": {"$ref": "#/$defs/override"}
+      }
+    }
+  },
+  "$defs": {
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scope": {"enum": ["local", "project", "cross_system"]},
+        "required": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "staging": {"enum": ["allowed", "forbidden"]}
+      }
+    },
+    "override": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "capability": {
+          "enum": ["c1_bounded", "c2_integrated", "c3_systems", "c4_critical"]
+        },
+        "effort": {
+          "enum": ["e1_brief", "e2_standard", "e3_deep", "e4_rigorous"]
+        },
+        "context": {"$ref": "#/$defs/context"},
+        "tools": {"enum": ["forbidden", "optional", "required"]},
+        "data_locality": {"enum": ["any", "local_only"]},
+        "autonomy": {"enum": ["advise", "draft", "bounded_write", "managed_execute"]},
+        "delegation": {"enum": ["prohibited", "allowed"]},
+        "parallelism": {"enum": ["serial", "independent_only"]},
+        "review_independence": {
+          "enum": ["not_required", "separate_run", "separate_provider"]
+        },
+        "underpowered_risk": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

@@ -9,6 +9,7 @@ import {
   WORK_ITEM_STATUSES
 } from "../domain/constants.js";
 import { ORIENTATION_EFFORTS } from "../orientation/types.js";
+import { parseExecutionRequirement } from "../execution/profiles.js";
 import {
   ARCADIA_DOC_VERSION,
   DECISION_DOC_STATUSES,
@@ -348,6 +349,12 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
     // while the objective a coding agent is about to start must say what
     // finished means before anyone starts it.
     const acceptanceCriteria = stringArray(value.acceptance_criteria);
+    const executionResult = value.execution === undefined || value.execution === null
+      ? { requirement: null, resolved: null, issues: [] }
+      : parseExecutionRequirement(value.execution, responsibility as never);
+    for (const issue of executionResult.issues) {
+      problems.add(`${field}.${issue.field}`, issue.message);
+    }
     if (id && id === currentAction) {
       if (clarification === "clarified" && acceptanceCriteria.length === 0) {
         problems.add(
@@ -379,7 +386,9 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
       dependsOn: stringArray(value.depends_on),
       acceptanceCriteria,
       decisions: stringArray(value.decisions),
-      references: stringArray(value.references)
+      references: stringArray(value.references),
+      execution: executionResult.requirement,
+      resolvedExecution: executionResult.resolved
     });
   });
 

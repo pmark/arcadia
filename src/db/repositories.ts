@@ -382,6 +382,7 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
     clarification_source: null,
     confidence: null,
     parent_work_item_id: input.parentWorkItemId ? assertUsableParent(db, input.parentWorkItemId, null) : null,
+    execution_requirement_json: input.executionRequirementJson ?? null,
     created_at: timestamp,
     updated_at: timestamp
   };
@@ -390,11 +391,13 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
     `INSERT INTO work_items (
       id, project_id, milestone_id, title, raw_input, queue, work_classification,
       next_action, expected_artifact, status, effort, clarification_status, gap_type,
-      open_question, clarification_source, confidence, parent_work_item_id, created_at, updated_at
+      open_question, clarification_source, confidence, parent_work_item_id,
+      execution_requirement_json, created_at, updated_at
     ) VALUES (
       @id, @project_id, @milestone_id, @title, @raw_input, @queue, @work_classification,
       @next_action, @expected_artifact, @status, @effort, @clarification_status, @gap_type,
-      @open_question, @clarification_source, @confidence, @parent_work_item_id, @created_at, @updated_at
+      @open_question, @clarification_source, @confidence, @parent_work_item_id,
+      @execution_requirement_json, @created_at, @updated_at
     )`
   ).run(workItem);
 
@@ -993,6 +996,11 @@ export function updateWorkItem(
     updates.push("parent_work_item_id = @parent_work_item_id");
   }
 
+  if (input.executionRequirementJson !== undefined) {
+    parameters.execution_requirement_json = nullable(input.executionRequirementJson);
+    updates.push("execution_requirement_json = @execution_requirement_json");
+  }
+
   if (updates.length === 0) {
     throw new Error("At least one Action field is required");
   }
@@ -1202,6 +1210,9 @@ export interface CreateExecutionRunInput {
   reviewItemId?: string | null;
   executorName?: string | null;
   retryOfRunId?: string | null;
+  executionProfileJson?: string | null;
+  providerMappingId?: string | null;
+  providerBindingId?: string | null;
   steps: Array<{
     planStepId: string;
     status: string;
@@ -1815,6 +1826,9 @@ export function createCodexInvocation(
     plan_id: input.planId ?? null,
     plan_step_id: input.planStepId ?? null,
     run_id: input.runId ?? null,
+    execution_profile_json: input.executionProfileJson ?? null,
+    provider_mapping_id: input.providerMappingId ?? null,
+    provider_binding_id: input.providerBindingId ?? null,
     created_at: timestamp,
     updated_at: timestamp
   };
@@ -1822,10 +1836,12 @@ export function createCodexInvocation(
   db.prepare(
     `INSERT INTO codex_invocations (
       id, purpose, agent_profile, workspace_scope, command, prompt_path, jsonl_output_path,
-      final_message_path, status, work_item_id, plan_id, plan_step_id, run_id, created_at, updated_at
+      final_message_path, status, work_item_id, plan_id, plan_step_id, run_id,
+      execution_profile_json, provider_mapping_id, provider_binding_id, created_at, updated_at
     ) VALUES (
       @id, @purpose, @agent_profile, @workspace_scope, @command, @prompt_path, @jsonl_output_path,
-      @final_message_path, @status, @work_item_id, @plan_id, @plan_step_id, @run_id, @created_at, @updated_at
+      @final_message_path, @status, @work_item_id, @plan_id, @plan_step_id, @run_id,
+      @execution_profile_json, @provider_mapping_id, @provider_binding_id, @created_at, @updated_at
     )`
   ).run(invocation);
 
@@ -2046,15 +2062,22 @@ export function createExecutionRun(db: Database.Database, input: CreateExecution
       executor_name: input.executorName ?? null,
       pid: null,
       retry_of_run_id: input.retryOfRunId ?? null,
+      execution_profile_json: input.executionProfileJson ?? null,
+      provider_mapping_id: input.providerMappingId ?? null,
+      provider_binding_id: input.providerBindingId ?? null,
       created_at: timestamp,
       updated_at: timestamp
     };
 
     db.prepare(
       `INSERT INTO execution_runs (
-        id, work_item_id, plan_id, status, summary, mission_log_id, review_item_id, executor_name, pid, retry_of_run_id, created_at, updated_at
+        id, work_item_id, plan_id, status, summary, mission_log_id, review_item_id,
+        executor_name, pid, retry_of_run_id, execution_profile_json,
+        provider_mapping_id, provider_binding_id, created_at, updated_at
       ) VALUES (
-        @id, @work_item_id, @plan_id, @status, @summary, @mission_log_id, @review_item_id, @executor_name, @pid, @retry_of_run_id, @created_at, @updated_at
+        @id, @work_item_id, @plan_id, @status, @summary, @mission_log_id, @review_item_id,
+        @executor_name, @pid, @retry_of_run_id, @execution_profile_json,
+        @provider_mapping_id, @provider_binding_id, @created_at, @updated_at
       )`
     ).run(run);
 

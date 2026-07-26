@@ -18,6 +18,21 @@ Mission Control opens each detail view at its own URL. Use the browser Back butt
 
 Codex remains the default coding agent. Managed planning and build packets can also use Claude Code through the `claude_planning` and `claude_build` profiles. The Dashboard uses the defaults in `config/coding-agent-profiles.json`; advanced CLI use can select a profile per packet with `arcadia ask --agent-profile <name>` or `arcadia work plan --agent-profile <name>`. A Decision stays bound to the profile named in its exact packet.
 
+Managed plan Actions may also declare a vendor-neutral execution profile. For
+those Actions, Arcadia uses the replaceable provider mappings in
+`config/provider-adapters.json` to choose the least costly available
+configuration that satisfies the required capability, reasoning effort, tools,
+context, sandbox, and data locality. An explicit `--agent-profile` narrows the
+eligible configurations but cannot weaken the Action requirement. If no
+configuration qualifies, Arcadia refuses the Run instead of silently choosing a
+weaker model. See `docs/agent-execution-policy.md`.
+
+Execution profiles do not change approval authority. A more capable model still
+cannot deploy, publish, merge, delete, spend money, use credentials, access
+production data, or send messages without the applicable operator Decision.
+Arcadia records observed provider usage and limits but does not yet estimate
+Action token consumption or schedule from predictive budgets.
+
 The **Intelligence** screen shows recorded current-day usage, live Codex account limits, and the latest Claude Code context and subscription-limit snapshot. Use **Refresh usage** in the usage section to request current data from all configured coding-agent providers; the section also refreshes automatically when its snapshot is stale. Arcadia reads Codex through its local app-server protocol. Claude Code supplies telemetry through `scripts/claude-code-statusline.sh`, configured as the user's Claude status line. Arcadia retains the most recently reported provider snapshot in `~/.arcadia/telemetry/coding-agent-usage.json`, so a transient provider or UI refresh does not erase it; stale values are labelled as the last reported snapshot. Missing provider fields remain explicitly unknown.
 
 Other CLI commands are advanced or compatibility surfaces, not part of normal daily operation unless a current task says otherwise.

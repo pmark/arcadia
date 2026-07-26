@@ -15,6 +15,7 @@ import type {
   WorkItemSummary
 } from "../domain/types.js";
 import { packetSha256 } from "./planningAuthorization.js";
+import { recordExecutionProfileEvent } from "./profileEvents.js";
 
 export const PLANNING_SAFETY_BOUNDARIES = [
   "No implementation or repository writes",
@@ -54,8 +55,27 @@ export function persistCodexPacketRecords(
     status: "packet_created",
     workItemId: input.workItem.id,
     planId: input.plan.id,
-    planStepId: input.planStepId ?? null
+    planStepId: input.planStepId ?? null,
+    executionProfileJson: input.packet.executionRequirement
+      ? JSON.stringify(input.packet.executionRequirement)
+      : null,
+    providerMappingId: input.packet.agentConfiguration?.mappingId ?? null,
+    providerBindingId: input.packet.agentConfiguration?.bindingId ?? null
   });
+  if (input.packet.agentConfiguration && input.packet.executionRequirement) {
+    const effective = input.packet.executionRequirement.phases[input.packet.purpose === "planning" ? "planning" : "implementation"]
+      ?? input.packet.executionRequirement.baseline;
+    recordExecutionProfileEvent(db, {
+      eventType: "coding_agent.profile_selected",
+      workItemId: input.workItem.id,
+      invocationId: invocation.id,
+      phase: input.packet.purpose === "planning" ? "planning" : "implementation",
+      reason: "Least-cost compliant provider-adapter binding selected.",
+      to: effective,
+      mappingId: input.packet.agentConfiguration.mappingId,
+      bindingId: input.packet.agentConfiguration.bindingId
+    });
+  }
   const packetArtifact = createArtifactRecord(db, {
     projectId: input.workItem.project_id,
     workItemId: input.workItem.id,

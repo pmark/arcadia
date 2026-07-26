@@ -29,6 +29,24 @@ describe("coding-agent CLI adapters", () => {
     expect(claude.displayCommand).toBe("claude --print --output-format json");
   });
 
+  it("applies provider-adapter model and effort arguments to the exact invocation", () => {
+    const root = createRoot();
+    const finalPath = path.join(root, "final.md");
+    const command = buildCodingAgentCommand(
+      profile({ provider: "codex-cli", command: "codex" }),
+      root,
+      finalPath,
+      ["--model", "configured-model", "--config", "model_reasoning_effort=\"high\""]
+    );
+
+    expect(command.args).toEqual(expect.arrayContaining([
+      "--model",
+      "configured-model",
+      "--config",
+      "model_reasoning_effort=\"high\""
+    ]));
+  });
+
   it("extracts Claude's final result while retaining raw JSON for the execution log", () => {
     const root = createRoot();
     const finalPath = path.join(root, "final.md");

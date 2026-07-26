@@ -131,6 +131,23 @@ before extending it.
   keep it stable. Command groups are registered in `src/cli.ts` (see the
   `intelligence` group for the pattern).
 
+## Coding-agent execution profiles
+
+- Managed plan Actions may declare `arcadia.execution/v1`. The parser expands
+  named vendor-neutral profiles through `src/execution/profiles.ts`.
+- `docs sync` persists the portable declaration on `work_items`; model names
+  never belong in authoritative plan metadata.
+- `config/provider-adapters.json` maps abstract capability/effort to exact
+  provider model and CLI arguments. The bundled replacement is
+  `config/defaults/provider-adapters.json`.
+- Selection in `src/codingAgents/providerAdapters.ts` filters capability,
+  effort, tools, context, sandbox, locality, requested profile, and current
+  availability before cost ordering. It never falls back to a weaker binding.
+- Selected invocations and Runs retain the resolved abstract profile plus
+  immutable mapping and binding ids. Escalations are append-only `events`.
+- Capability escalation never changes Responsibility or approval gates.
+- Version 1 deliberately has no predictive token sizing or budgeting.
+
 ## Discord bot (`apps/discord-bot/`)
 
 - **Boundary: bot → CLI (`arcadia … --json`) → DB.** The bot has no DB handle;

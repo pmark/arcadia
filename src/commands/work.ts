@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { createCodexPacket, selectAgentProfile } from "../codex/packets.js";
+import { createCodexPacket, selectAgentProfileForWorkItem } from "../codex/packets.js";
 import { codingAgentLabel } from "../codingAgents/adapters.js";
 import { executionPlanNotFound, validationError, workItemNotFound } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
@@ -54,6 +54,7 @@ import {
   createPlanningApprovalDecision,
   persistCodexPacketRecords
 } from "../execution/planningPreparation.js";
+import { recordExecutionProfileEvent } from "../execution/profileEvents.js";
 import type { Phase3Registries } from "../intent/registries.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import type { ResolvedIntent } from "../intent/resolver.js";
@@ -299,6 +300,14 @@ export function runWorkPlanCommand(options: { workspace: string; workId: string;
       const registries = loadPhase3Registries(workspacePath);
       validatePhase3Registries(registries);
       const projectContext = getProjectContext(db, workItem.project_id as string);
+      const agentSelection = selectAgentProfileForWorkItem({
+        profiles: registries.codingAgents.profiles,
+        adapters: registries.providerAdapters,
+        workItem,
+        purpose: "planning",
+        requestedName: options.agentProfile,
+        defaults: registries.codingAgents.defaults
+      });
       const packet = createCodexPacket({
         workspace: workspacePath,
         request: workItem.raw_input,
@@ -306,12 +315,9 @@ export function runWorkPlanCommand(options: { workspace: string; workId: string;
         workItem,
         planId: plan.id,
         projectContext,
-        agentProfile: selectAgentProfile(
-          registries.codingAgents.profiles,
-          "planning",
-          options.agentProfile,
-          registries.codingAgents.defaults
-        )
+        agentProfile: agentSelection.profile,
+        agentConfiguration: agentSelection.configuration,
+        executionRequirement: agentSelection.executionRequirement
       });
       const persisted = persistCodexPacketRecords(db, {
         packet,
@@ -826,12 +832,14 @@ function ensureCodexPacketsForPlan(
       continue;
     }
 
-    const agentProfile = selectAgentProfile(
-      registries.codingAgents.profiles,
+    const agentSelection = selectAgentProfileForWorkItem({
+      profiles: registries.codingAgents.profiles,
+      adapters: registries.providerAdapters,
+      workItem,
       purpose,
-      permissions.agentProfile,
-      registries.codingAgents.defaults
-    );
+      requestedName: permissions.agentProfile,
+      defaults: registries.codingAgents.defaults
+    });
     const packet = createCodexPacket({
       workspace: workspacePath,
       request: workItem.raw_input,
@@ -839,10 +847,12 @@ function ensureCodexPacketsForPlan(
       workItem,
       planId: plan.id,
       projectContext: workItem.project_id ? getProjectContext(db, workItem.project_id) : null,
-      agentProfile
+      agentProfile: agentSelection.profile,
+      agentConfiguration: agentSelection.configuration,
+      executionRequirement: agentSelection.executionRequirement
     });
 
-    createCodexInvocation(db, {
+    const invocation = createCodexInvocation(db, {
       id: packet.invocationId,
       purpose: packet.purpose,
       agentProfile: packet.agentProfile.name,
@@ -854,8 +864,26 @@ function ensureCodexPacketsForPlan(
       status: "packet_created",
       workItemId: workItem.id,
       planId: plan.id,
-      planStepId: step.id
+      planStepId: step.id,
+      executionProfileJson: packet.executionRequirement
+        ? JSON.stringify(packet.executionRequirement)
+        : null,
+      providerMappingId: packet.agentConfiguration?.mappingId ?? null,
+      providerBindingId: packet.agentConfiguration?.bindingId ?? null
     });
+    if (packet.agentConfiguration && packet.executionRequirement) {
+      const phase = purpose === "planning" ? "planning" : "implementation";
+      recordExecutionProfileEvent(db, {
+        eventType: "coding_agent.profile_selected",
+        workItemId: workItem.id,
+        invocationId: invocation.id,
+        phase,
+        reason: "Least-cost compliant provider-adapter binding selected.",
+        to: packet.executionRequirement.phases[phase] ?? packet.executionRequirement.baseline,
+        mappingId: packet.agentConfiguration.mappingId,
+        bindingId: packet.agentConfiguration.bindingId
+      });
+    }
 
     createArtifactRecord(db, {
       projectId: workItem.project_id,

@@ -53,6 +53,10 @@ describe("Codex planning artifact validation workflow", () => {
     expect(result.data.run.steps[0].status).toBe("completed");
     expect(result.data.run.steps[0].artifact_path).toBe(fixture.finalRelativePath);
     expect(result.data.run.steps[0].output).toContain("Planning artifact validation passed");
+    expect(result.data.run).toMatchObject({
+      provider_mapping_id: "test-mapping-1",
+      provider_binding_id: "test-binding-1"
+    });
     expect(withDatabase(workspace, (db) => getWorkItem(db, fixture.workItemId)?.status)).toBe("in_progress");
     expect(withDatabase(workspace, (db) =>
       listReviewItems(db, "open").some((item) => item.resolved_intent === "CodexPlanningArtifactAcceptance")
@@ -358,7 +362,13 @@ function setupCodexRun(
       status: "packet_created",
       workItemId: workItem.id,
       planId: plan.id,
-      planStepId: plan.steps[0].id
+      planStepId: plan.steps[0].id,
+      executionProfileJson: JSON.stringify({
+        capability: "c3_systems",
+        effort: "e3_deep"
+      }),
+      providerMappingId: "test-mapping-1",
+      providerBindingId: "test-binding-1"
     });
     const packetArtifact = createArtifactRecord(db, {
       projectId: created.project.id,

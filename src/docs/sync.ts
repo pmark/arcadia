@@ -18,6 +18,7 @@ import {
 } from "../db/repositories.js";
 import { queueForWorkClassification, type WorkClassification } from "../domain/constants.js";
 import type { Project } from "../domain/types.js";
+import { executionRequirementToPortableValue } from "../execution/profiles.js";
 import { discoverDocs } from "./discover.js";
 import {
   actionDocRef,
@@ -317,7 +318,10 @@ function syncAction(
     gap_type: action.gapType,
     open_question: action.question,
     confidence: action.confidence,
-    clarification_source: action.source
+    clarification_source: action.source,
+    execution_requirement_json: action.execution
+      ? JSON.stringify(executionRequirementToPortableValue(action.execution))
+      : null
   };
 
   if (!existing) {
@@ -340,7 +344,8 @@ function syncAction(
         gapType: desired.gap_type,
         openQuestion: desired.open_question,
         confidence: desired.confidence,
-        clarificationSource: desired.clarification_source
+        clarificationSource: desired.clarification_source,
+        executionRequirementJson: desired.execution_requirement_json
       });
     }
     return {
@@ -363,7 +368,8 @@ function syncAction(
     ["gap_type", existing.gap_type, desired.gap_type],
     ["question", existing.open_question, desired.open_question],
     ["confidence", existing.confidence, desired.confidence],
-    ["source", existing.clarification_source, desired.clarification_source]
+    ["source", existing.clarification_source, desired.clarification_source],
+    ["execution", existing.execution_requirement_json, desired.execution_requirement_json]
   ];
   const changed = drift.filter(([, current, next]) => (current ?? null) !== (next ?? null));
 
@@ -395,7 +401,8 @@ function syncAction(
       gapType: desired.gap_type,
       openQuestion: desired.open_question,
       confidence: desired.confidence,
-      clarificationSource: desired.clarification_source
+      clarificationSource: desired.clarification_source,
+      executionRequirementJson: desired.execution_requirement_json
     });
     if (existing.title !== desired.title) {
       db.prepare("UPDATE work_items SET title = ? WHERE id = ?").run(desired.title, existing.id);

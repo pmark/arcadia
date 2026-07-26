@@ -88,19 +88,35 @@ Milestone is not "done" until its Artifact exists and its validation passes.
 - **Prefer the smallest step that makes progress;** avoid speculative work
   ahead of an approved Milestone.
 
-## 4. Model selection
+## 4. Coding-agent selection and continuation
 
-Match the model to the task; override per task when judgment says so.
+Actions declare vendor-neutral execution requirements through
+`arcadia.execution/v1`; plans never name vendor models. The authoritative
+vocabulary, validation, selection procedure, and runtime escalation rules are
+in [`agent-execution-policy.md`](./agent-execution-policy.md).
 
-| Task class | Default model | Rationale |
-| --- | --- | --- |
-| Mechanical edits, mass find/replace, search, formatting | Haiku | Cheap, fast, low-judgment |
-| Standard implementation, tests, docs prose | Sonnet | Balanced capability/cost |
-| Architecture, risky/wide refactors, migrations, code review, planning | Opus | High judgment, high blast radius |
+At continuation:
 
-Subagents pick their tier by the same table (e.g. an Explore fan-out can run
-cheaper than the reviewing session). State the model when it isn't the
-obvious default, so choices are auditable.
+1. Resolve the current Action through `PROJECT.md` and its active plan.
+2. Validate clarification, acceptance criteria, required Decisions, references,
+   Responsibility, and execution profile.
+3. Expand the named profile for the phase about to begin.
+4. Check authority independently from model capability.
+5. Select the least costly available provider binding that satisfies every
+   requirement. Never substitute a weaker configuration.
+6. Persist the abstract profile and immutable provider mapping/binding ids
+   before execution.
+7. Re-evaluate at phase boundaries and stop on a deterministic escalation
+   trigger.
+8. Record the actual abstract profile in the Log; keep vendor identifiers in
+   Run provenance.
+
+Legacy Actions without execution metadata retain the existing explicit/default
+profile behavior during migration. Completed legacy work is recorded as
+`unknown_legacy`, never assigned a guessed profile.
+
+Provider usage telemetry remains observational. Version 1 does not estimate
+token consumption or schedule work from predictive budgets.
 
 ## 5. How this plan itself is managed (worked example)
 

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { createCodexPacket, selectAgentProfile } from "../codex/packets.js";
+import { createCodexPacket, selectAgentProfileForWorkItem } from "../codex/packets.js";
 import { milestoneNotFound, projectNotFound, validationError, workItemNotFound } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
@@ -713,7 +713,17 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     });
   }
 
-  const codexPacket = resolved.codexPurpose
+  const agentSelection = resolved.codexPurpose
+    ? selectAgentProfileForWorkItem({
+        profiles: registries.codingAgents.profiles,
+        adapters: registries.providerAdapters,
+        workItem: initial.workItem,
+        purpose: resolved.codexPurpose,
+        requestedName: options.agentProfile,
+        defaults: registries.codingAgents.defaults
+      })
+    : null;
+  const codexPacket = resolved.codexPurpose && agentSelection
     ? createCodexPacket({
         workspace: workspacePath,
         request,
@@ -721,12 +731,9 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         workItem: initial.workItem,
         planId: initial.plan.id,
         projectContext: initial.projectContext,
-        agentProfile: selectAgentProfile(
-          registries.codingAgents.profiles,
-          resolved.codexPurpose,
-          options.agentProfile,
-          registries.codingAgents.defaults
-        ),
+        agentProfile: agentSelection.profile,
+        agentConfiguration: agentSelection.configuration,
+        executionRequirement: agentSelection.executionRequirement,
         stewardship
       })
     : null;

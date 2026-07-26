@@ -52,9 +52,48 @@ export function applyMigrations(db: Database.Database): void {
   ensureClarificationColumns(db);
   ensureParentWorkItemColumn(db);
   ensureDocRefColumns(db);
+  ensureExecutionRequirementColumn(db);
+  ensureExecutionProfileProvenanceColumns(db);
   ensureDailyCapacityTable(db);
   ensureActivityTables(db);
   applyCapabilityMigrations(db);
+}
+
+function ensureExecutionRequirementColumn(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(work_items)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("execution_requirement_json")) {
+    db.prepare("ALTER TABLE work_items ADD COLUMN execution_requirement_json TEXT").run();
+  }
+}
+
+function ensureExecutionProfileProvenanceColumns(db: Database.Database): void {
+  const invocationColumns = new Set(
+    (db.prepare("PRAGMA table_info(codex_invocations)").all() as Array<{ name: string }>).map(
+      (column) => column.name
+    )
+  );
+  for (const [name, ddl] of [
+    ["execution_profile_json", "ALTER TABLE codex_invocations ADD COLUMN execution_profile_json TEXT"],
+    ["provider_mapping_id", "ALTER TABLE codex_invocations ADD COLUMN provider_mapping_id TEXT"],
+    ["provider_binding_id", "ALTER TABLE codex_invocations ADD COLUMN provider_binding_id TEXT"]
+  ] as const) {
+    if (!invocationColumns.has(name)) db.prepare(ddl).run();
+  }
+
+  const runColumns = new Set(
+    (db.prepare("PRAGMA table_info(execution_runs)").all() as Array<{ name: string }>).map(
+      (column) => column.name
+    )
+  );
+  for (const [name, ddl] of [
+    ["execution_profile_json", "ALTER TABLE execution_runs ADD COLUMN execution_profile_json TEXT"],
+    ["provider_mapping_id", "ALTER TABLE execution_runs ADD COLUMN provider_mapping_id TEXT"],
+    ["provider_binding_id", "ALTER TABLE execution_runs ADD COLUMN provider_binding_id TEXT"]
+  ] as const) {
+    if (!runColumns.has(name)) db.prepare(ddl).run();
+  }
 }
 
 function ensureCapabilityCoreTables(db: Database.Database): void {
