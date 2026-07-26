@@ -310,18 +310,23 @@ export function ReviewCard({
   pendingAction,
   onAction,
   onApproveAndExecute,
-  onResolveOption
+  onResolveOption,
+  onResolveReply
 }: {
   item: DashboardReviewItem;
   pendingAction?: string | null;
   onAction?: (item: DashboardReviewItem, action: "approve" | "reject" | "defer") => void;
   onApproveAndExecute?: (item: DashboardReviewItem) => void;
   onResolveOption?: (item: DashboardReviewItem, option: string) => void;
+  onResolveReply?: (item: DashboardReviewItem, reply: string) => void;
 }) {
+  const [answer, setAnswer] = useState("");
   const primaryActions = ["approve", "reject", "defer"] as const;
   const isPlanning = item.resolvedIntent === "CodexPlanningRunApproval" || item.resolvedIntent === "CodexPlanningRetryApproval";
   const isAcceptance = item.resolvedIntent === "CodexPlanningArtifactAcceptance";
+  const isClarification = item.resolvedIntent === "ActionClarification";
   const extraOptions = item.options.filter((option) => !primaryActions.includes(option as (typeof primaryActions)[number]));
+  const trimmedAnswer = answer.trim();
 
   return (
     <article className="min-w-0 rounded-md border border-line bg-panel p-4 shadow-soft">
@@ -336,17 +341,69 @@ export function ReviewCard({
         <Field label="Category" value={item.category} />
         <Field label="Original Request" value={item.sourceInput} />
         <Field
-          label={item.missingFields.length > 0 ? "Missing Fields" : "Blocking Question"}
-          value={item.missingFields.length > 0 ? item.missingFields.join(", ") : item.decisionNeeded}
+          label={isClarification ? "Question to answer" : item.missingFields.length > 0 ? "Missing Fields" : "Blocking Question"}
+          value={isClarification ? item.decisionNeeded : item.missingFields.length > 0 ? item.missingFields.join(", ") : item.decisionNeeded}
         />
         <TruncatedField
           label="Proposed Action"
           value={item.proposedAction || item.recommendation || "None"}
           enrichment={{ kind: "review.proposed-action.headline" }}
         />
-        <Field label="Choices" value={item.options.join(", ")} />
+        {!isClarification ? <Field label="Choices" value={item.options.join(", ")} /> : null}
         <Field label="Created" value={`${formatDateTime(item.createdAt)} · ${item.statusLabel}`} />
       </dl>
+      {isClarification ? (
+        <form
+          className="mt-4 rounded-md border border-steel/30 bg-steel/5 p-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (trimmedAnswer && onResolveReply && !pendingAction) {
+              onResolveReply(item, trimmedAnswer);
+            }
+          }}
+        >
+          <label htmlFor={`decision-answer-${item.id}`} className="text-sm font-semibold text-ink">
+            Your answer
+          </label>
+          <p className="mt-1 text-xs leading-5 text-muted">
+            Answer in your own words. Arcadia will record it against this Decision and immediately continue clarification.
+          </p>
+          <textarea
+            id={`decision-answer-${item.id}`}
+            value={answer}
+            onChange={(event) => setAnswer(event.target.value)}
+            rows={4}
+            autoComplete="off"
+            placeholder="Type the information Arcadia asked for…"
+            disabled={Boolean(pendingAction)}
+            className="mt-3 w-full resize-y rounded-md border border-line bg-canvas px-3 py-2 text-sm leading-5 text-ink outline-none transition placeholder:text-muted/70 focus:border-steel disabled:cursor-not-allowed disabled:opacity-60"
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="submit"
+              disabled={!onResolveReply || !trimmedAnswer || Boolean(pendingAction)}
+              className="min-h-10 rounded-md border border-moss/30 bg-moss/10 px-3 text-sm font-semibold text-moss transition hover:border-moss disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {pendingAction?.startsWith("resolve:") ? "Continuing…" : "Answer & continue"}
+            </button>
+            <span className="text-xs text-muted">This records information; it does not approve execution.</span>
+          </div>
+          <div className="mt-3 border-t border-line pt-3">
+            <ActionAdvice
+              target={composeAdviceTarget([
+                ["Project", item.project],
+                ["Original request", item.sourceInput],
+                ["Question", item.decisionNeeded],
+                ["Recommendation", item.recommendation],
+                ["Proposed Action", item.proposedAction]
+              ])}
+              label="Get help answering"
+              onUse={(draft) => setAnswer(draft)}
+              useLabel="Use as draft answer"
+            />
+          </div>
+        </form>
+      ) : null}
       <div className="mt-4 flex flex-wrap gap-2">
         {item.promptPath ? (
           <a href={dashboardFileHref(item.promptPath)} className="inline-flex min-h-10 items-center rounded-md border border-steel/30 bg-steel/10 px-3 text-sm font-semibold text-steel">
@@ -363,7 +420,7 @@ export function ReviewCard({
             View Validation
           </a>
         ) : null}
-        {onApproveAndExecute ? (
+        {!isClarification && onApproveAndExecute ? (
           <button
             type="button"
             onClick={() => onApproveAndExecute(item)}
@@ -380,7 +437,11 @@ export function ReviewCard({
                   : "Approve & Execute"}
           </button>
         ) : null}
-        {primaryActions.filter((action) => action !== "approve" || !onApproveAndExecute).map((action) => {
+        {primaryActions.filter((action) =>
+          isClarification
+            ? action === "reject" || action === "defer"
+            : action !== "approve" || !onApproveAndExecute
+        ).map((action) => {
           const pending = pendingAction === action;
           const disabled = Boolean(pendingAction);
           return (
@@ -395,7 +456,7 @@ export function ReviewCard({
             </button>
           );
         })}
-        {extraOptions.map((option) => {
+        {!isClarification ? extraOptions.map((option) => {
           const pending = pendingAction === `resolve:${option}`;
           return (
             <button
@@ -408,7 +469,7 @@ export function ReviewCard({
               {pending ? "Working..." : option}
             </button>
           );
-        })}
+        }) : null}
       </div>
     </article>
   );

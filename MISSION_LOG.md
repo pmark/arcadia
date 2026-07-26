@@ -8,6 +8,72 @@ updated: 2026-07-25
 
 # Mission Log: Arcadia
 
+## 2026-07-25 — Made clarification Decisions conversational
+
+- **Did:** Repaired the shared Decision-response contract, Mission Control
+  Review flow, and Discord reply flow so a clarification question can be
+  answered in natural language. Added immediate durable acknowledgment,
+  automatic re-clarification, and an explicit AI-advice-to-editable-draft
+  handoff.
+- **Result:** Free-form Discord replies now resolve the exact referenced
+  `ActionClarification` Decision instead of falling through to generic Ask.
+  Mission Control shows **Your answer** and **Answer & continue**, removes
+  approval-style execution affordances for clarification, clears the answered
+  Decision immediately, and then surfaces either the concrete next Action or
+  one focused follow-up. Answering never authorizes execution. Browser
+  dogfooding verified the durable acknowledgment in about 1.5 seconds while a
+  roughly 28-second local clarification completed independently. Focused CLI
+  and Discord tests passed; the full suite passed 628 tests with 2 skipped,
+  both TypeScript builds passed, and the production Dashboard build passed.
+- **Next:** Keep `ingest-mission-logs` as the authoritative current Action and
+  ask the operator which protocol increment to prioritize. Monitor real
+  clarification replies before adding a non-threaded Discord fallback.
+- **Blockers:** Automatic continuation requires local Intelligence; when it is
+  unavailable, Arcadia preserves the answer and leaves the Action ready to
+  continue. Dogfooding also exposed a queued no-step Run and the absence of a
+  canceled Run state; its Decision was rejected and its audit record was marked
+  failed before any executor ran. No deployment, publish, commit, push,
+  production access, credentials, or destructive action occurred.
+
+## 2026-07-25 — Validated docs sync and continuation against Private Practice Now
+
+- **Did:** Read both repositories' instructions and bounded context; previewed
+  then applied Arcadia workspace sync for
+  `/Users/pmark/Dev/PrivatePracticeNow/platform`; resolved its milestone and
+  `define-shared-inquiry-service` Action; and tested execution-profile parsing
+  plus deterministic refusal of weaker capability/effort requirements.
+- **Result:** Foreign sync preview found 15 managed creates, 14 intentional
+  narrative/Log skips, and zero validation errors. The minimum PPN managed-doc
+  patch was a `systems_change` execution declaration on the current Action and
+  its plan-level milestone. Re-sync applied one milestone update with zero
+  errors. Arcadia focused tests passed 49/49; PPN `pnpm typecheck` passed.
+  No implementation code, deployment, publish, commit, push, credentials,
+  production access, or destructive action was used.
+- **Next:** Answer the one continuation question: choose mission-Log ingestion,
+  narrative summarization, or dependency persistence as the next protocol
+  increment. Arcadia will not infer priority from backlog order.
+- **Blockers:** None for the completed validation. Narrative/Log ingestion and
+  dependency persistence remain known protocol gaps, not foreign-repository
+  blockers.
+
+## 2026-07-25 — Selected the first foreign repository for protocol validation
+
+- **Did:** Recorded Decision 0002 and selected
+  `/Users/pmark/Dev/PrivatePracticeNow/platform` for the first non-Arcadia
+  `docs sync` validation. Promoted `second-project-validation` to the current
+  clarified Action with a cross-system execution profile and bounded acceptance
+  criteria.
+- **Result:** The continuation procedure now has one operator-resolved target,
+  a concrete next Action, and an explicit Artifact requirement. Validation will
+  remain documentation- and workspace-only; Private Practice Now application
+  code, deployment, publishing, credentials, production access, and commits
+  are out of scope.
+- **Next:** Preview and apply the minimum managed-document changes, then run
+  `docs sync`, `arcadia next`, profile resolution, and deterministic refusal
+  probes against both repositories.
+- **Blockers:** None after Decision 0002; any provider, credential, production,
+  destructive, or unauthorized product boundary remains a stop condition.
+
 ## 2026-07-25 — Added the authoritative work pointer
 
 - **Did:** Implemented the Arcadia Coding-Agent Continuation Contract's control fields — `active_plan`, `current_action`, per-action `acceptance_criteria`, `decisions`, and `references` — plus `arcadia next`, which resolves the objective from the repository or refuses with a named remedy per blocker.

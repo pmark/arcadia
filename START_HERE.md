@@ -14,6 +14,25 @@ Open **System Status** at <http://127.0.0.1:3020/admin/status> when you need a q
 
 Use the **Ask** box for a new request that is not already an Action in Arcadia.
 
+## Answering Decisions
+
+Arcadia separates approval Decisions from clarification Decisions:
+
+- An approval Decision offers **Approve**, **Reject**, and **Defer** because it
+  asks whether a proposed action or Run may proceed.
+- A clarification Decision shows **Your answer**. Write the answer in your own
+  words and choose **Answer & continue**. Arcadia records the information and
+  immediately runs clarification again; it either produces the concrete next
+  Action or surfaces one focused follow-up question. This does not authorize
+  execution. **Get help answering** can generate advice and copy it into the
+  answer box as an editable draft.
+
+In Discord, reply directly to a clarification notification with the answer in
+your own words. Arcadia confirms the Decision id, records the answer, and
+continues clarification. Use `defer` to leave the question open or `reject` to
+withdraw it. Approval Decisions still require an explicit `approve`, `reject`,
+or `defer`; free-form text never grants execution authority.
+
 Mission Control opens each detail view at its own URL. Use the browser Back button to return through the views you opened, or use the in-page **Back** link to return to Mission Control.
 
 Codex remains the default coding agent. Managed planning and build packets can also use Claude Code through the `claude_planning` and `claude_build` profiles. The Dashboard uses the defaults in `config/coding-agent-profiles.json`; advanced CLI use can select a profile per packet with `arcadia ask --agent-profile <name>` or `arcadia work plan --agent-profile <name>`. A Decision stays bound to the profile named in its exact packet.

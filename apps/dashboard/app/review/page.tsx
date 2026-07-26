@@ -53,6 +53,10 @@ export default function ReviewPage() {
     await submitReviewAction(item, "resolve", option);
   }
 
+  async function submitAnswer(item: DashboardReviewItem, answer: string) {
+    await submitReviewAction(item, "resolve", answer);
+  }
+
   async function submitReviewAction(
     item: DashboardReviewItem,
     action: "approve" | "reject" | "defer" | "resolve",
@@ -74,12 +78,43 @@ export default function ReviewPage() {
         throw new Error(errorMessageFromBody(body, "Review action failed."));
       }
 
-      setActionMessage(typeof body.message === "string" ? body.message : "Review action completed.");
+      const message = typeof body.message === "string" ? body.message : "Review action completed.";
+      setActionMessage(message);
       await refresh();
+      const result = body && typeof body === "object" && "result" in body
+        ? body.result as { action?: string; item?: { resolvedIntent?: string; workItemId?: string | null } }
+        : null;
+      if (
+        action === "resolve" &&
+        result?.action === "approved" &&
+        result.item?.resolvedIntent === "ActionClarification" &&
+        result.item.workItemId
+      ) {
+        setActionMessage(`${message} Arcadia is continuing clarification in the background…`);
+        void continueAnsweredAction(result.item.workItemId);
+      }
     } catch (submitError) {
       setActionError(submitError instanceof Error ? submitError.message : String(submitError));
     } finally {
       setPendingKey(null);
+    }
+  }
+
+  async function continueAnsweredAction(workItemId: string) {
+    try {
+      const response = await fetch("/api/clarify-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workItemId })
+      });
+      const body = await response.json() as { message?: string; error?: string };
+      if (!response.ok) {
+        throw new Error(errorMessageFromBody(body, "Automatic clarification is unavailable."));
+      }
+      setActionMessage(typeof body.message === "string" ? body.message : "Clarification continued.");
+      await refresh();
+    } catch {
+      setActionMessage("Answer recorded. Automatic clarification is unavailable right now; the Action remains ready to continue.");
     }
   }
 
@@ -110,6 +145,7 @@ export default function ReviewPage() {
               onAction={(reviewItem, action) => void submitAction(reviewItem, action)}
               onApproveAndExecute={(reviewItem) => void submitApproveAndExecute(reviewItem)}
               onResolveOption={(reviewItem, option) => void submitOption(reviewItem, option)}
+              onResolveReply={(reviewItem, answer) => void submitAnswer(reviewItem, answer)}
             />
           ))}
         </div>

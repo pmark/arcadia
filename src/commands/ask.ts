@@ -159,7 +159,10 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   });
   let run: ExecutionRunSummary | null = null;
 
-  if (parsedReviewResponse.hasResponse && parsedReviewResponse.hasReviewReference) {
+  // A reply tied to a known Decision belongs to the review workflow even when
+  // it is free-form prose. Clarification answers are intentionally not one of
+  // the short approve/reject/defer tokens recognized by the parser.
+  if (parsedReviewResponse.hasReviewReference) {
     const reviewResolution = runReviewResolveReplyCommand({
       workspace: workspacePath,
       id: parsedReviewResponse.reviewId,
