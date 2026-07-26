@@ -321,7 +321,13 @@ function syncAction(
     clarification_source: action.source,
     execution_requirement_json: action.execution
       ? JSON.stringify(executionRequirementToPortableValue(action.execution))
-      : null
+      : null,
+    // Kept as declared, in order: these are the plan author's words, and the
+    // packet builder quotes them to the coding agent verbatim. An empty list
+    // stores NULL so "declared none" and "never came from a plan" read alike
+    // downstream — neither gives the agent anything to satisfy.
+    acceptance_criteria_json:
+      action.acceptanceCriteria.length > 0 ? JSON.stringify(action.acceptanceCriteria) : null
   };
 
   if (!existing) {
@@ -345,7 +351,8 @@ function syncAction(
         openQuestion: desired.open_question,
         confidence: desired.confidence,
         clarificationSource: desired.clarification_source,
-        executionRequirementJson: desired.execution_requirement_json
+        executionRequirementJson: desired.execution_requirement_json,
+        acceptanceCriteriaJson: desired.acceptance_criteria_json
       });
     }
     return {
@@ -369,7 +376,8 @@ function syncAction(
     ["question", existing.open_question, desired.open_question],
     ["confidence", existing.confidence, desired.confidence],
     ["source", existing.clarification_source, desired.clarification_source],
-    ["execution", existing.execution_requirement_json, desired.execution_requirement_json]
+    ["execution", existing.execution_requirement_json, desired.execution_requirement_json],
+    ["acceptance_criteria", existing.acceptance_criteria_json, desired.acceptance_criteria_json]
   ];
   const changed = drift.filter(([, current, next]) => (current ?? null) !== (next ?? null));
 
@@ -402,7 +410,8 @@ function syncAction(
       openQuestion: desired.open_question,
       confidence: desired.confidence,
       clarificationSource: desired.clarification_source,
-      executionRequirementJson: desired.execution_requirement_json
+      executionRequirementJson: desired.execution_requirement_json,
+      acceptanceCriteriaJson: desired.acceptance_criteria_json
     });
     if (existing.title !== desired.title) {
       db.prepare("UPDATE work_items SET title = ? WHERE id = ?").run(desired.title, existing.id);

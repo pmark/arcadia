@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS work_items (
   parent_work_item_id TEXT,
   doc_ref TEXT,
   execution_requirement_json TEXT,
+  acceptance_criteria_json TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,

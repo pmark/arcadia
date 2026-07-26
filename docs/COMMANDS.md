@@ -641,9 +641,26 @@ you and a workable queue.
 
 `MISSION_LOG.md` files and narrative docs (`type: architecture | strategy |
 reference`) are parsed and validated but not yet turned into rows; `docs sync`
-reports them as skipped so you can see the protocol recognizes them. Action
-`depends_on` links are validated — a dependency on an id that does not exist is
-an error — but ordering is not yet persisted.
+reports them as skipped so you can see the protocol recognizes them.
+
+### Action ordering and acceptance criteria
+
+Action `depends_on` links are validated at parse time: a dependency on an id
+that does not exist is an error, and so is a dependency cycle — no action in a
+cycle can ever become ready, so the plan describes work that cannot start.
+
+`arcadia next` enforces the ordering. If the current action depends, directly or
+transitively, on an action that is not `done`, the dispatch is blocked and each
+unmet prerequisite is named with its status and the chain that reached it.
+Finish it, make it the current action, or drop the dependency. Ordering is still
+not persisted to the database — it is enforced from the documents, which are
+authoritative.
+
+An action's `acceptance_criteria` are carried through `docs sync` onto the
+Action and quoted verbatim to the coding agent in the packet's Acceptance
+Criteria section, ahead of Arcadia's generated guardrails. Write them as the
+conditions you would check at review; they are what the agent is asked to
+satisfy.
 
 ## Plan Work
 

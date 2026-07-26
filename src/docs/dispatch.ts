@@ -184,6 +184,23 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
     });
   }
 
+  // The plan's `depends_on` edges are an ordering claim, and dispatching past
+  // them hands an agent work whose prerequisites do not exist yet. Transitive,
+  // because a dependency that is itself blocked blocks this action just as
+  // hard. Cycles are rejected at parse time, so this cannot loop forever.
+  const unmetDependencies = collectUnmetDependencies(plan, action);
+  for (const dependency of unmetDependencies) {
+    blockers.push({
+      relativePath: plan.relativePath,
+      field: `actions.${action.id}.depends_on`,
+      message:
+        dependency.path.length > 1
+          ? `Depends on "${dependency.id}" (via ${dependency.path.slice(0, -1).join(" -> ")}), which is "${dependency.status}", not done.`
+          : `Depends on "${dependency.id}", which is "${dependency.status}", not done.`,
+      remedy: `Finish "${dependency.id}" first, or make it the current_action, or drop the dependency if it no longer holds.`
+    });
+  }
+
   const decisionDocs = discovered.docs.filter(
     (doc): doc is DecisionDoc =>
       doc.type === "decision" && doc.project.toLowerCase() === project.slug.toLowerCase()
@@ -229,6 +246,52 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
   };
 
   return { context, blockers, operatorQuestion };
+}
+
+/** An unfinished prerequisite, with the dependency chain that reached it. */
+interface UnmetDependency {
+  id: string;
+  status: string;
+  /** Ids from the current action's first dependency down to this one. */
+  path: string[];
+}
+
+/**
+ * Walk `depends_on` from the given action and collect every prerequisite that
+ * is not done.
+ *
+ * Breadth-first so the nearest unmet prerequisite is reported first — that is
+ * the one the operator can act on. Dangling ids are skipped; the parser already
+ * reports those against the plan file, and repeating it here would send the
+ * operator to the same field twice with different wording.
+ */
+function collectUnmetDependencies(plan: PlanDoc, action: PlanActionDoc): UnmetDependency[] {
+  const byId = new Map(plan.actions.map((candidate) => [candidate.id, candidate]));
+  const seen = new Set<string>([action.id]);
+  const unmet: UnmetDependency[] = [];
+  const queue: string[][] = action.dependsOn.map((id) => [id]);
+
+  while (queue.length > 0) {
+    const chain = queue.shift()!;
+    const id = chain[chain.length - 1];
+    if (seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+
+    const dependency = byId.get(id);
+    if (!dependency) {
+      continue;
+    }
+    if (dependency.status !== "done") {
+      unmet.push({ id, status: dependency.status, path: chain });
+    }
+    for (const next of dependency.dependsOn) {
+      queue.push([...chain, next]);
+    }
+  }
+
+  return unmet;
 }
 
 /** True when the resolution is safe to hand to a coding agent as-is. */

@@ -97,6 +97,12 @@ export interface WorkItem {
   parent_work_item_id: string | null;
   /** Declared vendor-neutral execution requirement serialized from a managed plan. */
   execution_requirement_json: string | null;
+  /**
+   * Objective conditions that decide when this Action is finished, as a JSON
+   * string array, carried from a managed plan's `acceptance_criteria`. `null`
+   * means the Action did not come from a plan that declared any.
+   */
+  acceptance_criteria_json: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -537,6 +543,8 @@ export interface CreateWorkItemInput {
   parentWorkItemId?: string | null;
   /** Vendor-neutral execution requirement JSON; `null` clears it. */
   executionRequirementJson?: string | null;
+  /** Declared acceptance criteria as a JSON string array; `null` clears it. */
+  acceptanceCriteriaJson?: string | null;
 }
 
 export interface UpdateWorkItemInput {
@@ -562,6 +570,8 @@ export interface UpdateWorkItemInput {
   parentWorkItemId?: string | null;
   /** Vendor-neutral execution requirement JSON; `null` clears it. */
   executionRequirementJson?: string | null;
+  /** Declared acceptance criteria as a JSON string array; `null` clears it. */
+  acceptanceCriteriaJson?: string | null;
 }
 
 export interface UpdateArtifactInput {

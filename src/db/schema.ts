@@ -53,6 +53,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureParentWorkItemColumn(db);
   ensureDocRefColumns(db);
   ensureExecutionRequirementColumn(db);
+  ensureAcceptanceCriteriaColumn(db);
   ensureExecutionProfileProvenanceColumns(db);
   ensureDailyCapacityTable(db);
   ensureActivityTables(db);
@@ -65,6 +66,22 @@ function ensureExecutionRequirementColumn(db: Database.Database): void {
   );
   if (!columns.has("execution_requirement_json")) {
     db.prepare("ALTER TABLE work_items ADD COLUMN execution_requirement_json TEXT").run();
+  }
+}
+
+/**
+ * Carry a managed plan's declared acceptance criteria into the Action.
+ *
+ * Without this the criteria stop at the document boundary: the parser requires
+ * them on the current action, and the coding agent that has to satisfy them
+ * never sees them.
+ */
+function ensureAcceptanceCriteriaColumn(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(work_items)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("acceptance_criteria_json")) {
+    db.prepare("ALTER TABLE work_items ADD COLUMN acceptance_criteria_json TEXT").run();
   }
 }
 
