@@ -255,6 +255,23 @@ export interface ReviewResolveReplyData {
   confirmation: string;
 }
 
+export interface ClarifyData {
+  applied: boolean;
+  evaluated: Array<{
+    workItem: { id: string; title: string };
+    verdict:
+      | { verdict: "clarified"; nextAction: string; actor: string; confidence: string }
+      | { verdict: "question_open"; question: string; gapType: string; confidence: string };
+  }>;
+  applications: Array<{
+    workItemId: string;
+    clarificationStatus: "clarified" | "question_open";
+    decisionId?: string;
+    decisionSlug?: string;
+  }>;
+  skipped: Array<{ workItemId: string; title: string; reason: string }>;
+}
+
 export interface CodexTask {
   id: string;
   source: string;

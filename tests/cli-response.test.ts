@@ -1408,6 +1408,52 @@ describe("CLI response contract", () => {
     expect(json.error.message).toContain("--answer");
   });
 
+  it("records a free-text adapter reply as the answer to a clarification Decision", () => {
+    const workspace = initializedWorkspace();
+    const workItem = importWorkItem(workspace, {
+      title: "Choose the audit-log retention period",
+      queue: "requires_review",
+      classification: "requires_review",
+      nextAction: "Clarify the desired retention period."
+    });
+
+    const opened = parseJson(runCli([
+      "review",
+      "open",
+      workItem.id,
+      "--workspace",
+      workspace,
+      "--question",
+      "How long should audit logs be retained?",
+      "--gap-type",
+      "missing-decision",
+      "--json"
+    ]).stdout);
+
+    const resolved = parseJson(runCli([
+      "ask",
+      "Retain them for 90 days, then delete them.",
+      "--workspace",
+      workspace,
+      "--reply-review-id",
+      opened.data.item.id,
+      "--json"
+    ]).stdout);
+
+    expect(resolved.ok).toBe(true);
+    expect(resolved.data.resolvedIntent.intentId).toBe("ReviewResponse");
+    expect(resolved.data.result.summary).toContain("answer recorded");
+
+    const after = parseJson(runCli(["work", "list", "--workspace", workspace, "--json"]).stdout);
+    const action = after.data.workItems.find((item: { id: string }) => item.id === workItem.id);
+    expect(action.clarification_status).toBe("unclarified");
+    expect(action.open_question).toBeNull();
+    expect(action.clarification_source).toContain("Retain them for 90 days");
+
+    const closed = parseJson(runCli(["review", "--workspace", workspace, "--json"]).stdout);
+    expect(closed.data.items.some((item: { id: string }) => item.id === opened.data.item.id)).toBe(false);
+  });
+
   it("rejecting a clarification Decision releases the Action's open question", () => {
     const workspace = initializedWorkspace();
     const workItem = importWorkItem(workspace, {

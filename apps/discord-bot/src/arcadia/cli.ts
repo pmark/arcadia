@@ -6,6 +6,7 @@ import type {
   AskData,
   ArcadiaJsonFailure,
   ArcadiaJsonSuccess,
+  ClarifyData,
   CodexListData,
   MilestoneListData,
   OrientationPacketComposeData,
@@ -98,6 +99,13 @@ export class ArcadiaCli {
       ...(id ? ["--id", id] : []),
       "--json"
     ]), { surface: "discord" });
+  }
+
+  clarify(workItemId: string): Promise<ArcadiaJsonSuccess<ClarifyData>> {
+    return this.runJson<ClarifyData>(
+      this.withWorkspace(["clarify", "--work", workItemId, "--apply", "--json"]),
+      { timeoutMs: 5 * 60 * 1000, surface: "discord" }
+    );
   }
 
   ask(request: string, askOptions: AskCliOptions = {}): Promise<ArcadiaJsonSuccess<AskData>> {

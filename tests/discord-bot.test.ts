@@ -581,6 +581,23 @@ describe("discord bot formatters", () => {
     expect(decision).toContain("Action: `work_2`");
   });
 
+  it("asks for a direct free-text reply on clarification Decisions", () => {
+    const clarification: ReviewItem = {
+      ...sampleReviewItem(),
+      resolvedIntent: "ActionClarification",
+      decisionNeeded: "Which retention period should the service use?"
+    };
+
+    const list = formatRequiresReview([clarification]);
+    expect(list).toContain("R1 — Arcadia needs your answer");
+    expect(list).toContain("Reply directly to this message in your own words.");
+    expect(list).not.toContain("A) Approve");
+
+    const detail = formatRequiresReviewShow(clarification);
+    expect(detail).toContain("Reply directly with your answer.");
+    expect(detail).not.toContain("Actions: approve, reject, defer");
+  });
+
   it("does not leak internal run status terminology", () => {
     const output = formatRuns([{ ...sampleRun(), status: "requires_review" }]);
 
@@ -601,7 +618,7 @@ describe("discord bot formatters", () => {
 });
 
 describe("discord review reply handling", () => {
-  it("routes direct replies through ask with review metadata", async () => {
+  it("routes direct replies straight to the durable review Decision", async () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-discord-state-"));
     tempDirs.push(workspace);
     await recordReviewMessage(reviewMessageStatePath(workspace), {
@@ -611,17 +628,27 @@ describe("discord review reply handling", () => {
       messageId: "message_1",
       createdAt: "2026-06-10T12:00:00.000Z"
     });
-    let calledWith: { request: string; replyReviewId?: string | null; sourceIngress?: string } | null = null;
+    let calledWith: { reply: string; id?: string | null } | null = null;
     let reply = "";
     const cli = {
-      ask: async (request: string, options?: { replyReviewId?: string | null; sourceIngress?: string }) => {
-        calledWith = { request, replyReviewId: options?.replyReviewId, sourceIngress: options?.sourceIngress };
-        return askResponse({
+      reviewResolveReply: async (responseText: string, id?: string | null) => {
+        calledWith = { reply: responseText, id };
+        return {
+          ok: true,
+          command: "review.resolve-reply",
           workspace,
-          request,
-          resultSummary: "R1 approved. Resuming execution.",
-          reviewItemId: "review_1"
-        });
+          data: {
+            item: { ...sampleReviewItem(), id: "review_1", slug: "R1" },
+            action: "approved",
+            selectedOption: "approve",
+            feedback: null,
+            result: { status: "approved", summary: "Action approved." },
+            approval: null,
+            confirmation: "R1 approved. Resuming execution."
+          },
+          artifacts: [],
+          warnings: []
+        };
       }
     } as unknown as ArcadiaCli;
 
@@ -633,9 +660,85 @@ describe("discord review reply handling", () => {
       }
     }), testConfig(workspace), cli);
 
-    expect(calledWith).toEqual({ request: "A", replyReviewId: "review_1", sourceIngress: "discord.message" });
-    expect(reply).toContain("**Arcadia ask handled**");
-    expect(reply).toContain("Result: R1 approved. Resuming execution.");
+    expect(calledWith).toEqual({ reply: "A", id: "review_1" });
+    expect(reply).toContain("**Arcadia Decision updated**");
+    expect(reply).toContain("R1 approved. Resuming execution.");
+  });
+
+  it("records a clarification answer and continues clarification in one Discord reply", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-discord-state-"));
+    tempDirs.push(workspace);
+    await recordReviewMessage(reviewMessageStatePath(workspace), {
+      reviewId: "review_1",
+      reviewSlug: "R1",
+      channelId: "channel",
+      messageId: "message_1",
+      createdAt: "2026-06-10T12:00:00.000Z"
+    });
+    let clarifiedWorkId: string | null = null;
+    const replies: string[] = [];
+    const cli = {
+      reviewResolveReply: async () => ({
+        ok: true,
+        command: "review.resolve-reply",
+        workspace,
+        data: {
+          item: {
+            ...sampleReviewItem(),
+            id: "review_1",
+            slug: "R1",
+            workItemId: "work_1",
+            resolvedIntent: "ActionClarification"
+          },
+          action: "approved",
+          selectedOption: null,
+          feedback: null,
+          result: { status: "approved", summary: "Clarification answered." },
+          approval: null,
+          confirmation: "R1 answer recorded."
+        },
+        artifacts: [],
+        warnings: []
+      }),
+      clarify: async (workItemId: string) => {
+        clarifiedWorkId = workItemId;
+        return {
+          ok: true,
+          command: "clarify",
+          workspace,
+          data: {
+            applied: true,
+            evaluated: [{
+              workItem: { id: workItemId, title: "Choose retention" },
+              verdict: {
+                verdict: "clarified",
+                nextAction: "Document the 90-day retention policy.",
+                actor: "coding-agent",
+                confidence: "high"
+              }
+            }],
+            applications: [{ workItemId, clarificationStatus: "clarified" }],
+            skipped: []
+          },
+          artifacts: [],
+          warnings: []
+        };
+      }
+    } as unknown as ArcadiaCli;
+
+    await handleArcadiaMessage(fakeMessage({
+      content: "Retain logs for 90 days.",
+      referenceMessageId: "message_1",
+      reply: async (content: string) => {
+        replies.push(content);
+      }
+    }), testConfig(workspace), cli);
+
+    expect(clarifiedWorkId).toBe("work_1");
+    expect(replies[0]).toContain("**Arcadia answer recorded**");
+    expect(replies[0]).toContain("this did not approve execution");
+    expect(replies[1]).toContain("R1 answer recorded. Action clarified.");
+    expect(replies[1]).toContain("Next Action: Document the 90-day retention policy.");
   });
 
   it("routes slug fallback through ask without Discord-specific parsing", async () => {

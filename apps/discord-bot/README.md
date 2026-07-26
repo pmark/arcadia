@@ -2,7 +2,9 @@
 
 This app is a lightweight Discord adapter for Arcadia. It reads Arcadia through the CLI, submits requests through `arcadia ask`, posts concise progress notifications, and directs richer decisions back to Arcadia.
 
-Discord is intentionally not an approval, artifact review, deployment, publishing, or spending surface.
+Discord is a bounded Decision-response surface. It can record ordinary
+clarification answers and explicit approve/reject/defer choices, but it is not
+a deployment, publishing, spending, credential, or artifact-inspection surface.
 
 ## Environment
 
@@ -79,6 +81,15 @@ pnpm --filter arcadia-discord-bot start
 
 Commands only respond in the configured guild and channel.
 
+For a clarification Decision, reply directly to Arcadia's notification in your
+own words. The bot associates the Discord message with the durable Decision,
+records the answer, and confirms the Decision id. Reply `defer` to leave the
+question open or `reject` to withdraw it. After recording an answer, Arcadia
+immediately runs clarification again and replies with the concrete next Action
+or tells you that one focused follow-up question is coming. Approval Decisions
+still require an explicit approve/reject/defer response; a free-text reply
+cannot authorize execution.
+
 ## Notifications
 
 The bot polls Arcadia and notifies the configured channel when:
@@ -110,7 +121,9 @@ The first startup initializes this state silently so old workspace history is no
 
 Arcadia uses the internal value `requires_review` for work that needs human judgment, and Discord output uses the user-name-agnostic phrase `Requires Review`.
 
-Arcadia remains authoritative for approvals, planning, implementation, and artifact review.
+Arcadia remains authoritative for Decisions, planning, implementation, and
+artifact review. Discord only sends the operator's explicit response into that
+same durable workflow.
 
 ## Codex Companion
 

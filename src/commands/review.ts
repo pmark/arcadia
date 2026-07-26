@@ -371,6 +371,47 @@ export function runReviewResolveReplyCommand(
     });
   }
 
+  // A clarification Decision asks for information, not approval. When an
+  // adapter already knows which Decision a reply belongs to (Discord reply
+  // metadata, Dashboard card id), treat the operator's full text as the
+  // answer. Previously only approve/reject/defer and option letters reached
+  // this command, so an ordinary sentence silently fell through to `ask`.
+  if (packet.resolvedIntent === ACTION_CLARIFICATION_INTENT) {
+    const explicitDecision =
+      parsed.decisionToken === "reject" || parsed.decisionToken === "defer"
+        ? parsed.decisionToken
+        : null;
+
+    if (!explicitDecision) {
+      const response = runReviewApproveCommand({
+        workspace: workspacePath,
+        id: reviewItem.id,
+        answer: options.reply
+      });
+      const actionId = packet.actionId ?? packet.workItemId;
+      const nextStep = actionId
+        ? "The related Action is ready for Arcadia to clarify again."
+        : "Arcadia recorded the answer. No executor was invoked.";
+
+      return createSuccess({
+        command: "review.resolve-reply",
+        workspace: workspacePath,
+        data: {
+          item: response.data.item,
+          action: response.data.result.status,
+          selectedOption: null,
+          feedback: null,
+          result: response.data.result,
+          approval: null,
+          execution: null,
+          run: null,
+          confirmation: `${response.data.item.slug} answer recorded. ${nextStep} No execution was approved.`
+        },
+        artifacts: response.artifacts
+      });
+    }
+  }
+
   const decision = resolveReplyDecision(parsed, packet);
   if (!decision) {
     throw validationError("Invalid Requires Review reply.", {
@@ -1015,6 +1056,9 @@ function resolveReplyDecision(parsed: ParsedReviewResponse, item: RequiresReview
 }
 
 export function validRepliesForReview(item: RequiresReviewPacket): string[] {
+  if (item.resolvedIntent === ACTION_CLARIFICATION_INTENT) {
+    return ["a direct answer", "reject", "defer", ...REVIEW_FEEDBACK_TYPES];
+  }
   const letters = item.options.map((_, index) => String.fromCharCode("A".charCodeAt(0) + index));
   const words = [
     item.options.includes("approve") ? "approve" : null,

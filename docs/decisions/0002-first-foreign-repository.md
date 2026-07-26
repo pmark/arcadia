@@ -6,13 +6,13 @@ slug: first-foreign-repository
 project: arcadia
 plan: portfolio-docs-protocol
 action: second-project-validation
-status: open
+status: approved
 question: Which non-Arcadia repository should be the first foreign project docs sync is tested against?
 gap_type: missing-decision
 recommendation: A repository with existing hand-written docs nobody wrote against this schema, so the test measures the schema rather than the author's memory of it.
 confidence: medium
-decided: null
-answer: null
+decided: 2026-07-25
+answer: /Users/pmark/Dev/PrivatePracticeNow/platform
 updated: 2026-07-25
 ---
 
@@ -66,3 +66,10 @@ would be evidence the test was too easy.
 Until this is answered, `second-project-validation` stays `question_open` and
 carries no next action, and the other open actions in this plan remain
 undesignated rather than being promoted to fill the gap.
+
+## Decision
+
+The first foreign repository is `/Users/pmark/Dev/PrivatePracticeNow/platform`.
+It has substantial hand-written project, plan, decision, architecture, and
+mission-log documentation, making it a useful test of schema fit and workflow
+fit without changing its implementation.

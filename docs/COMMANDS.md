@@ -443,8 +443,19 @@ unlike approving a planning Decision, answering a question is information, not
 authorization to do work. The answer lands in `clarification_source`, the open
 question is cleared, and the Action returns to `unclarified` rather than jumping
 to `clarified`: an answer is an *input* to clarification, not the concrete next
-action itself. Re-clarifying stays an explicit step so the loop remains
-observable.
+action itself. At the CLI, re-clarifying remains an explicit `arcadia clarify
+--apply` step. Interactive surfaces perform that same observable step
+automatically only after the answer is durable.
+
+The Dashboard exposes this as a **Your answer** field rather than an Approve
+button. In Discord, reply directly to the clarification notification with
+free-form text. Both surfaces route through `review resolve-reply`, record the
+same durable Decision note and `clarification_source`, and confirm that no
+executor ran. AI advice in the Dashboard may be copied into the field as a
+draft, but the operator must edit or submit it explicitly. Those interactive
+surfaces immediately run clarification again after the answer is durable, so
+the operator sees either the concrete next Action or one focused follow-up
+question without a second command.
 
 `review reject R1` withdraws a question that turned out to be wrong — the
 Decision keeps the history, and the Action drops back to `unclarified` so it

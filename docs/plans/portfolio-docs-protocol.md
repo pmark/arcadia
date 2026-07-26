@@ -5,8 +5,8 @@ slug: portfolio-docs-protocol
 project: arcadia
 status: active
 milestone: docs sync ingests a real project's markdown
-current_action: second-project-validation
-updated: 2026-07-25
+current_action: ingest-mission-logs
+updated: 2026-07-26
 actions:
   - id: build-parser
     title: Build the frontmatter parser and vocabulary validator
@@ -59,26 +59,136 @@ actions:
     depends_on: [wire-docs-sync-command]
   - id: second-project-validation
     title: Validate the protocol against a non-Arcadia repository
-    status: open
-    responsibility: requires_review
+    status: done
+    responsibility: codex
     effort: session
-    clarification: question_open
-    gap_type: missing-decision
-    question: Which non-Arcadia repository should be the first foreign project docs sync is tested against?
+    clarification: clarified
+    confidence: high
+    next_action: Completed and validated on 2026-07-25; select the next protocol increment explicitly.
+    expected_artifact: Foreign-repository validation report with sync, next, execution-profile, and deterministic-refusal evidence.
+    acceptance_criteria:
+      - Decision 0002 records Private Practice Now as the first foreign repository.
+      - Both repositories' applicable instructions and bounded context are read and the current milestone, Action, responsibility, and required artifacts are recorded.
+      - docs sync is previewed before apply and the minimum managed-document changes for Private Practice Now are identified.
+      - arcadia next, execution-profile resolution, and deterministic refusal behavior are demonstrated without changing Private Practice Now implementation code.
+      - Findings, incompatibilities, recommended patches, and continuation state are recorded in this plan and the mission Log.
+      - Focused validation passes and no deployment, publish, commit, push, credential, production, or destructive operation occurs.
+    execution:
+      schema: arcadia.execution/v1
+      profile: systems_change
+      context:
+        scope: cross_system
+        required:
+          - Read-only inspection of Private Practice Now documentation and worktree state
+          - Local Arcadia workspace and managed-document updates only
+        staging: forbidden
+      phases:
+        planning:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+        implementation:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+        verification:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
     decisions: ["0002"]
     references:
       - docs/plans/portfolio-docs-protocol.md
       - docs/COMMANDS.md
     depends_on: [contract-work-pointer]
+  - id: repair-clarification-response-ux
+    title: Make clarification Decisions directly answerable in Mission Control and Discord
+    status: done
+    responsibility: codex
+    effort: session
+    clarification: clarified
+    confidence: high
+    next_action: Delivered and validated on 2026-07-25; monitor real operator use before broadening the response protocol.
+    expected_artifact: A conversational clarification-response flow with durable answers, immediate acknowledgment, automatic re-clarification, and explicit execution boundaries.
+    acceptance_criteria:
+      - A free-text Discord reply to a clarification notification records the answer against that exact Decision.
+      - Mission Control exposes an answer field and does not present clarification as approval.
+      - AI advice can populate an editable draft but never submits an answer or grants authority.
+      - The operator receives an immediate durable acknowledgment while clarification continues.
+      - The resulting concrete next Action or one focused follow-up question is surfaced without a second command.
+      - Approval Decisions retain deterministic approve, reject, and defer behavior; free-form text cannot authorize execution.
+    execution:
+      schema: arcadia.execution/v1
+      profile: systems_change
+      context:
+        scope: cross_system
+        required:
+          - Shared CLI Decision-response semantics
+          - Mission Control review flow
+          - Discord review notifications and replies
+        staging: forbidden
+      phases:
+        planning:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+        implementation:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+        verification:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+    references:
+      - START_HERE.md
+      - docs/COMMANDS.md
+      - apps/dashboard/README.md
+      - apps/discord-bot/README.md
+    depends_on: []
   - id: ingest-mission-logs
     title: Ingest MISSION_LOG.md entries as mission_logs rows
     status: open
     responsibility: codex
     effort: short
+    clarification: question_open
+    gap_type: missing-decision
+    question: "Which next protocol increment should Arcadia implement first: mission-Log ingestion, narrative summarization, or dependency persistence?"
+    expected_artifact: Idempotent mission-Log ingestion with focused parser, sync, and duplicate-prevention tests.
     acceptance_criteria:
       - Each dated MISSION_LOG.md entry becomes one mission_logs row, keyed so re-running creates no duplicates.
       - docs sync stops reporting log files as skipped.
-    clarification: unclarified
+    execution:
+      schema: arcadia.execution/v1
+      profile: systems_change
+      context:
+        scope: project
+        required:
+          - Managed-document parser and sync changes
+          - SQLite mission_logs persistence
+          - Focused idempotency validation
+        staging: forbidden
+      phases:
+        planning:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+        implementation:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+        verification:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
     depends_on: [build-upsert]
   - id: persist-dependencies
     title: Persist action depends_on ordering rather than only validating it
@@ -135,18 +245,105 @@ that `arcadia next` resolves.
 
 - Milestone: `docs sync` ingests a real project's markdown — **reached.**
   Arcadia's own repository is the first project ingested by this protocol.
-- Current Action: `second-project-validation`, which is `question_open` and
-  blocked on decision 0002. `arcadia next` returns that one question rather
-  than promoting another action to fill the gap.
-- Responsibility: Requires Review (choosing the repository is an operator call).
+- Current Action: `ingest-mission-logs`, which is `question_open` pending the
+  operator's choice among the three already-designed protocol increments.
+  `arcadia next` returns that one question rather than inferring priority.
+- Responsibility: Codex after the operator selects the increment.
 - Required Artifact: delivered — `docs sync`, `portfolio`, `next`, and
   Arcadia's own conforming documents carrying a resolvable work pointer.
-- Decisions open: 3 — decision 0002, plus the two plan-level `questions` above.
+- Decisions open: the current Action's increment-selection question plus the
+  two plan-level questions above.
 - Last Log: 2026-07-25 — added the authoritative work pointer (`active_plan`,
   `current_action`, `acceptance_criteria`, action-level `decisions` and
   `references`) and `arcadia next`, which resolves the objective or refuses
   with named remedies.
 - Updated: 2026-07-25
+
+## Foreign-repository validation — Private Practice Now
+
+Decision 0002 selected `/Users/pmark/Dev/PrivatePracticeNow/platform` as the
+first foreign repository. Its applicable `AGENTS.md`, `.arcadia` context policy,
+`PROJECT.md`, continuation protocol, active plan, and mission Log were read
+before discovery. The resolved state was milestone **Define the shared
+production inquiry service boundary now that the bootstrap publishing model is
+proven**, Action `define-shared-inquiry-service`, Responsibility **Codex**, and
+required Artifact **a build-ready implementation plan covering durable capture,
+site authorization, abuse controls, queued delivery, idempotency, monitoring,
+retention, and minimum-data handling**.
+
+The first Private Practice Now sync preview reported 15 creates, 14 intentional
+skips, and zero errors. It recognized the managed Project, plan, 3 Actions, 11
+Decisions, narrative docs, and mission Log. Narrative and Log ingestion are
+not implemented; they were skipped with explicit reasons. The current plan
+initially omitted a plan-level `milestone` and the current Action omitted an
+execution profile. The minimum managed-document patch was therefore the
+`arcadia.execution/v1` `systems_change` declaration on the current Action and
+the plan-level milestone field. A second preview reported one milestone update
+and 14 unchanged records; apply completed with zero errors. `arcadia next` then
+resolved the same milestone and Action.
+
+Incompatibilities and recommended patches:
+
+- Mission Logs and narrative documents are detected but not persisted. Implement
+  the existing `ingest-mission-logs` and `narrative-summarization` Actions
+  before treating a foreign repository as fully represented.
+- `depends_on` is validated but not persisted. Implement `persist-dependencies`
+  before dependency ordering can constrain dispatch.
+- A newly initialized workspace can have a newer DB Project row than a checked-in
+  document, producing a deterministic stale-document skip. Preserve this
+  refusal and expose the timestamp remedy in operator guidance.
+- Newly authored foreign current Actions need the execution profile and plan
+  milestone fields for complete continuation and profile resolution.
+- Private Practice Now initially described its required Artifact only in
+  `PROJECT.md`; `arcadia next` therefore returned `expectedArtifact: null`.
+  Mirror the required Artifact onto the current managed Action so adapters can
+  present a complete continuation packet without parsing narrative sections.
+
+The validation Action is complete. The next pointer now names
+`ingest-mission-logs` but remains `question_open` so Arcadia asks the operator
+which of the three already-designed protocol increments to select rather than
+inferring priority.
+
+## Clarification-response UX findings
+
+Operator dogfooding found that the clarification protocol was durable but not
+usable as a conversation. A direct Discord reply reached generic Ask unless it
+looked like `approve`, `reject`, `defer`, an option letter, or explicit
+feedback. Mission Control exposed the same clarification Decision through
+approval-style buttons and had no way to provide the requested information.
+AI advice could explain the Decision but could not hand an editable draft to
+the response form. Even after adding an answer field, waiting synchronously for
+the local clarification model left the interface appearing stuck.
+
+The shared reply resolver now treats non-control free text as an answer only
+when the exact Decision is an `ActionClarification`. Discord notifications
+explicitly ask for a direct natural-language reply and acknowledge the durable
+answer before re-running clarification. Mission Control presents **Your
+answer**, removes the misleading approval action, refreshes the open-Decision
+list immediately, and continues clarification without blocking the form. AI
+advice can fill an editable draft but cannot submit it. Both surfaces report
+that answering supplies information and does not approve execution.
+
+Remaining incompatibilities and recommended patches:
+
+- Direct Discord correlation depends on replying to the Arcadia notification
+  message. Preserve this deterministic target; add a visible Decision-id
+  fallback composer only if real use shows reply threading is unreliable.
+- Automatic re-clarification depends on the local Intelligence service. The
+  durable answer remains safe when that service is unavailable, but the
+  operator must see the degraded-state message and the Action must remain ready
+  to continue.
+- Clarification and approval still share the generic `review_items` record.
+  Keep intent-specific rendering and resolver tests whenever a new Decision
+  type is added; do not infer authority from arbitrary free text.
+- The current clarification model can legitimately ask a follow-up after an
+  answer. Improve prompts or add structured sufficiency evidence only after
+  collecting real follow-up quality data; do not hide a genuine unresolved gap.
+- A context-free dogfood capture could be approved into a pending Run with no
+  steps, and Arcadia has no canceled Run status or cancellation command. The
+  accidental Run was rejected and marked failed with an explicit no-execution
+  audit note. Add a first-class cancel transition and refuse execution approval
+  when a Run has neither a Project nor executable steps.
 
 ### What dogfooding changed
 

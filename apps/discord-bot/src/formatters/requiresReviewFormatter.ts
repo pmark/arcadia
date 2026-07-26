@@ -35,6 +35,9 @@ export function formatRequiresReviewNotification(count: number): string {
 }
 
 export function formatRequiresReviewShow(item: ReviewItem): string {
+  const actionText = item.resolvedIntent === "ActionClarification"
+    ? "Reply directly with your answer. Other actions: reject, defer."
+    : `Actions: ${item.options.join(", ")}`;
   return [
     `**${item.slug} - Requires Review**`,
     `ID: \`${item.id}\``,
@@ -44,7 +47,7 @@ export function formatRequiresReviewShow(item: ReviewItem): string {
     `Recommendation: ${item.recommendation ?? "Clarify before execution."}`,
     `Source input: ${item.sourceInput}`,
     `Context: ${item.context}`,
-    `Actions: ${item.options.join(", ")}`
+    actionText
   ].join("\n");
 }
 
@@ -118,6 +121,18 @@ function formatExecutionResult(reviewSlug: string, execution: ReviewExecutionDat
 }
 
 function formatRequiresReviewItem(item: ReviewItem): string {
+  if (item.resolvedIntent === "ActionClarification") {
+    return [
+      `**${item.slug} — Arcadia needs your answer**`,
+      item.decisionNeeded,
+      item.sourceInput ? `Original: ${item.sourceInput}` : null,
+      item.recommendation ? `Why this matters: ${item.recommendation}` : null,
+      "",
+      "**Reply directly to this message in your own words.**",
+      "Arcadia will record the answer against this Decision. Reply `defer` to leave it open or `reject` to withdraw the question."
+    ].filter((line): line is string => line !== null).join("\n");
+  }
+
   return [
     `**${item.slug} - Requires Review**`,
     item.decisionNeeded,

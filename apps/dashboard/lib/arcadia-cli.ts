@@ -190,6 +190,8 @@ export interface ReviewResolveReplyResponse {
   item: {
     id: string;
     slug: string;
+    workItemId: string | null;
+    resolvedIntent: string;
   };
   action: "approved" | "rejected" | "deferred" | "feedback_captured";
   selectedOption: string | null;
@@ -198,6 +200,23 @@ export interface ReviewResolveReplyResponse {
   approval: unknown | null;
   execution: ReviewExecutionResponse | null;
   confirmation: string;
+}
+
+export interface ClarifyActionResponse {
+  applied: boolean;
+  evaluated: Array<{
+    workItem: { id: string; title: string };
+    verdict:
+      | { verdict: "clarified"; nextAction: string; actor: string; confidence: string }
+      | { verdict: "question_open"; question: string; gapType: string; confidence: string };
+  }>;
+  applications: Array<{
+    workItemId: string;
+    clarificationStatus: "clarified" | "question_open";
+    decisionId?: string;
+    decisionSlug?: string;
+  }>;
+  skipped: Array<{ workItemId: string; title: string; reason: string }>;
 }
 
 export async function runReviewAction(input: {
@@ -228,6 +247,15 @@ export async function resolveReviewReply(input: {
     "--id",
     input.id
   ]);
+}
+
+export async function continueClarification(
+  workItemId: string
+): Promise<ArcadiaJsonSuccess<ClarifyActionResponse>> {
+  return runArcadiaCliJson<ClarifyActionResponse>(
+    ["clarify", "--work", workItemId, "--apply"],
+    { timeoutMs: 5 * 60 * 1000 }
+  );
 }
 
 export interface BackBurnerActionResponse {

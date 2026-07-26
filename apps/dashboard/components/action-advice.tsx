@@ -18,11 +18,17 @@ import { useEnrichment } from "../hooks/use-enrichment";
 export function ActionAdvice({
   target,
   label = "AI advice",
+  onUse,
+  useLabel = "Use as draft",
 }: {
   /** The action item plus any context the model should reason about. */
   target: string;
   /** Accessible label / tooltip for the trigger. */
   label?: string;
+  /** Optional explicit handoff into the surrounding form; never auto-submits. */
+  onUse?: (advice: string) => void;
+  /** Label for the optional draft handoff. */
+  useLabel?: string;
 }) {
   const [requested, setRequested] = useState(false);
   const [open, setOpen] = useState(false);
@@ -79,6 +85,15 @@ export function ActionAdvice({
             AI advice
           </div>
           <div className="whitespace-pre-line [overflow-wrap:anywhere]">{value}</div>
+          {onUse ? (
+            <button
+              type="button"
+              onClick={() => onUse(value ?? "")}
+              className="mt-3 min-h-10 rounded-md border border-steel/30 bg-panel px-3 text-sm font-semibold text-steel transition hover:border-steel"
+            >
+              {useLabel}
+            </button>
+          ) : null}
         </div>
       ) : null}
 
