@@ -84,6 +84,51 @@ export async function resolveDashboardWorkspace(): Promise<string> {
   return response.data.workspacePath;
 }
 
+export interface IngressListResponse {
+  source: string;
+  root: string;
+  directories: {
+    in: string;
+    done: string;
+    failed: string;
+    attachments: string;
+  };
+  files: Array<{
+    name: string;
+    relativePath: string;
+    file: string;
+    kind: "image" | "video" | "audio" | "document" | "other";
+    mimeType: string;
+    size: number;
+    modifiedAt: string;
+    downloadState: "downloaded" | "not_downloaded" | "downloading" | "unknown";
+  }>;
+}
+
+export interface IngressDescribeResponse {
+  source: string;
+  root: string;
+  requestFile: string;
+  selectedFiles: string[];
+  attachmentFiles: string[];
+  description: string;
+}
+
+export async function listIngressFiles(): Promise<ArcadiaJsonSuccess<IngressListResponse>> {
+  return runArcadiaCliJson<IngressListResponse>(["ingress", "list"]);
+}
+
+export async function describeIngressFiles(input: {
+  files: string[];
+  description: string;
+}): Promise<ArcadiaJsonSuccess<IngressDescribeResponse>> {
+  const args = ["ingress", "describe", "--description", input.description];
+  for (const file of input.files) {
+    args.push("--file", file);
+  }
+  return runArcadiaCliJson<IngressDescribeResponse>(args);
+}
+
 export async function runAsk(input: {
   request: string;
 }): Promise<ArcadiaJsonSuccess<AskResponse>> {

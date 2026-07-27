@@ -1,11 +1,12 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildIngressServicePlist,
   resolveIngressService,
-  runIngressServiceDoctorCommand
+  runIngressServiceDoctorCommand,
+  runIngressServiceTickCommand
 } from "../src/commands/ingressService.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -53,6 +54,19 @@ describe("ingress service", () => {
     expect(() => resolveIngressService({ workspace, intervalSeconds: 5 })).toThrow(
       "Ingress service interval must be an integer of at least 15 seconds."
     );
+  });
+
+  it("reports visible non-request files that remain in the ingress inbox", () => {
+    const workspace = initializedWorkspace();
+    const source = `TestSource-${process.pid}`;
+    const ingressRoot = initializedIngressRoot(source);
+    const imagePath = path.join(ingressRoot, source, "In", "shared-image.jpg");
+    mkdirSync(path.dirname(imagePath), { recursive: true });
+    writeFileSync(imagePath, "image");
+
+    const result = runIngressServiceTickCommand({ workspace, ingressRoot, source, stableSeconds: 0 });
+
+    expect(result.data).toMatchObject({ observed: 1, discovered: 0, processed: 0, failed: 0 });
   });
 });
 

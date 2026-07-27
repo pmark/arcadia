@@ -76,7 +76,12 @@ import {
 } from "./commands/dogfood.js";
 import { renderInboxImportSuccess, runInboxAddCommand, runInboxImportCommand } from "./commands/inbox.js";
 import { renderInitSuccess, runInitCommand } from "./commands/init.js";
-import { renderIngressProcessSuccess, runIngressProcessCommand } from "./commands/ingress.js";
+import {
+  renderIngressProcessSuccess,
+  runIngressDescribeCommand,
+  runIngressListCommand,
+  runIngressProcessCommand
+} from "./commands/ingress.js";
 import {
   renderIngressServiceDoctorSuccess,
   renderIngressServiceStatusSuccess,
@@ -1148,11 +1153,54 @@ export function buildProgram(): Command {
     )
   );
 
-  const ingress = program.command("ingress").description("Local file ingress commands");
+  const ingress = program.command("ingress").description("iCloud Drive file ingress commands");
+  addJsonOption(
+    ingress
+      .command("list")
+      .description("List files waiting in the iCloud Drive ingress folder")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--source <name>", "Ingress source folder", "iCloudIdeas")
+      .option("--ingress-root <path>", "ArcadiaIngress root folder")
+  ).action((options: {
+    workspace: string;
+    source?: string;
+    ingressRoot?: string;
+    json?: boolean;
+  }) => runCliAction(
+    "ingress.list",
+    options,
+    () => runIngressListCommand(options),
+    (response) => response.data.files.map((file) => `${file.name} (${file.kind})`)
+  ));
+  addJsonOption(
+    ingress
+      .command("describe")
+      .description("Queue a description-driven Action for selected ingress files")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--source <name>", "Ingress source folder", "iCloudIdeas")
+      .option("--ingress-root <path>", "ArcadiaIngress root folder")
+      .requiredOption("--file <name>", "Ingress file name; repeat for multiple files", collectValues, [])
+      .requiredOption("--description <text>", "What to do with the selected files")
+  ).action((options: {
+    workspace: string;
+    source?: string;
+    ingressRoot?: string;
+    file?: string[];
+    description: string;
+    json?: boolean;
+  }) => runCliAction(
+    "ingress.describe",
+    options,
+    () => runIngressDescribeCommand({ ...options, files: options.file ?? [] }),
+    (response) => [
+      `Queued ingress Action for ${response.data.selectedFiles.length} file(s).`,
+      `Request: ${response.data.requestFile}`
+    ]
+  ));
   addJsonOption(
     ingress
       .command("process")
-      .description("Process local ingress request files")
+      .description("Process iCloud Drive ingress request files")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--source <name>", "Ingress source folder", "iCloudIdeas")
       .option("--ingress-root <path>", "ArcadiaIngress root folder")

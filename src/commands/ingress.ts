@@ -1,5 +1,6 @@
 import {
   existsSync,
+  copyFileSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -10,6 +11,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { validationError, normalizeError } from "../cli/errors.js";
 import type { CommandFailure, CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
@@ -75,6 +77,33 @@ export interface IngressProcessData {
   };
 }
 
+export interface IngressListFile {
+  name: string;
+  relativePath: string;
+  file: string;
+  kind: "image" | "video" | "audio" | "document" | "other";
+  mimeType: string;
+  size: number;
+  modifiedAt: string;
+  downloadState: "downloaded" | "not_downloaded" | "downloading" | "unknown";
+}
+
+export interface IngressListData {
+  source: string;
+  root: string;
+  directories: IngressProcessData["directories"];
+  files: IngressListFile[];
+}
+
+export interface IngressDescribeData {
+  source: string;
+  root: string;
+  requestFile: string;
+  selectedFiles: string[];
+  attachmentFiles: string[];
+  description: string;
+}
+
 interface IngressDirectories {
   in: string;
   done: string;
@@ -97,12 +126,145 @@ interface StabilityObservation {
   observedAtMs: number;
 }
 
+export function runIngressListCommand(options: {
+  workspace: string;
+  source?: string;
+  ingressRoot?: string;
+}): CommandSuccess<IngressListData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const source = options.source?.trim() || DEFAULT_INGRESS_SOURCE;
+  validateSourceName(source);
+  const root = path.resolve(options.ingressRoot ?? defaultIngressRoot());
+  const directories = ingressDirectories(root, source);
+  const files = existsSync(directories.in)
+    ? readdirSync(directories.in, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && !entry.name.startsWith("."))
+      .map((entry) => {
+        const file = path.join(directories.in, entry.name);
+        const stats = statSync(file);
+        return {
+          name: entry.name,
+          relativePath: entry.name,
+          file,
+          kind: ingressFileKind(entry.name),
+          mimeType: ingressMimeType(entry.name),
+          size: stats.size,
+          modifiedAt: new Date(stats.mtimeMs).toISOString(),
+          downloadState: ingressDownloadState(file, stats)
+        } satisfies IngressListFile;
+      })
+      .sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt) || left.name.localeCompare(right.name))
+    : [];
+
+  return createSuccess({
+    command: "ingress.list",
+    workspace: workspacePath,
+    data: {
+      source,
+      root,
+      directories: {
+        in: directories.in,
+        done: directories.done,
+        failed: directories.failed,
+        attachments: directories.attachments
+      },
+      files
+    },
+    artifacts: files.map((file) => file.file)
+  });
+}
+
+function ingressDownloadState(file: string, stats: { size: number; blocks: number }): IngressListFile["downloadState"] {
+  if (process.platform !== "darwin") return "downloaded";
+
+  const xattr = spawnSync("/usr/bin/xattr", ["-p", "com.apple.icloud.itemIsDownloaded", file], {
+    encoding: "utf8"
+  });
+  if (xattr.status === 0) {
+    const value = xattr.stdout.trim().toLowerCase();
+    if (value === "1" || value === "true") return "downloaded";
+    if (value === "0" || value === "false") return "not_downloaded";
+  }
+
+  const status = spawnSync("/usr/bin/brctl", ["status", file], { encoding: "utf8" });
+  const output = `${status.stdout}\n${status.stderr}`.toLowerCase();
+  if (/not downloaded|cloud only|evicted|download pending|downloading/.test(output)) {
+    return /downloading|download pending/.test(output) ? "downloading" : "not_downloaded";
+  }
+  if (/downloaded|materialized|local/.test(output)) return "downloaded";
+
+  // File Provider placeholders can retain their logical size while having no
+  // local blocks. For a non-empty file, local blocks are therefore the useful
+  // final fallback when the provider exposes no status metadata.
+  if (stats.size === 0) return "unknown";
+  return stats.blocks === 0 ? "not_downloaded" : "downloaded";
+}
+
+export function runIngressDescribeCommand(options: {
+  workspace: string;
+  source?: string;
+  ingressRoot?: string;
+  files: string[];
+  description: string;
+}): CommandSuccess<IngressDescribeData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const source = options.source?.trim() || DEFAULT_INGRESS_SOURCE;
+  validateSourceName(source);
+  const description = options.description.trim();
+  if (!description) {
+    throw validationError("A description is required for selected ingress files.");
+  }
+  const selectedFiles = [...new Set(options.files.map((file) => file.trim()).filter(Boolean))];
+  if (selectedFiles.length === 0) {
+    throw validationError("Select at least one ingress file.");
+  }
+  if (selectedFiles.some((file) => file !== path.basename(file) || file.startsWith("."))) {
+    throw validationError("Ingress files must be names from the In folder.", { files: selectedFiles });
+  }
+
+  const root = path.resolve(options.ingressRoot ?? defaultIngressRoot());
+  const directories = ingressDirectories(root, source);
+  ensureIngressDirectories(directories);
+  const missing = selectedFiles.filter((file) => !existsSync(path.join(directories.in, file)));
+  if (missing.length > 0) {
+    throw validationError("One or more selected ingress files are no longer present.", { missing });
+  }
+
+  const requestFile = path.join(directories.in, `arcadia-${createId("event")}.txt`);
+  const attachmentDirectory = path.join(directories.attachments, path.parse(requestFile).name);
+  mkdirSync(attachmentDirectory, { recursive: true });
+  const attachmentFiles = selectedFiles.map((file) => {
+    const destination = path.join(attachmentDirectory, file);
+    copyFileSync(path.join(directories.in, file), destination);
+    return destination;
+  });
+  writeFileSync(
+    requestFile,
+    `${description}\n\nSelected ingress Artifacts:\n${selectedFiles.map((file) => `- ${file}`).join("\n")}\n`,
+    "utf8"
+  );
+
+  return createSuccess({
+    command: "ingress.describe",
+    workspace: workspacePath,
+    data: {
+      source,
+      root,
+      requestFile,
+      selectedFiles,
+      attachmentFiles,
+      description
+    },
+    artifacts: [requestFile, ...attachmentFiles]
+  });
+}
+
 export function runIngressProcessCommand(options: IngressProcessOptions): CommandSuccess<IngressProcessData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const source = options.source?.trim() || DEFAULT_INGRESS_SOURCE;
   validateSourceName(source);
 
-  const root = path.resolve(options.ingressRoot ?? path.join(homedir(), "ArcadiaIngress"));
+  const root = path.resolve(options.ingressRoot ?? defaultIngressRoot());
   const directories = ingressDirectories(root, source);
   const dryRun = Boolean(options.dryRun);
   const executionMode = options.runSafe ? "run-safe" : "planned";
@@ -605,6 +767,52 @@ function ingressDirectories(root: string, source: string): IngressDirectories {
     failed: path.join(sourceRoot, "Failed"),
     attachments: path.join(sourceRoot, "Attachments")
   };
+}
+
+export function defaultIngressRoot(home = homedir()): string {
+  return path.join(home, "Library", "Mobile Documents", "com~apple~CloudDocs", "ArcadiaIngress");
+}
+
+function ingressFileKind(fileName: string): IngressListFile["kind"] {
+  const extension = path.extname(fileName).toLowerCase();
+  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".heif", ".tif", ".tiff", ".bmp"].includes(extension)) {
+    return "image";
+  }
+  if ([".mp4", ".mov", ".m4v", ".webm", ".avi"].includes(extension)) {
+    return "video";
+  }
+  if ([".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg"].includes(extension)) {
+    return "audio";
+  }
+  if ([".txt", ".md", ".json", ".yaml", ".yml", ".pdf", ".doc", ".docx"].includes(extension)) {
+    return "document";
+  }
+  return "other";
+}
+
+function ingressMimeType(fileName: string): string {
+  const extension = path.extname(fileName).toLowerCase();
+  const types: Record<string, string> = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".heic": "image/heic",
+    ".heif": "image/heif",
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".m4v": "video/x-m4v",
+    ".webm": "video/webm",
+    ".mp3": "audio/mpeg",
+    ".m4a": "audio/mp4",
+    ".wav": "audio/wav",
+    ".pdf": "application/pdf",
+    ".json": "application/json",
+    ".txt": "text/plain; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8"
+  };
+  return types[extension] ?? "application/octet-stream";
 }
 
 function ensureIngressDirectories(directories: IngressDirectories): void {

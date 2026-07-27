@@ -60,6 +60,13 @@ export interface IngressServiceDoctorData {
   status: IngressServiceStatusData;
 }
 
+export interface IngressServiceTickData {
+  observed: number;
+  discovered: number;
+  processed: number;
+  failed: number;
+}
+
 interface ResolvedIngressService {
   workspacePath: string;
   source: string;
@@ -148,7 +155,7 @@ export function runIngressServiceDoctorCommand(
 
 export function runIngressServiceTickCommand(
   options: IngressServiceOptions
-): CommandSuccess<{ discovered: number; processed: number; failed: number }> {
+): CommandSuccess<IngressServiceTickData> {
   const service = resolveIngressService(options);
   mkdirSync(path.dirname(service.healthStatePath), { recursive: true });
   const dependencyChecks = collectDependencyChecks(service);
@@ -167,6 +174,11 @@ export function runIngressServiceTickCommand(
   }
 
   try {
+    // Count every visible file before processing. The processor intentionally
+    // leaves media and other non-request files in In, so this is the useful
+    // signal that the Mac has actually observed an iCloud-delivered file even
+    // when no text request or configured Workflow matches it yet.
+    const observed = countVisibleFiles(path.join(service.ingressRoot, service.source, "In"));
     const result = runIngressProcessCommand({
       workspace: service.workspacePath,
       source: service.source,
@@ -175,6 +187,7 @@ export function runIngressServiceTickCommand(
       runSafe: service.runSafe
     });
     const data = {
+      observed,
       discovered: result.data.counts.discovered,
       processed: result.data.counts.processed,
       failed: result.data.counts.failed
@@ -195,6 +208,13 @@ export function runIngressServiceTickCommand(
     });
     throw error;
   }
+}
+
+function countVisibleFiles(directory: string): number {
+  if (!existsSync(directory)) return 0;
+  return readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && !entry.name.startsWith("."))
+    .length;
 }
 
 export function runIngressServiceUninstallCommand(
@@ -507,9 +527,10 @@ export function renderIngressServiceStatusSuccess(response: CommandSuccess<Ingre
 }
 
 export function renderIngressServiceTickSuccess(
-  response: CommandSuccess<{ discovered: number; processed: number; failed: number }>
+  response: CommandSuccess<IngressServiceTickData>
 ): string[] {
-  return response.data.discovered === 0 ? [] : [
+  return response.data.observed === 0 && response.data.discovered === 0 ? [] : [
+    `Ingress observed: ${response.data.observed}`,
     `Ingress discovered: ${response.data.discovered}`,
     `Processed: ${response.data.processed}`,
     `Failed: ${response.data.failed}`

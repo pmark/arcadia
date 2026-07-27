@@ -14,6 +14,22 @@ Open **System Status** at <http://127.0.0.1:3020/admin/status> when you need a q
 
 Use the **Ask** box for a new request that is not already an Action in Arcadia.
 
+## Ingress Artifacts
+
+Open **Ingress** from the menu to view files waiting in the local
+`~/Library/Mobile Documents/com~apple~CloudDocs/ArcadiaIngress/iCloudIdeas/In`
+folder. Select one or more files, describe the Action you want Arcadia to take, and choose **Describe Action**. Arcadia writes
+the description and selected files into the normal ingress queue for processing;
+the original files remain available in `In` until that workflow handles them.
+From an iPhone or iPad Share Sheet, use **Send Any Document to Arcadia** to copy
+an image or other document directly into the same folder; import the signed
+shortcut from `scripts/apple/Send Any Document to Arcadia (iPhone-iPad).shortcut`.
+On the Mac, import `scripts/apple/Send Any Document to Arcadia (Mac).shortcut`
+and enable it as a Finder Quick Action or Share Sheet action; it performs the
+same direct copy into `iCloudIdeas/In/`.
+If an item is present in iCloud but not local, Ingress labels it accurately and
+offers **Download from iCloud** before previewing it.
+
 ## Answering Decisions
 
 Arcadia separates approval Decisions from clarification Decisions:

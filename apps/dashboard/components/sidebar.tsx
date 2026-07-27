@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Clock,
   Eye,
+  FolderOpen,
   LayoutGrid,
   Menu,
   MessageSquarePlus,
@@ -21,6 +22,7 @@ import type { MissionControlOverview } from "../lib/mission-control-types";
 const PRIMARY_NAV = [
   { href: "/mission-control", label: "Mission Control", icon: Radar },
   { href: "/capture", label: "Capture", icon: MessageSquarePlus },
+  { href: "/ingress", label: "Ingress", icon: FolderOpen },
   { href: "/reports", label: "Reports", icon: NotebookText },
   { href: "/review", label: "Decisions", icon: Eye },
   { href: "/dashboard", label: "Full Dashboard", icon: LayoutGrid }

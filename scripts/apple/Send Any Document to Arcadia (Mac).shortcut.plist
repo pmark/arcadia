@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>WFQuickActionSurfaces</key>
+	<array/>
+	<key>WFWorkflowActions</key>
+	<array>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.documentpicker.save</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>UUID</key>
+				<string>F2DB6C04-9E20-4D3B-9B5D-7CBBE1F0F102</string>
+				<key>WFAskWhereToSave</key>
+				<false/>
+				<key>WFFileDestinationPath</key>
+				<string>iCloudIdeas/In/</string>
+				<key>WFFolder</key>
+				<dict>
+					<key>displayName</key><string>iCloud Drive</string>
+					<key>fileLocation</key>
+					<dict>
+						<key>fileProviderDomainID</key><string>com.apple.CloudDocs.MobileDocumentsFileProvider</string>
+						<key>relativeSubpath</key><string>com~apple~CloudDocs</string>
+						<key>WFFileLocationType</key><string>iCloud</string>
+					</dict>
+					<key>filename</key><string>iCloud Drive</string>
+				</dict>
+				<key>WFInput</key>
+				<dict><key>Value</key><dict><key>Type</key><string>ExtensionInput</string></dict><key>WFSerializationType</key><string>WFTextTokenAttachment</string></dict>
+				<key>WFSaveFileOverwrite</key><false/>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key><string>is.workflow.actions.notification</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict><key>WFNotificationActionBody</key><string>File copied to Arcadia Ingress.</string><key>WFNotificationActionTitle</key><string>Arcadia Ingress</string></dict>
+		</dict>
+	</array>
+	<key>WFWorkflowClientVersion</key><string>4407</string>
+	<key>WFWorkflowHasOutputFallback</key><false/>
+	<key>WFWorkflowHasShortcutInputVariables</key><true/>
+	<key>WFWorkflowIcon</key><dict><key>WFWorkflowIconGlyphNumber</key><integer>59511</integer><key>WFWorkflowIconStartColor</key><integer>463140863</integer></dict>
+	<key>WFWorkflowImportQuestions</key><array><dict><key>ActionIndex</key><integer>0</integer><key>Category</key><string>Parameter</string><key>DefaultValue</key><dict><key>displayName</key><string>iCloud Drive</string><key>fileLocation</key><dict><key>fileProviderDomainID</key><string>com.apple.CloudDocs.MobileDocumentsFileProvider</string><key>relativeSubpath</key><string>com~apple~CloudDocs</string><key>WFFileLocationType</key><string>iCloud</string></dict><key>filename</key><string>iCloud Drive</string></dict><key>ParameterKey</key><string>WFFolder</string><key>Text</key><string>Select the ArcadiaIngress folder in iCloud Drive. This is a one-time setup.</string></dict></array>
+	<key>WFWorkflowInputContentItemClasses</key><array><string>WFGenericFileContentItem</string><string>WFImageContentItem</string><string>WFAVAssetContentItem</string><string>WFURLContentItem</string><string>WFTextContentItem</string></array>
+	<key>WFWorkflowMinimumClientVersion</key><integer>0</integer>
+	<key>WFWorkflowOutputContentItemClasses</key><array/>
+	<key>WFWorkflowTypes</key><array><string>ActionExtension</string><string>MenuBar</string></array>
+</dict>
+</plist>

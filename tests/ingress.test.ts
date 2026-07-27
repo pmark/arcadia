@@ -13,7 +13,11 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { CommandSuccess } from "../src/cli/response.js";
 import type { AskCommandData, AskOptions } from "../src/commands/ask.js";
-import { runIngressProcessCommand } from "../src/commands/ingress.js";
+import {
+  runIngressDescribeCommand,
+  runIngressListCommand,
+  runIngressProcessCommand
+} from "../src/commands/ingress.js";
 import { withDatabase } from "../src/db/connection.js";
 import { countRows, listRecentMissionLogs } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -290,6 +294,48 @@ describe("ingress process command", () => {
     expect(existsSync(movedPath)).toBe(true);
     expect(result.data.files[0].finalPath).toBe(movedPath);
     expect(existsSync(path.join(ingressRoot, "iCloudIdeas", "Done", "collision-1.response.json"))).toBe(true);
+  });
+});
+
+describe("ingress viewer actions", () => {
+  it("lists visible files in In with media metadata without treating them as process candidates", () => {
+    const workspace = initializedWorkspace();
+    const ingressRoot = initializedIngressRoot();
+    writeIngressFile(ingressRoot, "one.png", "image bytes");
+    writeIngressFile(ingressRoot, "notes.txt", "request");
+    writeIngressFile(ingressRoot, ".DS_Store", "hidden");
+
+    const result = runIngressListCommand({ workspace, ingressRoot });
+
+    expect(result.data.files.map((file) => file.name).sort()).toEqual(["notes.txt", "one.png"]);
+    expect(result.data.files.find((file) => file.name === "one.png")).toMatchObject({
+      kind: "image",
+      mimeType: "image/png",
+      relativePath: "one.png"
+    });
+  });
+
+  it("queues a description and copies selected files into the normal attachment convention", () => {
+    const workspace = initializedWorkspace();
+    const ingressRoot = initializedIngressRoot();
+    const first = writeIngressFile(ingressRoot, "one.png", "first image");
+    const second = writeIngressFile(ingressRoot, "two.jpg", "second image");
+
+    const result = runIngressDescribeCommand({
+      workspace,
+      ingressRoot,
+      files: ["one.png", "two.jpg"],
+      description: "Combine these images and loop them as a Rebuster Rebus video."
+    });
+
+    expect(result.data.selectedFiles).toEqual(["one.png", "two.jpg"]);
+    expect(existsSync(result.data.requestFile)).toBe(true);
+    expect(readFileSync(result.data.requestFile, "utf8")).toContain("Combine these images");
+    expect(result.data.attachmentFiles).toHaveLength(2);
+    expect(readFileSync(result.data.attachmentFiles[0], "utf8")).toBe(readFileSync(first, "utf8"));
+    expect(readFileSync(result.data.attachmentFiles[1], "utf8")).toBe(readFileSync(second, "utf8"));
+    expect(existsSync(first)).toBe(true);
+    expect(existsSync(second)).toBe(true);
   });
 });
 

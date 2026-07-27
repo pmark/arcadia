@@ -98,15 +98,46 @@ Thundertonk practice 2026-07-17-151700-123.m4a
 
 The name retains the Workflow match terms, carries the recording date used for publication, and includes time through milliseconds so repeated runs never reuse the old fixed filename. Save File overwrite remains disabled, so iCloud cannot silently replace an earlier recording.
 
-The editable Shortcut source is the adjacent `.shortcut.plist`. After changing it, rebuild and publicly sign the installable artifact with:
+The editable Thundertonk Shortcut source is the adjacent `.shortcut.plist`. After changing it, rebuild and publicly sign the installable artifact with:
 
 ```sh
 scripts/apple/build-thundertonk-ios-shortcut
 ```
 
-For the broader generic **Send to Arcadia** Shortcut, enable **Show in Share Sheet** and allow Files, Images, Media, URLs, and Text as accepted types.
+For a general Share Sheet shortcut that accepts arbitrary files, images, media,
+URLs, and text, install:
 
-Use these actions:
+```text
+scripts/apple/Send Any Document to Arcadia (iPhone-iPad).shortcut
+```
+
+During import, choose the `ArcadiaIngress` folder in iCloud Drive. The shortcut
+does not rename or interpret the input; it saves the original item into
+`iCloudIdeas/In/`, leaves overwrite disabled, and shows an Arcadia Ingress
+notification. Rebuild the signed artifact after editing its source plist with:
+
+```sh
+scripts/apple/build-any-document-ios-shortcut
+```
+
+For the Mac Share Sheet/Finder action, install the matching artifact:
+
+```text
+scripts/apple/Send Any Document to Arcadia (Mac).shortcut
+```
+
+Import it in the Mac Shortcuts app, select the `ArcadiaIngress` folder when
+asked, and enable it as a Finder Quick Action or Share Sheet action. It performs
+the same direct copy into `iCloudIdeas/In/` and does not create a text request or
+rename the file. Rebuild it after editing the source plist with:
+
+```sh
+scripts/apple/build-any-document-mac-shortcut
+```
+
+The generic shortcut above is the minimal file-copy path. If you want a
+description request alongside the files, use the Arcadia Ingress viewer or
+build a richer Shortcut with these actions:
 
 1. **If** `Shortcut Input` has no value, use **Get Clipboard** and set `Shortcut Input` to the result.
 2. **Get Type** of `Shortcut Input`.
@@ -142,6 +173,15 @@ pnpm arcadia ingress process \
 Add `--run-safe` only when deterministic safe Actions should run immediately. Without it, Arcadia plans work and preserves Decisions for human judgment.
 
 For automation, install Arcadia's periodic macOS service. Periodic processing is intentionally separate from capture: the Share Sheet stays fast and reliable even when Arcadia or the Mac is unavailable.
+
+The installed native service checks the same iCloud folder every 60 seconds and
+records the number of visible files it observed, including images and other
+media that are waiting for a future Workflow. The `ingress.service doctor`
+command reports the service health and its health-state file.
+
+The Ingress viewer also reports when an item is present in iCloud but not
+downloaded locally. Use **Download from iCloud** on that item to request local
+materialization, then refresh the viewer for its preview.
 
 ```sh
 pnpm arcadia ingress service install --workspace "$ARCADIA_WORKSPACE"

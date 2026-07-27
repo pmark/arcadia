@@ -129,15 +129,15 @@ pnpm arcadia ask \
   --json
 ```
 
-## Process Local Ingress Files
+## Process iCloud Drive Ingress Files
 
-Apple Shortcuts can create Arcadia requests by writing plain text files to the default local root:
+Apple Shortcuts can create Arcadia requests by writing files to the default iCloud Drive root:
 
 ```text
-~/ArcadiaIngress/iCloudIdeas/In/YYYYMMDD-HHMMSS.txt
+~/Library/Mobile Documents/com~apple~CloudDocs/ArcadiaIngress/iCloudIdeas/In/YYYYMMDD-HHMMSS.txt
 ```
 
-The file contents are treated as the natural-language request. To share the folder with iPhone and iPad, use the iCloud Drive root when processing pending files:
+The file contents are treated as the natural-language request. To process pending files explicitly, use the iCloud Drive root:
 
 ```sh
 pnpm arcadia ingress process \
