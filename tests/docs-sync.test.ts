@@ -51,6 +51,17 @@ function workspaceWithProject(repoRoot: string, slug = "demo"): string {
   return workspace;
 }
 
+/**
+ * The date a document must carry to count as newer than a row written just now.
+ *
+ * Sync refuses to overwrite a record that is newer than the document claiming to
+ * update it, comparing against `updated_at` — which is today for any row these
+ * tests just created. A literal date here works until the wall clock passes it
+ * and then silently turns every "the document changed" test into a staleness
+ * test, so it is computed on the same UTC basis `nowIso()` uses.
+ */
+const NEWER_THAN_NOW = new Date().toISOString().slice(0, 10);
+
 function writeDoc(repoRoot: string, relativePath: string, content: string): void {
   const absolute = path.join(repoRoot, relativePath);
   mkdirSync(path.dirname(absolute), { recursive: true });
@@ -310,7 +321,7 @@ describe("docs sync", () => {
     writeDoc(
       repo,
       "docs/plans/sample-plan.md",
-      withCriteria("The new bar is cleared.").replace("updated: 2026-07-25", "updated: 2026-07-26")
+      withCriteria("The new bar is cleared.").replace("updated: 2026-07-25", `updated: ${NEWER_THAN_NOW}`)
     );
     const second = runDocsSyncCommand({ workspace, apply: true });
 
@@ -431,7 +442,7 @@ describe("docs sync", () => {
       "docs/plans/sample-plan.md",
       PLAN.replace("title: Do the thing", "title: Do the thing, but worded differently").replace(
         "updated: 2026-07-25",
-        "updated: 2026-07-26"
+        `updated: ${NEWER_THAN_NOW}`
       )
     );
     runDocsSyncCommand({ workspace, apply: true });
@@ -538,7 +549,7 @@ describe("docs sync", () => {
       "docs/plans/sample-plan.md",
       PLAN.replace("Do we cut over per-tenant or all at once?", "Reworded, per-tenant or all at once?").replace(
         "updated: 2026-07-25",
-        "updated: 2026-07-26"
+        `updated: ${NEWER_THAN_NOW}`
       )
     );
     const rerun = runDocsSyncCommand({ workspace, apply: true });
