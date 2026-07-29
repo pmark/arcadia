@@ -1810,11 +1810,12 @@ export function buildProgram(): Command {
   addJsonOption(
     review
       .command("weekly")
-      .description("Write a deterministic weekly review report")
+      .description("Write a deterministic progress review, for one Project or the whole workspace")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--since <YYYY-MM-DD>", "Inclusive review start date")
       .option("--until <YYYY-MM-DD>", "Inclusive review end date")
-  ).action((options: { workspace: string; since?: string; until?: string; json?: boolean }) =>
+      .option("--project <project>", "Only review one Project, by id or slug")
+  ).action((options: { workspace: string; since?: string; until?: string; project?: string; json?: boolean }) =>
     runCliAction(
       "review.weekly",
       reviewOptionsFromArgv(options),
