@@ -814,6 +814,16 @@ is omitted from a scoped report.
 `--since`/`--until` are free-form, so the "weekly" name is only the default
 window — daily, monthly, or quarterly buckets are the same command.
 
+When the workspace has opted into vault memory (`memory.enabled`), each review
+is also projected into Obsidian as a `record_type: progress_review` Record under
+`Arcadia/Records/Progress/<scope>/<year>/`. Unlike an accepted planning
+Artifact, this is **not** gated behind a Decision: a progress review is a
+deterministic compilation of things that already happened, so there is no
+generated content to accept. Re-running a review that found nothing new is a
+no-op — the Record is hashed with its generation timestamp excluded, so an
+unchanged window does not churn the vault. A vault misconfiguration is reported
+but never costs you the report.
+
 Update an Action manually:
 
 ```sh

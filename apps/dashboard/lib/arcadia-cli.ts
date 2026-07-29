@@ -100,6 +100,40 @@ export interface IntelligenceUsageResponse {
   summary: unknown;
 }
 
+export interface DispatchJournalEvent {
+  id: string;
+  occurredAt: string;
+  localDate: string;
+  command: "next" | "work.plan";
+  projectSlug: string | null;
+  planSlug: string | null;
+  actionId: string | null;
+  dispatchable: boolean;
+  blockerCount: number;
+  blockerFields: string[];
+  operatorQuestion: boolean;
+}
+
+export interface DispatchJournalResponse {
+  events: DispatchJournalEvent[];
+  summary: {
+    total: number;
+    dispatchable: number;
+    blocked: number;
+    byField: Array<{ field: string; resolutions: number }>;
+  };
+}
+
+/**
+ * Read the dispatch journal: how often work was refused, and on which field.
+ * Read-only, like every other dashboard surface.
+ */
+export async function loadDispatchJournal(
+  limit = 25
+): Promise<ArcadiaJsonSuccess<DispatchJournalResponse>> {
+  return runArcadiaCliJson<DispatchJournalResponse>(["next", "history", "--limit", String(limit)]);
+}
+
 export async function listIntelligenceTestJobs(
   clientApp: string,
   limit = 20
