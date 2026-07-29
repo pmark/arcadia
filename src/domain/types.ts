@@ -475,6 +475,13 @@ export interface WeeklyReviewData {
   workspacePath: string;
   generatedAt: string;
   window: ReviewWindow;
+  /**
+   * The Project this review covers, or `null` for the whole workspace.
+   *
+   * A per-Project review answers "did this move this week", which the pooled
+   * workspace report cannot: one busy Project hides four stalled ones.
+   */
+  project: { id: string; name: string; slug: string } | null;
   completedWorkItems: WorkItemSummary[];
   missionLogs: MissionLogSummary[];
   blockedItems: WorkItemSummary[];

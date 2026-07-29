@@ -791,6 +791,29 @@ pnpm arcadia review weekly --workspace "$WORKSPACE"
 pnpm arcadia artifact list --workspace "$WORKSPACE" --json
 ```
 
+### Progress review, per Project or portfolio-wide
+
+```sh
+pnpm arcadia review weekly --workspace "$WORKSPACE"                       # whole workspace
+pnpm arcadia review weekly --workspace "$WORKSPACE" --project rebuster    # one Project
+pnpm arcadia review weekly --workspace "$WORKSPACE" --project rebuster \
+  --since 2026-07-01 --until 2026-07-31                                   # any bucket
+```
+
+Deterministic throughout — it compiles completed Actions, Logs, blocked work,
+Decisions, and Artifact changes from existing rows. No model runs.
+
+`--project` narrows every section to that Project and writes to
+`reports/weekly/<slug>/<until>.md`, so a Project review never overwrites the
+portfolio one for the same date. The two answer different questions: pooled
+says what happened, scoped says whether *this* moved — which pooling hides,
+because one busy Project reads as a productive week while four others sat
+still. The "Projects Without Open Next Actions" section is portfolio-level and
+is omitted from a scoped report.
+
+`--since`/`--until` are free-form, so the "weekly" name is only the default
+window — daily, monthly, or quarterly buckets are the same command.
+
 Update an Action manually:
 
 ```sh

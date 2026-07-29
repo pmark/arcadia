@@ -2,7 +2,7 @@ import { existsSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
-import { validationError } from "../cli/errors.js";
+import { projectNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import {
@@ -11,6 +11,8 @@ import {
   createReviewExecutionRun,
   createReviewItem,
   createReviewFeedback,
+  getProject,
+  getProjectBySlug,
   getProjectMetadata,
   getExecutionRun,
   getReviewItem,
@@ -167,10 +169,14 @@ export interface ReviewWeeklyCommandOptions {
   workspace: string;
   since?: string;
   until?: string;
+  /** Project id or slug. Omitted reviews the whole workspace, as before. */
+  project?: string;
 }
 
 export interface ReviewWeeklyCommandData {
   reportPath: string;
+  /** The Project reviewed, or `null` for the whole workspace. */
+  project: { id: string; name: string; slug: string } | null;
   window: {
     since: string;
     until: string;
@@ -835,7 +841,18 @@ export function runReviewWeeklyCommand(
   const window = resolveReviewWindow(options);
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const { data, reportPath } = withDatabase(workspacePath, (db) => {
-    const reviewData = buildWeeklyReviewData(db, workspacePath, window);
+    // Resolved before compiling so an unknown Project fails with "no such
+    // Project" instead of silently producing an empty, plausible-looking report.
+    let projectId: string | null = null;
+    if (options.project) {
+      const project = getProject(db, options.project) ?? getProjectBySlug(db, options.project);
+      if (!project) {
+        throw projectNotFound(options.project);
+      }
+      projectId = project.id;
+    }
+
+    const reviewData = buildWeeklyReviewData(db, workspacePath, window, projectId);
     return {
       data: reviewData,
       reportPath: writeWeeklyReviewReport(workspacePath, reviewData)
@@ -847,6 +864,7 @@ export function runReviewWeeklyCommand(
     workspace: workspacePath,
     data: {
       reportPath,
+      project: data.project,
       window,
       counts: {
         completedWork: data.completedWorkItems.length,
@@ -865,10 +883,12 @@ export function runReviewWeeklyCommand(
 }
 
 export function renderReviewWeeklySuccess(response: CommandSuccess<ReviewWeeklyCommandData>): string[] {
+  const { project, window, reportPath, counts } = response.data;
   return [
-    "Weekly review written.",
-    `Window: ${response.data.window.since} to ${response.data.window.until}`,
-    `Report: ${response.data.reportPath}`
+    project ? `Progress review written for ${project.name}.` : "Weekly review written.",
+    `Window: ${window.since} to ${window.until}`,
+    `Completed Actions: ${counts.completedWork} · Logs: ${counts.missionLogs} · Artifacts: ${counts.artifacts}`,
+    `Report: ${reportPath}`
   ];
 }
 
