@@ -4,6 +4,8 @@ This is the canonical brief operator guide. On this Mac, open **Mission Control*
 
 Open **System Status** at <http://127.0.0.1:3020/admin/status> when you need a quick readiness check. It shows whether Arcadia is ready for normal operation, image generation, and background processing, with live dependency reachability, worker heartbeats, and Intelligence job counts.
 
+Open **Dispatch Journal** at <http://127.0.0.1:3020/admin/dispatch-journal> to see how often Arcadia refused to dispatch work, and which field in the managed documents blocked it. A field that blocks a large share of resolutions is either a rule worth relaxing or a habit worth fixing. It is read-only, like every other admin surface.
+
 ## Normal daily use
 
 1. Read **Today's Advantage**: one ready Action, its expected Artifact, and why it matters now.

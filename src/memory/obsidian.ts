@@ -121,6 +121,149 @@ export function exportPlanningAcceptanceBeforeTransition(
   return entry;
 }
 
+export interface ProgressReviewRecordInput {
+  /** The Project reviewed, or `null` for a portfolio-wide review. */
+  project: { id: string; name: string; slug: string } | null;
+  window: { since: string; until: string };
+  generatedAt: string;
+  /** Workspace-relative path of the report this Record projects. */
+  reportPath: string;
+  /** The rendered report, exactly as written to the workspace. */
+  content: string;
+}
+
+/**
+ * Project a compiled progress review into the vault.
+ *
+ * Unlike an accepted planning Artifact, this is **not** gated behind a
+ * Decision, and deliberately so: a progress review is a deterministic
+ * compilation of Logs, Actions, and Artifacts that already happened. There is
+ * no model output to accept and no judgment to exercise — asking the operator
+ * to approve a summation of facts would be ceremony, not a safeguard. The
+ * acceptance gate exists for generated content; this is arithmetic.
+ *
+ * Returns `null` when the workspace has not opted into vault memory.
+ */
+export function exportProgressReview(
+  workspace: string,
+  input: ProgressReviewRecordInput,
+  options: { dryRun?: boolean } = {}
+): MemorySyncEntry | null {
+  const target = resolveVaultTarget(workspace);
+  if (!target) {
+    return null;
+  }
+
+  const content = canonicalMarkdown(input.content);
+  const scope = input.project ? input.project.slug : PORTFOLIO_SCOPE;
+  const title = input.project
+    ? `${input.project.name} progress, ${input.window.since} to ${input.window.until}`
+    : `Portfolio progress, ${input.window.since} to ${input.window.until}`;
+  // One Record per scope and window: re-running the same review updates it in
+  // place rather than accumulating near-identical notes in the vault.
+  const reviewKey = `${scope}/${input.window.since}..${input.window.until}`;
+  const recordPath = path.join(
+    target.recordsRoot,
+    "Progress",
+    slugify(scope),
+    input.window.until.slice(0, 4),
+    `${input.window.until}-progress-review.md`
+  );
+  assertDestinationSafe(target, recordPath);
+
+  const current = existsSync(recordPath) && statSync(recordPath).isFile()
+    ? readFileSync(recordPath, "utf8")
+    : null;
+
+  // Same guard the planning export uses: never clobber a Record that belongs
+  // to a different review, however the paths came to collide.
+  const claimedKey = current?.match(/^arcadia_review_key:\s+"([^"]+)"$/m)?.[1] ?? null;
+  if (claimedKey && claimedKey !== reviewKey) {
+    throw validationError("Refusing to overwrite a vault Record owned by a different progress review.", {
+      recordPath,
+      reviewKey,
+      claimedKey
+    });
+  }
+
+  // Hashed over the report with its generation timestamp removed, so re-running
+  // a review that found nothing new is a no-op. Comparing whole rendered
+  // Records would differ on the timestamp alone and rewrite the file — and a
+  // vault that churns on every run is one the operator stops trusting as a
+  // record of what actually changed.
+  const contentHash = createHash("sha256").update(withoutVolatileLines(content)).digest("hex");
+  const claimedHash = current?.match(/^content_sha256:\s+"([0-9a-f]+)"$/m)?.[1] ?? null;
+  const status: MemorySyncStatus =
+    current === null ? "created" : claimedHash === contentHash ? "skipped" : "updated";
+
+  if (options.dryRun !== true && status !== "skipped") {
+    atomicWrite(target, recordPath, renderProgressReviewRecord(input, title, reviewKey, contentHash));
+    writeManagedReadme(target);
+  }
+
+  return {
+    artifactId: reviewKey,
+    artifactTitle: title,
+    project: input.project?.name ?? "Portfolio",
+    status,
+    recordPath,
+    error: null
+  };
+}
+
+/** Vault folder name for reviews that cover every Project rather than one. */
+const PORTFOLIO_SCOPE = "portfolio";
+
+/**
+ * Strip lines that change on every run regardless of what happened, so two
+ * reviews of an unchanged window hash identically.
+ */
+function withoutVolatileLines(markdown: string): string {
+  return markdown.replace(/^Generated:.*$/gm, "");
+}
+
+/** Drop a document's opening `# Heading`, leaving the rest untouched. */
+function withoutLeadingHeading(markdown: string): string {
+  return markdown.replace(/^#\s+[^\n]*\n+/, "").trimEnd();
+}
+
+function renderProgressReviewRecord(
+  input: ProgressReviewRecordInput,
+  title: string,
+  reviewKey: string,
+  contentHash: string
+): string {
+  const content = canonicalMarkdown(input.content);
+  const lines = [
+    "---",
+    "arcadia_record: true",
+    "record_type: progress_review",
+    yaml("arcadia_review_key", reviewKey),
+    yamlNullable("arcadia_project_id", input.project?.id ?? null),
+    yaml("project", input.project?.name ?? "Portfolio"),
+    yaml("window_since", input.window.since),
+    yaml("window_until", input.window.until),
+    yaml("generated_at", input.generatedAt),
+    yaml("source_report_path", input.reportPath),
+    yaml("content_sha256", contentHash),
+    "---",
+    "",
+    `# ${title}`,
+    "",
+    // The report opens with its own H1, which would render as a second title
+    // under this Record's. The Record's title carries the window, so it wins.
+    withoutLeadingHeading(content),
+    "",
+    "## Provenance",
+    "",
+    `- Compiled deterministically by \`arcadia review weekly\` on ${input.generatedAt}.`,
+    `- Source report: ${input.reportPath}`,
+    "- SQLite remains operational truth; this Record is a projection and is safe to delete.",
+    ""
+  ];
+  return `${lines.join("\n").replace(/\n+$/, "")}\n`;
+}
+
 function resolveVaultTarget(workspace: string): VaultTarget | null {
   const paths = getWorkspacePaths(workspace);
   const config = loadWorkspaceConfig(paths.configFile);

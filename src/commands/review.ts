@@ -1,4 +1,4 @@
-import { existsSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
@@ -28,7 +28,11 @@ import type { ReviewFeedback, ReviewItemSummary, WorkItemSummary } from "../doma
 import { executeApprovedReview, type ReviewExecutionResult } from "../execution/reviewExecutor.js";
 import { isPlanningApprovalDecision, queueApprovedPlanningRun } from "../execution/planningAuthorization.js";
 import { parseDecisionContext } from "../execution/planningAuthorization.js";
-import { exportPlanningAcceptanceBeforeTransition } from "../memory/obsidian.js";
+import {
+  exportPlanningAcceptanceBeforeTransition,
+  exportProgressReview,
+  type MemorySyncEntry
+} from "../memory/obsidian.js";
 import { writeWeeklyReviewReport } from "../markdown/weeklyReview.js";
 import {
   REVIEW_FEEDBACK_TYPES,
@@ -177,6 +181,10 @@ export interface ReviewWeeklyCommandData {
   reportPath: string;
   /** The Project reviewed, or `null` for the whole workspace. */
   project: { id: string; name: string; slug: string } | null;
+  /** The vault Record written, or `null` when vault memory is not enabled. */
+  memory: MemorySyncEntry | null;
+  /** Why the vault projection failed, when it did. Never fails the review. */
+  memoryError: string | null;
   window: {
     since: string;
     until: string;
@@ -859,12 +867,32 @@ export function runReviewWeeklyCommand(
     };
   });
 
+  // Projected after the workspace report is written, and never in a way that
+  // can fail it: the report is the deliverable, the vault Record is a
+  // convenience copy. A vault misconfiguration should be reported, not cost
+  // the operator their review.
+  let memory: MemorySyncEntry | null = null;
+  let memoryError: string | null = null;
+  try {
+    memory = exportProgressReview(workspacePath, {
+      project: data.project,
+      window,
+      generatedAt: data.generatedAt,
+      reportPath: path.relative(workspacePath, reportPath),
+      content: readFileSync(reportPath, "utf8")
+    });
+  } catch (error) {
+    memoryError = error instanceof Error ? error.message : String(error);
+  }
+
   return createSuccess({
     command: "review.weekly",
     workspace: workspacePath,
     data: {
       reportPath,
       project: data.project,
+      memory,
+      memoryError,
       window,
       counts: {
         completedWork: data.completedWorkItems.length,
@@ -883,13 +911,20 @@ export function runReviewWeeklyCommand(
 }
 
 export function renderReviewWeeklySuccess(response: CommandSuccess<ReviewWeeklyCommandData>): string[] {
-  const { project, window, reportPath, counts } = response.data;
-  return [
+  const { project, window, reportPath, counts, memory, memoryError } = response.data;
+  const lines = [
     project ? `Progress review written for ${project.name}.` : "Weekly review written.",
     `Window: ${window.since} to ${window.until}`,
     `Completed Actions: ${counts.completedWork} · Logs: ${counts.missionLogs} · Artifacts: ${counts.artifacts}`,
     `Report: ${reportPath}`
   ];
+  if (memory) {
+    lines.push(`Vault Record (${memory.status}): ${memory.recordPath}`);
+  }
+  if (memoryError) {
+    lines.push(`Vault Record not written: ${memoryError}`);
+  }
+  return lines;
 }
 
 export function renderReviewRequiredSuccess(response: CommandSuccess<ReviewRequiredCommandData>): string[] {

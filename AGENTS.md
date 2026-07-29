@@ -13,6 +13,34 @@ Always identify:
 - Work classification
 - Required artifacts
 
+## The 80/20 rule
+
+The Pareto principle holds that roughly 80% of consequences come from 20% of
+causes. Treat it as a standing instruction, not an observation: **find the 20%
+and do that first.**
+
+In practice, for any piece of work:
+
+- **Name the vital few before starting.** Which small part of this delivers most
+  of the value? Say so explicitly, and sequence it first — not because the rest
+  is worthless, but because the rest is what gets cut when time runs out, and
+  that should be a deliberate choice rather than an accident of ordering.
+- **Prefer the change that reuses what exists.** The cheapest 80% is usually
+  already built and merely unreachable — a report that is not scoped, a field
+  that is parsed but never read. Extending something proven beats introducing
+  something new, and it is the difference between an afternoon and a milestone.
+- **Say when the expensive 20% of value is not worth its 80% of cost.** Deferring
+  is a real answer. Recommend it plainly, and record what was deferred and why,
+  so the decision survives the conversation.
+- **Do not gold-plate the tail.** Exhaustive coverage of rare cases is the
+  classic 80% of effort buying 20% of value. Handle the common path well, fail
+  loudly and legibly on the rest.
+
+This rule is subordinate to the constitution's approval boundaries. Safety,
+approval gates, and truthful reporting are never the 80% to be trimmed — a
+shortcut through an approval boundary is not a Pareto optimization, it is a
+violation.
+
 ## Orientation
 
 Before working on the database, the Intelligence service, or the Discord bot, read:
