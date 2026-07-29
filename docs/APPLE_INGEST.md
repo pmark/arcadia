@@ -175,9 +175,11 @@ Add `--run-safe` only when deterministic safe Actions should run immediately. Wi
 For automation, install Arcadia's periodic macOS service. Periodic processing is intentionally separate from capture: the Share Sheet stays fast and reliable even when Arcadia or the Mac is unavailable.
 
 The installed native service checks the same iCloud folder every 60 seconds and
-records the number of visible files it observed, including images and other
-media that are waiting for a future Workflow. The `ingress.service doctor`
-command reports the service health and its health-state file.
+processes every visible file. Text and Markdown requests use deterministic Ask
+intake; safe matched Workflows handle their supported media; and other files
+are preserved as unclassified Artifacts under `Done/Unclassified/`. The
+`ingress.service doctor` command reports the service health and its health-state
+file.
 
 The Ingress viewer also reports when an item is present in iCloud but not
 downloaded locally. Use **Download from iCloud** on that item to request local

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -56,7 +56,7 @@ describe("ingress service", () => {
     );
   });
 
-  it("reports visible non-request files that remain in the ingress inbox", () => {
+  it("preserves visible non-request files as unclassified artifacts", () => {
     const workspace = initializedWorkspace();
     const source = `TestSource-${process.pid}`;
     const ingressRoot = initializedIngressRoot(source);
@@ -66,7 +66,8 @@ describe("ingress service", () => {
 
     const result = runIngressServiceTickCommand({ workspace, ingressRoot, source, stableSeconds: 0 });
 
-    expect(result.data).toMatchObject({ observed: 1, discovered: 0, processed: 0, failed: 0 });
+    expect(result.data).toMatchObject({ observed: 1, discovered: 1, processed: 1, failed: 0 });
+    expect(existsSync(path.join(ingressRoot, source, "Done", "Unclassified", "shared-image.jpg"))).toBe(true);
   });
 });
 

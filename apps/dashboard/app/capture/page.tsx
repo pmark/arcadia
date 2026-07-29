@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Send, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Send, ThumbsDown, ThumbsUp, Upload } from "lucide-react";
 import { MobileShell } from "../../components/mobile-shell";
 import { ErrorState } from "../../components/dashboard-ui";
 import type { AskResponse } from "../../lib/types";
@@ -10,6 +10,7 @@ type FeedbackDecision = "up" | "down";
 
 export default function CapturePage() {
   const [text, setText] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<AskResponse | null>(null);
@@ -17,11 +18,12 @@ export default function CapturePage() {
   const [feedbackGiven, setFeedbackGiven] = useState<FeedbackDecision | null>(null);
   const [feedbackPending, setFeedbackPending] = useState<FeedbackDecision | null>(null);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const [captureMessage, setCaptureMessage] = useState<string | null>(null);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const request = text.trim();
-    if (!request) {
+    if (!request && files.length === 0) {
       return;
     }
 
@@ -29,10 +31,21 @@ export default function CapturePage() {
     setError(null);
 
     try {
-      const res = await fetch("/api/ask", {
+      const res = await fetch(files.length > 0 ? "/api/ingress" : "/api/ask", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ request })
+        ...(files.length > 0
+          ? {
+              body: (() => {
+                const form = new FormData();
+                if (request) form.set("description", request);
+                files.forEach((file) => form.append("file", file, file.name));
+                return form;
+              })()
+            }
+          : {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ request })
+            })
       });
       const body = await res.json();
       if (!res.ok) {
@@ -40,10 +53,12 @@ export default function CapturePage() {
       }
 
       setText("");
+      setFiles([]);
       setNote("");
+      setCaptureMessage(files.length > 0 ? (typeof body.message === "string" ? body.message : "Files queued for ingress processing.") : null);
       setFeedbackGiven(null);
       setFeedbackError(null);
-      setResponse(body.result as AskResponse);
+      setResponse(files.length > 0 ? null : body.result as AskResponse);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : String(submitError));
     } finally {
@@ -90,15 +105,27 @@ export default function CapturePage() {
           rows={4}
           className="min-w-0 rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink outline-none transition placeholder:text-muted focus:border-steel"
         />
+        <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md border border-line bg-panel px-3 text-sm text-muted hover:border-steel hover:text-ink">
+          <Upload className="h-4 w-4" aria-hidden="true" />
+          <span>{files.length > 0 ? `${files.length} file${files.length === 1 ? "" : "s"} attached` : "Attach files for ingress processing"}</span>
+          <input
+            type="file"
+            multiple
+            className="sr-only"
+            onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
+          />
+        </label>
         <button
           type="submit"
-          disabled={pending || !text.trim()}
+          disabled={pending || (!text.trim() && files.length === 0)}
           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-steel/30 bg-steel/10 px-4 text-sm font-semibold text-steel transition hover:border-steel disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Send className="h-4 w-4" aria-hidden="true" />
           {pending ? "Working..." : "Send"}
         </button>
       </form>
+
+      {captureMessage ? <p className="mt-4 rounded-md border border-moss/30 bg-moss/10 px-3 py-2 text-sm font-medium text-moss">{captureMessage}</p> : null}
 
       {error ? (
         <div className="mt-4">

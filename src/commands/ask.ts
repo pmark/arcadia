@@ -77,6 +77,8 @@ export interface AskOptions {
   executeReview?: boolean;
   reviewExecutor?: string;
   agentProfile?: string;
+  /** Deterministic ingress rule for a clearly labeled Markdown app idea. */
+  captureAsIdea?: boolean;
 }
 
 export interface AskCommandData {
@@ -148,7 +150,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     }),
     approvedFromReview
   );
-  const stewardship = stewardIntent({
+  const computedStewardship = stewardIntent({
     rawInput: request,
     intake,
     resolved,
@@ -157,6 +159,18 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     reviewResponseHasReference: parsedReviewResponse.hasReviewReference,
     reviewResponseHasResponse: parsedReviewResponse.hasResponse
   });
+  const stewardship: GoalStewardshipResult = options.captureAsIdea
+    ? {
+        ...computedStewardship,
+        intentType: "Back Burner Idea",
+        recommendedExecutionPath: "Back Burner",
+        planningRecommended: false,
+        clarificationRequired: false,
+        reviewRequired: false,
+        generatedCodexGoalText: null,
+        classificationReason: "Markdown app-idea capture is deterministically routed to Back Burner."
+      }
+    : computedStewardship;
   let run: ExecutionRunSummary | null = null;
 
   // A reply tied to a known Decision belongs to the review workflow even when

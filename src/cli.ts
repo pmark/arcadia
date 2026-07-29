@@ -78,6 +78,7 @@ import { renderInboxImportSuccess, runInboxAddCommand, runInboxImportCommand } f
 import { renderInitSuccess, runInitCommand } from "./commands/init.js";
 import {
   renderIngressProcessSuccess,
+  runIngressCaptureCommand,
   runIngressDescribeCommand,
   runIngressListCommand,
   runIngressProcessCommand
@@ -1194,6 +1195,31 @@ export function buildProgram(): Command {
     () => runIngressDescribeCommand({ ...options, files: options.file ?? [] }),
     (response) => [
       `Queued ingress Action for ${response.data.selectedFiles.length} file(s).`,
+      `Request: ${response.data.requestFile}`
+    ]
+  ));
+  addJsonOption(
+    ingress
+      .command("capture")
+      .description("Copy local files into the iCloud ingress attachment convention and queue them")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--source <name>", "Ingress source folder", "iCloudIdeas")
+      .option("--ingress-root <path>", "ArcadiaIngress root folder")
+      .requiredOption("--file <path>", "Local file path; repeat for multiple files", collectValues, [])
+      .option("--description <text>", "Optional instruction for the captured files")
+  ).action((options: {
+    workspace: string;
+    source?: string;
+    ingressRoot?: string;
+    file?: string[];
+    description?: string;
+    json?: boolean;
+  }) => runCliAction(
+    "ingress.capture",
+    options,
+    () => runIngressCaptureCommand({ ...options, files: options.file ?? [] }),
+    (response) => [
+      `Queued ingress capture for ${response.data.selectedFiles.length} file(s).`,
       `Request: ${response.data.requestFile}`
     ]
   ));

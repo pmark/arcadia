@@ -174,10 +174,8 @@ export function runIngressServiceTickCommand(
   }
 
   try {
-    // Count every visible file before processing. The processor intentionally
-    // leaves media and other non-request files in In, so this is the useful
-    // signal that the Mac has actually observed an iCloud-delivered file even
-    // when no text request or configured Workflow matches it yet.
+    // Count every visible file before processing so the health record shows
+    // what the Mac observed even when processing moves it immediately.
     const observed = countVisibleFiles(path.join(service.ingressRoot, service.source, "In"));
     const result = runIngressProcessCommand({
       workspace: service.workspacePath,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Send } from "lucide-react";
+import { Send, Upload } from "lucide-react";
 import { DashboardChrome } from "../../components/chrome";
 import {
   ActivityRow,
@@ -28,6 +28,7 @@ import type { DashboardAttentionItem, DashboardDailyAdvantage } from "../../lib/
 export default function LegacyDashboardPage() {
   const { snapshot, error, loading, refreshing, lastLoadedAt, refresh } = useArcadiaSnapshot();
   const [askText, setAskText] = useState("");
+  const [askFiles, setAskFiles] = useState<File[]>([]);
   const [askPending, setAskPending] = useState(false);
   const [askMessage, setAskMessage] = useState<string | null>(null);
   const [askError, setAskError] = useState<string | null>(null);
@@ -39,7 +40,7 @@ export default function LegacyDashboardPage() {
   async function submitAsk(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const request = askText.trim();
-    if (!request) {
+    if (!request && askFiles.length === 0) {
       return;
     }
 
@@ -48,10 +49,21 @@ export default function LegacyDashboardPage() {
     setAskError(null);
 
     try {
-      const response = await fetch("/api/ask", {
+      const response = await fetch(askFiles.length > 0 ? "/api/ingress" : "/api/ask", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ request })
+        ...(askFiles.length > 0
+          ? {
+              body: (() => {
+                const form = new FormData();
+                if (request) form.set("description", request);
+                askFiles.forEach((file) => form.append("file", file, file.name));
+                return form;
+              })()
+            }
+          : {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ request })
+            })
       });
       const body = await response.json();
       if (!response.ok) {
@@ -59,6 +71,7 @@ export default function LegacyDashboardPage() {
       }
 
       setAskText("");
+      setAskFiles([]);
       setAskMessage(typeof body.message === "string" ? body.message : "Ask handled.");
       await refresh();
     } catch (submitError) {
@@ -160,7 +173,7 @@ export default function LegacyDashboardPage() {
               />
               <button
                 type="submit"
-                disabled={askPending || !askText.trim()}
+                disabled={askPending || (!askText.trim() && askFiles.length === 0)}
                 title="Ask"
                 aria-label="Ask"
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-steel/30 bg-steel/10 px-4 text-sm font-semibold text-steel transition hover:border-steel disabled:cursor-not-allowed disabled:opacity-60"
@@ -169,6 +182,16 @@ export default function LegacyDashboardPage() {
                 {askPending ? "Working..." : "Ask"}
               </button>
             </div>
+            <label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-line bg-panel px-3 text-xs text-muted hover:border-steel hover:text-ink">
+              <Upload className="h-4 w-4" aria-hidden="true" />
+              <span>{askFiles.length > 0 ? `${askFiles.length} file${askFiles.length === 1 ? "" : "s"} attached` : "Attach files for ingress processing"}</span>
+              <input
+                type="file"
+                multiple
+                className="sr-only"
+                onChange={(event) => setAskFiles(Array.from(event.target.files ?? []))}
+              />
+            </label>
             {askMessage ? (
               <div className="rounded-md border border-moss/30 bg-moss/10 px-3 py-2 text-sm font-medium text-moss">
                 {askMessage}

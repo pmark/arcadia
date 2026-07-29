@@ -27,6 +27,7 @@ import { matchWorkflowDefinition } from "../workflows/config.js";
 import { runWorkflow } from "../workflows/runner.js";
 import type { WorkflowDefinition } from "../workflows/types.js";
 import { recordWorkflowRunArtifacts } from "../workflows/artifacts.js";
+import { writeIngressMemoryNote } from "../memory/obsidian.js";
 
 export const DEFAULT_INGRESS_SOURCE = "iCloudIdeas";
 
@@ -42,7 +43,7 @@ export interface IngressProcessOptions {
 
 export interface IngressFileResult {
   file: string;
-  status: "would_process" | "pending" | "processed" | "skipped_empty" | "failed";
+  status: "would_process" | "pending" | "processed" | "preserved" | "skipped_empty" | "failed";
   requestPreview?: string;
   finalPath?: string;
   sidecarPath?: string;
@@ -60,6 +61,7 @@ export interface IngressProcessData {
   root: string;
   directories: {
     in: string;
+    processing: string;
     done: string;
     failed: string;
     attachments: string;
@@ -104,8 +106,17 @@ export interface IngressDescribeData {
   description: string;
 }
 
+export interface IngressCaptureOptions {
+  workspace: string;
+  source?: string;
+  ingressRoot?: string;
+  files: string[];
+  description?: string;
+}
+
 interface IngressDirectories {
   in: string;
+  processing: string;
   done: string;
   failed: string;
   attachments: string;
@@ -117,6 +128,7 @@ interface CandidateFile {
   mtimeMs: number;
   sharedArtifactPaths: string[];
   workflow: WorkflowDefinition | null;
+  kind: "request" | "workflow" | "unclassified";
   stable: boolean;
 }
 
@@ -164,6 +176,7 @@ export function runIngressListCommand(options: {
       root,
       directories: {
         in: directories.in,
+        processing: directories.processing,
         done: directories.done,
         failed: directories.failed,
         attachments: directories.attachments
@@ -259,6 +272,47 @@ export function runIngressDescribeCommand(options: {
   });
 }
 
+export function runIngressCaptureCommand(options: IngressCaptureOptions): CommandSuccess<IngressDescribeData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const source = options.source?.trim() || DEFAULT_INGRESS_SOURCE;
+  validateSourceName(source);
+  const description = options.description?.trim() || "Process these captured files through Arcadia's default ingress handling.";
+  const files = [...new Set(options.files.map((file) => path.resolve(file)))];
+  if (files.length === 0) throw validationError("At least one local file is required for ingress capture.");
+  if (files.some((file) => !existsSync(file) || !statSync(file).isFile())) {
+    throw validationError("Every ingress capture file must exist and be a regular file.", { files });
+  }
+
+  const root = path.resolve(options.ingressRoot ?? defaultIngressRoot());
+  const directories = ingressDirectories(root, source);
+  ensureIngressDirectories(directories);
+  const requestFile = path.join(directories.in, `arcadia-${createId("event")}.txt`);
+  const attachmentDirectory = path.join(directories.attachments, path.parse(requestFile).name);
+  mkdirSync(attachmentDirectory, { recursive: true });
+  const selectedFiles = files.map((file) => path.basename(file));
+  const attachmentFiles = files.map((file, index) => {
+    const destination = path.join(attachmentDirectory, selectedFiles[index]!);
+    copyFileSync(file, destination);
+    return destination;
+  });
+  const textualContents = files
+    .filter((file) => [".txt", ".md", ".markdown"].includes(path.extname(file).toLowerCase()))
+    .map((file) => `\n\nCaptured file: ${path.basename(file)}\n\n${readFileSync(file, "utf8")}`)
+    .join("");
+  writeFileSync(
+    requestFile,
+    `${description}\n\nCaptured ingress Artifacts:\n${selectedFiles.map((file) => `- ${file}`).join("\n")}${textualContents}\n`,
+    "utf8"
+  );
+
+  return createSuccess({
+    command: "ingress.capture",
+    workspace: workspacePath,
+    data: { source, root, requestFile, selectedFiles, attachmentFiles, description },
+    artifacts: [requestFile, ...attachmentFiles]
+  });
+}
+
 export function runIngressProcessCommand(options: IngressProcessOptions): CommandSuccess<IngressProcessData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const source = options.source?.trim() || DEFAULT_INGRESS_SOURCE;
@@ -295,7 +349,8 @@ export function runIngressProcessCommand(options: IngressProcessOptions): Comman
           source,
           runSafe: Boolean(options.runSafe)
         })
-      : processCandidate({
+      : candidate.kind === "request"
+      ? processCandidate({
           candidate,
           workspacePath,
           directories,
@@ -304,6 +359,7 @@ export function runIngressProcessCommand(options: IngressProcessOptions): Comman
           runSafe: Boolean(options.runSafe),
           askRunner
         })
+      : processUnclassifiedCandidate({ candidate, directories, source, workspacePath })
       );
 
   return createSuccess({
@@ -314,6 +370,7 @@ export function runIngressProcessCommand(options: IngressProcessOptions): Comman
       root,
       directories: {
         in: directories.in,
+        processing: directories.processing,
         done: directories.done,
         failed: directories.failed,
         attachments: directories.attachments
@@ -324,7 +381,7 @@ export function runIngressProcessCommand(options: IngressProcessOptions): Comman
       counts: {
         discovered: candidates.length,
         processed: files.filter((file) => !["would_process", "pending"].includes(file.status)).length,
-        succeeded: files.filter((file) => file.status === "processed").length,
+        succeeded: files.filter((file) => ["processed", "preserved"].includes(file.status)).length,
         failed: files.filter((file) => file.status === "failed").length,
         skipped: files.filter((file) => file.status === "skipped_empty").length,
         pending: files.filter((file) => file.status === "pending").length
@@ -366,11 +423,7 @@ function processCandidate(input: {
 }): IngressFileResult {
   const { candidate, workspacePath, directories, source, executionMode, runSafe, askRunner } = input;
   const originalPath = candidate.absolutePath;
-  const processingPath = path.join(
-    directories.in,
-    `.processing-${path.parse(candidate.fileName).name}-${Date.now()}-${process.pid}.txt`
-  );
-  renameSync(originalPath, processingPath);
+  const processingPath = moveToUnique(originalPath, path.join(directories.processing, candidate.fileName));
   let currentPath = processingPath;
 
   const request = readFileSync(currentPath, "utf8").trim();
@@ -408,16 +461,31 @@ function processCandidate(input: {
         fileName: candidate.fileName,
         sourcePath: originalPath,
         sharedArtifactPaths: candidate.sharedArtifactPaths
-      }
+      },
+      captureAsIdea: isIdeaMarkdownCandidate(candidate, request)
     });
     const sharedArtifactPaths = recordSharedArtifacts(workspacePath, candidate.sharedArtifactPaths, response);
     const runStatus = response.data.run?.status ?? null;
     const failedRun = runStatus === "failed";
+    const destinationRoot = failedRun
+      ? directories.failed
+      : (response.data.backBurnerItemId || isMarkdownCandidate(candidate))
+      ? path.join(directories.done, "Ideas")
+      : directories.done;
     const finalPath = moveToUnique(
       currentPath,
-      path.join(failedRun ? directories.failed : directories.done, candidate.fileName)
+      path.join(destinationRoot, candidate.fileName)
     );
     currentPath = finalPath;
+    const curated = failedRun ? null : curateIngressMemory({
+      workspacePath,
+      source,
+      sourcePath: originalPath,
+      finalPath,
+      request,
+      candidate,
+      response
+    });
     const sidecarPath = sidecarPathFor(finalPath, failedRun ? "error" : "response");
     const failureReason = failedRun ? `Run failed: ${response.data.run?.summary ?? response.data.run?.id}` : undefined;
     const missionLogPath = writeIngressMissionLog(workspacePath, {
@@ -443,6 +511,7 @@ function processCandidate(input: {
       runId: response.data.run?.id ?? null,
       artifacts: [...response.artifacts, ...sharedArtifactPaths],
       missionLogPath,
+      memoryNotePath: curated?.notePath ?? null,
       failureReason: failureReason ?? null
     });
 
@@ -456,7 +525,7 @@ function processCandidate(input: {
       workItemId: response.data.workItem?.id,
       planId: response.data.plan?.id,
       runId: response.data.run?.id,
-      artifacts: [...response.artifacts, ...sharedArtifactPaths, path.join(workspacePath, missionLogPath)],
+      artifacts: [...response.artifacts, ...sharedArtifactPaths, path.join(workspacePath, missionLogPath), ...(curated ? [curated.notePath] : [])],
       failureReason
     };
   } catch (error) {
@@ -512,6 +581,145 @@ function processCandidate(input: {
   }
 }
 
+function processUnclassifiedCandidate(input: {
+  candidate: CandidateFile;
+  workspacePath: string;
+  directories: IngressDirectories;
+  source: string;
+}): IngressFileResult {
+  const { candidate, directories, source } = input;
+  const originalPath = candidate.absolutePath;
+  if (!candidate.stable) {
+    return {
+      file: originalPath,
+      status: "pending",
+      artifacts: [],
+      failureReason: "Waiting for the file size and modification time to settle."
+    };
+  }
+  try {
+    const processingPath = moveToUnique(originalPath, path.join(directories.processing, candidate.fileName));
+    const finalPath = moveToUnique(processingPath, path.join(directories.done, "Unclassified", candidate.fileName));
+    const sidecarPath = sidecarPathFor(finalPath, "response");
+    const reason = "No deterministic text or configured Workflow handler matched this file; preserved as an unclassified Artifact.";
+    writeJson(sidecarPath, {
+      status: "preserved_unclassified",
+      source,
+      sourcePath: originalPath,
+      finalPath,
+      processedAt: nowIso(),
+      kind: ingressFileKind(candidate.fileName),
+      mimeType: ingressMimeType(candidate.fileName),
+      reason,
+      artifacts: []
+    });
+    withDatabase(input.workspacePath, (db) => {
+      createArtifactRecord(db, {
+        projectId: null,
+        workItemId: null,
+        title: candidate.fileName,
+        artifactType: statSync(finalPath).isDirectory() ? "shared_folder" : "shared_file",
+        status: "ready",
+        path: finalPath
+      });
+    });
+    return {
+      file: originalPath,
+      status: "preserved",
+      finalPath,
+      sidecarPath,
+      artifacts: [finalPath]
+    };
+  } catch (error) {
+    const normalized = normalizeError(error);
+    const finalPath = existsSync(originalPath)
+      ? moveToUnique(originalPath, path.join(directories.failed, candidate.fileName))
+      : path.join(directories.failed, candidate.fileName);
+    const sidecarPath = sidecarPathFor(finalPath, "error");
+    writeJson(sidecarPath, {
+      status: "failed",
+      source,
+      sourcePath: originalPath,
+      finalPath,
+      processedAt: nowIso(),
+      error: normalized,
+      artifacts: []
+    });
+    return {
+      file: originalPath,
+      status: "failed",
+      finalPath,
+      sidecarPath,
+      artifacts: [],
+      failureReason: normalized.message
+    };
+  }
+}
+
+function curateIngressMemory(input: {
+  workspacePath: string;
+  source: string;
+  sourcePath: string;
+  finalPath: string;
+  request: string;
+  candidate: CandidateFile;
+  response: CommandSuccess<AskCommandData>;
+}): { notePath: string } | null {
+  const { response } = input;
+  const projectId = response.data.workItem?.project_id ?? response.data.project?.id ?? null;
+  const project = projectId ? withDatabase(input.workspacePath, (db) => getProject(db, projectId)) : null;
+  const title = ingressTitle(input.request, input.candidate.fileName);
+  const classification = response.data.intake?.classification ?? "CapturedThought";
+  const status = response.data.backBurnerItemId ? "back_burner" : response.data.result?.status ?? "captured";
+  const tags = ingressTags(`${title}\n${input.request}`, project?.name ?? null, Boolean(response.data.backBurnerItemId));
+  const note = writeIngressMemoryNote(input.workspacePath, {
+    title,
+    content: input.request,
+    source: input.source,
+    sourcePath: input.sourcePath,
+    finalPath: input.finalPath,
+    capturedAt: nowIso(),
+    classification,
+    status,
+    tags,
+    askId: response.data.ask?.id ?? null,
+    backBurnerItemId: response.data.backBurnerItemId ?? null,
+    projectId,
+    projectName: project?.name ?? response.data.project?.name ?? null,
+    actionId: response.data.workItem?.id ?? null,
+    actionTitle: response.data.workItem?.title ?? null,
+    nextAction: response.data.workItem?.next_action ?? response.data.intake?.suggestedNextStep ?? null
+  });
+  return note ? { notePath: note.notePath } : null;
+}
+
+function ingressTitle(content: string, fileName: string): string {
+  const heading = content.match(/^#\s+(.+)$/m)?.[1]?.trim();
+  if (heading) return heading.replace(/^app idea:\s*/i, "").trim();
+  const firstLine = content.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+  return firstLine ? preview(firstLine) : path.parse(fileName).name;
+}
+
+function ingressTags(content: string, projectName: string | null, isIdea: boolean): string[] {
+  const lower = content.toLowerCase();
+  const tags = ["arcadia/ingress", isIdea ? "arcadia/idea" : "arcadia/capture"];
+  if (/\b(guitar|music|song|songs|repertoire|chord|melody|practice)\b/.test(lower)) tags.push("domain/music");
+  if (/\b(guitar)\b/.test(lower)) tags.push("topic/guitar");
+  if (/\b(repertoire|song|songs|songbook)\b/.test(lower)) tags.push("topic/repertoire");
+  if (/\b(app|ipad|iphone|software|product|platform)\b/.test(lower)) tags.push("topic/app-idea");
+  if (projectName) tags.push(`project/${projectName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`);
+  return [...new Set(tags)];
+}
+
+function isMarkdownCandidate(candidate: CandidateFile): boolean {
+  return [".md", ".markdown"].includes(path.extname(candidate.fileName).toLowerCase());
+}
+
+function isIdeaMarkdownCandidate(candidate: CandidateFile, content: string): boolean {
+  if (!isMarkdownCandidate(candidate) && candidate.kind !== "request") return false;
+  return /^#\s+app idea:/im.test(content) || (/^##\s+metadata/im.test(content) && /working name/i.test(content));
+}
+
 function processWorkflowCandidate(input: {
   candidate: CandidateFile;
   workspacePath: string;
@@ -560,6 +768,7 @@ function processWorkflowCandidate(input: {
 
   let currentPath = candidate.absolutePath;
   try {
+    currentPath = moveToUnique(currentPath, path.join(directories.processing, candidate.fileName));
     const run = runWorkflow({ workspace: workspacePath, workflow, inputPath: currentPath });
     const succeeded = run.status === "completed" || run.status === "already_completed";
     const finalPath = moveToUnique(
@@ -696,7 +905,9 @@ function dryRunResult(candidate: CandidateFile): IngressFileResult {
       artifacts: []
     };
   }
-  const request = readFileSync(candidate.absolutePath, "utf8").trim();
+  const request = candidate.kind === "unclassified"
+    ? `Preserve as unclassified Artifact (${ingressMimeType(candidate.fileName)}).`
+    : readFileSync(candidate.absolutePath, "utf8").trim();
   return {
     file: candidate.absolutePath,
     status: "would_process",
@@ -724,24 +935,27 @@ function listCandidates(
     .filter((entry) => entry.isFile() && !entry.name.startsWith(".processing-"))
     .map((entry) => {
       const absolutePath = path.join(inboxPath, entry.name);
-      const workflow = entry.name.endsWith(".txt")
+      const isRequest = [".txt", ".md", ".markdown"].includes(path.extname(entry.name).toLowerCase());
+      const workflow = isRequest
         ? null
         : matchWorkflowDefinition(workspacePath, absolutePath, source);
-      if (!entry.name.endsWith(".txt") && !workflow) return null;
       const stats = statSync(absolutePath);
       const previous = observations[entry.name];
       const unchanged = Boolean(previous && previous.size === stats.size && previous.mtimeMs === stats.mtimeMs);
       const observation = unchanged
         ? previous
         : { size: stats.size, mtimeMs: stats.mtimeMs, observedAtMs: now };
-      if (workflow) nextObservations[entry.name] = observation as StabilityObservation;
+      nextObservations[entry.name] = observation as StabilityObservation;
       return {
         absolutePath,
         fileName: entry.name,
         mtimeMs: stats.mtimeMs,
-        sharedArtifactPaths: entry.name.endsWith(".txt") ? listSharedArtifactPaths(inboxPath, entry.name) : [],
+        sharedArtifactPaths: isRequest && path.extname(entry.name).toLowerCase() === ".txt"
+          ? listSharedArtifactPaths(inboxPath, entry.name)
+          : [],
         workflow,
-        stable: !workflow || stableSeconds === 0 || Boolean(unchanged && now - observation!.observedAtMs >= stableSeconds * 1000)
+        kind: workflow ? "workflow" : isRequest ? "request" : "unclassified",
+        stable: isRequest || stableSeconds === 0 || Boolean(unchanged && now - observation!.observedAtMs >= stableSeconds * 1000)
       };
     })
     .filter((candidate): candidate is CandidateFile => Boolean(candidate))
@@ -763,6 +977,7 @@ function ingressDirectories(root: string, source: string): IngressDirectories {
   const sourceRoot = path.join(root, source);
   return {
     in: path.join(sourceRoot, "In"),
+    processing: path.join(sourceRoot, "Processing"),
     done: path.join(sourceRoot, "Done"),
     failed: path.join(sourceRoot, "Failed"),
     attachments: path.join(sourceRoot, "Attachments")
@@ -817,6 +1032,7 @@ function ingressMimeType(fileName: string): string {
 
 function ensureIngressDirectories(directories: IngressDirectories): void {
   mkdirSync(directories.in, { recursive: true });
+  mkdirSync(directories.processing, { recursive: true });
   mkdirSync(directories.done, { recursive: true });
   mkdirSync(directories.failed, { recursive: true });
   mkdirSync(directories.attachments, { recursive: true });
@@ -866,6 +1082,7 @@ function validateSourceName(source: string): void {
 }
 
 function moveToUnique(fromPath: string, desiredPath: string): string {
+  mkdirSync(path.dirname(desiredPath), { recursive: true });
   const destination = uniquePath(desiredPath);
   renameSync(fromPath, destination);
   return destination;

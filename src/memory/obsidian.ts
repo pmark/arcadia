@@ -19,9 +19,9 @@ import { getWorkspacePaths } from "../workspace/paths.js";
 
 export const ARCADIA_VAULT_README = `# Arcadia Memory
 
-This subtree is generated and managed by Arcadia. SQLite remains Arcadia's operational source of truth; these Records are durable, human-readable long-term-memory projections of accepted planning Artifacts.
+This subtree is generated and managed by Arcadia. SQLite remains Arcadia's operational source of truth; these Records and Ideas are durable, human-readable long-term-memory projections.
 
-Accepted Records may be linked or indexed elsewhere in this vault, and independent notes may link to them freely. Files under \`Arcadia/Records/\` should not be renamed, moved, or edited by automated organizers because Arcadia owns their complete generated contents.
+Accepted Records may be linked or indexed elsewhere in this vault, and independent notes may link to them freely. Files under \`Arcadia/Records/\` and \`Arcadia/Ideas/\` should not be renamed, moved, or edited by automated organizers because Arcadia owns their complete generated contents.
 
 Deleting or changing a Record does not change Arcadia operational state. Run \`arcadia memory sync --workspace <path>\` to restore missing or stale managed Records.
 `;
@@ -72,10 +72,57 @@ export interface MemorySyncResult {
   counts: Record<MemorySyncStatus, number>;
 }
 
+export interface IngressMemoryNoteInput {
+  title: string;
+  content: string;
+  source: string;
+  sourcePath: string;
+  capturedAt: string;
+  classification: string;
+  status: string;
+  tags: string[];
+  askId?: string | null;
+  backBurnerItemId?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
+  actionId?: string | null;
+  actionTitle?: string | null;
+  nextAction?: string | null;
+  finalPath?: string | null;
+}
+
+export interface IngressMemoryNoteResult {
+  notePath: string;
+  status: "created" | "updated";
+}
+
 interface VaultTarget {
   vaultPath: string;
   arcadiaRoot: string;
   recordsRoot: string;
+  ideasRoot: string;
+}
+
+export function writeIngressMemoryNote(
+  workspace: string,
+  input: IngressMemoryNoteInput
+): IngressMemoryNoteResult | null {
+  const target = resolveVaultTarget(workspace);
+  if (!target) return null;
+
+  const identity = input.backBurnerItemId ?? input.askId ?? `${input.sourcePath}:${input.capturedAt}`;
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(input.capturedAt.slice(0, 10)) ? input.capturedAt.slice(0, 10) : "undated";
+  const notePath = path.join(
+    target.ideasRoot,
+    `${date}-${slugify(input.title)}--${identity.replace(/[^A-Za-z0-9_-]+/g, "_")}.md`
+  );
+  assertDestinationSafe(target, notePath);
+  const content = renderIngressMemoryNote(input);
+  const current = existsSync(notePath) && statSync(notePath).isFile() ? readFileSync(notePath, "utf8") : null;
+  const status = current === null ? "created" : "updated";
+  if (current !== content) atomicWrite(target, notePath, content);
+  writeManagedReadme(target);
+  return { notePath, status };
 }
 
 export function syncAcceptedPlanningArtifacts(
@@ -153,9 +200,11 @@ function resolveVaultTarget(workspace: string): VaultTarget | null {
   }
   const arcadiaRoot = path.join(vaultPath, "Arcadia");
   const recordsRoot = path.join(arcadiaRoot, "Records");
+  const ideasRoot = path.join(arcadiaRoot, "Ideas");
   assertExistingPathSafe(vaultPath, arcadiaRoot);
   assertExistingPathSafe(vaultPath, recordsRoot);
-  return { vaultPath, arcadiaRoot, recordsRoot };
+  assertExistingPathSafe(vaultPath, ideasRoot);
+  return { vaultPath, arcadiaRoot, recordsRoot, ideasRoot };
 }
 
 function exportRow(
@@ -362,6 +411,46 @@ function writeManagedReadme(target: VaultTarget): void {
   if (!existsSync(readmePath) || readFileSync(readmePath, "utf8") !== ARCADIA_VAULT_README) {
     atomicWrite(target, readmePath, ARCADIA_VAULT_README);
   }
+}
+
+function renderIngressMemoryNote(input: IngressMemoryNoteInput): string {
+  const tags = [...new Set(input.tags.map((tag) => tag.trim()).filter(Boolean))].sort();
+  return [
+    "---",
+    "arcadia_memory: true",
+    "record_type: ingress_idea",
+    yaml("arcadia_ask_id", input.askId ?? ""),
+    yaml("arcadia_back_burner_id", input.backBurnerItemId ?? ""),
+    yaml("captured_at", input.capturedAt),
+    yaml("source", input.source),
+    yaml("source_path", input.sourcePath),
+    yaml("classification", input.classification),
+    yaml("status", input.status),
+    yamlNullable("project_id", input.projectId ?? null),
+    yamlNullable("project", input.projectName ?? null),
+    yamlNullable("action_id", input.actionId ?? null),
+    yamlNullable("action", input.actionTitle ?? null),
+    yamlNullable("next_action", input.nextAction ?? null),
+    yamlNullable("final_path", input.finalPath ?? null),
+    `tags: ${JSON.stringify(tags)}`,
+    "---",
+    "",
+    `# ${input.title}`,
+    "",
+    "## Arcadia curation",
+    "",
+    `- Classification: ${input.classification}`,
+    `- Status: ${input.status}`,
+    `- Project: ${input.projectName ?? "Unassigned"}`,
+    `- Action: ${input.actionTitle ?? "None linked"}`,
+    `- Next action: ${input.nextAction ?? "Review this captured idea."}`,
+    `- Source: ${input.sourcePath}`,
+    "",
+    "## Captured content",
+    "",
+    canonicalMarkdown(input.content),
+    ""
+  ].join("\n");
 }
 
 function assertDestinationSafe(target: VaultTarget, destination: string): void {

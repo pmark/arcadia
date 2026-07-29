@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { CommandSuccess } from "../src/cli/response.js";
 import type { AskCommandData, AskOptions } from "../src/commands/ask.js";
 import {
+  runIngressCaptureCommand,
   runIngressDescribeCommand,
   runIngressListCommand,
   runIngressProcessCommand
@@ -32,6 +33,44 @@ afterEach(() => {
 });
 
 describe("ingress process command", () => {
+  it("captures local uploads into the same attachment and request convention", () => {
+    const workspace = initializedWorkspace();
+    const ingressRoot = initializedIngressRoot();
+    const uploadRoot = mkdtempSync(path.join(tmpdir(), "arcadia-ingress-upload-"));
+    roots.push(uploadRoot);
+    const uploadPath = path.join(uploadRoot, "idea.md");
+    writeFileSync(uploadPath, "# A captured idea\n", "utf8");
+
+    const result = runIngressCaptureCommand({
+      workspace,
+      ingressRoot,
+      files: [uploadPath],
+      description: "Capture this idea and route it deterministically."
+    });
+
+    expect(result.data.selectedFiles).toEqual(["idea.md"]);
+    expect(existsSync(result.data.requestFile)).toBe(true);
+    expect(readFileSync(result.data.requestFile, "utf8")).toContain("Capture this idea");
+    expect(readFileSync(result.data.requestFile, "utf8")).toContain("# A captured idea");
+    expect(readFileSync(result.data.attachmentFiles[0]!, "utf8")).toContain("A captured idea");
+  });
+
+  it("routes a labeled Markdown app idea to Back Burner and Done/Ideas", () => {
+    const workspace = initializedWorkspace();
+    const ingressRoot = initializedIngressRoot();
+    writeIngressFile(ingressRoot, "living-songbook.md", "# App Idea: Living Songbook\n\n## Metadata\n\n- **Working Name:** Living Songbook\n\nA guitar repertoire app.\n");
+
+    const result = runIngressProcessCommand({ workspace, ingressRoot, stableSeconds: 0 });
+
+    expect(result.data.files[0]).toMatchObject({ status: "processed" });
+    expect(result.data.files[0]?.finalPath).toContain(path.join("Done", "Ideas", "living-songbook.md"));
+    expect(result.data.files[0]?.failureReason).toBeUndefined();
+    withDatabase(workspace, (db) => {
+      expect(countRows(db, "back_burner_items")).toBe(1);
+      expect(countRows(db, "ask_requests")).toBe(1);
+    });
+  });
+
   it("ingests a request through ask, moves it to Done, writes a sidecar, and records a mission log", () => {
     const workspace = initializedWorkspace();
     const ingressRoot = initializedIngressRoot();

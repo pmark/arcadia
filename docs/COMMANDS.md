@@ -164,7 +164,16 @@ pnpm arcadia ingress process \
   --dry-run
 ```
 
-Arcadia processes `.txt` requests and media files matched by enabled Workflows oldest first. Workflow files remain pending until two observations show their size and modification time unchanged for at least 30 seconds and `--run-safe` is passed. Successful and empty files move to `<ingress-root>/iCloudIdeas/Done/`; failed files move to `<ingress-root>/iCloudIdeas/Failed/`. Each moved file gets a readable JSON sidecar, and every non-empty processed request gets an ingress Log. Files placed in `Attachments/<request-basename>/` are recorded as ready Artifacts.
+Arcadia processes `.txt`, `.md`, and `.markdown` requests and media files matched by enabled Workflows oldest first. Workflow and unmatched binary files remain pending until two observations show their size and modification time unchanged for at least 30 seconds; Workflows also require `--run-safe`. Requests are claimed in `Processing`. Idea captures move to `<ingress-root>/iCloudIdeas/Done/Ideas/`, unmatched files are preserved in `Done/Unclassified/`, other successful requests move to `Done/`, and failures move to `Failed/`. Each moved file gets a readable JSON sidecar, and every non-empty processed request gets an ingress Log. Files placed in `Attachments/<request-basename>/` are recorded as ready Artifacts.
+
+To stage local files from an Admin Ask/upload surface using the same convention as the Apple shortcuts:
+
+```sh
+pnpm arcadia ingress capture \
+  --workspace "$WORKSPACE" \
+  --file /path/to/idea.md \
+  --description "Capture and organize this idea."
+```
 
 Watch mode is intentionally not implemented. For periodic processing, configure macOS `launchd` to run `arcadia ingress process` on an interval. See `docs/APPLE_INGEST.md` for the macOS Quick Action and iPhone/iPad Shortcut flow.
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   ArcadiaCliError,
+  captureIngressFiles,
   describeIngressFiles,
   listIngressFiles
 } from "../../../lib/arcadia-cli";
@@ -32,6 +33,20 @@ interface DescribeRequest {
 
 export async function POST(request: Request) {
   try {
+    if (request.headers.get("content-type")?.toLowerCase().includes("multipart/form-data")) {
+      const form = await request.formData();
+      const descriptionValue = form.get("description");
+      const description = typeof descriptionValue === "string" ? descriptionValue.trim() : "";
+      const uploads = form.getAll("file").filter((value): value is File => value instanceof File && value.size > 0);
+      if (uploads.length === 0) {
+        return NextResponse.json({ error: "Attach at least one file.", details: null }, { status: 400 });
+      }
+      const response = await captureIngressFiles({
+        description: description || undefined,
+        files: await Promise.all(uploads.map(async (file) => ({ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) })))
+      });
+      return NextResponse.json({ message: "Files queued for Arcadia ingress processing.", result: response.data });
+    }
     const body = (await request.json()) as DescribeRequest;
     const files = Array.isArray(body.files)
       ? body.files.filter((file): file is string => typeof file === "string")

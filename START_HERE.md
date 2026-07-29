@@ -19,8 +19,7 @@ Use the **Ask** box for a new request that is not already an Action in Arcadia.
 Open **Ingress** from the menu to view files waiting in the local
 `~/Library/Mobile Documents/com~apple~CloudDocs/ArcadiaIngress/iCloudIdeas/In`
 folder. Select one or more files, describe the Action you want Arcadia to take, and choose **Describe Action**. Arcadia writes
-the description and selected files into the normal ingress queue for processing;
-the original files remain available in `In` until that workflow handles them.
+the description and selected files into the normal ingress queue for processing.
 From an iPhone or iPad Share Sheet, use **Send Any Document to Arcadia** to copy
 an image or other document directly into the same folder; import the signed
 shortcut from `scripts/apple/Send Any Document to Arcadia (iPhone-iPad).shortcut`.
@@ -29,6 +28,14 @@ and enable it as a Finder Quick Action or Share Sheet action; it performs the
 same direct copy into `iCloudIdeas/In/`.
 If an item is present in iCloud but not local, Ingress labels it accurately and
 offers **Download from iCloud** before previewing it.
+
+Every item is eventually moved out of `In`: active work is claimed in
+`Processing`, successful idea captures land in `Done/Ideas`, unmatched files
+are preserved in `Done/Unclassified`, and failures land in `Failed`. A Markdown
+idea is routed through deterministic Ask/Back Burner handling and, when memory
+is enabled, also becomes a managed note under `Arcadia/Ideas/` in Obsidian.
+The **Capture** Ask surface accepts the same arbitrary files with an optional
+instruction and queues them through this identical ingress path.
 
 ## Answering Decisions
 

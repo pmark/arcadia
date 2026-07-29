@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type {
@@ -89,6 +91,7 @@ export interface IngressListResponse {
   root: string;
   directories: {
     in: string;
+    processing: string;
     done: string;
     failed: string;
     attachments: string;
@@ -127,6 +130,26 @@ export async function describeIngressFiles(input: {
     args.push("--file", file);
   }
   return runArcadiaCliJson<IngressDescribeResponse>(args);
+}
+
+export async function captureIngressFiles(input: {
+  files: Array<{ name: string; bytes: Uint8Array }>;
+  description?: string;
+}): Promise<ArcadiaJsonSuccess<IngressDescribeResponse>> {
+  const temporaryDirectory = await mkdtemp(path.join(tmpdir(), "arcadia-dashboard-ingress-"));
+  try {
+    const args = ["ingress", "capture"];
+    for (const file of input.files) {
+      const safeName = path.basename(file.name) || "upload.bin";
+      const temporaryPath = path.join(temporaryDirectory, safeName);
+      await writeFile(temporaryPath, file.bytes);
+      args.push("--file", temporaryPath);
+    }
+    if (input.description?.trim()) args.push("--description", input.description.trim());
+    return await runArcadiaCliJson<IngressDescribeResponse>(args);
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
 }
 
 export async function runAsk(input: {
