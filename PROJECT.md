@@ -6,8 +6,8 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: Managed plans govern work from dispatch through acceptance
-active_plan: dispatch-contract-enforcement
+milestone: docs sync ingests a real project's markdown
+active_plan: portfolio-docs-protocol
 updated: 2026-07-31
 ---
 
@@ -40,11 +40,18 @@ Arcadia select the least costly compliant coding-agent configuration without
 putting provider model names in those plans. That milestone is reached, and its
 two remaining increments are deferred against named triggers by Decision 0004.
 
-The current work closes the gap between what a coding agent was told and what it
-is judged on — see `docs/plans/dispatch-contract-enforcement.md`. Acceptance
-criteria travel from a plan into the dispatch packet and stop there; nothing yet
-compares the finished Run against them, and nothing computes which Action
-*could* be dispatched rather than only refusing a bad pointer.
+`docs/plans/dispatch-contract-enforcement.md` closed the gap between what a
+coding agent was told and what it is judged on: acceptance criteria are now
+compared against a finished Run's Artifact at acceptance, approval rechecks
+readiness when the plan document has moved, `arcadia next --ready` computes
+the whole ready set instead of only refusing a bad pointer, and the dispatch
+journal's tally surfaces in the dashboard snapshot. That plan is complete.
+
+Nothing is currently dispatchable: `portfolio-docs-protocol`'s two remaining
+increments are deferred against named triggers by Decision 0004, and no other
+plan has an Action ready to point at. That is the honest current state, not a
+gap to paper over — the next work is whichever trigger fires first, or a new
+outcome the operator states.
 
 ## Links
 

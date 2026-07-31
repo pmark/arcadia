@@ -8,6 +8,56 @@ updated: 2026-07-31
 
 # Mission Log: Arcadia
 
+## 2026-07-31 — Fixed compute-ready-set: it required the pointer it exists to fix
+
+- **Did:** Dogfooding `arcadia next --ready` against this repository, right
+  after moving `active_plan` to a plan with no `current_action` set, caught a
+  real defect: `resolveReadySet` called `resolveDispatch` outright, which
+  itself requires a `current_action` to already resolve before returning
+  anything usable. A plan declaring none refused the whole ready set for the
+  same reason `next` refuses -- exactly the case this Action exists to help
+  with, and exactly backwards from its own acceptance criterion ("suggests a
+  `current_action` without writing one"). Extracted `resolveActivePlan` in
+  `src/docs/dispatch.ts` -- the Project-and-plan resolution `resolveDispatch`
+  already did, stopping short of anything about `current_action` -- and
+  shared it between both functions. `resolveDispatch` still requires
+  `current_action`; `resolveReadySet` no longer does, and enumerates every
+  Action in the resolved plan regardless.
+- **Result:** `arcadia next --ready` now correctly lists Actions, or names the
+  nearest-to-ready one, even when no `current_action` is set at all -- verified
+  against this repository's own real state. All 17 pre-existing
+  `resolveDispatch` tests still pass unchanged, confirming the extraction
+  preserved its exact behavior. 2 new regression tests cover the absent- and
+  dangling-current_action cases specifically, so this exact defect cannot
+  return silently.
+- **Next:** None; folded into compute-ready-set's delivery before it shipped.
+- **Blockers:** none
+
+## 2026-07-31 — Delivered surface-dispatch-journal; dispatch-contract-enforcement complete
+
+- **Did:** Added `dispatchJournal` to `DashboardSnapshot`
+  (`src/dashboard/snapshot.ts`): total resolutions, how many were refused, and
+  the single most frequent blocking field, computed via the existing
+  `summarizeDispatchEvents` rather than a new read. Stays inside the
+  snapshot's existing `withReadOnlyDatabase` transaction -- no write, no AI
+  call, matching the Action's own acceptance criteria. Rendered in the CLI's
+  human-readable `dashboard snapshot` output too, not only the JSON.
+- **Result:** All four Actions in `dispatch-contract-enforcement` are now
+  done. Its milestone -- managed plans governing work from dispatch through
+  acceptance -- is reached, so the plan moves to `status: complete` with no
+  `current_action`. `active_plan` moves back to `portfolio-docs-protocol`,
+  the only other active plan, though it has no ready Action either: both its
+  remaining increments are deferred against named triggers by Decision 0004.
+  This is the honest state of the whole portfolio right now -- nothing is
+  currently dispatchable anywhere -- recorded rather than papered over with
+  an invented pointer. The plan-level `criteria-judgment` question stays
+  open; no Action depended on its answer, so closing the plan does not close
+  the question.
+- **Next:** Whichever of Decision 0004's two named triggers fires first, or a
+  new outcome the operator states.
+- **Blockers:** none of the kind a document can repair -- there is genuinely
+  no ready work queued right now.
+
 ## 2026-07-31 — Delivered compute-ready-set
 
 - **Did:** Built `resolveReadySet` in `src/docs/dispatch.ts` and wired it to
