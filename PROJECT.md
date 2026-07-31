@@ -6,8 +6,8 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: docs sync ingests a real project's markdown
-active_plan: portfolio-docs-protocol
+milestone: Arcadia narrates its own recent history automatically, for itself and every Project it manages
+active_plan: narrative-digests
 updated: 2026-07-31
 ---
 
@@ -47,11 +47,15 @@ readiness when the plan document has moved, `arcadia next --ready` computes
 the whole ready set instead of only refusing a bad pointer, and the dispatch
 journal's tally surfaces in the dashboard snapshot. That plan is complete.
 
-Nothing is currently dispatchable: `portfolio-docs-protocol`'s two remaining
-increments are deferred against named triggers by Decision 0004, and no other
-plan has an Action ready to point at. That is the honest current state, not a
-gap to paper over — the next work is whichever trigger fires first, or a new
-outcome the operator states.
+The operator asked for a narrative account of this session and got one, told
+by hand. Then asked for it automatically — for Arcadia's own project and every
+Project Arcadia manages, not as a one-off. See
+`docs/plans/narrative-digests.md`. Structured history now exists (mission-Log
+rows, the dispatch journal) to compose from; what doesn't yet exist is the
+composer itself, an Obsidian export for AI-narrated (not just deterministic)
+records, and a schedule that reaches every Project rather than only the one
+being watched. `portfolio-docs-protocol`'s two remaining increments stay
+deferred against Decision 0004's named triggers, untouched by this.
 
 ## Links
 
