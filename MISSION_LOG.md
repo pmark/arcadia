@@ -3,10 +3,37 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-07-25
+updated: 2026-07-31
 ---
 
 # Mission Log: Arcadia
+
+## 2026-07-31 — Ingested mission Logs as rows
+
+- **Did:** Resolved the work pointer, which returned its one operator question
+  rather than a dispatch. Read the three candidate increments in code before
+  surfacing it, which changed what the question was worth answering with:
+  mission-Log ingestion needed only an upsert, and dependency persistence turned
+  out to be half delivered already. The operator selected mission-Log ingestion
+  as Decision 0003. Implemented it — a `doc_ref` column on `mission_logs`
+  through the existing migration, and per-entry create/update/unchanged/skipped
+  reporting matching every other document type. Keyed entries on the date alone
+  at first; running it against this repository refused five of nine entries,
+  because five of them are dated 2026-07-25. Rekeyed on the whole heading.
+- **Result:** `docs sync` no longer reports Log files as skipped. A full apply
+  against Arcadia's own repository reports 42 creates, 0 skips, and 0 errors,
+  and a second apply reports everything unchanged. Narrative docs are now the
+  only intentional skip a conforming repository produces. Recorded that
+  `persist-dependencies` already meets its enforcement criterion, so the plan
+  stops claiming work that is done. Found but did not fix an unrelated
+  non-convergence: `syncProject` treats `name` as drift while `updateProject`
+  cannot write it, so a renamed Project reports an update on every sync forever.
+- **Next:** Answer Decision 0004 — dependency persistence, narrative
+  summarization, or neither, in which case move `active_plan` to
+  `dispatch-contract-enforcement` rather than leaving a pointer nobody intends
+  to advance.
+- **Blockers:** `persist-dependencies` is `question_open` on Decision 0004, so
+  `arcadia next` will keep returning that question rather than dispatching.
 
 ## 2026-07-26 — Made project continuation actionable
 

@@ -75,7 +75,7 @@ silently losing.
 | `PROJECT.md` | The project's identity and both pointers. |
 | `docs/plans/<slug>.md` | One file per initiative, each a managed document. |
 | `docs/decisions/NNNN-<slug>.md` | One Decision per file; the number is the id. |
-| `MISSION_LOG.md` | Narrative history. Parsed, not yet ingested. |
+| `MISSION_LOG.md` | Narrative history. One row per dated entry. |
 
 ## Anatomy of a plan document
 
@@ -159,9 +159,10 @@ pnpm arcadia docs sync --project arcadia --apply    # persist
 pnpm arcadia portfolio                              # the executive view
 ```
 
-Sync is keyed by `doc_ref` (`plan/<slug>#<action-id>`), so rewording a title
-updates the existing row instead of creating a duplicate. It is idempotent:
-running it twice changes nothing the second time.
+Sync is keyed by `doc_ref` (`plan/<slug>#<action-id>`,
+`log/<slug>#<date>--<title-slug>`), so rewording a plan's title updates the
+existing row instead of creating a duplicate. It is idempotent: running it twice
+changes nothing the second time.
 
 ## Rules when you change things
 

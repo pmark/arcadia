@@ -1,17 +1,21 @@
 import type Database from "better-sqlite3";
 import {
   createMilestoneForProject,
+  createMissionLog,
   createReviewItem,
   createWorkItemRecord,
   getMilestoneByDocRef,
   getMilestoneByTitle,
+  getMissionLogByDocRef,
   getProjectMetadata,
   getReviewItemByDocRef,
   getWorkItemByDocRef,
   setMilestoneDocRef,
+  setMissionLogDocRef,
   setReviewItemDocRef,
   setWorkItemDocRef,
   updateMilestoneTitle,
+  updateMissionLogFromDoc,
   updateProject,
   updateReviewItemFromDoc,
   updateWorkItem
@@ -23,11 +27,13 @@ import { discoverDocs } from "./discover.js";
 import {
   actionDocRef,
   decisionDocRef,
+  logEntryDocRef,
   planDocRef,
   planQuestionDocRef,
   type ArcadiaDoc,
   type DecisionDoc,
   type DocValidationError,
+  type LogDoc,
   type PlanDoc,
   type PlanActionDoc,
   type ProjectDoc
@@ -39,6 +45,14 @@ import {
  * clarification columns hold the truth, exactly as they do after capture.
  */
 const PLACEHOLDER_NEXT_ACTION = "Clarify the desired outcome or approve a Codex execution path.";
+
+/**
+ * What a Log entry's `next_action` says when the entry recorded no **Next:**
+ * bullet. The column is NOT NULL, and inventing a plausible next action from
+ * the entry's prose would put a sentence nobody wrote into the operator's
+ * history — so the absence is stated instead of filled.
+ */
+const NO_LOGGED_NEXT_ACTION = "No next action recorded in this Log entry.";
 
 /** The intent Phase 3 uses for a question awaiting an answer. */
 const ACTION_CLARIFICATION_INTENT = "ActionClarification";
@@ -122,6 +136,7 @@ export function syncProjectDocs(
   const projectDoc = mine.find((doc): doc is ProjectDoc => doc.type === "project") ?? null;
   const plans = mine.filter((doc): doc is PlanDoc => doc.type === "plan");
   const decisions = mine.filter((doc): doc is DecisionDoc => doc.type === "decision");
+  const logs = mine.filter((doc): doc is LogDoc => doc.type === "log");
 
   // A ref claimed twice would make ingestion order decide who wins, so refuse
   // both rather than silently letting the later file overwrite the earlier.
@@ -154,6 +169,33 @@ export function syncProjectDocs(
     }
     claimed.set(ref, decision.relativePath);
   }
+  // Two entries sharing a whole heading is the one collision a Log can produce
+  // on its own. Reported once per contested heading rather than once per
+  // repetition, so a file that repeats a heading five times says so once.
+  for (const log of logs) {
+    const seenHeadings = new Set<string>();
+    for (const entry of log.entries) {
+      const ref = logEntryDocRef(log.slug, entry.date, entry.title);
+      const existing = claimed.get(ref);
+      if (existing && existing !== log.relativePath) {
+        conflicting.add(ref);
+        result.errors.push({
+          relativePath: log.relativePath,
+          field: "slug",
+          message: `Reference "${ref}" is also claimed by ${existing}.`
+        });
+      } else if (seenHeadings.has(ref) && !conflicting.has(ref)) {
+        conflicting.add(ref);
+        result.errors.push({
+          relativePath: log.relativePath,
+          field: `entry(${entry.date})`,
+          message: `Two Log entries share the heading "${entry.date} — ${entry.title}"; the heading is the entry's key, so one would overwrite the other.`
+        });
+      }
+      seenHeadings.add(ref);
+      claimed.set(ref, log.relativePath);
+    }
+  }
 
   // Shared across every document in one run so a milestone named by both
   // PROJECT.md and a plan is created once, not twice.
@@ -177,20 +219,15 @@ export function syncProjectDocs(
     result.changes.push(syncDecision(db, project, decision, options.apply));
   }
 
+  for (const log of logs) {
+    result.changes.push(...syncLog(db, project, log, conflicting, options.apply));
+  }
+
   // Recognized but not yet ingested. Reported rather than ignored so the
   // operator can see the protocol knows about them and this build does not
   // handle them yet.
   for (const doc of mine) {
-    if (doc.type === "log") {
-      result.changes.push({
-        action: "skipped",
-        entity: "log",
-        relativePath: doc.relativePath,
-        ref: doc.slug,
-        title: `${doc.entries.length} log entr${doc.entries.length === 1 ? "y" : "ies"}`,
-        reason: "Log ingestion is not implemented yet; the file parsed cleanly."
-      });
-    } else if (doc.type === "architecture" || doc.type === "strategy" || doc.type === "reference") {
+    if (doc.type === "architecture" || doc.type === "strategy" || doc.type === "reference") {
       result.changes.push({
         action: "skipped",
         entity: "narrative",
@@ -505,6 +542,91 @@ function syncPlanQuestion(
     title: question.question,
     reason: "question text changed"
   };
+}
+
+/**
+ * Ingest one mission Log file, one row per dated entry.
+ *
+ * A Log is append-only in practice, so the common path here is "every entry
+ * already exists and one new one is at the top": re-running touches nothing,
+ * and the single new heading creates the single new row.
+ */
+function syncLog(
+  db: Database.Database,
+  project: Project,
+  doc: LogDoc,
+  conflicting: Set<string>,
+  apply: boolean
+): DocChange[] {
+  const changes: DocChange[] = [];
+
+  for (const entry of doc.entries) {
+    const ref = logEntryDocRef(doc.slug, entry.date, entry.title);
+    if (conflicting.has(ref)) {
+      continue;
+    }
+
+    const title = `${entry.date} — ${entry.title}`;
+    const nextAction = entry.next ?? NO_LOGGED_NEXT_ACTION;
+    const existing = getMissionLogByDocRef(db, ref);
+
+    if (!existing) {
+      if (apply) {
+        const created = createMissionLog(db, {
+          projectId: project.id,
+          workPerformed: entry.did,
+          result: entry.result,
+          nextAction,
+          blockers: entry.blockers ?? undefined,
+          markdownPath: doc.relativePath
+        });
+        setMissionLogDocRef(db, created.id, ref);
+      }
+      changes.push({ action: "create", entity: "log", relativePath: doc.relativePath, ref, title });
+      continue;
+    }
+
+    const drift: Array<[string, unknown, unknown]> = [
+      ["did", existing.work_performed, entry.did],
+      ["result", existing.result, entry.result],
+      ["next", existing.next_action, nextAction],
+      ["blockers", existing.blockers, entry.blockers],
+      ["path", existing.markdown_path, doc.relativePath]
+    ];
+    const changed = drift.filter(([, current, next]) => (current ?? null) !== (next ?? null));
+
+    if (changed.length === 0) {
+      changes.push({ action: "unchanged", entity: "log", relativePath: doc.relativePath, ref, title });
+      continue;
+    }
+
+    const staleness = stalenessOf(doc.updated, existing.updated_at);
+    if (staleness) {
+      changes.push({ action: "skipped", entity: "log", relativePath: doc.relativePath, ref, title, reason: staleness });
+      continue;
+    }
+
+    if (apply) {
+      updateMissionLogFromDoc(db, existing.id, {
+        workPerformed: entry.did,
+        result: entry.result,
+        nextAction,
+        blockers: entry.blockers,
+        markdownPath: doc.relativePath
+      });
+    }
+
+    changes.push({
+      action: "update",
+      entity: "log",
+      relativePath: doc.relativePath,
+      ref,
+      title,
+      reason: describeDrift(changed)
+    });
+  }
+
+  return changes;
 }
 
 function syncDecision(
