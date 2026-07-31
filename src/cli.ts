@@ -219,6 +219,7 @@ import {
   runWorkerUninstallCommand
 } from "./commands/worker.js";
 import { renderClarifySuccess, runClarifyCommand } from "./commands/clarify.js";
+import { renderDigestComposeSuccess, runDigestComposeCommand } from "./commands/digest.js";
 import { renderDocsSyncSuccess, runDocsSyncCommand } from "./commands/docs.js";
 import {
   renderNextHistorySuccess,
@@ -1436,6 +1437,25 @@ export function buildProgram(): Command {
       renderWorkflowRunSuccess
     )
   );
+
+  const digest = program.command("digest").description("Narrative Project digest commands");
+  addJsonOption(
+    digest
+      .command("compose")
+      .description("Compose one Project digest for an explicit activity window")
+      .requiredOption("--project <project>", "Project id or slug")
+      .requiredOption("--period <period>", "Window label: day, week, or month")
+      .requiredOption("--from <instant>", "Inclusive ISO-8601 window start")
+      .requiredOption("--to <instant>", "Exclusive ISO-8601 window end")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: {
+    workspace: string;
+    project: string;
+    period: string;
+    from: string;
+    to: string;
+    json?: boolean;
+  }) => runCliAction("digest.compose", options, () => runDigestComposeCommand(options), renderDigestComposeSuccess));
 
   const artifact = program.command("artifact").description("Artifact commands");
   addJsonOption(

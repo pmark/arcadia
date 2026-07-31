@@ -217,6 +217,28 @@ pnpm arcadia capture \
   --json
 ```
 
+## Compose A Project Digest
+
+```sh
+pnpm arcadia digest compose \
+  --workspace "$WORKSPACE" \
+  --project arcadia \
+  --period week \
+  --from 2026-07-24T00:00:00.000Z \
+  --to 2026-07-31T00:00:00.000Z \
+  --json
+```
+
+`--project` accepts an id or slug. `--period` labels the explicit window as
+`day`, `week`, or `month`; it does not calculate the boundaries. `--from` is
+inclusive and `--to` exclusive. This keeps composition usable without deciding
+whether later scheduled windows are calendar-aligned or rolling.
+
+The command queues unpaid local-preferred narration, persists the gathered fact
+snapshot, writes the Markdown under `artifacts/narrative-digests/` inside the
+Arcadia workspace, and creates or updates one `narrative_digest` Artifact for
+the exact Project/period/boundaries tuple.
+
 ## Manage Artifacts And Expected Outcomes
 
 An Action's `expected_artifact` is the concrete "done" signal — the thing

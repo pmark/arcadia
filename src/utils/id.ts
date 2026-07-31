@@ -33,7 +33,8 @@ const PREFIXES = {
   orientationPacket: "opacket",
   activityEvent: "aevt",
   timeEntry: "tentry",
-  dispatchEvent: "devt"
+  dispatchEvent: "devt",
+  narrativeDigest: "digest"
 } as const;
 
 export type IdKind = keyof typeof PREFIXES;

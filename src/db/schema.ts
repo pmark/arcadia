@@ -59,7 +59,41 @@ export function applyMigrations(db: Database.Database): void {
   ensureDailyCapacityTable(db);
   ensureActivityTables(db);
   ensureDispatchEventsTable(db);
+  ensureNarrativeDigestsTable(db);
   applyCapabilityMigrations(db);
+}
+
+/**
+ * One derived narrative per exact Project/window pair.
+ *
+ * The window boundaries are explicit ISO instants rather than inferred from a
+ * cadence. Scheduling has not yet decided calendar-aligned versus rolling
+ * windows, and the composer must not silently decide that policy. The unique
+ * key makes re-composition an update of the same Artifact rather than a second
+ * digest for the same period.
+ */
+function ensureNarrativeDigestsTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS narrative_digests (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      artifact_id TEXT NOT NULL,
+      period TEXT NOT NULL CHECK (period IN ('day', 'week', 'month')),
+      window_start TEXT NOT NULL,
+      window_end TEXT NOT NULL,
+      intelligence_job_id TEXT,
+      facts_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (project_id, period, window_start, window_end),
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY (artifact_id) REFERENCES artifacts(id) ON DELETE CASCADE,
+      FOREIGN KEY (intelligence_job_id) REFERENCES intelligence_jobs(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_narrative_digests_project_window
+      ON narrative_digests(project_id, window_start, window_end);
+  `);
 }
 
 function ensureExecutionRequirementColumn(db: Database.Database): void {

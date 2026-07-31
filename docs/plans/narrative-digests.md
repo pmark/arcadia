@@ -5,15 +5,15 @@ slug: narrative-digests
 project: arcadia
 status: active
 milestone: Arcadia narrates its own recent history automatically, for itself and every Project it manages
-current_action: compose-project-digest
+current_action: export-digest-to-obsidian
 updated: 2026-07-31
 actions:
   - id: compose-project-digest
     title: Compose one Project's narrative digest for a window, narrated by local AI
-    status: open
+    status: done
     responsibility: codex
     effort: session
-    next_action: Gather one Project's mission_logs, dispatch_events, and Decision activity for a day/week/month window, queue a local-preferred Intelligence job to narrate them as prose, and store the result as a narrative_digest Artifact scoped to that Project and window.
+    next_action: Delivered as the explicit-window digest composer and `arcadia digest compose`; no further work.
     expected_artifact: A composer producing one narrative_digest Artifact per (Project, window), idempotent on re-run
     clarification: clarified
     confidence: high
@@ -52,9 +52,10 @@ actions:
           data_locality: local_only
     decisions: ["0006"]
     references:
-      - src/orientation/composer.ts
-      - src/markdown/weeklyReview.ts
-      - src/memory/obsidian.ts
+      - src/digests/composer.ts
+      - src/digests/contract.ts
+      - src/commands/digest.ts
+      - tests/narrative-digest.test.ts
     depends_on: []
   - id: export-digest-to-obsidian
     title: Export a composed digest into the Obsidian vault

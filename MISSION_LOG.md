@@ -8,6 +8,30 @@ updated: 2026-07-31
 
 # Mission Log: Arcadia
 
+## 2026-07-31 — Delivered one-Project narrative digest composition
+
+- **Did:** Added an explicit-window Project digest composer. It gathers only
+  in-window mission-Log rows, dispatch journal entries, and Decision activity;
+  submits the structured fact snapshot to the unpaid local-preferred
+  Intelligence route with a narration-without-invention contract; and writes a
+  ready `narrative_digest` Artifact under the Arcadia workspace. Added the
+  `narrative_digests` identity table so the exact Project, period label, start,
+  and end tuple updates in place. Added `arcadia digest compose` with explicit
+  inclusive `--from` and exclusive `--to` boundaries rather than silently
+  answering the open calendar-versus-rolling question.
+- **Result:** Focused digest, docs-sync, dispatch, and dispatch-journal coverage
+  passes 94 tests; the full deterministic suite and both TypeScript builds also
+  pass. Empty windows override model prose with an honest deterministic
+  "nothing happened" account, and generated files never touch a managed
+  Project repository. The full run also exposed and repaired one macOS
+  `/var`-versus-`/private/var` assertion in the newly merged progress-review
+  test; the production path was already correctly canonicalized.
+- **Next:** `export-digest-to-obsidian` — reuse the existing progress-review
+  atomic write, ownership check, and content-hash dedup for this AI-narrated
+  Artifact shape.
+- **Blockers:** None. Portfolio roll-up and scheduled-window boundary policy
+  remain deliberately open and are not required by the next Action.
+
 ## 2026-07-31 — Scoped narrative digests as a plan, not a feature request
 
 - **Did:** The operator asked for automatic daily/weekly/monthly narrative

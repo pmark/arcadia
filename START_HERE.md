@@ -16,6 +16,27 @@ Open **Dispatch Journal** at <http://127.0.0.1:3020/admin/dispatch-journal> to s
 
 Use the **Ask** box for a new request that is not already an Action in Arcadia.
 
+## Compose a Project digest
+
+Use the advanced CLI when you want one narrative digest before automatic
+scheduling is installed. Supply explicit half-open ISO boundaries so this
+composer does not decide the still-open calendar-versus-rolling policy:
+
+```sh
+pnpm arcadia digest compose \
+  --project arcadia \
+  --period day \
+  --from 2026-07-30T00:00:00.000Z \
+  --to 2026-07-31T00:00:00.000Z
+```
+
+The command gathers only that Project's Logs, dispatch journal entries, and
+Decision activity in `from <= activity < to`, asks the unpaid local-preferred
+Intelligence route to narrate those facts, and writes one ready
+`narrative_digest` Artifact under the Arcadia workspace. Re-running the same
+Project/period/boundary tuple updates the same Artifact. It never writes into
+the managed Project repository.
+
 ## Ingress Artifacts
 
 Open **Ingress** from the menu to view files waiting in the local
