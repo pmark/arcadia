@@ -192,6 +192,12 @@ export function actionDocRef(planSlug: string, actionId: string): string {
   return `plan/${planSlug}#${actionId}`;
 }
 
+/** The inverse of {@link actionDocRef} — `null` for any other doc_ref shape. */
+export function parseActionDocRef(docRef: string): { planSlug: string; actionId: string } | null {
+  const match = /^plan\/([^#]+)#(.+)$/.exec(docRef);
+  return match ? { planSlug: match[1], actionId: match[2] } : null;
+}
+
 export function planQuestionDocRef(planSlug: string, questionId: string): string {
   return `plan/${planSlug}?question=${questionId}`;
 }

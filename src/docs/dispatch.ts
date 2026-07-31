@@ -286,6 +286,10 @@ export interface ActionReadiness {
   found: boolean;
   planSlug: string | null;
   planPath: string | null;
+  /** The plan document's own `updated:` field — a cheap staleness signal for
+   *  callers that snapshot readiness now and want to know later whether it is
+   *  still worth rechecking, without re-parsing the whole document. */
+  planUpdated: string | null;
   action: PlanActionDoc | null;
   blockers: DispatchBlocker[];
   operatorQuestion: string | null;
@@ -314,6 +318,7 @@ export function resolveActionReadiness(
     found: false,
     planSlug: null,
     planPath: null,
+    planUpdated: null,
     action: null,
     blockers: [],
     operatorQuestion: null,
@@ -352,6 +357,7 @@ export function resolveActionReadiness(
     found: true,
     planSlug: plan.slug,
     planPath: plan.relativePath,
+    planUpdated: plan.updated,
     action,
     blockers: [...parseBlockers, ...readiness.blockers],
     operatorQuestion: readiness.operatorQuestion,

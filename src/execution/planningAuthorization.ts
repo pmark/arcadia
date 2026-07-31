@@ -11,18 +11,23 @@ import {
   getExecutionPlan,
   getExecutionRun,
   getExecutionRunByReviewItem,
+  getProjectContext,
   getReviewItem,
   getReviewItemBySlug,
   getWorkItem,
   listApprovalGatesForWorkItem,
   updateWorkItem
 } from "../db/repositories.js";
+import { resolveActionReadiness, type DispatchBlocker } from "../docs/dispatch.js";
+import { recordDispatchEvent } from "../docs/journal.js";
+import { parseActionDocRef } from "../docs/types.js";
 import type {
   ArtifactSummary,
   CodexInvocation,
   ExecutionPlanSummary,
   ExecutionRunSummary,
-  ReviewItemSummary
+  ReviewItemSummary,
+  WorkItemSummary
 } from "../domain/types.js";
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
@@ -36,6 +41,8 @@ export interface PlanningDecisionContext {
   schemaVersion?: number;
   packetSha256?: string;
   priorRunId?: string;
+  /** The plan document's `updated:` field when the packet was built, if any. */
+  planDocUpdated?: string | null;
   [key: string]: unknown;
 }
 
@@ -133,11 +140,104 @@ export function authorizePlanningRunFromRepository(
   return otherRun ? refused("The approved planning attempt is already linked to another Run.") : result;
 }
 
+/**
+ * Recheck document readiness at approval, but only when there is a reason to
+ * think it moved.
+ *
+ * `assertManagedDocumentReadiness` already checks readiness once, when the
+ * packet is built (`work plan`). A Decision can then sit open for a while, and
+ * the plan document underneath it is not immutable: a dependency can regress,
+ * a required Decision can reopen, a clarification question can appear. Full
+ * document readiness is a cheap read but not a free one, and most Decisions
+ * are approved long before anything about their plan changes — so this trusts
+ * the plan document's own `updated:` field as the signal that a recheck is
+ * worth doing, rather than re-resolving readiness on every approval.
+ *
+ * If the packet predates this field, or the Action was never doc-backed, or
+ * the plan document's `updated:` is exactly what it was when the packet was
+ * built, this is a no-op. Only a document that actually moved gets re-read,
+ * and even then approval is refused only if a real blocker or clarification
+ * question is present now — not for every cosmetic edit that happens to bump
+ * the date.
+ */
+function assertPlanReadinessNotRegressed(
+  db: Database.Database,
+  action: WorkItemSummary,
+  context: PlanningDecisionContext
+): void {
+  const planDocUpdated = context.planDocUpdated;
+  if (typeof planDocUpdated !== "string") {
+    return;
+  }
+
+  const docRef = action.doc_ref?.trim();
+  if (!docRef || !action.project_id) {
+    return;
+  }
+  const parsed = parseActionDocRef(docRef);
+  if (!parsed) {
+    return;
+  }
+
+  const projectContext = getProjectContext(db, action.project_id);
+  const repoRoot = projectContext?.metadata?.repo_path?.trim();
+  const projectSlug = projectContext?.project.slug;
+  if (!repoRoot || !projectSlug || !existsSync(repoRoot)) {
+    return;
+  }
+
+  const readiness = resolveActionReadiness(repoRoot, projectSlug, parsed.actionId);
+  if (!readiness.found || readiness.planUpdated === planDocUpdated) {
+    return;
+  }
+
+  const blocked = readiness.blockers.length > 0 || readiness.operatorQuestion !== null;
+
+  recordDispatchEvent(db, {
+    command: "review.approve",
+    projectId: action.project_id,
+    projectSlug,
+    planSlug: readiness.planSlug,
+    actionId: parsed.actionId,
+    dispatchable: !blocked,
+    blockers: readiness.blockers,
+    operatorQuestion: readiness.operatorQuestion
+  });
+
+  if (readiness.operatorQuestion) {
+    throw new Error(
+      `Plan document changed since this packet was built; "${parsed.actionId}" now has an open clarification ` +
+        `question: ${readiness.operatorQuestion} Answer it, then rebuild the packet.`
+    );
+  }
+
+  if (blocked) {
+    const summary = readiness.blockers
+      .map((blocker: DispatchBlocker) => `${blocker.field}: ${blocker.message}`)
+      .join("; ");
+    throw new Error(
+      `Plan document changed since this packet was built, and "${parsed.actionId}" is no longer ready: ${summary}. ` +
+        "Rebuild the packet."
+    );
+  }
+}
+
 export function queueApprovedPlanningRun(
   db: Database.Database,
   workspace: string,
   input: { decisionId: string; execute?: boolean; executorName?: string }
 ): { decision: ReviewItemSummary; run: ExecutionRunSummary | null; duplicate: boolean } {
+  // Outside the transaction, for the same reason `work plan`'s guard runs
+  // before its own: a refusal that journals its own resolution and then rolls
+  // that journal entry back with everything else answers nothing.
+  const preDecision = getReviewItem(db, input.decisionId) ?? getReviewItemBySlug(db, input.decisionId);
+  if (preDecision && isPlanningApprovalDecision(preDecision)) {
+    const preAction = preDecision.work_item_id ? getWorkItem(db, preDecision.work_item_id) : null;
+    if (preAction) {
+      assertPlanReadinessNotRegressed(db, preAction, parseDecisionContext(preDecision));
+    }
+  }
+
   const transaction = db.transaction(() => {
     let decision = getReviewItem(db, input.decisionId) ?? getReviewItemBySlug(db, input.decisionId);
     if (!decision || !isPlanningApprovalDecision(decision)) {

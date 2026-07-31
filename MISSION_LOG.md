@@ -8,6 +8,36 @@ updated: 2026-07-31
 
 # Mission Log: Arcadia
 
+## 2026-07-31 — Answered recheck-readiness-at-approval as a hybrid
+
+- **Did:** Traced the actual gap before answering the question: approval
+  checked packet content (a sha256 digest) and link consistency, but never
+  re-asked whether the plan document still said the Action was ready.
+  Recorded Decision 0005 -- recheck readiness at approval only when the plan
+  document's own `updated:` field has moved since the packet was built, the
+  same staleness signal `docs sync` already trusts elsewhere. Implemented it:
+  `ActionReadiness` now carries `planUpdated`; the planning Decision's context
+  snapshots it at build time; `queueApprovedPlanningRun` compares the two
+  before its transaction opens (not inside it -- a refusal that journals its
+  own resolution and then rolls that journal entry back with everything else
+  answers nothing, the same reason `work plan`'s guard runs before its own
+  transaction). Moved `parseActionDocRef` from a private helper in
+  `work.ts` to `docs/types.ts` as the inverse of `actionDocRef`, so build-time
+  and approval-time checks share one implementation.
+- **Result:** A packet approved long after a dependency regresses or a
+  required Decision reopens is now refused, naming the blocker, provided the
+  document's `updated:` moved -- which is the one signal the rest of the
+  protocol already relies on. A packet approved while nothing changed pays no
+  extra cost. Four new tests in `tests/dispatch-journal.test.ts` cover
+  unchanged / moved-but-fine / moved-and-regressed / moved-without-a-blocker,
+  plus the hybrid's one accepted, deliberately undocumented-as-a-bug gap: a
+  regression whose author forgot to bump `updated:` is not caught.
+- **Next:** `verify-acceptance-criteria` is next in this plan's own stated
+  ordering, now that the review-and-acceptance surgery it was waiting to avoid
+  duplicating is done. `compute-ready-set` remains `current_action` and is
+  still the dispatchable Action.
+- **Blockers:** none
+
 ## 2026-07-31 — Settled Decision 0004 and added "if not now, then when?"
 
 - **Did:** Answered Decision 0004 rather than leaving it open: neither remaining

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runDocsSyncCommand } from "../src/commands/docs.js";
+import { runReviewApproveCommand } from "../src/commands/review.js";
 import { runWorkPlanCommand } from "../src/commands/work.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
@@ -212,6 +213,113 @@ describe("planning preparation honors the managed plan", () => {
 
     const events = withDatabase(workspace, (db) => listDispatchEvents(db));
     expect(events).toEqual([]);
+  });
+});
+
+describe("approval-time readiness recheck (Decision 0005, hybrid)", () => {
+  it("approves without a recheck when the plan document is unchanged", () => {
+    const repo = scratch();
+    writeDoc(repo, "docs/plans/sample-plan.md", chainPlan("done"));
+    const workspace = workspaceFor(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+    const action = withDatabase(workspace, (db) => getWorkItemByDocRef(db, "plan/sample-plan#ship-it"));
+
+    const prepared = runWorkPlanCommand({ workspace, workId: action!.id });
+    expect(prepared.data.planningDecision).not.toBeNull();
+
+    const approved = runReviewApproveCommand({
+      workspace,
+      id: prepared.data.planningDecision!.id,
+      execute: false
+    });
+    expect(approved.data.result.status).toBe("approved");
+
+    // Nothing prompted a re-read of the repository, so no review.approve
+    // resolution was journalled -- only the earlier work.plan one.
+    const events = withDatabase(workspace, (db) => listDispatchEvents(db));
+    expect(events.map((event) => event.command)).toEqual(["work.plan"]);
+  });
+
+  it("approves after a recheck when the document moved but nothing regressed", () => {
+    const repo = scratch();
+    writeDoc(repo, "docs/plans/sample-plan.md", chainPlan("done"));
+    const workspace = workspaceFor(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+    const action = withDatabase(workspace, (db) => getWorkItemByDocRef(db, "plan/sample-plan#ship-it"));
+    const prepared = runWorkPlanCommand({ workspace, workId: action!.id });
+
+    // A cosmetic edit elsewhere in the file, with the updated: date bumped --
+    // the honest trigger for a recheck, even though nothing here regresses.
+    writeDoc(
+      repo,
+      "docs/plans/sample-plan.md",
+      chainPlan("done")
+        .replace("updated: 2026-07-25", "updated: 2026-07-26")
+        .replace("title: Ship the thing", "title: Ship the thing, carefully")
+    );
+
+    const approved = runReviewApproveCommand({
+      workspace,
+      id: prepared.data.planningDecision!.id,
+      execute: false
+    });
+    expect(approved.data.result.status).toBe("approved");
+
+    const events = withDatabase(workspace, (db) => listDispatchEvents(db));
+    expect(events.map((event) => event.command)).toEqual(["review.approve", "work.plan"]);
+    expect(events[0]).toMatchObject({ dispatchable: true, blockerCount: 0 });
+  });
+
+  it("refuses approval when the document moved and readiness regressed", () => {
+    const repo = scratch();
+    writeDoc(repo, "docs/plans/sample-plan.md", chainPlan("done"));
+    const workspace = workspaceFor(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+    const action = withDatabase(workspace, (db) => getWorkItemByDocRef(db, "plan/sample-plan#ship-it"));
+    const prepared = runWorkPlanCommand({ workspace, workId: action!.id });
+
+    // The prerequisite this packet was built against is undone, and the
+    // document says so with a bumped updated: date.
+    writeDoc(
+      repo,
+      "docs/plans/sample-plan.md",
+      chainPlan("open").replace("updated: 2026-07-25", "updated: 2026-07-26")
+    );
+
+    expect(() =>
+      runReviewApproveCommand({ workspace, id: prepared.data.planningDecision!.id, execute: false })
+    ).toThrow(/no longer ready/);
+
+    // The Decision was never moved to approved by the failed attempt, but the
+    // refusal itself survives -- it was journalled before the transaction
+    // that would have rolled it back along with everything else.
+    const events = withDatabase(workspace, (db) => listDispatchEvents(db));
+    expect(events.map((event) => event.command)).toEqual(["review.approve", "work.plan"]);
+    expect(events[0]).toMatchObject({ dispatchable: false });
+    expect(events[0].blockerFields).toEqual(["actions.ship-it.depends_on"]);
+  });
+
+  it("trusts the updated: field, so a regression without a date bump is not caught", () => {
+    const repo = scratch();
+    writeDoc(repo, "docs/plans/sample-plan.md", chainPlan("done"));
+    const workspace = workspaceFor(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+    const action = withDatabase(workspace, (db) => getWorkItemByDocRef(db, "plan/sample-plan#ship-it"));
+    const prepared = runWorkPlanCommand({ workspace, workId: action!.id });
+
+    // The dependency regresses, but the author forgot to bump updated:. This
+    // is the hybrid's known, accepted gap -- documented, not silently patched.
+    writeDoc(repo, "docs/plans/sample-plan.md", chainPlan("open"));
+
+    const approved = runReviewApproveCommand({
+      workspace,
+      id: prepared.data.planningDecision!.id,
+      execute: false
+    });
+    expect(approved.data.result.status).toBe("approved");
+
+    const events = withDatabase(workspace, (db) => listDispatchEvents(db));
+    expect(events.map((event) => event.command)).toEqual(["work.plan"]);
   });
 });
 

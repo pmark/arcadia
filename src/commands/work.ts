@@ -46,6 +46,7 @@ import type {
 import { orderByParent } from "../domain/workTree.js";
 import { resolveActionReadiness, type DispatchBlocker } from "../docs/dispatch.js";
 import { recordDispatchEvent } from "../docs/journal.js";
+import { parseActionDocRef } from "../docs/types.js";
 import { ensureBuiltInSkills, planStepsForWorkItem } from "../execution/skills.js";
 import { executePlan, resolvePlanForRun } from "../execution/runner.js";
 import {
@@ -260,9 +261,10 @@ export function runWorkPlanCommand(options: { workspace: string; workId: string;
     // roll back the record of itself, and a journal that only remembers the
     // permitted dispatches answers none of the questions it exists for.
     const candidate = getWorkItem(db, options.workId);
+    let readinessSnapshot: ManagedDocumentReadinessSnapshot | null = null;
     if (candidate) {
       assertActionCanBePlanned(candidate);
-      assertManagedDocumentReadiness(db, candidate);
+      readinessSnapshot = assertManagedDocumentReadiness(db, candidate);
     }
 
     const transaction = db.transaction(() => {
@@ -346,7 +348,8 @@ export function runWorkPlanCommand(options: { workspace: string; workId: string;
         sourceInput: workItem.raw_input,
         proposedAction: `Prepare the expected planning Artifact for existing Action "${workItem.title}".`,
         expectedArtifact: workItem.expected_artifact as string,
-        existingAction: true
+        existingAction: true,
+        planDocUpdated: readinessSnapshot?.docRef === workItem.doc_ref ? readinessSnapshot.planUpdated : null
       });
       return {
         plan,
@@ -406,15 +409,28 @@ function assertActionCanBePlanned(workItem: WorkItemSummary): void {
  * plan to be checked against, and inventing rules for those would turn a
  * consistency fix into a new restriction on ordinary capture.
  */
-function assertManagedDocumentReadiness(db: Database.Database, workItem: WorkItemSummary): void {
+/**
+ * What the packet-build moment knew about the plan document, so approval can
+ * later tell whether anything has moved without re-parsing the repository on
+ * every check. See `docs/decisions/0005-recheck-readiness-hybrid.md`.
+ */
+export interface ManagedDocumentReadinessSnapshot {
+  docRef: string;
+  planUpdated: string | null;
+}
+
+function assertManagedDocumentReadiness(
+  db: Database.Database,
+  workItem: WorkItemSummary
+): ManagedDocumentReadinessSnapshot | null {
   const docRef = workItem.doc_ref?.trim();
   if (!docRef || !workItem.project_id) {
-    return;
+    return null;
   }
 
   const parsed = parseActionDocRef(docRef);
   if (!parsed) {
-    return;
+    return null;
   }
 
   const context = getProjectContext(db, workItem.project_id);
@@ -423,7 +439,7 @@ function assertManagedDocumentReadiness(db: Database.Database, workItem: WorkIte
   // Without a repository there are no documents to consult. `work plan` already
   // refuses later for the same reason, with a message about the repo path.
   if (!repoRoot || !projectSlug || !existsSync(repoRoot)) {
-    return;
+    return null;
   }
 
   const readiness = resolveActionReadiness(repoRoot, projectSlug, parsed.actionId);
@@ -431,7 +447,7 @@ function assertManagedDocumentReadiness(db: Database.Database, workItem: WorkIte
   // is a real drift worth surfacing, but `docs sync` is where it gets reported;
   // blocking planning on it would strand an Action with no way to repair it.
   if (!readiness.found) {
-    return;
+    return null;
   }
 
   const blocked = readiness.blockers.length > 0 || readiness.operatorQuestion !== null;
@@ -471,12 +487,8 @@ function assertManagedDocumentReadiness(db: Database.Database, workItem: WorkIte
       }))
     });
   }
-}
 
-/** `plan/<plan-slug>#<action-id>` — the shape `docs sync` writes for an Action. */
-function parseActionDocRef(docRef: string): { planSlug: string; actionId: string } | null {
-  const match = /^plan\/([^#]+)#(.+)$/.exec(docRef);
-  return match ? { planSlug: match[1], actionId: match[2] } : null;
+  return { docRef, planUpdated: readiness.planUpdated };
 }
 
 function assertNoManagedPlanningRun(

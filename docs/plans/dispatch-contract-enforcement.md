@@ -69,13 +69,20 @@ actions:
     depends_on: []
   - id: recheck-readiness-at-approval
     title: Decide whether readiness is rechecked when a planning Decision is approved
-    status: open
-    responsibility: requires_review
-    clarification: question_open
-    gap_type: missing-decision
-    question: A planning Decision can sit open while its plan document changes underneath it. Should approval re-resolve document readiness and refuse a packet whose prerequisites regressed, or is a packet immutable once built?
-    confidence: medium
-    source: graph-engineering review session, 2026-07-28
+    status: done
+    responsibility: codex
+    effort: session
+    next_action: Delivered as the hybrid recheck under Decision 0005; no further work.
+    expected_artifact: Approval refuses a packet whose plan document changed and now fails readiness, and passes through unchanged otherwise.
+    clarification: clarified
+    confidence: high
+    source: Decision 0005, which selected the hybrid over immutability and full recheck
+    acceptance_criteria:
+      - Approval is unaffected when the plan document's updated field is unchanged since the packet was built.
+      - Approval refuses, naming the blocker, when the document moved and a real blocker or clarification question is now present.
+      - Approval succeeds when the document moved but nothing about readiness regressed.
+      - The refusal is journalled even though the approval transaction that would have executed it rolls back.
+    decisions: ["0005"]
     depends_on: []
   - id: surface-dispatch-journal
     title: Surface the dispatch journal where the operator already looks
@@ -144,12 +151,12 @@ so answering the second before starting the first avoids doing that surgery
 twice. `compute-ready-set` and `surface-dispatch-journal` are independent of both
 and of each other.
 
-That preference is what makes `compute-ready-set` the `current_action` when this
-plan became active under Decision 0004. It is the only one of the four that
-depends on no open question: `recheck-readiness-at-approval` *is* a question,
-`verify-acceptance-criteria` should wait for that answer, and
-`surface-dispatch-journal` is deliberately last. Choosing it is the plan's own
-stated ordering rather than a fresh judgment about what matters most.
+That preference is what made `compute-ready-set` the `current_action` when this
+plan became active under Decision 0004: it was the only one of the four that
+depended on no open question. `recheck-readiness-at-approval` is now answered
+and delivered under Decision 0005, so `verify-acceptance-criteria` is next in
+the plan's own stated order — not a fresh judgment, the ordering this section
+already committed to.
 
 `surface-dispatch-journal` is the least valuable of the four and should stay
 last. The journal already answers its question from the CLI; putting it on the
