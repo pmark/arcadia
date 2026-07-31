@@ -4,7 +4,20 @@ import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import { getProject, getProjectBySlug, getProjectMetadata, listProjects } from "../db/repositories.js";
-import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
+import {
+  isDispatchable,
+  resolveDispatch,
+  resolveReadySet,
+  type DispatchResolution,
+  type ReadySetResolution
+} from "../docs/dispatch.js";
+import {
+  listDispatchEvents,
+  recordDispatchEvent,
+  summarizeDispatchEvents,
+  type DispatchEvent,
+  type DispatchJournalSummary
+} from "../docs/journal.js";
 
 export interface NextCommandOptions {
   workspace: string;
@@ -29,47 +42,30 @@ export interface NextCommandData extends DispatchResolution {
  */
 export function runNextCommand(options: NextCommandOptions): CommandSuccess<NextCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-
-  const { project, repoRoot } = withDatabase(workspacePath, (db) => {
-    const resolved = options.project
-      ? getProject(db, options.project) ?? getProjectBySlug(db, options.project)
-      : pickSoleActiveProject(db);
-
-    if (!resolved) {
-      if (options.project) {
-        throw projectNotFound(options.project);
-      }
-      // Say which of the two situations this is. "Pick one" is unhelpful advice
-      // when the real problem is that nothing is active.
-      const active = listProjects(db).filter((candidate) => candidate.status === "active");
-      throw validationError(
-        active.length === 0
-          ? "No Project is active, so there is no current action. Set one active, or name it with --project."
-          : "More than one Project is active, so there is no single current action. Name one with --project.",
-        { active: active.map((candidate) => candidate.slug), all: listProjects(db).map((c) => c.slug) }
-      );
-    }
-
-    const metadata = getProjectMetadata(db, resolved.id);
-    const path = metadata?.repo_path?.trim();
-    if (!path) {
-      throw validationError("Project has no repo_path, so its documentation cannot be read.", {
-        project: resolved.slug,
-        remedy: `arcadia project metadata ${resolved.id} --repo-path <path>`
-      });
-    }
-
-    return { project: resolved, repoRoot: path };
-  });
+  const { project, repoRoot } = withDatabase(workspacePath, (db) => resolveProjectAndRepo(db, options));
 
   const resolution = resolveDispatch(repoRoot, project.slug);
+  const dispatchable = isDispatchable(resolution);
+
+  withDatabase(workspacePath, (db) =>
+    recordDispatchEvent(db, {
+      command: "next",
+      projectId: project.id,
+      projectSlug: project.slug,
+      planSlug: resolution.context?.activePlan ?? null,
+      actionId: resolution.context?.action.id ?? null,
+      dispatchable,
+      blockers: resolution.blockers,
+      operatorQuestion: resolution.operatorQuestion
+    })
+  );
 
   return createSuccess({
     command: "next",
     workspace: workspacePath,
     data: {
       ...resolution,
-      dispatchable: isDispatchable(resolution),
+      dispatchable,
       projectId: project.id,
       repoRoot
     }
@@ -79,6 +75,43 @@ export function runNextCommand(options: NextCommandOptions): CommandSuccess<Next
 function pickSoleActiveProject(db: Parameters<typeof listProjects>[0]) {
   const active = listProjects(db).filter((project) => project.status === "active");
   return active.length === 1 ? active[0] : null;
+}
+
+/**
+ * The Project and repository both `next` and `next --ready` resolve from,
+ * shared so the two commands can never disagree about which repository they
+ * are reading documents from.
+ */
+function resolveProjectAndRepo(db: Parameters<typeof listProjects>[0], options: NextCommandOptions) {
+  const resolved = options.project
+    ? getProject(db, options.project) ?? getProjectBySlug(db, options.project)
+    : pickSoleActiveProject(db);
+
+  if (!resolved) {
+    if (options.project) {
+      throw projectNotFound(options.project);
+    }
+    // Say which of the two situations this is. "Pick one" is unhelpful advice
+    // when the real problem is that nothing is active.
+    const active = listProjects(db).filter((candidate) => candidate.status === "active");
+    throw validationError(
+      active.length === 0
+        ? "No Project is active, so there is no current action. Set one active, or name it with --project."
+        : "More than one Project is active, so there is no single current action. Name one with --project.",
+      { active: active.map((candidate) => candidate.slug), all: listProjects(db).map((c) => c.slug) }
+    );
+  }
+
+  const metadata = getProjectMetadata(db, resolved.id);
+  const path = metadata?.repo_path?.trim();
+  if (!path) {
+    throw validationError("Project has no repo_path, so its documentation cannot be read.", {
+      project: resolved.slug,
+      remedy: `arcadia project metadata ${resolved.id} --repo-path <path>`
+    });
+  }
+
+  return { project: resolved, repoRoot: path };
 }
 
 export function renderNextSuccess(response: CommandSuccess<NextCommandData>): string[] {
@@ -168,4 +201,149 @@ function renderBlockers(blockers: DispatchResolution["blockers"]): string[] {
     `  ! ${blocker.relativePath} [${blocker.field}]: ${blocker.message}`,
     `      ${blocker.remedy}`
   ]);
+}
+
+export interface NextReadyCommandData extends ReadySetResolution {
+  projectId: string | null;
+}
+
+/**
+ * List every Action in the active plan a coding agent could dispatch now,
+ * instead of only refusing a bad pointer.
+ *
+ * Not journaled: unlike `next` and `work plan`, this reports a whole set of
+ * Actions rather than resolving one dispatch attempt, and journalling every
+ * Action it inspects on every invocation would swamp the dispatch journal's
+ * actual purpose — tracking real dispatch attempts — with exploratory
+ * queries that never tried to dispatch anything.
+ */
+export function runNextReadyCommand(options: NextCommandOptions): CommandSuccess<NextReadyCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const { project, repoRoot } = withDatabase(workspacePath, (db) => resolveProjectAndRepo(db, options));
+
+  const resolution = resolveReadySet(repoRoot, project.slug);
+
+  return createSuccess({
+    command: "next.ready",
+    workspace: workspacePath,
+    data: { ...resolution, projectId: project.id }
+  });
+}
+
+export function renderNextReadySuccess(response: CommandSuccess<NextReadyCommandData>): string[] {
+  const { planSlug, planPath, blockers, ready, suggestedCurrentAction, nearest } = response.data;
+
+  if (blockers.length > 0) {
+    return [
+      "No ready set could be computed.",
+      "",
+      ...renderBlockers(blockers),
+      "",
+      "Repairing the control documentation is the immediate work."
+    ];
+  }
+
+  const lines = [`Active plan: ${planSlug} — ${planPath}`, ""];
+
+  if (ready.length === 0) {
+    lines.push("Ready set: empty. No unfinished Action is fully ready.");
+    if (nearest) {
+      lines.push(
+        "",
+        `Nearest to ready: ${nearest.actionId}`,
+        `  ${nearest.title}`,
+        `  Responsibility: ${nearest.responsibility}`
+      );
+      if (nearest.operatorQuestion) {
+        lines.push(`  Open question: ${nearest.operatorQuestion}`);
+      }
+      if (nearest.blockers.length > 0) {
+        lines.push("  Blockers:", ...renderBlockers(nearest.blockers));
+      }
+    }
+    return lines;
+  }
+
+  lines.push(`Ready set (${ready.length}):`);
+  for (const entry of ready) {
+    const marker = entry.actionId === suggestedCurrentAction ? "*" : " ";
+    lines.push(`  ${marker} ${entry.actionId} — ${entry.title} [${entry.responsibility}]`);
+  }
+
+  lines.push(
+    "",
+    suggestedCurrentAction
+      ? `Suggested current_action: ${suggestedCurrentAction} (the operator still decides; nothing was written).`
+      : "No suggestion could be made."
+  );
+
+  return lines;
+}
+
+export interface NextHistoryCommandData {
+  events: DispatchEvent[];
+  summary: DispatchJournalSummary;
+}
+
+/**
+ * Read the dispatch journal.
+ *
+ * The control documents earn their overhead only if refusals are rare and for
+ * good reasons. This is where that is checked: a field that blocks most
+ * resolutions is either a rule worth relaxing or a habit worth fixing, and
+ * nobody can tell which from memory.
+ */
+export function runNextHistoryCommand(options: {
+  workspace: string;
+  limit?: number;
+}): CommandSuccess<NextHistoryCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const limit = options.limit ?? 20;
+
+  const data = withDatabase(workspacePath, (db) => ({
+    events: listDispatchEvents(db, limit),
+    // Summarized over a wider window than is listed: the tally is about the
+    // trend, and twenty rows is too few to see one.
+    summary: summarizeDispatchEvents(db, Math.max(limit, 200))
+  }));
+
+  return createSuccess({ command: "next.history", workspace: workspacePath, data });
+}
+
+export function renderNextHistorySuccess(response: CommandSuccess<NextHistoryCommandData>): string[] {
+  const { events, summary } = response.data;
+
+  if (summary.total === 0) {
+    return ["No dispatch resolutions recorded yet.", "", "Run `arcadia next` to start the journal."];
+  }
+
+  const lines = [
+    `Dispatch resolutions: ${summary.total} · dispatchable ${summary.dispatchable} · blocked ${summary.blocked}`,
+    ""
+  ];
+
+  if (summary.byField.length > 0) {
+    lines.push("Blocked on:");
+    for (const entry of summary.byField) {
+      const share = Math.round((entry.resolutions / summary.total) * 100);
+      lines.push(`  ${entry.field} — ${entry.resolutions} of ${summary.total} resolutions (${share}%)`);
+    }
+    lines.push("");
+  }
+
+  lines.push("Recent:");
+  for (const event of events) {
+    const verdict = event.operatorQuestion
+      ? "question"
+      : event.dispatchable
+        ? "dispatchable"
+        : `blocked (${event.blockerCount})`;
+    const subject = [event.projectSlug, event.planSlug, event.actionId].filter(Boolean).join(" / ") || "unresolved";
+    lines.push(`  ${event.occurredAt} ${event.command} ${subject} — ${verdict}`);
+    if (event.blockerFields.length > 0) {
+      lines.push(`      ${event.blockerFields.join(", ")}`);
+    }
+  }
+
+  return lines;
 }

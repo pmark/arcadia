@@ -4,6 +4,8 @@ This is the canonical brief operator guide. On this Mac, open **Mission Control*
 
 Open **System Status** at <http://127.0.0.1:3020/admin/status> when you need a quick readiness check. It shows whether Arcadia is ready for normal operation, image generation, and background processing, with live dependency reachability, worker heartbeats, and Intelligence job counts.
 
+Open **Dispatch Journal** at <http://127.0.0.1:3020/admin/dispatch-journal> to see how often Arcadia refused to dispatch work, and which field in the managed documents blocked it. A field that blocks a large share of resolutions is either a rule worth relaxing or a habit worth fixing. It is read-only, like every other admin surface.
+
 ## Normal daily use
 
 1. Read **Today's Advantage**: one ready Action, its expected Artifact, and why it matters now.
@@ -36,6 +38,17 @@ idea is routed through deterministic Ask/Back Burner handling and, when memory
 is enabled, also becomes a managed note under `Arcadia/Ideas/` in Obsidian.
 The **Capture** Ask surface accepts the same arbitrary files with an optional
 instruction and queues them through this identical ingress path.
+
+### Project continuation
+
+Open a Project from **Projects** when you need to work from that repository's
+managed documents rather than the portfolio-wide Daily Advantage. The Project
+view shows the docs-authoritative Milestone, current Action, responsibility,
+expected Artifact, source plan, and resolved execution profile. **Get to work**
+prepares a planning Decision for that exact Action; it never runs code or
+deploys. If preparation is refused, the same view names each blocking document
+field and its concrete remedy. Open questions and project Decisions can be
+answered inline, with the same answer/approval distinction used by Review.
 
 ## Answering Decisions
 

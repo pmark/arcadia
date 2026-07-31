@@ -382,7 +382,11 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
     clarification_source: null,
     confidence: null,
     parent_work_item_id: input.parentWorkItemId ? assertUsableParent(db, input.parentWorkItemId, null) : null,
+    // Set by ingestion via setWorkItemDocRef once the row exists; an Action
+    // Arcadia captured itself never gets one.
+    doc_ref: null,
     execution_requirement_json: input.executionRequirementJson ?? null,
+    acceptance_criteria_json: input.acceptanceCriteriaJson ?? null,
     created_at: timestamp,
     updated_at: timestamp
   };
@@ -391,13 +395,13 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
     `INSERT INTO work_items (
       id, project_id, milestone_id, title, raw_input, queue, work_classification,
       next_action, expected_artifact, status, effort, clarification_status, gap_type,
-      open_question, clarification_source, confidence, parent_work_item_id,
-      execution_requirement_json, created_at, updated_at
+      open_question, clarification_source, confidence, parent_work_item_id, doc_ref,
+      execution_requirement_json, acceptance_criteria_json, created_at, updated_at
     ) VALUES (
       @id, @project_id, @milestone_id, @title, @raw_input, @queue, @work_classification,
       @next_action, @expected_artifact, @status, @effort, @clarification_status, @gap_type,
-      @open_question, @clarification_source, @confidence, @parent_work_item_id,
-      @execution_requirement_json, @created_at, @updated_at
+      @open_question, @clarification_source, @confidence, @parent_work_item_id, @doc_ref,
+      @execution_requirement_json, @acceptance_criteria_json, @created_at, @updated_at
     )`
   ).run(workItem);
 
@@ -847,10 +851,20 @@ export function listProjectSummaries(db: Database.Database): ProjectSummary[] {
     .all() as ProjectSummary[];
 }
 
-function listOpenWorkItems(db: Database.Database, whereSql: string, parameters: unknown[] = []): WorkItemSummary[] {
-  return db
-    .prepare(
-      `SELECT
+/**
+ * Open Actions matching a predicate.
+ *
+ * Accepts positional parameters (the original callers, which use `?`) or a
+ * named-parameter object (scoped callers, which use `@name`); better-sqlite3
+ * binds the two differently and will not mix them in one statement.
+ */
+function listOpenWorkItems(
+  db: Database.Database,
+  whereSql: string,
+  parameters: unknown[] | Record<string, unknown> = []
+): WorkItemSummary[] {
+  const statement = db.prepare(
+    `SELECT
         wi.*,
         wi.work_classification AS responsibility,
         p.name AS project_name,
@@ -860,8 +874,10 @@ function listOpenWorkItems(db: Database.Database, whereSql: string, parameters: 
       LEFT JOIN milestones m ON m.id = wi.milestone_id
       WHERE wi.status != 'done' AND (${whereSql})
       ORDER BY wi.created_at DESC`
-    )
-    .all(...parameters) as WorkItemSummary[];
+  );
+  return (
+    Array.isArray(parameters) ? statement.all(...parameters) : statement.all(parameters)
+  ) as WorkItemSummary[];
 }
 
 export function listQueueGroups(db: Database.Database): QueueGroups {
@@ -999,6 +1015,11 @@ export function updateWorkItem(
   if (input.executionRequirementJson !== undefined) {
     parameters.execution_requirement_json = nullable(input.executionRequirementJson);
     updates.push("execution_requirement_json = @execution_requirement_json");
+  }
+
+  if (input.acceptanceCriteriaJson !== undefined) {
+    parameters.acceptance_criteria_json = nullable(input.acceptanceCriteriaJson);
+    updates.push("acceptance_criteria_json = @acceptance_criteria_json");
   }
 
   if (updates.length === 0) {
@@ -1490,6 +1511,33 @@ export function findFollowUpReviewForRun(db: Database.Database, runId: string): 
     )
     .get(runId, runId) as ReviewItemSummary | undefined;
   return row ?? null;
+}
+
+/**
+ * Merge fields into a Decision's `context_json` without disturbing whatever
+ * is already there. Used to attach structured evidence — per-criterion
+ * acceptance results, for example — to a Decision after it was created,
+ * rather than requiring every field to be known at creation time.
+ */
+export function mergeReviewItemContext(db: Database.Database, id: string, patch: Record<string, unknown>): void {
+  const row = db.prepare("SELECT context_json FROM review_items WHERE id = ?").get(id) as
+    | { context_json: string }
+    | undefined;
+  if (!row) {
+    return;
+  }
+  let context: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(row.context_json);
+    context = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    context = {};
+  }
+  db.prepare("UPDATE review_items SET context_json = ?, updated_at = ? WHERE id = ?").run(
+    JSON.stringify({ ...context, ...patch }),
+    nowIso(),
+    id
+  );
 }
 
 export function updateReviewItemStatus(
@@ -2406,33 +2454,62 @@ export function buildStatusReportData(db: Database.Database, workspacePath: stri
   };
 }
 
+/**
+ * Compile a review window into a report, for one Project or the whole workspace.
+ *
+ * `projectId` narrows every section to that Project. The pooled workspace view
+ * answers "what happened"; the per-Project view answers "did *this* move",
+ * which pooling actively hides — one busy Project reads as a productive week
+ * while four others sat still.
+ */
 export function buildWeeklyReviewData(
   db: Database.Database,
   workspacePath: string,
-  window: { since: string; until: string }
+  window: { since: string; until: string },
+  projectId?: string | null
 ): WeeklyReviewData {
-  const completedWorkItems = listCompletedWorkItemsInWindow(db, window);
-  const missionLogs = listMissionLogsInWindow(db, window);
+  const scope = projectId ?? null;
+  // Scoping is applied as an extra predicate rather than by filtering results,
+  // so an Action with no Project never leaks into a Project's review.
+  const scoped = (whereSql: string) =>
+    scope ? `(${whereSql}) AND wi.project_id = @projectId` : whereSql;
+  const parameters = scope ? { projectId: scope } : {};
+
+  const completedWorkItems = listCompletedWorkItemsInWindow(db, window, scope);
+  const missionLogs = listMissionLogsInWindow(db, window, scope);
   const blockedItems = listOpenWorkItems(
     db,
-    "wi.queue = 'blocked' OR wi.work_classification = 'blocked' OR wi.status = 'blocked'"
+    scoped("wi.queue = 'blocked' OR wi.work_classification = 'blocked' OR wi.status = 'blocked'"),
+    parameters
   );
   const requiresReviewItems = listOpenWorkItems(
     db,
-    "wi.queue = 'requires_review' OR wi.work_classification = 'requires_review'"
+    scoped("wi.queue = 'requires_review' OR wi.work_classification = 'requires_review'"),
+    parameters
   );
   const autonomousItems = listOpenWorkItems(
     db,
-    "wi.work_classification = 'autonomous' AND wi.queue != 'blocked'"
+    scoped("wi.work_classification = 'autonomous' AND wi.queue != 'blocked'"),
+    parameters
   );
-  const codexItems = listOpenWorkItems(db, "wi.work_classification = 'codex' AND wi.queue != 'blocked'");
-  const artifactItems = listArtifactChangesOrUpcoming(db, window);
-  const projectsWithoutOpenNextActions = listProjectsWithoutOpenNextActions(db);
+  const codexItems = listOpenWorkItems(
+    db,
+    scoped("wi.work_classification = 'codex' AND wi.queue != 'blocked'"),
+    parameters
+  );
+  const artifactItems = listArtifactChangesOrUpcoming(db, window, scope);
+  // "Projects with nothing queued" is a portfolio-level observation. Narrowed
+  // to one Project it is either itself or empty, which is noise in a report
+  // that is already about that Project.
+  const projectsWithoutOpenNextActions = scope ? [] : listProjectsWithoutOpenNextActions(db);
+
+  const project = scope ? getProject(db, scope) : null;
 
   return {
     workspacePath,
     generatedAt: nowIso(),
     window,
+    project: project ? { id: project.id, name: project.name, slug: project.slug } : null,
     completedWorkItems,
     missionLogs,
     blockedItems,
@@ -2493,7 +2570,8 @@ export function countRows(db: Database.Database, table: string): number {
 
 function listCompletedWorkItemsInWindow(
   db: Database.Database,
-  window: { since: string; until: string }
+  window: { since: string; until: string },
+  projectId: string | null = null
 ): WorkItemSummary[] {
   return db
     .prepare(
@@ -2508,14 +2586,16 @@ function listCompletedWorkItemsInWindow(
       WHERE wi.status = 'done'
         AND substr(wi.updated_at, 1, 10) >= @since
         AND substr(wi.updated_at, 1, 10) <= @until
+        AND (@projectId IS NULL OR wi.project_id = @projectId)
       ORDER BY wi.updated_at DESC, wi.created_at DESC, wi.id ASC`
     )
-    .all(window) as WorkItemSummary[];
+    .all({ ...window, projectId }) as WorkItemSummary[];
 }
 
 function listMissionLogsInWindow(
   db: Database.Database,
-  window: { since: string; until: string }
+  window: { since: string; until: string },
+  projectId: string | null = null
 ): MissionLogSummary[] {
   return db
     .prepare(
@@ -2528,17 +2608,23 @@ function listMissionLogsInWindow(
       LEFT JOIN milestones m ON m.id = ml.milestone_id
       WHERE substr(ml.created_at, 1, 10) >= @since
         AND substr(ml.created_at, 1, 10) <= @until
+        AND (@projectId IS NULL OR ml.project_id = @projectId)
       ORDER BY ml.created_at DESC, ml.id ASC`
     )
-    .all(window) as MissionLogSummary[];
+    .all({ ...window, projectId }) as MissionLogSummary[];
 }
 
 function listArtifactChangesOrUpcoming(
   db: Database.Database,
-  window: { since: string; until: string }
+  window: { since: string; until: string },
+  projectId: string | null = null
 ): ArtifactSummary[] {
   return db
     .prepare(
+      // The three "is this interesting" clauses are OR'd, so they are wrapped
+      // before the project scope is AND'ed on — without the parentheses the
+      // scope would bind to the last OR branch only and leak other Projects'
+      // planned Artifacts into a scoped report.
       `SELECT
         a.*,
         p.name AS project_name,
@@ -2546,18 +2632,21 @@ function listArtifactChangesOrUpcoming(
       FROM artifacts a
       LEFT JOIN projects p ON p.id = a.project_id
       LEFT JOIN work_items wi ON wi.id = a.work_item_id
-      WHERE a.status IN ('planned', 'drafted', 'ready')
-        OR (
-          substr(a.created_at, 1, 10) >= @since
-          AND substr(a.created_at, 1, 10) <= @until
+      WHERE (
+          a.status IN ('planned', 'drafted', 'ready')
+          OR (
+            substr(a.created_at, 1, 10) >= @since
+            AND substr(a.created_at, 1, 10) <= @until
+          )
+          OR (
+            substr(a.updated_at, 1, 10) >= @since
+            AND substr(a.updated_at, 1, 10) <= @until
+          )
         )
-        OR (
-          substr(a.updated_at, 1, 10) >= @since
-          AND substr(a.updated_at, 1, 10) <= @until
-        )
+        AND (@projectId IS NULL OR a.project_id = @projectId)
       ORDER BY a.updated_at DESC, a.created_at DESC, a.id ASC`
     )
-    .all(window) as ArtifactSummary[];
+    .all({ ...window, projectId }) as ArtifactSummary[];
 }
 
 function listProjectsWithoutOpenNextActions(db: Database.Database): ProjectSummary[] {
@@ -2842,6 +2931,58 @@ export function updateReviewItemFromDoc(
   });
 
   return getReviewItem(db, id);
+}
+
+export function getMissionLogByDocRef(db: Database.Database, docRef: string): MissionLog | null {
+  return (
+    (db.prepare("SELECT * FROM mission_logs WHERE doc_ref = ?").get(docRef) as MissionLog | undefined) ?? null
+  );
+}
+
+export function setMissionLogDocRef(db: Database.Database, id: string, docRef: string): void {
+  db.prepare("UPDATE mission_logs SET doc_ref = ? WHERE id = ?").run(docRef, id);
+}
+
+export interface UpdateMissionLogFromDocInput {
+  workPerformed: string;
+  result: string;
+  nextAction: string;
+  blockers: string | null;
+  markdownPath: string;
+}
+
+/**
+ * Rewrite an ingested mission Log entry from the document that owns it.
+ *
+ * Deliberately narrow: it touches only the four narrative fields and the path,
+ * leaving `project_id`, `milestone_id`, and `artifact_impact` alone. Those are
+ * execution state that Arcadia's own flows attach to a Log after the fact, and
+ * the division of truth puts execution state on Arcadia's side of the line —
+ * a re-sync of the same document must not erase it.
+ */
+export function updateMissionLogFromDoc(
+  db: Database.Database,
+  id: string,
+  input: UpdateMissionLogFromDocInput
+): void {
+  db.prepare(
+    `UPDATE mission_logs
+        SET work_performed = @work_performed,
+            result = @result,
+            next_action = @next_action,
+            blockers = @blockers,
+            markdown_path = @markdown_path,
+            updated_at = @updated_at
+      WHERE id = @id`
+  ).run({
+    id,
+    work_performed: input.workPerformed,
+    result: input.result,
+    next_action: input.nextAction,
+    blockers: input.blockers,
+    markdown_path: input.markdownPath,
+    updated_at: nowIso()
+  });
 }
 
 export function findMissionLogByEntry(

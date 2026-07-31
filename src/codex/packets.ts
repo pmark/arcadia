@@ -501,6 +501,30 @@ function readOperatorContext(workspace: string): string {
   ].join("\n");
 }
 
+/**
+ * The acceptance criteria a managed plan declared for this Action.
+ *
+ * Stored as JSON by `docs sync`. Parsed defensively: a packet is still worth
+ * building from generated criteria if the column is somehow malformed, and
+ * failing the whole run over it would be a worse outcome than losing the
+ * declared list.
+ */
+export function declaredAcceptanceCriteria(workItem: WorkItemSummary): string[] {
+  const raw = workItem.acceptance_criteria_json;
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+  } catch {
+    return [];
+  }
+}
+
 function renderAcceptanceCriteria(input: {
   resolved: ResolvedIntent;
   workItem: WorkItemSummary;
@@ -510,8 +534,15 @@ function renderAcceptanceCriteria(input: {
   const artifact = input.resolved.expectedArtifact ?? input.workItem.expected_artifact ?? "requested artifact";
   const project = input.projectContext?.project.name ?? input.workItem.project_name ?? "the selected project";
   const projectGoal = input.projectContext?.project.goal ? ` goal: ${trimTerminalPunctuation(input.projectContext.project.goal)}` : "";
+  // A managed plan's declared criteria lead, because they are the contract the
+  // review gate judges against; the generated ones below are guardrails, not a
+  // substitute, so they stay and follow.
+  const declared = declaredAcceptanceCriteria(input.workItem).map(
+    (criterion) => `- ${trimTerminalPunctuation(criterion)}.`
+  );
   if (input.agentProfile.purpose === "planning") {
     return [
+      ...declared,
       `- Deliver the expected planning artifact: ${trimTerminalPunctuation(artifact)}.`,
       `- Keep the plan aligned with ${project}${projectGoal}.`,
       "- Preserve implementation intent by framing implementation as a future phase, not work authorized by this packet.",
@@ -521,6 +552,7 @@ function renderAcceptanceCriteria(input: {
   }
 
   const criteria = [
+    ...declared,
     `- Deliver the expected artifact: ${trimTerminalPunctuation(artifact)}.`,
     `- Keep the work aligned with ${project}${projectGoal}.`,
     "- Preserve existing behavior outside the requested scope.",

@@ -155,14 +155,21 @@ export function planStepsForWorkItem(workItem: WorkItemSummary): PlannedSkillSte
   }
 
   if (workItem.work_classification === "codex" || requiresCodex(raw)) {
+    // A Codex Action whose concrete next step is to write an implementation
+    // plan is still a planning handoff, even when the surrounding context
+    // mentions implementation. Keep this deterministic so docs-backed
+    // planning Actions do not get misrouted to build mode.
+    const planning = raw.includes("implementation plan") || raw.includes("planning");
     return [
       {
-        skillName: raw.includes("implement") || raw.includes("code") || raw.includes("prototype")
+        skillName: (raw.includes("implement") || raw.includes("code") || raw.includes("prototype"))
+          && !planning
           ? "codex_build"
           : "codex_planning",
         title: "Prepare Codex handoff",
         command: null,
-        executorType: raw.includes("implement") || raw.includes("code") || raw.includes("prototype")
+        executorType: (raw.includes("implement") || raw.includes("code") || raw.includes("prototype"))
+          && !planning
           ? "codex_build"
           : "codex_planning",
         safeToRun: false,

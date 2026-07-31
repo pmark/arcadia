@@ -10,6 +10,7 @@ import { requiresReviewTransitionMessage } from "./requiresReview.js";
 import { runCompletedMessage, runRequiresReviewMessage } from "./runCompleted.js";
 import { runFailedMessage } from "./runFailed.js";
 import {
+  appendUnique,
   discordSubmissionStatePath,
   loadDiscordSubmissionState,
   loadNotificationState,
@@ -268,6 +269,14 @@ export function startNotificationPoller(
 
       const evaluation = evaluateNotifications(snapshot, previous, new Date().toISOString(), submissions);
 
+      // Persist state after each individual send succeeds, rather than once at the
+      // end of the batch. Otherwise a failure partway through (rate limit, transient
+      // fetch error, etc.) leaves already-delivered messages unmarked as notified,
+      // and they get resent on every subsequent poll.
+      let workingState: NotificationState = previous
+        ? { ...previous, codexTaskStatuses: evaluation.nextState.codexTaskStatuses }
+        : evaluation.nextState;
+
       for (const message of evaluation.messages) {
         const sent = await sendToConfiguredChannel(client, config.discordChannelId, message.content);
         const reviewId = reviewIdFromNotificationKey(message.key);
@@ -283,10 +292,14 @@ export function startNotificationPoller(
             });
           }
         }
+        workingState = withNotifiedMessageKey(workingState, message.key, snapshot);
+        await saveNotificationState(statePath, workingState);
         logJson("info", { msg: "discord notification sent", key: message.key });
       }
 
-      await saveNotificationState(statePath, evaluation.nextState);
+      if (evaluation.messages.length === 0) {
+        await saveNotificationState(statePath, workingState);
+      }
     } catch (error) {
       logJson("error", {
         msg: "discord notification poll failed",
@@ -302,19 +315,72 @@ export function startNotificationPoller(
   void timer;
 }
 
+const DISCORD_MAX_MESSAGE_LENGTH = 2000;
+const TRUNCATION_SUFFIX = "\n… (truncated)";
+
 async function sendToConfiguredChannel(client: Client, channelId: string, content: string): Promise<{ id: string }> {
   const channel = await client.channels.fetch(channelId);
   if (!channel || !("send" in channel)) {
     throw new Error("Configured Discord channel is not sendable.");
   }
 
-  return channel.send({ content });
+  return channel.send({ content: truncateForDiscord(content) });
+}
+
+// Oversized content (e.g. a task title that's actually a full prompt) must not
+// be allowed to throw here: Discord rejects it every time, and since the send
+// never succeeds it's never marked notified, so it retries and fails forever
+// and blocks whatever else was queued behind it in the same poll.
+function truncateForDiscord(content: string): string {
+  if (content.length <= DISCORD_MAX_MESSAGE_LENGTH) {
+    return content;
+  }
+  return content.slice(0, DISCORD_MAX_MESSAGE_LENGTH - TRUNCATION_SUFFIX.length) + TRUNCATION_SUFFIX;
 }
 
 function reviewIdFromNotificationKey(key: string): string | null {
   return key.startsWith("requires-review:") && key !== "requires-review:transition"
     ? key.slice("requires-review:".length)
     : null;
+}
+
+function withNotifiedMessageKey(
+  state: NotificationState,
+  key: string,
+  snapshot: NotificationSnapshot
+): NotificationState {
+  const reviewId = reviewIdFromNotificationKey(key);
+  if (reviewId) {
+    return { ...state, notifiedReviewItemIds: appendUnique(state.notifiedReviewItemIds, reviewId) };
+  }
+  if (key === "requires-review:transition") {
+    return { ...state, lastRequiresReviewCount: snapshot.requiresReviewCount };
+  }
+  if (key.startsWith("run:")) {
+    return { ...state, notifiedRunIds: appendUnique(state.notifiedRunIds, key.slice("run:".length)) };
+  }
+  if (key.startsWith("blocked:")) {
+    return {
+      ...state,
+      notifiedBlockedWorkItemIds: appendUnique(state.notifiedBlockedWorkItemIds, key.slice("blocked:".length))
+    };
+  }
+  if (key.startsWith("artifact:")) {
+    return { ...state, notifiedArtifactIds: appendUnique(state.notifiedArtifactIds, key.slice("artifact:".length)) };
+  }
+  if (key.startsWith("milestone:")) {
+    return {
+      ...state,
+      notifiedMilestoneIds: appendUnique(state.notifiedMilestoneIds, key.slice("milestone:".length))
+    };
+  }
+  if (key.startsWith("codex:")) {
+    return {
+      ...state,
+      notifiedCodexTaskEvents: appendUnique(state.notifiedCodexTaskEvents, key.slice("codex:".length))
+    };
+  }
+  return state;
 }
 
 function isDiscordSubmittedRun(run: ExecutionRun, submissions: DiscordSubmissionState): boolean {

@@ -220,7 +220,14 @@ import {
 } from "./commands/worker.js";
 import { renderClarifySuccess, runClarifyCommand } from "./commands/clarify.js";
 import { renderDocsSyncSuccess, runDocsSyncCommand } from "./commands/docs.js";
-import { renderNextSuccess, runNextCommand } from "./commands/next.js";
+import {
+  renderNextHistorySuccess,
+  renderNextReadySuccess,
+  renderNextSuccess,
+  runNextCommand,
+  runNextHistoryCommand,
+  runNextReadyCommand
+} from "./commands/next.js";
 import { renderPortfolioSuccess, runPortfolioCommand } from "./commands/portfolio.js";
 import {
   renderWorkAddSubtaskSuccess,
@@ -1879,11 +1886,12 @@ export function buildProgram(): Command {
   addJsonOption(
     review
       .command("weekly")
-      .description("Write a deterministic weekly review report")
+      .description("Write a deterministic progress review, for one Project or the whole workspace")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--since <YYYY-MM-DD>", "Inclusive review start date")
       .option("--until <YYYY-MM-DD>", "Inclusive review end date")
-  ).action((options: { workspace: string; since?: string; until?: string; json?: boolean }) =>
+      .option("--project <project>", "Only review one Project, by id or slug")
+  ).action((options: { workspace: string; since?: string; until?: string; project?: string; json?: boolean }) =>
     runCliAction(
       "review.weekly",
       reviewOptionsFromArgv(options),
@@ -1923,15 +1931,38 @@ export function buildProgram(): Command {
     )
   );
 
+  const next = program
+    .command("next")
+    .description("Resolve the authoritative current action a coding agent should advance");
   addJsonOption(
-    program
-      .command("next")
-      .description("Resolve the authoritative current action a coding agent should advance")
+    next
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--project <project>", "Project id or slug")
-  ).action((options: { workspace: string; project?: string; json?: boolean }) =>
-    runCliAction("next", options, () => runNextCommand(options), renderNextSuccess)
+      .option("--ready", "List every Action in the active plan that could be dispatched now")
+  ).action((options: { workspace: string; project?: string; ready?: boolean; json?: boolean }) =>
+    options.ready
+      ? runCliAction("next.ready", options, () => runNextReadyCommand(options), renderNextReadySuccess)
+      : runCliAction("next", options, () => runNextCommand(options), renderNextSuccess)
   );
+
+  addJsonOption(
+    next
+      .command("history")
+      .description("How often dispatch was refused, and on which field")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--limit <count>", "How many recent resolutions to list", "20")
+  ).action((_options: unknown, command: Command) => {
+    // `next` declares --workspace too, and commander binds a repeated flag to
+    // the parent. optsWithGlobals is what makes `next history --workspace X`
+    // see it wherever it landed.
+    const options = command.optsWithGlobals() as { workspace: string; limit?: string; json?: boolean };
+    return runCliAction(
+      "next.history",
+      options,
+      () => runNextHistoryCommand({ workspace: options.workspace, limit: Number(options.limit ?? 20) }),
+      renderNextHistorySuccess
+    );
+  });
 
   const docs = program.command("docs").description("Managed documentation across every Project repository");
   addJsonOption(

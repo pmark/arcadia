@@ -1,8 +1,8 @@
-import { existsSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
-import { validationError } from "../cli/errors.js";
+import { projectNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import {
@@ -11,22 +11,32 @@ import {
   createReviewExecutionRun,
   createReviewItem,
   createReviewFeedback,
+  getArtifact,
+  getProject,
+  getProjectBySlug,
   getProjectMetadata,
   getExecutionRun,
   getReviewItem,
   getReviewItemBySlug,
   getWorkItem,
   listActionableReviewItems,
+  mergeReviewItemContext,
   updateArtifact,
   updateReviewItemStatus,
   updateWorkItem
 } from "../db/repositories.js";
 import { GAP_TYPES } from "../domain/constants.js";
-import type { ReviewFeedback, ReviewItemSummary, WorkItemSummary } from "../domain/types.js";
+import type { ArtifactSummary, ReviewFeedback, ReviewItemSummary, WorkItemSummary } from "../domain/types.js";
+import { declaredAcceptanceCriteria } from "../codex/packets.js";
 import { executeApprovedReview, type ReviewExecutionResult } from "../execution/reviewExecutor.js";
 import { isPlanningApprovalDecision, queueApprovedPlanningRun } from "../execution/planningAuthorization.js";
 import { parseDecisionContext } from "../execution/planningAuthorization.js";
-import { exportPlanningAcceptanceBeforeTransition } from "../memory/obsidian.js";
+import { evaluateAcceptanceCriteria, renderAcceptanceCriteriaReport } from "../stewardship/acceptanceCriteria.js";
+import {
+  exportPlanningAcceptanceBeforeTransition,
+  exportProgressReview,
+  type MemorySyncEntry
+} from "../memory/obsidian.js";
 import { writeWeeklyReviewReport } from "../markdown/weeklyReview.js";
 import {
   REVIEW_FEEDBACK_TYPES,
@@ -167,10 +177,18 @@ export interface ReviewWeeklyCommandOptions {
   workspace: string;
   since?: string;
   until?: string;
+  /** Project id or slug. Omitted reviews the whole workspace, as before. */
+  project?: string;
 }
 
 export interface ReviewWeeklyCommandData {
   reportPath: string;
+  /** The Project reviewed, or `null` for the whole workspace. */
+  project: { id: string; name: string; slug: string } | null;
+  /** The vault Record written, or `null` when vault memory is not enabled. */
+  memory: MemorySyncEntry | null;
+  /** Why the vault projection failed, when it did. Never fails the review. */
+  memoryError: string | null;
   window: {
     since: string;
     until: string;
@@ -446,6 +464,27 @@ export function runReviewResolveReplyCommand(
   });
 }
 
+/**
+ * The finished Run's output, as text, for `evaluateAcceptanceCriteria` to
+ * search. Missing or unreadable is not a reason to fail acceptance over --
+ * the operator is looking at the same Artifact in front of them right now --
+ * so every criterion simply reports `unchecked` against empty text instead.
+ */
+function readAcceptedArtifactText(workspacePath: string, artifact: ArtifactSummary | null): string {
+  if (!artifact?.path) {
+    return "";
+  }
+  const absolutePath = path.join(workspacePath, artifact.path);
+  if (!existsSync(absolutePath)) {
+    return "";
+  }
+  try {
+    return readFileSync(absolutePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
 export function runReviewApproveCommand(
   options: ReviewDecisionCommandOptions
 ): CommandSuccess<ReviewDecisionCommandData> {
@@ -514,6 +553,21 @@ export function runReviewApproveCommand(
           decisionRemainsOpen: true
         });
       }
+
+      // Declared criteria and the Artifact they are judged against are read
+      // outside the transaction: file reads do not belong inside one, and an
+      // Action whose plan declared no criteria must validate exactly as it
+      // does today -- so an empty list changes nothing below.
+      const acceptedWorkItem = getWorkItem(db, specialized.work_item_id);
+      const criteria = acceptedWorkItem ? declaredAcceptanceCriteria(acceptedWorkItem) : [];
+      const criteriaResults = criteria.length > 0
+        ? evaluateAcceptanceCriteria(criteria, readAcceptedArtifactText(workspacePath, getArtifact(db, specialized.artifact_id as string)))
+        : [];
+      const criteriaReport = renderAcceptanceCriteriaReport(criteriaResults);
+      const decisionNote = criteriaReport
+        ? `Validated planning Artifact accepted.\n\n${criteriaReport}`
+        : "Validated planning Artifact accepted.";
+
       return db.transaction(() => {
         updateArtifact(db, specialized.artifact_id as string, { status: "ready" });
         updateWorkItem(db, specialized.work_item_id as string, {
@@ -522,9 +576,12 @@ export function runReviewApproveCommand(
           status: "done",
           nextAction: "Plan accepted; choose the next implementation Action when ready."
         });
+        if (criteriaResults.length > 0) {
+          mergeReviewItemContext(db, specialized.id, { acceptanceCriteriaResults: criteriaResults });
+        }
         return updateReviewItemStatus(db, specialized.id, {
           status: "approved",
-          decisionNote: "Validated planning Artifact accepted."
+          decisionNote
         }) as ReviewItemSummary;
       })();
     });
@@ -835,18 +892,50 @@ export function runReviewWeeklyCommand(
   const window = resolveReviewWindow(options);
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const { data, reportPath } = withDatabase(workspacePath, (db) => {
-    const reviewData = buildWeeklyReviewData(db, workspacePath, window);
+    // Resolved before compiling so an unknown Project fails with "no such
+    // Project" instead of silently producing an empty, plausible-looking report.
+    let projectId: string | null = null;
+    if (options.project) {
+      const project = getProject(db, options.project) ?? getProjectBySlug(db, options.project);
+      if (!project) {
+        throw projectNotFound(options.project);
+      }
+      projectId = project.id;
+    }
+
+    const reviewData = buildWeeklyReviewData(db, workspacePath, window, projectId);
     return {
       data: reviewData,
       reportPath: writeWeeklyReviewReport(workspacePath, reviewData)
     };
   });
 
+  // Projected after the workspace report is written, and never in a way that
+  // can fail it: the report is the deliverable, the vault Record is a
+  // convenience copy. A vault misconfiguration should be reported, not cost
+  // the operator their review.
+  let memory: MemorySyncEntry | null = null;
+  let memoryError: string | null = null;
+  try {
+    memory = exportProgressReview(workspacePath, {
+      project: data.project,
+      window,
+      generatedAt: data.generatedAt,
+      reportPath: path.relative(workspacePath, reportPath),
+      content: readFileSync(reportPath, "utf8")
+    });
+  } catch (error) {
+    memoryError = error instanceof Error ? error.message : String(error);
+  }
+
   return createSuccess({
     command: "review.weekly",
     workspace: workspacePath,
     data: {
       reportPath,
+      project: data.project,
+      memory,
+      memoryError,
       window,
       counts: {
         completedWork: data.completedWorkItems.length,
@@ -865,11 +954,20 @@ export function runReviewWeeklyCommand(
 }
 
 export function renderReviewWeeklySuccess(response: CommandSuccess<ReviewWeeklyCommandData>): string[] {
-  return [
-    "Weekly review written.",
-    `Window: ${response.data.window.since} to ${response.data.window.until}`,
-    `Report: ${response.data.reportPath}`
+  const { project, window, reportPath, counts, memory, memoryError } = response.data;
+  const lines = [
+    project ? `Progress review written for ${project.name}.` : "Weekly review written.",
+    `Window: ${window.since} to ${window.until}`,
+    `Completed Actions: ${counts.completedWork} · Logs: ${counts.missionLogs} · Artifacts: ${counts.artifacts}`,
+    `Report: ${reportPath}`
   ];
+  if (memory) {
+    lines.push(`Vault Record (${memory.status}): ${memory.recordPath}`);
+  }
+  if (memoryError) {
+    lines.push(`Vault Record not written: ${memoryError}`);
+  }
+  return lines;
 }
 
 export function renderReviewRequiredSuccess(response: CommandSuccess<ReviewRequiredCommandData>): string[] {

@@ -14,9 +14,11 @@ import {
   createProjectWithInitialWork,
   createReviewItem,
   getExecutionRun,
+  getReviewItem,
   getWorkItem,
   listArtifacts,
   listReviewItems,
+  updateWorkItem,
   upsertProjectMetadata
 } from "../src/db/repositories.js";
 import { ensureBuiltInSkills } from "../src/execution/skills.js";
@@ -247,6 +249,62 @@ describe("Codex planning artifact validation workflow", () => {
     expect(withDatabase(workspace, (db) =>
       listArtifacts(db).filter((artifact) => artifact.artifact_type === "planning_artifact_validation")
     )).toHaveLength(0);
+  });
+});
+
+describe("acceptance criteria reporting on artifact acceptance", () => {
+  it("reports each declared criterion, met or unmet, on the acceptance Decision", () => {
+    const workspace = initializedWorkspace();
+    const fixture = setupCodexRun(workspace, { purpose: "planning", agentOutput: completePlanningArtifact });
+    withDatabase(workspace, (db) => {
+      updateWorkItem(db, fixture.workItemId, {
+        acceptanceCriteriaJson: JSON.stringify([
+          "The plan includes a repository impact assessment.",
+          "The migration adds a rollback script."
+        ])
+      });
+    });
+    executeFixture(workspace, fixture);
+
+    const acceptanceDecision = withDatabase(workspace, (db) =>
+      listReviewItems(db, "open").find((item) => item.resolved_intent === "CodexPlanningArtifactAcceptance")
+    );
+    expect(acceptanceDecision).toBeTruthy();
+
+    const accepted = runReviewApproveCommand({ workspace, id: acceptanceDecision!.id });
+
+    expect(accepted.data.item.status).toBe("approved");
+    const note = withDatabase(workspace, (db) => getReviewItem(db, acceptanceDecision!.id)?.decision_note ?? "");
+    expect(note).toContain("Acceptance criteria:");
+    expect(note).toContain('- unchecked: "The plan includes a repository impact assessment."');
+    expect(note).toContain('- unmet: "The migration adds a rollback script."');
+    expect(note).not.toMatch(/^- met:/m);
+
+    const context = withDatabase(workspace, (db) => {
+      const item = getReviewItem(db, acceptanceDecision!.id);
+      return item ? JSON.parse(item.context_json) : null;
+    });
+    expect(context.acceptanceCriteriaResults).toHaveLength(2);
+    expect(context.acceptanceCriteriaResults[1]).toMatchObject({
+      criterion: "The migration adds a rollback script.",
+      status: "unmet"
+    });
+  });
+
+  it("validates exactly as before when the plan declared no criteria", () => {
+    const workspace = initializedWorkspace();
+    const fixture = setupCodexRun(workspace, { purpose: "planning", agentOutput: completePlanningArtifact });
+    executeFixture(workspace, fixture);
+
+    const acceptanceDecision = withDatabase(workspace, (db) =>
+      listReviewItems(db, "open").find((item) => item.resolved_intent === "CodexPlanningArtifactAcceptance")
+    );
+
+    runReviewApproveCommand({ workspace, id: acceptanceDecision!.id });
+
+    const item = withDatabase(workspace, (db) => getReviewItem(db, acceptanceDecision!.id));
+    expect(item?.decision_note).toBe("Validated planning Artifact accepted.");
+    expect(JSON.parse(item!.context_json)).not.toHaveProperty("acceptanceCriteriaResults");
   });
 });
 

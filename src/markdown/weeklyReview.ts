@@ -11,13 +11,26 @@ import type {
 } from "../domain/types.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 
-export function getWeeklyReviewReportPath(workspace: string, until: string): string {
+/**
+ * Where a review is written.
+ *
+ * A Project's review lands under `weekly/<slug>/`, so running one for a Project
+ * never overwrites the workspace-wide report for the same date — the two answer
+ * different questions and both are worth keeping.
+ */
+export function getWeeklyReviewReportPath(
+  workspace: string,
+  until: string,
+  projectSlug?: string | null
+): string {
   const paths = getWorkspacePaths(workspace);
-  return path.join(paths.reports, "weekly", `${until}.md`);
+  return projectSlug
+    ? path.join(paths.reports, "weekly", projectSlug, `${until}.md`)
+    : path.join(paths.reports, "weekly", `${until}.md`);
 }
 
 export function writeWeeklyReviewReport(workspace: string, data: WeeklyReviewData): string {
-  const reportPath = getWeeklyReviewReportPath(workspace, data.window.until);
+  const reportPath = getWeeklyReviewReportPath(workspace, data.window.until, data.project?.slug);
   mkdirSync(path.dirname(reportPath), { recursive: true });
   writeFileSync(reportPath, renderWeeklyReviewReport(data), "utf8");
   return reportPath;
@@ -25,10 +38,11 @@ export function writeWeeklyReviewReport(workspace: string, data: WeeklyReviewDat
 
 export function renderWeeklyReviewReport(data: WeeklyReviewData): string {
   const lines: string[] = [
-    "# Arcadia Weekly Review",
+    data.project ? `# ${data.project.name} Progress Review` : "# Arcadia Weekly Review",
     "",
     `Generated: ${data.generatedAt}`,
     `Workspace: ${data.workspacePath}`,
+    ...(data.project ? [`Project: ${data.project.name} (${data.project.slug})`] : []),
     `Review window: ${data.window.since} to ${data.window.until}`,
     "",
     "## Completed Actions",

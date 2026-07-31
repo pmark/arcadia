@@ -2,7 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Archive, Eye, FolderKanban, Gauge, History, RefreshCw, Sparkles } from "lucide-react";
+import {
+  Activity,
+  Archive,
+  Eye,
+  FolderKanban,
+  Gauge,
+  History,
+  RefreshCw,
+  ScrollText,
+  Sparkles
+} from "lucide-react";
 import type { ReactNode } from "react";
 
 interface DashboardChromeProps {
@@ -21,6 +31,7 @@ const navItems = [
   { href: "/back-burner", label: "Back Burner", icon: Archive },
   { href: "/runs", label: "Runs", icon: History },
   { href: "/admin/intelligence", label: "Intelligence", icon: Sparkles },
+  { href: "/admin/dispatch-journal", label: "Journal", icon: ScrollText },
   { href: "/admin/status", label: "Status", icon: Gauge }
 ];
 

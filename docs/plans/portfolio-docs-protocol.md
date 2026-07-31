@@ -5,8 +5,7 @@ slug: portfolio-docs-protocol
 project: arcadia
 status: active
 milestone: docs sync ingests a real project's markdown
-current_action: ingest-mission-logs
-updated: 2026-07-26
+updated: 2026-07-31
 actions:
   - id: build-parser
     title: Build the frontmatter parser and vocabulary validator
@@ -153,14 +152,15 @@ actions:
     depends_on: []
   - id: ingest-mission-logs
     title: Ingest MISSION_LOG.md entries as mission_logs rows
-    status: open
+    status: done
     responsibility: codex
     effort: short
     clarification: clarified
     confidence: high
-    source: Decision 0003 selected dependency persistence first; this increment stays designed and unblocked.
-    next_action: Upsert each parsed MISSION_LOG.md entry into mission_logs, keyed so a re-run cannot duplicate one.
+    source: Decision 0003, which selected this increment over the other two
+    next_action: Delivered as doc_ref-keyed Log ingestion in src/docs/sync.ts; no further work.
     expected_artifact: Idempotent mission-Log ingestion with focused parser, sync, and duplicate-prevention tests.
+    decisions: ["0003"]
     acceptance_criteria:
       - Each dated MISSION_LOG.md entry becomes one mission_logs row, keyed so re-running creates no duplicates.
       - docs sync stops reporting log files as skipped.
@@ -204,7 +204,7 @@ actions:
     acceptance_criteria:
       - depends_on edges survive a docs sync round trip.
       - An Action cannot be dispatched while an Action it depends on is unfinished.
-    decisions: ["0003"]
+    decisions: ["0004"]
     references:
       - src/docs/sync.ts
       - src/docs/dispatch.ts
@@ -245,6 +245,7 @@ actions:
       - A narrative doc produces an Artifact holding its summary.
       - The summary is never written back into the source document.
     clarification: unclarified
+    decisions: ["0004"]
     depends_on: [wire-docs-sync-command]
 questions:
   - id: plan-milestone-span
@@ -283,22 +284,21 @@ that `arcadia next` resolves.
 
 - Milestone: `docs sync` ingests a real project's markdown — **reached.**
   Arcadia's own repository is the first project ingested by this protocol.
-- Current Action: `ingest-mission-logs`, clarified and dispatchable. Decision
-  0003 selected dependency persistence as the first increment and explicitly
-  did not order the remaining two; this pointer applies the operator's stated
-  criterion rather than a second question, and may be redirected.
-- Responsibility: Codex.
-- Required Artifact: delivered — `docs sync`, `portfolio`, `next`, persisted
-  `depends_on` ordering, and Arcadia's own conforming documents carrying a
-  resolvable work pointer.
-- Decisions open: none. The three answered questions are recorded in
-  `docs/decisions/0003-next-protocol-increment.md`,
-  `0004-docs-sync-write-back.md`, and `0005-plan-milestone-span.md`; each
-  plan-level question now names the decision that answers it.
-- Last Log: 2026-07-26 — persisted `depends_on` as edges and made an unfinished
-  prerequisite a dispatch blocker, so ordering constrains what `arcadia next`
-  hands a coding agent instead of only being validated.
-- Updated: 2026-07-26
+- Current Action: none. This plan no longer declares one; Decision 0004 deferred
+  its remaining narrative-summarization Action; `active_plan` now points to
+  `narrative-digests`.
+- Responsibility: none pending in this plan.
+- Required Artifact: delivered — `docs sync`, `portfolio`, `next`, mission-Log
+  ingestion, persisted `depends_on` ordering, and Arcadia's own conforming
+  documents carrying a resolvable work pointer.
+- Decisions open: the two plan-level questions above. 0004 is deferred with
+  triggers, not open.
+- Deferred until its trigger fires: `narrative-summarization` (a second foreign
+  repository, or a summary someone actually wants). Dependency persistence was
+  delivered independently on 2026-07-26 and retained through the branch merge.
+- Last Log: 2026-07-31 — implemented mission-Log ingestion under Decision 0003;
+  dependency persistence remains delivered from the parallel local history.
+- Updated: 2026-07-31
 
 ## Foreign-repository validation — Private Practice Now
 
@@ -325,12 +325,13 @@ resolved the same milestone and Action.
 
 Incompatibilities and recommended patches:
 
-- Mission Logs and narrative documents are detected but not persisted. Implement
-  the existing `ingest-mission-logs` and `narrative-summarization` Actions
-  before treating a foreign repository as fully represented.
-- `depends_on` was validated but not persisted. Resolved on 2026-07-26: edges
-  are stored in `work_item_dependencies` and an unfinished prerequisite now
-  blocks dispatch.
+- ~~Mission Logs and narrative documents are detected but not persisted.~~
+  Mission Logs now persist (see below). Narrative documents remain detected and
+  skipped; `narrative-summarization` is still the last gap before a foreign
+  repository is fully represented.
+- `depends_on` is validated, enforced at dispatch, and persisted in
+  `work_item_dependencies`; the persistence half was delivered on the parallel
+  local history before this plan became active again.
 - A newly initialized workspace can have a newer DB Project row than a checked-in
   document, producing a deterministic stale-document skip. Preserve this
   refusal and expose the timestamp remedy in operator guidance.
@@ -345,6 +346,52 @@ The validation Action is complete. The next pointer now names
 `ingest-mission-logs` but remains `question_open` so Arcadia asks the operator
 which of the three already-designed protocol increments to select rather than
 inferring priority.
+
+## Mission-Log ingestion
+
+Decision 0003 selected this increment. The parser already produced a structured
+entry per `## YYYY-MM-DD — title` heading and `mission_logs` already existed as a
+table, so the work was the missing upsert rather than a new subsystem.
+
+Entries are keyed `log/<slug>#<date>--<title-slug>` and carry that ref in a new
+`doc_ref` column on `mission_logs`, added through the existing
+`ensureDocRefColumns` migration rather than a new one.
+
+**The key was built wrong first, and dogfooding caught it.** Keying on the date
+alone looks safer — it survives a retitle, which is the thing doc_refs exist to
+do — and the first implementation did that. Running it against Arcadia's own
+repository refused five of nine entries: `MISSION_LOG.md` has five entries dated
+2026-07-25. Several entries under one date is the common path in a real Log, not
+an edge case, and the protocol had already said the whole `## YYYY-MM-DD — title`
+heading was the entry key. The narrowing was the mistake, not the data.
+
+So the rarer cost is the one paid: retitling an old entry forks a row, and
+entries sharing a date do not collide. Ordinal-within-date was the third
+candidate and is worse than both — entries are prepended newest-first, so a new
+same-day entry would shift every ordinal below it and silently rewrite rows
+nobody edited. Two entries sharing a whole heading remain a per-file validation
+error, reported once per contested heading rather than once per repetition.
+
+Two smaller decisions worth recording because both could have been fudged:
+
+- **An entry with no `**Next:**` bullet records that it has none.** The column
+  is `NOT NULL`, and deriving a plausible next action from the entry's prose
+  would put a sentence nobody wrote into the operator's own history.
+- **Re-ingestion rewrites only the four narrative fields and the path.**
+  `project_id`, `milestone_id`, and `artifact_impact` are execution state that
+  Arcadia's flows attach to a Log after the fact, and the division of truth puts
+  execution state on Arcadia's side of the line. A re-sync must not erase it.
+
+Narrative documents are still reported as skipped, which is now the only
+intentional skip `docs sync` emits for a conforming repository. A full apply
+against Arcadia's own repository reports 42 creates, 0 skips, and 0 errors, and
+a second apply reports everything unchanged.
+
+One unrelated defect surfaced during that run and was left alone rather than
+folded into this Action: `syncProject` counts `name` as drift, but
+`updateProject` has no `name` branch, so a Project whose database row disagrees
+with its `PROJECT.md` name reports an `update` on every sync forever and never
+converges. It needs its own Action.
 
 ## Clarification-response UX findings
 
@@ -386,6 +433,40 @@ Remaining incompatibilities and recommended patches:
   accidental Run was rejected and marked failed with an explicit no-execution
   audit note. Add a first-class cancel transition and refuse execution approval
   when a Run has neither a Project nor executable steps.
+
+## Project continuation UX findings — Private Practice Now
+
+The first foreign-repository validation exposed a separate readiness gap: the
+portfolio Daily Advantage query intentionally selects only `open` Actions, but
+PPN's docs-authoritative current Action is already `in_progress`, clarified,
+and dispatchable. The old Project view therefore showed a stale summary without
+the information needed to understand why work was not starting.
+
+The Project view now resolves `arcadia next --project` on demand and presents
+the checked-in Milestone, current Action, source plan, responsibility, expected
+Artifact, acceptance criteria, and resolved execution profile. A guarded
+**Get to work** control prepares a planning Decision for that exact Action. It
+does not queue a Run, invoke Codex, modify the foreign repository, or weaken
+execution requirements. When continuation is unsafe, the panel lists every
+document blocker with its file, field, message, and remedy. Operator questions
+and project Decisions remain answerable inline through the existing
+intent-specific Review resolver.
+
+In the live PPN check, the guarded preparation reached execution-profile
+resolution and refused deterministically: no configured planning provider met
+`c3_systems/e3_deep` while honoring the Action's `local_only` locality. The UI
+now preserves that exact refusal and rejected-mapping explanation, so “Ready to
+prepare” cannot be mistaken for permission to weaken the profile or use
+credentials that are not configured.
+
+Recommended follow-ups:
+
+- Keep repository document resolution authoritative; never infer a current
+  Action from database recency or backlog order when the docs pointer refuses.
+- Add an explicit docs-sync timestamp/result to this panel once narrative and
+  mission-Log ingestion can report more than intentional skips.
+- Add a first-class project-scoped Review filter if inline Decisions become too
+  dense for a large project; preserve the same answer-versus-approval contract.
 
 ### What dogfooding changed
 
@@ -629,7 +710,10 @@ append-only entries, newest first:
 ```
 
 Maps to `mission_logs` (`work_performed`, `result`, `next_action`,
-`blockers`). The `## YYYY-MM-DD — title` heading is the entry key.
+`blockers`). The whole `## YYYY-MM-DD — title` heading is the entry key —
+`log/<slug>#<date>--<title-slug>` — so several entries may share a date. Two
+entries sharing a whole heading are refused, because the key cannot tell them
+apart.
 
 ## Narrative docs
 

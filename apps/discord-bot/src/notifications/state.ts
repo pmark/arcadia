@@ -233,7 +233,7 @@ function stringArray(raw: unknown): string[] {
   return Array.isArray(raw) ? raw.filter((value): value is string => typeof value === "string") : [];
 }
 
-function appendUnique(values: string[], value: string): string[] {
+export function appendUnique(values: string[], value: string): string[] {
   return Array.from(new Set([...values, value]));
 }
 

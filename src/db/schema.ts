@@ -54,9 +54,11 @@ export function applyMigrations(db: Database.Database): void {
   ensureDocRefColumns(db);
   ensureWorkItemDependencyTable(db);
   ensureExecutionRequirementColumn(db);
+  ensureAcceptanceCriteriaColumn(db);
   ensureExecutionProfileProvenanceColumns(db);
   ensureDailyCapacityTable(db);
   ensureActivityTables(db);
+  ensureDispatchEventsTable(db);
   applyCapabilityMigrations(db);
 }
 
@@ -66,6 +68,22 @@ function ensureExecutionRequirementColumn(db: Database.Database): void {
   );
   if (!columns.has("execution_requirement_json")) {
     db.prepare("ALTER TABLE work_items ADD COLUMN execution_requirement_json TEXT").run();
+  }
+}
+
+/**
+ * Carry a managed plan's declared acceptance criteria into the Action.
+ *
+ * Without this the criteria stop at the document boundary: the parser requires
+ * them on the current action, and the coding agent that has to satisfy them
+ * never sees them.
+ */
+function ensureAcceptanceCriteriaColumn(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(work_items)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("acceptance_criteria_json")) {
+    db.prepare("ALTER TABLE work_items ADD COLUMN acceptance_criteria_json TEXT").run();
   }
 }
 
@@ -505,12 +523,13 @@ function ensureParentWorkItemColumn(db: Database.Database): void {
  * duplicate every entity the moment somebody rewords a heading — which is
  * exactly what a chatbot rewriting a plan does. The doc_ref is derived from
  * identifiers the protocol promises never change (`plan/<slug>#<action-id>`,
- * `decision/<slug>`, `plan/<slug>` for a milestone), so a reworded title
- * updates a row instead of forking it.
+ * `decision/<slug>`, `plan/<slug>` for a milestone,
+ * `log/<slug>#<date>--<title-slug>` for a mission Log entry), so a reworded plan
+ * title updates a row instead of forking it.
  *
  * NULL means "not from a document" — every row Arcadia created itself through
- * `capture`, `work add-subtask`, or the clarify loop. Ingestion only ever
- * touches rows carrying a doc_ref, so hand-captured work can never be
+ * `capture`, `work add-subtask`, the clarify loop, or `log add`. Ingestion only
+ * ever touches rows carrying a doc_ref, so hand-captured work can never be
  * clobbered by a document that happens to describe something similar.
  *
  * The indexes are deliberately non-unique: a malformed pair of documents
@@ -519,7 +538,7 @@ function ensureParentWorkItemColumn(db: Database.Database): void {
  * See docs/plans/portfolio-docs-protocol.md.
  */
 function ensureDocRefColumns(db: Database.Database): void {
-  const targets = ["work_items", "milestones", "review_items"];
+  const targets = ["work_items", "milestones", "review_items", "mission_logs"];
 
   for (const table of targets) {
     const columns = new Set(
@@ -635,6 +654,38 @@ function ensureActivityTables(db: Database.Database): void {
       updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_time_entries_local_date ON time_entries(local_date);
+  `);
+}
+
+/**
+ * One row per time Arcadia resolved whether work could be dispatched from the
+ * managed documents.
+ *
+ * The control documents are only worth their overhead if refusals are rare and
+ * for good reasons, and that is not answerable from anecdote — it needs the
+ * refusals counted and attributed to a field. Carries no foreign keys, on the
+ * same reasoning as `activity_events`: finishing an Action must not erase the
+ * record of how often dispatching it was blocked.
+ */
+function ensureDispatchEventsTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS dispatch_events (
+      id TEXT PRIMARY KEY,
+      occurred_at TEXT NOT NULL,
+      local_date TEXT NOT NULL,
+      command TEXT NOT NULL,
+      project_id TEXT,
+      project_slug TEXT,
+      plan_slug TEXT,
+      action_id TEXT,
+      dispatchable INTEGER NOT NULL CHECK (dispatchable IN (0, 1)),
+      blocker_count INTEGER NOT NULL,
+      -- Distinct blocker fields, as a JSON string array; the tally reads this.
+      blocker_fields TEXT NOT NULL,
+      operator_question INTEGER NOT NULL CHECK (operator_question IN (0, 1))
+    );
+    CREATE INDEX IF NOT EXISTS idx_dispatch_events_occurred_at ON dispatch_events(occurred_at);
+    CREATE INDEX IF NOT EXISTS idx_dispatch_events_local_date ON dispatch_events(local_date);
   `);
 }
 

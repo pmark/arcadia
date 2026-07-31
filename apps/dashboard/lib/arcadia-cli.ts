@@ -35,6 +35,51 @@ export async function loadDashboardSnapshot(): Promise<ArcadiaJsonSuccess<Dashbo
   return runArcadiaCliJson<DashboardSnapshotResponse>(["dashboard", "snapshot"]);
 }
 
+export interface ProjectContinuationResponse {
+  context: {
+    repoRoot: string;
+    projectSlug: string;
+    projectName: string;
+    projectStatus: string;
+    activePlan: string;
+    planPath: string;
+    planStatus: string;
+    milestone: string | null;
+    action: {
+      id: string;
+      title: string;
+      status: string;
+      responsibility: string;
+      effort: string | null;
+      nextAction: string | null;
+      expectedArtifact: string | null;
+      clarification: string | null;
+      gapType: string | null;
+      question: string | null;
+      confidence: string | null;
+      source: string | null;
+      dependsOn: string[];
+      acceptanceCriteria: string[];
+      decisions: string[];
+      references: string[];
+      execution: unknown;
+      resolvedExecution: unknown;
+    };
+    actionPath: string;
+    requiredDecisions: Array<{ id: string; slug: string; status: string; question: string; resolved: boolean }>;
+    authorization: string;
+  } | null;
+  blockers: Array<{ relativePath: string; field: string; message: string; remedy: string }>;
+  operatorQuestion: string | null;
+  dispatchable: boolean;
+  projectId: string;
+  repoRoot: string;
+}
+
+export async function loadProjectContinuation(projectId: string): Promise<ArcadiaJsonSuccess<ProjectContinuationResponse>> {
+  return runArcadiaCliJson<ProjectContinuationResponse>(["next", "--project", projectId]);
+}
+
 export interface DailyAdvantagePreparationResponse {
   plan: { id: string; work_item_id: string; status: string };
   planningDecision: { id: string; slug: string | null; status: string } | null;
@@ -55,6 +100,40 @@ export interface IntelligenceListJobsResponse {
 
 export interface IntelligenceUsageResponse {
   summary: unknown;
+}
+
+export interface DispatchJournalEvent {
+  id: string;
+  occurredAt: string;
+  localDate: string;
+  command: "next" | "work.plan";
+  projectSlug: string | null;
+  planSlug: string | null;
+  actionId: string | null;
+  dispatchable: boolean;
+  blockerCount: number;
+  blockerFields: string[];
+  operatorQuestion: boolean;
+}
+
+export interface DispatchJournalResponse {
+  events: DispatchJournalEvent[];
+  summary: {
+    total: number;
+    dispatchable: number;
+    blocked: number;
+    byField: Array<{ field: string; resolutions: number }>;
+  };
+}
+
+/**
+ * Read the dispatch journal: how often work was refused, and on which field.
+ * Read-only, like every other dashboard surface.
+ */
+export async function loadDispatchJournal(
+  limit = 25
+): Promise<ArcadiaJsonSuccess<DispatchJournalResponse>> {
+  return runArcadiaCliJson<DispatchJournalResponse>(["next", "history", "--limit", String(limit)]);
 }
 
 export async function listIntelligenceTestJobs(

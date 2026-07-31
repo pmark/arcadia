@@ -168,6 +168,44 @@ describe("Daily Advantage existing-Action planning preparation", () => {
     expect(context.approvalAuthorizes).toBe("One managed read-only Claude Code planning Run for this exact packet.");
   });
 
+  it("quotes the Action's declared acceptance criteria in the packet, ahead of the generated ones", () => {
+    const fixture = createRebusterFixture();
+    withDatabase(fixture.workspace, (db) =>
+      updateWorkItem(db, fixture.workItemId, {
+        acceptanceCriteriaJson: JSON.stringify([
+          "Text stays inside the safe area at 1080x1920",
+          "The regression fixture renders identically on a second run"
+        ])
+      })
+    );
+
+    const prepared = runWorkPlanCommand({ workspace: fixture.workspace, workId: fixture.workItemId });
+    const prompt = readFileSync(
+      path.join(fixture.workspace, prepared.data.codexInvocation!.prompt_path),
+      "utf8"
+    );
+
+    const criteria = prompt.split("## Acceptance Criteria")[1].split("## ")[0];
+    expect(criteria).toContain("- Text stays inside the safe area at 1080x1920.");
+    expect(criteria).toContain("- The regression fixture renders identically on a second run.");
+    // The declared criteria are the contract, so they lead; the generated
+    // guardrails still follow rather than being replaced.
+    expect(criteria.indexOf("safe area")).toBeLessThan(criteria.indexOf("Keep the plan aligned with"));
+  });
+
+  it("falls back to generated criteria when the Action declares none", () => {
+    const fixture = createRebusterFixture();
+    const prepared = runWorkPlanCommand({ workspace: fixture.workspace, workId: fixture.workItemId });
+    const prompt = readFileSync(
+      path.join(fixture.workspace, prepared.data.codexInvocation!.prompt_path),
+      "utf8"
+    );
+
+    const criteria = prompt.split("## Acceptance Criteria")[1].split("## ")[0];
+    expect(criteria).toContain("Keep the plan aligned with");
+    expect(criteria.trim().split("\n").every((line) => line.startsWith("- "))).toBe(true);
+  });
+
   it("is idempotent for repeated preparation of the same Action", () => {
     const fixture = createRebusterFixture();
     const first = runWorkPlanCommand({ workspace: fixture.workspace, workId: fixture.workItemId });

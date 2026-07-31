@@ -9,51 +9,58 @@ action: ingest-mission-logs
 status: approved
 question: "Which next protocol increment should Arcadia implement first: mission-Log ingestion, narrative summarization, or dependency persistence?"
 gap_type: missing-decision
-recommendation: Dependency persistence, because it is the only one of the three that changes what Arcadia will hand a coding agent.
+recommendation: Mission-Log ingestion. Its parser and its table both already exist, so it is the increment that buys the most representation for the least new machinery.
 confidence: high
-decided: 2026-07-26
-answer: Whichever most reliably advances using Arcadia to manage planned work with coding agents. Against that criterion the operator delegated the selection, and it resolves to dependency persistence.
-updated: 2026-07-26
+decided: 2026-07-31
+answer: Mission-Log ingestion.
+updated: 2026-07-31
 ---
 
 # Next protocol increment
 
 ## Context
 
-Foreign-repository validation left three designed increments and no ordering.
-`arcadia next` deliberately refused to infer priority from backlog order, so the
-current Action sat `question_open` rather than dispatching.
+`ingest-mission-logs` had been the plan's `current_action` since 2026-07-25 while
+carrying `clarification: question_open`, so `arcadia next` correctly refused to
+dispatch and returned this one question instead. Three increments were already
+designed and none had a claim on going first, which is exactly the situation the
+contract forbids resolving by backlog order.
 
-The operator did not pick an increment by name. They supplied a selection
-criterion instead: whatever most reliably makes the most progress toward being
-able to use Arcadia to manage planned work with coding agents. That criterion,
-not the backlog order and not implementation cost, decides this.
+The candidates were not equally expensive, and reading the code before asking
+changed what the question was worth answering with.
 
 ## Options
 
-**Dependency persistence.** `depends_on` was parsed and validated, then
-discarded. Ordering therefore existed in documents but constrained nothing, so
-`arcadia next` could hand an agent an Action whose prerequisite was unfinished —
-the precise failure mode of managing planned work with coding agents. It is the
-only one of the three that touches dispatch.
+**Mission-Log ingestion.** `parseLogEntries` already produced a structured
+`LogEntryDoc` per dated heading, and `mission_logs` already existed as a table.
+Sync skipped logs at one call site with an explicit "not implemented yet"
+reason. The missing piece was a `doc_ref`-keyed upsert and nothing else.
 
-**Mission-Log ingestion.** The smallest gap by implementation cost: the log
-parser and the `mission_logs` table both already exist, so only the upsert and a
-duplicate key are missing. But it makes history queryable without changing what
-Arcadia dispatches. Under a "smallest gap" criterion this wins; under the
-operator's stated criterion it does not.
+**Narrative summarization.** Needs an Intelligence summarization job plus
+Artifact storage, and its output depends on the local Intelligence service being
+reachable. The most new machinery of the three, and the only one whose result
+degrades when a service is down.
 
-**Narrative summarization.** Depends on the local Intelligence service being
-reachable, making it the least deterministic of the three, and it likewise does
-not affect dispatch. It ranks last under this criterion.
+**Dependency persistence.** Half already delivered. Its second criterion — an
+Action cannot be dispatched while an Action it depends on is unfinished — has
+been enforced in `src/docs/dispatch.ts` since the dependency work landed. Only
+the first criterion, edges surviving a sync round trip, remained. Its remaining
+value is also the smallest, because dispatch resolves from documents rather than
+from the database, so persisted edges would not change any decision Arcadia
+makes today.
 
 ## Consequences
 
-`persist-dependencies` becomes the current Action and dependency edges become
-persisted state. An unfinished prerequisite is now a dispatch blocker naming the
-file, field, and remedy, rather than context an agent is free to ignore.
+Mission-Log ingestion was selected and implemented. `docs sync` no longer reports
+Log files as skipped; each dated entry becomes one `mission_logs` row keyed
+`log/<slug>#<date>`.
 
-The other two increments are unblocked and unranked between themselves. This
-decision selected one increment; it did not order the remainder, and
-`ingest-mission-logs` keeps its already-written acceptance criteria for whenever
-it is selected.
+Keying on the date rather than the full `## YYYY-MM-DD — title` heading is the
+consequence worth recording. The protocol calls the heading the entry key, but
+only the date half is promised stable — an operator rewording yesterday's title
+must not fork a second row for the same day. Two entries sharing one date is
+therefore reported as a per-file validation error rather than resolved by
+ingestion order.
+
+This Decision selected one increment, not an order for the remaining two. That
+question is open as Decision 0004.

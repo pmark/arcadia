@@ -556,8 +556,8 @@ you like; a file becomes Arcadia's business only when it opts in.
 ### What survives a re-run
 
 Every ingested row carries a `doc_ref` — `plan/<slug>#<action-id>`,
-`decision/<slug>` — built only from identifiers the protocol promises never
-change. Reword an action's title and the existing Action is **updated**; it does
+`decision/<slug>`, `log/<slug>#<date>--<title-slug>` — built only from
+identifiers the protocol promises never change. Reword an action's title and the existing Action is **updated**; it does
 not fork a duplicate. Re-running with no document changes reports everything as
 unchanged and writes nothing.
 
@@ -653,6 +653,80 @@ Three outcomes are possible, and each is a complete answer:
 An action owned by `requires_review` or `blocked` resolves cleanly but is never
 dispatchable — the pointer is valid, the work simply is not a coding agent's.
 
+### The whole ready set, not just the pointer
+
+`next` answers "what is current"; `--ready` answers "what could be current" —
+every Action in the active plan with no unmet prerequisite, no unanswered
+required Decision, and no open clarification question:
+
+```sh
+pnpm arcadia next --ready --workspace "$WORKSPACE" --project arcadia
+```
+
+```text
+Active plan: dispatch-contract-enforcement — docs/plans/dispatch-contract-enforcement.md
+
+Ready set (2):
+  * compute-ready-set — Compute the ready set instead of only refusing a bad pointer [codex]
+    surface-dispatch-journal — Surface the dispatch journal where the operator already looks [codex]
+
+Suggested current_action: compute-ready-set (the operator still decides; nothing was written).
+```
+
+The `*` marks the suggestion. It changes nothing: if the current
+`current_action` is itself in the ready set it is suggested unchanged,
+otherwise the first ready Action in the plan's own declaration order is
+suggested — no invented scoring, and never written without the operator
+setting it themselves.
+
+Every candidate is checked the same way a single-action lookup is, so this can
+never disagree with what `next` says about that one Action. An empty ready set
+still names the unfinished Action nearest to it, with its actual blockers,
+rather than printing nothing:
+
+```text
+Ready set: empty. No unfinished Action is fully ready.
+
+Nearest to ready: ship-it
+  Ship the thing
+  Responsibility: codex
+  Blockers:
+  ! docs/plans/sample-plan.md [actions.ship-it.depends_on]: Depends on "migrate", which is "open", not done.
+      Finish "migrate" first, or make it the current_action, or drop the dependency if it no longer holds.
+```
+
+Not journalled like `next` and `work plan` are: it reports a whole set on
+every call rather than resolving one dispatch attempt, and recording every
+Action it inspects would swamp the journal's real purpose — tracking actual
+dispatch attempts — with exploratory queries that never dispatched anything.
+
+### Whether the documents are earning their keep
+
+Every resolution — from `next` and from `work plan` alike — is journalled:
+what was asked, whether it was allowed, and which fields blocked it.
+
+```sh
+pnpm arcadia next history --workspace "$WORKSPACE" --limit 20
+```
+
+```text
+Dispatch resolutions: 34 · dispatchable 21 · blocked 13
+
+Blocked on:
+  actions.ship-it.depends_on — 9 of 34 resolutions (26%)
+  current_action — 4 of 34 resolutions (12%)
+
+Recent:
+  2026-07-26T05:43:24.205Z work.plan arcadia / portfolio-docs-protocol / ingest-mission-logs — question
+```
+
+The control documents are worth their overhead only if refusals are rare and for
+good reasons, and that is not answerable from memory. A field that blocks a
+quarter of all resolutions is either a rule worth relaxing or a habit worth
+fixing; the tally is what tells the two apart. Fields are counted once per
+resolution, so a plan with many dependencies does not outrank a rule that
+quietly blocks everything.
+
 ### The executive view
 
 ```sh
@@ -673,11 +747,51 @@ two Decisions. `arcadia portfolio` then shows the project as four ready and two
 blocked, and answering the two Decisions is visibly the thing standing between
 you and a workable queue.
 
+### Mission Logs
+
+Each dated entry in a `MISSION_LOG.md` becomes one row. The whole
+`## YYYY-MM-DD — title` heading is the key — `log/<slug>#<date>--<title-slug>` —
+so re-running an append-only file creates only the row for the new entry, and
+several entries may share a date, which real Logs do routinely. Two entries
+sharing a whole heading are reported as an error, because the key cannot tell
+them apart. Editing an entry's body updates its row; retitling an old entry
+records it as a new one.
+
+An entry with no `**Next:**` bullet records that it has none rather than
+inventing one. Re-ingesting rewrites only what the document owns — the Did,
+Result, Next, and Blockers text — and leaves any Project, Milestone, or Artifact
+that Arcadia later attached to that Log alone.
+
 ### Not yet ingested
 
-`MISSION_LOG.md` files and narrative docs (`type: architecture | strategy |
-reference`) are parsed and validated but not yet turned into rows; `docs sync`
-reports them as skipped so you can see the protocol recognizes them.
+Narrative docs (`type: architecture | strategy | reference`) are parsed and
+validated but not yet turned into rows; `docs sync` reports them as skipped so
+you can see the protocol recognizes them.
+
+### Action ordering and acceptance criteria
+
+Action `depends_on` links are validated at parse time: a dependency on an id
+that does not exist is an error, and so is a dependency cycle — no action in a
+cycle can ever become ready, so the plan describes work that cannot start.
+
+`arcadia next` enforces the ordering. If the current action depends, directly or
+transitively, on an action that is not `done`, the dispatch is blocked and each
+unmet prerequisite is named with its status and the chain that reached it.
+Finish it, make it the current action, or drop the dependency. Ordering is still
+not persisted to the database — it is enforced from the documents, which are
+authoritative.
+
+`arcadia work plan` enforces the same rules for any Action that came from a
+managed plan, whether or not it is the current action: unfinished prerequisites,
+unanswered required Decisions, and an open clarification question all refuse the
+preparation and name the file and field to repair. Actions Arcadia captured
+itself have no plan to be judged against and are unaffected.
+
+An action's `acceptance_criteria` are carried through `docs sync` onto the
+Action and quoted verbatim to the coding agent in the packet's Acceptance
+Criteria section, ahead of Arcadia's generated guardrails. Write them as the
+conditions you would check at review; they are what the agent is asked to
+satisfy.
 
 ## Plan Work
 
@@ -774,6 +888,39 @@ pnpm arcadia report status --workspace "$WORKSPACE"
 pnpm arcadia review weekly --workspace "$WORKSPACE"
 pnpm arcadia artifact list --workspace "$WORKSPACE" --json
 ```
+
+### Progress review, per Project or portfolio-wide
+
+```sh
+pnpm arcadia review weekly --workspace "$WORKSPACE"                       # whole workspace
+pnpm arcadia review weekly --workspace "$WORKSPACE" --project rebuster    # one Project
+pnpm arcadia review weekly --workspace "$WORKSPACE" --project rebuster \
+  --since 2026-07-01 --until 2026-07-31                                   # any bucket
+```
+
+Deterministic throughout — it compiles completed Actions, Logs, blocked work,
+Decisions, and Artifact changes from existing rows. No model runs.
+
+`--project` narrows every section to that Project and writes to
+`reports/weekly/<slug>/<until>.md`, so a Project review never overwrites the
+portfolio one for the same date. The two answer different questions: pooled
+says what happened, scoped says whether *this* moved — which pooling hides,
+because one busy Project reads as a productive week while four others sat
+still. The "Projects Without Open Next Actions" section is portfolio-level and
+is omitted from a scoped report.
+
+`--since`/`--until` are free-form, so the "weekly" name is only the default
+window — daily, monthly, or quarterly buckets are the same command.
+
+When the workspace has opted into vault memory (`memory.enabled`), each review
+is also projected into Obsidian as a `record_type: progress_review` Record under
+`Arcadia/Records/Progress/<scope>/<year>/`. Unlike an accepted planning
+Artifact, this is **not** gated behind a Decision: a progress review is a
+deterministic compilation of things that already happened, so there is no
+generated content to accept. Re-running a review that found nothing new is a
+no-op — the Record is hashed with its generation timestamp excluded, so an
+unchanged window does not churn the vault. A vault misconfiguration is reported
+but never costs you the report.
 
 Update an Action manually:
 

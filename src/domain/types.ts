@@ -95,8 +95,21 @@ export interface WorkItem {
    * rather than cascaded if the parent is deleted, so a child is never lost.
    */
   parent_work_item_id: string | null;
+  /**
+   * Where this Action came from in managed documentation
+   * (`plan/<plan-slug>#<action-id>`), or `null` for Actions Arcadia captured
+   * itself. Ingestion keys on it, and it is what makes the originating plan
+   * findable when a run is prepared.
+   */
+  doc_ref: string | null;
   /** Declared vendor-neutral execution requirement serialized from a managed plan. */
   execution_requirement_json: string | null;
+  /**
+   * Objective conditions that decide when this Action is finished, as a JSON
+   * string array, carried from a managed plan's `acceptance_criteria`. `null`
+   * means the Action did not come from a plan that declared any.
+   */
+  acceptance_criteria_json: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -462,6 +475,13 @@ export interface WeeklyReviewData {
   workspacePath: string;
   generatedAt: string;
   window: ReviewWindow;
+  /**
+   * The Project this review covers, or `null` for the whole workspace.
+   *
+   * A per-Project review answers "did this move this week", which the pooled
+   * workspace report cannot: one busy Project hides four stalled ones.
+   */
+  project: { id: string; name: string; slug: string } | null;
   completedWorkItems: WorkItemSummary[];
   missionLogs: MissionLogSummary[];
   blockedItems: WorkItemSummary[];
@@ -537,6 +557,8 @@ export interface CreateWorkItemInput {
   parentWorkItemId?: string | null;
   /** Vendor-neutral execution requirement JSON; `null` clears it. */
   executionRequirementJson?: string | null;
+  /** Declared acceptance criteria as a JSON string array; `null` clears it. */
+  acceptanceCriteriaJson?: string | null;
 }
 
 export interface UpdateWorkItemInput {
@@ -562,6 +584,8 @@ export interface UpdateWorkItemInput {
   parentWorkItemId?: string | null;
   /** Vendor-neutral execution requirement JSON; `null` clears it. */
   executionRequirementJson?: string | null;
+  /** Declared acceptance criteria as a JSON string array; `null` clears it. */
+  acceptanceCriteriaJson?: string | null;
 }
 
 export interface UpdateArtifactInput {

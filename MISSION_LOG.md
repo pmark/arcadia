@@ -3,10 +3,246 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-07-26
+updated: 2026-07-31
 ---
 
 # Mission Log: Arcadia
+
+## 2026-07-31 — Scoped narrative digests as a plan, not a feature request
+
+- **Did:** The operator asked for automatic daily/weekly/monthly narrative
+  digests, for Arcadia's own project and every Project Arcadia manages.
+  Grounded the ask in what already exists before drafting anything: the
+  Discord bot's orientation scheduler (interval tick, idempotent per local
+  period, self-catches-up after a miss) is the proven pattern for
+  "automatic"; `exportProgressReview` already writes deterministic,
+  non-Decision records into the Obsidian vault with atomic writes and
+  content-hash dedup; `mission_logs` and the dispatch journal, both landed
+  this session, are the structured substrate a digest reads from. Three
+  genuine forks were the operator's to decide, not mine to infer: how a
+  digest gets written (deterministic template, local AI narration, or a
+  hybrid), where it goes (Artifact, Discord, Obsidian, or some combination),
+  and what "automatic" runs inside (the existing bot process, or new
+  infrastructure). Asked directly; recorded the answers as Decision 0006
+  rather than silently deciding. Wrote `docs/plans/narrative-digests.md`
+  with three ordered Actions and two genuinely open questions (a
+  portfolio-wide roll-up digest, and calendar-aligned vs. rolling windows),
+  and noted explicitly that this is adjacent to, but does not satisfy, the
+  already-deferred `narrative-summarization` Action -- different subject
+  matter, kept separately scoped rather than merged.
+- **Result:** `active_plan` moves to `narrative-digests`, `current_action` to
+  `compose-project-digest` -- the one piece worth building in isolation,
+  since it answers the real open risk (can local AI narrate this honestly,
+  without inventing outcomes the data doesn't support) before anything is
+  wired to a schedule or a delivery surface.
+- **Next:** Build the composer: gather one Project's mission_logs,
+  dispatch_events, and Decision activity for a window, queue a
+  local-preferred Intelligence job to narrate them, store the result as a
+  new `narrative_digest` Artifact.
+- **Blockers:** none
+
+## 2026-07-31 — Fixed compute-ready-set: it required the pointer it exists to fix
+
+- **Did:** Dogfooding `arcadia next --ready` against this repository, right
+  after moving `active_plan` to a plan with no `current_action` set, caught a
+  real defect: `resolveReadySet` called `resolveDispatch` outright, which
+  itself requires a `current_action` to already resolve before returning
+  anything usable. A plan declaring none refused the whole ready set for the
+  same reason `next` refuses -- exactly the case this Action exists to help
+  with, and exactly backwards from its own acceptance criterion ("suggests a
+  `current_action` without writing one"). Extracted `resolveActivePlan` in
+  `src/docs/dispatch.ts` -- the Project-and-plan resolution `resolveDispatch`
+  already did, stopping short of anything about `current_action` -- and
+  shared it between both functions. `resolveDispatch` still requires
+  `current_action`; `resolveReadySet` no longer does, and enumerates every
+  Action in the resolved plan regardless.
+- **Result:** `arcadia next --ready` now correctly lists Actions, or names the
+  nearest-to-ready one, even when no `current_action` is set at all -- verified
+  against this repository's own real state. All 17 pre-existing
+  `resolveDispatch` tests still pass unchanged, confirming the extraction
+  preserved its exact behavior. 2 new regression tests cover the absent- and
+  dangling-current_action cases specifically, so this exact defect cannot
+  return silently.
+- **Next:** None; folded into compute-ready-set's delivery before it shipped.
+- **Blockers:** none
+
+## 2026-07-31 — Delivered surface-dispatch-journal; dispatch-contract-enforcement complete
+
+- **Did:** Added `dispatchJournal` to `DashboardSnapshot`
+  (`src/dashboard/snapshot.ts`): total resolutions, how many were refused, and
+  the single most frequent blocking field, computed via the existing
+  `summarizeDispatchEvents` rather than a new read. Stays inside the
+  snapshot's existing `withReadOnlyDatabase` transaction -- no write, no AI
+  call, matching the Action's own acceptance criteria. Rendered in the CLI's
+  human-readable `dashboard snapshot` output too, not only the JSON.
+- **Result:** All four Actions in `dispatch-contract-enforcement` are now
+  done. Its milestone -- managed plans governing work from dispatch through
+  acceptance -- is reached, so the plan moves to `status: complete` with no
+  `current_action`. `active_plan` moves back to `portfolio-docs-protocol`,
+  the only other active plan, though it has no ready Action either: both its
+  remaining increments are deferred against named triggers by Decision 0004.
+  This is the honest state of the whole portfolio right now -- nothing is
+  currently dispatchable anywhere -- recorded rather than papered over with
+  an invented pointer. The plan-level `criteria-judgment` question stays
+  open; no Action depended on its answer, so closing the plan does not close
+  the question.
+- **Next:** Whichever of Decision 0004's two named triggers fires first, or a
+  new outcome the operator states.
+- **Blockers:** none of the kind a document can repair -- there is genuinely
+  no ready work queued right now.
+
+## 2026-07-31 — Delivered compute-ready-set
+
+- **Did:** Built `resolveReadySet` in `src/docs/dispatch.ts` and wired it to
+  `arcadia next --ready`. It resolves the structural question (project,
+  active_plan, real plan document) once through `resolveDispatch` and reuses
+  its refusal verbatim rather than re-deriving it; every unfinished Action in
+  the resolved plan is then checked individually through
+  `resolveActionReadiness` -- the same function a single-action lookup
+  already uses -- so the ready set can never disagree with what `next` says
+  about any one Action. Deliberately does not additionally refuse the whole
+  set over pointer-level blockers (an inactive Project, a competing
+  current_action elsewhere) that describe the pointer rather than any one
+  Action's readiness, since reporting what would be ready dispatches nothing
+  and is not itself unsafe. The suggested current_action is deliberately
+  unambitious: the current pointer if it is itself ready, otherwise the first
+  ready Action in the plan's own declaration order -- no invented scoring,
+  and never written. An empty ready set still names the unfinished Action
+  with fewest readiness blockers rather than printing nothing.
+- **Result:** `arcadia next --ready` against this repository correctly lists
+  `compute-ready-set` and `surface-dispatch-journal` as the ready set (both
+  other Actions in the plan are done), and suggests `compute-ready-set`
+  unchanged since it was already current_action. 13 new tests: 11 unit tests
+  on `resolveReadySet` covering each exclusion rule, the suggestion logic in
+  both directions, the nearest-to-ready fallback, and agreement with
+  `resolveDispatch`; 2 integration tests exercising the real CLI command
+  against a docs-synced project, confirming nothing is journalled.
+- **Next:** `surface-dispatch-journal` is now `current_action` -- the last
+  Action in `dispatch-contract-enforcement`, exactly where the plan's own
+  ordering said it should land.
+- **Blockers:** none
+
+## 2026-07-31 — Cross-referenced the "OK to go" reporting signal
+
+- **Did:** Added a fixed `OK to go: <verb-first next step>` line to
+  `AGENTS.md`'s "Always identify" list: whenever a message resolves to
+  exactly one concrete, unblocked next step, end it with that exact line as
+  the last thing in the message; omit it entirely otherwise. The full
+  specification lives in Private Practice Now's
+  `docs/agent-continuation-protocol.md`, since the rule governs every coding
+  agent's reports across every project operating under the Arcadia Way, not
+  only this repository -- this entry is the pointer, not a second copy.
+- **Result:** A single vocabulary for "ready to execute" now spans both
+  repositories rather than each inventing its own phrasing.
+- **Next:** None; this is a standing reporting behavior, not a tracked
+  action.
+- **Blockers:** none
+
+## 2026-07-31 — Delivered verify-acceptance-criteria
+
+- **Did:** Built `src/stewardship/acceptanceCriteria.ts`, evaluating each of a
+  plan's declared acceptance criteria against the accepted planning Artifact's
+  text. Deliberately narrow: nothing here can verify a free-text English claim
+  is true, only whether the Artifact addressed the topic at all, so the
+  checker produces only `unmet` (the criterion's terms are absent -- real
+  negative evidence) or `unchecked` (present, but truth unverifiable
+  mechanically). It never produces `met` -- inventing that judgment now would
+  pre-empt this plan's own open `criteria-judgment` question about whether
+  local Intelligence should ever rule on what a script cannot. Wired into
+  `review.ts`'s `CodexPlanningArtifactAcceptance` approval: the report lands
+  in the Decision's `decisionNote` in the plan author's own words, and the
+  structured per-criterion results merge into `context_json` via a new
+  `mergeReviewItemContext` repository function. An Action whose plan declared
+  no criteria is untouched -- the check runs only when criteria exist, so
+  `decisionNote` is byte-for-byte what it was before this landed.
+- **Result:** Accepting a Run's planning Artifact now reports each declared
+  criterion by name, rather than accepting silently regardless of what was
+  promised. 8 new unit tests cover the checker directly; 2 new integration
+  tests exercise the full pipeline (packet approval through Run through
+  acceptance) and confirm both the populated and untouched-when-no-criteria
+  cases.
+- **Next:** `compute-ready-set` remains `current_action` and is the
+  dispatchable Action -- `arcadia next --ready`, listing every Action with no
+  unmet prerequisite, unanswered Decision, or open question.
+- **Blockers:** none
+
+## 2026-07-31 — Answered recheck-readiness-at-approval as a hybrid
+
+- **Did:** Traced the actual gap before answering the question: approval
+  checked packet content (a sha256 digest) and link consistency, but never
+  re-asked whether the plan document still said the Action was ready.
+  Recorded Decision 0005 -- recheck readiness at approval only when the plan
+  document's own `updated:` field has moved since the packet was built, the
+  same staleness signal `docs sync` already trusts elsewhere. Implemented it:
+  `ActionReadiness` now carries `planUpdated`; the planning Decision's context
+  snapshots it at build time; `queueApprovedPlanningRun` compares the two
+  before its transaction opens (not inside it -- a refusal that journals its
+  own resolution and then rolls that journal entry back with everything else
+  answers nothing, the same reason `work plan`'s guard runs before its own
+  transaction). Moved `parseActionDocRef` from a private helper in
+  `work.ts` to `docs/types.ts` as the inverse of `actionDocRef`, so build-time
+  and approval-time checks share one implementation.
+- **Result:** A packet approved long after a dependency regresses or a
+  required Decision reopens is now refused, naming the blocker, provided the
+  document's `updated:` moved -- which is the one signal the rest of the
+  protocol already relies on. A packet approved while nothing changed pays no
+  extra cost. Four new tests in `tests/dispatch-journal.test.ts` cover
+  unchanged / moved-but-fine / moved-and-regressed / moved-without-a-blocker,
+  plus the hybrid's one accepted, deliberately undocumented-as-a-bug gap: a
+  regression whose author forgot to bump `updated:` is not caught.
+- **Next:** `verify-acceptance-criteria` is next in this plan's own stated
+  ordering, now that the review-and-acceptance surgery it was waiting to avoid
+  duplicating is done. `compute-ready-set` remains `current_action` and is
+  still the dispatchable Action.
+- **Blockers:** none
+
+## 2026-07-31 — Settled Decision 0004 and added "if not now, then when?"
+
+- **Did:** Answered Decision 0004 rather than leaving it open: neither remaining
+  increment now, both `deferred` against conditions that can actually fire —
+  dependency persistence when a database-backed view must show ordering without
+  re-crawling, narrative summarization when a second foreign repository is
+  onboarded or a summary is genuinely wanted. Followed the consequence the
+  Decision itself had recorded and moved `active_plan` to
+  `dispatch-contract-enforcement`, promoting it from draft with
+  `compute-ready-set` as `current_action` per that plan's own ordering note.
+  Added **"If not now, then when?"** to `AGENTS.md` beside the 80/20 rule, and
+  two lines to `CONSTITUTION.md`.
+- **Result:** `arcadia next` now resolves a dispatchable Action with zero
+  blockers and no operator question, for the first time since 2026-07-25 — the
+  pointer had spent six days returning a question. `deferred` is deliberately
+  not counted as resolved by `dispatch.ts`, so the two deferred Actions stay
+  blocked without pretending to be startable, and neither is waiting on a person.
+- **Next:** Implement `compute-ready-set` — `arcadia next --ready`, computed
+  through `resolveActionReadiness` rather than a second copy of the rules.
+- **Blockers:** none
+
+## 2026-07-31 — Ingested mission Logs as rows
+
+- **Did:** Resolved the work pointer, which returned its one operator question
+  rather than a dispatch. Read the three candidate increments in code before
+  surfacing it, which changed what the question was worth answering with:
+  mission-Log ingestion needed only an upsert, and dependency persistence turned
+  out to be half delivered already. The operator selected mission-Log ingestion
+  as Decision 0003. Implemented it — a `doc_ref` column on `mission_logs`
+  through the existing migration, and per-entry create/update/unchanged/skipped
+  reporting matching every other document type. Keyed entries on the date alone
+  at first; running it against this repository refused five of nine entries,
+  because five of them are dated 2026-07-25. Rekeyed on the whole heading.
+- **Result:** `docs sync` no longer reports Log files as skipped. A full apply
+  against Arcadia's own repository reports 42 creates, 0 skips, and 0 errors,
+  and a second apply reports everything unchanged. Narrative docs are now the
+  only intentional skip a conforming repository produces. Recorded that
+  `persist-dependencies` already meets its enforcement criterion, so the plan
+  stops claiming work that is done. Found but did not fix an unrelated
+  non-convergence: `syncProject` treats `name` as drift while `updateProject`
+  cannot write it, so a renamed Project reports an update on every sync forever.
+- **Next:** Answer Decision 0004 — dependency persistence, narrative
+  summarization, or neither, in which case move `active_plan` to
+  `dispatch-contract-enforcement` rather than leaving a pointer nobody intends
+  to advance.
+- **Blockers:** `persist-dependencies` is `question_open` on Decision 0004, so
+  `arcadia next` will keep returning that question rather than dispatching.
 
 ## 2026-07-26 — Made Private Practice Now dispatchable again
 
@@ -64,28 +300,44 @@ updated: 2026-07-26
 
 ## 2026-07-26 — Made depends_on ordering constrain dispatch
 
-- **Did:** Answered the open increment-selection question as Decision 0003 and
-  implemented `persist-dependencies`. Added a `work_item_dependencies` edge
-  table, a second `docs sync` pass that replaces each Action's document-declared
-  edges, and a dispatch blocker in `resolveDispatch` for any unfinished
-  prerequisite. Corrected the two stale claims in `docs/COMMANDS.md`.
-- **Result:** `depends_on` now constrains what Arcadia hands a coding agent
-  instead of only being validated. Sync applied 14 real edges across three plans
-  and re-ran as 0 created, 0 updated, 42 unchanged; the composite primary key is
-  what makes the re-run a no-op. Deleting a `depends_on` line removes the edge,
-  while a dependency recorded outside ingestion survives. Refusal was verified
-  against Arcadia's real documents, naming the file, field, prerequisite, and
-  three repairs. Full suite passed 633 tests with 2 skipped, up from 628, and
-  TypeScript passed. No deployment, publish, commit, push, credentials,
-  production access, or destructive action occurred.
-- **Next:** `ingest-mission-logs` is the current Action — the log parser and the
-  `mission_logs` table already exist, so the gap is the upsert plus a duplicate
-  key. It needs an entry key before implementation, since `mission_logs` has no
-  `doc_ref` or entry-date column today.
-- **Blockers:** None. Decision 0003 selected one increment and deliberately did
-  not order the remaining two; the pointer now names `ingest-mission-logs` by
-  applying the operator's stated criterion rather than stalling on a second
-  question, and the operator may redirect it to `narrative-summarization`.
+- **Did:** Implemented `persist-dependencies` on the parallel local history.
+  Added a `work_item_dependencies` edge table, a second `docs sync` pass that
+  replaces each Action's document-declared edges, and a dispatch blocker for
+  any unfinished prerequisite.
+- **Result:** `depends_on` now constrains what Arcadia hands a coding agent and
+  survives a sync round trip. Sync applied 14 real edges across three plans and
+  re-ran as 0 created, 0 updated, 42 unchanged; deleting a document-owned edge
+  removes it while an edge recorded outside ingestion survives. The full suite
+  passed 633 tests with 2 skipped, and TypeScript passed.
+- **Next:** `ingest-mission-logs` remained the next protocol Action at the time;
+  it was subsequently selected and delivered under Decision 0003.
+- **Blockers:** None. This parallel implementation was retained when the local
+  and remote histories merged on 2026-07-31.
+
+## 2026-07-26 — Made project continuation actionable
+
+- **Did:** Pulled `main` to the latest merge, then added a project-scoped
+  continuation API and Project view panel. The panel resolves the current
+  Milestone and Action from the repository's managed documents, displays the
+  source plan, expected Artifact, responsibility, resolved execution profile,
+  acceptance evidence, operator questions, and deterministic document
+  blockers. Added guarded **Get to work** preparation for the exact current
+  Action and inline project Decision responses.
+- **Result:** Private Practice Now no longer appears idle merely because its
+  docs-authoritative Action is `in_progress` and therefore not eligible for the
+  portfolio-wide Daily Advantage query. Its valid `systems_change` continuation
+  is visible and can prepare a planning Decision without modifying PPN code or
+  starting a Run. Refusal remains explicit when a pointer, question, required
+  field, or responsibility prevents dispatch.
+- **Next:** Keep `ingest-mission-logs` as Arcadia's authoritative current
+  Action; this UX increment does not silently change protocol priority. Resolve
+  the PPN planning profile only when an approved provider mapping satisfies its
+  declared capability and locality requirements.
+- **Blockers:** PPN's `systems_change` profile currently refuses preparation:
+  no configured planning provider satisfies `c3_systems/e3_deep` while honoring
+  `local_only`. Arcadia names every rejected mapping and makes no weaker
+  substitution. Narrative and mission-Log persistence plus dependency
+  persistence remain documented protocol gaps.
 
 ## 2026-07-25 — Made clarification Decisions conversational
 

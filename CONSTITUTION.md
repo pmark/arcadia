@@ -11,3 +11,5 @@
 - Use local scripts before AI.
 - Use local AI before frontier models.
 - Avoid over-engineering.
+- Find the 20% that carries the 80%, and do that first.
+- If not now, then when? A deferral must name the condition that revives it.
