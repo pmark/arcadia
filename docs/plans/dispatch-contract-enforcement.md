@@ -5,7 +5,7 @@ slug: dispatch-contract-enforcement
 project: arcadia
 status: active
 milestone: Managed plans govern work from dispatch through acceptance
-current_action: compute-ready-set
+current_action: surface-dispatch-journal
 updated: 2026-07-31
 actions:
   - id: verify-acceptance-criteria
@@ -25,10 +25,10 @@ actions:
     depends_on: []
   - id: compute-ready-set
     title: Compute the ready set instead of only refusing a bad pointer
-    status: open
+    status: done
     responsibility: codex
     effort: session
-    next_action: Add `arcadia next --ready`, listing every Action with no unmet prerequisite, no unanswered required Decision, and no open clarification question.
+    next_action: Delivered as resolveReadySet in src/docs/dispatch.ts and arcadia next --ready; no further work.
     expected_artifact: arcadia next --ready listing dispatchable Actions across the active plan
     clarification: clarified
     confidence: high
@@ -153,11 +153,11 @@ and of each other.
 
 That preference is what made `compute-ready-set` the `current_action` when this
 plan became active under Decision 0004: it was the only one of the four that
-depended on no open question. `recheck-readiness-at-approval` and
-`verify-acceptance-criteria` are both now delivered, in that order, following
-the ordering this section committed to before either was started.
-`compute-ready-set` remains `current_action` — still open, still the pointer —
-with `surface-dispatch-journal` deliberately last after it.
+depended on no open question. `recheck-readiness-at-approval`,
+`verify-acceptance-criteria`, and `compute-ready-set` are now all delivered, in
+that order, following the ordering this section committed to before any of
+them started. `surface-dispatch-journal` is now `current_action` — the last
+Action in this plan, exactly where this section said it should land.
 
 `surface-dispatch-journal` is the least valuable of the four and should stay
 last. The journal already answers its question from the CLI; putting it on the
@@ -185,6 +185,40 @@ agent for what a script can check" below.
 An Action whose plan declared no criteria is unaffected: the check runs only
 when `acceptance_criteria_json` is non-empty, so `decisionNote` and
 `context_json` are byte-for-byte what they were before this Action existed.
+
+## Computing the ready set
+
+Delivered as `resolveReadySet` in `src/docs/dispatch.ts`, surfaced as
+`arcadia next --ready`.
+
+It calls `resolveDispatch` once for the structural question — does a project,
+an `active_plan`, and a real plan document resolve at all — and reuses its
+`blockers` verbatim when they do not, rather than re-deriving that refusal a
+second way. Once the plan is in hand, every unfinished (`status != done`,
+`status != blocked`) Action in it is checked through `resolveActionReadiness`
+individually — the same function a single-Action lookup already uses — so the
+ready set and `arcadia next` can never disagree about whether any one Action is
+ready.
+
+Deliberately narrower than `resolveDispatch` in one respect: it does not
+additionally refuse the whole set over blockers that describe the *pointer*
+rather than any one Action — an inactive Project, a competing `current_action`
+elsewhere. Those still block real dispatch through `next` and `work plan`
+exactly as before; this command only reports what *would* be ready, and
+reporting that is not itself an unsafe act.
+
+The suggestion is deliberately unambitious: if the current `current_action` is
+itself in the ready set, it is suggested unchanged (no reason to recommend
+switching away from something that already works); otherwise the first ready
+Action in the plan's own declaration order is suggested. No scoring, no
+judgment about which Action matters most — that would be inventing a
+prioritization scheme nothing else in this protocol has, for a command whose
+job is to compute, not to decide. The operator always decides; nothing is ever
+written.
+
+An empty ready set still says something: the one unfinished Action with the
+fewest readiness blockers, so "nothing is ready" is never presented as "there
+is nothing to look at."
 
 ## What this plan deliberately does not do
 

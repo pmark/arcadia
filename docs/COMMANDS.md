@@ -617,6 +617,53 @@ Three outcomes are possible, and each is a complete answer:
 An action owned by `requires_review` or `blocked` resolves cleanly but is never
 dispatchable — the pointer is valid, the work simply is not a coding agent's.
 
+### The whole ready set, not just the pointer
+
+`next` answers "what is current"; `--ready` answers "what could be current" —
+every Action in the active plan with no unmet prerequisite, no unanswered
+required Decision, and no open clarification question:
+
+```sh
+pnpm arcadia next --ready --workspace "$WORKSPACE" --project arcadia
+```
+
+```text
+Active plan: dispatch-contract-enforcement — docs/plans/dispatch-contract-enforcement.md
+
+Ready set (2):
+  * compute-ready-set — Compute the ready set instead of only refusing a bad pointer [codex]
+    surface-dispatch-journal — Surface the dispatch journal where the operator already looks [codex]
+
+Suggested current_action: compute-ready-set (the operator still decides; nothing was written).
+```
+
+The `*` marks the suggestion. It changes nothing: if the current
+`current_action` is itself in the ready set it is suggested unchanged,
+otherwise the first ready Action in the plan's own declaration order is
+suggested — no invented scoring, and never written without the operator
+setting it themselves.
+
+Every candidate is checked the same way a single-action lookup is, so this can
+never disagree with what `next` says about that one Action. An empty ready set
+still names the unfinished Action nearest to it, with its actual blockers,
+rather than printing nothing:
+
+```text
+Ready set: empty. No unfinished Action is fully ready.
+
+Nearest to ready: ship-it
+  Ship the thing
+  Responsibility: codex
+  Blockers:
+  ! docs/plans/sample-plan.md [actions.ship-it.depends_on]: Depends on "migrate", which is "open", not done.
+      Finish "migrate" first, or make it the current_action, or drop the dependency if it no longer holds.
+```
+
+Not journalled like `next` and `work plan` are: it reports a whole set on
+every call rather than resolving one dispatch attempt, and recording every
+Action it inspects would swamp the journal's real purpose — tracking actual
+dispatch attempts — with exploratory queries that never dispatched anything.
+
 ### Whether the documents are earning their keep
 
 Every resolution — from `next` and from `work plan` alike — is journalled:
