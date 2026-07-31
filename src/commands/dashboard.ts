@@ -57,7 +57,12 @@ export function renderDashboardSnapshotSuccess(response: CommandSuccess<Dashboar
     `Active runs: ${snapshot.counts.activeRuns}`,
     `Recent runs: ${snapshot.counts.recentRuns}`,
     `Recent artifacts: ${snapshot.counts.recentArtifacts}`,
-    `Activity events: ${snapshot.counts.activityEvents}`
+    `Activity events: ${snapshot.counts.activityEvents}`,
+    "",
+    `Dispatch resolutions: ${snapshot.dispatchJournal.totalResolutions} · refused ${snapshot.dispatchJournal.refused}` +
+      (snapshot.dispatchJournal.mostFrequentBlockingField
+        ? ` · most frequent block: ${snapshot.dispatchJournal.mostFrequentBlockingField.field} (${snapshot.dispatchJournal.mostFrequentBlockingField.resolutions})`
+        : "")
   ];
 }
 

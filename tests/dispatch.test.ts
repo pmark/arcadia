@@ -286,7 +286,7 @@ describe("dispatch resolution", () => {
  * the ordering it means without editing the shared clean-plan fixture.
  */
 function graphPlanDoc(
-  current: string,
+  current: string | null,
   actions: Array<{
     id: string;
     status?: string;
@@ -304,11 +304,12 @@ function graphPlanDoc(
     "slug: main-plan",
     "project: demo",
     "status: active",
-    "milestone: First milestone",
-    `current_action: ${current}`,
-    "updated: 2026-07-25",
-    "actions:"
+    "milestone: First milestone"
   ];
+  if (current !== null) {
+    lines.push(`current_action: ${current}`);
+  }
+  lines.push("updated: 2026-07-25", "actions:");
   for (const action of actions) {
     const clarification = action.clarification ?? "clarified";
     lines.push(
@@ -628,6 +629,43 @@ describe("ready set (compute-ready-set)", () => {
     const dispatch = resolveDispatch(root, "demo");
     const readySet = resolveReadySet(root, "demo");
 
+    expect(readySet.ready).toEqual([]);
+    expect(readySet.blockers).toEqual(dispatch.blockers);
+  });
+
+  it("still computes the ready set when the plan designates no current_action at all", () => {
+    // The exact case this command exists for: `next` refuses outright here
+    // ("designates no current_action"), but the plan still resolves
+    // structurally, and its Actions are still real and checkable.
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(root, "docs/plans/main-plan.md", graphPlanDoc(null, [{ id: "first" }, { id: "second" }]));
+
+    const dispatch = resolveDispatch(root, "demo");
+    const readySet = resolveReadySet(root, "demo");
+
+    expect(dispatch.context).toBeNull();
+    expect(dispatch.blockers.some((blocker) => blocker.field === "current_action")).toBe(true);
+
+    expect(readySet.blockers).toEqual([]);
+    expect(readySet.planSlug).toBe("main-plan");
+    expect(readySet.ready.map((entry) => entry.actionId)).toEqual(["first", "second"]);
+    expect(readySet.suggestedCurrentAction).toBe("first");
+  });
+
+  it("refuses, like resolveDispatch, when current_action is dangling -- a parse error, not an empty pointer", () => {
+    // Unlike an absent current_action (the previous test), a current_action
+    // naming no real action id fails the plan document at parse time, so
+    // there is no plan to enumerate at all -- both resolvers must refuse the
+    // same way.
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(root, "docs/plans/main-plan.md", graphPlanDoc("no-such-action", [{ id: "first" }, { id: "second" }]));
+
+    const dispatch = resolveDispatch(root, "demo");
+    const readySet = resolveReadySet(root, "demo");
+
+    expect(dispatch.context).toBeNull();
     expect(readySet.ready).toEqual([]);
     expect(readySet.blockers).toEqual(dispatch.blockers);
   });

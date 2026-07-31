@@ -1,4 +1,4 @@
-import { discoverDocs } from "./discover.js";
+import { discoverDocs, type DiscoveryResult } from "./discover.js";
 import type {
   ArcadiaDoc,
   DecisionDoc,
@@ -51,14 +51,28 @@ const AUTHORIZATION: Record<string, string> = {
   blocked: "Progress depends on an outside party or an external state change."
 };
 
+/** The Project and its active plan, resolved structurally -- before anything
+ *  is asked about `current_action`. */
+interface ActivePlanResolution {
+  discovered: DiscoveryResult;
+  project: ProjectDoc | null;
+  plan: PlanDoc | null;
+  blockers: DispatchBlocker[];
+}
+
 /**
- * Resolve the authoritative work pointer from the repository.
+ * Resolve the Project and its active plan document.
+ *
+ * Shared by `resolveDispatch`, which goes on to resolve one Action from the
+ * result, and `resolveReadySet`, which enumerates every Action in the plan
+ * instead — so both agree about what "the active plan" even is, and neither
+ * silently diverges into a second implementation of this resolution.
  *
  * Reads documents, never the database: the contract makes checked-in
  * documentation authoritative when it disagrees with dispatch metadata, so
  * resolving from anywhere else would defeat the point.
  */
-export function resolveDispatch(repoRoot: string, projectSlug?: string): DispatchResolution {
+function resolveActivePlan(repoRoot: string, projectSlug?: string): ActivePlanResolution {
   const blockers: DispatchBlocker[] = [];
   const discovered = discoverDocs(repoRoot);
 
@@ -85,7 +99,7 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
         : `No PROJECT.md with \`arcadia: v1\` frontmatter was found under ${repoRoot}.`,
       remedy: "Add a managed PROJECT.md declaring the project slug, status, goal, and active_plan."
     });
-    return { context: null, blockers, operatorQuestion: null };
+    return { discovered, project: null, plan: null, blockers };
   }
 
   if (project.status !== "active") {
@@ -108,7 +122,7 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
       message: "PROJECT.md declares no active_plan, so no plan governs current work.",
       remedy: `Set \`active_plan\` to one of: ${plans.map((plan) => plan.slug).join(", ") || "(no plans found)"}.`
     });
-    return { context: null, blockers, operatorQuestion: null };
+    return { discovered, project, plan: null, blockers };
   }
 
   const plan = plans.find((doc) => doc.slug.toLowerCase() === project.activePlan!.toLowerCase()) ?? null;
@@ -119,7 +133,7 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
       message: `active_plan is "${project.activePlan}", which matches no plan in this project.`,
       remedy: `Point active_plan at an existing plan: ${plans.map((doc) => doc.slug).join(", ") || "(none)"}.`
     });
-    return { context: null, blockers, operatorQuestion: null };
+    return { discovered, project, plan: null, blockers };
   }
 
   // Only one action may be current across the whole project. Checked only once
@@ -139,7 +153,6 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
   // The contract puts both pointers on the project. A plan-level pointer is
   // still honored for projects that have not adopted that, but the project's
   // wins and a disagreement is reported rather than silently resolved.
-  const currentActionId = project.currentAction ?? plan.currentAction;
   if (project.currentAction && plan.currentAction && project.currentAction !== plan.currentAction) {
     blockers.push({
       relativePath: plan.relativePath,
@@ -148,6 +161,25 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
       remedy: "Remove the plan's current_action, or make the two agree. PROJECT.md is authoritative."
     });
   }
+
+  return { discovered, project, plan, blockers };
+}
+
+/**
+ * Resolve the authoritative work pointer from the repository.
+ *
+ * Reads documents, never the database: the contract makes checked-in
+ * documentation authoritative when it disagrees with dispatch metadata, so
+ * resolving from anywhere else would defeat the point.
+ */
+export function resolveDispatch(repoRoot: string, projectSlug?: string): DispatchResolution {
+  const { discovered, project, plan, blockers } = resolveActivePlan(repoRoot, projectSlug);
+
+  if (!project || !plan) {
+    return { context: null, blockers, operatorQuestion: null };
+  }
+
+  const currentActionId = project.currentAction ?? plan.currentAction;
 
   if (!currentActionId) {
     blockers.push({
@@ -463,62 +495,44 @@ export interface ReadySetResolution {
  * Compute every Action in the active plan a coding agent could dispatch right
  * now, instead of only refusing a bad pointer.
  *
- * Deliberately narrower than `resolveDispatch`: it does not require a
- * `current_action` to already resolve, and it reports the whole set an
- * operator could choose from rather than one refusal. Each candidate's
+ * Deliberately narrower than `resolveDispatch` in what it requires: it shares
+ * `resolveActivePlan` to resolve the Project and its active plan document,
+ * but — unlike `resolveDispatch` — does not additionally require a
+ * `current_action` to already resolve. A plan with no `current_action`, or a
+ * dangling one, is exactly the case this command exists to help with: it
+ * still enumerates every Action and reports what could be pointed at, rather
+ * than refusing for the same reason `next` refuses. Each candidate's
  * readiness is resolved through `resolveActionReadiness` — the same rule
  * `resolveDispatch` itself uses for its current_action — so this can never
  * disagree with what `arcadia next` would say about any one Action.
  *
- * Gated only on whether the pointer resolves *structurally* (a project, an
- * active_plan, a real plan document) — the same condition `resolveDispatch`
- * uses to decide whether `context` exists at all. It does not additionally
- * refuse on every blocker `resolveDispatch` might report (an inactive
- * Project, a competing current_action elsewhere), because those describe the
- * *pointer*, not any one Action's readiness, and this command computes
- * readiness, never dispatches anything — nothing unsafe is enabled by
- * reporting what would be ready.
+ * Only refuses on the same conditions that leave `resolveActivePlan` with no
+ * plan at all (no project, no active_plan, active_plan matching no plan). It
+ * does not additionally refuse on every blocker `resolveDispatch` might
+ * report (an inactive Project, a competing current_action elsewhere),
+ * because those describe the *pointer*, not any one Action's readiness, and
+ * this command computes readiness, never dispatches anything — nothing
+ * unsafe is enabled by reporting what would be ready.
  */
 export function resolveReadySet(repoRoot: string, projectSlug?: string): ReadySetResolution {
-  const dispatch = resolveDispatch(repoRoot, projectSlug);
+  const { project, plan, blockers } = resolveActivePlan(repoRoot, projectSlug);
 
-  if (!dispatch.context) {
+  if (!project || !plan) {
     return {
-      projectSlug: projectSlug ?? null,
+      projectSlug: project?.slug ?? projectSlug ?? null,
       planSlug: null,
       planPath: null,
-      blockers: dispatch.blockers,
+      blockers,
       ready: [],
       suggestedCurrentAction: null,
       nearest: null
     };
   }
 
-  const { projectSlug: resolvedProjectSlug, activePlan: planSlug, planPath } = dispatch.context;
-
-  const discovered = discoverDocs(repoRoot);
-  const plan = discovered.docs.find(
-    (doc): doc is PlanDoc => doc.type === "plan" && doc.slug.toLowerCase() === planSlug.toLowerCase()
-  );
-  if (!plan) {
-    // Cannot happen when dispatch.context resolved — the plan that produced
-    // it must exist — but reported rather than thrown, matching this
-    // module's refuse-don't-throw posture everywhere else.
-    return {
-      projectSlug: resolvedProjectSlug,
-      planSlug,
-      planPath,
-      blockers: [{
-        relativePath: planPath,
-        field: "type: plan",
-        message: `Active plan "${planSlug}" resolved a current action but could not be re-read.`,
-        remedy: "Re-run; if this persists, the plan document may have changed mid-resolution."
-      }],
-      ready: [],
-      suggestedCurrentAction: null,
-      nearest: null
-    };
-  }
+  const resolvedProjectSlug = project.slug;
+  const planSlug = plan.slug;
+  const planPath = plan.relativePath;
+  const currentActionId = project.currentAction ?? plan.currentAction;
 
   const unfinished = plan.actions.filter((action) => action.status !== "done" && action.status !== "blocked");
 
@@ -537,7 +551,6 @@ export function resolveReadySet(repoRoot: string, projectSlug?: string): ReadySe
       responsibility: entry.action.responsibility
     }));
 
-  const currentActionId = dispatch.context.action.id;
   const suggestedCurrentAction = ready.length === 0
     ? null
     : ready.some((entry) => entry.actionId === currentActionId)

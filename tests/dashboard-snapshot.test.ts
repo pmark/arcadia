@@ -7,6 +7,7 @@ import { runAttentionCommand, runDashboardSnapshotCommand } from "../src/command
 import { runReviewRequiredCommand } from "../src/commands/review.js";
 import { buildDashboardSnapshot } from "../src/dashboard/snapshot.js";
 import { withDatabase } from "../src/db/connection.js";
+import { recordDispatchEvent } from "../src/docs/journal.js";
 import {
   createExecutionPlan,
   createExecutionRun,
@@ -218,6 +219,57 @@ describe("dashboard snapshot", () => {
       outcome: "Ship a managed dashboard workflow."
     });
     expect(existsSync(paths.statusReport)).toBe(false);
+  });
+
+  it("surfaces the dispatch journal's tally, without running anything", () => {
+    const workspace = initializedWorkspace();
+
+    withDatabase(workspace, (db) => {
+      const blocker = (field: string) => ({
+        relativePath: "docs/plans/p.md",
+        field,
+        message: "m",
+        remedy: "r"
+      });
+      recordDispatchEvent(db, {
+        command: "next",
+        dispatchable: false,
+        blockers: [blocker("actions.a.depends_on")],
+        operatorQuestion: null
+      });
+      recordDispatchEvent(db, {
+        command: "next",
+        dispatchable: false,
+        blockers: [blocker("actions.a.depends_on"), blocker("current_action")],
+        operatorQuestion: null
+      });
+      recordDispatchEvent(db, {
+        command: "next",
+        dispatchable: true,
+        blockers: [],
+        operatorQuestion: null
+      });
+    });
+
+    const snapshot = buildDashboardSnapshot({ workspace });
+
+    expect(snapshot.dispatchJournal).toEqual({
+      totalResolutions: 3,
+      refused: 2,
+      mostFrequentBlockingField: { field: "actions.a.depends_on", resolutions: 2 }
+    });
+  });
+
+  it("reports an empty dispatch journal as zero, not absent", () => {
+    const workspace = initializedWorkspace();
+
+    const snapshot = buildDashboardSnapshot({ workspace });
+
+    expect(snapshot.dispatchJournal).toEqual({
+      totalResolutions: 0,
+      refused: 0,
+      mostFrequentBlockingField: null
+    });
   });
 
   it("uses Requires Review for all UI-facing labels", () => {

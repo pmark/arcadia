@@ -14,6 +14,7 @@ import {
   type RebusterIntegration
 } from "../capabilities/rebuster/repository.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
+import { summarizeDispatchEvents } from "../docs/journal.js";
 import {
   buildStatusReportData,
   getProjectMetadata,
@@ -64,6 +65,19 @@ export interface DashboardSnapshot {
   backBurnerItems: DashboardBackBurnerItem[];
   recentRuns: DashboardRun[];
   recentArtifacts: DashboardArtifact[];
+  dispatchJournal: DashboardDispatchJournal;
+}
+
+/**
+ * The dispatch journal's own tally, read where the operator already looks
+ * instead of requiring `arcadia next history` to be remembered. A summary,
+ * not the ledger itself — `next history` remains the place to read individual
+ * resolutions.
+ */
+export interface DashboardDispatchJournal {
+  totalResolutions: number;
+  refused: number;
+  mostFrequentBlockingField: { field: string; resolutions: number } | null;
 }
 
 export interface DashboardProject {
@@ -365,6 +379,12 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
       item.status === "incubating" || item.status === "opportunistic"
     );
     const dailyAdvantage = selectDailyAdvantage(db);
+    const dispatchSummary = summarizeDispatchEvents(db);
+    const dispatchJournal: DashboardDispatchJournal = {
+      totalResolutions: dispatchSummary.total,
+      refused: dispatchSummary.blocked,
+      mostFrequentBlockingField: dispatchSummary.byField[0] ?? null
+    };
     const lastArtifactByProject = new Map<string, DashboardArtifact>();
 
     for (const artifact of artifacts) {
@@ -440,7 +460,8 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
       requiresReviewItems: reviewItems.map(toDashboardReviewItem),
       backBurnerItems: backBurnerItems.map(toDashboardBackBurnerItem),
       recentRuns: runs.map(toDashboardRun),
-      recentArtifacts: artifacts.slice(0, artifactLimit).map(toDashboardArtifact)
+      recentArtifacts: artifacts.slice(0, artifactLimit).map(toDashboardArtifact),
+      dispatchJournal
     };
   });
 }

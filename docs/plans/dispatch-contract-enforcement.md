@@ -3,9 +3,8 @@ arcadia: v1
 type: plan
 slug: dispatch-contract-enforcement
 project: arcadia
-status: active
+status: complete
 milestone: Managed plans govern work from dispatch through acceptance
-current_action: surface-dispatch-journal
 updated: 2026-07-31
 actions:
   - id: verify-acceptance-criteria
@@ -86,10 +85,10 @@ actions:
     depends_on: []
   - id: surface-dispatch-journal
     title: Surface the dispatch journal where the operator already looks
-    status: open
+    status: done
     responsibility: codex
     effort: short
-    next_action: Add the dispatch journal's refusal tally to the dashboard snapshot so reading it does not depend on remembering a CLI command.
+    next_action: Delivered as DashboardSnapshot.dispatchJournal in src/dashboard/snapshot.ts; no further work.
     expected_artifact: Refusal tally in the dashboard snapshot
     clarification: clarified
     confidence: medium
@@ -153,11 +152,18 @@ and of each other.
 
 That preference is what made `compute-ready-set` the `current_action` when this
 plan became active under Decision 0004: it was the only one of the four that
-depended on no open question. `recheck-readiness-at-approval`,
-`verify-acceptance-criteria`, and `compute-ready-set` are now all delivered, in
-that order, following the ordering this section committed to before any of
-them started. `surface-dispatch-journal` is now `current_action` — the last
-Action in this plan, exactly where this section said it should land.
+depended on no open question. All four are now delivered, in the order this
+section committed to before any of them started:
+`recheck-readiness-at-approval`, `verify-acceptance-criteria`,
+`compute-ready-set`, `surface-dispatch-journal`. The plan's milestone —
+managed plans governing work from dispatch through acceptance — is reached,
+and this plan moves to `status: complete` with no `current_action`, since
+nothing in it remains to point at.
+
+The plan-level `criteria-judgment` question stays open: no Action here
+depended on its answer, so nothing was blocked waiting for it, but it is a
+real, unresolved question about this plan's own subject and closing the plan
+does not close it.
 
 `surface-dispatch-journal` is the least valuable of the four and should stay
 last. The journal already answers its question from the CLI; putting it on the
@@ -191,14 +197,25 @@ when `acceptance_criteria_json` is non-empty, so `decisionNote` and
 Delivered as `resolveReadySet` in `src/docs/dispatch.ts`, surfaced as
 `arcadia next --ready`.
 
-It calls `resolveDispatch` once for the structural question — does a project,
-an `active_plan`, and a real plan document resolve at all — and reuses its
-`blockers` verbatim when they do not, rather than re-deriving that refusal a
-second way. Once the plan is in hand, every unfinished (`status != done`,
-`status != blocked`) Action in it is checked through `resolveActionReadiness`
-individually — the same function a single-Action lookup already uses — so the
-ready set and `arcadia next` can never disagree about whether any one Action is
-ready.
+**First implementation called `resolveDispatch` outright, and it was wrong.**
+`resolveDispatch` requires a `current_action` to already resolve before it
+returns a usable result — exactly the case this command exists to help with.
+A plan declaring no `current_action` at all made `--ready` refuse for the same
+reason `next` refuses, computing nothing, which defeated the Action's own
+acceptance criterion ("suggests a `current_action` without writing one").
+Dogfooding this against Arcadia's own repository caught it immediately: once
+`dispatch-contract-enforcement` finished and `active_plan` moved to
+`portfolio-docs-protocol` with no `current_action` set, `--ready` returned
+nothing instead of the two deferred Actions and their reasons.
+
+Fixed by extracting `resolveActivePlan` — the Project-and-plan resolution
+`resolveDispatch` already did, stopping short of anything about
+`current_action` — into its own function, shared by both. `resolveDispatch`
+still requires a `current_action` to produce a result; `resolveReadySet` does
+not, and enumerates every Action in the resolved plan regardless. Each
+candidate's readiness still runs through `resolveActionReadiness` individually
+— the same function a single-Action lookup already uses — so the ready set and
+`arcadia next` can never disagree about whether any one Action is ready.
 
 Deliberately narrower than `resolveDispatch` in one respect: it does not
 additionally refuse the whole set over blockers that describe the *pointer*
