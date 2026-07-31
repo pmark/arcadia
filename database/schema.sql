@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS mission_logs (
   next_action TEXT NOT NULL,
   artifact_impact TEXT,
   markdown_path TEXT NOT NULL,
+  doc_ref TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,

@@ -16,7 +16,7 @@ import type { DispatchBlocker } from "./dispatch.js";
  */
 
 /** Which resolution produced the row. */
-export type DispatchCommand = "next" | "work.plan";
+export type DispatchCommand = "next" | "work.plan" | "review.approve";
 
 export interface DispatchEvent {
   id: string;

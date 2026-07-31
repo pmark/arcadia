@@ -6,11 +6,13 @@ import { runDocsSyncCommand } from "../src/commands/docs.js";
 import { runPortfolioCommand } from "../src/commands/portfolio.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
+  createMissionLog,
   createWorkItemWithOptionalArtifact,
   getWorkItem,
   getWorkItemByDocRef,
   listPortfolioProjects,
   listProjects,
+  listRecentMissionLogs,
   listReviewItems,
   updateWorkItem,
   upsertProject,
@@ -103,6 +105,31 @@ decisions: []
 ---
 
 # Sample plan
+`;
+
+const MISSION_LOG = `---
+arcadia: v1
+type: log
+slug: demo-log
+project: demo
+updated: 2026-07-26
+---
+
+# Mission Log: Demo
+
+## 2026-07-26 — Shipped Log ingestion
+
+- **Did:** Shipped mission-Log ingestion.
+- **Result:** Log entries become rows.
+- **Next:** Merge the follow-up PR.
+- **Blockers:** none
+
+## 2026-07-25 — Added the work pointer
+
+- **Did:** Added active_plan and current_action.
+- **Result:** arcadia next resolves one objective.
+- **Next:** Pick the next protocol increment.
+- **Blockers:** Awaiting the operator's choice.
 `;
 
 describe("managed document detection", () => {
@@ -578,6 +605,182 @@ describe("docs sync", () => {
     expect(result.data.errorCount).toBeGreaterThan(0);
     expect(result.data.projects[0].errors[0].message).toContain("Invalid YAML");
     expect(result.data.projects[0].rejected).toContain(path.join("docs", "plans", "broken.md"));
+  });
+
+  it("turns each dated Log entry into one row, and re-runs without duplicating", () => {
+    const repo = scratch();
+    writeDoc(repo, "MISSION_LOG.md", MISSION_LOG);
+    const workspace = workspaceWithProject(repo);
+
+    const applied = runDocsSyncCommand({ workspace, apply: true });
+    const created = applied.data.projects[0].changes.filter(
+      (change) => change.entity === "log" && change.action === "create"
+    );
+    expect(created.map((change) => change.ref)).toEqual([
+      "log/demo-log#2026-07-26--shipped-log-ingestion",
+      "log/demo-log#2026-07-25--added-the-work-pointer"
+    ]);
+
+    const rows = withDatabase(workspace, (db) => listRecentMissionLogs(db, 50));
+    expect(rows).toHaveLength(2);
+    const newest = rows.find((row) => row.next_action === "Merge the follow-up PR.");
+    expect(newest?.work_performed).toBe("Shipped mission-Log ingestion.");
+    expect(newest?.result).toBe("Log entries become rows.");
+    expect(newest?.blockers).toBeNull();
+    expect(newest?.markdown_path).toBe("MISSION_LOG.md");
+
+    // The whole point of keying by date: an append-only file re-read adds
+    // nothing, which is what makes sync safe to run on every session.
+    const again = runDocsSyncCommand({ workspace, apply: true });
+    expect(again.data.totals.create).toBe(0);
+    expect(again.data.totals.update).toBe(0);
+    expect(withDatabase(workspace, (db) => listRecentMissionLogs(db, 50))).toHaveLength(2);
+  });
+
+  it("stops reporting Log files as skipped", () => {
+    const repo = scratch();
+    writeDoc(repo, "MISSION_LOG.md", MISSION_LOG);
+    const workspace = workspaceWithProject(repo);
+
+    const result = runDocsSyncCommand({ workspace });
+    const logChanges = result.data.projects[0].changes.filter((change) => change.entity === "log");
+
+    expect(logChanges.length).toBeGreaterThan(0);
+    expect(logChanges.every((change) => change.action !== "skipped")).toBe(true);
+  });
+
+  it("records an entry with no Next bullet without inventing one", () => {
+    const repo = scratch();
+    writeDoc(
+      repo,
+      "MISSION_LOG.md",
+      MISSION_LOG.replace("- **Next:** Merge the follow-up PR.\n", "")
+    );
+    const workspace = workspaceWithProject(repo);
+
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const rows = withDatabase(workspace, (db) => listRecentMissionLogs(db, 50));
+    const entry = rows.find((row) => row.work_performed === "Shipped mission-Log ingestion.");
+    expect(entry?.next_action).toBe("No next action recorded in this Log entry.");
+  });
+
+  it("gives several entries under one date a row each", () => {
+    const repo = scratch();
+    // The case that decided the key. Arcadia's own Log has five entries dated
+    // 2026-07-25, so a date-only key would refuse most of a real file.
+    writeDoc(
+      repo,
+      "MISSION_LOG.md",
+      `${MISSION_LOG}
+## 2026-07-25 — A second thing that same day
+
+- **Did:** Something else entirely.
+- **Result:** Also recorded.
+`
+    );
+    const workspace = workspaceWithProject(repo);
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+
+    expect(result.data.errorCount).toBe(0);
+    const rows = withDatabase(workspace, (db) => listRecentMissionLogs(db, 50));
+    expect(rows).toHaveLength(3);
+    expect(rows.filter((row) => row.markdown_path === "MISSION_LOG.md")).toHaveLength(3);
+  });
+
+  it("updates an edited entry in place rather than forking a row", () => {
+    const repo = scratch();
+    writeDoc(repo, "MISSION_LOG.md", MISSION_LOG);
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    writeDoc(
+      repo,
+      "MISSION_LOG.md",
+      MISSION_LOG.replace("updated: 2026-07-26", `updated: ${NEWER_THAN_NOW}`)
+        .replace("- **Result:** Log entries become rows.", "- **Result:** Log entries become mission_logs rows.")
+    );
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+    expect(result.data.totals.create).toBe(0);
+    expect(result.data.totals.update).toBe(1);
+
+    const rows = withDatabase(workspace, (db) => listRecentMissionLogs(db, 50));
+    expect(rows).toHaveLength(2);
+    expect(rows.some((row) => row.result === "Log entries become mission_logs rows.")).toBe(true);
+  });
+
+  it("refuses two Log entries sharing one heading, reporting the clash once", () => {
+    const repo = scratch();
+    writeDoc(
+      repo,
+      "MISSION_LOG.md",
+      `${MISSION_LOG}
+## 2026-07-25 — Added the work pointer
+
+- **Did:** Something else.
+- **Result:** Ambiguity.
+
+## 2026-07-25 — Added the work pointer
+
+- **Did:** A third time.
+- **Result:** More ambiguity.
+`
+    );
+    const workspace = workspaceWithProject(repo);
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+
+    // Three entries claim the heading; the clash is one fact, reported once.
+    expect(result.data.projects[0].errors).toHaveLength(1);
+    expect(result.data.projects[0].errors[0].field).toBe("entry(2026-07-25)");
+    expect(result.data.projects[0].errors[0].message).toContain("share the heading");
+
+    // The unambiguous entry still lands; only the contested heading is withheld.
+    const rows = withDatabase(workspace, (db) => listRecentMissionLogs(db, 50));
+    expect(rows.map((row) => row.work_performed)).toEqual(["Shipped mission-Log ingestion."]);
+  });
+
+  it("refuses to overwrite a Log row newer than the document claiming to change it", () => {
+    const repo = scratch();
+    writeDoc(repo, "MISSION_LOG.md", MISSION_LOG);
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    // The document keeps its 2026-07-26 date while the row was written today.
+    writeDoc(repo, "MISSION_LOG.md", MISSION_LOG.replace("- **Result:** Log entries become rows.", "- **Result:** Rewritten by a stale document."));
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+    const skipped = result.data.projects[0].changes.find(
+      (change) => change.entity === "log" && change.action === "skipped"
+    );
+    expect(skipped?.reason).toContain("not overwriting newer work");
+
+    const rows = withDatabase(workspace, (db) => listRecentMissionLogs(db, 50));
+    expect(rows.some((row) => row.result === "Rewritten by a stale document.")).toBe(false);
+  });
+
+  it("never touches mission Logs that Arcadia recorded itself", () => {
+    const repo = scratch();
+    writeDoc(repo, "MISSION_LOG.md", MISSION_LOG);
+    const workspace = workspaceWithProject(repo);
+
+    const handWritten = withDatabase(workspace, (db) =>
+      createMissionLog(db, {
+        workPerformed: "Captured outside any document.",
+        result: "Recorded by hand.",
+        nextAction: "Leave this alone.",
+        markdownPath: "reports/manual.md"
+      })
+    );
+
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const rows = withDatabase(workspace, (db) => listRecentMissionLogs(db, 50));
+    const untouched = rows.find((row) => row.id === handWritten.id);
+    expect(untouched?.next_action).toBe("Leave this alone.");
+    expect(untouched?.markdown_path).toBe("reports/manual.md");
   });
 
   it("reports a Project with no repo_path instead of failing", () => {

@@ -2842,6 +2842,58 @@ export function updateReviewItemFromDoc(
   return getReviewItem(db, id);
 }
 
+export function getMissionLogByDocRef(db: Database.Database, docRef: string): MissionLog | null {
+  return (
+    (db.prepare("SELECT * FROM mission_logs WHERE doc_ref = ?").get(docRef) as MissionLog | undefined) ?? null
+  );
+}
+
+export function setMissionLogDocRef(db: Database.Database, id: string, docRef: string): void {
+  db.prepare("UPDATE mission_logs SET doc_ref = ? WHERE id = ?").run(docRef, id);
+}
+
+export interface UpdateMissionLogFromDocInput {
+  workPerformed: string;
+  result: string;
+  nextAction: string;
+  blockers: string | null;
+  markdownPath: string;
+}
+
+/**
+ * Rewrite an ingested mission Log entry from the document that owns it.
+ *
+ * Deliberately narrow: it touches only the four narrative fields and the path,
+ * leaving `project_id`, `milestone_id`, and `artifact_impact` alone. Those are
+ * execution state that Arcadia's own flows attach to a Log after the fact, and
+ * the division of truth puts execution state on Arcadia's side of the line —
+ * a re-sync of the same document must not erase it.
+ */
+export function updateMissionLogFromDoc(
+  db: Database.Database,
+  id: string,
+  input: UpdateMissionLogFromDocInput
+): void {
+  db.prepare(
+    `UPDATE mission_logs
+        SET work_performed = @work_performed,
+            result = @result,
+            next_action = @next_action,
+            blockers = @blockers,
+            markdown_path = @markdown_path,
+            updated_at = @updated_at
+      WHERE id = @id`
+  ).run({
+    id,
+    work_performed: input.workPerformed,
+    result: input.result,
+    next_action: input.nextAction,
+    blockers: input.blockers,
+    markdown_path: input.markdownPath,
+    updated_at: nowIso()
+  });
+}
+
 export function findMissionLogByEntry(
   db: Database.Database,
   projectId: string | null,

@@ -107,6 +107,9 @@ export function createPlanningApprovalDecision(
     expectedArtifact: string;
     askRequestId?: string | null;
     existingAction?: boolean;
+    /** The plan document's `updated:` field at build time, for the approval-time
+     *  staleness recheck. Null for Actions with no managed plan behind them. */
+    planDocUpdated?: string | null;
   }
 ): ReviewItemSummary {
   const existingAction = input.existingAction === true;
@@ -133,6 +136,7 @@ export function createPlanningApprovalDecision(
     context: {
       schemaVersion: 1,
       packetSha256: packetSha256(input.packet.promptPath),
+      planDocUpdated: input.planDocUpdated ?? null,
       interpretation: input.proposedAction,
       expectedArtifact: input.expectedArtifact,
       originatingActionId: input.workItem.id,

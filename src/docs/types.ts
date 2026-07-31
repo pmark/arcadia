@@ -12,6 +12,7 @@ import type {
   ExecutionRequirement,
   ResolvedExecutionRequirement
 } from "../execution/profiles.js";
+import { slugify } from "../utils/slug.js";
 
 /** The marker every managed document carries in its frontmatter. */
 export const ARCADIA_DOC_MARKER = "arcadia";
@@ -191,10 +192,34 @@ export function actionDocRef(planSlug: string, actionId: string): string {
   return `plan/${planSlug}#${actionId}`;
 }
 
+/** The inverse of {@link actionDocRef} — `null` for any other doc_ref shape. */
+export function parseActionDocRef(docRef: string): { planSlug: string; actionId: string } | null {
+  const match = /^plan\/([^#]+)#(.+)$/.exec(docRef);
+  return match ? { planSlug: match[1], actionId: match[2] } : null;
+}
+
 export function planQuestionDocRef(planSlug: string, questionId: string): string {
   return `plan/${planSlug}?question=${questionId}`;
 }
 
 export function decisionDocRef(decisionSlug: string): string {
   return `decision/${decisionSlug}`;
+}
+
+/**
+ * A mission Log entry is keyed by its whole `## YYYY-MM-DD — title` heading.
+ *
+ * Keying on the date alone reads like the safer choice — it would survive a
+ * retitle, which is what doc_refs exist to do — but a real Log puts several
+ * entries under one date routinely, and Arcadia's own has five on 2026-07-25.
+ * A date-only key refuses most of that file, so the rarer cost is the right one
+ * to pay: retitling an old entry forks a row, and two entries sharing a date do
+ * not collide.
+ *
+ * Ordinal-within-date was the other candidate and is worse than both: entries
+ * are prepended newest-first, so a new same-day entry would shift every ordinal
+ * below it and silently rewrite rows that nobody edited.
+ */
+export function logEntryDocRef(logSlug: string, date: string, title: string): string {
+  return `log/${logSlug}#${date}--${slugify(title)}`;
 }

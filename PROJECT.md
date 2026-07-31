@@ -6,9 +6,9 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: docs sync ingests a real project's markdown
-active_plan: portfolio-docs-protocol
-updated: 2026-07-26
+milestone: Managed plans govern work from dispatch through acceptance
+active_plan: dispatch-contract-enforcement
+updated: 2026-07-31
 ---
 
 # Arcadia
@@ -31,13 +31,20 @@ unclarified, `clarify` evaluates them against the rubric via local Intelligence,
 a verdict either names a concrete next action or opens exactly one Decision, and
 subtasks exist for decompositions.
 
-The current work is making documentation a first-class input — see
+Documentation is a first-class input — see
 `docs/plans/portfolio-docs-protocol.md`. Conversations with coding agents
 produce markdown; `docs sync` turns that markdown into Projects, Milestones,
-Actions and Decisions, so the portfolio can be managed at executive level from
-`arcadia portfolio`. Vendor-neutral execution profiles now let Arcadia select
-the least costly compliant coding-agent configuration without putting provider
-model names in those plans.
+Actions, Decisions and mission Logs, so the portfolio can be managed at
+executive level from `arcadia portfolio`. Vendor-neutral execution profiles let
+Arcadia select the least costly compliant coding-agent configuration without
+putting provider model names in those plans. That milestone is reached, and its
+two remaining increments are deferred against named triggers by Decision 0004.
+
+The current work closes the gap between what a coding agent was told and what it
+is judged on — see `docs/plans/dispatch-contract-enforcement.md`. Acceptance
+criteria travel from a plan into the dispatch packet and stop there; nothing yet
+compares the finished Run against them, and nothing computes which Action
+*could* be dispatched rather than only refusing a bad pointer.
 
 ## Links
 

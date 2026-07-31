@@ -3,10 +3,88 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-07-25
+updated: 2026-07-31
 ---
 
 # Mission Log: Arcadia
+
+## 2026-07-31 — Answered recheck-readiness-at-approval as a hybrid
+
+- **Did:** Traced the actual gap before answering the question: approval
+  checked packet content (a sha256 digest) and link consistency, but never
+  re-asked whether the plan document still said the Action was ready.
+  Recorded Decision 0005 -- recheck readiness at approval only when the plan
+  document's own `updated:` field has moved since the packet was built, the
+  same staleness signal `docs sync` already trusts elsewhere. Implemented it:
+  `ActionReadiness` now carries `planUpdated`; the planning Decision's context
+  snapshots it at build time; `queueApprovedPlanningRun` compares the two
+  before its transaction opens (not inside it -- a refusal that journals its
+  own resolution and then rolls that journal entry back with everything else
+  answers nothing, the same reason `work plan`'s guard runs before its own
+  transaction). Moved `parseActionDocRef` from a private helper in
+  `work.ts` to `docs/types.ts` as the inverse of `actionDocRef`, so build-time
+  and approval-time checks share one implementation.
+- **Result:** A packet approved long after a dependency regresses or a
+  required Decision reopens is now refused, naming the blocker, provided the
+  document's `updated:` moved -- which is the one signal the rest of the
+  protocol already relies on. A packet approved while nothing changed pays no
+  extra cost. Four new tests in `tests/dispatch-journal.test.ts` cover
+  unchanged / moved-but-fine / moved-and-regressed / moved-without-a-blocker,
+  plus the hybrid's one accepted, deliberately undocumented-as-a-bug gap: a
+  regression whose author forgot to bump `updated:` is not caught.
+- **Next:** `verify-acceptance-criteria` is next in this plan's own stated
+  ordering, now that the review-and-acceptance surgery it was waiting to avoid
+  duplicating is done. `compute-ready-set` remains `current_action` and is
+  still the dispatchable Action.
+- **Blockers:** none
+
+## 2026-07-31 — Settled Decision 0004 and added "if not now, then when?"
+
+- **Did:** Answered Decision 0004 rather than leaving it open: neither remaining
+  increment now, both `deferred` against conditions that can actually fire —
+  dependency persistence when a database-backed view must show ordering without
+  re-crawling, narrative summarization when a second foreign repository is
+  onboarded or a summary is genuinely wanted. Followed the consequence the
+  Decision itself had recorded and moved `active_plan` to
+  `dispatch-contract-enforcement`, promoting it from draft with
+  `compute-ready-set` as `current_action` per that plan's own ordering note.
+  Added **"If not now, then when?"** to `AGENTS.md` beside the 80/20 rule, and
+  two lines to `CONSTITUTION.md`.
+- **Result:** `arcadia next` now resolves a dispatchable Action with zero
+  blockers and no operator question, for the first time since 2026-07-25 — the
+  pointer had spent six days returning a question. `deferred` is deliberately
+  not counted as resolved by `dispatch.ts`, so the two deferred Actions stay
+  blocked without pretending to be startable, and neither is waiting on a person.
+- **Next:** Implement `compute-ready-set` — `arcadia next --ready`, computed
+  through `resolveActionReadiness` rather than a second copy of the rules.
+- **Blockers:** none
+
+## 2026-07-31 — Ingested mission Logs as rows
+
+- **Did:** Resolved the work pointer, which returned its one operator question
+  rather than a dispatch. Read the three candidate increments in code before
+  surfacing it, which changed what the question was worth answering with:
+  mission-Log ingestion needed only an upsert, and dependency persistence turned
+  out to be half delivered already. The operator selected mission-Log ingestion
+  as Decision 0003. Implemented it — a `doc_ref` column on `mission_logs`
+  through the existing migration, and per-entry create/update/unchanged/skipped
+  reporting matching every other document type. Keyed entries on the date alone
+  at first; running it against this repository refused five of nine entries,
+  because five of them are dated 2026-07-25. Rekeyed on the whole heading.
+- **Result:** `docs sync` no longer reports Log files as skipped. A full apply
+  against Arcadia's own repository reports 42 creates, 0 skips, and 0 errors,
+  and a second apply reports everything unchanged. Narrative docs are now the
+  only intentional skip a conforming repository produces. Recorded that
+  `persist-dependencies` already meets its enforcement criterion, so the plan
+  stops claiming work that is done. Found but did not fix an unrelated
+  non-convergence: `syncProject` treats `name` as drift while `updateProject`
+  cannot write it, so a renamed Project reports an update on every sync forever.
+- **Next:** Answer Decision 0004 — dependency persistence, narrative
+  summarization, or neither, in which case move `active_plan` to
+  `dispatch-contract-enforcement` rather than leaving a pointer nobody intends
+  to advance.
+- **Blockers:** `persist-dependencies` is `question_open` on Decision 0004, so
+  `arcadia next` will keep returning that question rather than dispatching.
 
 ## 2026-07-26 — Made project continuation actionable
 

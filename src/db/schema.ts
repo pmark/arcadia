@@ -522,12 +522,13 @@ function ensureParentWorkItemColumn(db: Database.Database): void {
  * duplicate every entity the moment somebody rewords a heading — which is
  * exactly what a chatbot rewriting a plan does. The doc_ref is derived from
  * identifiers the protocol promises never change (`plan/<slug>#<action-id>`,
- * `decision/<slug>`, `plan/<slug>` for a milestone), so a reworded title
- * updates a row instead of forking it.
+ * `decision/<slug>`, `plan/<slug>` for a milestone,
+ * `log/<slug>#<date>--<title-slug>` for a mission Log entry), so a reworded plan
+ * title updates a row instead of forking it.
  *
  * NULL means "not from a document" — every row Arcadia created itself through
- * `capture`, `work add-subtask`, or the clarify loop. Ingestion only ever
- * touches rows carrying a doc_ref, so hand-captured work can never be
+ * `capture`, `work add-subtask`, the clarify loop, or `log add`. Ingestion only
+ * ever touches rows carrying a doc_ref, so hand-captured work can never be
  * clobbered by a document that happens to describe something similar.
  *
  * The indexes are deliberately non-unique: a malformed pair of documents
@@ -536,7 +537,7 @@ function ensureParentWorkItemColumn(db: Database.Database): void {
  * See docs/plans/portfolio-docs-protocol.md.
  */
 function ensureDocRefColumns(db: Database.Database): void {
-  const targets = ["work_items", "milestones", "review_items"];
+  const targets = ["work_items", "milestones", "review_items", "mission_logs"];
 
   for (const table of targets) {
     const columns = new Set(

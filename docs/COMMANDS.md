@@ -547,8 +547,8 @@ you like; a file becomes Arcadia's business only when it opts in.
 ### What survives a re-run
 
 Every ingested row carries a `doc_ref` — `plan/<slug>#<action-id>`,
-`decision/<slug>` — built only from identifiers the protocol promises never
-change. Reword an action's title and the existing Action is **updated**; it does
+`decision/<slug>`, `log/<slug>#<date>--<title-slug>` — built only from
+identifiers the protocol promises never change. Reword an action's title and the existing Action is **updated**; it does
 not fork a duplicate. Re-running with no document changes reports everything as
 unchanged and writes nothing.
 
@@ -664,11 +664,26 @@ two Decisions. `arcadia portfolio` then shows the project as four ready and two
 blocked, and answering the two Decisions is visibly the thing standing between
 you and a workable queue.
 
+### Mission Logs
+
+Each dated entry in a `MISSION_LOG.md` becomes one row. The whole
+`## YYYY-MM-DD — title` heading is the key — `log/<slug>#<date>--<title-slug>` —
+so re-running an append-only file creates only the row for the new entry, and
+several entries may share a date, which real Logs do routinely. Two entries
+sharing a whole heading are reported as an error, because the key cannot tell
+them apart. Editing an entry's body updates its row; retitling an old entry
+records it as a new one.
+
+An entry with no `**Next:**` bullet records that it has none rather than
+inventing one. Re-ingesting rewrites only what the document owns — the Did,
+Result, Next, and Blockers text — and leaves any Project, Milestone, or Artifact
+that Arcadia later attached to that Log alone.
+
 ### Not yet ingested
 
-`MISSION_LOG.md` files and narrative docs (`type: architecture | strategy |
-reference`) are parsed and validated but not yet turned into rows; `docs sync`
-reports them as skipped so you can see the protocol recognizes them.
+Narrative docs (`type: architecture | strategy | reference`) are parsed and
+validated but not yet turned into rows; `docs sync` reports them as skipped so
+you can see the protocol recognizes them.
 
 ### Action ordering and acceptance criteria
 
