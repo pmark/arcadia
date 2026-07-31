@@ -8,6 +8,39 @@ updated: 2026-07-31
 
 # Mission Log: Arcadia
 
+## 2026-07-31 — Scoped narrative digests as a plan, not a feature request
+
+- **Did:** The operator asked for automatic daily/weekly/monthly narrative
+  digests, for Arcadia's own project and every Project Arcadia manages.
+  Grounded the ask in what already exists before drafting anything: the
+  Discord bot's orientation scheduler (interval tick, idempotent per local
+  period, self-catches-up after a miss) is the proven pattern for
+  "automatic"; `exportProgressReview` already writes deterministic,
+  non-Decision records into the Obsidian vault with atomic writes and
+  content-hash dedup; `mission_logs` and the dispatch journal, both landed
+  this session, are the structured substrate a digest reads from. Three
+  genuine forks were the operator's to decide, not mine to infer: how a
+  digest gets written (deterministic template, local AI narration, or a
+  hybrid), where it goes (Artifact, Discord, Obsidian, or some combination),
+  and what "automatic" runs inside (the existing bot process, or new
+  infrastructure). Asked directly; recorded the answers as Decision 0006
+  rather than silently deciding. Wrote `docs/plans/narrative-digests.md`
+  with three ordered Actions and two genuinely open questions (a
+  portfolio-wide roll-up digest, and calendar-aligned vs. rolling windows),
+  and noted explicitly that this is adjacent to, but does not satisfy, the
+  already-deferred `narrative-summarization` Action -- different subject
+  matter, kept separately scoped rather than merged.
+- **Result:** `active_plan` moves to `narrative-digests`, `current_action` to
+  `compose-project-digest` -- the one piece worth building in isolation,
+  since it answers the real open risk (can local AI narrate this honestly,
+  without inventing outcomes the data doesn't support) before anything is
+  wired to a schedule or a delivery surface.
+- **Next:** Build the composer: gather one Project's mission_logs,
+  dispatch_events, and Decision activity for a window, queue a
+  local-preferred Intelligence job to narrate them, store the result as a
+  new `narrative_digest` Artifact.
+- **Blockers:** none
+
 ## 2026-07-31 — Fixed compute-ready-set: it required the pointer it exists to fix
 
 - **Did:** Dogfooding `arcadia next --ready` against this repository, right
