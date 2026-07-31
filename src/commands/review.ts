@@ -11,6 +11,7 @@ import {
   createReviewExecutionRun,
   createReviewItem,
   createReviewFeedback,
+  getArtifact,
   getProject,
   getProjectBySlug,
   getProjectMetadata,
@@ -19,15 +20,18 @@ import {
   getReviewItemBySlug,
   getWorkItem,
   listActionableReviewItems,
+  mergeReviewItemContext,
   updateArtifact,
   updateReviewItemStatus,
   updateWorkItem
 } from "../db/repositories.js";
 import { GAP_TYPES } from "../domain/constants.js";
-import type { ReviewFeedback, ReviewItemSummary, WorkItemSummary } from "../domain/types.js";
+import type { ArtifactSummary, ReviewFeedback, ReviewItemSummary, WorkItemSummary } from "../domain/types.js";
+import { declaredAcceptanceCriteria } from "../codex/packets.js";
 import { executeApprovedReview, type ReviewExecutionResult } from "../execution/reviewExecutor.js";
 import { isPlanningApprovalDecision, queueApprovedPlanningRun } from "../execution/planningAuthorization.js";
 import { parseDecisionContext } from "../execution/planningAuthorization.js";
+import { evaluateAcceptanceCriteria, renderAcceptanceCriteriaReport } from "../stewardship/acceptanceCriteria.js";
 import {
   exportPlanningAcceptanceBeforeTransition,
   exportProgressReview,
@@ -460,6 +464,27 @@ export function runReviewResolveReplyCommand(
   });
 }
 
+/**
+ * The finished Run's output, as text, for `evaluateAcceptanceCriteria` to
+ * search. Missing or unreadable is not a reason to fail acceptance over --
+ * the operator is looking at the same Artifact in front of them right now --
+ * so every criterion simply reports `unchecked` against empty text instead.
+ */
+function readAcceptedArtifactText(workspacePath: string, artifact: ArtifactSummary | null): string {
+  if (!artifact?.path) {
+    return "";
+  }
+  const absolutePath = path.join(workspacePath, artifact.path);
+  if (!existsSync(absolutePath)) {
+    return "";
+  }
+  try {
+    return readFileSync(absolutePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
 export function runReviewApproveCommand(
   options: ReviewDecisionCommandOptions
 ): CommandSuccess<ReviewDecisionCommandData> {
@@ -528,6 +553,21 @@ export function runReviewApproveCommand(
           decisionRemainsOpen: true
         });
       }
+
+      // Declared criteria and the Artifact they are judged against are read
+      // outside the transaction: file reads do not belong inside one, and an
+      // Action whose plan declared no criteria must validate exactly as it
+      // does today -- so an empty list changes nothing below.
+      const acceptedWorkItem = getWorkItem(db, specialized.work_item_id);
+      const criteria = acceptedWorkItem ? declaredAcceptanceCriteria(acceptedWorkItem) : [];
+      const criteriaResults = criteria.length > 0
+        ? evaluateAcceptanceCriteria(criteria, readAcceptedArtifactText(workspacePath, getArtifact(db, specialized.artifact_id as string)))
+        : [];
+      const criteriaReport = renderAcceptanceCriteriaReport(criteriaResults);
+      const decisionNote = criteriaReport
+        ? `Validated planning Artifact accepted.\n\n${criteriaReport}`
+        : "Validated planning Artifact accepted.";
+
       return db.transaction(() => {
         updateArtifact(db, specialized.artifact_id as string, { status: "ready" });
         updateWorkItem(db, specialized.work_item_id as string, {
@@ -536,9 +576,12 @@ export function runReviewApproveCommand(
           status: "done",
           nextAction: "Plan accepted; choose the next implementation Action when ready."
         });
+        if (criteriaResults.length > 0) {
+          mergeReviewItemContext(db, specialized.id, { acceptanceCriteriaResults: criteriaResults });
+        }
         return updateReviewItemStatus(db, specialized.id, {
           status: "approved",
-          decisionNote: "Validated planning Artifact accepted."
+          decisionNote
         }) as ReviewItemSummary;
       })();
     });

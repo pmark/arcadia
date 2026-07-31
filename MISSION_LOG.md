@@ -8,6 +8,34 @@ updated: 2026-07-31
 
 # Mission Log: Arcadia
 
+## 2026-07-31 — Delivered verify-acceptance-criteria
+
+- **Did:** Built `src/stewardship/acceptanceCriteria.ts`, evaluating each of a
+  plan's declared acceptance criteria against the accepted planning Artifact's
+  text. Deliberately narrow: nothing here can verify a free-text English claim
+  is true, only whether the Artifact addressed the topic at all, so the
+  checker produces only `unmet` (the criterion's terms are absent -- real
+  negative evidence) or `unchecked` (present, but truth unverifiable
+  mechanically). It never produces `met` -- inventing that judgment now would
+  pre-empt this plan's own open `criteria-judgment` question about whether
+  local Intelligence should ever rule on what a script cannot. Wired into
+  `review.ts`'s `CodexPlanningArtifactAcceptance` approval: the report lands
+  in the Decision's `decisionNote` in the plan author's own words, and the
+  structured per-criterion results merge into `context_json` via a new
+  `mergeReviewItemContext` repository function. An Action whose plan declared
+  no criteria is untouched -- the check runs only when criteria exist, so
+  `decisionNote` is byte-for-byte what it was before this landed.
+- **Result:** Accepting a Run's planning Artifact now reports each declared
+  criterion by name, rather than accepting silently regardless of what was
+  promised. 8 new unit tests cover the checker directly; 2 new integration
+  tests exercise the full pipeline (packet approval through Run through
+  acceptance) and confirm both the populated and untouched-when-no-criteria
+  cases.
+- **Next:** `compute-ready-set` remains `current_action` and is the
+  dispatchable Action -- `arcadia next --ready`, listing every Action with no
+  unmet prerequisite, unanswered Decision, or open question.
+- **Blockers:** none
+
 ## 2026-07-31 — Answered recheck-readiness-at-approval as a hybrid
 
 - **Did:** Traced the actual gap before answering the question: approval

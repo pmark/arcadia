@@ -10,10 +10,10 @@ updated: 2026-07-31
 actions:
   - id: verify-acceptance-criteria
     title: Check finished work against the Action's declared acceptance criteria
-    status: open
+    status: done
     responsibility: codex
     effort: session
-    next_action: Extend artifact validation to compare the Run's output against acceptance_criteria_json, and report per-criterion results on the acceptance Decision.
+    next_action: Delivered as src/stewardship/acceptanceCriteria.ts, wired into the artifact-acceptance approval in review.ts; no further work.
     expected_artifact: Per-criterion pass/fail on the acceptance Decision, from the plan's own criteria
     clarification: clarified
     confidence: high
@@ -153,14 +153,38 @@ and of each other.
 
 That preference is what made `compute-ready-set` the `current_action` when this
 plan became active under Decision 0004: it was the only one of the four that
-depended on no open question. `recheck-readiness-at-approval` is now answered
-and delivered under Decision 0005, so `verify-acceptance-criteria` is next in
-the plan's own stated order — not a fresh judgment, the ordering this section
-already committed to.
+depended on no open question. `recheck-readiness-at-approval` and
+`verify-acceptance-criteria` are both now delivered, in that order, following
+the ordering this section committed to before either was started.
+`compute-ready-set` remains `current_action` — still open, still the pointer —
+with `surface-dispatch-journal` deliberately last after it.
 
 `surface-dispatch-journal` is the least valuable of the four and should stay
 last. The journal already answers its question from the CLI; putting it on the
 dashboard makes it easier to notice, not more true.
+
+## Acceptance criteria checking
+
+Delivered in `src/stewardship/acceptanceCriteria.ts`, wired into the
+`CodexPlanningArtifactAcceptance` approval in `src/commands/review.ts`.
+
+Each declared criterion is one sentence of free-text English a human wrote
+("The migration is idempotent."). Nothing can mechanically verify that a claim
+like that is *true* — only whether the accepted Artifact ever addressed the
+topic at all. That ceiling is a negative, not a positive: strong absence of a
+criterion's own terms anywhere in the Artifact is real evidence of `unmet`.
+Presence is not evidence of `met` — an Artifact that mentions a topic has not
+thereby satisfied it — so `unmet` and `unchecked` are the only two values this
+checker produces. `met` stays part of the type for when a stronger signal
+exists to justify it (a self-reported checklist section, a validation command
+result), rather than being invented now to satisfy the letter of "met or
+unmet." This plan's own `criteria-judgment` question is what would license a
+`met` verdict, and it is still open, not assumed — consistent with "no judge
+agent for what a script can check" below.
+
+An Action whose plan declared no criteria is unaffected: the check runs only
+when `acceptance_criteria_json` is non-empty, so `decisionNote` and
+`context_json` are byte-for-byte what they were before this Action existed.
 
 ## What this plan deliberately does not do
 
