@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { isDispatchable, resolveDispatch } from "../src/docs/dispatch.js";
+import { isDispatchable, resolveDispatch, resolveReadySet } from "../src/docs/dispatch.js";
 
 const temporary: string[] = [];
 
@@ -287,7 +287,15 @@ describe("dispatch resolution", () => {
  */
 function graphPlanDoc(
   current: string,
-  actions: Array<{ id: string; status?: string; dependsOn?: string[] }>
+  actions: Array<{
+    id: string;
+    status?: string;
+    dependsOn?: string[];
+    responsibility?: string;
+    clarification?: string;
+    question?: string;
+    decisions?: string[];
+  }>
 ): string {
   const lines = [
     "---",
@@ -302,17 +310,27 @@ function graphPlanDoc(
     "actions:"
   ];
   for (const action of actions) {
+    const clarification = action.clarification ?? "clarified";
     lines.push(
       `  - id: ${action.id}`,
       `    title: Action ${action.id}`,
       `    status: ${action.status ?? "open"}`,
-      "    responsibility: codex",
-      `    next_action: Do ${action.id}.`,
-      "    clarification: clarified",
-      "    acceptance_criteria:",
-      `      - ${action.id} is finished and covered by a test.`,
-      `    depends_on: [${(action.dependsOn ?? []).join(", ")}]`
+      `    responsibility: ${action.responsibility ?? "codex"}`,
+      `    clarification: ${clarification}`
     );
+    if (clarification === "question_open") {
+      lines.push("    gap_type: missing-decision", `    question: ${action.question ?? `What should ${action.id} do?`}`);
+    } else {
+      lines.push(
+        `    next_action: Do ${action.id}.`,
+        "    acceptance_criteria:",
+        `      - ${action.id} is finished and covered by a test.`
+      );
+    }
+    lines.push(`    depends_on: [${(action.dependsOn ?? []).join(", ")}]`);
+    if (action.decisions) {
+      lines.push(`    decisions: [${action.decisions.map((id) => `"${id}"`).join(", ")}]`);
+    }
   }
   lines.push("---", "");
   return lines.join("\n");
@@ -411,5 +429,206 @@ describe("dependency readiness", () => {
     const resolution = resolveDispatch(root, "demo");
 
     expect(resolution.blockers.some((entry) => entry.message.includes("ship-it -> ship-it"))).toBe(true);
+  });
+});
+
+describe("ready set (compute-ready-set)", () => {
+  it("excludes an Action with an unmet transitive prerequisite", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("ship-it", [
+        { id: "migrate", status: "open", dependsOn: [] },
+        { id: "ship-it", dependsOn: ["migrate"] }
+      ])
+    );
+
+    const readySet = resolveReadySet(root, "demo");
+
+    expect(readySet.ready.map((entry) => entry.actionId)).toEqual(["migrate"]);
+  });
+
+  it("excludes an Action behind an unanswered required Decision", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("ship-it", [{ id: "ship-it", decisions: ["0001"] }])
+    );
+    write(
+      root,
+      "docs/decisions/0001-pick-approach.md",
+      [
+        "---",
+        "arcadia: v1",
+        "type: decision",
+        'id: "0001"',
+        "slug: pick-approach",
+        "project: demo",
+        "status: open",
+        "question: Which approach?",
+        "gap_type: missing-decision",
+        "updated: 2026-07-25",
+        "---",
+        ""
+      ].join("\n")
+    );
+
+    const readySet = resolveReadySet(root, "demo");
+
+    expect(readySet.ready).toEqual([]);
+  });
+
+  it("excludes an Action with an open clarification question", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("ship-it", [{ id: "ship-it", clarification: "question_open" }])
+    );
+
+    const readySet = resolveReadySet(root, "demo");
+
+    expect(readySet.ready).toEqual([]);
+  });
+
+  it("excludes an Action whose responsibility is not codex or autonomous", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("ship-it", [{ id: "ship-it", responsibility: "requires_review" }])
+    );
+
+    const readySet = resolveReadySet(root, "demo");
+
+    expect(readySet.ready).toEqual([]);
+  });
+
+  it("excludes done and blocked Actions from consideration entirely", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("open-one", [
+        { id: "finished", status: "done" },
+        { id: "stuck", status: "blocked" },
+        { id: "open-one" }
+      ])
+    );
+
+    const readySet = resolveReadySet(root, "demo");
+
+    expect(readySet.ready.map((entry) => entry.actionId)).toEqual(["open-one"]);
+  });
+
+  it("suggests the current current_action when it is itself ready", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(root, "docs/plans/main-plan.md", graphPlanDoc("second", [{ id: "first" }, { id: "second" }]));
+
+    const readySet = resolveReadySet(root, "demo");
+
+    expect(readySet.ready.map((entry) => entry.actionId)).toEqual(["first", "second"]);
+    expect(readySet.suggestedCurrentAction).toBe("second");
+  });
+
+  it("suggests the first ready Action in declaration order when current_action is not ready", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("blocked-one", [
+        { id: "first" },
+        { id: "second" },
+        { id: "blocked-one", dependsOn: ["first"], status: "open" }
+      ])
+    );
+
+    const readySet = resolveReadySet(root, "demo");
+
+    // blocked-one depends on first, which is unfinished, so blocked-one is not
+    // in the ready set and the suggestion falls to declaration order instead.
+    expect(readySet.ready.map((entry) => entry.actionId)).toEqual(["first", "second"]);
+    expect(readySet.suggestedCurrentAction).toBe("first");
+  });
+
+  it("never writes anything -- the suggestion is read-only", () => {
+    const root = repo();
+    const planPath = path.join(root, "docs/plans/main-plan.md");
+    write(root, "PROJECT.md", projectDoc());
+    write(root, "docs/plans/main-plan.md", graphPlanDoc("second", [{ id: "first" }, { id: "second" }]));
+    const before = readFileSync(planPath, "utf8");
+
+    resolveReadySet(root, "demo");
+
+    expect(readFileSync(planPath, "utf8")).toBe(before);
+  });
+
+  it("names the unfinished Action nearest to ready when the set is empty", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("worse", [
+        // Blocked and so excluded from consideration entirely, but still a
+        // legitimate dependency target -- an unfinished prerequisite that
+        // will never resolve within this document.
+        { id: "gatekeeper", status: "blocked", dependsOn: [] },
+        { id: "better", status: "open", dependsOn: ["gatekeeper"] },
+        { id: "worse", dependsOn: ["gatekeeper", "better"] }
+      ])
+    );
+
+    const readySet = resolveReadySet(root, "demo");
+
+    expect(readySet.ready).toEqual([]);
+    // "better" has one unmet dependency (gatekeeper); "worse" has two
+    // (gatekeeper directly, and better, which is itself unfinished) -- fewer
+    // blockers makes "better" the one named nearest.
+    expect(readySet.nearest?.actionId).toBe("better");
+    expect(readySet.nearest?.blockers).toHaveLength(1);
+    expect(readySet.suggestedCurrentAction).toBeNull();
+  });
+
+  it("computes readiness through resolveActionReadiness, agreeing with resolveDispatch for the same Action", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("ship-it", [
+        { id: "migrate", status: "open", dependsOn: [] },
+        { id: "ship-it", dependsOn: ["migrate"] }
+      ])
+    );
+
+    const dispatch = resolveDispatch(root, "demo");
+    const readySet = resolveReadySet(root, "demo");
+
+    // resolveDispatch refuses ship-it (the pointer) for exactly the reason
+    // ship-it is absent from the ready set: the same unmet dependency.
+    expect(isDispatchable(dispatch)).toBe(false);
+    expect(readySet.ready.map((entry) => entry.actionId)).not.toContain("ship-it");
+    expect(dispatch.blockers[0]?.message).toContain('"migrate"');
+  });
+
+  it("reports the same refusal as resolveDispatch when the pointer itself cannot resolve", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc({ activePlan: null }));
+
+    const dispatch = resolveDispatch(root, "demo");
+    const readySet = resolveReadySet(root, "demo");
+
+    expect(readySet.ready).toEqual([]);
+    expect(readySet.blockers).toEqual(dispatch.blockers);
   });
 });

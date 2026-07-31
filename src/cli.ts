@@ -216,9 +216,11 @@ import { renderClarifySuccess, runClarifyCommand } from "./commands/clarify.js";
 import { renderDocsSyncSuccess, runDocsSyncCommand } from "./commands/docs.js";
 import {
   renderNextHistorySuccess,
+  renderNextReadySuccess,
   renderNextSuccess,
   runNextCommand,
-  runNextHistoryCommand
+  runNextHistoryCommand,
+  runNextReadyCommand
 } from "./commands/next.js";
 import { renderPortfolioSuccess, runPortfolioCommand } from "./commands/portfolio.js";
 import {
@@ -1862,8 +1864,11 @@ export function buildProgram(): Command {
     next
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--project <project>", "Project id or slug")
-  ).action((options: { workspace: string; project?: string; json?: boolean }) =>
-    runCliAction("next", options, () => runNextCommand(options), renderNextSuccess)
+      .option("--ready", "List every Action in the active plan that could be dispatched now")
+  ).action((options: { workspace: string; project?: string; ready?: boolean; json?: boolean }) =>
+    options.ready
+      ? runCliAction("next.ready", options, () => runNextReadyCommand(options), renderNextReadySuccess)
+      : runCliAction("next", options, () => runNextCommand(options), renderNextSuccess)
   );
 
   addJsonOption(

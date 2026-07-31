@@ -8,6 +8,37 @@ updated: 2026-07-31
 
 # Mission Log: Arcadia
 
+## 2026-07-31 — Delivered compute-ready-set
+
+- **Did:** Built `resolveReadySet` in `src/docs/dispatch.ts` and wired it to
+  `arcadia next --ready`. It resolves the structural question (project,
+  active_plan, real plan document) once through `resolveDispatch` and reuses
+  its refusal verbatim rather than re-deriving it; every unfinished Action in
+  the resolved plan is then checked individually through
+  `resolveActionReadiness` -- the same function a single-action lookup
+  already uses -- so the ready set can never disagree with what `next` says
+  about any one Action. Deliberately does not additionally refuse the whole
+  set over pointer-level blockers (an inactive Project, a competing
+  current_action elsewhere) that describe the pointer rather than any one
+  Action's readiness, since reporting what would be ready dispatches nothing
+  and is not itself unsafe. The suggested current_action is deliberately
+  unambitious: the current pointer if it is itself ready, otherwise the first
+  ready Action in the plan's own declaration order -- no invented scoring,
+  and never written. An empty ready set still names the unfinished Action
+  with fewest readiness blockers rather than printing nothing.
+- **Result:** `arcadia next --ready` against this repository correctly lists
+  `compute-ready-set` and `surface-dispatch-journal` as the ready set (both
+  other Actions in the plan are done), and suggests `compute-ready-set`
+  unchanged since it was already current_action. 13 new tests: 11 unit tests
+  on `resolveReadySet` covering each exclusion rule, the suggestion logic in
+  both directions, the nearest-to-ready fallback, and agreement with
+  `resolveDispatch`; 2 integration tests exercising the real CLI command
+  against a docs-synced project, confirming nothing is journalled.
+- **Next:** `surface-dispatch-journal` is now `current_action` -- the last
+  Action in `dispatch-contract-enforcement`, exactly where the plan's own
+  ordering said it should land.
+- **Blockers:** none
+
 ## 2026-07-31 — Cross-referenced the "OK to go" reporting signal
 
 - **Did:** Added a fixed `OK to go: <verb-first next step>` line to

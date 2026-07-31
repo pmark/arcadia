@@ -422,4 +422,158 @@ export function isDispatchable(resolution: DispatchResolution): boolean {
   );
 }
 
+/** One Action a coding agent could dispatch right now. */
+export interface ReadySetEntry {
+  actionId: string;
+  title: string;
+  responsibility: string;
+}
+
+/** The single unfinished Action closest to ready, reported when nothing is. */
+export interface NearestToReady {
+  actionId: string;
+  title: string;
+  responsibility: string;
+  blockers: DispatchBlocker[];
+  operatorQuestion: string | null;
+}
+
+export interface ReadySetResolution {
+  projectSlug: string | null;
+  planSlug: string | null;
+  planPath: string | null;
+  /** Populated only when the active plan itself could not be resolved at
+   *  all — the same refusal `resolveDispatch` would report for the pointer,
+   *  not a second explanation of it. */
+  blockers: DispatchBlocker[];
+  /** Every Action in the active plan with no unmet transitive prerequisite,
+   *  no unanswered required Decision, no open clarification question, and a
+   *  responsibility a coding agent may act on. In plan declaration order. */
+  ready: ReadySetEntry[];
+  /** A suggestion only — never written. The current current_action if it is
+   *  itself ready, otherwise the first ready Action in declaration order, or
+   *  null when nothing is ready. */
+  suggestedCurrentAction: string | null;
+  /** Populated only when `ready` is empty, so an empty set still names a
+   *  next step instead of printing nothing. */
+  nearest: NearestToReady | null;
+}
+
+/**
+ * Compute every Action in the active plan a coding agent could dispatch right
+ * now, instead of only refusing a bad pointer.
+ *
+ * Deliberately narrower than `resolveDispatch`: it does not require a
+ * `current_action` to already resolve, and it reports the whole set an
+ * operator could choose from rather than one refusal. Each candidate's
+ * readiness is resolved through `resolveActionReadiness` — the same rule
+ * `resolveDispatch` itself uses for its current_action — so this can never
+ * disagree with what `arcadia next` would say about any one Action.
+ *
+ * Gated only on whether the pointer resolves *structurally* (a project, an
+ * active_plan, a real plan document) — the same condition `resolveDispatch`
+ * uses to decide whether `context` exists at all. It does not additionally
+ * refuse on every blocker `resolveDispatch` might report (an inactive
+ * Project, a competing current_action elsewhere), because those describe the
+ * *pointer*, not any one Action's readiness, and this command computes
+ * readiness, never dispatches anything — nothing unsafe is enabled by
+ * reporting what would be ready.
+ */
+export function resolveReadySet(repoRoot: string, projectSlug?: string): ReadySetResolution {
+  const dispatch = resolveDispatch(repoRoot, projectSlug);
+
+  if (!dispatch.context) {
+    return {
+      projectSlug: projectSlug ?? null,
+      planSlug: null,
+      planPath: null,
+      blockers: dispatch.blockers,
+      ready: [],
+      suggestedCurrentAction: null,
+      nearest: null
+    };
+  }
+
+  const { projectSlug: resolvedProjectSlug, activePlan: planSlug, planPath } = dispatch.context;
+
+  const discovered = discoverDocs(repoRoot);
+  const plan = discovered.docs.find(
+    (doc): doc is PlanDoc => doc.type === "plan" && doc.slug.toLowerCase() === planSlug.toLowerCase()
+  );
+  if (!plan) {
+    // Cannot happen when dispatch.context resolved — the plan that produced
+    // it must exist — but reported rather than thrown, matching this
+    // module's refuse-don't-throw posture everywhere else.
+    return {
+      projectSlug: resolvedProjectSlug,
+      planSlug,
+      planPath,
+      blockers: [{
+        relativePath: planPath,
+        field: "type: plan",
+        message: `Active plan "${planSlug}" resolved a current action but could not be re-read.`,
+        remedy: "Re-run; if this persists, the plan document may have changed mid-resolution."
+      }],
+      ready: [],
+      suggestedCurrentAction: null,
+      nearest: null
+    };
+  }
+
+  const unfinished = plan.actions.filter((action) => action.status !== "done" && action.status !== "blocked");
+
+  const evaluated = unfinished.map((action) => {
+    const readiness = resolveActionReadiness(repoRoot, resolvedProjectSlug, action.id);
+    const authorized = action.responsibility === "codex" || action.responsibility === "autonomous";
+    const isReady = readiness.blockers.length === 0 && readiness.operatorQuestion === null && authorized;
+    return { action, readiness, isReady };
+  });
+
+  const ready: ReadySetEntry[] = evaluated
+    .filter((entry) => entry.isReady)
+    .map((entry) => ({
+      actionId: entry.action.id,
+      title: entry.action.title,
+      responsibility: entry.action.responsibility
+    }));
+
+  const currentActionId = dispatch.context.action.id;
+  const suggestedCurrentAction = ready.length === 0
+    ? null
+    : ready.some((entry) => entry.actionId === currentActionId)
+      ? currentActionId
+      : ready[0].actionId;
+
+  let nearest: NearestToReady | null = null;
+  if (ready.length === 0) {
+    // Fewest readiness blockers wins; ties keep plan declaration order, since
+    // that is the only ordering the document itself asserts.
+    const best = evaluated.reduce<(typeof evaluated)[number] | null>((closest, entry) => {
+      if (!closest) {
+        return entry;
+      }
+      return entry.readiness.blockers.length < closest.readiness.blockers.length ? entry : closest;
+    }, null);
+    if (best) {
+      nearest = {
+        actionId: best.action.id,
+        title: best.action.title,
+        responsibility: best.action.responsibility,
+        blockers: best.readiness.blockers,
+        operatorQuestion: best.readiness.operatorQuestion
+      };
+    }
+  }
+
+  return {
+    projectSlug: resolvedProjectSlug,
+    planSlug,
+    planPath,
+    blockers: [],
+    ready,
+    suggestedCurrentAction,
+    nearest
+  };
+}
+
 export type { ArcadiaDoc };

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runDocsSyncCommand } from "../src/commands/docs.js";
+import { runNextReadyCommand } from "../src/commands/next.js";
 import { runReviewApproveCommand } from "../src/commands/review.js";
 import { runWorkPlanCommand } from "../src/commands/work.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -320,6 +321,57 @@ describe("approval-time readiness recheck (Decision 0005, hybrid)", () => {
 
     const events = withDatabase(workspace, (db) => listDispatchEvents(db));
     expect(events.map((event) => event.command)).toEqual(["work.plan"]);
+  });
+});
+
+function readySetProjectDoc(): string {
+  return [
+    "---",
+    "arcadia: v1",
+    "type: project",
+    "slug: demo",
+    "name: Demo",
+    "status: active",
+    "goal: Exercise the ready set.",
+    "milestone: First milestone",
+    "active_plan: sample-plan",
+    "updated: 2026-07-25",
+    "---",
+    ""
+  ].join("\n");
+}
+
+describe("arcadia next --ready", () => {
+  it("lists the dispatchable Action from a real docs-sync'd project, and journals nothing", () => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", readySetProjectDoc());
+    writeDoc(repo, "docs/plans/sample-plan.md", chainPlan("done"));
+    const workspace = workspaceFor(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const result = runNextReadyCommand({ workspace, project: "demo" });
+
+    // migrate is done, so it is excluded from consideration entirely; ship-it
+    // depends on it and migrate is finished, so ship-it is the whole set.
+    expect(result.data.ready.map((entry) => entry.actionId)).toEqual(["ship-it"]);
+    expect(result.data.suggestedCurrentAction).toBe("ship-it");
+
+    // A read-only report, computed fresh every time -- not a resolution the
+    // dispatch journal needs to remember.
+    expect(withDatabase(workspace, (db) => listDispatchEvents(db))).toEqual([]);
+  });
+
+  it("excludes the Action still blocked on its migration, from the same real project", () => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", readySetProjectDoc());
+    writeDoc(repo, "docs/plans/sample-plan.md", chainPlan("open"));
+    const workspace = workspaceFor(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const result = runNextReadyCommand({ workspace, project: "demo" });
+
+    expect(result.data.ready.map((entry) => entry.actionId)).toEqual(["migrate"]);
+    expect(result.data.suggestedCurrentAction).toBe("migrate");
   });
 });
 
