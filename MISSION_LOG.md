@@ -8,6 +8,22 @@ updated: 2026-07-31
 
 # Mission Log: Arcadia
 
+## 2026-07-31 — Cross-referenced the "OK to go" reporting signal
+
+- **Did:** Added a fixed `OK to go: <verb-first next step>` line to
+  `AGENTS.md`'s "Always identify" list: whenever a message resolves to
+  exactly one concrete, unblocked next step, end it with that exact line as
+  the last thing in the message; omit it entirely otherwise. The full
+  specification lives in Private Practice Now's
+  `docs/agent-continuation-protocol.md`, since the rule governs every coding
+  agent's reports across every project operating under the Arcadia Way, not
+  only this repository -- this entry is the pointer, not a second copy.
+- **Result:** A single vocabulary for "ready to execute" now spans both
+  repositories rather than each inventing its own phrasing.
+- **Next:** None; this is a standing reporting behavior, not a tracked
+  action.
+- **Blockers:** none
+
 ## 2026-07-31 — Delivered verify-acceptance-criteria
 
 - **Did:** Built `src/stewardship/acceptanceCriteria.ts`, evaluating each of a
