@@ -509,7 +509,7 @@ function readOperatorContext(workspace: string): string {
  * failing the whole run over it would be a worse outcome than losing the
  * declared list.
  */
-function declaredAcceptanceCriteria(workItem: WorkItemSummary): string[] {
+export function declaredAcceptanceCriteria(workItem: WorkItemSummary): string[] {
   const raw = workItem.acceptance_criteria_json;
   if (!raw) {
     return [];

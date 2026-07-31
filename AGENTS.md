@@ -13,6 +13,17 @@ Always identify:
 - Work classification
 - Required artifacts
 
+When a message ends with exactly one concrete, immediately actionable next
+step — nothing blocking, no open question, no choice still pending — end it
+with a fixed `OK to go: <verb-first next step>` line, last thing in the
+message, and omit it entirely otherwise. This is the coding agent's half of
+what `arcadia next` already resolves to (dispatchable / one operator question
+/ blockers): one reliable signal, not prose that has to be read to be
+trusted. Full spec, and the reasoning behind each constraint, lives in
+`docs/agent-continuation-protocol.md` under a project operating on the
+Arcadia Way — see Private Practice Now's copy — since it governs every
+coding agent's reports, not just Arcadia's own.
+
 ## The 80/20 rule
 
 The Pareto principle holds that roughly 80% of consequences come from 20% of

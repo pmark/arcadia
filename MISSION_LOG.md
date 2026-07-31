@@ -8,6 +8,50 @@ updated: 2026-07-31
 
 # Mission Log: Arcadia
 
+## 2026-07-31 — Cross-referenced the "OK to go" reporting signal
+
+- **Did:** Added a fixed `OK to go: <verb-first next step>` line to
+  `AGENTS.md`'s "Always identify" list: whenever a message resolves to
+  exactly one concrete, unblocked next step, end it with that exact line as
+  the last thing in the message; omit it entirely otherwise. The full
+  specification lives in Private Practice Now's
+  `docs/agent-continuation-protocol.md`, since the rule governs every coding
+  agent's reports across every project operating under the Arcadia Way, not
+  only this repository -- this entry is the pointer, not a second copy.
+- **Result:** A single vocabulary for "ready to execute" now spans both
+  repositories rather than each inventing its own phrasing.
+- **Next:** None; this is a standing reporting behavior, not a tracked
+  action.
+- **Blockers:** none
+
+## 2026-07-31 — Delivered verify-acceptance-criteria
+
+- **Did:** Built `src/stewardship/acceptanceCriteria.ts`, evaluating each of a
+  plan's declared acceptance criteria against the accepted planning Artifact's
+  text. Deliberately narrow: nothing here can verify a free-text English claim
+  is true, only whether the Artifact addressed the topic at all, so the
+  checker produces only `unmet` (the criterion's terms are absent -- real
+  negative evidence) or `unchecked` (present, but truth unverifiable
+  mechanically). It never produces `met` -- inventing that judgment now would
+  pre-empt this plan's own open `criteria-judgment` question about whether
+  local Intelligence should ever rule on what a script cannot. Wired into
+  `review.ts`'s `CodexPlanningArtifactAcceptance` approval: the report lands
+  in the Decision's `decisionNote` in the plan author's own words, and the
+  structured per-criterion results merge into `context_json` via a new
+  `mergeReviewItemContext` repository function. An Action whose plan declared
+  no criteria is untouched -- the check runs only when criteria exist, so
+  `decisionNote` is byte-for-byte what it was before this landed.
+- **Result:** Accepting a Run's planning Artifact now reports each declared
+  criterion by name, rather than accepting silently regardless of what was
+  promised. 8 new unit tests cover the checker directly; 2 new integration
+  tests exercise the full pipeline (packet approval through Run through
+  acceptance) and confirm both the populated and untouched-when-no-criteria
+  cases.
+- **Next:** `compute-ready-set` remains `current_action` and is the
+  dispatchable Action -- `arcadia next --ready`, listing every Action with no
+  unmet prerequisite, unanswered Decision, or open question.
+- **Blockers:** none
+
 ## 2026-07-31 — Answered recheck-readiness-at-approval as a hybrid
 
 - **Did:** Traced the actual gap before answering the question: approval

@@ -1513,6 +1513,33 @@ export function findFollowUpReviewForRun(db: Database.Database, runId: string): 
   return row ?? null;
 }
 
+/**
+ * Merge fields into a Decision's `context_json` without disturbing whatever
+ * is already there. Used to attach structured evidence — per-criterion
+ * acceptance results, for example — to a Decision after it was created,
+ * rather than requiring every field to be known at creation time.
+ */
+export function mergeReviewItemContext(db: Database.Database, id: string, patch: Record<string, unknown>): void {
+  const row = db.prepare("SELECT context_json FROM review_items WHERE id = ?").get(id) as
+    | { context_json: string }
+    | undefined;
+  if (!row) {
+    return;
+  }
+  let context: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(row.context_json);
+    context = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    context = {};
+  }
+  db.prepare("UPDATE review_items SET context_json = ?, updated_at = ? WHERE id = ?").run(
+    JSON.stringify({ ...context, ...patch }),
+    nowIso(),
+    id
+  );
+}
+
 export function updateReviewItemStatus(
   db: Database.Database,
   id: string,
