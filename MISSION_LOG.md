@@ -8,6 +8,27 @@ updated: 2026-07-31
 
 # Mission Log: Arcadia
 
+## 2026-07-31 — Settled Decision 0004 and added "if not now, then when?"
+
+- **Did:** Answered Decision 0004 rather than leaving it open: neither remaining
+  increment now, both `deferred` against conditions that can actually fire —
+  dependency persistence when a database-backed view must show ordering without
+  re-crawling, narrative summarization when a second foreign repository is
+  onboarded or a summary is genuinely wanted. Followed the consequence the
+  Decision itself had recorded and moved `active_plan` to
+  `dispatch-contract-enforcement`, promoting it from draft with
+  `compute-ready-set` as `current_action` per that plan's own ordering note.
+  Added **"If not now, then when?"** to `AGENTS.md` beside the 80/20 rule, and
+  two lines to `CONSTITUTION.md`.
+- **Result:** `arcadia next` now resolves a dispatchable Action with zero
+  blockers and no operator question, for the first time since 2026-07-25 — the
+  pointer had spent six days returning a question. `deferred` is deliberately
+  not counted as resolved by `dispatch.ts`, so the two deferred Actions stay
+  blocked without pretending to be startable, and neither is waiting on a person.
+- **Next:** Implement `compute-ready-set` — `arcadia next --ready`, computed
+  through `resolveActionReadiness` rather than a second copy of the rules.
+- **Blockers:** none
+
 ## 2026-07-31 — Ingested mission Logs as rows
 
 - **Did:** Resolved the work pointer, which returned its one operator question

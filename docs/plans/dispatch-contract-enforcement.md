@@ -3,9 +3,10 @@ arcadia: v1
 type: plan
 slug: dispatch-contract-enforcement
 project: arcadia
-status: draft
+status: active
 milestone: Managed plans govern work from dispatch through acceptance
-updated: 2026-07-28
+current_action: compute-ready-set
+updated: 2026-07-31
 actions:
   - id: verify-acceptance-criteria
     title: Check finished work against the Action's declared acceptance criteria
@@ -36,6 +37,35 @@ actions:
       - The ready set excludes Actions with unmet transitive prerequisites, unanswered required Decisions, or an open clarification question.
       - The command suggests a current_action without writing one; the operator still decides.
       - An empty ready set says which unfinished Action is nearest to ready, rather than printing nothing.
+      - Readiness is computed through resolveActionReadiness, not a second implementation of the same rules.
+    execution:
+      schema: arcadia.execution/v1
+      profile: systems_change
+      context:
+        scope: project
+        required:
+          - Shared dispatch readiness resolution
+          - CLI surface for arcadia next
+        staging: forbidden
+      phases:
+        planning:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+        implementation:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+        verification:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+    references:
+      - src/docs/dispatch.ts
+      - docs/COMMANDS.md
     depends_on: []
   - id: recheck-readiness-at-approval
     title: Decide whether readiness is rechecked when a planning Decision is approved
@@ -113,6 +143,13 @@ and `recheck-readiness-at-approval` both touch the review and acceptance path,
 so answering the second before starting the first avoids doing that surgery
 twice. `compute-ready-set` and `surface-dispatch-journal` are independent of both
 and of each other.
+
+That preference is what makes `compute-ready-set` the `current_action` when this
+plan became active under Decision 0004. It is the only one of the four that
+depends on no open question: `recheck-readiness-at-approval` *is* a question,
+`verify-acceptance-criteria` should wait for that answer, and
+`surface-dispatch-journal` is deliberately last. Choosing it is the plan's own
+stated ordering rather than a fresh judgment about what matters most.
 
 `surface-dispatch-journal` is the least valuable of the four and should stay
 last. The journal already answers its question from the CLI; putting it on the

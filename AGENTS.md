@@ -41,6 +41,36 @@ approval gates, and truthful reporting are never the 80% to be trimmed — a
 shortcut through an approval boundary is not a Pareto optimization, it is a
 violation.
 
+## If not now, then when?
+
+The 80/20 rule says deferring is a real answer. This one says what a deferral
+costs: **a deferral must name its trigger.**
+
+"Later", "eventually", and "when we have time" are not answers. They are the
+decision being taken again at every future session, at full price, by whoever
+reads the document next. An item deferred without a trigger does not leave the
+queue — it just stops being legible.
+
+So when the answer is not now, say when:
+
+- **Name the condition, not the date.** "When a second foreign repository is
+  onboarded" is a trigger. "Q3" is a wish. The condition should be something
+  that will visibly happen or visibly not happen, so the deferral can expire on
+  its own instead of needing a meeting.
+- **A trigger that can never fire is a rejection.** Write it down as one. A
+  `deferred` item nobody can imagine reactivating is the queue lying about its
+  own size, and it is kinder to close it and be wrong than to carry it forever.
+- **Deferral is not blocking.** `blocked` means an outside party owes something.
+  Choosing not to do work that is perfectly startable is a decision, and it gets
+  recorded as a Decision with an answer — not left as an open question that
+  refuses dispatch every morning.
+- **Re-ask only when the trigger fires.** That is the whole point. Between now
+  and then, the question is settled and nobody re-litigates it.
+
+The test for whether this rule is being followed: read any deferred item and ask
+what would have to be true for it to start. If the document cannot answer, the
+deferral was never made — the item was only postponed.
+
 ## Orientation
 
 Before working on the database, the Intelligence service, or the Discord bot, read:

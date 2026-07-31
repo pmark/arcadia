@@ -5,7 +5,6 @@ slug: portfolio-docs-protocol
 project: arcadia
 status: active
 milestone: docs sync ingests a real project's markdown
-current_action: persist-dependencies
 updated: 2026-07-31
 actions:
   - id: build-parser
@@ -200,9 +199,7 @@ actions:
     acceptance_criteria:
       - depends_on edges survive a docs sync round trip.
       - An Action cannot be dispatched while an Action it depends on is unfinished. Already met in src/docs/dispatch.ts.
-    clarification: question_open
-    gap_type: missing-decision
-    question: "Now that mission-Log ingestion has landed, which remaining increment should Arcadia implement: dependency persistence or narrative summarization?"
+    clarification: unclarified
     confidence: medium
     decisions: ["0004"]
     depends_on: [build-upsert]
@@ -215,6 +212,7 @@ actions:
       - A narrative doc produces an Artifact holding its summary.
       - The summary is never written back into the source document.
     clarification: unclarified
+    decisions: ["0004"]
     depends_on: [wire-docs-sync-command]
 questions:
   - id: plan-milestone-span
@@ -251,14 +249,18 @@ that `arcadia next` resolves.
 
 - Milestone: `docs sync` ingests a real project's markdown — **reached.**
   Arcadia's own repository is the first project ingested by this protocol.
-- Current Action: `persist-dependencies`, which is `question_open` pending
-  Decision 0004. `arcadia next` returns that one question rather than inferring
-  priority from what is left.
-- Responsibility: Codex after the operator answers Decision 0004.
+- Current Action: none. This plan no longer declares one; Decision 0004 deferred
+  both remaining Actions and moved `active_plan` to
+  `dispatch-contract-enforcement`.
+- Responsibility: none pending. Neither deferred Action is waiting on a person.
 - Required Artifact: delivered — `docs sync`, `portfolio`, `next`, mission-Log
   ingestion, and Arcadia's own conforming documents carrying a resolvable work
   pointer.
-- Decisions open: 0004 plus the two plan-level questions above.
+- Decisions open: the two plan-level questions above. 0004 is deferred with
+  triggers, not open.
+- Deferred until their triggers fire: `persist-dependencies` (a database-backed
+  view must show ordering without re-crawling) and `narrative-summarization` (a
+  second foreign repository, or a summary someone actually wants).
 - Last Log: 2026-07-31 — implemented mission-Log ingestion under Decision 0003.
 - Updated: 2026-07-31
 

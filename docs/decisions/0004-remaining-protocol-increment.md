@@ -6,13 +6,13 @@ slug: remaining-protocol-increment
 project: arcadia
 plan: portfolio-docs-protocol
 action: persist-dependencies
-status: open
+status: deferred
 question: "Now that mission-Log ingestion has landed, which remaining increment should Arcadia implement: dependency persistence or narrative summarization?"
 gap_type: missing-decision
 recommendation: Neither, before deciding whether dependency persistence is worth finishing at all — its enforcement half is already delivered, and its remaining half changes nothing Arcadia currently decides.
 confidence: medium
-decided: null
-answer: null
+decided: 2026-07-31
+answer: "Neither now, and both deferred against named triggers. Dependency persistence revives when a database-backed view must show Action ordering without re-crawling repositories. Narrative summarization revives when a second foreign repository is onboarded, or when a narrative summary is actually wanted. Until then active_plan moves to dispatch-contract-enforcement, whose Actions are clarified and carry acceptance criteria."
 updated: 2026-07-31
 ---
 
@@ -49,12 +49,39 @@ milestone has been reached, and `dispatch-contract-enforcement` is a drafted
 plan whose Actions are clarified and carry acceptance criteria. Promoting that
 plan may be worth more than finishing this one's tail.
 
+## Decision
+
+**Neither now.** Both are deferred, and under "if not now, then when?" each
+carries the condition that revives it.
+
+**Dependency persistence revives when a database-backed view must show Action
+ordering without re-crawling repositories.** Today nothing does: dispatch
+resolves from documents, and `compute-ready-set` — the next Action — computes
+the ready set from documents too. The moment `portfolio` or the dashboard needs
+to render ordering from SQLite, the edges have to be there and this becomes
+real work. Until then it is a schema change that buys a column nobody reads.
+
+**Narrative summarization revives when a second foreign repository is onboarded,
+or when a narrative summary is actually wanted.** It is the last thing standing
+between a foreign repository and being fully represented, which sounds urgent
+and is not: one foreign repository has been validated and nobody has yet asked
+what its `architecture.md` says. Onboarding a second makes "detected but never
+read" a recurring cost instead of a one-off.
+
+Both triggers can fire, so neither is a rejection in disguise. If a year passes
+and neither has fired, that is evidence to close them, not to keep waiting.
+
 ## Consequences
 
-Whichever is chosen, the selected Action needs a `next_action`,
-`acceptance_criteria`, `confidence`, and an execution profile before it can be
-dispatched — `unclarified` Actions do not resolve.
+`active_plan` moves to `dispatch-contract-enforcement`, whose four Actions were
+written against a review session, are clarified, and carry acceptance criteria —
+rather than leaving this plan active with a pointer nobody intends to advance.
+Its `compute-ready-set` becomes `current_action`: it is the one Action there
+that depends on no open question, and the plan's own ordering note keeps it
+clear of the review-and-acceptance surgery that `recheck-readiness-at-approval`
+should settle first.
 
-If the answer is "neither", `PROJECT.md` should move `active_plan` to the plan
-that does carry the next objective, rather than leaving this plan active with a
-pointer nobody intends to advance.
+This plan keeps `status: active` and stops declaring a `current_action`, because
+only the plan named by `active_plan` may declare one. Its milestone is reached;
+the two deferred Actions stay `open` rather than `blocked`, since nothing
+outside the repository is owed — this was a choice, not an obstruction.
