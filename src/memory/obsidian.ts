@@ -258,6 +258,130 @@ export function exportProgressReview(
   };
 }
 
+export interface NarrativeDigestRecordInput {
+  project: { id: string; name: string; slug: string };
+  period: string;
+  window: { start: string; end: string };
+  generatedAt: string;
+  /** Workspace-relative path of the digest artifact this Record projects. */
+  digestPath: string;
+  /** The narrated digest body, exactly as composed. */
+  narrative: string;
+  factCount: number;
+}
+
+/**
+ * Project a composed narrative digest into the vault.
+ *
+ * Unlike a progress review, a digest's body is model-narrated rather than a
+ * deterministic compilation, so the Record is marked `narration: ai` and
+ * carries that distinction into its own frontmatter and heading -- an
+ * operator scanning the vault must be able to tell an AI-narrated Record
+ * apart from the deterministic ones without opening it.
+ *
+ * Returns `null` when the workspace has not opted into vault memory.
+ */
+export function exportNarrativeDigest(
+  workspace: string,
+  input: NarrativeDigestRecordInput,
+  options: { dryRun?: boolean } = {}
+): MemorySyncEntry | null {
+  const target = resolveVaultTarget(workspace);
+  if (!target) {
+    return null;
+  }
+
+  const narrative = canonicalMarkdown(input.narrative);
+  const title = `${input.project.name} ${input.period} digest, ${input.window.start} to ${input.window.end}`;
+  // One Record per Project, period, and window: re-composing the same digest
+  // updates it in place rather than accumulating near-identical notes.
+  const digestKey = `${input.project.slug}/${input.period}/${input.window.start}..${input.window.end}`;
+  const recordPath = path.join(
+    target.recordsRoot,
+    "Digests",
+    slugify(input.project.slug),
+    input.window.end.slice(0, 4),
+    `${input.window.end.slice(0, 10)}-${input.period}-digest.md`
+  );
+  assertDestinationSafe(target, recordPath);
+
+  const current = existsSync(recordPath) && statSync(recordPath).isFile()
+    ? readFileSync(recordPath, "utf8")
+    : null;
+
+  const claimedKey = current?.match(/^arcadia_digest_key:\s+"([^"]+)"$/m)?.[1] ?? null;
+  if (claimedKey && claimedKey !== digestKey) {
+    throw validationError("Refusing to overwrite a vault Record owned by a different digest.", {
+      recordPath,
+      digestKey,
+      claimedKey
+    });
+  }
+
+  // Hashed over the narrative alone, so re-composing an unchanged digest --
+  // whose generation timestamp always differs -- is a no-op rather than a
+  // vault write the operator learns to ignore.
+  const contentHash = createHash("sha256").update(narrative).digest("hex");
+  const claimedHash = current?.match(/^content_sha256:\s+"([0-9a-f]+)"$/m)?.[1] ?? null;
+  const status: MemorySyncStatus =
+    current === null ? "created" : claimedHash === contentHash ? "skipped" : "updated";
+
+  if (options.dryRun !== true && status !== "skipped") {
+    atomicWrite(target, recordPath, renderNarrativeDigestRecord(input, title, digestKey, contentHash, narrative));
+    writeManagedReadme(target);
+  }
+
+  return {
+    artifactId: digestKey,
+    artifactTitle: title,
+    project: input.project.name,
+    status,
+    recordPath,
+    error: null
+  };
+}
+
+function renderNarrativeDigestRecord(
+  input: NarrativeDigestRecordInput,
+  title: string,
+  digestKey: string,
+  contentHash: string,
+  narrative: string
+): string {
+  const lines = [
+    "---",
+    "arcadia_record: true",
+    "record_type: narrative_digest",
+    "narration: ai",
+    yaml("arcadia_digest_key", digestKey),
+    yaml("arcadia_project_id", input.project.id),
+    yaml("project", input.project.name),
+    yaml("period", input.period),
+    yaml("window_start", input.window.start),
+    yaml("window_end", input.window.end),
+    yaml("generated_at", input.generatedAt),
+    yaml("source_artifact_path", input.digestPath),
+    yaml("fact_count", String(input.factCount)),
+    yaml("content_sha256", contentHash),
+    "---",
+    "",
+    `# ${title}`,
+    "",
+    "_AI-narrated: this Record summarizes recorded activity but was written by a model, not compiled deterministically._",
+    "",
+    narrative.trimEnd(),
+    "",
+    "## Provenance",
+    "",
+    `- Narrated by Arcadia's local intelligence pipeline on ${input.generatedAt}.`,
+    `- Source Artifact: ${input.digestPath}`,
+    `- Facts considered: ${input.factCount}`,
+    "- SQLite remains operational truth; this Record is a projection and is safe to delete.",
+    ""
+  ];
+  return `${lines.join("\n").replace(/\n+$/, "")}\n`;
+}
+
 /** Vault folder name for reviews that cover every Project rather than one. */
 const PORTFOLIO_SCOPE = "portfolio";
 

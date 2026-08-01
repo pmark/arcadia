@@ -16,6 +16,8 @@ import {
   NarrativeDigestUnavailableError
 } from "../digests/composer.js";
 import { DIGEST_PERIODS, type ComposedProjectDigest, type DigestNarrator, type DigestPeriod } from "../digests/types.js";
+import { exportNarrativeDigest, type MemorySyncEntry } from "../memory/obsidian.js";
+import { nowIso } from "../utils/time.js";
 
 export interface DigestComposeOptions {
   workspace: string;
@@ -26,9 +28,16 @@ export interface DigestComposeOptions {
   narrator?: DigestNarrator;
 }
 
+export interface DigestComposeData extends ComposedProjectDigest {
+  /** The vault Record written, or `null` when vault memory is not enabled. */
+  memory: MemorySyncEntry | null;
+  /** Why the vault projection failed, when it did. Never fails the compose. */
+  memoryError: string | null;
+}
+
 export async function runDigestComposeCommand(
   options: DigestComposeOptions
-): Promise<CommandSuccess<ComposedProjectDigest>> {
+): Promise<CommandSuccess<DigestComposeData>> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const period = normalizePeriod(options.period);
   const start = normalizeInstant(options.from, "from");
@@ -55,10 +64,31 @@ export async function runDigestComposeCommand(
       if (error instanceof NarrativeDigestInvalidResultError) throw narrativeDigestInvalidResult(error.message);
       throw error;
     }
+
+    // Projected after the digest Artifact is written, and never in a way that
+    // can fail it: the Artifact is the deliverable, the vault Record is a
+    // convenience copy. A vault misconfiguration should be reported, not cost
+    // the operator their digest.
+    let memory: MemorySyncEntry | null = null;
+    let memoryError: string | null = null;
+    try {
+      memory = exportNarrativeDigest(workspacePath, {
+        project: { id: project.id, name: project.name, slug: project.slug },
+        period: result.digest.period,
+        window: { start: result.digest.window_start, end: result.digest.window_end },
+        generatedAt: nowIso(),
+        digestPath: result.artifact.path ?? "",
+        narrative: result.narrative,
+        factCount: result.facts.length
+      });
+    } catch (error) {
+      memoryError = error instanceof Error ? error.message : String(error);
+    }
+
     return createSuccess({
       command: "digest.compose",
       workspace: workspacePath,
-      data: result,
+      data: { ...result, memory, memoryError },
       artifacts: [result.artifact.id]
     });
   } finally {
@@ -67,15 +97,22 @@ export async function runDigestComposeCommand(
 }
 
 export function renderDigestComposeSuccess(
-  response: CommandSuccess<ComposedProjectDigest>
+  response: CommandSuccess<DigestComposeData>
 ): string[] {
-  const { digest, artifact, facts, created } = response.data;
-  return [
+  const { digest, artifact, facts, created, memory, memoryError } = response.data;
+  const lines = [
     `${created ? "Created" : "Updated"} ${artifact.title}.`,
     `Window: ${digest.window_start} ≤ activity < ${digest.window_end}`,
     `Facts: ${facts.length}`,
     `Artifact: ${artifact.id}${artifact.path ? ` (${artifact.path})` : ""}`
   ];
+  if (memory) {
+    lines.push(`Vault Record (${memory.status}): ${memory.recordPath}`);
+  }
+  if (memoryError) {
+    lines.push(`Vault Record not written: ${memoryError}`);
+  }
+  return lines;
 }
 
 function normalizePeriod(value: string): DigestPeriod {

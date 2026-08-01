@@ -3,10 +3,30 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-07-31
+updated: 2026-08-01
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-01 — Exported AI-narrated digests to the Obsidian vault
+
+- **Did:** Added `exportNarrativeDigest` to `src/memory/obsidian.ts`, a second
+  vault Record shape alongside `exportProgressReview`. It reuses the same
+  atomic-write, ownership-checked, content-hash-dedup machinery, keyed by
+  Project slug, period, and window instead of a review's since/until pair, and
+  writes under `Arcadia/Records/Digests/<project>/<year>/`. The frontmatter and
+  a visible callout mark the Record `narration: ai`, distinguishing it from the
+  deterministic progress-review Records already in the vault. Wired it into
+  `arcadia digest compose` the same non-blocking way `review weekly` projects
+  its report: a vault misconfiguration is reported in `memoryError` and never
+  costs the operator the composed digest Artifact.
+- **Result:** New `tests/narrative-digest-memory.test.ts` covers vault-disabled,
+  created, skipped-on-unchanged-hash, updated-on-changed-narrative, and
+  vault-misconfigured cases — mirroring `tests/progress-review-memory.test.ts`.
+  All digest, obsidian, and progress-review suites pass.
+- **Next:** `schedule-portfolio-digests` — extend the Discord bot's orientation
+  scheduler with daily/weekly/monthly cadences across every active Project.
+- **Blockers:** None.
 
 ## 2026-07-31 — Delivered one-Project narrative digest composition
 

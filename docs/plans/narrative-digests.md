@@ -5,8 +5,8 @@ slug: narrative-digests
 project: arcadia
 status: active
 milestone: Arcadia narrates its own recent history automatically, for itself and every Project it manages
-current_action: export-digest-to-obsidian
-updated: 2026-07-31
+current_action: schedule-portfolio-digests
+updated: 2026-08-01
 actions:
   - id: compose-project-digest
     title: Compose one Project's narrative digest for a window, narrated by local AI
@@ -59,10 +59,10 @@ actions:
     depends_on: []
   - id: export-digest-to-obsidian
     title: Export a composed digest into the Obsidian vault
-    status: open
+    status: done
     responsibility: codex
     effort: short
-    next_action: Extend the Obsidian export with a second record shape alongside the existing deterministic progress review -- an AI-narrated one, clearly marked as such -- reusing exportProgressReview's atomic-write and content-hash-dedup machinery.
+    next_action: Done. exportNarrativeDigest in src/memory/obsidian.ts writes a second record shape -- record_type narrative_digest, narration ai -- reusing exportProgressReview's atomic-write, ownership-check, and content-hash-dedup machinery; arcadia digest compose projects it the same non-blocking way review weekly does.
     expected_artifact: A vault Record for each composed digest, written the same safe way progress reviews already are
     clarification: clarified
     confidence: high
