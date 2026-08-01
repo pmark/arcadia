@@ -8,6 +8,26 @@ updated: 2026-08-01
 
 # Mission Log: Arcadia
 
+## 2026-08-01 — Put the QA queue ahead of autonomous QA
+
+- **Did:** Refined the draft `demo-first-delivery` plan after the operator
+  needed to test three active pull requests but had to reconstruct every demo
+  path manually. Added `build-qa-queue-vertical-slice` as the plan's first
+  Action and made the earlier Project Detail hero depend on it. The first
+  Artifact is one Arcadia QA tab for configured Candidates: Project, revision,
+  PR, Test link, short procedure, evidence freshness, and a pass/fail/needs-
+  follow-up operator Decision bound to that revision.
+- **Result:** The Pareto scope is explicit: no provider discovery, process
+  scraping, screenshot automation, LLM visual judgment, autonomous QA, merge,
+  deployment, or delivery in the first slice. The queue is deterministic and
+  has no runtime LLM Token Impact; later capture and independent QA remain
+  sequenced behind it.
+- **Next:** The operator may activate `demo-first-delivery` when ready to make
+  `build-qa-queue-vertical-slice` the current Action.
+- **Blockers:** The plan remains draft; implementation still needs the priority
+  Decision that activates it instead of displacing the current narrative-
+  digests Action implicitly.
+
 ## 2026-08-01 — Added “Make it real” and enforceable Token Impact budgets
 
 - **Did:** Added “Make it real” beside the Pareto and “If not now, then when?”

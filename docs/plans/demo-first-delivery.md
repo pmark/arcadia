@@ -9,6 +9,58 @@ token_impact: xlarge
 token_budget: "Stage the program Action by Action; builds, health checks, Playwright capture, and metadata sync use no LLM tokens, while implementation, failure diagnosis, visual interpretation, and independent QA reviews are model-bearing and must be batched per Candidate."
 updated: 2026-08-01
 actions:
+  - id: build-qa-queue-vertical-slice
+    title: Give the operator one QA queue for active Candidate work
+    status: open
+    responsibility: codex
+    effort: session
+    next_action: Build an Arcadia QA tab that reads a small configured Candidate list and shows each Candidate's Project, pull request, demo link, exact test procedure, evidence freshness, and a human sign-off Decision without automatic provider discovery or release automation.
+    expected_artifact: A usable Arcadia QA queue for the current PPN and Arcadia Candidates, with one-click Test links and durable operator sign-off evidence
+    clarification: clarified
+    confidence: high
+    source: Operator direction on 2026-08-01 and Decision 0007
+    acceptance_criteria:
+      - The Dashboard exposes one QA tab that lists every configured active Candidate in a compact, testable order and visibly distinguishes Candidate from Stable.
+      - Each Candidate shows its Project, exact source revision when known, pull-request link, demo or local-test link, short human-readable test procedure, last known validation state, and evidence freshness or absence.
+      - Test opens only a configured target; an unreachable or missing target reports its state plainly and does not claim a demo exists.
+      - The initial queue can represent the River Copy Studio Candidate and Arcadia Candidates using checked-in Project configuration; GitHub and Cloudflare discovery remain later additive work.
+      - An operator can record pass, fail, or needs-follow-up as a Decision bound to the exact Candidate revision, with optional concise notes; this does not merge, deploy, or mark a release delivered.
+      - The tab has one clear primary action per Candidate and never makes the operator reconstruct the test path from a Log or PR description.
+      - No provider credentials, model calls, external deployment, merge, or outbound communication is required for this vertical slice.
+    execution:
+      schema: arcadia.execution/v1
+      profile: systems_change
+      context:
+        scope: cross_system
+        required:
+          - Arcadia Dashboard navigation and Project configuration
+          - Existing Decision and Artifact contracts
+          - Configured local and remote proof targets
+        staging: forbidden
+      phases:
+        planning:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+        implementation:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+        verification:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+    decisions: ["0007"]
+    references:
+      - docs/operator-demo-and-release-contract.md
+      - apps/dashboard/app/projects/[id]/page.tsx
+      - apps/dashboard/components/sidebar.tsx
+      - apps/dashboard/lib/types.ts
+      - src/dashboard/snapshot.ts
+    depends_on: []
   - id: build-demo-hero-vertical-slice
     title: Put one reconciled demo-first hero and proof card on Project Detail
     status: open
@@ -58,7 +110,7 @@ actions:
       - apps/dashboard/app/projects/[id]/page.tsx
       - apps/dashboard/lib/types.ts
       - src/dashboard/snapshot.ts
-    depends_on: []
+    depends_on: [build-qa-queue-vertical-slice]
   - id: automate-proof-artifacts
     title: Collect pull requests, deployments, health checks, and screenshots as proof Artifacts
     status: open
@@ -258,6 +310,34 @@ decisions: ["0007", "0008"]
 ---
 
 # Demo-first delivery
+
+## Pareto QA slice: what ships first
+
+The first twenty percent is a **QA tab**, not an autonomous QA system. It is a
+single, truthful queue of configured Candidate work that answers the operator's
+only immediate questions: *what can I test now; where do I open it; what should
+I check; and have I signed off on this exact revision?*
+
+For each Candidate, show one compact card with:
+
+- Project and Candidate/Stable state;
+- pull-request link and source revision when known;
+- demo or local Test link, plus plain reachability state;
+- a short, authored test procedure;
+- last validation/evidence time or an explicit absence of evidence; and
+- an operator Decision: pass, fail, or needs follow-up, tied to that revision.
+
+The initial queue is configured by checked-in Project data. It deliberately
+does **not** scrape GitHub, Cloudflare, or local processes; capture screenshots;
+ask an LLM to judge pages; run an autonomous QA agent; merge; deploy; or send
+anything to a client. Those are valuable follow-on Actions only after the
+operator can reliably test the current three Candidates in one place.
+
+This has `token_impact: none` at runtime: rendering the queue, opening links,
+recording a Decision, health checks, and screenshot capture are deterministic.
+The plan remains `xlarge` because later implementation and independent visual
+interpretation are model-bearing; the first Action's guardrail is to keep that
+work out of the vertical slice.
 
 ## Outcome
 
