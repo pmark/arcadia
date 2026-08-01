@@ -51,7 +51,9 @@ function planDoc(overrides: { currentAction?: string | null; slug?: string; extr
     `slug: ${overrides.slug ?? "main-plan"}`,
     "project: demo",
     "status: active",
-    "milestone: First milestone"
+    "milestone: First milestone",
+    "token_impact: medium",
+    "token_budget: One bounded implementation pass; tests are deterministic."
   ];
   if (overrides.currentAction !== null) {
     lines.push(`current_action: ${overrides.currentAction ?? "ship-it"}`);
@@ -192,6 +194,8 @@ describe("dispatch resolution", () => {
         "slug: main-plan",
         "project: demo",
         "status: active",
+        "token_impact: small",
+        "token_budget: One bounded clarification pass.",
         "current_action: undecided",
         "updated: 2026-07-25",
         "actions:",
@@ -364,7 +368,9 @@ function graphPlanDoc(
     "slug: main-plan",
     "project: demo",
     "status: active",
-    "milestone: First milestone"
+    "milestone: First milestone",
+    "token_impact: medium",
+    "token_budget: One bounded implementation pass; tests are deterministic."
   ];
   if (current !== null) {
     lines.push(`current_action: ${current}`);

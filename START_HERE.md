@@ -1,6 +1,6 @@
 # Arcadia: Start Here
 
-This is the canonical brief operator guide. On this Mac, open **Mission Control** at <http://127.0.0.1:3020/>.
+This is the canonical brief operator guide. On this Mac, open **Mission Control** at <http://127.0.0.1:3020/>. From an iPhone or iPad, `127.0.0.1` means the phone itself; use the Mac's LAN address (for example `http://192.168.86.38:3020/`) on the same Wi-Fi, or the Mac's Tailscale address (for example `http://100.66.244.44:3020/`) when both devices are on Tailscale.
 
 Open **System Status** at <http://127.0.0.1:3020/admin/status> when you need a quick readiness check. It shows whether Arcadia is ready for normal operation, image generation, and background processing, with live dependency reachability, worker heartbeats, and Intelligence job counts.
 
@@ -13,6 +13,23 @@ Open **Dispatch Journal** at <http://127.0.0.1:3020/admin/dispatch-journal> to s
 3. Open **Review**, inspect the packet, and choose Approve & Run, Reject, or Defer.
 4. Use **Runs** to follow approved work and inspect its Artifacts, Validation, and Log.
 5. Return to **Review** to accept a successful plan; acceptance marks the original Action done.
+
+For software work, use the demo-first handoff contract even while Mission
+Control's richer proof surface is still being built:
+
+1. The coding agent supplies a stable runnable demo, or explicitly records why
+   the Action has no observable behavior to demonstrate.
+2. The operator exercises the candidate first and records product feedback.
+3. Before accepting the Action, approving a merge or release, or delivering to
+   a client, the operator reads and understands the relevant Log and QA
+   evidence. The Log is the audit trail; it is not a substitute for the demo.
+4. A candidate does not replace the known-good stakeholder demo until QA and
+   release verification have passed.
+
+The planned Project Detail hero, proof gallery, Test action, Arcadia QA, and
+release workflow are specified in `docs/plans/demo-first-delivery.md`. Until
+that UI exists, this contract is a manual handoff requirement rather than a
+claim about buttons already present in Mission Control.
 
 Use the **Ask** box for a new request that is not already an Action in Arcadia.
 
@@ -65,7 +82,10 @@ instruction and queues them through this identical ingress path.
 Open a Project from **Projects** when you need to work from that repository's
 managed documents rather than the portfolio-wide Daily Advantage. The Project
 view shows the docs-authoritative Milestone, current Action, responsibility,
-expected Artifact, source plan, and resolved execution profile. **Get to work**
+expected Artifact, source plan, resolved execution profile, and the plan's
+T-shirt Token Impact plus its plain-language Token Budget. Deterministic builds,
+tests, health checks, Playwright navigation, and screenshot capture consume no
+LLM tokens unless a model is asked to interpret their output. **Get to work**
 prepares a planning Decision for that exact Action; it never runs code or
 deploys. If preparation is refused, the same view names each blocking document
 field and its concrete remedy. Open questions and project Decisions can be
@@ -135,6 +155,12 @@ After you sign in following a laptop restart, Arcadia's managed launch agents st
 - **Intelligence API and worker (feature-specific)** — structured generation at port 4710. Its durable SQLite queue dispatches cloud, Codex, and local generation through separate bounded pools, so a long image job no longer blocks unrelated requests.
 - **ComfyUI image backend (feature-specific)** — local FLUX.2 Klein generation/editing at port 8188 when configured.
 - **Discord adapter (feature-specific)** — capture, status, and notifications.
+
+The Dashboard binds to local interfaces for this operator-only workflow, so a
+phone can reach it over the LAN or Tailscale. If the Projects card and the
+repository's docket ever disagree, refresh the page: the card selects the
+most recently updated open Action, while the repository remains authoritative
+for the full control record.
 
 The optional iCloud file-ingress job also starts automatically and checks its drop folder once a minute. It is not required for the Today page.
 

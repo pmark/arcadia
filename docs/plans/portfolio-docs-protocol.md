@@ -5,7 +5,9 @@ slug: portfolio-docs-protocol
 project: arcadia
 status: active
 milestone: docs sync ingests a real project's markdown
-updated: 2026-07-31
+token_impact: xlarge
+token_budget: "The historical protocol program required several agentic implementation sessions; parsing, sync, dependency resolution, and validation are deterministic, and deferred narrative summarization is the only routine model-bearing path."
+updated: 2026-08-01
 actions:
   - id: build-parser
     title: Build the frontmatter parser and vocabulary validator
@@ -551,6 +553,7 @@ only legal values. Anything else fails ingestion.
 | `confidence` | `high` `medium` `low` |
 | decision `status` | `open` `approved` `rejected` `deferred` |
 | plan `status` | `draft` `active` `complete` `superseded` |
+| plan `token_impact` | `none` `small` `medium` `large` `xlarge` |
 | artifact `status` | `planned` `drafted` `ready` `published` |
 
 Dates are ISO `YYYY-MM-DD`. Slugs are kebab-case, stable forever.
@@ -594,6 +597,8 @@ project: arcadia                  # PROJECT.md slug
 status: active                    # draft | active | complete | superseded
 milestone: Clarification loop shipped
 current_action: plan-gate         # exactly one action id in this plan
+token_impact: medium              # relative LLM-token exposure, not exact usage
+token_budget: "Model calls are bounded to implementation and review; validation is deterministic."
 updated: 2026-07-25
 actions:
   - id: phase-2-fields            # stable within this plan
@@ -633,6 +638,12 @@ decisions: ["0007"]               # decision record ids this plan references
 ```
 
 Rules:
+
+- Every plan declares `token_impact` and `token_budget`. The impact is relative
+  LLM-token exposure (`none`, `small`, `medium`, `large`, `xlarge`), while the
+  budget names which work invokes a model and how repetition is bounded.
+  Deterministic builds, tests, health checks, browser navigation, and screenshot
+  capture use no LLM tokens unless a model interprets their output.
 
 - An action with `clarification: clarified` MUST have a verb-first, concrete
   `next_action`. An action with `question_open` MUST have `question` +
@@ -801,6 +812,9 @@ starts, and `references:` for paths a worker needs to read.
 - effort: `quick` (≤15 min) `short` (≤1 h) `session` (1–3 h) `project`
   (multi-session) — set it only when the conversation actually implied a
   size; otherwise omit it. Never guess.
+- plan token_impact: `none` `small` `medium` `large` `xlarge` — relative LLM
+  exposure, paired with a required plain-language `token_budget`; never turn
+  this T-shirt signal into a fabricated exact token or dollar forecast.
 - clarification: `unclarified` `clarified` `question_open`
 - gap_type: `missing-decision` `missing-external-input` `missing-definition`
   `missing-success-criteria`

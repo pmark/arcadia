@@ -132,6 +132,7 @@ export function renderNextSuccess(response: CommandSuccess<NextCommandData>): st
     `Project: ${context.projectName} (${context.projectSlug}) — ${context.projectStatus}`,
     `Repository: ${repoRoot}`,
     `Active plan: ${context.activePlan} [${context.planStatus}] — ${context.planPath}`,
+    `Token impact: ${context.planTokenImpact} — ${context.planTokenBudget}`,
     `Milestone: ${context.milestone ?? "none"}`,
     "",
     `Current action: ${action.id}`,

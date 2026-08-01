@@ -6,7 +6,9 @@ project: arcadia
 status: active
 milestone: Arcadia narrates its own recent history automatically, for itself and every Project it manages
 current_action: export-digest-to-obsidian
-updated: 2026-07-31
+token_impact: large
+token_budget: "Composition uses one bounded local-preferred narration per Project and period; gathering, deduplication, export, scheduling, and empty-window handling are deterministic."
+updated: 2026-08-01
 actions:
   - id: compose-project-digest
     title: Compose one Project's narrative digest for a window, narrated by local AI

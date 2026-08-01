@@ -5,7 +5,9 @@ slug: coding-agent-selection
 project: arcadia
 status: complete
 milestone: vendor-neutral coding-agent selection
-updated: 2026-07-26
+token_impact: large
+token_budget: "Agentic design and cross-provider integration carried the cost; selection, schema validation, and telemetry checks remain deterministic at runtime."
+updated: 2026-08-01
 actions:
   - id: execution-profile-contract
     title: Add the vendor-neutral execution-profile contract
@@ -97,8 +99,10 @@ Arcadia will describe coding-agent work through vendor-neutral capability,
 reasoning-effort, tool, context, autonomy, delegation, and review requirements.
 Provider-specific model identifiers remain in replaceable adapter mappings.
 The runner selects the least costly compliant configuration and refuses weaker
-substitution. Predictive token estimation and budgeting are explicitly deferred
-until observed Run history demonstrates that they would improve scheduling.
+substitution. Exact predictive token estimation remains deferred until observed
+Run history demonstrates that it would improve scheduling; plans now carry a
+coarse relative Token Impact and plain-language Token Budget so obviously large
+programs are visible without presenting speculation as precision.
 
 ## Status
 
@@ -121,8 +125,9 @@ permission to deploy, publish, use credentials, spend money, access production
 data, delete data, merge, or make operator-reserved product Decisions.
 
 Usage telemetry remains observational in v1. Arcadia may stop or choose an
-equivalent compliant provider when a reported limit is reached, but it does not
-predict token consumption or schedule from speculative budgets.
+equivalent compliant provider when a reported limit is reached. T-shirt Token
+Impact informs planning but does not predict consumption, schedule work from
+speculative budgets, or override provider availability.
 
 ## Log
 

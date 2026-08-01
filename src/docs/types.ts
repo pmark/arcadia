@@ -33,6 +33,10 @@ export type DocType = (typeof DOC_TYPES)[number];
 export const PLAN_STATUSES = ["draft", "active", "complete", "superseded"] as const;
 export type PlanStatus = (typeof PLAN_STATUSES)[number];
 
+/** Relative LLM-token exposure for a whole plan, never an exact forecast. */
+export const TOKEN_IMPACTS = ["none", "small", "medium", "large", "xlarge"] as const;
+export type TokenImpact = (typeof TOKEN_IMPACTS)[number];
+
 export const DECISION_DOC_STATUSES = ["open", "approved", "rejected", "deferred"] as const;
 export type DecisionDocStatus = (typeof DECISION_DOC_STATUSES)[number];
 
@@ -73,7 +77,7 @@ export interface ProjectDoc extends DocLocation {
    * the project, which also makes two competing current actions structurally
    * impossible. A plan may still carry one for a project that has not adopted
    * the project-level pointer.
-   */
+  */
   currentAction: string | null;
   updated: string;
   body: string;
@@ -144,8 +148,11 @@ export interface PlanDoc extends DocLocation {
   /**
    * The one action in this plan that is the objective. The other half of the
    * work pointer; exactly one action may hold it across the whole project.
-   */
+  */
   currentAction: string | null;
+  tokenImpact: TokenImpact;
+  /** Human-readable boundary: what uses tokens, what does not, and how use is capped. */
+  tokenBudget: string;
   updated: string;
   actions: PlanActionDoc[];
   questions: PlanQuestionDoc[];

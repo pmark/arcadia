@@ -48,6 +48,8 @@ function chainPlan(migrateStatus: string): string {
     "project: demo",
     "status: active",
     "milestone: First milestone",
+    "token_impact: medium",
+    "token_budget: One bounded implementation pass; tests are deterministic.",
     "current_action: ship-it",
     "updated: 2026-07-25",
     "actions:",

@@ -3,10 +3,66 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-07-31
+updated: 2026-08-01
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-01 — Added “Make it real” and enforceable Token Impact budgets
+
+- **Did:** Added “Make it real” beside the Pareto and “If not now, then when?”
+  guidelines: each Action should end in the most direct honest form a person or
+  system can use, without crossing an approval boundary. Recorded Decision
+  0008 and added a required plan-level `token_impact` T-shirt size plus a
+  plain-language `token_budget`. Updated all six managed Arcadia plans, the
+  managed-document parser, `arcadia next`, Project Detail, the authoring guide,
+  semantic contract, Constitution, Start Here guide, and focused tests.
+- **Result:** The current Action now reports its plan's Token Impact and Budget
+  in both CLI continuation data and the Dashboard contract. The demo-first plan
+  includes a routine-by-routine budget table: builds, tests, health probes,
+  Playwright capture, metadata sync, and pixel comparison use no LLM tokens;
+  interpretation, agentic QA judgment, implementation, and failure diagnosis
+  carry the model cost. Ninety-one focused parser/dispatch tests and root
+  TypeScript validation pass; `docs sync` reports zero errors or rejections.
+- **Next:** Activate `demo-first-delivery` if the operator accepts the earlier
+  priority recommendation; its first Action will now arrive with an explicit
+  `xlarge` program impact and staged budget rather than hidden cost.
+- **Blockers:** The Dashboard production build compiled and passed type
+  validation, then failed page-data collection for three existing API routes
+  while the live Dashboard was using the same build directory. This does not
+  affect the plan/parser validation or running Dashboard, but a clean isolated
+  Dashboard build remains follow-up evidence.
+
+## 2026-08-01 — Planned demo-first handoff, Arcadia QA, and release management
+
+- **Did:** Reviewed the operator's Private Practice Now Project Detail screen
+  and found the concrete orientation failure: its summary named a stale failed-
+  validation next action while Continuation named the real River Copy Studio
+  trial, leaving the operator to reconcile control records before finding the
+  product. Recorded approved Decision 0007, a human-readable operator demo and
+  release contract, and the draft `demo-first-delivery` plan. The contract
+  separates a known-good Stable target from the current Candidate, requires a
+  demo before document archaeology, and makes the operator's own duties
+  explicit: exercise the candidate, then read the relevant Log and QA evidence
+  before acceptance, merge, release, or client delivery. The plan sequences a
+  PPN demo-hero vertical slice, proof automation, a state-aware Test action,
+  independent Arcadia QA, governed release management, and portfolio rollout.
+- **Result:** `docs sync` parses the new managed plan and Decision with zero
+  errors or rejections. Cloud-hosted previews are confirmed as viable Candidate
+  targets: Cloudflare Pages supplies per-PR hash URLs and branch aliases;
+  Workers supplies versioned and aliased previews. The plan treats previews as
+  public unless Access protection is proved, starts screenshot capture with
+  local Playwright, and retains Cloudflare Browser Rendering as an optional
+  later runner. The current `narrative-digests` pointer was not changed by a
+  planning-only request.
+- **Next:** The operator should decide whether to activate
+  `demo-first-delivery` now. Recommendation: yes; make
+  `build-demo-hero-vertical-slice` current before completing scheduled digest
+  work, because it directly removes the operator's present inability to find
+  and show usable work.
+- **Blockers:** Implementation is intentionally not authorized by “Plan it.”
+  Activating this draft plan is the one priority Decision required before the
+  first build Action.
 
 ## 2026-07-31 — Delivered one-Project narrative digest composition
 

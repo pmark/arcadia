@@ -44,6 +44,8 @@ export interface ProjectContinuationResponse {
     activePlan: string;
     planPath: string;
     planStatus: string;
+    planTokenImpact: "none" | "small" | "medium" | "large" | "xlarge";
+    planTokenBudget: string;
     milestone: string | null;
     action: {
       id: string;

@@ -80,6 +80,8 @@ slug: sample-plan
 project: demo
 status: active
 milestone: First milestone
+token_impact: medium
+token_budget: "One bounded implementation pass; tests are deterministic."
 updated: 2026-07-25
 actions:
   - id: do-the-thing
@@ -149,7 +151,14 @@ describe("document parsing", () => {
 
     expect(errors).toEqual([]);
     expect(doc?.type).toBe("plan");
-    const plan = doc as never as { actions: Array<Record<string, unknown>>; questions: unknown[] };
+    const plan = doc as never as {
+      tokenImpact: string;
+      tokenBudget: string;
+      actions: Array<Record<string, unknown>>;
+      questions: unknown[];
+    };
+    expect(plan.tokenImpact).toBe("medium");
+    expect(plan.tokenBudget).toBe("One bounded implementation pass; tests are deterministic.");
     expect(plan.actions).toHaveLength(2);
     expect(plan.actions[0]).toMatchObject({
       id: "do-the-thing",
@@ -223,6 +232,21 @@ describe("document parsing", () => {
     const error = errors.find((entry) => entry.field.endsWith("responsibility"));
     expect(error?.message).toContain("must be one of");
     expect(error?.message).toContain("codex");
+  });
+
+  it("requires a T-shirt token impact and a plain-language token budget on every plan", () => {
+    const withoutImpact = PLAN.replace("token_impact: medium\n", "");
+    const missing = parseDoc("p.md", "/abs/p.md", withoutImpact);
+    expect(missing.doc).toBeNull();
+    expect(missing.errors.some((entry) => entry.field === "token_impact")).toBe(true);
+
+    const invalid = parseDoc("p.md", "/abs/p.md", PLAN.replace("token_impact: medium", "token_impact: enormous"));
+    expect(invalid.doc).toBeNull();
+    expect(invalid.errors.find((entry) => entry.field === "token_impact")?.message).toContain("xlarge");
+
+    const withoutBudget = parseDoc("p.md", "/abs/p.md", PLAN.replace(/token_budget:.*\n/, ""));
+    expect(withoutBudget.doc).toBeNull();
+    expect(withoutBudget.errors.some((entry) => entry.field === "token_budget")).toBe(true);
   });
 
   it("refuses a clarified action with no next action", () => {

@@ -82,6 +82,39 @@ The test for whether this rule is being followed: read any deferred item and ask
 what would have to be true for it to start. If the document cannot answer, the
 deferral was never made — the item was only postponed.
 
+## Make it real
+
+Plans, analysis, and architecture are valuable when they turn into something a
+person or system can actually use. **Shape each Action toward the most direct
+usable form available.**
+
+- Prefer a working UI, runnable command, linked deployment, testable Artifact,
+  or explicit Decision over prose describing one.
+- Put output directly into the interaction surface that needs it. Do not make
+  the operator manually translate a Log, JSON blob, or implementation note
+  into the next usable step when Arcadia can perform that translation safely.
+- Preserve one stable proof while a Candidate changes. A mock, screenshot, or
+  plan may prove direction, but never label it as a working product.
+- When an Action genuinely has no runnable form, say why and produce the
+  strongest honest Artifact it can have.
+
+"Make it real" does not authorize deployment, merge, credentials, spending,
+production access, messaging, or any other gated operation. A less tangible
+but truthful Artifact is more real than an unauthorized production mutation.
+
+## Token economy
+
+Treat deterministic computation and model inference as different budgets.
+Builds, tests, health probes, Playwright navigation, and screenshot capture use
+machine resources but no LLM tokens unless a model is asked to interpret their
+output.
+
+Every managed plan declares a T-shirt `token_impact` and a plain-language
+`token_budget`. Use the smallest sufficient model-bearing step, batch evidence
+for review, and invoke model-based diagnosis on failure rather than on every
+successful routine run. Token impact is a relative planning signal, not a
+fictional exact forecast.
+
 ## Orientation
 
 Before working on the database, the Intelligence service, or the Discord bot, read:

@@ -277,8 +277,10 @@ export default function ProjectDetailsPage() {
                   <ReadOnlyField label="Responsibility" value={continuation.context.action.responsibility} />
                   <ReadOnlyField label="Expected Artifact" value={continuation.context.action.expectedArtifact ?? "Missing"} />
                   <ReadOnlyField label="Execution Profile" value={executionProfile(continuation.context.action.resolvedExecution)} />
+                  <ReadOnlyField label="Plan Token Impact" value={labelStatus(continuation.context.planTokenImpact)} />
                   <ReadOnlyField label="Documentation Source" value={`${continuation.context.actionPath} · ${continuation.context.activePlan}`} />
                 </dl>
+                <ReadOnlyField label="Token Budget" value={continuation.context.planTokenBudget} />
                 {continuation.context.action.nextAction ? <ReadOnlyField label="Next Action" value={continuation.context.action.nextAction} /> : null}
                 {continuation.context.action.source ? <ReadOnlyField label="Why This Action" value={continuation.context.action.source} /> : null}
                 {continuation.context.action.acceptanceCriteria.length > 0 ? (

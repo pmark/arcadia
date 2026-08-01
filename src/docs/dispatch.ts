@@ -28,6 +28,8 @@ export interface DispatchContext {
   activePlan: string;
   planPath: string;
   planStatus: string;
+  planTokenImpact: PlanDoc["tokenImpact"];
+  planTokenBudget: string;
   milestone: string | null;
   action: PlanActionDoc;
   actionPath: string;
@@ -233,6 +235,8 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
     activePlan: plan.slug,
     planPath: plan.relativePath,
     planStatus: plan.status,
+    planTokenImpact: plan.tokenImpact,
+    planTokenBudget: plan.tokenBudget,
     milestone: plan.milestone ?? project.milestone,
     action,
     actionPath: plan.relativePath,

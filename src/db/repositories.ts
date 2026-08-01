@@ -821,28 +821,28 @@ export function listProjectSummaries(db: Database.Database): ProjectSummary[] {
           SELECT wi.next_action
           FROM work_items wi
           WHERE wi.project_id = p.id AND wi.status != 'done'
-          ORDER BY wi.created_at DESC
+          ORDER BY wi.updated_at DESC, wi.created_at DESC
           LIMIT 1
         ) AS next_action,
         (
           SELECT wi.work_classification
           FROM work_items wi
           WHERE wi.project_id = p.id AND wi.status != 'done'
-          ORDER BY wi.created_at DESC
+          ORDER BY wi.updated_at DESC, wi.created_at DESC
           LIMIT 1
         ) AS work_classification,
         (
           SELECT wi.work_classification
           FROM work_items wi
           WHERE wi.project_id = p.id AND wi.status != 'done'
-          ORDER BY wi.created_at DESC
+          ORDER BY wi.updated_at DESC, wi.created_at DESC
           LIMIT 1
         ) AS responsibility,
         (
           SELECT wi.expected_artifact
           FROM work_items wi
           WHERE wi.project_id = p.id AND wi.status != 'done'
-          ORDER BY wi.created_at DESC
+          ORDER BY wi.updated_at DESC, wi.created_at DESC
           LIMIT 1
         ) AS expected_artifact
       FROM projects p

@@ -15,6 +15,7 @@ import {
   DECISION_DOC_STATUSES,
   DOC_TYPES,
   PLAN_STATUSES,
+  TOKEN_IMPACTS,
   type ArcadiaDoc,
   type DocType,
   type DocValidationError,
@@ -155,6 +156,8 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
 
     case "plan": {
       const status = enumField(problems, data, "status", PLAN_STATUSES);
+      const tokenImpact = enumField(problems, data, "token_impact", TOKEN_IMPACTS);
+      const tokenBudget = requiredString(problems, data, "token_budget");
       const currentAction = optionalSlug(problems, data, "current_action");
       const actions = parseActions(problems, data.actions, currentAction);
       const questions = parseQuestions(problems, data.questions);
@@ -171,6 +174,8 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
           status: status as never,
           milestone: optionalString(data, "milestone"),
           currentAction,
+          tokenImpact: tokenImpact as never,
+          tokenBudget: tokenBudget!,
           updated: updated!,
           actions,
           questions,

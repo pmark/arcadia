@@ -5,7 +5,9 @@ slug: dispatch-contract-enforcement
 project: arcadia
 status: complete
 milestone: Managed plans govern work from dispatch through acceptance
-updated: 2026-07-31
+token_impact: medium
+token_budget: "Coding changes and one review pass used tokens; readiness, criteria matching, journaling, and regression checks are deterministic."
+updated: 2026-08-01
 actions:
   - id: verify-acceptance-criteria
     title: Check finished work against the Action's declared acceptance criteria

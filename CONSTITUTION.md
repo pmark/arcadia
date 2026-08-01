@@ -13,3 +13,5 @@
 - Avoid over-engineering.
 - Find the 20% that carries the 80%, and do that first.
 - If not now, then when? A deferral must name the condition that revives it.
+- Make it real: shape work into the most direct honest form a person or system can use, without crossing an approval boundary.
+- Treat deterministic compute and LLM inference as separate budgets; every managed plan states its relative token impact and how model use is bounded.
