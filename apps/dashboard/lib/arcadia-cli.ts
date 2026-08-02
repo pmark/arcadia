@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type {
@@ -42,6 +44,8 @@ export interface ProjectContinuationResponse {
     activePlan: string;
     planPath: string;
     planStatus: string;
+    planTokenImpact: "none" | "small" | "medium" | "large" | "xlarge";
+    planTokenBudget: string;
     milestone: string | null;
     action: {
       id: string;
@@ -161,6 +165,72 @@ export async function resolveDashboardWorkspace(): Promise<string> {
   }
 
   return response.data.workspacePath;
+}
+
+export interface IngressListResponse {
+  source: string;
+  root: string;
+  directories: {
+    in: string;
+    processing: string;
+    done: string;
+    failed: string;
+    attachments: string;
+  };
+  files: Array<{
+    name: string;
+    relativePath: string;
+    file: string;
+    kind: "image" | "video" | "audio" | "document" | "other";
+    mimeType: string;
+    size: number;
+    modifiedAt: string;
+    downloadState: "downloaded" | "not_downloaded" | "downloading" | "unknown";
+  }>;
+}
+
+export interface IngressDescribeResponse {
+  source: string;
+  root: string;
+  requestFile: string;
+  selectedFiles: string[];
+  attachmentFiles: string[];
+  description: string;
+}
+
+export async function listIngressFiles(): Promise<ArcadiaJsonSuccess<IngressListResponse>> {
+  return runArcadiaCliJson<IngressListResponse>(["ingress", "list"]);
+}
+
+export async function describeIngressFiles(input: {
+  files: string[];
+  description: string;
+}): Promise<ArcadiaJsonSuccess<IngressDescribeResponse>> {
+  const args = ["ingress", "describe", "--description", input.description];
+  for (const file of input.files) {
+    args.push("--file", file);
+  }
+  return runArcadiaCliJson<IngressDescribeResponse>(args);
+}
+
+export async function captureIngressFiles(input: {
+  files: Array<{ name: string; bytes: Uint8Array }>;
+  description?: string;
+}): Promise<ArcadiaJsonSuccess<IngressDescribeResponse>> {
+  const temporaryDirectory = await mkdtemp(path.join(tmpdir(), "arcadia-dashboard-ingress-"));
+  try {
+    const args = ["ingress", "capture"];
+    for (const file of input.files) {
+      const safeName = path.basename(file.name) || "upload.bin";
+      const temporaryPath = path.join(temporaryDirectory, safeName);
+      await writeFile(temporaryPath, file.bytes);
+      args.push("--file", temporaryPath);
+    }
+    if (input.description?.trim()) args.push("--description", input.description.trim());
+    return await runArcadiaCliJson<IngressDescribeResponse>(args);
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
 }
 
 export async function runAsk(input: {

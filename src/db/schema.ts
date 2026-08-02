@@ -52,13 +52,48 @@ export function applyMigrations(db: Database.Database): void {
   ensureClarificationColumns(db);
   ensureParentWorkItemColumn(db);
   ensureDocRefColumns(db);
+  ensureWorkItemDependencyTable(db);
   ensureExecutionRequirementColumn(db);
   ensureAcceptanceCriteriaColumn(db);
   ensureExecutionProfileProvenanceColumns(db);
   ensureDailyCapacityTable(db);
   ensureActivityTables(db);
   ensureDispatchEventsTable(db);
+  ensureNarrativeDigestsTable(db);
   applyCapabilityMigrations(db);
+}
+
+/**
+ * One derived narrative per exact Project/window pair.
+ *
+ * The window boundaries are explicit ISO instants rather than inferred from a
+ * cadence. Scheduling has not yet decided calendar-aligned versus rolling
+ * windows, and the composer must not silently decide that policy. The unique
+ * key makes re-composition an update of the same Artifact rather than a second
+ * digest for the same period.
+ */
+function ensureNarrativeDigestsTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS narrative_digests (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      artifact_id TEXT NOT NULL,
+      period TEXT NOT NULL CHECK (period IN ('day', 'week', 'month')),
+      window_start TEXT NOT NULL,
+      window_end TEXT NOT NULL,
+      intelligence_job_id TEXT,
+      facts_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (project_id, period, window_start, window_end),
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY (artifact_id) REFERENCES artifacts(id) ON DELETE CASCADE,
+      FOREIGN KEY (intelligence_job_id) REFERENCES intelligence_jobs(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_narrative_digests_project_window
+      ON narrative_digests(project_id, window_start, window_end);
+  `);
 }
 
 function ensureExecutionRequirementColumn(db: Database.Database): void {
@@ -550,6 +585,39 @@ function ensureDocRefColumns(db: Database.Database): void {
 
     db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_doc_ref ON ${table}(doc_ref)`);
   }
+}
+
+/**
+ * The `depends_on` ordering a plan document declares, as edges rather than a
+ * column, because an Action may depend on several others.
+ *
+ * The composite primary key is what makes ingestion idempotent: `docs sync`
+ * re-runs constantly, and an edge is fully identified by its two endpoints, so
+ * re-inserting one is a no-op instead of a duplicate. Both foreign keys cascade
+ * because an edge to a deleted Action orders nothing.
+ *
+ * Only rows carrying a `doc_ref` are managed by ingestion, matching the rest of
+ * the protocol: a dependency Arcadia recorded some other way is never removed
+ * because a document failed to mention it.
+ * See docs/plans/portfolio-docs-protocol.md.
+ */
+function ensureWorkItemDependencyTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS work_item_dependencies (
+      work_item_id TEXT NOT NULL,
+      depends_on_work_item_id TEXT NOT NULL,
+      doc_ref TEXT,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (work_item_id, depends_on_work_item_id),
+      FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE CASCADE,
+      FOREIGN KEY (depends_on_work_item_id) REFERENCES work_items(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_work_item_dependencies_depends_on
+      ON work_item_dependencies(depends_on_work_item_id);
+    CREATE INDEX IF NOT EXISTS idx_work_item_dependencies_doc_ref
+      ON work_item_dependencies(doc_ref);
+  `);
 }
 
 /**

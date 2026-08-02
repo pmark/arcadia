@@ -10,10 +10,13 @@ import {
   getProjectMetadata,
   getReviewItemByDocRef,
   getWorkItemByDocRef,
+  listWorkItemDependencies,
+  replaceDocumentWorkItemDependencies,
   setMilestoneDocRef,
   setMissionLogDocRef,
   setReviewItemDocRef,
   setWorkItemDocRef,
+  updateMilestoneStatus,
   updateMilestoneTitle,
   updateMissionLogFromDoc,
   updateProject,
@@ -29,6 +32,7 @@ import {
   decisionDocRef,
   logEntryDocRef,
   planDocRef,
+  planMilestoneDocRef,
   planQuestionDocRef,
   type ArcadiaDoc,
   type DecisionDoc,
@@ -36,6 +40,7 @@ import {
   type LogDoc,
   type PlanDoc,
   type PlanActionDoc,
+  type PlanStatus,
   type ProjectDoc
 } from "./types.js";
 
@@ -58,7 +63,15 @@ const NO_LOGGED_NEXT_ACTION = "No next action recorded in this Log entry.";
 const ACTION_CLARIFICATION_INTENT = "ActionClarification";
 
 export type ChangeAction = "create" | "update" | "unchanged" | "skipped";
-export type ChangeEntity = "project" | "milestone" | "action" | "question" | "decision" | "log" | "narrative";
+export type ChangeEntity =
+  | "project"
+  | "milestone"
+  | "action"
+  | "dependency"
+  | "question"
+  | "decision"
+  | "log"
+  | "narrative";
 
 export interface DocChange {
   action: ChangeAction;
@@ -209,7 +222,9 @@ export function syncProjectDocs(
     if (conflicting.has(planDocRef(plan.slug))) {
       continue;
     }
-    result.changes.push(...syncPlan(db, project, plan, conflicting, options.apply, plannedMilestones));
+    result.changes.push(
+      ...syncPlan(db, project, plan, decisions, conflicting, options.apply, plannedMilestones)
+    );
   }
 
   for (const decision of decisions) {
@@ -290,8 +305,13 @@ function syncProject(
     });
   }
 
+  // The milestone PROJECT.md names is the one being pursued, so it is active by
+  // definition. Plans sync after this and may narrow it: a plan that is over
+  // ends its own milestone, and the more specific statement wins.
   if (doc.milestone) {
-    changes.push(...ensureMilestone(db, project, doc.milestone, null, doc.relativePath, apply, planned));
+    changes.push(
+      ...ensureMilestone(db, project, doc.milestone, null, doc.relativePath, apply, planned, "active")
+    );
   }
 
   return changes;
@@ -301,6 +321,7 @@ function syncPlan(
   db: Database.Database,
   project: Project,
   doc: PlanDoc,
+  decisions: DecisionDoc[],
   conflicting: Set<string>,
   apply: boolean,
   planned: Map<string, string | null>
@@ -308,28 +329,209 @@ function syncPlan(
   const changes: DocChange[] = [];
   const ref = planDocRef(doc.slug);
   const milestoneTitle = doc.milestone ?? doc.slug;
+  const planMilestoneStatus = milestoneStatusForPlan(doc.status);
 
-  const milestoneChanges = ensureMilestone(db, project, milestoneTitle, ref, doc.relativePath, apply, planned);
+  const milestoneChanges = ensureMilestone(
+    db,
+    project,
+    milestoneTitle,
+    ref,
+    doc.relativePath,
+    apply,
+    planned,
+    planMilestoneStatus
+  );
   changes.push(...milestoneChanges);
 
   const milestone =
     getMilestoneByDocRef(db, project.id, ref) ?? getMilestoneByTitle(db, project.id, milestoneTitle);
+
+  // An action may name a milestone other than the plan's own. Its ref is
+  // distinct from `plan/<slug>` so the plan's own milestone keeps the identity
+  // every existing row was ingested under; nothing needs migrating.
+  const overrides = new Map<string, string | null>();
+  for (const action of doc.actions) {
+    if (!action.milestone || action.milestone === milestoneTitle || overrides.has(action.milestone)) {
+      continue;
+    }
+    const overrideRef = planMilestoneDocRef(doc.slug, action.milestone);
+    changes.push(
+      ...ensureMilestone(
+        db,
+        project,
+        action.milestone,
+        overrideRef,
+        doc.relativePath,
+        apply,
+        planned,
+        planMilestoneStatus
+      )
+    );
+    const resolved =
+      getMilestoneByDocRef(db, project.id, overrideRef) ??
+      getMilestoneByTitle(db, project.id, action.milestone);
+    overrides.set(action.milestone, resolved?.id ?? null);
+  }
 
   for (const action of doc.actions) {
     const actionRef = actionDocRef(doc.slug, action.id);
     if (conflicting.has(actionRef)) {
       continue;
     }
+    const actionMilestoneId =
+      action.milestone && action.milestone !== milestoneTitle
+        ? overrides.get(action.milestone) ?? milestone?.id ?? null
+        : milestone?.id ?? null;
     changes.push(
-      syncAction(db, project, doc, action, actionRef, milestone?.id ?? null, apply)
+      syncAction(db, project, doc, action, actionRef, actionMilestoneId, apply)
     );
   }
 
+  // Dependencies run as a second pass over the same plan: an action may depend
+  // on one declared later in the list, so both endpoints must exist as rows
+  // before any edge can be resolved.
+  changes.push(...syncPlanDependencies(db, doc, conflicting, apply));
+
   for (const question of doc.questions) {
-    changes.push(syncPlanQuestion(db, project, doc, question, apply));
+    changes.push(syncPlanQuestion(db, project, doc, question, decisions, apply));
   }
 
   return changes;
+}
+
+/**
+ * Persist each action's `depends_on` as edges between the ingested Actions.
+ *
+ * Reported in terms of doc refs rather than row ids, so a dry run describes
+ * exactly the change `--apply` performs even when both endpoints are rows that
+ * do not exist yet. The parser has already rejected any dependency naming an id
+ * outside this plan, so an unresolved ref here means the target action was
+ * skipped as conflicting, not that the document is wrong.
+ */
+function syncPlanDependencies(
+  db: Database.Database,
+  doc: PlanDoc,
+  conflicting: Set<string>,
+  apply: boolean
+): DocChange[] {
+  const changes: DocChange[] = [];
+
+  for (const action of doc.actions) {
+    const actionRef = actionDocRef(doc.slug, action.id);
+    if (conflicting.has(actionRef)) {
+      continue;
+    }
+
+    const desiredRefs = action.dependsOn
+      .filter((dependency) => dependency !== action.id)
+      .map((dependency) => actionDocRef(doc.slug, dependency))
+      .filter((dependencyRef) => !conflicting.has(dependencyRef));
+
+    const existingItem = getWorkItemByDocRef(db, actionRef);
+    const currentRefs = existingItem
+      ? listWorkItemDependencies(db, existingItem.id)
+          .filter((dependency) => dependency.docRef !== null)
+          .map((dependency) => dependency.docRef as string)
+      : [];
+
+    if (sameRefSet(currentRefs, desiredRefs)) {
+      if (desiredRefs.length === 0) {
+        continue;
+      }
+      changes.push({
+        action: "unchanged",
+        entity: "dependency",
+        relativePath: doc.relativePath,
+        ref: actionRef,
+        title: describeDependencies(desiredRefs)
+      });
+      continue;
+    }
+
+    // Dry run: the endpoints may be planned-but-unwritten, so there is nothing
+    // to resolve yet. The ref-level comparison above is already the real answer.
+    if (!apply) {
+      changes.push({
+        action: existingItem && currentRefs.length > 0 ? "update" : "create",
+        entity: "dependency",
+        relativePath: doc.relativePath,
+        ref: actionRef,
+        title: describeDependencies(desiredRefs),
+        reason: describeDependencyDrift(currentRefs, desiredRefs)
+      });
+      continue;
+    }
+
+    const dependent = existingItem ?? getWorkItemByDocRef(db, actionRef);
+    if (!dependent) {
+      changes.push({
+        action: "skipped",
+        entity: "dependency",
+        relativePath: doc.relativePath,
+        ref: actionRef,
+        title: describeDependencies(desiredRefs),
+        reason: "The dependent Action was not ingested, so its ordering has nothing to attach to."
+      });
+      continue;
+    }
+
+    const targetIds: string[] = [];
+    const unresolved: string[] = [];
+    for (const dependencyRef of desiredRefs) {
+      const target = getWorkItemByDocRef(db, dependencyRef);
+      if (target) {
+        targetIds.push(target.id);
+      } else {
+        unresolved.push(dependencyRef);
+      }
+    }
+
+    replaceDocumentWorkItemDependencies(db, dependent.id, actionRef, targetIds);
+
+    changes.push({
+      action: currentRefs.length > 0 ? "update" : "create",
+      entity: "dependency",
+      relativePath: doc.relativePath,
+      ref: actionRef,
+      title: describeDependencies(desiredRefs),
+      reason:
+        unresolved.length > 0
+          ? `${describeDependencyDrift(currentRefs, desiredRefs)}; unresolved: ${unresolved.join(", ")}`
+          : describeDependencyDrift(currentRefs, desiredRefs)
+    });
+  }
+
+  return changes;
+}
+
+function sameRefSet(current: string[], desired: string[]): boolean {
+  if (current.length !== desired.length) {
+    return false;
+  }
+  const currentSet = new Set(current);
+  return desired.every((ref) => currentSet.has(ref));
+}
+
+function describeDependencies(refs: string[]): string {
+  if (refs.length === 0) {
+    return "no dependencies";
+  }
+  return `depends on ${refs.length} action${refs.length === 1 ? "" : "s"}`;
+}
+
+function describeDependencyDrift(current: string[], desired: string[]): string {
+  const currentSet = new Set(current);
+  const desiredSet = new Set(desired);
+  const added = desired.filter((ref) => !currentSet.has(ref));
+  const removed = current.filter((ref) => !desiredSet.has(ref));
+  const parts: string[] = [];
+  if (added.length > 0) {
+    parts.push(`+${added.join(", +")}`);
+  }
+  if (removed.length > 0) {
+    parts.push(`-${removed.join(", -")}`);
+  }
+  return parts.join(" ") || "no change";
 }
 
 function syncAction(
@@ -474,11 +676,48 @@ function syncPlanQuestion(
   db: Database.Database,
   project: Project,
   plan: PlanDoc,
-  question: { id: string; question: string; gapType: string | null },
+  question: { id: string; question: string; gapType: string | null; decision?: string | null },
+  decisions: DecisionDoc[],
   apply: boolean
 ): DocChange {
   const ref = planQuestionDocRef(plan.slug, question.id);
   const existing = getReviewItemByDocRef(db, ref);
+
+  // A question naming a decision inherits that decision's resolution. Ingestion
+  // never deletes, so without this a question answered elsewhere stays open in
+  // the queue forever; and resolving on the question's *absence* instead would
+  // mean a doc that merely trails reality silently closes live work.
+  const answering = question.decision
+    ? decisions.find((doc) => doc.id === question.decision || doc.slug === question.decision) ?? null
+    : null;
+
+  if (question.decision && !answering) {
+    return {
+      action: "skipped",
+      entity: "question",
+      relativePath: plan.relativePath,
+      ref,
+      title: question.question,
+      reason: `Names decision "${question.decision}", which has no document in this project.`
+    };
+  }
+
+  const resolution = answering && answering.status !== "open" ? answering : null;
+
+  // The decision document raises its own Decision, so a question naming one
+  // must not raise a second. The question stays in the plan as the record of
+  // what was asked; the decision owns the queue entry. Questions that predate
+  // their decision keep an existing row and go on mirroring its resolution.
+  if (answering && !existing) {
+    return {
+      action: "skipped",
+      entity: "question",
+      relativePath: plan.relativePath,
+      ref,
+      title: question.question,
+      reason: `Surfaced by decision ${answering.id}; not raised twice.`
+    };
+  }
 
   if (!existing) {
     if (apply) {
@@ -495,8 +734,41 @@ function syncPlanQuestion(
         context: { schemaVersion: 1, gapType: question.gapType, docRef: ref, source: plan.relativePath }
       });
       setReviewItemDocRef(db, created.id, ref);
+      if (resolution) {
+        updateReviewItemFromDoc(db, created.id, {
+          decisionNeeded: question.question,
+          recommendation: resolution.recommendation,
+          status: resolution.status,
+          decisionNote: resolution.answer,
+          decidedAt: resolution.decided,
+          confidenceLabel: resolution.confidence ?? "medium",
+          missingFields: question.gapType ? [question.gapType] : []
+        });
+      }
     }
     return { action: "create", entity: "question", relativePath: plan.relativePath, ref, title: question.question };
+  }
+
+  if (resolution && existing.status !== resolution.status) {
+    if (apply) {
+      updateReviewItemFromDoc(db, existing.id, {
+        decisionNeeded: question.question,
+        recommendation: resolution.recommendation,
+        status: resolution.status,
+        decisionNote: resolution.answer,
+        decidedAt: resolution.decided,
+        confidenceLabel: resolution.confidence ?? existing.confidence_label,
+        missingFields: question.gapType ? [question.gapType] : []
+      });
+    }
+    return {
+      action: "update",
+      entity: "question",
+      relativePath: plan.relativePath,
+      ref,
+      title: question.question,
+      reason: `resolved by decision ${answering!.id}: ${existing.status} -> ${resolution.status}`
+    };
   }
 
   if (existing.decision_needed === question.question) {
@@ -710,6 +982,20 @@ function syncDecision(
   };
 }
 
+/**
+ * The milestone lifecycle a plan's own status implies.
+ *
+ * Milestones are created by plans, so nothing else can know when one is over.
+ * Without this a finished plan left its milestone `active` forever, and
+ * `current_milestone` — which picks the newest active milestone — reported a
+ * milestone from a completed plan, decided by insertion order rather than
+ * intent. `draft` maps to active because a plan being drafted is still the
+ * milestone being pursued; only a plan that is over ends its milestone.
+ */
+function milestoneStatusForPlan(planStatus: PlanStatus): string {
+  return planStatus === "complete" || planStatus === "superseded" ? "completed" : "active";
+}
+
 function ensureMilestone(
   db: Database.Database,
   project: Project,
@@ -717,7 +1003,8 @@ function ensureMilestone(
   ref: string | null,
   relativePath: string,
   apply: boolean,
-  planned: Map<string, string | null>
+  planned: Map<string, string | null>,
+  desiredStatus: string
 ): DocChange[] {
   const byRef = ref ? getMilestoneByDocRef(db, project.id, ref) : null;
   const existing = byRef ?? getMilestoneByTitle(db, project.id, title);
@@ -750,8 +1037,13 @@ function ensureMilestone(
     planned.set(key, ref);
     if (apply) {
       const created = createMilestoneForProject(db, project.id, title);
-      if (created && ref) {
-        setMilestoneDocRef(db, created.id, ref);
+      if (created) {
+        if (ref) {
+          setMilestoneDocRef(db, created.id, ref);
+        }
+        if (created.status !== desiredStatus) {
+          updateMilestoneStatus(db, created.id, desiredStatus);
+        }
       }
     }
     return [
@@ -759,41 +1051,45 @@ function ensureMilestone(
     ];
   }
 
+  const reasons: string[] = [];
+
   // Adopting an existing same-titled milestone is what makes a first sync
   // attach to work already in Arcadia instead of duplicating it.
   if (ref && !byRef) {
     if (apply) {
       setMilestoneDocRef(db, existing.id, ref);
     }
-    return [
-      {
-        action: "update",
-        entity: "milestone",
-        relativePath,
-        ref,
-        title,
-        reason: "adopted an existing milestone with the same title"
-      }
-    ];
+    reasons.push("adopted an existing milestone with the same title");
   }
 
   if (existing.title !== title) {
     if (apply) {
       updateMilestoneTitle(db, existing.id, title);
     }
-    return [
-      {
-        action: "update",
-        entity: "milestone",
-        relativePath,
-        ref: ref ?? title,
-        title,
-        reason: `title: "${existing.title}" -> "${title}"`
-      }
-    ];
+    reasons.push(`title: "${existing.title}" -> "${title}"`);
   }
 
-  return [{ action: "unchanged", entity: "milestone", relativePath, ref: ref ?? title, title }];
+  if (existing.status !== desiredStatus) {
+    if (apply) {
+      updateMilestoneStatus(db, existing.id, desiredStatus);
+    }
+    reasons.push(`status: ${existing.status} -> ${desiredStatus}`);
+  }
+
+  if (reasons.length === 0) {
+    return [{ action: "unchanged", entity: "milestone", relativePath, ref: ref ?? title, title }];
+  }
+
+  return [
+    {
+      action: "update",
+      entity: "milestone",
+      relativePath,
+      ref: ref ?? title,
+      title,
+      reason: reasons.join("; ")
+    }
+  ];
 }
 
 /**

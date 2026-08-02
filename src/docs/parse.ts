@@ -15,6 +15,7 @@ import {
   DECISION_DOC_STATUSES,
   DOC_TYPES,
   PLAN_STATUSES,
+  TOKEN_IMPACTS,
   type ArcadiaDoc,
   type DocType,
   type DocValidationError,
@@ -155,6 +156,8 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
 
     case "plan": {
       const status = enumField(problems, data, "status", PLAN_STATUSES);
+      const tokenImpact = enumField(problems, data, "token_impact", TOKEN_IMPACTS);
+      const tokenBudget = requiredString(problems, data, "token_budget");
       const currentAction = optionalSlug(problems, data, "current_action");
       const actions = parseActions(problems, data.actions, currentAction);
       const questions = parseQuestions(problems, data.questions);
@@ -171,6 +174,8 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
           status: status as never,
           milestone: optionalString(data, "milestone"),
           currentAction,
+          tokenImpact: tokenImpact as never,
+          tokenBudget: tokenBudget!,
           updated: updated!,
           actions,
           questions,
@@ -383,6 +388,7 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
       question: question ?? null,
       confidence: (confidence ?? null) as never,
       source: optionalString(value, "source"),
+      milestone: optionalString(value, "milestone"),
       dependsOn: stringArray(value.depends_on),
       acceptanceCriteria,
       decisions: stringArray(value.decisions),
@@ -495,10 +501,11 @@ function parseQuestions(problems: Problems, raw: unknown): PlanQuestionDoc[] {
     const id = slugField(problems, value, "id", field);
     const question = requiredString(problems, value, "question", field);
     const gapType = optionalEnum(problems, value, "gap_type", GAP_TYPES, field);
+    const decision = optionalString(value, "decision");
     if (!id || !question) {
       return;
     }
-    questions.push({ id, question, gapType: (gapType ?? null) as never });
+    questions.push({ id, question, gapType: (gapType ?? null) as never, decision });
   });
 
   return questions;

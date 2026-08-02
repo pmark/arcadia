@@ -5,7 +5,9 @@ slug: clarification-pass
 project: arcadia
 status: complete
 milestone: Clarification loop shipped
-updated: 2026-07-25
+token_impact: large
+token_budget: "Historical multi-phase agentic implementation was the primary token cost; migrations, CLI checks, and tests were deterministic."
+updated: 2026-08-01
 actions:
   - id: phase-1-plumbing
     title: Thin CLI plumbing — artifact create and work update --expected-artifact

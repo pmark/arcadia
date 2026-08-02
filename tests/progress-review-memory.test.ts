@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -73,7 +73,7 @@ function fixture(options: { memory: boolean }): { workspace: string; vault: stri
 }
 
 function recordFile(vault: string, scope: string): string {
-  return path.join(vault, "Arcadia", "Records", "Progress", scope, "2026", "2026-06-09-progress-review.md");
+  return path.join(realpathSync(vault), "Arcadia", "Records", "Progress", scope, "2026", "2026-06-09-progress-review.md");
 }
 
 describe("progress reviews as vault Records", () => {

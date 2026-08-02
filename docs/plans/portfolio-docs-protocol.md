@@ -5,7 +5,9 @@ slug: portfolio-docs-protocol
 project: arcadia
 status: active
 milestone: docs sync ingests a real project's markdown
-updated: 2026-07-31
+token_impact: xlarge
+token_budget: "The historical protocol program required several agentic implementation sessions; parsing, sync, dependency resolution, and validation are deterministic, and deferred narrative summarization is the only routine model-bearing path."
+updated: 2026-08-01
 actions:
   - id: build-parser
     title: Build the frontmatter parser and vocabulary validator
@@ -193,15 +195,48 @@ actions:
     depends_on: [build-upsert]
   - id: persist-dependencies
     title: Persist action depends_on ordering rather than only validating it
-    status: open
+    status: done
     responsibility: codex
     effort: short
+    clarification: clarified
+    confidence: high
+    source: Decision 0003, selected against the operator's stated criterion of advancing agent-managed planned work.
+    next_action: Delivered on 2026-07-26 as work_item_dependencies plus a dispatch refusal; no further work.
+    expected_artifact: Persisted depends_on edges with a dispatch refusal naming the unfinished prerequisite, its file, field, and remedy.
     acceptance_criteria:
       - depends_on edges survive a docs sync round trip.
-      - An Action cannot be dispatched while an Action it depends on is unfinished. Already met in src/docs/dispatch.ts.
-    clarification: unclarified
-    confidence: medium
+      - An Action cannot be dispatched while an Action it depends on is unfinished.
     decisions: ["0004"]
+    references:
+      - src/docs/sync.ts
+      - src/docs/dispatch.ts
+      - src/db/schema.ts
+    execution:
+      schema: arcadia.execution/v1
+      profile: systems_change
+      context:
+        scope: project
+        required:
+          - SQLite dependency-edge persistence
+          - Managed-document sync changes
+          - Dispatch refusal behavior
+        staging: forbidden
+      phases:
+        planning:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+        implementation:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+        verification:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
     depends_on: [build-upsert]
   - id: narrative-summarization
     title: Queue an Intelligence summarization job for narrative docs
@@ -218,10 +253,12 @@ questions:
   - id: plan-milestone-span
     question: If one plan's work spans multiple milestones, should the protocol split the plan, or allow a plan to reference more than one milestone?
     gap_type: missing-decision
+    decision: "0005"
   - id: docs-sync-write-back
     question: Should docs sync ever write back to a repo (e.g. append Arcadia run results to MISSION_LOG.md), or must it stay strictly one-way?
     gap_type: missing-decision
-decisions: []
+    decision: "0004"
+decisions: ["0003", "0004", "0005"]
 ---
 
 # Portfolio Docs Protocol
@@ -250,18 +287,19 @@ that `arcadia next` resolves.
 - Milestone: `docs sync` ingests a real project's markdown — **reached.**
   Arcadia's own repository is the first project ingested by this protocol.
 - Current Action: none. This plan no longer declares one; Decision 0004 deferred
-  both remaining Actions and moved `active_plan` to
-  `dispatch-contract-enforcement`.
-- Responsibility: none pending. Neither deferred Action is waiting on a person.
+  its remaining narrative-summarization Action; `active_plan` now points to
+  `narrative-digests`.
+- Responsibility: none pending in this plan.
 - Required Artifact: delivered — `docs sync`, `portfolio`, `next`, mission-Log
-  ingestion, and Arcadia's own conforming documents carrying a resolvable work
-  pointer.
+  ingestion, persisted `depends_on` ordering, and Arcadia's own conforming
+  documents carrying a resolvable work pointer.
 - Decisions open: the two plan-level questions above. 0004 is deferred with
   triggers, not open.
-- Deferred until their triggers fire: `persist-dependencies` (a database-backed
-  view must show ordering without re-crawling) and `narrative-summarization` (a
-  second foreign repository, or a summary someone actually wants).
-- Last Log: 2026-07-31 — implemented mission-Log ingestion under Decision 0003.
+- Deferred until its trigger fires: `narrative-summarization` (a second foreign
+  repository, or a summary someone actually wants). Dependency persistence was
+  delivered independently on 2026-07-26 and retained through the branch merge.
+- Last Log: 2026-07-31 — implemented mission-Log ingestion under Decision 0003;
+  dependency persistence remains delivered from the parallel local history.
 - Updated: 2026-07-31
 
 ## Foreign-repository validation — Private Practice Now
@@ -293,10 +331,9 @@ Incompatibilities and recommended patches:
   Mission Logs now persist (see below). Narrative documents remain detected and
   skipped; `narrative-summarization` is still the last gap before a foreign
   repository is fully represented.
-- `depends_on` is validated and enforced at dispatch but not persisted to the
-  database. Enforcement was the half that mattered and is already delivered in
-  `src/docs/dispatch.ts`; whether the persistence half is worth building is
-  Decision 0004.
+- `depends_on` is validated, enforced at dispatch, and persisted in
+  `work_item_dependencies`; the persistence half was delivered on the parallel
+  local history before this plan became active again.
 - A newly initialized workspace can have a newer DB Project row than a checked-in
   document, producing a deterministic stale-document skip. Preserve this
   refusal and expose the timestamp remedy in operator guidance.
@@ -516,6 +553,7 @@ only legal values. Anything else fails ingestion.
 | `confidence` | `high` `medium` `low` |
 | decision `status` | `open` `approved` `rejected` `deferred` |
 | plan `status` | `draft` `active` `complete` `superseded` |
+| plan `token_impact` | `none` `small` `medium` `large` `xlarge` |
 | artifact `status` | `planned` `drafted` `ready` `published` |
 
 Dates are ISO `YYYY-MM-DD`. Slugs are kebab-case, stable forever.
@@ -559,6 +597,8 @@ project: arcadia                  # PROJECT.md slug
 status: active                    # draft | active | complete | superseded
 milestone: Clarification loop shipped
 current_action: plan-gate         # exactly one action id in this plan
+token_impact: medium              # relative LLM-token exposure, not exact usage
+token_budget: "Model calls are bounded to implementation and review; validation is deterministic."
 updated: 2026-07-25
 actions:
   - id: phase-2-fields            # stable within this plan
@@ -574,6 +614,7 @@ actions:
     acceptance_criteria:            # required on the current action
       - The five columns exist and a re-run adds no duplicates.
       - Round-trip tests cover every new field and flag.
+    milestone: Clarification loop shipped   # optional; defaults to the plan's
     decisions: ["0001"]             # decisions this action requires
     references:                     # paths the action depends on
       - docs/COMMANDS.md
@@ -591,11 +632,18 @@ questions:                        # plan-level questions not tied to one action
   - id: rollout-order
     question: Do we cut over per-tenant or all at once?
     gap_type: missing-decision
+    decision: "0007"              # optional; the decision that answers it
 decisions: ["0007"]               # decision record ids this plan references
 ---
 ```
 
 Rules:
+
+- Every plan declares `token_impact` and `token_budget`. The impact is relative
+  LLM-token exposure (`none`, `small`, `medium`, `large`, `xlarge`), while the
+  budget names which work invokes a model and how repetition is bounded.
+  Deterministic builds, tests, health checks, browser navigation, and screenshot
+  capture use no LLM tokens unless a model interprets their output.
 
 - An action with `clarification: clarified` MUST have a verb-first, concrete
   `next_action`. An action with `question_open` MUST have `question` +
@@ -613,6 +661,18 @@ Rules:
   say what finished means before anyone starts it.
 - Only the plan named by `active_plan` may declare `current_action`. A second
   plan declaring one is a competing objective and is reported as a blocker.
+- An action may name its own `milestone:` when a plan spans more than one
+  (Decision 0005); absent that it inherits the plan's. Splitting the plan
+  instead would sever `depends_on` across the boundary, because a dependency may
+  only name an action in the same plan.
+- A plan-level question may name the `decision:` that answers it. Ingestion then
+  mirrors that decision's resolution onto the question. Without it, a question
+  answered elsewhere stays open in the queue forever, since ingestion never
+  deletes and a question's *absence* cannot mean "resolved" — a document may
+  legitimately trail reality.
+- A plan's status decides its milestone's: `complete` or `superseded` ends the
+  milestone, anything else keeps it active. Nothing else can know when a
+  milestone is over, because plans are what create them.
 
 Body sections: **Executive Summary**, **Design**, **Log** (dated bullets,
 newest first). Maps to a milestone plus `work_items` (with dependency links
@@ -752,6 +812,9 @@ starts, and `references:` for paths a worker needs to read.
 - effort: `quick` (≤15 min) `short` (≤1 h) `session` (1–3 h) `project`
   (multi-session) — set it only when the conversation actually implied a
   size; otherwise omit it. Never guess.
+- plan token_impact: `none` `small` `medium` `large` `xlarge` — relative LLM
+  exposure, paired with a required plain-language `token_budget`; never turn
+  this T-shirt signal into a fabricated exact token or dollar forecast.
 - clarification: `unclarified` `clarified` `question_open`
 - gap_type: `missing-decision` `missing-external-input` `missing-definition`
   `missing-success-criteria`

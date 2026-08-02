@@ -71,6 +71,12 @@ read" a recurring cost instead of a one-off.
 Both triggers can fire, so neither is a rejection in disguise. If a year passes
 and neither has fired, that is evidence to close them, not to keep waiting.
 
+Subsequent history superseded the dependency-persistence half of this deferral:
+it was implemented on a parallel local branch before that branch was reconciled
+with the accepted remote history on 2026-07-31. `work_item_dependencies` is now
+durable and document-owned edges survive a sync round trip. The
+`narrative-summarization` deferral and its trigger remain unchanged.
+
 ## Consequences
 
 `active_plan` moves to `dispatch-contract-enforcement`, whose four Actions were

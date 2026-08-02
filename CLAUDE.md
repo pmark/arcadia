@@ -90,6 +90,8 @@ project: arcadia             # the PROJECT.md slug this belongs to
 status: draft                # draft | active | complete | superseded
 milestone: What this plan advances
 current_action: some-action  # omit unless this is the active plan
+token_impact: medium         # none | small | medium | large | xlarge
+token_budget: "Routine checks are deterministic; reserve model calls for implementation and one review pass."
 updated: 2026-07-28
 actions:
   - id: some-action
@@ -115,6 +117,16 @@ decisions: []
 ```
 
 ### The fields with teeth
+
+- **`token_impact` and `token_budget`** are required on every plan.
+  `token_impact` is relative LLM-token exposure, not time, dollars, or a promise
+  of exact consumption: `none` is deterministic-only, `small` is one bounded
+  model pass, `medium` is ordinary single-session agentic work, `large` is
+  multiple/deep or multimodal agent runs, and `xlarge` is program-scale work
+  that should be staged deliberately. `token_budget` names what actually calls
+  a model, what stays deterministic, and the guardrail that bounds repeated use.
+  Playwright capture, builds, tests, and health checks are `none` unless a model
+  interprets their output.
 
 - **`depends_on`** is an ordering claim that is enforced, not decoration.
   Dependency cycles are rejected at parse time, and dispatch is blocked while

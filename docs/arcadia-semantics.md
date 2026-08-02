@@ -152,6 +152,20 @@ Validation describes checks or criteria that prove work is acceptable.
 
 Validation is a supporting property, not a top-level Arcadia object. Use "validation criteria", "validation commands", or "validation checks" when precision matters.
 
+### Token Impact
+
+Token Impact is a supporting planning property describing relative LLM-token
+exposure: None, Small, Medium, Large, or Extra Large. It is not an exact token
+forecast, a dollar quote, an effort estimate, or a new top-level Arcadia
+concept. A plan also states its Token Budget in plain language: which steps
+invoke a model, which remain deterministic, and how repeated model use is
+bounded.
+
+Deterministic builds, tests, health checks, browser navigation, and screenshot
+capture have no LLM Token Impact by themselves. Interpreting screenshots,
+judging subjective criteria, summarizing results, writing code, and diagnosing
+failures may have Token Impact.
+
 ## Demoted And Legacy Terms
 
 | Existing term | Canonical use | Guidance |
@@ -198,6 +212,7 @@ Validation: pnpm test
 - Prefer "Outcome" when the object is a desired result.
 - Prefer "Log" when the object is durable history.
 - Use "Run" for a concrete execution attempt.
+- Use "Token Impact" for relative LLM-token exposure and keep it distinct from compute time and Action effort.
 - Use "Validation" only as criteria, commands, checks, or evidence.
 - Use "Back Burner" only as a view label if the product wants that flavor; the underlying status is Incubating.
 - Preserve external product terms when referring to an external system, such as Codex goals.
@@ -238,4 +253,3 @@ When auditing or editing Arcadia:
 - Preserve existing behavior unless the task explicitly asks for migration.
 - Flag ambiguous terminology instead of guessing.
 - Use this document as the source of truth for naming.
-

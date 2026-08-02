@@ -23,6 +23,8 @@ export type ArcadiaErrorCode =
   | "PROJECT_INTERPRETER_UNAVAILABLE"
   | "MISSION_CONTROL_NODE_NOT_FOUND"
   | "CLARIFY_ENGINE_UNAVAILABLE"
+  | "NARRATIVE_DIGEST_UNAVAILABLE"
+  | "NARRATIVE_DIGEST_INVALID_RESULT"
   | "UNEXPECTED_ERROR";
 
 export type ArcadiaExitCode = 1 | 2 | 3;
@@ -119,6 +121,14 @@ export function orientationInterpreterUnavailable(message: string): ArcadiaError
  */
 export function clarifyEngineUnavailable(message: string): ArcadiaError {
   return new ArcadiaError("CLARIFY_ENGINE_UNAVAILABLE", message, 1, {});
+}
+
+export function narrativeDigestUnavailable(message: string): ArcadiaError {
+  return new ArcadiaError("NARRATIVE_DIGEST_UNAVAILABLE", message, 1, {});
+}
+
+export function narrativeDigestInvalidResult(message: string): ArcadiaError {
+  return new ArcadiaError("NARRATIVE_DIGEST_INVALID_RESULT", message, 1, {});
 }
 
 export function projectReplyAmbiguous(question: string): ArcadiaError {

@@ -3,10 +3,110 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-07-31
+updated: 2026-08-01
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-01 — Put the QA queue ahead of autonomous QA
+
+- **Did:** Refined the draft `demo-first-delivery` plan after the operator
+  needed to test three active pull requests but had to reconstruct every demo
+  path manually. Added `build-qa-queue-vertical-slice` as the plan's first
+  Action and made the earlier Project Detail hero depend on it. The first
+  Artifact is one Arcadia QA tab for configured Candidates: Project, revision,
+  PR, Test link, short procedure, evidence freshness, and a pass/fail/needs-
+  follow-up operator Decision bound to that revision.
+- **Result:** The Pareto scope is explicit: no provider discovery, process
+  scraping, screenshot automation, LLM visual judgment, autonomous QA, merge,
+  deployment, or delivery in the first slice. The queue is deterministic and
+  has no runtime LLM Token Impact; later capture and independent QA remain
+  sequenced behind it.
+- **Next:** The operator may activate `demo-first-delivery` when ready to make
+  `build-qa-queue-vertical-slice` the current Action.
+- **Blockers:** The plan remains draft; implementation still needs the priority
+  Decision that activates it instead of displacing the current narrative-
+  digests Action implicitly.
+
+## 2026-08-01 — Added “Make it real” and enforceable Token Impact budgets
+
+- **Did:** Added “Make it real” beside the Pareto and “If not now, then when?”
+  guidelines: each Action should end in the most direct honest form a person or
+  system can use, without crossing an approval boundary. Recorded Decision
+  0008 and added a required plan-level `token_impact` T-shirt size plus a
+  plain-language `token_budget`. Updated all six managed Arcadia plans, the
+  managed-document parser, `arcadia next`, Project Detail, the authoring guide,
+  semantic contract, Constitution, Start Here guide, and focused tests.
+- **Result:** The current Action now reports its plan's Token Impact and Budget
+  in both CLI continuation data and the Dashboard contract. The demo-first plan
+  includes a routine-by-routine budget table: builds, tests, health probes,
+  Playwright capture, metadata sync, and pixel comparison use no LLM tokens;
+  interpretation, agentic QA judgment, implementation, and failure diagnosis
+  carry the model cost. Ninety-one focused parser/dispatch tests and root
+  TypeScript validation pass; `docs sync` reports zero errors or rejections.
+- **Next:** Activate `demo-first-delivery` if the operator accepts the earlier
+  priority recommendation; its first Action will now arrive with an explicit
+  `xlarge` program impact and staged budget rather than hidden cost.
+- **Blockers:** The Dashboard production build compiled and passed type
+  validation, then failed page-data collection for three existing API routes
+  while the live Dashboard was using the same build directory. This does not
+  affect the plan/parser validation or running Dashboard, but a clean isolated
+  Dashboard build remains follow-up evidence.
+
+## 2026-08-01 — Planned demo-first handoff, Arcadia QA, and release management
+
+- **Did:** Reviewed the operator's Private Practice Now Project Detail screen
+  and found the concrete orientation failure: its summary named a stale failed-
+  validation next action while Continuation named the real River Copy Studio
+  trial, leaving the operator to reconcile control records before finding the
+  product. Recorded approved Decision 0007, a human-readable operator demo and
+  release contract, and the draft `demo-first-delivery` plan. The contract
+  separates a known-good Stable target from the current Candidate, requires a
+  demo before document archaeology, and makes the operator's own duties
+  explicit: exercise the candidate, then read the relevant Log and QA evidence
+  before acceptance, merge, release, or client delivery. The plan sequences a
+  PPN demo-hero vertical slice, proof automation, a state-aware Test action,
+  independent Arcadia QA, governed release management, and portfolio rollout.
+- **Result:** `docs sync` parses the new managed plan and Decision with zero
+  errors or rejections. Cloud-hosted previews are confirmed as viable Candidate
+  targets: Cloudflare Pages supplies per-PR hash URLs and branch aliases;
+  Workers supplies versioned and aliased previews. The plan treats previews as
+  public unless Access protection is proved, starts screenshot capture with
+  local Playwright, and retains Cloudflare Browser Rendering as an optional
+  later runner. The current `narrative-digests` pointer was not changed by a
+  planning-only request.
+- **Next:** The operator should decide whether to activate
+  `demo-first-delivery` now. Recommendation: yes; make
+  `build-demo-hero-vertical-slice` current before completing scheduled digest
+  work, because it directly removes the operator's present inability to find
+  and show usable work.
+- **Blockers:** Implementation is intentionally not authorized by “Plan it.”
+  Activating this draft plan is the one priority Decision required before the
+  first build Action.
+
+## 2026-07-31 — Delivered one-Project narrative digest composition
+
+- **Did:** Added an explicit-window Project digest composer. It gathers only
+  in-window mission-Log rows, dispatch journal entries, and Decision activity;
+  submits the structured fact snapshot to the unpaid local-preferred
+  Intelligence route with a narration-without-invention contract; and writes a
+  ready `narrative_digest` Artifact under the Arcadia workspace. Added the
+  `narrative_digests` identity table so the exact Project, period label, start,
+  and end tuple updates in place. Added `arcadia digest compose` with explicit
+  inclusive `--from` and exclusive `--to` boundaries rather than silently
+  answering the open calendar-versus-rolling question.
+- **Result:** Focused digest, docs-sync, dispatch, and dispatch-journal coverage
+  passes 94 tests; the full deterministic suite and both TypeScript builds also
+  pass. Empty windows override model prose with an honest deterministic
+  "nothing happened" account, and generated files never touch a managed
+  Project repository. The full run also exposed and repaired one macOS
+  `/var`-versus-`/private/var` assertion in the newly merged progress-review
+  test; the production path was already correctly canonicalized.
+- **Next:** `export-digest-to-obsidian` — reuse the existing progress-review
+  atomic write, ownership check, and content-hash dedup for this AI-narrated
+  Artifact shape.
+- **Blockers:** None. Portfolio roll-up and scheduled-window boundary policy
+  remain deliberately open and are not required by the next Action.
 
 ## 2026-07-31 — Scoped narrative digests as a plan, not a feature request
 
@@ -243,6 +343,76 @@ updated: 2026-07-31
   to advance.
 - **Blockers:** `persist-dependencies` is `question_open` on Decision 0004, so
   `arcadia next` will keep returning that question rather than dispatching.
+
+## 2026-07-26 — Made Private Practice Now dispatchable again
+
+- **Did:** Repaired Private Practice Now's control documentation. Retyped seven
+  research and guide documents onto the shipped narrative vocabulary, added the
+  plan and Project milestone, replaced the dangling `current_action: none` with
+  the action carrying the open question, and recorded the unmade milestone choice
+  as ADR 0012 rather than deciding it. Fixed a defect introduced earlier the same
+  day where a plan question naming a decision raised a second Decision alongside
+  the decision's own.
+- **Result:** `arcadia next` went from eight blockers and no resolvable objective
+  to one Project-level question for the operator. The seven refused documents
+  were the larger problem: every discovery error is a dispatch blocker, so
+  out-of-vocabulary `type:` values had made the entire Project undispatchable
+  rather than merely unindexed. PPN now syncs with zero validation errors and
+  re-runs as 0 created, 0 updated, 19 unchanged. Full suite passed 638 tests with
+  2 skipped and both TypeScript builds passed. No deployment, publish, commit,
+  push, credentials, or production access occurred.
+- **Next:** Answer ADR 0012 to choose between `define-shared-inquiry-service` and
+  `define-first-pilot-success`. Whichever wins still needs `acceptance_criteria`
+  before it is dispatchable.
+- **Blockers:** None. One duplicate Decision row created by the same-day defect
+  was deleted from the workspace database after the code fix; it was minutes old,
+  document-derived, and an exact duplicate of the surviving decision record.
+  Deciding PPN's milestone order remains the operator's and was left open.
+
+## 2026-07-26 — Cleared the open Decisions and fixed milestone lifecycle
+
+- **Did:** Answered the three standing questions — Decision 0004 (docs sync stays
+  strictly one-way, with execution history allowed only in a generated namespace
+  ingestion never reads), Decision 0005 (a plan may span milestones through an
+  optional per-action `milestone:` override), and Private Practice Now's ADR 0006
+  (defer the editor-hosting choice until three clients are live concurrently).
+  Implemented the milestone-status derivation, the per-action override, and
+  question-to-decision resolution.
+- **Result:** The Decision queue is empty across both Projects, down from three.
+  Milestone status is now derived from plan status, so `arcadia portfolio`
+  reports Arcadia's milestone as "docs sync ingests a real project's markdown"
+  instead of one belonging to a completed plan — the old value was selected by a
+  two-millisecond gap in insertion order, because `current_milestone` takes the
+  newest active milestone and no plan ever ended one. A plan question naming its
+  `decision:` inherits that decision's resolution, which is how an answered
+  question leaves the queue without ingestion ever deleting. Full suite passed
+  637 tests with 2 skipped, up from 633, and both TypeScript builds passed. No
+  deployment, publish, commit, push, credentials, production access, or
+  destructive action occurred.
+- **Next:** `ingest-mission-logs` remains the current Action, now fully specified
+  by Decision 0004: the entry key is the heading date plus a title slug, because
+  Arcadia may not stamp an id into a human-authored file.
+- **Blockers:** None for Arcadia. Two findings in Private Practice Now, reported
+  and not fixed: its active plan declares no `milestone:`, so Arcadia fell back
+  to the plan slug as a milestone title, and seven of its documents use `type:`
+  values outside the vocabulary and were refused. Both are that repository's to
+  resolve.
+
+## 2026-07-26 — Made depends_on ordering constrain dispatch
+
+- **Did:** Implemented `persist-dependencies` on the parallel local history.
+  Added a `work_item_dependencies` edge table, a second `docs sync` pass that
+  replaces each Action's document-declared edges, and a dispatch blocker for
+  any unfinished prerequisite.
+- **Result:** `depends_on` now constrains what Arcadia hands a coding agent and
+  survives a sync round trip. Sync applied 14 real edges across three plans and
+  re-ran as 0 created, 0 updated, 42 unchanged; deleting a document-owned edge
+  removes it while an edge recorded outside ingestion survives. The full suite
+  passed 633 tests with 2 skipped, and TypeScript passed.
+- **Next:** `ingest-mission-logs` remained the next protocol Action at the time;
+  it was subsequently selected and delivered under Decision 0003.
+- **Blockers:** None. This parallel implementation was retained when the local
+  and remote histories merged on 2026-07-31.
 
 ## 2026-07-26 — Made project continuation actionable
 

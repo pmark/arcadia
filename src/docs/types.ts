@@ -33,6 +33,10 @@ export type DocType = (typeof DOC_TYPES)[number];
 export const PLAN_STATUSES = ["draft", "active", "complete", "superseded"] as const;
 export type PlanStatus = (typeof PLAN_STATUSES)[number];
 
+/** Relative LLM-token exposure for a whole plan, never an exact forecast. */
+export const TOKEN_IMPACTS = ["none", "small", "medium", "large", "xlarge"] as const;
+export type TokenImpact = (typeof TOKEN_IMPACTS)[number];
+
 export const DECISION_DOC_STATUSES = ["open", "approved", "rejected", "deferred"] as const;
 export type DecisionDocStatus = (typeof DECISION_DOC_STATUSES)[number];
 
@@ -73,7 +77,7 @@ export interface ProjectDoc extends DocLocation {
    * the project, which also makes two competing current actions structurally
    * impossible. A plan may still carry one for a project that has not adopted
    * the project-level pointer.
-   */
+  */
   currentAction: string | null;
   updated: string;
   body: string;
@@ -92,6 +96,16 @@ export interface PlanActionDoc {
   question: string | null;
   confidence: ClarificationConfidence | null;
   source: string | null;
+  /**
+   * The milestone this action belongs to, when it is not the plan's own.
+   *
+   * A plan may span more than one milestone (Decision 0005). The alternative —
+   * splitting the plan at the boundary — would sever every `depends_on` edge
+   * across it, because a dependency may only name an action in the same plan.
+   * Ordering is a dispatch constraint, so losing it at exactly the handoff most
+   * likely to be gotten wrong is the worse trade.
+   */
+  milestone: string | null;
   dependsOn: string[];
   /**
    * Objective conditions that decide when this action is finished. Required on
@@ -113,6 +127,16 @@ export interface PlanQuestionDoc {
   id: string;
   question: string;
   gapType: GapType | null;
+  /**
+   * The decision document that answers this question, once one exists.
+   *
+   * Ingestion never deletes, so a question deleted from a plan leaves its
+   * Decision open in the queue forever with nothing in any file explaining it.
+   * Naming the decision resolves the question explicitly instead — the question
+   * stays in the plan as the record of what was asked, and the decision holds
+   * the answer.
+   */
+  decision: string | null;
 }
 
 export interface PlanDoc extends DocLocation {
@@ -124,8 +148,11 @@ export interface PlanDoc extends DocLocation {
   /**
    * The one action in this plan that is the objective. The other half of the
    * work pointer; exactly one action may hold it across the whole project.
-   */
+  */
   currentAction: string | null;
+  tokenImpact: TokenImpact;
+  /** Human-readable boundary: what uses tokens, what does not, and how use is capped. */
+  tokenBudget: string;
   updated: string;
   actions: PlanActionDoc[];
   questions: PlanQuestionDoc[];
@@ -200,6 +227,24 @@ export function parseActionDocRef(docRef: string): { planSlug: string; actionId:
 
 export function planQuestionDocRef(planSlug: string, questionId: string): string {
   return `plan/${planSlug}?question=${questionId}`;
+}
+
+/**
+ * A milestone a plan declares beyond its own. The plan's primary milestone keeps
+ * the bare `plan/<slug>` ref it was ingested under, so adding this never
+ * migrates an existing row.
+ */
+export function planMilestoneDocRef(planSlug: string, milestoneTitle: string): string {
+  return `plan/${planSlug}?milestone=${slugifyMilestone(milestoneTitle)}`;
+}
+
+function slugifyMilestone(title: string): string {
+  return (
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "milestone"
+  );
 }
 
 export function decisionDocRef(decisionSlug: string): string {

@@ -129,15 +129,15 @@ pnpm arcadia ask \
   --json
 ```
 
-## Process Local Ingress Files
+## Process iCloud Drive Ingress Files
 
-Apple Shortcuts can create Arcadia requests by writing plain text files to the default local root:
+Apple Shortcuts can create Arcadia requests by writing files to the default iCloud Drive root:
 
 ```text
-~/ArcadiaIngress/iCloudIdeas/In/YYYYMMDD-HHMMSS.txt
+~/Library/Mobile Documents/com~apple~CloudDocs/ArcadiaIngress/iCloudIdeas/In/YYYYMMDD-HHMMSS.txt
 ```
 
-The file contents are treated as the natural-language request. To share the folder with iPhone and iPad, use the iCloud Drive root when processing pending files:
+The file contents are treated as the natural-language request. To process pending files explicitly, use the iCloud Drive root:
 
 ```sh
 pnpm arcadia ingress process \
@@ -164,7 +164,16 @@ pnpm arcadia ingress process \
   --dry-run
 ```
 
-Arcadia processes `.txt` requests and media files matched by enabled Workflows oldest first. Workflow files remain pending until two observations show their size and modification time unchanged for at least 30 seconds and `--run-safe` is passed. Successful and empty files move to `<ingress-root>/iCloudIdeas/Done/`; failed files move to `<ingress-root>/iCloudIdeas/Failed/`. Each moved file gets a readable JSON sidecar, and every non-empty processed request gets an ingress Log. Files placed in `Attachments/<request-basename>/` are recorded as ready Artifacts.
+Arcadia processes `.txt`, `.md`, and `.markdown` requests and media files matched by enabled Workflows oldest first. Workflow and unmatched binary files remain pending until two observations show their size and modification time unchanged for at least 30 seconds; Workflows also require `--run-safe`. Requests are claimed in `Processing`. Idea captures move to `<ingress-root>/iCloudIdeas/Done/Ideas/`, unmatched files are preserved in `Done/Unclassified/`, other successful requests move to `Done/`, and failures move to `Failed/`. Each moved file gets a readable JSON sidecar, and every non-empty processed request gets an ingress Log. Files placed in `Attachments/<request-basename>/` are recorded as ready Artifacts.
+
+To stage local files from an Admin Ask/upload surface using the same convention as the Apple shortcuts:
+
+```sh
+pnpm arcadia ingress capture \
+  --workspace "$WORKSPACE" \
+  --file /path/to/idea.md \
+  --description "Capture and organize this idea."
+```
 
 Watch mode is intentionally not implemented. For periodic processing, configure macOS `launchd` to run `arcadia ingress process` on an interval. See `docs/APPLE_INGEST.md` for the macOS Quick Action and iPhone/iPad Shortcut flow.
 
@@ -207,6 +216,28 @@ pnpm arcadia capture \
   --expected-artifact "Review flow specification" \
   --json
 ```
+
+## Compose A Project Digest
+
+```sh
+pnpm arcadia digest compose \
+  --workspace "$WORKSPACE" \
+  --project arcadia \
+  --period week \
+  --from 2026-07-24T00:00:00.000Z \
+  --to 2026-07-31T00:00:00.000Z \
+  --json
+```
+
+`--project` accepts an id or slug. `--period` labels the explicit window as
+`day`, `week`, or `month`; it does not calculate the boundaries. `--from` is
+inclusive and `--to` exclusive. This keeps composition usable without deciding
+whether later scheduled windows are calendar-aligned or rolling.
+
+The command queues unpaid local-preferred narration, persists the gathered fact
+snapshot, writes the Markdown under `artifacts/narrative-digests/` inside the
+Arcadia workspace, and creates or updates one `narrative_digest` Artifact for
+the exact Project/period/boundaries tuple.
 
 ## Manage Artifacts And Expected Outcomes
 
@@ -590,6 +621,33 @@ checked-in documentation is authoritative when the two disagree.
 Exactly one action may be current across a project. A second plan declaring
 `current_action` is reported as a competing objective rather than silently
 losing to the active plan.
+
+An action's `depends_on` ordering is a dispatch constraint, not a note. `next`
+refuses while any Action the current one depends on is unfinished, naming the
+prerequisite and offering three repairs — finish it, point `current_action` at
+it, or delete the dependency if it no longer holds:
+
+```text
+  ! docs/plans/portfolio-docs-protocol.md [actions.persist-dependencies.depends_on]: Depends on "build-upsert" ("Build the upsert layer"), which is "open", not done.
+      Finish "build-upsert" first, or point current_action at it, or remove the dependency if it no longer holds.
+```
+
+`docs sync` persists those edges, replacing the set each run so deleting a
+`depends_on` line in a document actually removes the constraint. A dependency
+recorded outside ingestion is never removed by a document that fails to mention
+it.
+
+An action may also name its own `milestone:` when a plan spans more than one
+(Decision 0005). It inherits the plan's otherwise, and the plan's own milestone
+keeps its existing identity, so adding an override migrates nothing. A plan's
+status decides its milestone's: a `complete` or `superseded` plan ends its
+milestone rather than leaving it active forever.
+
+A plan-level question may name the `decision:` that answers it, and ingestion
+mirrors that decision's resolution onto the question. This is how an answered
+question leaves the review queue: ingestion never deletes, and treating a
+question's absence as resolution would let a document that merely trails reality
+silently close live work.
 
 When the pointer cannot be resolved, `next` refuses and names the repair:
 

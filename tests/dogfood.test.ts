@@ -20,7 +20,13 @@ import {
   runDogfoodStatusCommand
 } from "../src/commands/dogfood.js";
 import { withDatabase } from "../src/db/connection.js";
-import { countRows, listProjectSummaries, listRecentMissionLogs, listWorkItems } from "../src/db/repositories.js";
+import {
+  countRows,
+  createWorkItemRecord,
+  listProjectSummaries,
+  listRecentMissionLogs,
+  listWorkItems
+} from "../src/db/repositories.js";
 import type { AskCommandData, AskOptions } from "../src/commands/ask.js";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
@@ -72,6 +78,30 @@ describe("arcadia dogfood", () => {
       expect(countRows(db, "projects")).toBe(1);
       expect(listWorkItems(db).filter((item) => item.raw_input === DOGFOOD_NEXT_ACTION)).toHaveLength(1);
       expect(listRecentMissionLogs(db, 10)).toHaveLength(1);
+    });
+  });
+
+  it("projects the most recently updated open Action as the Project next action", () => {
+    runDogfoodInitCommand();
+
+    withDatabase(dogfoodWorkspacePath(), (db) => {
+      const [project] = listProjectSummaries(db);
+      if (!project) throw new Error("Expected the dogfood Project.");
+      createWorkItemRecord(db, {
+        projectId: project.id,
+        milestoneId: project.current_milestone_id,
+        title: "A newer Action created first",
+        rawInput: "A newer Action created first",
+        queue: "work_queue",
+        workClassification: "codex",
+        nextAction: "The newer Action's next move"
+      });
+
+      const original = listWorkItems(db).find((item) => item.next_action === DOGFOOD_NEXT_ACTION);
+      if (!original) throw new Error("Expected the seeded dogfood Action.");
+      db.prepare("UPDATE work_items SET updated_at = ? WHERE id = ?").run("2099-01-01T00:00:00.000Z", original.id);
+
+      expect(listProjectSummaries(db)[0]?.next_action).toBe(DOGFOOD_NEXT_ACTION);
     });
   });
 

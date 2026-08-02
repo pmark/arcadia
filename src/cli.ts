@@ -76,7 +76,13 @@ import {
 } from "./commands/dogfood.js";
 import { renderInboxImportSuccess, runInboxAddCommand, runInboxImportCommand } from "./commands/inbox.js";
 import { renderInitSuccess, runInitCommand } from "./commands/init.js";
-import { renderIngressProcessSuccess, runIngressProcessCommand } from "./commands/ingress.js";
+import {
+  renderIngressProcessSuccess,
+  runIngressCaptureCommand,
+  runIngressDescribeCommand,
+  runIngressListCommand,
+  runIngressProcessCommand
+} from "./commands/ingress.js";
 import {
   renderIngressServiceDoctorSuccess,
   renderIngressServiceStatusSuccess,
@@ -213,6 +219,7 @@ import {
   runWorkerUninstallCommand
 } from "./commands/worker.js";
 import { renderClarifySuccess, runClarifyCommand } from "./commands/clarify.js";
+import { renderDigestComposeSuccess, runDigestComposeCommand } from "./commands/digest.js";
 import { renderDocsSyncSuccess, runDocsSyncCommand } from "./commands/docs.js";
 import {
   renderNextHistorySuccess,
@@ -1155,11 +1162,79 @@ export function buildProgram(): Command {
     )
   );
 
-  const ingress = program.command("ingress").description("Local file ingress commands");
+  const ingress = program.command("ingress").description("iCloud Drive file ingress commands");
+  addJsonOption(
+    ingress
+      .command("list")
+      .description("List files waiting in the iCloud Drive ingress folder")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--source <name>", "Ingress source folder", "iCloudIdeas")
+      .option("--ingress-root <path>", "ArcadiaIngress root folder")
+  ).action((options: {
+    workspace: string;
+    source?: string;
+    ingressRoot?: string;
+    json?: boolean;
+  }) => runCliAction(
+    "ingress.list",
+    options,
+    () => runIngressListCommand(options),
+    (response) => response.data.files.map((file) => `${file.name} (${file.kind})`)
+  ));
+  addJsonOption(
+    ingress
+      .command("describe")
+      .description("Queue a description-driven Action for selected ingress files")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--source <name>", "Ingress source folder", "iCloudIdeas")
+      .option("--ingress-root <path>", "ArcadiaIngress root folder")
+      .requiredOption("--file <name>", "Ingress file name; repeat for multiple files", collectValues, [])
+      .requiredOption("--description <text>", "What to do with the selected files")
+  ).action((options: {
+    workspace: string;
+    source?: string;
+    ingressRoot?: string;
+    file?: string[];
+    description: string;
+    json?: boolean;
+  }) => runCliAction(
+    "ingress.describe",
+    options,
+    () => runIngressDescribeCommand({ ...options, files: options.file ?? [] }),
+    (response) => [
+      `Queued ingress Action for ${response.data.selectedFiles.length} file(s).`,
+      `Request: ${response.data.requestFile}`
+    ]
+  ));
+  addJsonOption(
+    ingress
+      .command("capture")
+      .description("Copy local files into the iCloud ingress attachment convention and queue them")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--source <name>", "Ingress source folder", "iCloudIdeas")
+      .option("--ingress-root <path>", "ArcadiaIngress root folder")
+      .requiredOption("--file <path>", "Local file path; repeat for multiple files", collectValues, [])
+      .option("--description <text>", "Optional instruction for the captured files")
+  ).action((options: {
+    workspace: string;
+    source?: string;
+    ingressRoot?: string;
+    file?: string[];
+    description?: string;
+    json?: boolean;
+  }) => runCliAction(
+    "ingress.capture",
+    options,
+    () => runIngressCaptureCommand({ ...options, files: options.file ?? [] }),
+    (response) => [
+      `Queued ingress capture for ${response.data.selectedFiles.length} file(s).`,
+      `Request: ${response.data.requestFile}`
+    ]
+  ));
   addJsonOption(
     ingress
       .command("process")
-      .description("Process local ingress request files")
+      .description("Process iCloud Drive ingress request files")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--source <name>", "Ingress source folder", "iCloudIdeas")
       .option("--ingress-root <path>", "ArcadiaIngress root folder")
@@ -1362,6 +1437,25 @@ export function buildProgram(): Command {
       renderWorkflowRunSuccess
     )
   );
+
+  const digest = program.command("digest").description("Narrative Project digest commands");
+  addJsonOption(
+    digest
+      .command("compose")
+      .description("Compose one Project digest for an explicit activity window")
+      .requiredOption("--project <project>", "Project id or slug")
+      .requiredOption("--period <period>", "Window label: day, week, or month")
+      .requiredOption("--from <instant>", "Inclusive ISO-8601 window start")
+      .requiredOption("--to <instant>", "Exclusive ISO-8601 window end")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: {
+    workspace: string;
+    project: string;
+    period: string;
+    from: string;
+    to: string;
+    json?: boolean;
+  }) => runCliAction("digest.compose", options, () => runDigestComposeCommand(options), renderDigestComposeSuccess));
 
   const artifact = program.command("artifact").description("Artifact commands");
   addJsonOption(

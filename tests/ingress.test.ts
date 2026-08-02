@@ -13,7 +13,12 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { CommandSuccess } from "../src/cli/response.js";
 import type { AskCommandData, AskOptions } from "../src/commands/ask.js";
-import { runIngressProcessCommand } from "../src/commands/ingress.js";
+import {
+  runIngressCaptureCommand,
+  runIngressDescribeCommand,
+  runIngressListCommand,
+  runIngressProcessCommand
+} from "../src/commands/ingress.js";
 import { withDatabase } from "../src/db/connection.js";
 import { countRows, listRecentMissionLogs } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -28,6 +33,44 @@ afterEach(() => {
 });
 
 describe("ingress process command", () => {
+  it("captures local uploads into the same attachment and request convention", () => {
+    const workspace = initializedWorkspace();
+    const ingressRoot = initializedIngressRoot();
+    const uploadRoot = mkdtempSync(path.join(tmpdir(), "arcadia-ingress-upload-"));
+    roots.push(uploadRoot);
+    const uploadPath = path.join(uploadRoot, "idea.md");
+    writeFileSync(uploadPath, "# A captured idea\n", "utf8");
+
+    const result = runIngressCaptureCommand({
+      workspace,
+      ingressRoot,
+      files: [uploadPath],
+      description: "Capture this idea and route it deterministically."
+    });
+
+    expect(result.data.selectedFiles).toEqual(["idea.md"]);
+    expect(existsSync(result.data.requestFile)).toBe(true);
+    expect(readFileSync(result.data.requestFile, "utf8")).toContain("Capture this idea");
+    expect(readFileSync(result.data.requestFile, "utf8")).toContain("# A captured idea");
+    expect(readFileSync(result.data.attachmentFiles[0]!, "utf8")).toContain("A captured idea");
+  });
+
+  it("routes a labeled Markdown app idea to Back Burner and Done/Ideas", () => {
+    const workspace = initializedWorkspace();
+    const ingressRoot = initializedIngressRoot();
+    writeIngressFile(ingressRoot, "living-songbook.md", "# App Idea: Living Songbook\n\n## Metadata\n\n- **Working Name:** Living Songbook\n\nA guitar repertoire app.\n");
+
+    const result = runIngressProcessCommand({ workspace, ingressRoot, stableSeconds: 0 });
+
+    expect(result.data.files[0]).toMatchObject({ status: "processed" });
+    expect(result.data.files[0]?.finalPath).toContain(path.join("Done", "Ideas", "living-songbook.md"));
+    expect(result.data.files[0]?.failureReason).toBeUndefined();
+    withDatabase(workspace, (db) => {
+      expect(countRows(db, "back_burner_items")).toBe(1);
+      expect(countRows(db, "ask_requests")).toBe(1);
+    });
+  });
+
   it("ingests a request through ask, moves it to Done, writes a sidecar, and records a mission log", () => {
     const workspace = initializedWorkspace();
     const ingressRoot = initializedIngressRoot();
@@ -290,6 +333,48 @@ describe("ingress process command", () => {
     expect(existsSync(movedPath)).toBe(true);
     expect(result.data.files[0].finalPath).toBe(movedPath);
     expect(existsSync(path.join(ingressRoot, "iCloudIdeas", "Done", "collision-1.response.json"))).toBe(true);
+  });
+});
+
+describe("ingress viewer actions", () => {
+  it("lists visible files in In with media metadata without treating them as process candidates", () => {
+    const workspace = initializedWorkspace();
+    const ingressRoot = initializedIngressRoot();
+    writeIngressFile(ingressRoot, "one.png", "image bytes");
+    writeIngressFile(ingressRoot, "notes.txt", "request");
+    writeIngressFile(ingressRoot, ".DS_Store", "hidden");
+
+    const result = runIngressListCommand({ workspace, ingressRoot });
+
+    expect(result.data.files.map((file) => file.name).sort()).toEqual(["notes.txt", "one.png"]);
+    expect(result.data.files.find((file) => file.name === "one.png")).toMatchObject({
+      kind: "image",
+      mimeType: "image/png",
+      relativePath: "one.png"
+    });
+  });
+
+  it("queues a description and copies selected files into the normal attachment convention", () => {
+    const workspace = initializedWorkspace();
+    const ingressRoot = initializedIngressRoot();
+    const first = writeIngressFile(ingressRoot, "one.png", "first image");
+    const second = writeIngressFile(ingressRoot, "two.jpg", "second image");
+
+    const result = runIngressDescribeCommand({
+      workspace,
+      ingressRoot,
+      files: ["one.png", "two.jpg"],
+      description: "Combine these images and loop them as a Rebuster Rebus video."
+    });
+
+    expect(result.data.selectedFiles).toEqual(["one.png", "two.jpg"]);
+    expect(existsSync(result.data.requestFile)).toBe(true);
+    expect(readFileSync(result.data.requestFile, "utf8")).toContain("Combine these images");
+    expect(result.data.attachmentFiles).toHaveLength(2);
+    expect(readFileSync(result.data.attachmentFiles[0], "utf8")).toBe(readFileSync(first, "utf8"));
+    expect(readFileSync(result.data.attachmentFiles[1], "utf8")).toBe(readFileSync(second, "utf8"));
+    expect(existsSync(first)).toBe(true);
+    expect(existsSync(second)).toBe(true);
   });
 });
 
