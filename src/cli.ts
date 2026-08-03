@@ -253,7 +253,6 @@ import {
   runWorkUpdateCommand
 } from "./commands/work.js";
 import { renderWorkMonitorSuccess, runWorkMonitorCommand } from "./commands/workMonitor.js";
-import { renderWorkPullRequestsSuccess, runWorkPullRequestsCommand } from "./commands/workPullRequests.js";
 import {
   renderWorkflowListSuccess,
   renderWorkflowMatchSuccess,
@@ -1612,19 +1611,6 @@ export function buildProgram(): Command {
         includePullRequests: options.pullRequests
       }),
       renderWorkMonitorSuccess
-    )
-  );
-  addJsonOption(
-    work
-      .command("prs")
-      .description("List outstanding GitHub pull requests across Project repositories")
-      .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((options: { workspace: string; json?: boolean }) =>
-    runCliAction(
-      "work.pull-requests",
-      options,
-      () => runWorkPullRequestsCommand(options),
-      renderWorkPullRequestsSuccess
     )
   );
   addJsonOption(
