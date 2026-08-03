@@ -127,6 +127,69 @@ export interface DashboardSnapshot {
   recentArtifacts: DashboardArtifact[];
 }
 
+export type PullRequestReadiness =
+  | "blocked"
+  | "checks_failing"
+  | "checks_pending"
+  | "draft"
+  | "ready"
+  | "merge_ready"
+  | "unknown";
+
+export interface DashboardPullRequestCheck {
+  name: string;
+  status: string | null;
+  conclusion: string | null;
+  url: string | null;
+}
+
+export interface DashboardOutstandingPullRequest {
+  projectId: string;
+  projectName: string;
+  repositoryPath: string;
+  repository: string;
+  number: number;
+  title: string;
+  url: string;
+  state: "OPEN";
+  isDraft: boolean;
+  mergeStateStatus: string | null;
+  headBranch: string;
+  baseBranch: string;
+  author: string | null;
+  reviewDecision: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  checks: DashboardPullRequestCheck[];
+  readiness: PullRequestReadiness;
+  readinessLabel: string;
+  summary: string;
+}
+
+export interface DashboardPullRequestProjectError {
+  projectId: string;
+  projectName: string;
+  repositoryPath: string | null;
+  message: string;
+}
+
+export interface DashboardOutstandingPullRequests {
+  generatedAt: string;
+  projectsScanned: number;
+  pullRequests: DashboardOutstandingPullRequest[];
+  errors: DashboardPullRequestProjectError[];
+  counts: {
+    total: number;
+    blocked: number;
+    checksFailing: number;
+    checksPending: number;
+    drafts: number;
+    ready: number;
+    mergeReady: number;
+    unknown: number;
+  };
+}
+
 export type AgentQueueEntryState = "ready" | "running" | "attention";
 export type AgentQueueAttentionKind =
   | "document"
