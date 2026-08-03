@@ -39,6 +39,7 @@ import {
   setDailyCapacity,
   updateOrientationEntry
 } from "../orientation/repository.js";
+import { composeMorningNarrative, gatherMorningNarrativeSnapshot } from "../orientation/morningNarrative.js";
 import { isStale } from "../orientation/staleness.js";
 import { formatFitResult, parseAvailableMinutesRequest, selectFittingEntries, type FitToGapResult } from "../orientation/fit.js";
 import { buildTimeline, renderTimelineAscii, type Timeline } from "../orientation/timeline.js";
@@ -265,7 +266,8 @@ export function runOrientationPacketComposeCommand(
       const detail = error instanceof Error ? error.message : String(error);
       workSafetyLines = [`Working-copy safety scan could not complete: ${detail}`];
     }
-    const composed = composePacket(entries, now, { dailyAdvantageLine, capacity, workSafetyLines });
+    const morningNarrative = composeMorningNarrative(gatherMorningNarrativeSnapshot(db, now));
+    const composed = composePacket(entries, now, { dailyAdvantageLine, capacity, workSafetyLines, morningNarrative });
 
     try {
       const packet = createOrientationPacket(db, {

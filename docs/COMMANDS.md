@@ -1070,6 +1070,14 @@ pnpm arcadia work update work_example --workspace "$WORKSPACE" --effort short
 Say what today actually holds, then ask what fits a real gap. Both the fit
 query and the packet's plan are deterministic — no model call.
 
+The daily Discord Orientation Packet also includes a deterministic morning
+narrative assembled from recent Logs, completed Actions, ready Artifacts,
+pending Decisions, and blocked Actions. It highlights recent operating
+changes, compares the last seven days of completed-Action throughput with the
+preceding seven, names visible drag, and points out a likely coding-agent
+handoff. It never invents causes or outcomes, and it does not depend on a model
+being available at send time.
+
 ```sh
 pnpm arcadia orientation capacity set --workspace "$WORKSPACE" \
   --note "one client session + ~1h of fragments; evening gone" \

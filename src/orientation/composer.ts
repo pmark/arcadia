@@ -29,6 +29,7 @@ export function composePacket(
     dailyAdvantageLine?: string;
     capacity?: DailyCapacity | null;
     workSafetyLines?: string[];
+    morningNarrative?: string;
   } = {}
 ): ComposedPacket {
   const live = entries.filter((entry) => entry.status === "active" || entry.status === "confirmed");
@@ -37,6 +38,10 @@ export function composePacket(
 
   const sections: string[] = [];
   sections.push(`**Arcadia — ${localDateHeader(now)}**`);
+
+  if (options.morningNarrative?.trim()) {
+    sections.push(`**Morning narrative**\n${options.morningNarrative.trim()}`);
+  }
 
   if (options.workSafetyLines && options.workSafetyLines.length > 0) {
     sections.push(formatSection("Coding work safety", options.workSafetyLines));
