@@ -67,6 +67,17 @@ stating whether an open PR was found. Use one branch and worktree per coding ses
 every session merged or represented by at least a draft PR. The full recovery
 procedure is in `docs/working-copy-safety.md`.
 
+Each newly composed Morning Packet also includes a clearly labelled, bounded
+local-AI perspective: one headline and one paragraph explaining what the
+recorded work means. If the local model is unavailable, the deterministic
+packet still composes and delivers. When workspace memory is enabled, the
+same packet is projected into `Arcadia/Records/Orientation/` in Obsidian.
+Backfill or verify any durable packet explicitly with:
+
+```sh
+pnpm arcadia orientation packet export <packet-id> --workspace "$WORKSPACE"
+```
+
 To shelve an idea until a concrete condition is true, use the existing Ask
 path with `--back-burner`. For example:
 
@@ -108,6 +119,16 @@ Intelligence route to narrate those facts, and writes one ready
 `narrative_digest` Artifact under the Arcadia workspace. Re-running the same
 Project/period/boundary tuple updates the same Artifact. It never writes into
 the managed Project repository.
+
+When workspace memory is enabled, project that already-composed Artifact into
+Obsidian explicitly:
+
+```sh
+pnpm arcadia digest export <digest-id> --workspace <path>
+```
+
+The vault Record is clearly labelled AI-narrated, is safe to delete and
+recreate, and is not rewritten when the source Artifact has not changed.
 
 ## Ingress Artifacts
 
@@ -209,7 +230,11 @@ After you sign in following a laptop restart, Arcadia's managed launch agents st
 - **Managed Run worker (core)** — executes only queued, authorized Runs with the coding agent bound to each packet.
 - **Intelligence API and worker (feature-specific)** — structured generation at port 4710. Its durable SQLite queue dispatches cloud, Codex, and local generation through separate bounded pools, so a long image job no longer blocks unrelated requests.
 - **ComfyUI image backend (feature-specific)** — local FLUX.2 Klein generation/editing at port 8188 when configured.
-- **Discord adapter (feature-specific)** — capture, status, and notifications.
+- **Discord adapter (feature-specific)** — capture, status, notifications, and
+  the morning Orientation Packet. That packet opens with a factual narrative
+  of recent Project changes, seven-day velocity versus the prior week,
+  accumulated blockers/Decisions, and the strongest coding-agent handoff
+  opportunity before presenting today's normal orientation slate.
 
 The Dashboard binds to local interfaces for this operator-only workflow, so a
 phone can reach it over the LAN or Tailscale. If the Projects card and the

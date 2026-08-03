@@ -3,10 +3,62 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-01
+updated: 2026-08-02
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-03 — Made the morning narrative durable and added AI perspective
+
+- **Did:** Added an ownership-checked Obsidian projection for Morning Packets,
+  an explicit `orientation packet export` backfill command, and a bounded
+  unpaid local-preferred AI headline plus paragraph after the deterministic
+  narrative. Composition checks the once-per-day row before model work and
+  keeps Discord delivery intact when AI or vault memory is unavailable.
+- **Result:** Today's already-sent packet now exists as a real portfolio Record
+  under `Arcadia/Records/Orientation/2026/`, including a generated AI
+  perspective and provenance. Focused request, composition, and vault tests
+  pass.
+- **Next:** Schedule calendar-aligned daily, weekly, and monthly Project and
+  portfolio digests so the broader stories arrive unattended.
+- **Blockers:** None in the feature. The local text route had drifted to a
+  retired MLX endpoint; its operator configuration was corrected to the
+  installed Ollama model.
+
+## 2026-08-02 — Turned the morning Orientation Packet into a work narrative
+
+- **Did:** Added a deterministic narrative lead to the existing catch-up-safe
+  Discord morning packet. It draws from persisted Logs, completed Actions,
+  ready Artifacts, pending Decisions, and blocked Actions to highlight recent
+  changes, compare seven-day completion velocity with the preceding week,
+  identify visible friction, and suggest the strongest next coding-agent
+  handoff before the existing daily slate.
+- **Result:** Tomorrow's normal scheduled message can provide orientation,
+  motivation, and honest operational analysis without adding a model call that
+  could prevent delivery. Focused packet and narrative tests and both
+  TypeScript builds pass.
+- **Next:** Observe tomorrow's first narrative packet, then refine its signal
+  density from the operator's reaction before expanding daily/weekly/monthly
+  digest scheduling.
+- **Blockers:** None for tomorrow's packet.
+
+## 2026-08-02 — Exported narrative digest Artifacts into Obsidian safely
+
+- **Did:** Added `arcadia digest export <digest-id>`, which projects a composed
+  `narrative_digest` Artifact into `Arcadia/Records/Narrative Digests/` in the
+  configured Obsidian vault. It uses the established atomic-write,
+  vault-containment, ownership-key, and content-hash no-op protections from
+  Progress Reviews. The Record removes source Artifact frontmatter, has one
+  readable title, and clearly identifies the story as AI-narrated through the
+  local-preferred Intelligence route.
+- **Result:** Focused narrative-digest and Progress Review memory tests (13)
+  pass, as do both TypeScript builds. Re-exporting an unchanged Artifact does
+  not churn the vault; disabled memory makes no vault mutation.
+- **Next:** `schedule-portfolio-digests` — make daily, weekly, and monthly
+  Project stories and the collective portfolio story arrive unattended.
+- **Blockers:** Calendar-aligned versus rolling scheduled boundaries remains
+  the one explicit policy question; it does not prevent implementing the
+  scheduler's idempotent structure.
 
 ## 2026-08-01 — Put the QA queue ahead of autonomous QA
 

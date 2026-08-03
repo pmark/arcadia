@@ -31,6 +31,7 @@ import {
   dropOrientationEntry,
   findDailyCapacity,
   findOrientationEntry,
+  findOrientationPacket,
   findPacketForLocalDate,
   listAllOrientationEntries,
   listLiveOrientationEntries,
@@ -39,6 +40,13 @@ import {
   setDailyCapacity,
   updateOrientationEntry
 } from "../orientation/repository.js";
+import { composeMorningNarrative, gatherMorningNarrativeSnapshot } from "../orientation/morningNarrative.js";
+import {
+  createIntelligenceMorningAiSummarizer,
+  type MorningAiSummarizer,
+  type MorningAiSummary
+} from "../orientation/morningAiSummary.js";
+import { exportOrientationPacket, type MemorySyncEntry } from "../memory/obsidian.js";
 import { isStale } from "../orientation/staleness.js";
 import { formatFitResult, parseAvailableMinutesRequest, selectFittingEntries, type FitToGapResult } from "../orientation/fit.js";
 import { buildTimeline, renderTimelineAscii, type Timeline } from "../orientation/timeline.js";
@@ -234,16 +242,41 @@ export interface OrientationPacketComposeOptions {
   workspace: string;
   ifDue?: boolean;
   includeDailyAdvantage?: boolean;
+  summarizer?: MorningAiSummarizer;
+  now?: Date;
 }
 
-export function runOrientationPacketComposeCommand(
+export interface OrientationPacketComposeData {
+  packet: OrientationPacket | null;
+  alreadySent: boolean;
+  aiSummary: MorningAiSummary | null;
+  memory: MemorySyncEntry | null;
+}
+
+export async function runOrientationPacketComposeCommand(
   options: OrientationPacketComposeOptions
-): CommandSuccess<{ packet: OrientationPacket | null; alreadySent: boolean }> {
+): Promise<CommandSuccess<OrientationPacketComposeData>> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const db = openDatabase(workspacePath);
   try {
-    const now = new Date();
+    const now = options.now ?? new Date();
     const localDate = localDateStamp(now);
+
+    const existing = findPacketForLocalDate(db, localDate);
+    if (existing) {
+      if (!options.ifDue) throw orientationPacketAlreadySent(localDate);
+      const alreadySent = Boolean(existing.discordMessageId);
+      return createSuccess({
+        command: "orientation.packet.compose",
+        workspace: workspacePath,
+        data: { packet: alreadySent ? null : existing, alreadySent, aiSummary: null, memory: null },
+        warnings: [
+          alreadySent
+            ? `Already sent today's packet for ${localDate}.`
+            : `Retrying send of today's already-composed packet for ${localDate}.`
+        ]
+      });
+    }
 
     const entries = listLiveOrientationEntries(db);
     let dailyAdvantageLine: string | undefined;
@@ -265,7 +298,26 @@ export function runOrientationPacketComposeCommand(
       const detail = error instanceof Error ? error.message : String(error);
       workSafetyLines = [`Working-copy safety scan could not complete: ${detail}`];
     }
-    const composed = composePacket(entries, now, { dailyAdvantageLine, capacity, workSafetyLines });
+    const morningSnapshot = gatherMorningNarrativeSnapshot(db, now);
+    const morningNarrative = composeMorningNarrative(morningSnapshot);
+    let aiSummary: MorningAiSummary | null = null;
+    let aiWarning: string | null = null;
+    try {
+      aiSummary = await (options.summarizer ?? createIntelligenceMorningAiSummarizer(db, workspacePath))({
+        localDate,
+        sourceNarrative: morningNarrative,
+        projectNames: [...new Set(morningSnapshot.recentLogs.map((log) => log.project_name || "Unassigned"))]
+      });
+    } catch (error) {
+      aiWarning = `AI perspective unavailable; deterministic packet retained: ${error instanceof Error ? error.message : String(error)}`;
+    }
+    const composed = composePacket(entries, now, {
+      dailyAdvantageLine,
+      capacity,
+      workSafetyLines,
+      morningNarrative,
+      aiSummary: aiSummary ?? undefined
+    });
 
     try {
       const packet = createOrientationPacket(db, {
@@ -274,10 +326,18 @@ export function runOrientationPacketComposeCommand(
         entrySnapshot: composed.entrySnapshot
       });
       emitOrientationEvent(db, "orientation.packet.composed", { packetId: packet.id, localDate });
+      let memory: MemorySyncEntry | null = null;
+      let memoryWarning: string | null = null;
+      try {
+        memory = exportOrientationPacket(workspacePath, { packet });
+      } catch (error) {
+        memoryWarning = `Obsidian export failed; Discord delivery retained: ${error instanceof Error ? error.message : String(error)}`;
+      }
       return createSuccess({
         command: "orientation.packet.compose",
         workspace: workspacePath,
-        data: { packet, alreadySent: false }
+        data: { packet, alreadySent: false, aiSummary, memory },
+        warnings: [aiWarning, memoryWarning].filter((warning): warning is string => Boolean(warning))
       });
     } catch (error) {
       if (error instanceof OrientationPacketAlreadySentError) {
@@ -287,12 +347,12 @@ export function runOrientationPacketComposeCommand(
           // return it again so the caller can retry the send rather than
           // silently losing today's packet forever behind the once-per-day
           // guard.
-          const existing = findPacketForLocalDate(db, localDate);
-          const alreadySent = Boolean(existing?.discordMessageId);
+          const conflicting = findPacketForLocalDate(db, localDate);
+          const alreadySent = Boolean(conflicting?.discordMessageId);
           return createSuccess({
             command: "orientation.packet.compose",
             workspace: workspacePath,
-            data: { packet: alreadySent ? null : existing, alreadySent },
+            data: { packet: alreadySent ? null : conflicting, alreadySent, aiSummary: null, memory: null },
             warnings: [
               alreadySent
                 ? `Already sent today's packet for ${localDate}.`
@@ -307,6 +367,65 @@ export function runOrientationPacketComposeCommand(
   } finally {
     db.close();
   }
+}
+
+export interface OrientationPacketExportOptions {
+  workspace: string;
+  packetId: string;
+  summarizer?: MorningAiSummarizer;
+}
+
+export interface OrientationPacketExportData {
+  packet: OrientationPacket;
+  aiSummary: MorningAiSummary | null;
+  memory: MemorySyncEntry | null;
+}
+
+export async function runOrientationPacketExportCommand(
+  options: OrientationPacketExportOptions
+): Promise<CommandSuccess<OrientationPacketExportData>> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const db = openDatabase(workspacePath);
+  try {
+    const packet = findOrientationPacket(db, options.packetId);
+    if (!packet) throw validationError("Orientation packet was not found.", { packetId: options.packetId });
+    let aiSummary: MorningAiSummary | null = null;
+    let aiWarning: string | null = null;
+    if (!/^\*\*AI perspective\b/m.test(packet.body)) {
+      try {
+        const sourceNarrative = extractMorningNarrative(packet.body);
+        aiSummary = await (options.summarizer ?? createIntelligenceMorningAiSummarizer(db, workspacePath))({
+          localDate: packet.localDate,
+          sourceNarrative,
+          projectNames: extractProjectNames(sourceNarrative)
+        });
+      } catch (error) {
+        aiWarning = `AI perspective unavailable; exported deterministic packet: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    }
+    const memory = exportOrientationPacket(workspacePath, { packet, supplementalAiSummary: aiSummary });
+    return createSuccess({
+      command: "orientation.packet.export",
+      workspace: workspacePath,
+      data: { packet, aiSummary, memory },
+      warnings: aiWarning ? [aiWarning] : []
+    });
+  } finally {
+    db.close();
+  }
+}
+
+function extractMorningNarrative(packetBody: string): string {
+  const match = packetBody.match(/\*\*Morning narrative\*\*\n([\s\S]*?)(?=\n\n\*\*[^\n]+\*\*|$)/);
+  return match?.[1]?.trim() || packetBody;
+}
+
+function extractProjectNames(sourceNarrative: string): string[] {
+  const recentChanges = sourceNarrative.match(/Recent changes:\s*([^\n]+)/)?.[1] ?? "";
+  const names = [...recentChanges.matchAll(/(?:^|[.!?]\s+)([^:.\n]{1,80}):\s/g)]
+    .map((match) => match[1]?.trim())
+    .filter((name): name is string => Boolean(name));
+  return [...new Set(names)];
 }
 
 export interface OrientationPacketMarkSentOptions {
@@ -736,12 +855,23 @@ export function renderOrientationCapacityClearSuccess(
 }
 
 export function renderOrientationPacketComposeSuccess(
-  response: CommandSuccess<{ packet: OrientationPacket | null; alreadySent: boolean }>
+  response: CommandSuccess<OrientationPacketComposeData>
 ): string[] {
   if (response.data.alreadySent || !response.data.packet) {
     return ["Already composed today's packet."];
   }
   return response.data.packet.body.split("\n");
+}
+
+export function renderOrientationPacketExportSuccess(
+  response: CommandSuccess<OrientationPacketExportData>
+): string[] {
+  const { packet, memory } = response.data;
+  if (!memory) return [`Vault memory is disabled; packet ${packet.id} was not exported.`];
+  return [
+    `${memory.status === "created" ? "Created" : memory.status === "updated" ? "Updated" : "Unchanged"} Morning Packet vault Record.`,
+    `Record: ${memory.recordPath}`
+  ];
 }
 
 export function renderOrientationPacketMarkSentSuccess(response: CommandSuccess<{ packet: OrientationPacket }>): string[] {

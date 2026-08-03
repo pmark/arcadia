@@ -178,6 +178,7 @@ import {
   renderOrientationEntryListSuccess,
   renderOrientationEntrySuccess,
   renderOrientationPacketComposeSuccess,
+  renderOrientationPacketExportSuccess,
   renderOrientationCapacityClearSuccess,
   renderOrientationCapacityShowSuccess,
   renderOrientationCapacitySuccess,
@@ -197,6 +198,7 @@ import {
   runOrientationEntryUpdateCommand,
   runOrientationFitsCommand,
   runOrientationPacketComposeCommand,
+  runOrientationPacketExportCommand,
   runOrientationPacketListCommand,
   runOrientationPacketMarkSentCommand,
   runOrientationReplyCommand,
@@ -220,7 +222,12 @@ import {
   runWorkerUninstallCommand
 } from "./commands/worker.js";
 import { renderClarifySuccess, runClarifyCommand } from "./commands/clarify.js";
-import { renderDigestComposeSuccess, runDigestComposeCommand } from "./commands/digest.js";
+import {
+  renderDigestComposeSuccess,
+  renderDigestExportSuccess,
+  runDigestComposeCommand,
+  runDigestExportCommand
+} from "./commands/digest.js";
 import { renderDocsSyncSuccess, runDocsSyncCommand } from "./commands/docs.js";
 import {
   renderNextHistorySuccess,
@@ -1498,6 +1505,15 @@ export function buildProgram(): Command {
     to: string;
     json?: boolean;
   }) => runCliAction("digest.compose", options, () => runDigestComposeCommand(options), renderDigestComposeSuccess));
+  addJsonOption(
+    digest
+      .command("export")
+      .description("Export one composed narrative digest Artifact into the Obsidian vault")
+      .argument("<digest-id>", "Narrative digest id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((digestId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction("digest.export", options, () => runDigestExportCommand({ ...options, digestId }), renderDigestExportSuccess)
+  );
 
   const artifact = program.command("artifact").description("Artifact commands");
   addJsonOption(
@@ -2481,6 +2497,20 @@ export function buildProgram(): Command {
         includeDailyAdvantage: options.dailyAdvantage
       }),
       renderOrientationPacketComposeSuccess
+    )
+  );
+
+  addJsonOption(
+    orientationPacket
+      .command("export <packetId>")
+      .description("Project a Morning Packet into the configured Obsidian vault, adding a local-AI perspective when absent")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((packetId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "orientation.packet.export",
+      options,
+      () => runOrientationPacketExportCommand({ workspace: options.workspace, packetId }),
+      renderOrientationPacketExportSuccess
     )
   );
 

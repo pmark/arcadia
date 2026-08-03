@@ -8,14 +8,21 @@ import {
 } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { openDatabase } from "../db/connection.js";
-import { getProject, getProjectBySlug } from "../db/repositories.js";
+import { getArtifact, getProject, getProjectBySlug } from "../db/repositories.js";
 import {
   composeProjectDigest,
   createIntelligenceDigestNarrator,
   NarrativeDigestInvalidResultError,
   NarrativeDigestUnavailableError
 } from "../digests/composer.js";
-import { DIGEST_PERIODS, type ComposedProjectDigest, type DigestNarrator, type DigestPeriod } from "../digests/types.js";
+import { exportNarrativeDigest, type MemorySyncEntry } from "../memory/obsidian.js";
+import {
+  DIGEST_PERIODS,
+  type ComposedProjectDigest,
+  type DigestNarrator,
+  type DigestPeriod,
+  type NarrativeDigestRecord
+} from "../digests/types.js";
 
 export interface DigestComposeOptions {
   workspace: string;
@@ -24,6 +31,17 @@ export interface DigestComposeOptions {
   from: string;
   to: string;
   narrator?: DigestNarrator;
+}
+
+export interface DigestExportOptions {
+  workspace: string;
+  digestId: string;
+}
+
+export interface DigestExportData {
+  digest: NarrativeDigestRecord;
+  artifactId: string;
+  memory: MemorySyncEntry | null;
 }
 
 export async function runDigestComposeCommand(
@@ -75,6 +93,55 @@ export function renderDigestComposeSuccess(
     `Window: ${digest.window_start} ≤ activity < ${digest.window_end}`,
     `Facts: ${facts.length}`,
     `Artifact: ${artifact.id}${artifact.path ? ` (${artifact.path})` : ""}`
+  ];
+}
+
+export function runDigestExportCommand(options: DigestExportOptions): CommandSuccess<DigestExportData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const db = openDatabase(workspacePath);
+  try {
+    const digest = (db.prepare("SELECT * FROM narrative_digests WHERE id = ?").get(options.digestId) as NarrativeDigestRecord | undefined) ?? null;
+    if (!digest) throw validationError("Narrative digest was not found.", { digestId: options.digestId });
+    const artifact = getArtifact(db, digest.artifact_id);
+    if (!artifact) throw validationError("Narrative digest is missing its Artifact.", { digestId: digest.id, artifactId: digest.artifact_id });
+    const project = getProject(db, digest.project_id);
+    if (!project) throw validationError("Narrative digest is missing its Project.", { digestId: digest.id, projectId: digest.project_id });
+    if (artifact.project_id !== project.id || artifact.artifact_type !== "narrative_digest") {
+      throw validationError("Narrative digest links inconsistent Project or Artifact data.", {
+        digestId: digest.id,
+        projectId: project.id,
+        artifactId: artifact.id,
+        artifactProjectId: artifact.project_id,
+        artifactType: artifact.artifact_type
+      });
+    }
+    const memory = exportNarrativeDigest(workspacePath, {
+      digest: {
+        id: digest.id,
+        period: digest.period,
+        windowStart: digest.window_start,
+        windowEnd: digest.window_end
+      },
+      artifact,
+      project
+    });
+    return createSuccess({
+      command: "digest.export",
+      workspace: workspacePath,
+      data: { digest, artifactId: artifact.id, memory },
+      artifacts: [artifact.id]
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export function renderDigestExportSuccess(response: CommandSuccess<DigestExportData>): string[] {
+  const { digest, memory } = response.data;
+  if (!memory) return [`Vault memory is disabled; ${digest.id} was not exported.`];
+  return [
+    `${memory.status === "created" ? "Created" : memory.status === "updated" ? "Updated" : "Unchanged"} narrative digest vault Record.`,
+    `Record: ${memory.recordPath}`
   ];
 }
 

@@ -201,6 +201,13 @@ export function findPacketForLocalDate(db: Database.Database, localDate: string)
   return row ? toPacket(row) : null;
 }
 
+export function findOrientationPacket(db: Database.Database, packetId: string): OrientationPacket | null {
+  const row = db.prepare("SELECT * FROM orientation_packets WHERE id = ?").get(packetId) as
+    | OrientationPacketRow
+    | undefined;
+  return row ? toPacket(row) : null;
+}
+
 export function createOrientationPacket(
   db: Database.Database,
   input: { localDate: string; body: string; entrySnapshot: OrientationPacket["entrySnapshot"] }
@@ -220,13 +227,11 @@ export function createOrientationPacket(
 
 export function markPacketSent(db: Database.Database, packetId: string, discordMessageId: string): OrientationPacket {
   db.prepare("UPDATE orientation_packets SET discord_message_id = ? WHERE id = ?").run(discordMessageId, packetId);
-  const row = db.prepare("SELECT * FROM orientation_packets WHERE id = ?").get(packetId) as
-    | OrientationPacketRow
-    | undefined;
-  if (!row) {
+  const packet = findOrientationPacket(db, packetId);
+  if (!packet) {
     throw new Error(`Orientation packet not found after mark-sent: ${packetId}`);
   }
-  return toPacket(row);
+  return packet;
 }
 
 // ---------------------------------------------------------------------------

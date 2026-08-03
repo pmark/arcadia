@@ -156,7 +156,8 @@ export class ArcadiaCli {
 
   orientationPacketCompose(ifDue: boolean): Promise<ArcadiaJsonSuccess<OrientationPacketComposeData> | ArcadiaJsonFailure> {
     return this.runJsonAllowFailure<OrientationPacketComposeData>(
-      this.withWorkspace(["orientation", "packet", "compose", ...(ifDue ? ["--if-due"] : []), "--json"])
+      this.withWorkspace(["orientation", "packet", "compose", ...(ifDue ? ["--if-due"] : []), "--json"]),
+      { timeoutMs: 200_000 }
     );
   }
 

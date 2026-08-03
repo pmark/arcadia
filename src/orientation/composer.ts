@@ -1,6 +1,7 @@
 import { EFFORT_LABELS, formatMinutes } from "./effort.js";
 import { buildDaySlate, type DaySlate } from "./fit.js";
 import type { DailyCapacity, OrientationEntry, OrientationPacket } from "./types.js";
+import type { MorningAiSummary } from "./morningAiSummary.js";
 import { daysUntilDue, isApproaching, isDueOrUrgent, isNeglected, isStale } from "./staleness.js";
 
 const MAX_CONFIRMATION_QUESTIONS = 3;
@@ -29,6 +30,8 @@ export function composePacket(
     dailyAdvantageLine?: string;
     capacity?: DailyCapacity | null;
     workSafetyLines?: string[];
+    morningNarrative?: string;
+    aiSummary?: MorningAiSummary;
   } = {}
 ): ComposedPacket {
   const live = entries.filter((entry) => entry.status === "active" || entry.status === "confirmed");
@@ -37,6 +40,14 @@ export function composePacket(
 
   const sections: string[] = [];
   sections.push(`**Arcadia — ${localDateHeader(now)}**`);
+
+  if (options.morningNarrative?.trim()) {
+    sections.push(`**Morning narrative**\n${options.morningNarrative.trim()}`);
+  }
+
+  if (options.aiSummary) {
+    sections.push(`**AI perspective — ${options.aiSummary.headline}**\n${options.aiSummary.paragraph}`);
+  }
 
   if (options.workSafetyLines && options.workSafetyLines.length > 0) {
     sections.push(formatSection("Coding work safety", options.workSafetyLines));

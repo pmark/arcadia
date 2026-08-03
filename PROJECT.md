@@ -8,7 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Arcadia narrates its own recent history automatically, for itself and every Project it manages
 active_plan: narrative-digests
-current_action: export-digest-to-obsidian
+current_action: schedule-portfolio-digests
 updated: 2026-08-02
 ---
 

@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
+import type { Artifact } from "../domain/types.js";
 import { validationError } from "../cli/errors.js";
 import { slugify } from "../utils/slug.js";
 import { loadWorkspaceConfig } from "../workspace/config.js";
@@ -179,6 +180,31 @@ export interface ProgressReviewRecordInput {
   content: string;
 }
 
+export interface NarrativeDigestRecordInput {
+  /** The durable digest identity and its explicit half-open activity window. */
+  digest: {
+    id: string;
+    period: "day" | "week" | "month";
+    windowStart: string;
+    windowEnd: string;
+  };
+  /** The Arcadia-owned Artifact containing the narrated Markdown. */
+  artifact: Artifact;
+  project: { id: string; name: string; slug: string };
+}
+
+export interface OrientationPacketRecordInput {
+  packet: {
+    id: string;
+    localDate: string;
+    body: string;
+    createdAt: string;
+    discordMessageId: string | null;
+  };
+  /** Used when backfilling a packet that was composed before AI summaries existed. */
+  supplementalAiSummary?: { headline: string; paragraph: string } | null;
+}
+
 /**
  * Project a compiled progress review into the vault.
  *
@@ -258,6 +284,120 @@ export function exportProgressReview(
   };
 }
 
+/**
+ * Project one composed, AI-narrated digest into the vault.
+ *
+ * The digest Artifact remains the source record in the Arcadia workspace. This
+ * function only makes a guarded, human-readable projection of it; it never
+ * asks a model to narrate again or writes into the managed Project repository.
+ */
+export function exportNarrativeDigest(
+  workspace: string,
+  input: NarrativeDigestRecordInput,
+  options: { dryRun?: boolean } = {}
+): MemorySyncEntry | null {
+  const target = resolveVaultTarget(workspace);
+  if (!target) return null;
+  if (input.artifact.artifact_type !== "narrative_digest") {
+    throw validationError("Only narrative_digest Artifacts can be exported as narrative digest Records.", {
+      artifactId: input.artifact.id,
+      artifactType: input.artifact.artifact_type
+    });
+  }
+  if (!input.artifact.path) {
+    throw validationError("Narrative digest Artifact has no source Markdown path.", { artifactId: input.artifact.id });
+  }
+
+  const content = canonicalMarkdown(readFileSync(safeWorkspaceFile(workspace, input.artifact.path, "narrative digest Artifact"), "utf8"));
+  const digestKey = `${input.project.slug}/${input.digest.period}/${input.digest.windowStart}..${input.digest.windowEnd}`;
+  const title = `${input.project.name} ${input.digest.period} digest, ${input.digest.windowStart} to ${input.digest.windowEnd}`;
+  const recordPath = path.join(
+    target.recordsRoot,
+    "Narrative Digests",
+    slugify(input.project.slug),
+    input.digest.windowEnd.slice(0, 4),
+    input.digest.period,
+    `${input.digest.windowEnd.slice(0, 10)}-narrative-digest.md`
+  );
+  assertDestinationSafe(target, recordPath);
+
+  const current = existsSync(recordPath) && statSync(recordPath).isFile()
+    ? readFileSync(recordPath, "utf8")
+    : null;
+  const claimedKey = current?.match(/^arcadia_digest_key:\s+"([^"]+)"$/m)?.[1] ?? null;
+  if (claimedKey && claimedKey !== digestKey) {
+    throw validationError("Refusing to overwrite a vault Record owned by a different narrative digest.", {
+      recordPath,
+      digestKey,
+      claimedKey
+    });
+  }
+
+  const contentHash = createHash("sha256").update(content).digest("hex");
+  const claimedHash = current?.match(/^content_sha256:\s+"([0-9a-f]+)"$/m)?.[1] ?? null;
+  const status: MemorySyncStatus = current === null ? "created" : claimedHash === contentHash ? "skipped" : "updated";
+  if (options.dryRun !== true && status !== "skipped") {
+    atomicWrite(target, recordPath, renderNarrativeDigestRecord(input, title, digestKey, contentHash, content));
+    writeManagedReadme(target);
+  }
+
+  return {
+    artifactId: input.artifact.id,
+    artifactTitle: input.artifact.title,
+    project: input.project.name,
+    status,
+    recordPath,
+    error: null
+  };
+}
+
+/** Project a durable Morning Packet into Obsidian without changing its sent Discord body. */
+export function exportOrientationPacket(
+  workspace: string,
+  input: OrientationPacketRecordInput,
+  options: { dryRun?: boolean } = {}
+): MemorySyncEntry | null {
+  const target = resolveVaultTarget(workspace);
+  if (!target) return null;
+  const orientationKey = input.packet.localDate;
+  const title = `Morning orientation — ${input.packet.localDate}`;
+  const recordPath = path.join(
+    target.recordsRoot,
+    "Orientation",
+    input.packet.localDate.slice(0, 4),
+    `${input.packet.localDate}-morning-orientation.md`
+  );
+  assertDestinationSafe(target, recordPath);
+  const current = existsSync(recordPath) && statSync(recordPath).isFile()
+    ? readFileSync(recordPath, "utf8")
+    : null;
+  const claimedKey = current?.match(/^arcadia_orientation_key:\s+"([^"]+)"$/m)?.[1] ?? null;
+  if (claimedKey && claimedKey !== orientationKey) {
+    throw validationError("Refusing to overwrite a vault Record owned by a different Morning Packet.", {
+      recordPath,
+      orientationKey,
+      claimedKey
+    });
+  }
+  const content = renderOrientationPacketRecord(input, title, orientationKey);
+  const contentHash = createHash("sha256").update(content.replace(/^content_sha256:.*$/m, "content_sha256:")).digest("hex");
+  const rendered = content.replace('content_sha256: "pending"', yaml("content_sha256", contentHash));
+  const claimedHash = current?.match(/^content_sha256:\s+"([0-9a-f]+)"$/m)?.[1] ?? null;
+  const status: MemorySyncStatus = current === null ? "created" : claimedHash === contentHash ? "skipped" : "updated";
+  if (options.dryRun !== true && status !== "skipped") {
+    atomicWrite(target, recordPath, rendered);
+    writeManagedReadme(target);
+  }
+  return {
+    artifactId: input.packet.id,
+    artifactTitle: title,
+    project: "Portfolio",
+    status,
+    recordPath,
+    error: null
+  };
+}
+
 /** Vault folder name for reviews that cover every Project rather than one. */
 const PORTFOLIO_SCOPE = "portfolio";
 
@@ -272,6 +412,11 @@ function withoutVolatileLines(markdown: string): string {
 /** Drop a document's opening `# Heading`, leaving the rest untouched. */
 function withoutLeadingHeading(markdown: string): string {
   return markdown.replace(/^#\s+[^\n]*\n+/, "").trimEnd();
+}
+
+/** An Artifact's metadata belongs to the source, not inside its vault Record. */
+function withoutLeadingFrontmatter(markdown: string): string {
+  return markdown.replace(/^---\n[\s\S]*?\n---\n*/, "");
 }
 
 function renderProgressReviewRecord(
@@ -305,6 +450,90 @@ function renderProgressReviewRecord(
     "",
     `- Compiled deterministically by \`arcadia review weekly\` on ${input.generatedAt}.`,
     `- Source report: ${input.reportPath}`,
+    "- SQLite remains operational truth; this Record is a projection and is safe to delete.",
+    ""
+  ];
+  return `${lines.join("\n").replace(/\n+$/, "")}\n`;
+}
+
+function renderNarrativeDigestRecord(
+  input: NarrativeDigestRecordInput,
+  title: string,
+  digestKey: string,
+  contentHash: string,
+  content: string
+): string {
+  const lines = [
+    "---",
+    "arcadia_record: true",
+    "record_type: narrative_digest",
+    "narration: local_preferred_ai",
+    yaml("arcadia_digest_key", digestKey),
+    yaml("arcadia_digest_id", input.digest.id),
+    yaml("arcadia_artifact_id", input.artifact.id),
+    yaml("arcadia_project_id", input.project.id),
+    yaml("project", input.project.name),
+    yaml("period", input.digest.period),
+    yaml("window_start", input.digest.windowStart),
+    yaml("window_end", input.digest.windowEnd),
+    yaml("source_artifact_path", input.artifact.path ?? ""),
+    yaml("content_sha256", contentHash),
+    "---",
+    "",
+    `# ${title}`,
+    "",
+    withoutLeadingHeading(withoutLeadingFrontmatter(content)),
+    "",
+    "## Provenance",
+    "",
+    "- AI-narrated from the digest's bounded Arcadia fact snapshot, using the local-preferred Intelligence route.",
+    `- Digest: ${input.digest.id}`,
+    `- Artifact: ${input.artifact.id} (${input.artifact.path})`,
+    "- SQLite and the source Artifact remain operational truth; this Record is a projection and is safe to delete.",
+    ""
+  ];
+  return `${lines.join("\n").replace(/\n+$/, "")}\n`;
+}
+
+function renderOrientationPacketRecord(
+  input: OrientationPacketRecordInput,
+  title: string,
+  orientationKey: string
+): string {
+  const hasEmbeddedAi = /^\*\*AI perspective\b/m.test(input.packet.body);
+  const supplemental = input.supplementalAiSummary;
+  const lines = [
+    "---",
+    "arcadia_record: true",
+    "record_type: morning_orientation",
+    yaml("arcadia_orientation_key", orientationKey),
+    yaml("arcadia_packet_id", input.packet.id),
+    yaml("local_date", input.packet.localDate),
+    yaml("created_at", input.packet.createdAt),
+    yamlNullable("discord_message_id", input.packet.discordMessageId),
+    `ai_summary: ${hasEmbeddedAi || supplemental ? "present" : "unavailable"}`,
+    'content_sha256: "pending"',
+    "---",
+    "",
+    `# ${title}`,
+    "",
+    ...(supplemental ? [
+      `## AI perspective — ${supplemental.headline}`,
+      "",
+      supplemental.paragraph,
+      ""
+    ] : []),
+    "## Morning Packet",
+    "",
+    canonicalMarkdown(input.packet.body).trimEnd(),
+    "",
+    "## Provenance",
+    "",
+    "- The Morning narrative and planning sections were compiled deterministically from durable Arcadia records.",
+    ...(hasEmbeddedAi || supplemental
+      ? ["- The clearly labelled AI perspective used Arcadia's bounded local-preferred Intelligence route; it may interpret implications but must not invent activity."]
+      : ["- AI perspective was unavailable; the deterministic packet remains complete and deliverable."]),
+    `- Packet: ${input.packet.id}`,
     "- SQLite remains operational truth; this Record is a projection and is safe to delete.",
     ""
   ];

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +13,8 @@ import { buildNarrativeDigestRequest } from "../src/digests/contract.js";
 import { composeProjectDigest, gatherProjectDigestFacts } from "../src/digests/composer.js";
 import type { DigestNarrator, DigestWindow } from "../src/digests/types.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { runDigestExportCommand } from "../src/commands/digest.js";
+import { getWorkspacePaths } from "../src/workspace/paths.js";
 
 const workspaces: string[] = [];
 const WINDOW: DigestWindow = {
@@ -38,6 +40,20 @@ function workspaceWithProject(): { workspace: string; projectId: string } {
     workClassification: "codex"
   }).id);
   return { workspace, projectId };
+}
+
+function enableMemory(workspace: string, vault: string): void {
+  const configPath = getWorkspacePaths(workspace).configFile;
+  const config = JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
+  config.memory = { enabled: true, obsidianVaultPath: vault };
+  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+}
+
+function vault(): string {
+  const result = mkdtempSync(path.join(tmpdir(), "arcadia-digest-vault-"));
+  workspaces.push(result);
+  mkdirSync(path.join(result, ".obsidian"), { recursive: true });
+  return result;
 }
 
 describe("narrative digest request", () => {
@@ -167,5 +183,67 @@ describe("project digest composition", () => {
     } finally {
       db.close();
     }
+  });
+
+  it("exports an AI-labelled vault Record and skips an unchanged re-export", async () => {
+    const { workspace, projectId } = workspaceWithProject();
+    const obsidian = vault();
+    enableMemory(workspace, obsidian);
+    const db = openDatabase(workspace);
+    let result;
+    try {
+      const project = db.prepare("SELECT *, goal AS outcome FROM projects WHERE id = ?").get(projectId) as any;
+      const log = createMissionLog(db, {
+        projectId,
+        workPerformed: "Made the parser dependable.",
+        result: "Alpha made the parser dependable.",
+        nextAction: "Export the digest.",
+        markdownPath: "MISSION_LOG.md"
+      });
+      setMissionLogDocRef(db, log.id, "log/alpha#2026-07-01--parser");
+      result = await composeProjectDigest({
+        db,
+        workspacePath: workspace,
+        project,
+        window: WINDOW,
+        narrator: async () => ({ narrative: "Alpha made the parser dependable.", jobId: null })
+      });
+    } finally {
+      db.close();
+    }
+
+    const first = runDigestExportCommand({ workspace, digestId: result!.digest.id });
+    const second = runDigestExportCommand({ workspace, digestId: result!.digest.id });
+    const recordPath = first.data.memory?.recordPath;
+
+    expect(first.data.memory).toMatchObject({ status: "created", artifactId: result!.artifact.id, project: "Alpha" });
+    expect(second.data.memory?.status).toBe("skipped");
+    expect(recordPath).not.toBeNull();
+    const record = readFileSync(recordPath!, "utf8");
+    expect(record).toContain("record_type: narrative_digest");
+    expect(record).toContain("narration: local_preferred_ai");
+    expect(record).toContain(`arcadia_digest_id: ${JSON.stringify(result!.digest.id)}`);
+    expect(record).toContain("Alpha made the parser dependable.");
+    expect(record).toContain("AI-narrated from the digest's bounded Arcadia fact snapshot");
+  });
+
+  it("does not touch a vault when memory is disabled", async () => {
+    const { workspace, projectId } = workspaceWithProject();
+    const db = openDatabase(workspace);
+    let result;
+    try {
+      const project = db.prepare("SELECT *, goal AS outcome FROM projects WHERE id = ?").get(projectId) as any;
+      result = await composeProjectDigest({
+        db,
+        workspacePath: workspace,
+        project,
+        window: WINDOW,
+        narrator: async () => ({ narrative: "Alpha wrote a story.", jobId: null })
+      });
+    } finally {
+      db.close();
+    }
+
+    expect(runDigestExportCommand({ workspace, digestId: result!.digest.id }).data.memory).toBeNull();
   });
 });

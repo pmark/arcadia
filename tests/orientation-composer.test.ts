@@ -91,6 +91,19 @@ describe("orientation packet composition", () => {
     expect(body).toContain("Project work: Do the thing (Project X)");
   });
 
+  it("places the bounded AI perspective after the deterministic morning narrative", () => {
+    const { body } = composePacket([], now, {
+      morningNarrative: "Arcadia shipped the guarded export.",
+      aiSummary: {
+        headline: "The morning story now travels with the work",
+        paragraph: "The export turns a transient update into durable context, reducing tomorrow's reorientation cost."
+      }
+    });
+    expect(body).toContain("**Morning narrative**\nArcadia shipped the guarded export.");
+    expect(body).toContain("**AI perspective — The morning story now travels with the work**");
+    expect(body.indexOf("**Morning narrative**")).toBeLessThan(body.indexOf("**AI perspective"));
+  });
+
   it("puts working-copy safety exceptions before the rest of the day", () => {
     const { body } = composePacket([], now, {
       workSafetyLines: ["Arcadia / main — 3 uncommitted paths. Preservation: UNSAVED; delivery: WORKING."]
