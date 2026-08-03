@@ -38,7 +38,7 @@ export function buildMorningAiSummaryRequest(input: {
 }): IntelligenceRequest {
   const sourceHash = createHash("sha256").update(input.sourceNarrative).digest("hex").slice(0, 24);
   return {
-    idempotencyKey: `morning-ai-summary-v6:${input.localDate}:${sourceHash}`,
+    idempotencyKey: `morning-ai-summary-v7:${input.localDate}:${sourceHash}`,
     operationId: "arcadia.orientation.morning-ai-summary",
     clientApp: "arcadia-orientation",
     capability: "text.generate",
