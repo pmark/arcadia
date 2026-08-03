@@ -47,6 +47,57 @@ pnpm arcadia ask \
 
 When a request needs Codex, Arcadia writes a prompt packet under `prompts/codex/<invocation-id>/` and records the invocation. It does not invoke Codex, deploy, publish, use credentials, or make unsafe changes by default.
 
+### Shelve and resurface an idea
+
+`ask --back-burner` uses the existing deterministic Ask/Intake path to shelve
+an idea. With no surface option its condition is `manual`, so it never fires
+automatically. A legacy Idea without condition metadata may still display as
+opportunistic for compatibility.
+
+```sh
+pnpm arcadia ask "Revisit the compact status view" \
+  --workspace "$WORKSPACE" \
+  --back-burner \
+  --project proj_example \
+  --surface-date 2026-10-01 \
+  --source-ref docs/ideas/compact-status.md \
+  --tag quick-win experiment
+```
+
+Use exactly one automatic condition:
+
+- `--surface-date YYYY-MM-DD`
+- `--surface-dependency <action-id> --dependency-status done`
+- `--surface-predicate <registered-name>`; the initial registry includes
+  `project-has-three-open-actions`
+
+Predicates are named deterministic checks registered in code. Arcadia never
+stores or evaluates predicate expressions. An unknown name stays visible as a
+warning rather than crashing or silently reading as false.
+
+Filter and group the shelf without turning it into a work queue:
+
+```sh
+pnpm arcadia back-burner list \
+  --workspace "$WORKSPACE" \
+  --status all \
+  --fired yes \
+  --project proj_example \
+  --tag quick-win \
+  --group-by project
+```
+
+`--group-by` accepts `fired`, `project`, `tag`, or `none`. Facet tags are
+limited to `quick-win`, `experiment`, `nice-to-have`, `chore`, and
+`capability`. The stored Back Burner status remains for lifecycle and legacy
+Idea compatibility; conditioned items derive their effective opportunistic
+status and fired state on every read. No fired flag is stored.
+
+Inspect an item with `back-burner show <id>`. Only the explicit
+`back-burner promote <id>` command creates an Action; condition evaluation,
+`back-burner list`, `arcadia next`, and Dashboard reads never promote,
+dispatch, schedule, or execute an item.
+
 ## Codex Companion
 
 Use `codex list` to observe current Codex Cloud tasks and local Codex goals, then show the Arcadia snapshot:
@@ -618,6 +669,10 @@ acceptance criteria, required decisions, references, and what the agent is
 authorized to do. It reads the repository, not the database, because
 checked-in documentation is authoritative when the two disagree.
 
+When one or more Back Burner conditions have fired, `next` adds one final line
+with the count and the `back-burner list --fired yes` discovery command. It
+does not preview the items. When the count is zero, the output is unchanged.
+
 Exactly one action may be current across a project. A second plan declaring
 `current_action` is reported as a competing objective rather than silently
 losing to the active plan.
@@ -721,6 +776,33 @@ Not journalled like `next` and `work plan` are: it reports a whole set on
 every call rather than resolving one dispatch attempt, and recording every
 Action it inspects would swamp the journal's real purpose — tracking actual
 dispatch attempts — with exploratory queries that never dispatched anything.
+
+### The Agent Queue
+
+When the operator wants to keep work moving across Projects, `advance queue`
+is the single read-only feeder view. It composes the document-authoritative
+ready set with active Runs, pending coding-agent packets, open Decisions, and
+known repository or dispatch blockers:
+
+```sh
+pnpm arcadia advance queue --workspace "$WORKSPACE"
+```
+
+It reports three lanes:
+
+- **Ready to feed** — Actions that satisfy the same readiness and
+  responsibility rules as `next --ready`.
+- **Running or queued** — Runs already admitted to the worker; wait for their
+  evidence before starting another one for the same stream.
+- **Needs attention before dispatch** — every known stop, with its reason,
+  concrete next action, and named file/field remedy where applicable.
+
+Mission Control shows the same projection above **What fits?**, with direct
+links to the strongest existing Project, Review, or Run surface. It is a view,
+not a second queue and not an approval shortcut. A plan's declared T-shirt
+Token Impact and plain-language Token Budget remain visible; provider usage
+limits are still observed by the existing coding-agent availability gate and
+are not treated as unlimited when unknown.
 
 ### Whether the documents are earning their keep
 

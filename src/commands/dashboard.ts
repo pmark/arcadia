@@ -53,7 +53,7 @@ export function renderDashboardSnapshotSuccess(response: CommandSuccess<Dashboar
     `Incubating projects: ${snapshot.counts.incubatingProjects}`,
     `Attention: ${snapshot.counts.attention}`,
     `Requires Review: ${snapshot.counts.requiresReview}`,
-    `Back Burner: ${snapshot.counts.backBurner}`,
+    `Back Burner: ${snapshot.counts.backBurner} (${snapshot.counts.backBurnerFired} fired, ${snapshot.counts.backBurnerIncubating} incubating)`,
     `Active runs: ${snapshot.counts.activeRuns}`,
     `Recent runs: ${snapshot.counts.recentRuns}`,
     `Recent artifacts: ${snapshot.counts.recentArtifacts}`,

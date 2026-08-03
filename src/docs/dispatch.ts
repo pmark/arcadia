@@ -478,6 +478,8 @@ export interface ReadySetResolution {
   projectSlug: string | null;
   planSlug: string | null;
   planPath: string | null;
+  planTokenImpact: PlanDoc["tokenImpact"] | null;
+  planTokenBudget: string | null;
   /** Populated only when the active plan itself could not be resolved at
    *  all — the same refusal `resolveDispatch` would report for the pointer,
    *  not a second explanation of it. */
@@ -526,6 +528,8 @@ export function resolveReadySet(repoRoot: string, projectSlug?: string): ReadySe
       projectSlug: project?.slug ?? projectSlug ?? null,
       planSlug: null,
       planPath: null,
+      planTokenImpact: null,
+      planTokenBudget: null,
       blockers,
       ready: [],
       suggestedCurrentAction: null,
@@ -586,6 +590,8 @@ export function resolveReadySet(repoRoot: string, projectSlug?: string): ReadySe
     projectSlug: resolvedProjectSlug,
     planSlug,
     planPath,
+    planTokenImpact: plan.tokenImpact,
+    planTokenBudget: plan.tokenBudget,
     blockers: [],
     ready,
     suggestedCurrentAction,

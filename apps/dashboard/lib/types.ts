@@ -105,12 +105,15 @@ export interface DashboardSnapshot {
     attention: number;
     requiresReview: number;
     backBurner: number;
+    backBurnerFired: number;
+    backBurnerIncubating: number;
     activeRuns: number;
     recentRuns: number;
     recentArtifacts: number;
     activityEvents: number;
   };
   dailyAdvantage: DashboardDailyAdvantage | null;
+  agentQueue: AgentQueue;
   projects: DashboardProject[];
   attentionItems: DashboardAttentionItem[];
   activityEvents: DashboardActivityEvent[];
@@ -122,6 +125,60 @@ export interface DashboardSnapshot {
   backBurnerItems: DashboardBackBurnerItem[];
   recentRuns: DashboardRun[];
   recentArtifacts: DashboardArtifact[];
+}
+
+export type AgentQueueEntryState = "ready" | "running" | "attention";
+export type AgentQueueAttentionKind =
+  | "document"
+  | "repository"
+  | "decision"
+  | "packet"
+  | "run"
+  | "responsibility";
+
+export interface AgentQueueBlocker {
+  relativePath: string;
+  field: string;
+  message: string;
+  remedy: string;
+}
+
+export interface AgentQueueEntry {
+  id: string;
+  state: AgentQueueEntryState;
+  attentionKind: AgentQueueAttentionKind | null;
+  selected: boolean;
+  projectId: string | null;
+  projectName: string | null;
+  projectSlug: string | null;
+  repositoryRoot: string | null;
+  planSlug: string | null;
+  planPath: string | null;
+  actionId: string | null;
+  actionTitle: string | null;
+  responsibility: string | null;
+  expectedArtifact: string | null;
+  tokenImpact: string | null;
+  tokenBudget: string | null;
+  status: string;
+  reason: string;
+  nextAction: string;
+  blockers: AgentQueueBlocker[];
+  runId: string | null;
+  decisionId: string | null;
+  updatedAt: string;
+}
+
+export interface AgentQueue {
+  generatedAt: string;
+  ready: AgentQueueEntry[];
+  running: AgentQueueEntry[];
+  attention: AgentQueueEntry[];
+  counts: {
+    ready: number;
+    running: number;
+    attention: number;
+  };
 }
 
 export interface DashboardDailyAdvantage {
@@ -453,6 +510,9 @@ export interface DashboardBackBurnerItem {
   reason: string;
   status: string;
   statusLabel: string;
+  storedStatus: string;
+  surfaceFired: boolean;
+  surfaceWarning: string | null;
   suggestedNextStep: string | null;
   createdAt: string;
   updatedAt: string;

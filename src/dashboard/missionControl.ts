@@ -7,6 +7,7 @@ import { isStale } from "../orientation/staleness.js";
 import type { DailyCapacity, OrientationEffort, OrientationEntry } from "../orientation/types.js";
 import { computeOrientationUrgencyScore, urgencyLevelForScore } from "../orientation/urgency.js";
 import { buildDashboardSnapshot, type DashboardProject, type DashboardReviewItem } from "./snapshot.js";
+import type { AgentQueue } from "../dispatch/queue.js";
 
 export type MissionControlUrgencyLevel = "critical" | "attention" | "quiet";
 
@@ -58,6 +59,7 @@ export interface MissionControlNodeDetailData extends MissionControlNodeSummaryD
 export interface MissionControlOverviewData {
   generatedAt: string;
   headline: string;
+  agentQueue: AgentQueue;
   needsYouNow: MissionControlActionItemData[];
   recentlyUpdated: MissionControlActionItemData[];
   towers: MissionControlNodeSummaryData[];
@@ -207,6 +209,7 @@ export function buildMissionControlOverview(db: Database.Database, workspace: st
   return {
     generatedAt: now.toISOString(),
     headline: needsYouNow.length > 0 ? `${needsYouNow.length} thing(s) need you` : "Nothing pressing",
+    agentQueue: snapshot.agentQueue,
     needsYouNow,
     recentlyUpdated,
     towers,
