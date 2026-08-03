@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runAskCommand } from "../src/commands/ask.js";
+import { runInitCommand } from "../src/commands/init.js";
 import { runCodexAssociateCommand, runCodexListCommand } from "../src/commands/codex.js";
 import {
   runReviewApproveCommand,
@@ -166,6 +167,17 @@ describe("Phase 3 audit records", () => {
 describe("arcadia ask command", () => {
   it("creates a structured work item, execution plan, approval gates, and Codex build packet", () => {
     const workspace = initializedWorkspace();
+    const project = withDatabase(workspace, (db) =>
+      createProjectWithInitialWork(db, {
+        name: "Field Notes",
+        mission: "Publish field research notes.",
+        goal: "Launch the blog.",
+        status: "active",
+        currentMilestone: "Initial launch",
+        nextAction: "Prepare the site build.",
+        workClassification: "codex"
+      })
+    );
 
     const initial = runAskCommand({
       workspace,
@@ -182,6 +194,8 @@ describe("arcadia ask command", () => {
     expect(result.intake.resolvedIntent).toBe("InstantiateProject");
     expect(result.resolvedIntent.intentId).toBe("InstantiateProject");
     expect(result.workItem?.work_classification).toBe("codex");
+    expect(result.workItem?.project_id).toBe(project.project.id);
+    expect(result.workItem?.milestone_id).toBe(project.milestone.id);
     expect(result.plan?.steps[0].skill_name).toBe("codex_build");
     expect(result.approvalGates.map((gate) => gate.gate_type)).toContain("external_deployment");
     expect(result.codexInvocations).toHaveLength(1);
@@ -222,6 +236,17 @@ describe("arcadia ask command", () => {
 
   it("approves a Requires Review item by replaying the intended ask workflow", () => {
     const workspace = initializedWorkspace();
+    withDatabase(workspace, (db) =>
+      createProjectWithInitialWork(db, {
+        name: "Field Notes",
+        mission: "Publish field research notes.",
+        goal: "Launch the blog.",
+        status: "active",
+        currentMilestone: "Initial launch",
+        nextAction: "Prepare the site build.",
+        workClassification: "codex"
+      })
+    );
 
     const asked = runAskCommand({
       workspace,
@@ -297,6 +322,16 @@ describe("arcadia ask command", () => {
 
   it("approval resumes medium-confidence CreateWork as work instead of another review item", () => {
     const workspace = initializedWorkspace();
+    withDatabase(workspace, (db) =>
+      createProjectWithInitialWork(db, {
+        name: "Unknown App",
+        mission: "Test app project.",
+        status: "active",
+        currentMilestone: "Posting support",
+        nextAction: "Define posting support.",
+        workClassification: "codex"
+      })
+    );
     const asked = runAskCommand({
       workspace,
       request: "Build Pinterest posting support for Unknown App."
@@ -407,6 +442,92 @@ describe("arcadia ask command", () => {
     expect(prompt).toContain("## Final Reporting Requirements");
     expect(prompt).toContain("Summarize project, milestone, and repository scope.");
     expect(prompt).toContain("List validation results.");
+  });
+
+  it("defaults approved asks to the only active project in an Arcadia-profile workspace", () => {
+    const workspace = createTempWorkspace();
+    const initialized = runInitCommand(workspace, { profile: "arcadia" });
+
+    const initial = runAskCommand({
+      workspace,
+      request: "Create a NextJS app called Arcadia Companion."
+    });
+    if (!initial.data.reviewItemId) {
+      throw new Error("Expected Requires Review item.");
+    }
+
+    const approved = runReviewApproveCommand({ workspace, id: initial.data.reviewItemId });
+    const result = approved.data.approval ?? (() => {
+      throw new Error("Expected approval data.");
+    })();
+
+    expect(result.workItem?.project_id).toBe(initialized.data.seed?.project.id);
+    expect(result.workItem?.project_name).toBe("Arcadia");
+    expect(result.workItem?.milestone_id).toBe(initialized.data.seed?.milestone.id);
+    expect(result.workItem?.milestone_title).toBe("Unify Arcadia onto the single workspace model.");
+  });
+
+  it("keeps approved Codex asks in Requires Review when project context is missing", () => {
+    const workspace = initializedWorkspace();
+    const initial = runAskCommand({
+      workspace,
+      request: "Create a NextJS app called Arcadia Companion."
+    });
+    if (!initial.data.reviewItemId) {
+      throw new Error("Expected Requires Review item.");
+    }
+
+    const approved = runReviewApproveCommand({ workspace, id: initial.data.reviewItemId });
+
+    expect(approved.data.result.status).toBe("approved");
+    expect(approved.data.approval?.result.status).toBe("requires_review");
+    expect(approved.data.approval?.workItem).toBeNull();
+    expect(approved.data.approval?.codexInvocations).toHaveLength(0);
+    expect(approved.data.approval?.reviewItemId).toMatch(/^review_/);
+    expect(approved.data.item.resultingAskRequestId).toBe(approved.data.approval?.ask.id);
+
+    const open = runReviewRequiredCommand({ workspace });
+    expect(open.data.items.map((item) => item.id)).toContain(approved.data.approval?.reviewItemId);
+    expect(open.data.items[0].decisionNeeded).toContain("Create or activate a target project");
+  });
+
+  it("keeps approved Codex asks in Requires Review when active project context is ambiguous", () => {
+    const workspace = initializedWorkspace();
+    withDatabase(workspace, (db) => {
+      createProjectWithInitialWork(db, {
+        name: "Alpha",
+        mission: "Build Alpha.",
+        status: "active",
+        currentMilestone: "Alpha milestone",
+        nextAction: "Plan Alpha work.",
+        workClassification: "codex"
+      });
+      createProjectWithInitialWork(db, {
+        name: "Beta",
+        mission: "Build Beta.",
+        status: "active",
+        currentMilestone: "Beta milestone",
+        nextAction: "Plan Beta work.",
+        workClassification: "codex"
+      });
+    });
+    const initial = runAskCommand({
+      workspace,
+      request: "Create a NextJS app called Arcadia Companion."
+    });
+    if (!initial.data.reviewItemId) {
+      throw new Error("Expected Requires Review item.");
+    }
+
+    const approved = runReviewApproveCommand({ workspace, id: initial.data.reviewItemId });
+
+    expect(approved.data.approval?.result.status).toBe("requires_review");
+    expect(approved.data.approval?.workItem).toBeNull();
+    expect(approved.data.approval?.codexInvocations).toHaveLength(0);
+    expect(approved.data.approval?.reviewItemId).toMatch(/^review_/);
+
+    const open = runReviewRequiredCommand({ workspace });
+    expect(open.data.items[0].decisionNeeded).toContain("Choose the target project");
   });
 
   it("updates a project goal through high-confidence intake routing", () => {

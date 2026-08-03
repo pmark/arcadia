@@ -1,9 +1,9 @@
-import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
-import { resolveReadyWorkspace } from "../cli/workspace.js";
 import type { AskCommandData, AskOptions } from "./ask.js";
 import { renderAskSuccess, runAskCommand } from "./ask.js";
+import type { InitCommandData } from "./init.js";
+import { runInitCommand } from "./init.js";
 import type {
   ReviewDecisionCommandData,
   ReviewRequiredCommandData,
@@ -18,34 +18,22 @@ import {
 } from "./review.js";
 import type { StatusCommandData } from "./status.js";
 import { runStatusCommand } from "./status.js";
-import { withDatabase } from "../db/connection.js";
 import {
-  createMissionLog,
-  createMilestoneForProject,
-  createWorkItemWithOptionalArtifact,
-  getActiveMilestoneForProject,
-  getProject,
-  listProjects,
-  listRecentMissionLogs,
-  listWorkItems,
-  updateMilestoneStatus,
-  updateWorkItem,
-  upsertProject
-} from "../db/repositories.js";
+  ARCADIA_PROJECT_GOAL,
+  ARCADIA_PROJECT_MILESTONE,
+  ARCADIA_PROJECT_MISSION,
+  ARCADIA_PROJECT_NAME,
+  ARCADIA_PROJECT_NEXT_ACTION
+} from "../workspace/arcadiaProject.js";
 import type { Milestone, MissionLog, Project, WorkItem } from "../domain/types.js";
-import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../markdown/missionLog.js";
-import { initWorkspace } from "../workspace/initWorkspace.js";
 import { resolveWorkspacePath } from "../workspace/paths.js";
 
 export const DOGFOOD_WORKSPACE = ".arcadia-workspace";
-export const DOGFOOD_PROJECT_NAME = "Arcadia";
-export const DOGFOOD_MISSION =
-  "Build Arcadia into a local-first mission control system for sustaining progress across a portfolio of creative and software projects.";
-export const DOGFOOD_GOAL =
-  "Use Arcadia as the primary system for managing Arcadia development for 30 consecutive days.";
-export const DOGFOOD_MILESTONE = "Complete the dogfooding workflow.";
-export const DOGFOOD_NEXT_ACTION = "Use Arcadia ask to create and run Arcadia development work items.";
-const DOGFOOD_LOG_RESULT = "Arcadia is now being dogfooded through its repo-local workspace.";
+export const DOGFOOD_PROJECT_NAME = ARCADIA_PROJECT_NAME;
+export const DOGFOOD_MISSION = ARCADIA_PROJECT_MISSION;
+export const DOGFOOD_GOAL = ARCADIA_PROJECT_GOAL;
+export const DOGFOOD_MILESTONE = ARCADIA_PROJECT_MILESTONE;
+export const DOGFOOD_NEXT_ACTION = ARCADIA_PROJECT_NEXT_ACTION;
 
 export interface DogfoodInitCommandData {
   workspacePath: string;
@@ -63,40 +51,14 @@ export function dogfoodWorkspacePath(): string {
 }
 
 export function runDogfoodInitCommand(): CommandSuccess<DogfoodInitCommandData> {
-  const initialized = initWorkspace(DOGFOOD_WORKSPACE);
-  const data = withDatabase(initialized.workspacePath, (db) => {
-    const project = upsertProject(db, {
-      name: DOGFOOD_PROJECT_NAME,
-      mission: DOGFOOD_MISSION,
-      goal: DOGFOOD_GOAL,
-      status: "active",
-      currentMilestone: DOGFOOD_MILESTONE,
-      nextAction: DOGFOOD_NEXT_ACTION,
-      workClassification: "codex"
-    });
-    const milestone = ensureDogfoodMilestone(db, project.id);
-    const workItem = ensureDogfoodWorkItem(db, project.id, milestone.id);
-    const missionLog = ensureDogfoodMissionLog(db, initialized.workspacePath, project, milestone);
-
-    return {
-      workspacePath: initialized.workspacePath,
-      project,
-      milestone,
-      workItem,
-      missionLog,
-      createdConfig: initialized.createdConfig
-    };
-  });
+  const initialized = runInitCommand(DOGFOOD_WORKSPACE, { profile: "arcadia" });
+  const data = dogfoodInitDataFromInit(initialized.data);
 
   return createSuccess({
     command: "dogfood.init",
-    workspace: initialized.workspacePath,
+    workspace: initialized.workspace,
     data,
-    artifacts: [
-      initialized.databasePath,
-      initialized.configPath,
-      path.join(initialized.workspacePath, data.missionLog.markdown_path)
-    ]
+    artifacts: initialized.artifacts
   });
 }
 
@@ -104,43 +66,43 @@ export function runDogfoodAskCommand(
   options: { request: string; runSafe?: boolean },
   askRunner: DogfoodAskRunner = runAskCommand
 ): CommandSuccess<AskCommandData> {
-  const context = resolveDogfoodAskContext();
-  return askRunner({
-    workspace: DOGFOOD_WORKSPACE,
-    request: options.request,
-    project: context.projectId ?? undefined,
-    milestone: context.milestoneId ?? undefined,
-    runSafe: options.runSafe
-  });
+  return withCommand(
+    "dogfood.ask",
+    askRunner({
+      workspace: DOGFOOD_WORKSPACE,
+      request: options.request,
+      runSafe: options.runSafe
+    })
+  );
 }
 
 export function runDogfoodStatusCommand(): CommandSuccess<StatusCommandData> {
-  return runStatusCommand({ workspace: DOGFOOD_WORKSPACE });
+  return withCommand("dogfood.status", runStatusCommand({ workspace: DOGFOOD_WORKSPACE }));
 }
 
 export function runDogfoodReviewCommand(): CommandSuccess<ReviewRequiredCommandData> {
-  return runReviewRequiredCommand({ workspace: DOGFOOD_WORKSPACE });
+  return withCommand("dogfood.review", runReviewRequiredCommand({ workspace: DOGFOOD_WORKSPACE }));
 }
 
 export function runDogfoodReviewShowCommand(id: string): CommandSuccess<ReviewShowCommandData> {
-  return runReviewShowCommand({ workspace: DOGFOOD_WORKSPACE, id });
+  return withCommand("dogfood.review.show", runReviewShowCommand({ workspace: DOGFOOD_WORKSPACE, id }));
 }
 
 export function runDogfoodReviewApproveCommand(id: string): CommandSuccess<ReviewDecisionCommandData> {
-  return runReviewApproveCommand({ workspace: DOGFOOD_WORKSPACE, id });
+  return withCommand("dogfood.review.approve", runReviewApproveCommand({ workspace: DOGFOOD_WORKSPACE, id }));
 }
 
 export function runDogfoodReviewRejectCommand(id: string): CommandSuccess<ReviewDecisionCommandData> {
-  return runReviewRejectCommand({ workspace: DOGFOOD_WORKSPACE, id });
+  return withCommand("dogfood.review.reject", runReviewRejectCommand({ workspace: DOGFOOD_WORKSPACE, id }));
 }
 
 export function runDogfoodReviewDeferCommand(id: string): CommandSuccess<ReviewDecisionCommandData> {
-  return runReviewDeferCommand({ workspace: DOGFOOD_WORKSPACE, id });
+  return withCommand("dogfood.review.defer", runReviewDeferCommand({ workspace: DOGFOOD_WORKSPACE, id }));
 }
 
 export function renderDogfoodInitSuccess(response: CommandSuccess<DogfoodInitCommandData>): string[] {
   return [
-    `Initialized Arcadia dogfood workspace: ${response.data.workspacePath}`,
+    `Initialized Arcadia compatibility workspace: ${response.data.workspacePath}`,
     `Project: ${response.data.project.name} (${response.data.project.status})`,
     `Goal: ${response.data.project.goal ?? "None"}`,
     `Milestone: ${response.data.milestone.title}`,
@@ -153,96 +115,24 @@ export function renderDogfoodAskSuccess(response: CommandSuccess<AskCommandData>
   return renderAskSuccess(response);
 }
 
-function ensureDogfoodMilestone(db: Parameters<typeof getProject>[0], projectId: string): Milestone {
-  const active = getActiveMilestoneForProject(db, projectId);
-  if (active?.title === DOGFOOD_MILESTONE) {
-    return active;
+function dogfoodInitDataFromInit(data: InitCommandData): DogfoodInitCommandData {
+  if (!data.seed) {
+    throw new Error("Arcadia profile seed is required for dogfood init.");
   }
 
-  if (active) {
-    updateMilestoneStatus(db, active.id, "paused");
-  }
-
-  const created = createMilestoneForProject(db, projectId, DOGFOOD_MILESTONE, "active");
-  if (!created) {
-    throw new Error("Could not create dogfood milestone.");
-  }
-
-  return created;
+  return {
+    workspacePath: data.workspacePath,
+    project: data.seed.project,
+    milestone: data.seed.milestone,
+    workItem: data.seed.workItem,
+    missionLog: data.seed.missionLog,
+    createdConfig: data.createdConfig
+  };
 }
 
-function resolveDogfoodAskContext(): { projectId: string | null; milestoneId: string | null } {
-  const { workspacePath } = resolveReadyWorkspace(DOGFOOD_WORKSPACE);
-  return withDatabase(workspacePath, (db) => {
-    const project = listProjects(db).find((candidate) => candidate.name === DOGFOOD_PROJECT_NAME);
-    if (!project) {
-      return { projectId: null, milestoneId: null };
-    }
-
-    return {
-      projectId: project.id,
-      milestoneId: getActiveMilestoneForProject(db, project.id)?.id ?? null
-    };
-  });
-}
-
-function ensureDogfoodWorkItem(db: Parameters<typeof getProject>[0], projectId: string, milestoneId: string): WorkItem {
-  const existing = listWorkItems(db).find(
-    (item) =>
-      item.project_id === projectId &&
-      item.milestone_id === milestoneId &&
-      item.raw_input === DOGFOOD_NEXT_ACTION &&
-      item.status !== "done"
-  );
-  if (existing) {
-    const updated = updateWorkItem(db, existing.id, {
-      queue: "work_queue",
-      workClassification: "codex",
-      nextAction: DOGFOOD_NEXT_ACTION,
-      status: "open"
-    });
-    if (!updated) {
-      throw new Error("Could not update dogfood work item.");
-    }
-    return updated;
-  }
-
-  return createWorkItemWithOptionalArtifact(db, {
-    projectId,
-    milestoneId,
-    title: DOGFOOD_NEXT_ACTION,
-    rawInput: DOGFOOD_NEXT_ACTION,
-    queue: "work_queue",
-    workClassification: "codex",
-    nextAction: DOGFOOD_NEXT_ACTION
-  }).workItem;
-}
-
-function ensureDogfoodMissionLog(
-  db: Parameters<typeof getProject>[0],
-  workspace: string,
-  project: Project,
-  milestone: Milestone
-): MissionLog {
-  const existing = listRecentMissionLogs(db, 100).find(
-    (log) => log.project_id === project.id && log.result === DOGFOOD_LOG_RESULT
-  );
-  if (existing) {
-    return existing;
-  }
-
-  const logId = "log_arcadia_dogfood_init";
-  const markdownPath = buildMissionLogRelativePath(workspace, project.name, logId);
-  const missionLog = createMissionLog(db, {
-    id: logId,
-    projectId: project.id,
-    milestoneId: milestone.id,
-    workPerformed: "Initialized the repo-local Arcadia dogfood workspace and seeded the Arcadia project.",
-    result: DOGFOOD_LOG_RESULT,
-    nextAction: DOGFOOD_NEXT_ACTION,
-    artifactImpact: "Created .arcadia-workspace as the local dogfooding workspace.",
-    markdownPath
-  });
-  writeMissionLogMarkdown(workspace, { missionLog, project, milestone });
-  return missionLog;
+function withCommand<TData>(command: string, response: CommandSuccess<TData>): CommandSuccess<TData> {
+  return {
+    ...response,
+    command
+  };
 }

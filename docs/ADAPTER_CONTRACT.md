@@ -4,9 +4,10 @@ This contract defines the stable CLI ingress surface for daily Arcadia operation
 
 ## Supported Ingress Commands
 
-Daily workspace commands default to the current directory as the workspace. `--workspace <path>` remains supported for compatibility.
+Daily workspace commands use `ARCADIA_WORKSPACE` when it is set and otherwise default to the current directory. `--workspace <path>` remains supported and takes precedence.
 
 ```text
+arcadia init <workspace> [--profile arcadia] [--json]
 arcadia ask "<intent>" [--workspace <path>] [--run-safe] [--json]
 arcadia status [--workspace <path>] [--json]
 arcadia review [--workspace <path>] [--json]
@@ -16,7 +17,7 @@ arcadia review reject <id> [--workspace <path>] [--json]
 arcadia review defer <id> [--workspace <path>] [--json]
 ```
 
-Dogfood commands always use `.arcadia-workspace/` from the Arcadia repository.
+Dogfood commands are compatibility shortcuts that always use `.arcadia-workspace/` from the Arcadia repository. They route through the same workspace model as the generic commands.
 
 ```text
 arcadia dogfood init [--json]
@@ -28,6 +29,10 @@ arcadia dogfood review approve <id> [--json]
 arcadia dogfood review reject <id> [--json]
 arcadia dogfood review defer <id> [--json]
 ```
+
+Generic `ask` project routing applies to dogfood shortcuts too: explicit project arguments and project references win, and a workspace with exactly one active project uses that project by default.
+
+Dogfood shortcut JSON uses the invoked `dogfood.*` command name while preserving the delegated command payload shape.
 
 ## JSON Envelope
 
@@ -104,7 +109,7 @@ Failed commands return:
       "id": "review_...",
       "workItemId": null,
       "project": "Arcadia",
-      "goal": "Use Arcadia as the primary system for managing Arcadia development for 30 consecutive days.",
+      "goal": "Manage Arcadia development through the same workspace model used for every other project.",
       "decisionNeeded": "Approve or reject this proposed Arcadia action: ...",
       "context": "CreateWork: ...",
       "recommendation": "Approve only if the project, goal, and action match your intent.",
@@ -136,7 +141,7 @@ Failed commands return:
 
 `status`, `review`, and `review show` are read-only and safe to retry.
 
-`dogfood init` is idempotent and may be retried.
+`init --profile arcadia` and `dogfood init` are idempotent and may be retried.
 
 `ask` creates a new auditable ask request and is not idempotent unless the caller deduplicates requests upstream.
 

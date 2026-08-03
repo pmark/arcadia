@@ -20,6 +20,7 @@ describe("adapter contract", () => {
     const contract = readFileSync(contractPath, "utf8");
 
     for (const command of [
+      "arcadia init <workspace>",
       'arcadia ask "<intent>"',
       "arcadia status",
       "arcadia review",
@@ -40,7 +41,7 @@ describe("adapter contract", () => {
     expect(contract).not.toContain("Needs Mark");
   });
 
-  it("aligns help output with supported daily and dogfood workflows", () => {
+  it("aligns help output with supported daily commands and compatibility shortcuts", () => {
     const program = buildProgram();
     const rootHelp = program.helpInformation();
     const dogfood = program.commands.find((command) => command.name() === "dogfood");
@@ -54,10 +55,12 @@ describe("adapter contract", () => {
     expect(rootHelp).not.toContain("needs_mark");
 
     const dogfoodHelp = dogfood?.helpInformation() ?? "";
+    expect(dogfoodHelp).toContain("Compatibility shortcuts");
     expect(dogfoodHelp).toContain("status");
     expect(dogfoodHelp).toContain("review");
     expect(dogfoodHelp).toContain("ask");
     expect(dogfoodHelp).toContain(".arcadia-workspace");
+    expect(dogfoodHelp).not.toContain("dogfooding");
     expect(dogfoodHelp).not.toContain("Needs Mark");
     expect(dogfoodHelp).not.toContain("needs_mark");
 

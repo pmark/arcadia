@@ -123,6 +123,34 @@ describe("CLI response contract", () => {
     expect(json.data.projects).toEqual([]);
   });
 
+  it("defaults workspace commands from ARCADIA_WORKSPACE", () => {
+    const workspace = initializedWorkspace();
+    const result = runCli(["project", "list", "--json"], { ARCADIA_WORKSPACE: workspace });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const json = parseJson(result.stdout);
+    expect(json.ok).toBe(true);
+    expect(json.command).toBe("project.list");
+    expect(json.workspace).toBe(path.resolve(workspace));
+  });
+
+  it("lets explicit --workspace override ARCADIA_WORKSPACE", () => {
+    const envWorkspace = initializedWorkspace();
+    const explicitWorkspace = initializedWorkspace();
+    createProject(explicitWorkspace);
+
+    const result = runCli(
+      ["project", "list", "--workspace", explicitWorkspace, "--json"],
+      { ARCADIA_WORKSPACE: envWorkspace }
+    );
+
+    expect(result.status).toBe(0);
+    const json = parseJson(result.stdout);
+    expect(json.workspace).toBe(path.resolve(explicitWorkspace));
+    expect(json.data.projects).toHaveLength(1);
+  });
+
   it("imports projects with JSON output", () => {
     const workspace = initializedWorkspace();
 
@@ -1062,9 +1090,10 @@ describe("CLI response contract", () => {
   });
 });
 
-function runCli(args: string[]) {
+function runCli(args: string[], env: Record<string, string> = {}) {
   return spawnSync(tsxBin, ["src/cli.ts", ...args], {
     cwd: repoRoot,
+    env: { ...process.env, ...env },
     encoding: "utf8"
   });
 }

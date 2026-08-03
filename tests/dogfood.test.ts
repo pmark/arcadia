@@ -34,7 +34,7 @@ function removeDogfoodWorkspace(): void {
 }
 
 describe("arcadia dogfood", () => {
-  it("initializes a valid dogfood workspace with seeded Arcadia project values", () => {
+  it("initializes the compatibility workspace with seeded Arcadia project values", () => {
     const result = runDogfoodInitCommand();
 
     expect(result.command).toBe("dogfood.init");
@@ -76,7 +76,7 @@ describe("arcadia dogfood", () => {
   });
 
   it("routes dogfood ask through the existing ask implementation", () => {
-    const initialized = runDogfoodInitCommand();
+    runDogfoodInitCommand();
     const calls: AskOptions[] = [];
     const fakeAsk = (options: AskOptions): CommandSuccess<AskCommandData> => {
       calls.push(options);
@@ -92,13 +92,11 @@ describe("arcadia dogfood", () => {
       fakeAsk
     );
 
-    expect(result.command).toBe("ask");
+    expect(result.command).toBe("dogfood.ask");
     expect(calls).toEqual([
       {
         workspace: ".arcadia-workspace",
         request: "Create a work item for implementing Discord notifications.",
-        project: initialized.data.project.id,
-        milestone: initialized.data.milestone.id,
         runSafe: true
       }
     ]);
@@ -109,7 +107,7 @@ describe("arcadia dogfood", () => {
 
     const result = runDogfoodAskCommand({ request: "What should I focus on today?" });
 
-    expect(result.command).toBe("ask");
+    expect(result.command).toBe("dogfood.ask");
     expect(result.workspace).toBe(dogfoodWorkspacePath());
     expect(result.data.intake.resolvedIntent).toBe("ShowStatus");
     expect(result.data.result.status).toBe("acted");
@@ -126,17 +124,20 @@ describe("arcadia dogfood", () => {
     }
 
     const review = runDogfoodReviewCommand();
+    expect(review.command).toBe("dogfood.review");
     expect(review.workspace).toBe(dogfoodWorkspacePath());
     expect(review.data.items.map((item) => item.id)).toContain(asked.data.reviewItemId);
     expect(runDogfoodReviewShowCommand(asked.data.reviewItemId).data.item.id).toBe(asked.data.reviewItemId);
 
     const deferred = runDogfoodReviewDeferCommand(asked.data.reviewItemId);
+    expect(deferred.command).toBe("dogfood.review.defer");
     expect(deferred.data.result.status).toBe("deferred");
     const rejected = runDogfoodReviewRejectCommand(asked.data.reviewItemId);
+    expect(rejected.command).toBe("dogfood.review.reject");
     expect(rejected.data.result.status).toBe("rejected");
   });
 
-  it("approves dogfood Requires Review by resuming execution and updates status", () => {
+  it("approves compatibility Requires Review by resuming execution and updates status", () => {
     runDogfoodInitCommand();
     const asked = runDogfoodAskCommand({ request: "Create a NextJS app called Arcadia Companion." });
     expect(asked.data.result.status).toBe("requires_review");
@@ -145,12 +146,14 @@ describe("arcadia dogfood", () => {
     }
 
     const approved = runDogfoodReviewApproveCommand(asked.data.reviewItemId);
+    expect(approved.command).toBe("dogfood.review.approve");
     expect(approved.workspace).toBe(dogfoodWorkspacePath());
     expect(approved.data.result.status).toBe("approved");
     expect(approved.data.approval?.workItem?.id).toMatch(/^work_/);
     expect(approved.data.item.resultingAskRequestId).toBe(approved.data.approval?.ask.id);
 
     const status = runDogfoodStatusCommand();
+    expect(status.command).toBe("dogfood.status");
     expect(status.workspace).toBe(dogfoodWorkspacePath());
     expect(status.data.projectCount).toBeGreaterThan(0);
     expect(status.data.codexCount).toBeGreaterThan(0);
@@ -180,7 +183,31 @@ describe("arcadia dogfood", () => {
     expect(result.stderr).toBe("");
     const json = JSON.parse(result.stdout);
     expect(json.ok).toBe(true);
-    expect(json.command).toBe("review.approve");
+    expect(json.command).toBe("dogfood.review.approve");
     expect(json.data.item.resultingAskRequestId).toBe(json.data.approval.ask.id);
+  });
+
+  it("emits dogfood command identity for ask JSON while preserving ask data", () => {
+    runDogfoodInitCommand();
+
+    const result = spawnSync(
+      tsxBin,
+      [
+        path.join(repoRoot, "src", "cli.ts"),
+        "dogfood",
+        "ask",
+        "What should I focus on today?",
+        "--json"
+      ],
+      { cwd: repoRoot, encoding: "utf8" }
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const json = JSON.parse(result.stdout);
+    expect(json.ok).toBe(true);
+    expect(json.command).toBe("dogfood.ask");
+    expect(json.data.ask.id).toMatch(/^ask_/);
+    expect(json.data.intake.resolvedIntent).toBe("ShowStatus");
   });
 });

@@ -252,66 +252,41 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   }
 
   if (intake.reviewRequired && !options.approvedReviewItemId) {
-    const { ask, reviewItem } = withDatabase(workspacePath, (db) => {
-      const ask = createAskRequest(db, {
-        rawRequest: options.request,
-        resolvedIntent: resolved.intentId,
-        registryVersion: registries.intents.version,
-        outputKind: "requires_review",
-        status: "needs_mark"
-      });
-      const reviewItem = createReviewItem(db, {
-        askRequestId: ask.id,
-        projectId: projectIdFromIntake(intake) ?? intake.project?.id ?? null,
-        decisionNeeded: decisionNeededForIntake(intake),
-        recommendation: recommendationForIntake(intake),
-        sourceInput: intake.rawInput,
-        proposedAction: intake.proposedAction,
-        resolvedIntent: intake.resolvedIntent,
-        confidenceLabel: intake.confidenceLabel,
-        confidence: intake.confidence,
-        missingFields: intake.missingFields,
-        context: {
-          extractedFields: intake.extractedFields,
-          explanation: intake.explanation,
-          action: intake.action,
-          project: intake.project,
-          template: intake.template
-        }
-      });
-      return { ask, reviewItem };
+    return createReviewRequiredAskResponse({
+      workspacePath,
+      request: options.request,
+      registryVersion: registries.intents.version,
+      intake,
+      resolved,
+      decisionNeeded: decisionNeededForIntake(intake),
+      recommendation: recommendationForIntake(intake),
+      context: {}
     });
+  }
 
-    return createSuccess({
-      command: "ask",
-      workspace: workspacePath,
-      data: {
-        ask,
-        intake,
-        resolvedIntent: resolved,
-        result: {
-          status: "requires_review",
-          summary: "Requires Review item created."
-        },
-        workItem: null,
-        plan: null,
-        approvalGates: [],
-        codexInvocations: [],
-        run: null,
-        project: null,
-        status: null,
-        review: null,
-        reviewItemId: reviewItem.id
+  const contextPreflight = withDatabase(workspacePath, (db) => resolveAskContextPreflight(db, {
+    ...options,
+    project: projectIdFromIntake(intake) ?? options.project
+  }));
+  if (resolved.codexPurpose && !contextPreflight.projectContext) {
+    return createReviewRequiredAskResponse({
+      workspacePath,
+      request: options.request,
+      registryVersion: registries.intents.version,
+      intake,
+      resolved,
+      decisionNeeded: contextPreflight.decisionNeeded,
+      recommendation: contextPreflight.recommendation,
+      context: {
+        projectContextReason: contextPreflight.reason,
+        activeProjectCount: contextPreflight.activeProjectCount
       }
     });
   }
 
   const initial = withDatabase(workspacePath, (db) => {
     ensureBuiltInSkills(db);
-    const context = resolveAskContext(db, {
-      ...options,
-      project: projectIdFromIntake(intake) ?? options.project
-    });
+    const context = contextPreflight;
     const created = createWorkItemWithOptionalArtifact(db, {
       projectId: context.projectId,
       milestoneId: context.milestoneId,
@@ -736,7 +711,79 @@ interface ResolvedAskContext {
   projectContext: ProjectContext | null;
 }
 
-function resolveAskContext(db: Parameters<typeof getProject>[0], options: AskOptions): ResolvedAskContext {
+interface AskContextPreflight extends ResolvedAskContext {
+  reason: "resolved" | "missing_project_context" | "ambiguous_project_context";
+  activeProjectCount: number;
+  decisionNeeded: string;
+  recommendation: string;
+}
+
+function createReviewRequiredAskResponse(input: {
+  workspacePath: string;
+  request: string;
+  registryVersion: number;
+  intake: IntakeResult;
+  resolved: ResolvedIntent;
+  decisionNeeded: string;
+  recommendation: string;
+  context: Record<string, unknown>;
+}): CommandSuccess<AskCommandData> {
+  const { ask, reviewItem } = withDatabase(input.workspacePath, (db) => {
+    const ask = createAskRequest(db, {
+      rawRequest: input.request,
+      resolvedIntent: input.resolved.intentId,
+      registryVersion: input.registryVersion,
+      outputKind: "requires_review",
+      status: "needs_mark"
+    });
+    const reviewItem = createReviewItem(db, {
+      askRequestId: ask.id,
+      projectId: projectIdFromIntake(input.intake) ?? input.intake.project?.id ?? null,
+      decisionNeeded: input.decisionNeeded,
+      recommendation: input.recommendation,
+      sourceInput: input.intake.rawInput,
+      proposedAction: input.intake.proposedAction,
+      resolvedIntent: input.intake.resolvedIntent,
+      confidenceLabel: input.intake.confidenceLabel,
+      confidence: input.intake.confidence,
+      missingFields: input.intake.missingFields,
+      context: {
+        extractedFields: input.intake.extractedFields,
+        explanation: input.intake.explanation,
+        action: input.intake.action,
+        project: input.intake.project,
+        template: input.intake.template,
+        ...input.context
+      }
+    });
+    return { ask, reviewItem };
+  });
+
+  return createSuccess({
+    command: "ask",
+    workspace: input.workspacePath,
+    data: {
+      ask,
+      intake: input.intake,
+      resolvedIntent: input.resolved,
+      result: {
+        status: "requires_review",
+        summary: "Requires Review item created."
+      },
+      workItem: null,
+      plan: null,
+      approvalGates: [],
+      codexInvocations: [],
+      run: null,
+      project: null,
+      status: null,
+      review: null,
+      reviewItemId: reviewItem.id
+    }
+  });
+}
+
+function resolveAskContextPreflight(db: Parameters<typeof getProject>[0], options: AskOptions): AskContextPreflight {
   let projectId = options.project ?? null;
   let milestoneId = options.milestone ?? null;
 
@@ -758,13 +805,47 @@ function resolveAskContext(db: Parameters<typeof getProject>[0], options: AskOpt
   }
 
   if (!projectId) {
-    const resolvedProject = resolveProjectContextFromRequest(db, options.request);
-    projectId = resolvedProject?.project.id ?? null;
-    milestoneId ??= resolvedProject?.activeMilestone?.id ?? null;
+    const activeProjectCount = listProjects(db).filter((project) => project.status === "active").length;
+    let resolvedProject: ProjectContext | null = null;
+    try {
+      resolvedProject = resolveProjectContextFromRequest(db, options.request);
+    } catch {
+      return {
+        projectId: null,
+        milestoneId: null,
+        projectContext: null,
+        reason: "ambiguous_project_context",
+        activeProjectCount,
+        decisionNeeded: "Choose the target project before creating Codex work.",
+        recommendation: "Approve only after selecting the project and active milestone for this work."
+      };
+    }
+    const defaultProject = resolvedProject ?? resolveOnlyActiveProjectContext(db);
+    projectId = defaultProject?.project.id ?? null;
+    milestoneId ??= defaultProject?.activeMilestone?.id ?? null;
+    if (!defaultProject) {
+      return {
+        projectId,
+        milestoneId,
+        projectContext: null,
+        reason: activeProjectCount > 1 ? "ambiguous_project_context" : "missing_project_context",
+        activeProjectCount,
+        decisionNeeded: activeProjectCount > 1
+          ? "Choose the target project before creating Codex work."
+          : "Create or activate a target project before creating Codex work.",
+        recommendation: activeProjectCount > 1
+          ? "Approve only after the request names exactly one active project."
+          : "Approve only after the workspace has one active target project or the request names a project."
+      };
+    }
     return {
       projectId,
       milestoneId,
-      projectContext: resolvedProject
+      projectContext: defaultProject,
+      reason: "resolved",
+      activeProjectCount,
+      decisionNeeded: "Project context is resolved.",
+      recommendation: "Proceed."
     };
   }
 
@@ -777,6 +858,19 @@ function resolveAskContext(db: Parameters<typeof getProject>[0], options: AskOpt
   return {
     projectId,
     milestoneId,
-    projectContext
+    projectContext,
+    reason: "resolved",
+    activeProjectCount: listProjects(db).filter((project) => project.status === "active").length,
+    decisionNeeded: "Project context is resolved.",
+    recommendation: "Proceed."
   };
+}
+
+function resolveOnlyActiveProjectContext(db: Parameters<typeof getProject>[0]): ProjectContext | null {
+  const activeProjects = listProjects(db).filter((project) => project.status === "active");
+  if (activeProjects.length !== 1) {
+    return null;
+  }
+
+  return getProjectContext(db, activeProjects[0].id);
 }
