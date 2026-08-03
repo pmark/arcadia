@@ -142,3 +142,16 @@ Domain, Project, Mission, Outcome, Milestone, Action, Artifact, Decision, Log.
 ## Operator Guide
 
 `START_HERE.md` is the canonical brief guide for normal Arcadia use. Any change to a user-facing flow, CLI command named there, dashboard address, or managed service behavior must update that file in the same change.
+
+## Working-Copy Safety
+
+Before code changes, run `pnpm arcadia work monitor --no-pull-requests` and
+inspect the intended working directory. One coding session must use one branch
+and one worktree; do not begin agent code changes on `main` or in a checkout
+another session is using.
+
+Before stopping, leave changed code merged or on a pushed branch with a draft
+or ready PR. If commit, push, or PR creation is not authorized, report the exact
+repository, worktree, branch, dirty paths, and recovery action; never silently
+leave uncommitted work on `main` or a detached HEAD. These rules do not broaden
+approval authority. See `docs/working-copy-safety.md`.

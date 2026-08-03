@@ -25,7 +25,11 @@ export interface ComposedPacket {
 export function composePacket(
   entries: OrientationEntry[],
   now: Date,
-  options: { dailyAdvantageLine?: string; capacity?: DailyCapacity | null } = {}
+  options: {
+    dailyAdvantageLine?: string;
+    capacity?: DailyCapacity | null;
+    workSafetyLines?: string[];
+  } = {}
 ): ComposedPacket {
   const live = entries.filter((entry) => entry.status === "active" || entry.status === "confirmed");
   const fresh = live.filter((entry) => !isStale(entry, now));
@@ -33,6 +37,10 @@ export function composePacket(
 
   const sections: string[] = [];
   sections.push(`**Arcadia — ${localDateHeader(now)}**`);
+
+  if (options.workSafetyLines && options.workSafetyLines.length > 0) {
+    sections.push(formatSection("Coding work safety", options.workSafetyLines));
+  }
 
   // A stale entry is a question, not a fact — never plan the day around one.
   const slate = options.capacity ? buildDaySlate(fresh, options.capacity, now) : null;
