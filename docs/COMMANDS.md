@@ -1111,3 +1111,12 @@ The scan reports preservation (`UNSAVED`, `LOCAL ONLY`, `PUSHED`,
 `IN PR`, `LANDED`) separately from delivery (`WORKING`, `DRAFT`, `REVIEWABLE`,
 `MERGE-READY`, `BLOCKED`). GitHub lookup is best-effort and read-only; with
 `--no-pull-requests`, local Git evidence remains complete except for PR state.
+
+List every open GitHub pull request across Project repositories with
+plain-English readiness ratings. This is read-only and reports repository
+configuration or GitHub lookup errors explicitly:
+
+```sh
+pnpm arcadia work prs --workspace "$WORKSPACE"
+pnpm arcadia work prs --workspace "$WORKSPACE" --json
+```

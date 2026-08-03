@@ -8,6 +8,7 @@ import {
   Eye,
   FolderKanban,
   Gauge,
+  GitPullRequest,
   History,
   RefreshCw,
   ScrollText,
@@ -32,6 +33,7 @@ const navItems = [
   { href: "/runs", label: "Runs", icon: History },
   { href: "/admin/intelligence", label: "Intelligence", icon: Sparkles },
   { href: "/admin/dispatch-journal", label: "Journal", icon: ScrollText },
+  { href: "/admin/pull-requests", label: "PRs", icon: GitPullRequest },
   { href: "/admin/status", label: "Status", icon: Gauge }
 ];
 
@@ -65,7 +67,7 @@ export function DashboardChrome({
             <RefreshCw className={refreshing ? "h-5 w-5 animate-spin" : "h-5 w-5"} aria-hidden="true" />
           </button>
         </div>
-        <nav className="mx-auto grid max-w-6xl grid-cols-7 border-t border-line px-2 sm:px-4">
+        <nav className="mx-auto grid max-w-6xl grid-cols-5 border-t border-line px-2 sm:grid-cols-9 sm:px-4">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href;

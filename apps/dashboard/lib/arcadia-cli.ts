@@ -9,7 +9,8 @@ import type {
   AskResponse,
   DashboardSnapshotResponse,
   FeedbackListResponse,
-  FeedbackRecordResponse
+  FeedbackRecordResponse,
+  DashboardOutstandingPullRequests
 } from "./types";
 import type {
   MissionControlFits,
@@ -33,6 +34,14 @@ const execFileAsync = promisify(execFile);
 
 export async function loadDashboardSnapshot(): Promise<ArcadiaJsonSuccess<DashboardSnapshotResponse>> {
   return runArcadiaCliJson<DashboardSnapshotResponse>(["dashboard", "snapshot"]);
+}
+
+export interface OutstandingPullRequestsResponse {
+  snapshot: DashboardOutstandingPullRequests;
+}
+
+export async function loadOutstandingPullRequests(): Promise<ArcadiaJsonSuccess<OutstandingPullRequestsResponse>> {
+  return runArcadiaCliJson<OutstandingPullRequestsResponse>(["work", "prs"]);
 }
 
 export interface ProjectContinuationResponse {

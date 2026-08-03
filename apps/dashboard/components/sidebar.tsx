@@ -5,6 +5,7 @@ import {
   Clock,
   Eye,
   FolderOpen,
+  GitPullRequest,
   LayoutGrid,
   Menu,
   MessageSquarePlus,
@@ -24,6 +25,7 @@ const PRIMARY_NAV = [
   { href: "/capture", label: "Capture", icon: MessageSquarePlus },
   { href: "/ingress", label: "Ingress", icon: FolderOpen },
   { href: "/reports", label: "Reports", icon: NotebookText },
+  { href: "/admin/pull-requests", label: "Pull Requests", icon: GitPullRequest },
   { href: "/review", label: "Decisions", icon: Eye },
   { href: "/dashboard", label: "Full Dashboard", icon: LayoutGrid }
 ];
