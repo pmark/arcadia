@@ -5,10 +5,10 @@ slug: narrative-digests
 project: arcadia
 status: active
 milestone: Arcadia narrates its own recent history automatically, for itself and every Project it manages
-current_action: export-digest-to-obsidian
+current_action: schedule-portfolio-digests
 token_impact: large
 token_budget: "Composition uses one bounded local-preferred narration per Project and period; gathering, deduplication, export, scheduling, and empty-window handling are deterministic."
-updated: 2026-08-01
+updated: 2026-08-02
 actions:
   - id: compose-project-digest
     title: Compose one Project's narrative digest for a window, narrated by local AI
@@ -61,10 +61,10 @@ actions:
     depends_on: []
   - id: export-digest-to-obsidian
     title: Export a composed digest into the Obsidian vault
-    status: open
+    status: done
     responsibility: codex
     effort: short
-    next_action: Extend the Obsidian export with a second record shape alongside the existing deterministic progress review -- an AI-narrated one, clearly marked as such -- reusing exportProgressReview's atomic-write and content-hash-dedup machinery.
+    next_action: Delivered as `arcadia digest export <digest-id>`; no further work.
     expected_artifact: A vault Record for each composed digest, written the same safe way progress reviews already are
     clarification: clarified
     confidence: high
@@ -76,20 +76,22 @@ actions:
     decisions: ["0006"]
     references:
       - src/memory/obsidian.ts
+      - src/commands/digest.ts
+      - tests/narrative-digest.test.ts
     depends_on: [compose-project-digest]
   - id: schedule-portfolio-digests
-    title: Schedule daily, weekly, and monthly digests across every active Project
+    title: Schedule daily, weekly, and monthly Project and portfolio digests
     status: open
     responsibility: codex
     effort: session
-    next_action: Extend the Discord bot's existing orientation scheduler with digest cadences that iterate every active Project, idempotent per Project and period, composing, storing, exporting, and posting each one.
-    expected_artifact: The Discord bot automatically produces and delivers every active Project's due digests, unattended
+    next_action: Extend the Discord bot's existing orientation scheduler with digest cadences that iterate every active Project and compose one collective portfolio story, idempotent per scope and period, then store, export, and post each one.
+    expected_artifact: The Discord bot automatically produces and delivers every active Project's and the collective portfolio's due digests, unattended
     clarification: clarified
     confidence: medium
     source: Decision 0006
     acceptance_criteria:
       - Each cadence (daily, weekly, monthly) fires at most once per Project per period, using the same missed-tick self-catch-up pattern the orientation scheduler already uses.
-      - A digest is composed, stored, exported, and posted for every active Project on each due cadence -- not only Arcadia's own.
+      - A digest is composed, stored, exported, and posted for every active Project and one collective portfolio roll-up on each due cadence -- not only Arcadia's own.
       - A failure composing or delivering one Project's digest is logged and does not block any other Project's, or any other cadence's.
     execution:
       schema: arcadia.execution/v1
@@ -121,9 +123,6 @@ actions:
       - apps/discord-bot/src/orientation/scheduler.ts
     depends_on: [compose-project-digest, export-digest-to-obsidian]
 questions:
-  - id: portfolio-rollup
-    question: Should there also be a single cross-project "state of the portfolio" digest, distinct from each Project's own -- and if so, on what cadence?
-    gap_type: missing-definition
   - id: digest-window-boundaries
     question: Should "weekly" and "monthly" windows align to calendar weeks/months, or roll on a fixed N-day/N-week lookback from the moment they fire?
     gap_type: missing-definition
@@ -195,9 +194,9 @@ every Project.
 
 ## What this plan deliberately does not do
 
-- **No portfolio-wide roll-up digest, yet.** Each digest is scoped to one
-  Project. Whether a single cross-project story should also exist is the
-  `portfolio-rollup` open question, not assumed.
+- **No portfolio-wide roll-up implementation yet.** The operator has chosen a
+  collective story alongside every Project's own digest; it is the next
+  scheduled-delivery Action, not part of this explicit-window composer.
 - **No write-back into a managed Project's own repository.** A digest is
   Arcadia's own derived record of a Project, not a document sync produces or
   consumes -- the same one-way posture the rest of the protocol holds.

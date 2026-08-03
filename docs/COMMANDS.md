@@ -290,6 +290,18 @@ snapshot, writes the Markdown under `artifacts/narrative-digests/` inside the
 Arcadia workspace, and creates or updates one `narrative_digest` Artifact for
 the exact Project/period/boundaries tuple.
 
+## Export A Narrative Digest To Obsidian
+
+```sh
+pnpm arcadia digest export digest_example --workspace "$WORKSPACE" --json
+```
+
+This projects an already-composed `narrative_digest` Artifact into the
+configured Obsidian vault. The Record is explicitly labelled
+`local_preferred_ai`, preserves the Artifact as source of truth, uses an
+atomic ownership-checked write, and skips an unchanged Artifact without
+rewriting the vault file. It does nothing when workspace memory is disabled.
+
 ## Manage Artifacts And Expected Outcomes
 
 An Action's `expected_artifact` is the concrete "done" signal — the thing

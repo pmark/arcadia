@@ -107,6 +107,16 @@ Intelligence route to narrate those facts, and writes one ready
 Project/period/boundary tuple updates the same Artifact. It never writes into
 the managed Project repository.
 
+When workspace memory is enabled, project that already-composed Artifact into
+Obsidian explicitly:
+
+```sh
+pnpm arcadia digest export <digest-id> --workspace <path>
+```
+
+The vault Record is clearly labelled AI-narrated, is safe to delete and
+recreate, and is not rewritten when the source Artifact has not changed.
+
 ## Ingress Artifacts
 
 Open **Ingress** from the menu to view files waiting in the local

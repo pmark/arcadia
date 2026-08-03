@@ -3,10 +3,28 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-01
+updated: 2026-08-02
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-02 — Exported narrative digest Artifacts into Obsidian safely
+
+- **Did:** Added `arcadia digest export <digest-id>`, which projects a composed
+  `narrative_digest` Artifact into `Arcadia/Records/Narrative Digests/` in the
+  configured Obsidian vault. It uses the established atomic-write,
+  vault-containment, ownership-key, and content-hash no-op protections from
+  Progress Reviews. The Record removes source Artifact frontmatter, has one
+  readable title, and clearly identifies the story as AI-narrated through the
+  local-preferred Intelligence route.
+- **Result:** Focused narrative-digest and Progress Review memory tests (13)
+  pass, as do both TypeScript builds. Re-exporting an unchanged Artifact does
+  not churn the vault; disabled memory makes no vault mutation.
+- **Next:** `schedule-portfolio-digests` — make daily, weekly, and monthly
+  Project stories and the collective portfolio story arrive unattended.
+- **Blockers:** Calendar-aligned versus rolling scheduled boundaries remains
+  the one explicit policy question; it does not prevent implementing the
+  scheduler's idempotent structure.
 
 ## 2026-08-01 — Put the QA queue ahead of autonomous QA
 

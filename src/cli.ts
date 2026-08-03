@@ -220,7 +220,12 @@ import {
   runWorkerUninstallCommand
 } from "./commands/worker.js";
 import { renderClarifySuccess, runClarifyCommand } from "./commands/clarify.js";
-import { renderDigestComposeSuccess, runDigestComposeCommand } from "./commands/digest.js";
+import {
+  renderDigestComposeSuccess,
+  renderDigestExportSuccess,
+  runDigestComposeCommand,
+  runDigestExportCommand
+} from "./commands/digest.js";
 import { renderDocsSyncSuccess, runDocsSyncCommand } from "./commands/docs.js";
 import {
   renderNextHistorySuccess,
@@ -1497,6 +1502,15 @@ export function buildProgram(): Command {
     to: string;
     json?: boolean;
   }) => runCliAction("digest.compose", options, () => runDigestComposeCommand(options), renderDigestComposeSuccess));
+  addJsonOption(
+    digest
+      .command("export")
+      .description("Export one composed narrative digest Artifact into the Obsidian vault")
+      .argument("<digest-id>", "Narrative digest id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((digestId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction("digest.export", options, () => runDigestExportCommand({ ...options, digestId }), renderDigestExportSuccess)
+  );
 
   const artifact = program.command("artifact").description("Artifact commands");
   addJsonOption(
