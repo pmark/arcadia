@@ -40,7 +40,7 @@ export default function BackBurnerPage() {
   return (
     <DashboardChrome
       title="Back Burner"
-      subtitle={snapshot ? `${snapshot.counts.backBurner} active` : undefined}
+      subtitle={snapshot ? `${snapshot.counts.backBurner} active · ${snapshot.counts.backBurnerFired} fired` : undefined}
       refreshing={refreshing}
       lastLoadedAt={lastLoadedAt}
       onRefresh={() => void refresh()}

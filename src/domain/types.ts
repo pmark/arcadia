@@ -4,7 +4,9 @@ import type {
   ApprovalGateType,
   AskFeedbackDecision,
   AskRequestStatus,
+  BackBurnerFacetTag,
   BackBurnerStatus,
+  BackBurnerSurfaceKind,
   ClarificationConfidence,
   ClarificationStatus,
   CodexInvocationPurpose,
@@ -306,6 +308,14 @@ export interface BackBurnerItem {
   updated_at: string;
   promoted_at: string | null;
   promoted_work_item_id: string | null;
+  surface_kind: BackBurnerSurfaceKind | null;
+  surface_date: string | null;
+  surface_dependency_work_item_id: string | null;
+  surface_dependency_status: WorkItemStatus | null;
+  surface_predicate: string | null;
+  project_id: string | null;
+  source_ref: string | null;
+  facet_tags_json: string | null;
 }
 
 export interface ApprovalGate {
@@ -433,7 +443,20 @@ export interface ReviewItemSummary extends ReviewItem {
 
 export interface BackBurnerItemSummary extends BackBurnerItem {
   promoted_work_item_title: string | null;
+  project_name: string | null;
+  project_slug: string | null;
+  surface_condition: BackBurnerSurfaceCondition;
+  surface_fired: boolean;
+  surface_warning: string | null;
+  effective_status: BackBurnerStatus;
+  facet_tags: BackBurnerFacetTag[];
 }
+
+export type BackBurnerSurfaceCondition =
+  | { kind: "manual" }
+  | { kind: "date"; date: string }
+  | { kind: "dependency"; workItemId: string; status: WorkItemStatus }
+  | { kind: "predicate"; name: string };
 
 export interface QueueGroups {
   inbox: WorkItemSummary[];
@@ -664,6 +687,10 @@ export interface CreateBackBurnerItemInput {
   reason: string;
   status?: BackBurnerStatus;
   suggestedNextStep?: string | null;
+  surfaceCondition?: BackBurnerSurfaceCondition | null;
+  projectId?: string | null;
+  sourceRef?: string | null;
+  facetTags?: BackBurnerFacetTag[];
 }
 
 export interface UpdateBackBurnerItemInput {

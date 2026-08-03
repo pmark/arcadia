@@ -35,6 +35,8 @@ export const APPROVAL_GATE_STATUSES = ["pending", "approved", "rejected", "resol
 export const CODEX_INVOCATION_PURPOSES = ["planning", "build"] as const;
 export const CODEX_INVOCATION_STATUSES = ["packet_created", "running", "completed", "failed"] as const;
 export const BACK_BURNER_STATUSES = ["incubating", "opportunistic", "promoted", "archived"] as const;
+export const BACK_BURNER_SURFACE_KINDS = ["manual", "date", "dependency", "predicate"] as const;
+export const BACK_BURNER_FACET_TAGS = ["quick-win", "experiment", "nice-to-have", "chore", "capability"] as const;
 export const ASK_FEEDBACK_DECISIONS = ["up", "down"] as const;
 
 /**
@@ -97,6 +99,8 @@ export type ApprovalGateStatus = (typeof APPROVAL_GATE_STATUSES)[number];
 export type CodexInvocationPurpose = (typeof CODEX_INVOCATION_PURPOSES)[number];
 export type CodexInvocationStatus = (typeof CODEX_INVOCATION_STATUSES)[number];
 export type BackBurnerStatus = (typeof BACK_BURNER_STATUSES)[number];
+export type BackBurnerSurfaceKind = (typeof BACK_BURNER_SURFACE_KINDS)[number];
+export type BackBurnerFacetTag = (typeof BACK_BURNER_FACET_TAGS)[number];
 export type AskFeedbackDecision = (typeof ASK_FEEDBACK_DECISIONS)[number];
 export type ClarificationStatus = (typeof CLARIFICATION_STATUSES)[number];
 export type GapType = (typeof GAP_TYPES)[number];

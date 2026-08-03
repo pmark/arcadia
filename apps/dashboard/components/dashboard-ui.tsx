@@ -498,6 +498,10 @@ export function BackBurnerCard({
       <dl className="mt-4 grid gap-3 text-sm">
         <Field label="Original Input" value={item.originalInput} />
         <Field label="Reason" value={item.reason} />
+        <Field
+          label="Surface"
+          value={item.surfaceWarning ?? (item.surfaceFired ? "Condition fired" : "Waiting")}
+        />
         <Field label="Suggested Next Step" value={item.suggestedNextStep ?? "None"} />
         <Field label="Captured" value={formatDateTime(item.createdAt)} />
       </dl>

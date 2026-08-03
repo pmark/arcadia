@@ -62,6 +62,7 @@ import {
   runAttentionCommand,
   runDashboardSnapshotCommand
 } from "./commands/dashboard.js";
+import { renderAdvanceQueueSuccess, runAdvanceQueueCommand } from "./commands/advance.js";
 import {
   renderDogfoodAskSuccess,
   renderDogfoodInitSuccess,
@@ -262,6 +263,8 @@ import {
   runWorkflowValidateCommand
 } from "./commands/workflow.js";
 import { normalizeError, validationError } from "./cli/errors.js";
+import type { BackBurnerSurfaceCondition } from "./domain/types.js";
+import type { BackBurnerFacetTag } from "./domain/constants.js";
 import { ORIENTATION_EFFORTS, type OrientationEffort } from "./orientation/types.js";
 import { recordCliActivity } from "./activity/recorder.js";
 import {
@@ -513,6 +516,13 @@ export function buildProgram(): Command {
       .option("--milestone <milestone-id>", "Optional milestone id")
       .option("--agent-profile <name>", "Coding agent profile for planning or build packets")
       .option("--source-ingress <source>", "Ingress source for audit trails")
+      .option("--back-burner", "Shelve this request through the existing Back Burner intake path")
+      .option("--source-ref <reference>", "Path, document id, or URL containing the full idea")
+      .option("--surface-date <YYYY-MM-DD>", "Resurface on or after this date")
+      .option("--surface-dependency <action-id>", "Resurface when this Action reaches --dependency-status")
+      .option("--dependency-status <status>", "Dependency status: open, in_progress, done, blocked", "done")
+      .option("--surface-predicate <name>", "Resurface when a registered predicate returns true")
+      .option("--tag <tags...>", "Facet tags for grouping")
       .option("--reply-review-id <review-id>", "Review id from adapter reply context")
       .option("--run-safe", "Immediately run deterministic safe steps")
   ).action((request: string, options: {
@@ -521,6 +531,13 @@ export function buildProgram(): Command {
     milestone?: string;
     agentProfile?: string;
     sourceIngress?: string;
+    backBurner?: boolean;
+    sourceRef?: string;
+    surfaceDate?: string;
+    surfaceDependency?: string;
+    dependencyStatus?: string;
+    surfacePredicate?: string;
+    tag?: string[];
     replyReviewId?: string;
     runSafe?: boolean;
     json?: boolean;
@@ -530,6 +547,9 @@ export function buildProgram(): Command {
     () => runAskCommand({
       ...options,
       request,
+      captureAsIdea: options.backBurner,
+      surfaceCondition: surfaceConditionFromOptions(options),
+      facetTags: options.tag as BackBurnerFacetTag[] | undefined,
       adapterMetadata: options.replyReviewId ? { reviewId: options.replyReviewId } : undefined
     }),
     renderAskSuccess
@@ -560,11 +580,21 @@ export function buildProgram(): Command {
       .description("List Back Burner items")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--status <status>", "Status filter: incubating, opportunistic, promoted, archived, all")
-  ).action((options: { workspace: string; status?: string; json?: boolean }) =>
+      .option("--fired <state>", "Condition filter: yes, no, all", "all")
+      .option("--project <project>", "Project id or slug filter")
+      .option("--tag <tag>", "Facet tag filter")
+      .option("--group-by <facet>", "Group by: fired, project, tag, none", "fired")
+  ).action((options: { workspace: string; status?: string; fired?: string; project?: string; tag?: string; groupBy?: string; json?: boolean }) =>
     runCliAction(
       "back-burner.list",
       options,
-      () => runBackBurnerListCommand({ ...options, status: options.status as Parameters<typeof runBackBurnerListCommand>[0]["status"] }),
+      () => runBackBurnerListCommand({
+        ...options,
+        status: options.status as Parameters<typeof runBackBurnerListCommand>[0]["status"],
+        fired: parseFiredFilter(options.fired),
+        tag: options.tag as Parameters<typeof runBackBurnerListCommand>[0]["tag"],
+        groupBy: parseBackBurnerGroup(options.groupBy)
+      }),
       renderBackBurnerListSuccess
     )
   );
@@ -933,6 +963,16 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("attention", options, () => runAttentionCommand(options), renderAttentionSuccess)
+  );
+
+  const advance = program.command("advance").description("Inspect the coding-agent advance queue");
+  addJsonOption(
+    advance
+      .command("queue")
+      .description("Show ready Actions, active Runs, and every stop before dispatch")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("advance.queue", options, () => runAdvanceQueueCommand(options), renderAdvanceQueueSuccess)
   );
 
   const blog = program.command("blog").description("Blogging capability commands");
@@ -2779,6 +2819,47 @@ function normalizeResponsibilityOption<TOptions extends { classification?: strin
     ...rest,
     classification
   };
+}
+
+function surfaceConditionFromOptions(options: {
+  surfaceDate?: string;
+  surfaceDependency?: string;
+  dependencyStatus?: string;
+  surfacePredicate?: string;
+}): BackBurnerSurfaceCondition | undefined {
+  const selected = [options.surfaceDate, options.surfaceDependency, options.surfacePredicate].filter(
+    (value) => value !== undefined
+  );
+  if (selected.length > 1) {
+    throw validationError("Use only one Back Burner surface condition.", {
+      options: ["--surface-date", "--surface-dependency", "--surface-predicate"]
+    });
+  }
+  if (options.surfaceDate) return { kind: "date", date: options.surfaceDate };
+  if (options.surfaceDependency) {
+    const status = options.dependencyStatus ?? "done";
+    if (!(["open", "in_progress", "done", "blocked"] as const).includes(status as "open")) {
+      throw validationError("Dependency status must be one of: open, in_progress, done, blocked.", { status });
+    }
+    return { kind: "dependency", workItemId: options.surfaceDependency, status: status as "open" | "in_progress" | "done" | "blocked" };
+  }
+  if (options.surfacePredicate) return { kind: "predicate", name: options.surfacePredicate };
+  return undefined;
+}
+
+function parseFiredFilter(value: string | undefined): boolean | undefined {
+  if (value === undefined || value === "all") return undefined;
+  if (value === "yes") return true;
+  if (value === "no") return false;
+  throw validationError("Fired filter must be one of: yes, no, all.", { fired: value });
+}
+
+function parseBackBurnerGroup(value: string | undefined): "fired" | "project" | "tag" | "none" | undefined {
+  if (value === undefined) return undefined;
+  if ((["fired", "project", "tag", "none"] as const).includes(value as "fired")) {
+    return value as "fired" | "project" | "tag" | "none";
+  }
+  throw validationError("Back Burner group must be one of: fired, project, tag, none.", { groupBy: value });
 }
 
 async function runCliAction<TData>(

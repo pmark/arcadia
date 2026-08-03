@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: Arcadia narrates its own recent history automatically, for itself and every Project it manages
 active_plan: narrative-digests
 current_action: export-digest-to-obsidian
-updated: 2026-07-31
+updated: 2026-08-02
 ---
 
 # Arcadia
@@ -55,8 +55,15 @@ Project Arcadia manages, not as a one-off. See
 rows, the dispatch journal) to compose from; what doesn't yet exist is the
 composer itself, an Obsidian export for AI-narrated (not just deterministic)
 records, and a schedule that reaches every Project rather than only the one
-being watched. `portfolio-docs-protocol`'s two remaining increments stay
-deferred against Decision 0004's named triggers, untouched by this.
+being watched. The read-only Agent Queue slice is now complete, so that plan's
+current pointer resumes this digest work while making ready Actions and every
+pre-dispatch stop plainly visible to any future feeder.
+
+The Agent Queue is documented in `docs/plans/agent-advance-queue.md`. It is a
+projection, not a second work pointer: managed documents still decide what is
+dispatchable, and provider limits still gate packet selection. Provider-budget
+admission is deferred until Claude Code and Codex both expose comparable fresh
+daily and weekly capacity windows.
 
 ## Links
 

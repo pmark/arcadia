@@ -26,6 +26,7 @@ import {
   listMilestones
 } from "../db/repositories.js";
 import { CODEX_REPO_PATH_REQUIRED_MESSAGE } from "../projects/setup.js";
+import { buildAgentQueue, type AgentQueue } from "../dispatch/queue.js";
 import { selectDailyAdvantage, type DashboardDailyAdvantage } from "./dailyAdvantage.js";
 
 export const MISSING_REPO_PATH_WARNING = CODEX_REPO_PATH_REQUIRED_MESSAGE;
@@ -48,12 +49,15 @@ export interface DashboardSnapshot {
     attention: number;
     requiresReview: number;
     backBurner: number;
+    backBurnerFired: number;
+    backBurnerIncubating: number;
     activeRuns: number;
     recentRuns: number;
     recentArtifacts: number;
     activityEvents: number;
   };
   dailyAdvantage: DashboardDailyAdvantage | null;
+  agentQueue: AgentQueue;
   projects: DashboardProject[];
   attentionItems: DashboardAttentionItem[];
   activityEvents: DashboardActivityEvent[];
@@ -315,6 +319,9 @@ export interface DashboardBackBurnerItem {
   reason: string;
   status: string;
   statusLabel: string;
+  storedStatus: string;
+  surfaceFired: boolean;
+  surfaceWarning: string | null;
   suggestedNextStep: string | null;
   createdAt: string;
   updatedAt: string;
@@ -374,10 +381,12 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
     const rebusterEvents = listRebusterEvents(db, 10);
     const rebusterDecisions = listOpenRebusterDecisionEvents(db);
     const attentionItems = buildAttentionItems(db, reviewItems.map(toDashboardReviewItem), runs);
+    const agentQueue = buildAgentQueue(db, { runLimit: Math.max(runLimit, 100) });
     const activityEvents = buildActivityEvents(db, 30);
     const backBurnerItems = listBackBurnerItems(db, "all").filter((item) =>
-      item.status === "incubating" || item.status === "opportunistic"
+      item.effective_status === "incubating" || item.effective_status === "opportunistic"
     );
+    const firedBackBurnerItems = backBurnerItems.filter((item) => item.surface_fired);
     const dailyAdvantage = selectDailyAdvantage(db);
     const dispatchSummary = summarizeDispatchEvents(db);
     const dispatchJournal: DashboardDispatchJournal = {
@@ -435,12 +444,15 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
         attention: attentionItems.length,
         requiresReview: reviewItems.length,
         backBurner: backBurnerItems.length,
+        backBurnerFired: firedBackBurnerItems.length,
+        backBurnerIncubating: backBurnerItems.length - firedBackBurnerItems.length,
         activeRuns: runs.filter((run) => run.status === "running" || isRequiresReviewStatus(run.status)).length,
         recentRuns: runs.length,
         recentArtifacts: Math.min(artifacts.length, artifactLimit),
         activityEvents: activityEvents.length
       },
       dailyAdvantage,
+      agentQueue,
       projects,
       attentionItems,
       activityEvents,
@@ -474,8 +486,11 @@ function toDashboardBackBurnerItem(item: BackBurnerItemSummary): DashboardBackBu
     classification: item.classification,
     confidence: item.confidence,
     reason: item.reason,
-    status: item.status,
-    statusLabel: labelStatus(item.status),
+    status: item.effective_status,
+    statusLabel: labelStatus(item.effective_status),
+    storedStatus: item.status,
+    surfaceFired: item.surface_fired,
+    surfaceWarning: item.surface_warning,
     suggestedNextStep: item.suggested_next_step,
     createdAt: item.created_at,
     updatedAt: item.updated_at,

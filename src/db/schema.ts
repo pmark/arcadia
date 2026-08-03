@@ -36,6 +36,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureReviewItemSlugs(db);
   ensureReviewFeedbackTable(db);
   ensureBackBurnerItemsTable(db);
+  ensureBackBurnerSurfaceColumns(db);
   ensureAskRequestStewardshipColumn(db);
   ensureRequiresReviewCompatibility(db);
   ensureOperatorAgnosticSchema(db);
@@ -753,6 +754,30 @@ function ensureBackBurnerItemsTable(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_back_burner_items_status ON back_burner_items(status);
     CREATE INDEX IF NOT EXISTS idx_back_burner_items_created_at ON back_burner_items(created_at);
+  `);
+}
+
+/** Additive metadata for deterministic, read-time Back Burner resurfacing. */
+function ensureBackBurnerSurfaceColumns(db: Database.Database): void {
+  const existing = new Set(
+    (db.prepare("PRAGMA table_info(back_burner_items)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  const additions = [
+    { name: "surface_kind", ddl: "ALTER TABLE back_burner_items ADD COLUMN surface_kind TEXT CHECK (surface_kind IS NULL OR surface_kind IN ('manual', 'date', 'dependency', 'predicate'))" },
+    { name: "surface_date", ddl: "ALTER TABLE back_burner_items ADD COLUMN surface_date TEXT" },
+    { name: "surface_dependency_work_item_id", ddl: "ALTER TABLE back_burner_items ADD COLUMN surface_dependency_work_item_id TEXT REFERENCES work_items(id) ON DELETE SET NULL" },
+    { name: "surface_dependency_status", ddl: "ALTER TABLE back_burner_items ADD COLUMN surface_dependency_status TEXT CHECK (surface_dependency_status IS NULL OR surface_dependency_status IN ('open', 'in_progress', 'done', 'blocked'))" },
+    { name: "surface_predicate", ddl: "ALTER TABLE back_burner_items ADD COLUMN surface_predicate TEXT" },
+    { name: "project_id", ddl: "ALTER TABLE back_burner_items ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL" },
+    { name: "source_ref", ddl: "ALTER TABLE back_burner_items ADD COLUMN source_ref TEXT" },
+    { name: "facet_tags_json", ddl: "ALTER TABLE back_burner_items ADD COLUMN facet_tags_json TEXT" }
+  ];
+  for (const addition of additions) {
+    if (!existing.has(addition.name)) db.prepare(addition.ddl).run();
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_back_burner_items_project ON back_burner_items(project_id);
+    CREATE INDEX IF NOT EXISTS idx_back_burner_items_surface_kind ON back_burner_items(surface_kind);
   `);
 }
 

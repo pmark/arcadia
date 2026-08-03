@@ -3,12 +3,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runDocsSyncCommand } from "../src/commands/docs.js";
-import { runNextReadyCommand } from "../src/commands/next.js";
+import { renderNextSuccess, runNextCommand, runNextReadyCommand } from "../src/commands/next.js";
 import { runReviewApproveCommand } from "../src/commands/review.js";
 import { runWorkPlanCommand } from "../src/commands/work.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
   createWorkItemWithOptionalArtifact,
+  createBackBurnerItem,
   getWorkItemByDocRef,
   listProjects,
   upsertProject,
@@ -374,6 +375,35 @@ describe("arcadia next --ready", () => {
 
     expect(result.data.ready.map((entry) => entry.actionId)).toEqual(["migrate"]);
     expect(result.data.suggestedCurrentAction).toBe("migrate");
+  });
+});
+
+describe("arcadia next Back Burner interruption", () => {
+  it("is unchanged at zero and adds one discovery line when a condition fires", () => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", readySetProjectDoc());
+    writeDoc(repo, "docs/plans/sample-plan.md", chainPlan("done"));
+    const workspace = workspaceFor(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const zero = runNextCommand({ workspace, project: "demo" });
+    expect(zero.data).not.toHaveProperty("firedBackBurnerCount");
+    expect(renderNextSuccess(zero).join("\n")).not.toContain("Back Burner:");
+
+    withDatabase(workspace, (db) => createBackBurnerItem(db, {
+      originalInput: "Revisit the dispatch summary.",
+      ingressSource: "test",
+      classification: "IncubatingThought",
+      confidence: 1,
+      reason: "Date reached.",
+      surfaceCondition: { kind: "date", date: "2000-01-01" }
+    }));
+
+    const fired = runNextCommand({ workspace, project: "demo" });
+    expect(fired.data.firedBackBurnerCount).toBe(1);
+    expect(renderNextSuccess(fired).filter((line) => line.includes("Back Burner:"))).toEqual([
+      "Back Burner: 1 fired condition. See: arcadia back-burner list --fired yes"
+    ]);
   });
 });
 
