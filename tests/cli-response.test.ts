@@ -123,6 +123,51 @@ describe("CLI response contract", () => {
     expect(parseJson(review.stdout).data.count).toBe(0);
   });
 
+  it("shelves an explicitly conditioned and tagged idea through Ask", () => {
+    const workspace = initializedWorkspace();
+    const asked = runCli([
+      "ask",
+      "Revisit compact status output.",
+      "--workspace",
+      workspace,
+      "--back-burner",
+      "--surface-date",
+      "2000-01-01",
+      "--source-ref",
+      "docs/ideas/status.md",
+      "--tag",
+      "quick-win",
+      "experiment",
+      "--json"
+    ]);
+    expect(asked.status).toBe(0);
+
+    const listed = runCli([
+      "back-burner",
+      "list",
+      "--workspace",
+      workspace,
+      "--status",
+      "all",
+      "--fired",
+      "yes",
+      "--tag",
+      "quick-win",
+      "--group-by",
+      "tag",
+      "--json"
+    ]);
+    expect(listed.status).toBe(0);
+    const json = parseJson(listed.stdout);
+    expect(json.data.count).toBe(1);
+    expect(json.data.items[0]).toMatchObject({
+      source_ref: "docs/ideas/status.md",
+      surface_fired: true,
+      effective_status: "opportunistic",
+      facet_tags: ["quick-win", "experiment"]
+    });
+  });
+
   it("shows, promotes, and archives Back Burner items from the CLI", () => {
     const promoteWorkspace = initializedWorkspace();
     const asked = parseJson(runCli(["ask", "Pinterest might help Rebuster.", "--workspace", promoteWorkspace, "--json"]).stdout);

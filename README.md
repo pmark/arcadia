@@ -436,7 +436,7 @@ Approved generic review execution also supports the built-in `codex`, `claude-co
 
 SQLite is authoritative. Markdown files are generated narrative artifacts.
 
-For copy-paste examples of common workflows, see [docs/COMMANDS.md](docs/COMMANDS.md). For Phase 2 scope and behavior, see [docs/PHASE_2.md](docs/PHASE_2.md). For Phase 3 scope and behavior, see [docs/phase-3-natural-language-intent.md](docs/phase-3-natural-language-intent.md).
+For copy-paste examples of common workflows, see [docs/COMMANDS.md](docs/COMMANDS.md). For Back Burner idea-capture scenarios, see [docs/back-burner-guide.md](docs/back-burner-guide.md). For Phase 2 scope and behavior, see [docs/PHASE_2.md](docs/PHASE_2.md). For Phase 3 scope and behavior, see [docs/phase-3-natural-language-intent.md](docs/phase-3-natural-language-intent.md).
 
 Keep private workspaces separate from Arcadia Core. Do not commit personal workspace data unless you intentionally choose to.
 

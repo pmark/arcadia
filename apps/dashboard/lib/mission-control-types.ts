@@ -35,6 +35,8 @@
  * daily.
  */
 
+import type { AgentQueue } from "./types";
+
 // ---------------------------------------------------------------------------
 // The recursive node shape
 // ---------------------------------------------------------------------------
@@ -263,6 +265,7 @@ export interface MissionControlOrientationEntry {
 export interface MissionControlOverview {
   generatedAt: string;
   headline: string;
+  agentQueue: AgentQueue;
   needsYouNow: MissionControlActionItem[];
   /** Most recently updated items across every tower — the sidebar's "Recent" section. */
   recentlyUpdated: MissionControlActionItem[];

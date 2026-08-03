@@ -39,6 +39,8 @@ import type {
   ProjectContext,
   WorkItemSummary
 } from "../domain/types.js";
+import type { BackBurnerSurfaceCondition } from "../domain/types.js";
+import type { BackBurnerFacetTag } from "../domain/constants.js";
 import { isRequiresReviewValue, type ProjectStatus } from "../domain/constants.js";
 import { ensureBuiltInSkills } from "../execution/skills.js";
 import { executePlan } from "../execution/runner.js";
@@ -77,8 +79,11 @@ export interface AskOptions {
   executeReview?: boolean;
   reviewExecutor?: string;
   agentProfile?: string;
-  /** Deterministic ingress rule for a clearly labeled Markdown app idea. */
+  /** Deterministic request to use the existing Back Burner intake path. */
   captureAsIdea?: boolean;
+  surfaceCondition?: BackBurnerSurfaceCondition;
+  sourceRef?: string;
+  facetTags?: BackBurnerFacetTag[];
 }
 
 export interface AskCommandData {
@@ -168,9 +173,17 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         clarificationRequired: false,
         reviewRequired: false,
         generatedCodexGoalText: null,
-        classificationReason: "Markdown app-idea capture is deterministically routed to Back Burner."
+        classificationReason: "Explicit idea capture is deterministically routed to Back Burner."
       }
     : computedStewardship;
+  if (
+    stewardship.recommendedExecutionPath !== "Back Burner" &&
+    (options.surfaceCondition || options.sourceRef || (options.facetTags?.length ?? 0) > 0)
+  ) {
+    throw validationError("Back Burner surfacing metadata requires an idea routed to Back Burner.", {
+      remedy: "Pass --back-burner to shelve this request explicitly."
+    });
+  }
   let run: ExecutionRunSummary | null = null;
 
   // A reply tied to a known Decision belongs to the review workflow even when
@@ -492,6 +505,10 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
 
   if (stewardship.recommendedExecutionPath === "Back Burner" && !options.approvedReviewItemId) {
     const { ask, backBurnerItem } = withDatabase(workspacePath, (db) => {
+      const projectId = projectIdFromIntake(intake) ?? intake.project?.id ?? options.project ?? null;
+      if (projectId && !getProject(db, projectId)) {
+        throw projectNotFound(projectId);
+      }
       const ask = createAskRequest(db, {
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
@@ -507,7 +524,11 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         confidence: intake.confidence,
         reason: stewardship.classificationReason || intake.classificationReason || intake.explanation,
         status: intake.classification === "Idea" ? "opportunistic" : "incubating",
-        suggestedNextStep: intake.suggestedNextStep
+        suggestedNextStep: intake.suggestedNextStep,
+        surfaceCondition: options.surfaceCondition,
+        projectId,
+        sourceRef: options.sourceRef,
+        facetTags: options.facetTags
       });
       return { ask, backBurnerItem };
     });

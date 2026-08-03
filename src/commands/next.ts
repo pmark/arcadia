@@ -3,7 +3,7 @@ import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
-import { getProject, getProjectBySlug, getProjectMetadata, listProjects } from "../db/repositories.js";
+import { getProject, getProjectBySlug, getProjectMetadata, listBackBurnerItems, listProjects } from "../db/repositories.js";
 import {
   isDispatchable,
   resolveDispatch,
@@ -29,6 +29,7 @@ export interface NextCommandData extends DispatchResolution {
   dispatchable: boolean;
   projectId: string;
   repoRoot: string;
+  firedBackBurnerCount?: number;
 }
 
 /**
@@ -42,7 +43,14 @@ export interface NextCommandData extends DispatchResolution {
  */
 export function runNextCommand(options: NextCommandOptions): CommandSuccess<NextCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const { project, repoRoot } = withDatabase(workspacePath, (db) => resolveProjectAndRepo(db, options));
+  const { project, repoRoot, firedBackBurnerCount } = withDatabase(workspacePath, (db) => {
+    const resolved = resolveProjectAndRepo(db, options);
+    return {
+      ...resolved,
+      firedBackBurnerCount: listBackBurnerItems(db, "opportunistic", { fired: true })
+        .filter((item) => item.project_id === null || item.project_id === resolved.project.id).length
+    };
+  });
 
   const resolution = resolveDispatch(repoRoot, project.slug);
   const dispatchable = isDispatchable(resolution);
@@ -67,7 +75,8 @@ export function runNextCommand(options: NextCommandOptions): CommandSuccess<Next
       ...resolution,
       dispatchable,
       projectId: project.id,
-      repoRoot
+      repoRoot,
+      ...(firedBackBurnerCount > 0 ? { firedBackBurnerCount } : {})
     }
   });
 }
@@ -118,13 +127,15 @@ export function renderNextSuccess(response: CommandSuccess<NextCommandData>): st
   const { context, blockers, operatorQuestion, dispatchable, repoRoot } = response.data;
 
   if (!context) {
-    return [
+    const lines = [
       "No current action could be resolved.",
       "",
       ...renderBlockers(blockers),
       "",
       "Repairing the control documentation is the immediate work."
     ];
+    appendFiredBackBurnerHint(lines, response.data.firedBackBurnerCount);
+    return lines;
   }
 
   const { action } = context;
@@ -194,7 +205,13 @@ export function renderNextSuccess(response: CommandSuccess<NextCommandData>): st
     lines.push(`Not dispatchable: responsibility is "${action.responsibility}".`);
   }
 
+  appendFiredBackBurnerHint(lines, response.data.firedBackBurnerCount);
   return lines;
+}
+
+function appendFiredBackBurnerHint(lines: string[], count: number | undefined): void {
+  if (!count) return;
+  lines.push("", `Back Burner: ${count} fired condition${count === 1 ? "" : "s"}. See: arcadia back-burner list --fired yes`);
 }
 
 function renderBlockers(blockers: DispatchResolution["blockers"]): string[] {

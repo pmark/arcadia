@@ -14,6 +14,20 @@ Open **Dispatch Journal** at <http://127.0.0.1:3020/admin/dispatch-journal> to s
 4. Use **Runs** to follow approved work and inspect its Artifacts, Validation, and Log.
 5. Return to **Review** to accept a successful plan; acceptance marks the original Action done.
 
+Before feeding another coding agent, open the **Agent Queue** section in
+Mission Control. It keeps three explicit lanes in view: **Ready to feed**,
+**Running or queued**, and **Needs attention before dispatch**. The same
+read-only projection is available in the terminal:
+
+```sh
+pnpm arcadia advance queue --workspace "$WORKSPACE"
+```
+
+An item in the attention lane always names the reason and next repair or
+Decision. The queue never grants authority: a ready row still passes through
+the existing document, responsibility, approval, repository, and provider
+availability gates.
+
 For software work, use the demo-first handoff contract even while Mission
 Control's richer proof surface is still being built:
 
@@ -50,6 +64,27 @@ can still be lost; `PUSHED` means it is backed up, with the report separately
 stating whether an open PR was found. Use one branch and worktree per coding session, and leave
 every session merged or represented by at least a draft PR. The full recovery
 procedure is in `docs/working-copy-safety.md`.
+
+To shelve an idea until a concrete condition is true, use the existing Ask
+path with `--back-burner`. For example:
+
+```sh
+pnpm arcadia ask "Revisit the compact status view" \
+  --back-burner \
+  --project proj_example \
+  --surface-date 2026-10-01 \
+  --source-ref docs/ideas/compact-status.md \
+  --tag quick-win experiment
+```
+
+See conditions that have fired with
+`pnpm arcadia back-burner list --fired yes`. This reports shelf
+items only: Arcadia never dispatches or promotes them automatically. Use
+`pnpm arcadia back-burner promote <id>` when you explicitly decide an item
+should become an Action.
+
+For project-specific, vague, household, date-based, dependency-based, and
+predicate-based examples, see the [Back Burner Guide](docs/back-burner-guide.md).
 
 ## Compose a Project digest
 

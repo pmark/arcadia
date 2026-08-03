@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MobileShell } from "../../components/mobile-shell";
 import { EmptyState, ErrorState, LoadingState, Section } from "../../components/dashboard-ui";
+import type { AgentQueue, AgentQueueEntry } from "../../lib/types";
 import type {
   DailyCapacity,
   MissionControlActionItem,
@@ -73,6 +74,105 @@ function NodeSummaryRow({ node, onSelect }: { node: MissionControlNodeSummary; o
       </span>
       <UrgencyBadge level={node.urgency.level} />
     </button>
+  );
+}
+
+function AgentQueueEntryCard({ entry }: { entry: AgentQueueEntry }) {
+  const href = entry.decisionId
+    ? "/review"
+    : entry.runId
+      ? `/runs/${encodeURIComponent(entry.runId)}`
+      : entry.projectId
+        ? `/projects/${encodeURIComponent(entry.projectId)}`
+        : null;
+
+  return (
+    <article className="grid min-w-0 gap-1 rounded-md border border-line bg-panel p-3 shadow-soft">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-ink">
+            {entry.projectName ?? "Unassigned"}
+            {entry.actionTitle ? ` · ${entry.actionTitle}` : ""}
+          </p>
+          <p className="mt-1 text-xs text-muted">{entry.reason}</p>
+          {entry.tokenImpact || entry.tokenBudget ? (
+            <p className="mt-1 text-xs text-muted">
+              Token impact: {entry.tokenImpact ?? "unknown"}
+              {entry.tokenBudget ? ` · ${entry.tokenBudget}` : ""}
+            </p>
+          ) : null}
+        </div>
+        {href ? (
+          <Link href={href} className="shrink-0 text-xs font-semibold text-steel">
+            Open
+          </Link>
+        ) : null}
+      </div>
+      <p className="text-xs text-muted">
+        <span className="font-semibold text-ink">Next:</span> {entry.nextAction}
+      </p>
+      {entry.blockers.length > 0 ? (
+        <ul className="grid gap-1 border-t border-line pt-2 text-xs text-clay">
+          {entry.blockers.map((blocker) => (
+            <li key={`${blocker.relativePath}:${blocker.field}:${blocker.message}`}>
+              {blocker.relativePath} · {blocker.field}: {blocker.message}
+              <span className="block text-muted">Fix: {blocker.remedy}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </article>
+  );
+}
+
+function AgentQueuePanel({ queue }: { queue: AgentQueue }) {
+  return (
+    <section className="grid min-w-0 gap-4 rounded-md border border-line bg-canvas p-4 shadow-soft">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <h2 className="text-base font-semibold text-ink">Agent Queue</h2>
+          <p className="mt-1 text-xs text-muted">The shared feeder view: ready work, active Runs, and every stop before dispatch.</p>
+        </div>
+        <p className="text-xs tabular-nums text-muted">
+          {queue.counts.ready} ready · {queue.counts.running} running · {queue.counts.attention} need attention
+        </p>
+      </div>
+
+      <div className="grid gap-3">
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-moss">Ready to feed</h3>
+          {queue.ready.length === 0 ? (
+            <p className="mt-2 text-sm text-muted">Nothing is ready right now.</p>
+          ) : (
+            <div className="mt-2 grid gap-2">
+              {queue.ready.map((entry) => <AgentQueueEntryCard key={entry.id} entry={entry} />)}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-steel">Running or queued</h3>
+          {queue.running.length === 0 ? (
+            <p className="mt-2 text-sm text-muted">No active coding-agent Run.</p>
+          ) : (
+            <div className="mt-2 grid gap-2">
+              {queue.running.map((entry) => <AgentQueueEntryCard key={entry.id} entry={entry} />)}
+            </div>
+          )}
+        </div>
+
+        <div className={queue.attention.length > 0 ? "rounded-md border border-gold/50 bg-gold/5 p-3" : ""}>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-gold">Needs attention before dispatch</h3>
+          {queue.attention.length === 0 ? (
+            <p className="mt-2 text-sm text-muted">No known stop is waiting for intervention.</p>
+          ) : (
+            <div className="mt-2 grid gap-2">
+              {queue.attention.map((entry) => <AgentQueueEntryCard key={entry.id} entry={entry} />)}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -645,6 +745,8 @@ function MissionControlPageInner({ nodeId }: { nodeId: string | null }) {
             </>
           ) : (
             <>
+              <AgentQueuePanel queue={overview.agentQueue} />
+
               <WhatFitsPanel capacity={overview.capacity} onSelect={openNode} />
 
               <TimelinePanel />

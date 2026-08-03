@@ -5,7 +5,9 @@ import {
   APPROVAL_GATE_TYPES,
   ASK_FEEDBACK_DECISIONS,
   ASK_REQUEST_STATUSES,
+  BACK_BURNER_FACET_TAGS,
   BACK_BURNER_STATUSES,
+  BACK_BURNER_SURFACE_KINDS,
   CLARIFICATION_CONFIDENCE_LEVELS,
   CLARIFICATION_STATUSES,
   CODEX_INVOCATION_PURPOSES,
@@ -27,6 +29,7 @@ import {
   type ApprovalGateType,
   type AskFeedbackDecision,
   type AskRequestStatus,
+  type BackBurnerFacetTag,
   type BackBurnerStatus,
   type ClarificationStatus,
   type CodexInvocationPurpose,
@@ -41,6 +44,7 @@ import {
   type WorkClassification,
   type WorkItemStatus
 } from "../domain/constants.js";
+import { evaluateBackBurnerSurface, isValidSurfaceDate } from "../backBurner/surfacing.js";
 import { ORIENTATION_EFFORTS } from "../orientation/types.js";
 import type {
   Artifact,
@@ -251,6 +255,11 @@ function validateReviewItemStatus(value: string): ReviewItemStatus {
 
 function validateBackBurnerStatus(value: string): BackBurnerStatus {
   assertAllowedValue("Back Burner status", value, BACK_BURNER_STATUSES);
+  return value;
+}
+
+function validateBackBurnerFacetTag(value: string): BackBurnerFacetTag {
+  assertAllowedValue("Back Burner facet tag", value, BACK_BURNER_FACET_TAGS);
   return value;
 }
 
@@ -1635,6 +1644,14 @@ export function createBackBurnerItem(
   input: CreateBackBurnerItemInput
 ): BackBurnerItemSummary {
   const timestamp = nowIso();
+  if (input.projectId && !getProject(db, input.projectId)) {
+    throw new Error(`Back Burner Project was not found: ${input.projectId}`);
+  }
+  const surface = normalizeSurfaceCondition(input.surfaceCondition);
+  if (surface.surface_dependency_work_item_id && !getWorkItem(db, surface.surface_dependency_work_item_id)) {
+    throw new Error(`Back Burner surface dependency Action was not found: ${surface.surface_dependency_work_item_id}`);
+  }
+  const facetTags = normalizedUniqueValues(input.facetTags).map(validateBackBurnerFacetTag);
   const item: BackBurnerItem = {
     id: createId("backBurnerItem"),
     original_input: required(input.originalInput, "Back Burner original input"),
@@ -1647,16 +1664,24 @@ export function createBackBurnerItem(
     created_at: timestamp,
     updated_at: timestamp,
     promoted_at: null,
-    promoted_work_item_id: null
+    promoted_work_item_id: null,
+    ...surface,
+    project_id: input.projectId ?? null,
+    source_ref: nullable(input.sourceRef),
+    facet_tags_json: JSON.stringify(facetTags)
   };
 
   db.prepare(
     `INSERT INTO back_burner_items (
       id, original_input, ingress_source, classification, confidence, reason, status,
-      suggested_next_step, created_at, updated_at, promoted_at, promoted_work_item_id
+      suggested_next_step, created_at, updated_at, promoted_at, promoted_work_item_id,
+      surface_kind, surface_date, surface_dependency_work_item_id, surface_dependency_status,
+      surface_predicate, project_id, source_ref, facet_tags_json
     ) VALUES (
       @id, @original_input, @ingress_source, @classification, @confidence, @reason, @status,
-      @suggested_next_step, @created_at, @updated_at, @promoted_at, @promoted_work_item_id
+      @suggested_next_step, @created_at, @updated_at, @promoted_at, @promoted_work_item_id,
+      @surface_kind, @surface_date, @surface_dependency_work_item_id, @surface_dependency_status,
+      @surface_predicate, @project_id, @source_ref, @facet_tags_json
     )`
   ).run(item);
 
@@ -1668,25 +1693,33 @@ export function createBackBurnerItem(
 }
 
 export function getBackBurnerItem(db: Database.Database, id: string): BackBurnerItemSummary | null {
-  return (
-    (db
-      .prepare(backBurnerItemSelectSql("WHERE bbi.id = ?"))
-      .get(id) as BackBurnerItemSummary | undefined) ?? null
-  );
+  const row = db.prepare(backBurnerItemSelectSql("WHERE bbi.id = ?")).get(id) as BackBurnerItemSummary | undefined;
+  return row ? hydrateBackBurnerItem(db, row) : null;
+}
+
+export interface BackBurnerListFilters {
+  fired?: boolean;
+  project?: string;
+  tag?: BackBurnerFacetTag;
 }
 
 export function listBackBurnerItems(
   db: Database.Database,
-  status: BackBurnerStatus | "all" = "incubating"
+  status: BackBurnerStatus | "all" = "incubating",
+  filters: BackBurnerListFilters = {}
 ): BackBurnerItemSummary[] {
   if (status !== "all") {
     validateBackBurnerStatus(status);
   }
-  const where = status === "all" ? "" : "WHERE bbi.status = ?";
-  const parameters = status === "all" ? [] : [status];
-  return db
-    .prepare(`${backBurnerItemSelectSql(where)} ORDER BY bbi.created_at DESC`)
-    .all(...parameters) as BackBurnerItemSummary[];
+  if (filters.tag) validateBackBurnerFacetTag(filters.tag);
+  const items = (db.prepare(`${backBurnerItemSelectSql("")} ORDER BY bbi.created_at DESC`).all() as BackBurnerItemSummary[])
+    .map((item) => hydrateBackBurnerItem(db, item));
+  return items.filter((item) =>
+    (status === "all" || item.effective_status === status) &&
+    (filters.fired === undefined || item.surface_fired === filters.fired) &&
+    (!filters.project || item.project_id === filters.project || item.project_slug === filters.project) &&
+    (!filters.tag || item.facet_tags.includes(filters.tag))
+  );
 }
 
 export function updateBackBurnerItem(
@@ -1721,10 +1754,53 @@ export function updateBackBurnerItem(
 function backBurnerItemSelectSql(whereSql: string): string {
   return `SELECT
     bbi.*,
-    wi.title AS promoted_work_item_title
+    wi.title AS promoted_work_item_title,
+    p.name AS project_name,
+    p.slug AS project_slug
   FROM back_burner_items bbi
   LEFT JOIN work_items wi ON wi.id = bbi.promoted_work_item_id
+  LEFT JOIN projects p ON p.id = bbi.project_id
   ${whereSql}`;
+}
+
+function hydrateBackBurnerItem(db: Database.Database, item: BackBurnerItemSummary): BackBurnerItemSummary {
+  const evaluation = evaluateBackBurnerSurface(db, item);
+  const conditioned = item.surface_kind === "date" || item.surface_kind === "dependency" || item.surface_kind === "predicate";
+  const effectiveStatus = item.status === "promoted" || item.status === "archived"
+    ? item.status
+    : conditioned
+      ? (evaluation.fired ? "opportunistic" : "incubating")
+      : item.status;
+  return {
+    ...item,
+    surface_condition: evaluation.condition,
+    surface_fired: evaluation.fired,
+    surface_warning: evaluation.warning,
+    effective_status: effectiveStatus,
+    facet_tags: decodeStringArray(item.facet_tags_json)
+      .filter((tag): tag is BackBurnerFacetTag => BACK_BURNER_FACET_TAGS.includes(tag as BackBurnerFacetTag))
+  };
+}
+
+function normalizeSurfaceCondition(condition: CreateBackBurnerItemInput["surfaceCondition"]): Pick<
+  BackBurnerItem,
+  "surface_kind" | "surface_date" | "surface_dependency_work_item_id" | "surface_dependency_status" | "surface_predicate"
+> {
+  const value = condition ?? { kind: "manual" as const };
+  assertAllowedValue("Back Burner surface kind", value.kind, BACK_BURNER_SURFACE_KINDS);
+  if (value.kind === "date") {
+    if (!isValidSurfaceDate(value.date)) throw new Error("Back Burner surface date must be a valid YYYY-MM-DD date");
+    return { surface_kind: "date", surface_date: value.date, surface_dependency_work_item_id: null, surface_dependency_status: null, surface_predicate: null };
+  }
+  if (value.kind === "dependency") {
+    const workItemId = required(value.workItemId, "Back Burner surface dependency Action id");
+    const status = validateWorkItemStatus(value.status);
+    return { surface_kind: "dependency", surface_date: null, surface_dependency_work_item_id: workItemId, surface_dependency_status: status, surface_predicate: null };
+  }
+  if (value.kind === "predicate") {
+    return { surface_kind: "predicate", surface_date: null, surface_dependency_work_item_id: null, surface_dependency_status: null, surface_predicate: required(value.name, "Back Burner surface predicate") };
+  }
+  return { surface_kind: "manual", surface_date: null, surface_dependency_work_item_id: null, surface_dependency_status: null, surface_predicate: null };
 }
 
 function reviewItemSelectSql(whereSql: string): string {
