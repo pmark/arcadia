@@ -89,7 +89,7 @@ export function composeMorningNarrative(snapshot: MorningNarrativeSnapshot): str
   const loggedBlocker = snapshot.recentLogs.find((log) => log.blockers?.trim());
   if (loggedBlocker) friction.push(`${loggedBlocker.project_name}: ${sentence(loggedBlocker.blockers ?? "")}`);
   lines.push(friction.length > 0
-    ? `Watch the drag: ${friction.join("; ")}. Clearing the smallest one first is likely the cheapest way to recover flow.`
+    ? `Watch the drag: ${stripTerminalPunctuation(friction.join("; "))}. Clearing the smallest one first is likely the cheapest way to recover flow.`
     : "No explicit blocked Actions or pending Decisions are accumulating. Protect that low-friction state by finishing the smallest ready slice before opening another front."
   );
 
@@ -107,4 +107,8 @@ function sentence(value: string): string {
 
 function plural(count: number, singular: string): string {
   return count === 1 ? singular : `${singular}s`;
+}
+
+function stripTerminalPunctuation(value: string): string {
+  return value.replace(/[.!?]+$/, "");
 }
