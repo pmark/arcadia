@@ -42,6 +42,8 @@ import {
 import { isStale } from "../orientation/staleness.js";
 import { formatFitResult, parseAvailableMinutesRequest, selectFittingEntries, type FitToGapResult } from "../orientation/fit.js";
 import { buildTimeline, renderTimelineAscii, type Timeline } from "../orientation/timeline.js";
+import { listMonitoredProjects } from "./workMonitor.js";
+import { formatWorkingCopySafetyLines, scanProjectWorkingCopies } from "../workMonitoring/scanner.js";
 import {
   OrientationEntryNotFoundError,
   OrientationPacketAlreadySentError,
@@ -255,7 +257,15 @@ export function runOrientationPacketComposeCommand(
     // One new input: what today actually holds. Absent -> the packet composes
     // exactly as it did before capacity existed.
     const capacity = findDailyCapacity(db, localDate);
-    const composed = composePacket(entries, now, { dailyAdvantageLine, capacity });
+    let workSafetyLines: string[];
+    try {
+      const workSnapshot = scanProjectWorkingCopies(listMonitoredProjects(db));
+      workSafetyLines = formatWorkingCopySafetyLines(workSnapshot);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      workSafetyLines = [`Working-copy safety scan could not complete: ${detail}`];
+    }
+    const composed = composePacket(entries, now, { dailyAdvantageLine, capacity, workSafetyLines });
 
     try {
       const packet = createOrientationPacket(db, {

@@ -1013,3 +1013,19 @@ pnpm arcadia orientation reply "today I have one client session and about an hou
 pnpm arcadia orientation reply "I spent about an hour on the car mirror this morning" --workspace "$WORKSPACE"
 pnpm arcadia orientation reply "I have 20 minutes, what fits?" --workspace "$WORKSPACE"
 ```
+
+## Working-Copy Safety
+
+Scan every active Project's configured repository and all of its Git worktrees
+and unmerged local branches without changing repository state:
+
+```sh
+pnpm arcadia work monitor --workspace "$WORKSPACE"
+pnpm arcadia work monitor --workspace "$WORKSPACE" --json
+pnpm arcadia work monitor --workspace "$WORKSPACE" --no-pull-requests
+```
+
+The scan reports preservation (`UNSAVED`, `LOCAL ONLY`, `PUSHED`,
+`IN PR`, `LANDED`) separately from delivery (`WORKING`, `DRAFT`, `REVIEWABLE`,
+`MERGE-READY`, `BLOCKED`). GitHub lookup is best-effort and read-only; with
+`--no-pull-requests`, local Git evidence remains complete except for PR state.

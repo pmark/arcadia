@@ -33,6 +33,24 @@ claim about buttons already present in Mission Control.
 
 Use the **Ask** box for a new request that is not already an Action in Arcadia.
 
+## Protect active coding work
+
+The Morning Packet puts **Coding work safety** first whenever an active
+Project has uncommitted files, local-only commits, a pushed branch without a
+pull request, a detached working copy, or invalid repository configuration.
+Inspect the complete read-only snapshot with:
+
+```sh
+pnpm arcadia work monitor
+pnpm arcadia work monitor --json
+```
+
+Preservation and delivery are separate. `UNSAVED` and `LOCAL ONLY` mean work
+can still be lost; `PUSHED` means it is backed up, with the report separately
+stating whether an open PR was found. Use one branch and worktree per coding session, and leave
+every session merged or represented by at least a draft PR. The full recovery
+procedure is in `docs/working-copy-safety.md`.
+
 ## Compose a Project digest
 
 Use the advanced CLI when you want one narrative digest before automatic

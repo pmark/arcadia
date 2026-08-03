@@ -244,6 +244,7 @@ import {
   runWorkRunCommand,
   runWorkUpdateCommand
 } from "./commands/work.js";
+import { renderWorkMonitorSuccess, runWorkMonitorCommand } from "./commands/workMonitor.js";
 import {
   renderWorkflowListSuccess,
   renderWorkflowMatchSuccess,
@@ -1539,6 +1540,23 @@ export function buildProgram(): Command {
   );
 
   const work = program.command("work").description("Action commands");
+  addJsonOption(
+    work
+      .command("monitor")
+      .description("Read-only scan of Project working copies, branches, and pull-request preservation state")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--no-pull-requests", "Use local Git evidence only; do not query GitHub")
+  ).action((options: { workspace: string; pullRequests?: boolean; json?: boolean }) =>
+    runCliAction(
+      "work.monitor",
+      options,
+      () => runWorkMonitorCommand({
+        workspace: options.workspace,
+        includePullRequests: options.pullRequests
+      }),
+      renderWorkMonitorSuccess
+    )
+  );
   addJsonOption(
     work
       .command("list")

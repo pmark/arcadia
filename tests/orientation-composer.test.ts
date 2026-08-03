@@ -91,6 +91,15 @@ describe("orientation packet composition", () => {
     expect(body).toContain("Project work: Do the thing (Project X)");
   });
 
+  it("puts working-copy safety exceptions before the rest of the day", () => {
+    const { body } = composePacket([], now, {
+      workSafetyLines: ["Arcadia / main — 3 uncommitted paths. Preservation: UNSAVED; delivery: WORKING."]
+    });
+    expect(body).toContain("**Coding work safety**");
+    expect(body).toContain("Arcadia / main");
+    expect(body.indexOf("**Coding work safety**")).toBeLessThan(body.indexOf("Nothing pressing"));
+  });
+
   it("annotates a line with its size, and leaves un-sized lines exactly as before", () => {
     const sized = entry({ title: "Register kids for baseball", area: "family", effort: "quick" });
     const unsized = entry({ title: "Clean the house", area: "home" });
