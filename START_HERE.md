@@ -6,6 +6,8 @@ Open **System Status** at <http://127.0.0.1:3020/admin/status> when you need a q
 
 Open **Dispatch Journal** at <http://127.0.0.1:3020/admin/dispatch-journal> to see how often Arcadia refused to dispatch work, and which field in the managed documents blocked it. A field that blocks a large share of resolutions is either a rule worth relaxing or a habit worth fixing. It is read-only, like every other admin surface.
 
+Open **Outstanding PRs** at <http://127.0.0.1:3020/admin/pull-requests> to see every open pull request across configured Project repositories, grouped with its Project, branch, review/check state, and plain-English readiness rating. This view is read-only.
+
 ## Normal daily use
 
 1. Read **Today's Advantage**: one ready Action, its expected Artifact, and why it matters now.
@@ -64,6 +66,17 @@ can still be lost; `PUSHED` means it is backed up, with the report separately
 stating whether an open PR was found. Use one branch and worktree per coding session, and leave
 every session merged or represented by at least a draft PR. The full recovery
 procedure is in `docs/working-copy-safety.md`.
+
+Each newly composed Morning Packet also includes a clearly labelled, bounded
+local-AI perspective: one headline and one paragraph explaining what the
+recorded work means. If the local model is unavailable, the deterministic
+packet still composes and delivers. When workspace memory is enabled, the
+same packet is projected into `Arcadia/Records/Orientation/` in Obsidian.
+Backfill or verify any durable packet explicitly with:
+
+```sh
+pnpm arcadia orientation packet export <packet-id> --workspace "$WORKSPACE"
+```
 
 To shelve an idea until a concrete condition is true, use the existing Ask
 path with `--back-burner`. For example:

@@ -193,6 +193,18 @@ export interface NarrativeDigestRecordInput {
   project: { id: string; name: string; slug: string };
 }
 
+export interface OrientationPacketRecordInput {
+  packet: {
+    id: string;
+    localDate: string;
+    body: string;
+    createdAt: string;
+    discordMessageId: string | null;
+  };
+  /** Used when backfilling a packet that was composed before AI summaries existed. */
+  supplementalAiSummary?: { headline: string; paragraph: string } | null;
+}
+
 /**
  * Project a compiled progress review into the vault.
  *
@@ -339,6 +351,53 @@ export function exportNarrativeDigest(
   };
 }
 
+/** Project a durable Morning Packet into Obsidian without changing its sent Discord body. */
+export function exportOrientationPacket(
+  workspace: string,
+  input: OrientationPacketRecordInput,
+  options: { dryRun?: boolean } = {}
+): MemorySyncEntry | null {
+  const target = resolveVaultTarget(workspace);
+  if (!target) return null;
+  const orientationKey = input.packet.localDate;
+  const title = `Morning orientation — ${input.packet.localDate}`;
+  const recordPath = path.join(
+    target.recordsRoot,
+    "Orientation",
+    input.packet.localDate.slice(0, 4),
+    `${input.packet.localDate}-morning-orientation.md`
+  );
+  assertDestinationSafe(target, recordPath);
+  const current = existsSync(recordPath) && statSync(recordPath).isFile()
+    ? readFileSync(recordPath, "utf8")
+    : null;
+  const claimedKey = current?.match(/^arcadia_orientation_key:\s+"([^"]+)"$/m)?.[1] ?? null;
+  if (claimedKey && claimedKey !== orientationKey) {
+    throw validationError("Refusing to overwrite a vault Record owned by a different Morning Packet.", {
+      recordPath,
+      orientationKey,
+      claimedKey
+    });
+  }
+  const content = renderOrientationPacketRecord(input, title, orientationKey);
+  const contentHash = createHash("sha256").update(content.replace(/^content_sha256:.*$/m, "content_sha256:")).digest("hex");
+  const rendered = content.replace('content_sha256: "pending"', yaml("content_sha256", contentHash));
+  const claimedHash = current?.match(/^content_sha256:\s+"([0-9a-f]+)"$/m)?.[1] ?? null;
+  const status: MemorySyncStatus = current === null ? "created" : claimedHash === contentHash ? "skipped" : "updated";
+  if (options.dryRun !== true && status !== "skipped") {
+    atomicWrite(target, recordPath, rendered);
+    writeManagedReadme(target);
+  }
+  return {
+    artifactId: input.packet.id,
+    artifactTitle: title,
+    project: "Portfolio",
+    status,
+    recordPath,
+    error: null
+  };
+}
+
 /** Vault folder name for reviews that cover every Project rather than one. */
 const PORTFOLIO_SCOPE = "portfolio";
 
@@ -431,6 +490,51 @@ function renderNarrativeDigestRecord(
     `- Digest: ${input.digest.id}`,
     `- Artifact: ${input.artifact.id} (${input.artifact.path})`,
     "- SQLite and the source Artifact remain operational truth; this Record is a projection and is safe to delete.",
+    ""
+  ];
+  return `${lines.join("\n").replace(/\n+$/, "")}\n`;
+}
+
+function renderOrientationPacketRecord(
+  input: OrientationPacketRecordInput,
+  title: string,
+  orientationKey: string
+): string {
+  const hasEmbeddedAi = /^\*\*AI perspective\b/m.test(input.packet.body);
+  const supplemental = input.supplementalAiSummary;
+  const lines = [
+    "---",
+    "arcadia_record: true",
+    "record_type: morning_orientation",
+    yaml("arcadia_orientation_key", orientationKey),
+    yaml("arcadia_packet_id", input.packet.id),
+    yaml("local_date", input.packet.localDate),
+    yaml("created_at", input.packet.createdAt),
+    yamlNullable("discord_message_id", input.packet.discordMessageId),
+    `ai_summary: ${hasEmbeddedAi || supplemental ? "present" : "unavailable"}`,
+    'content_sha256: "pending"',
+    "---",
+    "",
+    `# ${title}`,
+    "",
+    ...(supplemental ? [
+      `## AI perspective — ${supplemental.headline}`,
+      "",
+      supplemental.paragraph,
+      ""
+    ] : []),
+    "## Morning Packet",
+    "",
+    canonicalMarkdown(input.packet.body).trimEnd(),
+    "",
+    "## Provenance",
+    "",
+    "- The Morning narrative and planning sections were compiled deterministically from durable Arcadia records.",
+    ...(hasEmbeddedAi || supplemental
+      ? ["- The clearly labelled AI perspective used Arcadia's bounded local-preferred Intelligence route; it may interpret implications but must not invent activity."]
+      : ["- AI perspective was unavailable; the deterministic packet remains complete and deliverable."]),
+    `- Packet: ${input.packet.id}`,
+    "- SQLite remains operational truth; this Record is a projection and is safe to delete.",
     ""
   ];
   return `${lines.join("\n").replace(/\n+$/, "")}\n`;

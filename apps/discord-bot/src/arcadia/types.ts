@@ -307,6 +307,8 @@ export interface OrientationPacket {
 export interface OrientationPacketComposeData {
   packet: OrientationPacket | null;
   alreadySent: boolean;
+  aiSummary: { headline: string; paragraph: string } | null;
+  memory: { status: string; recordPath: string | null } | null;
 }
 
 export interface OrientationPacketMarkSentData {

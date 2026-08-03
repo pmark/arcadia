@@ -268,6 +268,20 @@ pnpm arcadia capture \
   --json
 ```
 
+## Export A Morning Packet To Obsidian
+
+```sh
+pnpm arcadia orientation packet export <packet-id> --workspace "$WORKSPACE" --json
+```
+
+New Morning Packets automatically add one bounded local-AI headline and one
+why-it-matters paragraph after the deterministic narrative, then project the
+packet into `Arcadia/Records/Orientation/` when memory is enabled. A failed AI
+call or vault write is reported as a warning and never prevents deterministic
+Discord delivery. The explicit command backfills an existing packet and adds
+the AI perspective to its Obsidian Record without mutating an already-sent
+Discord message.
+
 ## Compose A Project Digest
 
 ```sh
@@ -1131,3 +1145,12 @@ The scan reports preservation (`UNSAVED`, `LOCAL ONLY`, `PUSHED`,
 `IN PR`, `LANDED`) separately from delivery (`WORKING`, `DRAFT`, `REVIEWABLE`,
 `MERGE-READY`, `BLOCKED`). GitHub lookup is best-effort and read-only; with
 `--no-pull-requests`, local Git evidence remains complete except for PR state.
+
+List every open GitHub pull request across Project repositories with
+plain-English readiness ratings. This is read-only and reports repository
+configuration or GitHub lookup errors explicitly:
+
+```sh
+pnpm arcadia work prs --workspace "$WORKSPACE"
+pnpm arcadia work prs --workspace "$WORKSPACE" --json
+```

@@ -8,6 +8,23 @@ updated: 2026-08-02
 
 # Mission Log: Arcadia
 
+## 2026-08-03 — Made the morning narrative durable and added AI perspective
+
+- **Did:** Added an ownership-checked Obsidian projection for Morning Packets,
+  an explicit `orientation packet export` backfill command, and a bounded
+  unpaid local-preferred AI headline plus paragraph after the deterministic
+  narrative. Composition checks the once-per-day row before model work and
+  keeps Discord delivery intact when AI or vault memory is unavailable.
+- **Result:** Today's already-sent packet now exists as a real portfolio Record
+  under `Arcadia/Records/Orientation/2026/`, including a generated AI
+  perspective and provenance. Focused request, composition, and vault tests
+  pass.
+- **Next:** Schedule calendar-aligned daily, weekly, and monthly Project and
+  portfolio digests so the broader stories arrive unattended.
+- **Blockers:** None in the feature. The local text route had drifted to a
+  retired MLX endpoint; its operator configuration was corrected to the
+  installed Ollama model.
+
 ## 2026-08-02 — Turned the morning Orientation Packet into a work narrative
 
 - **Did:** Added a deterministic narrative lead to the existing catch-up-safe

@@ -178,6 +178,7 @@ import {
   renderOrientationEntryListSuccess,
   renderOrientationEntrySuccess,
   renderOrientationPacketComposeSuccess,
+  renderOrientationPacketExportSuccess,
   renderOrientationCapacityClearSuccess,
   renderOrientationCapacityShowSuccess,
   renderOrientationCapacitySuccess,
@@ -197,6 +198,7 @@ import {
   runOrientationEntryUpdateCommand,
   runOrientationFitsCommand,
   runOrientationPacketComposeCommand,
+  runOrientationPacketExportCommand,
   runOrientationPacketListCommand,
   runOrientationPacketMarkSentCommand,
   runOrientationReplyCommand,
@@ -251,6 +253,7 @@ import {
   runWorkUpdateCommand
 } from "./commands/work.js";
 import { renderWorkMonitorSuccess, runWorkMonitorCommand } from "./commands/workMonitor.js";
+import { renderWorkPullRequestsSuccess, runWorkPullRequestsCommand } from "./commands/workPullRequests.js";
 import {
   renderWorkflowListSuccess,
   renderWorkflowMatchSuccess,
@@ -1613,6 +1616,19 @@ export function buildProgram(): Command {
   );
   addJsonOption(
     work
+      .command("prs")
+      .description("List outstanding GitHub pull requests across Project repositories")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "work.pull-requests",
+      options,
+      () => runWorkPullRequestsCommand(options),
+      renderWorkPullRequestsSuccess
+    )
+  );
+  addJsonOption(
+    work
       .command("list")
       .description("List Actions")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
@@ -2481,6 +2497,20 @@ export function buildProgram(): Command {
         includeDailyAdvantage: options.dailyAdvantage
       }),
       renderOrientationPacketComposeSuccess
+    )
+  );
+
+  addJsonOption(
+    orientationPacket
+      .command("export <packetId>")
+      .description("Project a Morning Packet into the configured Obsidian vault, adding a local-AI perspective when absent")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((packetId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "orientation.packet.export",
+      options,
+      () => runOrientationPacketExportCommand({ workspace: options.workspace, packetId }),
+      renderOrientationPacketExportSuccess
     )
   );
 

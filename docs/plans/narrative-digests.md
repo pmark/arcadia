@@ -7,8 +7,8 @@ status: active
 milestone: Arcadia narrates its own recent history automatically, for itself and every Project it manages
 current_action: schedule-portfolio-digests
 token_impact: large
-token_budget: "Composition uses one bounded local-preferred narration per Project and period; gathering, deduplication, export, scheduling, and empty-window handling are deterministic."
-updated: 2026-08-02
+token_budget: "Composition uses one bounded local-preferred narration per Project and period plus one bounded daily Morning Packet perspective; gathering, deduplication, export, scheduling, fallback delivery, and empty-window handling are deterministic."
+updated: 2026-08-03
 actions:
   - id: compose-project-digest
     title: Compose one Project's narrative digest for a window, narrated by local AI
