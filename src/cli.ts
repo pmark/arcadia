@@ -99,6 +99,7 @@ import {
   runExperimentBriefCommand
 } from "./commands/experiment.js";
 import { runLogCreateCommand } from "./commands/log.js";
+import { renderGoSuccess, runGoCommand } from "./commands/go.js";
 import {
   renderMilestoneCompleteSuccess,
   renderMilestoneCreateSuccess,
@@ -2071,6 +2072,23 @@ export function buildProgram(): Command {
       renderNextHistorySuccess
     );
   });
+
+  addJsonOption(
+    program
+      .command("go")
+      .description("Safely reconcile a completed agent worktree and verify the next governed handoff")
+      .option("--repo <path>", "Target repository or any of its worktrees", process.cwd())
+      .option("--source <path>", "Completed agent worktree to reconcile; defaults to --repo")
+      .option("--agent <agent>", "Prepare the next isolated worktree: codex or claude")
+      .option("--apply", "Fast-forward and retire the source worktree; without it nothing is changed")
+  ).action((options: { repo?: string; source?: string; agent?: string; apply?: boolean; json?: boolean }) =>
+    runCliAction("go", options, () => {
+      if (options.agent !== undefined && options.agent !== "codex" && options.agent !== "claude") {
+        throw validationError("--agent must be codex or claude.", { agent: options.agent });
+      }
+      return runGoCommand({ ...options, agent: options.agent });
+    }, renderGoSuccess)
+  );
 
   const docs = program.command("docs").description("Managed documentation across every Project repository");
   addJsonOption(

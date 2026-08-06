@@ -3,10 +3,31 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-02
+updated: 2026-08-05
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-05 — Made coding-agent continuation one safe command
+
+- **Did:** Added the preview-first `arcadia go` command and approved Decision
+  0009. It validates a named finished worktree, strict fast-forward ancestry,
+  agent-owned branch identity, and the repository's exact Arcadia dispatch
+  before changing anything. On `--apply` it advances the local base, retires
+  only the clean merged source, and can prepare a uniquely named Codex or
+  Claude Code worktree from that updated local base. Created one personal
+  Agent Skills-compatible `arcadia-go` skill shared by Codex and Claude Code.
+- **Result:** The branch-already-attached failure no longer requires manual Git
+  recovery. Dirty, detached, divergent, non-agent-owned, and ceremonially
+  blocked repositories refuse without mutation. Seven temporary-repository
+  tests cover preview, safe linked and primary-worktree cleanup, next-agent
+  preparation, and the important refusal paths.
+- **Next:** Invoke `arcadia go` in either agent after a completed task; the
+  skill previews, applies only a safe reconciliation, and enters or launches
+  the prepared worktree with `arcadia advance`.
+- **Blockers:** None in the command or shared skill. `arcadia go` deliberately
+  surfaces blockers from the target Project instead of repairing unrelated
+  documents or active work automatically.
 
 ## 2026-08-03 — Made the morning narrative durable and added AI perspective
 
