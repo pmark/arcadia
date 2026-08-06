@@ -8,6 +8,7 @@ export function resolveIntelligenceResourceGroup(
   route: ResolvedIntelligenceRoute,
 ): IntelligenceResourceGroup {
   if (route.executor === "codex-cli") return "codex-cli";
+  if (route.executor === "claude-code-cli") return "claude-code-cli";
   if (route.executor === "comfyui") return "comfyui";
   if (route.executor === "speech") {
     return route.location === "local" ? "speech-local" : "speech-cloud";
