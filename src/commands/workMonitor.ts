@@ -12,9 +12,12 @@ export interface WorkMonitorCommandData {
   attentionLines: string[];
 }
 
-export function listMonitoredProjects(db: Database.Database): WorkMonitorProject[] {
+export function listMonitoredProjects(
+  db: Database.Database,
+  options: { includeInactive?: boolean } = {}
+): WorkMonitorProject[] {
   return listProjects(db)
-    .filter((project) => project.status === "active")
+    .filter((project) => options.includeInactive || project.status === "active")
     .map((project) => ({
       id: project.id,
       name: project.name,
