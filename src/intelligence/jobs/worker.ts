@@ -5,6 +5,11 @@ import PQueue from "p-queue";
 import { nowIso } from "../../utils/time.js";
 import type { IntelligenceArtifactStore } from "../artifacts/store.js";
 import {
+  ClaudeCodeTextExecutionBlockedError,
+  ClaudeCodeTextExecutionFailedError,
+  type ClaudeCodeTextExecutor,
+} from "../claudeCode/textExecutor.js";
+import {
   CodexImageExecutionBlockedError,
   CodexImageExecutionFailedError,
   type CodexImageExecutor,
@@ -77,6 +82,7 @@ export class IntelligenceWorker {
     private readonly _codexTextExecutor?: CodexTextExecutor,
     private readonly _speechClient?: SpeechClient,
     private readonly _comfyUiImageExecutor?: ComfyUiImageExecutor,
+    private readonly _claudeCodeTextExecutor?: ClaudeCodeTextExecutor,
     workerId: string = randomUUID(),
   ) {
     this.workerId = workerId;
@@ -175,7 +181,9 @@ export class IntelligenceWorker {
           ? await this.executeImageJob(job, resolution.route)
           : resolution.route.executor === "codex-cli"
             ? await this.executeCodexTextJob(job)
-            : await this.executeTextJob(job, resolution.route);
+            : resolution.route.executor === "claude-code-cli"
+              ? await this.executeClaudeCodeTextJob(job)
+              : await this.executeTextJob(job, resolution.route);
 
       const validation = await validateOutput(output, job.request.outputContract);
       if (!validation.passed) {
@@ -235,6 +243,7 @@ export class IntelligenceWorker {
       if (
         error instanceof CodexImageExecutionBlockedError ||
         error instanceof CodexTextExecutionBlockedError ||
+        error instanceof ClaudeCodeTextExecutionBlockedError ||
         error instanceof ComfyUiExecutionBlockedError
       ) {
         return this._repository.blockJob(
@@ -247,6 +256,7 @@ export class IntelligenceWorker {
       if (
         error instanceof CodexImageExecutionFailedError ||
         error instanceof CodexTextExecutionFailedError ||
+        error instanceof ClaudeCodeTextExecutionFailedError ||
         error instanceof ComfyUiExecutionFailedError
       ) {
         return this._repository.failJob(
@@ -287,6 +297,18 @@ export class IntelligenceWorker {
       );
     }
     return this._codexTextExecutor.execute(job);
+  }
+
+  private async executeClaudeCodeTextJob(
+    job: IntelligenceJob,
+  ): Promise<{ output: JsonValue; usage?: IntelligenceUsage }> {
+    if (!this._claudeCodeTextExecutor) {
+      throw new ClaudeCodeTextExecutionBlockedError(
+        "CLAUDE_CODE_CLI_UNAVAILABLE",
+        "Arcadia Intelligence has no Claude Code text executor configured.",
+      );
+    }
+    return this._claudeCodeTextExecutor.execute(job);
   }
 
   private async executeImageJob(

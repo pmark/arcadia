@@ -6,13 +6,19 @@ import type { IntelligenceCapability, IntelligenceProfile } from "../types.js";
  * deployment-time fact about a specific route.
  */
 export type IntelligenceRouteLocation = "local" | "cloud";
-export type IntelligenceRouteExecutor = "litellm" | "codex-cli" | "comfyui" | "speech";
+export type IntelligenceRouteExecutor =
+  | "litellm"
+  | "codex-cli"
+  | "claude-code-cli"
+  | "comfyui"
+  | "speech";
 
 export const INTELLIGENCE_RESOURCE_GROUPS = [
   "litellm-local",
   "litellm-cloud-text",
   "litellm-cloud-image",
   "codex-cli",
+  "claude-code-cli",
   "comfyui",
   "speech-local",
   "speech-cloud",
@@ -112,6 +118,12 @@ export type IntelligenceV01Config = {
   };
 
   codexCli?: {
+    command: string;
+    args: string[];
+    timeoutMs: number;
+  };
+
+  claudeCodeCli?: {
     command: string;
     args: string[];
     timeoutMs: number;

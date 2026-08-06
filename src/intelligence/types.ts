@@ -63,6 +63,7 @@ export const INTELLIGENCE_EXECUTION_TARGETS = [
   "local",
   "cloud",
   "codex",
+  "claude-code",
 ] as const;
 export type IntelligenceExecutionTarget =
   (typeof INTELLIGENCE_EXECUTION_TARGETS)[number];

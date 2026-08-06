@@ -38,6 +38,18 @@ const DEFAULT_CODEX_CLI = {
   ],
   timeoutMs: 120_000,
 };
+const DEFAULT_CLAUDE_CODE_CLI = {
+  command: "claude",
+  args: [
+    "--print",
+    "--output-format",
+    "json",
+    "--permission-mode",
+    "acceptEdits",
+    "--no-session-persistence",
+  ],
+  timeoutMs: 120_000,
+};
 
 export const intelligenceSchedulerDefaults: IntelligenceSchedulerConfig = {
   scanLimit: 100,
@@ -46,6 +58,7 @@ export const intelligenceSchedulerDefaults: IntelligenceSchedulerConfig = {
     "litellm-cloud-text": { concurrency: 4 },
     "litellm-cloud-image": { concurrency: 2 },
     "codex-cli": { concurrency: 3 },
+    "claude-code-cli": { concurrency: 3 },
     comfyui: { concurrency: 1 },
     "speech-local": { concurrency: 1 },
     "speech-cloud": { concurrency: 4 },
@@ -114,6 +127,17 @@ function codexTextRouteEntries(routeName: string): IntelligenceRouteEntry[] {
     }),
     id: `arcadia.text.generate.local.${profile}.codex`,
     executor: "codex-cli" as const,
+    metadata: { supportsStructuredOutput: true, costClass: "free" as const },
+  }));
+}
+
+function claudeCodeTextRouteEntries(routeName: string): IntelligenceRouteEntry[] {
+  return LOCAL_TEXT_PROFILES.map((profile) => ({
+    ...buildEntry("text.generate", "local", profile, routeName, false, {
+      supportsStructuredOutput: true,
+    }),
+    id: `arcadia.text.generate.local.${profile}.claude-code`,
+    executor: "claude-code-cli" as const,
     metadata: { supportsStructuredOutput: true, costClass: "free" as const },
   }));
 }
@@ -224,12 +248,14 @@ export function buildDefaultRoutes(options: {
   codexImageRoute?: string;
   comfyUiImageRoute?: string;
   codexTextRoute?: string;
+  claudeCodeTextRoute?: string;
   localSpeechRoute?: string;
   cloudSpeechRoute?: string;
 }): IntelligenceRouteEntry[] {
   return [
     ...textRouteEntries("local", options.localTextRoute, LOCAL_TEXT_PROFILES, false),
     ...(options.codexTextRoute ? codexTextRouteEntries(options.codexTextRoute) : []),
+    ...(options.claudeCodeTextRoute ? claudeCodeTextRouteEntries(options.claudeCodeTextRoute) : []),
     ...textRouteEntries("cloud", options.cloudTextRoute, CLOUD_TEXT_PROFILES, true),
     ...comfyUiImageRouteEntries(options.comfyUiImageRoute),
     ...codexImageRouteEntries(options.codexImageRoute),
@@ -247,6 +273,7 @@ export const intelligenceV01Defaults: IntelligenceV01Config = {
   leaseDurationMs: 30_000,
   scheduler: intelligenceSchedulerDefaults,
   codexCli: DEFAULT_CODEX_CLI,
+  claudeCodeCli: DEFAULT_CLAUDE_CODE_CLI,
   speech: {
     voiceMap: { ...DEFAULT_VOICE_MAP },
     timeoutMs: 60_000,
@@ -269,6 +296,7 @@ export function loadIntelligenceConfig(
   const codexImageRoute = env.ARCADIA_CODEX_IMAGE_ROUTE?.trim() || undefined;
   const comfyUiImageRoute = env.ARCADIA_COMFYUI_IMAGE_ROUTE?.trim() || undefined;
   const codexTextRoute = env.ARCADIA_CODEX_TEXT_ROUTE?.trim() || "codex-cli";
+  const claudeCodeTextRoute = env.ARCADIA_CLAUDE_CODE_TEXT_ROUTE?.trim() || "claude-code-cli";
   const localSpeechRoute = env.ARCADIA_SPEECH_LOCAL_ROUTE?.trim() || undefined;
   const cloudSpeechRoute = env.ARCADIA_SPEECH_CLOUD_ROUTE?.trim() || undefined;
 
@@ -280,6 +308,7 @@ export function loadIntelligenceConfig(
       codexImageRoute,
       comfyUiImageRoute,
       codexTextRoute,
+      claudeCodeTextRoute,
       localSpeechRoute,
       cloudSpeechRoute,
     }),
@@ -319,6 +348,12 @@ export function loadIntelligenceConfig(
             intelligenceSchedulerDefaults.pools["codex-cli"].concurrency,
           ),
         },
+        "claude-code-cli": {
+          concurrency: readPositiveInteger(
+            env.ARCADIA_INTELLIGENCE_CLAUDE_CODE_CONCURRENCY,
+            intelligenceSchedulerDefaults.pools["claude-code-cli"].concurrency,
+          ),
+        },
         comfyui: {
           concurrency: readPositiveInteger(
             env.ARCADIA_INTELLIGENCE_COMFYUI_CONCURRENCY,
@@ -356,6 +391,17 @@ export function loadIntelligenceConfig(
       timeoutMs: env.ARCADIA_CODEX_CLI_TIMEOUT_MS
         ? Number(env.ARCADIA_CODEX_CLI_TIMEOUT_MS)
         : DEFAULT_CODEX_CLI.timeoutMs,
+    },
+    claudeCodeCli: {
+      command:
+        env.ARCADIA_CLAUDE_CODE_CLI_COMMAND?.trim() ??
+        DEFAULT_CLAUDE_CODE_CLI.command,
+      args: env.ARCADIA_CLAUDE_CODE_CLI_ARGS
+        ? JSON.parse(env.ARCADIA_CLAUDE_CODE_CLI_ARGS) as string[]
+        : DEFAULT_CLAUDE_CODE_CLI.args,
+      timeoutMs: env.ARCADIA_CLAUDE_CODE_CLI_TIMEOUT_MS
+        ? Number(env.ARCADIA_CLAUDE_CODE_CLI_TIMEOUT_MS)
+        : DEFAULT_CLAUDE_CODE_CLI.timeoutMs,
     },
     comfyUi: {
       baseUrl: env.ARCADIA_COMFYUI_BASE_URL?.trim() || "http://127.0.0.1:8188",

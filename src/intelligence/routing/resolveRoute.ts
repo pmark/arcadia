@@ -19,7 +19,7 @@ export type ResolvedIntelligenceRoute = {
   location: IntelligenceRouteLocation;
   profile: IntelligenceProfile;
   liteLlmRoute: string;
-  executor: "litellm" | "codex-cli" | "comfyui" | "speech";
+  executor: "litellm" | "codex-cli" | "claude-code-cli" | "comfyui" | "speech";
   requiresPaidUsage: boolean;
 };
 
@@ -67,12 +67,14 @@ export function resolveIntelligenceRoute(
   const candidateLocations = EXECUTION_LOCATIONS[requested.execution];
   const targetExecutor = requested.executionTarget === "codex"
     ? "codex-cli"
-    : requested.executionTarget === "local" || requested.executionTarget === "cloud"
-      // Speech routes run on the dedicated OpenAI-compatible "speech" executor,
-      // not the generic LiteLLM transport; a local/cloud target for the speech
-      // capability must therefore match "speech", not "litellm".
-      ? (requested.capability === "audio.speech.generate" ? "speech" : "litellm")
-      : undefined;
+    : requested.executionTarget === "claude-code"
+      ? "claude-code-cli"
+      : requested.executionTarget === "local" || requested.executionTarget === "cloud"
+        // Speech routes run on the dedicated OpenAI-compatible "speech" executor,
+        // not the generic LiteLLM transport; a local/cloud target for the speech
+        // capability must therefore match "speech", not "litellm".
+        ? (requested.capability === "audio.speech.generate" ? "speech" : "litellm")
+        : undefined;
 
   for (const location of candidateLocations) {
     const entry = registry.find(

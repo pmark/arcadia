@@ -11,6 +11,7 @@ import { openDatabase } from "../db/connection.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import { createIntelligenceServer } from "../intelligence/api/server.js";
 import { createSqliteIntelligenceArtifactStore } from "../intelligence/artifacts/store.js";
+import { createClaudeCodeCliTextExecutor } from "../intelligence/claudeCode/textExecutor.js";
 import { createCodexCliImageExecutor } from "../intelligence/codex/imageExecutor.js";
 import { createCodexCliTextExecutor } from "../intelligence/codex/textExecutor.js";
 import { createComfyUiImageExecutor } from "../intelligence/comfyui/imageExecutor.js";
@@ -75,6 +76,10 @@ export function runIntelligenceServeCommand(options: IntelligenceServeOptions): 
     config,
   });
   const codexTextExecutor = createCodexCliTextExecutor({ workspaceRoot: workspacePath, config });
+  const claudeCodeTextExecutor = createClaudeCodeCliTextExecutor({
+    workspaceRoot: workspacePath,
+    config,
+  });
   const comfyUiImageExecutor = createComfyUiImageExecutor({
     workspaceRoot: workspacePath,
     artifactStore,
@@ -94,6 +99,7 @@ export function runIntelligenceServeCommand(options: IntelligenceServeOptions): 
     codexTextExecutor,
     speechClient,
     comfyUiImageExecutor,
+    claudeCodeTextExecutor,
   );
   const stopWorker = worker.start({
     heartbeatPath: path.join(workspacePath, ".arcadia", "intelligence-worker.heartbeat"),
