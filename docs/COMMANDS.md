@@ -1155,6 +1155,48 @@ The scan reports preservation (`UNSAVED`, `LOCAL ONLY`, `PUSHED`,
 `MERGE-READY`, `BLOCKED`). GitHub lookup is best-effort and read-only; with
 `--no-pull-requests`, local Git evidence remains complete except for PR state.
 
+Reconcile one completed coding-agent worktree and verify the repository's next
+governed handoff:
+
+```sh
+pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree
+pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree --agent codex --apply
+pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree --agent claude --apply
+pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree --agent claude --apply --model claude-opus-5 --effort high
+pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree --json
+```
+
+The first command is a deterministic preview. `--apply` is accepted only when:
+
+- the source and any checked-out base worktree are clean;
+- the source has a named agent-owned branch (`codex/`, `claude/`, `agent/`, or
+  Claude Code's `worktree-` prefix);
+- the local base branch is an ancestor of the source, so integration is a
+  strict fast-forward;
+- the repository resolves exactly one dispatchable Arcadia Action with no open
+  Decision or document blocker; and
+- the source is neither detached nor historically divergent.
+
+On success, Arcadia fast-forwards the local base branch, removes a linked
+source worktree or switches a primary task checkout back to the base branch,
+deletes only the now-merged source branch, prunes worktree metadata, rechecks
+dispatch, and reports the base ref plus the `arcadia advance` handoff. With
+`--agent codex` or `--agent claude`, it also creates a uniquely named isolated
+worktree from that updated local base and prints an exact launch command,
+pinned to a model: `--model` on the command line, else the plan's
+`recommended_model` (and optional `recommended_reasoning_effort`), read from
+the plan as it exists *after* the fast-forward — the recommendation itself may
+be new content the merge just introduced. Neither resolving is a refusal;
+Arcadia will not launch an agent session unpinned. That refusal does not
+undo an already-completed fast-forward, since the two are independent
+outcomes: retiring the finished worktree is valid on its own, with or without
+a next agent session. It does not stage, commit, reset, force-merge, push,
+open a PR, or launch an agent process implicitly.
+
+This command intentionally evaluates only the named source worktree. Other
+worktrees remain untouched. Unsafe source state is a refusal with an exact
+remedy, not permission to clean it automatically.
+
 List every open GitHub pull request across Project repositories with
 plain-English readiness ratings. This is read-only and reports repository
 configuration or GitHub lookup errors explicitly:

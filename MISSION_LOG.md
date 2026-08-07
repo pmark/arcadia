@@ -3,10 +3,58 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-02
+updated: 2026-08-07
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-07 — Pinned the model on every agent handoff
+
+- **Did:** Added Decision 0010 and made `recommended_model`/
+  `recommended_reasoning_effort` real, parsed plan fields instead of decorative
+  ones only one plan ever used. `arcadia go --apply --agent <x>` now resolves
+  the launch model from `--model`, else the plan's recommendation, and refuses
+  to launch a session unpinned when neither exists. Effort follows the same
+  precedence but stays optional. Added `--model`/`--effort` CLI overrides.
+- **Result:** The gap this closes was found live: an operator asked `go` to
+  hand off to a new session, then asked which model it would use — and the
+  honest answer was that nothing chose one, and the plan being handed off
+  didn't declare a preference either. Now every `--agent` handoff carries a
+  stated, recorded model choice or refuses with a named remedy. The model
+  check deliberately runs after the fast-forward, since a plan's own
+  recommendation must be read from its state *after* the merge that may have
+  just introduced it — proven true immediately: the calling project's plan
+  had no recommendation until a commit inside the very merge being
+  reconciled added one. That ordering means an unresolved model does not
+  roll back an already-completed worktree retirement; Decision 0009 already
+  treats retiring the source and preparing the next worktree as independent
+  outcomes, and the refusal message says explicitly nothing needs to be
+  undone. Full suite green (760 passed, 2 skipped, 74 files) after the change.
+- **Next:** None queued for this decision. The operator separately raised a
+  larger request — a managed coding-agent job queue with monitored execution
+  and Discord alerting on activity needing input — which is out of scope here
+  and needs its own investigation before any design.
+
+## 2026-08-05 — Made coding-agent continuation one safe command
+
+- **Did:** Added the preview-first `arcadia go` command and approved Decision
+  0009. It validates a named finished worktree, strict fast-forward ancestry,
+  agent-owned branch identity, and the repository's exact Arcadia dispatch
+  before changing anything. On `--apply` it advances the local base, retires
+  only the clean merged source, and can prepare a uniquely named Codex or
+  Claude Code worktree from that updated local base. Created one personal
+  Agent Skills-compatible `arcadia-go` skill shared by Codex and Claude Code.
+- **Result:** The branch-already-attached failure no longer requires manual Git
+  recovery. Dirty, detached, divergent, non-agent-owned, and ceremonially
+  blocked repositories refuse without mutation. Seven temporary-repository
+  tests cover preview, safe linked and primary-worktree cleanup, next-agent
+  preparation, and the important refusal paths.
+- **Next:** Invoke `arcadia go` in either agent after a completed task; the
+  skill previews, applies only a safe reconciliation, and enters or launches
+  the prepared worktree with `arcadia advance`.
+- **Blockers:** None in the command or shared skill. `arcadia go` deliberately
+  surfaces blockers from the target Project instead of repairing unrelated
+  documents or active work automatically.
 
 ## 2026-08-03 — Made the morning narrative durable and added AI perspective
 

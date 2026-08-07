@@ -153,6 +153,20 @@ export interface PlanDoc extends DocLocation {
   tokenImpact: TokenImpact;
   /** Human-readable boundary: what uses tokens, what does not, and how use is capped. */
   tokenBudget: string;
+  /**
+   * The model `arcadia go --apply --agent <x>` should launch the next session
+   * with, e.g. `claude-sonnet-5` or `gpt-5.6-sol`. Free-form: validated by the
+   * downstream agent CLI, not by Arcadia.
+   *
+   * Absent by default. `go` requires an explicit `--model` on the command line
+   * when neither this nor a CLI override resolves one, rather than launching
+   * an unpinned session silently.
+   */
+  recommendedModel: string | null;
+  /** The paired effort/reasoning level, e.g. `high` or `standard`. Optional
+   *  even when `recommendedModel` is set — omitted from the launch command
+   *  when absent, letting the agent CLI use its own default. */
+  recommendedReasoningEffort: string | null;
   updated: string;
   actions: PlanActionDoc[];
   questions: PlanQuestionDoc[];

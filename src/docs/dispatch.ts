@@ -30,6 +30,10 @@ export interface DispatchContext {
   planStatus: string;
   planTokenImpact: PlanDoc["tokenImpact"];
   planTokenBudget: string;
+  /** From the plan's `recommended_model`. Null when the plan does not declare one. */
+  planRecommendedModel: string | null;
+  /** From the plan's `recommended_reasoning_effort`. Null when not declared. */
+  planRecommendedReasoningEffort: string | null;
   milestone: string | null;
   action: PlanActionDoc;
   actionPath: string;
@@ -237,6 +241,8 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
     planStatus: plan.status,
     planTokenImpact: plan.tokenImpact,
     planTokenBudget: plan.tokenBudget,
+    planRecommendedModel: plan.recommendedModel,
+    planRecommendedReasoningEffort: plan.recommendedReasoningEffort,
     milestone: plan.milestone ?? project.milestone,
     action,
     actionPath: plan.relativePath,
