@@ -402,6 +402,26 @@ describe("ingress viewer actions", () => {
     });
   });
 
+  it("requeues a transient iCloud read failure instead of leaving the recording failed", () => {
+    const workspace = initializedWorkspace();
+    const ingressRoot = initializedIngressRoot();
+    const failedDirectory = path.join(ingressRoot, "iCloudIdeas", "Failed");
+    const failedRecording = path.join(failedDirectory, "Good Times.m4a");
+    writeFileSync(failedRecording, "recording", "utf8");
+    writeFileSync(path.join(failedDirectory, "Good Times.error.json"), JSON.stringify({
+      status: "failed",
+      finalPath: failedRecording,
+      error: { details: { cause: "Unknown system error -11: Unknown system error -11, read" } }
+    }), "utf8");
+
+    const result = runIngressProcessCommand({ workspace, ingressRoot, runSafe: true, stableSeconds: 30 });
+
+    expect(result.data.counts).toMatchObject({ discovered: 1, pending: 1, failed: 0 });
+    expect(existsSync(failedRecording)).toBe(false);
+    expect(existsSync(path.join(ingressRoot, "iCloudIdeas", "In", "Good Times.m4a"))).toBe(true);
+    expect(existsSync(path.join(failedDirectory, "Good Times.error.json"))).toBe(true);
+  });
+
   it("lists visible files in In with media metadata without treating them as process candidates", () => {
     const workspace = initializedWorkspace();
     const ingressRoot = initializedIngressRoot();

@@ -1,13 +1,17 @@
 import {
+  closeSync,
   existsSync,
   copyFileSync,
   mkdirSync,
+  openSync,
   readdirSync,
+  readSync,
   readFileSync,
   renameSync,
   statSync,
   unlinkSync,
-  writeFileSync
+  writeFileSync,
+  type Dirent
 } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -337,37 +341,39 @@ function listCurrentActivityFiles(
   workspace: string,
   source: string
 ): IngressActivityItem[] {
-  if (!existsSync(directory)) return [];
-  return readdirSync(directory, { withFileTypes: true })
+  return readableDirectoryEntries(directory)
     .filter((entry) => entry.isFile() && !entry.name.startsWith("."))
-    .map((entry) => {
+    .flatMap((entry) => {
       const filePath = path.join(directory, entry.name);
-      const stats = statSync(filePath);
-      const workflow = matchWorkflowDefinition(workspace, filePath, source);
-      const status: IngressActivityStatus = location === "processing" ? "processing" : "pending";
-      return {
-        id: filePath,
-        fileName: entry.name,
-        status,
-        location,
-        timestamp: new Date(stats.mtimeMs).toISOString(),
-        path: filePath,
-        summary: location === "processing"
-          ? workflow ? `Running ${workflow.name}.` : "Being processed."
-          : workflow ? `Waiting for ${workflow.name}.` : "Waiting for ingress processing.",
-        workflowId: workflow?.id ?? null,
-        runId: null,
-        runManifestPath: null,
-        artifactCount: 0,
-        failureReason: null
-      } satisfies IngressActivityItem;
+      try {
+        const stats = statSync(filePath);
+        const workflow = matchWorkflowDefinition(workspace, filePath, source);
+        const status: IngressActivityStatus = location === "processing" ? "processing" : "pending";
+        return [{
+          id: filePath,
+          fileName: entry.name,
+          status,
+          location,
+          timestamp: new Date(stats.mtimeMs).toISOString(),
+          path: filePath,
+          summary: location === "processing"
+            ? workflow ? `Running ${workflow.name}.` : "Being processed."
+            : workflow ? `Waiting for ${workflow.name}.` : "Waiting for ingress processing.",
+          workflowId: workflow?.id ?? null,
+          runId: null,
+          runManifestPath: null,
+          artifactCount: 0,
+          failureReason: null
+        } satisfies IngressActivityItem];
+      } catch {
+        return [];
+      }
     });
 }
 
 function listIngressSidecars(directory: string, location: "done" | "failed"): IngressActivityItem[] {
-  if (!existsSync(directory)) return [];
   const sidecars: IngressActivityItem[] = [];
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+  for (const entry of readableDirectoryEntries(directory)) {
     const filePath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
       sidecars.push(...listIngressSidecars(filePath, location));
@@ -375,7 +381,12 @@ function listIngressSidecars(directory: string, location: "done" | "failed"): In
     }
     if (!entry.isFile() || (!entry.name.endsWith(".response.json") && !entry.name.endsWith(".error.json"))) continue;
     const record = readJsonRecord(filePath);
-    const stats = statSync(filePath);
+    let stats: ReturnType<typeof statSync>;
+    try {
+      stats = statSync(filePath);
+    } catch {
+      continue;
+    }
     const run = isRecord(record?.run) ? record.run : null;
     const files = Array.isArray(run?.files) ? run.files : [];
     const status = record?.status === "failed"
@@ -453,6 +464,15 @@ function readJsonRecord(filePath: string): Record<string, unknown> | null {
     return isRecord(value) ? value : null;
   } catch {
     return null;
+  }
+}
+
+function readableDirectoryEntries(directory: string): Dirent[] {
+  if (!existsSync(directory)) return [];
+  try {
+    return readdirSync(directory, { withFileTypes: true });
+  } catch {
+    return [];
   }
 }
 
@@ -625,6 +645,7 @@ export function runIngressProcessCommand(options: IngressProcessOptions): Comman
   if (!dryRun) {
     ensureIngressDirectories(directories);
     stageRootIngressFiles(root, directories.in);
+    requeueTransientICloudFailures(directories);
   }
 
   const candidates = listCandidates(
@@ -1079,6 +1100,16 @@ function processWorkflowCandidate(input: {
 
   let currentPath = candidate.absolutePath;
   try {
+    const readiness = ensureICloudRecordingReadable(currentPath);
+    if (!readiness.ready) {
+      return {
+        file: candidate.absolutePath,
+        status: "pending",
+        workflowId: workflow.id,
+        artifacts: [],
+        failureReason: readiness.reason
+      };
+    }
     currentPath = moveToUnique(currentPath, path.join(directories.processing, candidate.fileName));
     const run = runWorkflow({ workspace: workspacePath, workflow, inputPath: currentPath });
     const succeeded = run.status === "completed" || run.status === "already_completed";
@@ -1148,6 +1179,61 @@ function processWorkflowCandidate(input: {
   } finally {
     if (existsSync(claimPath)) unlinkSync(claimPath);
   }
+}
+
+function ensureICloudRecordingReadable(filePath: string): { ready: true } | { ready: false; reason: string } {
+  if (process.platform !== "darwin" || !isICloudDrivePath(filePath)) return { ready: true };
+
+  // File Provider can report a stable size before Voice Memos' bytes are locally
+  // readable. Ask iCloud to materialize the file, then verify a real read before
+  // moving it out of In. A later service tick retries pending recordings.
+  spawnSync("/usr/bin/brctl", ["download", filePath], { encoding: "utf8" });
+  let descriptor: number | null = null;
+  try {
+    descriptor = openSync(filePath, "r");
+    readSync(descriptor, Buffer.allocUnsafe(1), 0, 1, 0);
+    return { ready: true };
+  } catch (error) {
+    if (isRetryableICloudReadFailure(error)) {
+      return { ready: false, reason: "Waiting for iCloud Drive to finish downloading this recording." };
+    }
+    throw error;
+  } finally {
+    if (descriptor !== null) closeSync(descriptor);
+  }
+}
+
+function requeueTransientICloudFailures(directories: IngressDirectories): void {
+  for (const entry of readableDirectoryEntries(directories.failed)) {
+    if (!entry.isFile() || !entry.name.endsWith(".error.json")) continue;
+    const sidecar = readJsonRecord(path.join(directories.failed, entry.name));
+    const finalPath = stringValue(sidecar?.finalPath);
+    if (!finalPath || !existsSync(finalPath) || !isRetryableICloudReadFailure(sidecar)) continue;
+    moveToUnique(finalPath, path.join(directories.in, path.basename(finalPath)));
+  }
+}
+
+function isRetryableICloudReadFailure(value: unknown): boolean {
+  const message = errorText(value).toLowerCase();
+  return message.includes("unknown system error -11") && /\bread\b/.test(message);
+}
+
+function errorText(value: unknown): string {
+  if (value instanceof Error) return value.message;
+  if (!isRecord(value)) return "";
+  return [
+    stringValue(value.message),
+    stringValue(value.failureReason),
+    stringValue(value.cause),
+    errorText(value.error),
+    errorText(value.details)
+  ].filter(isString).join(" ");
+}
+
+function isICloudDrivePath(filePath: string): boolean {
+  const iCloudRoot = path.join(homedir(), "Library", "Mobile Documents", "com~apple~CloudDocs");
+  const resolved = path.resolve(filePath);
+  return resolved === iCloudRoot || resolved.startsWith(`${iCloudRoot}${path.sep}`);
 }
 
 function writeIngressMissionLog(
