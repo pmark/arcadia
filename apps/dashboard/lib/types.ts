@@ -11,6 +11,53 @@ export interface DashboardSnapshotResponse {
   snapshot: DashboardSnapshot;
 }
 
+export interface IngressActivityResponse {
+  source: string;
+  root: string;
+  generatedAt: string;
+  service: {
+    healthStatePath: string;
+    healthy: boolean | null;
+    checkedAt: string | null;
+    counts: { observed: number; discovered: number; processed: number; failed: number } | null;
+    error: string | null;
+  };
+  current: Array<{
+    id: string;
+    fileName: string;
+    status: "pending" | "processing" | "completed" | "failed" | "preserved" | "skipped";
+    location: "root" | "in" | "processing" | "done" | "failed";
+    timestamp: string;
+    path: string;
+    summary: string;
+    workflowId: string | null;
+    runId: string | null;
+    runManifestPath: string | null;
+    artifactCount: number;
+    failureReason: string | null;
+  }>;
+  activeRuns: Array<{
+    id: string;
+    workflowId: string;
+    status: string;
+    currentStep: string;
+    inputPath: string;
+    startedAt: string;
+    statusMessage: string;
+    mostRecentOutput: string | null;
+    failureReason: string | null;
+    runManifestPath: string | null;
+  }>;
+  recent: IngressActivityResponse["current"];
+  counts: {
+    pending: number;
+    processing: number;
+    activeRuns: number;
+    failed: number;
+    recent: number;
+  };
+}
+
 export interface AskResponse {
   ask: {
     id: string;

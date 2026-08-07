@@ -24,7 +24,7 @@ import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { matchWorkflowDefinition } from "../workflows/config.js";
-import { runWorkflow } from "../workflows/runner.js";
+import { listWorkflowRuns, runWorkflow } from "../workflows/runner.js";
 import type { WorkflowDefinition } from "../workflows/types.js";
 import { recordWorkflowRunArtifacts } from "../workflows/artifacts.js";
 import { writeIngressMemoryNote } from "../memory/obsidian.js";
@@ -95,6 +95,60 @@ export interface IngressListData {
   root: string;
   directories: IngressProcessData["directories"];
   files: IngressListFile[];
+}
+
+export type IngressActivityStatus = "pending" | "processing" | "completed" | "failed" | "preserved" | "skipped";
+
+export interface IngressActivityItem {
+  id: string;
+  fileName: string;
+  status: IngressActivityStatus;
+  location: "root" | "in" | "processing" | "done" | "failed";
+  timestamp: string;
+  path: string;
+  summary: string;
+  workflowId: string | null;
+  runId: string | null;
+  runManifestPath: string | null;
+  artifactCount: number;
+  failureReason: string | null;
+}
+
+export interface IngressActivityRun {
+  id: string;
+  workflowId: string;
+  status: string;
+  currentStep: string;
+  inputPath: string;
+  startedAt: string;
+  statusMessage: string;
+  mostRecentOutput: string | null;
+  failureReason: string | null;
+  runManifestPath: string | null;
+}
+
+export interface IngressActivityData {
+  source: string;
+  root: string;
+  generatedAt: string;
+  directories: IngressProcessData["directories"];
+  service: {
+    healthStatePath: string;
+    healthy: boolean | null;
+    checkedAt: string | null;
+    counts: { observed: number; discovered: number; processed: number; failed: number } | null;
+    error: string | null;
+  };
+  current: IngressActivityItem[];
+  activeRuns: IngressActivityRun[];
+  recent: IngressActivityItem[];
+  counts: {
+    pending: number;
+    processing: number;
+    activeRuns: number;
+    failed: number;
+    recent: number;
+  };
 }
 
 export interface IngressDescribeData {
@@ -185,6 +239,247 @@ export function runIngressListCommand(options: {
     },
     artifacts: files.map((file) => file.file)
   });
+}
+
+export function runIngressActivityCommand(options: {
+  workspace: string;
+  source?: string;
+  ingressRoot?: string;
+  limit?: number;
+}): CommandSuccess<IngressActivityData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const source = options.source?.trim() || DEFAULT_INGRESS_SOURCE;
+  validateSourceName(source);
+  const limit = options.limit ?? 20;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw validationError("Activity limit must be an integer between 1 and 100.", { limit });
+  }
+
+  const root = path.resolve(options.ingressRoot ?? defaultIngressRoot());
+  const directories = ingressDirectories(root, source);
+  const current = [
+    ...listCurrentActivityFiles(root, "root", workspacePath, source),
+    ...listCurrentActivityFiles(directories.in, "in", workspacePath, source),
+    ...listCurrentActivityFiles(directories.processing, "processing", workspacePath, source)
+  ].sort((left, right) => right.timestamp.localeCompare(left.timestamp) || left.fileName.localeCompare(right.fileName));
+  const activeRuns = listWorkflowRuns(workspacePath)
+    .filter((run) => run.status === "running" && isIngressPath(run.inputPath, root, directories))
+    .map((run) => ({
+      id: run.id,
+      workflowId: run.workflowId,
+      status: run.status,
+      currentStep: run.currentStep,
+      inputPath: run.inputPath,
+      startedAt: run.startedAt,
+      statusMessage: run.statusMessage,
+      mostRecentOutput: run.mostRecentOutput,
+      failureReason: run.failureReason,
+      runManifestPath: run.runManifestPath
+    } satisfies IngressActivityRun));
+  const recent = listIngressSidecars(directories.done, "done")
+    .concat(listIngressSidecars(directories.failed, "failed"))
+    .sort((left, right) => right.timestamp.localeCompare(left.timestamp) || left.fileName.localeCompare(right.fileName))
+    .slice(0, limit);
+  const service = readIngressActivityHealth(source);
+
+  return createSuccess({
+    command: "ingress.activity",
+    workspace: workspacePath,
+    data: {
+      source,
+      root,
+      generatedAt: new Date().toISOString(),
+      directories: {
+        in: directories.in,
+        processing: directories.processing,
+        done: directories.done,
+        failed: directories.failed,
+        attachments: directories.attachments
+      },
+      service,
+      current,
+      activeRuns,
+      recent,
+      counts: {
+        pending: current.filter((item) => item.status === "pending").length,
+        processing: current.filter((item) => item.status === "processing").length,
+        activeRuns: activeRuns.length,
+        failed: recent.filter((item) => item.status === "failed").length,
+        recent: recent.length
+      }
+    },
+    artifacts: [
+      ...current.map((item) => item.path),
+      ...activeRuns.map((run) => run.runManifestPath),
+      ...recent.map((item) => item.id),
+      service.healthStatePath
+    ].filter(isString)
+  });
+}
+
+export function renderIngressActivitySuccess(response: CommandSuccess<IngressActivityData>): string[] {
+  const { data } = response;
+  const serviceLabel = data.service.healthy === null ? "unknown" : data.service.healthy ? "healthy" : "needs attention";
+  return [
+    `Ingress activity: ${serviceLabel}`,
+    `Pending: ${data.counts.pending}`,
+    `Processing: ${data.counts.processing}`,
+    `Active Runs: ${data.counts.activeRuns}`,
+    `Recent: ${data.counts.recent}`,
+    ...data.current.map((item) => `- ${item.fileName}: ${item.status} (${item.summary})`),
+    ...data.recent.map((item) => `- ${item.fileName}: ${item.status} (${item.summary})`)
+  ];
+}
+
+function listCurrentActivityFiles(
+  directory: string,
+  location: IngressActivityItem["location"],
+  workspace: string,
+  source: string
+): IngressActivityItem[] {
+  if (!existsSync(directory)) return [];
+  return readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && !entry.name.startsWith("."))
+    .map((entry) => {
+      const filePath = path.join(directory, entry.name);
+      const stats = statSync(filePath);
+      const workflow = matchWorkflowDefinition(workspace, filePath, source);
+      const status: IngressActivityStatus = location === "processing" ? "processing" : "pending";
+      return {
+        id: filePath,
+        fileName: entry.name,
+        status,
+        location,
+        timestamp: new Date(stats.mtimeMs).toISOString(),
+        path: filePath,
+        summary: location === "processing"
+          ? workflow ? `Running ${workflow.name}.` : "Being processed."
+          : workflow ? `Waiting for ${workflow.name}.` : "Waiting for ingress processing.",
+        workflowId: workflow?.id ?? null,
+        runId: null,
+        runManifestPath: null,
+        artifactCount: 0,
+        failureReason: null
+      } satisfies IngressActivityItem;
+    });
+}
+
+function listIngressSidecars(directory: string, location: "done" | "failed"): IngressActivityItem[] {
+  if (!existsSync(directory)) return [];
+  const sidecars: IngressActivityItem[] = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const filePath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      sidecars.push(...listIngressSidecars(filePath, location));
+      continue;
+    }
+    if (!entry.isFile() || (!entry.name.endsWith(".response.json") && !entry.name.endsWith(".error.json"))) continue;
+    const record = readJsonRecord(filePath);
+    const stats = statSync(filePath);
+    const run = isRecord(record?.run) ? record.run : null;
+    const files = Array.isArray(run?.files) ? run.files : [];
+    const status = record?.status === "failed"
+      ? "failed"
+      : record?.status === "preserved_unclassified"
+      ? "preserved"
+      : record?.status === "skipped_empty"
+      ? "skipped"
+      : "completed";
+    const failureReason = status === "failed"
+      ? stringValue(record?.failureReason) ?? stringValue(run?.failureReason) ?? nestedErrorMessage(record?.error)
+      : null;
+    const runId = stringValue(record?.runId) ?? stringValue(run?.id);
+    sidecars.push({
+      id: filePath,
+      fileName: stringValue(record?.finalPath)
+        ? path.basename(stringValue(record?.finalPath)!)
+        : stringValue(record?.sourcePath)
+        ? path.basename(stringValue(record?.sourcePath)!)
+        : sidecarFileName(entry.name),
+      status,
+      location,
+      timestamp: stringValue(record?.processedAt) ?? stats.mtime.toISOString(),
+      path: stringValue(record?.finalPath) ?? stringValue(record?.sourcePath) ?? filePath,
+      summary: status === "failed"
+        ? failureReason ?? "Ingress processing failed."
+        : status === "preserved"
+        ? stringValue(record?.reason) ?? "Preserved as an unclassified Artifact."
+        : status === "skipped"
+        ? "Skipped because the request was empty."
+        : files.length > 0
+        ? `Published ${files.length} extracted Artifact${files.length === 1 ? "" : "s"}.`
+        : "Ingress processing completed.",
+      workflowId: stringValue(record?.workflowId),
+      runId,
+      runManifestPath: stringValue(run?.runManifestPath),
+      artifactCount: files.length,
+      failureReason
+    });
+  }
+  return sidecars;
+}
+
+function readIngressActivityHealth(source: string): IngressActivityData["service"] {
+  const healthStatePath = path.join(
+    homedir(),
+    "Library",
+    "Application Support",
+    "Arcadia",
+    "ingress-services",
+    `${source}.json`
+  );
+  const record = readJsonRecord(healthStatePath);
+  const counts = isRecord(record?.counts)
+    ? {
+        observed: numberValue(record.counts.observed) ?? 0,
+        discovered: numberValue(record.counts.discovered) ?? 0,
+        processed: numberValue(record.counts.processed) ?? 0,
+        failed: numberValue(record.counts.failed) ?? 0
+      }
+    : null;
+  return {
+    healthStatePath,
+    healthy: typeof record?.healthy === "boolean" ? record.healthy : null,
+    checkedAt: stringValue(record?.checkedAt),
+    counts,
+    error: stringValue(record?.error)
+  };
+}
+
+function readJsonRecord(filePath: string): Record<string, unknown> | null {
+  if (!existsSync(filePath)) return null;
+  try {
+    const value: unknown = JSON.parse(readFileSync(filePath, "utf8"));
+    return isRecord(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function sidecarFileName(fileName: string): string {
+  return fileName.replace(/\.(response|error)\.json$/, "");
+}
+
+function isIngressPath(inputPath: string, root: string, directories: IngressDirectories): boolean {
+  const resolvedInput = path.resolve(inputPath);
+  return [root, directories.in, directories.processing, directories.done, directories.failed]
+    .some((directory) => resolvedInput === path.resolve(directory) || resolvedInput.startsWith(`${path.resolve(directory)}${path.sep}`));
+}
+
+function nestedErrorMessage(value: unknown): string | null {
+  return isRecord(value) ? stringValue(value.message) : null;
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function numberValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function ingressDownloadState(file: string, stats: { size: number; blocks: number }): IngressListFile["downloadState"] {

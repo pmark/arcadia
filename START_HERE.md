@@ -150,6 +150,11 @@ same direct copy into `iCloudIdeas/In/`.
 If an item is present in iCloud but not local, Ingress labels it accurately and
 offers **Download from iCloud** before previewing it.
 
+The **Activity** panel on the Ingress page shows the vital few operator facts:
+pending files, files currently being processed, active Workflow Runs, recent
+completed or failed sidecars, and the watcher health check. It refreshes every
+10 seconds while work is active and every 30 seconds while idle.
+
 Every item is eventually moved out of `In`: active work is claimed in
 `Processing`, successful idea captures land in `Done/Ideas`, unmatched files
 are preserved in `Done/Unclassified`, and failures land in `Failed`. A Markdown

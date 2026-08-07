@@ -3,6 +3,7 @@ import {
   ArcadiaCliError,
   captureIngressFiles,
   describeIngressFiles,
+  loadIngressActivity,
   listIngressFiles
 } from "../../../lib/arcadia-cli";
 
@@ -11,9 +12,10 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const response = await listIngressFiles();
+    const [response, activity] = await Promise.all([listIngressFiles(), loadIngressActivity()]);
     return NextResponse.json({
       ...response.data,
+      activity: activity.data,
       files: response.data.files.map((file) => ({
         ...file,
         previewUrl: (file.kind === "image" || file.kind === "video") && file.downloadState !== "not_downloaded"

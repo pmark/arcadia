@@ -10,7 +10,8 @@ import type {
   DashboardSnapshotResponse,
   FeedbackListResponse,
   FeedbackRecordResponse,
-  DashboardOutstandingPullRequests
+  DashboardOutstandingPullRequests,
+  IngressActivityResponse
 } from "./types";
 import type {
   MissionControlFits,
@@ -209,6 +210,12 @@ export interface IngressDescribeResponse {
 
 export async function listIngressFiles(): Promise<ArcadiaJsonSuccess<IngressListResponse>> {
   return runArcadiaCliJson<IngressListResponse>(["ingress", "list"]);
+}
+
+export async function loadIngressActivity(
+  limit = 20
+): Promise<ArcadiaJsonSuccess<IngressActivityResponse>> {
+  return runArcadiaCliJson<IngressActivityResponse>(["ingress", "activity", "--limit", String(limit)]);
 }
 
 export async function describeIngressFiles(input: {
