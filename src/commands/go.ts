@@ -12,6 +12,10 @@ export interface GoCommandOptions {
   source?: string;
   apply?: boolean;
   agent?: "codex" | "claude";
+  /** Overrides the plan's `recommended_model` for this one invocation. */
+  model?: string;
+  /** Overrides the plan's `recommended_reasoning_effort` for this one invocation. */
+  effort?: string;
   /** Test-only override; the CLI intentionally does not expose it. */
   agentWorktreeRoot?: string;
   /** Test-only clock injection. */
@@ -40,6 +44,10 @@ export interface GoCommandData {
     agent: "codex" | "claude";
     path: string;
     branch: string;
+    /** Resolved from `--model`, else the plan's `recommended_model`. Never absent: unresolved refuses before a worktree is created. */
+    model: string;
+    /** Resolved from `--effort`, else the plan's `recommended_reasoning_effort`. Unlike model, absence is valid — the agent CLI's own default applies. */
+    effort: string | null;
     command: string;
   } | null;
   dispatch: DispatchResolution;
@@ -164,13 +172,38 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     if (!actionId) {
       throw validationError("Arcadia go cannot name the next agent worktree without a resolved Action.");
     }
+
+    const model = options.model ?? dispatch.context?.planRecommendedModel ?? null;
+    if (!model) {
+      throw validationError(
+        "No model is resolved for the next agent session, and Arcadia go will not launch one unpinned.",
+        {
+          planPath: dispatch.context?.planPath ?? null,
+          gitReconciliationAlreadyApplied: integration === "fast-forward",
+          note:
+            integration === "fast-forward"
+              ? "The source was already fast-forwarded into the base branch and its worktree/branch retired " +
+                "before this check runs, because the model recommendation must be read from the plan as it " +
+                "exists after that merge, not before it. Only preparing the next agent worktree failed; nothing " +
+                "needs to be undone."
+              : "No Git state was changed by this refusal.",
+          remedy:
+            "Add `recommended_model` (and optionally `recommended_reasoning_effort`) to the plan's frontmatter, " +
+            "or pass --model explicitly on this command."
+        }
+      );
+    }
+    const effort = options.effort ?? dispatch.context?.planRecommendedReasoningEffort ?? null;
+
     nextWorktree = createAgentWorktree({
       agent: options.agent,
       actionId,
       baseBranch,
       repositoryPath: controlWorktree,
       rootOverride: options.agentWorktreeRoot,
-      now: options.now ?? new Date()
+      now: options.now ?? new Date(),
+      model,
+      effort
     });
   }
 
@@ -235,7 +268,10 @@ export function renderGoSuccess(response: CommandSuccess<GoCommandData>): string
       ? `Prepared ${data.nextWorktree.agent} worktree: ${data.nextWorktree.path}`
       : `Start a fresh coding-agent session from ${data.handoff.baseRef} and prompt: ${data.handoff.prompt}`
   );
-  if (data.nextWorktree) lines.push(`Launch: ${data.nextWorktree.command}`);
+  if (data.nextWorktree) {
+    lines.push(`Model: ${data.nextWorktree.model}${data.nextWorktree.effort ? ` (${data.nextWorktree.effort} effort)` : ""}`);
+    lines.push(`Launch: ${data.nextWorktree.command}`);
+  }
   return lines;
 }
 
@@ -246,6 +282,8 @@ function createAgentWorktree(input: {
   repositoryPath: string;
   rootOverride?: string;
   now: Date;
+  model: string;
+  effort: string | null;
 }): NonNullable<GoCommandData["nextWorktree"]> {
   const stamp = input.now.toISOString().replaceAll(/[-:.]/g, "").replace(/Z$/, "Z");
   const safeAction = input.actionId.replaceAll(/[^a-z0-9-]/gi, "-").toLowerCase().slice(0, 72);
@@ -260,11 +298,27 @@ function createAgentWorktree(input: {
   }
   mkdirSync(path.dirname(worktreePath), { recursive: true });
   git(input.repositoryPath, ["worktree", "add", "-b", branch, worktreePath, input.baseBranch]);
+  const command = buildLaunchCommand(input.agent, worktreePath, input.model, input.effort);
+  return { agent: input.agent, path: worktreePath, branch, model: input.model, effort: input.effort, command };
+}
+
+/**
+ * One place that knows each agent CLI's actual flag shape, so a future third
+ * agent only has to add a branch here rather than touch every caller.
+ *
+ * claude: `--model` and `--effort` are both first-class CLI flags.
+ * codex: `-m` selects the model; reasoning effort is a `-c key=value` TOML
+ * override (`model_reasoning_effort`), not a dedicated flag.
+ */
+function buildLaunchCommand(agent: "codex" | "claude", worktreePath: string, model: string, effort: string | null): string {
   const quotedPath = JSON.stringify(worktreePath);
-  const command = input.agent === "claude"
-    ? `cd ${quotedPath} && claude "arcadia advance"`
-    : `codex -C ${quotedPath} "arcadia advance"`;
-  return { agent: input.agent, path: worktreePath, branch, command };
+  const quotedModel = JSON.stringify(model);
+  if (agent === "claude") {
+    const effortFlag = effort ? ` --effort ${JSON.stringify(effort)}` : "";
+    return `cd ${quotedPath} && claude --model ${quotedModel}${effortFlag} "arcadia advance"`;
+  }
+  const effortFlag = effort ? ` -c model_reasoning_effort=${JSON.stringify(effort)}` : "";
+  return `codex -C ${quotedPath} -m ${quotedModel}${effortFlag} "arcadia advance"`;
 }
 
 function existingDirectory(input: string, label: string): string {

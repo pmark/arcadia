@@ -1162,6 +1162,7 @@ governed handoff:
 pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree
 pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree --agent codex --apply
 pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree --agent claude --apply
+pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree --agent claude --apply --model claude-opus-5 --effort high
 pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree --json
 ```
 
@@ -1181,9 +1182,16 @@ source worktree or switches a primary task checkout back to the base branch,
 deletes only the now-merged source branch, prunes worktree metadata, rechecks
 dispatch, and reports the base ref plus the `arcadia advance` handoff. With
 `--agent codex` or `--agent claude`, it also creates a uniquely named isolated
-worktree from that updated local base and prints an exact launch command. It
-does not stage, commit, reset, force-merge, push, open a PR, or launch an agent
-process implicitly.
+worktree from that updated local base and prints an exact launch command,
+pinned to a model: `--model` on the command line, else the plan's
+`recommended_model` (and optional `recommended_reasoning_effort`), read from
+the plan as it exists *after* the fast-forward — the recommendation itself may
+be new content the merge just introduced. Neither resolving is a refusal;
+Arcadia will not launch an agent session unpinned. That refusal does not
+undo an already-completed fast-forward, since the two are independent
+outcomes: retiring the finished worktree is valid on its own, with or without
+a next agent session. It does not stage, commit, reset, force-merge, push,
+open a PR, or launch an agent process implicitly.
 
 This command intentionally evaluates only the named source worktree. Other
 worktrees remain untouched. Unsafe source state is a refusal with an exact

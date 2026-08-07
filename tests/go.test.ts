@@ -70,13 +70,16 @@ describe("arcadia go", () => {
       source: fixture.feature,
       apply: true,
       agent: "claude",
+      model: "claude-sonnet-5",
       agentWorktreeRoot: agentRoot,
       now: new Date("2026-08-05T12:34:56.000Z")
     });
 
     expect(result.data.nextWorktree?.agent).toBe("claude");
     expect(result.data.nextWorktree?.branch).toBe("claude/define-contract-20260805T123456000Z");
-    expect(result.data.nextWorktree?.command).toContain('claude "arcadia advance"');
+    expect(result.data.nextWorktree?.model).toBe("claude-sonnet-5");
+    expect(result.data.nextWorktree?.effort).toBeNull();
+    expect(result.data.nextWorktree?.command).toContain('claude --model "claude-sonnet-5" "arcadia advance"');
     expect(existsSync(result.data.nextWorktree!.path)).toBe(true);
     expect(git(result.data.nextWorktree!.path, ["branch", "--show-current"]).trim()).toBe(result.data.nextWorktree!.branch);
     expect(git(result.data.nextWorktree!.path, ["merge-base", "--is-ancestor", "main", "HEAD"])).toBe("");
@@ -113,7 +116,76 @@ describe("arcadia go", () => {
   });
 });
 
-function createFixture(branch: string): { root: string; main: string; feature: string } {
+describe("arcadia go — next-session model resolution", () => {
+  it("refuses to launch an agent session with no model resolved anywhere", () => {
+    const fixture = createFixture("codex/no-model");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+
+    // The model check runs after the fast-forward, deliberately: the plan's
+    // recommended_model must be read as it exists on the base branch after
+    // the merge, not before it, since the recommendation itself may be new
+    // content the merge just introduced. So refusing here does not roll back
+    // an already-completed, independently-valid git reconciliation — it only
+    // means the *next agent worktree* was not prepared.
+    expectValidation(
+      () => runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "claude" }),
+      "will not launch one unpinned"
+    );
+    expect(existsSync(fixture.feature)).toBe(false);
+    expect(git(fixture.main, ["log", "-1", "--format=%s"]).trim()).toBe("feature proof");
+  });
+
+  it("uses the plan's recommended_model and recommended_reasoning_effort when no override is given", () => {
+    const fixture = createFixture("codex/plan-model", planDocumentWithModel);
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "claude" });
+
+    expect(result.data.nextWorktree?.model).toBe("claude-opus-5");
+    expect(result.data.nextWorktree?.effort).toBe("high");
+    expect(result.data.nextWorktree?.command).toContain('claude --model "claude-opus-5" --effort "high" "arcadia advance"');
+  });
+
+  it("an explicit --model/--effort overrides the plan's recommendation", () => {
+    const fixture = createFixture("codex/override-model", planDocumentWithModel);
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+
+    const result = runGoCommand({
+      repo: fixture.main,
+      source: fixture.feature,
+      apply: true,
+      agent: "claude",
+      model: "claude-haiku-4-5",
+      effort: "low"
+    });
+
+    expect(result.data.nextWorktree?.model).toBe("claude-haiku-4-5");
+    expect(result.data.nextWorktree?.effort).toBe("low");
+  });
+
+  it("builds the codex launch command with -m and the reasoning-effort TOML override", () => {
+    const fixture = createFixture("codex/codex-shape", planDocumentWithModel);
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "codex" });
+
+    expect(result.data.nextWorktree?.command).toContain('-m "claude-opus-5"');
+    expect(result.data.nextWorktree?.command).toContain('-c model_reasoning_effort="high"');
+    expect(result.data.nextWorktree?.command).not.toContain("--effort");
+  });
+
+  it("omits the effort flag entirely when only a model resolves", () => {
+    const fixture = createFixture("codex/model-only", planDocument);
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "claude", model: "claude-sonnet-5" });
+
+    expect(result.data.nextWorktree?.effort).toBeNull();
+    expect(result.data.nextWorktree?.command).not.toContain("--effort");
+  });
+});
+
+function createFixture(branch: string, plan: string = planDocument): { root: string; main: string; feature: string } {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-go-"));
   roots.push(root);
   const main = path.join(root, "repo");
@@ -126,7 +198,7 @@ function createFixture(branch: string): { root: string; main: string; feature: s
   git(main, ["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"]);
   writeFileSync(path.join(main, "PROJECT.md"), projectDocument);
   mkdirSync(path.join(main, "docs", "plans"), { recursive: true });
-  writeFileSync(path.join(main, "docs", "plans", "copy-proof.md"), planDocument);
+  writeFileSync(path.join(main, "docs", "plans", "copy-proof.md"), plan);
   git(main, ["add", "."]);
   git(main, ["commit", "-m", "initial"]);
   git(main, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
@@ -197,3 +269,10 @@ actions:
 
 # Copy proof
 `;
+
+const planDocumentWithModel = planDocument.replace(
+  'token_budget: "Use one bounded coding-agent session; keep Git and validation deterministic."\n',
+  'token_budget: "Use one bounded coding-agent session; keep Git and validation deterministic."\n' +
+    "recommended_model: claude-opus-5\n" +
+    "recommended_reasoning_effort: high\n"
+);

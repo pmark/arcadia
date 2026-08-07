@@ -176,6 +176,8 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
           currentAction,
           tokenImpact: tokenImpact as never,
           tokenBudget: tokenBudget!,
+          recommendedModel: optionalString(data, "recommended_model"),
+          recommendedReasoningEffort: optionalString(data, "recommended_reasoning_effort"),
           updated: updated!,
           actions,
           questions,
