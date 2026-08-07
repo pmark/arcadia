@@ -23,7 +23,10 @@ import { getWorkflowDefinition, validateWorkflowDefinition } from "../workflows/
 
 const DEFAULT_INTERVAL_SECONDS = 60;
 const DEFAULT_STABLE_SECONDS = 30;
-const THUNDERTONK_WORKFLOW_ID = "thundertonk-practice";
+// Keep the persisted workflow id for compatibility with existing Runs and
+// workspace overrides; the built-in definition now covers all band-practice
+// M4A recordings regardless of filename.
+const BAND_PRACTICE_WORKFLOW_ID = "thundertonk-practice";
 
 export interface IngressServiceOptions {
   workspace: string;
@@ -175,8 +178,9 @@ export function runIngressServiceTickCommand(
 
   try {
     // Count every visible file before processing so the health record shows
-    // what the Mac observed even when processing moves it immediately.
-    const observed = countVisibleFiles(path.join(service.ingressRoot, service.source, "In"));
+    // what the Mac observed even when staging/processing moves it immediately.
+    const observed = countVisibleFiles(service.ingressRoot)
+      + countVisibleFiles(path.join(service.ingressRoot, service.source, "In"));
     const result = runIngressProcessCommand({
       workspace: service.workspacePath,
       source: service.source,
@@ -404,11 +408,11 @@ function collectDependencyChecks(service: ResolvedIngressService): IngressDoctor
   checks.push(directoryReadCheck("icloud-inbox", "iCloud source inbox", path.join(service.ingressRoot, service.source, "In")));
 
   try {
-    const workflow = getWorkflowDefinition(service.workspacePath, THUNDERTONK_WORKFLOW_ID);
+    const workflow = getWorkflowDefinition(service.workspacePath, BAND_PRACTICE_WORKFLOW_ID);
     const validation = validateWorkflowDefinition(workflow);
     checks.push(check(
       "workflow",
-      "Thundertonk Workflow",
+      "Band practice Workflow",
       validation.valid && workflow.enabled && workflow.match.sources.includes(service.source),
       validation.valid ? `${workflow.id}: ${workflow.enabled ? "enabled" : "disabled"}` : validation.errors.join("; ")
     ));
@@ -418,7 +422,7 @@ function collectDependencyChecks(service: ResolvedIngressService): IngressDoctor
   } catch (error) {
     checks.push({
       id: "workflow",
-      label: "Thundertonk Workflow",
+      label: "Band practice Workflow",
       status: "fail",
       detail: error instanceof Error ? error.message : String(error)
     });

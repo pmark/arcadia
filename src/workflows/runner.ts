@@ -26,6 +26,8 @@ export interface RunWorkflowOptions {
   inputPath: string;
   dryRun?: boolean;
   destinationRoot?: string;
+  launchApplication?: (applicationName: string) => void;
+  platform?: NodeJS.Platform;
 }
 
 export function runWorkflow(options: RunWorkflowOptions): WorkflowRunRecord {
@@ -105,6 +107,8 @@ export function runWorkflow(options: RunWorkflowOptions): WorkflowRunRecord {
   if (!existsSync(command.workingDirectory)) {
     throw validationError("Workflow working directory does not exist.", { workingDirectory: command.workingDirectory });
   }
+
+  ensurePublicationApplication(options);
 
   const id = createId("executionRun");
   const artifactDirectory = path.join(workspace, "artifacts", "workflow-runs", id);
@@ -221,6 +225,30 @@ export function runWorkflow(options: RunWorkflowOptions): WorkflowRunRecord {
     };
     writeRunRecord(runManifestPath, record);
     return record;
+  }
+}
+
+function ensurePublicationApplication(options: RunWorkflowOptions): void {
+  const applicationName = options.workflow.publication.applicationName?.trim();
+  if (!applicationName || (options.platform ?? process.platform) !== "darwin") return;
+
+  try {
+    (options.launchApplication ?? launchMacApplication)(applicationName);
+  } catch (error) {
+    throw new WorkflowRunFailure(
+      `Could not start ${applicationName} before Workflow extraction: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
+function launchMacApplication(applicationName: string): void {
+  const result = spawnSync("/usr/bin/open", ["-g", "-a", applicationName], {
+    encoding: "utf8"
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim();
+    throw new Error(output || `macOS open exited with status ${result.status}.`);
   }
 }
 

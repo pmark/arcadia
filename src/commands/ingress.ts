@@ -329,6 +329,7 @@ export function runIngressProcessCommand(options: IngressProcessOptions): Comman
 
   if (!dryRun) {
     ensureIngressDirectories(directories);
+    stageRootIngressFiles(root, directories.in);
   }
 
   const candidates = listCandidates(
@@ -389,6 +390,21 @@ export function runIngressProcessCommand(options: IngressProcessOptions): Comman
     },
     artifacts: files.flatMap((file) => [file.finalPath, file.sidecarPath, ...file.artifacts].filter(isString))
   });
+}
+
+/**
+ * Accept files saved directly into ArcadiaIngress as an alternate mobile
+ * handoff. The normal source inbox remains the single processing queue.
+ */
+export function stageRootIngressFiles(root: string, inboxPath: string): string[] {
+  if (!existsSync(root)) return [];
+  const staged: string[] = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isFile() || entry.name.startsWith(".")) continue;
+    const sourcePath = path.join(root, entry.name);
+    staged.push(moveToUnique(sourcePath, path.join(inboxPath, entry.name)));
+  }
+  return staged;
 }
 
 export function renderIngressProcessSuccess(response: CommandSuccess<IngressProcessData>): string[] {

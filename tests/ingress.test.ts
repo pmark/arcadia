@@ -231,7 +231,7 @@ describe("ingress process command", () => {
     const ingressRoot = initializedIngressRoot();
     const driveRoot = mkdtempSync(path.join(tmpdir(), "arcadia-drive-root-"));
     roots.push(driveRoot);
-    const recordingName = "Thundertonk practice 2026 July 16.m4a";
+    const recordingName = "Band practice 2026 July 16.m4a";
     const recordingPath = path.join(ingressRoot, "iCloudIdeas", "In", recordingName);
     writeFileSync(recordingPath, "fixture recording", "utf8");
     const workflow = getWorkflowDefinition(workspace, "thundertonk-practice");
@@ -243,6 +243,7 @@ describe("ingress process command", () => {
       safeToRunAutomatically: true
     };
     workflow.publication.destinationRoot = driveRoot;
+    workflow.publication.applicationName = undefined;
     const workflowDirectory = path.join(workspace, "config", "workflows");
     mkdirSync(workflowDirectory, { recursive: true });
     writeFileSync(path.join(workflowDirectory, "thundertonk-practice.json"), `${JSON.stringify(workflow, null, 2)}\n`, "utf8");
@@ -261,7 +262,7 @@ describe("ingress process command", () => {
     const destination = path.join(driveRoot, "Thundertonk PMA", "Practices", "2026", "0716");
     expect(readdirSync(destination).filter((name) => name.endsWith(".mp3"))).toHaveLength(3);
     const sidecar = JSON.parse(readFileSync(
-      path.join(ingressRoot, "iCloudIdeas", "Done", "Thundertonk practice 2026 July 16.response.json"),
+      path.join(ingressRoot, "iCloudIdeas", "Done", "Band practice 2026 July 16.response.json"),
       "utf8"
     ));
     expect(sidecar.run.status).toBe("completed");
@@ -274,7 +275,7 @@ describe("ingress process command", () => {
   it("keeps workflow media pending until size and modification time are stable across observations", () => {
     const workspace = initializedWorkspace();
     const ingressRoot = initializedIngressRoot();
-    const recordingName = "Thundertonk practice 2026 July 16.m4a";
+    const recordingName = "Band practice 2026 July 16.m4a";
     writeFileSync(path.join(ingressRoot, "iCloudIdeas", "In", recordingName), "copy in progress", "utf8");
 
     const first = runIngressProcessCommand({ workspace, ingressRoot, stableSeconds: 30 });
