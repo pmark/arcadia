@@ -138,20 +138,48 @@ from the outside (`queued → running → completed | failed | needs_input`).
   `--queue` keeps printing the manual command exactly as Decision 0010 left
   it.
 
-## Open questions for the operator
+## Open questions — answered by the operator, 2026-08-07
 
-1. Is `--queue` (opt-in) the right default posture for a first version, or
-   should queuing become `go`'s default behavior once proven, with an
-   `--interactive`/`--no-queue` escape hatch instead?
-2. Is "process exit plus last message" an acceptable first-version signal for
-   needs-input, or does this need a real typed signal from the agent session
-   before it is trustworthy enough to alert on?
-3. Does the worker daemon need to already be installed and running for
-   `--queue` to make sense, or should `go --queue` check and offer to install
-   it (`arcadia worker install`) when it is not?
-4. Should a queued session's Discord alert include enough to act from the
-   phone (the exact `arcadia advance`-style resume prompt, or a summary), or
-   is "come back to a terminal" an acceptable first version?
+**1. Opt-in `--queue` first.** Queuing does not become the default until it has
+been used successfully and `go` can guarantee the worker daemon is present.
+Questions 1 and 3 turned out to be the same question: the failure mode of
+default-queuing is that `go` silently depends on a daemon that may not be
+running. Opt-in defers that coupling until answer 3 removes it.
+
+**2. Exit plus final message for v1, with a better signal named for v2.**
+Accepted as good enough to ship, but it is not the best available option, and
+the better one is nearly free:
+
+| Signal | Needs agent cooperation | Precision |
+| --- | --- | --- |
+| Idle/timeout detection | No | Poor — a long test run is indistinguishable from being stuck |
+| Process exit + final message | No | Fair — **chosen for v1** |
+| Exit-code convention | Yes; neither CLI does this today | Good, unavailable |
+| Sentinel file (`.arcadia-needs-input`) | Yes, via prompt instruction | Good, agent-agnostic |
+| **Dispatch-state diff** | No | **Best — planned for v2** |
+
+Dispatch-state diff: after a session exits, re-run `resolveDispatch` on the
+repository. If it now resolves to an **open Decision** rather than a
+dispatchable Action, that *is* the needs-input signal. This requires no new
+signalling machinery — `resolveDispatch` already computes it and already
+returns `operatorQuestion` — and it is semantically exact: the agent did not
+"get stuck," it recorded a question as a document and stopped, which is the
+correct behavior. Ship exit-plus-message first because it needs nothing;
+add this immediately after because it costs almost nothing.
+
+**3. `go` offers to install the worker daemon.** When `--queue` is requested
+and the daemon is not installed or not running, `go` offers to run
+`arcadia worker install` rather than refusing with instructions. The operator's
+stated requirement is that it Just Work. This is the answer that eventually
+allows question 1's default to flip.
+
+**4. Discord is a notification system first.** Alerts must be readable and
+useful on their own. Beyond that, a small fixed set of reply commands — one or
+two, not a conversational surface — so the most common response can be given
+from the phone and momentum is not lost waiting for the operator to reach a
+terminal. Which one or two commands are the most common is itself an open
+question that should be answered by observing real alerts rather than guessed
+at now.
 
 ## Consequences if approved
 
