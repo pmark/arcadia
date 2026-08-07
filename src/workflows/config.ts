@@ -127,6 +127,9 @@ export function validateWorkflowDefinition(value: unknown): WorkflowValidationRe
 
   const publication = requireRecord(value, "publication", errors);
   requireString(publication, "destinationRoot", errors);
+  if (publication && "applicationName" in publication && typeof publication.applicationName !== "string") {
+    errors.push("publication.applicationName must be a string when provided.");
+  }
   const directoryTemplate = requireString(publication, "directoryTemplate", errors);
   if (directoryTemplate && (!directoryTemplate.includes("{yyyy}") || !directoryTemplate.includes("{mmdd}"))) {
     errors.push("publication.directoryTemplate must include {yyyy} and {mmdd}.");

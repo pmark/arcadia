@@ -26,6 +26,7 @@ export interface WorkflowDefinition {
     directoryTemplate: string;
     fileNameTemplate: string;
     verify: "sha256" | "size";
+    applicationName?: string;
   };
   retry: {
     maxAttempts: number;

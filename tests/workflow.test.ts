@@ -18,14 +18,15 @@ afterEach(() => {
 });
 
 describe("deterministic workflows", () => {
-  it("loads, validates, and matches the built-in Thundertonk practice workflow", () => {
+  it("loads, validates, and matches the built-in band practice workflow by extension", () => {
     const workspace = initializedWorkspace();
     const input = writeRecording(workspace);
     const workflow = getWorkflowDefinition(workspace, "thundertonk-practice");
 
     expect(validateWorkflowDefinition(workflow)).toEqual({ valid: true, errors: [], warnings: [] });
     expect(matchWorkflowDefinition(workspace, input, "iCloudIdeas")?.id).toBe("thundertonk-practice");
-    expect(matchWorkflowDefinition(workspace, path.join(workspace, "other.m4a"), "iCloudIdeas")).toBeNull();
+    expect(matchWorkflowDefinition(workspace, path.join(workspace, "Band recording.m4a"), "iCloudIdeas")?.id).toBe("thundertonk-practice");
+    expect(matchWorkflowDefinition(workspace, path.join(workspace, "other.mp3"), "iCloudIdeas")).toBeNull();
   });
 
   it("dry-runs without invoking the executable or writing Run Artifacts", () => {
@@ -68,6 +69,26 @@ describe("deterministic workflows", () => {
     expect(second.id).toBe(first.id);
     expect(listWorkflowRuns(workspace, workflow.id)).toHaveLength(1);
     expect(readdirSync(first.destinationDirectory).sort()).toEqual(destinationNames);
+  });
+
+  it("launches the configured publication app before extraction on macOS", () => {
+    const workspace = initializedWorkspace();
+    const input = writeRecording(workspace);
+    const destinationRoot = temporaryDirectory("arcadia-drive-");
+    const workflow = fixtureWorkflow(workspace, destinationRoot);
+    workflow.publication.applicationName = "Google Drive";
+    const launched: string[] = [];
+
+    const result = runWorkflow({
+      workspace,
+      workflow,
+      inputPath: input,
+      platform: "darwin",
+      launchApplication: (applicationName) => launched.push(applicationName)
+    });
+
+    expect(result.status).toBe("completed");
+    expect(launched).toEqual(["Google Drive"]);
   });
 
   it("records a retryable failed Run when expected MP3 output is absent", () => {
@@ -119,7 +140,8 @@ function fixtureWorkflow(workspace: string, destinationRoot: string): WorkflowDe
       destinationRoot,
       directoryTemplate: "Thundertonk PMA/Practices/{yyyy}/{mmdd}",
       fileNameTemplate: "{sourceName}",
-      verify: "sha256"
+      verify: "sha256",
+      applicationName: undefined
     }
   };
 }

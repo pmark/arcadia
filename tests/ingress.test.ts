@@ -16,6 +16,7 @@ import type { AskCommandData, AskOptions } from "../src/commands/ask.js";
 import {
   runIngressCaptureCommand,
   runIngressDescribeCommand,
+  runIngressActivityCommand,
   runIngressListCommand,
   runIngressProcessCommand
 } from "../src/commands/ingress.js";
@@ -231,7 +232,7 @@ describe("ingress process command", () => {
     const ingressRoot = initializedIngressRoot();
     const driveRoot = mkdtempSync(path.join(tmpdir(), "arcadia-drive-root-"));
     roots.push(driveRoot);
-    const recordingName = "Thundertonk practice 2026 July 16.m4a";
+    const recordingName = "Band practice 2026 July 16.m4a";
     const recordingPath = path.join(ingressRoot, "iCloudIdeas", "In", recordingName);
     writeFileSync(recordingPath, "fixture recording", "utf8");
     const workflow = getWorkflowDefinition(workspace, "thundertonk-practice");
@@ -243,6 +244,7 @@ describe("ingress process command", () => {
       safeToRunAutomatically: true
     };
     workflow.publication.destinationRoot = driveRoot;
+    workflow.publication.applicationName = undefined;
     const workflowDirectory = path.join(workspace, "config", "workflows");
     mkdirSync(workflowDirectory, { recursive: true });
     writeFileSync(path.join(workflowDirectory, "thundertonk-practice.json"), `${JSON.stringify(workflow, null, 2)}\n`, "utf8");
@@ -261,7 +263,7 @@ describe("ingress process command", () => {
     const destination = path.join(driveRoot, "Thundertonk PMA", "Practices", "2026", "0716");
     expect(readdirSync(destination).filter((name) => name.endsWith(".mp3"))).toHaveLength(3);
     const sidecar = JSON.parse(readFileSync(
-      path.join(ingressRoot, "iCloudIdeas", "Done", "Thundertonk practice 2026 July 16.response.json"),
+      path.join(ingressRoot, "iCloudIdeas", "Done", "Band practice 2026 July 16.response.json"),
       "utf8"
     ));
     expect(sidecar.run.status).toBe("completed");
@@ -274,7 +276,7 @@ describe("ingress process command", () => {
   it("keeps workflow media pending until size and modification time are stable across observations", () => {
     const workspace = initializedWorkspace();
     const ingressRoot = initializedIngressRoot();
-    const recordingName = "Thundertonk practice 2026 July 16.m4a";
+    const recordingName = "Band practice 2026 July 16.m4a";
     writeFileSync(path.join(ingressRoot, "iCloudIdeas", "In", recordingName), "copy in progress", "utf8");
 
     const first = runIngressProcessCommand({ workspace, ingressRoot, stableSeconds: 30 });
@@ -337,6 +339,89 @@ describe("ingress process command", () => {
 });
 
 describe("ingress viewer actions", () => {
+  it("summarizes root and queued files alongside recent completion and failure sidecars", () => {
+    const workspace = initializedWorkspace();
+    const ingressRoot = initializedIngressRoot();
+    const rootFile = path.join(ingressRoot, "Tonight.m4a");
+    const queuedFile = writeIngressFile(ingressRoot, "queued.txt", "waiting request");
+    const processingDirectory = path.join(ingressRoot, "iCloudIdeas", "Processing");
+    mkdirSync(processingDirectory, { recursive: true });
+    const processingFile = path.join(processingDirectory, "processing.txt");
+    writeFileSync(rootFile, "recording", "utf8");
+    writeFileSync(processingFile, "claimed request", "utf8");
+    setMtime(rootFile, new Date("2026-08-07T01:00:00.000Z"));
+    setMtime(queuedFile, new Date("2026-08-07T01:01:00.000Z"));
+    setMtime(processingFile, new Date("2026-08-07T01:02:00.000Z"));
+
+    const doneDirectory = path.join(ingressRoot, "iCloudIdeas", "Done");
+    const doneFile = path.join(doneDirectory, "finished.m4a");
+    const doneSidecar = path.join(doneDirectory, "finished.response.json");
+    writeFileSync(doneFile, "finished recording", "utf8");
+    writeFileSync(doneSidecar, JSON.stringify({
+      status: "processed",
+      processedAt: "2026-08-07T01:03:00.000Z",
+      sourcePath: "/tmp/finished.m4a",
+      finalPath: doneFile,
+      workflowId: "thundertonk-practice",
+      runId: "run_finished",
+      run: {
+        id: "run_finished",
+        runManifestPath: "/tmp/run_finished.json",
+        files: [{ destinationPath: "/tmp/song.mp3" }]
+      }
+    }), "utf8");
+
+    const failedDirectory = path.join(ingressRoot, "iCloudIdeas", "Failed");
+    const failedSidecar = path.join(failedDirectory, "failed.error.json");
+    writeFileSync(path.join(failedDirectory, "failed.txt"), "failed request", "utf8");
+    writeFileSync(failedSidecar, JSON.stringify({
+      status: "failed",
+      processedAt: "2026-08-07T01:04:00.000Z",
+      sourcePath: "/tmp/failed.txt",
+      failureReason: "Google Drive was unavailable."
+    }), "utf8");
+
+    const result = runIngressActivityCommand({ workspace, ingressRoot, limit: 5 });
+
+    expect(result.data.current.map((item) => item.fileName)).toEqual([
+      "processing.txt",
+      "queued.txt",
+      "Tonight.m4a"
+    ]);
+    expect(result.data.counts).toMatchObject({ pending: 2, processing: 1, failed: 1, recent: 2 });
+    expect(result.data.recent[0]).toMatchObject({
+      fileName: "failed.txt",
+      status: "failed",
+      failureReason: "Google Drive was unavailable."
+    });
+    expect(result.data.recent[1]).toMatchObject({
+      fileName: "finished.m4a",
+      status: "completed",
+      artifactCount: 1,
+      runId: "run_finished"
+    });
+  });
+
+  it("requeues a transient iCloud read failure instead of leaving the recording failed", () => {
+    const workspace = initializedWorkspace();
+    const ingressRoot = initializedIngressRoot();
+    const failedDirectory = path.join(ingressRoot, "iCloudIdeas", "Failed");
+    const failedRecording = path.join(failedDirectory, "Good Times.m4a");
+    writeFileSync(failedRecording, "recording", "utf8");
+    writeFileSync(path.join(failedDirectory, "Good Times.error.json"), JSON.stringify({
+      status: "failed",
+      finalPath: failedRecording,
+      error: { details: { cause: "Unknown system error -11: Unknown system error -11, read" } }
+    }), "utf8");
+
+    const result = runIngressProcessCommand({ workspace, ingressRoot, runSafe: true, stableSeconds: 30 });
+
+    expect(result.data.counts).toMatchObject({ discovered: 1, pending: 1, failed: 0 });
+    expect(existsSync(failedRecording)).toBe(false);
+    expect(existsSync(path.join(ingressRoot, "iCloudIdeas", "In", "Good Times.m4a"))).toBe(true);
+    expect(existsSync(path.join(failedDirectory, "Good Times.error.json"))).toBe(true);
+  });
+
   it("lists visible files in In with media metadata without treating them as process candidates", () => {
     const workspace = initializedWorkspace();
     const ingressRoot = initializedIngressRoot();

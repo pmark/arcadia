@@ -1,13 +1,12 @@
 {
   "version": 1,
   "id": "thundertonk-practice",
-  "name": "Thundertonk practice recording",
-  "description": "Extract every song from a Thundertonk Voice Memos recording and publish the MP3 files through Google Drive Desktop.",
+  "name": "Band practice recording",
+  "description": "Extract every song from a band-practice Voice Memos recording and publish the MP3 files through Google Drive Desktop.",
   "enabled": true,
   "match": {
     "sources": ["iCloudIdeas", "BandPractice"],
-    "extensions": [".m4a"],
-    "fileNameIncludes": ["thundertonk", "practice"]
+    "extensions": [".m4a"]
   },
   "action": {
     "executable": "/opt/homebrew/bin/rehearsal",
@@ -25,7 +24,8 @@
     "destinationRoot": "~/Library/CloudStorage/GoogleDrive-wayoutwest@gmail.com/My Drive",
     "directoryTemplate": "Thundertonk PMA/Practices/{yyyy}/{mmdd}",
     "fileNameTemplate": "{sourceName}",
-    "verify": "sha256"
+    "verify": "sha256",
+    "applicationName": "Google Drive"
   },
   "retry": {
     "maxAttempts": 3,

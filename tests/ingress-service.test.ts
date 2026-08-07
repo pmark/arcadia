@@ -69,6 +69,20 @@ describe("ingress service", () => {
     expect(result.data).toMatchObject({ observed: 1, discovered: 1, processed: 1, failed: 0 });
     expect(existsSync(path.join(ingressRoot, source, "Done", "Unclassified", "shared-image.jpg"))).toBe(true);
   });
+
+  it("stages a recording saved directly in the ArcadiaIngress root", () => {
+    const workspace = initializedWorkspace();
+    const source = "iCloudIdeas";
+    const ingressRoot = initializedIngressRoot(source);
+    const recordingPath = path.join(ingressRoot, "Tonight's recording.m4a");
+    writeFileSync(recordingPath, "recording copied from iPad");
+
+    const result = runIngressServiceTickCommand({ workspace, ingressRoot, source, stableSeconds: 0, runSafe: false });
+
+    expect(result.data).toMatchObject({ observed: 1, discovered: 1, processed: 0, failed: 0 });
+    expect(existsSync(recordingPath)).toBe(false);
+    expect(existsSync(path.join(ingressRoot, source, "In", "Tonight's recording.m4a"))).toBe(true);
+  });
 });
 
 function initializedWorkspace(): string {

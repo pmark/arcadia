@@ -136,20 +136,34 @@ Open **Ingress** from the menu to view files waiting in the local
 `~/Library/Mobile Documents/com~apple~CloudDocs/ArcadiaIngress/iCloudIdeas/In`
 folder. Select one or more files, describe the Action you want Arcadia to take, and choose **Describe Action**. Arcadia writes
 the description and selected files into the normal ingress queue for processing.
-From an iPhone or iPad Share Sheet, use **Send Any Document to Arcadia** to copy
-an image or other document directly into the same folder; import the signed
-shortcut from `scripts/apple/Send Any Document to Arcadia (iPhone-iPad).shortcut`.
+From an iPhone or iPad, the shortest path for a band recording is **Voice
+Memos → Share → Save to Files**, then choose
+`iCloud Drive/ArcadiaIngress` (or its `iCloudIdeas/In` subfolder). Arcadia
+observes both locations and matches any `.m4a` placed there, so the recording
+name does not need to contain “Thundertonk” or “practice.” If you prefer a
+Share Sheet action for arbitrary files, use **Send
+Any Document to Arcadia** and import the signed shortcut from
+`scripts/apple/Send Any Document to Arcadia (iPhone-iPad).shortcut`.
 On the Mac, import `scripts/apple/Send Any Document to Arcadia (Mac).shortcut`
 and enable it as a Finder Quick Action or Share Sheet action; it performs the
 same direct copy into `iCloudIdeas/In/`.
 If an item is present in iCloud but not local, Ingress labels it accurately and
 offers **Download from iCloud** before previewing it.
 
+The **Activity** panel on the Ingress page shows the vital few operator facts:
+pending files, files currently being processed, active Workflow Runs, recent
+completed or failed sidecars, and the watcher health check. It refreshes every
+10 seconds while work is active and every 30 seconds while idle.
+
 Every item is eventually moved out of `In`: active work is claimed in
 `Processing`, successful idea captures land in `Done/Ideas`, unmatched files
 are preserved in `Done/Unclassified`, and failures land in `Failed`. A Markdown
 idea is routed through deterministic Ask/Back Burner handling and, when memory
 is enabled, also becomes a managed note under `Arcadia/Ideas/` in Obsidian.
+Band-practice `.m4a` files run the configured `/opt/homebrew/bin/rehearsal run
+<absolute-recording-path>` Workflow and publish the extracted MP3 Artifacts to
+the configured Google Drive Desktop folder. Arcadia asks macOS to launch Google
+Drive in the background before starting extraction.
 The **Capture** Ask surface accepts the same arbitrary files with an optional
 instruction and queues them through this identical ingress path.
 

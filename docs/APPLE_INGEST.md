@@ -6,7 +6,11 @@ Send text, clipboard contents, links, photos, and files from macOS, iPhone, and 
 
 ## Recommended Architecture
 
-Use an Apple Shortcut as the Share Sheet surface and iCloud Drive as the transport. On the Mac, `scripts/apple/arcadia-ingest` packages the input. Arcadia's existing deterministic `ingress process` command consumes the request.
+Use iCloud Drive as the transport. On iPhone and iPad, Voice Memos can save a
+recording directly to the Arcadia Ingress folder; an Apple Shortcut remains an
+optional Share Sheet surface for people who want one. On the Mac,
+`scripts/apple/arcadia-ingest` packages the input. Arcadia's existing
+deterministic `ingress process` command consumes the request.
 
 ```text
 Share Sheet or Finder Quick Action
@@ -16,7 +20,10 @@ Share Sheet or Finder Quick Action
   -> matching media file: configured deterministic Workflow and Run
 ```
 
-This is the best first implementation because it works across all three Apple platforms, works while the Mac is offline, introduces no public server or authentication surface, and keeps every request inspectable. A native app can later replace the Shortcut without changing the folder contract.
+This works across Apple platforms, works while the Mac is offline, introduces
+no public server or authentication surface, and keeps every request inspectable.
+A native app can later replace the folder handoff without changing the folder
+contract.
 
 An iOS or iPadOS wrapper cannot execute arbitrary shell commands. Apple sandboxes apps and Share Extensions. A future native Arcadia Ingest app should therefore remain a small Share Extension that writes the same request and attachments to an iCloud container, or submits them to an authenticated Arcadia HTTP endpoint if remote processing becomes a requirement.
 
@@ -80,6 +87,23 @@ exec /Users/pmark/Dev/MR/Arcadia/arcadia/scripts/apple/arcadia-ingest --clipboar
 
 Pin that Shortcut to the menu bar or assign a keyboard shortcut.
 
+## iPhone and iPad direct file save
+
+For a Voice Memos recording, no Shortcut is required:
+
+1. In Voice Memos, choose **Share** for the recording.
+2. Choose **Save to Files**.
+3. Select `iCloud Drive/ArcadiaIngress` (or `iCloudIdeas/In` inside it) and tap
+   **Save**.
+
+The Mac's Ingress service notices the new file after iCloud materializes it
+locally. Files saved directly in `ArcadiaIngress` are staged into the normal
+`iCloudIdeas/In` queue automatically. Any `.m4a` in either accepted location is
+treated as a band-practice recording, regardless of its filename. The service
+waits for the file size and modification time to settle, then runs the
+configured Workflow and moves the source to `Done/` (or `Failed/` with an error
+sidecar).
+
 ## iPhone and iPad Shortcut
 
 For Thundertonk Voice Memos, install the signed, shareable artifact:
@@ -96,7 +120,11 @@ Each run gives the recording a collision-resistant name such as:
 Thundertonk practice 2026-07-17-151700-123.m4a
 ```
 
-The name retains the Workflow match terms, carries the recording date used for publication, and includes time through milliseconds so repeated runs never reuse the old fixed filename. Save File overwrite remains disabled, so iCloud cannot silently replace an earlier recording.
+The filename carries the recording date used for publication and includes time
+through milliseconds so repeated runs never reuse the old fixed filename. Save
+File overwrite remains disabled, so iCloud cannot silently replace an earlier
+recording. The Workflow matches the `.m4a` extension, so these naming details
+are no longer required for processing.
 
 The editable Thundertonk Shortcut source is the adjacent `.shortcut.plist`. After changing it, rebuild and publicly sign the installable artifact with:
 
@@ -190,15 +218,20 @@ pnpm arcadia ingress service install --workspace "$ARCADIA_WORKSPACE"
 pnpm arcadia ingress service doctor --workspace "$ARCADIA_WORKSPACE"
 ```
 
-## Thundertonk Practice Workflow
+## Band Practice Workflow
 
-Arcadia ships an enabled `thundertonk-practice` Workflow definition at `config/defaults/workflows/thundertonk-practice.json`. It matches `.m4a` files whose names contain both `Thundertonk` and `practice`, runs the executable directly as this argv sequence (without shell interpolation), and allows up to four hours:
+Arcadia ships an enabled `thundertonk-practice` Workflow definition at `config/defaults/workflows/thundertonk-practice.json`. The id is retained for compatibility with existing Runs, but the Workflow matches every `.m4a` file from the configured iCloud source. It runs the executable directly as this argv sequence (without shell interpolation), and allows up to four hours:
 
 ```text
 /opt/homebrew/bin/rehearsal
 argv[1] = run
 argv[2] = <absolute recording path>
 ```
+
+Before extraction, Arcadia runs `open -g -a "Google Drive"` on macOS. This is
+safe when Google Drive is already open and starts it in the background when it
+is not. Arcadia still fails closed if the configured Google Drive sync root is
+not available; it never creates a lookalike local folder.
 
 The Workflow reads `rehearsal`'s final `collected:` output line and publishes every MP3 in that directory. For the recording `Thundertonk practice 2026 July 16.m4a`, publication resolves to:
 
@@ -235,7 +268,9 @@ pnpm arcadia ingress process \
 
 The Run manifest and raw stdout/stderr Logs are written below `artifacts/workflow-runs/<run-id>/`. The source recording, every published MP3, the Logs, and the Run manifest are recorded as Arcadia Artifacts. Inspect recent evidence with `arcadia workflow runs` and `arcadia workflow run-info show <run-id>`.
 
-Google Drive Desktop must be running and the configured root must exist. macOS may require Full Disk Access for the Terminal or launch agent that runs Arcadia; Arcadia deliberately refuses to create a missing sync root because that could publish into an unsynchronized local lookalike folder.
+macOS may require Full Disk Access for the Terminal or launch agent that runs
+Arcadia. Arcadia deliberately refuses to create a missing sync root because
+that could publish into an unsynchronized local lookalike folder.
 
 ### launchd
 

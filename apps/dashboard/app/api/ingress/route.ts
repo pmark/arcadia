@@ -3,8 +3,10 @@ import {
   ArcadiaCliError,
   captureIngressFiles,
   describeIngressFiles,
+  loadIngressActivity,
   listIngressFiles
 } from "../../../lib/arcadia-cli";
+import type { IngressActivityResponse } from "../../../lib/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,8 +14,12 @@ export const runtime = "nodejs";
 export async function GET() {
   try {
     const response = await listIngressFiles();
+    const activity = await loadIngressActivity()
+      .then((result) => result.data)
+      .catch(() => unavailableIngressActivity(response.data));
     return NextResponse.json({
       ...response.data,
+      activity,
       files: response.data.files.map((file) => ({
         ...file,
         previewUrl: (file.kind === "image" || file.kind === "video") && file.downloadState !== "not_downloaded"
@@ -24,6 +30,25 @@ export async function GET() {
   } catch (error) {
     return errorResponse(error);
   }
+}
+
+function unavailableIngressActivity(listing: { source: string; root: string }): IngressActivityResponse {
+  return {
+    source: listing.source,
+    root: listing.root,
+    generatedAt: new Date().toISOString(),
+    service: {
+      healthStatePath: "",
+      healthy: null,
+      checkedAt: null,
+      counts: null,
+      error: "Activity is temporarily unavailable; the incoming file list remains available."
+    },
+    current: [],
+    activeRuns: [],
+    recent: [],
+    counts: { pending: 0, processing: 0, activeRuns: 0, failed: 0, recent: 0 }
+  };
 }
 
 interface DescribeRequest {

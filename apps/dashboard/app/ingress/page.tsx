@@ -1,9 +1,10 @@
 "use client";
 
-import { Check, File, Image as ImageIcon, RefreshCw, Send, Video } from "lucide-react";
+import { AlertTriangle, Check, CircleDot, File, Image as ImageIcon, RefreshCw, Send, Video } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { MobileShell } from "../../components/mobile-shell";
 import { ErrorState, LoadingState } from "../../components/dashboard-ui";
+import type { IngressActivityResponse } from "../../lib/types";
 
 interface IngressFile {
   name: string;
@@ -20,6 +21,7 @@ interface IngressListing {
   source: string;
   directories: { in: string };
   files: IngressFile[];
+  activity: IngressActivityResponse;
 }
 
 export default function IngressPage() {
@@ -56,6 +58,12 @@ export default function IngressPage() {
   useEffect(() => {
     void load({ initial: true });
   }, []);
+
+  useEffect(() => {
+    const intervalMs = listing?.activity.counts.processing || listing?.activity.counts.activeRuns ? 10_000 : 30_000;
+    const interval = window.setInterval(() => void load(), intervalMs);
+    return () => window.clearInterval(interval);
+  }, [listing?.activity.counts.processing, listing?.activity.counts.activeRuns]);
 
   const allSelected = Boolean(listing?.files.length) && selected.length === listing?.files.length;
   const selectedLabel = useMemo(
@@ -146,6 +154,7 @@ export default function IngressPage() {
       {loading && !listing ? <div className="mt-6"><LoadingState /></div> : null}
       {listing ? (
         <div className="mt-6 grid gap-5">
+          <IngressActivity activity={listing.activity} />
           <div className="flex items-center justify-between gap-3 text-sm">
             <span className="text-muted">{listing.files.length} item{listing.files.length === 1 ? "" : "s"} in {listing.source}/In</span>
             {listing.files.length > 0 ? (
@@ -242,6 +251,90 @@ export default function IngressPage() {
   );
 }
 
+function IngressActivity({ activity }: { activity: IngressActivityResponse }) {
+  const serviceLabel = activity.service.healthy === null
+    ? "Watcher status unknown"
+    : activity.service.healthy
+      ? "Watcher healthy"
+      : "Watcher needs attention";
+  const serviceClass = activity.service.healthy === false ? "text-red-700" : "text-moss";
+
+  return (
+    <section className="grid gap-3 rounded-md border border-line bg-panel p-4" aria-label="Ingress activity">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-ink">Activity</p>
+          <p className={`mt-1 text-xs font-medium ${serviceClass}`}>
+            {serviceLabel}{activity.service.checkedAt ? ` · checked ${formatRelative(activity.service.checkedAt)}` : ""}
+          </p>
+        </div>
+        <p className="text-right text-xs text-muted">Auto-refreshes while active</p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <ActivityMetric label="Pending" value={activity.counts.pending} />
+        <ActivityMetric label="Processing" value={activity.counts.processing} />
+        <ActivityMetric label="Failed" value={activity.counts.failed} alert={activity.counts.failed > 0} />
+      </div>
+
+      {activity.current.length > 0 || activity.activeRuns.length > 0 ? (
+        <div className="grid gap-2 border-t border-line pt-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Currently happening</p>
+          {activity.current.map((item) => (
+            <ActivityRow key={item.id} item={item} />
+          ))}
+          {activity.activeRuns.map((run) => (
+            <div key={run.id} className="flex items-start gap-2 text-sm">
+              <CircleDot className="mt-0.5 h-4 w-4 shrink-0 animate-pulse text-steel" aria-hidden="true" />
+              <div className="min-w-0">
+                <p className="font-medium text-ink">Run {run.id} · {run.currentStep}</p>
+                <p className="truncate text-xs text-muted">{run.statusMessage} · {run.inputPath}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {activity.recent.length > 0 ? (
+        <div className="grid gap-2 border-t border-line pt-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Recent activity</p>
+          {activity.recent.map((item) => (
+            <ActivityRow key={item.id} item={item} />
+          ))}
+        </div>
+      ) : (
+        <p className="border-t border-line pt-3 text-sm text-muted">No completed or failed activity recorded yet.</p>
+      )}
+    </section>
+  );
+}
+
+function ActivityMetric({ label, value, alert = false }: { label: string; value: number; alert?: boolean }) {
+  return (
+    <div className={`rounded-md border px-2 py-2 ${alert ? "border-red-200 bg-red-50" : "border-line bg-canvas"}`}>
+      <p className={`text-lg font-semibold ${alert ? "text-red-700" : "text-ink"}`}>{value}</p>
+      <p className="text-[11px] text-muted">{label}</p>
+    </div>
+  );
+}
+
+function ActivityRow({ item }: { item: IngressActivityResponse["current"][number] }) {
+  const failed = item.status === "failed";
+  return (
+    <div className="flex items-start gap-2 text-sm">
+      {failed ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" aria-hidden="true" /> : <CircleDot className="mt-0.5 h-4 w-4 shrink-0 text-moss" aria-hidden="true" />}
+      <div className="min-w-0">
+        <p className="truncate font-medium text-ink">{item.fileName} · {activityStatusLabel(item.status)}</p>
+        <p className={`text-xs ${failed ? "text-red-700" : "text-muted"}`}>{item.summary} · {formatRelative(item.timestamp)}</p>
+      </div>
+    </div>
+  );
+}
+
+function activityStatusLabel(status: IngressActivityResponse["current"][number]["status"]): string {
+  return status === "processing" ? "processing" : status === "pending" ? "pending" : status;
+}
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -250,6 +343,15 @@ function formatBytes(bytes: number): string {
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(value));
+}
+
+function formatRelative(value: string): string {
+  const ageSeconds = Math.max(0, (Date.now() - new Date(value).getTime()) / 1000);
+  if (!Number.isFinite(ageSeconds)) return "unknown time";
+  if (ageSeconds < 60) return "just now";
+  if (ageSeconds < 3600) return `${Math.floor(ageSeconds / 60)}m ago`;
+  if (ageSeconds < 86_400) return `${Math.floor(ageSeconds / 3600)}h ago`;
+  return `${Math.floor(ageSeconds / 86_400)}d ago`;
 }
 
 function errorMessage(body: unknown, fallback: string): string {

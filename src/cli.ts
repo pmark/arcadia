@@ -78,9 +78,11 @@ import {
 import { renderInboxImportSuccess, runInboxAddCommand, runInboxImportCommand } from "./commands/inbox.js";
 import { renderInitSuccess, runInitCommand } from "./commands/init.js";
 import {
+  renderIngressActivitySuccess,
   renderIngressProcessSuccess,
   runIngressCaptureCommand,
   runIngressDescribeCommand,
+  runIngressActivityCommand,
   runIngressListCommand,
   runIngressProcessCommand
 } from "./commands/ingress.js";
@@ -1229,6 +1231,26 @@ export function buildProgram(): Command {
     options,
     () => runIngressListCommand(options),
     (response) => response.data.files.map((file) => `${file.name} (${file.kind})`)
+  ));
+  addJsonOption(
+    ingress
+      .command("activity")
+      .description("Show current and recent iCloud Drive ingress activity")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--source <name>", "Ingress source folder", "iCloudIdeas")
+      .option("--ingress-root <path>", "ArcadiaIngress root folder")
+      .option("--limit <count>", "Number of recent activity entries", "20")
+  ).action((options: {
+    workspace: string;
+    source?: string;
+    ingressRoot?: string;
+    limit?: string;
+    json?: boolean;
+  }) => runCliAction(
+    "ingress.activity",
+    options,
+    () => runIngressActivityCommand({ ...options, limit: Number(options.limit ?? 20) }),
+    renderIngressActivitySuccess
   ));
   addJsonOption(
     ingress
