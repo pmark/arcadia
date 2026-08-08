@@ -11,6 +11,23 @@ export interface DigestWindow {
   end: string;
 }
 
+export const DIGEST_SCOPES = ["project", "portfolio"] as const;
+export type DigestScope = (typeof DIGEST_SCOPES)[number];
+
+/** The deduplication identity of the collective roll-up, which has no Project. */
+export const PORTFOLIO_SCOPE_KEY = "portfolio";
+
+/** The subject a digest narrates: one Project, or the portfolio as a whole. */
+export interface DigestSubject {
+  scope: DigestScope;
+  /** Unique per subject: the Project id, or PORTFOLIO_SCOPE_KEY. */
+  scopeKey: string;
+  /** Null for the portfolio roll-up. */
+  projectId: string | null;
+  name: string;
+  slug: string;
+}
+
 export type DigestFactKind = "mission_log" | "dispatch" | "decision";
 
 export interface DigestFact {
@@ -27,21 +44,24 @@ export interface DigestNarration {
 }
 
 export type DigestNarrator = (input: {
-  projectId: string;
-  projectName: string;
+  subject: DigestSubject;
   window: DigestWindow;
   facts: DigestFact[];
 }) => Promise<DigestNarration>;
 
 export interface NarrativeDigestRecord {
   id: string;
-  project_id: string;
+  scope: DigestScope;
+  scope_key: string;
+  project_id: string | null;
   artifact_id: string;
   period: DigestPeriod;
   window_start: string;
   window_end: string;
   intelligence_job_id: string | null;
   facts_json: string;
+  posted_message_id: string | null;
+  posted_at: string | null;
   created_at: string;
   updated_at: string;
 }

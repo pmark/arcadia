@@ -118,11 +118,40 @@ should become an Action.
 For project-specific, vague, household, date-based, dependency-based, and
 predicate-based examples, see the [Back Burner Guide](docs/back-burner-guide.md).
 
-## Compose a Project digest
+## Narrative digests arrive on their own
 
-Use the advanced CLI when you want one narrative digest before automatic
-scheduling is installed. Supply explicit half-open ISO boundaries so this
-composer does not decide the still-open calendar-versus-rolling policy:
+The Discord bot composes and posts narrative digests without being asked. Once
+past `ARCADIA_DIGEST_TARGET_TIME` (local, default `07:00`, just after the
+Morning Packet), each cadence produces one digest per active Project plus one
+collective portfolio roll-up:
+
+| Cadence | Window it narrates |
+| --- | --- |
+| Daily | Yesterday, local midnight to midnight |
+| Weekly | The last completed Monday-to-Monday week |
+| Monthly | The last completed calendar month |
+
+Every cadence narrates the period that has **finished**, not the one in
+progress — that is the only rule under which each recorded fact lands in
+exactly one digest of each cadence. A digest fires at most once per subject
+per period, and a bot that was down at the target time composes the same
+window on its first tick after restart. One Project's narration failing costs
+that Project's digest and nothing else.
+
+Run the same thing by hand at any time:
+
+```sh
+pnpm arcadia digest run --workspace <path>
+```
+
+It composes and exports everything due that has not been composed yet, and
+reports what is awaiting delivery. `ARCADIA_DIGEST_CHECK_INTERVAL_SECONDS`
+(default `900`) sets how often the bot checks.
+
+## Compose a Project digest for an explicit window
+
+Use the advanced CLI when you want one narrative digest for boundaries the
+cadences do not cover. Supply explicit half-open ISO boundaries:
 
 ```sh
 pnpm arcadia digest compose \

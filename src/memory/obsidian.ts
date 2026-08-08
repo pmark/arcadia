@@ -190,7 +190,13 @@ export interface NarrativeDigestRecordInput {
   };
   /** The Arcadia-owned Artifact containing the narrated Markdown. */
   artifact: Artifact;
+  /**
+   * What the digest is about. For the collective roll-up this is the synthetic
+   * portfolio subject rather than a real Project row, which `scope` below
+   * distinguishes so a vault reader is never told the roll-up is a Project.
+   */
   project: { id: string; name: string; slug: string };
+  scope?: "project" | "portfolio";
 }
 
 export interface OrientationPacketRecordInput {
@@ -470,9 +476,13 @@ function renderNarrativeDigestRecord(
     "narration: local_preferred_ai",
     yaml("arcadia_digest_key", digestKey),
     yaml("arcadia_digest_id", input.digest.id),
+    yaml("arcadia_digest_scope", input.scope ?? "project"),
     yaml("arcadia_artifact_id", input.artifact.id),
-    yaml("arcadia_project_id", input.project.id),
-    yaml("project", input.project.name),
+    // The portfolio roll-up belongs to no Project row; naming one here would
+    // make the vault claim a link that does not exist in the database.
+    yamlNullable("arcadia_project_id", input.scope === "portfolio" ? null : input.project.id),
+    yaml("subject", input.project.name),
+    yamlNullable("project", input.scope === "portfolio" ? null : input.project.name),
     yaml("period", input.digest.period),
     yaml("window_start", input.digest.windowStart),
     yaml("window_end", input.digest.windowEnd),
@@ -752,7 +762,12 @@ function walkMarkdown(directory: string, visit: (filePath: string) => void): voi
   }
 }
 
-function safeWorkspaceFile(workspace: string, relativePath: string, label: string): string {
+/**
+ * Resolve a workspace-relative Artifact path, refusing anything that escapes
+ * the operational workspace. Exported so every reader of an Artifact's stored
+ * path goes through the same containment check rather than a second one.
+ */
+export function safeWorkspaceFile(workspace: string, relativePath: string, label: string): string {
   if (path.isAbsolute(relativePath)) {
     throw validationError(`The ${label} path must be workspace-relative.`, { path: relativePath });
   }

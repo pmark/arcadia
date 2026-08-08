@@ -59,8 +59,13 @@ function vault(): string {
 describe("narrative digest request", () => {
   it("is local-preferred, unpaid, and explicitly forbids invention", () => {
     const request = buildNarrativeDigestRequest({
-      projectId: "project-alpha",
-      projectName: "Alpha",
+      subject: {
+        scope: "project",
+        scopeKey: "project-alpha",
+        projectId: "project-alpha",
+        name: "Alpha",
+        slug: "alpha"
+      },
       window: WINDOW,
       facts: [{
         id: "mission-log:1",

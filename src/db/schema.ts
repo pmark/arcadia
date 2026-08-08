@@ -61,32 +61,42 @@ export function applyMigrations(db: Database.Database): void {
   ensureActivityTables(db);
   ensureDispatchEventsTable(db);
   ensureNarrativeDigestsTable(db);
+  ensureNarrativeDigestScopeColumns(db);
   applyCapabilityMigrations(db);
 }
 
 /**
- * One derived narrative per exact Project/window pair.
+ * One derived narrative per exact scope/window pair.
  *
- * The window boundaries are explicit ISO instants rather than inferred from a
- * cadence. Scheduling has not yet decided calendar-aligned versus rolling
- * windows, and the composer must not silently decide that policy. The unique
- * key makes re-composition an update of the same Artifact rather than a second
- * digest for the same period.
+ * The window boundaries stay explicit ISO instants rather than a cadence name:
+ * scheduling picks calendar-aligned completed periods (see
+ * `src/digests/schedule.ts`), but the composer still stores what it actually
+ * narrated rather than a label that has to be re-interpreted later.
+ *
+ * `scope_key` is the deduplication identity — the Project id for a Project
+ * digest, the literal `portfolio` for the collective roll-up. It exists
+ * because `project_id` is NULL for the roll-up and SQLite treats NULLs in a
+ * UNIQUE index as distinct, which would let one portfolio digest per window
+ * quietly become many.
  */
 function ensureNarrativeDigestsTable(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS narrative_digests (
       id TEXT PRIMARY KEY,
-      project_id TEXT NOT NULL,
+      scope TEXT NOT NULL DEFAULT 'project' CHECK (scope IN ('project', 'portfolio')),
+      scope_key TEXT NOT NULL,
+      project_id TEXT,
       artifact_id TEXT NOT NULL,
       period TEXT NOT NULL CHECK (period IN ('day', 'week', 'month')),
       window_start TEXT NOT NULL,
       window_end TEXT NOT NULL,
       intelligence_job_id TEXT,
       facts_json TEXT NOT NULL,
+      posted_message_id TEXT,
+      posted_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
-      UNIQUE (project_id, period, window_start, window_end),
+      UNIQUE (scope_key, period, window_start, window_end),
       FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
       FOREIGN KEY (artifact_id) REFERENCES artifacts(id) ON DELETE CASCADE,
       FOREIGN KEY (intelligence_job_id) REFERENCES intelligence_jobs(id) ON DELETE SET NULL
@@ -95,6 +105,51 @@ function ensureNarrativeDigestsTable(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_narrative_digests_project_window
       ON narrative_digests(project_id, window_start, window_end);
   `);
+}
+
+/**
+ * Bring a pre-scheduling narrative_digests table (Project-only, NOT NULL
+ * project_id, no delivery record) up to the scheduled shape.
+ *
+ * SQLite cannot drop a NOT NULL constraint or add a UNIQUE key in place, so
+ * this is a table rebuild rather than a column add. Existing rows are all
+ * Project digests by construction — nothing else could compose one before this
+ * migration — so they carry `scope = 'project'` and `scope_key = project_id`.
+ */
+function ensureNarrativeDigestScopeColumns(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(narrative_digests)").all() as Array<{ name: string }>).map(
+      (column) => column.name
+    )
+  );
+  if (columns.has("scope")) return;
+
+  const foreignKeysEnabled = (db.pragma("foreign_keys", { simple: true }) as number) === 1;
+  if (foreignKeysEnabled) db.pragma("foreign_keys = OFF");
+  try {
+    // The index has to go before the rename: SQLite carries indexes across a
+    // table rename under their existing names, so leaving it would make the
+    // CREATE INDEX IF NOT EXISTS below a no-op and then drop the index along
+    // with the legacy table.
+    db.exec(`
+      DROP INDEX IF EXISTS idx_narrative_digests_project_window;
+      ALTER TABLE narrative_digests RENAME TO narrative_digests_legacy;
+    `);
+    ensureNarrativeDigestsTable(db);
+    db.exec(`
+      INSERT INTO narrative_digests (
+        id, scope, scope_key, project_id, artifact_id, period, window_start, window_end,
+        intelligence_job_id, facts_json, posted_message_id, posted_at, created_at, updated_at
+      )
+      SELECT id, 'project', project_id, project_id, artifact_id, period, window_start, window_end,
+        intelligence_job_id, facts_json, NULL, NULL, created_at, updated_at
+      FROM narrative_digests_legacy;
+
+      DROP TABLE narrative_digests_legacy;
+    `);
+  } finally {
+    if (foreignKeysEnabled) db.pragma("foreign_keys = ON");
+  }
 }
 
 function ensureExecutionRequirementColumn(db: Database.Database): void {
