@@ -237,6 +237,14 @@ import {
 } from "./commands/digest.js";
 import { renderDocsSyncSuccess, runDocsSyncCommand } from "./commands/docs.js";
 import {
+  renderQaQueueSuccess,
+  renderQaSignOffSuccess,
+  renderQaTargetSetSuccess,
+  runQaQueueCommand,
+  runQaSignOffCommand,
+  runQaTargetSetCommand
+} from "./commands/qa.js";
+import {
   renderNextHistorySuccess,
   renderNextReadySuccess,
   renderNextSuccess,
@@ -1564,6 +1572,49 @@ export function buildProgram(): Command {
       renderDigestMarkPostedSuccess
     )
   );
+
+  const qa = program.command("qa").description("Candidate proof targets and operator QA sign-off");
+  const qaTarget = qa.command("target").description("Declare and inspect proof targets");
+  addJsonOption(
+    qaTarget
+      .command("set")
+      .description("Declare or update one Stable or Candidate proof target for a Project")
+      .requiredOption("--project <project>", "Project id or slug")
+      .requiredOption("--kind <kind>", "stable or candidate")
+      .requiredOption("--label <label>", "Human name for this target, stable across revisions")
+      .option("--url <url>", "The target the operator should open to test it")
+      .option("--revision <revision>", "Exact source revision this target currently serves")
+      .option("--pull-request <url>", "Pull request or comparison link")
+      .option("--procedure <text>", "Short human-readable test procedure")
+      .option("--summary <text>", "What's changed relative to Stable")
+      .option("--health <state>", "Recorded reachability: unverified, reachable, or unreachable")
+      .option("--retire", "Retire this target so it leaves the QA queue", false)
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: {
+    workspace: string; project: string; kind: string; label: string; url?: string;
+    revision?: string; pullRequest?: string; procedure?: string; summary?: string;
+    health?: string; retire?: boolean; json?: boolean;
+  }) => runCliAction("qa.target.set", options, () => runQaTargetSetCommand(options), renderQaTargetSetSuccess));
+  addJsonOption(
+    qa
+      .command("queue")
+      .description("Show every active Project's Candidate and Stable proof targets, most urgent first")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("qa.queue", options, () => runQaQueueCommand(options), renderQaQueueSuccess)
+  );
+  addJsonOption(
+    qa
+      .command("sign-off")
+      .description("Record a pass, fail, or follow-up QA verdict against one exact Candidate revision")
+      .argument("<target-id>", "Proof target id")
+      .requiredOption("--verdict <verdict>", "pass, fail, or follow-up")
+      .option("--revision <revision>", "Revision judged; defaults to the target's current revision")
+      .option("--note <text>", "Concise note recorded with the Decision")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((targetId: string, options: {
+    workspace: string; verdict: string; revision?: string; note?: string; json?: boolean;
+  }) => runCliAction("qa.sign-off", options, () => runQaSignOffCommand({ ...options, targetId }), renderQaSignOffSuccess));
 
   const artifact = program.command("artifact").description("Artifact commands");
   addJsonOption(
