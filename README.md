@@ -2,6 +2,10 @@
 
 Arcadia is a local-first project operating system for people juggling multiple creative, technical, and entrepreneurial efforts at the same time.
 
+**New here? Read [How Arcadia Works](docs/operating-model.md)** — what problem it
+solves, why plans live in your repositories rather than in Arcadia, and what is
+built versus still proposed.
+
 For normal daily use, service expectations, and the local Today page, start with [`START_HERE.md`](START_HERE.md).
 
 Arcadia Core is the open source CLI, schema, and reporting engine. Your Arcadia workspace is private operational data.
