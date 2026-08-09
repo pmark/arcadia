@@ -162,8 +162,28 @@ describes. Recording them here is the proposal demonstrating itself.
    schema change (`answer` becomes a list) and a meaningfully larger rendering
    and validation surface across three display targets.
 2. **May a coding agent add options to a question the operator already
-   answered?** Doing so silently invalidates a recorded answer; refusing means
-   new information cannot reopen a decided question without operator action.
+   answered?** Operator response, 2026-08-09: *"I'm really not sure. I want
+   what is most reliable and follows the principle of least surprise."*
+
+   **Recommendation: no — an agent files a new question referencing the
+   answered one.** Least surprise has one firm reading here: *an agent must
+   never mutate an answer the operator recorded.* That rules out reopening in
+   place, which would let settled work re-block dispatch without the operator
+   acting — a question they closed silently gating work again is precisely a
+   surprise.
+
+   Between the two remaining options, refusing outright is safe but loses
+   information; a new question referencing the old one is safe **and** keeps
+   it. The deciding argument is consistency with patterns this portfolio
+   already runs: Decisions are superseded rather than edited (PPN's ADR 0022
+   amends 0020), PPN's editor-experience plan is explicitly append-only with a
+   moving pointer, and PR #44's QA verdicts bind to a revision instead of
+   being overwritten. **Append-only with supersession is already the house
+   pattern, and matching an existing pattern is what least surprise means.**
+
+   The cost is question sprawl — several near-duplicate questions accumulating
+   on one topic. That is visible and auditable, which is the right failure
+   mode compared to a silently altered answer.
 3. **Does an answered question become a Decision record automatically?** PR
    #44 does exactly this for QA sign-offs, so there is precedent — but it
    would turn every routine option-pick into a governed Decision document.
