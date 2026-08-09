@@ -7,7 +7,7 @@ project: arcadia
 status: open
 question: The operator has to read every open pull request across every managed Project to learn what is actually at stake in them. Should Arcadia produce that briefing itself, and capture the operator's response to it as governed feedback?
 gap_type: missing-decision
-recommendation: Yes, but build almost none of it. `work pull-requests` already inventories open pull requests across monitored Projects, and `review`/`feedback` already capture an operator verdict with a note. Neither reads what a pull request contains. Add one interpretation layer over the existing inventory — undisclosed content, forced merge order, control-document pointer moves, schema migrations, approval-boundary crossings, and open Decisions that collide — and route the operator's answer into the review-feedback path that already exists. One connection and one new read view, not a new subsystem.
+recommendation: Yes, but build almost none of it. Operator directed on 2026-08-09 that it run scheduled alongside the digests, which makes a model-free deterministic path binding rather than optional. `work pull-requests` already inventories open pull requests across monitored Projects, and `review`/`feedback` already capture an operator verdict with a note. Neither reads what a pull request contains. Add one interpretation layer over the existing inventory — undisclosed content, forced merge order, control-document pointer moves, schema migrations, approval-boundary crossings, and open Decisions that collide — and route the operator's answer into the review-feedback path that already exists. One connection and one new read view, not a new subsystem.
 confidence: medium
 updated: 2026-08-09
 ---
@@ -99,6 +99,7 @@ a thing the operator would have had to read a diff to learn:
 | Changes `src/db/schema.ts` or any migration | Operator data is rewritten |
 | Introduces outward-facing behavior | Posting, sending, deploying — approval boundaries |
 | Files changed but unmentioned in the body | The undisclosed-content check that found 0012 |
+| Paths outside the dispatched Action's declared scope | Session scope drift — the root cause behind the check above; see **The deeper defect** |
 | CI conclusion on the head commit | Whether the claim of green is current, not stale |
 
 **The undisclosed-content check is the highest-value item and the cheapest.**
@@ -141,20 +142,77 @@ dispatch step.
   converge in practice, merge them then, on evidence.
 - **No pull request writing.** It reads GitHub; it does not post to it.
 
+## Answered by the operator, 2026-08-09
+
+**Cadence and delivery: scheduled, alongside the digests from PR #43.** The
+briefing rides the same daily/weekly cadence rather than waiting to be asked,
+because the situation that prompted it — six pull requests accumulating
+unnoticed across two Projects — is exactly the one an on-demand command does
+not catch.
+
+Two consequences follow and are now binding on the design rather than
+optional:
+
+1. **The deterministic path must stay free of model calls.** A scheduled
+   briefing that narrates costs tokens on every cadence forever. The seven
+   material facts are computed by rule; prose is generated only when the
+   operator explicitly asks for it. This makes the routine briefing
+   `token_impact: none` and is the reason the cadence is affordable at all.
+2. **A briefing with nothing material to report says so in one line and
+   stops.** Recurring delivery earns its place only if a quiet day is
+   visibly quiet. Padding a scheduled message to justify its existence is
+   the failure mode to avoid.
+
+This also makes the briefing dependent on PR #43 merging first, for the
+message plumbing and the cadence machinery both.
+
 ## Open questions for the operator
 
-1. **Cadence.** On demand only, or also on the digest schedule #43 introduces?
-   Scheduled briefings are the reason to keep the deterministic path free of
-   model calls.
-2. **Delivery.** Terminal only, or also Discord — given a phone is often where
-   the operator actually is, and #43 is already building that channel?
-3. **Does the undisclosed-content check become a rule rather than a report?**
-   It could be a pre-merge warning, or eventually a convention that a pull
-   request body must account for every changed path. The second is a stronger
-   guarantee and a real constraint on every coding agent, including this one.
-4. **Scope of "material fact."** The seven above are the ones a real session
+1. **Does the undisclosed-content check become a rule rather than a report?**
+   Operator response, 2026-08-09: *"I don't want too many constraints against
+   progress but I'm wondering if there's a deeper issue that calls for better
+   QA and verification."* That instinct is correct, and it reframes the check
+   — see **The deeper defect** below. Recommendation is now: no hard rule;
+   take the briefing report plus a scope check, both non-blocking.
+2. **Scope of "material fact."** The seven above are the ones a real session
    needed. Adding more is easy and each one dilutes the signal; this list
    should grow only from findings a briefing actually missed.
+
+## The deeper defect: session scope drift
+
+The undisclosed-content check was framed as a disclosure problem. It is not,
+and framing it that way would have bought a weaker guarantee at a higher cost.
+
+PR #43's session was dispatched on `schedule-portfolio-digests`. Decision 0012
+and `docs/operating-model.md` appear in neither that Action's
+`expected_artifact` nor its `acceptance_criteria`. The pull request body was
+arguably accurate *about the dispatched Action*; what it omitted was 420 lines
+of work the Action never called for. **The defect is that the session did work
+outside its Action, not that it described that work badly.**
+
+A pull-request-body rule is satisfiable without fixing this: an agent can
+write "also added Decision 0012" and be fully compliant while the scope drift
+is unchanged. It is disclosure theater, and it taxes every honest pull request
+to catch a dishonest one.
+
+**The proposed check instead: a scope diff.** Compare the changed paths in a
+branch against the dispatched Action's `expected_artifact` and `references`,
+and report paths neither accounts for. Same cheap set difference, applied to
+the cause rather than the symptom. Arcadia already compares acceptance
+criteria against a finished Run's Artifact at acceptance; this extends that
+comparison from the declared artifact to the whole diff, which is where the
+surprise actually lived.
+
+Two properties keep it from becoming the friction the operator does not want:
+
+- **It never blocks.** It is a line in the briefing, not a gate. Nothing about
+  it can stop a merge or a dispatch.
+- **It does not suppress mid-session discovery.** Decision 0012 is good work
+  that should exist. The correct destination for it was its own pull request —
+  already required as of the 2026-08-09 change to the continuation protocol's
+  stopping conditions — not suppression. The scope check tells the operator
+  that a session produced something its Action did not ask for; the separate-
+  pull-request rule tells the agent where to put it.
 
 ## Consequences if approved
 
