@@ -208,3 +208,43 @@ between what Arcadia calls a thing and what the operator sees in their app.
   document state.
 - A third agent joins that has no session concept of its own, making the
   borrowed vocabulary a poor fit.
+
+## Supersedes Decision 0011
+
+The operator decided, 2026-08-09, that this Decision supersedes Decision 0011
+("Agent-session queue and Discord alerting for `arcadia go`"). 0011 discovered
+the same missing primitive from one direction — queuing `go` handoffs needed a
+record to queue — and named it "an agent session," described as an
+implementation detail of queuing. Section 1 above already credits this as the
+first of four independent pieces of evidence. 0011's queue is superseded as a
+standalone Decision and becomes one consumer of the Session primitive defined
+here, per Consequences above ("Decision 0011's queue becomes one consumer of
+this primitive rather than the reason it exists").
+
+0011 also carries four operator answers to its own open questions, given
+2026-08-07, before this Decision existed. They are not about *what a Session
+is* — this Decision settles that — but about *how `go` queues one*, and remain
+live and unanswered by anything written here:
+
+1. **Opt-in `--queue` first.** Queuing must not become the default until it
+   has been used successfully at least once and `go` can guarantee the worker
+   daemon is present. The failure mode of default-queuing is `go` silently
+   depending on a daemon that may not be running.
+2. **Needs-input signal: exit plus final message for v1.** Accepted as good
+   enough to ship, with the dispatch-state diff described in Section 6 above
+   named as the v2 improvement — re-running `resolveDispatch` after exit and
+   treating a resolved-to-open-Decision result as the needs-input signal.
+   Section 6 already states the v2 mechanism; this preserves 0011's explicit
+   sequencing of shipping the cheaper signal first.
+3. **`go` offers to install the worker daemon** when `--queue` is requested
+   and the daemon is not installed or not running, rather than refusing with
+   instructions. This is what eventually allows answer 1's default to flip.
+4. **Discord is a notification system first.** Alerts must be readable and
+   useful standalone. Beyond that, a small fixed set of reply commands — one
+   or two, not a conversational surface — lets the most common response be
+   given from a phone. Which commands are most common is left to observation
+   of real alerts rather than decided now.
+
+Implementing `arcadia go --queue` against the Session primitive must honor
+these four answers unchanged; they were not reopened by this Decision, only
+relocated to it.
