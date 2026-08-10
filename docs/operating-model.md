@@ -201,8 +201,8 @@ would be dishonest to imply otherwise:
 | Discord notifications on run state | Implemented |
 | Local file ingress | Implemented |
 | Natural-language intent (`arcadia ask`) | Implemented |
-| Queued, supervised agent sessions from `go` | **Proposed** (Decision 0011) |
-| Discord alerting on session attention state | **Proposed** (Decision 0011) |
+| Queued, supervised agent sessions from `go` | **Proposed** (Decision 0012, superseding 0011) |
+| Discord alerting on session attention state | **Proposed** (Decision 0012, superseding 0011) |
 | Cross-project attention view as a live surface | **Partial** — state is computed; the surface is not built |
 | Unified context across repos, ingress, and reports | **Not designed** — open direction, deliberately unscoped |
 
