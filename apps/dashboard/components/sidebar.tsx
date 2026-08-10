@@ -7,6 +7,7 @@ import {
   FolderOpen,
   GitPullRequest,
   LayoutGrid,
+  ListChecks,
   Menu,
   MessageSquarePlus,
   NotebookText,
@@ -27,6 +28,7 @@ const PRIMARY_NAV = [
   { href: "/reports", label: "Reports", icon: NotebookText },
   { href: "/admin/pull-requests", label: "Pull Requests", icon: GitPullRequest },
   { href: "/review", label: "Decisions", icon: Eye },
+  { href: "/qa", label: "QA", icon: ListChecks },
   { href: "/dashboard", label: "Full Dashboard", icon: LayoutGrid }
 ];
 

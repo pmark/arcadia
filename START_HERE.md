@@ -8,6 +8,8 @@ Open **Dispatch Journal** at <http://127.0.0.1:3020/admin/dispatch-journal> to s
 
 Open **Outstanding PRs** at <http://127.0.0.1:3020/admin/pull-requests> to see every open pull request across configured Project repositories, grouped with its Project, branch, review/check state, and plain-English readiness rating. This view is read-only.
 
+Open the **QA queue** at <http://127.0.0.1:3020/qa> to test each configured Candidate from one exact procedure. The queue shows the configured revision, target state, validation and evidence freshness; **Test Candidate** opens only that configured target. Record Pass, Fail, or Needs follow-up with an optional note to create a revision-bound Decision. This records QA evidence only—it never merges, deploys, or releases work. Candidate configuration is checked in at `config/qa-candidates.json`.
+
 ## Normal daily use
 
 1. Read **Today's Advantage**: one ready Action, its expected Artifact, and why it matters now.
@@ -42,10 +44,11 @@ Control's richer proof surface is still being built:
 4. A candidate does not replace the known-good stakeholder demo until QA and
    release verification have passed.
 
-The planned Project Detail hero, proof gallery, Test action, Arcadia QA, and
-release workflow are specified in `docs/plans/demo-first-delivery.md`. Until
-that UI exists, this contract is a manual handoff requirement rather than a
-claim about buttons already present in Mission Control.
+The Project Detail hero, proof gallery, state-aware Test action, independent
+Arcadia QA, and release workflow beyond this configured QA queue are specified
+in `docs/plans/demo-first-delivery.md`. Until those surfaces exist, this
+contract is a manual handoff requirement rather than a claim about buttons
+already present in Mission Control.
 
 Use the **Ask** box for a new request that is not already an Action in Arcadia.
 

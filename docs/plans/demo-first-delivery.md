@@ -5,14 +5,14 @@ slug: demo-first-delivery
 project: arcadia
 status: active
 milestone: Every software Project always exposes a stable proof surface and a governed path from candidate demo through QA-verified release
-current_action: build-qa-queue-vertical-slice
+current_action: build-demo-hero-vertical-slice
 token_impact: xlarge
 token_budget: "Stage the program Action by Action; builds, health checks, Playwright capture, and metadata sync use no LLM tokens, while implementation, failure diagnosis, visual interpretation, and independent QA reviews are model-bearing and must be batched per Candidate."
 updated: 2026-08-08
 actions:
   - id: build-qa-queue-vertical-slice
     title: Give the operator one QA queue for active Candidate work
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: Build an Arcadia QA tab that reads a small configured Candidate list and shows each Candidate's Project, pull request, demo link, exact test procedure, evidence freshness, and a human sign-off Decision without automatic provider discovery or release automation.

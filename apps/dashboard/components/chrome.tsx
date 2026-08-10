@@ -10,6 +10,7 @@ import {
   Gauge,
   GitPullRequest,
   History,
+  ListChecks,
   RefreshCw,
   ScrollText,
   Sparkles
@@ -29,6 +30,7 @@ const navItems = [
   { href: "/", label: "Today", icon: Activity },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/review", label: "Review", icon: Eye },
+  { href: "/qa", label: "QA", icon: ListChecks },
   { href: "/back-burner", label: "Back Burner", icon: Archive },
   { href: "/runs", label: "Runs", icon: History },
   { href: "/admin/intelligence", label: "Intelligence", icon: Sparkles },

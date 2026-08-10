@@ -148,6 +148,12 @@ import {
   runReviewWeeklyCommand
 } from "./commands/review.js";
 import {
+  renderQaListSuccess,
+  renderQaRecordSuccess,
+  runQaListCommand,
+  runQaRecordCommand
+} from "./commands/qa.js";
+import {
   renderRebusterConfigureSuccess,
   renderRebusterCreateRebusSuccess,
   renderRebusterIngestEventSuccess,
@@ -2055,6 +2061,32 @@ export function buildProgram(): Command {
       reviewOptionsFromArgv(options),
       () => runReviewWeeklyCommand({ ...options, ...reviewOptionsFromArgv(options) }),
       renderReviewWeeklySuccess
+    )
+  );
+
+  const qa = program.command("qa").description("Configured Candidate QA queue");
+  addJsonOption(
+    qa
+      .command("list")
+      .description("List checked-in active Candidates for operator QA")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("qa.list", options, () => runQaListCommand(options), renderQaListSuccess)
+  );
+  addJsonOption(
+    qa
+      .command("record")
+      .description("Record an operator QA Decision against a configured Candidate revision")
+      .argument("<candidate-id>", "Configured Candidate id")
+      .requiredOption("--decision <decision>", "pass, fail, or needs-follow-up")
+      .option("--note <text>", "Optional concise operator note")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((candidateId: string, options: { workspace: string; decision: "pass" | "fail" | "needs-follow-up"; note?: string; json?: boolean }) =>
+    runCliAction(
+      "qa.record",
+      options,
+      () => runQaRecordCommand({ workspace: options.workspace, candidateId, decision: options.decision, note: options.note }),
+      renderQaRecordSuccess
     )
   );
 
