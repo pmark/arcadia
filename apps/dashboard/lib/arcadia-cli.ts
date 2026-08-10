@@ -11,7 +11,8 @@ import type {
   FeedbackListResponse,
   FeedbackRecordResponse,
   DashboardOutstandingPullRequests,
-  IngressActivityResponse
+  IngressActivityResponse,
+  QaCandidate
 } from "./types";
 import type {
   MissionControlFits,
@@ -35,6 +36,16 @@ const execFileAsync = promisify(execFile);
 
 export async function loadDashboardSnapshot(): Promise<ArcadiaJsonSuccess<DashboardSnapshotResponse>> {
   return runArcadiaCliJson<DashboardSnapshotResponse>(["dashboard", "snapshot"]);
+}
+
+export async function listQaCandidates(): Promise<ArcadiaJsonSuccess<{ candidates: QaCandidate[] }>> {
+  return runArcadiaCliJson<{ candidates: QaCandidate[] }>(["qa", "list"]);
+}
+
+export async function recordQaDecision(input: { candidateId: string; decision: "pass" | "fail" | "needs-follow-up"; note?: string }): Promise<ArcadiaJsonSuccess<unknown>> {
+  const args = ["qa", "record", input.candidateId, "--decision", input.decision];
+  if (input.note?.trim()) args.push("--note", input.note.trim());
+  return runArcadiaCliJson(args);
 }
 
 export interface OutstandingPullRequestsResponse {

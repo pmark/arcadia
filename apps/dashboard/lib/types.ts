@@ -11,6 +11,20 @@ export interface DashboardSnapshotResponse {
   snapshot: DashboardSnapshot;
 }
 
+export interface QaCandidate {
+  id: string;
+  project: string;
+  label: string;
+  environment: "Candidate" | "Stable";
+  revision: string | null;
+  pullRequestUrl: string | null;
+  targetUrl: string | null;
+  targetState: "ready" | "unreachable" | "missing" | "unverified";
+  validation: string;
+  evidenceFreshness: string;
+  testProcedure: string;
+}
+
 export interface IngressActivityResponse {
   source: string;
   root: string;
