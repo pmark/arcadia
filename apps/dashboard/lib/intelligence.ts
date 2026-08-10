@@ -24,7 +24,7 @@ interface HealthRoute {
   capability: string;
   location: "local" | "cloud";
   profile: string;
-  executor: "litellm" | "codex-cli" | "comfyui" | "speech";
+  executor: "litellm" | "codex-cli" | "claude-code-cli" | "comfyui" | "speech";
   requiresPaidUsage: boolean;
 }
 
@@ -132,6 +132,7 @@ function buildTextRequest(
     clientApp: ADMIN_INTELLIGENCE_CLIENT_APP,
     capability: "text.generate",
     execution: submission.execution,
+    executionTarget: submission.executionTarget,
     profile: submission.profile,
     input: { prompt: submission.prompt },
     requirements: { structuredOutput: true },

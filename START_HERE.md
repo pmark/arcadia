@@ -293,7 +293,7 @@ After you sign in following a laptop restart, Arcadia's managed launch agents st
 
 - **Dashboard (core)** — Mission Control, Review, Runs, and System Status at port 3020.
 - **Managed Run worker (core)** — executes only queued, authorized Runs with the coding agent bound to each packet.
-- **Intelligence API and worker (feature-specific)** — structured generation at port 4710. Its durable SQLite queue dispatches cloud, Codex, and local generation through separate bounded pools, so a long image job no longer blocks unrelated requests.
+- **Intelligence API and worker (feature-specific)** — structured generation at port 4710. Its durable SQLite queue dispatches cloud, local LiteLLM, Codex CLI, and Claude Code CLI generation through separate bounded pools, so a long image job no longer blocks unrelated requests. Local structured-text callers can select Claude Code with `executionTarget: "claude-code"`; the default route uses the installed `claude` CLI and does not authorize paid cloud usage.
 - **ComfyUI image backend (feature-specific)** — local FLUX.2 Klein generation/editing at port 8188 when configured.
 - **Discord adapter (feature-specific)** — capture, status, notifications, and
   the morning Orientation Packet. That packet opens with a factual narrative
@@ -311,7 +311,7 @@ The optional iCloud file-ingress job also starts automatically and checks its dr
 
 Do not start separate legacy processes manually. Anything outside this list is not part of the normal local service set.
 
-Intelligence defaults to parallel cloud/Codex work and conservative local
+Intelligence defaults to independent cloud, Codex CLI, Claude Code CLI, and local
 capacity. Tune the pool limits only when provider quotas or local hardware
 require it; the available `ARCADIA_INTELLIGENCE_*_CONCURRENCY` settings are
 listed in `docs/intelligence/ROUTING.md`. `GET

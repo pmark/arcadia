@@ -103,6 +103,12 @@ function TextForm({
       capability: "text.generate",
       offeringId: offering.id,
       execution: offering.location === "local" ? "local-required" : "cloud-required",
+      executionTarget:
+        offering.executor === "codex-cli"
+          ? "codex"
+          : offering.executor === "claude-code-cli"
+            ? "claude-code"
+            : offering.location,
       profile: offering.profile,
       prompt,
       outputMode,
@@ -125,7 +131,7 @@ function TextForm({
         >
           {offerings.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.id} ({item.location}/{item.profile}{item.executor === "codex-cli" ? ", Codex" : ""}
+              {item.id} ({item.location}/{item.profile}{item.executor === "codex-cli" ? ", Codex" : item.executor === "claude-code-cli" ? ", Claude Code" : ""}
               {item.requiresPaidUsage ? ", paid" : ""})
             </option>
           ))}
@@ -236,7 +242,7 @@ function ImageForm({
         >
           {offerings.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.id} ({item.location}/{item.profile}{item.executor === "codex-cli" ? ", Codex" : ""}
+              {item.id} ({item.location}/{item.profile}{item.executor === "codex-cli" ? ", Codex" : item.executor === "claude-code-cli" ? ", Claude Code" : ""}
               {item.requiresPaidUsage ? ", paid" : ""})
             </option>
           ))}

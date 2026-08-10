@@ -216,12 +216,12 @@ function buildEntry(
 
 /**
  * Builds the v0.1 default route registry from configured LiteLLM aliases
- * plus optional local Codex routes.
+ * plus local Codex and Claude Code CLI routes.
  *
  * This intentionally does not expand each alias across every capability and
  * profile. Only the minimum supported route matrix is produced:
- *   - arcadia.text.generate.local.fast      (LiteLLM or Codex CLI)
- *   - arcadia.text.generate.local.standard  (LiteLLM or Codex CLI)
+ *   - arcadia.text.generate.local.fast      (LiteLLM, Codex CLI, or Claude Code CLI)
+ *   - arcadia.text.generate.local.standard  (LiteLLM, Codex CLI, or Claude Code CLI)
  *   - arcadia.text.generate.cloud.fast
  *   - arcadia.text.generate.cloud.standard
  *   - arcadia.text.generate.cloud.quality
@@ -230,9 +230,9 @@ function buildEntry(
  *   - arcadia.image.edit.local.quality.comfyui (ComfyUI)
  *   - arcadia.image.generate.cloud.quality
  *
- * Local LLM and Codex text routes may coexist. A request with an explicit
- * executionTarget selects one; legacy requests without a target retain the
- * local LLM route as their deterministic default.
+ * Local LLM, Codex, and Claude Code text routes may coexist. A request with
+ * an explicit executionTarget selects one; legacy requests without a target
+ * retain the local LLM route as their deterministic default.
  *
  * Other text.* capabilities (classify/extract/reason), other profiles
  * (economy on either text location, standard/economy on image),

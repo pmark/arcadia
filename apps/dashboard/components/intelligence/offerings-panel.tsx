@@ -57,6 +57,8 @@ function executorLabel(executor: IntelligenceOffering["executor"]): string {
   switch (executor) {
     case "codex-cli":
       return "Codex";
+    case "claude-code-cli":
+      return "Claude Code";
     case "comfyui":
       return "ComfyUI";
     case "speech":

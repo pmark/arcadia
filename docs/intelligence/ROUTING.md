@@ -36,6 +36,9 @@ A request carries three routing fields, plus the existing
     locally or fails clearly — it never spends money on the companion app's
     behalf.
   - `cloud-required`: only a cloud route may resolve.
+- **`executionTarget`** — optionally selects a specific execution family:
+  `local`, `cloud`, `codex`, or `claude-code`. Codex and Claude Code are local
+  CLI executors; selecting either never authorizes paid cloud usage.
 - **`profile`** — the optimization target: `economy`, `fast`, `standard`,
   `quality`. Arcadia resolves this deterministically; it never
   auto-upgrades or auto-downgrades a profile. Not every profile is
@@ -65,6 +68,10 @@ profile." The default registry (`buildDefaultRoutes` in
 | ------------------------------------------- | ---------------- | -------- | -------- | -------------------- |
 | `arcadia.text.generate.local.fast`          | `text.generate`  | local    | fast     | no                    |
 | `arcadia.text.generate.local.standard`      | `text.generate`  | local    | standard | no                    |
+| `arcadia.text.generate.local.fast.codex`    | `text.generate`  | local    | fast     | no                    |
+| `arcadia.text.generate.local.standard.codex` | `text.generate` | local    | standard | no                    |
+| `arcadia.text.generate.local.fast.claude-code` | `text.generate` | local | fast | no |
+| `arcadia.text.generate.local.standard.claude-code` | `text.generate` | local | standard | no |
 | `arcadia.text.generate.cloud.fast`          | `text.generate`  | cloud    | fast     | yes                   |
 | `arcadia.text.generate.cloud.standard`      | `text.generate`  | cloud    | standard | yes                   |
 | `arcadia.text.generate.cloud.quality`       | `text.generate`  | cloud    | quality  | yes                   |
@@ -121,7 +128,8 @@ provider/model/LiteLLM detail:
    route codes above), LiteLLM was unreachable (`LITELLM_UNAVAILABLE`),
    ComfyUI was unavailable (`COMFYUI_*`), Codex CLI was unavailable
    (`CODEX_CLI_UNAVAILABLE`), Codex image output
-   was invalid (`CODEX_*` failure codes), or the result failed schema
+   was invalid (`CODEX_*` failure codes), Claude Code CLI was unavailable or
+   invalid (`CLAUDE_CODE_*`), or the result failed schema
    validation (`VALIDATION_FAILED`).
 
 In both cases, `error.message`/the thrown error's message is safe to log or
@@ -151,8 +159,8 @@ the job is queued — never silently ignored.
 
 ## Configuration
 
-The route registry is built from the configured LiteLLM aliases plus optional
-local ComfyUI and Codex image routes, configured via environment variables
+The route registry is built from configured LiteLLM aliases plus local Codex,
+Claude Code, and optional ComfyUI/image routes, configured via environment variables
 (`src/intelligence/config/defaults.ts`):
 
 | Variable                          | Default            | Used for                                   |
@@ -161,9 +169,14 @@ local ComfyUI and Codex image routes, configured via environment variables
 | `ARCADIA_LITELLM_CLOUD_TEXT_ROUTE`  | *(unset = disabled)* | `text.generate`, cloud, fast + standard + quality |
 | `ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE` | *(unset = disabled)* | `image.generate`, cloud, quality             |
 | `ARCADIA_CODEX_IMAGE_ROUTE`         | *(unset = disabled)* | `image.generate`, local, quality             |
+| `ARCADIA_CODEX_TEXT_ROUTE`          | `codex-cli`         | `text.generate`, local, fast + standard via Codex |
 | `ARCADIA_CODEX_CLI_COMMAND`         | `codex`             | Codex CLI executable                         |
 | `ARCADIA_CODEX_CLI_ARGS`            | JSON args for `codex exec` | Codex invocation; `{workspace}` is replaced with the isolated job workspace |
-| `ARCADIA_CODEX_CLI_TIMEOUT_MS`      | `120000`            | Codex CLI timeout for one image job          |
+| `ARCADIA_CODEX_CLI_TIMEOUT_MS`      | `120000`            | Codex CLI timeout for one job                |
+| `ARCADIA_CLAUDE_CODE_TEXT_ROUTE`    | `claude-code-cli`   | `text.generate`, local, fast + standard via Claude Code |
+| `ARCADIA_CLAUDE_CODE_CLI_COMMAND`   | `claude`            | Claude Code CLI executable                   |
+| `ARCADIA_CLAUDE_CODE_CLI_ARGS`      | JSON args for `claude --print` | Claude Code invocation; job workspace is the process cwd |
+| `ARCADIA_CLAUDE_CODE_CLI_TIMEOUT_MS` | `120000`           | Claude Code CLI timeout for one text job     |
 | `ARCADIA_COMFYUI_IMAGE_ROUTE`       | *(unset = disabled)* | local `image.generate` + `image.edit`, quality |
 | `ARCADIA_COMFYUI_BASE_URL`          | `http://127.0.0.1:8188` | ComfyUI API endpoint |
 | `ARCADIA_COMFYUI_WORKFLOW_DIR`      | `~/AI/Arcadia-ComfyUI/workflows` | Arcadia API workflows |
@@ -191,6 +204,7 @@ jobs inserted while the process is down or by another process.
 | `ARCADIA_INTELLIGENCE_CLOUD_TEXT_CONCURRENCY` | `4` | cloud LiteLLM text |
 | `ARCADIA_INTELLIGENCE_CLOUD_IMAGE_CONCURRENCY` | `2` | cloud LiteLLM image |
 | `ARCADIA_INTELLIGENCE_CODEX_CONCURRENCY` | `3` | Codex CLI text/image |
+| `ARCADIA_INTELLIGENCE_CLAUDE_CODE_CONCURRENCY` | `3` | Claude Code CLI text |
 | `ARCADIA_INTELLIGENCE_COMFYUI_CONCURRENCY` | `1` | local ComfyUI image |
 | `ARCADIA_INTELLIGENCE_LOCAL_SPEECH_CONCURRENCY` | `1` | local speech |
 | `ARCADIA_INTELLIGENCE_CLOUD_SPEECH_CONCURRENCY` | `4` | cloud speech |
@@ -206,6 +220,8 @@ each pool.
 
 ```sh
 ARCADIA_LITELLM_LOCAL_TEXT_ROUTE=arcadia-default   # local text generation
+ARCADIA_CODEX_TEXT_ROUTE=codex-cli                  # local Codex text generation
+ARCADIA_CLAUDE_CODE_TEXT_ROUTE=claude-code-cli      # local Claude Code text generation
 ARCADIA_LITELLM_CLOUD_TEXT_ROUTE=arcadia-cloud      # GPT-4o Mini
 ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE=arcadia-image     # GPT Image
 ARCADIA_COMFYUI_IMAGE_ROUTE=comfyui                 # local FLUX.2 Klein generation/editing
@@ -219,6 +235,7 @@ each resolves to:
 | -------------------------------------------------------- | ---------------------------------------------- |
 | `text.generate` / `local-required` / `fast`              | `arcadia.text.generate.local.fast` → `arcadia-default` |
 | `text.generate` / `local-preferred` / `standard`          | `arcadia.text.generate.local.standard` → `arcadia-default` |
+| `text.generate` / `local-required` / `standard` / target `claude-code` | `arcadia.text.generate.local.standard.claude-code` → Claude Code CLI |
 | `text.generate` / `cloud-required` / `quality` (paid usage allowed) | `arcadia.text.generate.cloud.quality` → `arcadia-cloud` |
 | `image.generate` / `local-required` / `quality`           | `arcadia.image.generate.local.quality.comfyui` → ComfyUI |
 | `image.edit` / `local-required` / `quality`               | `arcadia.image.edit.local.quality.comfyui` → ComfyUI |

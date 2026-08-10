@@ -68,16 +68,17 @@ before extending it.
   or provider/model selection.** `local-preferred` never silently goes cloud.
 - Route registry: `src/intelligence/config/defaults.ts` (`buildDefaultRoutes` /
   `loadIntelligenceConfig`), configured from `ARCADIA_LITELLM_*` /
-  `ARCADIA_COMFYUI_*` / `ARCADIA_CODEX_*` / `ARCADIA_SPEECH_*` env vars. Executors:
-  `litellm` | `codex-cli` | `comfyui` | `speech`.
-- **Everything routes through one local LiteLLM proxy** (default
-  `http://127.0.0.1:4000`) — never a direct backend URL. Speech and images have
-  dedicated executors but still resolve via the registry. (LiteLLM sits in front
-  of a local model server; see `docs/intelligence/`.)
+  `ARCADIA_COMFYUI_*` / `ARCADIA_CODEX_*` / `ARCADIA_CLAUDE_CODE_*` /
+  `ARCADIA_SPEECH_*` env vars. Executors: `litellm` | `codex-cli` |
+  `claude-code-cli` | `comfyui` | `speech`.
+- LiteLLM-backed routes use one local proxy (default `http://127.0.0.1:4000`),
+  while Codex, Claude Code, ComfyUI, and speech use their dedicated executors.
+  Every backend still resolves through the same deterministic registry.
 - **Worker model:** `IntelligenceWorker` (`jobs/worker.ts`) is one in-process
   dispatcher with independent, bounded `p-queue` resource pools. Cloud text,
-  cloud image, Codex CLI, local LiteLLM, ComfyUI, and local/cloud speech can
-  progress concurrently without one long image job blocking every route.
+  cloud image, Codex CLI, Claude Code CLI, local LiteLLM, ComfyUI, and
+  local/cloud speech can progress concurrently without one long image job
+  blocking every route.
   Defaults are conservative for local executors and configurable with
   `ARCADIA_INTELLIGENCE_*_CONCURRENCY` variables. Claims remain durable in
   SQLite: active jobs renew their leases, and an opaque claim token fences a

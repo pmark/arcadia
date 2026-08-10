@@ -3,6 +3,22 @@ import { AdminSubmissionError, buildAdminIntelligenceRequest } from "./intellige
 import { ADMIN_INTELLIGENCE_CLIENT_APP } from "./intelligence-types";
 
 describe("buildAdminIntelligenceRequest", () => {
+  it("preserves an explicit Claude Code text target", () => {
+    const request = buildAdminIntelligenceRequest({
+      capability: "text.generate",
+      offeringId: "arcadia.text.generate.local.standard.claude-code",
+      execution: "local-required",
+      executionTarget: "claude-code",
+      profile: "standard",
+      prompt: "Draft a paragraph",
+      outputMode: "plain",
+      allowPaidUsage: false,
+    });
+
+    expect(request.executionTarget).toBe("claude-code");
+    expect(request.executionPolicy.allowPaidUsage).toBe(false);
+  });
+
   it("tags text submissions as admin capability tests without affecting routing fields", () => {
     const request = buildAdminIntelligenceRequest({
       capability: "text.generate",

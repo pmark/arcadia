@@ -68,6 +68,47 @@ describe("structured text client", () => {
     });
   });
 
+  it("targets Claude Code without requiring paid-usage authorization", async () => {
+    let submitted: IntelligenceRequest | undefined;
+    const fetchImpl = (async (input: string | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (init?.method === "POST") {
+        submitted = JSON.parse(String(init.body)) as IntelligenceRequest;
+        return jsonResponse({ created: true, job: { id: "job-claude", status: "queued" } }, 201);
+      }
+      if (url.pathname.endsWith("/job-claude")) {
+        return jsonResponse({ id: "job-claude", status: "completed", result: { text: "draft" } });
+      }
+      throw new Error(`Unexpected request: ${url.pathname}`);
+    }) as typeof fetch;
+    const client = new ArcadiaIntelligenceClient({ baseUrl: "http://arcadia.test", fetchImpl });
+    const operation = client.text.defineStructuredOperation<
+      { prompt: string },
+      { text: string }
+    >({
+      operationId: "test.claude-code",
+      clientApp: "test",
+      profile: "standard",
+      template: { id: "test", version: "1" },
+      outputContract: {
+        schemaId: "test.claude-code.v1",
+        schemaVersion: 1,
+        jsonSchema: { type: "object" },
+      },
+    });
+
+    await operation.run(
+      { prompt: "Draft this" },
+      { idempotencyKey: "claude-1", execution: "claude-code" },
+    );
+
+    expect(submitted).toMatchObject({
+      execution: "local-required",
+      executionTarget: "claude-code",
+      executionPolicy: { allowPaidUsage: false },
+    });
+  });
+
   it("requires explicit paid-usage authorization for cloud execution", async () => {
     const client = new ArcadiaIntelligenceClient({
       baseUrl: "http://arcadia.test",
@@ -114,6 +155,12 @@ describe("structured text client", () => {
           },
           {
             capability: "text.generate",
+            location: "local",
+            profile: "fast",
+            executor: "claude-code-cli",
+          },
+          {
+            capability: "text.generate",
             location: "cloud",
             profile: "fast",
             executor: "litellm",
@@ -128,7 +175,7 @@ describe("structured text client", () => {
 
     await expect(
       client.availableExecutions("text.generate", "fast"),
-    ).resolves.toEqual(["local", "cloud", "codex"]);
+    ).resolves.toEqual(["local", "cloud", "codex", "claude-code"]);
   });
 });
 

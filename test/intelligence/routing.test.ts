@@ -1,9 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { buildDefaultRoutes } from "../../src/intelligence/config/defaults.js";
+import {
+  buildDefaultRoutes,
+  loadIntelligenceConfig,
+} from "../../src/intelligence/config/defaults.js";
 import type { IntelligenceRouteEntry } from "../../src/intelligence/config/types.js";
 import { resolveIntelligenceRoute } from "../../src/intelligence/routing/resolveRoute.js";
 
 describe("resolveIntelligenceRoute", () => {
+  it("registers Claude Code text routes in the gateway defaults", () => {
+    const config = loadIntelligenceConfig({});
+
+    expect(config.routes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "arcadia.text.generate.local.fast.claude-code",
+        executor: "claude-code-cli",
+        requiresPaidUsage: false,
+      }),
+      expect.objectContaining({
+        id: "arcadia.text.generate.local.standard.claude-code",
+        executor: "claude-code-cli",
+        requiresPaidUsage: false,
+      }),
+    ]));
+    expect(config.claudeCodeCli?.command).toBe("claude");
+  });
+
   it("resolves text.generate + local-required + fast to its configured local route", () => {
     const routes = buildDefaultRoutes({ localTextRoute: "arcadia-default" });
 
@@ -68,6 +89,30 @@ describe("resolveIntelligenceRoute", () => {
     expect(codex.ok && codex.route.executor).toBe("codex-cli");
     expect(codex.ok && codex.route.routeId).toBe(
       "arcadia.text.generate.local.fast.codex",
+    );
+  });
+
+  it("selects Claude Code independently from local LLM and Codex", () => {
+    const routes = buildDefaultRoutes({
+      localTextRoute: "arcadia-default",
+      codexTextRoute: "codex-cli",
+      claudeCodeTextRoute: "claude-code-cli",
+    });
+
+    const resolution = resolveIntelligenceRoute(
+      {
+        capability: "text.generate",
+        execution: "local-required",
+        executionTarget: "claude-code",
+        profile: "standard",
+      },
+      routes,
+      { allowPaidUsage: false },
+    );
+
+    expect(resolution.ok && resolution.route.executor).toBe("claude-code-cli");
+    expect(resolution.ok && resolution.route.routeId).toBe(
+      "arcadia.text.generate.local.standard.claude-code",
     );
   });
 

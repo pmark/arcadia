@@ -1,6 +1,7 @@
 import type {
   ExecutionPreference,
   IntelligenceCapability,
+  IntelligenceExecutionTarget,
   IntelligenceJob,
   IntelligenceProfile,
 } from "@pmark/arcadia/intelligence/contracts";
@@ -11,7 +12,7 @@ export interface IntelligenceOffering {
   capability: IntelligenceCapability;
   location: "local" | "cloud";
   profile: IntelligenceProfile;
-  executor: "litellm" | "codex-cli" | "comfyui" | "speech";
+  executor: "litellm" | "codex-cli" | "claude-code-cli" | "comfyui" | "speech";
   requiresPaidUsage: boolean;
 }
 
@@ -31,6 +32,7 @@ export interface AdminTextSubmission {
   capability: "text.generate";
   offeringId: string;
   execution: ExecutionPreference;
+  executionTarget?: IntelligenceExecutionTarget;
   profile: IntelligenceProfile;
   prompt: string;
   outputMode: AdminOutputMode;

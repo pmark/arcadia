@@ -148,7 +148,7 @@ type IntelligenceHealthResponse = {
       capability: IntelligenceCapability;
       location: "local" | "cloud";
       profile: IntelligenceProfile;
-      executor: "litellm" | "codex-cli" | "speech";
+      executor: "litellm" | "codex-cli" | "claude-code-cli" | "comfyui" | "speech";
     }>;
   };
 };
@@ -301,9 +301,10 @@ export class ArcadiaIntelligenceClient {
     for (const route of health.liteLlm.routes) {
       if (route.capability !== capability || route.profile !== profile) continue;
       if (route.executor === "codex-cli") available.add("codex");
+      else if (route.executor === "claude-code-cli") available.add("claude-code");
       else available.add(route.location === "cloud" ? "cloud" : "local");
     }
-    return ["local", "cloud", "codex"].filter((target) =>
+    return ["local", "cloud", "codex", "claude-code"].filter((target) =>
       available.has(target as IntelligenceExecutionTarget)
     ) as IntelligenceExecutionTarget[];
   }
