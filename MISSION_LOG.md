@@ -3,10 +3,47 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-07
+updated: 2026-08-08
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-08 — Digests now compose and post themselves, for every Project
+
+- **Did:** Closed `schedule-portfolio-digests`, the last Action in
+  `narrative-digests`. Added `src/digests/schedule.ts` (the one place that
+  decides which window is due), `arcadia digest run --if-due` and
+  `arcadia digest mark-posted`, portfolio-scoped composition alongside the
+  existing per-Project composer, and `apps/discord-bot/src/digests/scheduler.ts`
+  to deliver the results. Migrated `narrative_digests` to carry a scope, a
+  nullable `project_id`, a NULL-safe `scope_key` deduplication identity, and a
+  delivery record — a table rebuild, since SQLite cannot drop a NOT NULL or add
+  a UNIQUE key in place.
+- **Result:** Answered the plan's open `digest-window-boundaries` question the
+  only way the acceptance criteria permit: calendar-aligned, local, and always
+  the period that has already finished. A rolling lookback would move the same
+  day's activity between digests depending on restart timing, and digesting the
+  period in progress would compose it near-empty and never revisit it, because
+  the once-per-period guard would already be satisfied. The guard itself is the
+  stored `(scope, period, window)` row rather than a second schedule ledger, so
+  there is nothing that can disagree with it — that one choice gives
+  idempotency, missed-tick catch-up, and pending-delivery retry for free.
+  Failure isolation is per subject and per cadence: one Project's unreachable
+  local model costs that Project's digest and nothing else, and a failed vault
+  export is a warning on a digest that still posts. 21 focused tests cover each
+  acceptance criterion; full suite otherwise green, with two pre-existing
+  failures untouched by this change (`tests/obsidian-memory.test.ts` atomic-write
+  case, and `apps/dashboard/lib/intelligence.test.ts` which needs a built
+  `dist/`).
+- **Next:** None in this plan — it is complete, and so is its milestone. The
+  work pointer moves to `demo-first-delivery`, activated at
+  `build-qa-queue-vertical-slice`; it was already drafted from operator
+  direction on 2026-08-01 under approved Decision 0007, so this follows a
+  recorded decision rather than choosing a milestone on the operator's behalf.
+  `portfolio-docs-protocol`'s `narrative-summarization` was explicitly not
+  picked up: it is deferred under Decision 0004 against a trigger that has not
+  fired, and taking it would have routed around that deferral just to keep a
+  pointer non-empty.
 
 ## 2026-08-07 — Pinned the model on every agent handoff
 

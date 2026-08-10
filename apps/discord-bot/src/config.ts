@@ -19,6 +19,10 @@ export interface BotConfig {
   orientationTargetLocalTime: string;
   /** How often (seconds) the orientation scheduler checks whether the packet is due. */
   orientationCheckIntervalSeconds: number;
+  /** Local "HH:MM" time after which the day's narrative digests may compose. Default 07:00. */
+  digestTargetLocalTime: string;
+  /** How often (seconds) the digest scheduler checks whether any cadence is due. */
+  digestCheckIntervalSeconds: number;
 }
 
 const requiredEnv = [
@@ -43,8 +47,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     arcadiaCliPath: env.ARCADIA_CLI_PATH?.trim() ? path.resolve(env.ARCADIA_CLI_PATH) : null,
     pollIntervalSeconds: parsePollInterval(env.ARCADIA_DISCORD_POLL_INTERVAL_SECONDS),
     allowedUserIds: parseAllowedUserIds(env.DISCORD_ALLOWED_USER_IDS),
-    orientationTargetLocalTime: parseTargetLocalTime(env.ARCADIA_ORIENTATION_TARGET_TIME),
-    orientationCheckIntervalSeconds: parseOrientationCheckInterval(env.ARCADIA_ORIENTATION_CHECK_INTERVAL_SECONDS)
+    orientationTargetLocalTime: parseTargetLocalTime(env.ARCADIA_ORIENTATION_TARGET_TIME, "06:00", "ARCADIA_ORIENTATION_TARGET_TIME"),
+    orientationCheckIntervalSeconds: parseCheckInterval(
+      env.ARCADIA_ORIENTATION_CHECK_INTERVAL_SECONDS,
+      "ARCADIA_ORIENTATION_CHECK_INTERVAL_SECONDS"
+    ),
+    // After the orientation packet by default: the packet is what the operator
+    // opens the day with, and a digest of yesterday arriving first would bury it.
+    digestTargetLocalTime: parseTargetLocalTime(env.ARCADIA_DIGEST_TARGET_TIME, "07:00", "ARCADIA_DIGEST_TARGET_TIME"),
+    digestCheckIntervalSeconds: parseCheckInterval(
+      env.ARCADIA_DIGEST_CHECK_INTERVAL_SECONDS,
+      "ARCADIA_DIGEST_CHECK_INTERVAL_SECONDS",
+      900
+    )
   };
 }
 
@@ -58,21 +73,21 @@ function parseAllowedUserIds(raw: string | undefined): string[] {
     .filter((id) => id.length > 0);
 }
 
-function parseTargetLocalTime(raw: string | undefined): string {
-  const value = raw?.trim() || "06:00";
+function parseTargetLocalTime(raw: string | undefined, fallback: string, name: string): string {
+  const value = raw?.trim() || fallback;
   if (!/^\d{2}:\d{2}$/.test(value)) {
-    throw new Error(`ARCADIA_ORIENTATION_TARGET_TIME must be "HH:MM", got: ${value}`);
+    throw new Error(`${name} must be "HH:MM", got: ${value}`);
   }
   return value;
 }
 
-function parseOrientationCheckInterval(raw: string | undefined): number {
+function parseCheckInterval(raw: string | undefined, name: string, fallback = 60): number {
   if (!raw?.trim()) {
-    return 60;
+    return fallback;
   }
   const value = Number.parseInt(raw, 10);
   if (!Number.isInteger(value) || value < 5) {
-    throw new Error("ARCADIA_ORIENTATION_CHECK_INTERVAL_SECONDS must be an integer of at least 5.");
+    throw new Error(`${name} must be an integer of at least 5.`);
   }
   return value;
 }

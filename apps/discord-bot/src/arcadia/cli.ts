@@ -8,6 +8,8 @@ import type {
   ArcadiaJsonSuccess,
   ClarifyData,
   CodexListData,
+  DigestMarkPostedData,
+  DigestRunData,
   MilestoneListData,
   OrientationPacketComposeData,
   OrientationPacketMarkSentData,
@@ -164,6 +166,24 @@ export class ArcadiaCli {
   orientationPacketMarkSent(packetId: string, messageId: string): Promise<ArcadiaJsonSuccess<OrientationPacketMarkSentData> | ArcadiaJsonFailure> {
     return this.runJsonAllowFailure<OrientationPacketMarkSentData>(
       this.withWorkspace(["orientation", "packet", "mark-sent", packetId, "--message-id", messageId, "--json"])
+    );
+  }
+
+  /**
+   * Compose every due Project and portfolio digest. The timeout is generous
+   * because one run narrates once per active Project per due cadence through
+   * the local model, and a cold model load alone can take minutes.
+   */
+  digestRun(): Promise<ArcadiaJsonSuccess<DigestRunData> | ArcadiaJsonFailure> {
+    return this.runJsonAllowFailure<DigestRunData>(
+      this.withWorkspace(["digest", "run", "--json"]),
+      { timeoutMs: 30 * 60 * 1000 }
+    );
+  }
+
+  digestMarkPosted(digestId: string, messageId: string): Promise<ArcadiaJsonSuccess<DigestMarkPostedData> | ArcadiaJsonFailure> {
+    return this.runJsonAllowFailure<DigestMarkPostedData>(
+      this.withWorkspace(["digest", "mark-posted", digestId, "--message-id", messageId, "--json"])
     );
   }
 

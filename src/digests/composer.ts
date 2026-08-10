@@ -13,12 +13,14 @@ import { submitIntelligenceRequest } from "../intelligence/service/jobService.js
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
 import { buildNarrativeDigestRequest } from "./contract.js";
-import type {
-  ComposedProjectDigest,
-  DigestFact,
-  DigestNarrator,
-  DigestWindow,
-  NarrativeDigestRecord
+import {
+  PORTFOLIO_SCOPE_KEY,
+  type ComposedProjectDigest,
+  type DigestFact,
+  type DigestNarrator,
+  type DigestSubject,
+  type DigestWindow,
+  type NarrativeDigestRecord
 } from "./types.js";
 
 const DIGEST_TIMEOUT_MS = 180_000;
@@ -122,6 +124,46 @@ export function gatherProjectDigestFacts(
   ].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.id.localeCompare(b.id));
 }
 
+/** The subject describing one Project. */
+export function projectDigestSubject(project: Pick<Project, "id" | "name" | "slug">): DigestSubject {
+  return { scope: "project", scopeKey: project.id, projectId: project.id, name: project.name, slug: project.slug };
+}
+
+/** The subject describing the collective roll-up, which belongs to no Project. */
+export function portfolioDigestSubject(): DigestSubject {
+  return {
+    scope: "portfolio",
+    scopeKey: PORTFOLIO_SCOPE_KEY,
+    projectId: null,
+    name: "Portfolio",
+    slug: PORTFOLIO_SCOPE_KEY
+  };
+}
+
+/**
+ * Gather every active Project's in-window facts as one stream.
+ *
+ * Each fact keeps its per-Project id namespaced by Project so two Projects'
+ * rows can never collide, and carries the Project name in `detail` so the
+ * narrator can attribute each claim without being told to guess.
+ */
+export function gatherPortfolioDigestFacts(
+  db: Database.Database,
+  projects: Array<Pick<Project, "id" | "slug" | "name">>,
+  window: DigestWindow
+): DigestFact[] {
+  return projects
+    .flatMap((project) =>
+      gatherProjectDigestFacts(db, project, window).map((fact): DigestFact => ({
+        ...fact,
+        id: `${project.slug}/${fact.id}`,
+        summary: `${project.name}: ${fact.summary}`,
+        detail: { ...fact.detail, project: project.name, projectSlug: project.slug }
+      }))
+    )
+    .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.id.localeCompare(b.id));
+}
+
 export async function composeProjectDigest(input: {
   db: Database.Database;
   workspacePath: string;
@@ -130,65 +172,94 @@ export async function composeProjectDigest(input: {
   narrator: DigestNarrator;
 }): Promise<ComposedProjectDigest> {
   const window = normalizeWindow(input.window);
-  const facts = gatherProjectDigestFacts(input.db, input.project, window);
-  const narrated = await input.narrator({
-    projectId: input.project.id,
-    projectName: input.project.name,
+  return persistDigest({
+    ...input,
     window,
-    facts
+    subject: projectDigestSubject(input.project),
+    facts: gatherProjectDigestFacts(input.db, input.project, window)
   });
+}
+
+/** Compose the one collective story across every supplied (active) Project. */
+export async function composePortfolioDigest(input: {
+  db: Database.Database;
+  workspacePath: string;
+  projects: Project[];
+  window: DigestWindow;
+  narrator: DigestNarrator;
+}): Promise<ComposedProjectDigest> {
+  const window = normalizeWindow(input.window);
+  return persistDigest({
+    ...input,
+    window,
+    subject: portfolioDigestSubject(),
+    facts: gatherPortfolioDigestFacts(input.db, input.projects, window)
+  });
+}
+
+async function persistDigest(input: {
+  db: Database.Database;
+  workspacePath: string;
+  subject: DigestSubject;
+  window: DigestWindow;
+  facts: DigestFact[];
+  narrator: DigestNarrator;
+}): Promise<ComposedProjectDigest> {
+  const { db, subject, window, facts } = input;
+  const narrated = await input.narrator({ subject, window, facts });
   const narrative = facts.length === 0
-    ? `Nothing happened in ${input.project.name}'s recorded activity during this ${window.period} window.`
+    ? `Nothing happened in ${subject.name}'s recorded activity during this ${window.period} window.`
     : requireNarrative(narrated.narrative);
 
-  const relativePath = digestRelativePath(input.project.slug, window);
-  writeDigestAtomically(input.workspacePath, relativePath, input.project.name, window, facts, narrative);
+  const relativePath = digestRelativePath(subject.slug, window);
+  writeDigestAtomically(input.workspacePath, relativePath, subject, window, facts, narrative);
 
   const timestamp = nowIso();
-  const existing = input.db.prepare(
+  const existing = db.prepare(
     `SELECT * FROM narrative_digests
-     WHERE project_id = ? AND period = ? AND window_start = ? AND window_end = ?`
-  ).get(input.project.id, window.period, window.start, window.end) as NarrativeDigestRecord | undefined;
+     WHERE scope_key = ? AND period = ? AND window_start = ? AND window_end = ?`
+  ).get(subject.scopeKey, window.period, window.start, window.end) as NarrativeDigestRecord | undefined;
 
   let artifact: Artifact;
   let digest: NarrativeDigestRecord;
-  const transaction = input.db.transaction(() => {
+  const transaction = db.transaction(() => {
     if (existing) {
-      const updatedArtifact = updateArtifact(input.db, existing.artifact_id, {
-        title: digestTitle(input.project.name, window),
+      const updatedArtifact = updateArtifact(db, existing.artifact_id, {
+        title: digestTitle(subject.name, window),
         artifactType: "narrative_digest",
         status: "ready",
         path: relativePath
       });
       if (!updatedArtifact) throw new Error(`Narrative digest Artifact is missing: ${existing.artifact_id}`);
       artifact = updatedArtifact;
-      input.db.prepare(
+      db.prepare(
         `UPDATE narrative_digests
          SET intelligence_job_id = ?, facts_json = ?, updated_at = ?
          WHERE id = ?`
       ).run(narrated.jobId, JSON.stringify(facts), timestamp, existing.id);
-      digest = input.db.prepare("SELECT * FROM narrative_digests WHERE id = ?").get(existing.id) as NarrativeDigestRecord;
+      digest = db.prepare("SELECT * FROM narrative_digests WHERE id = ?").get(existing.id) as NarrativeDigestRecord;
       return;
     }
 
-    artifact = createArtifactRecord(input.db, {
-      projectId: input.project.id,
-      title: digestTitle(input.project.name, window),
+    artifact = createArtifactRecord(db, {
+      projectId: subject.projectId ?? undefined,
+      title: digestTitle(subject.name, window),
       artifactType: "narrative_digest",
       status: "ready",
       path: relativePath
     });
     const id = createId("narrativeDigest");
-    input.db.prepare(
+    db.prepare(
       `INSERT INTO narrative_digests (
-        id, project_id, artifact_id, period, window_start, window_end,
+        id, scope, scope_key, project_id, artifact_id, period, window_start, window_end,
         intelligence_job_id, facts_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
-      id, input.project.id, artifact.id, window.period, window.start, window.end,
+      id, subject.scope, subject.scopeKey, subject.projectId, artifact.id,
+      window.period, window.start, window.end,
       narrated.jobId, JSON.stringify(facts), timestamp, timestamp
     );
-    digest = input.db.prepare("SELECT * FROM narrative_digests WHERE id = ?").get(id) as NarrativeDigestRecord;
+    digest = db.prepare("SELECT * FROM narrative_digests WHERE id = ?").get(id) as NarrativeDigestRecord;
   });
   transaction();
 
@@ -210,7 +281,7 @@ export function createIntelligenceDigestNarrator(
   }), config, artifactStore);
 
   return async (input) => {
-    const request = buildNarrativeDigestRequest(input);
+    const request = buildNarrativeDigestRequest({ subject: input.subject, window: input.window, facts: input.facts });
     const { job: submitted } = await submitIntelligenceRequest(repository, request);
     const deadline = Date.now() + DIGEST_TIMEOUT_MS;
 
@@ -276,11 +347,12 @@ function digestTitle(projectName: string, window: DigestWindow): string {
 function writeDigestAtomically(
   workspacePath: string,
   relativePath: string,
-  projectName: string,
+  subject: DigestSubject,
   window: DigestWindow,
   facts: DigestFact[],
   narrative: string
 ): void {
+  const projectName = subject.name;
   const target = path.join(workspacePath, relativePath);
   mkdirSync(path.dirname(target), { recursive: true });
   const temporary = `${target}.${randomUUID()}.tmp`;
@@ -288,7 +360,11 @@ function writeDigestAtomically(
     "---",
     "artifact_type: narrative_digest",
     "narration: local-ai",
-    `project: ${JSON.stringify(projectName)}`,
+    `scope: ${subject.scope}`,
+    // The roll-up is not any one Project's; naming a `project` for it would be
+    // the first false claim in a document whose whole point is not making any.
+    ...(subject.scope === "project" ? [`project: ${JSON.stringify(projectName)}`] : []),
+    `subject: ${JSON.stringify(projectName)}`,
     `period: ${window.period}`,
     `window_start: ${window.start}`,
     `window_end: ${window.end}`,

@@ -6,10 +6,9 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: Arcadia narrates its own recent history automatically, for itself and every Project it manages
-active_plan: narrative-digests
-current_action: schedule-portfolio-digests
-updated: 2026-08-02
+milestone: Every software Project always exposes a stable proof surface and a governed path from candidate demo through QA-verified release
+active_plan: demo-first-delivery
+updated: 2026-08-08
 ---
 
 # Arcadia
@@ -51,13 +50,28 @@ journal's tally surfaces in the dashboard snapshot. That plan is complete.
 The operator asked for a narrative account of this session and got one, told
 by hand. Then asked for it automatically — for Arcadia's own project and every
 Project Arcadia manages, not as a one-off. See
-`docs/plans/narrative-digests.md`. Structured history now exists (mission-Log
-rows, the dispatch journal) to compose from; what doesn't yet exist is the
-composer itself, an Obsidian export for AI-narrated (not just deterministic)
-records, and a schedule that reaches every Project rather than only the one
-being watched. The read-only Agent Queue slice is now complete, so that plan's
-current pointer resumes this digest work while making ready Actions and every
-pre-dispatch stop plainly visible to any future feeder.
+`docs/plans/narrative-digests.md`. That plan is now complete: the composer
+narrates one Project's bounded window through the unpaid local-preferred
+route, the export projects it into Obsidian as an explicitly AI-narrated
+Record, and the Discord bot's digest scheduler composes, exports, and posts
+every active Project's digest plus one collective portfolio roll-up on the
+daily, weekly, and monthly cadences without being asked.
+
+Cadence windows are calendar-aligned, local, and always the period that has
+already finished — the plan's `digest-window-boundaries` question, answered in
+`src/digests/schedule.ts`. The once-per-subject-per-period guard is the stored
+`(scope, period, window)` row itself rather than a separate schedule ledger,
+so a missed tick self-catches-up and a composed-but-undelivered digest comes
+back for retry instead of being lost. One Project's failure costs that
+Project's digest and nothing else.
+
+With that milestone reached, the pointer moves to `demo-first-delivery`,
+already drafted from operator direction on 2026-08-01 under approved Decision
+0007, starting at `build-qa-queue-vertical-slice`. It was chosen because it is
+the objective the operator already recorded, not because it was the remaining
+open Action — `portfolio-docs-protocol`'s `narrative-summarization` is
+deliberately deferred under Decision 0004 against a trigger that has not
+fired, and picking it up would route around that deferral.
 
 The Agent Queue is documented in `docs/plans/agent-advance-queue.md`. It is a
 projection, not a second work pointer: managed documents still decide what is

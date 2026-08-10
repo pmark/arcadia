@@ -228,8 +228,12 @@ import { renderClarifySuccess, runClarifyCommand } from "./commands/clarify.js";
 import {
   renderDigestComposeSuccess,
   renderDigestExportSuccess,
+  renderDigestMarkPostedSuccess,
+  renderDigestRunSuccess,
   runDigestComposeCommand,
-  runDigestExportCommand
+  runDigestExportCommand,
+  runDigestMarkPostedCommand,
+  runDigestRunCommand
 } from "./commands/digest.js";
 import { renderDocsSyncSuccess, runDocsSyncCommand } from "./commands/docs.js";
 import {
@@ -1536,6 +1540,29 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((digestId: string, options: { workspace: string; json?: boolean }) =>
     runCliAction("digest.export", options, () => runDigestExportCommand({ ...options, digestId }), renderDigestExportSuccess)
+  );
+  addJsonOption(
+    digest
+      .command("run")
+      .description("Compose, export, and queue delivery of every due Project and portfolio digest")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("digest.run", options, () => runDigestRunCommand(options), renderDigestRunSuccess)
+  );
+  addJsonOption(
+    digest
+      .command("mark-posted")
+      .description("Record that a composed digest reached its delivery surface")
+      .argument("<digest-id>", "Narrative digest id")
+      .requiredOption("--message-id <id>", "Delivery surface message id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((digestId: string, options: { workspace: string; messageId: string; json?: boolean }) =>
+    runCliAction(
+      "digest.mark-posted",
+      options,
+      () => runDigestMarkPostedCommand({ ...options, digestId }),
+      renderDigestMarkPostedSuccess
+    )
   );
 
   const artifact = program.command("artifact").description("Artifact commands");

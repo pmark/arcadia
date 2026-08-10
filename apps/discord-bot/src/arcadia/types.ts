@@ -315,6 +315,32 @@ export interface OrientationPacketMarkSentData {
   packet: OrientationPacket;
 }
 
+/**
+ * One (scope, cadence, window) the digest run resolved. Mirrors
+ * `DigestRunEntry` in the CLI; only the fields delivery actually needs.
+ */
+export interface DigestRunEntry {
+  scope: "project" | "portfolio";
+  subject: string;
+  period: "day" | "week" | "month";
+  windowLabel: string;
+  digestId: string | null;
+  factCount: number | null;
+  status: "composed" | "pending-delivery" | "skipped" | "failed";
+  body: string | null;
+  error: string | null;
+}
+
+export interface DigestRunData {
+  entries: DigestRunEntry[];
+  /** The subset still awaiting delivery, in composition order. */
+  pending: DigestRunEntry[];
+}
+
+export interface DigestMarkPostedData {
+  digest: { id: string; posted_message_id: string | null };
+}
+
 export interface OrientationEntry {
   id: string;
   title: string;

@@ -6,6 +6,7 @@ import { handleArcadiaMessage } from "./events/messageCreate.js";
 import { logJson } from "./logging.js";
 import { startNotificationPoller } from "./notifications/poller.js";
 import { buildOrientationReplyHandler } from "./orientation/handler.js";
+import { startDigestScheduler } from "./digests/scheduler.js";
 import { startOrientationScheduler } from "./orientation/scheduler.js";
 import { createDiscordReplyRouter } from "./replyRouter/router.js";
 import { discordAdapterStatusPath, removeDiscordAdapterStatus, writeDiscordAdapterStatus } from "./status.js";
@@ -41,10 +42,12 @@ async function main(): Promise<void> {
       user: readyClient.user.tag,
       channelId: config.discordChannelId,
       allowedUserCount: config.allowedUserIds.length,
-      orientationTargetLocalTime: config.orientationTargetLocalTime
+      orientationTargetLocalTime: config.orientationTargetLocalTime,
+      digestTargetLocalTime: config.digestTargetLocalTime
     });
     startNotificationPoller(client, config, cli, logJson);
     startOrientationScheduler(client, config, cli, replyRouter, logJson);
+    startDigestScheduler(client, config, cli, logJson);
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {

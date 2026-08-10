@@ -3,12 +3,11 @@ arcadia: v1
 type: plan
 slug: narrative-digests
 project: arcadia
-status: active
+status: complete
 milestone: Arcadia narrates its own recent history automatically, for itself and every Project it manages
-current_action: schedule-portfolio-digests
 token_impact: large
 token_budget: "Composition uses one bounded local-preferred narration per Project and period plus one bounded daily Morning Packet perspective; gathering, deduplication, export, scheduling, fallback delivery, and empty-window handling are deterministic."
-updated: 2026-08-03
+updated: 2026-08-08
 actions:
   - id: compose-project-digest
     title: Compose one Project's narrative digest for a window, narrated by local AI
@@ -81,10 +80,10 @@ actions:
     depends_on: [compose-project-digest]
   - id: schedule-portfolio-digests
     title: Schedule daily, weekly, and monthly Project and portfolio digests
-    status: open
+    status: done
     responsibility: codex
     effort: session
-    next_action: Extend the Discord bot's existing orientation scheduler with digest cadences that iterate every active Project and compose one collective portfolio story, idempotent per scope and period, then store, export, and post each one.
+    next_action: Delivered as `arcadia digest run --if-due`, `arcadia digest mark-posted`, and the Discord bot's digest scheduler; no further work.
     expected_artifact: The Discord bot automatically produces and delivers every active Project's and the collective portfolio's due digests, unattended
     clarification: clarified
     confidence: medium
@@ -120,12 +119,14 @@ actions:
           data_locality: local_only
     decisions: ["0006"]
     references:
+      - src/digests/schedule.ts
+      - src/commands/digest.ts
+      - src/db/schema.ts
+      - apps/discord-bot/src/digests/scheduler.ts
       - apps/discord-bot/src/orientation/scheduler.ts
+      - tests/narrative-digest-schedule.test.ts
     depends_on: [compose-project-digest, export-digest-to-obsidian]
-questions:
-  - id: digest-window-boundaries
-    question: Should "weekly" and "monthly" windows align to calendar weeks/months, or roll on a fixed N-day/N-week lookback from the moment they fire?
-    gap_type: missing-definition
+questions: []
 decisions: ["0006"]
 ---
 
@@ -152,6 +153,26 @@ It is not a substitute for `MISSION_LOG.md`, which stays the operator- and
 agent-authored record of intent and result. A digest is read-only derived
 output, the same posture `docs sync` already holds toward every managed
 document: informed by the Project, never written back into it.
+
+## Window boundaries, decided
+
+`digest-window-boundaries` asked whether weekly and monthly windows align to
+the calendar or roll on a fixed lookback from the moment they fire. Answered by
+`schedule-portfolio-digests`: **calendar-aligned, in the operator's local time,
+and always the period that has already finished.**
+
+Two things forced it. A rolling lookback would put the same day's activity in
+different digests depending on when the bot happened to restart, which makes
+"at most once per Project per period" meaningless as a guarantee about
+coverage. And digesting the period currently in progress would compose a
+near-empty narrative early in that period and then never revisit it, because
+the once-per-period guard has already been satisfied. Narrating the completed
+period is the only option under which every recorded fact lands in exactly one
+digest of each cadence. Local rather than UTC for the same reason the Morning
+Packet is local: the operator's "yesterday" is the one on their own clock.
+
+The rule lives in `src/digests/schedule.ts` and nowhere else, so the CLI and
+the Discord scheduler cannot disagree about which window is due.
 
 ## Relationship to already-designed work
 
@@ -194,9 +215,12 @@ every Project.
 
 ## What this plan deliberately does not do
 
-- **No portfolio-wide roll-up implementation yet.** The operator has chosen a
-  collective story alongside every Project's own digest; it is the next
-  scheduled-delivery Action, not part of this explicit-window composer.
+- **No backfill beyond the most recent completed period.** A bot down for
+  longer than one period composes only the latest window of each cadence.
+  Silently posting a month of catch-up narration on restart is worse than the
+  gap, and `digest compose` still covers any explicit window by hand.
+  Reactivation trigger: an operator asking for a window the cadences skipped
+  more than once.
 - **No write-back into a managed Project's own repository.** A digest is
   Arcadia's own derived record of a Project, not a document sync produces or
   consumes -- the same one-way posture the rest of the protocol holds.

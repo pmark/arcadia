@@ -305,8 +305,8 @@ pnpm arcadia digest compose \
 
 `--project` accepts an id or slug. `--period` labels the explicit window as
 `day`, `week`, or `month`; it does not calculate the boundaries. `--from` is
-inclusive and `--to` exclusive. This keeps composition usable without deciding
-whether later scheduled windows are calendar-aligned or rolling.
+inclusive and `--to` exclusive. Use this for a window the scheduled cadences
+below do not cover; for the ordinary case, prefer `digest run`.
 
 The command queues unpaid local-preferred narration, persists the gathered fact
 snapshot, writes the Markdown under `artifacts/narrative-digests/` inside the
@@ -324,6 +324,46 @@ configured Obsidian vault. The Record is explicitly labelled
 `local_preferred_ai`, preserves the Artifact as source of truth, uses an
 atomic ownership-checked write, and skips an unchanged Artifact without
 rewriting the vault file. It does nothing when workspace memory is disabled.
+
+## Run Every Due Digest Cadence
+
+```sh
+pnpm arcadia digest run --workspace "$WORKSPACE" --json
+```
+
+This is what the Discord bot's digest scheduler calls. For each cadence it
+composes, stores, and exports one digest per **active** Project plus one
+collective **portfolio** roll-up, then reports which of them still need
+delivering.
+
+Windows are calendar-aligned, local, and always the last *completed* period:
+yesterday for `day`, the last Monday-to-Monday week for `week`, the last
+calendar month for `month`. Nothing is backfilled beyond the most recent
+completed period.
+
+The once-per-subject-per-period guard is the stored
+`(scope, period, window_start, window_end)` row itself — there is no separate
+schedule ledger to disagree with it. Each returned entry carries a `status`:
+
+| Status | Meaning |
+| --- | --- |
+| `composed` | Newly narrated and stored on this run; deliver it. |
+| `pending-delivery` | Stored earlier but never posted; deliver it. |
+| `skipped` | Already stored and already delivered. |
+| `failed` | This subject failed; every other subject and cadence still ran. |
+
+A failure is reported as an entry and a warning, never thrown, so one
+Project's unreachable local model cannot cost any other Project or cadence its
+digest. A failed vault export is likewise a warning on an otherwise good entry
+— the digest still composed and can still be posted.
+
+```sh
+pnpm arcadia digest mark-posted digest_example --message-id 123 --workspace "$WORKSPACE" --json
+```
+
+Records that a composed digest reached its delivery surface. Until it is
+recorded, the digest comes back as `pending-delivery` on the next run rather
+than being lost behind the once-per-period guard.
 
 ## Manage Artifacts And Expected Outcomes
 
