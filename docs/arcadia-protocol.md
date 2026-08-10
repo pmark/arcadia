@@ -63,6 +63,11 @@ Milestone is not "done" until its Artifact exists and its validation passes.
 - **Branch naming:** `claude/<short-topic>` (or `<author>/<short-topic>`).
 - **Every PR states:** what changed, why, how it was tested (with real
   output), and any risk or follow-up. Link the plan Milestone it advances.
+- **Every stopping-point PR includes a QA plan Artifact:** exact service,
+  URL (host, port, and route), reachability, expected behavior, numbered
+  operator steps, and a distinct end-user procedure when it differs. If there
+  is no runnable target, say why and name the proof Artifact and trigger that
+  will make testing possible. See `docs/operator-demo-and-release-contract.md`.
 - **CI must be green** before merge; a red check that predates the branch is
   called out explicitly, not silently ignored.
 - **Attribution:** Claude-authored PR/issue/review comments end with the

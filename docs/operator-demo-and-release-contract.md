@@ -39,6 +39,29 @@ Observable software work should supply one Project proof set:
 - one primary action: fix proof, inspect failure, Test Candidate, review QA, or
   approve release.
 
+## PR QA plan Artifact
+
+Every stopping-point PR includes an operator-facing QA plan. It turns a
+Candidate from a collection of source changes into a testable Artifact: an
+operator or end user must not need to infer a service, port, route, or expected
+behavior from a Log, terminal output, or source tree.
+
+For each runnable surface changed by the PR, the plan names:
+
+| Field | Required truth |
+| --- | --- |
+| Service and target | Application/service name; exact URL including protocol, host, port, and route; and a start or recovery command when applicable. |
+| Reachability | `local-only`, LAN/phone-reachable, remote, missing, or unreachable. A target without fresh evidence is not called ready. |
+| Expected change | The short observable difference from the prior behavior. |
+| Operator procedure | Numbered steps and the expected result after each step. |
+| End-user procedure | A separate numbered procedure when it differs; otherwise an explicit statement that it is the same as the operator procedure. |
+| Validation | Automated checks already run and any manual evidence still needed. |
+
+When no runnable target exists, the plan says why, links the strongest
+available proof Artifact, and names the condition that will make a runnable
+test possible. A PR never asks the operator to guess a port, search for a
+route, or reconstruct a test procedure from implementation notes.
+
 ## Handoff gates
 
 | Gate | Minimum evidence | Human responsibility |
