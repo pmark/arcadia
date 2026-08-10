@@ -143,6 +143,28 @@ Domain, Project, Mission, Outcome, Milestone, Action, Artifact, Decision, Log.
 
 `START_HERE.md` is the canonical brief guide for normal Arcadia use. Any change to a user-facing flow, CLI command named there, dashboard address, or managed service behavior must update that file in the same change.
 
+## PR QA Plan
+
+Every PR created at a stopping point must contain an operator-facing QA plan.
+The plan is an Artifact, not a vague invitation to "test it": it tells a
+person exactly where to go, what to do, and what should happen.
+
+For each runnable surface changed by the PR, state:
+
+- the service or application, its start/recovery command when applicable, and
+  the exact URL including host, port, and route;
+- whether the target is local-only, LAN/phone-reachable, remote, missing, or
+  currently unreachable — never imply a demo is available without evidence;
+- the expected change relative to the prior behavior; and
+- numbered operator steps with observable expected results.
+
+Include a separate end-user procedure whenever it differs from the operator
+procedure. Otherwise say explicitly that the operator procedure is the
+end-user procedure. If no runnable target exists, say why and name the
+strongest available proof Artifact and the condition that will make a runnable
+test possible. The PR template and
+`docs/operator-demo-and-release-contract.md` define the required format.
+
 ## Working-Copy Safety
 
 Before code changes, run `pnpm arcadia work monitor --no-pull-requests` and
