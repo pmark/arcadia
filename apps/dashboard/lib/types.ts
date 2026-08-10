@@ -664,3 +664,67 @@ export interface DashboardArtifact {
   actionTitle: string | null;
   updatedAt: string;
 }
+
+// ---------------------------------------------------------------------------
+// QA queue
+// ---------------------------------------------------------------------------
+
+export type QaProofTargetKind = "stable" | "candidate";
+export type QaProofHealthState = "unverified" | "reachable" | "unreachable";
+export type QaVerdict = "pass" | "fail" | "follow_up";
+export type QaEvidenceFreshness = "current" | "stale" | "none" | "revision-unknown";
+export type QaPrimaryAction =
+  | "configure-target"
+  | "test-candidate"
+  | "signed-off"
+  | "inspect-failure"
+  | "follow-up"
+  | "show-stable";
+
+export interface QaQueueRow {
+  targetId: string;
+  projectId: string;
+  projectName: string;
+  projectSlug: string;
+  kind: QaProofTargetKind;
+  label: string;
+  url: string | null;
+  sourceRevision: string | null;
+  pullRequestUrl: string | null;
+  testProcedure: string | null;
+  changeSummary: string | null;
+  healthState: QaProofHealthState;
+  healthCheckedAt: string | null;
+  testable: boolean;
+  latestSignOff: {
+    id: string;
+    verdict: QaVerdict;
+    note: string | null;
+    sourceRevision: string | null;
+    signedOffAt: string;
+    reviewItemId: string | null;
+  } | null;
+  evidenceFreshness: QaEvidenceFreshness;
+  primaryAction: QaPrimaryAction;
+  statusLine: string;
+}
+
+export interface QaQueueProjectGroup {
+  projectId: string;
+  projectName: string;
+  projectSlug: string;
+  candidates: QaQueueRow[];
+  stable: QaQueueRow[];
+}
+
+export interface QaQueueSnapshot {
+  generatedAt: string;
+  projects: QaQueueProjectGroup[];
+  counts: {
+    candidates: number;
+    stable: number;
+    awaitingSignOff: number;
+    failing: number;
+    unconfigured: number;
+  };
+}

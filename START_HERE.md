@@ -8,6 +8,8 @@ Open **Dispatch Journal** at <http://127.0.0.1:3020/admin/dispatch-journal> to s
 
 Open **Outstanding PRs** at <http://127.0.0.1:3020/admin/pull-requests> to see every open pull request across configured Project repositories, grouped with its Project, branch, review/check state, and plain-English readiness rating. This view is read-only.
 
+Open **Arcadia QA** at <http://127.0.0.1:3020/qa> to see every Candidate waiting on your judgement, with a one-click Test link and pass/fail/follow-up sign-off bound to the exact revision. See [Test what's waiting on you](#test-whats-waiting-on-you) below.
+
 ## Normal daily use
 
 1. Read **Today's Advantage**: one ready Action, its expected Artifact, and why it matters now.
@@ -117,6 +119,61 @@ should become an Action.
 
 For project-specific, vague, household, date-based, dependency-based, and
 predicate-based examples, see the [Back Burner Guide](docs/back-burner-guide.md).
+
+## Test what's waiting on you
+
+Open **Arcadia QA** at <http://127.0.0.1:3020/qa>. It is one queue of every
+declared proof target across every Project, Candidates first, ordered so the
+top of the page is the thing most worth your attention:
+
+| Order | What it means |
+| --- | --- |
+| Configure target | Arcadia owes proof and has none — no URL is declared. |
+| Inspect failure | Recorded unreachable, or QA failed this exact revision. |
+| Follow up | QA asked for something before a verdict can be reached. |
+| Test Candidate | This revision has never been judged. Open it and decide. |
+| Signed off | This exact revision already has a verdict. |
+
+Each card shows the Project, revision, pull request, test link, a short test
+procedure, and how the newest QA verdict relates to the revision on the target
+*right now*. That last one matters most: when a Candidate moves to a new
+revision, the old verdict is shown as stale rather than carried over, so the
+queue can never present an unjudged build as verified. Reachability is only
+ever what was last recorded — an unverified target says so instead of implying
+the link works.
+
+Candidate and Stable are visibly different and never mixed up. Stable is the
+known-good thing to show; it is not waiting on a verdict.
+
+Record judgement from the card, or from the terminal:
+
+```sh
+pnpm arcadia qa queue --workspace "$WORKSPACE"
+pnpm arcadia qa sign-off <target-id> --verdict pass --note "What you saw"
+```
+
+A verdict is evidence, not authorization. Recording one never merges, deploys,
+promotes a Candidate to Stable, or marks anything delivered — those stay
+explicit operator decisions. Each verdict is also written as a resolved
+Decision, so QA history appears wherever Decisions already do.
+
+Declare a target so it shows up:
+
+```sh
+pnpm arcadia qa target set \
+  --project private-practice-now \
+  --kind candidate \
+  --label "River Copy Studio" \
+  --url http://127.0.0.1:4321/river \
+  --revision abc1234 \
+  --pull-request https://github.com/pmark/private-practice-now/pull/7 \
+  --procedure "Open the studio, generate one draft, confirm it renders."
+```
+
+Targets are declared, never discovered — GitHub and Cloudflare discovery are
+later additive work. Use `--kind stable` for the known-good target, `--health`
+to record a reachability check you actually performed, and `--retire` to take a
+target out of the queue.
 
 ## Narrative digests arrive on their own
 

@@ -5,17 +5,17 @@ slug: demo-first-delivery
 project: arcadia
 status: active
 milestone: Every software Project always exposes a stable proof surface and a governed path from candidate demo through QA-verified release
-current_action: build-qa-queue-vertical-slice
+current_action: build-demo-hero-vertical-slice
 token_impact: xlarge
 token_budget: "Stage the program Action by Action; builds, health checks, Playwright capture, and metadata sync use no LLM tokens, while implementation, failure diagnosis, visual interpretation, and independent QA reviews are model-bearing and must be batched per Candidate."
 updated: 2026-08-08
 actions:
   - id: build-qa-queue-vertical-slice
     title: Give the operator one QA queue for active Candidate work
-    status: open
+    status: done
     responsibility: codex
     effort: session
-    next_action: Build an Arcadia QA tab that reads a small configured Candidate list and shows each Candidate's Project, pull request, demo link, exact test procedure, evidence freshness, and a human sign-off Decision without automatic provider discovery or release automation.
+    next_action: Delivered as the declared proof-target contract, `arcadia qa target set` / `qa queue` / `qa sign-off`, and the Arcadia QA tab at /qa; no further work.
     expected_artifact: A usable Arcadia QA queue for the current PPN and Arcadia Candidates, with one-click Test links and durable operator sign-off evidence
     clarification: clarified
     confidence: high
@@ -57,10 +57,14 @@ actions:
     decisions: ["0007"]
     references:
       - docs/operator-demo-and-release-contract.md
-      - apps/dashboard/app/projects/[id]/page.tsx
+      - src/qa/queue.ts
+      - src/qa/types.ts
+      - src/commands/qa.ts
+      - src/db/schema.ts
+      - apps/dashboard/app/qa/page.tsx
+      - apps/dashboard/app/api/qa/route.ts
       - apps/dashboard/components/sidebar.tsx
-      - apps/dashboard/lib/types.ts
-      - src/dashboard/snapshot.ts
+      - tests/qa-queue.test.ts
     depends_on: []
   - id: build-demo-hero-vertical-slice
     title: Put one reconciled demo-first hero and proof card on Project Detail
@@ -339,6 +343,35 @@ recording a Decision, health checks, and screenshot capture are deterministic.
 The plan remains `xlarge` because later implementation and independent visual
 interpretation are model-bearing; the first Action's guardrail is to keep that
 work out of the vertical slice.
+
+### What shipped, and the one rule it turned on
+
+`build-qa-queue-vertical-slice` is delivered. The queue lives in
+`src/qa/queue.ts`, is exposed as `arcadia qa queue` and the `/qa` tab, and is
+fed by proof targets declared through `arcadia qa target set`.
+
+The rule the whole slice turned out to rest on is **a QA verdict belongs to one
+revision, not to a target**. A `qa_sign_offs` row therefore stores its own
+`source_revision` rather than reading the target's, and the queue compares the
+two on every read. When a Candidate moves to a new revision, its previous pass
+is reported as `stale` and the row returns to `test-candidate`. Without that,
+the queue's central claim — "have I signed off on this exact revision?" —
+would decay into "did I ever sign off on anything here", which is precisely
+the false confidence the contract exists to prevent.
+
+The same instinct produced two smaller refusals. Reachability defaults to
+`unverified` and nothing probes a URL, so the queue never claims a demo is
+healthy on the strength of a link existing. And a target with no URL renders as
+`configure-target` with a plain sentence, rather than a dead link that implies
+a demo exists.
+
+Two corrections came from running it rather than from testing it. The queue
+originally filtered to `active` Projects, which hid Candidates for incubating
+work — the common case — so membership is now controlled solely by the
+target's own `retired_at`. And Stable targets were being routed through the
+Candidate verdict states, asking the operator to re-QA the very thing a broken
+Candidate falls back to; Stable now resolves to `show-stable` and is never
+counted as awaiting judgement.
 
 ## Outcome
 

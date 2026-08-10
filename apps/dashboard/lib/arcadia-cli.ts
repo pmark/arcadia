@@ -11,7 +11,8 @@ import type {
   FeedbackListResponse,
   FeedbackRecordResponse,
   DashboardOutstandingPullRequests,
-  IngressActivityResponse
+  IngressActivityResponse,
+  QaQueueSnapshot
 } from "./types";
 import type {
   MissionControlFits,
@@ -43,6 +44,36 @@ export interface OutstandingPullRequestsResponse {
 
 export async function loadOutstandingPullRequests(): Promise<ArcadiaJsonSuccess<OutstandingPullRequestsResponse>> {
   return runArcadiaCliJson<OutstandingPullRequestsResponse>(["work", "prs"]);
+}
+
+export interface QaQueueResponse {
+  snapshot: QaQueueSnapshot;
+}
+
+export async function loadQaQueue(): Promise<ArcadiaJsonSuccess<QaQueueResponse>> {
+  return runArcadiaCliJson<QaQueueResponse>(["qa", "queue"]);
+}
+
+export interface QaSignOffResponse {
+  signOff: { id: string; verdict: string; source_revision: string | null };
+  reviewItemId: string;
+}
+
+export async function recordQaSignOff(input: {
+  targetId: string;
+  verdict: "pass" | "fail" | "follow-up";
+  revision?: string | null;
+  note?: string | null;
+}): Promise<ArcadiaJsonSuccess<QaSignOffResponse>> {
+  return runArcadiaCliJson<QaSignOffResponse>([
+    "qa",
+    "sign-off",
+    input.targetId,
+    "--verdict",
+    input.verdict,
+    ...(input.revision ? ["--revision", input.revision] : []),
+    ...(input.note ? ["--note", input.note] : [])
+  ]);
 }
 
 export interface ProjectContinuationResponse {

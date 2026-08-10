@@ -8,6 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Every software Project always exposes a stable proof surface and a governed path from candidate demo through QA-verified release
 active_plan: demo-first-delivery
+current_action: build-demo-hero-vertical-slice
 updated: 2026-08-08
 ---
 
@@ -65,13 +66,28 @@ so a missed tick self-catches-up and a composed-but-undelivered digest comes
 back for retry instead of being lost. One Project's failure costs that
 Project's digest and nothing else.
 
-With that milestone reached, the pointer moves to `demo-first-delivery`,
+With that milestone reached, the pointer moved to `demo-first-delivery`,
 already drafted from operator direction on 2026-08-01 under approved Decision
-0007, starting at `build-qa-queue-vertical-slice`. It was chosen because it is
-the objective the operator already recorded, not because it was the remaining
-open Action — `portfolio-docs-protocol`'s `narrative-summarization` is
-deliberately deferred under Decision 0004 against a trigger that has not
-fired, and picking it up would route around that deferral.
+0007. It was chosen because it is the objective the operator already recorded,
+not because it was the remaining open Action — `portfolio-docs-protocol`'s
+`narrative-summarization` is deliberately deferred under Decision 0004 against
+a trigger that has not fired, and picking it up would route around that
+deferral.
+
+That plan's first Action, `build-qa-queue-vertical-slice`, is complete.
+Arcadia QA at `/qa` is one truthful queue of every declared proof target,
+Candidates first, most urgent first. Proof targets are declared through
+`arcadia qa target set` rather than discovered, and a verdict recorded through
+`arcadia qa sign-off` binds to one exact revision: when a Candidate moves, the
+previous pass is reported as stale rather than carried over, so the queue can
+never present an unjudged build as verified. Reachability is only what was
+last recorded, and a target with no URL says so instead of offering a link
+that implies a demo exists. A verdict is evidence, not authorization — signing
+off never merges, deploys, promotes a Candidate to Stable, or marks anything
+delivered.
+
+The pointer now names `build-demo-hero-vertical-slice`, which puts the same
+proof-target contract behind one reconciled hero on Project Detail.
 
 The Agent Queue is documented in `docs/plans/agent-advance-queue.md`. It is a
 projection, not a second work pointer: managed documents still decide what is

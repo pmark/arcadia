@@ -8,6 +8,36 @@ updated: 2026-08-08
 
 # Mission Log: Arcadia
 
+## 2026-08-08 — One QA queue for everything waiting on the operator
+
+- **Did:** Closed `build-qa-queue-vertical-slice`, the first Action in
+  `demo-first-delivery`. Added the declared proof-target contract
+  (`proof_targets`, `qa_sign_offs`), `arcadia qa target set` / `qa queue` /
+  `qa sign-off`, and the Arcadia QA tab at `/qa` with its API routes and
+  sidebar entry. Verified the whole loop against a real workspace, not only in
+  tests: declare a Candidate, see it queued, sign it off, land a new revision,
+  watch the verdict go stale.
+- **Result:** The slice turned out to rest on one rule — a QA verdict belongs
+  to a revision, not to a target. A sign-off stores its own `source_revision`
+  and the queue compares it to what the target declares now, so a Candidate
+  that moves loses its pass and returns to `test-candidate`. Without that, the
+  queue's whole question ("have I signed off on *this* revision?") decays into
+  "did I ever sign off here", which is the false confidence the contract in
+  `docs/operator-demo-and-release-contract.md` exists to prevent. Two smaller
+  refusals follow the same instinct: reachability defaults to `unverified` and
+  nothing probes a URL, and a target with no URL renders as `configure-target`
+  with a plain sentence rather than a dead link. Running it caught two things
+  the tests did not: the queue filtered to `active` Projects, hiding Candidates
+  for incubating work — the common case, since `project create` defaults to
+  incubating — and Stable targets were routed through the Candidate verdict
+  states, asking the operator to re-QA the very thing a broken Candidate falls
+  back to. Membership is now the target's own `retired_at`, and Stable resolves
+  to `show-stable`. 20 tests, one per acceptance criterion; dashboard build
+  green with `/qa` at 4.52 kB.
+- **Next:** `build-demo-hero-vertical-slice` — put the same proof-target
+  contract behind one reconciled demo-first hero on Project Detail, so the
+  Project page stops presenting two competing primary next actions.
+
 ## 2026-08-08 — Digests now compose and post themselves, for every Project
 
 - **Did:** Closed `schedule-portfolio-digests`, the last Action in

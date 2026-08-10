@@ -62,7 +62,68 @@ export function applyMigrations(db: Database.Database): void {
   ensureDispatchEventsTable(db);
   ensureNarrativeDigestsTable(db);
   ensureNarrativeDigestScopeColumns(db);
+  ensureProofTargetTables(db);
   applyCapabilityMigrations(db);
+}
+
+/**
+ * Declared proof surfaces and the QA sign-offs bound to them.
+ *
+ * Both are *declared*, never discovered: a target exists because the operator
+ * or a coding agent said so, and GitHub/Cloudflare discovery is later additive
+ * work. `health_state` therefore defaults to `unverified` rather than
+ * `reachable` — the contract in `docs/operator-demo-and-release-contract.md`
+ * forbids Arcadia claiming a URL is healthy without evidence, and an
+ * optimistic default is exactly that claim.
+ *
+ * A sign-off stores `source_revision` as its own column rather than reading it
+ * from the target. The target moves as new Candidates land; the sign-off has
+ * to keep meaning "this verdict was reached against *that* revision" even
+ * after it does, or evidence freshness is unanswerable.
+ */
+function ensureProofTargetTables(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS proof_targets (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('stable', 'candidate')),
+      label TEXT NOT NULL,
+      url TEXT,
+      source_revision TEXT,
+      pull_request_url TEXT,
+      test_procedure TEXT,
+      change_summary TEXT,
+      health_state TEXT NOT NULL DEFAULT 'unverified'
+        CHECK (health_state IN ('unverified', 'reachable', 'unreachable')),
+      health_checked_at TEXT,
+      retired_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (project_id, kind, label),
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_proof_targets_project_kind
+      ON proof_targets(project_id, kind);
+
+    CREATE TABLE IF NOT EXISTS qa_sign_offs (
+      id TEXT PRIMARY KEY,
+      proof_target_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      source_revision TEXT,
+      verdict TEXT NOT NULL CHECK (verdict IN ('pass', 'fail', 'follow_up')),
+      note TEXT,
+      review_item_id TEXT,
+      signed_off_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (proof_target_id) REFERENCES proof_targets(id) ON DELETE CASCADE,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY (review_item_id) REFERENCES review_items(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_qa_sign_offs_target
+      ON qa_sign_offs(proof_target_id, signed_off_at DESC);
+  `);
 }
 
 /**

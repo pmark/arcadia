@@ -365,6 +365,84 @@ Records that a composed digest reached its delivery surface. Until it is
 recorded, the digest comes back as `pending-delivery` on the next run rather
 than being lost behind the once-per-period guard.
 
+## Declare A Proof Target
+
+```sh
+pnpm arcadia qa target set \
+  --workspace "$WORKSPACE" \
+  --project private-practice-now \
+  --kind candidate \
+  --label "River Copy Studio" \
+  --url http://127.0.0.1:4321/river \
+  --revision abc1234 \
+  --pull-request https://github.com/pmark/private-practice-now/pull/7 \
+  --procedure "Open the studio, generate one draft, confirm it renders." \
+  --summary "Adds the copy studio draft view." \
+  --json
+```
+
+Targets are **declared, never discovered**; GitHub and Cloudflare discovery are
+later additive work. `--kind` is `stable` or `candidate`, and the pair
+`(Project, kind, label)` is the identity — re-running with a new `--revision`
+moves the same target rather than creating a second one, which is what lets the
+queue tell a stale QA verdict from a current one. Omitted options leave the
+stored value alone.
+
+`--health` records a reachability check you actually performed
+(`unverified`, `reachable`, `unreachable`) and stamps the time. It defaults to
+`unverified`: `docs/operator-demo-and-release-contract.md` forbids Arcadia
+claiming a URL is healthy without evidence, so nothing here probes a URL on its
+own. `--retire` takes a target out of the queue without deleting its history.
+
+## Show The QA Queue
+
+```sh
+pnpm arcadia qa queue --workspace "$WORKSPACE" --json
+```
+
+Every declared, unretired target across every Project, Candidates first, most
+urgent first. Each row resolves one `primaryAction`:
+
+| Action | Meaning |
+| --- | --- |
+| `configure-target` | No URL is declared, so there is nothing to demonstrate. |
+| `inspect-failure` | Recorded unreachable, or QA failed this exact revision. |
+| `follow-up` | QA asked for follow-up on this exact revision. |
+| `test-candidate` | This revision has no verdict yet. |
+| `signed-off` | This exact revision already has a passing verdict. |
+| `show-stable` | Stable target: the known-good thing to show, not judged. |
+
+`evidenceFreshness` is the field that keeps the queue honest — `current`,
+`stale` (a verdict exists, but against an older revision), `none`, or
+`revision-unknown` (nothing records a revision on one side, so the verdict
+cannot be tied to what is deployed). Only `current` counts as verified.
+
+The queue is read-only and performs no network access. Project lifecycle status
+does not filter it: declaring a target is the explicit act, and `--retire` is
+how one leaves.
+
+## Record A QA Verdict
+
+```sh
+pnpm arcadia qa sign-off proof_example \
+  --workspace "$WORKSPACE" \
+  --verdict pass \
+  --note "Draft rendered correctly on iPhone and Mac." \
+  --json
+```
+
+`--verdict` is `pass`, `fail`, or `follow-up`. The verdict binds to
+`--revision`, defaulting to the revision the target currently declares; signing
+off with no revision anywhere is allowed but recorded as unknown, and the queue
+then refuses to treat it as current.
+
+Each verdict is written twice on purpose: as the row the queue reads, and as a
+resolved Decision (`approved`, `rejected`, `deferred` respectively) so QA
+history appears wherever Decisions already do.
+
+**A verdict is evidence, not authorization.** This command never merges,
+deploys, promotes a Candidate to Stable, or marks anything delivered.
+
 ## Manage Artifacts And Expected Outcomes
 
 An Action's `expected_artifact` is the concrete "done" signal — the thing
