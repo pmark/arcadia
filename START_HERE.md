@@ -332,5 +332,9 @@ images as normal Artifacts. See `docs/intelligence/COMFYUI_IMAGE_EXECUTOR.md`.
 If Arcadia is unavailable, ask Codex to **check or restart all Arcadia services**. The direct fallback is:
 
 ```sh
-PATH=/opt/homebrew/Cellar/node/25.6.1/bin:$PATH /Users/pmark/.codex/skills/restart-arcadia-services/scripts/restart-services.sh restart /Users/pmark/Dev/MR/Arcadia/arcadia
+/Users/pmark/.codex/skills/restart-arcadia-services/scripts/restart-services.sh restart /Users/pmark/Dev/MR/Arcadia/arcadia
 ```
+
+The restart script selects the Node version declared by the checkout's
+`.nvmrc`. Set `ARCADIA_NODE_BIN=/absolute/path/to/node` only when the matching
+version is installed outside the normal nvm location.

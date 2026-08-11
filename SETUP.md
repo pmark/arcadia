@@ -20,7 +20,7 @@ Arcadia is intended to run locally.
 
 Recommended tools:
 
-- Node.js 20 or newer
+- Node.js 22.13.0 or newer (the repository's pinned major is in `.nvmrc`)
 - pnpm
 - Git
 - SQLite
