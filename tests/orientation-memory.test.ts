@@ -37,7 +37,7 @@ describe("Morning Packets as vault Records", () => {
       packet: {
         id: "opacket_test",
         localDate: "2026-08-03",
-        body: "**Morning narrative**\nArcadia made the export durable.",
+        body: "**Portfolio stand-up**\n**Arcadia**\nYesterday: Made the export durable.\nToday: Verify it.\nBlockers: None recorded.",
         createdAt: "2026-08-03T13:00:00.000Z",
         discordMessageId: "discord-1"
       },
@@ -57,7 +57,7 @@ describe("Morning Packets as vault Records", () => {
     expect(record).toContain("record_type: morning_orientation");
     expect(record).toContain("ai_summary: present");
     expect(record).toContain("## AI perspective — Durable context replaces morning reconstruction");
-    expect(record).toContain("**Morning narrative**");
+    expect(record).toContain("**Portfolio stand-up**");
     expect(record).toContain("SQLite remains operational truth");
   });
 });

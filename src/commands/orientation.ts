@@ -416,11 +416,19 @@ export async function runOrientationPacketExportCommand(
 }
 
 function extractMorningNarrative(packetBody: string): string {
-  const match = packetBody.match(/\*\*Morning narrative\*\*\n([\s\S]*?)(?=\n\n\*\*[^\n]+\*\*|$)/);
+  // Keep the former heading readable so an already-composed packet can still
+  // be exported after this release.
+  const match = packetBody.match(/\*\*(?:Portfolio stand-up|Morning narrative)\*\*\n([\s\S]*?)(?=\n\n\*\*[^\n]+\*\*|$)/);
   return match?.[1]?.trim() || packetBody;
 }
 
 function extractProjectNames(sourceNarrative: string): string[] {
+  const standupNames = [...sourceNarrative.matchAll(/^\*\*([^*\n]+)\*\*$/gm)]
+    .map((match) => match[1]?.trim())
+    .filter((name): name is string => Boolean(name));
+  if (standupNames.length > 0) return [...new Set(standupNames)];
+
+  // Compatibility with morning narratives composed before portfolio stand-ups.
   const recentChanges = sourceNarrative.match(/Recent changes:\s*([^\n]+)/)?.[1] ?? "";
   const names = [...recentChanges.matchAll(/(?:^|[.!?]\s+)([^:.\n]{1,80}):\s/g)]
     .map((match) => match[1]?.trim())

@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 
 interface RecentLogRow {
+  project_id: string;
   project_name: string;
   work_performed: string;
   result: string;
@@ -9,106 +10,127 @@ interface RecentLogRow {
   created_at: string;
 }
 
-export interface MorningNarrativeSnapshot {
-  recentLogs: RecentLogRow[];
-  completedActions7d: number;
-  completedActionsPrevious7d: number;
-  readyArtifacts7d: number;
-  pendingDecisions: number;
-  blockedActions: number;
+interface BlockedActionRow {
+  project_id: string;
+  title: string;
 }
 
-/** Gather only durable operational facts; narration below remains deterministic. */
-export function gatherMorningNarrativeSnapshot(db: Database.Database, now: Date): MorningNarrativeSnapshot {
-  const current = now.getTime();
-  const sevenDaysAgo = new Date(current - 7 * 86_400_000).toISOString();
-  const fourteenDaysAgo = new Date(current - 14 * 86_400_000).toISOString();
-  const nowIso = now.toISOString();
-  const count = (sql: string, ...params: string[]): number =>
-    (db.prepare(sql).get(...params) as { count: number }).count;
+export interface ProjectStandup {
+  projectId: string;
+  projectName: string;
+  yesterday: string[];
+  today: string[];
+  blockers: string[];
+}
 
-  return {
-    recentLogs: db.prepare(
-      `SELECT p.name AS project_name, ml.work_performed, ml.result, ml.blockers, ml.next_action, ml.created_at
-       FROM mission_logs ml
-       LEFT JOIN projects p ON p.id = ml.project_id
-       WHERE ml.created_at >= ? AND ml.created_at < ?
-       ORDER BY ml.created_at DESC
-       LIMIT 5`
-    ).all(sevenDaysAgo, nowIso) as RecentLogRow[],
-    completedActions7d: count(
-      "SELECT COUNT(*) AS count FROM work_items WHERE status = 'done' AND updated_at >= ? AND updated_at < ?",
-      sevenDaysAgo,
-      nowIso
-    ),
-    completedActionsPrevious7d: count(
-      "SELECT COUNT(*) AS count FROM work_items WHERE status = 'done' AND updated_at >= ? AND updated_at < ?",
-      fourteenDaysAgo,
-      sevenDaysAgo
-    ),
-    readyArtifacts7d: count(
-      "SELECT COUNT(*) AS count FROM artifacts WHERE status IN ('ready', 'published') AND updated_at >= ? AND updated_at < ?",
-      sevenDaysAgo,
-      nowIso
-    ),
-    pendingDecisions: count("SELECT COUNT(*) AS count FROM review_items WHERE status = 'pending'"),
-    blockedActions: count("SELECT COUNT(*) AS count FROM work_items WHERE status = 'blocked'")
-  };
+export interface MorningNarrativeSnapshot {
+  recentLogs: RecentLogRow[];
+  projectStandups: ProjectStandup[];
+}
+
+/**
+ * Gather the portfolio stand-up from durable Logs and blocked Actions.
+ *
+ * A Project is active here when it has received a Log in the trailing seven
+ * days. This intentionally measures recent attention rather than copying the
+ * Project lifecycle status, which can stay `active` while no work is moving.
+ */
+export function gatherMorningNarrativeSnapshot(db: Database.Database, now: Date): MorningNarrativeSnapshot {
+  const activeSince = new Date(now.getTime() - 7 * 86_400_000).toISOString();
+  const { yesterdayStart, todayStart } = localDayBoundaries(now);
+  const nowIso = now.toISOString();
+  const recentLogs = db.prepare(
+    `SELECT
+       ml.project_id,
+       p.name AS project_name,
+       ml.work_performed,
+       ml.result,
+       ml.blockers,
+       ml.next_action,
+       ml.created_at
+     FROM mission_logs ml
+     JOIN projects p ON p.id = ml.project_id
+     WHERE ml.created_at >= ? AND ml.created_at < ?
+     ORDER BY ml.created_at DESC, ml.id ASC`
+  ).all(activeSince, nowIso) as RecentLogRow[];
+
+  const blockedActions = db.prepare(
+    `SELECT wi.project_id, wi.title
+     FROM work_items wi
+     WHERE wi.project_id IS NOT NULL AND wi.status = 'blocked'
+     ORDER BY wi.updated_at DESC, wi.id ASC`
+  ).all() as BlockedActionRow[];
+
+  const projectNames = new Map<string, string>();
+  for (const log of recentLogs) projectNames.set(log.project_id, log.project_name);
+
+  const projectStandups = [...projectNames.entries()].map(([projectId, projectName]) => {
+    const logs = recentLogs.filter((log) => log.project_id === projectId);
+    const yesterdayLogs = logs.filter(
+      (log) => log.created_at >= yesterdayStart && log.created_at < todayStart
+    );
+    const latestNextAction = logs.find((log) => log.next_action.trim())?.next_action;
+
+    return {
+      projectId,
+      projectName,
+      yesterday: unique(yesterdayLogs.map((log) => log.work_performed)),
+      today: latestNextAction ? [latestNextAction] : [],
+      blockers: unique([
+        ...blockedActions.filter((action) => action.project_id === projectId).map((action) => action.title),
+        ...yesterdayLogs.map((log) => log.blockers).filter((blocker): blocker is string => Boolean(blocker?.trim()))
+      ])
+    };
+  });
+
+  return { recentLogs, projectStandups };
 }
 
 export function composeMorningNarrative(snapshot: MorningNarrativeSnapshot): string {
-  const lines: string[] = [];
-  if (snapshot.recentLogs.length > 0) {
-    const projects = [...new Set(snapshot.recentLogs.map((log) => log.project_name || "Unassigned"))];
-    const highlights = snapshot.recentLogs
-      .slice(0, 3)
-      .map((log) => `${log.project_name || "Unassigned"}: ${sentence(log.result)}`)
-      .join(" ");
-    lines.push(
-      `Momentum is visible across ${projects.length} ${projects.length === 1 ? "Project" : "Projects"}. ` +
-      `Recent changes: ${highlights}`
-    );
-  } else {
-    lines.push("Arcadia has no new Log entries from the last seven days, so the useful move is to restore one small, provable thread of momentum.");
+  if (snapshot.projectStandups.length === 0) {
+    return "No Projects have received a Log entry in the last seven days, so there is no active portfolio docket to report.";
   }
 
-  const comparison = snapshot.completedActions7d - snapshot.completedActionsPrevious7d;
-  const velocity = comparison === 0
-    ? "steady with the preceding week"
-    : comparison > 0
-      ? `up by ${comparison} from the preceding week`
-      : `down by ${Math.abs(comparison)} from the preceding week`;
-  lines.push(
-    `Velocity: ${snapshot.completedActions7d} completed ${plural(snapshot.completedActions7d, "Action")} and ` +
-    `${snapshot.readyArtifacts7d} ready ${plural(snapshot.readyArtifacts7d, "Artifact")} in seven days; completed-Action throughput is ${velocity}.`
-  );
+  const doneCount = snapshot.projectStandups.reduce((total, project) => total + project.yesterday.length, 0);
+  const plannedCount = snapshot.projectStandups.reduce((total, project) => total + project.today.length, 0);
+  const blockerCount = snapshot.projectStandups.reduce((total, project) => total + project.blockers.length, 0);
+  const lines = [
+    `${snapshot.projectStandups.length} recently active ${plural(snapshot.projectStandups.length, "Project")} on the docket: ` +
+      `${doneCount} done ${plural(doneCount, "item")} yesterday, ${plannedCount} planned ${plural(plannedCount, "Action")} today, ` +
+      `${blockerCount} ${plural(blockerCount, "blocker")}.`
+  ];
 
-  const friction: string[] = [];
-  if (snapshot.pendingDecisions > 0) friction.push(`${snapshot.pendingDecisions} pending ${plural(snapshot.pendingDecisions, "Decision")}`);
-  if (snapshot.blockedActions > 0) friction.push(`${snapshot.blockedActions} blocked ${plural(snapshot.blockedActions, "Action")}`);
-  const loggedBlocker = snapshot.recentLogs.find((log) => log.blockers?.trim());
-  if (loggedBlocker) friction.push(`${loggedBlocker.project_name}: ${sentence(loggedBlocker.blockers ?? "")}`);
-  lines.push(friction.length > 0
-    ? `Watch the drag: ${stripTerminalPunctuation(friction.join("; "))}. Clearing the smallest one first is likely the cheapest way to recover flow.`
-    : "No explicit blocked Actions or pending Decisions are accumulating. Protect that low-friction state by finishing the smallest ready slice before opening another front."
-  );
+  for (const project of snapshot.projectStandups) {
+    lines.push(
+      `**${project.projectName}**\n` +
+      `Yesterday: ${listOrFallback(project.yesterday, "No completed work recorded.")}\n` +
+      `Today: ${listOrFallback(project.today, "No next Action recorded.")}\n` +
+      `Blockers: ${listOrFallback(project.blockers, "None recorded.")}`
+    );
+  }
 
-  const next = snapshot.recentLogs.find((log) => log.next_action?.trim())?.next_action;
-  if (next) lines.push(`Best handoff opportunity: ${sentence(next)} If its inputs are complete, this is a strong candidate for direct coding-agent delegation.`);
   return lines.join("\n\n");
 }
 
+function localDayBoundaries(now: Date): { yesterdayStart: string; todayStart: string } {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  return { yesterdayStart: yesterday.toISOString(), todayStart: today.toISOString() };
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.replace(/\s+/g, " ").trim()).filter(Boolean))];
+}
+
+function listOrFallback(values: string[], fallback: string): string {
+  return values.length > 0 ? values.map(sentence).join("; ") : fallback;
+}
+
 function sentence(value: string): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  const trimmed = normalized.length > 240 ? `${normalized.slice(0, 237).trimEnd()}…` : normalized;
-  if (!trimmed) return "No result was recorded.";
+  const trimmed = value.length > 180 ? `${value.slice(0, 177).trimEnd()}…` : value;
   return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 
 function plural(count: number, singular: string): string {
   return count === 1 ? singular : `${singular}s`;
-}
-
-function stripTerminalPunctuation(value: string): string {
-  return value.replace(/[.!?]+$/, "");
 }
