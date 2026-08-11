@@ -88,3 +88,11 @@ export interface WorkMonitorSnapshot {
     configurationErrors: number;
   };
 }
+
+export interface LandedRepositoryWork {
+  projectId: string;
+  projectName: string;
+  sha: string;
+  summary: string;
+  committedAt: string;
+}

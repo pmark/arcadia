@@ -2,6 +2,7 @@ import { existsSync, realpathSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import type {
   DeliveryState,
+  LandedRepositoryWork,
   PreservationState,
   PullRequestSnapshot,
   RepositoryWorkingCopyAssessment,
@@ -110,6 +111,65 @@ export function formatWorkingCopySafetyLines(snapshot: WorkMonitorSnapshot, limi
       return `${copy.projectName} / ${identity} — ${copy.summary} Preservation: ${preservationLabel}; delivery: ${DELIVERY_LABELS[copy.delivery]}.`;
     });
   return [...errors, ...attention].slice(0, limit);
+}
+
+/**
+ * Read work that actually landed on each repository's locally known default
+ * branch in a half-open time window. First-parent history reports the commits
+ * integrated into the branch without repeating every commit inside a merged
+ * topic branch.
+ */
+export function listLandedRepositoryWork(
+  snapshot: WorkMonitorSnapshot,
+  window: { start: string; end: string }
+): LandedRepositoryWork[] {
+  const startAt = new Date(window.start).getTime();
+  const endAt = new Date(window.end).getTime();
+  const landed = new Map<string, LandedRepositoryWork>();
+
+  for (const repository of snapshot.repositories) {
+    if (!repository.repositoryPath || !repository.baseRef) continue;
+    const refs = [repository.baseRef];
+    if (repository.baseRef.startsWith("origin/")) refs.push(repository.baseRef.slice("origin/".length));
+
+    for (const ref of refs) {
+      if (!run(repository.repositoryPath, "git", ["rev-parse", "--verify", "--quiet", ref]).ok) continue;
+      const result = run(repository.repositoryPath, "git", [
+        "log",
+        "--first-parent",
+        `--since=${window.start}`,
+        `--until=${window.end}`,
+        "--format=%x1e%H%x1f%cI%x1f%P%x1f%s%x1f%b",
+        ref
+      ]);
+      if (!result.ok) continue;
+
+      for (const record of result.stdout.split("\x1e").map((value) => value.trim()).filter(Boolean)) {
+        const [sha, committedAt, parents, subject, ...bodyParts] = record.split("\x1f");
+        if (!sha || !committedAt || !subject) continue;
+        const committedTime = new Date(committedAt).getTime();
+        if (!Number.isFinite(committedTime) || committedTime < startAt || committedTime >= endAt) continue;
+        const key = `${repository.projectId}:${sha}`;
+        landed.set(key, {
+          projectId: repository.projectId,
+          projectName: repository.projectName,
+          sha,
+          summary: landedCommitSummary(subject.trim(), bodyParts.join("\x1f"), parents ?? ""),
+          committedAt
+        });
+      }
+    }
+  }
+
+  return [...landed.values()].sort((a, b) => b.committedAt.localeCompare(a.committedAt) || a.sha.localeCompare(b.sha));
+}
+
+function landedCommitSummary(subject: string, body: string, parents: string): string {
+  const mergeTitle = body.split("\n").map((line) => line.trim()).find(Boolean);
+  const pullRequest = subject.match(/^Merge pull request #(\d+)\b/i);
+  if (pullRequest && mergeTitle) return `Merged PR #${pullRequest[1]}: ${mergeTitle}`;
+  if (parents.trim().split(/\s+/).filter(Boolean).length > 1 && mergeTitle) return `Merged: ${mergeTitle}`;
+  return subject;
 }
 
 function scanRepository(

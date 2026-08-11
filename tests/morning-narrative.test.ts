@@ -1,8 +1,17 @@
 import Database from "better-sqlite3";
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { applyInitialSchema } from "../src/db/schema.js";
 import { createMissionLog, createWorkItemRecord, upsertProject } from "../src/db/repositories.js";
 import type { WorkMonitorSnapshot } from "../src/workMonitoring/types.js";
+
+const temporary: string[] = [];
+
+afterEach(() => {
+  for (const directory of temporary.splice(0)) rmSync(directory, { recursive: true, force: true });
+});
 import {
   composeMorningNarrative,
   gatherMorningNarrativeSnapshot,
@@ -137,7 +146,7 @@ describe("morning narrative", () => {
     db.close();
   });
 
-  it("includes current repository attention even when no recent Log exists and falls back to an open Action for today", () => {
+  it("includes current repository attention without a Log and uses the authoritative current Action for today", () => {
     const db = new Database(":memory:");
     applyInitialSchema(db);
     const now = new Date(2026, 7, 11, 8);
@@ -167,10 +176,15 @@ describe("morning narrative", () => {
       status: "open"
     });
 
+    const repository = managedRepository("repository-attention", "Build from the managed current Action.");
+    const currentCopy = workingCopy(current.id, current.name, { total: 2, lastCommitAt: null });
+    currentCopy.repositoryPath = repository;
+    currentCopy.worktreePath = repository;
     const workSnapshot = monitorSnapshot([
-      workingCopy(current.id, current.name, { total: 2, lastCommitAt: null }),
+      currentCopy,
       workingCopy(stale.id, stale.name, { total: 0, lastCommitAt: new Date(2026, 7, 3, 7).toISOString() })
     ]);
+    workSnapshot.repositories[0].repositoryPath = repository;
     const gathered = gatherMorningNarrativeSnapshot(db, now, workSnapshot);
 
     expect(gathered.recentLogs).toEqual([]);
@@ -178,7 +192,7 @@ describe("morning narrative", () => {
       projectId: current.id,
       projectName: "Repository Attention",
       yesterday: [],
-      today: ["Verify the Morning Packet"],
+      today: ["Build from the managed current Action."],
       blockers: []
     }]);
     expect(composeMorningNarrative(gathered)).toContain("1 recently active Project on the docket");
@@ -209,6 +223,50 @@ function monitorSnapshot(copies: Array<Record<string, unknown>>): WorkMonitorSna
       configurationErrors: 0
     }
   } as WorkMonitorSnapshot;
+}
+
+function managedRepository(slug: string, nextAction: string): string {
+  const repository = mkdtempSync(path.join(tmpdir(), "arcadia-morning-managed-"));
+  temporary.push(repository);
+  mkdirSync(path.join(repository, "docs", "plans"), { recursive: true });
+  writeFileSync(path.join(repository, "PROJECT.md"), `---
+arcadia: v1
+type: project
+slug: ${slug}
+name: Repository Attention
+status: active
+goal: Keep the report authoritative.
+milestone: Accurate reporting
+active_plan: current-work
+updated: 2026-08-11
+---
+`, "utf8");
+  writeFileSync(path.join(repository, "docs", "plans", "current-work.md"), `---
+arcadia: v1
+type: plan
+slug: current-work
+project: ${slug}
+status: active
+milestone: Accurate reporting
+current_action: report-it
+token_impact: small
+token_budget: One bounded implementation pass; tests are deterministic.
+updated: 2026-08-11
+actions:
+  - id: report-it
+    title: Report it accurately
+    status: open
+    responsibility: codex
+    effort: short
+    next_action: ${nextAction}
+    clarification: clarified
+    confidence: high
+    acceptance_criteria:
+      - The report uses the managed current Action.
+    depends_on: []
+---
+`, "utf8");
+  return repository;
 }
 
 function workingCopy(projectId: string, projectName: string, options: { total: number; lastCommitAt: string | null }): Record<string, unknown> {

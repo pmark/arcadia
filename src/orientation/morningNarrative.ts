@@ -1,4 +1,6 @@
 import type Database from "better-sqlite3";
+import { resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
+import { listLandedRepositoryWork } from "../workMonitoring/scanner.js";
 import type { WorkMonitorSnapshot } from "../workMonitoring/types.js";
 
 interface RecentLogRow {
@@ -19,6 +21,11 @@ interface BlockedActionRow {
 interface PlannedActionRow {
   project_id: string;
   next_action: string;
+}
+
+interface ProjectIdentityRow {
+  id: string;
+  slug: string;
 }
 
 export interface ProjectStandup {
@@ -80,9 +87,14 @@ export function gatherMorningNarrativeSnapshot(
        AND trim(wi.next_action) != ''
      ORDER BY wi.status = 'in_progress' DESC, wi.updated_at DESC, wi.id ASC`
   ).all() as PlannedActionRow[];
+  const projectIdentities = db.prepare("SELECT id, slug FROM projects").all() as ProjectIdentityRow[];
+  const landedWork = workSnapshot
+    ? listLandedRepositoryWork(workSnapshot, { start: yesterdayStart, end: todayStart })
+    : [];
 
   const projectNames = new Map<string, string>();
   for (const log of recentLogs) projectNames.set(log.project_id, log.project_name);
+  for (const work of landedWork) projectNames.set(work.projectId, work.projectName);
   for (const repository of workSnapshot?.repositories ?? []) {
     if (repository.workingCopies.some((copy) => isRecentRepositoryAttention(copy, activeSince))) {
       projectNames.set(repository.projectId, repository.projectName);
@@ -96,13 +108,20 @@ export function gatherMorningNarrativeSnapshot(
     );
     const latestNextAction = logs.find((log) => log.next_action.trim())?.next_action;
     const plannedAction = plannedActions.find((action) => action.project_id === projectId)?.next_action;
+    const dispatch = resolveProjectDispatch(projectId, projectIdentities, workSnapshot);
+    const authoritativeNext = dispatch?.context?.action.nextAction || dispatch?.context?.action.title;
 
     return {
       projectId,
       projectName,
-      yesterday: unique(yesterdayLogs.map((log) => log.work_performed)),
-      today: unique([latestNextAction ?? plannedAction ?? ""]),
+      yesterday: unique([
+        ...landedWork.filter((work) => work.projectId === projectId).map((work) => work.summary),
+        ...yesterdayLogs.map((log) => log.work_performed)
+      ]).slice(0, 5),
+      today: unique([authoritativeNext ?? latestNextAction ?? plannedAction ?? ""]),
       blockers: unique([
+        ...(dispatch?.context ? dispatch.blockers.map((blocker) => blocker.message) : []),
+        ...(dispatch?.context && dispatch.operatorQuestion ? [dispatch.operatorQuestion] : []),
         ...blockedActions.filter((action) => action.project_id === projectId).map((action) => action.title),
         ...yesterdayLogs.map((log) => log.blockers).filter((blocker): blocker is string => Boolean(blocker?.trim()))
       ])
@@ -110,6 +129,23 @@ export function gatherMorningNarrativeSnapshot(
   });
 
   return { recentLogs, projectStandups };
+}
+
+function resolveProjectDispatch(
+  projectId: string,
+  projects: ProjectIdentityRow[],
+  workSnapshot: WorkMonitorSnapshot | null
+): DispatchResolution | null {
+  const project = projects.find((candidate) => candidate.id === projectId);
+  const repository = workSnapshot?.repositories.find((candidate) => candidate.projectId === projectId);
+  if (!project || !repository?.repositoryPath) return null;
+  try {
+    return resolveDispatch(repository.repositoryPath, project.slug);
+  } catch {
+    // Repository activity remains useful even when managed documents cannot be
+    // read; the database fallback below keeps the report deliverable.
+    return null;
+  }
 }
 
 function isRecentRepositoryAttention(
@@ -159,14 +195,21 @@ function unique(values: string[]): string[] {
 }
 
 function listOrFallback(values: string[], fallback: string): string {
-  return values.length > 0 ? values.map(sentence).join("; ") : fallback;
+  if (values.length === 0) return fallback;
+  return values
+    .map((value, index) => index === values.length - 1 ? sentence(value) : stripTerminalPunctuation(value))
+    .join("; ");
 }
 
 function sentence(value: string): string {
   const trimmed = value.length > 180 ? `${value.slice(0, 177).trimEnd()}…` : value;
-  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+  return /[.!?…]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 
 function plural(count: number, singular: string): string {
   return count === 1 ? singular : `${singular}s`;
+}
+
+function stripTerminalPunctuation(value: string): string {
+  return value.replace(/[.!?]+$/, "");
 }

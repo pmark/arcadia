@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   formatWorkingCopySafetyLines,
+  listLandedRepositoryWork,
   scanProjectWorkingCopies
 } from "../src/workMonitoring/scanner.js";
 
@@ -67,6 +68,36 @@ describe("working-copy safety monitor", () => {
     expect(snapshot.repositories[0].error).toContain("No repository path");
     expect(formatWorkingCopySafetyLines(snapshot)[0]).toContain("Unconfigured");
   });
+
+  it("reports first-parent work landed during the previous local-day window", () => {
+    const repository = createRepository();
+    git(repository, ["switch", "-c", "feature/accurate-report"]);
+    writeFileSync(path.join(repository, "report.ts"), "export const accurate = true;\n");
+    git(repository, ["add", "report.ts"]);
+    gitAt(repository, ["commit", "-m", "Add landed-work reporting"], "2026-08-10T12:00:00-07:00");
+    git(repository, ["switch", "main"]);
+    gitAt(repository, [
+      "merge", "--no-ff", "feature/accurate-report",
+      "-m", "Merge pull request #12 from test/accurate-report",
+      "-m", "Show merged work in the Morning Packet"
+    ], "2026-08-10T15:00:00-07:00");
+
+    const snapshot = scanProjectWorkingCopies(
+      [{ id: "project-1", name: "Arcadia", repositoryPath: repository }],
+      { includePullRequests: false }
+    );
+    const landed = listLandedRepositoryWork(snapshot, {
+      start: "2026-08-10T07:00:00.000Z",
+      end: "2026-08-11T07:00:00.000Z"
+    });
+
+    expect(landed).toHaveLength(1);
+    expect(landed[0]).toMatchObject({
+      projectId: "project-1",
+      projectName: "Arcadia",
+      summary: "Merged PR #12: Show merged work in the Morning Packet"
+    });
+  });
 });
 
 function createRepository(): string {
@@ -85,4 +116,13 @@ function createRepository(): string {
 
 function git(cwd: string, args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+}
+
+function gitAt(cwd: string, args: string[], isoDate: string): string {
+  return execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, GIT_AUTHOR_DATE: isoDate, GIT_COMMITTER_DATE: isoDate }
+  });
 }
