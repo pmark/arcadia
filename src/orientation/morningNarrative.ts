@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import type { WorkMonitorSnapshot } from "../workMonitoring/types.js";
 
 interface RecentLogRow {
   project_id: string;
@@ -15,6 +16,11 @@ interface BlockedActionRow {
   title: string;
 }
 
+interface PlannedActionRow {
+  project_id: string;
+  next_action: string;
+}
+
 export interface ProjectStandup {
   projectId: string;
   projectName: string;
@@ -29,13 +35,19 @@ export interface MorningNarrativeSnapshot {
 }
 
 /**
- * Gather the portfolio stand-up from durable Logs and blocked Actions.
+ * Gather the portfolio stand-up from durable Logs, planned/blocked Actions,
+ * and the read-only working-copy scan.
  *
- * A Project is active here when it has received a Log in the trailing seven
- * days. This intentionally measures recent attention rather than copying the
- * Project lifecycle status, which can stay `active` while no work is moving.
+ * A Project is active here when it has a Log in the trailing seven days, has
+ * uncommitted repository work now, or has an unmerged branch whose latest
+ * commit is in that same window. This measures recent attention rather than
+ * copying the Project lifecycle status.
  */
-export function gatherMorningNarrativeSnapshot(db: Database.Database, now: Date): MorningNarrativeSnapshot {
+export function gatherMorningNarrativeSnapshot(
+  db: Database.Database,
+  now: Date,
+  workSnapshot: WorkMonitorSnapshot | null = null
+): MorningNarrativeSnapshot {
   const activeSince = new Date(now.getTime() - 7 * 86_400_000).toISOString();
   const { yesterdayStart, todayStart } = localDayBoundaries(now);
   const nowIso = now.toISOString();
@@ -60,9 +72,22 @@ export function gatherMorningNarrativeSnapshot(db: Database.Database, now: Date)
      WHERE wi.project_id IS NOT NULL AND wi.status = 'blocked'
      ORDER BY wi.updated_at DESC, wi.id ASC`
   ).all() as BlockedActionRow[];
+  const plannedActions = db.prepare(
+    `SELECT wi.project_id, wi.next_action
+     FROM work_items wi
+     WHERE wi.project_id IS NOT NULL
+       AND wi.status IN ('open', 'in_progress')
+       AND trim(wi.next_action) != ''
+     ORDER BY wi.status = 'in_progress' DESC, wi.updated_at DESC, wi.id ASC`
+  ).all() as PlannedActionRow[];
 
   const projectNames = new Map<string, string>();
   for (const log of recentLogs) projectNames.set(log.project_id, log.project_name);
+  for (const repository of workSnapshot?.repositories ?? []) {
+    if (repository.workingCopies.some((copy) => isRecentRepositoryAttention(copy, activeSince))) {
+      projectNames.set(repository.projectId, repository.projectName);
+    }
+  }
 
   const projectStandups = [...projectNames.entries()].map(([projectId, projectName]) => {
     const logs = recentLogs.filter((log) => log.project_id === projectId);
@@ -70,12 +95,13 @@ export function gatherMorningNarrativeSnapshot(db: Database.Database, now: Date)
       (log) => log.created_at >= yesterdayStart && log.created_at < todayStart
     );
     const latestNextAction = logs.find((log) => log.next_action.trim())?.next_action;
+    const plannedAction = plannedActions.find((action) => action.project_id === projectId)?.next_action;
 
     return {
       projectId,
       projectName,
       yesterday: unique(yesterdayLogs.map((log) => log.work_performed)),
-      today: latestNextAction ? [latestNextAction] : [],
+      today: unique([latestNextAction ?? plannedAction ?? ""]),
       blockers: unique([
         ...blockedActions.filter((action) => action.project_id === projectId).map((action) => action.title),
         ...yesterdayLogs.map((log) => log.blockers).filter((blocker): blocker is string => Boolean(blocker?.trim()))
@@ -84,6 +110,16 @@ export function gatherMorningNarrativeSnapshot(db: Database.Database, now: Date)
   });
 
   return { recentLogs, projectStandups };
+}
+
+function isRecentRepositoryAttention(
+  copy: WorkMonitorSnapshot["repositories"][number]["workingCopies"][number],
+  activeSince: string
+): boolean {
+  if (copy.changes.total > 0) return true;
+  return copy.preservation !== "landed" && Boolean(
+    copy.lastCommitAt && new Date(copy.lastCommitAt).getTime() >= new Date(activeSince).getTime()
+  );
 }
 
 export function composeMorningNarrative(snapshot: MorningNarrativeSnapshot): string {

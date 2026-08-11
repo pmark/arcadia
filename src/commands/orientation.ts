@@ -290,26 +290,29 @@ export async function runOrientationPacketComposeCommand(
     // One new input: what today actually holds. Absent -> the packet composes
     // exactly as it did before capacity existed.
     const capacity = findDailyCapacity(db, localDate);
+    let workSnapshot: ReturnType<typeof scanProjectWorkingCopies> | null = null;
     let workSafetyLines: string[];
     try {
-      const workSnapshot = scanProjectWorkingCopies(listMonitoredProjects(db));
+      workSnapshot = scanProjectWorkingCopies(listMonitoredProjects(db, { includeInactive: true }));
       workSafetyLines = formatWorkingCopySafetyLines(workSnapshot);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       workSafetyLines = [`Working-copy safety scan could not complete: ${detail}`];
     }
-    const morningSnapshot = gatherMorningNarrativeSnapshot(db, now);
+    const morningSnapshot = gatherMorningNarrativeSnapshot(db, now, workSnapshot ?? null);
     const morningNarrative = composeMorningNarrative(morningSnapshot);
     let aiSummary: MorningAiSummary | null = null;
     let aiWarning: string | null = null;
-    try {
-      aiSummary = await (options.summarizer ?? createIntelligenceMorningAiSummarizer(db, workspacePath))({
-        localDate,
-        sourceNarrative: morningNarrative,
-        projectNames: [...new Set(morningSnapshot.recentLogs.map((log) => log.project_name || "Unassigned"))]
-      });
-    } catch (error) {
-      aiWarning = `AI perspective unavailable; deterministic packet retained: ${error instanceof Error ? error.message : String(error)}`;
+    if (morningSnapshot.recentLogs.length > 0) {
+      try {
+        aiSummary = await (options.summarizer ?? createIntelligenceMorningAiSummarizer(db, workspacePath))({
+          localDate,
+          sourceNarrative: morningNarrative,
+          projectNames: morningSnapshot.projectStandups.map((project) => project.projectName)
+        });
+      } catch (error) {
+        aiWarning = `AI perspective unavailable; deterministic packet retained: ${error instanceof Error ? error.message : String(error)}`;
+      }
     }
     const composed = composePacket(entries, now, {
       dailyAdvantageLine,
