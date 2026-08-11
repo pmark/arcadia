@@ -539,7 +539,7 @@ function renderOrientationPacketRecord(
     "",
     "## Provenance",
     "",
-    "- The Morning narrative and planning sections were compiled deterministically from durable Arcadia records.",
+    "- The portfolio stand-up and planning sections were compiled deterministically from durable Arcadia records.",
     ...(hasEmbeddedAi || supplemental
       ? ["- The clearly labelled AI perspective used Arcadia's bounded local-preferred Intelligence route; it may interpret implications but must not invent activity."]
       : ["- AI perspective was unavailable; the deterministic packet remains complete and deliverable."]),

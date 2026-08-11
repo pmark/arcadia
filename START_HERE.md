@@ -123,6 +123,13 @@ predicate-based examples, see the [Back Burner Guide](docs/back-burner-guide.md)
 
 ## Narrative digests arrive on their own
 
+The daily Morning Packet leads with a deterministic portfolio stand-up. A
+Project appears when it has received a Log entry in the trailing seven days,
+regardless of its longer-lived Project status. For each recently active
+Project the packet reports **Yesterday** from the previous local calendar
+day's Logs, **Today** from its latest recorded next Action, and **Blockers**
+from current blocked Actions plus blockers recorded yesterday.
+
 The Discord bot composes and posts narrative digests without being asked. Once
 past `ARCADIA_DIGEST_TARGET_TIME` (local, default `07:00`, just after the
 Morning Packet), each cadence produces one digest per active Project plus one

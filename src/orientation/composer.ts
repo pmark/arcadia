@@ -42,7 +42,7 @@ export function composePacket(
   sections.push(`**Arcadia — ${localDateHeader(now)}**`);
 
   if (options.morningNarrative?.trim()) {
-    sections.push(`**Morning narrative**\n${options.morningNarrative.trim()}`);
+    sections.push(`**Portfolio stand-up**\n${options.morningNarrative.trim()}`);
   }
 
   if (options.aiSummary) {
