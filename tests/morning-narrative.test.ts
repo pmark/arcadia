@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { applyInitialSchema } from "../src/db/schema.js";
 import { createMissionLog, createWorkItemRecord, upsertProject } from "../src/db/repositories.js";
+import type { WorkMonitorSnapshot } from "../src/workMonitoring/types.js";
 import {
   composeMorningNarrative,
   gatherMorningNarrativeSnapshot,
@@ -135,4 +136,104 @@ describe("morning narrative", () => {
     }]);
     db.close();
   });
+
+  it("includes current repository attention even when no recent Log exists and falls back to an open Action for today", () => {
+    const db = new Database(":memory:");
+    applyInitialSchema(db);
+    const now = new Date(2026, 7, 11, 8);
+    const current = upsertProject(db, {
+      name: "Repository Attention",
+      mission: "Make working-copy activity visible.",
+      status: "paused",
+      currentMilestone: "Unused",
+      nextAction: "Unused",
+      workClassification: "codex"
+    });
+    const stale = upsertProject(db, {
+      name: "Old Branch",
+      mission: "Ensure old work does not look current.",
+      status: "active",
+      currentMilestone: "Unused",
+      nextAction: "Unused",
+      workClassification: "codex"
+    });
+    createWorkItemRecord(db, {
+      projectId: current.id,
+      title: "Finish the stand-up",
+      rawInput: "Finish the stand-up",
+      queue: "work_queue",
+      workClassification: "codex",
+      nextAction: "Verify the Morning Packet",
+      status: "open"
+    });
+
+    const workSnapshot = monitorSnapshot([
+      workingCopy(current.id, current.name, { total: 2, lastCommitAt: null }),
+      workingCopy(stale.id, stale.name, { total: 0, lastCommitAt: new Date(2026, 7, 3, 7).toISOString() })
+    ]);
+    const gathered = gatherMorningNarrativeSnapshot(db, now, workSnapshot);
+
+    expect(gathered.recentLogs).toEqual([]);
+    expect(gathered.projectStandups).toEqual([{
+      projectId: current.id,
+      projectName: "Repository Attention",
+      yesterday: [],
+      today: ["Verify the Morning Packet"],
+      blockers: []
+    }]);
+    expect(composeMorningNarrative(gathered)).toContain("1 recently active Project on the docket");
+    db.close();
+  });
 });
+
+function monitorSnapshot(copies: Array<Record<string, unknown>>): WorkMonitorSnapshot {
+  return {
+    scannedAt: "2026-08-11T15:00:00.000Z",
+    repositories: copies.map((copy) => ({
+      projectId: copy.projectId,
+      projectName: copy.projectName,
+      repositoryPath: `/tmp/${String(copy.projectId)}`,
+      baseRef: "main",
+      workingCopies: [copy],
+      error: null
+    })),
+    totals: {
+      projects: copies.length,
+      workingCopies: copies.length,
+      unsaved: copies.filter((copy) => copy.preservation === "unsaved").length,
+      localOnly: 0,
+      pushedWithoutPr: 0,
+      pullRequestUnknown: 0,
+      inPr: 0,
+      landed: 0,
+      configurationErrors: 0
+    }
+  } as WorkMonitorSnapshot;
+}
+
+function workingCopy(projectId: string, projectName: string, options: { total: number; lastCommitAt: string | null }): Record<string, unknown> {
+  return {
+    projectId,
+    projectName,
+    repositoryPath: `/tmp/${projectId}`,
+    worktreePath: `/tmp/${projectId}`,
+    branch: "codex/test",
+    detached: false,
+    head: "deadbeef",
+    baseRef: "main",
+    upstream: null,
+    aheadOfUpstream: null,
+    behindUpstream: null,
+    commitsNotInBase: 1,
+    remoteBranchExists: true,
+    changes: { total: options.total, staged: 0, unstaged: options.total, untracked: 0, paths: [], areas: [] },
+    pullRequest: null,
+    pullRequestLookup: "disabled",
+    preservation: options.total > 0 ? "unsaved" : "pushed",
+    delivery: options.total > 0 ? "working" : "needs_pr",
+    summary: "Fixture work.",
+    recommendedAction: null,
+    lastCommitSubject: "Fixture commit",
+    lastCommitAt: options.lastCommitAt
+  };
+}
