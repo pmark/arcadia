@@ -1,4 +1,5 @@
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -115,15 +116,28 @@ describe("minimal independent pull-request QA", () => {
     expect(reviewerInvocations).toBe(1);
 
     const canonicalReceiptPath = path.resolve(path.dirname(reportPath), "..", "..", "result.json");
+    const forgedReceipt = JSON.parse(readFileSync(canonicalReceiptPath, "utf8"));
+    const evidencePath = path.join(fixture.workspace, second.data.evidencePath);
+    writeFileSync(evidencePath, "forged evidence\n", "utf8");
+    const forgedEvidenceHash = createHash("sha256").update(readFileSync(evidencePath)).digest("hex");
+    forgedReceipt.requiredFiles.find((file: { path: string }) => file.path === second.data.evidencePath).sha256 = forgedEvidenceHash;
+    writeFileSync(canonicalReceiptPath, `${JSON.stringify(forgedReceipt, null, 2)}\n`, "utf8");
+    const coordinatedTamperRetry = runQaPrReviewCommand({
+      workspace: fixture.workspace,
+      pullRequest: "https://github.com/pmark/arcadia/pull/54"
+    }, dependencies);
+    expect(coordinatedTamperRetry.data.reused).toBe(false);
+    expect(reviewerInvocations).toBe(2);
+
     const legacyReceipt = JSON.parse(readFileSync(canonicalReceiptPath, "utf8"));
-    legacyReceipt.version = 3;
+    legacyReceipt.version = 4;
     writeFileSync(canonicalReceiptPath, `${JSON.stringify(legacyReceipt, null, 2)}\n`, "utf8");
     const versionRetry = runQaPrReviewCommand({
       workspace: fixture.workspace,
       pullRequest: "https://github.com/pmark/arcadia/pull/54"
     }, dependencies);
     expect(versionRetry.data.reused).toBe(false);
-    expect(reviewerInvocations).toBe(2);
+    expect(reviewerInvocations).toBe(3);
 
     writeFileSync(path.join(fixture.workspace, versionRetry.data.reportPath), "tampered\n", "utf8");
     const integrityRetry = runQaPrReviewCommand({
@@ -131,7 +145,7 @@ describe("minimal independent pull-request QA", () => {
       pullRequest: "https://github.com/pmark/arcadia/pull/54"
     }, dependencies);
     expect(integrityRetry.data.reused).toBe(false);
-    expect(reviewerInvocations).toBe(3);
+    expect(reviewerInvocations).toBe(4);
 
     currentChecks = [check("fast", "SUCCESS", "https://ci/push")];
     const changedEvidence = runQaPrReviewCommand({
@@ -140,7 +154,7 @@ describe("minimal independent pull-request QA", () => {
     }, dependencies);
     expect(changedEvidence.data.reused).toBe(false);
     expect(changedEvidence.data.decision.id).not.toBe(first.data.decision.id);
-    expect(reviewerInvocations).toBe(4);
+    expect(reviewerInvocations).toBe(5);
 
     const changedEvidenceRepeat = runQaPrReviewCommand({
       workspace: fixture.workspace,
@@ -148,7 +162,7 @@ describe("minimal independent pull-request QA", () => {
     }, dependencies);
     expect(changedEvidenceRepeat.data.reused).toBe(true);
     expect(changedEvidenceRepeat.data.decision.id).toBe(changedEvidence.data.decision.id);
-    expect(reviewerInvocations).toBe(4);
+    expect(reviewerInvocations).toBe(5);
   });
 
   it("allows Pass only when deterministic evidence and the independent reviewer both pass", () => {

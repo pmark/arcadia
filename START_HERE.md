@@ -33,7 +33,10 @@ the same completed revision with unchanged body, base, files, merge state, and
 checks returns the existing receipts without another model call. Changed GitHub
 evidence automatically creates a preserved new attempt; use `--rerun` only when
 a fresh independent judgment of otherwise unchanged evidence is worth the added
-token cost.
+token cost. The canonical receipt is only a cache hint: reuse reconstructs the
+result from the independently persisted Decision context and cross-checks the
+Artifact, Decision status, PR source, evidence fingerprint, paths, and stored
+file hashes. Any mismatch creates a fresh review instead of trusting the cache.
 
 Pull-request QA never runs commands copied from PR prose, edits the Candidate,
 posts to GitHub, approves release, merges, deploys, or repairs a finding. It is

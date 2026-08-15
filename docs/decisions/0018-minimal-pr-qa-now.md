@@ -52,7 +52,9 @@ For one immutable head revision it:
 5. re-reads the complete mutable pull-request snapshot and refuses Pass if it
    changed; and
 6. persists a Markdown QA report Artifact and a decided, revision-bound
-   Decision in the Arcadia workspace.
+   Decision in the Arcadia workspace. A repeat may use the canonical cache hint
+   only when it matches that independent Decision context, its Artifact, the PR
+   source and evidence fingerprint, and every persisted file hash.
 
 Deterministic evidence constrains the verdict. A model cannot turn failed,
 pending, contradictory, stale, or absent required evidence into Pass. The QA

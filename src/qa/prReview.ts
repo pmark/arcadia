@@ -154,12 +154,27 @@ interface RawPullRequest {
 }
 
 interface PersistedReceipt {
-  version: 4;
+  version: 5;
   evidenceFingerprint: string;
   artifactId: string;
   decisionId: string;
   requiredFiles: Array<{ path: string; sha256: string }>;
-  data: Omit<QaPrReviewCommandData, "artifact" | "decision" | "reused">;
+}
+
+interface PersistedQaContext {
+  schemaVersion: 2;
+  candidate: QaPrCandidate;
+  verdict: QaPrVerdict;
+  summary: string;
+  findings: QaPrFinding[];
+  checks: QaPrCheck[];
+  residualRisks: string[];
+  reviewer: QaReviewerProvenance;
+  reportPath: string;
+  evidencePath: string;
+  metadataPath: string;
+  evidenceFingerprint: string;
+  receiptFiles: Array<{ path: string; sha256: string }>;
 }
 
 interface QaSandboxProof {
@@ -381,6 +396,10 @@ export function runQaPrReviewCommand(
     artifacts: [evidencePath, patchPath, schemaPath, promptPath, modelOutputPath, executorOutputPath, sandboxProofPath, reportPath]
       .map((value) => toWorkspaceRelativePath(workspacePath, value))
   }, null, 2)}\n`, "utf8");
+  const requiredFiles = [evidencePath, patchPath, sandboxProofPath, reportPath, metadataPath].map((filePath) => ({
+    path: toWorkspaceRelativePath(workspacePath, filePath),
+    sha256: sha256File(filePath)
+  }));
 
   const persisted = withDatabase(workspacePath, (db) => persistQaResult(db, {
     workspace: workspacePath,
@@ -393,7 +412,9 @@ export function runQaPrReviewCommand(
     reviewer: provenance,
     reportPath,
     evidencePath,
-    metadataPath
+    metadataPath,
+    evidenceFingerprint,
+    receiptFiles: requiredFiles
   }));
   const data: QaPrReviewCommandData = {
     candidate,
@@ -410,25 +431,11 @@ export function runQaPrReviewCommand(
     reused: false
   };
   const receipt: PersistedReceipt = {
-    version: 4,
+    version: 5,
     evidenceFingerprint,
     artifactId: persisted.artifact.id,
     decisionId: persisted.decision.id,
-    requiredFiles: [evidencePath, patchPath, sandboxProofPath, reportPath, metadataPath].map((filePath) => ({
-      path: toWorkspaceRelativePath(workspacePath, filePath),
-      sha256: sha256File(filePath)
-    })),
-    data: {
-      candidate: data.candidate,
-      verdict: data.verdict,
-      summary: data.summary,
-      findings: data.findings,
-      checks: data.checks,
-      residualRisks: data.residualRisks,
-      reviewer: data.reviewer,
-      reportPath: data.reportPath,
-      evidencePath: data.evidencePath
-    }
+    requiredFiles
   };
   const serializedReceipt = `${JSON.stringify(receipt, null, 2)}\n`;
   writeFileSync(path.join(attemptRoot, "result.json"), serializedReceipt, "utf8");
@@ -618,6 +625,7 @@ function buildReviewPrompt(
     criteria,
     "",
     "## Reviewer sandbox preflight",
+    "This is the actual parent-process result from immediately before this model invocation, not PR prose or a mocked test. Arcadia matched this exact output before allowing the reviewer to run and will preserve it as sandbox-proof.txt:",
     sandboxProof.output,
     "",
     "## Candidate",
@@ -856,6 +864,8 @@ function persistQaResult(
     reportPath: string;
     evidencePath: string;
     metadataPath: string;
+    evidenceFingerprint: string;
+    receiptFiles: Array<{ path: string; sha256: string }>;
   }
 ): { artifact: Artifact; decision: ReviewItemSummary } {
   return db.transaction(() => {
@@ -878,16 +888,19 @@ function persistQaResult(
       confidence: 1,
       missingFields: input.checks.filter((check) => check.status === "not-checked").map((check) => check.name),
       context: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         candidate: input.candidate,
         verdict: input.verdict,
+        summary: input.summary,
         findings: input.findings,
         checks: input.checks,
         residualRisks: input.residualRisks,
         reviewer: input.reviewer,
         reportPath: toWorkspaceRelativePath(input.workspace, input.reportPath),
         evidencePath: toWorkspaceRelativePath(input.workspace, input.evidencePath),
-        metadataPath: toWorkspaceRelativePath(input.workspace, input.metadataPath)
+        metadataPath: toWorkspaceRelativePath(input.workspace, input.metadataPath),
+        evidenceFingerprint: input.evidenceFingerprint,
+        receiptFiles: input.receiptFiles
       }
     });
     const decision = updateReviewItemStatus(db, created.id, {
@@ -906,20 +919,48 @@ function readPersistedReceipt(
 ): QaPrReviewCommandData | null {
   if (!existsSync(receiptPath)) return null;
   try {
-    const receipt = JSON.parse(readFileSync(receiptPath, "utf8")) as PersistedReceipt;
+    const rawReceipt = JSON.parse(readFileSync(receiptPath, "utf8")) as unknown;
+    if (!isPersistedReceipt(rawReceipt)) return null;
+    const receipt = rawReceipt;
     if (
-      receipt.version !== 4 ||
+      receipt.version !== 5 ||
       receipt.evidenceFingerprint !== evidenceFingerprint ||
-      !receipt.artifactId ||
-      !receipt.decisionId ||
-      !Array.isArray(receipt.requiredFiles) ||
       !receipt.requiredFiles.every((file) => verifyReceiptFile(workspace, file))
     ) return null;
     return withDatabase(workspace, (db) => {
       const artifact = getArtifact(db, receipt.artifactId);
       const decision = getReviewItem(db, receipt.decisionId);
       if (!artifact || !decision) return null;
-      return { ...receipt.data, artifact, decision, reused: true };
+      const context = parsePersistedQaContext(decision.context_json);
+      if (
+        !context ||
+        context.evidenceFingerprint !== evidenceFingerprint ||
+        !sameReceiptFiles(receipt.requiredFiles, context.receiptFiles) ||
+        !context.receiptFiles.every((file) => verifyReceiptFile(workspace, file)) ||
+        artifact.id !== receipt.artifactId ||
+        artifact.artifact_type !== "qa_report" ||
+        artifact.path !== context.reportPath ||
+        artifact.status !== (context.verdict === "pass" ? "ready" : "drafted") ||
+        decision.id !== receipt.decisionId ||
+        decision.artifact_id !== artifact.id ||
+        decision.source_input !== context.candidate.url ||
+        decision.recommendation !== context.summary ||
+        decision.status !== decisionStatusForVerdict(context.verdict)
+      ) return null;
+      return {
+        candidate: context.candidate,
+        verdict: context.verdict,
+        summary: context.summary,
+        findings: context.findings,
+        checks: context.checks,
+        residualRisks: context.residualRisks,
+        reviewer: context.reviewer,
+        reportPath: context.reportPath,
+        evidencePath: context.evidencePath,
+        artifact,
+        decision,
+        reused: true
+      };
     });
   } catch {
     return null;
@@ -1017,8 +1058,109 @@ function runQaSandboxPreflight(input: {
   };
 }
 
+function isPersistedReceipt(value: unknown): value is PersistedReceipt {
+  return isRecordWithExactKeys(value, ["version", "evidenceFingerprint", "artifactId", "decisionId", "requiredFiles"]) &&
+    value.version === 5 &&
+    isSha256(value.evidenceFingerprint) &&
+    isNonEmptyString(value.artifactId) &&
+    isNonEmptyString(value.decisionId) &&
+    isReceiptFileList(value.requiredFiles);
+}
+
+function parsePersistedQaContext(value: string | null): PersistedQaContext | null {
+  if (!value) return null;
+  try {
+    const context = JSON.parse(value) as unknown;
+    if (!isRecordWithExactKeys(context, [
+      "schemaVersion", "candidate", "verdict", "summary", "findings", "checks", "residualRisks",
+      "reviewer", "reportPath", "evidencePath", "metadataPath", "evidenceFingerprint", "receiptFiles"
+    ])) return null;
+    if (
+      context.schemaVersion !== 2 ||
+      !isQaCandidate(context.candidate) ||
+      !["pass", "fail", "needs-follow-up"].includes(String(context.verdict)) ||
+      !isNonEmptyString(context.summary) ||
+      !Array.isArray(context.findings) || !context.findings.every(isQaFinding) ||
+      !Array.isArray(context.checks) || !context.checks.every(isQaCheck) ||
+      !Array.isArray(context.residualRisks) || !context.residualRisks.every(isNonEmptyString) ||
+      !isQaReviewerProvenance(context.reviewer) ||
+      !isNonEmptyString(context.reportPath) ||
+      !isNonEmptyString(context.evidencePath) ||
+      !isNonEmptyString(context.metadataPath) ||
+      !isSha256(context.evidenceFingerprint) ||
+      !isReceiptFileList(context.receiptFiles)
+    ) return null;
+    const requiredPaths = new Set(context.receiptFiles.map((file) => file.path));
+    if (![context.reportPath, context.evidencePath, context.metadataPath].every((filePath) => requiredPaths.has(filePath))) return null;
+    return context as unknown as PersistedQaContext;
+  } catch {
+    return null;
+  }
+}
+
+function isQaCandidate(value: unknown): value is QaPrCandidate {
+  if (!isRecordWithExactKeys(value, [
+    "projectId", "projectName", "repository", "number", "title", "url", "headSha", "headBranch",
+    "baseSha", "baseBranch", "isDraft", "mergeStateStatus"
+  ])) return false;
+  return [value.projectId, value.projectName, value.repository, value.title, value.url, value.headBranch, value.baseBranch]
+    .every(isNonEmptyString) &&
+    Number.isInteger(value.number) && Number(value.number) > 0 &&
+    typeof value.isDraft === "boolean" &&
+    (value.mergeStateStatus === null || typeof value.mergeStateStatus === "string") &&
+    typeof value.headSha === "string" && /^[a-f0-9]{40}$/i.test(value.headSha) &&
+    typeof value.baseSha === "string" && /^[a-f0-9]{40}$/i.test(value.baseSha);
+}
+
+function isQaFinding(value: unknown): value is QaPrFinding {
+  return isRecordWithExactKeys(value, ["severity", "title", "evidence", "recommendation"]) &&
+    ["blocker", "high", "medium", "low"].includes(String(value.severity)) &&
+    isNonEmptyString(value.title) && isNonEmptyString(value.evidence) && isNonEmptyString(value.recommendation);
+}
+
+function isQaCheck(value: unknown): value is QaPrCheck {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  if (!isRecordWithExactKeys(value, keys.includes("criterion")
+    ? ["criterion", "name", "status", "evidence"]
+    : ["name", "status", "evidence"])) return false;
+  return isNonEmptyString(value.name) &&
+    ["pass", "fail", "not-checked"].includes(String(value.status)) &&
+    isNonEmptyString(value.evidence) &&
+    (!keys.includes("criterion") || REVIEW_CRITERION_IDS.includes(value.criterion as QaPrReviewCriterion));
+}
+
+function isQaReviewerProvenance(value: unknown): value is QaReviewerProvenance {
+  return isRecordWithExactKeys(value, ["profile", "provider", "model", "mappingId", "bindingId", "exitStatus"]) &&
+    [value.profile, value.provider, value.model, value.mappingId, value.bindingId].every(isNonEmptyString) &&
+    (value.exitStatus === null || Number.isInteger(value.exitStatus));
+}
+
+function isReceiptFileList(value: unknown): value is Array<{ path: string; sha256: string }> {
+  return Array.isArray(value) && value.length > 0 && value.every((file) =>
+    isRecordWithExactKeys(file, ["path", "sha256"]) && isNonEmptyString(file.path) && isSha256(file.sha256)
+  ) && new Set(value.map((file) => file.path)).size === value.length;
+}
+
+function sameReceiptFiles(
+  left: Array<{ path: string; sha256: string }>,
+  right: Array<{ path: string; sha256: string }>
+): boolean {
+  if (left.length !== right.length) return false;
+  const expected = new Map(right.map((file) => [file.path, file.sha256]));
+  return left.every((file) => expected.get(file.path) === file.sha256);
+}
+
+function decisionStatusForVerdict(verdict: QaPrVerdict): "approved" | "rejected" | "deferred" {
+  return verdict === "pass" ? "approved" : verdict === "fail" ? "rejected" : "deferred";
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+}
+
 function verifyReceiptFile(workspace: string, file: { path: string; sha256: string }): boolean {
-  if (!file || typeof file.path !== "string" || !/^[a-f0-9]{64}$/.test(file.sha256)) return false;
+  if (!file || typeof file.path !== "string" || !isSha256(file.sha256)) return false;
   const workspaceRoot = path.resolve(workspace);
   const absolutePath = path.resolve(workspaceRoot, file.path);
   const relativePath = path.relative(workspaceRoot, absolutePath);

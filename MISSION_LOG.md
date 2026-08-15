@@ -31,7 +31,11 @@ updated: 2026-08-15
   and unconstrained criterion coverage could still admit an unsupported Pass.
   The resulting contract now proves its sandbox at runtime, validates every
   nested verdict field, and requires exactly one result for each of seven fixed
-  review criteria before Pass is possible.
+  review criteria before Pass is possible. The third Candidate found one more
+  fail-open path: a coordinated edit could alter both cached receipt data and
+  its colocated hashes. The cache now contains no verdict data; reuse rebuilds
+  the result from the independent Decision context and cross-checks its
+  Artifact, status, source, fingerprint, paths, and hashes before trusting it.
 - **Next:** Resume `build-demo-hero-vertical-slice`. For PR #54, resolve the
   pull-request-event workspace isolation failure, then explicitly rerun QA on
   the unchanged revision or let a repaired revision receive a fresh automatic
