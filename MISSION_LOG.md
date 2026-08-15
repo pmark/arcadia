@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-08
+updated: 2026-08-15
 ---
 
 # Mission Log: Arcadia
@@ -22,7 +22,11 @@ updated: 2026-08-08
   found the planning scope and approval boundaries coherent but refused Pass
   because the duplicate `fast` checks conflict and current database-backed
   validation remains incompletely evidenced. Repeating the command returned
-  the same hardened receipts in 1.1 seconds without another model call.
+  the same hardened receipts in 1.1 seconds without another model call. The
+  first implementation Candidate then correctly failed its own review on PR
+  #55 instead of being promoted: that failure drove an evidence-only sandbox
+  that denies home and network access, exact-SHA patch retrieval, complete
+  evidence revalidation, and SHA-verified reusable receipts.
 - **Next:** Resume `build-demo-hero-vertical-slice`. For PR #54, resolve the
   pull-request-event workspace isolation failure, then explicitly rerun QA on
   the unchanged revision or let a repaired revision receive a fresh automatic

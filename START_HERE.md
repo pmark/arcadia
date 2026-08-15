@@ -19,7 +19,10 @@ pnpm arcadia qa pr https://github.com/owner/repository/pull/123
 The repository must belong to a configured Arcadia Project. The command freezes
 the current head SHA, reads the pull-request body, changed files, complete patch,
 merge state, and GitHub checks, then runs one separately executed read-only
-structured review. It rechecks the SHA afterward and writes a QA report Artifact
+structured review inside an evidence-only, home-denied, network-denied sandbox.
+The reviewer receives the exact base/head patch and no repository working copy,
+credential-bearing home context, user tools, or configured command arguments. It
+rechecks the complete mutable evidence snapshot afterward and writes a QA report Artifact
 plus a revision-bound Pass, Fail, or Needs-follow-up Decision under the Arcadia
 workspace's `artifacts/qa/pull-requests/` directory. A failed, pending,
 contradictory, missing, or stale check prevents Pass. Repeating the command for

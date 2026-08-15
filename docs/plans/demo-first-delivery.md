@@ -75,11 +75,11 @@ actions:
     acceptance_criteria:
       - "`arcadia qa pr <github-pr-url>` resolves a configured Project and binds all evidence, output, and the Decision to the exact initial head SHA."
       - Evidence includes pull-request identity and body, base and head revisions, merge and draft state, changed files, the complete patch, and every reported check conclusion without executing commands copied from pull-request prose.
-      - Arcadia selects the least-cost compliant read-only reviewer through the existing coding-agent profile and provider-adapter registries, invokes it in a separate execution, and requires a strict structured verdict with ordered findings.
+      - Arcadia selects the least-cost compliant read-only reviewer through the existing coding-agent profile and provider-adapter registries, then invokes it in a separate evidence-only, home-denied, network-denied execution with no arbitrary configured arguments and requires a strict structured verdict with ordered findings.
       - Pass is deterministically prevented when checks fail or remain pending, duplicate checks conflict, required evidence is absent, the head SHA changes during review, the reviewer fails, or the reviewer reports a material finding.
       - The command writes a human-readable QA report Artifact and a decided pass, fail, or needs-follow-up Decision carrying the PR URL, immutable SHA, reviewer provenance, evidence paths, and explicit not-checked reasons.
       - Repeating review for an already completed revision with unchanged pull-request evidence returns the existing receipts without another model invocation; changed mutable evidence or an explicit rerun creates a preserved new attempt and updates the reusable receipt.
-      - The Candidate working copy and GitHub remain unchanged; the command does not post, approve, merge, deploy, release, repair, or create arbitrary shell execution.
+      - The reviewer receives a patch fetched by exact base/head SHAs rather than a mutable working copy; its shell cannot read the operator home or access the network, and the command does not post, approve, merge, deploy, release, repair, or create arbitrary shell execution.
       - The real dogfood result for PR #54 truthfully explains its conflicting push and pull-request CI evidence and therefore cannot report Pass while that contradiction remains.
       - START_HERE.md documents the exact command, consequences, output locations, idempotency, and authority boundary.
     execution:
