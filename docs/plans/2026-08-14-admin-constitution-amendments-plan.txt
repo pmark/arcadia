@@ -1,0 +1,67 @@
+Arcadia,
+
+Take this as a plan for your own repository, not for PPN. It is staged in PPN
+because that is where the need surfaced and where the reference implementation
+lives; the feature belongs in your admin UI, which PPN does not contain.
+
+Plan document:
+- /Users/pmark/Dev/PrivatePracticeNow/platform/docs/arcadia-way/planned/admin-constitution-and-amendments.md
+
+Please place it in the Arcadia repository's docs/plans/ and schedule it against
+Arcadia's own governed work order. Do not change PPN's current action, which
+remains record-integration-verdict.
+
+WHY, from two failures observed on 2026-08-14:
+
+1. An unratified amendment is invisible. Proposal 0001 was filed and, within
+   hours, the operator asked what it was. It surfaced only because proposal
+   0002's version numbering collided with it. `adoption.json` has carried an
+   `open_proposals` list since July and no view reads it.
+
+2. Ratification costs a coding session. The operator said "Ratify it" and an
+   agent hand-edited eight files to record what was, in substance, one word of
+   authority. The constitution reserves ratification to the operator, and the
+   only way to exercise it currently routes through an agent.
+
+WHAT IS SCOPED — the Pareto-minimal cut, roughly two sessions:
+
+- An amendments list: number, title, status, the constitution version taken or
+  predicted, and age. Proposed items first.
+- A detail view, and a constitution view whose principles name the amendment
+  that introduced each one.
+- Three operator-only controls on a proposed amendment: Ratify, Reject, Request
+  changes. Each appends an event conforming to the existing event schema.
+
+WHAT IS DELIBERATELY DROPPED: version diffs, in-UI editing, comment threads,
+review workflow, quorum approval, un-ratifying, and stale-proposal
+notifications. The last belongs to the notification queue ratified in 1.1.0 and
+still unbuilt; including it here would make this feature wait on that one.
+
+THE BOUNDARY, which is the part worth preserving if anything is cut further:
+
+The UI records authority. An agent drafts the documents. Ratifying proposal 0002
+produced three amendments that appeared while the decision record was being
+written, none of which was in the proposal — a factual correction about the
+Discord transport already in service, an admin-surface requirement, and a
+version renumbering. A control that generated the amended constitution from a
+template would have dropped all three and produced a governance document that
+read as authoritative and was wrong.
+
+So the controls perform item 3 of the amendment protocol. Items 4 and 5 — the
+versioned decision and the amended constitution — stay with an agent, and a
+ratified-but-undrafted amendment must show as incomplete rather than finished.
+
+ONE RULE LEARNED THE HARD WAY: the constitution version is assigned at
+ratification, from what is currently ratified — not from what the proposal
+predicted. Proposal 0002 predicted 1.2.0 and correctly took 1.1.0, because 0001
+had not ratified. A control that trusted the proposal's own frontmatter would
+have published the wrong version number.
+
+CURRENT GOVERNANCE STATE, for your records:
+- Arcadia Way constitution: 1.1.0, ratified 2026-08-14, principle 11 added.
+- Ratified: proposal 0002, operator task ledger. Decision ADR 0025, event
+  aw-20260814-016.
+- Still open: proposal 0001, adaptability and working vocabulary. It would take
+  1.2.0 and principle 12. Note that PPN already implements three of the five
+  commands it specifies — demo, plan, and report — so the practice is ahead of
+  the ratification, which is itself an argument for this feature.
