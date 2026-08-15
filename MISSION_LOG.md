@@ -8,6 +8,48 @@ updated: 2026-08-08
 
 # Mission Log: Arcadia
 
+## 2026-08-15 — Arcadia QA independently reviewed its first real pull request
+
+- **Did:** Implemented `arcadia qa pr <github-pr-url>`. The command resolves a
+  configured Project, pins the initial head SHA, captures the PR body, changed
+  files, complete patch, merge state, and every GitHub check, selects the
+  least-cost compliant read-only reviewer through Arcadia's provider adapters,
+  requires a strict structured verdict, revalidates the SHA, and persists a QA
+  report Artifact plus a revision-bound Decision. Added deterministic fixtures
+  for contradictory evidence, Pass gating, and same-revision receipt reuse.
+- **Result:** Dogfooding against Arcadia PR #54 at `82b50cf` produced Needs
+  follow-up, Artifact `art_3b368492148c4f639c`, and Decision `R44`. The report
+  found the planning scope and approval boundaries coherent but refused Pass
+  because the duplicate `fast` checks conflict and current database-backed
+  validation remains incompletely evidenced. Repeating the command returned
+  the same hardened receipts in 1.1 seconds without another model call.
+- **Next:** Resume `build-demo-hero-vertical-slice`. For PR #54, resolve the
+  pull-request-event workspace isolation failure, then explicitly rerun QA on
+  the unchanged revision or let a repaired revision receive a fresh automatic
+  identity.
+- **Blockers:** None in minimal PR QA. Dashboard/Discord delivery, local test
+  reruns, browser proof, repair, GitHub posting, managed Run integration, and
+  release automation remain deferred under Decision 0018's evidence triggers.
+
+## 2026-08-15 — Promoted minimal independent PR QA from expectation to current work
+
+- **Did:** Recorded the operator's explicit decision to build critical Arcadia
+  capabilities when Private Practice Now naturally needs them. Added approved
+  Decision 0018, split the immediately useful pull-request review path from the
+  later browser- and release-oriented Arcadia QA program, and moved the active
+  pointer to `establish-minimal-pr-qa`.
+- **Result:** The current Action now requires one CLI command that freezes a PR
+  revision, gathers deterministic GitHub evidence, runs a separate read-only
+  structured review, and persists a QA report Artifact and revision-bound
+  Decision. Arcadia PR #54 is the first real Candidate. Dashboard, Discord,
+  repair, release, merge, browser proof, and managed Run integration remain
+  deferred against concrete evidence triggers.
+- **Next:** Implement and dogfood `arcadia qa pr` against PR #54, which must
+  report the contradictory push and pull-request CI results without claiming
+  Pass.
+- **Blockers:** None. The operator explicitly reprioritized this Action; the
+  demo hero resumes after it is accepted.
+
 ## 2026-08-08 — Digests now compose and post themselves, for every Project
 
 - **Did:** Closed `schedule-portfolio-digests`, the last Action in

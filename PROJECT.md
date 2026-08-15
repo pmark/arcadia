@@ -8,7 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Every software Project always exposes a stable proof surface and a governed path from candidate demo through QA-verified release
 active_plan: demo-first-delivery
-updated: 2026-08-08
+updated: 2026-08-15
 ---
 
 # Arcadia
@@ -65,13 +65,18 @@ so a missed tick self-catches-up and a composed-but-undelivered digest comes
 back for retry instead of being lost. One Project's failure costs that
 Project's digest and nothing else.
 
-With that milestone reached, the pointer moves to `demo-first-delivery`,
+With that milestone reached, the pointer moved to `demo-first-delivery`,
 already drafted from operator direction on 2026-08-01 under approved Decision
-0007, starting at `build-qa-queue-vertical-slice`. It was chosen because it is
-the objective the operator already recorded, not because it was the remaining
-open Action — `portfolio-docs-protocol`'s `narrative-summarization` is
-deliberately deferred under Decision 0004 against a trigger that has not
-fired, and picking it up would route around that deferral.
+0007. The configured operator QA queue is complete. While advancing Private
+Practice Now, the operator then explicitly prioritized the missing independent
+pull-request QA responsibility as a must-have. Decision 0018 inserted and
+completed `establish-minimal-pr-qa`: `arcadia qa pr` now freezes a GitHub head
+revision, gathers deterministic evidence, runs one independent read-only
+structured review, and persists its QA report Artifact and Decision. Its first
+real Candidate, Arcadia PR #54, correctly returned Needs follow-up rather than
+Pass for contradictory CI evidence. The pointer now resumes at
+`build-demo-hero-vertical-slice`. This was an evidence-driven sequencing
+change, not priority inferred from queue order.
 
 The Agent Queue is documented in `docs/plans/agent-advance-queue.md`. It is a
 projection, not a second work pointer: managed documents still decide what is

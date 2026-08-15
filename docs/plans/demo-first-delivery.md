@@ -8,7 +8,7 @@ milestone: Every software Project always exposes a stable proof surface and a go
 current_action: build-demo-hero-vertical-slice
 token_impact: xlarge
 token_budget: "Stage the program Action by Action; builds, health checks, Playwright capture, and metadata sync use no LLM tokens, while implementation, failure diagnosis, visual interpretation, and independent QA reviews are model-bearing and must be batched per Candidate."
-updated: 2026-08-08
+updated: 2026-08-15
 actions:
   - id: build-qa-queue-vertical-slice
     title: Give the operator one QA queue for active Candidate work
@@ -62,6 +62,58 @@ actions:
       - apps/dashboard/lib/types.ts
       - src/dashboard/snapshot.ts
     depends_on: []
+  - id: establish-minimal-pr-qa
+    title: Give Arcadia QA one independent pull-request review path
+    status: done
+    responsibility: codex
+    effort: session
+    next_action: Add a CLI-first qa pr command that freezes a configured Project pull request at its head SHA, gathers deterministic GitHub evidence, runs one separately executed read-only structured review, and persists a QA report Artifact plus a decided revision-bound Decision.
+    expected_artifact: A tested minimal PR-QA command and a real QA report and Decision for Arcadia PR #54 at an immutable revision
+    clarification: clarified
+    confidence: high
+    source: Decision 0018 and operator priority on 2026-08-15 while advancing Private Practice Now
+    acceptance_criteria:
+      - "`arcadia qa pr <github-pr-url>` resolves a configured Project and binds all evidence, output, and the Decision to the exact initial head SHA."
+      - Evidence includes pull-request identity and body, base and head revisions, merge and draft state, changed files, the complete patch, and every reported check conclusion without executing commands copied from pull-request prose.
+      - Arcadia selects the least-cost compliant read-only reviewer through the existing coding-agent profile and provider-adapter registries, invokes it in a separate execution, and requires a strict structured verdict with ordered findings.
+      - Pass is deterministically prevented when checks fail or remain pending, duplicate checks conflict, required evidence is absent, the head SHA changes during review, the reviewer fails, or the reviewer reports a material finding.
+      - The command writes a human-readable QA report Artifact and a decided pass, fail, or needs-follow-up Decision carrying the PR URL, immutable SHA, reviewer provenance, evidence paths, and explicit not-checked reasons.
+      - Repeating review for an already completed revision with unchanged pull-request evidence returns the existing receipts without another model invocation; changed mutable evidence or an explicit rerun creates a preserved new attempt and updates the reusable receipt.
+      - The Candidate working copy and GitHub remain unchanged; the command does not post, approve, merge, deploy, release, repair, or create arbitrary shell execution.
+      - The real dogfood result for PR #54 truthfully explains its conflicting push and pull-request CI evidence and therefore cannot report Pass while that contradiction remains.
+      - START_HERE.md documents the exact command, consequences, output locations, idempotency, and authority boundary.
+    execution:
+      schema: arcadia.execution/v1
+      profile: systems_change
+      context:
+        scope: cross_system
+        required:
+          - Existing QA queue Artifact and Decision contracts
+          - GitHub pull-request metadata and patch reads
+          - Read-only coding-agent profiles and provider adapters
+          - Arcadia workspace persistence
+        staging: forbidden
+      phases:
+        implementation:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+        verification:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+    decisions: ["0018"]
+    references:
+      - src/commands/qa.ts
+      - src/codingAgents/providerAdapters.ts
+      - src/codingAgents/adapters.ts
+      - src/intent/registries.ts
+      - src/db/repositories.ts
+      - docs/operator-demo-and-release-contract.md
+      - START_HERE.md
+    depends_on: [build-qa-queue-vertical-slice]
   - id: build-demo-hero-vertical-slice
     title: Put one reconciled demo-first hero and proof card on Project Detail
     status: open
@@ -234,7 +286,7 @@ actions:
       - docs/operator-demo-and-release-contract.md
       - src/execution
       - apps/dashboard/app/runs/[id]/page.tsx
-    depends_on: [automate-proof-artifacts, make-test-action-state-aware]
+    depends_on: [establish-minimal-pr-qa, automate-proof-artifacts, make-test-action-state-aware]
   - id: govern-release-and-delivery
     title: Add release management from QA-passed Candidate to verified client delivery
     status: open

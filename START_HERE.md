@@ -10,6 +10,29 @@ Open **Outstanding PRs** at <http://127.0.0.1:3020/admin/pull-requests> to see e
 
 Open the **QA queue** at <http://127.0.0.1:3020/qa> to test each configured Candidate from one exact procedure. The queue shows the configured revision, target state, validation and evidence freshness; **Test Candidate** opens only that configured target. Record Pass, Fail, or Needs follow-up with an optional note to create a revision-bound Decision. This records QA evidence only—it never merges, deploys, or releases work. Candidate configuration is checked in at `config/qa-candidates.json`.
 
+For independent pull-request QA, give Arcadia the full GitHub URL:
+
+```sh
+pnpm arcadia qa pr https://github.com/owner/repository/pull/123
+```
+
+The repository must belong to a configured Arcadia Project. The command freezes
+the current head SHA, reads the pull-request body, changed files, complete patch,
+merge state, and GitHub checks, then runs one separately executed read-only
+structured review. It rechecks the SHA afterward and writes a QA report Artifact
+plus a revision-bound Pass, Fail, or Needs-follow-up Decision under the Arcadia
+workspace's `artifacts/qa/pull-requests/` directory. A failed, pending,
+contradictory, missing, or stale check prevents Pass. Repeating the command for
+the same completed revision with unchanged body, base, files, merge state, and
+checks returns the existing receipts without another model call. Changed GitHub
+evidence automatically creates a preserved new attempt; use `--rerun` only when
+a fresh independent judgment of otherwise unchanged evidence is worth the added
+token cost.
+
+Pull-request QA never runs commands copied from PR prose, edits the Candidate,
+posts to GitHub, approves release, merges, deploys, or repairs a finding. It is
+evidence for the operator's Decision, not that Decision's external effect.
+
 ## Normal daily use
 
 1. Read **Today's Advantage**: one ready Action, its expected Artifact, and why it matters now.
