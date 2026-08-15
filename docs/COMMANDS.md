@@ -744,6 +744,11 @@ acceptance criteria, required decisions, references, and what the agent is
 authorized to do. It reads the repository, not the database, because
 checked-in documentation is authoritative when the two disagree.
 
+Supporting records (`continuation`, `proposal`, `template`, `review`) and plans
+marked `dormant` or `proposed` are recognized but cannot block, redirect, or
+compete with that pointer. Their lifecycle and activation conditions belong to
+their repository-local protocol.
+
 When one or more Back Burner conditions have fired, `next` adds one final line
 with the count and the `back-burner list --fired yes` discovery command. It
 does not preview the items. When the count is zero, the output is unchanged.

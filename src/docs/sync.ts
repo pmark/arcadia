@@ -138,6 +138,17 @@ export function syncProjectDocs(
 
   const mine: ArcadiaDoc[] = [];
   for (const doc of discovered.docs) {
+    if (doc.type === "scoped_out") {
+      result.changes.push({
+        action: "skipped",
+        entity: "narrative",
+        relativePath: doc.relativePath,
+        ref: doc.sourceType,
+        title: doc.sourceStatus ?? doc.sourceType,
+        reason: "Supporting record is governed outside Arcadia dispatch."
+      });
+      continue;
+    }
     const owner = doc.type === "project" ? doc.slug : doc.project;
     if (owner.toLowerCase() !== project.slug.toLowerCase()) {
       result.foreign.push(`${doc.relativePath} (project: ${owner})`);

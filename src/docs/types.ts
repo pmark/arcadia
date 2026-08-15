@@ -25,9 +25,24 @@ export const DOC_TYPES = [
   "log",
   "architecture",
   "strategy",
-  "reference"
+  "reference",
+  "continuation",
+  "proposal",
+  "template",
+  "review"
 ] as const;
 export type DocType = (typeof DOC_TYPES)[number];
+
+/**
+ * Documents that opt into Arcadia's vocabulary but remain governed by their
+ * own local protocol. They are recognized and reported, never dispatched.
+ */
+export const SUPPORTING_DOC_TYPES = ["continuation", "proposal", "template", "review"] as const;
+export type SupportingDocType = (typeof SUPPORTING_DOC_TYPES)[number];
+
+/** Plan states whose activation and ordering are owned by an external shim. */
+export const SCOPED_OUT_PLAN_STATUSES = ["dormant", "proposed"] as const;
+export type ScopedOutPlanStatus = (typeof SCOPED_OUT_PLAN_STATUSES)[number];
 
 /** Plan lifecycle. Distinct from milestone status: a plan can be superseded. */
 export const PLAN_STATUSES = ["draft", "active", "complete", "superseded"] as const;
@@ -219,7 +234,15 @@ export interface NarrativeDoc extends DocLocation {
   body: string;
 }
 
-export type ArcadiaDoc = ProjectDoc | PlanDoc | DecisionDoc | LogDoc | NarrativeDoc;
+/** A recognized record that deliberately cannot participate in Arcadia dispatch. */
+export interface ScopedOutDoc extends DocLocation {
+  type: "scoped_out";
+  sourceType: SupportingDocType | "plan";
+  sourceStatus: ScopedOutPlanStatus | null;
+  body: string;
+}
+
+export type ArcadiaDoc = ProjectDoc | PlanDoc | DecisionDoc | LogDoc | NarrativeDoc | ScopedOutDoc;
 
 /**
  * Stable external keys. Built only from identifiers the protocol promises never
