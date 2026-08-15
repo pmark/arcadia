@@ -323,6 +323,39 @@ describe("minimal independent pull-request QA", () => {
     ]));
   });
 
+  it("fails closed before sandbox or model review when the host baseline fails", () => {
+    const fixture = createFixture();
+    let codexInvocations = 0;
+    const result = runQaPrReviewCommand({
+      workspace: fixture.workspace,
+      pullRequest: "https://github.com/pmark/arcadia/pull/54"
+    }, {
+      selectReviewer: () => fakeReviewer(),
+      runCommand: ({ command, args }) => {
+        if (command === "git") return success("https://github.com/pmark/arcadia.git\n");
+        if (command === "gh" && args[1] === "view") {
+          return success(`${JSON.stringify(rawPullRequest([check("fast", "SUCCESS", "https://ci/fast")]))}\n`);
+        }
+        if (command === "gh" && args[0] === "api") return success("diff --git a/a.ts b/a.ts\n+safe\n");
+        if (command === "/bin/zsh") return failure("host-network-unreachable");
+        if (command === "codex") {
+          codexInvocations += 1;
+          return failure("codex must not run");
+        }
+        return failure("unexpected command");
+      }
+    });
+
+    expect(result.data.verdict).toBe("needs-follow-up");
+    expect(codexInvocations).toBe(0);
+    expect(result.data.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: "Reviewer sandbox boundary is unavailable",
+        evidence: "host-network-unreachable"
+      })
+    ]));
+  });
+
   it("rejects a selected reviewer profile that is not read-only", () => {
     const fixture = createFixture();
     expect(() => runQaPrReviewCommand({

@@ -40,7 +40,10 @@ updated: 2026-08-15
   connectivity failure could look like sandbox denial. The preflight now first
   proves that exact auth, Git control, and GitHub network controls are readable
   by the host, then requires the configured sandbox to deny those same controls
-  while reading evidence; either baseline or sandbox mismatch fails closed.
+  while reading evidence; either baseline or sandbox mismatch fails closed. The
+  fifth Candidate passed every substantive criterion but required direct test
+  evidence for the host-baseline failure branch, which now proves that neither
+  the sandbox nor reviewer runs and the observed baseline failure is preserved.
 - **Next:** Resume `build-demo-hero-vertical-slice`. For PR #54, resolve the
   pull-request-event workspace isolation failure, then explicitly rerun QA on
   the unchanged revision or let a repaired revision receive a fresh automatic
