@@ -52,6 +52,7 @@ describe("minimal independent pull-request QA", () => {
           patchArgs = args;
           return success("diff --git a/docs/example.md b/docs/example.md\n+planned QA\n");
         }
+        if (command === "/bin/zsh") return hostBaselineSuccess();
         if (command === "codex" && args[0] === "sandbox") {
           sandboxArgs = args;
           return sandboxSuccess();
@@ -99,7 +100,8 @@ describe("minimal independent pull-request QA", () => {
     expect(reviewerCwd).not.toBe(fixture.repository);
     expect(patchArgs).toContain(`repos/pmark/arcadia/compare/${BASE_SHA}...${HEAD_SHA}`);
     expect(sandboxArgs).toContain("arcadia-qa-evidence");
-    expect(reviewerPrompt).toContain("evidence-readable\nhome-blocked\nrepository-blocked\nnetwork-blocked");
+    expect(reviewerPrompt).toContain("host-network-reachable");
+    expect(reviewerPrompt).toContain("sandbox-evidence-readable\nsandbox-home-denied\nsandbox-repository-denied\nsandbox-network-denied");
     const reportPath = path.join(fixture.workspace, first.data.reportPath);
     expect(existsSync(reportPath)).toBe(true);
     expect(readFileSync(reportPath, "utf8")).toContain("Verdict: NEEDS-FOLLOW-UP");
@@ -130,7 +132,7 @@ describe("minimal independent pull-request QA", () => {
     expect(reviewerInvocations).toBe(2);
 
     const legacyReceipt = JSON.parse(readFileSync(canonicalReceiptPath, "utf8"));
-    legacyReceipt.version = 4;
+    legacyReceipt.version = 5;
     writeFileSync(canonicalReceiptPath, `${JSON.stringify(legacyReceipt, null, 2)}\n`, "utf8");
     const versionRetry = runQaPrReviewCommand({
       workspace: fixture.workspace,
@@ -177,6 +179,7 @@ describe("minimal independent pull-request QA", () => {
           return success(`${JSON.stringify(rawPullRequest([check("fast", "SUCCESS", "https://ci/fast")]))}\n`);
         }
         if (command === "gh" && args[0] === "api") return success("diff --git a/a.ts b/a.ts\n+safe\n");
+        if (command === "/bin/zsh") return hostBaselineSuccess();
         if (command === "codex" && args[0] === "sandbox") return sandboxSuccess();
         if (command === "codex") {
           reviewerInvocations += 1;
@@ -229,6 +232,7 @@ describe("minimal independent pull-request QA", () => {
           return success(`${JSON.stringify(rawPullRequest([check("optional", "SKIPPED", "https://ci/optional")]))}\n`);
         }
         if (command === "gh" && args[0] === "api") return success("diff --git a/a.ts b/a.ts\n+safe\n");
+        if (command === "/bin/zsh") return hostBaselineSuccess();
         if (command === "codex" && args[0] === "sandbox") return sandboxSuccess();
         if (command === "codex") {
           const outputPath = args[args.indexOf("--output-last-message") + 1]!;
@@ -265,6 +269,7 @@ describe("minimal independent pull-request QA", () => {
           return success(`${JSON.stringify(rawPullRequest([check("fast", "SUCCESS", "https://ci/fast")]))}\n`);
         }
         if (command === "gh" && args[0] === "api") return success("diff --git a/a.ts b/a.ts\n+safe\n");
+        if (command === "/bin/zsh") return hostBaselineSuccess();
         if (command === "codex" && args[0] === "sandbox") return sandboxSuccess();
         if (command === "codex") {
           const outputPath = args[args.indexOf("--output-last-message") + 1]!;
@@ -301,6 +306,7 @@ describe("minimal independent pull-request QA", () => {
           return success(`${JSON.stringify(rawPullRequest([check("fast", "SUCCESS", "https://ci/fast")]))}\n`);
         }
         if (command === "gh" && args[0] === "api") return success("diff --git a/a.ts b/a.ts\n+safe\n");
+        if (command === "/bin/zsh") return hostBaselineSuccess();
         if (command === "codex" && args[0] === "sandbox") return failure("home-readable");
         if (command === "codex") {
           reviewerInvocations += 1;
@@ -347,6 +353,7 @@ describe("minimal independent pull-request QA", () => {
           return success(`${JSON.stringify(rawPullRequest([check("fast", conclusion, "https://ci/fast")]))}\n`);
         }
         if (command === "gh" && args[0] === "api") return success("diff --git a/a.ts b/a.ts\n+safe\n");
+        if (command === "/bin/zsh") return hostBaselineSuccess();
         if (command === "codex" && args[0] === "sandbox") return sandboxSuccess();
         if (command === "codex") {
           evidenceChanged = true;
@@ -378,6 +385,8 @@ function createFixture(): { workspace: string; repository: string } {
   const workspace = path.join(root, "workspace");
   const repository = path.join(root, "repository");
   mkdirSync(repository, { recursive: true });
+  mkdirSync(path.join(repository, ".git"), { recursive: true });
+  writeFileSync(path.join(repository, ".git", "HEAD"), "ref: refs/heads/main\n", "utf8");
   initWorkspace(workspace);
   withDatabase(workspace, (db) => {
     const created = createProjectWithInitialWork(db, {
@@ -446,7 +455,11 @@ function failure(stderr: string) {
 }
 
 function sandboxSuccess() {
-  return success("evidence-readable\nhome-blocked\nrepository-blocked\nnetwork-blocked\n");
+  return success("sandbox-evidence-readable\nsandbox-home-denied\nsandbox-repository-denied\nsandbox-network-denied\n");
+}
+
+function hostBaselineSuccess() {
+  return success("host-home-readable\nhost-repository-readable\nhost-network-reachable\n");
 }
 
 function passingModelVerdict(summary: string, residualRisks: string[] = []): QaPrModelVerdict {

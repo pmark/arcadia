@@ -43,10 +43,11 @@ For one immutable head revision it:
 1. resolves the configured Project and repository;
 2. captures GitHub metadata, check conclusions, changed files, body, and the
    complete exact-base/head patch deterministically;
-3. proves that the reviewer sandbox can read only its evidence while home, the
-   Project repository, and network remain denied, then invokes one separately
-   executed coding-agent reviewer selected through Arcadia's existing
-   provider-adapter policy;
+3. establishes readable host controls for Codex auth, the Project Git control
+   file, and GitHub network access, then requires the reviewer sandbox to read
+   its evidence while denying those exact controls before invoking one
+   separately executed coding-agent reviewer selected through Arcadia's
+   existing provider-adapter policy;
 4. exhaustively validates the structured verdict and requires exactly one
    pass, fail, or not-checked result for each of seven fixed review criteria;
 5. re-reads the complete mutable pull-request snapshot and refuses Pass if it

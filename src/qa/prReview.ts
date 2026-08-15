@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
@@ -154,7 +154,7 @@ interface RawPullRequest {
 }
 
 interface PersistedReceipt {
-  version: 5;
+  version: 6;
   evidenceFingerprint: string;
   artifactId: string;
   decisionId: string;
@@ -431,7 +431,7 @@ export function runQaPrReviewCommand(
     reused: false
   };
   const receipt: PersistedReceipt = {
-    version: 5,
+    version: 6,
     evidenceFingerprint,
     artifactId: persisted.artifact.id,
     decisionId: persisted.decision.id,
@@ -923,7 +923,7 @@ function readPersistedReceipt(
     if (!isPersistedReceipt(rawReceipt)) return null;
     const receipt = rawReceipt;
     if (
-      receipt.version !== 5 ||
+      receipt.version !== 6 ||
       receipt.evidenceFingerprint !== evidenceFingerprint ||
       !receipt.requiredFiles.every((file) => verifyReceiptFile(workspace, file))
     ) return null;
@@ -1024,15 +1024,40 @@ function runQaSandboxPreflight(input: {
   if (!homePath) {
     return { passed: false, status: null, output: "home-unavailable", error: "HOME is required to prove the reviewer boundary." };
   }
-  const script = [
-    'test -r "$1" || { print evidence-blocked; exit 11; }',
-    'test ! -r "$2" || { print home-readable; exit 12; }',
-    'test ! -r "$3/.git" || { print repository-readable; exit 13; }',
-    '/usr/bin/curl -fsS --connect-timeout 1 --max-time 2 https://api.github.com >/dev/null 2>&1 && { print network-open; exit 14; }',
-    'print evidence-readable',
-    'print home-blocked',
-    'print repository-blocked',
-    'print network-blocked'
+  const homeProbePath = path.join(homePath, ".codex", "auth.json");
+  const repositoryProbePath = repositoryGitHeadPath(input.repositoryPath);
+  if (!repositoryProbePath) {
+    return { passed: false, status: null, output: "repository-baseline-unavailable", error: "A readable Git HEAD control file is required." };
+  }
+  const baselineScript = [
+    'test -r "$1" || { print host-home-unreadable; exit 21; }',
+    'test -r "$2" || { print host-repository-unreadable; exit 22; }',
+    '/usr/bin/curl -fsS --connect-timeout 2 --max-time 4 https://api.github.com >/dev/null 2>&1 || { print host-network-unreachable; exit 23; }',
+    'print host-home-readable',
+    'print host-repository-readable',
+    'print host-network-reachable'
+  ].join("; ");
+  const baseline = input.runCommand({
+    command: "/bin/zsh",
+    args: ["-c", baselineScript, "arcadia-qa-host-baseline", homeProbePath, repositoryProbePath],
+    cwd: input.attemptRoot,
+    timeoutMs: 10_000,
+    environment: buildQaReviewerEnvironment()
+  });
+  const expectedBaseline = "host-home-readable\nhost-repository-readable\nhost-network-reachable";
+  if (baseline.status !== 0 || baseline.stdout.trim() !== expectedBaseline) {
+    const output = [baseline.stdout.trim(), baseline.stderr.trim()].filter(Boolean).join("\n") || "host baseline produced no output";
+    return { passed: false, status: baseline.status, output, error: baseline.error };
+  }
+  const sandboxScript = [
+    '/bin/cat "$1" >/dev/null 2>&1 || { print sandbox-evidence-blocked; exit 11; }',
+    '/bin/cat "$2" >/dev/null 2>&1 && { print sandbox-home-readable; exit 12; }',
+    '/bin/cat "$3" >/dev/null 2>&1 && { print sandbox-repository-readable; exit 13; }',
+    '/usr/bin/curl -fsS --connect-timeout 1 --max-time 2 https://api.github.com >/dev/null 2>&1 && { print sandbox-network-open; exit 14; }',
+    'print sandbox-evidence-readable',
+    'print sandbox-home-denied',
+    'print sandbox-repository-denied',
+    'print sandbox-network-denied'
   ].join("; ");
   const result = input.runCommand({
     command: input.command,
@@ -1041,26 +1066,50 @@ function runQaSandboxPreflight(input: {
       "--config", qaEvidencePermissionProfileConfig(),
       "-P", "arcadia-qa-evidence",
       "--",
-      "/bin/zsh", "-c", script, "arcadia-qa-probe",
-      input.evidencePath, homePath, input.repositoryPath
+      "/bin/zsh", "-c", sandboxScript, "arcadia-qa-sandbox-probe",
+      input.evidencePath, homeProbePath, repositoryProbePath
     ],
     cwd: input.attemptRoot,
     timeoutMs: 10_000,
     environment: buildQaReviewerEnvironment()
   });
-  const output = [result.stdout.trim(), result.stderr.trim()].filter(Boolean).join("\n") || "sandbox probe produced no output";
-  const expected = "evidence-readable\nhome-blocked\nrepository-blocked\nnetwork-blocked";
+  const sandboxOutput = [result.stdout.trim(), result.stderr.trim()].filter(Boolean).join("\n") || "sandbox probe produced no output";
+  const output = [
+    "permission-profile-accepted: arcadia-qa-evidence",
+    expectedBaseline,
+    sandboxOutput
+  ].join("\n");
+  const expectedSandbox = "sandbox-evidence-readable\nsandbox-home-denied\nsandbox-repository-denied\nsandbox-network-denied";
   return {
-    passed: result.status === 0 && result.stdout.trim() === expected,
+    passed: result.status === 0 && result.stdout.trim() === expectedSandbox,
     status: result.status,
     output,
     error: result.error
   };
 }
 
+function repositoryGitHeadPath(repositoryPath: string): string | null {
+  const dotGitPath = path.join(repositoryPath, ".git");
+  try {
+    const stat = statSync(dotGitPath);
+    if (stat.isDirectory()) {
+      const headPath = path.join(dotGitPath, "HEAD");
+      return existsSync(headPath) ? headPath : null;
+    }
+    if (!stat.isFile()) return null;
+    const match = readFileSync(dotGitPath, "utf8").trim().match(/^gitdir:\s*(.+)$/i);
+    if (!match) return null;
+    const gitDirectory = path.resolve(repositoryPath, match[1]!);
+    const headPath = path.join(gitDirectory, "HEAD");
+    return existsSync(headPath) ? headPath : null;
+  } catch {
+    return null;
+  }
+}
+
 function isPersistedReceipt(value: unknown): value is PersistedReceipt {
   return isRecordWithExactKeys(value, ["version", "evidenceFingerprint", "artifactId", "decisionId", "requiredFiles"]) &&
-    value.version === 5 &&
+    value.version === 6 &&
     isSha256(value.evidenceFingerprint) &&
     isNonEmptyString(value.artifactId) &&
     isNonEmptyString(value.decisionId) &&

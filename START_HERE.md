@@ -22,8 +22,10 @@ merge state, and GitHub checks, then runs one separately executed read-only
 structured review inside an evidence-only, home-denied, network-denied sandbox.
 The reviewer receives the exact base/head patch and no repository working copy,
 credential-bearing home context, user tools, or configured command arguments. It
-first preserves a fail-closed runtime probe proving that evidence is readable
-while home, the Project repository, and network are denied. Its verdict must
+first establishes readable host controls for a Codex auth file, the Project's
+Git HEAD, and GitHub network access, then requires the same sandbox invocation
+to read its evidence while denying those exact controls. An unavailable host
+baseline is Needs follow-up rather than being mistaken for sandbox denial. Its verdict must
 exhaustively validate and cover Arcadia's seven fixed QA criteria. The command
 rechecks the complete mutable evidence snapshot afterward and writes a QA report
 Artifact plus a revision-bound Pass, Fail, or Needs-follow-up Decision under the Arcadia
