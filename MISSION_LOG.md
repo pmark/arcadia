@@ -3,10 +3,33 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-08
+updated: 2026-08-15
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-15 — Turned missed attention and portfolio disconnection into governed future work
+
+- **Did:** Recorded approved Decisions 0015 and 0016 and drafted two separate
+  managed plans without moving Arcadia's active work pointer. Decision 0015
+  uses GitHub pull requests and one `arcadia:attention` issue per external
+  operator task as the durable bridge from disconnected cloud Projects into
+  Arcadia's existing Discord delivery path. Decision 0016 defines one
+  portfolio continuity projection—Past, Now, Next, and Later—and a visible
+  capture receipt whenever tangential work appears in conversation. The plans
+  preserve the Pareto slices and name the expensive YAGNI tail explicitly.
+- **Result:** The Private Practice Now copy-review and Cloudflare-setup misses
+  now have a controlled implementation path, while the broader inability to
+  see planned, active, deferred, and Incubating work is preserved as its own
+  Outcome rather than being smuggled into notification code. Both plans are
+  draft, carry no `current_action`, and therefore cannot displace or dispatch
+  around `demo-first-delivery`'s current `build-demo-hero-vertical-slice`.
+  Each plan names the condition that should cause it to be reconsidered.
+- **Next:** Review both draft plans after the current demo-first Action is
+  accepted, or explicitly reprioritize sooner if another operator-attention
+  miss or the portfolio-disconnection pain becomes the dominant constraint.
+- **Blockers:** None in planning. Implementation remains intentionally
+  undispatched; activating either plan is a separate priority choice.
 
 ## 2026-08-08 — Digests now compose and post themselves, for every Project
 
