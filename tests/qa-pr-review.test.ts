@@ -6,7 +6,9 @@ import type { SelectedCodingAgentConfiguration } from "../src/codingAgents/provi
 import { withDatabase } from "../src/db/connection.js";
 import { createProjectWithInitialWork, upsertProjectMetadata } from "../src/db/repositories.js";
 import {
+  QA_PR_REVIEW_CRITERIA,
   runQaPrReviewCommand,
+  type QaPrModelVerdict,
   type QaPrReviewDependencies
 } from "../src/qa/prReview.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -26,6 +28,7 @@ describe("minimal independent pull-request QA", () => {
     let reviewerArgs: string[] = [];
     let reviewerCwd = "";
     let patchArgs: string[] = [];
+    let sandboxArgs: string[] = [];
     let currentChecks = [
       check("fast", "SUCCESS", "https://ci/push"),
       check("fast", "FAILURE", "https://ci/pull-request"),
@@ -48,6 +51,10 @@ describe("minimal independent pull-request QA", () => {
           patchArgs = args;
           return success("diff --git a/docs/example.md b/docs/example.md\n+planned QA\n");
         }
+        if (command === "codex" && args[0] === "sandbox") {
+          sandboxArgs = args;
+          return sandboxSuccess();
+        }
         if (command === "codex") {
           reviewerInvocations += 1;
           reviewerEnvironment = environment;
@@ -55,13 +62,7 @@ describe("minimal independent pull-request QA", () => {
           reviewerArgs = args;
           reviewerCwd = cwd;
           const outputPath = args[args.indexOf("--output-last-message") + 1]!;
-          writeFileSync(outputPath, `${JSON.stringify({
-            verdict: "pass",
-            summary: "The documentation Candidate is internally consistent.",
-            findings: [],
-            checks: [{ name: "Managed-document contract", status: "pass", evidence: "The declared pointers remain unchanged." }],
-            residualRisks: []
-          })}\n`, "utf8");
+          writeFileSync(outputPath, `${JSON.stringify(passingModelVerdict("The documentation Candidate is internally consistent."))}\n`, "utf8");
           return success('{"type":"task.completed"}\n');
         }
         return failure(`Unexpected command: ${command} ${args.join(" ")}`);
@@ -96,6 +97,8 @@ describe("minimal independent pull-request QA", () => {
     expect(reviewerCwd).toContain(path.join("artifacts", "qa", "pull-requests"));
     expect(reviewerCwd).not.toBe(fixture.repository);
     expect(patchArgs).toContain(`repos/pmark/arcadia/compare/${BASE_SHA}...${HEAD_SHA}`);
+    expect(sandboxArgs).toContain("arcadia-qa-evidence");
+    expect(reviewerPrompt).toContain("evidence-readable\nhome-blocked\nrepository-blocked\nnetwork-blocked");
     const reportPath = path.join(fixture.workspace, first.data.reportPath);
     expect(existsSync(reportPath)).toBe(true);
     expect(readFileSync(reportPath, "utf8")).toContain("Verdict: NEEDS-FOLLOW-UP");
@@ -111,13 +114,24 @@ describe("minimal independent pull-request QA", () => {
     expect(second.data.artifact.id).toBe(first.data.artifact.id);
     expect(reviewerInvocations).toBe(1);
 
-    writeFileSync(path.join(fixture.workspace, second.data.reportPath), "tampered\n", "utf8");
+    const canonicalReceiptPath = path.resolve(path.dirname(reportPath), "..", "..", "result.json");
+    const legacyReceipt = JSON.parse(readFileSync(canonicalReceiptPath, "utf8"));
+    legacyReceipt.version = 3;
+    writeFileSync(canonicalReceiptPath, `${JSON.stringify(legacyReceipt, null, 2)}\n`, "utf8");
+    const versionRetry = runQaPrReviewCommand({
+      workspace: fixture.workspace,
+      pullRequest: "https://github.com/pmark/arcadia/pull/54"
+    }, dependencies);
+    expect(versionRetry.data.reused).toBe(false);
+    expect(reviewerInvocations).toBe(2);
+
+    writeFileSync(path.join(fixture.workspace, versionRetry.data.reportPath), "tampered\n", "utf8");
     const integrityRetry = runQaPrReviewCommand({
       workspace: fixture.workspace,
       pullRequest: "https://github.com/pmark/arcadia/pull/54"
     }, dependencies);
     expect(integrityRetry.data.reused).toBe(false);
-    expect(reviewerInvocations).toBe(2);
+    expect(reviewerInvocations).toBe(3);
 
     currentChecks = [check("fast", "SUCCESS", "https://ci/push")];
     const changedEvidence = runQaPrReviewCommand({
@@ -126,7 +140,7 @@ describe("minimal independent pull-request QA", () => {
     }, dependencies);
     expect(changedEvidence.data.reused).toBe(false);
     expect(changedEvidence.data.decision.id).not.toBe(first.data.decision.id);
-    expect(reviewerInvocations).toBe(3);
+    expect(reviewerInvocations).toBe(4);
 
     const changedEvidenceRepeat = runQaPrReviewCommand({
       workspace: fixture.workspace,
@@ -134,7 +148,7 @@ describe("minimal independent pull-request QA", () => {
     }, dependencies);
     expect(changedEvidenceRepeat.data.reused).toBe(true);
     expect(changedEvidenceRepeat.data.decision.id).toBe(changedEvidence.data.decision.id);
-    expect(reviewerInvocations).toBe(3);
+    expect(reviewerInvocations).toBe(4);
   });
 
   it("allows Pass only when deterministic evidence and the independent reviewer both pass", () => {
@@ -149,16 +163,14 @@ describe("minimal independent pull-request QA", () => {
           return success(`${JSON.stringify(rawPullRequest([check("fast", "SUCCESS", "https://ci/fast")]))}\n`);
         }
         if (command === "gh" && args[0] === "api") return success("diff --git a/a.ts b/a.ts\n+safe\n");
+        if (command === "codex" && args[0] === "sandbox") return sandboxSuccess();
         if (command === "codex") {
           reviewerInvocations += 1;
           const outputPath = args[args.indexOf("--output-last-message") + 1]!;
-          writeFileSync(outputPath, `${JSON.stringify({
-            verdict: "pass",
-            summary: "All applicable evidence passes.",
-            findings: [],
-            checks: [{ name: "Acceptance criteria", status: "pass", evidence: "Each criterion has evidence." }],
-            residualRisks: ["Release approval remains with the operator."]
-          })}\n`, "utf8");
+          writeFileSync(outputPath, `${JSON.stringify(passingModelVerdict(
+            "All applicable evidence passes.",
+            ["Release approval remains with the operator."]
+          ))}\n`, "utf8");
           return success();
         }
         return failure("unexpected command");
@@ -203,15 +215,13 @@ describe("minimal independent pull-request QA", () => {
           return success(`${JSON.stringify(rawPullRequest([check("optional", "SKIPPED", "https://ci/optional")]))}\n`);
         }
         if (command === "gh" && args[0] === "api") return success("diff --git a/a.ts b/a.ts\n+safe\n");
+        if (command === "codex" && args[0] === "sandbox") return sandboxSuccess();
         if (command === "codex") {
           const outputPath = args[args.indexOf("--output-last-message") + 1]!;
-          writeFileSync(outputPath, `${JSON.stringify({
-            verdict: "pass",
-            summary: "The reviewer cannot prove every criterion.",
-            findings: [],
-            checks: [{ name: "Acceptance criteria", status: "not-checked", evidence: "No runnable proof." }],
-            residualRisks: []
-          })}\n`, "utf8");
+          const verdict = passingModelVerdict("The reviewer cannot prove every criterion.");
+          verdict.checks[0]!.status = "not-checked";
+          verdict.checks[0]!.evidence = "No runnable proof.";
+          writeFileSync(outputPath, `${JSON.stringify(verdict)}\n`, "utf8");
           return success();
         }
         return failure("unexpected command");
@@ -226,6 +236,71 @@ describe("minimal independent pull-request QA", () => {
     expect(result.data.verdict).toBe("needs-follow-up");
     expect(result.data.summary).toContain("optional validation did not succeed");
     expect(result.data.summary).toContain("reviewer did not pass every declared criterion");
+  });
+
+  it("rejects a shallow or incomplete structured reviewer verdict", () => {
+    const fixture = createFixture();
+    const result = runQaPrReviewCommand({
+      workspace: fixture.workspace,
+      pullRequest: "https://github.com/pmark/arcadia/pull/54"
+    }, {
+      selectReviewer: () => fakeReviewer(),
+      runCommand: ({ command, args }) => {
+        if (command === "git") return success("https://github.com/pmark/arcadia.git\n");
+        if (command === "gh" && args[1] === "view") {
+          return success(`${JSON.stringify(rawPullRequest([check("fast", "SUCCESS", "https://ci/fast")]))}\n`);
+        }
+        if (command === "gh" && args[0] === "api") return success("diff --git a/a.ts b/a.ts\n+safe\n");
+        if (command === "codex" && args[0] === "sandbox") return sandboxSuccess();
+        if (command === "codex") {
+          const outputPath = args[args.indexOf("--output-last-message") + 1]!;
+          writeFileSync(outputPath, `${JSON.stringify({
+            verdict: "pass",
+            summary: "One generic check passed.",
+            findings: [],
+            checks: [{ name: "Generic", status: "pass", evidence: "Insufficient coverage." }],
+            residualRisks: []
+          })}\n`, "utf8");
+          return success();
+        }
+        return failure("unexpected command");
+      }
+    });
+
+    expect(result.data.verdict).toBe("needs-follow-up");
+    expect(result.data.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: "Independent review unavailable" })
+    ]));
+  });
+
+  it("fails closed before model review when the sandbox boundary probe fails", () => {
+    const fixture = createFixture();
+    let reviewerInvocations = 0;
+    const result = runQaPrReviewCommand({
+      workspace: fixture.workspace,
+      pullRequest: "https://github.com/pmark/arcadia/pull/54"
+    }, {
+      selectReviewer: () => fakeReviewer(),
+      runCommand: ({ command, args }) => {
+        if (command === "git") return success("https://github.com/pmark/arcadia.git\n");
+        if (command === "gh" && args[1] === "view") {
+          return success(`${JSON.stringify(rawPullRequest([check("fast", "SUCCESS", "https://ci/fast")]))}\n`);
+        }
+        if (command === "gh" && args[0] === "api") return success("diff --git a/a.ts b/a.ts\n+safe\n");
+        if (command === "codex" && args[0] === "sandbox") return failure("home-readable");
+        if (command === "codex") {
+          reviewerInvocations += 1;
+          return failure("model must not run");
+        }
+        return failure("unexpected command");
+      }
+    });
+
+    expect(result.data.verdict).toBe("needs-follow-up");
+    expect(reviewerInvocations).toBe(0);
+    expect(result.data.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: "Reviewer sandbox boundary is unavailable" })
+    ]));
   });
 
   it("rejects a selected reviewer profile that is not read-only", () => {
@@ -258,16 +333,11 @@ describe("minimal independent pull-request QA", () => {
           return success(`${JSON.stringify(rawPullRequest([check("fast", conclusion, "https://ci/fast")]))}\n`);
         }
         if (command === "gh" && args[0] === "api") return success("diff --git a/a.ts b/a.ts\n+safe\n");
+        if (command === "codex" && args[0] === "sandbox") return sandboxSuccess();
         if (command === "codex") {
           evidenceChanged = true;
           const outputPath = args[args.indexOf("--output-last-message") + 1]!;
-          writeFileSync(outputPath, `${JSON.stringify({
-            verdict: "pass",
-            summary: "The initial evidence passed.",
-            findings: [],
-            checks: [{ name: "Acceptance criteria", status: "pass", evidence: "Initial evidence only." }],
-            residualRisks: []
-          })}\n`, "utf8");
+          writeFileSync(outputPath, `${JSON.stringify(passingModelVerdict("The initial evidence passed."))}\n`, "utf8");
           return success();
         }
         return failure("unexpected command");
@@ -359,4 +429,23 @@ function success(stdout = "") {
 
 function failure(stderr: string) {
   return { status: 1, stdout: "", stderr, error: null };
+}
+
+function sandboxSuccess() {
+  return success("evidence-readable\nhome-blocked\nrepository-blocked\nnetwork-blocked\n");
+}
+
+function passingModelVerdict(summary: string, residualRisks: string[] = []): QaPrModelVerdict {
+  return {
+    verdict: "pass",
+    summary,
+    findings: [],
+    checks: QA_PR_REVIEW_CRITERIA.map((criterion) => ({
+      criterion: criterion.id,
+      name: criterion.name,
+      status: "pass",
+      evidence: `${criterion.name} is supported by the supplied evidence.`
+    })),
+    residualRisks
+  };
 }

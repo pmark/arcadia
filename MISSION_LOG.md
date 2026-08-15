@@ -26,7 +26,12 @@ updated: 2026-08-15
   first implementation Candidate then correctly failed its own review on PR
   #55 instead of being promoted: that failure drove an evidence-only sandbox
   that denies home and network access, exact-SHA patch retrieval, complete
-  evidence revalidation, and SHA-verified reusable receipts.
+  evidence revalidation, and SHA-verified reusable receipts. The second
+  Candidate also correctly failed: its structurally shallow verdict validation
+  and unconstrained criterion coverage could still admit an unsupported Pass.
+  The resulting contract now proves its sandbox at runtime, validates every
+  nested verdict field, and requires exactly one result for each of seven fixed
+  review criteria before Pass is possible.
 - **Next:** Resume `build-demo-hero-vertical-slice`. For PR #54, resolve the
   pull-request-event workspace isolation failure, then explicitly rerun QA on
   the unchanged revision or let a repaired revision receive a fresh automatic

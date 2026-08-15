@@ -42,12 +42,15 @@ For one immutable head revision it:
 
 1. resolves the configured Project and repository;
 2. captures GitHub metadata, check conclusions, changed files, body, and the
-   complete patch deterministically;
-3. invokes one separately executed, read-only coding-agent reviewer selected
-   through Arcadia's existing provider-adapter policy;
-4. requires a strict structured verdict with ordered findings and explicit
-   pass, fail, or not-checked evidence;
-5. re-reads the head SHA and refuses Pass if it moved; and
+   complete exact-base/head patch deterministically;
+3. proves that the reviewer sandbox can read only its evidence while home, the
+   Project repository, and network remain denied, then invokes one separately
+   executed coding-agent reviewer selected through Arcadia's existing
+   provider-adapter policy;
+4. exhaustively validates the structured verdict and requires exactly one
+   pass, fail, or not-checked result for each of seven fixed review criteria;
+5. re-reads the complete mutable pull-request snapshot and refuses Pass if it
+   changed; and
 6. persists a Markdown QA report Artifact and a decided, revision-bound
    Decision in the Arcadia workspace.
 
@@ -85,6 +88,6 @@ Those deferrals expire only from evidence:
 - Every verdict names its exact revision and becomes stale when that revision
   changes.
 - One bounded model call performs judgment; evidence collection, gating,
-  persistence, and repeat protection remain deterministic.
+  sandbox preflight, persistence, and repeat protection remain deterministic.
 - The current demo hero pauses for this explicitly chosen prerequisite and
   resumes after the minimal PR-QA Action is accepted.
