@@ -8,6 +8,30 @@ updated: 2026-08-15
 
 # Mission Log: Arcadia
 
+## 2026-08-15 — Dogfooded Arcadia Now and captured its first vertical slice
+
+- **Did:** Used a manual Arcadia Now briefing to orient the operator through
+  unusual open work across Arcadia and Private Practice Now. The operator
+  reviewed and merged PPN PR #39, then selected the desired product shape: the
+  same concise explanation in a phone-friendly web view or Discord, followed
+  by a dynamic option menu whose consequences are explicit and whose common
+  case is one button that safely advances governed state. Recorded approved
+  Decision 0017 and made Arcadia Now the Pareto-first Action in the existing
+  draft portfolio continuity plan.
+- **Result:** The experience now has a controlled implementation contract:
+  deterministic orientation, one primary option only when live state earns
+  one, typed and allowlisted operations, invocation-time revalidation,
+  idempotency, receipts, and preserved approval gates. Web is first; Discord
+  carries the summary and deep link; native Discord buttons are deferred until
+  the shared transition contract survives one live trial.
+- **Next:** Activate `portfolio-continuity-view` at
+  `build-arcadia-now-vertical-slice` when the operator explicitly prioritizes
+  it over `demo-first-delivery`, or when the current demo-first Action is
+  accepted.
+- **Blockers:** None in definition. Implementation remains intentionally
+  undispatched so this capture does not silently move Arcadia's active work
+  pointer.
+
 ## 2026-08-15 — Turned missed attention and portfolio disconnection into governed future work
 
 - **Did:** Recorded approved Decisions 0015 and 0016 and drafted two separate

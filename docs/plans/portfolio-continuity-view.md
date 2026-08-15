@@ -9,6 +9,35 @@ token_impact: large
 token_budget: "Build the read projection, ordering, filters, fixtures, and browser checks deterministically. Use model-bearing work for implementation, one visual review of the mobile and desktop view, and bounded diagnosis only when deterministic checks fail; conversational capture routing remains rule-first."
 updated: 2026-08-15
 actions:
+  - id: build-arcadia-now-vertical-slice
+    title: Make the immediate next governed move obvious and tappable
+    status: open
+    responsibility: codex
+    effort: project
+    next_action: Implement one deterministic Arcadia Now snapshot and a phone-friendly Dashboard view that explains the current situation and exposes only typed, freshly revalidated transition options with explicit consequences and receipts.
+    expected_artifact: A tested Arcadia Now CLI snapshot, mobile web view, and governed transition endpoint proving one safe end-to-end advance path
+    clarification: clarified
+    confidence: high
+    source: Decision 0017 and the live Private Practice Now PR #39 orientation on 2026-08-15
+    acceptance_criteria:
+      - The snapshot names what materially changed, what needs the operator now and why, what can wait, the current Milestone, the recommended next Action, its work classification, and its required Artifacts.
+      - The snapshot reuses existing managed-plan, Action, Decision, Run, pull-request, and attention-object reads and adds no second task store, priority engine, workflow language, or required model call.
+      - The phone-friendly web view presents exactly one recommended primary option when exactly one governed transition is eligible; zero or multiple options are explained without inventing a choice.
+      - Every option has a typed allowlisted operation and target, checkable prerequisites, a plain-language consequence, the expected next state, and any authorization or external-system boundary.
+      - Invocation reloads live state, rejects stale or unsafe options legibly, behaves idempotently, returns an outcome receipt, and refreshes the briefing from authoritative state.
+      - Merge, deployment, spending, outward messaging, credentials, and other protected operations retain their specific approval or confirmation gates and are never concealed by a generic Advance button.
+      - One fixture reproduces the 2026-08-15 sequence in which PPN PR #39 is merged, the parsing anomaly is resolved, and the next portfolio move changes without manual queue repair.
+      - START_HERE.md and the PR QA plan provide the exact local and phone-reachable URL, operator procedure, expected effects, and refusal behavior.
+    decisions: ["0017"]
+    references:
+      - src/commands/docket.ts
+      - src/workMonitoring/pullRequests.ts
+      - src/dashboard/snapshot.ts
+      - apps/dashboard
+      - docs/decisions/0013-operator-briefing-and-feedback.md
+      - docs/decisions/0014-tappable-operator-questions.md
+      - START_HERE.md
+    depends_on: []
   - id: define-portfolio-continuity-projection
     title: Define one truthful Past, Now, Next, and Later projection
     status: open
@@ -27,7 +56,7 @@ actions:
       - Later distinguishes draft plans, explicitly deferred Actions with reactivation triggers, and Incubating material.
       - The projection reuses existing source records and adds no second timeline, planning, or execution store.
       - The existing orientation timeline retains its separate capacity-to-scale behavior and contract.
-    decisions: ["0016"]
+    decisions: ["0016", "0017"]
     references:
       - src/dashboard/snapshot.ts
       - src/docs/dispatch.ts
@@ -35,7 +64,7 @@ actions:
       - src/orientation/timeline.ts
       - src/backBurner
       - docs/arcadia-semantics.md
-    depends_on: []
+    depends_on: [build-arcadia-now-vertical-slice]
   - id: build-portfolio-continuity-view
     title: Make the whole portfolio story navigable in one view
     status: open
@@ -108,7 +137,7 @@ actions:
       - START_HERE.md
       - docs/operator-demo-and-release-contract.md
     depends_on: [build-portfolio-continuity-view, make-conversation-capture-explicit]
-decisions: ["0016"]
+decisions: ["0016", "0017"]
 ---
 
 # Portfolio continuity view
@@ -122,17 +151,21 @@ conversation, preserve it honestly, and show where it landed.
 
 ## Pareto boundary
 
-The first valuable form is a deterministic read projection and a visible
-capture receipt. It does not schedule the future, infer deadlines, rank every
-Project, summarize with a model, or duplicate source records. Past is ordered
-by observed time. Now follows authoritative state. Next follows pointers and
-dependencies. Later keeps draft, deferred, and Incubating work distinct.
+The first valuable form is Arcadia Now: a deterministic immediate-orientation
+snapshot, phone-friendly web view, and one governed transition path. That
+vertical slice proves the data and interaction contract before the broader
+Past, Now, Next, and Later projection is built around it. The plan does not
+schedule the future, infer deadlines, rank every Project, summarize with a
+model, or duplicate source records. Past is ordered by observed time. Now
+follows authoritative state. Next follows pointers and dependencies. Later
+keeps draft, deferred, and Incubating work distinct.
 
 ## Activation trigger
 
-This plan stays draft while `demo-first-delivery` owns Arcadia's authoritative
-work pointer. Reconsider activation after the operator-attention vertical slice
-has completed one live Project trial, or earlier if the operator explicitly
-chooses portfolio disconnection as the more urgent constraint. Until then,
-coding agents can honor Decision 0016 manually by preserving separate ideas in
-managed documents and reporting a capture receipt.
+The operator has now validated the immediate-orientation need in a live PPN
+incident and selected the Arcadia Now interaction shape. This plan still stays
+draft while `demo-first-delivery` owns Arcadia's authoritative work pointer.
+Activate it when the operator explicitly chooses Arcadia Now over that active
+work, or when the current demo-first Action is accepted. Until then, coding
+agents can honor Decisions 0016 and 0017 manually by preserving separate ideas,
+reporting capture receipts, and presenting one clearly consequential next move.
