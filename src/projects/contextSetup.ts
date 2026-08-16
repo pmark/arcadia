@@ -417,7 +417,7 @@ export function updateAgentsMarkdown(existing: string | null, canonical = readAg
  * Resolved from this module's location rather than the working directory, so
  * setup writes the same text no matter where the CLI was invoked from.
  */
-function readAdoptedConstitution(): string | null {
+export function readAdoptedConstitution(): string | null {
   return readAdoptedFile("CONSTITUTION.md");
 }
 
@@ -426,7 +426,7 @@ function readAdoptedConstitution(): string | null {
  * location rather than the working directory, so setup writes the same text no
  * matter where the CLI was invoked from.
  */
-function readAdoptedFile(relativePath: string): string | null {
+export function readAdoptedFile(relativePath: string): string | null {
   const candidate = path.resolve(findArcadiaRepoRoot(), relativePath);
   try {
     return readFileSync(candidate, "utf8");

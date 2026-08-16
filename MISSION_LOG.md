@@ -8,6 +8,32 @@ updated: 2026-08-16
 
 # Mission Log: Arcadia
 
+## 2026-08-16 — A read-only way to tell whether a project is stale on the Way
+
+- **Did:** Completed `report-way-drift`. Added `arcadia way`, a noun command
+  that reports per registered project whether its adopted `CONSTITUTION.md`,
+  `AGENTS.md` managed region, and `docs/agent-continuation-protocol.md` still
+  match Arcadia's own canonical text, and what its `.arcadia/arcadia-way/adoption.json`
+  `upgrade_policy` declares. It reuses `setup-context`'s own pure generator
+  functions (`updateAgentsMarkdown`, `adoptContinuationProtocol`) to detect
+  drift rather than writing a second definition of "adopted": a file is
+  current exactly when regenerating it from the canonical source reproduces
+  its own bytes. A project with no `repo_path`, or an unreachable one, is
+  reported `unknown` rather than assumed current.
+- **Result:** `src/projects/wayDrift.ts` and `src/commands/way.ts`, wired into
+  the CLI as `arcadia way`. Run against Arcadia itself it correctly reported
+  `CONSTITUTION.md` and the shared region as current and the continuation
+  protocol as drifted — exactly the still-open
+  `stop-duplicating-a-canonical-protocol-on-adopter-zero` defect, not a false
+  positive, which is the first real evidence the tool works. 6 new tests in
+  `tests/way-status.test.ts`; full suite otherwise unaffected (826 passing, 4
+  pre-existing failures in `tests/narrative-digest-schedule.test.ts`
+  reconfirmed failing identically on `main`, untouched by this change).
+- **Next:** `stop-duplicating-a-canonical-protocol-on-adopter-zero` — fix the
+  drift `arcadia way` just found in Arcadia's own repository.
+- **Blockers:** None. `open-way-sync-pull-requests` stays parked behind its
+  open question (`propagation-authority`); this Action does not resolve it.
+
 ## 2026-08-16 — Ran the Way's own generator at Arcadia, and it broke three ways
 
 - **Did:** Completed `give-arcadia-its-own-context-files` by running
