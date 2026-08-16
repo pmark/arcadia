@@ -1,10 +1,11 @@
 import Database from "better-sqlite3";
+import { withSqliteNativeAddonPreflight } from "./nativeAddon.js";
 import { applyInitialSchema } from "./schema.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 
 export function openDatabase(workspace: string): Database.Database {
   const paths = getWorkspacePaths(workspace);
-  const db = new Database(paths.databaseFile);
+  const db = withSqliteNativeAddonPreflight(() => new Database(paths.databaseFile));
   db.pragma("foreign_keys = ON");
   db.pragma("journal_mode = WAL");
   db.pragma("busy_timeout = 5000");
@@ -14,7 +15,7 @@ export function openDatabase(workspace: string): Database.Database {
 
 export function openReadOnlyDatabase(workspace: string): Database.Database {
   const paths = getWorkspacePaths(workspace);
-  const db = new Database(paths.databaseFile, { readonly: true, fileMustExist: true });
+  const db = withSqliteNativeAddonPreflight(() => new Database(paths.databaseFile, { readonly: true, fileMustExist: true }));
   db.pragma("foreign_keys = ON");
   return db;
 }
