@@ -7,8 +7,8 @@ status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Every software Project always exposes a stable proof surface and a governed path from candidate demo through QA-verified release
-active_plan: demo-first-delivery
-updated: 2026-08-15
+active_plan: arcadia-way-propagation
+updated: 2026-08-16
 ---
 
 # Arcadia
