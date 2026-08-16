@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { discoverDocs, type DiscoveryResult } from "./discover.js";
+import { discoverDocs, isAuthoritativeControlPath, type DiscoveryResult } from "./discover.js";
 import type {
   ArcadiaDoc,
   DecisionDoc,
@@ -100,7 +100,7 @@ function resolveActivePlan(repoRoot: string, projectSlug?: string): ActivePlanRe
   const blockers: DispatchBlocker[] = [];
   const discovered = discoverDocs(repoRoot);
 
-  for (const error of discovered.errors) {
+  for (const error of discovered.errors.filter((candidate) => isAuthoritativeControlPath(candidate.relativePath))) {
     blockers.push({
       relativePath: error.relativePath,
       field: error.field,
