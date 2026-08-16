@@ -786,4 +786,13 @@ describe("standing constraints", () => {
     expect(resolution.blockers).toEqual([]);
     expect(isDispatchable(resolution)).toBe(true);
   });
+
+  it("fails closed when an existing Constitution cannot be read", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(root, "docs/plans/main-plan.md", planDoc());
+    mkdirSync(path.join(root, "CONSTITUTION.md"));
+
+    expect(() => resolveDispatch(root, "demo")).toThrow();
+  });
 });

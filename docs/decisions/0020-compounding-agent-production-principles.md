@@ -135,8 +135,9 @@ is a replacement, not an addition: net 15 bullets to 13.
 >
 > ## Truth
 >
-> - Checked-in documentation is authoritative. Each fact has one authoritative
->   home; every other surface is a projection, never a competing truth store.
+> - Checked-in managed documentation is authoritative for governed work. Each
+>   other fact has one authoritative home; every other surface is a projection,
+>   never a competing truth store.
 > - Completion is a proven state, not a claim. The required Artifact and its
 >   acceptance evidence must agree with the work actually produced.
 >
@@ -179,8 +180,10 @@ removal without a landing place is data loss, not streamlining.
   surface material value conflicts or possible harms as Decisions."**
   Withdrawn from the redline. No observed incident supports it, it has no
   enforcement path, and its practical effect on a coding agent is to license
-  editorializing on ordinary work. Values belong in `OPERATOR_CONTEXT.md`,
-  which already owns them. Reactivation trigger below.
+  editorializing on ordinary work. Values belong with each Project's Mission
+  and Outcome, or in the triggered purpose Artifact when task-level acceptance
+  is insufficient. `OPERATOR_CONTEXT.md` owns stable operator-wide preferences,
+  not Project-specific values. Reactivation trigger below.
 
 ## Arcadia Way practice adopted on approval
 
@@ -247,11 +250,11 @@ triggered Action.
 
 | Increment | Reactivate when |
 | --- | --- |
-| Mission-and-values constitutional line | An Action ships a material human-impact harm that `OPERATOR_CONTEXT.md` did not prevent, or a second such near-miss is recorded. |
+| Mission-and-values constitutional line | An Action reveals a material value conflict or human-impact harm not legibly governed by its Project Mission, Outcome, or purpose Artifact, or a second such near-miss is recorded. |
 | Purpose Artifact template or UI | The next Project approaches its first public release or an Action presents material human-impact risk. |
 | Structured claim-to-proof Artifact | Decision 0019's existing second-unsubstantiated-Candidate trigger fires. |
 | Cross-Project capability extraction | The same successful script, skill, or guard is independently useful in two Projects. |
-| Multi-agent deliberation | Two agents reach different conclusions on the same governed Artifact, at any capability level. |
+| Multi-agent deliberation | Two agents reach materially different conclusions on the same governed Artifact and deterministic evidence cannot resolve the disagreement. |
 | Session analytics or duration estimates | Thin receipts exist for enough real dispatches that the result would change selection or planning. |
 | Automated constitutional linting | Two accepted rules are violated in ways a deterministic repository check could have prevented. |
 

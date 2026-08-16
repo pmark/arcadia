@@ -279,14 +279,16 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
  * A missing Constitution returns `[]` rather than a blocker. Foreign
  * repositories Arcadia manages are not required to have one, and refusing to
  * dispatch over its absence would block work on a rule the repository never
- * adopted.
+ * adopted. Other read failures propagate so adopted constraints cannot
+ * silently disappear from a dispatch brief.
  */
 function readStandingConstraints(repoRoot: string): string[] {
   let raw: string;
   try {
     raw = readFileSync(join(repoRoot, "CONSTITUTION.md"), "utf8");
-  } catch {
-    return [];
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
   }
 
   const lines = raw.split(/\r?\n/);
