@@ -145,6 +145,31 @@ describe("adopted CLAUDE.md wrapper", () => {
     const first = thinClaudeWrapper(null);
     expect(thinClaudeWrapper(first)).toBe(first);
   });
+
+  it("refuses to overwrite a CLAUDE.md that imports AGENTS.md and adds its own notes", () => {
+    const existing = [
+      "# CLAUDE.md",
+      "",
+      "@AGENTS.md",
+      "",
+      "## Claude Code specifics",
+      "",
+      "- This repository pins Node 22.23.1 in `mise.toml`."
+    ].join("\n");
+
+    // A file that imports AGENTS.md and then adds project-authored notes is the
+    // most natural shape for CLAUDE.md, and the presence of the import used to
+    // be read as proof the whole file was generated. Running setup against
+    // Arcadia itself destroyed exactly this content on the first real run.
+    expect(thinClaudeWrapper(existing)).toBeNull();
+  });
+
+  it("declines rather than overwrites Arcadia's own CLAUDE.md", () => {
+    const own = readFileSync(path.join(repoRoot, "CLAUDE.md"), "utf8");
+
+    expect(own).toContain("@AGENTS.md");
+    expect(thinClaudeWrapper(own)).toBeNull();
+  });
 });
 
 describe("adopted continuation protocol", () => {

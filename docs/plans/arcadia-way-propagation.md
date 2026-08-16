@@ -5,14 +5,14 @@ slug: arcadia-way-propagation
 project: arcadia
 status: active
 milestone: No Arcadia project is silently stale on the Way, and no project's governance changes without review
-current_action: give-arcadia-its-own-context-files
+current_action: report-way-drift
 token_impact: medium
 token_budget: "Drift detection and file generation are deterministic — no model call belongs in either. Reserve model use for one implementation session per Action and a single review pass; a propagation run that calls a model per repository is the failure mode this budget exists to prevent."
 updated: 2026-08-16
 actions:
   - id: give-arcadia-its-own-context-files
     title: Give Arcadia the .arcadia context files it tells every project to read
-    status: open
+    status: done
     responsibility: codex
     effort: quick
     next_action: Run `arcadia project setup-context` against this repository, or hedge the shared region's wording the way its `docs/managed-documents.md` line already is.
@@ -28,6 +28,28 @@ actions:
       - AGENTS.md
       - docs/agents-context.md
       - src/projects/contextSetup.ts
+    result: >-
+      All three `.arcadia/` files are committed. Running the prescribed
+      `next_action` also proved the command could not run at all from the built
+      CLI, and that it destroyed this repository's `CLAUDE.md`; both are fixed
+      here, with the destructive one pinned by two regression tests.
+  - id: stop-duplicating-a-canonical-protocol-on-adopter-zero
+    title: Stop appending a second copy of the continuation protocol to the repository that authored it
+    status: open
+    responsibility: codex
+    effort: quick
+    next_action: Treat an existing `docs/agent-continuation-protocol.md` whose body already equals the canonical source as the managed region itself, rather than as a project-authored section to preserve below it.
+    expected_artifact: A `setup-context` run against Arcadia that leaves `docs/agent-continuation-protocol.md` byte-identical instead of doubling it, covered by a test
+    clarification: clarified
+    confidence: high
+    source: Observed twice while completing `give-arcadia-its-own-context-files`, 2026-08-16.
+    acceptance_criteria:
+      - Running `arcadia project setup-context` against Arcadia twice leaves `docs/agent-continuation-protocol.md` unchanged after the first run.
+      - A repository whose protocol genuinely differs from the canonical text still has its own section preserved under the TRIAGE marker.
+    depends_on: []
+    references:
+      - src/projects/contextSetup.ts
+      - docs/agent-continuation-protocol.md
   - id: report-way-drift
     title: Report which projects are stale on the Way, without writing anything
     status: open
@@ -125,3 +147,46 @@ Three things, all folded into `propagation-authority`:
 local section restates the shared contract. Any propagation design must treat
 that marker as a stop: a pull request carrying one is not eligible for automatic
 merge under any tier.
+
+## What adopting our own Way exposed
+
+`give-arcadia-its-own-context-files` looked like a one-command Action. Running
+that command against Arcadia found three defects, which is the argument for
+adopter zero rather than a footnote to it.
+
+- **The generator could not run from the built CLI at all.** `readAdoptedFile`
+  resolved Arcadia's own repository root with a fixed `../..`, which is correct
+  for `src/projects/` and wrong for `dist/src/projects/`, because `tsc` mirrors
+  the source layout rather than flattening it. Every governance file the
+  generator copies — the Constitution, the shared region, the protocol — read
+  back as `null`, and setup failed claiming `docs/agents-context.md` was
+  missing from the repository that authors it. It now walks up to the nearest
+  `package.json`.
+- **The generator destroyed this repository's `CLAUDE.md`.** `thinClaudeWrapper`
+  treated the presence of `@AGENTS.md` as proof the whole file was generated, so
+  a `CLAUDE.md` that imports `AGENTS.md` and then adds the project's own notes —
+  the most natural shape for the file, and exactly Arcadia's — was silently
+  replaced by the bare wrapper. This is the governance mutation the Constitution
+  forbids, and the existing test missed it because its fixture had no import
+  line to trip the early return. It now strips only what the generator itself
+  writes and declines when anything survives.
+- **The generator doubles a protocol it is itself the source of.** Arcadia's
+  `docs/agent-continuation-protocol.md` predates the `ARCADIA_CONTEXT_*`
+  markers, so first adoption reads the canonical text as a project-authored
+  section and preserves it under the managed copy of itself. Non-destructive,
+  and the marker says to triage it, so this is tracked as
+  `stop-duplicating-a-canonical-protocol-on-adopter-zero` rather than fixed
+  alongside a data-loss bug.
+
+Two of the three would have reached every future adopter. The `CLAUDE.md` one
+would have reached them silently.
+
+## A known cost, deliberately not paid yet
+
+`.arcadia/repo-context.md` and the `repo_path` it records are absolute and
+machine-specific, so the committed file describes one checkout of one machine.
+It is committed that way here because that is what every adopter already gets,
+and changing the format is a propagation-wide decision rather than a detail of
+this Action. **Trigger:** revisit when a second machine or a CI job needs to
+read these files, which is the first moment the absolute path can actually be
+wrong for a reader.

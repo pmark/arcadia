@@ -427,13 +427,36 @@ function readAdoptedConstitution(): string | null {
  * matter where the CLI was invoked from.
  */
 function readAdoptedFile(relativePath: string): string | null {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  // src/projects/contextSetup.ts -> repository root
-  const candidate = path.resolve(here, "..", "..", relativePath);
+  const candidate = path.resolve(findArcadiaRepoRoot(), relativePath);
   try {
     return readFileSync(candidate, "utf8");
   } catch {
     return null;
+  }
+}
+
+/**
+ * Locate Arcadia's own repository root by walking up from this module's
+ * location until a `package.json` is found.
+ *
+ * A fixed number of `..` segments broke the moment this module started
+ * running from compiled output: `src/projects/contextSetup.ts` sits two
+ * directories below the root, but `dist/src/projects/contextSetup.js` sits
+ * three below, because `tsc` mirrors the `src/` layout under `dist/` rather
+ * than flattening it. Walking up to the nearest `package.json` works from
+ * either location.
+ */
+function findArcadiaRepoRoot(): string {
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  while (true) {
+    if (existsSync(path.join(dir, "package.json"))) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      throw validationError("Could not locate Arcadia's own repository root from " + import.meta.url);
+    }
+    dir = parent;
   }
 }
 
@@ -497,6 +520,13 @@ export function adoptContinuationProtocol(
   return `${frontmatter}${managed}${preserved}\n`;
 }
 
+const CLAUDE_WRAPPER_PROSE = [
+  "`AGENTS.md` is the vendor-neutral source of truth for this repository and is",
+  "imported above. Codex reads it directly; this file exists only because Claude",
+  "Code reads `CLAUDE.md` instead. Never put shared rules here — Codex would",
+  "never see them."
+].join("\n");
+
 /**
  * The adopting repository's `CLAUDE.md`: a thin wrapper that imports
  * `AGENTS.md` and nothing more.
@@ -511,26 +541,33 @@ export function adoptContinuationProtocol(
  * governance mutation the Constitution forbids. The caller reports it instead.
  */
 export function thinClaudeWrapper(existing: string | null): string | null {
-  const wrapper = [
-    "# CLAUDE.md",
-    "",
-    "@AGENTS.md",
-    "",
-    "`AGENTS.md` is the vendor-neutral source of truth for this repository and is",
-    "imported above. Codex reads it directly; this file exists only because Claude",
-    "Code reads `CLAUDE.md` instead. Never put shared rules here — Codex would",
-    "never see them.",
-    ""
-  ].join("\n");
+  const wrapper = ["# CLAUDE.md", "", "@AGENTS.md", "", CLAUDE_WRAPPER_PROSE, ""].join("\n");
 
   if (!existing?.trim()) return wrapper;
-  if (existing.includes("@AGENTS.md")) return wrapper;
 
-  // An older setup copied the managed block into CLAUDE.md. That copy is ours
-  // to replace; anything else is the project's and must be left alone.
-  const pattern = new RegExp(`${escapeRegExp(AGENTS_SECTION_START)}[\\s\\S]*?${escapeRegExp(AGENTS_SECTION_END)}`);
-  const withoutManagedBlock = existing.replace(pattern, "").replace(/^#\s+CLAUDE\b.*$/m, "").trim();
-  return withoutManagedBlock.length === 0 ? wrapper : null;
+  // Strip everything this generator has ever written into this file: the title,
+  // the import, its own prose, and a managed block an older setup copied here.
+  // Whatever survives is the project's, and overwriting it is the silent
+  // governance mutation the Constitution forbids.
+  //
+  // The presence of `@AGENTS.md` used to be treated as proof the whole file was
+  // ours, which was wrong in the one case that mattered: a `CLAUDE.md` that
+  // imports `AGENTS.md` and then adds the project's own notes is the most
+  // natural shape for the file, and it was silently replaced by the bare
+  // wrapper. Arcadia's own `CLAUDE.md` was destroyed that way on its first run
+  // as adopter zero.
+  const managedBlock = new RegExp(`${escapeRegExp(AGENTS_SECTION_START)}[\\s\\S]*?${escapeRegExp(AGENTS_SECTION_END)}`);
+  const remainder = existing
+    .replace(managedBlock, "")
+    .replace(/^#\s+CLAUDE\b.*$/m, "")
+    .replace(/^@AGENTS\.md\s*$/m, "")
+    .replace(CLAUDE_WRAPPER_PROSE, "")
+    .trim();
+
+  // Declining is fail-safe: should the wrapper prose ever be revised, an
+  // adopter still holding the previous wording is reported rather than
+  // overwritten, and `files.claude` comes back null.
+  return remainder.length === 0 ? wrapper : null;
 }
 
 function readContextPolicy(repoPath: string): RepoContextPolicy | null {

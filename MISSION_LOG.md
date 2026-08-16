@@ -8,6 +8,39 @@ updated: 2026-08-16
 
 # Mission Log: Arcadia
 
+## 2026-08-16 — Ran the Way's own generator at Arcadia, and it broke three ways
+
+- **Did:** Completed `give-arcadia-its-own-context-files` by running
+  `arcadia project setup-context` against this repository. The command failed
+  outright, then damaged the repository on its second attempt, so the Action
+  became a repair as much as an adoption. Committed `.arcadia/`'s three context
+  files — the ones the shared `AGENTS.md` region has been telling every agent to
+  read before broad exploration, and that Arcadia alone did not have. Fixed
+  `readAdoptedFile`, which resolved Arcadia's own repository root with a fixed
+  `../..`: right for `src/projects/`, wrong for `dist/src/projects/`, so the
+  built CLI read every governance file back as `null` and setup refused,
+  claiming `docs/agents-context.md` was missing from the repository that
+  authors it. Fixed `thinClaudeWrapper`, which read the presence of
+  `@AGENTS.md` as proof a `CLAUDE.md` was entirely generated and so replaced
+  this repository's own with the bare wrapper; it now strips only what the
+  generator writes and returns `null` when anything survives.
+- **Result:** Adopter zero holds the context files it prescribes, and the two
+  defects that reached that conclusion are fixed with two regression tests
+  pinning the destructive one — including one asserting that setup declines to
+  overwrite Arcadia's actual `CLAUDE.md`. A real `setup-context` run now reports
+  `claude: null` and leaves the file byte-identical. The adopter-zero suite is
+  17 passing. Four failures in `tests/narrative-digest-schedule.test.ts` are
+  pre-existing and were confirmed failing at the base commit with this change
+  reverted; they are untouched by it.
+- **Next:** `report-way-drift` — a read-only command reporting which adopting
+  projects are stale, and the first thing that would have caught all of this
+  without a write.
+- **Blockers:** None. The third defect found — first adoption appending a
+  second copy of a continuation protocol Arcadia itself authored — is
+  non-destructive and recorded as
+  `stop-duplicating-a-canonical-protocol-on-adopter-zero` rather than fixed
+  beside a data-loss bug.
+
 ## 2026-08-16 — Made Arcadia adopter zero and found the Way had no way back
 
 - **Did:** A fresh-session orientation test against Private Practice Now, run to
