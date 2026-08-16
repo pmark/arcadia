@@ -147,6 +147,28 @@ describe("adopted continuation protocol", () => {
     expect(rendered).toContain("Shared rules.");
   });
 
+  it("marks the preserved section for triage", () => {
+    const existing = [
+      "---",
+      "arcadia: v1",
+      "---",
+      "",
+      "## Valid current action",
+      "",
+      "- Its status is `in_progress`."
+    ].join("\n");
+
+    const rendered = adoptContinuationProtocol(source, existing, "demo");
+
+    // Preserving verbatim is right -- losing a project's rules is worse -- but
+    // it leaves two statements of one contract in a file. PPN's preserved copy
+    // required `in_progress`, which no dispatch check enforces, and read
+    // strictly it made the current Action unexecutable. Say so at the seam.
+    expect(rendered).toContain("TRIAGE THIS SECTION");
+    expect(rendered).toContain("the stricter copy");
+    expect(rendered).toContain("- Its status is `in_progress`.");
+  });
+
   it("regenerates only the managed region on later runs", () => {
     const first = adoptContinuationProtocol(source, null, "demo");
     const withProjectSection = `${first}\n## Local lens\n\nProject-owned.\n`;
