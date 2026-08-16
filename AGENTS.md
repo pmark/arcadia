@@ -27,16 +27,57 @@ Always identify:
 - Work classification
 - Required artifacts
 
-When a message ends with exactly one concrete, immediately actionable next
-step — nothing blocking, no open question, no choice still pending — end it
-with a fixed `OK to go: <verb-first next step>` line, last thing in the
-message, and omit it entirely otherwise. This is the coding agent's half of
-what `arcadia next` already resolves to (dispatchable / one operator question
-/ blockers): one reliable signal, not prose that has to be read to be
-trusted. Full spec, and the reasoning behind each constraint, lives in
-`docs/agent-continuation-protocol.md` under a project operating on the
-Arcadia Way — see Private Practice Now's copy — since it governs every
-coding agent's reports, not just Arcadia's own.
+## Continuation: how to start, and what you owe before stopping
+
+These rules are stated here, not linked, because this file is the one every
+coding agent loads automatically. [`docs/agent-continuation-protocol.md`](docs/agent-continuation-protocol.md)
+carries the same rules with the reasoning behind each; read it when you want to
+know why, not to find out what.
+
+**Start by resolving the pointer, never by inferring it.** `pnpm arcadia next
+--project <slug>` is the whole startup procedure. Never infer priority from
+recent commits, source activity, backlog order, or whichever task looks easiest.
+
+**A current Action is executable only when** it exists exactly once in the
+active plan, its clarification is `clarified`, its responsibility is
+`autonomous` or `codex`, its `next_action` begins with a concrete verb, and its
+acceptance criteria define observable completion. If any condition fails,
+repairing the control documents *is* the immediate work. If the repair would
+choose between materially different milestones, record one open Decision and ask
+exactly one highest-leverage question.
+
+**Before stopping**, do one of three things, and update `PROJECT.md`, the active
+plan, affected Decisions, and `MISSION_LOG.md` wherever their authoritative
+state changed:
+
+- complete the Action, validate it, record the result, and explicitly select the
+  next one;
+- record one precise operator question required for review; or
+- record a concrete external blocker and the draft ask needed to resolve it.
+
+**When a milestone completes** — a merged pull request, a ratified Decision, a
+plan reaching its milestone — that is itself a stopping condition, not a point
+to log and continue past. Open or update a pull request *now*, without being
+asked and without waiting for the plan to close out. Then say whether to
+continue in this session or start a new one and why, and which model and effort
+level the next batch actually needs.
+
+**The `OK to go` line.** When a message ends with exactly one concrete,
+immediately actionable next step — nothing blocking, no open question, no choice
+still pending — end it with a fixed, greppable line, preceded by a blank line
+and last in the message:
+
+```
+OK to go: <verb-first, one-sentence description of exactly what will happen>
+```
+
+Always that prefix verbatim, never a paraphrase. Present if and only if the
+state is what `arcadia next` would call dispatchable — this is the agent's half
+of the same three-way split it resolves to. Never present when a question is
+open, options are still pending, or the next step would cross an authority
+boundary without approval already given. **Absence is the signal**: when nothing
+is ready, omit the line entirely rather than writing "not ready yet" in its
+place. One reliable signal beats prose that has to be read to be trusted.
 
 ## The 80/20 rule
 
