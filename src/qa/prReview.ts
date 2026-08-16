@@ -495,7 +495,9 @@ function assertPullRequestReadyForQa(pullRequest: RawPullRequest): void {
       const completedConclusions = new Set(group
         .filter((check) => check.status?.toUpperCase() === "COMPLETED" && check.conclusion)
         .map((check) => check.conclusion!.toUpperCase()));
-      const evidence = group.map((check) => check.conclusion ?? check.status ?? "unknown").join(", ");
+      const evidence = group
+        .map((check) => check.conclusion?.trim() || check.status?.trim() || "unknown")
+        .join(", ");
       if (completedConclusions.size > 1) {
         blockers.push(`Duplicate ${name} checks conflict: ${evidence}.`);
       } else if (group.some((check) => check.status?.toUpperCase() !== "COMPLETED" || !check.conclusion)) {

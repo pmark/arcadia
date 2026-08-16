@@ -335,6 +335,36 @@ describe("minimal independent pull-request QA", () => {
     expect(downstreamInvocations).toBe(0);
   });
 
+  it("renders empty pending check state legibly", () => {
+    const fixture = createFixture();
+    let error: unknown;
+    try {
+      runQaPrReviewCommand({
+        workspace: fixture.workspace,
+        pullRequest: "https://github.com/pmark/arcadia/pull/54"
+      }, {
+        runCommand: ({ command, args }) => {
+          if (command === "git") return success("https://github.com/pmark/arcadia.git\n");
+          if (command === "gh" && args[1] === "view") {
+            return success(`${JSON.stringify(rawPullRequest([
+              { ...check("fast", "SUCCESS", "https://ci/push"), status: "", conclusion: "" },
+              { ...check("fast", "SUCCESS", "https://ci/pull-request"), status: "", conclusion: "" }
+            ]))}\n`);
+          }
+          return failure("downstream work must not run");
+        }
+      });
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toMatchObject({
+      details: {
+        blockers: ["fast validation is pending: unknown, unknown."]
+      }
+    });
+  });
+
   it("still prevents Pass when a ready Candidate has non-passing reviewer criteria", () => {
     const fixture = createFixture();
     const result = runQaPrReviewCommand({

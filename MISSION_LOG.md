@@ -21,7 +21,7 @@ updated: 2026-08-15
   root cannot contain the dogfood `.arcadia-workspace`. Captured the durable
   Arcadia-led development vision and evidence-triggered increments in
   `docs/arcadia-development-orchestration-vision.md`.
-- **Result:** Eleven focused PR-QA tests and the 87-test combined QA/CLI suite
+- **Result:** Twelve focused PR-QA tests and the 88-test combined QA/CLI suite
   pass. Managed-document validation and the dogfood suite pass. The production
   build succeeds, and the CI-equivalent UTC run passes 803 tests with two
   intentional skips. Running the full suite in Pacific time also exposed a
