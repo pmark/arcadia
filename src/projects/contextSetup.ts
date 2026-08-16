@@ -20,9 +20,10 @@ export const AGENT_CONTEXT_POLICY_FILE = "AGENT_CONTEXT_POLICY.md";
 export const REPO_CONTEXT_FILE = "repo-context.md";
 export const CONTEXT_POLICY_FILE = "context-policy.json";
 export const CONTINUATION_PROTOCOL_FILE = "docs/agent-continuation-protocol.md";
+export const AGENTS_CONTEXT_FILE = "docs/agents-context.md";
 
-const AGENTS_SECTION_START = "<!-- ARCADIA_CONTEXT_START -->";
-const AGENTS_SECTION_END = "<!-- ARCADIA_CONTEXT_END -->";
+export const AGENTS_SECTION_START = "<!-- ARCADIA_CONTEXT_START -->";
+export const AGENTS_SECTION_END = "<!-- ARCADIA_CONTEXT_END -->";
 
 const DEFAULT_DENIED_CONTEXT_PATHS = [
   ".git/",
@@ -378,66 +379,27 @@ function contextPolicyFromSummary(context: RepoContextSummary): RepoContextPolic
   };
 }
 
-export function updateAgentsMarkdown(existing: string | null): string {
-  const managedSection = [
-    AGENTS_SECTION_START,
-    "## Arcadia Context",
-    "",
-    "This repository is on the Arcadia Way. These files govern how work is done",
-    "here, and every coding agent is bound by them equally:",
-    "",
-    "- `CONSTITUTION.md` — the standing constraints. `arcadia next` prints them",
-    "  with the objective, so they arrive when authority is granted.",
-    "- `PROJECT.md` — the work pointer: one `active_plan`, one `current_action`.",
-    "- `docs/managed-documents.md` — how managed documents, the pointer chain,",
-    "  and enforced fields work, when this repository has a copy.",
-    "",
-    "Before broad repository exploration, read:",
-    "",
-    "- `.arcadia/AGENT_CONTEXT_POLICY.md`",
-    "- `.arcadia/repo-context.md`",
-    "- `.arcadia/context-policy.json`",
-    "",
-    "Use targeted searches, respect denied paths, and keep discovery bounded by the Arcadia context policy.",
-    "",
-    "For continuation requests — \"arcadia go\", a bare \"go\", or \"Get to work\" —",
-    "resolve `active_plan` and `current_action` from `PROJECT.md`; never select",
-    "work from an unordered backlog.",
-    "",
-    "Commands follow the naming rule: **nouns read state, verbs may mutate it",
-    "within declared authority**. Trust the part of speech.",
-    "",
-    "### Before you stop",
-    "",
-    "Do one of three things, and update `PROJECT.md`, the active plan, affected",
-    "Decisions, and `MISSION_LOG.md` wherever their authoritative state changed:",
-    "",
-    "- complete the Action, validate it, record the result, and select the next one;",
-    "- record one precise operator question required for review; or",
-    "- record a concrete external blocker and the draft ask needed to resolve it.",
-    "",
-    "A merged pull request, a ratified Decision, or a plan reaching its milestone",
-    "is itself a stopping condition. Open or update a pull request then — without",
-    "being asked, and without waiting for the plan to close out.",
-    "",
-    "When a message ends with exactly one concrete, immediately actionable next",
-    "step — nothing blocking, no open question, no choice pending — end it with a",
-    "fixed line, last in the message, preceded by a blank line:",
-    "",
-    "```",
-    "OK to go: <verb-first, one-sentence description of exactly what will happen>",
-    "```",
-    "",
-    "That prefix verbatim, never a paraphrase. Present if and only if the state is",
-    "dispatchable. **Absence is the signal** — when nothing is ready, omit the line",
-    "rather than writing \"not ready yet\" in its place.",
-    "",
-    "`docs/agent-continuation-protocol.md` carries these rules with the reasoning",
-    "behind each. It is a reference, not a prerequisite: everything you must do is",
-    "stated above.",
-    AGENTS_SECTION_END
-  ].join("\n");
+/**
+ * The shared AGENTS.md region, read from Arcadia's own `docs/agents-context.md`.
+ *
+ * This was a string literal here until Arcadia became adopter zero. A literal
+ * meant the canonical wording of the most-loaded governance file was reviewable
+ * only as a code diff, and that Arcadia's own `AGENTS.md` was the one file the
+ * generator never wrote -- which is how the naming rule came to exist in every
+ * adopting repository and nowhere in Arcadia itself.
+ */
+export function readAgentsContextBlock(): string {
+  const text = readAdoptedFile(AGENTS_CONTEXT_FILE);
+  if (!text?.trim()) {
+    throw validationError(
+      `Missing ${AGENTS_CONTEXT_FILE}. The shared AGENTS.md region is read from Arcadia's own copy of it, never invented here.`
+    );
+  }
+  return text.trim();
+}
 
+export function updateAgentsMarkdown(existing: string | null, canonical = readAgentsContextBlock()): string {
+  const managedSection = [AGENTS_SECTION_START, canonical, AGENTS_SECTION_END].join("\n");
   if (!existing?.trim()) {
     return ["# AGENTS", "", managedSection, ""].join("\n");
   }
