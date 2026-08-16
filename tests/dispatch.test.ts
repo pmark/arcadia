@@ -736,3 +736,73 @@ describe("ready set (compute-ready-set)", () => {
     expect(readySet.blockers).toEqual(dispatch.blockers);
   });
 });
+
+describe("standing constraints", () => {
+  it("carries the Constitution verbatim, minus its title", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(root, "docs/plans/main-plan.md", planDoc());
+    write(
+      root,
+      "CONSTITUTION.md",
+      "# Arcadia Constitution\n\n- Approval boundaries are hard stops.\n- Deterministic progress, not cleverness.\n"
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    expect(resolution.context?.standingConstraints).toEqual([
+      "- Approval boundaries are hard stops.",
+      "- Deterministic progress, not cleverness."
+    ]);
+  });
+
+  it("preserves section headings so a grouped Constitution survives intact", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(root, "docs/plans/main-plan.md", planDoc());
+    write(
+      root,
+      "CONSTITUTION.md",
+      "# Arcadia Constitution\n\n## Authority\n\n- Capability never grants authority.\n"
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    expect(resolution.context?.standingConstraints).toEqual([
+      "## Authority",
+      "",
+      "- Capability never grants authority."
+    ]);
+  });
+
+  it("does not block dispatch when a repository has no Constitution", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(root, "docs/plans/main-plan.md", planDoc());
+
+    const resolution = resolveDispatch(root, "demo");
+
+    expect(resolution.context?.standingConstraints).toEqual([]);
+    expect(resolution.blockers).toEqual([]);
+    expect(isDispatchable(resolution)).toBe(true);
+  });
+
+  it("fails closed when an existing Constitution cannot be read", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(root, "docs/plans/main-plan.md", planDoc());
+    mkdirSync(path.join(root, "CONSTITUTION.md"));
+
+    const resolution = resolveDispatch(root, "demo");
+
+    // Refusing is the point: an adopted Constitution that cannot be shown must
+    // not dispatch silently without it. But it refuses the way every other
+    // failure in dispatch does -- naming the file and the repair -- rather than
+    // throwing an error the CLI can only report as UNEXPECTED_ERROR.
+    expect(isDispatchable(resolution)).toBe(false);
+    const blocker = resolution.blockers.find((entry) => entry.relativePath === "CONSTITUTION.md");
+    expect(blocker?.message).toContain("could not be read");
+    expect(blocker?.remedy).toContain("readable UTF-8 file");
+    expect(resolution.context?.standingConstraints).toEqual([]);
+  });
+});

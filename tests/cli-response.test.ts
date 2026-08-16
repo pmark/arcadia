@@ -239,16 +239,17 @@ describe("CLI response contract", () => {
   it("sets, gets, and uses the persistent default workspace", () => {
     const workspace = initializedWorkspace();
     const configPath = createTempConfigPath();
+    const neutralCwd = createNeutralCwd();
 
-    const set = runCli(["config", "set", "defaultWorkspace", workspace, "--json"], {}, { configPath });
+    const set = runCli(["config", "set", "defaultWorkspace", workspace, "--json"], {}, { configPath, cwd: neutralCwd });
     expect(set.status).toBe(0);
     expect(parseJson(set.stdout).data.defaultWorkspace).toBe(path.resolve(workspace));
 
-    const get = runCli(["config", "get", "defaultWorkspace", "--json"], {}, { configPath });
+    const get = runCli(["config", "get", "defaultWorkspace", "--json"], {}, { configPath, cwd: neutralCwd });
     expect(get.status).toBe(0);
     expect(parseJson(get.stdout).data.defaultWorkspace).toBe(path.resolve(workspace));
 
-    const listed = runCli(["project", "list", "--json"], {}, { configPath });
+    const listed = runCli(["project", "list", "--json"], {}, { configPath, cwd: neutralCwd });
     expect(listed.status).toBe(0);
     expect(parseJson(listed.stdout).workspace).toBe(path.resolve(workspace));
   });
@@ -259,12 +260,13 @@ describe("CLI response contract", () => {
     const envWorkspace = initializedWorkspace();
     const explicitWorkspace = initializedWorkspace();
     const configPath = createTempConfigPath();
+    const neutralCwd = createNeutralCwd();
     const nested = path.join(localWorkspace, "projects", "nested");
     mkdirSync(nested, { recursive: true });
 
     expect(runCli(["config", "set", "defaultWorkspace", userWorkspace], {}, { configPath }).status).toBe(0);
 
-    const user = parseJson(runCli(["workspace", "resolve", "--json"], {}, { configPath }).stdout);
+    const user = parseJson(runCli(["workspace", "resolve", "--json"], {}, { configPath, cwd: neutralCwd }).stdout);
     expect(user.data.source).toBe("user config");
     expect(user.data.workspacePath).toBe(path.resolve(userWorkspace));
 
@@ -2113,6 +2115,12 @@ function createTempConfigPath(): string {
   const directory = mkdtempSync(path.join(tmpdir(), "arcadia-cli-config-"));
   workspaces.push(directory);
   return path.join(directory, "config.json");
+}
+
+function createNeutralCwd(): string {
+  const directory = mkdtempSync(path.join(tmpdir(), "arcadia-cli-neutral-cwd-"));
+  workspaces.push(directory);
+  return directory;
 }
 
 function createTempRepo(): string {

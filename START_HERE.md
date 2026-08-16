@@ -10,6 +10,51 @@ Open **Outstanding PRs** at <http://127.0.0.1:3020/admin/pull-requests> to see e
 
 Open the **QA queue** at <http://127.0.0.1:3020/qa> to test each configured Candidate from one exact procedure. The queue shows the configured revision, target state, validation and evidence freshness; **Test Candidate** opens only that configured target. Record Pass, Fail, or Needs follow-up with an optional note to create a revision-bound Decision. This records QA evidence only—it never merges, deploys, or releases work. Candidate configuration is checked in at `config/qa-candidates.json`.
 
+For independent pull-request QA, give Arcadia the full GitHub URL:
+
+```sh
+pnpm arcadia qa pr https://github.com/owner/repository/pull/123
+```
+
+Use one token-efficient sequence: finish the Candidate, publish the complete
+operator QA plan in the pull request, mark the pull request ready, wait for all
+GitHub checks to complete successfully with an acceptable merge state, then run
+Arcadia QA once. A draft, absent checks, any pending or non-success check,
+conflicting duplicate checks, or a dirty or blocked merge state returns a
+machine-readable not-ready refusal before patch retrieval, reviewer selection,
+sandbox preflight, model invocation, QA Artifact creation, or QA Decision
+creation. The refusal names every observed blocker and the retry condition; it
+uses no reviewer tokens. Use `--rerun` only for a fresh independent judgment of
+otherwise unchanged ready evidence, never to bypass readiness.
+
+The repository must belong to a configured Arcadia Project. The command freezes
+the current head SHA, reads the pull-request body, changed files, complete patch,
+merge state, and GitHub checks, then runs one separately executed read-only
+structured review inside an evidence-only, home-denied, network-denied sandbox.
+The reviewer receives the exact base/head patch and no repository working copy,
+credential-bearing home context, user tools, or configured command arguments. It
+first establishes readable host controls for a Codex auth file, the Project's
+Git HEAD, and GitHub network access, then requires the same sandbox invocation
+to read its evidence while denying those exact controls. An unavailable host
+baseline is Needs follow-up rather than being mistaken for sandbox denial. Its verdict must
+exhaustively validate and cover Arcadia's seven fixed QA criteria. The command
+rechecks the complete mutable evidence snapshot afterward and writes a QA report
+Artifact plus a revision-bound Pass, Fail, or Needs-follow-up Decision under the Arcadia
+workspace's `artifacts/qa/pull-requests/` directory. A failed, pending,
+contradictory, missing, or stale check prevents Pass. Repeating the command for
+the same completed revision with unchanged body, base, files, merge state, and
+checks returns the existing receipts without another model call. Changed GitHub
+evidence automatically creates a preserved new attempt; use `--rerun` only when
+a fresh independent judgment of otherwise unchanged evidence is worth the added
+token cost. The canonical receipt is only a cache hint: reuse reconstructs the
+result from the independently persisted Decision context and cross-checks the
+Artifact, Decision status, PR source, evidence fingerprint, paths, and stored
+file hashes. Any mismatch creates a fresh review instead of trusting the cache.
+
+Pull-request QA never runs commands copied from PR prose, edits the Candidate,
+posts to GitHub, approves release, merges, deploys, or repairs a finding. It is
+evidence for the operator's Decision, not that Decision's external effect.
+
 ## Normal daily use
 
 1. Read **Today's Advantage**: one ready Action, its expected Artifact, and why it matters now.
@@ -242,6 +287,23 @@ prepares a planning Decision for that exact Action; it never runs code or
 deploys. If preparation is refused, the same view names each blocking document
 field and its concrete remedy. Open questions and project Decisions can be
 answered inline, with the same answer/approval distinction used by Review.
+
+The terminal brief resolves the same pointer:
+
+```sh
+pnpm arcadia next --project arcadia
+```
+
+Below the `Authorization:` line, the brief prints **Standing constraints**: the
+repository's `CONSTITUTION.md`, verbatim. Nothing parses the Constitution, so
+printing it here is what makes a dispatched agent read the rules that bind the
+Action rather than merely be pointed at the file. It is deterministic and costs
+no LLM tokens.
+
+Edit `CONSTITUTION.md` to change what appears — the brief has no second copy to
+keep in step. A repository without a `CONSTITUTION.md` simply omits the section;
+its absence never blocks dispatch, because foreign repositories Arcadia manages
+are not required to adopt one.
 
 ## Answering Decisions
 

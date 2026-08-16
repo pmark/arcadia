@@ -8,7 +8,7 @@ milestone: Every software Project always exposes a stable proof surface and a go
 current_action: build-demo-hero-vertical-slice
 token_impact: xlarge
 token_budget: "Stage the program Action by Action; builds, health checks, Playwright capture, and metadata sync use no LLM tokens, while implementation, failure diagnosis, visual interpretation, and independent QA reviews are model-bearing and must be batched per Candidate."
-updated: 2026-08-08
+updated: 2026-08-15
 actions:
   - id: build-qa-queue-vertical-slice
     title: Give the operator one QA queue for active Candidate work
@@ -62,6 +62,107 @@ actions:
       - apps/dashboard/lib/types.ts
       - src/dashboard/snapshot.ts
     depends_on: []
+  - id: establish-minimal-pr-qa
+    title: Give Arcadia QA one independent pull-request review path
+    status: done
+    responsibility: codex
+    effort: session
+    next_action: Add a CLI-first qa pr command that freezes a configured Project pull request at its head SHA, gathers deterministic GitHub evidence, runs one separately executed read-only structured review, and persists a QA report Artifact plus a decided revision-bound Decision.
+    expected_artifact: A tested minimal PR-QA command and a real QA report and Decision for Arcadia PR #54 at an immutable revision
+    clarification: clarified
+    confidence: high
+    source: Decision 0018 and operator priority on 2026-08-15 while advancing Private Practice Now
+    acceptance_criteria:
+      - "`arcadia qa pr <github-pr-url>` resolves a configured Project and binds all evidence, output, and the Decision to the exact initial head SHA."
+      - Evidence includes pull-request identity and body, base and head revisions, merge and draft state, changed files, the complete patch, and every reported check conclusion without executing commands copied from pull-request prose.
+      - Arcadia selects the least-cost compliant read-only reviewer through the existing coding-agent profile and provider-adapter registries, establishes readable host controls for Codex auth, the Project Git control file, and GitHub network access, then requires the configured sandbox to read evidence while denying those same controls before invoking it with no arbitrary configured arguments; an unavailable baseline or mismatched result fails closed, and the verdict is exhaustively runtime-validated with exactly one result for every fixed QA criterion.
+      - Pass is deterministically prevented when checks fail or remain pending, duplicate checks conflict, required evidence is absent, the head SHA changes during review, the reviewer fails, or the reviewer reports a material finding.
+      - The command writes a human-readable QA report Artifact and a decided pass, fail, or needs-follow-up Decision carrying the PR URL, immutable SHA, reviewer provenance, evidence paths, and explicit not-checked reasons.
+      - Repeating review for an already completed revision with unchanged pull-request evidence returns the existing receipts without another model invocation only after reconstructing the result from the persisted Decision context and cross-checking its Artifact, source, status, fingerprint, paths, and independently stored file hashes; changed evidence, any mismatch, or an explicit rerun creates a preserved new attempt and updates the cache hint.
+      - The reviewer receives a patch fetched by exact base/head SHAs rather than a mutable working copy; its shell cannot read the operator home or access the network, and the command does not post, approve, merge, deploy, release, repair, or create arbitrary shell execution.
+      - The real dogfood result for PR #54 truthfully explains its conflicting push and pull-request CI evidence and therefore cannot report Pass while that contradiction remains.
+      - START_HERE.md documents the exact command, consequences, output locations, idempotency, and authority boundary.
+    execution:
+      schema: arcadia.execution/v1
+      profile: systems_change
+      context:
+        scope: cross_system
+        required:
+          - Existing QA queue Artifact and Decision contracts
+          - GitHub pull-request metadata and patch reads
+          - Read-only coding-agent profiles and provider adapters
+          - Arcadia workspace persistence
+        staging: forbidden
+      phases:
+        implementation:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+        verification:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+    decisions: ["0018"]
+    references:
+      - src/commands/qa.ts
+      - src/codingAgents/providerAdapters.ts
+      - src/codingAgents/adapters.ts
+      - src/intent/registries.ts
+      - src/db/repositories.ts
+      - docs/operator-demo-and-release-contract.md
+      - START_HERE.md
+    depends_on: [build-qa-queue-vertical-slice]
+  - id: streamline-minimal-pr-qa
+    title: Remove avoidable model calls and CI noise from pull-request QA
+    status: done
+    responsibility: codex
+    effort: short
+    next_action: Add a deterministic readiness refusal before any PR-QA reviewer work, isolate the workspace-resolution test from the repository-local dogfood workspace, and document the one-pass operator sequence and triggered deferrals.
+    expected_artifact: A tested zero-token not-ready path, a deterministic regression for the former CI race, and an authoritative Arcadia-orchestrated development vision with triggered follow-on Actions
+    clarification: clarified
+    confidence: high
+    source: Operator direction and the post-PR-55 QA process audit on 2026-08-15
+    acceptance_criteria:
+      - A draft pull request, absent checks, any pending or non-success check, conflicting duplicate checks, or a dirty or blocked merge state is refused before patch retrieval, reviewer selection, sandbox preflight, model invocation, QA Artifact creation, or QA Decision creation.
+      - The refusal is machine-readable, names every observed readiness blocker, states that no reviewer was invoked, and tells the operator to mark the pull request ready and wait for clean successful checks before retrying.
+      - A ready pull request with completed successful checks and an acceptable merge state follows the existing exact-revision independent review path unchanged.
+      - Mutable pull-request evidence is revalidated immediately before the model call; a changed snapshot skips the model and is preserved as Needs follow-up by the existing evidence-bound QA path.
+      - The CLI-response workspace-precedence test runs from an isolated temporary directory and cannot observe `.arcadia-workspace` created by another test file.
+      - START_HERE.md states the token-efficient sequence: finish the Candidate, publish its QA plan, mark it ready, await CI, then invoke Arcadia QA once; `--rerun` remains exceptional.
+      - Arcadia's checked-in Project documentation states the north-star development orchestration vision and records every excluded enhancement with an observable reactivation trigger.
+      - This Action does not add automatic invocation, notifications, browser proof, local validation reruns, GitHub posting, repair, merge, deployment, or release automation.
+    execution:
+      schema: arcadia.execution/v1
+      profile: systems_change
+      context:
+        scope: project
+        required:
+          - Existing minimal pull-request QA command and receipts
+          - GitHub pull-request readiness evidence
+          - Vitest workspace-resolution fixtures
+          - Arcadia managed documentation
+        staging: forbidden
+      phases:
+        implementation:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+        verification:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+    decisions: ["0019"]
+    references:
+      - src/qa/prReview.ts
+      - tests/qa-pr-review.test.ts
+      - tests/cli-response.test.ts
+      - START_HERE.md
+      - docs/arcadia-development-orchestration-vision.md
+    depends_on: [establish-minimal-pr-qa]
   - id: build-demo-hero-vertical-slice
     title: Put one reconciled demo-first hero and proof card on Project Detail
     status: open
@@ -234,7 +335,7 @@ actions:
       - docs/operator-demo-and-release-contract.md
       - src/execution
       - apps/dashboard/app/runs/[id]/page.tsx
-    depends_on: [automate-proof-artifacts, make-test-action-state-aware]
+    depends_on: [establish-minimal-pr-qa, automate-proof-artifacts, make-test-action-state-aware]
   - id: govern-release-and-delivery
     title: Add release management from QA-passed Candidate to verified client delivery
     status: open
@@ -435,7 +536,9 @@ separate is the point.
 
 ## Activation
 
-This plan is `draft` and intentionally does not replace `PROJECT.md`'s active
-`narrative-digests` plan. Activating it is a priority Decision. When activated,
-`build-demo-hero-vertical-slice` should be the current Action; it is the first
-usable proof and has no implementation dependency.
+This plan is active under Decision 0007. Decision 0018 inserted the completed
+minimal pull-request QA prerequisite when Private Practice Now made the missing
+responsibility urgent. Decision 0019 now inserts the short
+`streamline-minimal-pr-qa` Action to remove two proven repeat costs and preserve
+the Arcadia-led development north star. When it is complete, the pointer returns
+to `build-demo-hero-vertical-slice`, the first remaining usable proof.
