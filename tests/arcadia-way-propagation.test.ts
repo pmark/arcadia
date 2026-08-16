@@ -1,12 +1,57 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   adoptContinuationProtocol,
+  readAgentsContextBlock,
   thinClaudeWrapper,
   updateAgentsMarkdown
 } from "../src/projects/contextSetup.js";
 
 const SECTION_START = "<!-- ARCADIA_CONTEXT_START -->";
 const SECTION_END = "<!-- ARCADIA_CONTEXT_END -->";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+function managedRegion(markdown: string): string {
+  const start = markdown.indexOf(SECTION_START);
+  const end = markdown.indexOf(SECTION_END);
+  if (start < 0 || end < 0) return "";
+  return markdown.slice(start + SECTION_START.length, end).trim();
+}
+
+describe("Arcadia is adopter zero", () => {
+  it("carries the same managed AGENTS.md region it writes into every adopter", () => {
+    // Arcadia's own AGENTS.md was hand-written and exempt from the generator,
+    // which is how the noun/verb naming rule came to exist in every adopting
+    // repository and nowhere here. The shared region is now one file, and this
+    // asserts Arcadia holds it byte for byte like anyone else.
+    const own = readFileSync(path.join(repoRoot, "AGENTS.md"), "utf8");
+
+    expect(managedRegion(own)).toBe(readAgentsContextBlock());
+  });
+
+  it("keeps this repository's own sections outside the managed region", () => {
+    const own = readFileSync(path.join(repoRoot, "AGENTS.md"), "utf8");
+
+    // Adopter zero must still be able to say things only Arcadia needs, exactly
+    // as PPN keeps its launch-readiness lens.
+    expect(own).toContain("## The 80/20 rule");
+    expect(own).toContain("## Working-Copy Safety");
+    expect(managedRegion(own)).not.toContain("## The 80/20 rule");
+  });
+
+  it("writes adopters the same bytes, from the file rather than a literal", () => {
+    // The shared text used to be a string array in contextSetup.ts, so the
+    // canonical wording of the most-loaded governance file was reviewable only
+    // as a code diff and could drift from Arcadia's own copy without a trace.
+    const canonical = readFileSync(path.join(repoRoot, "docs/agents-context.md"), "utf8").trim();
+
+    expect(readAgentsContextBlock()).toBe(canonical);
+    expect(managedRegion(updateAgentsMarkdown(null))).toBe(canonical);
+  });
+});
 
 describe("adopted AGENTS.md block", () => {
   it("names the constitution, the pointer, and the naming rule", () => {

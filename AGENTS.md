@@ -27,65 +27,80 @@ Always identify:
 - Work classification
 - Required artifacts
 
-## Continuation: how to start, and what you owe before stopping
+<!-- ARCADIA_CONTEXT_START -->
+## Arcadia Context
 
-These rules are stated here, not linked, because this file is the one every
-coding agent loads automatically. [`docs/agent-continuation-protocol.md`](docs/agent-continuation-protocol.md)
-carries the same rules with the reasoning behind each; read it when you want to
-know why, not to find out what.
+This repository is on the Arcadia Way. These files govern how work is done
+here, and every coding agent is bound by them equally:
 
-**Start by resolving the pointer, never by inferring it.** `pnpm arcadia next
---project <slug>` is the whole startup procedure. Never infer priority from
-recent commits, source activity, backlog order, or whichever task looks easiest.
+- `CONSTITUTION.md` — the standing constraints. `arcadia next` prints them
+  with the objective, so they arrive when authority is granted.
+- `PROJECT.md` — the work pointer: one `active_plan`, one `current_action`.
+- `docs/managed-documents.md` — how managed documents, the pointer chain,
+  and enforced fields work, when this repository has a copy.
 
-**Commands follow the naming rule: nouns read state, verbs may mutate it within
-declared authority.** Trust the part of speech — `next` resolves and reports,
-`done` marks an Action complete. This is what makes an orientation command safe
-to run before you have read its source, so keep new commands honest to it: a
-noun that writes is a bug in the name as much as in the code. `project
-setup-context` writes this same rule into every adopting repository's
-`AGENTS.md`; Arcadia is bound by it identically.
+Before broad repository exploration, read:
 
-**A current Action is executable only when** it exists exactly once in the
-active plan, its clarification is `clarified`, its responsibility is
-`autonomous` or `codex`, its `next_action` begins with a concrete verb, and its
-acceptance criteria define observable completion. If any condition fails,
-repairing the control documents *is* the immediate work. If the repair would
-choose between materially different milestones, record one open Decision and ask
-exactly one highest-leverage question.
+- `.arcadia/AGENT_CONTEXT_POLICY.md`
+- `.arcadia/repo-context.md`
+- `.arcadia/context-policy.json`
 
-**Before stopping**, do one of three things, and update `PROJECT.md`, the active
-plan, affected Decisions, and `MISSION_LOG.md` wherever their authoritative
-state changed:
+Use targeted searches, respect denied paths, and keep discovery bounded by the Arcadia context policy.
 
-- complete the Action, validate it, record the result, and explicitly select the
-  next one;
+For continuation requests — "arcadia go", a bare "go", or "Get to work" —
+resolve `active_plan` and `current_action` from `PROJECT.md`; never select
+work from an unordered backlog.
+
+Commands follow the naming rule: **nouns read state, verbs may mutate it
+within declared authority**. Trust the part of speech. A noun that writes is a
+bug in the name as much as in the code.
+
+### A current Action is executable only when
+
+- it exists exactly once in the active plan;
+- its status is anything but `done`;
+- its clarification is `clarified`;
+- its responsibility is `autonomous` or `codex`;
+- its `next_action` begins with a concrete verb; and
+- its acceptance criteria define observable completion.
+
+**`open` is executable.** An Action does not have to be `in_progress` to be
+picked up, and dispatch refuses only `done`. If any condition fails, repairing
+the control documents **is** the immediate work — not an obstacle to it.
+
+### Before you stop
+
+Do one of three things, and update `PROJECT.md`, the active plan, affected
+Decisions, and `MISSION_LOG.md` wherever their authoritative state changed:
+
+- complete the Action, validate it, record the result, and select the next one;
 - record one precise operator question required for review; or
 - record a concrete external blocker and the draft ask needed to resolve it.
 
-**When a milestone completes** — a merged pull request, a ratified Decision, a
-plan reaching its milestone — that is itself a stopping condition, not a point
-to log and continue past. Open or update a pull request *now*, without being
-asked and without waiting for the plan to close out. Then say whether to
+A merged pull request, a ratified Decision, or a plan reaching its milestone
+is itself a stopping condition. Open or update a pull request then — without
+being asked, and without waiting for the plan to close out. Then say whether to
 continue in this session or start a new one and why, and which model and effort
 level the next batch actually needs.
 
-**The `OK to go` line.** When a message ends with exactly one concrete,
-immediately actionable next step — nothing blocking, no open question, no choice
-still pending — end it with a fixed, greppable line, preceded by a blank line
-and last in the message:
+When a message ends with exactly one concrete, immediately actionable next
+step — nothing blocking, no open question, no choice pending — end it with a
+fixed line, last in the message, preceded by a blank line:
 
 ```
 OK to go: <verb-first, one-sentence description of exactly what will happen>
 ```
 
-Always that prefix verbatim, never a paraphrase. Present if and only if the
-state is what `arcadia next` would call dispatchable — this is the agent's half
-of the same three-way split it resolves to. Never present when a question is
-open, options are still pending, or the next step would cross an authority
-boundary without approval already given. **Absence is the signal**: when nothing
-is ready, omit the line entirely rather than writing "not ready yet" in its
-place. One reliable signal beats prose that has to be read to be trusted.
+That prefix verbatim, never a paraphrase. Present if and only if the state is
+dispatchable. **Absence is the signal** — when nothing is ready, omit the line
+rather than writing "not ready yet" in its place.
+
+`docs/agent-continuation-protocol.md` carries these rules with the reasoning
+behind each. It is a reference, not a prerequisite: everything you must do is
+stated above.
+<!-- ARCADIA_CONTEXT_END -->
+
+<!-- Everything outside the markers above is this repository's own and is never regenerated. -->
 
 ## The 80/20 rule
 
