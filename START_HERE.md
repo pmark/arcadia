@@ -16,6 +16,17 @@ For independent pull-request QA, give Arcadia the full GitHub URL:
 pnpm arcadia qa pr https://github.com/owner/repository/pull/123
 ```
 
+Use one token-efficient sequence: finish the Candidate, publish the complete
+operator QA plan in the pull request, mark the pull request ready, wait for all
+GitHub checks to complete successfully with an acceptable merge state, then run
+Arcadia QA once. A draft, absent checks, any pending or non-success check,
+conflicting duplicate checks, or a dirty or blocked merge state returns a
+machine-readable not-ready refusal before patch retrieval, reviewer selection,
+sandbox preflight, model invocation, QA Artifact creation, or QA Decision
+creation. The refusal names every observed blocker and the retry condition; it
+uses no reviewer tokens. Use `--rerun` only for a fresh independent judgment of
+otherwise unchanged ready evidence, never to bypass readiness.
+
 The repository must belong to a configured Arcadia Project. The command freezes
 the current head SHA, reads the pull-request body, changed files, complete patch,
 merge state, and GitHub checks, then runs one separately executed read-only

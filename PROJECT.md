@@ -24,6 +24,16 @@ The system errs stable and reliable over opportunistic. Approval boundaries are
 explicit, automation is observable, and every batch operation previews before it
 writes.
 
+The north star is direct Arcadia-led development. The operator states intent
+and supplies the scarce human inputs—product judgment, feedback, credentials,
+and consequential approvals—while Arcadia maintains the portfolio, selects and
+orchestrates configured coding agents, gathers deterministic proof, invokes
+independent QA, and advances each governed Action as far as authority and
+evidence permit. Questions and approvals arrive through Arcadia Now or another
+configured notification surface with evidence, consequences, and ideally one
+safe state-advancing Decision. The staged contract and reactivation triggers
+are preserved in `docs/arcadia-development-orchestration-vision.md`.
+
 ## Current State
 
 The clarification loop is complete end to end: `capture` marks new Actions
@@ -74,9 +84,15 @@ completed `establish-minimal-pr-qa`: `arcadia qa pr` now freezes a GitHub head
 revision, gathers deterministic evidence, runs one independent read-only
 structured review, and persists its QA report Artifact and Decision. Its first
 real Candidate, Arcadia PR #54, correctly returned Needs follow-up rather than
-Pass for contradictory CI evidence. The pointer now resumes at
-`build-demo-hero-vertical-slice`. This was an evidence-driven sequencing
-change, not priority inferred from queue order.
+Pass for contradictory CI evidence. The post-delivery process audit then
+exposed two cheap repeat costs: model calls made before deterministic readiness
+and a repository-local workspace race in CI. Decision 0019 inserted and
+completed `streamline-minimal-pr-qa`: deterministic readiness now refuses
+unready Candidates without reviewer tokens, mutable evidence is rechecked
+immediately before judgment, and the workspace-precedence regression is
+isolated from dogfood state. The pointer has returned to
+`build-demo-hero-vertical-slice`. This remains evidence-driven sequencing, not
+priority inferred from queue order.
 
 The Agent Queue is documented in `docs/plans/agent-advance-queue.md`. It is a
 projection, not a second work pointer: managed documents still decide what is

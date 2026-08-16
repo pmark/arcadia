@@ -259,12 +259,14 @@ describe("CLI response contract", () => {
     const envWorkspace = initializedWorkspace();
     const explicitWorkspace = initializedWorkspace();
     const configPath = createTempConfigPath();
+    const neutralCwd = mkdtempSync(path.join(tmpdir(), "arcadia-cli-neutral-cwd-"));
+    workspaces.push(neutralCwd);
     const nested = path.join(localWorkspace, "projects", "nested");
     mkdirSync(nested, { recursive: true });
 
     expect(runCli(["config", "set", "defaultWorkspace", userWorkspace], {}, { configPath }).status).toBe(0);
 
-    const user = parseJson(runCli(["workspace", "resolve", "--json"], {}, { configPath }).stdout);
+    const user = parseJson(runCli(["workspace", "resolve", "--json"], {}, { configPath, cwd: neutralCwd }).stdout);
     expect(user.data.source).toBe("user config");
     expect(user.data.workspacePath).toBe(path.resolve(userWorkspace));
 

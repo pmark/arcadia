@@ -5,7 +5,8 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SelectedCodingAgentConfiguration } from "../src/codingAgents/providerAdapters.js";
 import { withDatabase } from "../src/db/connection.js";
-import { createProjectWithInitialWork, upsertProjectMetadata } from "../src/db/repositories.js";
+import { countRows, createProjectWithInitialWork, upsertProjectMetadata } from "../src/db/repositories.js";
+import { ArcadiaError } from "../src/cli/errors.js";
 import {
   QA_PR_REVIEW_CRITERIA,
   runQaPrReviewCommand,
@@ -21,7 +22,7 @@ afterEach(() => {
 });
 
 describe("minimal independent pull-request QA", () => {
-  it("pins the revision, prevents Pass on contradictory checks, persists receipts, and reuses them", () => {
+  it("pins the revision, persists hardened receipts, and reuses unchanged evidence", () => {
     const fixture = createFixture();
     let reviewerInvocations = 0;
     let reviewerEnvironment: NodeJS.ProcessEnv | undefined;
@@ -31,8 +32,7 @@ describe("minimal independent pull-request QA", () => {
     let patchArgs: string[] = [];
     let sandboxArgs: string[] = [];
     let currentChecks = [
-      check("fast", "SUCCESS", "https://ci/push"),
-      check("fast", "FAILURE", "https://ci/pull-request"),
+      check("fast", "SUCCESS", "https://ci/fast"),
       check("e2e", "SUCCESS", "https://ci/e2e")
     ];
     const dependencies: QaPrReviewDependencies = {
@@ -76,12 +76,12 @@ describe("minimal independent pull-request QA", () => {
       pullRequest: "https://github.com/pmark/arcadia/pull/54"
     }, dependencies);
 
-    expect(first.data.verdict).toBe("needs-follow-up");
+    expect(first.data.verdict).toBe("pass");
     expect(first.data.candidate.headSha).toBe(HEAD_SHA);
-    expect(first.data.findings[0]).toMatchObject({ title: "Conflicting fast validation" });
-    expect(first.data.decision.status).toBe("deferred");
+    expect(first.data.findings).toEqual([]);
+    expect(first.data.decision.status).toBe("approved");
     expect(first.data.artifact.artifact_type).toBe("qa_report");
-    expect(first.data.artifact.status).toBe("drafted");
+    expect(first.data.artifact.status).toBe("ready");
     expect(first.data.reviewer).toMatchObject({ profile: "fake_qa", model: "gpt-test" });
     expect(reviewerInvocations).toBe(1);
     expect(Object.keys(reviewerEnvironment ?? {}).sort()).toEqual(
@@ -104,9 +104,8 @@ describe("minimal independent pull-request QA", () => {
     expect(reviewerPrompt).toContain("sandbox-evidence-readable\nsandbox-home-denied\nsandbox-repository-denied\nsandbox-network-denied");
     const reportPath = path.join(fixture.workspace, first.data.reportPath);
     expect(existsSync(reportPath)).toBe(true);
-    expect(readFileSync(reportPath, "utf8")).toContain("Verdict: NEEDS-FOLLOW-UP");
+    expect(readFileSync(reportPath, "utf8")).toContain("Verdict: PASS");
     expect(readFileSync(reportPath, "utf8")).toContain(HEAD_SHA);
-    expect(readFileSync(reportPath, "utf8")).toContain("Conflicting fast validation");
 
     const second = runQaPrReviewCommand({
       workspace: fixture.workspace,
@@ -221,15 +220,132 @@ describe("minimal independent pull-request QA", () => {
     expect(reviewerInvocations).toBe(2);
   });
 
-  it("prevents Pass for non-success GitHub conclusions and non-passing reviewer criteria", () => {
+  it("refuses every deterministic readiness blocker before reviewer work or persistence", () => {
     const fixture = createFixture();
+    let patchInvocations = 0;
+    let reviewerSelections = 0;
+    let codexInvocations = 0;
     const dependencies: QaPrReviewDependencies = {
+      selectReviewer: () => {
+        reviewerSelections += 1;
+        return fakeReviewer();
+      },
+      runCommand: ({ command, args }) => {
+        if (command === "git") return success("https://github.com/pmark/arcadia.git\n");
+        if (command === "gh" && args[1] === "view") {
+          return success(`${JSON.stringify({
+            ...rawPullRequest([
+              check("fast", "SUCCESS", "https://ci/push"),
+              check("fast", "FAILURE", "https://ci/pull-request"),
+              { ...check("e2e", "SUCCESS", "https://ci/e2e"), status: "IN_PROGRESS", conclusion: null },
+              check("optional", "SKIPPED", "https://ci/optional")
+            ]),
+            isDraft: true,
+            mergeStateStatus: "DIRTY"
+          })}\n`);
+        }
+        if (command === "gh" && args[0] === "api") {
+          patchInvocations += 1;
+          return success("diff --git a/a.ts b/a.ts\n+safe\n");
+        }
+        if (command === "codex") {
+          codexInvocations += 1;
+          return failure("reviewer must not run");
+        }
+        return failure("unexpected command");
+      }
+    };
+
+    const before = withDatabase(fixture.workspace, (db) => ({
+      artifacts: countRows(db, "artifacts"),
+      decisions: countRows(db, "review_items")
+    }));
+    let error: unknown;
+    try {
+      runQaPrReviewCommand({
+        workspace: fixture.workspace,
+        pullRequest: "https://github.com/pmark/arcadia/pull/54"
+      }, dependencies);
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(ArcadiaError);
+    expect(error).toMatchObject({
+      code: "VALIDATION_ERROR",
+      message: "Pull request is not ready for independent QA; no reviewer was invoked.",
+      details: {
+        reviewerInvoked: false,
+        tokenImpact: "none",
+        blockers: [
+          "Pull request is still a draft.",
+          "Duplicate fast checks conflict: SUCCESS, FAILURE.",
+          "e2e validation is pending: IN_PROGRESS.",
+          "optional validation did not succeed: SKIPPED.",
+          "Merge state is DIRTY."
+        ]
+      }
+    });
+    expect(patchInvocations).toBe(0);
+    expect(reviewerSelections).toBe(0);
+    expect(codexInvocations).toBe(0);
+    expect(withDatabase(fixture.workspace, (db) => ({
+      artifacts: countRows(db, "artifacts"),
+      decisions: countRows(db, "review_items")
+    }))).toEqual(before);
+  });
+
+  it("refuses absent checks and a blocked merge state without reviewer work", () => {
+    const fixture = createFixture();
+    let downstreamInvocations = 0;
+    let error: unknown;
+    try {
+      runQaPrReviewCommand({
+        workspace: fixture.workspace,
+        pullRequest: "https://github.com/pmark/arcadia/pull/54"
+      }, {
+        selectReviewer: () => {
+          downstreamInvocations += 1;
+          return fakeReviewer();
+        },
+        runCommand: ({ command, args }) => {
+          if (command === "git") return success("https://github.com/pmark/arcadia.git\n");
+          if (command === "gh" && args[1] === "view") {
+            return success(`${JSON.stringify({
+              ...rawPullRequest([]),
+              mergeStateStatus: "BLOCKED"
+            })}\n`);
+          }
+          downstreamInvocations += 1;
+          return failure("downstream work must not run");
+        }
+      });
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toMatchObject({
+      details: {
+        blockers: [
+          "GitHub reported no validation checks.",
+          "Merge state is BLOCKED."
+        ]
+      }
+    });
+    expect(downstreamInvocations).toBe(0);
+  });
+
+  it("still prevents Pass when a ready Candidate has non-passing reviewer criteria", () => {
+    const fixture = createFixture();
+    const result = runQaPrReviewCommand({
+      workspace: fixture.workspace,
+      pullRequest: "https://github.com/pmark/arcadia/pull/54"
+    }, {
       selectReviewer: () => fakeReviewer(),
       runCommand: ({ command, args }) => {
         if (command === "git") return success("https://github.com/pmark/arcadia.git\n");
-        if (command === "gh" && args[1] === "view" && args.includes("--jq")) return success(`${HEAD_SHA}\n`);
         if (command === "gh" && args[1] === "view") {
-          return success(`${JSON.stringify(rawPullRequest([check("optional", "SKIPPED", "https://ci/optional")]))}\n`);
+          return success(`${JSON.stringify(rawPullRequest([check("fast", "SUCCESS", "https://ci/fast")]))}\n`);
         }
         if (command === "gh" && args[0] === "api") return success("diff --git a/a.ts b/a.ts\n+safe\n");
         if (command === "/bin/zsh") return hostBaselineSuccess();
@@ -244,15 +360,9 @@ describe("minimal independent pull-request QA", () => {
         }
         return failure("unexpected command");
       }
-    };
-
-    const result = runQaPrReviewCommand({
-      workspace: fixture.workspace,
-      pullRequest: "https://github.com/pmark/arcadia/pull/54"
-    }, dependencies);
+    });
 
     expect(result.data.verdict).toBe("needs-follow-up");
-    expect(result.data.summary).toContain("optional validation did not succeed");
     expect(result.data.summary).toContain("reviewer did not pass every declared criterion");
   });
 
@@ -407,6 +517,42 @@ describe("minimal independent pull-request QA", () => {
     expect(result.data.summary).toContain("mutable pull-request evidence changed during QA");
     expect(result.data.findings[0]).toMatchObject({ title: "QA evidence is stale" });
   });
+
+  it("revalidates mutable evidence immediately before the model and skips stale review", () => {
+    const fixture = createFixture();
+    let evidenceReads = 0;
+    let reviewerInvocations = 0;
+    const result = runQaPrReviewCommand({
+      workspace: fixture.workspace,
+      pullRequest: "https://github.com/pmark/arcadia/pull/54"
+    }, {
+      selectReviewer: () => fakeReviewer(),
+      runCommand: ({ command, args }) => {
+        if (command === "git") return success("https://github.com/pmark/arcadia.git\n");
+        if (command === "gh" && args[1] === "view") {
+          evidenceReads += 1;
+          const pullRequest = rawPullRequest([check("fast", "SUCCESS", "https://ci/fast")]);
+          if (evidenceReads > 1) pullRequest.body += "\nChanged before model invocation.";
+          return success(`${JSON.stringify(pullRequest)}\n`);
+        }
+        if (command === "gh" && args[0] === "api") return success("diff --git a/a.ts b/a.ts\n+safe\n");
+        if (command === "/bin/zsh") return hostBaselineSuccess();
+        if (command === "codex" && args[0] === "sandbox") return sandboxSuccess();
+        if (command === "codex") {
+          reviewerInvocations += 1;
+          return failure("model must not run");
+        }
+        return failure("unexpected command");
+      }
+    });
+
+    expect(reviewerInvocations).toBe(0);
+    expect(result.data.verdict).toBe("needs-follow-up");
+    expect(result.data.summary).toContain("mutable pull-request evidence changed during QA");
+    expect(result.data.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: "QA evidence is stale" })
+    ]));
+  });
 });
 
 const HEAD_SHA = "82b50cfd5d55a47b2d2750f8001df07d95e415e0";
@@ -441,8 +587,8 @@ function rawPullRequest(statusCheckRollup: Array<Record<string, unknown>>) {
     title: "Plan operator attention and portfolio continuity",
     url: "https://github.com/pmark/arcadia/pull/54",
     state: "OPEN",
-    isDraft: true,
-    mergeStateStatus: "UNSTABLE",
+    isDraft: false,
+    mergeStateStatus: "CLEAN",
     headRefName: "codex/operator-attention-planning",
     headRefOid: HEAD_SHA,
     baseRefName: "main",
