@@ -10,6 +10,22 @@ Canonical vocabulary lives in [`arcadia-semantics.md`](./arcadia-semantics.md)
 "**Run**" is reserved for a concrete execution attempt (`execution_runs`) — do
 not reuse it for other loops/processes.
 
+## Where each kind of fact lives
+
+The Constitution requires that each fact have one authoritative home. This is
+the concrete mapping it generalizes; when two of these disagree, the one listed
+here wins for that kind of fact.
+
+| Store | Authoritative for |
+| --- | --- |
+| **SQLite** (the workspace database) | Operational state — queues, work items, runs, execution plans, events. The workspace lives outside this repository. |
+| **Markdown** (managed + narrative documents) | Governed work and narrative Artifacts — `PROJECT.md`, plans, Decisions, Mission Log. Checked-in managed documentation beats the database about what the work *is*. |
+| **Git** | History. Never infer current priority from commit order; that is the pointer chain's job. |
+
+Dashboards, the Discord bot, and coding agents are projections over these, not
+additional stores. See [`managed-documents.md`](./managed-documents.md) for the
+pointer chain and which document fields are enforced where.
+
 ## Repo shape
 
 - pnpm monorepo (`pnpm-workspace.yaml`). Root package `@pmark/arcadia` is the

@@ -1,5 +1,19 @@
 # AGENTS
 
+This is the vendor-neutral source of truth for how work is done here. Every
+coding agent reads it: Codex loads it directly, and `CLAUDE.md` is a thin
+wrapper that imports it. Shared rules belong in this file, never in a
+vendor-specific one.
+
+Two companions carry the rest, and both bind every agent:
+
+- [`CONSTITUTION.md`](CONSTITUTION.md) — the constraints that outrank
+  convenience. `arcadia next` prints it in the dispatch brief, so it arrives
+  with the objective.
+- [`docs/managed-documents.md`](docs/managed-documents.md) — the work pointer,
+  plan anatomy, and which fields are enforced where. Read it before writing or
+  changing a `PROJECT.md`, a plan under `docs/plans/`, or a Decision.
+
 Arcadia exists to maintain momentum across creative projects with minimal cognitive overhead.
 
 Prefer deterministic workflows.
@@ -125,10 +139,11 @@ It captures the non-obvious, verified architecture context that most often trips
 
 ## Managed Documentation
 
-`CLAUDE.md` explains how the managed documentation system works: the work
-pointer, plan document anatomy, which fields are enforced and where, and the
-rule that checked-in documentation is authoritative. Read it before writing or
-changing a `PROJECT.md`, a plan under `docs/plans/`, or a Decision.
+[`docs/managed-documents.md`](docs/managed-documents.md) explains how the
+managed documentation system works: the work pointer, plan document anatomy,
+which fields are enforced and where, and the rule that checked-in documentation
+is authoritative. Read it before writing or changing a `PROJECT.md`, a plan
+under `docs/plans/`, or a Decision.
 
 ## Arcadia Semantics
 

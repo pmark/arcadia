@@ -4,12 +4,14 @@ type: decision
 id: "0020"
 slug: compounding-agent-production-principles
 project: arcadia
-status: open
+status: approved
 question: Which durable principles and operating practices should Arcadia adopt so coding-agent work compounds into faster, safer, more values-aligned production without turning the Constitution into an implementation manual?
 gap_type: missing-decision
 recommendation: Adopt a constitutional admission test, then apply one exact replacement of `CONSTITUTION.md` that groups its statements by kind, promotes the approval boundary it is currently missing, absorbs five durable invariants, and folds or relocates five product specifics — net 15 bullets to 13. Everything else in this Decision is Arcadia Way practice, adopted on approval and revisable without constitutional change.
 confidence: high
-updated: 2026-08-15
+decided: 2026-08-16
+answer: "Approved by the operator on 2026-08-16. The exact section 2 replacement is applied to CONSTITUTION.md: 15 flat bullets become 13 grouped as Purpose, Authority, Truth, and Economy, promoting approval boundaries into the Constitution for the first time. Both section 2a relocations ship in the same change: the four-queue model is now explained in START_HERE.md, and the SQLite/Markdown/Git authority mapping is now in docs/AGENT_ORIENTATION.md. The constitutional admission test in section 1 is adopted and cuts both directions. The Arcadia Way practices -- attention and interruption contract, thin delegated-work receipt, claims point to proof, mutable resources declared before parallel work, and capped leverage proposals -- are adopted as revisable practice rather than constitutional text. Every triggered increment stays deferred under its stated condition, including the mission-and-values constitutional line, the purpose Artifact, structured claim-to-proof manifests, cross-Project capability extraction, multi-agent deliberation, Session analytics, and automated constitutional linting. No trigger grants merge, deployment, messaging, spending, credentials, or production access."
+updated: 2026-08-16
 ---
 
 # Compounding agent production principles

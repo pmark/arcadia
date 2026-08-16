@@ -48,12 +48,12 @@ export interface DispatchContext {
    * The repository's `CONSTITUTION.md`, verbatim minus its title, or `[]` when
    * the repository has none.
    *
-   * Nothing parses the Constitution, so until now the only thing making a
-   * coding agent honor it was whether the agent happened to open the file --
-   * it is linked from `CLAUDE.md` but imported by nothing and printed by
-   * nothing. Carrying it on the dispatch context puts the standing constraints
-   * in front of every agent at the moment authority is granted, on the one
-   * path both `arcadia next` and `arcadia go` already share.
+   * Nothing parses the Constitution. Before this field existed, the only thing
+   * making a coding agent honor it was whether the agent happened to open the
+   * file: it was linked from the agent guides but imported by nothing and
+   * printed by nothing. Carrying it on the dispatch context puts the standing
+   * constraints in front of every agent at the moment authority is granted, on
+   * the one path both `arcadia next` and `arcadia go` already share.
    *
    * Deliberately verbatim rather than parsed: the text is the contract, and a
    * summary would be a second copy free to drift from it.
