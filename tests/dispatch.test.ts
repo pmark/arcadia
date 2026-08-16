@@ -736,3 +736,54 @@ describe("ready set (compute-ready-set)", () => {
     expect(readySet.blockers).toEqual(dispatch.blockers);
   });
 });
+
+describe("standing constraints", () => {
+  it("carries the Constitution verbatim, minus its title", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(root, "docs/plans/main-plan.md", planDoc());
+    write(
+      root,
+      "CONSTITUTION.md",
+      "# Arcadia Constitution\n\n- Approval boundaries are hard stops.\n- Deterministic progress, not cleverness.\n"
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    expect(resolution.context?.standingConstraints).toEqual([
+      "- Approval boundaries are hard stops.",
+      "- Deterministic progress, not cleverness."
+    ]);
+  });
+
+  it("preserves section headings so a grouped Constitution survives intact", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(root, "docs/plans/main-plan.md", planDoc());
+    write(
+      root,
+      "CONSTITUTION.md",
+      "# Arcadia Constitution\n\n## Authority\n\n- Capability never grants authority.\n"
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    expect(resolution.context?.standingConstraints).toEqual([
+      "## Authority",
+      "",
+      "- Capability never grants authority."
+    ]);
+  });
+
+  it("does not block dispatch when a repository has no Constitution", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(root, "docs/plans/main-plan.md", planDoc());
+
+    const resolution = resolveDispatch(root, "demo");
+
+    expect(resolution.context?.standingConstraints).toEqual([]);
+    expect(resolution.blockers).toEqual([]);
+    expect(isDispatchable(resolution)).toBe(true);
+  });
+});

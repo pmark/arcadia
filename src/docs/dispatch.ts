@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { discoverDocs, type DiscoveryResult } from "./discover.js";
 import type {
   ArcadiaDoc,
@@ -41,6 +44,21 @@ export interface DispatchContext {
   requiredDecisions: Array<{ id: string; slug: string; status: string; question: string; resolved: boolean }>;
   /** What the agent is authorized to do, derived from responsibility. */
   authorization: string;
+  /**
+   * The repository's `CONSTITUTION.md`, verbatim minus its title, or `[]` when
+   * the repository has none.
+   *
+   * Nothing parses the Constitution, so until now the only thing making a
+   * coding agent honor it was whether the agent happened to open the file --
+   * it is linked from `CLAUDE.md` but imported by nothing and printed by
+   * nothing. Carrying it on the dispatch context puts the standing constraints
+   * in front of every agent at the moment authority is granted, on the one
+   * path both `arcadia next` and `arcadia go` already share.
+   *
+   * Deliberately verbatim rather than parsed: the text is the contract, and a
+   * summary would be a second copy free to drift from it.
+   */
+  standingConstraints: string[];
 }
 
 export interface DispatchResolution {
@@ -247,10 +265,39 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
     action,
     actionPath: plan.relativePath,
     requiredDecisions,
-    authorization: AUTHORIZATION[action.responsibility] ?? "Unknown responsibility; treat as requires_review."
+    authorization: AUTHORIZATION[action.responsibility] ?? "Unknown responsibility; treat as requires_review.",
+    standingConstraints: readStandingConstraints(repoRoot)
   };
 
   return { context, blockers, operatorQuestion };
+}
+
+/**
+ * Read `CONSTITUTION.md` from the repository root, dropping its H1 title and
+ * any leading or trailing blank lines.
+ *
+ * A missing Constitution returns `[]` rather than a blocker. Foreign
+ * repositories Arcadia manages are not required to have one, and refusing to
+ * dispatch over its absence would block work on a rule the repository never
+ * adopted.
+ */
+function readStandingConstraints(repoRoot: string): string[] {
+  let raw: string;
+  try {
+    raw = readFileSync(join(repoRoot, "CONSTITUTION.md"), "utf8");
+  } catch {
+    return [];
+  }
+
+  const lines = raw.split(/\r?\n/);
+  const body = lines[0]?.startsWith("# ") ? lines.slice(1) : lines;
+
+  let start = 0;
+  let end = body.length;
+  while (start < end && body[start]!.trim() === "") start += 1;
+  while (end > start && body[end - 1]!.trim() === "") end -= 1;
+
+  return body.slice(start, end);
 }
 
 /** Everything the documents say about whether one action may start. */

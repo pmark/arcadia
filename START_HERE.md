@@ -286,6 +286,23 @@ deploys. If preparation is refused, the same view names each blocking document
 field and its concrete remedy. Open questions and project Decisions can be
 answered inline, with the same answer/approval distinction used by Review.
 
+The terminal brief resolves the same pointer:
+
+```sh
+pnpm arcadia next --project arcadia
+```
+
+Below the `Authorization:` line, the brief prints **Standing constraints**: the
+repository's `CONSTITUTION.md`, verbatim. Nothing parses the Constitution, so
+printing it here is what makes a dispatched agent read the rules that bind the
+Action rather than merely be pointed at the file. It is deterministic and costs
+no LLM tokens.
+
+Edit `CONSTITUTION.md` to change what appears — the brief has no second copy to
+keep in step. A repository without a `CONSTITUTION.md` simply omits the section;
+its absence never blocks dispatch, because foreign repositories Arcadia manages
+are not required to adopt one.
+
 ## Answering Decisions
 
 Arcadia separates approval Decisions from clarification Decisions:
