@@ -30,9 +30,10 @@
     "README.md"
   ],
   "scripts": {
+    "postinstall": "mise exec -- pnpm rebuild better-sqlite3",
     "build": "tsc -p tsconfig.json && pnpm --filter arcadia-discord-bot build",
     "test": "vitest run",
-    "arcadia": "tsx src/cli.ts",
+    "arcadia": "mise exec -- tsx src/cli.ts",
     "dashboard": "pnpm --filter arcadia-dashboard dev",
     "dashboard:build": "pnpm --filter arcadia-dashboard build",
     "test:e2e": "playwright test",
