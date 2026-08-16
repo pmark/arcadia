@@ -4,11 +4,13 @@ type: decision
 id: "0021"
 slug: one-arcadia-way-across-projects
 project: arcadia
-status: open
+status: approved
 question: Arcadia and Private Practice Now each ratified a constitution, and they restate many of the same rules in different words. Which one governs an adopting repository, what happens to the principles only one of them has, and how does the Arcadia Way reach a project without being hand-copied into it?
 gap_type: missing-decision
 recommendation: Arcadia's `CONSTITUTION.md` is the single constitution for every adopting repository. Retire the six PPN principles that restate it, promote `truthful uncertainty` into it as a thirteenth bullet, move the rest into Arcadia Way practice or the semantics guide, and propagate all of it through the existing `contextSetup` marker block in `AGENTS.md` rather than by copying files.
 confidence: high
+decided: 2026-08-16
+answer: "Approved by the operator on 2026-08-16. Arcadia's CONSTITUTION.md is the single constitution for every adopting repository; PPN's constitution-v1.md is superseded but retained with its ratification history. Truthful uncertainty is promoted into the Truth section, taking the Constitution from 13 bullets to 14. The six restating principles retire into the bullets they duplicate. PPN's command-naming rules -- nouns read, verbs mutate within declared authority; name a command what the operator already called the job; aliases are first-class; say the next step in the operator's words -- are adopted into docs/arcadia-semantics.md and bind new commands in every adopting repository. Propagation runs through the existing contextSetup marker block, which now also writes CONSTITUTION.md and a thin CLAUDE.md wrapper, and never writes outside the marked region or over project-authored content. Constitution version pinning and drift reporting, the capability registry and alias enforcement, PPN's machine artifacts, and operator-owned docket work all remain deferred behind their stated triggers."
 updated: 2026-08-16
 ---
 

@@ -217,6 +217,29 @@ Validation: pnpm test
 - Use "Back Burner" only as a view label if the product wants that flavor; the underlying status is Incubating.
 - Preserve external product terms when referring to an external system, such as Codex goals.
 
+## Command Naming
+
+These rules were developed in Private Practice Now and adopted for every
+repository on the Arcadia Way by Decision 0021. They bind new commands.
+
+**Nouns for looking, verbs for acting.** The part of speech carries the
+authority boundary, so it can be felt before it is read. A noun command
+(`arcadia next`, `arcadia portfolio`, `arcadia queue`) reads state and never
+mutates. A verb command (`arcadia advance`, `arcadia sync`) may mutate, and
+only within declared authority. Do not name a mutating command with a noun; the
+reader will trust it not to change anything.
+
+**Use the word someone already reached for.** A command is named after what the
+operator called the job in conversation, not after its implementation. When a
+job recurs without a name, that is a defect in the vocabulary, not in the
+operator.
+
+**Aliases are first-class, not sugar.** A capability carries the phrases people
+actually say for it. Populating them is part of shipping the command.
+
+**Say the next step in the operator's words.** A command that ends without
+telling the operator what to do next has offloaded its last step onto them.
+
 ## Implementation Guidance
 
 Arcadia may temporarily contain legacy implementation names:
