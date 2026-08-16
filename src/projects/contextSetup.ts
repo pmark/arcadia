@@ -8,6 +8,7 @@ import {
   writeFileSync
 } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import type { Project, ProjectMetadata } from "../domain/types.js";
@@ -109,6 +110,13 @@ export interface SetupProjectContextResult {
     repoContext: string;
     contextPolicy: string;
     agents: string;
+    /** The adopted `CONSTITUTION.md`, or null when the source copy is unreadable. */
+    constitution: string | null;
+    /**
+     * The thin `CLAUDE.md` wrapper, or null when an existing `CLAUDE.md` holds
+     * project-authored content that must not be overwritten.
+     */
+    claude: string | null;
   };
   context: RepoContextSummary;
 }
@@ -127,11 +135,28 @@ export function setupArcadiaProjectContext(input: {
   const repoContextPath = path.join(arcadiaDir, REPO_CONTEXT_FILE);
   const contextPolicyPath = path.join(arcadiaDir, CONTEXT_POLICY_FILE);
   const agentsPath = path.join(resolved.repoPath, "AGENTS.md");
+  const claudePath = path.join(resolved.repoPath, "CLAUDE.md");
+  const constitutionPath = path.join(resolved.repoPath, "CONSTITUTION.md");
 
   writeFileSync(agentPolicyPath, renderAgentContextPolicy(), "utf8");
   writeFileSync(repoContextPath, renderRepoContext(context), "utf8");
   writeFileSync(contextPolicyPath, `${JSON.stringify(contextPolicyFromSummary(context), null, 2)}\n`, "utf8");
   writeFileSync(agentsPath, updateAgentsMarkdown(existsSync(agentsPath) ? readFileSync(agentsPath, "utf8") : null), "utf8");
+
+  // The adopted Constitution, so `arcadia next` has standing constraints to
+  // print in this repository. Written verbatim from Arcadia's own copy: an
+  // adopting project does not ratify its own constitution, it adopts this one.
+  const constitution = readAdoptedConstitution();
+  const constitutionWritten = constitution !== null;
+  if (constitution) {
+    writeFileSync(constitutionPath, constitution, "utf8");
+  }
+
+  const wrapper = thinClaudeWrapper(existsSync(claudePath) ? readFileSync(claudePath, "utf8") : null);
+  const claudeWritten = wrapper !== null;
+  if (wrapper) {
+    writeFileSync(claudePath, wrapper, "utf8");
+  }
 
   return {
     repoPath: resolved.repoPath,
@@ -140,7 +165,9 @@ export function setupArcadiaProjectContext(input: {
       agentPolicy: agentPolicyPath,
       repoContext: repoContextPath,
       contextPolicy: contextPolicyPath,
-      agents: agentsPath
+      agents: agentsPath,
+      constitution: constitutionWritten ? constitutionPath : null,
+      claude: claudeWritten ? claudePath : null
     },
     context
   };
@@ -327,10 +354,19 @@ function contextPolicyFromSummary(context: RepoContextSummary): RepoContextPolic
   };
 }
 
-function updateAgentsMarkdown(existing: string | null): string {
+export function updateAgentsMarkdown(existing: string | null): string {
   const managedSection = [
     AGENTS_SECTION_START,
     "## Arcadia Context",
+    "",
+    "This repository is on the Arcadia Way. These files govern how work is done",
+    "here, and every coding agent is bound by them equally:",
+    "",
+    "- `CONSTITUTION.md` — the standing constraints. `arcadia next` prints them",
+    "  with the objective, so they arrive when authority is granted.",
+    "- `PROJECT.md` — the work pointer: one `active_plan`, one `current_action`.",
+    "- `docs/managed-documents.md` — how managed documents, the pointer chain,",
+    "  and enforced fields work, when this repository has a copy.",
     "",
     "Before broad repository exploration, read:",
     "",
@@ -339,6 +375,13 @@ function updateAgentsMarkdown(existing: string | null): string {
     "- `.arcadia/context-policy.json`",
     "",
     "Use targeted searches, respect denied paths, and keep discovery bounded by the Arcadia context policy.",
+    "",
+    "For continuation requests — \"arcadia go\", a bare \"go\", or \"Get to work\" —",
+    "resolve `active_plan` and `current_action` from `PROJECT.md`; never select",
+    "work from an unordered backlog.",
+    "",
+    "Commands follow the naming rule: **nouns read state, verbs may mutate it",
+    "within declared authority**. Trust the part of speech.",
     AGENTS_SECTION_END
   ].join("\n");
 
@@ -351,6 +394,59 @@ function updateAgentsMarkdown(existing: string | null): string {
     ? existing.replace(pattern, managedSection)
     : `${existing.trimEnd()}\n\n${managedSection}`;
   return `${body.trimEnd()}\n`;
+}
+
+/**
+ * Read Arcadia's own `CONSTITUTION.md` — the one an adopting repository adopts.
+ *
+ * Resolved from this module's location rather than the working directory, so
+ * setup writes the same text no matter where the CLI was invoked from.
+ */
+function readAdoptedConstitution(): string | null {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  // src/projects/contextSetup.ts -> repository root
+  const candidate = path.resolve(here, "..", "..", "CONSTITUTION.md");
+  try {
+    return readFileSync(candidate, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The adopting repository's `CLAUDE.md`: a thin wrapper that imports
+ * `AGENTS.md` and nothing more.
+ *
+ * Claude Code reads `CLAUDE.md` automatically and never reads `AGENTS.md`;
+ * Codex does the reverse. Before Decision 0021 each agent therefore loaded only
+ * half the contract, and the injected block had been copied into both files,
+ * where the two copies were free to drift. One import fixes both problems.
+ *
+ * Returns `null` when an existing `CLAUDE.md` carries content that is not ours,
+ * because overwriting a project's own instructions is exactly the silent
+ * governance mutation the Constitution forbids. The caller reports it instead.
+ */
+export function thinClaudeWrapper(existing: string | null): string | null {
+  const wrapper = [
+    "# CLAUDE.md",
+    "",
+    "@AGENTS.md",
+    "",
+    "`AGENTS.md` is the vendor-neutral source of truth for this repository and is",
+    "imported above. Codex reads it directly; this file exists only because Claude",
+    "Code reads `CLAUDE.md` instead. Never put shared rules here — Codex would",
+    "never see them.",
+    ""
+  ].join("\n");
+
+  if (!existing?.trim()) return wrapper;
+  if (existing.includes("@AGENTS.md")) return wrapper;
+
+  // An older setup copied the managed block into CLAUDE.md. That copy is ours
+  // to replace; anything else is the project's and must be left alone.
+  const pattern = new RegExp(`${escapeRegExp(AGENTS_SECTION_START)}[\\s\\S]*?${escapeRegExp(AGENTS_SECTION_END)}`);
+  const withoutManagedBlock = existing.replace(pattern, "").replace(/^#\s+CLAUDE\b.*$/m, "").trim();
+  return withoutManagedBlock.length === 0 ? wrapper : null;
 }
 
 function readContextPolicy(repoPath: string): RepoContextPolicy | null {

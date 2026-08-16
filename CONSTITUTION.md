@@ -23,6 +23,9 @@
   never a competing truth store.
 - Completion is a proven state, not a claim. The required Artifact and its
   acceptance evidence must agree with the work actually produced.
+- Uncertainty stays visible. Open questions, blockers, assumptions, and
+  unresolved disagreement remain legible until they are answered, and are never
+  closed by silence or by an agent's confidence.
 
 ## Economy
 

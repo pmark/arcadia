@@ -391,7 +391,10 @@ export function runProjectSetupContextCommand(options: {
       files: setup.files,
       context: setup.context
     },
-    artifacts: Object.values(setup.files)
+    // A null entry means setup deliberately did not write that file -- an
+    // unreadable source Constitution, or a CLAUDE.md holding project-authored
+    // content. Those are not Artifacts, so they are not reported as produced.
+    artifacts: Object.values(setup.files).filter((file): file is string => file !== null)
   });
 }
 
