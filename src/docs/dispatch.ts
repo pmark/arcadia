@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { checkCapabilityRegistry } from "./capabilities.js";
 import { discoverDocs, isAuthoritativeControlPath, type DiscoveryResult } from "./discover.js";
 import type {
   ArcadiaDoc,
@@ -253,6 +254,12 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
   if (constitution.blocker) {
     blockers.push(constitution.blocker);
   }
+
+  // A registry that calls a writing command read-only makes the noun/verb
+  // authority signal lie, and an agent is told to trust that signal before
+  // running anything. Checked here so it refuses at the same place every other
+  // control-document defect does.
+  blockers.push(...checkCapabilityRegistry(repoRoot));
 
   const context: DispatchContext = {
     repoRoot,
