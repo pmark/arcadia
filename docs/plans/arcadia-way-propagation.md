@@ -5,9 +5,10 @@ slug: arcadia-way-propagation
 project: arcadia
 status: active
 milestone: No Arcadia project is silently stale on the Way, and no project's governance changes without review
-current_action: report-way-drift
+current_action: stop-duplicating-a-canonical-protocol-on-adopter-zero
 token_impact: medium
 token_budget: "Drift detection and file generation are deterministic — no model call belongs in either. Reserve model use for one implementation session per Action and a single review pass; a propagation run that calls a model per repository is the failure mode this budget exists to prevent."
+recommended_model: claude-sonnet-5
 updated: 2026-08-16
 actions:
   - id: give-arcadia-its-own-context-files
@@ -52,7 +53,7 @@ actions:
       - docs/agent-continuation-protocol.md
   - id: report-way-drift
     title: Report which projects are stale on the Way, without writing anything
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: Add a read-only command that compares each adopting repository's managed regions against the canonical text and reports per project what differs.
@@ -69,6 +70,29 @@ actions:
       - src/projects/contextSetup.ts
       - docs/agents-context.md
       - .arcadia/arcadia-way/adoption.json
+    result: >-
+      `arcadia way` reads every registered project's `repo_path` and reports,
+      per project, whether `CONSTITUTION.md`, the `AGENTS.md` managed region,
+      and `docs/agent-continuation-protocol.md` match Arcadia's own canonical
+      copies, plus the repository's declared `.arcadia/arcadia-way/adoption.json`
+      `upgrade_policy`. Drift detection reuses the same pure generator
+      functions `setup-context` writes with (`updateAgentsMarkdown`,
+      `adoptContinuationProtocol`) rather than a second implementation of
+      "adopted": a file is current exactly when regenerating it from the
+      canonical source reproduces its own bytes, so the read and write sides
+      of "adopted" cannot drift apart from each other. A project with no
+      `repo_path`, or one that no longer resolves to a directory, is reported
+      `unknown` rather than folded into either current or stale. Run against
+      Arcadia itself (adopter zero, repo_path pointed at its own checkout),
+      it correctly reported `CONSTITUTION.md` and the `AGENTS.md` region as
+      matching and `docs/agent-continuation-protocol.md` as differing --
+      exactly the still-open `stop-duplicating-a-canonical-protocol-on-adopter-zero`
+      defect, not a false positive. 6 new tests in `tests/way-status.test.ts`
+      cover unset/unreachable paths, byte-identical adoption, named drift,
+      missing files, and that the command writes nothing to the repository it
+      inspects; the full suite is otherwise unaffected (826 passing, 4
+      pre-existing failures in `tests/narrative-digest-schedule.test.ts`
+      confirmed failing identically on `main`).
   - id: open-way-sync-pull-requests
     title: Propagate Way changes to every project as a pull request, never as a merge
     status: open

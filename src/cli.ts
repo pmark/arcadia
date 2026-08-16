@@ -253,6 +253,7 @@ import {
   runNextReadyCommand
 } from "./commands/next.js";
 import { renderPortfolioSuccess, runPortfolioCommand } from "./commands/portfolio.js";
+import { renderWayStatusSuccess, runWayStatusCommand } from "./commands/way.js";
 import {
   renderWorkAddSubtaskSuccess,
   renderWorkDoneSuccess,
@@ -2220,6 +2221,15 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("portfolio", options, () => runPortfolioCommand(options), renderPortfolioSuccess)
+  );
+
+  addJsonOption(
+    program
+      .command("way")
+      .description("Report which projects have drifted from the canonical Arcadia Way text")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("way", options, () => runWayStatusCommand(options), renderWayStatusSuccess)
   );
 
   const worker = program.command("worker").description("Background execution worker daemon");
