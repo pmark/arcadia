@@ -69,16 +69,18 @@ have unresolved or explicitly deferred mechanics.
 
 Three further observations shaped this revision.
 
-**The Constitution is not enforced by anything.** No code reads
-`CONSTITUTION.md`. It appears in prose in five files and as one `references:`
-entry on the `govern-release-and-delivery` Action. Every line is therefore
-context-window cost paid on every session and honoured only by agent goodwill.
-That is the strongest available argument for brevity, and it means growth is a
-real cost rather than a stylistic preference.
+**The Constitution was not reliably presented at dispatch.** Before the
+dispatch change carried by this pull request, no dispatch code read
+`CONSTITUTION.md`; an agent saw it only by following a prose reference or
+opening it deliberately. The new brief surfaces it verbatim but does not lint
+or enforce compliance. Once surfaced, every line becomes context-window cost
+paid on every dispatched Action. That is the strongest available argument for
+brevity, and it means growth is a real cost rather than a stylistic preference.
 
 **The Constitution is missing its most important rule.** Approval boundaries —
-the constraint that outranks everything else in practice — appear only in
-`AGENTS.md` and `CLAUDE.md` prose. A document that omits the hard stop while
+the constraint that outranks everything else in practice — already appear in
+agent guidance, operator context, generated agent packets, plans, and audits,
+but not in `CONSTITUTION.md`. A Constitution that omits the hard stop while
 specifying which queues exist has its priorities inverted.
 
 **The Constitution mixes four kinds of statement without saying so.** Purpose,
@@ -165,9 +167,9 @@ removal without a landing place is data loss, not streamlining.
 
 | Removed line | Disposition |
 | --- | --- |
-| "maintains Inbox, Work Queue, and Requires Review queues" | Removed. This vocabulary appears in **no other document** — it must be added to `START_HERE.md` in the same change or it is lost. |
+| "maintains Inbox, Work Queue, and Requires Review queues" | Removed from the Constitution. The full queue is already defined in `src/domain/constants.ts` and documented in `README.md`; add a concise operator-facing explanation to `START_HERE.md` in the same change because the canonical daily guide does not currently explain it. |
 | "distinguishes Autonomous, Codex, Requires Review, and Blocked work" | Removed, no migration needed. Already canonical in `docs/arcadia-semantics.md` and enforced as `responsibility` in `src/docs/parse.ts`. |
-| "SQLite is the operational source of truth" / "Markdown stores narrative artifacts" / "Git preserves history" | Generalized into the one-authoritative-home line. The concrete mapping must be added to `docs/AGENT_ORIENTATION.md` in the same change. |
+| "SQLite is the operational source of truth" / "Markdown stores narrative artifacts" / "Git preserves history" | Generalized into the one-authoritative-home line. The mapping already appears in `README.md`, `docs/arcadia-protocol.md`, and historical reports; add it to `docs/AGENT_ORIENTATION.md` in the same change so the canonical cold-start architecture guide owns the concrete rule. |
 | "Use local scripts before AI" / "Use local AI before frontier models" | Folded into the ascending-order spend line, which adds the operator as the final and most expensive tier. |
 | "Avoid over-engineering" | Folded into the 80/20 line. |
 
@@ -224,16 +226,17 @@ receipt suffices. Common resources proven safe by tests may be omitted later.
 
 **Leverage proposals, capped.** When friction repeats twice, or one
 high-severity trust failure occurs, a coding agent may propose **at most one
-Artifact per Action** stating the observed friction and evidence, the smallest
-deterministic guard, script, skill, fixture, or orientation improvement that
-would prevent recurrence, the expected recurring saving, and the observable
-trigger for doing it. The cap is the point: an uncapped proposal obligation
-turns every session into a backlog generator, which is the tail-gold-plating
-`AGENTS.md` forbids. The proposal does not preempt the current Outcome, grant
-implementation authority, or excuse the current Candidate from validation. If
-the improvement is tiny, directly in scope, and required by acceptance
-criteria, it may ship with the current Action; otherwise it is captured as a
-triggered Action.
+consolidated Artifact per Action**. It may cover multiple qualifying failures,
+but must identify the vital few: the observed friction and evidence, the
+smallest deterministic guard, script, skill, fixture, or orientation
+improvement that would prevent recurrence, the expected recurring saving, and
+the observable trigger for doing it. The cap is the point: an uncapped proposal
+obligation turns every session into a backlog generator, which is the
+tail-gold-plating `AGENTS.md` forbids. The proposal does not preempt the current
+Outcome, grant implementation authority, or excuse the current Candidate from
+validation. If the improvement is tiny, directly in scope, and required by
+acceptance criteria, it may ship with the current Action; otherwise it is
+captured as a triggered Action.
 
 ## 80/20 adoption sequence
 
@@ -321,3 +324,78 @@ practice so the Decision can be approved or rejected in one act. The
 alternative — a competing Decision 0021 — was considered and rejected: two
 proposals on one subject would have doubled the operator attention required to
 settle it, which is the cost this Decision exists to reduce.
+
+### Codex falsification review of the Claude revision
+
+Codex reviewed Claude's `adbdd03` revision against the current Constitution,
+`AGENTS.md`, the semantic contract, the parser, Decisions 0012 through 0014 and
+0019, repository reports, and the Mission Log. The review did not approve or
+reject this Decision; it tested the six claims that produced the revision.
+
+1. **Original draft failed its own admission test — disagree with the evidence
+   count; agree with the resulting redline.** Evidence-before-judgment and
+   completion-is-proven are supported by Decision 0019 and the PR-QA failures.
+   The repository also records two distinct operator-attention incidents:
+   Decision 0013's six-PR manual briefing and Decision 0014's disappearing
+   questions. Failure-leaves-leverage is supported independently by the
+   compute-ready-set dogfood defect and by five successive PR-QA Candidates
+   turning fail-open paths into guards. One-authoritative-home is supported by
+   contradictory duplicate check evidence and the repository-local workspace
+   marker contaminating a supposedly isolated test. Reversibility does not
+   have two comparable failure incidents, but its capability-never-authority
+   half is an approval boundary that qualifies under the revised admission
+   test, and `arcadia go` supplies one concrete preview-and-recovery incident.
+   The mission-and-values line alone lacks an observed incident and an
+   enforcement path. No supported line needs restoration because the exact
+   replacement already retains or folds every supported invariant; only the
+   unevidenced values line remains triggered.
+
+2. **Approval boundaries belong in the Constitution — agree.** The current
+   Constitution omits them. The exact boundary already appears in
+   `OPERATOR_CONTEXT.md`, `CLAUDE.md`, generated agent packets, plans, and
+   audits; `AGENTS.md` subordinates optimization to it. Promotion creates
+   intentional reinforcement, not conflict. `Decision` is the canonical
+   approval concept under `docs/arcadia-semantics.md`, so the proposed wording
+   is consistent with the existing `explicit approval` phrasing.
+
+3. **The replacement loses nothing that matters — agree after factual ledger
+   corrections.** The claim that queue vocabulary appeared in no other
+   document was false: `src/domain/constants.ts` defines the four queues and
+   `README.md` documents them. `START_HERE.md` still needs the concise model
+   because it is the canonical daily guide. The Responsibility claim is
+   correct: `docs/arcadia-semantics.md` names Autonomous, Codex, Requires
+   Review, and Blocked, while `src/docs/parse.ts` validates the imported
+   `WORK_CLASSIFICATIONS` enum. The SQLite/Markdown/Git mapping also survives
+   in README, protocol, and reports, but belongs in `docs/AGENT_ORIENTATION.md`
+   as the canonical cold-start explanation. Section 2a now states those facts.
+
+4. **The ascending-order economy line preserves the two local-first lines —
+   agree when read with Authority.** Deterministic scripts remain before local
+   models, and local models remain before frontier models. Adding the operator
+   last makes attention cost explicit without delaying an authority- or
+   judgment-bound Decision, because the Authority section requires that
+   interruption exactly when human input can change what may safely happen.
+
+5. **Withdrawing mission-and-values to a trigger avoids a premature
+   constitutional rule — agree after correcting ownership.** No repository
+   incident yet proves the constitutional line, and a global instruction could
+   invite agents to editorialize beyond an Action. The revision was wrong that
+   `OPERATOR_CONTEXT.md` already owns Project values; it owns stable
+   operator-wide preferences. Project-specific values belong with the Mission
+   and Outcome or in the triggered purpose Artifact. The text and trigger now
+   preserve that destination without constitutionalizing an unproved rule.
+
+6. **One Decision is better stewardship than a competing 0021 — agree.** The
+   revision history preserves provenance and the exact replacement gives the
+   operator one coherent approval surface. A second Decision would add merge
+   ordering, collision risk, and another comparison without preserving any
+   authority or evidence that this document cannot preserve.
+
+The demotion of operating mechanics to Arcadia Way practice does not weaken a
+required commitment. Session shape remains gated by Decision 0012, durable
+questions by Decision 0014, and structured proof by Decision 0019's trigger;
+the remaining practices are reversible defaults. The leverage cap was too
+tight only if read as suppressing multiple findings, so it now permits one
+consolidated Artifact containing the vital few qualifying failures from an
+Action. That matches the QA increments, where one process review converted
+several related trust failures without creating a proposal queue of its own.
