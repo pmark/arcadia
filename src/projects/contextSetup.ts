@@ -520,6 +520,14 @@ export function adoptContinuationProtocol(
         "",
         "<!-- Everything below is this repository's own and is never regenerated. -->",
         "",
+        "<!--",
+        "  TRIAGE THIS SECTION. It is the protocol this repository had before it",
+        "  adopted the shared one, preserved verbatim so nothing was lost. If any",
+        "  of it restates the rules above, delete that part: two statements of one",
+        "  contract in a single file is how they drift apart, and the stricter copy",
+        "  wins arguments it should not. Keep only what is genuinely local.",
+        "-->",
+        "",
         existingBody
       ].join("\n")
     : "";
