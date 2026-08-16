@@ -793,6 +793,16 @@ describe("standing constraints", () => {
     write(root, "docs/plans/main-plan.md", planDoc());
     mkdirSync(path.join(root, "CONSTITUTION.md"));
 
-    expect(() => resolveDispatch(root, "demo")).toThrow();
+    const resolution = resolveDispatch(root, "demo");
+
+    // Refusing is the point: an adopted Constitution that cannot be shown must
+    // not dispatch silently without it. But it refuses the way every other
+    // failure in dispatch does -- naming the file and the repair -- rather than
+    // throwing an error the CLI can only report as UNEXPECTED_ERROR.
+    expect(isDispatchable(resolution)).toBe(false);
+    const blocker = resolution.blockers.find((entry) => entry.relativePath === "CONSTITUTION.md");
+    expect(blocker?.message).toContain("could not be read");
+    expect(blocker?.remedy).toContain("readable UTF-8 file");
+    expect(resolution.context?.standingConstraints).toEqual([]);
   });
 });

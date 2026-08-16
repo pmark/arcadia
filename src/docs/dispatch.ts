@@ -249,6 +249,11 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
   blockers.push(...readiness.blockers);
   const { requiredDecisions, operatorQuestion } = readiness;
 
+  const constitution = readStandingConstraints(repoRoot);
+  if (constitution.blocker) {
+    blockers.push(constitution.blocker);
+  }
+
   const context: DispatchContext = {
     repoRoot,
     projectSlug: project.slug,
@@ -266,7 +271,7 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
     actionPath: plan.relativePath,
     requiredDecisions,
     authorization: AUTHORIZATION[action.responsibility] ?? "Unknown responsibility; treat as requires_review.",
-    standingConstraints: readStandingConstraints(repoRoot)
+    standingConstraints: constitution.constraints
   };
 
   return { context, blockers, operatorQuestion };
@@ -276,19 +281,41 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
  * Read `CONSTITUTION.md` from the repository root, dropping its H1 title and
  * any leading or trailing blank lines.
  *
- * A missing Constitution returns `[]` rather than a blocker. Foreign
+ * A missing Constitution yields no constraints and no blocker. Foreign
  * repositories Arcadia manages are not required to have one, and refusing to
  * dispatch over its absence would block work on a rule the repository never
- * adopted. Other read failures propagate so adopted constraints cannot
- * silently disappear from a dispatch brief.
+ * adopted.
+ *
+ * Any other read failure -- a permissions problem, a directory at that path,
+ * bad media -- means the repository *has* adopted a Constitution that cannot
+ * be shown. That refuses dispatch rather than proceeding without it, but it
+ * refuses the way every other failure in this file does: a blocker naming the
+ * file, the field, and the repair. Throwing would also fail closed, yet it
+ * surfaces through the CLI as an opaque `UNEXPECTED_ERROR`, which tells the
+ * operator nothing about which file to fix.
  */
-function readStandingConstraints(repoRoot: string): string[] {
+function readStandingConstraints(repoRoot: string): {
+  constraints: string[];
+  blocker: DispatchBlocker | null;
+} {
   let raw: string;
   try {
     raw = readFileSync(join(repoRoot, "CONSTITUTION.md"), "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw error;
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return { constraints: [], blocker: null };
+    return {
+      constraints: [],
+      blocker: {
+        relativePath: "CONSTITUTION.md",
+        field: "file",
+        message:
+          `This repository has a CONSTITUTION.md, but it could not be read (${code ?? "unknown error"}), ` +
+          "so the standing constraints cannot be shown to a dispatched agent.",
+        remedy:
+          "Make CONSTITUTION.md a readable UTF-8 file, or remove it if this repository has not adopted one."
+      }
+    };
   }
 
   const lines = raw.split(/\r?\n/);
@@ -299,7 +326,7 @@ function readStandingConstraints(repoRoot: string): string[] {
   while (start < end && body[start]!.trim() === "") start += 1;
   while (end > start && body[end - 1]!.trim() === "") end -= 1;
 
-  return body.slice(start, end);
+  return { constraints: body.slice(start, end), blocker: null };
 }
 
 /** Everything the documents say about whether one action may start. */
