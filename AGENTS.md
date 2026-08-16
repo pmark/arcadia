@@ -38,6 +38,14 @@ know why, not to find out what.
 --project <slug>` is the whole startup procedure. Never infer priority from
 recent commits, source activity, backlog order, or whichever task looks easiest.
 
+**Commands follow the naming rule: nouns read state, verbs may mutate it within
+declared authority.** Trust the part of speech — `next` resolves and reports,
+`done` marks an Action complete. This is what makes an orientation command safe
+to run before you have read its source, so keep new commands honest to it: a
+noun that writes is a bug in the name as much as in the code. `project
+setup-context` writes this same rule into every adopting repository's
+`AGENTS.md`; Arcadia is bound by it identically.
+
 **A current Action is executable only when** it exists exactly once in the
 active plan, its clarification is `clarified`, its responsibility is
 `autonomous` or `codex`, its `next_action` begins with a concrete verb, and its
