@@ -1,0 +1,52 @@
+{
+  "allowed_context_roots": [
+    ".",
+    "apps",
+    "specs",
+    "src",
+    "test",
+    "tests"
+  ],
+  "denied_context_paths": [
+    ".git/",
+    ".next/",
+    ".turbo/",
+    ".venv/",
+    ".vscode/",
+    "build/",
+    "coverage/",
+    "dist/",
+    "node_modules/",
+    "out/",
+    "target/",
+    "tmp/",
+    "*.db",
+    "*.sqlite",
+    "*.sqlite3",
+    "*.log",
+    ".env",
+    ".env.*"
+  ],
+  "important_docs": [
+    "AGENTS.md",
+    "README.md",
+    "PROJECT.md"
+  ],
+  "source_roots": [
+    "src",
+    "apps"
+  ],
+  "test_roots": [
+    "test",
+    "tests",
+    "specs"
+  ],
+  "safe_commands": [
+    "pnpm build",
+    "pnpm smoke",
+    "pnpm test",
+    "pnpm test:e2e"
+  ],
+  "max_discovery_commands": 6,
+  "broad_scan_allowed": false
+}
