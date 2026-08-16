@@ -21,6 +21,16 @@ const SKIP_DIRECTORIES = new Set([
 
 const MAX_DEPTH = 6;
 
+/**
+ * Only these records can govern which Action Arcadia dispatches. Supporting
+ * records are still parsed and reported by docs sync, but their defects do not
+ * make an unrelated active pointer disappear.
+ */
+export function isAuthoritativeControlPath(relativePath: string): boolean {
+  const normalized = relativePath.replaceAll("\\", "/");
+  return normalized === "PROJECT.md" || normalized.startsWith("docs/plans/") || normalized.startsWith("docs/decisions/");
+}
+
 export interface DiscoveryResult {
   docs: ArcadiaDoc[];
   errors: DocValidationError[];

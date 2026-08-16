@@ -47,7 +47,7 @@ to do. It has three complete answers:
 `arcadia next history` shows how often dispatch has been refused and on which
 field — worth a look when a rule seems to be blocking constantly.
 
-## Two kinds of documents
+## Three kinds of documents
 
 Discovery is by **frontmatter marker, not by path**. A file becomes Arcadia's
 business only when it opts in with `arcadia: v1`; everything else is ordinary
@@ -55,10 +55,17 @@ prose that no tool parses.
 
 **Managed control documents** carry `arcadia: v1` and a `type`. Four types are
 parsed into rows — `project`, `plan`, `decision`, `log` — and their frontmatter
-is validated field by field. These are the ones with rules.
+is validated field by field. `PROJECT.md`, `docs/plans/`, and `docs/decisions/`
+are dispatch authorities; defects there refuse dispatch.
 
 **Narrative documents** (`architecture`, `strategy`, `reference`, and unmarked
 files) are recognized and reported but not turned into rows. Write them freely.
+
+**Supporting records** (`continuation`, `proposal`, `template`, and `review`)
+are recognized but governed by their repository-local protocol, so they cannot
+block or redirect dispatch. A `plan` with status `dormant` or `proposed` is also
+supporting: Arcadia does not evaluate its activation conditions or claim its
+ordering authority.
 
 ### The pointer chain
 

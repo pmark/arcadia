@@ -299,7 +299,9 @@ instruction and queues them through this identical ingress path.
 
 Open a Project from **Projects** when you need to work from that repository's
 managed documents rather than the portfolio-wide Daily Advantage. The Project
-view shows the docs-authoritative Milestone, current Action, responsibility,
+view follows the authoritative `PROJECT.md` → active plan → current Action
+pointer; supporting records and dormant/proposed plans cannot redirect it. It
+shows the docs-authoritative Milestone, current Action, responsibility,
 expected Artifact, source plan, resolved execution profile, and the plan's
 T-shirt Token Impact plus its plain-language Token Budget. Deterministic builds,
 tests, health checks, Playwright navigation, and screenshot capture consume no

@@ -15,13 +15,16 @@ import {
   DECISION_DOC_STATUSES,
   DOC_TYPES,
   PLAN_STATUSES,
+  SCOPED_OUT_PLAN_STATUSES,
+  SUPPORTING_DOC_TYPES,
   TOKEN_IMPACTS,
   type ArcadiaDoc,
   type DocType,
   type DocValidationError,
   type LogEntryDoc,
   type PlanActionDoc,
-  type PlanQuestionDoc
+  type PlanQuestionDoc,
+  type SupportingDocType
 } from "./types.js";
 
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
@@ -106,12 +109,33 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
   const location = { relativePath, absolutePath };
 
   const type = enumField(problems, data, "type", DOC_TYPES) as DocType | null;
-  const updated = dateField(problems, data, "updated");
-  const slug = slugField(problems, data, "slug");
 
   if (!type) {
     return { doc: null, errors: problems.errors };
   }
+
+  // PPN's continuation, proposal, template, and review records intentionally
+  // use the Arcadia marker while their own protocol owns their metadata and
+  // lifecycle. Recognize them without forcing dispatch-only fields onto them.
+  if (isSupportingDocType(type)) {
+    return {
+      doc: { ...location, type: "scoped_out", sourceType: type, sourceStatus: null, body },
+      errors: problems.errors
+    };
+  }
+
+  // `dormant` and `proposed` plans are similarly governed outside Arcadia:
+  // their trigger/order semantics live in the repository-local shim. They must
+  // not become competing plans or require execution-budget metadata here.
+  if (type === "plan" && isScopedOutPlanStatus(data.status)) {
+    return {
+      doc: { ...location, type: "scoped_out", sourceType: "plan", sourceStatus: data.status, body },
+      errors: problems.errors
+    };
+  }
+
+  const updated = dateField(problems, data, "updated");
+  const slug = slugField(problems, data, "slug");
 
   // PROJECT.md is the one type that does not carry a `project:` pointer — it
   // *is* the project, and its own slug is the pointer everything else uses.
@@ -307,7 +331,11 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
     const responsibility =
       value.responsibility === undefined || value.responsibility === null
         ? "requires_review"
-        : enumField(problems, value, "responsibility", WORK_CLASSIFICATIONS, field);
+        // `operator` is a document-facing actor term. Preserve its existing
+        // safe Arcadia meaning rather than allowing an agent to execute it.
+        : value.responsibility === "operator"
+          ? "requires_review"
+          : enumField(problems, value, "responsibility", WORK_CLASSIFICATIONS, field);
     const effort = optionalEnum(problems, value, "effort", ORIENTATION_EFFORTS, field);
     const clarification = optionalEnum(problems, value, "clarification", CLARIFICATION_STATUSES, field);
     const gapType = optionalEnum(problems, value, "gap_type", GAP_TYPES, field);
@@ -615,6 +643,14 @@ function requiredString(
 function optionalString(data: Record<string, unknown>, key: string): string | null {
   const value = data[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function isSupportingDocType(type: DocType): type is SupportingDocType {
+  return (SUPPORTING_DOC_TYPES as readonly string[]).includes(type);
+}
+
+function isScopedOutPlanStatus(value: unknown): value is (typeof SCOPED_OUT_PLAN_STATUSES)[number] {
+  return typeof value === "string" && (SCOPED_OUT_PLAN_STATUSES as readonly string[]).includes(value);
 }
 
 function slugField(
