@@ -1,0 +1,10 @@
+min_version = "2026.8.6"
+
+[tools]
+node = "22.23.1"
+
+[settings]
+activate_aggressive = true
+lockfile = true
+lockfile_platforms = ["macos-arm64", "linux-x64"]
+node.corepack = true

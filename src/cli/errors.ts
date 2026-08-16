@@ -166,7 +166,8 @@ export function normalizeError(error: unknown): ArcadiaError {
       return new ArcadiaError("SQLITE_NATIVE_ABI_MISMATCH", error.message, 1, {
         runtimeAbi: error.runtimeAbi,
         addonAbi: error.addonAbi,
-        remediation: error.remediation
+        remediation: error.remediation,
+        runtimeExecutable: error.runtimeExecutable
       });
     }
 

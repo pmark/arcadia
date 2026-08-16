@@ -84,6 +84,7 @@ interface ResolvedIngressService {
   healthStatePath: string;
   cliPath: string;
   tsxBin: string;
+  miseBin: string;
   repositoryRoot: string;
 }
 
@@ -235,6 +236,12 @@ export function runIngressServiceUninstallCommand(
 
 export function buildIngressServicePlist(service: ResolvedIngressService): string {
   const argumentsList = [
+    service.miseBin,
+    "-C",
+    service.repositoryRoot,
+    "exec",
+    "--",
+    "node",
     service.tsxBin,
     service.cliPath,
     "ingress",
@@ -278,7 +285,7 @@ ${argumentsXml}
     <key>HOME</key>
     <string>${xmlEscape(homedir())}</string>
     <key>PATH</key>
-    <string>${xmlEscape(serviceExecutablePath())}</string>
+    <string>${xmlEscape(serviceExecutablePath(service.miseBin))}</string>
     <key>NODE_PATH</key>
     <string>${xmlEscape(path.join(service.repositoryRoot, "node_modules"))}</string>
   </dict>
@@ -320,7 +327,8 @@ export function resolveIngressService(options: IngressServiceOptions): ResolvedI
     healthStatePath,
     logsDirectory,
     cliPath: path.join(repositoryRoot, "src", "cli.ts"),
-    tsxBin: path.join(repositoryRoot, "node_modules", ".bin", "tsx"),
+    tsxBin: path.join(repositoryRoot, "node_modules", "tsx", "dist", "cli.mjs"),
+    miseBin: resolveMiseExecutable(home),
     repositoryRoot
   };
 }
@@ -392,7 +400,7 @@ function collectIngressDoctorChecks(
       label: "Recent service errors",
       status: permissionDenied ? "fail" : recent.trim() ? "warning" : "pass",
       detail: permissionDenied
-        ? `macOS denied access. Grant Full Disk Access to ${service.tsxBin} or its Node runtime, then reinstall or restart the service.`
+        ? `macOS denied access. Grant Full Disk Access to ${service.miseBin}, then reinstall or restart the service.`
         : recent.trim() ? `Review ${service.errorLogPath}` : "No errors since the last successful background probe."
     });
   }
@@ -402,7 +410,8 @@ function collectIngressDoctorChecks(
 function collectDependencyChecks(service: ResolvedIngressService): IngressDoctorCheck[] {
   const checks: IngressDoctorCheck[] = [];
   checks.push(check("platform", "macOS", process.platform === "darwin", process.platform));
-  checks.push(pathCheck("runtime", "Arcadia runtime", service.tsxBin, constants.X_OK));
+  checks.push(pathCheck("mise", "mise runtime manager", service.miseBin, constants.X_OK));
+  checks.push(pathCheck("runtime", "Arcadia runtime entrypoint", service.tsxBin, constants.R_OK));
   checks.push(pathCheck("cli", "Arcadia CLI", service.cliPath, constants.R_OK));
   checks.push(directoryReadCheck("icloud-root", "iCloud ingress root", service.ingressRoot));
   checks.push(directoryReadCheck("icloud-inbox", "iCloud source inbox", path.join(service.ingressRoot, service.source, "In")));
@@ -494,9 +503,19 @@ function expandHome(value: string): string {
   return value === "~" ? homedir() : value.startsWith("~/") ? path.join(homedir(), value.slice(2)) : path.resolve(value);
 }
 
-function serviceExecutablePath(): string {
+function resolveMiseExecutable(home: string): string {
+  const configured = process.env.ARCADIA_MISE_BIN?.trim();
+  if (configured) return path.resolve(configured);
+
+  const candidates = process.arch === "arm64"
+    ? ["/opt/homebrew/bin/mise", "/usr/local/bin/mise", path.join(home, ".local", "bin", "mise")]
+    : ["/usr/local/bin/mise", "/opt/homebrew/bin/mise", path.join(home, ".local", "bin", "mise")];
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
+}
+
+function serviceExecutablePath(miseBin: string): string {
   return [...new Set([
-    path.dirname(process.execPath),
+    path.dirname(miseBin),
     "/opt/homebrew/bin",
     "/usr/local/bin",
     path.join(homedir(), "Library", "pnpm", "bin"),
