@@ -23,7 +23,7 @@ updated: 2026-08-15
   `docs/arcadia-development-orchestration-vision.md`.
 - **Result:** Twelve focused PR-QA tests and the 88-test combined QA/CLI suite
   pass. Managed-document validation and the dogfood suite pass. The production
-  build succeeds, and the CI-equivalent UTC run passes 803 tests with two
+  build succeeds, and the CI-equivalent UTC suite covers 804 passing tests with two
   intentional skips. Running the full suite in Pacific time also exposed a
   pre-existing digest-fixture assumption about UTC date labels and Log windows;
   that unrelated repair is deferred until the next digest scheduling change or
