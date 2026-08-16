@@ -149,8 +149,10 @@ import {
 } from "./commands/review.js";
 import {
   renderQaListSuccess,
+  renderQaPrReviewSuccess,
   renderQaRecordSuccess,
   runQaListCommand,
+  runQaPrReviewCommand,
   runQaRecordCommand
 } from "./commands/qa.js";
 import {
@@ -2087,6 +2089,27 @@ export function buildProgram(): Command {
       options,
       () => runQaRecordCommand({ workspace: options.workspace, candidateId, decision: options.decision, note: options.note }),
       renderQaRecordSuccess
+    )
+  );
+  addJsonOption(
+    qa
+      .command("pr")
+      .description("Run independent read-only QA against one immutable GitHub pull-request revision")
+      .argument("<pull-request-url>", "Full GitHub pull-request URL")
+      .option("--reviewer <profile>", "Configured read-only coding-agent profile")
+      .option("--rerun", "Run a new review even when this exact revision already has receipts")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((pullRequest: string, options: { workspace: string; reviewer?: string; rerun?: boolean; json?: boolean }) =>
+    runCliAction(
+      "qa.pr",
+      options,
+      () => runQaPrReviewCommand({
+        workspace: options.workspace,
+        pullRequest,
+        reviewerProfile: options.reviewer,
+        rerun: options.rerun
+      }),
+      renderQaPrReviewSuccess
     )
   );
 

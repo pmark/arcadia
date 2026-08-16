@@ -54,6 +54,95 @@ updated: 2026-08-15
   miss or the portfolio-disconnection pain becomes the dominant constraint.
 - **Blockers:** None in planning. Implementation remains intentionally
   undispatched; activating either plan is a separate priority choice.
+## 2026-08-15 — Removed avoidable model calls from pull-request QA
+
+- **Did:** Merged the independently approved minimal PR-QA Candidate in PR #55,
+  then completed Decision 0019's streamlining slice. `arcadia qa pr` now refuses
+  draft, unchecked, pending, non-successful, conflicting, dirty, or blocked
+  Candidates before patch retrieval, reviewer selection, sandbox preflight,
+  model invocation, Artifact creation, or Decision creation. It revalidates the
+  full mutable evidence snapshot immediately before the model call and skips
+  judgment if the snapshot moved. The CLI workspace-precedence regression now
+  runs from a unique temporary directory instead of assuming the repository
+  root cannot contain the dogfood `.arcadia-workspace`. Captured the durable
+  Arcadia-led development vision and evidence-triggered increments in
+  `docs/arcadia-development-orchestration-vision.md`.
+- **Result:** Twelve focused PR-QA tests and the 88-test combined QA/CLI suite
+  pass. Managed-document validation and the dogfood suite pass. The production
+  build succeeds, and the CI-equivalent UTC suite covers 804 passing tests with two
+  intentional skips. Running the full suite in Pacific time also exposed a
+  pre-existing digest-fixture assumption about UTC date labels and Log windows;
+  that unrelated repair is deferred until the next digest scheduling change or
+  a non-UTC CI lane is introduced.
+- **Next:** Publish and independently QA this exact Candidate, then resume
+  `build-demo-hero-vertical-slice` for Private Practice Now.
+- **Blockers:** None. Automatic invocation and notifications, richer proof,
+  managed QA Runs, GitHub posting, patch staging, token telemetry, automatic
+  repair, and consequential transitions remain deferred under Decision 0019's
+  observable triggers and existing approval boundaries.
+
+## 2026-08-15 — Arcadia QA independently reviewed its first real pull request
+
+- **Did:** Implemented `arcadia qa pr <github-pr-url>`. The command resolves a
+  configured Project, pins the initial head SHA, captures the PR body, changed
+  files, complete patch, merge state, and every GitHub check, selects the
+  least-cost compliant read-only reviewer through Arcadia's provider adapters,
+  requires a strict structured verdict, revalidates the SHA, and persists a QA
+  report Artifact plus a revision-bound Decision. Added deterministic fixtures
+  for contradictory evidence, Pass gating, and same-revision receipt reuse.
+- **Result:** Dogfooding against Arcadia PR #54 at `82b50cf` produced Needs
+  follow-up, Artifact `art_3b368492148c4f639c`, and Decision `R44`. The report
+  found the planning scope and approval boundaries coherent but refused Pass
+  because the duplicate `fast` checks conflict and current database-backed
+  validation remains incompletely evidenced. Repeating the command returned
+  the same hardened receipts in 1.1 seconds without another model call. The
+  first implementation Candidate then correctly failed its own review on PR
+  #55 instead of being promoted: that failure drove an evidence-only sandbox
+  that denies home and network access, exact-SHA patch retrieval, complete
+  evidence revalidation, and SHA-verified reusable receipts. The second
+  Candidate also correctly failed: its structurally shallow verdict validation
+  and unconstrained criterion coverage could still admit an unsupported Pass.
+  The resulting contract now proves its sandbox at runtime, validates every
+  nested verdict field, and requires exactly one result for each of seven fixed
+  review criteria before Pass is possible. The third Candidate found one more
+  fail-open path: a coordinated edit could alter both cached receipt data and
+  its colocated hashes. The cache now contains no verdict data; reuse rebuilds
+  the result from the independent Decision context and cross-checks its
+  Artifact, status, source, fingerprint, paths, and hashes before trusting it.
+  The fourth Candidate exposed ambiguity in a failed network probe: ordinary
+  connectivity failure could look like sandbox denial. The preflight now first
+  proves that exact auth, Git control, and GitHub network controls are readable
+  by the host, then requires the configured sandbox to deny those same controls
+  while reading evidence; either baseline or sandbox mismatch fails closed. The
+  fifth Candidate passed every substantive criterion but required direct test
+  evidence for the host-baseline failure branch, which now proves that neither
+  the sandbox nor reviewer runs and the observed baseline failure is preserved.
+- **Next:** Resume `build-demo-hero-vertical-slice`. For PR #54, resolve the
+  pull-request-event workspace isolation failure, then explicitly rerun QA on
+  the unchanged revision or let a repaired revision receive a fresh automatic
+  identity.
+- **Blockers:** None in minimal PR QA. Dashboard/Discord delivery, local test
+  reruns, browser proof, repair, GitHub posting, managed Run integration, and
+  release automation remain deferred under Decision 0018's evidence triggers.
+
+## 2026-08-15 — Promoted minimal independent PR QA from expectation to current work
+
+- **Did:** Recorded the operator's explicit decision to build critical Arcadia
+  capabilities when Private Practice Now naturally needs them. Added approved
+  Decision 0018, split the immediately useful pull-request review path from the
+  later browser- and release-oriented Arcadia QA program, and moved the active
+  pointer to `establish-minimal-pr-qa`.
+- **Result:** The current Action now requires one CLI command that freezes a PR
+  revision, gathers deterministic GitHub evidence, runs a separate read-only
+  structured review, and persists a QA report Artifact and revision-bound
+  Decision. Arcadia PR #54 is the first real Candidate. Dashboard, Discord,
+  repair, release, merge, browser proof, and managed Run integration remain
+  deferred against concrete evidence triggers.
+- **Next:** Implement and dogfood `arcadia qa pr` against PR #54, which must
+  report the contradictory push and pull-request CI results without claiming
+  Pass.
+- **Blockers:** None. The operator explicitly reprioritized this Action; the
+  demo hero resumes after it is accepted.
 
 ## 2026-08-08 — Digests now compose and post themselves, for every Project
 

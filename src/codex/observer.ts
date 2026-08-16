@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { withSqliteNativeAddonPreflight } from "../db/nativeAddon.js";
 import type { ObservedCodexTaskInput } from "../domain/types.js";
 
 export interface CodexObservationOptions {
@@ -72,7 +73,7 @@ function observeLocalGoals(codexHome = process.env.ARCADIA_CODEX_HOME ?? process
     return [];
   }
 
-  const db = new Database(goalsPath, { readonly: true, fileMustExist: true });
+  const db = withSqliteNativeAddonPreflight(() => new Database(goalsPath, { readonly: true, fileMustExist: true }));
   try {
     if (existsSync(statePath)) {
       db.exec(`ATTACH DATABASE '${statePath.replaceAll("'", "''")}' AS codex_state`);

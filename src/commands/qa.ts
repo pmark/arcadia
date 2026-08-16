@@ -7,6 +7,13 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import { createReviewItem, getProjectBySlug, updateReviewItemStatus } from "../db/repositories.js";
 import type { ReviewItemSummary } from "../domain/types.js";
+export {
+  renderQaPrReviewSuccess,
+  runQaPrReviewCommand,
+  type QaPrReviewCommandData,
+  type QaPrReviewOptions,
+  type QaPrReviewDependencies
+} from "../qa/prReview.js";
 
 export type QaDecision = "pass" | "fail" | "needs-follow-up";
 
