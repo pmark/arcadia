@@ -55,6 +55,29 @@ Pull-request QA never runs commands copied from PR prose, edits the Candidate,
 posts to GitHub, approves release, merges, deploys, or repairs a finding. It is
 evidence for the operator's Decision, not that Decision's external effect.
 
+## The four queues
+
+Every item Arcadia tracks sits in exactly one queue, and the queue says who
+owes the next move:
+
+| Queue | Meaning |
+| --- | --- |
+| **Inbox** | Captured but not yet classified. Nothing acts on it until it leaves. |
+| **Work Queue** | Classified and ready to be worked, by Arcadia or a coding agent. |
+| **Requires Review** | Waiting on the operator to act, approve, or decide. A coding agent must not advance it. |
+| **Blocked** | Waiting on an outside party or an external state change. |
+
+```sh
+pnpm arcadia queue --workspace "$WORKSPACE"
+```
+
+An Action's Responsibility answers the same question from the other side —
+Autonomous, Codex, Requires Review, Blocked. The two vocabularies share
+**Requires Review** and **Blocked** and mean the same thing there. They differ
+at the front: a queue distinguishes unclassified (Inbox) from ready (Work
+Queue), while Responsibility distinguishes who works a ready item (Autonomous
+or Codex).
+
 ## Normal daily use
 
 1. Read **Today's Advantage**: one ready Action, its expected Artifact, and why it matters now.
