@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { CommanderError } from "commander";
+import { isSqliteNativeAddonAbiError } from "../db/nativeAddon.js";
 
 export type ArcadiaErrorCode =
   | "USAGE_ERROR"
@@ -13,6 +14,7 @@ export type ArcadiaErrorCode =
   | "EXECUTION_PLAN_NOT_FOUND"
   | "EXECUTION_RUN_NOT_FOUND"
   | "SQLITE_ERROR"
+  | "SQLITE_NATIVE_ABI_MISMATCH"
   | "ORIENTATION_ENTRY_NOT_FOUND"
   | "ORIENTATION_PACKET_ALREADY_SENT"
   | "ORIENTATION_REPLY_AMBIGUOUS"
@@ -160,6 +162,14 @@ export function normalizeError(error: unknown): ArcadiaError {
   }
 
   if (error instanceof Error) {
+    if (isSqliteNativeAddonAbiError(error)) {
+      return new ArcadiaError("SQLITE_NATIVE_ABI_MISMATCH", error.message, 1, {
+        runtimeAbi: error.runtimeAbi,
+        addonAbi: error.addonAbi,
+        remediation: error.remediation
+      });
+    }
+
     if (isSqliteError(error)) {
       return new ArcadiaError("SQLITE_ERROR", "SQLite operation failed.", 1, {
         cause: error.message
