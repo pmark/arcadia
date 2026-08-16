@@ -8,6 +8,28 @@ updated: 2026-08-16
 
 # Mission Log: Arcadia
 
+## 2026-08-16 — Made the recurring Node ABI mismatch self-healing
+
+- **Did:** Operator hit `SQLITE_NATIVE_ABI_MISMATCH` again running
+  `pnpm arcadia docs sync --apply` right after merging #71, against Homebrew's
+  node 25.6.1 rather than the mise-pinned 22.23.1 -- the same class of failure
+  a freshly created worktree hit earlier the same session, fixed there only by
+  a manual `mise install && mise exec -- pnpm rebuild better-sqlite3`. Asked
+  how to avoid it forever rather than re-running the documented manual fix
+  each time. Diagnosed that this machine has Homebrew node, nvm, and volta all
+  coexisting on `PATH`, so which `node` a plain `pnpm arcadia` resolves to is
+  not reliable. Not a plan Action -- ad hoc operator-directed infrastructure
+  work.
+- **Result:** `postinstall` now runs `mise exec -- pnpm rebuild better-sqlite3`
+  after every `pnpm install`, and the `arcadia` package.json script runs under
+  `mise exec --`, so `pnpm arcadia ...` always executes with the pinned Node
+  regardless of ambient shell `PATH` state. Verified by forcing Homebrew's
+  node to the front of `PATH` and confirming `pnpm arcadia way` still ran
+  clean. #72.
+- **Next:** `stop-duplicating-a-canonical-protocol-on-adopter-zero`, unchanged
+  by this fix.
+- **Blockers:** None.
+
 ## 2026-08-16 — A read-only way to tell whether a project is stale on the Way
 
 - **Did:** Completed `report-way-drift`. Added `arcadia way`, a noun command
