@@ -3,8 +3,9 @@ arcadia: v1
 type: plan
 slug: arcadia-way-propagation
 project: arcadia
-status: draft
+status: active
 milestone: No Arcadia project is silently stale on the Way, and no project's governance changes without review
+current_action: give-arcadia-its-own-context-files
 token_impact: medium
 token_budget: "Drift detection and file generation are deterministic — no model call belongs in either. Reserve model use for one implementation session per Action and a single review pass; a propagation run that calls a model per repository is the failure mode this budget exists to prevent."
 updated: 2026-08-16
@@ -69,6 +70,16 @@ decisions: []
 ---
 
 # Arcadia Way propagation
+
+## What this plan displaced
+
+Dispatch moved here from `demo-first-delivery` on operator direction,
+2026-08-16. Exactly one Action may be current across the project, so that plan's
+`current_action` was removed rather than left to be reported as a competing
+objective. It stays `status: active` with every Action intact, so resuming it is
+a pointer change and nothing else: set `active_plan: demo-first-delivery` in
+`PROJECT.md` and restore `current_action: build-demo-hero-vertical-slice` to its
+frontmatter. That Action is `open`, exactly as it was left.
 
 ## Why this plan exists
 

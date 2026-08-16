@@ -28,11 +28,16 @@ updated: 2026-08-16
   effort the next batch needs. Adopter zero immediately earned its keep — the
   shared region tells agents to read three `.arcadia/` context files Arcadia does
   not have.
-- **Next:** `docs/plans/arcadia-way-propagation.md` is drafted with three
-  Actions: give Arcadia its own context files, report Way drift without writing,
-  and propagate Way changes as pull requests rather than merges. It is `draft`,
-  not `active` — activating it moves dispatch off `demo-first-delivery`, which is
-  the operator's call.
+- **Next:** `docs/plans/arcadia-way-propagation.md` carries three Actions: give
+  Arcadia its own context files, report Way drift without writing, and propagate
+  Way changes as pull requests rather than merges. Activated on operator
+  direction the same day: `active_plan` is now `arcadia-way-propagation` and
+  `current_action` is `give-arcadia-its-own-context-files`.
+  `demo-first-delivery` stays `active` with every Action intact, but its
+  `current_action` was removed, since exactly one Action may be current across
+  the project and a second declaration is reported as a competing objective.
+  Resuming it is a pointer change: restore
+  `current_action: build-demo-hero-vertical-slice`, which is still `open`.
 - **Blockers:** `open-way-sync-pull-requests` is `question_open` on
   `propagation-authority`: which tiers of Way change may propagate automatically,
   and whether Arcadia's CI gets push access to every project repository. Settled
