@@ -53,10 +53,19 @@ noun command reads state and never mutates it.
 ## A current Action is executable only when
 
 - it exists exactly once in the active plan;
+- its status is anything but `done`;
 - its clarification is `clarified`;
 - its responsibility is `autonomous` or `codex`;
 - its `next_action` begins with a concrete verb; and
 - its acceptance criteria define observable completion.
+
+**`open` is executable.** An Action does not have to be `in_progress` to be
+picked up, and dispatch does not require it — `src/docs/dispatch.ts` refuses
+only `done`. This is stated because a repository's local protocol once required
+`in_progress`, which no check enforced, and read strictly it made every
+freshly-selected Action unexecutable. Two coding agents independently stopped on
+that ambiguity rather than guess, which is the right instinct and a cost worth
+not paying twice.
 
 If any condition fails, **repairing the control documents is the immediate
 work** — not an obstacle to it. Do not route around a refusal by editing the
