@@ -7,7 +7,7 @@ project: arcadia
 status: open
 question: Which durable principles and operating practices should Arcadia adopt so coding-agent work compounds into faster, safer, more values-aligned production without turning the Constitution into an implementation manual?
 gap_type: missing-decision
-recommendation: Keep the Constitution small and add only seven cross-project invariants covering attention, evidence, truthful completion, reversible autonomy, learning from failure, purpose traceability, and authoritative state; place Session receipts, interruption packets, proof maps, resource isolation, leverage proposals, and outcome feedback in the Arcadia Way with explicit activation triggers.
+recommendation: Adopt a constitutional admission test, then apply one exact replacement of `CONSTITUTION.md` that groups its statements by kind, promotes the approval boundary it is currently missing, absorbs five durable invariants, and folds or relocates five product specifics — net 15 bullets to 13. Everything else in this Decision is Arcadia Way practice, adopted on approval and revisable without constitutional change.
 confidence: high
 updated: 2026-08-15
 ---
@@ -45,8 +45,6 @@ plane around agents, not another coding-agent transcript store.
 - Convert recurring friction into deterministic portfolio leverage.
 - Preserve one authoritative home for each fact across Discord, Dashboard,
   CLI, agent, Git, managed documents, and workspace projections.
-- Keep Actions traceable to the Mission, intended human Outcome, and stated
-  values that make a Project worth doing.
 - Let operating practice evolve from evidence without continually enlarging
   the Constitution.
 
@@ -54,15 +52,12 @@ plane around agents, not another coding-agent transcript store.
 
 The current Constitution already establishes the essential direction:
 deterministic progress, usefulness under severe time pressure, 80/20
-sequencing, triggered deferral, direct usable output, approval boundaries, and
-token economy. The execution policy adds capability, independence, and
-least-cost selection. Decisions 0012 through 0014 propose thin Session
-linkage, operator briefings, and durable tappable questions. Decision 0019 and
-the Arcadia-led development vision bind QA to exact Candidates and put
-deterministic readiness before independent model judgment.
-
-The missing piece is not another subsystem. It is a small set of durable rules
-that make those mechanisms reinforce one another.
+sequencing, triggered deferral, direct usable output, and token economy. The
+execution policy adds capability, independence, and least-cost selection.
+Decisions 0012 through 0014 propose thin Session linkage, operator briefings,
+and durable tappable questions. Decision 0019 and the Arcadia-led development
+vision bind QA to exact Candidates and put deterministic readiness before
+independent model judgment.
 
 Two recent QA increments provide concrete evidence. The first real Arcadia QA
 Run exposed repeatable trust failures; the next increment converted them into
@@ -70,17 +65,38 @@ readiness checks, isolated test state, and one-pass instructions. That is the
 kind of learning loop Arcadia should make normal. The same work also showed
 the danger of promoting implementation details too early: agent model
 selection, Session persistence, Discord delivery, and proof manifests each
-have unresolved or explicitly deferred mechanics. They belong in the Arcadia
-Way until real use stabilizes them.
+have unresolved or explicitly deferred mechanics.
+
+Three further observations shaped this revision.
+
+**The Constitution is not enforced by anything.** No code reads
+`CONSTITUTION.md`. It appears in prose in five files and as one `references:`
+entry on the `govern-release-and-delivery` Action. Every line is therefore
+context-window cost paid on every session and honoured only by agent goodwill.
+That is the strongest available argument for brevity, and it means growth is a
+real cost rather than a stylistic preference.
+
+**The Constitution is missing its most important rule.** Approval boundaries —
+the constraint that outranks everything else in practice — appear only in
+`AGENTS.md` and `CLAUDE.md` prose. A document that omits the hard stop while
+specifying which queues exist has its priorities inverted.
+
+**The Constitution mixes four kinds of statement without saying so.** Purpose,
+authority, truth, and economy are interleaved as flat bullets, which is why
+product specifics like the queue names were able to settle there unnoticed.
+
+The missing piece is not another subsystem. It is a small set of durable rules,
+grouped by kind, that make the existing mechanisms reinforce one another.
 
 ## Decision proposed
 
-### 1. Keep a constitutional admission test
+### 1. Adopt a constitutional admission test
 
 A rule belongs in the Constitution only when it is:
 
 1. durable across Projects, providers, interfaces, and current architecture;
-2. supported by two observed incidents or one high-severity trust failure;
+2. supported by two observed incidents, one high-severity trust failure, or an
+   approval boundary that already binds in practice;
 3. enforceable through evidence, review, or an explicit approval boundary; and
 4. shorter and more stable than the operating mechanism that currently
    implements it.
@@ -89,131 +105,141 @@ Other guidance begins in the Arcadia Way. A mechanism may be promoted after
 dogfooding proves the invariant; it must not be constitutionalized merely
 because one implementation presently depends on it.
 
-### 2. Proposed constitutional redline
+The reverse also holds, and is the harder discipline: a line already in the
+Constitution that fails this test should be relocated to the document that
+actually owns it, not left in place because removing it feels risky.
 
-If this Decision is approved, add these seven bullets to `CONSTITUTION.md`
-without otherwise restructuring it:
+### 2. Apply this exact replacement of `CONSTITUTION.md`
 
-> - Operator attention is a first-class budget. Interrupt only when human
->   judgment or authority can change what may safely happen next.
-> - Evidence precedes judgment. Run deterministic readiness and proof before
->   spending model inference or human attention.
-> - Completion is a proven state, not an agent claim: the required Artifact
->   and acceptance evidence must agree with the work actually produced.
-> - Reversibility earns autonomy; capability never grants authority.
->   Previewable, idempotent, recoverable work may advance farther
->   autonomously, but approval boundaries remain intact.
+If this Decision is approved, replace the file's body with the following. This
+is a replacement, not an addition: net 15 bullets to 13.
+
+> ```markdown
+> # Arcadia Constitution
+>
+> ## Purpose
+>
+> - Arcadia manages ongoing creative and software work with minimal cognitive
+>   overhead, and must stay useful when the operator has almost no time.
+> - Arcadia optimizes for deterministic progress, not cleverness.
+>
+> ## Authority
+>
+> - Approval boundaries are hard stops. Do not merge, deploy, publish, delete,
+>   spend, use credentials, access production, or send messages without an
+>   explicit Decision. Capability never grants authority.
+> - Reversibility earns autonomy. Previewable, idempotent, recoverable work may
+>   advance farther on its own; the boundaries above do not move.
+> - Operator attention is a budget. Interrupt only when human judgment or
+>   authority can change what may safely happen next.
+>
+> ## Truth
+>
+> - Checked-in documentation is authoritative. Each fact has one authoritative
+>   home; every other surface is a projection, never a competing truth store.
+> - Completion is a proven state, not a claim. The required Artifact and its
+>   acceptance evidence must agree with the work actually produced.
+>
+> ## Economy
+>
+> - Spend in ascending order: deterministic scripts, then local models, then
+>   frontier models, then the operator.
+> - Deterministic compute and model inference are separate budgets; every
+>   managed plan states its relative token impact and how model use is bounded.
+> - Find the 20% that carries the 80%, do that first, and avoid over-engineering.
+> - If not now, then when? A deferral must name the condition that revives it.
+> - Make it real: shape work into the most direct honest form a person or system
+>   can use, without crossing an approval boundary.
 > - Every preventable failure leaves leverage. Convert repeated or serious
->   friction into a test, guard, orientation note, reusable tool, or triggered
->   Action so the operator does not have to remember the lesson.
-> - Optimize Actions for their Project's Mission, intended human Outcome, and
->   stated values rather than task completion alone; surface material value
->   conflicts or possible harms as Decisions.
-> - Each fact has one authoritative home. Discord, dashboards, CLIs, and
->   coding agents are projections or interaction surfaces, never competing
->   truth stores.
+>   friction into a test, guard, orientation note, or triggered Action.
+> ```
 
 The redline intentionally says nothing about a particular model, agent
 provider, queue, database table, notification service, or UI.
 
-### 3. Add an attention and interruption contract to the Arcadia Way
+### 2a. What this replacement removes, and where each removal lands
 
-An operator interruption must contain:
+Approval of this Decision authorizes these relocations in the same change. A
+removal without a landing place is data loss, not streamlining.
 
-- the current Milestone and why attention is needed now;
-- the exact Candidate or state under consideration;
-- the smallest relevant evidence set;
-- the recommended Decision;
-- every offered option's immediate consequence; and
-- the default, expiry, or blocking result if the operator does nothing.
+| Removed line | Disposition |
+| --- | --- |
+| "maintains Inbox, Work Queue, and Requires Review queues" | Removed. This vocabulary appears in **no other document** — it must be added to `START_HERE.md` in the same change or it is lost. |
+| "distinguishes Autonomous, Codex, Requires Review, and Blocked work" | Removed, no migration needed. Already canonical in `docs/arcadia-semantics.md` and enforced as `responsibility` in `src/docs/parse.ts`. |
+| "SQLite is the operational source of truth" / "Markdown stores narrative artifacts" / "Git preserves history" | Generalized into the one-authoritative-home line. The concrete mapping must be added to `docs/AGENT_ORIENTATION.md` in the same change. |
+| "Use local scripts before AI" / "Use local AI before frontier models" | Folded into the ascending-order spend line, which adds the operator as the final and most expensive tier. |
+| "Avoid over-engineering" | Folded into the 80/20 line. |
 
-Batch non-urgent attention. Interrupt immediately only for an expiring
-opportunity, a safety or authority boundary, irreversible risk, or ambiguity
-that prevents honest progress. The common path should expose one safe action
-that advances state after its named preconditions are satisfied.
+### 2b. Invariants considered and not adopted
 
-This is a presentation contract over governed state, not a separate queue or
-truth store. Decision 0014 remains the schema Decision for tappable options.
+- **"Evidence precedes judgment."** Durable and well-evidenced, but it is the
+  ascending-order spend line stated twice. Adopted by merger, not as its own
+  bullet.
+- **"Optimize Actions for Mission, intended human Outcome, and stated values;
+  surface material value conflicts or possible harms as Decisions."**
+  Withdrawn from the redline. No observed incident supports it, it has no
+  enforcement path, and its practical effect on a coding agent is to license
+  editorializing on ordinary work. Values belong in `OPERATOR_CONTEXT.md`,
+  which already owns them. Reactivation trigger below.
 
-### 4. Require a thin receipt for delegated work
+## Arcadia Way practice adopted on approval
 
-Every Arcadia-dispatched unit of coding-agent work must eventually leave a
-receipt that identifies:
+These are operating practice, not constitutional text. They may be revised
+from evidence without a further constitutional Decision, and none of them
+changes what a coding agent is authorized to do.
 
-- the Project, Action, agent, execution profile, branch, worktree, and prepared
-  time;
-- the agent's own stable session or task pointer when one exists;
-- the terminal status and exact Candidate produced; and
-- resulting Artifacts, Decisions, Log entry, and pull request.
+**Attention and interruption contract.** An operator interruption states the
+current Milestone and why attention is needed now, the exact Candidate or state
+under consideration, the smallest relevant evidence set, the recommended
+Decision, each option's immediate consequence, and the default or blocking
+result if the operator does nothing. Batch non-urgent attention. Interrupt
+immediately only for an expiring opportunity, a safety or authority boundary,
+irreversible risk, or ambiguity that prevents honest progress. This is a
+presentation contract over governed state, not a new queue or truth store;
+Decision 0014 remains the schema Decision for tappable options.
 
-Arcadia stores linkage and outcomes, not mirrored transcripts or speculative
-progress. Decision 0012 remains the authority for whether this receipt is
-implemented as the proposed Session primitive.
+**Thin receipt for delegated work.** Every Arcadia-dispatched unit of
+coding-agent work eventually leaves a receipt identifying the Project, Action,
+agent, execution profile, branch, worktree, and prepared time; the agent's own
+stable session pointer when one exists; the terminal status and exact Candidate
+produced; and the resulting Artifacts, Decisions, Log entry, and pull request.
+Arcadia stores linkage and outcomes, never mirrored transcripts. Decision 0012
+remains the authority for whether this is the proposed Session primitive.
 
-### 5. Make claims point to proof
+**Claims point to proof.** For a material Candidate, QA maps each acceptance
+claim to deterministic evidence, an operator procedure with an observable
+result, independent judgment, or an explicit statement that the claim was not
+verified. No universal manifest is required; Decision 0019's existing trigger
+governs implementation.
 
-For a material Candidate, QA should map each acceptance claim to one of:
+**Mutable resources declared before parallel work.** Parallel agent work is
+permitted only when its mutable resources are isolated or intentionally
+serialized — branches, worktrees, workspace markers, databases, ports,
+credentials, deployment targets, and generated files that may be shared even
+when source branches are separate. One sentence in an Action or dispatch
+receipt suffices. Common resources proven safe by tests may be omitted later.
 
-- deterministic evidence;
-- an operator procedure and observable result;
-- independent judgment; or
-- an explicit statement that the claim was not verified.
-
-No universal manifest is required yet. Decision 0019's existing trigger still
-governs implementation: reactivate a structured claim-to-proof Artifact when
-a second real Candidate makes a material behavioral claim that green CI cannot
-substantiate.
-
-### 6. Declare mutable resources before parallel work
-
-Parallel agent work is permitted only when its mutable resources are isolated
-or intentionally serialized. Planning must account for branches, worktrees,
-workspace markers, databases, ports, credentials, deployment targets, and
-generated files that may be shared even when source branches are separate.
-
-The declaration may be one sentence in an Action or dispatch receipt. It is
-not a new top-level Arcadia concept. Common resources proven safe by tests may
-be omitted from later declarations.
-
-### 7. Let agents propose leverage without silently expanding scope
-
-When friction repeats twice, or one high-severity trust failure occurs, a
-coding agent may propose an **Artifact** containing:
-
-- the observed friction and evidence;
-- the smallest deterministic guard, script, skill, fixture, cache, index, or
-  orientation improvement that would prevent recurrence;
-- expected recurring savings or risk reduction; and
-- the Action boundary or observable trigger for doing it.
-
-The proposal does not preempt the current Outcome, grant implementation
-authority, or excuse the current Candidate from validation. If the improvement
-is tiny, directly in scope, and required by acceptance criteria, it may ship
-with the current Action; otherwise Arcadia captures it as a triggered Action.
-
-### 8. Add proportional outcome and purpose feedback
-
-Before a Project's first public release, or before work with material human
-impact, preserve a lightweight purpose Artifact stating:
-
-- who should benefit;
-- what change in reality is intended;
-- non-negotiable values;
-- unacceptable harms; and
-- one observable signal that would show whether the Outcome is occurring.
-
-Post-transition verification should record that signal when practical. This
-is not a universal ethics bureaucracy and does not require a new schema type.
-It is an Artifact used when shipping or consequential work makes task-level
-acceptance insufficient.
+**Leverage proposals, capped.** When friction repeats twice, or one
+high-severity trust failure occurs, a coding agent may propose **at most one
+Artifact per Action** stating the observed friction and evidence, the smallest
+deterministic guard, script, skill, fixture, or orientation improvement that
+would prevent recurrence, the expected recurring saving, and the observable
+trigger for doing it. The cap is the point: an uncapped proposal obligation
+turns every session into a backlog generator, which is the tail-gold-plating
+`AGENTS.md` forbids. The proposal does not preempt the current Outcome, grant
+implementation authority, or excuse the current Candidate from validation. If
+the improvement is tiny, directly in scope, and required by acceptance
+criteria, it may ship with the current Action; otherwise it is captured as a
+triggered Action.
 
 ## 80/20 adoption sequence
 
 ### Do first after approval
 
-1. Apply only the seven-line constitutional redline.
-2. Add the interruption contract and failure-to-leverage threshold to the
-   agent continuation guidance.
+1. Apply the exact replacement in §2, together with the three relocations in
+   §2a, as one change.
+2. Add the interruption contract and the capped failure-to-leverage threshold
+   to the agent continuation guidance.
 3. When Decision 0012 is resolved, dogfood one thin delegated-work receipt
    before building queueing, transcript views, or orchestration analytics.
 
@@ -221,10 +247,11 @@ acceptance insufficient.
 
 | Increment | Reactivate when |
 | --- | --- |
-| Structured claim-to-proof Artifact | Decision 0019's existing second-unsubstantiated-Candidate trigger fires. |
+| Mission-and-values constitutional line | An Action ships a material human-impact harm that `OPERATOR_CONTEXT.md` did not prevent, or a second such near-miss is recorded. |
 | Purpose Artifact template or UI | The next Project approaches its first public release or an Action presents material human-impact risk. |
+| Structured claim-to-proof Artifact | Decision 0019's existing second-unsubstantiated-Candidate trigger fires. |
 | Cross-Project capability extraction | The same successful script, skill, or guard is independently useful in two Projects. |
-| Multi-agent deliberation | A C3 or C4 Action has a material unresolved disagreement after independent evidence review. |
+| Multi-agent deliberation | Two agents reach different conclusions on the same governed Artifact, at any capability level. |
 | Session analytics or duration estimates | Thin receipts exist for enough real dispatches that the result would change selection or planning. |
 | Automated constitutional linting | Two accepted rules are violated in ways a deterministic repository check could have prevented. |
 
@@ -233,8 +260,10 @@ credentials, production access, or other consequential authority.
 
 ## Consequences
 
-- The Constitution gains seven stable behavioral invariants rather than a
-  catalog of current product mechanisms.
+- The Constitution gets shorter while gaining the approval boundary it was
+  missing, and its four kinds of statement become visible.
+- Three product specifics move to the documents that own them, which means the
+  relocations in §2a are load-bearing work, not cleanup.
 - Agent and operator attention are spent after deterministic evidence has done
   the cheap work.
 - Repeated failure can improve every later Project instead of remaining local
@@ -242,17 +271,14 @@ credentials, production access, or other consequential authority.
 - Session receipts, once separately approved, can power portfolio timelines,
   Arcadia Now, notifications, recovery, and throughput views without storing
   transcripts.
-- Claim-to-proof links can become QA plans, release evidence, and customer
-  trust material as byproducts of the same work.
-- Purpose feedback gives values-driven Projects a way to detect when shipping
-  velocity is no longer producing the human result that justified the work.
-- The admission test creates a pressure-release valve: useful practices can be
-  tried and revised without constitutional churn.
+- The admission test creates a pressure-release valve in both directions:
+  practices can be tried without constitutional churn, and stale constitutional
+  lines have a defined exit.
 
 ## What this Decision does not authorize
 
 - It does not edit `CONSTITUTION.md`; approval of this Decision is the gate for
-  a separate exact redline.
+  the exact replacement in §2 and the relocations in §2a.
 - It does not approve Decisions 0012, 0013, or 0014 or choose their remaining
   implementation details.
 - It does not create a Session schema, notification queue, transcript store,
@@ -265,7 +291,30 @@ credentials, production access, or other consequential authority.
 
 ## Review test
 
-Approve this Decision only if each proposed constitutional line remains useful
+Approve this Decision only if each line of the §2 replacement remains useful
 when the current model vendors, UI surfaces, and persistence mechanisms are
-replaced. Move any line that fails that test into the Arcadia Way section
-instead. Reject any operating increment whose trigger cannot visibly fire.
+replaced, and only if each removal in §2a has a landing place you accept. Move
+any line that fails the first test into the Arcadia Way practice section.
+Reject any operating increment whose trigger cannot visibly fire.
+
+## Revision history
+
+The first draft of this Decision proposed adding seven bullets to
+`CONSTITUTION.md` without otherwise restructuring it, and bundled six
+independently-approvable operating amendments as numbered sub-decisions.
+
+Cross-agent review (Claude, 2026-08-15) found that the draft failed its own
+admission test: five of seven proposed bullets cited no observed incident,
+several were longer than any existing constitutional line, and adding without
+replacing grew the file from 15 bullets to 22 — 47% growth in a proposal whose
+thesis was restraint. The review also found that the approval boundary, the
+constraint that binds hardest in practice, was absent from the Constitution
+altogether and from the draft's redline.
+
+This revision narrows the redline to an exact replacement, promotes the
+approval boundary, withdraws the values bullet to a trigger, adds the removal
+ledger in §2a, caps leverage proposals, and demotes the remaining amendments to
+practice so the Decision can be approved or rejected in one act. The
+alternative — a competing Decision 0021 — was considered and rejected: two
+proposals on one subject would have doubled the operator attention required to
+settle it, which is the cost this Decision exists to reduce.
