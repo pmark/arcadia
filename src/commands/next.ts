@@ -188,6 +188,15 @@ export function renderNextSuccess(response: CommandSuccess<NextCommandData>): st
 
   lines.push("", `Authorization: ${context.authorization}`);
 
+  // The Constitution binds every action this brief dispatches, so it belongs
+  // beside the authorization line rather than behind a link the agent has to
+  // choose to follow. Printed whatever the outcome: repairing a blocker is
+  // agent work under the same constraints as implementing an action.
+  if (context.standingConstraints.length > 0) {
+    lines.push("", "Standing constraints (CONSTITUTION.md) — these bind this action:");
+    lines.push(...context.standingConstraints.map((line) => (line ? `  ${line}` : "")));
+  }
+
   if (blockers.length > 0) {
     lines.push("", "Blockers:", ...renderBlockers(blockers));
   }
