@@ -8,6 +8,33 @@ updated: 2026-08-15
 
 # Mission Log: Arcadia
 
+## 2026-08-15 — Removed avoidable model calls from pull-request QA
+
+- **Did:** Merged the independently approved minimal PR-QA Candidate in PR #55,
+  then completed Decision 0019's streamlining slice. `arcadia qa pr` now refuses
+  draft, unchecked, pending, non-successful, conflicting, dirty, or blocked
+  Candidates before patch retrieval, reviewer selection, sandbox preflight,
+  model invocation, Artifact creation, or Decision creation. It revalidates the
+  full mutable evidence snapshot immediately before the model call and skips
+  judgment if the snapshot moved. The CLI workspace-precedence regression now
+  runs from a unique temporary directory instead of assuming the repository
+  root cannot contain the dogfood `.arcadia-workspace`. Captured the durable
+  Arcadia-led development vision and evidence-triggered increments in
+  `docs/arcadia-development-orchestration-vision.md`.
+- **Result:** Twelve focused PR-QA tests and the 88-test combined QA/CLI suite
+  pass. Managed-document validation and the dogfood suite pass. The production
+  build succeeds, and the CI-equivalent UTC suite covers 804 passing tests with two
+  intentional skips. Running the full suite in Pacific time also exposed a
+  pre-existing digest-fixture assumption about UTC date labels and Log windows;
+  that unrelated repair is deferred until the next digest scheduling change or
+  a non-UTC CI lane is introduced.
+- **Next:** Publish and independently QA this exact Candidate, then resume
+  `build-demo-hero-vertical-slice` for Private Practice Now.
+- **Blockers:** None. Automatic invocation and notifications, richer proof,
+  managed QA Runs, GitHub posting, patch staging, token telemetry, automatic
+  repair, and consequential transitions remain deferred under Decision 0019's
+  observable triggers and existing approval boundaries.
+
 ## 2026-08-15 — Arcadia QA independently reviewed its first real pull request
 
 - **Did:** Implemented `arcadia qa pr <github-pr-url>`. The command resolves a

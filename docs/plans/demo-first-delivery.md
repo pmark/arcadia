@@ -114,6 +114,55 @@ actions:
       - docs/operator-demo-and-release-contract.md
       - START_HERE.md
     depends_on: [build-qa-queue-vertical-slice]
+  - id: streamline-minimal-pr-qa
+    title: Remove avoidable model calls and CI noise from pull-request QA
+    status: done
+    responsibility: codex
+    effort: short
+    next_action: Add a deterministic readiness refusal before any PR-QA reviewer work, isolate the workspace-resolution test from the repository-local dogfood workspace, and document the one-pass operator sequence and triggered deferrals.
+    expected_artifact: A tested zero-token not-ready path, a deterministic regression for the former CI race, and an authoritative Arcadia-orchestrated development vision with triggered follow-on Actions
+    clarification: clarified
+    confidence: high
+    source: Operator direction and the post-PR-55 QA process audit on 2026-08-15
+    acceptance_criteria:
+      - A draft pull request, absent checks, any pending or non-success check, conflicting duplicate checks, or a dirty or blocked merge state is refused before patch retrieval, reviewer selection, sandbox preflight, model invocation, QA Artifact creation, or QA Decision creation.
+      - The refusal is machine-readable, names every observed readiness blocker, states that no reviewer was invoked, and tells the operator to mark the pull request ready and wait for clean successful checks before retrying.
+      - A ready pull request with completed successful checks and an acceptable merge state follows the existing exact-revision independent review path unchanged.
+      - Mutable pull-request evidence is revalidated immediately before the model call; a changed snapshot skips the model and is preserved as Needs follow-up by the existing evidence-bound QA path.
+      - The CLI-response workspace-precedence test runs from an isolated temporary directory and cannot observe `.arcadia-workspace` created by another test file.
+      - START_HERE.md states the token-efficient sequence: finish the Candidate, publish its QA plan, mark it ready, await CI, then invoke Arcadia QA once; `--rerun` remains exceptional.
+      - Arcadia's checked-in Project documentation states the north-star development orchestration vision and records every excluded enhancement with an observable reactivation trigger.
+      - This Action does not add automatic invocation, notifications, browser proof, local validation reruns, GitHub posting, repair, merge, deployment, or release automation.
+    execution:
+      schema: arcadia.execution/v1
+      profile: systems_change
+      context:
+        scope: project
+        required:
+          - Existing minimal pull-request QA command and receipts
+          - GitHub pull-request readiness evidence
+          - Vitest workspace-resolution fixtures
+          - Arcadia managed documentation
+        staging: forbidden
+      phases:
+        implementation:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+        verification:
+          capability: c3_systems
+          effort: e3_deep
+          autonomy: bounded_write
+          data_locality: local_only
+    decisions: ["0019"]
+    references:
+      - src/qa/prReview.ts
+      - tests/qa-pr-review.test.ts
+      - tests/cli-response.test.ts
+      - START_HERE.md
+      - docs/arcadia-development-orchestration-vision.md
+    depends_on: [establish-minimal-pr-qa]
   - id: build-demo-hero-vertical-slice
     title: Put one reconciled demo-first hero and proof card on Project Detail
     status: open
@@ -487,7 +536,9 @@ separate is the point.
 
 ## Activation
 
-This plan is `draft` and intentionally does not replace `PROJECT.md`'s active
-`narrative-digests` plan. Activating it is a priority Decision. When activated,
-`build-demo-hero-vertical-slice` should be the current Action; it is the first
-usable proof and has no implementation dependency.
+This plan is active under Decision 0007. Decision 0018 inserted the completed
+minimal pull-request QA prerequisite when Private Practice Now made the missing
+responsibility urgent. Decision 0019 now inserts the short
+`streamline-minimal-pr-qa` Action to remove two proven repeat costs and preserve
+the Arcadia-led development north star. When it is complete, the pointer returns
+to `build-demo-hero-vertical-slice`, the first remaining usable proof.

@@ -244,6 +244,7 @@ export function runQaPrReviewCommand(
       state: pullRequest.state
     });
   }
+  assertPullRequestReadyForQa(pullRequest);
 
   const candidate = toCandidate(project, reference.repository, pullRequest);
   const evidenceFingerprint = fingerprintPullRequestEvidence(pullRequest);
@@ -315,7 +316,12 @@ export function runQaPrReviewCommand(
   writeFileSync(sandboxProofPath, `${sandboxProof.output}\n`, "utf8");
   const prompt = buildReviewPrompt(candidate, pullRequest, patchResult.stdout, sandboxProof);
   writeFileSync(promptPath, prompt, "utf8");
-  const reviewRun = sandboxProof.passed
+  const preReviewPullRequest = sandboxProof.passed
+    ? tryReadPullRequest(project.repositoryPath, reference.repository, reference.number, runCommand)
+    : pullRequest;
+  const preReviewFingerprint = preReviewPullRequest ? fingerprintPullRequestEvidence(preReviewPullRequest) : null;
+  const evidenceCurrentBeforeReview = preReviewFingerprint === evidenceFingerprint;
+  const reviewRun = sandboxProof.passed && evidenceCurrentBeforeReview
     ? runCommand({
         command: reviewer.profile.command,
         args: [
@@ -344,10 +350,12 @@ export function runQaPrReviewCommand(
         environment: buildQaReviewerEnvironment()
       })
     : {
-        status: sandboxProof.status,
+        status: sandboxProof.passed ? 1 : sandboxProof.status,
         stdout: "",
-        stderr: `Reviewer sandbox preflight failed: ${sandboxProof.output}`,
-        error: sandboxProof.error
+        stderr: sandboxProof.passed
+          ? "Pull-request evidence changed before reviewer invocation; no model was invoked."
+          : `Reviewer sandbox preflight failed: ${sandboxProof.output}`,
+        error: sandboxProof.passed ? "stale pull-request evidence" : sandboxProof.error
       };
   writeFileSync(
     executorOutputPath,
@@ -356,7 +364,9 @@ export function runQaPrReviewCommand(
   );
 
   const parsedModel = parseModelVerdict(reviewRun, modelOutputPath);
-  const latestPullRequest = tryReadPullRequest(project.repositoryPath, reference.repository, reference.number, runCommand);
+  const latestPullRequest = evidenceCurrentBeforeReview
+    ? tryReadPullRequest(project.repositoryPath, reference.repository, reference.number, runCommand)
+    : preReviewPullRequest;
   const latestFingerprint = latestPullRequest ? fingerprintPullRequestEvidence(latestPullRequest) : null;
   const deterministic = evaluateDeterministicEvidence(
     pullRequest,
@@ -464,6 +474,54 @@ function parsePullRequestReference(value: string): { repository: string; number:
     throw validationError("QA requires a full GitHub pull-request URL.", { value });
   }
   return { repository: `${match[1]}/${match[2]}`, number: Number(match[3]) };
+}
+
+function assertPullRequestReadyForQa(pullRequest: RawPullRequest): void {
+  const blockers: string[] = [];
+  if (pullRequest.isDraft) {
+    blockers.push("Pull request is still a draft.");
+  }
+
+  if (pullRequest.statusCheckRollup.length === 0) {
+    blockers.push("GitHub reported no validation checks.");
+  } else {
+    const grouped = new Map<string, RawPullRequest["statusCheckRollup"]>();
+    for (const check of pullRequest.statusCheckRollup) {
+      const group = grouped.get(check.name) ?? [];
+      group.push(check);
+      grouped.set(check.name, group);
+    }
+    for (const [name, group] of grouped) {
+      const completedConclusions = new Set(group
+        .filter((check) => check.status?.toUpperCase() === "COMPLETED" && check.conclusion)
+        .map((check) => check.conclusion!.toUpperCase()));
+      const evidence = group
+        .map((check) => check.conclusion?.trim() || check.status?.trim() || "unknown")
+        .join(", ");
+      if (completedConclusions.size > 1) {
+        blockers.push(`Duplicate ${name} checks conflict: ${evidence}.`);
+      } else if (group.some((check) => check.status?.toUpperCase() !== "COMPLETED" || !check.conclusion)) {
+        blockers.push(`${name} validation is pending: ${evidence}.`);
+      } else if (!group.every((check) => check.conclusion?.toUpperCase() === "SUCCESS")) {
+        blockers.push(`${name} validation did not succeed: ${evidence}.`);
+      }
+    }
+  }
+
+  if (["DIRTY", "BLOCKED"].includes(pullRequest.mergeStateStatus?.toUpperCase() ?? "")) {
+    blockers.push(`Merge state is ${pullRequest.mergeStateStatus}.`);
+  }
+
+  if (blockers.length > 0) {
+    throw validationError("Pull request is not ready for independent QA; no reviewer was invoked.", {
+      pullRequest: pullRequest.url,
+      headSha: pullRequest.headRefOid,
+      reviewerInvoked: false,
+      tokenImpact: "none",
+      blockers,
+      remedy: "Finish the Candidate, publish its QA plan, mark the pull request ready, and wait for clean successful checks before retrying."
+    });
+  }
 }
 
 function resolveConfiguredProject(
