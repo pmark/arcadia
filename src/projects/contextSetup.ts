@@ -19,6 +19,7 @@ export const ARCADIA_CONTEXT_DIR = ".arcadia";
 export const AGENT_CONTEXT_POLICY_FILE = "AGENT_CONTEXT_POLICY.md";
 export const REPO_CONTEXT_FILE = "repo-context.md";
 export const CONTEXT_POLICY_FILE = "context-policy.json";
+export const CONTINUATION_PROTOCOL_FILE = "docs/agent-continuation-protocol.md";
 
 const AGENTS_SECTION_START = "<!-- ARCADIA_CONTEXT_START -->";
 const AGENTS_SECTION_END = "<!-- ARCADIA_CONTEXT_END -->";
@@ -117,6 +118,8 @@ export interface SetupProjectContextResult {
      * project-authored content that must not be overwritten.
      */
     claude: string | null;
+    /** The adopted continuation protocol, or null when the source is unreadable. */
+    continuationProtocol: string | null;
   };
   context: RepoContextSummary;
 }
@@ -152,6 +155,26 @@ export function setupArcadiaProjectContext(input: {
     writeFileSync(constitutionPath, constitution, "utf8");
   }
 
+  // The continuation protocol: how an agent starts, and what it owes before it
+  // stops. Its operative rules are also inlined into the AGENTS.md block above,
+  // because a linked document is not a loaded one; this copy carries the
+  // reasoning behind them.
+  const protocolSource = readAdoptedFile(CONTINUATION_PROTOCOL_FILE);
+  const protocolPath = path.join(resolved.repoPath, CONTINUATION_PROTOCOL_FILE);
+  const protocolWritten = protocolSource !== null;
+  if (protocolSource) {
+    mkdirSync(path.dirname(protocolPath), { recursive: true });
+    writeFileSync(
+      protocolPath,
+      adoptContinuationProtocol(
+        protocolSource,
+        existsSync(protocolPath) ? readFileSync(protocolPath, "utf8") : null,
+        resolved.project?.slug ?? null
+      ),
+      "utf8"
+    );
+  }
+
   const wrapper = thinClaudeWrapper(existsSync(claudePath) ? readFileSync(claudePath, "utf8") : null);
   const claudeWritten = wrapper !== null;
   if (wrapper) {
@@ -167,7 +190,8 @@ export function setupArcadiaProjectContext(input: {
       contextPolicy: contextPolicyPath,
       agents: agentsPath,
       constitution: constitutionWritten ? constitutionPath : null,
-      claude: claudeWritten ? claudePath : null
+      claude: claudeWritten ? claudePath : null,
+      continuationProtocol: protocolWritten ? protocolPath : null
     },
     context
   };
@@ -382,6 +406,35 @@ export function updateAgentsMarkdown(existing: string | null): string {
     "",
     "Commands follow the naming rule: **nouns read state, verbs may mutate it",
     "within declared authority**. Trust the part of speech.",
+    "",
+    "### Before you stop",
+    "",
+    "Do one of three things, and update `PROJECT.md`, the active plan, affected",
+    "Decisions, and `MISSION_LOG.md` wherever their authoritative state changed:",
+    "",
+    "- complete the Action, validate it, record the result, and select the next one;",
+    "- record one precise operator question required for review; or",
+    "- record a concrete external blocker and the draft ask needed to resolve it.",
+    "",
+    "A merged pull request, a ratified Decision, or a plan reaching its milestone",
+    "is itself a stopping condition. Open or update a pull request then — without",
+    "being asked, and without waiting for the plan to close out.",
+    "",
+    "When a message ends with exactly one concrete, immediately actionable next",
+    "step — nothing blocking, no open question, no choice pending — end it with a",
+    "fixed line, last in the message, preceded by a blank line:",
+    "",
+    "```",
+    "OK to go: <verb-first, one-sentence description of exactly what will happen>",
+    "```",
+    "",
+    "That prefix verbatim, never a paraphrase. Present if and only if the state is",
+    "dispatchable. **Absence is the signal** — when nothing is ready, omit the line",
+    "rather than writing \"not ready yet\" in its place.",
+    "",
+    "`docs/agent-continuation-protocol.md` carries these rules with the reasoning",
+    "behind each. It is a reference, not a prerequisite: everything you must do is",
+    "stated above.",
     AGENTS_SECTION_END
   ].join("\n");
 
@@ -403,14 +456,75 @@ export function updateAgentsMarkdown(existing: string | null): string {
  * setup writes the same text no matter where the CLI was invoked from.
  */
 function readAdoptedConstitution(): string | null {
+  return readAdoptedFile("CONSTITUTION.md");
+}
+
+/**
+ * Read one of Arcadia's own governance files, resolved from this module's
+ * location rather than the working directory, so setup writes the same text no
+ * matter where the CLI was invoked from.
+ */
+function readAdoptedFile(relativePath: string): string | null {
   const here = path.dirname(fileURLToPath(import.meta.url));
   // src/projects/contextSetup.ts -> repository root
-  const candidate = path.resolve(here, "..", "..", "CONSTITUTION.md");
+  const candidate = path.resolve(here, "..", "..", relativePath);
   try {
     return readFileSync(candidate, "utf8");
   } catch {
     return null;
   }
+}
+
+/**
+ * Compose the adopted continuation protocol for a repository, preserving
+ * anything that repository added below the managed region.
+ *
+ * The first version of this overwrote the file wholesale, which destroyed a
+ * repository-specific section on the first real run. Adopting the shared
+ * protocol must not cost a project the lens it wrote over it, so the managed
+ * text lives between the same markers `AGENTS.md` uses and everything outside
+ * them is the project's.
+ *
+ * Only the project slug is rewritten in the adopted text: the frontmatter would
+ * otherwise claim the document belongs to Arcadia.
+ */
+export function adoptContinuationProtocol(
+  source: string,
+  existing: string | null,
+  projectSlug: string | null
+): string {
+  const adopted = projectSlug
+    ? source.replace(/^project:\s*arcadia\s*$/m, `project: ${projectSlug}`)
+    : source;
+
+  const frontmatter = adopted.match(/^---\n[\s\S]*?\n---\n/)?.[0] ?? "";
+  const body = adopted.slice(frontmatter.length).trim();
+  const managed = [AGENTS_SECTION_START, body, AGENTS_SECTION_END].join("\n");
+
+  if (!existing?.trim()) {
+    return `${frontmatter}${managed}\n`;
+  }
+
+  const pattern = new RegExp(`${escapeRegExp(AGENTS_SECTION_START)}[\\s\\S]*?${escapeRegExp(AGENTS_SECTION_END)}`);
+  if (pattern.test(existing)) {
+    return `${existing.replace(pattern, managed).trimEnd()}\n`;
+  }
+
+  // First adoption: the repository's own protocol becomes the section below the
+  // managed region rather than being replaced by it.
+  const existingFrontmatter = existing.match(/^---\n[\s\S]*?\n---\n/)?.[0] ?? "";
+  const existingBody = existing.slice(existingFrontmatter.length).trim();
+  const preserved = existingBody.length > 0
+    ? [
+        "",
+        "",
+        "<!-- Everything below is this repository's own and is never regenerated. -->",
+        "",
+        existingBody
+      ].join("\n")
+    : "";
+
+  return `${frontmatter}${managed}${preserved}\n`;
 }
 
 /**

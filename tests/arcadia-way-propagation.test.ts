@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { thinClaudeWrapper, updateAgentsMarkdown } from "../src/projects/contextSetup.js";
+import {
+  adoptContinuationProtocol,
+  thinClaudeWrapper,
+  updateAgentsMarkdown
+} from "../src/projects/contextSetup.js";
 
 const SECTION_START = "<!-- ARCADIA_CONTEXT_START -->";
 const SECTION_END = "<!-- ARCADIA_CONTEXT_END -->";
@@ -11,6 +15,19 @@ describe("adopted AGENTS.md block", () => {
     expect(rendered).toContain("CONSTITUTION.md");
     expect(rendered).toContain("PROJECT.md");
     expect(rendered).toContain("nouns read state, verbs may mutate");
+  });
+
+  it("states the stopping contract inline rather than only linking to it", () => {
+    const rendered = updateAgentsMarkdown(null);
+
+    // The whole point: this block is loaded automatically, a linked document is
+    // not. An agent that reads only this must still know what it owes.
+    expect(rendered).toContain("OK to go:");
+    expect(rendered).toContain("Absence is the signal");
+    expect(rendered).toContain("record one precise operator question");
+    expect(rendered).toContain("is itself a stopping condition");
+    expect(rendered).toContain("docs/agent-continuation-protocol.md");
+    expect(rendered).toContain("reference, not a prerequisite");
   });
 
   it("replaces only the managed block and preserves project-authored content", () => {
@@ -82,5 +99,68 @@ describe("adopted CLAUDE.md wrapper", () => {
   it("is idempotent once the wrapper is in place", () => {
     const first = thinClaudeWrapper(null);
     expect(thinClaudeWrapper(first)).toBe(first);
+  });
+});
+
+describe("adopted continuation protocol", () => {
+  const source = [
+    "---",
+    "arcadia: v1",
+    "type: reference",
+    "project: arcadia",
+    "---",
+    "",
+    "# Agent Continuation Protocol",
+    "",
+    "Shared rules."
+  ].join("\n");
+
+  it("retitles the document to the adopting project", () => {
+    const rendered = adoptContinuationProtocol(source, null, "private-practice-now");
+
+    expect(rendered).toContain("project: private-practice-now");
+    expect(rendered).not.toContain("project: arcadia");
+    expect(rendered).toContain("Shared rules.");
+  });
+
+  it("preserves a repository's own section on first adoption", () => {
+    const existing = [
+      "---",
+      "arcadia: v1",
+      "type: reference",
+      "project: private-practice-now",
+      "---",
+      "",
+      "# Agent Continuation Protocol",
+      "",
+      "## Launch readiness",
+      "",
+      "A request phrased as \"What is left?\" resolves against the pilot decision."
+    ].join("\n");
+
+    const rendered = adoptContinuationProtocol(source, existing, "private-practice-now");
+
+    // The first version of this overwrote the file wholesale and destroyed this
+    // exact section on the first real run against PPN.
+    expect(rendered).toContain("## Launch readiness");
+    expect(rendered).toContain("What is left?");
+    expect(rendered).toContain("Shared rules.");
+  });
+
+  it("regenerates only the managed region on later runs", () => {
+    const first = adoptContinuationProtocol(source, null, "demo");
+    const withProjectSection = `${first}\n## Local lens\n\nProject-owned.\n`;
+    const updated = source.replace("Shared rules.", "Shared rules, revised.");
+
+    const rendered = adoptContinuationProtocol(updated, withProjectSection, "demo");
+
+    expect(rendered).toContain("Shared rules, revised.");
+    expect(rendered).toContain("## Local lens");
+    expect(rendered).toContain("Project-owned.");
+  });
+
+  it("is idempotent", () => {
+    const first = adoptContinuationProtocol(source, null, "demo");
+    expect(adoptContinuationProtocol(source, first, "demo")).toBe(first);
   });
 });

@@ -490,6 +490,7 @@ export function renderProjectSetupContextSuccess(response: CommandSuccess<Projec
     `Context policy: ${response.data.files.contextPolicy}`,
     `AGENTS.md: ${response.data.files.agents}`,
     `CONSTITUTION.md: ${response.data.files.constitution ?? "Not written — the adopted CONSTITUTION.md could not be read."}`,
+    `Continuation protocol: ${response.data.files.continuationProtocol ?? "Not written — the adopted protocol could not be read."}`,
     // A declined CLAUDE.md must be said out loud. Setup leaving a file alone and
     // setup being unable to touch it look identical on disk, and the operator is
     // the only one who can decide what happens to their own agent instructions.
