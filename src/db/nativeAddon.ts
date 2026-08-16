@@ -1,5 +1,4 @@
-const PINNED_NODE_VERSION = "22.23.1";
-const PNPM_VERSION = "11.7.0";
+const MISE_REMEDIATION = "mise install && mise exec -- pnpm rebuild better-sqlite3";
 
 /**
  * Raised before a SQLite operation when the better-sqlite3 native addon was
@@ -9,16 +8,18 @@ export class SqliteNativeAddonAbiError extends Error {
   readonly runtimeAbi: string;
   readonly addonAbi: string;
   readonly remediation: string;
+  readonly runtimeExecutable: string;
 
-  constructor(runtimeAbi: string, addonAbi: string) {
-    const remediation = `volta run --node ${PINNED_NODE_VERSION} --pnpm ${PNPM_VERSION} pnpm rebuild better-sqlite3`;
+  constructor(runtimeAbi: string, addonAbi: string, runtimeExecutable = process.execPath) {
+    const remediation = MISE_REMEDIATION;
     super(
-      `SQLite native addon ABI mismatch: Node ABI ${runtimeAbi} is running a better-sqlite3 binary built for ABI ${addonAbi}. Run \`${remediation}\` from the Arcadia repository, then relaunch Arcadia through Volta.`
+      `SQLite native addon ABI mismatch: ${runtimeExecutable} is running Node ABI ${runtimeAbi}, but better-sqlite3 was built for ABI ${addonAbi}. Run \`${remediation}\` from the Arcadia repository, then relaunch Arcadia through mise.`
     );
     this.name = "SqliteNativeAddonAbiError";
     this.runtimeAbi = runtimeAbi;
     this.addonAbi = addonAbi;
     this.remediation = remediation;
+    this.runtimeExecutable = runtimeExecutable;
   }
 }
 

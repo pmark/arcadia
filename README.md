@@ -27,36 +27,40 @@ Phase 0 is intentionally small: initialize a workspace, create projects, assign 
 
 ## Requirements
 
-- Node.js 20 or newer
-- pnpm
+- [mise](https://mise.jdx.dev/) 2026.8.6 or newer
 - A terminal
 
 SQLite is embedded through `better-sqlite3`; no separate database server is required.
+The checked-in `mise.toml` installs the exact supported Node version; Corepack
+activates the pnpm version declared by `packageManager`.
 
 ## Development Setup
 
 Install dependencies:
 
 ```sh
-pnpm install
+mise trust
+mise install
+mise exec -- corepack enable pnpm
+mise exec -- pnpm install
 ```
 
 Build the CLI:
 
 ```sh
-pnpm build
+mise exec -- pnpm build
 ```
 
 Run tests:
 
 ```sh
-pnpm test
+mise exec -- pnpm test
 ```
 
 Show CLI help:
 
 ```sh
-pnpm arcadia --help
+mise exec -- pnpm arcadia --help
 ```
 
 ## Discord Awareness Bot

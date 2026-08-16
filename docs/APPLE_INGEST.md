@@ -274,7 +274,7 @@ that could publish into an unsynchronized local lookalike folder.
 
 ### launchd
 
-Arcadia owns the periodic user agent. Do not maintain a separate mirror daemon or hand-edit a plist. The installer resolves the active repository, workspace, user, runtime, logs, and iCloud root, then uses modern `launchctl bootstrap` service management.
+Arcadia owns the periodic user agent. Do not maintain a separate mirror daemon or hand-edit a plist. The installer resolves the active repository, workspace, user, mise executable, logs, and iCloud root, then uses modern `launchctl bootstrap` service management. The generated agent starts through `mise exec`, so it uses the Node and pnpm versions pinned by the repository instead of an inherited login-shell PATH.
 
 ```sh
 pnpm arcadia ingress service install --workspace "$ARCADIA_WORKSPACE"

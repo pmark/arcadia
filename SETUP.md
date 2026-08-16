@@ -20,8 +20,7 @@ Arcadia is intended to run locally.
 
 Recommended tools:
 
-- Node.js 20 or newer
-- pnpm
+- mise 2026.8.6 or newer (installs pinned Node; Corepack activates pinned pnpm)
 - Git
 - SQLite
 - A terminal
@@ -58,21 +57,31 @@ Until the package exists, clone the repository manually:
 
 `cd arcadia-core`
 
+Trust and install the checked-in toolchain:
+
+`mise trust`
+
+`mise install`
+
+Enable the pinned pnpm version even if this Node installation predates the checkout:
+
+`mise exec -- corepack enable pnpm`
+
 Install dependencies:
 
-`pnpm install`
+`mise exec -- pnpm install`
 
 Run tests:
 
-`pnpm test`
+`mise exec -- pnpm test`
 
 Run the CLI locally:
 
-`pnpm arcadia --help`
+`mise exec -- pnpm arcadia --help`
 
 Run the Phase 0 smoke test:
 
-`pnpm smoke`
+`mise exec -- pnpm smoke`
 
 ## Create a Workspace
 

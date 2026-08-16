@@ -29,8 +29,14 @@ describe("ingress service", () => {
     expect(plist).toContain("<string>--run-safe</string>");
     expect(plist).toContain("<string>service</string>");
     expect(plist).toContain("<string>run</string>");
+    expect(plist).toContain("<string>exec</string>");
+    expect(plist).toContain("<string>node</string>");
+    expect(plist).toContain("/mise</string>");
     expect(plist).toContain("<string>/dev/null</string>");
     expect(plist).not.toContain(".codex/tmp");
+    expect(plist).not.toContain(".nvm");
+    expect(plist).not.toContain(".volta");
+    expect(plist).not.toContain("Cellar/node");
     expect(plist).not.toContain("/bin/sh");
     expect(plist).not.toContain("/bin/zsh");
   });

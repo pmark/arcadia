@@ -23,9 +23,11 @@ describe("SQLite native addon ABI preflight", () => {
       expect(normalized.details).toMatchObject({
         runtimeAbi: process.versions.modules,
         addonAbi,
-        remediation: "volta run --node 22.23.1 --pnpm 11.7.0 pnpm rebuild better-sqlite3"
+        remediation: "mise install && mise exec -- pnpm rebuild better-sqlite3",
+        runtimeExecutable: process.execPath
       });
-      expect(normalized.message).toContain("relaunch Arcadia through Volta");
+      expect(normalized.message).toContain(process.execPath);
+      expect(normalized.message).toContain("relaunch Arcadia through mise");
     }
   });
 

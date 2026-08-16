@@ -10,17 +10,15 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
         with:
-          version: 11.7.0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: pnpm test
-      - run: pnpm dashboard:build
+          install: true
+          cache: true
+      - run: mise exec -- corepack enable pnpm
+      - run: mise exec -- pnpm install --frozen-lockfile
+      - run: mise exec -- pnpm build
+      - run: mise exec -- pnpm test
+      - run: mise exec -- pnpm dashboard:build
 
   e2e:
     runs-on: ubuntu-latest
@@ -29,18 +27,16 @@ jobs:
       ARCADIA_CONFIG_PATH: ${{ github.workspace }}/.tmp/isolated-arcadia-config.json
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
         with:
-          version: 11.7.0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm dashboard:build
-      - run: pnpm test:e2e
+          install: true
+          cache: true
+      - run: mise exec -- corepack enable pnpm
+      - run: mise exec -- pnpm install --frozen-lockfile
+      - run: mise exec -- pnpm build
+      - run: mise exec -- pnpm exec playwright install --with-deps chromium
+      - run: mise exec -- pnpm dashboard:build
+      - run: mise exec -- pnpm test:e2e
       - name: Upload E2E failure evidence
         if: failure()
         uses: actions/upload-artifact@v4

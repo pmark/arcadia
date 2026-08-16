@@ -421,5 +421,10 @@ images as normal Artifacts. See `docs/intelligence/COMFYUI_IMAGE_EXECUTOR.md`.
 If Arcadia is unavailable, ask Codex to **check or restart all Arcadia services**. The direct fallback is:
 
 ```sh
-PATH=/opt/homebrew/Cellar/node/25.6.1/bin:$PATH /Users/pmark/.codex/skills/restart-arcadia-services/scripts/restart-services.sh restart /Users/pmark/Dev/MR/Arcadia/arcadia
+/Users/pmark/.codex/skills/restart-arcadia-services/scripts/restart-services.sh restart /Users/pmark/Dev/MR/Arcadia/arcadia
 ```
+
+Arcadia pins Node in `mise.toml`, and Corepack activates the pnpm version in
+`package.json`. The restart script installs and validates that toolchain, then
+writes every managed LaunchAgent to start through `mise exec`; login-shell PATH
+state cannot select a different Node ABI.

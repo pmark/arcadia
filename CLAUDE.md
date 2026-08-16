@@ -26,6 +26,8 @@ constraints arrive with the objective rather than depending on this file.
   here. Do not move shared rules into this file — Codex would never see them.
 - Prefer the dedicated file and search tools over shell equivalents, and run
   independent tool calls in one batch.
-- This repository pins Node 22 via Volta. `better-sqlite3` fails to load on
-  Node 24 or 25 with `SQLITE_NATIVE_ABI_MISMATCH`; use `volta run --node
-  22.23.1` or an equivalent Node 22 on PATH before running tests or the CLI.
+- This repository pins Node 22.23.1 in `mise.toml`; Corepack activates pnpm
+  11.7.0 from `package.json`.
+  `better-sqlite3` fails to load when dependencies were built under another
+  Node ABI; run `mise install && mise exec -- pnpm rebuild better-sqlite3`
+  before running tests or the CLI.
