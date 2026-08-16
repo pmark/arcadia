@@ -8,6 +8,7 @@ milestone: No Arcadia project is silently stale on the Way, and no project's gov
 current_action: report-way-drift
 token_impact: medium
 token_budget: "Drift detection and file generation are deterministic — no model call belongs in either. Reserve model use for one implementation session per Action and a single review pass; a propagation run that calls a model per repository is the failure mode this budget exists to prevent."
+recommended_model: claude-sonnet-5
 updated: 2026-08-16
 actions:
   - id: give-arcadia-its-own-context-files
