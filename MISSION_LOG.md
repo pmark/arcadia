@@ -3,10 +3,41 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-15
+updated: 2026-08-16
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-16 — Made Arcadia adopter zero and found the Way had no way back
+
+- **Did:** A fresh-session orientation test against Private Practice Now, run to
+  check whether the adopted protocol is legible to a cold agent, surfaced that
+  the shared managed `AGENTS.md` region was a string literal in
+  `src/projects/contextSetup.ts` while Arcadia's own `AGENTS.md` was hand-written
+  and exempt from the generator entirely. That is how the noun/verb naming rule
+  came to exist in every adopting repository and nowhere in Arcadia. Opened
+  PR #65 stating the rule here, then PR #66 moving the shared text to
+  `docs/agents-context.md`, read by `readAdoptedFile()` exactly as
+  `CONSTITUTION.md` and `docs/agent-continuation-protocol.md` already were, and
+  putting Arcadia's own `AGENTS.md` between the same markers every adopter uses.
+- **Result:** One statement of the shared contract, in a reviewable document
+  rather than a code diff, with a test asserting Arcadia's managed region equals
+  the canonical file byte for byte. Two rules already canonical in the protocol
+  document are promoted into the always-loaded region: the executable-Action
+  conditions including `open` is executable, and naming the session, model, and
+  effort the next batch needs. Adopter zero immediately earned its keep — the
+  shared region tells agents to read three `.arcadia/` context files Arcadia does
+  not have.
+- **Next:** `docs/plans/arcadia-way-propagation.md` is drafted with three
+  Actions: give Arcadia its own context files, report Way drift without writing,
+  and propagate Way changes as pull requests rather than merges. It is `draft`,
+  not `active` — activating it moves dispatch off `demo-first-delivery`, which is
+  the operator's call.
+- **Blockers:** `open-way-sync-pull-requests` is `question_open` on
+  `propagation-authority`: which tiers of Way change may propagate automatically,
+  and whether Arcadia's CI gets push access to every project repository. Settled
+  already and recorded in the plan: generation is safe and automatic application
+  is not, so the automatic unit is a pull request per repository, never a merge.
 
 ## 2026-08-15 — Dogfooded Arcadia Now and captured its first vertical slice
 
