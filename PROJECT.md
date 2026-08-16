@@ -8,7 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Every software Project always exposes a stable proof surface and a governed path from candidate demo through QA-verified release
 active_plan: demo-first-delivery
-updated: 2026-08-08
+updated: 2026-08-15
 ---
 
 # Arcadia
@@ -23,6 +23,16 @@ question when it cannot proceed without an answer.
 The system errs stable and reliable over opportunistic. Approval boundaries are
 explicit, automation is observable, and every batch operation previews before it
 writes.
+
+The north star is direct Arcadia-led development. The operator states intent
+and supplies the scarce human inputs—product judgment, feedback, credentials,
+and consequential approvals—while Arcadia maintains the portfolio, selects and
+orchestrates configured coding agents, gathers deterministic proof, invokes
+independent QA, and advances each governed Action as far as authority and
+evidence permit. Questions and approvals arrive through Arcadia Now or another
+configured notification surface with evidence, consequences, and ideally one
+safe state-advancing Decision. The staged contract and reactivation triggers
+are preserved in `docs/arcadia-development-orchestration-vision.md`.
 
 ## Current State
 
@@ -65,13 +75,24 @@ so a missed tick self-catches-up and a composed-but-undelivered digest comes
 back for retry instead of being lost. One Project's failure costs that
 Project's digest and nothing else.
 
-With that milestone reached, the pointer moves to `demo-first-delivery`,
+With that milestone reached, the pointer moved to `demo-first-delivery`,
 already drafted from operator direction on 2026-08-01 under approved Decision
-0007, starting at `build-qa-queue-vertical-slice`. It was chosen because it is
-the objective the operator already recorded, not because it was the remaining
-open Action — `portfolio-docs-protocol`'s `narrative-summarization` is
-deliberately deferred under Decision 0004 against a trigger that has not
-fired, and picking it up would route around that deferral.
+0007. The configured operator QA queue is complete. While advancing Private
+Practice Now, the operator then explicitly prioritized the missing independent
+pull-request QA responsibility as a must-have. Decision 0018 inserted and
+completed `establish-minimal-pr-qa`: `arcadia qa pr` now freezes a GitHub head
+revision, gathers deterministic evidence, runs one independent read-only
+structured review, and persists its QA report Artifact and Decision. Its first
+real Candidate, Arcadia PR #54, correctly returned Needs follow-up rather than
+Pass for contradictory CI evidence. The post-delivery process audit then
+exposed two cheap repeat costs: model calls made before deterministic readiness
+and a repository-local workspace race in CI. Decision 0019 inserted and
+completed `streamline-minimal-pr-qa`: deterministic readiness now refuses
+unready Candidates without reviewer tokens, mutable evidence is rechecked
+immediately before judgment, and the workspace-precedence regression is
+isolated from dogfood state. The pointer has returned to
+`build-demo-hero-vertical-slice`. This remains evidence-driven sequencing, not
+priority inferred from queue order.
 
 The Agent Queue is documented in `docs/plans/agent-advance-queue.md`. It is a
 projection, not a second work pointer: managed documents still decide what is
