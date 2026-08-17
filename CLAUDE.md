@@ -29,5 +29,10 @@ constraints arrive with the objective rather than depending on this file.
 - This repository pins Node 22.23.1 in `mise.toml`; Corepack activates pnpm
   11.7.0 from `package.json`.
   `better-sqlite3` fails to load when dependencies were built under another
-  Node ABI; run `mise install && mise exec -- pnpm rebuild better-sqlite3`
-  before running tests or the CLI.
+  Node ABI. `postinstall` now runs `mise exec -- pnpm rebuild better-sqlite3`
+  automatically after every `pnpm install`, and `pnpm arcadia` runs under
+  `mise exec --` so it always executes with the pinned Node regardless of
+  which `node`/`pnpm` an ambient shell would otherwise resolve. `pnpm test`
+  and `pnpm build` are not wrapped that way; run them as
+  `mise exec -- pnpm test` / `mise exec -- pnpm build` if the ambient shell's
+  `node` is not already the mise-pinned one.
