@@ -252,6 +252,7 @@ import {
   runNextHistoryCommand,
   runNextReadyCommand
 } from "./commands/next.js";
+import { renderDocketSuccess, runDocketCommand } from "./commands/docket.js";
 import { renderPortfolioSuccess, runPortfolioCommand } from "./commands/portfolio.js";
 import { renderWayStatusSuccess, runWayStatusCommand } from "./commands/way.js";
 import {
@@ -2143,6 +2144,16 @@ export function buildProgram(): Command {
       }),
       renderClarifySuccess
     )
+  );
+
+  addJsonOption(
+    program
+      .command("docket")
+      .description("What this repository says to work on next, read only from this repository")
+      .option("--repo <path>", "Repository to read", process.cwd())
+      .option("--project <project>", "Project slug, when the repository declares more than one")
+  ).action((options: { repo: string; project?: string; json?: boolean }) =>
+    runCliAction("docket", options, () => runDocketCommand(options), renderDocketSuccess)
   );
 
   const next = program

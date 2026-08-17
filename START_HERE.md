@@ -317,6 +317,21 @@ The terminal brief resolves the same pointer:
 pnpm arcadia next --project arcadia
 ```
 
+`next` reaches the repository through the workspace database, so it needs a
+workspace on this machine. When you are standing in a project repository — or
+in a cloud container, a fresh clone, or CI, where no workspace exists — ask the
+repository itself:
+
+```sh
+pnpm arcadia docket --repo /path/to/project
+```
+
+`docket` reads only that repository's `PROJECT.md` and `docs/plans/`, and
+prints the same brief `next` does, including responsibility, clarification, and
+acceptance criteria. It takes no `--workspace`, opens no database, and says so
+on every run: it reports one repository and never the portfolio. Use `next`
+when you want the portfolio's answer, `docket` when you want the project's.
+
 Below the `Authorization:` line, the brief prints **Standing constraints**: the
 repository's `CONSTITUTION.md`, verbatim. Nothing parses the Constitution, so
 printing it here is what makes a dispatched agent read the rules that bind the
