@@ -119,24 +119,32 @@ actions:
       confirmed failing identically on `main`).
   - id: open-way-sync-pull-requests
     title: Propagate Way changes to every project as a pull request, never as a merge
-    status: blocked
+    status: open
     responsibility: requires_review
     effort: session
-    expected_artifact: A command that regenerates managed regions in each adopting repository and opens one pull request per repository, merging nothing
-    clarification: question_open
-    gap_type: missing-decision
-    question: "Which tiers of Way change may propagate automatically, and does Arcadia's CI get push access to every project repository to do it?"
+    next_action: Implement tiered propagation — regenerate each adopting repository's mechanical tier, open one pull request per repository, and auto-merge only the mechanical tier within the guardrails Decision 0024 sets.
+    expected_artifact: A command that regenerates managed regions in each adopting repository and opens one pull request per repository, auto-merging only the mechanical tier
+    clarification: clarified
     confidence: medium
-    source: Operator asked whether Way updates should reach projects automatically, 2026-08-16.
+    source: Operator asked whether Way updates should reach projects automatically, 2026-08-16; answered by Decision 0024 on 2026-08-17.
+    acceptance_criteria:
+      - A mechanical-tier change propagates to every adopting repository as one pull request per repository and merges without review.
+      - A governing-tier change opens a pull request and never merges automatically, including when a run would touch both tiers.
+      - A run that would produce byte-identical files opens nothing.
+      - Nothing outside the managed marker region is ever written, and no push targets a default branch directly.
+      - A repository whose `adoption.json` declines automatic upgrades is skipped and reported.
+    decisions: ["0024"]
     depends_on: [report-way-drift]
     references:
       - docs/agents-context.md
       - src/projects/contextSetup.ts
+      - docs/decisions/0024-way-propagation-tiers-and-push-authority.md
 questions:
   - id: propagation-authority
     question: "Which tiers of Way change may propagate automatically, and does Arcadia's CI get push access to every project repository to do it?"
     gap_type: missing-decision
-decisions: []
+    decision: way-propagation-tiers-and-push-authority
+decisions: ["0024"]
 ---
 
 # Arcadia Way propagation

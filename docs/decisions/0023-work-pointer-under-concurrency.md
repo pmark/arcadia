@@ -4,7 +4,7 @@ type: decision
 id: "0023"
 slug: work-pointer-under-concurrency
 project: arcadia
-status: open
+status: approved
 question: When more than one coding agent could work in the same repository at once, is `current_action` still a stored value in `PROJECT.md`, and what prevents two agents from resolving and starting the same Action?
 gap_type: missing-decision
 recommendation: >-
@@ -14,6 +14,22 @@ recommendation: >-
   a dispatch precondition and have dispatch refuse when another agent's branch
   is unmerged. Do not derive the pointer.
 confidence: medium
+decided: 2026-08-17
+answer: >-
+  Approved as recommended by the operator on 2026-08-17, immediately after
+  Decision 0022 was approved in its strict form. `current_action` remains a
+  stored value in the managed documents. The concurrency limit becomes explicit
+  and enforced: one dispatched agent per repository at a time, refused when
+  another agent's branch is unmerged, using the signal
+  `arcadia work monitor` already computes. The refusal is a blocker in the
+  existing sense and must name the blocking branch and worktree. Deriving the
+  pointer is rejected -- any tiebreak over the ready set is an ordering
+  heuristic standing in for the operator's judgment, which the continuation
+  protocol forbids. Committed claim records and parallel dispatch within one
+  repository are not adopted and stay behind their stated trigger. Parallel
+  dispatch in a single repository is therefore an accepted deliberate limit,
+  not an oversight. This answer authorizes the rule, not its implementation;
+  the enforcement work is a separate Action.
 updated: 2026-08-17
 ---
 

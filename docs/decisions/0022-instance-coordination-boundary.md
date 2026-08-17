@@ -4,11 +4,26 @@ type: decision
 id: "0022"
 slug: instance-coordination-boundary
 project: arcadia
-status: open
+status: approved
 question: Does an Arcadia installation ever coordinate directly with another Arcadia installation, or is a git repository the only channel through which two instances ever affect each other?
 gap_type: missing-decision
 recommendation: Git is the only channel. Two Arcadia installations never talk to each other, and never read or write each other's workspace. Coordination that genuinely needs mutual exclusion may use committed records in the repository they both read, because that is still git. Reject a hosted Arcadia that other installations call.
 confidence: medium
+decided: 2026-08-17
+answer: >-
+  Approved as recommended by the operator on 2026-08-17. Git is the only channel
+  between Arcadia installations. No instance calls another, and no instance reads
+  another's workspace database. A cloud agent is never a client of an Arcadia
+  installation: it clones, reads the repository's managed documents, works,
+  commits, and opens a pull request, and an installation learns by syncing that
+  repository afterwards. A hosted Arcadia that other installations depend on is
+  rejected, and no feature may assume another installation is reachable. Two
+  costs are accepted explicitly: telemetry generated in a container is lost
+  unless it is committed, and live mutual exclusion between actors is
+  unavailable. Committed coordination records remain permitted as the fallback
+  for mutual exclusion but were not blessed for immediate use -- the operator
+  chose the strict form, so option B stays available rather than adopted, and
+  Decision 0023 was decided within that narrower space.
 updated: 2026-08-17
 ---
 
