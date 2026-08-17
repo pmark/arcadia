@@ -8,6 +8,35 @@ updated: 2026-08-17
 
 # Mission Log: Arcadia
 
+## 2026-08-17 — Built the demo-first Project Detail hero and PPN proof targets
+
+- **Did:** Dispatched `build-demo-hero-vertical-slice` from `demo-first-delivery`.
+  Built a checked-in Stable/Candidate proof-target contract
+  (`config/proof-targets.json`), a deterministic reachability check
+  (`arcadia proof-target check`, persisted to a new `proof_target_checks`
+  table), and a pure hero-state resolver
+  (`src/proofTargets/hero.ts`) implementing the six-state priority order from
+  `docs/operator-demo-and-release-contract.md`. Configured Private Practice
+  Now's Stable target as Juniper, the sample-portfolio staging site
+  (`https://juniper.sites-staging.privatepracticenow.com`), separate from the
+  existing River Copy Studio Candidate; the Candidate reuses its QA queue id
+  so a recorded QA Decision (`arcadia qa record`) feeds the hero automatically.
+  Wired a new hero card plus per-target cards onto Project Detail, with
+  `Show Stable`/`Test Candidate` links and a live `Check now` action.
+  Verified against real targets in a worktree-local dashboard instance: both
+  configured PPN targets returned healthy, `Check now` round-tripped through
+  the API route, CLI, live HTTP probe, SQLite persistence, and UI refresh.
+  `pnpm exec vitest run tests/proof-targets.test.ts` (12/12) and full `tsc
+  --noEmit` (root + dashboard) pass; the full `pnpm test` run has the same 4
+  pre-existing, unrelated `narrative-digest-schedule` failures confirmed
+  present on `main` before this change.
+- **Result:** [PR #77](https://github.com/pmark/arcadia/pull/77) opened with
+  an operator QA plan, awaiting review and merge. `build-demo-hero-vertical-slice`
+  stays `open` in `demo-first-delivery` until the PR merges — a screenshot
+  proof gallery, automatic GitHub/Cloudflare target discovery, and a release-
+  Decision workflow remain separately specified, unbuilt follow-on work in the
+  same plan.
+
 ## 2026-08-17 — Named the four governance gaps behind the PPN shim
 
 - **Did:** Operator raised four concerns: that a project's next action should be
