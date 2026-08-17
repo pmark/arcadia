@@ -18,6 +18,7 @@ import {
   StatusBadge
 } from "../../../components/dashboard-ui";
 import { useArcadiaSnapshot } from "../../../hooks/use-arcadia-snapshot";
+import { ProofHero } from "../../../components/proof-hero";
 import type { DashboardProject, DashboardReviewItem, ProjectContinuation } from "../../../lib/types";
 
 const PROJECT_STATUSES = ["active", "paused", "incubating", "completed"] as const;
@@ -222,6 +223,8 @@ export default function ProjectDetailsPage() {
         <EmptyState text="Project not found." />
       ) : (
         <div className="grid min-w-0 gap-6">
+          <ProofHero projectId={project.id} />
+
           <section className="grid min-w-0 gap-4 rounded-md border border-line bg-panel p-4 shadow-soft">
             <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">

@@ -12,6 +12,8 @@ import type {
   FeedbackRecordResponse,
   DashboardOutstandingPullRequests,
   IngressActivityResponse,
+  ProofTargetCheckResponse,
+  ProofTargetListResponse,
   QaCandidate
 } from "./types";
 import type {
@@ -40,6 +42,14 @@ export async function loadDashboardSnapshot(): Promise<ArcadiaJsonSuccess<Dashbo
 
 export async function listQaCandidates(): Promise<ArcadiaJsonSuccess<{ candidates: QaCandidate[] }>> {
   return runArcadiaCliJson<{ candidates: QaCandidate[] }>(["qa", "list"]);
+}
+
+export async function listProofTargets(projectSlug: string): Promise<ArcadiaJsonSuccess<ProofTargetListResponse>> {
+  return runArcadiaCliJson<ProofTargetListResponse>(["proof-target", "list", "--project", projectSlug]);
+}
+
+export async function checkProofTarget(targetId: string): Promise<ArcadiaJsonSuccess<ProofTargetCheckResponse>> {
+  return runArcadiaCliJson<ProofTargetCheckResponse>(["proof-target", "check", targetId], { timeoutMs: 15_000 });
 }
 
 export async function recordQaDecision(input: { candidateId: string; decision: "pass" | "fail" | "needs-follow-up"; note?: string }): Promise<ArcadiaJsonSuccess<unknown>> {
