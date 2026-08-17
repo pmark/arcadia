@@ -10,6 +10,12 @@ Open **Outstanding PRs** at <http://127.0.0.1:3020/admin/pull-requests> to see e
 
 Open the **QA queue** at <http://127.0.0.1:3020/qa> to test each configured Candidate from one exact procedure. The queue shows the configured revision, target state, validation and evidence freshness; **Test Candidate** opens only that configured target. Record Pass, Fail, or Needs follow-up with an optional note to create a revision-bound Decision. This records QA evidence only—it never merges, deploys, or releases work. Candidate configuration is checked in at `config/qa-candidates.json`.
 
+Every Project Detail page at <http://127.0.0.1:3020/projects/{id}> now opens with a **demo hero**: one state — proof unavailable, Candidate failure, ready for your demo, QA failed, release Decision needed, or Stable-only — with exactly one primary next action, resolved from real checks rather than claimed. Below it, each configured Stable and Candidate target gets its own card with URL, environment kind, access state, source revision, health, and last verified time, plus its own **Show Stable** / **Test Candidate** link (works from a phone-reachable Mission Control whenever the target itself is not local-only) and a **Check now** button that runs a live reachability probe and persists the result. Stable/Candidate target configuration is checked in at `config/proof-targets.json`; a Candidate target reuses its QA queue id so a recorded QA Decision (`arcadia qa record`) is reflected in the hero automatically. Run a check from the command line with:
+
+```sh
+pnpm arcadia proof-target check <target-id>
+```
+
 For independent pull-request QA, give Arcadia the full GitHub URL:
 
 ```sh
@@ -112,11 +118,12 @@ Control's richer proof surface is still being built:
 4. A candidate does not replace the known-good stakeholder demo until QA and
    release verification have passed.
 
-The Project Detail hero, proof gallery, state-aware Test action, independent
-Arcadia QA, and release workflow beyond this configured QA queue are specified
-in `docs/plans/demo-first-delivery.md`. Until those surfaces exist, this
-contract is a manual handoff requirement rather than a claim about buttons
-already present in Mission Control.
+The Project Detail hero and its state-aware Test/Show action are described
+above and live now. A screenshot proof gallery, automatic GitHub/Cloudflare
+target discovery, and a release-Decision workflow beyond this configured QA
+queue remain specified but unbuilt in `docs/plans/demo-first-delivery.md`; the
+demo-first handoff contract above still governs those steps manually until
+they exist.
 
 Use the **Ask** box for a new request that is not already an Action in Arcadia.
 

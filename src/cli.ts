@@ -156,6 +156,12 @@ import {
   runQaRecordCommand
 } from "./commands/qa.js";
 import {
+  renderProofTargetCheckSuccess,
+  renderProofTargetListSuccess,
+  runProofTargetCheckCommand,
+  runProofTargetListCommand
+} from "./commands/proofTargets.js";
+import {
   renderRebusterConfigureSuccess,
   renderRebusterCreateRebusSuccess,
   renderRebusterIngestEventSuccess,
@@ -2112,6 +2118,36 @@ export function buildProgram(): Command {
         rerun: options.rerun
       }),
       renderQaPrReviewSuccess
+    )
+  );
+
+  const proofTarget = program.command("proof-target").description("Configured Stable/Candidate proof targets for the Project Detail hero");
+  addJsonOption(
+    proofTarget
+      .command("list")
+      .description("List a Project's configured proof targets and resolve the demo hero state")
+      .requiredOption("--project <project>", "Project id or slug")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; project: string; json?: boolean }) =>
+    runCliAction(
+      "proof-target.list",
+      options,
+      () => runProofTargetListCommand(options),
+      renderProofTargetListSuccess
+    )
+  );
+  addJsonOption(
+    proofTarget
+      .command("check")
+      .description("Run a deterministic reachability check against a configured proof target and persist the result")
+      .argument("<target-id>", "Configured proof target id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((targetId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "proof-target.check",
+      options,
+      () => runProofTargetCheckCommand({ workspace: options.workspace, targetId }),
+      renderProofTargetCheckSuccess
     )
   );
 

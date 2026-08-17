@@ -2839,6 +2839,79 @@ export function getProjectBySlug(db: Database.Database, slug: string): Project |
   );
 }
 
+export interface ProofTargetCheck {
+  id: string;
+  target_id: string;
+  project_id: string;
+  url: string;
+  health_state: "healthy" | "unhealthy";
+  http_status: number | null;
+  latency_ms: number | null;
+  error_message: string | null;
+  checked_at: string;
+  created_at: string;
+}
+
+export interface CreateProofTargetCheckInput {
+  targetId: string;
+  projectId: string;
+  url: string;
+  healthState: "healthy" | "unhealthy";
+  httpStatus: number | null;
+  latencyMs: number | null;
+  errorMessage: string | null;
+}
+
+export function recordProofTargetCheck(db: Database.Database, input: CreateProofTargetCheckInput): ProofTargetCheck {
+  const id = createId("proofTargetCheck");
+  const timestamp = nowIso();
+  db.prepare(
+    `INSERT INTO proof_target_checks
+       (id, target_id, project_id, url, health_state, http_status, latency_ms, error_message, checked_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    input.targetId,
+    input.projectId,
+    input.url,
+    input.healthState,
+    input.httpStatus,
+    input.latencyMs,
+    input.errorMessage,
+    timestamp,
+    timestamp
+  );
+  return getProofTargetCheck(db, id)!;
+}
+
+export function getProofTargetCheck(db: Database.Database, id: string): ProofTargetCheck | null {
+  return (db.prepare("SELECT * FROM proof_target_checks WHERE id = ?").get(id) as ProofTargetCheck | undefined) ?? null;
+}
+
+export function getLatestProofTargetCheck(db: Database.Database, targetId: string): ProofTargetCheck | null {
+  return (
+    (db
+      .prepare("SELECT * FROM proof_target_checks WHERE target_id = ? ORDER BY checked_at DESC, created_at DESC LIMIT 1")
+      .get(targetId) as ProofTargetCheck | undefined) ?? null
+  );
+}
+
+export function listLatestProofTargetChecksForProject(db: Database.Database, projectId: string): ProofTargetCheck[] {
+  return db
+    .prepare(
+      `SELECT c.* FROM proof_target_checks c
+       INNER JOIN (
+         SELECT target_id, MAX(checked_at) AS max_checked_at
+         FROM proof_target_checks
+         WHERE project_id = ?
+         GROUP BY target_id
+       ) latest ON latest.target_id = c.target_id AND latest.max_checked_at = c.checked_at
+       WHERE c.project_id = ?
+       ORDER BY c.target_id`
+    )
+    .all(projectId, projectId) as ProofTargetCheck[];
+}
+
 export function getMilestoneByDocRef(
   db: Database.Database,
   projectId: string,

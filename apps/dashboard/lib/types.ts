@@ -25,6 +25,73 @@ export interface QaCandidate {
   testProcedure: string;
 }
 
+export type ProofEnvironment = "Stable" | "Candidate";
+export type ProofEnvironmentKind = "local" | "lan" | "remote" | "missing";
+export type ProofAccessState = "public" | "access-protected" | "local-only" | "unknown";
+export type ProofHealthState = "healthy" | "unhealthy";
+export type ProofHeroState =
+  | "failure"
+  | "ready_for_operator_demo"
+  | "qa_failed"
+  | "release_decision_needed"
+  | "stable_only"
+  | "proof_unavailable";
+
+export interface ProofTargetConfig {
+  id: string;
+  project: string;
+  environment: ProofEnvironment;
+  label: string;
+  url: string;
+  environmentKind: ProofEnvironmentKind;
+  accessState: ProofAccessState;
+  sourceRevision: string | null;
+}
+
+export interface ProofTargetCheck {
+  id: string;
+  target_id: string;
+  project_id: string;
+  url: string;
+  health_state: ProofHealthState;
+  http_status: number | null;
+  latency_ms: number | null;
+  error_message: string | null;
+  checked_at: string;
+  created_at: string;
+}
+
+export interface ProofHeroAction {
+  label: string;
+  targetId: string | null;
+  url: string | null;
+}
+
+export interface ProofHeroResolution {
+  state: ProofHeroState;
+  headline: string;
+  detail: string;
+  primaryAction: ProofHeroAction | null;
+}
+
+export interface ProofTargetView {
+  target: ProofTargetConfig;
+  lastCheck: ProofTargetCheck | null;
+}
+
+export interface ProofTargetListResponse {
+  project: { id: string; slug: string; name: string };
+  targets: ProofTargetView[];
+  hero: ProofHeroResolution;
+}
+
+export interface ProofTargetCheckResponse {
+  project: { id: string; slug: string; name: string };
+  target: ProofTargetConfig;
+  check: ProofTargetCheck;
+  hero: ProofHeroResolution;
+}
+
 export interface IngressActivityResponse {
   source: string;
   root: string;

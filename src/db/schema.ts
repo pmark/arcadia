@@ -62,6 +62,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureDispatchEventsTable(db);
   ensureNarrativeDigestsTable(db);
   ensureNarrativeDigestScopeColumns(db);
+  ensureProofTargetChecksTable(db);
   applyCapabilityMigrations(db);
 }
 
@@ -150,6 +151,35 @@ function ensureNarrativeDigestScopeColumns(db: Database.Database): void {
   } finally {
     if (foreignKeysEnabled) db.pragma("foreign_keys = ON");
   }
+}
+
+/**
+ * One row per health check Arcadia actually ran against a configured proof
+ * target (Stable or Candidate). `target_id` matches a checked-in id from
+ * `config/proof-targets.json` rather than a foreign key, because the target
+ * catalog is managed documentation, not workspace state; only the observed
+ * result of checking it is workspace state.
+ */
+function ensureProofTargetChecksTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS proof_target_checks (
+      id TEXT PRIMARY KEY,
+      target_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      url TEXT NOT NULL,
+      health_state TEXT NOT NULL CHECK (health_state IN ('healthy', 'unhealthy')),
+      http_status INTEGER,
+      latency_ms INTEGER,
+      error_message TEXT,
+      checked_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_proof_target_checks_target_checked
+      ON proof_target_checks(target_id, checked_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_proof_target_checks_project
+      ON proof_target_checks(project_id);
+  `);
 }
 
 function ensureExecutionRequirementColumn(db: Database.Database): void {
