@@ -483,7 +483,7 @@ export function adoptContinuationProtocol(
     : source;
 
   const frontmatter = adopted.match(/^---\n[\s\S]*?\n---\n/)?.[0] ?? "";
-  const body = adopted.slice(frontmatter.length).trim();
+  const body = unwrapManagedRegion(adopted.slice(frontmatter.length).trim());
   const managed = [AGENTS_SECTION_START, body, AGENTS_SECTION_END].join("\n");
 
   if (!existing?.trim()) {
@@ -496,9 +496,17 @@ export function adoptContinuationProtocol(
   }
 
   // First adoption: the repository's own protocol becomes the section below the
-  // managed region rather than being replaced by it.
+  // managed region rather than being replaced by it -- unless that "own"
+  // protocol already reads as the canonical text with no markers around it
+  // yet (Arcadia's own copy predates the markers), in which case it already
+  // is the managed region, and wrapping it a second time below would double
+  // it rather than adopt it.
   const existingFrontmatter = existing.match(/^---\n[\s\S]*?\n---\n/)?.[0] ?? "";
   const existingBody = existing.slice(existingFrontmatter.length).trim();
+  if (existingBody === body) {
+    return `${frontmatter}${managed}\n`;
+  }
+
   const preserved = existingBody.length > 0
     ? [
         "",
@@ -518,6 +526,22 @@ export function adoptContinuationProtocol(
     : "";
 
   return `${frontmatter}${managed}${preserved}\n`;
+}
+
+/**
+ * Strips one layer of `ARCADIA_CONTEXT_*` markers when a body is already
+ * exactly a single managed region, otherwise returns it unchanged.
+ *
+ * The canonical continuation-protocol source is read from Arcadia's own
+ * repository root, which is also the adopting repository whenever
+ * `setupArcadiaProjectContext` runs against Arcadia itself. After the first
+ * such run, that "canonical" copy already carries the markers this function
+ * is about to add, so without unwrapping first, every later run would nest
+ * another pair of markers around the previous run's output.
+ */
+function unwrapManagedRegion(body: string): string {
+  const pattern = new RegExp(`^${escapeRegExp(AGENTS_SECTION_START)}\\n([\\s\\S]*?)\\n${escapeRegExp(AGENTS_SECTION_END)}$`);
+  return pattern.exec(body)?.[1] ?? body;
 }
 
 const CLAUDE_WRAPPER_PROSE = [

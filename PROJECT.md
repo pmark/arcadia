@@ -7,7 +7,7 @@ status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Every software Project always exposes a stable proof surface and a governed path from candidate demo through QA-verified release
-active_plan: arcadia-way-propagation
+active_plan: demo-first-delivery
 updated: 2026-08-16
 ---
 
@@ -93,6 +93,26 @@ immediately before judgment, and the workspace-precedence regression is
 isolated from dogfood state. The pointer has returned to
 `build-demo-hero-vertical-slice`. This remains evidence-driven sequencing, not
 priority inferred from queue order.
+
+The pointer then moved once more, on operator direction, to
+`docs/plans/arcadia-way-propagation.md`: nothing pulled the Arcadia Way back
+from an adopting project once written, so a project could go stale without
+anyone knowing. That plan is now complete. Adopter zero found and fixed two
+real generator defects along the way (the built CLI's `readAdoptedFile` root
+resolution, and `CLAUDE.md` being silently overwritten), then delivered
+`arcadia way` — a read-only command reporting per project whether its adopted
+`CONSTITUTION.md`, `AGENTS.md` region, and continuation protocol still match
+Arcadia's canonical text. Run against Arcadia itself, it immediately found a
+third defect: the continuation protocol was being doubled on adoption, because
+Arcadia's own repository is both the canonical source and, for itself, the
+adopted target — after the first `setup-context` run, every later run nested
+another pair of markers around the previous run's own output. Fixed by
+unwrapping one layer of markers from the canonical body before rewrapping it,
+verified across three consecutive real runs producing a byte-identical file.
+`open-way-sync-pull-requests` (automatic cross-repository propagation) stays
+open and blocked on an unanswered operator question; it does not gate this
+milestone, which only requires staleness to be visible rather than silent. The
+pointer has returned to `build-demo-hero-vertical-slice`.
 
 The Agent Queue is documented in `docs/plans/agent-advance-queue.md`. It is a
 projection, not a second work pointer: managed documents still decide what is

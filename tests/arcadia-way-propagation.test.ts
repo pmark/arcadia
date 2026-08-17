@@ -217,6 +217,66 @@ describe("adopted continuation protocol", () => {
     expect(rendered).toContain("Shared rules.");
   });
 
+  it("stays byte-identical across repeated runs when the canonical source is read from the same file being adopted", () => {
+    // Arcadia is adopter zero: the canonical continuation-protocol source is
+    // read from Arcadia's own repository root, which is also the target
+    // whenever setup runs against Arcadia itself. After the first run, that
+    // "canonical" copy already carries the markers this function is about to
+    // add, so `source` on every later run is contaminated with the previous
+    // run's own output -- unless it is unwrapped back to plain text first.
+    const pristine = [
+      "---",
+      "arcadia: v1",
+      "type: reference",
+      "project: arcadia",
+      "---",
+      "",
+      "# Agent Continuation Protocol",
+      "",
+      "Shared rules."
+    ].join("\n");
+
+    const firstRun = adoptContinuationProtocol(pristine, pristine, null);
+    // Simulate reading the just-written file back as both the next run's
+    // canonical source and its own existing target, exactly as adopter zero
+    // does.
+    const secondRun = adoptContinuationProtocol(firstRun, firstRun, null);
+    const thirdRun = adoptContinuationProtocol(secondRun, secondRun, null);
+
+    expect(secondRun).toBe(firstRun);
+    expect(thirdRun).toBe(firstRun);
+    expect(firstRun.match(/ARCADIA_CONTEXT_START/g)).toHaveLength(1);
+    expect(firstRun.match(/ARCADIA_CONTEXT_END/g)).toHaveLength(1);
+  });
+
+  it("treats an unmarked existing file as the managed region itself when its body already matches the canonical text, rather than doubling it below", () => {
+    // Arcadia's own docs/agent-continuation-protocol.md predates the
+    // ARCADIA_CONTEXT_* markers, so its unmarked body is word-for-word the
+    // canonical text setup-context would adopt. The first version of this
+    // read that as a project-authored section and preserved it a second time
+    // under a TRIAGE marker below the freshly wrapped managed block.
+    const existing = [
+      "---",
+      "arcadia: v1",
+      "type: reference",
+      "project: arcadia",
+      "---",
+      "",
+      "# Agent Continuation Protocol",
+      "",
+      "Shared rules."
+    ].join("\n");
+
+    const rendered = adoptContinuationProtocol(source, existing, null);
+
+    expect(rendered).not.toContain("TRIAGE THIS SECTION");
+    expect(rendered.match(/Shared rules\./g)).toHaveLength(1);
+    expect(rendered).toBe(adoptContinuationProtocol(source, null, null));
+
+    // Running it again on its own output stays byte-identical.
+    expect(adoptContinuationProtocol(source, rendered, null)).toBe(rendered);
+  });
+
   it("marks the preserved section for triage", () => {
     const existing = [
       "---",
