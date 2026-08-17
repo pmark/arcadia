@@ -8,6 +8,38 @@ updated: 2026-08-16
 
 # Mission Log: Arcadia
 
+## 2026-08-16 — Closed arcadia-way-propagation: fixed the drift `arcadia way` found in Arcadia itself
+
+- **Did:** Completed `stop-duplicating-a-canonical-protocol-on-adopter-zero`.
+  `adoptContinuationProtocol` now treats an unmarked existing file whose body
+  already equals the canonical text as the managed region itself rather than
+  a project-authored section to double below it. Proving that against
+  Arcadia's own worktree surfaced a second, worse defect the acceptance
+  criteria's "twice" existed to catch: the canonical continuation-protocol
+  source is read from Arcadia's own repository root, which is also the
+  adopted target whenever setup runs against Arcadia itself, so after the
+  first run the "canonical" copy already carried the markers this function
+  was about to add again -- every later run nested another pair around the
+  previous run's own output.
+- **Result:** Fixed by unwrapping one layer of markers from the canonical
+  body before rewrapping it, so the body used for adoption is always plain
+  text regardless of self-reference. Verified for real: three consecutive
+  `setup-context` runs against a fresh worktree checkout now produce a
+  byte-identical `docs/agent-continuation-protocol.md` (confirmed by md5),
+  with exactly one marker pair and no TRIAGE section. A repository whose
+  protocol genuinely differs still gets it preserved under TRIAGE, unchanged.
+  3 new tests in `tests/arcadia-way-propagation.test.ts`. This closes
+  `arcadia-way-propagation`'s milestone -- `arcadia way` makes staleness
+  visible rather than silent, and this was the one defect it found.
+  `open-way-sync-pull-requests` stays open, genuinely blocked on the
+  unanswered `propagation-authority` question; it does not gate the
+  milestone as written. The pointer returns to `demo-first-delivery` /
+  `build-demo-hero-vertical-slice`.
+- **Next:** `build-demo-hero-vertical-slice` on `demo-first-delivery` -- a
+  large, `session`-effort, cross-system dashboard Action, not started here.
+- **Blockers:** None for this Action. `open-way-sync-pull-requests` remains
+  blocked on the operator answering `propagation-authority`.
+
 ## 2026-08-16 — Made the recurring Node ABI mismatch self-healing
 
 - **Did:** Operator hit `SQLITE_NATIVE_ABI_MISMATCH` again running

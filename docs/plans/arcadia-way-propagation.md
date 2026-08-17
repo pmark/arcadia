@@ -3,9 +3,8 @@ arcadia: v1
 type: plan
 slug: arcadia-way-propagation
 project: arcadia
-status: active
+status: complete
 milestone: No Arcadia project is silently stale on the Way, and no project's governance changes without review
-current_action: stop-duplicating-a-canonical-protocol-on-adopter-zero
 token_impact: medium
 token_budget: "Drift detection and file generation are deterministic — no model call belongs in either. Reserve model use for one implementation session per Action and a single review pass; a propagation run that calls a model per repository is the failure mode this budget exists to prevent."
 recommended_model: claude-sonnet-5
@@ -36,7 +35,7 @@ actions:
       here, with the destructive one pinned by two regression tests.
   - id: stop-duplicating-a-canonical-protocol-on-adopter-zero
     title: Stop appending a second copy of the continuation protocol to the repository that authored it
-    status: open
+    status: done
     responsibility: codex
     effort: quick
     next_action: Treat an existing `docs/agent-continuation-protocol.md` whose body already equals the canonical source as the managed region itself, rather than as a project-authored section to preserve below it.
@@ -51,6 +50,31 @@ actions:
     references:
       - src/projects/contextSetup.ts
       - docs/agent-continuation-protocol.md
+    result: >-
+      `adoptContinuationProtocol` now treats an unmarked existing file whose
+      body already equals the canonical text as the managed region itself
+      rather than a project-authored section to double below it. That alone
+      fixed the first run, but proving it against Arcadia's own worktree
+      surfaced a second, worse defect the acceptance criteria's "twice" was
+      written to catch: the canonical source is read from Arcadia's own
+      repository root, which is also the adopted target whenever setup runs
+      against Arcadia itself, so after the first run the "canonical" copy
+      already carried the markers this function was about to add again --
+      every subsequent run nested another pair around the previous run's
+      output. Fixed by unwrapping one layer of markers from the canonical
+      body before rewrapping it, so `body` is always the pure text regardless
+      of self-reference. Verified for real: three consecutive
+      `setup-context` runs against this worktree now produce a byte-identical
+      `docs/agent-continuation-protocol.md` (single confirmed via md5), with
+      exactly one marker pair and no TRIAGE section. A repository whose
+      protocol genuinely differs still gets it preserved under TRIAGE
+      (existing test, unchanged). 3 new tests in
+      `tests/arcadia-way-propagation.test.ts`; full suite otherwise
+      unaffected. This closes the milestone: `arcadia way` (report-way-drift)
+      makes staleness visible rather than silent, and this fix removes the
+      one defect it found. `open-way-sync-pull-requests` remains open,
+      genuinely blocked on the unanswered `propagation-authority` question,
+      and does not gate the milestone as written.
   - id: report-way-drift
     title: Report which projects are stale on the Way, without writing anything
     status: done
@@ -95,7 +119,7 @@ actions:
       confirmed failing identically on `main`).
   - id: open-way-sync-pull-requests
     title: Propagate Way changes to every project as a pull request, never as a merge
-    status: open
+    status: blocked
     responsibility: requires_review
     effort: session
     expected_artifact: A command that regenerates managed regions in each adopting repository and opens one pull request per repository, merging nothing
