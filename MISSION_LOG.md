@@ -8,6 +8,44 @@ updated: 2026-08-17
 
 # Mission Log: Arcadia
 
+## 2026-08-17 — Named the four governance gaps behind the PPN shim
+
+- **Did:** Operator raised four concerns: that a project's next action should be
+  distinguishable from the portfolio's, that every project must share code and
+  policy controlled by this repository, that no formal path exists for a
+  project's agent to request a Way change, and that `vision`, `horizon`,
+  `prime_directive`, and a real definition of Milestone are missing. Verified
+  each before answering. One was a misread — `demo-first-delivery` is
+  `project: arcadia`, so the Action shown was Arcadia's own, though its
+  acceptance criteria are written almost entirely in PPN nouns, which is why it
+  read otherwise. The other three are real, and running `arcadia portfolio`
+  surfaced a fourth nobody had named: `portfolio` and `next` report **different
+  current milestones for the same Project**, because the DB carries a
+  project-level milestone matched on ingest while dispatch reads the plan's.
+  Ran `/menu` over all four.
+- **Result:** Decision 0025 drafted on the operator's own redirect — a Way-change
+  request travels as a `type: proposal` document committed in the project's own
+  repository and arrives via `docs sync`, needing no new channel, which is
+  consistent with Decision 0022's git-only rule. `proposal` is already a valid
+  `DOC_TYPES` entry, `discoverDocs` already scans the whole repository, sync
+  already matches documents to their project, and `portfolio` already renders
+  "Waiting on you" — the pipe runs end to end and only the last inch is
+  missing. Decision 0026 drafted defining a Milestone as a named outcome that
+  outlives the plan pursuing it, owned by the Project and referenced by id, with
+  the current Milestone derived rather than stored so the two commands cannot
+  disagree. Decision 0027 drafted admitting `prime_directive` and `horizon` and
+  **rejecting** `vision`, because `ProjectDoc.outcome` already carries it. New
+  `way-delivery` plan created at `status: draft`, holding the rehomed
+  `open-way-sync-pull-requests` — stranded since yesterday in a `complete`
+  plan — and a new `accept-upstream-proposals` Action.
+- **Next:** Nothing dispatched. Three Decisions await ratification, and
+  `way-delivery` does not displace `demo-first-delivery` unless the operator
+  moves the pointer.
+- **Blockers:** None. Noted for a later pass: `arcadia portfolio` reports 11
+  Decisions waiting for Arcadia and 10 for PPN, plus two malformed review items
+  (R36 carries a bare code fence as its title), and Martian Rover still has no
+  `repo_path` configured.
+
 ## 2026-08-17 — Answered three governance questions from one menu
 
 - **Did:** Built a `/menu` skill that gathers pending operator items — open
