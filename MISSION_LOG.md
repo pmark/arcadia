@@ -3,10 +3,35 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-16
+updated: 2026-08-17
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-17 — Drafted the two Decisions that gate running agents in the cloud
+
+- **Did:** Operator asked what Arcadia's architecture becomes under growing
+  adoption, given that coding agents commonly run in cloud containers while
+  Arcadia is local-first. Two questions came out of that discussion as the ones
+  that change shape depending on when they are answered, and both were drafted
+  as Decisions rather than left in conversation. Not a plan Action — operator-
+  directed architecture work, and `demo-first-delivery` is untouched.
+- **Result:** Decision 0022 asks whether an Arcadia installation ever
+  coordinates directly with another, recommending that git is the only channel
+  and rejecting a hosted Arcadia other installations call. Decision 0023 asks
+  whether `current_action` survives concurrency as a stored value,
+  recommending it stays stored with one dispatched agent per repository
+  enforced as a dispatch precondition — reusing the unmerged-branch signal
+  `arcadia work monitor` already computes — and rejecting a derived pointer
+  because a tiebreak rule is an ordering heuristic standing in for the
+  operator's judgment, which the continuation protocol forbids. 0023 depends on
+  0022 and says so. Both `status: open`; neither authorizes code.
+- **Next:** Nothing dispatched. Both Decisions need operator ratification, and
+  0022 must be answered before 0023 is meaningful.
+- **Blockers:** PR #74 (`arcadia docket`, workspace-free) is still open and now
+  conflicts with `main`, which took #73 first and closed
+  `arcadia-way-propagation`. Its plan Action and log entry target a plan that
+  is now `complete`.
 
 ## 2026-08-16 — Closed arcadia-way-propagation: fixed the drift `arcadia way` found in Arcadia itself
 
