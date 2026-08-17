@@ -3,10 +3,62 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-16
+updated: 2026-08-17
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-17 — Answered three governance questions from one menu
+
+- **Did:** Built a `/menu` skill that gathers pending operator items — open
+  Decisions, plan questions, recorded blockers, stale pull requests — into one
+  multiple-choice pass with each option's consequence stated, then acts on the
+  selections. Ran it against this repository's actual state. Four items were
+  pending; the operator answered all four.
+- **Result:** Decision 0022 approved in its strict form: git is the only channel
+  between Arcadia installations, a hosted Arcadia is rejected, and committed
+  coordination records stay available but unadopted. Decision 0023 approved
+  within that narrower space: `current_action` stays stored, one dispatched
+  agent per repository becomes an enforced precondition, deriving the pointer is
+  rejected, and parallel dispatch in one repository is an accepted limit.
+  Decision 0024 written and approved for `propagation-authority`, unblocking
+  `open-way-sync-pull-requests` after two days: mechanical tiers auto-merge,
+  governing tiers always need a human, and Arcadia's new write authority over
+  other repositories is scoped to generated paths by six stated guardrails.
+  `open-way-sync-pull-requests` moved from `blocked`/`question_open` to
+  `open`/`clarified` with acceptance criteria. None of the three authorizes
+  code.
+- **Next:** Rebase PR #74 onto `main` per the operator's fourth answer, recording
+  the workspace-free `arcadia docket` as ad-hoc work rather than an Action on the
+  now-complete `arcadia-way-propagation`.
+- **Blockers:** `open-way-sync-pull-requests` is now clarified but lives in a
+  plan whose status is `complete`, so it needs rehoming before it can dispatch.
+  Not invented here — recorded for the operator.
+
+## 2026-08-17 — Drafted the two Decisions that gate running agents in the cloud
+
+- **Did:** Operator asked what Arcadia's architecture becomes under growing
+  adoption, given that coding agents commonly run in cloud containers while
+  Arcadia is local-first. Two questions came out of that discussion as the ones
+  that change shape depending on when they are answered, and both were drafted
+  as Decisions rather than left in conversation. Not a plan Action — operator-
+  directed architecture work, and `demo-first-delivery` is untouched.
+- **Result:** Decision 0022 asks whether an Arcadia installation ever
+  coordinates directly with another, recommending that git is the only channel
+  and rejecting a hosted Arcadia other installations call. Decision 0023 asks
+  whether `current_action` survives concurrency as a stored value,
+  recommending it stays stored with one dispatched agent per repository
+  enforced as a dispatch precondition — reusing the unmerged-branch signal
+  `arcadia work monitor` already computes — and rejecting a derived pointer
+  because a tiebreak rule is an ordering heuristic standing in for the
+  operator's judgment, which the continuation protocol forbids. 0023 depends on
+  0022 and says so. Both `status: open`; neither authorizes code.
+- **Next:** Nothing dispatched. Both Decisions need operator ratification, and
+  0022 must be answered before 0023 is meaningful.
+- **Blockers:** PR #74 (`arcadia docket`, workspace-free) is still open and now
+  conflicts with `main`, which took #73 first and closed
+  `arcadia-way-propagation`. Its plan Action and log entry target a plan that
+  is now `complete`.
 
 ## 2026-08-16 — Closed arcadia-way-propagation: fixed the drift `arcadia way` found in Arcadia itself
 
