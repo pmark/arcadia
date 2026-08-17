@@ -8,6 +8,51 @@ updated: 2026-08-17
 
 # Mission Log: Arcadia
 
+## 2026-08-17 — Fixed PPN's drift and ratified three governance Decisions from one menu
+
+- **Did:** Operator asked whether PPN was current on the Way. Verified with
+  `arcadia way`, then independently confirmed two of its three claims by
+  diffing the raw files by hand rather than trusting the tool blind:
+  `CONSTITUTION.md` byte-identical (confirmed), continuation protocol
+  correctly tolerated as differing (PPN wraps the shared text with its own
+  preserved section below, which `adoptContinuationProtocol` is designed to
+  allow), AGENTS.md region genuinely stale (confirmed) — missing the
+  six-condition executability test and two stopping obligations added
+  2026-08-16. Also reproduced a real anomaly while verifying: `arcadia way`
+  reports Arcadia's own repository stale on its continuation protocol, and
+  the committed file has zero marker pairs despite PR #73's Mission Log entry
+  claiming a verified byte-identical run with exactly one marker pair —
+  flagged, not chased down further, since it was outside what was asked. Ran
+  `/menu` over the PPN fix and Decisions 0025, 0026, 0027.
+- **Result:** Regenerated PPN's AGENTS.md region with `arcadia project
+  setup-context --repo`, run manually rather than through the not-yet-built
+  automated propagator, scoped to what Decision 0024 already classifies as
+  the mechanical tier. Diffed the result against the drift found by hand —
+  matched exactly. Only `AGENTS.md` and `.arcadia/repo-context.md`'s
+  timestamp changed; `CONSTITUTION.md`, `CLAUDE.md`, and the continuation
+  protocol are byte-identical before and after.
+  [private-practice-now#49](https://github.com/pmark/private-practice-now/pull/49)
+  opened; nothing merged. Decision 0025 approved as recommended, including
+  treating PPN's six shim capabilities as retroactively filed proposals.
+  Decision 0026 approved **on its definition only** — Milestone as a named
+  outcome owned by the Project, current Milestone derived — with the schema
+  change and migration explicitly not authorized and not scheduled; a new
+  trigger row records what would revive it. Decision 0027 approved as
+  recommended (`prime_directive` and `horizon` adopted, `vision` rejected),
+  proceeding on the understanding that `horizon`'s ranking value stays
+  theoretical until 0026's deferred migration is separately scheduled.
+- **Next:** `accept-upstream-proposals` on `way-delivery` is now unblocked by
+  0025's approval but the plan is still `draft` and does not displace
+  `demo-first-delivery`. Implementing 0026's schema/migration is not
+  scheduled and awaits its own trigger.
+- **Blockers:** None recorded. Noted, not chased: Arcadia's own
+  self-reported drift on `docs/agent-continuation-protocol.md` (see above),
+  and `build-demo-hero-vertical-slice` still shows `status: open` in
+  `docs/plans/demo-first-delivery.md` despite a same-day Mission Log entry
+  titled "Built the demo-first Project Detail hero and PPN proof targets" —
+  not reconciled here, since it belongs to whichever session is actually
+  running that Action.
+
 ## 2026-08-17 — Built the demo-first Project Detail hero and PPN proof targets
 
 - **Did:** Dispatched `build-demo-hero-vertical-slice` from `demo-first-delivery`.

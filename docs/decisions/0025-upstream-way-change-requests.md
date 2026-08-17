@@ -4,7 +4,7 @@ type: decision
 id: "0025"
 slug: upstream-way-change-requests
 project: arcadia
-status: open
+status: approved
 question: How does a coding agent working in an adopting project formally request a change to the Arcadia Way, its commands, or its shared files, so that improvising a local implementation is never the only available move?
 gap_type: missing-decision
 recommendation: >-
@@ -16,6 +16,22 @@ recommendation: >-
   the existing "Waiting on you" section, and state the path in the shared
   `AGENTS.md` region so every agent reads it before it can improvise.
 confidence: high
+decided: 2026-08-17
+answer: >-
+  Approved as recommended by the operator on 2026-08-17. A Way-change request
+  travels as a `type: proposal` document committed in the project's own
+  repository and arrives through `docs sync` -- no new channel, consistent
+  with Decision 0022's git-only rule. Unresolved proposals surface in `arcadia
+  portfolio` under "Waiting on you". The shared AGENTS.md region gains the
+  rule that an agent files a proposal and continues without the capability,
+  and never implements Arcadia commands, parsers, or governance machinery
+  locally. PPN's six shim capabilities -- docket, triggers, demo, plan,
+  report, and the hand-rolled document parser -- are treated as the first six
+  proposals, retroactively filed, so that backlog becomes visible as requests
+  rather than staying as a rogue script. This ratification does not
+  authorize implementing proposal ingestion, portfolio surfacing, or the
+  AGENTS.md region change; that is `accept-upstream-proposals` on the
+  `way-delivery` plan.
 updated: 2026-08-17
 ---
 
