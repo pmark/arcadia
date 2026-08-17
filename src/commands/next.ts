@@ -123,19 +123,34 @@ function resolveProjectAndRepo(db: Parameters<typeof listProjects>[0], options: 
   return { project: resolved, repoRoot: path };
 }
 
-export function renderNextSuccess(response: CommandSuccess<NextCommandData>): string[] {
-  const { context, blockers, operatorQuestion, dispatchable, repoRoot } = response.data;
+/**
+ * Everything a dispatch brief says about one resolution, with no reference to
+ * a workspace or a database.
+ *
+ * `next` and `docket` answer the same question from the same repository
+ * documents and differ only in how they were pointed at the repository. Both
+ * render through here so the two can never describe the same state
+ * differently — a divergence an agent would have no way to detect.
+ */
+export interface DispatchRenderInput {
+  context: DispatchResolution["context"];
+  blockers: DispatchResolution["blockers"];
+  operatorQuestion: DispatchResolution["operatorQuestion"];
+  dispatchable: boolean;
+  repoRoot: string;
+}
+
+export function renderDispatchResolution(data: DispatchRenderInput): string[] {
+  const { context, blockers, operatorQuestion, dispatchable, repoRoot } = data;
 
   if (!context) {
-    const lines = [
+    return [
       "No current action could be resolved.",
       "",
       ...renderBlockers(blockers),
       "",
       "Repairing the control documentation is the immediate work."
     ];
-    appendFiredBackBurnerHint(lines, response.data.firedBackBurnerCount);
-    return lines;
   }
 
   const { action } = context;
@@ -214,6 +229,11 @@ export function renderNextSuccess(response: CommandSuccess<NextCommandData>): st
     lines.push(`Not dispatchable: responsibility is "${action.responsibility}".`);
   }
 
+  return lines;
+}
+
+export function renderNextSuccess(response: CommandSuccess<NextCommandData>): string[] {
+  const lines = renderDispatchResolution(response.data);
   appendFiredBackBurnerHint(lines, response.data.firedBackBurnerCount);
   return lines;
 }

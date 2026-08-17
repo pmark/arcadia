@@ -238,3 +238,31 @@ and changing the format is a propagation-wide decision rather than a detail of
 this Action. **Trigger:** revisit when a second machine or a CI job needs to
 read these files, which is the first moment the absolute path can actually be
 wrong for a reader.
+
+**This trigger fired on 2026-08-16.** A PPN session running in a cloud
+container read machine-specific absolute paths that did not exist there. The
+deferral expired on its own terms, exactly as written, without anyone having to
+re-litigate it. The workspace-free `arcadia docket` addresses the orientation
+command -- recorded as ad-hoc work in the Mission Log rather than an Action
+here, because this plan had already closed when it landed; the
+`repo-context.md` path format is still unaddressed and is now overdue rather
+than deferred.
+
+## The packaging half, deliberately not paid yet
+
+`arcadia docket` no longer needs a workspace, which makes it correct on any
+machine that has Arcadia. It does not make it *present* in a cloud container
+that clones one project repository and nothing else — there is still no
+`arcadia` on the box to run.
+
+Three ways to close that: vendor the resolver into each adopter, which
+guarantees the drift this plan exists to prevent; keep a shim pointing at a
+checkout, which is what PPN does now and what fails in containers; or publish
+Arcadia as a package each project declares as a dependency. Only the third is
+real, and it is a propagation-wide decision about distribution rather than a
+detail of this Action.
+
+**Trigger:** the first time an agent session is dispatched to an adopting
+repository in an environment that does not contain an Arcadia checkout, and is
+expected to orient itself. That has already happened once by accident; the
+trigger fires when it is expected to work.

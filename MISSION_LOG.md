@@ -39,6 +39,36 @@ updated: 2026-08-16
   large, `session`-effort, cross-system dashboard Action, not started here.
 - **Blockers:** None for this Action. `open-way-sync-pull-requests` remains
   blocked on the operator answering `propagation-authority`.
+## 2026-08-16 — Gave a project the ability to answer its own docket
+
+- **Did:** Way-verification testing in PPN put a session in a cloud container,
+  where `pnpm arcadia docket` failed. Diagnosed it as structural rather than a
+  bad path: PPN's `scripts/arcadia.mjs` shells `pnpm arcadia next` with `cwd`
+  set to the Arcadia checkout and `--workspace` set to the martianrover
+  database, neither of which exists in a container, while its sibling
+  `triggers` is pure-local and worked fine. Confirmed `resolveDispatch` in
+  `src/docs/dispatch.ts` imports only `node:fs`/`node:path` and computes the
+  entire answer from checked-in documents — the database was doing a slug
+  lookup, a back-burner count, and journaling, none of them load-bearing.
+  Operator directed fixing it once in Arcadia for every project rather than
+  patching PPN. Recorded as ad hoc operator-directed work, not a plan Action:
+  it was written against `arcadia-way-propagation`, which closed in #73 before
+  this landed, and the operator chose on 2026-08-17 to rehome it here rather
+  than reopen a plan whose milestone was already met.
+- **Result:** `arcadia docket [--repo <path>]` resolves the pointer,
+  executability fields, and blockers with no workspace and no database.
+  `next` and `docket` share one renderer, so they cannot describe the same
+  state differently. Verified against PPN with no workspace flags: resolves
+  `intake-to-deployed-site-integration` / `record-integration-verdict`,
+  responsibility `codex`, zero blockers. Five new tests build a repository in a
+  temp directory with nothing beside it. Also recorded that this plan's own
+  `repo-context.md` deferral named "a second machine or a CI job needs to read
+  these files" as its trigger — that trigger fired here, so the item is now
+  overdue rather than deferred.
+- **Next:** The pointer was not moved by this work. Packaging Arcadia so the
+  command exists in a container at all is deferred behind a stated trigger on
+  `arcadia-way-propagation`.
+- **Blockers:** None.
 
 ## 2026-08-16 — Made the recurring Node ABI mismatch self-healing
 
