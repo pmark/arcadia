@@ -8,6 +8,48 @@ updated: 2026-08-17
 
 # Mission Log: Arcadia
 
+## 2026-08-17 — Reconciled what PPN built locally, and proved Decision 0025 works
+
+- **Did:** Operator identified the root cause of PPN's shim directly: they had
+  described capabilities they wanted *Arcadia* to have to coding agents working
+  in PPN, and the agents built them where they were standing rather than in
+  Arcadia or through a formal request — because until Decision 0025 there was
+  no formal request path. Asked for immediate reconciliation. Audited all 21
+  capabilities PPN declares: 10 implemented, 11 declared with full invocation
+  strings and never built. Checked each against Arcadia's real command surface
+  rather than assuming, which changed two conclusions — Arcadia's
+  `back_burner_items` table already has `surface_kind` / `surface_predicate`
+  trigger columns, so the trigger gap is narrower and more specific than
+  "Arcadia has no triggers": it evaluates captured database items and cannot
+  evaluate a deferral declared in a governed document. Likewise `attention`
+  covers Decisions awaiting review, which is adjacent to but not the same as
+  the operator task ledger.
+- **Result:** Filed [PPN proposal 0001](https://github.com/pmark/private-practice-now/pull/52)
+  under Decision 0025 — the first document ever filed through that mechanism,
+  and it worked on the first attempt: committed in PPN, then discovered and
+  ingested by `arcadia docs sync` run from this repository, with no new
+  channel. It also demonstrated the gap `accept-upstream-proposals` exists to
+  close, landing as a bare `proposal` record with its question invisible.
+  Decision 0028 written as the ruling: promote three (document-level trigger
+  evaluation, the operator task ledger, the demo proof-target registry), retire
+  four from PPN as already provided here (`docket`, `advance`, `report`, `go`),
+  strike nine as never-built, defer `capabilities`. Two receiving Actions added
+  to `way-delivery`. The demo promotion needed no new Action — the active
+  Action `build-demo-hero-vertical-slice` is already specified to build that
+  contract, so PPN's working prior art was added to its `references` instead,
+  and now prints in the dispatch brief where its agent will actually read it.
+  Nine of Arcadia's own governed documents declare deferrals nothing can
+  evaluate, which is why trigger evaluation is sequenced first.
+- **Next:** Nothing dispatched. Decision 0028 needs ratification; the pointer is
+  unchanged at `build-demo-hero-vertical-slice`, and `way-delivery` is still
+  `draft`.
+- **Blockers:** The bare-`arcadia` name collision is deliberately not settled by
+  0028 and recorded there as a trigger. `/Users/pmark/.local/bin/arcadia`
+  symlinks to a Codex skill script that unconditionally runs Arcadia's CLI, so
+  `docket`, `advance`, and `report` invoked from PPN return Arcadia's answer
+  silently. Deleting PPN's copies removes one half; the name itself is the
+  operator's call.
+
 ## 2026-08-17 — Removed the permanent engine warning; fixed Arcadia's own self-reported drift
 
 - **Did:** Operator asked whether the recurring `[WARN] Unsupported engine`
