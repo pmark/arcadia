@@ -8,6 +8,31 @@ updated: 2026-08-18
 
 # Mission Log: Arcadia
 
+## 2026-08-18 — Documented the cwd-aware launcher and tidy for operators
+
+- **Did:** Operator asked for the new cwd-aware launcher, `tidy`, and `go`'s
+  clutter nudge to be explained in the appropriate user-facing documents, with
+  how to use them and why they matter, not just the mechanical flag reference
+  already added to `START_HERE.md` during implementation. Found and fixed a
+  real defect while restructuring: an earlier edit had left a paragraph about
+  `docket`'s "Standing constraints" output stranded after the unrelated
+  `tidy`/`go` content, because it was pushed down when that content was
+  inserted above it without moving it back.
+- **Result:** `START_HERE.md`'s three mechanical sections now nest under one
+  new "Working across many projects without losing the thread" heading, with
+  an opening paragraph naming the actual failures this fixes — a bare
+  `arcadia docket` silently answering for the wrong project, and 15 worktrees
+  plus 54 branches accumulating for weeks with nothing surfacing it — rather
+  than describing the features in the abstract. `docs/working-copy-safety.md`,
+  the canonical safety document `AGENTS.md` points to, gained a "Retiring
+  safely landed work" section: it previously covered only the danger side
+  (`work monitor`, preserving `UNSAVED`/`LOCAL ONLY` work) and said nothing
+  about `LANDED` work that nobody ever retires, which is the failure mode that
+  actually occurred. The `LANDED` row in its safety-states table now points to
+  that section instead of reading "nothing required."
+- **Next:** Nothing dispatched. Pointer unchanged.
+- **Blockers:** None.
+
 ## 2026-08-18 — Cleaned up 14 worktrees and 45 branches, and made the state visible
 
 - **Did:** Operator, away from their machine, asked for the accumulated

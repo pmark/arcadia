@@ -339,7 +339,31 @@ acceptance criteria. It takes no `--workspace`, opens no database, and says so
 on every run: it reports one repository and never the portfolio. Use `next`
 when you want the portfolio's answer, `docket` when you want the project's.
 
-## Running `arcadia` from anywhere
+Below the `Authorization:` line, the brief prints **Standing constraints**: the
+repository's `CONSTITUTION.md`, verbatim. Nothing parses the Constitution, so
+printing it here is what makes a dispatched agent read the rules that bind the
+Action rather than merely be pointed at the file. It is deterministic and costs
+no LLM tokens.
+
+Edit `CONSTITUTION.md` to change what appears — the brief has no second copy to
+keep in step. A repository without a `CONSTITUTION.md` simply omits the section;
+its absence never blocks dispatch, because foreign repositories Arcadia manages
+are not required to adopt one.
+
+## Working across many projects without losing the thread
+
+Momentum across several projects at once depends on two things nobody usually
+gets for free: the command you run has to answer for the project you are
+actually standing in, and the debris every session leaves behind — worktrees,
+branches, half-finished checkouts — has to stay legible instead of quietly
+turning into either lost work or noise you can no longer trust. Both failed
+here in practice before they were fixed: a bare `arcadia docket` run inside a
+different project silently answered for Arcadia instead, and 15 worktrees and
+54 branches accumulated over weeks with nothing ever surfacing that fact. The
+three pieces below are the fix, and they run automatically once installed —
+there is nothing to remember to do.
+
+### Running `arcadia` from anywhere
 
 `scripts/arcadia`, symlinked onto your `PATH`, lets `arcadia <command>` run
 from any directory and mean **the project you are standing in**:
@@ -365,7 +389,7 @@ Install or repair the symlink with:
 ln -sf "$(pwd)/scripts/arcadia" ~/.local/bin/arcadia
 ```
 
-## Cleaning up worktrees and branches
+### Cleaning up worktrees and branches
 
 Agent sessions leave worktrees and branches behind. `arcadia tidy` retires the
 ones whose work is provably already on the base branch, and reports everything
@@ -430,17 +454,9 @@ already-merged branches — and points at `tidy` when there is anything to clear
 It is a local count only, with no fetch and no GitHub call, so it costs nothing
 at a session boundary. That check exists because the accumulation that prompted
 `tidy` sat unnoticed for weeks: nothing ever put the state in front of anyone.
-
-Below the `Authorization:` line, the brief prints **Standing constraints**: the
-repository's `CONSTITUTION.md`, verbatim. Nothing parses the Constitution, so
-printing it here is what makes a dispatched agent read the rules that bind the
-Action rather than merely be pointed at the file. It is deterministic and costs
-no LLM tokens.
-
-Edit `CONSTITUTION.md` to change what appears — the brief has no second copy to
-keep in step. A repository without a `CONSTITUTION.md` simply omits the section;
-its absence never blocks dispatch, because foreign repositories Arcadia manages
-are not required to adopt one.
+Together with the cwd-aware launcher above, this is what lets you run many
+projects at once without either losing track of which one you are talking to
+or quietly accumulating a mess you cannot safely see through.
 
 ## Answering Decisions
 
