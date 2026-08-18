@@ -8,6 +8,40 @@ updated: 2026-08-17
 
 # Mission Log: Arcadia
 
+## 2026-08-18 — Made `arcadia` mean the project you are standing in
+
+- **Did:** Decision 0028's recorded trigger fired: the operator ruled that the
+  global bare-`arcadia` command should either work correctly from any directory
+  or be removed. It was worth keeping, and the fix was smaller than expected
+  once the actual cause was isolated. `docket` and `go` already defaulted
+  `--repo` to `process.cwd()` — the launcher's `cd` into Arcadia's checkout was
+  what destroyed that context, so every repo-scoped command answered for
+  Arcadia regardless of where it was asked. Only two `process.cwd()` call sites
+  existed in the whole CLI, which made the correction narrow.
+- **Result:** `scripts/arcadia` now lives in this repository, versioned and
+  reviewable, and `~/.local/bin/arcadia` points at it instead of at an
+  unversioned Codex skills directory — a script that decides which project
+  every command reaches should not sit where no review, test, or drift report
+  can see it. It records `ARCADIA_INVOKED_FROM` before changing directory.
+  `src/cli/invocation.ts` reads it, falling back to `process.cwd()` when it is
+  absent, empty, or names a directory that no longer exists. Both `--repo`
+  defaults use it, and `resolveProjectAndRepo` now resolves the Project whose
+  `repo_path` contains the invocation directory before falling back to
+  sole-active, preferring the most specific match when checkouts nest. Verified
+  all four cases: `docket` and `next` from PPN return PPN; from this repository
+  return Arcadia; from `/tmp` return a blocker naming the searched directory
+  rather than a substituted answer. Also fixed a fragility inherited from the
+  old launcher — it refused outright when `main` was not checked out in a
+  worktree, which is the ordinary state during any agent session, so
+  orientation broke exactly when it was most needed. It now falls back to the
+  primary checkout and says on stderr which branch it ran from. 9 new tests;
+  suite at 867 passing.
+- **Next:** Nothing dispatched. The pointer is unchanged at
+  `build-demo-hero-vertical-slice`.
+- **Blockers:** None. One inert leftover, not deleted: the superseded launcher
+  at `~/.codex/skills/arcadia-go/scripts/arcadia` is now unreferenced — no
+  `SKILL.md` names it — but still on disk outside either repository.
+
 ## 2026-08-17 — Reconciled what PPN built locally, and proved Decision 0025 works
 
 - **Did:** Operator identified the root cause of PPN's shim directly: they had

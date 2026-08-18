@@ -295,6 +295,7 @@ import {
   runWorkflowValidateCommand
 } from "./commands/workflow.js";
 import { normalizeError, validationError } from "./cli/errors.js";
+import { invocationRoot } from "./cli/invocation.js";
 import type { BackBurnerSurfaceCondition } from "./domain/types.js";
 import type { BackBurnerFacetTag } from "./domain/constants.js";
 import { ORIENTATION_EFFORTS, type OrientationEffort } from "./orientation/types.js";
@@ -2186,7 +2187,7 @@ export function buildProgram(): Command {
     program
       .command("docket")
       .description("What this repository says to work on next, read only from this repository")
-      .option("--repo <path>", "Repository to read", process.cwd())
+      .option("--repo <path>", "Repository to read", invocationRoot())
       .option("--project <project>", "Project slug, when the repository declares more than one")
   ).action((options: { repo: string; project?: string; json?: boolean }) =>
     runCliAction("docket", options, () => runDocketCommand(options), renderDocketSuccess)
@@ -2229,7 +2230,7 @@ export function buildProgram(): Command {
     program
       .command("go")
       .description("Safely reconcile a completed agent worktree and verify the next governed handoff")
-      .option("--repo <path>", "Target repository or any of its worktrees", process.cwd())
+      .option("--repo <path>", "Target repository or any of its worktrees", invocationRoot())
       .option("--source <path>", "Completed agent worktree to reconcile; defaults to --repo")
       .option("--agent <agent>", "Prepare the next isolated worktree: codex or claude")
       .option("--apply", "Fast-forward and retire the source worktree; without it nothing is changed")

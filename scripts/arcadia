@@ -1,0 +1,73 @@
+#!/bin/sh
+# Arcadia's launcher: run `arcadia <command>` from anywhere and have it mean
+# the project you are standing in.
+#
+# Arcadia's CLI must execute inside Arcadia's own checkout -- that is where its
+# pinned Node, its dependencies, and its source live. Reaching it therefore
+# requires changing directory, and changing directory is exactly what destroys
+# the one piece of context every repo-scoped command needs: where the operator
+# actually was.
+#
+# On 2026-08-18 that cost an hour. `arcadia done` run from Private Practice Now
+# reported `unknown command 'done'`, because the launcher had silently executed
+# Arcadia's CLI instead of PPN's. Worse, three commands exist in both places --
+# `docket`, `advance`, `report` -- and those did not fail at all. They answered
+# for the wrong project, in the right format, with nothing to notice.
+#
+# So this script records where it was invoked from before it moves, and hands
+# that to the CLI as ARCADIA_INVOKED_FROM. The CLI treats it as the working
+# directory for anything that resolves a repository or a Project. Nothing about
+# the answer depends on which directory the runtime happens to need.
+#
+# This file is versioned in the Arcadia repository on purpose. The launcher
+# decides which project every command reaches; a script with that authority
+# does not belong in an unversioned skills directory where no review, test, or
+# drift report can see it.
+
+set -eu
+
+# Where the operator actually stood. Captured before anything below moves.
+# Already-set values win, so a caller that has resolved this itself -- another
+# wrapper, a test -- is never second-guessed.
+ARCADIA_INVOKED_FROM="${ARCADIA_INVOKED_FROM:-$(pwd -P)}"
+export ARCADIA_INVOKED_FROM
+
+arcadia_repository="${ARCADIA_REPO:-/Users/pmark/Dev/MR/Arcadia/arcadia}"
+
+if [ ! -d "$arcadia_repository" ]; then
+  echo "Arcadia repository not found: $arcadia_repository" >&2
+  echo "Set ARCADIA_REPO to its path." >&2
+  exit 3
+fi
+
+# Prefer the main worktree, because agent sessions routinely leave the primary
+# checkout on a feature branch and released behaviour is the better default.
+#
+# But do not *require* it. The previous launcher refused outright when main was
+# not checked out anywhere, which is the ordinary state during any agent
+# session -- so orientation broke exactly when it was most needed. Since the
+# CLI now resolves documents from ARCADIA_INVOKED_FROM rather than from
+# wherever it happens to run, this checkout is only the runtime; which branch
+# it sits on changes which build of Arcadia executes, not which project is
+# answered for. Falling back is safe, and saying so keeps it from being silent.
+runtime="$({
+  git -C "$arcadia_repository" worktree list --porcelain
+} | awk '
+  $1 == "worktree" { path = substr($0, 10) }
+  $1 == "branch" && $2 == "refs/heads/main" { print path; exit }
+')"
+
+if [ -z "$runtime" ]; then
+  runtime="$arcadia_repository"
+  branch="$(git -C "$runtime" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "an unknown branch")"
+  echo "arcadia: main is not checked out in any worktree; running from $branch." >&2
+fi
+
+if ! command -v mise >/dev/null 2>&1; then
+  echo "mise is required to run Arcadia's pinned Node runtime." >&2
+  echo "Install mise, then retry this command." >&2
+  exit 3
+fi
+
+cd "$runtime"
+exec mise exec -- pnpm arcadia "$@"

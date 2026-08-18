@@ -339,6 +339,32 @@ acceptance criteria. It takes no `--workspace`, opens no database, and says so
 on every run: it reports one repository and never the portfolio. Use `next`
 when you want the portfolio's answer, `docket` when you want the project's.
 
+## Running `arcadia` from anywhere
+
+`scripts/arcadia`, symlinked onto your `PATH`, lets `arcadia <command>` run
+from any directory and mean **the project you are standing in**:
+
+```sh
+cd ~/Dev/PrivatePracticeNow/platform
+arcadia docket      # Private Practice Now's docket, not Arcadia's
+arcadia next        # resolves the Project from where you are standing
+```
+
+Arcadia's CLI has to execute inside Arcadia's own checkout, so the launcher
+changes directory to get there — and that would normally destroy the one piece
+of context these commands need. It records where you actually were in
+`ARCADIA_INVOKED_FROM` first, and the CLI resolves repositories and Projects
+from that rather than from wherever the runtime happens to be.
+
+Outside any managed project you get a blocker naming the directory it searched,
+never a quietly substituted answer. Pass `--repo` or `--project` to override.
+
+Install or repair the symlink with:
+
+```sh
+ln -sf "$(pwd)/scripts/arcadia" ~/.local/bin/arcadia
+```
+
 Below the `Authorization:` line, the brief prints **Standing constraints**: the
 repository's `CONSTITUTION.md`, verbatim. Nothing parses the Constitution, so
 printing it here is what makes a dispatched agent read the rules that bind the
