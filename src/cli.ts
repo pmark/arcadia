@@ -259,6 +259,7 @@ import {
   runNextReadyCommand
 } from "./commands/next.js";
 import { renderDocketSuccess, runDocketCommand } from "./commands/docket.js";
+import { renderTidySuccess, runTidyCommand } from "./commands/tidy.js";
 import { renderPortfolioSuccess, runPortfolioCommand } from "./commands/portfolio.js";
 import { renderWayStatusSuccess, runWayStatusCommand } from "./commands/way.js";
 import {
@@ -295,6 +296,7 @@ import {
   runWorkflowValidateCommand
 } from "./commands/workflow.js";
 import { normalizeError, validationError } from "./cli/errors.js";
+import { invocationRoot } from "./cli/invocation.js";
 import type { BackBurnerSurfaceCondition } from "./domain/types.js";
 import type { BackBurnerFacetTag } from "./domain/constants.js";
 import { ORIENTATION_EFFORTS, type OrientationEffort } from "./orientation/types.js";
@@ -2184,9 +2186,27 @@ export function buildProgram(): Command {
 
   addJsonOption(
     program
+      .command("tidy")
+      .description("Retire worktrees and branches whose work is already on the base branch; report everything else")
+      .option("--repo <path>", "Repository to tidy", invocationRoot())
+      .option("--apply", "Actually retire what is listed; without it nothing is changed")
+      .option("--include-own-branches", "Also retire fully merged branches you named yourself, not just agent-owned ones")
+      .option("--no-fetch", "Compare against the local base branch only; skip fetching origin first")
+      .option("--no-github", "Skip pull-request verification even when the GitHub CLI is available")
+  ).action((options: { repo?: string; apply?: boolean; includeOwnBranches?: boolean; fetch?: boolean; github?: boolean; json?: boolean }) =>
+    runCliAction(
+      "tidy",
+      options,
+      () => runTidyCommand({ ...options, noFetch: options.fetch === false, noGithub: options.github === false }),
+      renderTidySuccess
+    )
+  );
+
+  addJsonOption(
+    program
       .command("docket")
       .description("What this repository says to work on next, read only from this repository")
-      .option("--repo <path>", "Repository to read", process.cwd())
+      .option("--repo <path>", "Repository to read", invocationRoot())
       .option("--project <project>", "Project slug, when the repository declares more than one")
   ).action((options: { repo: string; project?: string; json?: boolean }) =>
     runCliAction("docket", options, () => runDocketCommand(options), renderDocketSuccess)
@@ -2229,7 +2249,7 @@ export function buildProgram(): Command {
     program
       .command("go")
       .description("Safely reconcile a completed agent worktree and verify the next governed handoff")
-      .option("--repo <path>", "Target repository or any of its worktrees", process.cwd())
+      .option("--repo <path>", "Target repository or any of its worktrees", invocationRoot())
       .option("--source <path>", "Completed agent worktree to reconcile; defaults to --repo")
       .option("--agent <agent>", "Prepare the next isolated worktree: codex or claude")
       .option("--apply", "Fast-forward and retire the source worktree; without it nothing is changed")

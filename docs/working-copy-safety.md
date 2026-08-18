@@ -12,7 +12,7 @@ can name it and a remote can recover it.
 | `LOCAL ONLY` | One or more commits are not present on the upstream branch, or an unmerged branch has no upstream. | Push the branch and open a draft PR. |
 | `PUSHED` | The remote can recover the commits. Arcadia reports whether an open PR was found or PR state is unknown. | Open a draft PR when none exists. |
 | `IN PR` | A pull request records the branch, purpose, and delivery state. | Validate, review, and merge or close deliberately. |
-| `LANDED` | No unique or uncommitted work remains. | Nothing required. |
+| `LANDED` | No unique or uncommitted work remains. | Nothing required to preserve it — but see "Retiring safely landed work" below; `LANDED` state that nobody clears is exactly what accumulated into 15 worktrees and 54 branches before `arcadia tidy` existed. |
 
 Delivery is reported separately. A branch can be safely preserved in a draft PR
 while still being blocked, failing Validation, or far from merge-ready.
@@ -31,6 +31,68 @@ finds linked Git worktrees, dirty files, detached work, unpushed commits,
 unmerged local branches, remote branches, and pull requests. It does not fetch,
 checkout, stage, commit, push, open a PR, or change repository state. Use
 `--no-pull-requests` when offline or when only local Git evidence is wanted.
+
+## Retiring safely landed work
+
+`work monitor` answers one question: is anything at risk of being lost? It
+deliberately says nothing about the opposite failure — a worktree or branch
+whose work is entirely safe, already on the base branch, and simply never
+retired. Left alone, `LANDED` state accumulates silently, because nothing in
+the preservation model above has any reason to flag it. That accumulation is
+not hypothetical: this repository reached 15 worktrees and 54 local branches
+before anyone noticed, and two of the branches that looked most alarming when
+finally reviewed — reported as "the only copy" of their work — turned out to
+be stale content that would have *damaged* `main` if merged, not work at risk
+of being lost. The report itself was the problem.
+
+`arcadia tidy` is the counterpart tool. Run it from any repository:
+
+```sh
+arcadia tidy              # dry run; nothing is changed
+arcadia tidy --apply      # retires exactly what the dry run listed
+```
+
+Its removal rule is one sentence, true by construction rather than by careful
+checking: **nothing is removed unless every commit it carries is already
+reachable from the base branch, and its working tree is clean.** A branch
+whose commits are all ancestors of base has no commits of its own to lose, so
+this cannot destroy work — there is no state in which it does.
+
+Proving "already reachable" takes three checks, run in order, each catching
+what the others miss:
+
+1. **Ancestry** — the ordinary case: the branch's commits are literal
+   ancestors of the base branch.
+2. **Patch equivalence** (`git cherry`) — catches cherry-picks, rebases, and
+   amended commits, which rewrite history so the branch is never a literal
+   ancestor even though its content landed. Local, offline, no credentials.
+3. **Verified pull-request merge** — checks GitHub for a merged pull request on
+   the branch and verifies *that commit's* ancestry, not merely GitHub's
+   "merged" label. This is what catches a squash or rebase merge, which
+   rewrites history the same way a manual rebase does.
+
+A branch is only reported unmerged once all three decline it. Before comparing
+anything, `tidy` fetches `origin` by default — every worktree in a repository
+shares one set of refs, so a base branch nobody has pulled in recently makes
+every worktree's ancestry check stale at once, with nothing to indicate it.
+That staleness is what produced this repository's false alarms in the first
+place.
+
+When git's own `branch -d` refuses a branch this process has already proven
+safe — which happens for squash/rebase merges and for any branch whose remote
+counterpart still exists, since git compares against the upstream rather than
+the base — `tidy` writes an `archive/<branch>` tag before forcing the delete,
+and prints the restore command. Push those tags and the commit is recoverable
+by name, forever, from any clone, independent of the branch that pointed to it.
+
+`arcadia go` reports a local-only count of extra worktrees and already-merged
+branches at the end of every run, pointing at `tidy` when there is anything to
+clear. No fetch, no GitHub call — it costs nothing at the session boundary
+where it runs, and its only job is to make sure this state is never silently
+invisible again.
+
+See `START_HERE.md`'s "Working across many projects without losing the
+thread" for the operator-facing walkthrough, including every flag.
 
 ## Start-session rule
 

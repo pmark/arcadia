@@ -143,7 +143,7 @@ genuinely minor.
 | --- | --- |
 | `capabilities` as a listing command | An agent or operator is misled by the registry a second time, or a third project adopts one. |
 | Re-propose any struck command | Someone states the concrete work it would unblock, as a proposal under 0025. |
-| Resolve the bare-`arcadia` name collision | The operator decides how the global script should behave; this Decision deliberately does not settle it. |
+| Resolve the bare-`arcadia` name collision | ~~The operator decides how the global script should behave~~ — **fired and resolved 2026-08-18.** The operator ruled: make it work from any directory or remove it. It now works. `scripts/arcadia` moved into this repository, records `ARCADIA_INVOKED_FROM` before changing directory, and the CLI resolves repositories and Projects from that. Verified: `arcadia docket` from PPN returns PPN. |
 | Promote PPN's `plan` brief renderer | A second project wants the same brief format, which would make it general rather than local. |
 
 ## What this Decision does not authorize

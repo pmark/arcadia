@@ -1,4 +1,7 @@
+import path from "node:path";
+
 import { projectNotFound, validationError } from "../cli/errors.js";
+import { invocationRoot } from "../cli/invocation.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
@@ -87,6 +90,37 @@ function pickSoleActiveProject(db: Parameters<typeof listProjects>[0]) {
 }
 
 /**
+ * The Project whose repository contains the directory this was invoked from.
+ *
+ * Standing inside a Project's checkout is an unambiguous statement about which
+ * Project is meant, and it is the answer an operator expects when they run
+ * `arcadia next` from a project directory. Without this, four active Projects
+ * means every such invocation is refused for ambiguity that only exists in the
+ * database's view of the world.
+ *
+ * The containment test is deliberate rather than an equality check: agent
+ * worktrees and subdirectories are still inside the Project, and a path that
+ * merely shares a prefix with the repository root -- `/repo-backup` beside
+ * `/repo` -- is not.
+ */
+function pickProjectContainingInvocation(db: Parameters<typeof listProjects>[0]) {
+  const from = invocationRoot();
+  const matches = listProjects(db)
+    .filter((project) => project.status === "active")
+    .map((project) => ({ project, repoPath: getProjectMetadata(db, project.id)?.repo_path?.trim() }))
+    .filter((candidate): candidate is { project: typeof candidate.project; repoPath: string } => {
+      if (!candidate.repoPath) return false;
+      const root = path.resolve(candidate.repoPath);
+      return from === root || from.startsWith(`${root}${path.sep}`);
+    })
+    // The most specific repository wins when one Project's checkout nests
+    // inside another's.
+    .sort((a, b) => b.repoPath.length - a.repoPath.length);
+
+  return matches[0]?.project ?? null;
+}
+
+/**
  * The Project and repository both `next` and `next --ready` resolve from,
  * shared so the two commands can never disagree about which repository they
  * are reading documents from.
@@ -94,7 +128,7 @@ function pickSoleActiveProject(db: Parameters<typeof listProjects>[0]) {
 function resolveProjectAndRepo(db: Parameters<typeof listProjects>[0], options: NextCommandOptions) {
   const resolved = options.project
     ? getProject(db, options.project) ?? getProjectBySlug(db, options.project)
-    : pickSoleActiveProject(db);
+    : pickProjectContainingInvocation(db) ?? pickSoleActiveProject(db);
 
   if (!resolved) {
     if (options.project) {
@@ -106,7 +140,7 @@ function resolveProjectAndRepo(db: Parameters<typeof listProjects>[0], options: 
     throw validationError(
       active.length === 0
         ? "No Project is active, so there is no current action. Set one active, or name it with --project."
-        : "More than one Project is active, so there is no single current action. Name one with --project.",
+        : "More than one Project is active and this was not run from inside any of their repositories, so there is no single current action. Name one with --project, or run this from a Project's checkout.",
       { active: active.map((candidate) => candidate.slug), all: listProjects(db).map((c) => c.slug) }
     );
   }

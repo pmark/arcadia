@@ -350,6 +350,114 @@ keep in step. A repository without a `CONSTITUTION.md` simply omits the section;
 its absence never blocks dispatch, because foreign repositories Arcadia manages
 are not required to adopt one.
 
+## Working across many projects without losing the thread
+
+Momentum across several projects at once depends on two things nobody usually
+gets for free: the command you run has to answer for the project you are
+actually standing in, and the debris every session leaves behind — worktrees,
+branches, half-finished checkouts — has to stay legible instead of quietly
+turning into either lost work or noise you can no longer trust. Both failed
+here in practice before they were fixed: a bare `arcadia docket` run inside a
+different project silently answered for Arcadia instead, and 15 worktrees and
+54 branches accumulated over weeks with nothing ever surfacing that fact. The
+three pieces below are the fix, and they run automatically once installed —
+there is nothing to remember to do.
+
+### Running `arcadia` from anywhere
+
+`scripts/arcadia`, symlinked onto your `PATH`, lets `arcadia <command>` run
+from any directory and mean **the project you are standing in**:
+
+```sh
+cd ~/Dev/PrivatePracticeNow/platform
+arcadia docket      # Private Practice Now's docket, not Arcadia's
+arcadia next        # resolves the Project from where you are standing
+```
+
+Arcadia's CLI has to execute inside Arcadia's own checkout, so the launcher
+changes directory to get there — and that would normally destroy the one piece
+of context these commands need. It records where you actually were in
+`ARCADIA_INVOKED_FROM` first, and the CLI resolves repositories and Projects
+from that rather than from wherever the runtime happens to be.
+
+Outside any managed project you get a blocker naming the directory it searched,
+never a quietly substituted answer. Pass `--repo` or `--project` to override.
+
+Install or repair the symlink with:
+
+```sh
+ln -sf "$(pwd)/scripts/arcadia" ~/.local/bin/arcadia
+```
+
+### Cleaning up worktrees and branches
+
+Agent sessions leave worktrees and branches behind. `arcadia tidy` retires the
+ones whose work is provably already on the base branch, and reports everything
+else without touching it:
+
+```sh
+arcadia tidy              # dry run — nothing is changed
+arcadia tidy --apply      # retires what the dry run listed
+```
+
+The safety rule is one sentence, true by construction: **nothing is removed
+unless every commit it carries is already reachable from the base branch, and
+its working tree is clean.** A branch whose commits are all ancestors of the
+base branch has no commits of its own to lose, so this cannot destroy work —
+there is no state in which it does.
+
+It fetches `origin` first by default. Every worktree in a repository shares one
+set of refs, so a `main` nobody has pulled in recently makes every worktree's
+ancestry check stale at once — a genuinely merged branch reads as unmerged, not
+because anything is wrong, but because the local answer is out of date. Pass
+`--no-fetch` to compare against the local branch only.
+
+It also checks GitHub for merged pull requests when `gh` is available. A
+squash or rebase merge rewrites history, so a branch merged that way never
+becomes an ancestor of the base branch — only the commit GitHub actually
+produced does. `tidy` verifies that commit's ancestry rather than trusting
+GitHub's "merged" label alone, so a squash-merged branch is correctly retired
+instead of sitting forever in "unmerged." Pass `--no-github` to skip this.
+
+Merged branches you named yourself are reported but not retired, since
+deleting your own ref is your call — pass `--include-own-branches` to include
+them. Agent-owned branches (`codex/`, `claude/`, `agent/`, `worktree-`
+prefixes) are retired by default.
+
+Anything genuinely unmerged is never touched, and anything with no remote copy
+is called out explicitly as the only copy of that work.
+
+### Nothing is ever unrecoverable
+
+`tidy` proves a branch landed three ways before retiring it, and reports which
+one applied: plain **ancestry**, **patch equivalence** (`git cherry`, which
+sees through cherry-picks, rebases, and amended commits with no network), or a
+verified **merged pull request** (checking the commit GitHub actually produced,
+not just its "merged" label). A branch is only called unmerged once all three
+decline it.
+
+When `git branch -d` refuses — which it does for anything that landed by squash
+or rebase, and for a branch whose remote counterpart still exists — `tidy`
+writes an `archive/<branch>` tag before forcing, and prints the restore command:
+
+```sh
+git branch <branch> archive/<branch>
+```
+
+Push those tags (`git push origin --tags`) and the commits are recoverable
+forever, from any clone, whatever happens to the local branch.
+
+### Noticing before it piles up
+
+`arcadia go` now ends by stating the repository's state — extra worktrees and
+already-merged branches — and points at `tidy` when there is anything to clear.
+It is a local count only, with no fetch and no GitHub call, so it costs nothing
+at a session boundary. That check exists because the accumulation that prompted
+`tidy` sat unnoticed for weeks: nothing ever put the state in front of anyone.
+Together with the cwd-aware launcher above, this is what lets you run many
+projects at once without either losing track of which one you are talking to
+or quietly accumulating a mess you cannot safely see through.
+
 ## Answering Decisions
 
 Arcadia separates approval Decisions from clarification Decisions:

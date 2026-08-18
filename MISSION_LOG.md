@@ -3,10 +3,142 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-17
+updated: 2026-08-18
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-18 — Documented the cwd-aware launcher and tidy for operators
+
+- **Did:** Operator asked for the new cwd-aware launcher, `tidy`, and `go`'s
+  clutter nudge to be explained in the appropriate user-facing documents, with
+  how to use them and why they matter, not just the mechanical flag reference
+  already added to `START_HERE.md` during implementation. Found and fixed a
+  real defect while restructuring: an earlier edit had left a paragraph about
+  `docket`'s "Standing constraints" output stranded after the unrelated
+  `tidy`/`go` content, because it was pushed down when that content was
+  inserted above it without moving it back.
+- **Result:** `START_HERE.md`'s three mechanical sections now nest under one
+  new "Working across many projects without losing the thread" heading, with
+  an opening paragraph naming the actual failures this fixes — a bare
+  `arcadia docket` silently answering for the wrong project, and 15 worktrees
+  plus 54 branches accumulating for weeks with nothing surfacing it — rather
+  than describing the features in the abstract. `docs/working-copy-safety.md`,
+  the canonical safety document `AGENTS.md` points to, gained a "Retiring
+  safely landed work" section: it previously covered only the danger side
+  (`work monitor`, preserving `UNSAVED`/`LOCAL ONLY` work) and said nothing
+  about `LANDED` work that nobody ever retires, which is the failure mode that
+  actually occurred. The `LANDED` row in its safety-states table now points to
+  that section instead of reading "nothing required."
+- **Next:** Nothing dispatched. Pointer unchanged.
+- **Blockers:** None.
+
+## 2026-08-18 — Cleaned up 14 worktrees and 45 branches, and made the state visible
+
+- **Did:** Operator, away from their machine, asked for the accumulated
+  worktrees and branches to be resolved now and made safe from here on.
+  Investigated the three branches `tidy` had flagged as "the only copy" before
+  touching anything, and all three were false alarms:
+  `preserve/local-main-before-pr38` held a Claude Code executor commit whose
+  file is byte-identical on `main`; `codex/reliable-arcadia-service-restart`
+  documented `.nvmrc`, which the mise migration deleted, so merging it would
+  have regressed PR #79's ABI fix; `codex/agent-session-queue-proposal` was an
+  older copy of Decision 0011, `status: open`, which would have un-superseded a
+  Decision 0012 already resolved. Zero work at risk, and two of the three would
+  have damaged `main` if merged — the danger ran opposite to the warning.
+- **Result:** Added `git cherry` patch-equivalence as a third merge proof
+  alongside ancestry and pull-request verification. It is local, needs no
+  credentials, and catches cherry-picks, rebases, and amended commits — the
+  cases that made the report untrustworthy. Each proof catches what the others
+  miss, so a branch is only called unmerged once all three decline it. When
+  `git branch -d` refuses (squash/rebase merges, and branches whose remote
+  counterpart still exists — git compares against the upstream, not the base),
+  `tidy` now writes an `archive/<branch>` tag before forcing and prints the
+  restore command, so no deletion is ever unrecoverable. Ran it: **15 worktrees
+  to 1, 54 branches to 9**, 49 items retired across two passes. Five archive
+  tags pushed to `origin`, covering every commit not reachable from `main`.
+  For prevention, `arcadia go` now closes by stating extra worktrees and
+  already-merged branches and pointing at `tidy` — local counts only, no fetch,
+  no GitHub call, because the accumulation that caused all this sat unnoticed
+  for weeks with nothing ever surfacing it. 6 new tests (23 for `tidy`); full
+  suite 890 passing, same 4 pre-existing failures.
+- **Next:** Nothing dispatched. Pointer unchanged.
+- **Blockers:** None. Two branches remain by design —
+  `codex/reliable-arcadia-service-restart` and
+  `codex/agent-session-queue-proposal` genuinely diverge from `main`, so `tidy`
+  correctly refuses them; both are archived as pushed tags and are obsolete
+  rather than valuable, but deleting them is the operator's call, not a
+  cleanup tool's.
+
+## 2026-08-18 — Added arcadia tidy, then made it verify what it can't see by ancestry
+
+- **Did:** Operator asked for a safe cleanup command for accumulated worktrees
+  and branches, plus help reconciling which held live work. Built `arcadia
+  tidy` reusing `go`'s existing safety primitives (`SAFE_TASK_BRANCH`,
+  `assertClean`, ancestry checks), extracted into `src/git/worktrees.ts` so the
+  two commands cannot disagree about what is safe to delete. A dry run against
+  this actual repository found 43 retirable items and flagged 6 branches as
+  genuinely unmerged. Operator pushed back on two of those six, unwilling to
+  manually review branches merely because their commits were not literal
+  ancestors of `main`, and asked for the smarter check rather than a
+  workaround. Investigating turned up something more fundamental than the
+  squash-merge case predicted: this repository's shared `main` ref was two
+  merged pull requests behind `origin/main`, with nothing anywhere flagging
+  it. Every worktree shares one set of refs, so that staleness was silently
+  degrading every ancestry check in every worktree at once.
+- **Result:** `tidy` now fetches `origin` before comparing (default on,
+  `--no-fetch` to skip), and separately checks GitHub for merged pull requests
+  when `gh` is available (default on, `--no-github` to skip) — verifying a
+  PR's `mergeCommit` ancestry rather than trusting its "merged" label, which
+  is what actually detects a squash or rebase merge, since those rewrite
+  history and never make the branch itself an ancestor. Re-run against this
+  repository: retirable count rose from 43 to 46, and the "genuinely unmerged"
+  count fell from 6 to 3 — the two reclassified now read `PR #36 merged
+  (squash/rebase)` and `PR #66 merged (squash/rebase)`, both verified against
+  real commits on `main`, not merely GitHub's word for it. 6 new tests,
+  including two that reproduce the actual staleness bug end-to-end with real
+  bare-repo clones (one merges and pushes from a second clone while a `--repo`
+  target's local `main` never learns of it) and two that exercise the
+  squash-merge verification directly. 17 tests total for `tidy`; full suite at
+  884 passing, same 4 pre-existing failures.
+- **Next:** Nothing dispatched. The pointer is unchanged.
+- **Blockers:** None. `mergedPullRequests` degrades to null — ancestry-only,
+  clearly labelled as such in the output — when `gh` is unavailable,
+  unauthenticated, or the remote is not GitHub; never a hard failure.
+
+## 2026-08-18 — Made `arcadia` mean the project you are standing in
+
+- **Did:** Decision 0028's recorded trigger fired: the operator ruled that the
+  global bare-`arcadia` command should either work correctly from any directory
+  or be removed. It was worth keeping, and the fix was smaller than expected
+  once the actual cause was isolated. `docket` and `go` already defaulted
+  `--repo` to `process.cwd()` — the launcher's `cd` into Arcadia's checkout was
+  what destroyed that context, so every repo-scoped command answered for
+  Arcadia regardless of where it was asked. Only two `process.cwd()` call sites
+  existed in the whole CLI, which made the correction narrow.
+- **Result:** `scripts/arcadia` now lives in this repository, versioned and
+  reviewable, and `~/.local/bin/arcadia` points at it instead of at an
+  unversioned Codex skills directory — a script that decides which project
+  every command reaches should not sit where no review, test, or drift report
+  can see it. It records `ARCADIA_INVOKED_FROM` before changing directory.
+  `src/cli/invocation.ts` reads it, falling back to `process.cwd()` when it is
+  absent, empty, or names a directory that no longer exists. Both `--repo`
+  defaults use it, and `resolveProjectAndRepo` now resolves the Project whose
+  `repo_path` contains the invocation directory before falling back to
+  sole-active, preferring the most specific match when checkouts nest. Verified
+  all four cases: `docket` and `next` from PPN return PPN; from this repository
+  return Arcadia; from `/tmp` return a blocker naming the searched directory
+  rather than a substituted answer. Also fixed a fragility inherited from the
+  old launcher — it refused outright when `main` was not checked out in a
+  worktree, which is the ordinary state during any agent session, so
+  orientation broke exactly when it was most needed. It now falls back to the
+  primary checkout and says on stderr which branch it ran from. 9 new tests;
+  suite at 867 passing.
+- **Next:** Nothing dispatched. The pointer is unchanged at
+  `build-demo-hero-vertical-slice`.
+- **Blockers:** None. One inert leftover, not deleted: the superseded launcher
+  at `~/.codex/skills/arcadia-go/scripts/arcadia` is now unreferenced — no
+  `SKILL.md` names it — but still on disk outside either repository.
 
 ## 2026-08-17 — Reconciled what PPN built locally, and proved Decision 0025 works
 
