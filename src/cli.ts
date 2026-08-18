@@ -117,6 +117,7 @@ import {
   renderProjectListSuccess,
   renderProjectMetadataSuccess,
   renderProjectReplySuccess,
+  renderProjectSetupContextAllSuccess,
   renderProjectSetupContextSuccess,
   renderProjectShowSuccess,
   renderProjectUpdateSuccess,
@@ -125,6 +126,7 @@ import {
   runProjectListCommand,
   runProjectMetadataCommand,
   runProjectReplyCommand,
+  runProjectSetupContextAllCommand,
   runProjectSetupContextCommand,
   runProjectShowCommand,
   runProjectUpdateCommand
@@ -919,16 +921,29 @@ export function buildProgram(): Command {
   addJsonOption(
     project
       .command("setup-context")
-      .description("Generate explicit Arcadia context files in a project repository")
+      .description("Generate explicit Arcadia context files in a project repository, or every configured project with --all")
       .argument("[project-id]", "Project id, slug, name, or alias")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--repo <path>", "Repository path")
+      .option("--all", "Update every active project with a configured repository path")
   ).action((projectId: string | undefined, options: {
     workspace?: string;
     repo?: string;
+    all?: boolean;
     json?: boolean;
-  }) =>
-    runCliAction(
+  }) => {
+    if (options.all) {
+      if (projectId || options.repo) {
+        throw validationError("--all cannot be combined with a project identifier or --repo.");
+      }
+      return runCliAction(
+        "project.setup-context-all",
+        options,
+        () => runProjectSetupContextAllCommand({ workspace: options.workspace }),
+        renderProjectSetupContextAllSuccess
+      );
+    }
+    return runCliAction(
       "project.setup-context",
       options,
       () => runProjectSetupContextCommand({
@@ -937,8 +952,8 @@ export function buildProgram(): Command {
         repoPath: options.repo
       }),
       renderProjectSetupContextSuccess
-    )
-  );
+    );
+  });
 
   const inbox = program.command("inbox").description("Inbox commands");
   inbox
