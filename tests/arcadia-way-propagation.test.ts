@@ -36,10 +36,25 @@ describe("Arcadia is adopter zero", () => {
     const own = readFileSync(path.join(repoRoot, "AGENTS.md"), "utf8");
 
     // Adopter zero must still be able to say things only Arcadia needs, exactly
-    // as PPN keeps its launch-readiness lens.
-    expect(own).toContain("## The 80/20 rule");
+    // as PPN keeps its launch-readiness lens. Working-Copy Safety names files
+    // (docs/operator-demo-and-release-contract.md, START_HERE.md) that are
+    // specific to this repository's own procedures, not generic operating
+    // principles, so it stays local rather than propagating.
     expect(own).toContain("## Working-Copy Safety");
-    expect(managedRegion(own)).not.toContain("## The 80/20 rule");
+    expect(managedRegion(own)).not.toContain("## Working-Copy Safety");
+  });
+
+  it("propagates its operating principles into the managed region every adopter receives", () => {
+    // These used to sit below the markers, which meant `setup-context` never
+    // wrote them into adopting projects -- only this managed region is
+    // propagated. They are generic operating principles, not Arcadia-repo
+    // procedure, so they belong here rather than with Working-Copy Safety.
+    const own = readFileSync(path.join(repoRoot, "AGENTS.md"), "utf8");
+
+    expect(own).toContain("## The 80/20 rule");
+    expect(managedRegion(own)).toContain("## The 80/20 rule");
+    expect(managedRegion(own)).toContain("## YAGNI");
+    expect(managedRegion(own)).toContain("## Divide and conquer");
   });
 
   it("writes adopters the same bytes, from the file rather than a literal", () => {
