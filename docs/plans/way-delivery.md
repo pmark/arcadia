@@ -55,8 +55,48 @@ actions:
       - src/docs/discover.ts
       - src/commands/portfolio.ts
       - docs/decisions/0025-upstream-way-change-requests.md
+  - id: evaluate-document-triggers
+    title: Evaluate the deferrals Arcadia's own documents already declare
+    status: open
+    responsibility: codex
+    effort: session
+    next_action: "Add an `arcadia triggers` noun that reads a repository's declared deferral conditions and reports which have fired, evaluating them repo-locally with no workspace, the way `resolveDispatch` does."
+    expected_artifact: A read-only `arcadia triggers` command reporting fired, waiting, and watch states for every deferral declared in a repository's governed documents
+    clarification: clarified
+    confidence: high
+    source: Decision 0028, promoting PPN's implementation. Nine Arcadia documents declare deferrals with reviving conditions and nothing can evaluate one of them.
+    acceptance_criteria:
+      - Every deferral this repository declares is either evaluated or explicitly reported as unevaluable, with no deferral silently ignored.
+      - A fired condition is reported as fired, and the continuation protocol's rule that a firing trigger outranks `current_action` has something to read.
+      - The command is a noun - it reports and never writes.
+      - It runs with no workspace and no database, so it works in a fresh clone or a container.
+    decisions: ["0028"]
+    depends_on: []
+    references:
+      - docs/decisions/0028-ppn-capability-reconciliation.md
+      - src/docs/dispatch.ts
+  - id: adopt-operator-task-ledger
+    title: Record work only the operator can do, separately from decisions awaiting review
+    status: open
+    responsibility: codex
+    effort: session
+    next_action: "Adopt PPN's operator task ledger - append-only entries citing an action or decision, stating why an agent cannot act, with agent evidence separated from operator-only closure."
+    expected_artifact: An operator task ledger with raise, read, close, and decline paths, where closure is operator-only and an agent may attach evidence without closing
+    clarification: clarified
+    confidence: medium
+    source: Decision 0028, promoting PPN's ADR 0025 implementation ratified there 2026-08-14.
+    acceptance_criteria:
+      - An agent can raise an entry and attach evidence, and cannot close one.
+      - Every entry cites an action, decision, or blocker already in project control and states why an agent cannot do it.
+      - Entries are distinguishable from Decisions awaiting review, which `attention` already covers, and from Back Burner items awaiting a surfacing condition.
+      - Open entries surface to the operator without being hunted for.
+    decisions: ["0028"]
+    depends_on: []
+    references:
+      - docs/decisions/0028-ppn-capability-reconciliation.md
+      - src/commands/attention.ts
 questions: []
-decisions: ["0024", "0025"]
+decisions: ["0024", "0025", "0028"]
 ---
 
 # Way delivery

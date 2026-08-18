@@ -212,6 +212,8 @@ actions:
       - apps/dashboard/app/projects/[id]/page.tsx
       - apps/dashboard/lib/types.ts
       - src/dashboard/snapshot.ts
+      - docs/decisions/0028-ppn-capability-reconciliation.md
+      - "Prior art, read before designing the contract: PPN's .arcadia/demo.json and its demo() in scripts/arcadia.mjs already implement versioned proof targets, a primary flag, reachability probing with timeout and retry, and a go/no-go signal carrying its blocking reasons."
     depends_on: [build-qa-queue-vertical-slice]
   - id: automate-proof-artifacts
     title: Collect pull requests, deployments, health checks, and screenshots as proof Artifacts
