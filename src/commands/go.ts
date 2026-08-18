@@ -1,11 +1,24 @@
-import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
+import { invocationRoot } from "../cli/invocation.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { discoverDocs } from "../docs/discover.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
+import {
+  SAFE_TASK_BRANCH,
+  assertClean,
+  countCommits,
+  existingDirectory,
+  git,
+  isAncestor,
+  isInside,
+  parseWorktrees,
+  resolveBaseBranch,
+  samePath,
+  tryGit
+} from "../git/worktrees.js";
 
 export interface GoCommandOptions {
   repo?: string;
@@ -20,12 +33,6 @@ export interface GoCommandOptions {
   agentWorktreeRoot?: string;
   /** Test-only clock injection. */
   now?: Date;
-}
-
-interface WorktreeRecord {
-  path: string;
-  head: string;
-  branch: string | null;
 }
 
 export interface GoCommandData {
@@ -58,10 +65,8 @@ export interface GoCommandData {
   };
 }
 
-const SAFE_TASK_BRANCH = /^(codex\/|claude\/|agent\/|worktree-)/;
-
 export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoCommandData> {
-  const requestedRepo = options.repo ?? process.cwd();
+  const requestedRepo = options.repo ?? invocationRoot();
   const requestedSource = options.source ?? requestedRepo;
   const repo = existingDirectory(requestedRepo, "repository");
   const source = existingDirectory(requestedSource, "source worktree");
@@ -321,36 +326,6 @@ function buildLaunchCommand(agent: "codex" | "claude", worktreePath: string, mod
   return `codex -C ${quotedPath} -m ${quotedModel}${effortFlag} "arcadia advance"`;
 }
 
-function existingDirectory(input: string, label: string): string {
-  const resolved = path.resolve(input);
-  if (!existsSync(resolved)) {
-    throw validationError(`The ${label} path does not exist.`, { path: resolved });
-  }
-  return realpathSync(resolved);
-}
-
-function assertClean(cwd: string, label: string): void {
-  const status = git(cwd, ["status", "--porcelain=v1", "--untracked-files=all"]);
-  if (status.trim()) {
-    throw validationError(`The ${label} is not clean; Arcadia go will not preserve or discard changes implicitly.`, {
-      path: cwd,
-      changes: status.split("\n").filter(Boolean),
-      remedy: "Review and commit the intended work, or preserve it on a recovery branch, before retrying."
-    });
-  }
-}
-
-function resolveBaseBranch(cwd: string): string {
-  const remoteHead = tryGit(cwd, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
-  if (remoteHead) return remoteHead.replace(/^origin\//, "");
-  for (const candidate of ["main", "master"]) {
-    if (tryGit(cwd, ["show-ref", "--verify", `refs/heads/${candidate}`]) !== null) return candidate;
-  }
-  throw validationError("Arcadia go could not determine the local base branch.", {
-    remedy: "Configure origin/HEAD or create a local main/master branch."
-  });
-}
-
 function resolveProjectSlug(repoRoot: string): string {
   const discovered = discoverDocs(repoRoot);
   const projects = discovered.docs.filter((doc) => doc.type === "project");
@@ -363,54 +338,3 @@ function resolveProjectSlug(repoRoot: string): string {
   return projects[0].slug;
 }
 
-function countCommits(cwd: string, base: string, source: string): number {
-  return Number.parseInt(git(cwd, ["rev-list", "--count", `${base}..${source}`]).trim(), 10);
-}
-
-function isAncestor(cwd: string, ancestor: string, descendant: string): boolean {
-  return spawnSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], { cwd }).status === 0;
-}
-
-function git(cwd: string, args: string[]): string {
-  try {
-    return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-  } catch (error) {
-    const detail = error as { stderr?: Buffer | string; message?: string };
-    throw validationError(`Git command failed: git ${args.join(" ")}`, {
-      cwd,
-      cause: String(detail.stderr ?? detail.message ?? error).trim()
-    });
-  }
-}
-
-function tryGit(cwd: string, args: string[]): string | null {
-  const result = spawnSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-  return result.status === 0 ? result.stdout.trim() : null;
-}
-
-function parseWorktrees(output: string): WorktreeRecord[] {
-  return output
-    .trim()
-    .split(/\n\s*\n/)
-    .filter(Boolean)
-    .map((block) => {
-      const fields = new Map(block.split("\n").map((line) => {
-        const separator = line.indexOf(" ");
-        return separator < 0 ? [line, ""] : [line.slice(0, separator), line.slice(separator + 1)];
-      }));
-      return {
-        path: realpathSync(fields.get("worktree") ?? ""),
-        head: fields.get("HEAD") ?? "",
-        branch: fields.get("branch") ?? null
-      };
-    });
-}
-
-function samePath(left: string, right: string): boolean {
-  return realpathSync(left) === realpathSync(right);
-}
-
-function isInside(candidate: string, parent: string): boolean {
-  const relative = path.relative(parent, candidate);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}

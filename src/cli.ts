@@ -259,6 +259,7 @@ import {
   runNextReadyCommand
 } from "./commands/next.js";
 import { renderDocketSuccess, runDocketCommand } from "./commands/docket.js";
+import { renderTidySuccess, runTidyCommand } from "./commands/tidy.js";
 import { renderPortfolioSuccess, runPortfolioCommand } from "./commands/portfolio.js";
 import { renderWayStatusSuccess, runWayStatusCommand } from "./commands/way.js";
 import {
@@ -2181,6 +2182,17 @@ export function buildProgram(): Command {
       }),
       renderClarifySuccess
     )
+  );
+
+  addJsonOption(
+    program
+      .command("tidy")
+      .description("Retire worktrees and branches whose work is already on the base branch; report everything else")
+      .option("--repo <path>", "Repository to tidy", invocationRoot())
+      .option("--apply", "Actually retire what is listed; without it nothing is changed")
+      .option("--include-own-branches", "Also retire fully merged branches you named yourself, not just agent-owned ones")
+  ).action((options: { repo?: string; apply?: boolean; includeOwnBranches?: boolean; json?: boolean }) =>
+    runCliAction("tidy", options, () => runTidyCommand(options), renderTidySuccess)
   );
 
   addJsonOption(
