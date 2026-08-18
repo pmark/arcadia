@@ -4,7 +4,7 @@ type: decision
 id: "0027"
 slug: vision-horizon-and-prime-directive
 project: arcadia
-status: open
+status: approved
 question: Should a Project declare a prime directive, a vision, and a horizon as validated fields, and what does each one mean that `goal`, `outcome`, and `milestone` do not already cover?
 gap_type: missing-decision
 recommendation: >-
@@ -16,6 +16,19 @@ recommendation: >-
   say the same thing. Land this only after Decision 0026 fixes what milestone
   means.
 confidence: medium
+decided: 2026-08-17
+answer: >-
+  Approved as recommended by the operator on 2026-08-17. `prime_directive` is
+  adopted as a per-Project field: the single constraint that outranks
+  progress for that Project. `horizon` is adopted as a per-plan field: the
+  time band a plan is aimed at. `vision` is explicitly rejected --
+  `ProjectDoc.outcome` already carries it, and no fourth aspirational field is
+  added beside `goal` and `outcome`. This ratification does not authorize the
+  schema change; that remains gated as the Decision states. Because Decision
+  0026 was approved on its definition with its own schema and migration
+  deferred, `horizon`'s ranking benefit stays theoretical until 0026 is
+  separately implemented -- this Decision proceeds on that understanding
+  rather than waiting for 0026's implementation to be scheduled first.
 updated: 2026-08-17
 ---
 

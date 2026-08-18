@@ -4,7 +4,7 @@ type: decision
 id: "0026"
 slug: what-a-milestone-is
 project: arcadia
-status: open
+status: approved
 question: What does `milestone` mean, given that a Project carries one, a plan carries one, an Action may override it, and `arcadia portfolio` and `arcadia next` currently report different current milestones for the same Project?
 gap_type: missing-decision
 recommendation: >-
@@ -16,6 +16,20 @@ recommendation: >-
   cannot disagree. Do this before adding cross-project ranking or any new
   vocabulary.
 confidence: medium
+decided: 2026-08-17
+answer: >-
+  The definition is approved as recommended by the operator on 2026-08-17: a
+  Milestone is a named outcome that outlives the plan pursuing it, owned by
+  the Project and referenced by plans and Actions by id, with the Project's
+  current Milestone derived from the active plan rather than stored, so
+  `arcadia portfolio` and `arcadia next` cannot disagree again. The schema
+  change and the migration reconciling existing free-text milestones across
+  four projects are explicitly NOT authorized by this ratification and are
+  not scheduled -- this Decision's own "What this Decision does not
+  authorize" section already reserves that gate, and the operator chose to
+  exercise it rather than schedule implementation now. Until implemented,
+  `portfolio` and `next` continue to read two different fields and may
+  disagree.
 updated: 2026-08-17
 ---
 
@@ -120,6 +134,7 @@ Both are worth doing. Both are cheaper and more truthful after this.
 
 | Increment | Reactivate when |
 | --- | --- |
+| Implement the schema change and migration this Decision defines | The operator schedules it as a plan Action, or `portfolio` and `next` are caught disagreeing again in a way that changes a real decision. |
 | Cross-project ranking ("what matters most overall") | This Decision is implemented and the Project Milestone list is authoritative. |
 | Vision, horizon, and prime directive as schema (Decision 0027) | Same trigger; 0027 states the dependency itself. |
 | Retire the DB `milestone` column in favour of the derived value | The derived current Milestone has agreed with the stored one across every Project for one full sync. |
