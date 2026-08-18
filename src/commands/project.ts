@@ -29,6 +29,7 @@ import {
   updateProject,
   upsertProjectMetadata
 } from "../db/repositories.js";
+import { listMonitoredProjects } from "./workMonitor.js";
 import {
   applyProjectOps,
   interpretProjectReply,
@@ -119,6 +120,20 @@ export interface ProjectSetupContextCommandData {
   project: SetupProjectContextResult["project"];
   files: SetupProjectContextResult["files"];
   context: SetupProjectContextResult["context"];
+}
+
+export interface ProjectSetupContextAllResult {
+  projectId: string;
+  projectName: string;
+  repoPath: string | null;
+  status: "updated" | "skipped" | "failed";
+  detail: string;
+  files: SetupProjectContextResult["files"] | null;
+}
+
+export interface ProjectSetupContextAllCommandData {
+  results: ProjectSetupContextAllResult[];
+  summary: { updated: number; skipped: number; failed: number };
 }
 
 export function createProjectWithDefaults(options: {
@@ -398,6 +413,65 @@ export function runProjectSetupContextCommand(options: {
   });
 }
 
+export function runProjectSetupContextAllCommand(options: {
+  workspace?: string;
+}): CommandSuccess<ProjectSetupContextAllCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const db = openDatabase(workspacePath);
+  try {
+    const results: ProjectSetupContextAllResult[] = listMonitoredProjects(db).map((project) => {
+      if (!project.repositoryPath) {
+        return {
+          projectId: project.id,
+          projectName: project.name,
+          repoPath: null,
+          status: "skipped",
+          detail: "No repository path is configured.",
+          files: null
+        };
+      }
+      try {
+        const setup = setupArcadiaProjectContext({ repoPath: project.repositoryPath });
+        return {
+          projectId: project.id,
+          projectName: project.name,
+          repoPath: setup.repoPath,
+          status: "updated",
+          detail: "Context refreshed.",
+          files: setup.files
+        };
+      } catch (error) {
+        return {
+          projectId: project.id,
+          projectName: project.name,
+          repoPath: project.repositoryPath,
+          status: "failed",
+          detail: error instanceof Error ? error.message : String(error),
+          files: null
+        };
+      }
+    });
+
+    return createSuccess({
+      command: "project.setup-context-all",
+      workspace: workspacePath,
+      data: {
+        results,
+        summary: {
+          updated: results.filter((result) => result.status === "updated").length,
+          skipped: results.filter((result) => result.status === "skipped").length,
+          failed: results.filter((result) => result.status === "failed").length
+        }
+      },
+      artifacts: results.flatMap((result) =>
+        result.files ? Object.values(result.files).filter((file): file is string => file !== null) : []
+      )
+    });
+  } finally {
+    db.close();
+  }
+}
+
 export function renderProjectListSuccess(response: CommandSuccess<ProjectListCommandData>): string[] {
   if (response.data.projects.length === 0) {
     return ["No projects yet."];
@@ -498,6 +572,28 @@ export function renderProjectSetupContextSuccess(response: CommandSuccess<Projec
       ? `CLAUDE.md: ${response.data.files.claude}`
       : "CLAUDE.md: Left unchanged — it holds project-authored content. Move any shared rules into AGENTS.md, then reduce CLAUDE.md to `@AGENTS.md`."
   ];
+}
+
+export function renderProjectSetupContextAllSuccess(response: CommandSuccess<ProjectSetupContextAllCommandData>): string[] {
+  const { results, summary } = response.data;
+  const lines = [
+    "Arcadia context setup: all configured project repositories",
+    `Updated: ${summary.updated}  Skipped: ${summary.skipped}  Failed: ${summary.failed}`
+  ];
+  if (results.length === 0) {
+    lines.push("No projects found.");
+    return lines;
+  }
+  for (const result of results) {
+    if (result.status === "updated") {
+      lines.push(`- ${result.projectName}: updated (${result.repoPath})`);
+    } else if (result.status === "skipped") {
+      lines.push(`- ${result.projectName}: skipped — ${result.detail}`);
+    } else {
+      lines.push(`- ${result.projectName}: FAILED — ${result.detail}`);
+    }
+  }
+  return lines;
 }
 
 function resolveProjectFilesystemPath(workspacePath: string, slug: string, providedPath?: string): string {
