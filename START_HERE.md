@@ -403,6 +403,34 @@ prefixes) are retired by default.
 Anything genuinely unmerged is never touched, and anything with no remote copy
 is called out explicitly as the only copy of that work.
 
+### Nothing is ever unrecoverable
+
+`tidy` proves a branch landed three ways before retiring it, and reports which
+one applied: plain **ancestry**, **patch equivalence** (`git cherry`, which
+sees through cherry-picks, rebases, and amended commits with no network), or a
+verified **merged pull request** (checking the commit GitHub actually produced,
+not just its "merged" label). A branch is only called unmerged once all three
+decline it.
+
+When `git branch -d` refuses — which it does for anything that landed by squash
+or rebase, and for a branch whose remote counterpart still exists — `tidy`
+writes an `archive/<branch>` tag before forcing, and prints the restore command:
+
+```sh
+git branch <branch> archive/<branch>
+```
+
+Push those tags (`git push origin --tags`) and the commits are recoverable
+forever, from any clone, whatever happens to the local branch.
+
+### Noticing before it piles up
+
+`arcadia go` now ends by stating the repository's state — extra worktrees and
+already-merged branches — and points at `tidy` when there is anything to clear.
+It is a local count only, with no fetch and no GitHub call, so it costs nothing
+at a session boundary. That check exists because the accumulation that prompted
+`tidy` sat unnoticed for weeks: nothing ever put the state in front of anyone.
+
 Below the `Authorization:` line, the brief prints **Standing constraints**: the
 repository's `CONSTITUTION.md`, verbatim. Nothing parses the Constitution, so
 printing it here is what makes a dispatched agent read the rules that bind the

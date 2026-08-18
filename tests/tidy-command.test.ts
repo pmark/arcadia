@@ -1,10 +1,10 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { evaluateMerge, runTidyCommand, type TidyCommandData } from "../src/commands/tidy.js";
-import { parseGithubSlug } from "../src/git/worktrees.js";
+import { parseGithubSlug, summarizeClutter } from "../src/git/worktrees.js";
 import type { CommandSuccess } from "../src/cli/response.js";
 
 const temporary: string[] = [];
@@ -18,6 +18,11 @@ afterEach(() => {
 
 function run(cwd: string, args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+}
+
+/** Non-throwing ancestry check, for asserting a precondition rather than acting on it. */
+function isAncestorOf(cwd: string, ancestor: string, descendant: string): boolean {
+  return spawnSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], { cwd }).status === 0;
 }
 
 /** A real repository on `main` with one commit. Nothing here is mocked. */
@@ -34,6 +39,14 @@ function repo(): string {
   run(root, ["add", "-A"]);
   run(root, ["commit", "-q", "-m", "base"]);
   return root;
+}
+
+/** Advance the base branch, so a later cherry-pick lands on a different parent. */
+function commitOnMain(root: string, file: string): void {
+  run(root, ["checkout", "-q", "main"]);
+  writeFileSync(path.join(root, file), `${file}\n`, "utf8");
+  run(root, ["add", "-A"]);
+  run(root, ["commit", "-q", "-m", file]);
 }
 
 function commitOn(root: string, branch: string, file: string): void {
@@ -274,16 +287,25 @@ describe("evaluateMerge — squash and rebase merges", () => {
   // branch after merging -- only the commit GitHub actually produced is. The
   // whole point of checking `mergeCommit` ancestry instead of the branch tip
   // is proving content landed even though the branch itself looks unmerged.
-  it("finds a squash merge invisible to plain ancestry, via its verified merge commit", () => {
+  it("finds a squash merge that patch equivalence cannot see, via its verified merge commit", () => {
     const root = repo();
-    commitOn(root, "claude/squashed", "a.txt");
-
-    // Simulate what GitHub does on squash-merge: a brand new commit on main,
-    // not a merge of the branch, so the branch tip is never an ancestor.
-    run(root, ["checkout", "-q", "main"]);
+    // Two commits on the branch, collapsed into one on main -- the real shape
+    // of a GitHub squash merge. Neither original patch matches the combined
+    // one, so `git cherry` cannot clear this and the pull-request check is the
+    // only thing that can.
+    run(root, ["checkout", "-q", "-b", "claude/squashed"]);
     writeFileSync(path.join(root, "a.txt"), "a.txt\n", "utf8");
     run(root, ["add", "-A"]);
-    run(root, ["commit", "-q", "-m", "squashed a.txt"]);
+    run(root, ["commit", "-q", "-m", "add a"]);
+    writeFileSync(path.join(root, "b.txt"), "b.txt\n", "utf8");
+    run(root, ["add", "-A"]);
+    run(root, ["commit", "-q", "-m", "add b"]);
+
+    run(root, ["checkout", "-q", "main"]);
+    writeFileSync(path.join(root, "a.txt"), "a.txt\n", "utf8");
+    writeFileSync(path.join(root, "b.txt"), "b.txt\n", "utf8");
+    run(root, ["add", "-A"]);
+    run(root, ["commit", "-q", "-m", "squashed a and b"]);
     const squashCommit = run(root, ["rev-parse", "main"]).trim();
 
     const withoutProof = evaluateMerge({
@@ -321,6 +343,107 @@ describe("evaluateMerge — squash and rebase merges", () => {
     });
 
     expect(result.merged).toBe(false);
+  });
+});
+
+describe("evaluateMerge — patch equivalence, without GitHub", () => {
+  // The offline half of merge detection. A cherry-picked or rebased commit is
+  // never an ancestor of the base branch, but its content is unquestionably
+  // there. Before this, such a branch was reported as unmerged work the
+  // operator had to review by hand -- which is exactly the false alarm that
+  // made the whole report untrustworthy.
+  it("clears a cherry-picked branch with no GitHub data at all", () => {
+    const root = repo();
+    commitOn(root, "claude/picked", "a.txt");
+    const picked = run(root, ["rev-parse", "claude/picked"]).trim();
+
+    // Advance main first. Without this the cherry-pick reproduces the original
+    // commit byte for byte -- same tree, same parent, same message, same
+    // second -- and git hands back the identical SHA, making the branch a
+    // literal ancestor and testing nothing.
+    commitOnMain(root, "unrelated.txt");
+    run(root, ["cherry-pick", picked]);
+
+    // Precondition worth asserting: cherry-picking rewrites the commit, so
+    // plain ancestry genuinely does not see it. Without this the test could
+    // pass for the wrong reason.
+    expect(isAncestorOf(root, "claude/picked", "main")).toBe(false);
+
+    const result = evaluateMerge({
+      cwd: root,
+      branch: "claude/picked",
+      compareRef: "main",
+      prMergeCommits: new Map()
+    });
+
+    expect(result.merged).toBe(true);
+    if (result.merged) expect(result.proof).toBe("patch-equivalent");
+  });
+
+  it("still reports a genuinely divergent branch as unmerged", () => {
+    const root = repo();
+    commitOn(root, "claude/real-work", "unique.txt");
+
+    const result = evaluateMerge({
+      cwd: root,
+      branch: "claude/real-work",
+      compareRef: "main",
+      prMergeCommits: new Map()
+    });
+
+    expect(result.merged).toBe(false);
+    if (!result.merged) expect(result.ahead).toBe(1);
+  });
+
+  it("prefers plain ancestry when it applies, so the cheapest proof wins", () => {
+    const root = repo();
+    commitOn(root, "claude/ff", "a.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", "claude/ff"]);
+
+    const result = evaluateMerge({
+      cwd: root,
+      branch: "claude/ff",
+      compareRef: "main",
+      prMergeCommits: new Map()
+    });
+
+    expect(result.merged).toBe(true);
+    if (result.merged) expect(result.proof).toBe("ancestry");
+  });
+});
+
+describe("summarizeClutter — the session-boundary nudge", () => {
+  it("reports nothing to do for a clean repository", () => {
+    const root = repo();
+
+    const summary = summarizeClutter(root, "main");
+
+    expect(summary).not.toBeNull();
+    expect(summary?.extraWorktrees).toBe(0);
+    expect(summary?.obviouslyMerged).toBe(0);
+    expect(summary?.branches).toBe(1);
+  });
+
+  it("counts extra worktrees and already-merged branches", () => {
+    const root = repo();
+    commitOn(root, "claude/done", "a.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", "claude/done"]);
+    worktreeOn(root, "claude/done", "spare");
+
+    const summary = summarizeClutter(root, "main");
+
+    expect(summary?.extraWorktrees).toBe(1);
+    expect(summary?.obviouslyMerged).toBe(1);
+  });
+
+  it("does not count unmerged work as clutter", () => {
+    const root = repo();
+    commitOn(root, "claude/live", "a.txt");
+
+    const summary = summarizeClutter(root, "main");
+
+    expect(summary?.obviouslyMerged).toBe(0);
+    expect(summary?.branches).toBe(2);
   });
 });
 

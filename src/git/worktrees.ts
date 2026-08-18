@@ -80,6 +80,41 @@ export function isAncestor(cwd: string, ancestor: string, descendant: string): b
   return spawnSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], { cwd }).status === 0;
 }
 
+/**
+ * Whether every commit on `branch` already exists on `base` as an equivalent
+ * patch, even though none of them is literally an ancestor.
+ *
+ * `git cherry` compares patch content rather than commit identity, so it sees
+ * through the three ways history gets rewritten between a branch and the base
+ * it landed on: cherry-picks, rebases, and amended commits. It prefixes each
+ * commit with `-` when an equivalent patch is already upstream and `+` when it
+ * is genuinely absent, so a branch is fully applied exactly when no `+` line
+ * appears.
+ *
+ * This is the offline half of merge detection. It needs no network, no `gh`,
+ * and no authentication, which matters because the alternative — asking GitHub
+ * which pull requests merged — is unavailable in exactly the situations where
+ * someone is most likely to be cleaning up: a fresh clone, a container, a
+ * machine with no credentials. It does not replace the pull-request check,
+ * which still catches squash merges that combine or reword commits enough that
+ * no individual patch matches.
+ *
+ * Returns false rather than throwing when git cannot answer, so an
+ * indeterminate result never reads as "safe to delete".
+ */
+export function isPatchEquivalent(cwd: string, base: string, branch: string): boolean {
+  const output = tryGit(cwd, ["cherry", base, branch]);
+  if (output === null) return false;
+
+  const lines = output.split("\n").map((line) => line.trim()).filter(Boolean);
+  // No commits at all means nothing to apply, which the ancestry check should
+  // already have caught; treating it as equivalent here would let an empty or
+  // failed comparison stand in for proof.
+  if (lines.length === 0) return false;
+
+  return lines.every((line) => line.startsWith("-"));
+}
+
 /** Whether a ref exists at all, so a missing branch is never mistaken for an unmerged one. */
 export function refExists(cwd: string, ref: string): boolean {
   return tryGit(cwd, ["show-ref", "--verify", ref]) !== null;
@@ -152,6 +187,44 @@ export function isInside(candidate: string, parent: string): boolean {
  * repository's own `main` was two merged pull requests behind `origin/main`
  * with no error, no warning, and no worktree flagged as out of date.
  */
+/**
+ * A cheap, local-only count of what has accumulated, for nudging rather than
+ * deciding.
+ *
+ * Deliberately does no fetch and no GitHub call: this runs at session
+ * boundaries where latency is felt, and its only job is to notice that clutter
+ * exists. `arcadia tidy` does the accurate work when asked. Undercounting is
+ * fine and expected here — a squash-merged branch will look unmerged to this
+ * check — because the nudge points at the tool that gets it right.
+ *
+ * This exists because the accumulation that prompted `tidy` went unnoticed for
+ * weeks. Nothing surfaced it; there was no moment at which the state was put
+ * in front of anyone.
+ */
+export interface ClutterSummary {
+  extraWorktrees: number;
+  branches: number;
+  /** Branches whose commits are already on the base branch by plain ancestry — a floor, not a total. */
+  obviouslyMerged: number;
+}
+
+export function summarizeClutter(repo: string, baseBranch: string): ClutterSummary | null {
+  const worktrees = tryGit(repo, ["worktree", "list", "--porcelain"]);
+  const refs = tryGit(repo, ["for-each-ref", "--format=%(refname:short)", "refs/heads"]);
+  if (worktrees === null || refs === null) return null;
+
+  const branches = refs.split("\n").map((line) => line.trim()).filter(Boolean);
+  const obviouslyMerged = branches.filter(
+    (branch) => branch !== baseBranch && isAncestor(repo, branch, baseBranch)
+  ).length;
+
+  return {
+    extraWorktrees: Math.max(0, parseWorktrees(worktrees).length - 1),
+    branches: branches.length,
+    obviouslyMerged
+  };
+}
+
 export interface ComparisonBase {
   /** The ref to compare ancestry against — `origin/<base>` when fetch succeeded, else local `<base>`. */
   ref: string;

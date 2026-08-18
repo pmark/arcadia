@@ -17,7 +17,9 @@ import {
   parseWorktrees,
   resolveBaseBranch,
   samePath,
-  tryGit
+  summarizeClutter,
+  tryGit,
+  type ClutterSummary
 } from "../git/worktrees.js";
 
 export interface GoCommandOptions {
@@ -63,6 +65,8 @@ export interface GoCommandData {
     baseRef: string;
     prompt: "arcadia advance";
   };
+  /** Local-only accumulation counts, so session boundaries surface clutter instead of hiding it. Null when git could not be read. */
+  clutter: ClutterSummary | null;
 }
 
 export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoCommandData> {
@@ -232,7 +236,8 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       handoff: {
         baseRef: baseBranch,
         prompt: "arcadia advance"
-      }
+      },
+      clutter: summarizeClutter(repo, baseBranch)
     }
   });
 }
@@ -277,7 +282,36 @@ export function renderGoSuccess(response: CommandSuccess<GoCommandData>): string
     lines.push(`Model: ${data.nextWorktree.model}${data.nextWorktree.effort ? ` (${data.nextWorktree.effort} effort)` : ""}`);
     lines.push(`Launch: ${data.nextWorktree.command}`);
   }
+
+  if (data.clutter) {
+    lines.push("", ...renderClutter(data.clutter));
+  }
+
   return lines;
+}
+
+/**
+ * The nudge that would have prevented weeks of silent accumulation.
+ *
+ * `go` runs at the boundary between sessions, which is both when clutter is
+ * created and the only moment anyone is reliably looking. Stating the counts
+ * here costs nothing and turns "nobody noticed for weeks" into "you were told
+ * every time."
+ */
+function renderClutter(clutter: NonNullable<GoCommandData["clutter"]>): string[] {
+  const { extraWorktrees, branches, obviouslyMerged } = clutter;
+  if (extraWorktrees === 0 && obviouslyMerged === 0) {
+    return [`Repository state: clean — no extra worktrees, ${branches} branch${branches === 1 ? "" : "es"}.`];
+  }
+
+  const parts: string[] = [];
+  if (extraWorktrees > 0) parts.push(`${extraWorktrees} extra worktree${extraWorktrees === 1 ? "" : "s"}`);
+  if (obviouslyMerged > 0) parts.push(`${obviouslyMerged} already-merged branch${obviouslyMerged === 1 ? "" : "es"}`);
+
+  return [
+    `Repository state: ${parts.join(" and ")} out of ${branches} branches.`,
+    "  Run `arcadia tidy` to see what is safe to retire (it changes nothing without --apply)."
+  ];
 }
 
 function createAgentWorktree(input: {

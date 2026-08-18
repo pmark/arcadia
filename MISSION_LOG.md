@@ -8,6 +8,43 @@ updated: 2026-08-18
 
 # Mission Log: Arcadia
 
+## 2026-08-18 — Cleaned up 14 worktrees and 45 branches, and made the state visible
+
+- **Did:** Operator, away from their machine, asked for the accumulated
+  worktrees and branches to be resolved now and made safe from here on.
+  Investigated the three branches `tidy` had flagged as "the only copy" before
+  touching anything, and all three were false alarms:
+  `preserve/local-main-before-pr38` held a Claude Code executor commit whose
+  file is byte-identical on `main`; `codex/reliable-arcadia-service-restart`
+  documented `.nvmrc`, which the mise migration deleted, so merging it would
+  have regressed PR #79's ABI fix; `codex/agent-session-queue-proposal` was an
+  older copy of Decision 0011, `status: open`, which would have un-superseded a
+  Decision 0012 already resolved. Zero work at risk, and two of the three would
+  have damaged `main` if merged — the danger ran opposite to the warning.
+- **Result:** Added `git cherry` patch-equivalence as a third merge proof
+  alongside ancestry and pull-request verification. It is local, needs no
+  credentials, and catches cherry-picks, rebases, and amended commits — the
+  cases that made the report untrustworthy. Each proof catches what the others
+  miss, so a branch is only called unmerged once all three decline it. When
+  `git branch -d` refuses (squash/rebase merges, and branches whose remote
+  counterpart still exists — git compares against the upstream, not the base),
+  `tidy` now writes an `archive/<branch>` tag before forcing and prints the
+  restore command, so no deletion is ever unrecoverable. Ran it: **15 worktrees
+  to 1, 54 branches to 9**, 49 items retired across two passes. Five archive
+  tags pushed to `origin`, covering every commit not reachable from `main`.
+  For prevention, `arcadia go` now closes by stating extra worktrees and
+  already-merged branches and pointing at `tidy` — local counts only, no fetch,
+  no GitHub call, because the accumulation that caused all this sat unnoticed
+  for weeks with nothing ever surfacing it. 6 new tests (23 for `tidy`); full
+  suite 890 passing, same 4 pre-existing failures.
+- **Next:** Nothing dispatched. Pointer unchanged.
+- **Blockers:** None. Two branches remain by design —
+  `codex/reliable-arcadia-service-restart` and
+  `codex/agent-session-queue-proposal` genuinely diverge from `main`, so `tidy`
+  correctly refuses them; both are archived as pushed tags and are obsolete
+  rather than valuable, but deleting them is the operator's call, not a
+  cleanup tool's.
+
 ## 2026-08-18 — Added arcadia tidy, then made it verify what it can't see by ancestry
 
 - **Did:** Operator asked for a safe cleanup command for accumulated worktrees

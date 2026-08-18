@@ -10,6 +10,7 @@ import {
   git,
   hasUpstream,
   isAncestor,
+  isPatchEquivalent,
   listWorktrees,
   mergedPullRequests,
   resolveBaseBranch,
@@ -47,15 +48,22 @@ export type TidyVerdict =
  * How a `merged` verdict was actually established.
  *
  * `ancestry` means the branch's own commits are reachable from the base
- * branch — true for an ordinary merge or fast-forward. `pull-request` means
- * the branch's own commits are *not* reachable — squash and rebase merges
- * rewrite history, so nothing about the branch tip proves its content
- * landed — but GitHub recorded the pull request as merged and the commit it
- * actually produced (`mergeCommit`) is on the base branch. Checking that
- * commit's ancestry rather than trusting GitHub's "merged" label is what
- * makes this a proof rather than a guess.
+ * branch — true for an ordinary merge or fast-forward.
+ *
+ * `patch-equivalent` means they are not reachable, but `git cherry` finds an
+ * equivalent patch already upstream for every one of them — what a cherry-pick,
+ * a rebase, or an amended commit leaves behind. Local, offline, no credentials.
+ *
+ * `pull-request` means neither of the above held, but GitHub recorded a merged
+ * pull request for the branch and the commit it actually produced
+ * (`mergeCommit`) is on the base branch. Checking that commit's ancestry
+ * rather than trusting GitHub's "merged" label is what makes it a proof.
+ *
+ * All three answer the same question — did this content land? — and each
+ * catches cases the others miss, which is why a branch is only reported
+ * unmerged once all three decline it.
  */
-export type MergeProof = "ancestry" | "pull-request";
+export type MergeProof = "ancestry" | "patch-equivalent" | "pull-request";
 
 export interface TidyWorktree {
   path: string;
@@ -82,6 +90,8 @@ export interface TidyBranch {
   agentOwned: boolean;
   mergeProof: MergeProof | null;
   retired: boolean;
+  /** Tag written before a forced delete, so the commit stays reachable by name. Null when `git branch -d` sufficed. */
+  archivedAs: string | null;
 }
 
 export interface TidyCommandData {
@@ -176,10 +186,9 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
     }
     for (const entry of branches) {
       if (entry.verdict === "merged") {
-        // `-d` and not `-D`: git refuses to delete an unmerged branch on its
-        // own, so the ancestry check above and git's own check must both agree
-        // before a ref disappears.
-        entry.retired = tryGit(repoRoot, ["branch", "-d", entry.branch]) !== null;
+        const outcome = retireBranch(repoRoot, entry.branch);
+        entry.retired = outcome.retired;
+        entry.archivedAs = outcome.archivedAs;
       }
     }
   }
@@ -292,6 +301,16 @@ export function evaluateMerge(input: {
     return { merged: true, proof: "ancestry", reason: `Every commit on ${branch} is already on ${baseName}.` };
   }
 
+  // Local and free, so it runs before reaching for the network. Catches
+  // cherry-picks, rebases, and amended commits, and works with no credentials.
+  if (isPatchEquivalent(cwd, compareRef, branch)) {
+    return {
+      merged: true,
+      proof: "patch-equivalent",
+      reason: `Every commit on ${branch} already exists on ${baseName} as an equivalent patch (rebased, cherry-picked, or amended).`
+    };
+  }
+
   const pr = prMergeCommits.get(branch);
   if (pr && isAncestor(cwd, pr.sha, compareRef)) {
     return {
@@ -341,6 +360,7 @@ function assessBranches(input: {
           agentOwned,
           mergeProof: null,
           retired: false,
+          archivedAs: null,
           reason: `${merge.reason}${pushed ? "; a remote copy exists" : "; NO remote copy"}.`
         };
       }
@@ -354,6 +374,7 @@ function assessBranches(input: {
           agentOwned,
           mergeProof: merge.proof,
           retired: false,
+          archivedAs: null,
           reason: `Fully merged, but not an agent-owned name (${merge.reason.toLowerCase()}). Pass --include-own-branches to retire it too.`
         };
       }
@@ -366,9 +387,42 @@ function assessBranches(input: {
         agentOwned,
         mergeProof: merge.proof,
         retired: false,
+        archivedAs: null,
         reason: `${merge.reason} Deleting the ref loses no commit.`
       };
     });
+}
+
+/**
+ * Delete a branch whose content is already on the base branch, keeping a way
+ * back even when git's own check has to be overridden.
+ *
+ * `git branch -d` is tried first and is usually enough. It refuses in two
+ * situations that are nonetheless safe here: a branch that landed by squash,
+ * rebase, or cherry-pick is not an ancestor of anything, and a branch whose
+ * remote-tracking counterpart still exists is compared against *that* rather
+ * than against the base branch — git will say "not yet merged to
+ * refs/remotes/origin/x, even though it is merged to HEAD".
+ *
+ * Both cases are already proven merged by `evaluateMerge`, so the deletion is
+ * information-preserving. Rather than trust that proof alone, this writes an
+ * `archive/<branch>` tag first and only then forces. The commit stays
+ * reachable by name forever, so even a wrong verdict costs nothing but a tag
+ * to recover from.
+ */
+function retireBranch(repoRoot: string, branch: string): { retired: boolean; archivedAs: string | null } {
+  if (tryGit(repoRoot, ["branch", "-d", branch]) !== null) {
+    return { retired: true, archivedAs: null };
+  }
+
+  const tag = `archive/${branch.replace(/\//g, "-")}`;
+  // `-f` so a re-run after a partial failure is not blocked by its own tag.
+  if (tryGit(repoRoot, ["tag", "-f", tag, branch]) === null) {
+    return { retired: false, archivedAs: null };
+  }
+
+  const forced = tryGit(repoRoot, ["branch", "-D", branch]) !== null;
+  return { retired: forced, archivedAs: forced ? tag : null };
 }
 
 function retireWorktree(repoRoot: string, entry: TidyWorktree, baseBranch: string): boolean {
@@ -478,6 +532,9 @@ export function renderTidySuccess(response: CommandSuccess<TidyCommandData>): st
       const mark = applied ? (entry.retired ? "✓" : "✗ failed") : "-";
       lines.push(`  ${mark} branch   ${entry.branch}`);
       lines.push(`      ${entry.reason}`);
+      if (entry.archivedAs) {
+        lines.push(`      Kept as tag ${entry.archivedAs} — restore with: git branch ${entry.branch} ${entry.archivedAs}`);
+      }
     }
   }
 
