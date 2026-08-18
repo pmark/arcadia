@@ -68,3 +68,151 @@ rather than writing "not ready yet" in its place.
 `docs/agent-continuation-protocol.md` carries these rules with the reasoning
 behind each. It is a reference, not a prerequisite: everything you must do is
 stated above.
+
+## The 80/20 rule
+
+The Pareto principle holds that roughly 80% of consequences come from 20% of
+causes. Treat it as a standing instruction, not an observation: **find the 20%
+and do that first.**
+
+In practice, for any piece of work:
+
+- **Name the vital few before starting.** Which small part of this delivers most
+  of the value? Say so explicitly, and sequence it first — not because the rest
+  is worthless, but because the rest is what gets cut when time runs out, and
+  that should be a deliberate choice rather than an accident of ordering.
+- **Prefer the change that reuses what exists.** The cheapest 80% is usually
+  already built and merely unreachable — a report that is not scoped, a field
+  that is parsed but never read. Extending something proven beats introducing
+  something new, and it is the difference between an afternoon and a milestone.
+- **Say when the expensive 20% of value is not worth its 80% of cost.** Deferring
+  is a real answer. Recommend it plainly, and record what was deferred and why,
+  so the decision survives the conversation.
+- **Do not gold-plate the tail.** Exhaustive coverage of rare cases is the
+  classic 80% of effort buying 20% of value. Handle the common path well, fail
+  loudly and legibly on the rest.
+
+This rule is subordinate to the constitution's approval boundaries. Safety,
+approval gates, and truthful reporting are never the 80% to be trimmed — a
+shortcut through an approval boundary is not a Pareto optimization, it is a
+violation.
+
+## YAGNI
+
+"You aren't gonna need it" is the 80/20 rule's twin, aimed the other
+direction: it names the cost of building for a need that never arrives.
+Treat it as a standing instruction, not a judgment call to weigh case by case.
+
+- **Build the thing that was asked for, not the thing it might grow into.** A
+  configuration flag, an abstraction layer, or a plugin point earns its place
+  when a second concrete caller exists — not when one might exist someday.
+- **Delete speculative surface area on sight.** Unused parameters, dead
+  feature flags, and "just in case" fields are debt from the moment they are
+  written, because every future reader has to understand them before ever
+  using them.
+- **Prefer duplication over the wrong abstraction.** Three similar lines at
+  three call sites are cheaper to read, change, and delete than one premature
+  shared helper serving three masters that will not stay identical.
+- **A speculative need is a deferred item, not a built one.** If a future
+  requirement looks likely, name it as a trigger condition under "If not now,
+  then when?" below, and let the deferral rule govern it — do not pre-build
+  for it.
+
+This rule is subordinate to what the operator actually asked for. Cutting a
+requirement that was genuinely requested in the name of YAGNI is not economy,
+it is scope drift running the other direction.
+
+## Divide and conquer
+
+A goal that feels too large to start is usually not too large to finish — it
+is only too large to see the next step of. Treat operator overwhelm as a
+decomposition failure, not a resolve failure, and answer it by decomposing.
+
+- **Divide.** When an Outcome, Milestone, or Action looks daunting, split it
+  into smaller pieces shaped like the whole: each still has a clear boundary,
+  an observable "done," and its own next concrete step. Keep splitting until a
+  piece is small enough to finish in one sitting without dread. A plan whose
+  leaf Actions are all bite-sized is doing this correctly; a plan with one
+  giant Action and nine trivial ones is not.
+- **Conquer.** Solve the smallest piece first, using the same discipline any
+  other Action gets — clarify, dispatch, validate, record. The recursion is
+  the point: if a piece is still too big to start, dividing it further is
+  itself the next move, all the way down.
+- **Combine.** Roll each finished piece back up: update the parent Milestone,
+  note what the small win proves about the larger Outcome, and let that
+  visible progress motivate the next piece. A pile of finished small Actions
+  is what "the big thing got done" looks like from the inside.
+
+When the operator names a task as overwhelming, do not just acknowledge the
+feeling — divide the task on the spot into a first Action small enough to
+start in the current session, propose it, and get moving. Real progress on a
+sliver of the true problem beats a plan for the whole of it, because that
+sliver is the antidote to the overwhelm that made starting hard in the first
+place.
+
+This is a decomposition strategy, not a permission structure. It does not
+relax `CONSTITUTION.md`'s approval boundaries, and it does not excuse skipping
+the 80/20 rule's obligation to name the vital few pieces before splitting.
+
+## If not now, then when?
+
+The 80/20 rule says deferring is a real answer. This one says what a deferral
+costs: **a deferral must name its trigger.**
+
+"Later", "eventually", and "when we have time" are not answers. They are the
+decision being taken again at every future session, at full price, by whoever
+reads the document next. An item deferred without a trigger does not leave the
+queue — it just stops being legible.
+
+So when the answer is not now, say when:
+
+- **Name the condition, not the date.** "When a second foreign repository is
+  onboarded" is a trigger. "Q3" is a wish. The condition should be something
+  that will visibly happen or visibly not happen, so the deferral can expire on
+  its own instead of needing a meeting.
+- **A trigger that can never fire is a rejection.** Write it down as one. A
+  `deferred` item nobody can imagine reactivating is the queue lying about its
+  own size, and it is kinder to close it and be wrong than to carry it forever.
+- **Deferral is not blocking.** `blocked` means an outside party owes something.
+  Choosing not to do work that is perfectly startable is a decision, and it gets
+  recorded as a Decision with an answer — not left as an open question that
+  refuses dispatch every morning.
+- **Re-ask only when the trigger fires.** That is the whole point. Between now
+  and then, the question is settled and nobody re-litigates it.
+
+The test for whether this rule is being followed: read any deferred item and ask
+what would have to be true for it to start. If the document cannot answer, the
+deferral was never made — the item was only postponed.
+
+## Make it real
+
+Plans, analysis, and architecture are valuable when they turn into something a
+person or system can actually use. **Shape each Action toward the most direct
+usable form available.**
+
+- Prefer a working UI, runnable command, linked deployment, testable Artifact,
+  or explicit Decision over prose describing one.
+- Put output directly into the interaction surface that needs it. Do not make
+  the operator manually translate a Log, JSON blob, or implementation note
+  into the next usable step when Arcadia can perform that translation safely.
+- Preserve one stable proof while a Candidate changes. A mock, screenshot, or
+  plan may prove direction, but never label it as a working product.
+- When an Action genuinely has no runnable form, say why and produce the
+  strongest honest Artifact it can have.
+
+"Make it real" does not authorize deployment, merge, credentials, spending,
+production access, messaging, or any other gated operation. A less tangible
+but truthful Artifact is more real than an unauthorized production mutation.
+
+## Token economy
+
+Treat deterministic computation and model inference as different budgets.
+Builds, tests, health probes, Playwright navigation, and screenshot capture use
+machine resources but no LLM tokens unless a model is asked to interpret their
+output.
+
+Every managed plan declares a T-shirt `token_impact` and a plain-language
+`token_budget`. Use the smallest sufficient model-bearing step, batch evidence
+for review, and invoke model-based diagnosis on failure rather than on every
+successful routine run. Token impact is a relative planning signal, not a
+fictional exact forecast.

@@ -98,9 +98,6 @@ rather than writing "not ready yet" in its place.
 `docs/agent-continuation-protocol.md` carries these rules with the reasoning
 behind each. It is a reference, not a prerequisite: everything you must do is
 stated above.
-<!-- ARCADIA_CONTEXT_END -->
-
-<!-- Everything outside the markers above is this repository's own and is never regenerated. -->
 
 ## The 80/20 rule
 
@@ -129,6 +126,63 @@ This rule is subordinate to the constitution's approval boundaries. Safety,
 approval gates, and truthful reporting are never the 80% to be trimmed — a
 shortcut through an approval boundary is not a Pareto optimization, it is a
 violation.
+
+## YAGNI
+
+"You aren't gonna need it" is the 80/20 rule's twin, aimed the other
+direction: it names the cost of building for a need that never arrives.
+Treat it as a standing instruction, not a judgment call to weigh case by case.
+
+- **Build the thing that was asked for, not the thing it might grow into.** A
+  configuration flag, an abstraction layer, or a plugin point earns its place
+  when a second concrete caller exists — not when one might exist someday.
+- **Delete speculative surface area on sight.** Unused parameters, dead
+  feature flags, and "just in case" fields are debt from the moment they are
+  written, because every future reader has to understand them before ever
+  using them.
+- **Prefer duplication over the wrong abstraction.** Three similar lines at
+  three call sites are cheaper to read, change, and delete than one premature
+  shared helper serving three masters that will not stay identical.
+- **A speculative need is a deferred item, not a built one.** If a future
+  requirement looks likely, name it as a trigger condition under "If not now,
+  then when?" below, and let the deferral rule govern it — do not pre-build
+  for it.
+
+This rule is subordinate to what the operator actually asked for. Cutting a
+requirement that was genuinely requested in the name of YAGNI is not economy,
+it is scope drift running the other direction.
+
+## Divide and conquer
+
+A goal that feels too large to start is usually not too large to finish — it
+is only too large to see the next step of. Treat operator overwhelm as a
+decomposition failure, not a resolve failure, and answer it by decomposing.
+
+- **Divide.** When an Outcome, Milestone, or Action looks daunting, split it
+  into smaller pieces shaped like the whole: each still has a clear boundary,
+  an observable "done," and its own next concrete step. Keep splitting until a
+  piece is small enough to finish in one sitting without dread. A plan whose
+  leaf Actions are all bite-sized is doing this correctly; a plan with one
+  giant Action and nine trivial ones is not.
+- **Conquer.** Solve the smallest piece first, using the same discipline any
+  other Action gets — clarify, dispatch, validate, record. The recursion is
+  the point: if a piece is still too big to start, dividing it further is
+  itself the next move, all the way down.
+- **Combine.** Roll each finished piece back up: update the parent Milestone,
+  note what the small win proves about the larger Outcome, and let that
+  visible progress motivate the next piece. A pile of finished small Actions
+  is what "the big thing got done" looks like from the inside.
+
+When the operator names a task as overwhelming, do not just acknowledge the
+feeling — divide the task on the spot into a first Action small enough to
+start in the current session, propose it, and get moving. Real progress on a
+sliver of the true problem beats a plan for the whole of it, because that
+sliver is the antidote to the overwhelm that made starting hard in the first
+place.
+
+This is a decomposition strategy, not a permission structure. It does not
+relax `CONSTITUTION.md`'s approval boundaries, and it does not excuse skipping
+the 80/20 rule's obligation to name the vital few pieces before splitting.
 
 ## If not now, then when?
 
@@ -192,6 +246,16 @@ Every managed plan declares a T-shirt `token_impact` and a plain-language
 for review, and invoke model-based diagnosis on failure rather than on every
 successful routine run. Token impact is a relative planning signal, not a
 fictional exact forecast.
+<!-- ARCADIA_CONTEXT_END -->
+
+<!-- Everything outside the markers above is this repository's own and is never regenerated. -->
+
+The operating principles that used to live here — the 80/20 rule, YAGNI,
+divide and conquer, "if not now, then when?", make it real, and token economy
+— moved into [`docs/agents-context.md`](docs/agents-context.md) so they are
+part of the block above and reach every adopting repository, not just this
+one. Edit them there; `pnpm arcadia project setup-context --repo .`
+regenerates this file's copy.
 
 ## Orientation
 
