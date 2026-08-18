@@ -36,3 +36,13 @@ constraints arrive with the objective rather than depending on this file.
   and `pnpm build` are not wrapped that way; run them as
   `mise exec -- pnpm test` / `mise exec -- pnpm build` if the ambient shell's
   `node` is not already the mise-pinned one.
+- `package.json` deliberately carries no `engines.node`. It used to, and pnpm's
+  own preflight check compared it against whatever Node the *ambient* `pnpm`
+  process happened to be running under — not the Node any command actually
+  executed with, since `mise exec --` re-resolves that regardless. The result
+  was a `[WARN] Unsupported engine` line on every single invocation that never
+  reflected a real problem and never went away, because `mise.toml` (the
+  version that is actually enforced) and `package.json` (the version pnpm was
+  comparing against) were two names for one fact. If a command fails with a
+  Node-version-shaped error, it is a real failure — investigate it — not this
+  warning, because this warning no longer exists.

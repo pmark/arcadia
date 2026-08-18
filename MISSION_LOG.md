@@ -8,6 +8,51 @@ updated: 2026-08-17
 
 # Mission Log: Arcadia
 
+## 2026-08-17 — Removed the permanent engine warning; fixed Arcadia's own self-reported drift
+
+- **Did:** Operator asked whether the recurring `[WARN] Unsupported engine`
+  line could be fixed once and for all, and separately why `arcadia way`
+  reported Arcadia itself as stale on `docs/agent-continuation-protocol.md`
+  right after ratifying three Decisions. Investigated both rather than
+  patching around them. The warning: confirmed empirically that
+  `engine-strict=false` in `.npmrc` changes nothing (pnpm was already
+  non-strict; strict mode only controls whether the mismatch is fatal, not
+  whether it prints), then confirmed that removing `engines.node` from
+  `package.json` eliminates the warning outright with no CI dependency on the
+  field. The self-drift: reproduced directly by running
+  `arcadia project setup-context --repo` against Arcadia's own checkout on a
+  branch and diffing the result -- it added exactly one `ARCADIA_CONTEXT_*`
+  marker pair around the unchanged body, matching PR #73's Mission Log claim
+  precisely. That verified state had apparently only ever existed in a test
+  worktree and was never committed to the tracked file.
+- **Result:** `package.json`'s `engines` field removed. It never enforced
+  anything -- `mise exec --` already re-resolves the real Node version for
+  every `pnpm arcadia` invocation regardless of what the ambient `pnpm`
+  process was running under, and the ABI mismatch it was meant to guard
+  against is separately self-healed by `postinstall`. The field only ever
+  produced an unactionable warning on literally every command. `mise.toml`
+  is now the sole declaration of the pinned version.
+  `tests/toolchain-config.test.ts`, which had asserted the now-removed field's
+  value, is updated to assert its absence instead, with the reasoning inlined
+  as a comment so the next reader does not reintroduce it. `CLAUDE.md` updated
+  so a coding agent that sees a Node-version-shaped error knows this specific
+  warning no longer exists and a real one is worth investigating.
+  `docs/agent-continuation-protocol.md` regenerated via the same command
+  against Arcadia's own repository, confirmed idempotent on a second run
+  (marker count stays at one), and committed. `arcadia way` now reports
+  3 current, 0 stale, 1 unknown (Martian Rover, pre-existing, no `repo_path`
+  configured) -- Rebuster's staleness also cleared independently in the
+  interim, unrelated to this work. Full suite: 857 passing, 4 pre-existing
+  failures in `tests/narrative-digest-schedule.test.ts` reconfirmed identical
+  on `main` with this branch's changes stashed.
+- **Next:** Nothing dispatched. The pointer is unchanged:
+  `build-demo-hero-vertical-slice` on `demo-first-delivery`.
+- **Blockers:** None. The operator's shell-alias question (whether a personal
+  `alias arcadia=...` is still needed) is now moot for the warning specifically,
+  since there is nothing left to alias around; coexisting Homebrew/nvm/Volta
+  Node installs on `PATH` remain a fact of this machine but no longer surface
+  as noise.
+
 ## 2026-08-17 — Fixed PPN's drift and ratified three governance Decisions from one menu
 
 - **Did:** Operator asked whether PPN was current on the Way. Verified with

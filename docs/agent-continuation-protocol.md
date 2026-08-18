@@ -5,7 +5,7 @@ slug: agent-continuation-protocol
 project: arcadia
 updated: 2026-08-16
 ---
-
+<!-- ARCADIA_CONTEXT_START -->
 # Agent Continuation Protocol
 
 How a coding agent starts work, how it behaves while working, and what it owes
@@ -150,3 +150,4 @@ OK to go: <verb-first, one-sentence description of exactly what will happen>
 
 This applies in every message, in every repository on the Arcadia Way — not only
 after a milestone.
+<!-- ARCADIA_CONTEXT_END -->
