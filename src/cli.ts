@@ -6,7 +6,7 @@ dotenv.config();
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Command } from "commander";
+import { Command, CommanderError } from "commander";
 import {
   renderArtifactCreateSuccess,
   renderArtifactListSuccess,
@@ -2949,7 +2949,22 @@ export function buildProgram(): Command {
 }
 
 if (isMainModule()) {
-  buildProgram().parseAsync(process.argv).catch((error: unknown) => {
+  const program = buildProgram();
+  program.parseAsync(process.argv).catch((error: unknown) => {
+    // Commander's own help/version exits (bare `arcadia`, `arcadia --help`)
+    // arrive here as CommanderErrors too, because the program suppresses
+    // Commander's writeErr to keep its own JSON error format from being
+    // doubled up with Commander's plain-text one. That suppression also ate
+    // Commander's help text, since `help({ error: true })` writes through
+    // writeErr. Print it explicitly instead of routing it through the
+    // command-failure JSON formatter, which had nothing useful to say about
+    // "no command given".
+    if (error instanceof CommanderError && error.code.startsWith("commander.help")) {
+      process.stdout.write(program.helpInformation());
+      process.exitCode = error.exitCode === 0 ? 0 : 1;
+      return;
+    }
+
     const normalized = normalizeError(error);
     const context = { json: wantsJson(process.argv) };
     writeFailure(createFailure(commandNameFromArgv(process.argv), normalized, workspaceFromArgv(process.argv)), context);
