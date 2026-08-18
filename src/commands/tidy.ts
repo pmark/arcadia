@@ -11,12 +11,14 @@ import {
   hasUpstream,
   isAncestor,
   listWorktrees,
-  refExists,
+  mergedPullRequests,
   resolveBaseBranch,
+  resolveComparisonBase,
   samePath,
   shortBranch,
   tryGit,
-  uncommittedChanges
+  uncommittedChanges,
+  type ComparisonBase
 } from "../git/worktrees.js";
 
 /**
@@ -41,6 +43,20 @@ export type TidyVerdict =
   /** Clean and detached, with nothing unreachable. Safe to retire. */
   | "detached";
 
+/**
+ * How a `merged` verdict was actually established.
+ *
+ * `ancestry` means the branch's own commits are reachable from the base
+ * branch — true for an ordinary merge or fast-forward. `pull-request` means
+ * the branch's own commits are *not* reachable — squash and rebase merges
+ * rewrite history, so nothing about the branch tip proves its content
+ * landed — but GitHub recorded the pull request as merged and the commit it
+ * actually produced (`mergeCommit`) is on the base branch. Checking that
+ * commit's ancestry rather than trusting GitHub's "merged" label is what
+ * makes this a proof rather than a guess.
+ */
+export type MergeProof = "ancestry" | "pull-request";
+
 export interface TidyWorktree {
   path: string;
   branch: string | null;
@@ -51,6 +67,8 @@ export interface TidyWorktree {
   /** Whether a remote-tracking branch exists, so unmerged work is not necessarily lost. */
   pushed: boolean;
   uncommitted: string[];
+  /** Set only when `verdict` is `merged`. */
+  mergeProof: MergeProof | null;
   /** Whether `--apply` actually retired it on this run. */
   retired: boolean;
 }
@@ -62,12 +80,20 @@ export interface TidyBranch {
   ahead: number;
   pushed: boolean;
   agentOwned: boolean;
+  mergeProof: MergeProof | null;
   retired: boolean;
 }
 
 export interface TidyCommandData {
   repoRoot: string;
   baseBranch: string;
+  /** The ref ancestry was actually checked against — `origin/<base>` when the fetch below succeeded. */
+  comparisonRef: string;
+  fetched: boolean;
+  /** Set when fetching from `origin` was attempted and failed, so a stale-looking answer is explained rather than silent. */
+  fetchNote: string | null;
+  /** Whether pull-request-based verification ran at all, so a squash-merged branch reported `unmerged` can be told apart from one that was actually checked and found unmerged. */
+  githubVerificationAvailable: boolean;
   applied: boolean;
   worktrees: TidyWorktree[];
   branches: TidyBranch[];
@@ -81,6 +107,16 @@ export interface TidyCommandOptions {
   apply?: boolean;
   /** Also retire merged branches the operator named themselves, not just agent-owned ones. */
   includeOwnBranches?: boolean;
+  /**
+   * Skip fetching `origin` first. Every worktree in a repository shares one
+   * set of refs, so comparing against a stale local base branch silently
+   * misclassifies anything merged since the last `git pull` as unmerged.
+   * Fetching first is the default for that reason; this exists for offline
+   * use, where a stale-but-labelled answer beats none.
+   */
+  noFetch?: boolean;
+  /** Skip GitHub pull-request verification even when `gh` is available. */
+  noGithub?: boolean;
 }
 
 /**
@@ -105,15 +141,32 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
   const controlWorktree = worktrees[0]?.path ?? repoRoot;
   const here = invocationRoot();
 
+  // Fetched once, against the shared repository object database — every
+  // worktree sees the result, so there is no reason to repeat it per worktree.
+  const comparisonBase: ComparisonBase = options.noFetch
+    ? { ref: baseBranch, fetched: false, fetchError: null }
+    : resolveComparisonBase(repoRoot, baseBranch);
+
+  const prMerges = options.noGithub ? null : mergedPullRequests(repoRoot);
+  const prMergeCommits = new Map(
+    (prMerges ?? []).map((entry) => [entry.headBranch, { sha: entry.mergeCommitSha, number: entry.number }])
+  );
+
   const assessed: TidyWorktree[] = worktrees.map((record) =>
-    assessWorktree({ record, repoRoot, baseBranch, controlWorktree, here })
+    assessWorktree({ record, repoRoot, comparisonBase, controlWorktree, here, prMergeCommits })
   );
 
   const claimedByWorktree = new Set(
     assessed.map((entry) => entry.branch).filter((branch): branch is string => branch !== null)
   );
 
-  const branches = assessBranches({ repoRoot, baseBranch, claimedByWorktree, includeOwn: options.includeOwnBranches });
+  const branches = assessBranches({
+    repoRoot,
+    comparisonBase,
+    claimedByWorktree,
+    includeOwn: options.includeOwnBranches,
+    prMergeCommits
+  });
 
   if (options.apply) {
     for (const entry of assessed) {
@@ -136,6 +189,10 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
     data: {
       repoRoot,
       baseBranch,
+      comparisonRef: comparisonBase.ref,
+      fetched: comparisonBase.fetched,
+      fetchNote: comparisonBase.fetchError,
+      githubVerificationAvailable: prMerges !== null,
       applied: options.apply === true,
       worktrees: assessed,
       branches,
@@ -147,11 +204,13 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
 function assessWorktree(input: {
   record: { path: string; head: string; branch: string | null };
   repoRoot: string;
-  baseBranch: string;
+  comparisonBase: ComparisonBase;
   controlWorktree: string;
   here: string;
+  prMergeCommits: Map<string, { sha: string; number: number }>;
 }): TidyWorktree {
-  const { record, repoRoot, baseBranch, controlWorktree, here } = input;
+  const { record, comparisonBase, controlWorktree, here, prMergeCommits } = input;
+  const compareRef = comparisonBase.ref;
   const branch = shortBranch(record.branch);
   const base: Omit<TidyWorktree, "verdict" | "reason"> = {
     path: record.path,
@@ -159,6 +218,7 @@ function assessWorktree(input: {
     ahead: 0,
     pushed: false,
     uncommitted: [],
+    mergeProof: null,
     retired: false
   };
 
@@ -172,8 +232,8 @@ function assessWorktree(input: {
   if (samePath(record.path, here)) {
     return { ...base, verdict: "protected", reason: "You are standing in this worktree." };
   }
-  if (branch === baseBranch) {
-    return { ...base, verdict: "protected", reason: `Holds the base branch ${baseBranch}.` };
+  if (branch === comparisonBase.ref.replace(/^origin\//, "")) {
+    return { ...base, verdict: "protected", reason: `Holds the base branch.` };
   }
 
   const uncommitted = uncommittedChanges(record.path);
@@ -187,68 +247,101 @@ function assessWorktree(input: {
   }
 
   if (branch === null) {
-    const reachable = isAncestor(record.path, record.head, baseBranch);
+    const reachable = isAncestor(record.path, record.head, compareRef);
     return reachable
-      ? { ...base, verdict: "detached", reason: "Detached at a commit the base branch already contains." }
+      ? { ...base, verdict: "detached", mergeProof: "ancestry", reason: "Detached at a commit the base branch already contains." }
       : {
           ...base,
           verdict: "unmerged",
-          reason: `Detached at ${record.head.slice(0, 8)}, which ${baseBranch} does not contain. Name a branch for it before it can be retired.`
+          reason: `Detached at ${record.head.slice(0, 8)}, which the base branch does not contain. Name a branch for it before it can be retired.`
         };
   }
 
-  const ahead = countCommits(record.path, baseBranch, branch);
+  const merge = evaluateMerge({ cwd: record.path, branch, compareRef, prMergeCommits });
   const pushed = hasUpstream(record.path, branch);
 
-  if (ahead === 0 && isAncestor(record.path, branch, baseBranch)) {
+  if (merge.merged) {
+    return { ...base, pushed, verdict: "merged", mergeProof: merge.proof, reason: merge.reason };
+  }
+
+  const reason = `${merge.reason}${pushed ? "; a remote copy exists" : "; no remote copy exists"}.`;
+  return { ...base, ahead: merge.ahead, pushed, verdict: "unmerged", reason };
+}
+
+/**
+ * The one place `merged` gets decided, for both worktrees and standalone
+ * branches, so the two paths cannot reach different verdicts for the same
+ * branch depending on which happened to be checked.
+ *
+ * Ancestry against the fetched base is tried first because it needs no
+ * network call beyond the fetch already done once for the whole run. The
+ * pull-request check only runs for branches ancestry could not clear, and
+ * only when a `gh`-verified merge commit exists for that exact branch name.
+ */
+export function evaluateMerge(input: {
+  cwd: string;
+  branch: string;
+  compareRef: string;
+  prMergeCommits: Map<string, { sha: string; number: number }>;
+}): { merged: true; proof: MergeProof; reason: string } | { merged: false; ahead: number; reason: string } {
+  const { cwd, branch, compareRef, prMergeCommits } = input;
+  const baseName = compareRef.replace(/^origin\//, "");
+  const ahead = countCommits(cwd, compareRef, branch);
+
+  if (ahead === 0 && isAncestor(cwd, branch, compareRef)) {
+    return { merged: true, proof: "ancestry", reason: `Every commit on ${branch} is already on ${baseName}.` };
+  }
+
+  const pr = prMergeCommits.get(branch);
+  if (pr && isAncestor(cwd, pr.sha, compareRef)) {
     return {
-      ...base,
-      pushed,
-      verdict: "merged",
-      reason: `Every commit on ${branch} is already on ${baseBranch}.`
+      merged: true,
+      proof: "pull-request",
+      reason: `PR #${pr.number} merged (squash/rebase) — ${pr.sha.slice(0, 8)} is on ${baseName}.`
     };
   }
 
   return {
-    ...base,
+    merged: false,
     ahead,
-    pushed,
-    verdict: "unmerged",
-    reason: `${ahead} commit${ahead === 1 ? "" : "s"} on ${branch} ${ahead === 1 ? "is" : "are"} not on ${baseBranch}${pushed ? "; a remote copy exists" : "; no remote copy exists"}.`
+    reason: `${ahead} commit${ahead === 1 ? "" : "s"} on ${branch} not on ${baseName}`
   };
 }
 
 function assessBranches(input: {
   repoRoot: string;
-  baseBranch: string;
+  comparisonBase: ComparisonBase;
   claimedByWorktree: Set<string>;
   includeOwn?: boolean;
+  prMergeCommits: Map<string, { sha: string; number: number }>;
 }): TidyBranch[] {
-  const { repoRoot, baseBranch, claimedByWorktree, includeOwn } = input;
+  const { repoRoot, comparisonBase, claimedByWorktree, includeOwn, prMergeCommits } = input;
+  const compareRef = comparisonBase.ref;
+  const baseName = compareRef.replace(/^origin\//, "");
 
   return git(repoRoot, ["for-each-ref", "--format=%(refname:short)", "refs/heads"])
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
-    .filter((branch) => branch !== baseBranch)
+    .filter((branch) => branch !== baseName)
     // A branch checked out somewhere is that worktree's business; deleting the
     // ref out from under it is how a worktree ends up detached and confusing.
     .filter((branch) => !claimedByWorktree.has(branch) && !claimedByWorktree.has(`refs/heads/${branch}`))
     .map((branch) => {
       const agentOwned = SAFE_TASK_BRANCH.test(branch);
       const pushed = hasUpstream(repoRoot, branch);
-      const merged = refExists(repoRoot, `refs/heads/${branch}`) && isAncestor(repoRoot, branch, baseBranch);
-      const ahead = merged ? 0 : countCommits(repoRoot, baseBranch, branch);
+      const merge = evaluateMerge({ cwd: repoRoot, branch, compareRef, prMergeCommits });
 
-      if (!merged) {
+      if (!merge.merged) {
         return {
           branch,
           verdict: "unmerged" as const,
-          ahead,
+          ahead: merge.ahead,
           pushed,
           agentOwned,
+          mergeProof: null,
           retired: false,
-          reason: `${ahead} commit${ahead === 1 ? "" : "s"} not on ${baseBranch}${pushed ? "; a remote copy exists" : "; NO remote copy"}.`
+          reason: `${merge.reason}${pushed ? "; a remote copy exists" : "; NO remote copy"}.`
         };
       }
 
@@ -259,8 +352,9 @@ function assessBranches(input: {
           ahead: 0,
           pushed,
           agentOwned,
+          mergeProof: merge.proof,
           retired: false,
-          reason: `Fully merged into ${baseBranch}, but not an agent-owned name. Pass --include-own-branches to retire it too.`
+          reason: `Fully merged, but not an agent-owned name (${merge.reason.toLowerCase()}). Pass --include-own-branches to retire it too.`
         };
       }
 
@@ -270,8 +364,9 @@ function assessBranches(input: {
         ahead: 0,
         pushed,
         agentOwned,
+        mergeProof: merge.proof,
         retired: false,
-        reason: `Fully merged into ${baseBranch}; deleting the ref loses no commit.`
+        reason: `${merge.reason} Deleting the ref loses no commit.`
       };
     });
 }
@@ -323,12 +418,34 @@ function collectAttention(worktrees: TidyWorktree[], branches: TidyBranch[]): st
 }
 
 export function renderTidySuccess(response: CommandSuccess<TidyCommandData>): string[] {
-  const { repoRoot, baseBranch, applied, worktrees, branches, needsAttention } = response.data;
-  const lines: string[] = [
-    `Arcadia Tidy — ${repoRoot}`,
-    `Base branch: ${baseBranch}`,
-    ""
-  ];
+  const {
+    repoRoot,
+    baseBranch,
+    comparisonRef,
+    fetched,
+    fetchNote,
+    githubVerificationAvailable,
+    applied,
+    worktrees,
+    branches,
+    needsAttention
+  } = response.data;
+
+  const lines: string[] = [`Arcadia Tidy — ${repoRoot}`];
+
+  // Freshness first, unconditionally — every verdict below depends on it, and
+  // a stale comparison looks identical to a fresh one unless this is said.
+  lines.push(
+    fetched
+      ? `Base branch: ${baseBranch} (fetched ${comparisonRef} from origin just now)`
+      : `Base branch: ${baseBranch} (comparing against the LOCAL branch — ${fetchNote ?? "not fetched"})`
+  );
+  lines.push(
+    githubVerificationAvailable
+      ? "GitHub verification: on — a branch whose own commits are not on the base branch is still checked against merged pull requests, so a squash- or rebase-merged branch is not reported as unmerged."
+      : "GitHub verification: unavailable (gh CLI missing, unauthenticated, or no GitHub remote) — a squash- or rebase-merged branch may be reported unmerged even though it landed."
+  );
+  lines.push("");
 
   const retirable = [...worktrees.filter(isRetirableWorktree), ...branches.filter((b) => b.verdict === "merged")];
 

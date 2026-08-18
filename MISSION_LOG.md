@@ -3,10 +3,46 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-17
+updated: 2026-08-18
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-18 — Added arcadia tidy, then made it verify what it can't see by ancestry
+
+- **Did:** Operator asked for a safe cleanup command for accumulated worktrees
+  and branches, plus help reconciling which held live work. Built `arcadia
+  tidy` reusing `go`'s existing safety primitives (`SAFE_TASK_BRANCH`,
+  `assertClean`, ancestry checks), extracted into `src/git/worktrees.ts` so the
+  two commands cannot disagree about what is safe to delete. A dry run against
+  this actual repository found 43 retirable items and flagged 6 branches as
+  genuinely unmerged. Operator pushed back on two of those six, unwilling to
+  manually review branches merely because their commits were not literal
+  ancestors of `main`, and asked for the smarter check rather than a
+  workaround. Investigating turned up something more fundamental than the
+  squash-merge case predicted: this repository's shared `main` ref was two
+  merged pull requests behind `origin/main`, with nothing anywhere flagging
+  it. Every worktree shares one set of refs, so that staleness was silently
+  degrading every ancestry check in every worktree at once.
+- **Result:** `tidy` now fetches `origin` before comparing (default on,
+  `--no-fetch` to skip), and separately checks GitHub for merged pull requests
+  when `gh` is available (default on, `--no-github` to skip) — verifying a
+  PR's `mergeCommit` ancestry rather than trusting its "merged" label, which
+  is what actually detects a squash or rebase merge, since those rewrite
+  history and never make the branch itself an ancestor. Re-run against this
+  repository: retirable count rose from 43 to 46, and the "genuinely unmerged"
+  count fell from 6 to 3 — the two reclassified now read `PR #36 merged
+  (squash/rebase)` and `PR #66 merged (squash/rebase)`, both verified against
+  real commits on `main`, not merely GitHub's word for it. 6 new tests,
+  including two that reproduce the actual staleness bug end-to-end with real
+  bare-repo clones (one merges and pushes from a second clone while a `--repo`
+  target's local `main` never learns of it) and two that exercise the
+  squash-merge verification directly. 17 tests total for `tidy`; full suite at
+  884 passing, same 4 pre-existing failures.
+- **Next:** Nothing dispatched. The pointer is unchanged.
+- **Blockers:** None. `mergedPullRequests` degrades to null — ancestry-only,
+  clearly labelled as such in the output — when `gh` is unavailable,
+  unauthenticated, or the remote is not GitHub; never a hard failure.
 
 ## 2026-08-18 — Made `arcadia` mean the project you are standing in
 

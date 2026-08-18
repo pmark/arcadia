@@ -365,6 +365,44 @@ Install or repair the symlink with:
 ln -sf "$(pwd)/scripts/arcadia" ~/.local/bin/arcadia
 ```
 
+## Cleaning up worktrees and branches
+
+Agent sessions leave worktrees and branches behind. `arcadia tidy` retires the
+ones whose work is provably already on the base branch, and reports everything
+else without touching it:
+
+```sh
+arcadia tidy              # dry run — nothing is changed
+arcadia tidy --apply      # retires what the dry run listed
+```
+
+The safety rule is one sentence, true by construction: **nothing is removed
+unless every commit it carries is already reachable from the base branch, and
+its working tree is clean.** A branch whose commits are all ancestors of the
+base branch has no commits of its own to lose, so this cannot destroy work —
+there is no state in which it does.
+
+It fetches `origin` first by default. Every worktree in a repository shares one
+set of refs, so a `main` nobody has pulled in recently makes every worktree's
+ancestry check stale at once — a genuinely merged branch reads as unmerged, not
+because anything is wrong, but because the local answer is out of date. Pass
+`--no-fetch` to compare against the local branch only.
+
+It also checks GitHub for merged pull requests when `gh` is available. A
+squash or rebase merge rewrites history, so a branch merged that way never
+becomes an ancestor of the base branch — only the commit GitHub actually
+produced does. `tidy` verifies that commit's ancestry rather than trusting
+GitHub's "merged" label alone, so a squash-merged branch is correctly retired
+instead of sitting forever in "unmerged." Pass `--no-github` to skip this.
+
+Merged branches you named yourself are reported but not retired, since
+deleting your own ref is your call — pass `--include-own-branches` to include
+them. Agent-owned branches (`codex/`, `claude/`, `agent/`, `worktree-`
+prefixes) are retired by default.
+
+Anything genuinely unmerged is never touched, and anything with no remote copy
+is called out explicitly as the only copy of that work.
+
 Below the `Authorization:` line, the brief prints **Standing constraints**: the
 repository's `CONSTITUTION.md`, verbatim. Nothing parses the Constitution, so
 printing it here is what makes a dispatched agent read the rules that bind the

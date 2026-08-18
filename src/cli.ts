@@ -2191,8 +2191,15 @@ export function buildProgram(): Command {
       .option("--repo <path>", "Repository to tidy", invocationRoot())
       .option("--apply", "Actually retire what is listed; without it nothing is changed")
       .option("--include-own-branches", "Also retire fully merged branches you named yourself, not just agent-owned ones")
-  ).action((options: { repo?: string; apply?: boolean; includeOwnBranches?: boolean; json?: boolean }) =>
-    runCliAction("tidy", options, () => runTidyCommand(options), renderTidySuccess)
+      .option("--no-fetch", "Compare against the local base branch only; skip fetching origin first")
+      .option("--no-github", "Skip pull-request verification even when the GitHub CLI is available")
+  ).action((options: { repo?: string; apply?: boolean; includeOwnBranches?: boolean; fetch?: boolean; github?: boolean; json?: boolean }) =>
+    runCliAction(
+      "tidy",
+      options,
+      () => runTidyCommand({ ...options, noFetch: options.fetch === false, noGithub: options.github === false }),
+      renderTidySuccess
+    )
   );
 
   addJsonOption(

@@ -3,7 +3,8 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runTidyCommand, type TidyCommandData } from "../src/commands/tidy.js";
+import { evaluateMerge, runTidyCommand, type TidyCommandData } from "../src/commands/tidy.js";
+import { parseGithubSlug } from "../src/git/worktrees.js";
 import type { CommandSuccess } from "../src/cli/response.js";
 
 const temporary: string[] = [];
@@ -194,5 +195,145 @@ describe("arcadia tidy — safety invariants", () => {
 
     expect(result.worktrees.find((w) => w.path === tree)?.verdict).toBe("unmerged");
     expect(result.baseBranch).toBe("main");
+  });
+});
+
+/** A bare repository standing in for `origin`, so `git fetch` has something real to reach. */
+function bareOrigin(): string {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-tidy-origin-")));
+  temporary.push(root);
+  run(root, ["init", "--bare", "--initial-branch=main", "--quiet"]);
+  return root;
+}
+
+function cloneOf(origin: string, name: string): string {
+  const target = path.join(origin, "..", name);
+  execFileSync("git", ["clone", "--quiet", origin, target], { encoding: "utf8" });
+  const resolved = realpathSync(target);
+  temporary.push(resolved);
+  return resolved;
+}
+
+describe("arcadia tidy — fetching before comparing", () => {
+  // Reproduces the actual bug found operating this repository: every worktree
+  // shares one set of refs, so a `main` nobody has pulled in recently makes
+  // ancestry checks lie by omission. A branch that is genuinely merged reads
+  // as unmerged, which looks cautious but is reporting stale information as
+  // current.
+  it("finds a merge that only exists on origin, once fetched", () => {
+    const origin = bareOrigin();
+    const publisher = cloneOf(origin, "publisher");
+    run(publisher, ["config", "user.email", "test@example.com"]);
+    run(publisher, ["config", "user.name", "Test"]);
+    writeFileSync(path.join(publisher, "README.md"), "# base\n", "utf8");
+    run(publisher, ["add", "-A"]);
+    run(publisher, ["commit", "-q", "-m", "base"]);
+    run(publisher, ["push", "-q", "origin", "main"]);
+
+    // The operator's clone, made before the branch below is merged and
+    // pushed -- exactly like a worktree nobody has run `git pull` in since.
+    const stale = cloneOf(origin, "stale");
+    run(stale, ["config", "user.email", "test@example.com"]);
+    run(stale, ["config", "user.name", "Test"]);
+    commitOn(stale, "claude/finished", "feature.txt");
+    run(stale, ["push", "-q", "origin", "claude/finished"]);
+
+    // Someone else -- another session, another machine -- merges and pushes.
+    run(publisher, ["fetch", "-q", "origin", "claude/finished"]);
+    run(publisher, ["merge", "-q", "--no-ff", "-m", "merge", "origin/claude/finished"]);
+    run(publisher, ["push", "-q", "origin", "main"]);
+
+    // Without fetching, the stale clone's own local `main` has no idea.
+    const withoutFetch = data(runTidyCommand({ repo: stale, noFetch: true }));
+    expect(withoutFetch.fetched).toBe(false);
+    expect(withoutFetch.branches.find((b) => b.branch === "claude/finished")?.verdict).toBe("unmerged");
+
+    // Fetching first is the default, and it changes the answer to the true one.
+    const withFetch = data(runTidyCommand({ repo: stale }));
+    expect(withFetch.fetched).toBe(true);
+    expect(withFetch.comparisonRef).toBe("origin/main");
+    const entry = withFetch.branches.find((b) => b.branch === "claude/finished");
+    expect(entry?.verdict).toBe("merged");
+    expect(entry?.mergeProof).toBe("ancestry");
+  });
+
+  it("falls back to the local branch, and says so, when there is no origin", () => {
+    const root = repo();
+
+    const result = data(runTidyCommand({ repo: root }));
+
+    expect(result.fetched).toBe(false);
+    expect(result.fetchNote).toContain("No `origin` remote");
+    expect(result.comparisonRef).toBe("main");
+  });
+});
+
+describe("evaluateMerge — squash and rebase merges", () => {
+  // This is the part worth testing directly: a squash or rebase merge rewrites
+  // history, so the branch's own commits are never ancestors of the base
+  // branch after merging -- only the commit GitHub actually produced is. The
+  // whole point of checking `mergeCommit` ancestry instead of the branch tip
+  // is proving content landed even though the branch itself looks unmerged.
+  it("finds a squash merge invisible to plain ancestry, via its verified merge commit", () => {
+    const root = repo();
+    commitOn(root, "claude/squashed", "a.txt");
+
+    // Simulate what GitHub does on squash-merge: a brand new commit on main,
+    // not a merge of the branch, so the branch tip is never an ancestor.
+    run(root, ["checkout", "-q", "main"]);
+    writeFileSync(path.join(root, "a.txt"), "a.txt\n", "utf8");
+    run(root, ["add", "-A"]);
+    run(root, ["commit", "-q", "-m", "squashed a.txt"]);
+    const squashCommit = run(root, ["rev-parse", "main"]).trim();
+
+    const withoutProof = evaluateMerge({
+      cwd: root,
+      branch: "claude/squashed",
+      compareRef: "main",
+      prMergeCommits: new Map()
+    });
+    expect(withoutProof.merged).toBe(false);
+
+    const withProof = evaluateMerge({
+      cwd: root,
+      branch: "claude/squashed",
+      compareRef: "main",
+      prMergeCommits: new Map([["claude/squashed", { sha: squashCommit, number: 42 }]])
+    });
+    expect(withProof.merged).toBe(true);
+    if (withProof.merged) {
+      expect(withProof.proof).toBe("pull-request");
+      expect(withProof.reason).toContain("PR #42");
+    }
+  });
+
+  it("does not trust a PR record whose claimed merge commit is not actually on the base branch", () => {
+    const root = repo();
+    commitOn(root, "claude/unrelated", "a.txt");
+
+    // A fabricated or stale record naming a commit that never landed. Ancestry
+    // is still checked, not merely GitHub's say-so.
+    const result = evaluateMerge({
+      cwd: root,
+      branch: "claude/unrelated",
+      compareRef: "main",
+      prMergeCommits: new Map([["claude/unrelated", { sha: "0".repeat(40), number: 1 }]])
+    });
+
+    expect(result.merged).toBe(false);
+  });
+});
+
+describe("parseGithubSlug", () => {
+  it("extracts owner/repo from the URL forms git actually produces", () => {
+    expect(parseGithubSlug("https://github.com/pmark/arcadia.git")).toBe("pmark/arcadia");
+    expect(parseGithubSlug("https://github.com/pmark/arcadia")).toBe("pmark/arcadia");
+    expect(parseGithubSlug("git@github.com:pmark/arcadia.git")).toBe("pmark/arcadia");
+    expect(parseGithubSlug("git@github.com:pmark/arcadia")).toBe("pmark/arcadia");
+  });
+
+  it("returns null for a remote that is not GitHub", () => {
+    expect(parseGithubSlug("https://gitlab.com/pmark/arcadia.git")).toBeNull();
+    expect(parseGithubSlug("/Users/pmark/bare-repos/arcadia.git")).toBeNull();
   });
 });

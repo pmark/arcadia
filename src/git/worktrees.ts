@@ -140,3 +140,106 @@ export function isInside(candidate: string, parent: string): boolean {
   const relative = path.relative(parent, candidate);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
+
+/**
+ * The freshest known state of a branch, and how it was obtained.
+ *
+ * A worktree's local `main` reflects whatever the last person to `git pull`
+ * there happened to fetch. Every worktree in a repository shares one set of
+ * refs, so one stale worktree makes every ancestry check in every other
+ * worktree stale too, silently — a merged branch reads as unmerged, which
+ * looks safe but is not the truth being reported. Found in practice: this
+ * repository's own `main` was two merged pull requests behind `origin/main`
+ * with no error, no warning, and no worktree flagged as out of date.
+ */
+export interface ComparisonBase {
+  /** The ref to compare ancestry against — `origin/<base>` when fetch succeeded, else local `<base>`. */
+  ref: string;
+  fetched: boolean;
+  /** Set when fetch was attempted and failed, so the caller can say why local data was used. */
+  fetchError: string | null;
+}
+
+/**
+ * Resolve the freshest available state of the base branch, fetching from
+ * `origin` first. Never throws — a failed fetch (offline, no `origin`, no
+ * network) falls back to whatever is already local, because reporting a
+ * possibly-stale answer is better than refusing to report anything.
+ */
+export function resolveComparisonBase(repo: string, baseBranch: string): ComparisonBase {
+  const hasOrigin = tryGit(repo, ["remote", "get-url", "origin"]) !== null;
+  if (!hasOrigin) {
+    return { ref: baseBranch, fetched: false, fetchError: "No `origin` remote is configured." };
+  }
+
+  const result = spawnSync("git", ["fetch", "--quiet", "origin", baseBranch], {
+    cwd: repo,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+
+  if (result.status !== 0) {
+    return {
+      ref: baseBranch,
+      fetched: false,
+      fetchError: (result.stderr || "git fetch failed").trim().split("\n")[0]
+    };
+  }
+
+  const remoteRef = `origin/${baseBranch}`;
+  return refExists(repo, `refs/remotes/${remoteRef}`)
+    ? { ref: remoteRef, fetched: true, fetchError: null }
+    : { ref: baseBranch, fetched: false, fetchError: `origin/${baseBranch} does not exist after fetching.` };
+}
+
+export interface MergedPullRequest {
+  headBranch: string;
+  /** What actually landed on the base branch — the squash commit, the merge commit, or the branch tip for a fast-forward. Ancestry of *this*, not the branch tip, is what proves the content is on base. */
+  mergeCommitSha: string;
+  number: number;
+}
+
+/**
+ * Every merged pull request GitHub knows about for this repository, or null
+ * when that cannot be determined.
+ *
+ * This is what makes a squash- or rebase-merged branch verifiable: after such
+ * a merge the branch's own commits are never ancestors of the base branch —
+ * only the rewritten commit GitHub actually landed is. Checking `mergeCommit`
+ * ancestry rather than the branch tip is what makes this correct regardless
+ * of merge strategy.
+ *
+ * Returns null — never throws — when the `gh` CLI is missing, unauthenticated,
+ * or the repository has no GitHub remote. A degraded answer (ancestry only) is
+ * always available; this is a refinement of it, not a dependency of it.
+ */
+export function mergedPullRequests(repo: string): MergedPullRequest[] | null {
+  const remoteUrl = tryGit(repo, ["remote", "get-url", "origin"]);
+  const slug = remoteUrl ? parseGithubSlug(remoteUrl) : null;
+  if (!slug) return null;
+
+  const result = spawnSync(
+    "gh",
+    ["pr", "list", "--repo", slug, "--state", "merged", "--limit", "1000", "--json", "number,headRefName,mergeCommit"],
+    { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+  );
+  if (result.status !== 0 || !result.stdout) return null;
+
+  try {
+    const parsed = JSON.parse(result.stdout) as Array<{
+      number: number;
+      headRefName: string;
+      mergeCommit: { oid: string } | null;
+    }>;
+    return parsed
+      .filter((entry) => entry.mergeCommit?.oid)
+      .map((entry) => ({ headBranch: entry.headRefName, mergeCommitSha: entry.mergeCommit!.oid, number: entry.number }));
+  } catch {
+    return null;
+  }
+}
+
+export function parseGithubSlug(remoteUrl: string): string | null {
+  const match = remoteUrl.match(/github\.com[/:]([^/]+)\/(.+?)(?:\.git)?\/?$/);
+  return match ? `${match[1]}/${match[2]}` : null;
+}
