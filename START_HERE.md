@@ -383,6 +383,11 @@ from that rather than from wherever the runtime happens to be.
 Outside any managed project you get a blocker naming the directory it searched,
 never a quietly substituted answer. Pass `--repo` or `--project` to override.
 
+A relative `--repo` is read the same way — `arcadia docket --repo .` means the
+directory you are standing in, not the checkout the launcher moved to. Commands
+echo the resolved absolute path back, so the answer always names the repository
+it actually read.
+
 Install or repair the symlink with:
 
 ```sh

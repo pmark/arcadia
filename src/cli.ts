@@ -298,7 +298,7 @@ import {
   runWorkflowValidateCommand
 } from "./commands/workflow.js";
 import { normalizeError, validationError } from "./cli/errors.js";
-import { invocationRoot } from "./cli/invocation.js";
+import { invocationRoot, resolveInvocationPath } from "./cli/invocation.js";
 import type { BackBurnerSurfaceCondition } from "./domain/types.js";
 import type { BackBurnerFacetTag } from "./domain/constants.js";
 import { ORIENTATION_EFFORTS, type OrientationEffort } from "./orientation/types.js";
@@ -879,7 +879,7 @@ export function buildProgram(): Command {
       .argument("<project-id>", "Project id")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--alias <alias>", "Project alias; repeat for multiple aliases", collectValues, undefined)
-      .option("--repo-path <path>", "Target repository path")
+      .option("--repo-path <path>", "Target repository path", resolveInvocationPath)
       .option("--status-summary <summary>", "Project status summary")
       .option("--validation-command <command>", "Validation command; repeat for multiple commands", collectValues, undefined)
   ).action((projectId: string, options: {
@@ -924,7 +924,7 @@ export function buildProgram(): Command {
       .description("Generate explicit Arcadia context files in a project repository, or every configured project with --all")
       .argument("[project-id]", "Project id, slug, name, or alias")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-      .option("--repo <path>", "Repository path")
+      .option("--repo <path>", "Repository path", resolveInvocationPath)
       .option("--all", "Update every active project with a configured repository path")
   ).action((projectId: string | undefined, options: {
     workspace?: string;
@@ -1135,7 +1135,7 @@ export function buildProgram(): Command {
       .description("Configure the Rebuster bridge for an Arcadia project")
       .requiredOption("--project <id>", "Arcadia Project id, slug, or exact name")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-      .option("--repo-path <path>", "Rebuster repository path")
+      .option("--repo-path <path>", "Rebuster repository path", resolveInvocationPath)
       .option("--base-url <url>", "Rebuster API or app base URL")
       .option("--dashboard-url <url>", "Rebuster Studio dashboard URL")
   ).action((options: {
@@ -2203,7 +2203,7 @@ export function buildProgram(): Command {
     program
       .command("tidy")
       .description("Retire worktrees and branches whose work is already on the base branch; report everything else")
-      .option("--repo <path>", "Repository to tidy", invocationRoot())
+      .option("--repo <path>", "Repository to tidy", resolveInvocationPath, invocationRoot())
       .option("--apply", "Actually retire what is listed; without it nothing is changed")
       .option("--include-own-branches", "Also retire fully merged branches you named yourself, not just agent-owned ones")
       .option("--no-fetch", "Compare against the local base branch only; skip fetching origin first")
@@ -2221,7 +2221,7 @@ export function buildProgram(): Command {
     program
       .command("docket")
       .description("What this repository says to work on next, read only from this repository")
-      .option("--repo <path>", "Repository to read", invocationRoot())
+      .option("--repo <path>", "Repository to read", resolveInvocationPath, invocationRoot())
       .option("--project <project>", "Project slug, when the repository declares more than one")
   ).action((options: { repo: string; project?: string; json?: boolean }) =>
     runCliAction("docket", options, () => runDocketCommand(options), renderDocketSuccess)
@@ -2264,8 +2264,8 @@ export function buildProgram(): Command {
     program
       .command("go")
       .description("Safely reconcile a completed agent worktree and verify the next governed handoff")
-      .option("--repo <path>", "Target repository or any of its worktrees", invocationRoot())
-      .option("--source <path>", "Completed agent worktree to reconcile; defaults to --repo")
+      .option("--repo <path>", "Target repository or any of its worktrees", resolveInvocationPath, invocationRoot())
+      .option("--source <path>", "Completed agent worktree to reconcile; defaults to --repo", resolveInvocationPath)
       .option("--agent <agent>", "Prepare the next isolated worktree: codex or claude")
       .option("--apply", "Fast-forward and retire the source worktree; without it nothing is changed")
       .option("--model <model>", "Override the plan's recommended_model for the next agent session")
