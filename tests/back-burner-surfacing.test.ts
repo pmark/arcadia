@@ -2,7 +2,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runBackBurnerArchiveCommand, runBackBurnerListCommand, runBackBurnerPromoteCommand } from "../src/commands/backBurner.js";
+import {
+  renderBackBurnerListSuccess,
+  runBackBurnerArchiveCommand,
+  runBackBurnerListCommand,
+  runBackBurnerPromoteCommand
+} from "../src/commands/backBurner.js";
 import { runAskCommand } from "../src/commands/ask.js";
 import { buildDashboardSnapshot } from "../src/dashboard/snapshot.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -198,5 +203,48 @@ describe("Back Burner surface conditions", () => {
       storedStatus: "incubating",
       surfaceFired: true
     });
+  });
+  it("names the Action a dependency condition waits on, and falls back to its id when the Action is gone", () => {
+    const ws = workspace();
+    const blocker = withDatabase(ws, (db) => {
+      const project = createProjectWithInitialWork(db, {
+        name: "Client Work",
+        mission: "Serve current clients.",
+        status: "active",
+        currentMilestone: "Deliver",
+        nextAction: "Continue",
+        workClassification: "codex"
+      });
+      const gate = createWorkItemWithOptionalArtifact(db, {
+        projectId: project.project.id,
+        title: "Ship the intake questionnaire",
+        rawInput: "Ship the intake questionnaire",
+        queue: "work_queue",
+        workClassification: "autonomous",
+        nextAction: "Continue"
+      }).workItem;
+      createBackBurnerItem(db, {
+        originalInput: "Revisit the copy rubric",
+        ingressSource: "test",
+        classification: "IncubatingThought",
+        confidence: 1,
+        reason: "Dependency rendering test",
+        surfaceCondition: { kind: "dependency", workItemId: gate.id, status: "done" }
+      });
+      return gate;
+    });
+
+    const named = renderBackBurnerListSuccess(runBackBurnerListCommand({ workspace: ws, status: "all" })).join("\n");
+    expect(named).toContain('dependency "Ship the intake questionnaire" = done');
+    expect(named).not.toContain(blocker.id);
+
+    // ON DELETE SET NULL leaves the condition without a target; the raw id is
+    // all that is left to show, and it must still be shown.
+    withDatabase(ws, (db) => {
+      db.prepare("DELETE FROM work_items WHERE id = ?").run(blocker.id);
+    });
+
+    const orphaned = renderBackBurnerListSuccess(runBackBurnerListCommand({ workspace: ws, status: "all" })).join("\n");
+    expect(orphaned).toContain("Surface dependency Action was not found");
   });
 });

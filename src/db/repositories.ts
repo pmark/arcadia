@@ -1755,10 +1755,12 @@ function backBurnerItemSelectSql(whereSql: string): string {
   return `SELECT
     bbi.*,
     wi.title AS promoted_work_item_title,
+    dep.title AS surface_dependency_title,
     p.name AS project_name,
     p.slug AS project_slug
   FROM back_burner_items bbi
   LEFT JOIN work_items wi ON wi.id = bbi.promoted_work_item_id
+  LEFT JOIN work_items dep ON dep.id = bbi.surface_dependency_work_item_id
   LEFT JOIN projects p ON p.id = bbi.project_id
   ${whereSql}`;
 }

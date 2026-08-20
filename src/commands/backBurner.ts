@@ -257,7 +257,15 @@ function titleFromBackBurnerItem(item: BackBurnerItemSummary): string {
 function formatSurfaceCondition(item: BackBurnerItemSummary): string {
   const condition = item.surface_condition;
   if (condition.kind === "date") return `date ${condition.date}`;
-  if (condition.kind === "dependency") return `dependency ${condition.workItemId} = ${condition.status}`;
+  if (condition.kind === "dependency") {
+    // Name the Action when we have its title. The id stays the fallback for a
+    // dependency whose Action has since been deleted, where there is nothing
+    // else to show.
+    const target = item.surface_dependency_title
+      ? `"${item.surface_dependency_title}"`
+      : condition.workItemId;
+    return `dependency ${target} = ${condition.status}`;
+  }
   if (condition.kind === "predicate") return `predicate ${condition.name}`;
   return "manual";
 }

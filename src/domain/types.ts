@@ -443,6 +443,12 @@ export interface ReviewItemSummary extends ReviewItem {
 
 export interface BackBurnerItemSummary extends BackBurnerItem {
   promoted_work_item_title: string | null;
+  /**
+   * Title of the Action a dependency condition waits on. A surface condition is
+   * only legible if it names what it is waiting for; an opaque work item id
+   * tells the operator nothing about why the item is still shelved.
+   */
+  surface_dependency_title: string | null;
   project_name: string | null;
   project_slug: string | null;
   surface_condition: BackBurnerSurfaceCondition;
