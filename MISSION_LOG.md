@@ -3,10 +3,42 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-18
+updated: 2026-08-20
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-20 — Closed the demo hero Action, and labelled the demo that only works on this Mac
+
+- **Did:** `arcadia go` dispatched `build-demo-hero-vertical-slice`, but the
+  Action was already built and merged: PR #77 landed on 2026-08-17 and the
+  2026-08-17 log entry had deliberately left the Action `open` "until the PR
+  merges." Nothing closes an Action when a PR merges, so the condition expired
+  silently and the pointer sat on finished work for three days. Verified the
+  merged implementation against all six acceptance criteria rather than
+  trusting that entry — hero above the control record with exactly one primary
+  action, six-state resolver, full target contract, Stable shown separately
+  from Candidate, control record intact below, no gated operation performed.
+- **Result:** Verification found one real gap. The hero's primary button and
+  each target card linked straight to the configured URL with nothing saying
+  where that URL resolves, and PPN's Candidate is `http://127.0.0.1:4321` —
+  correct on the Mac, a silent dead end from the phone-reachable Mission
+  Control the operator actually demos from. The card carried `Access:
+  local-only` as a passive field two rows below the button and `START_HERE.md`
+  documented it in prose, but a button reading "Test Candidate" that goes
+  nowhere still implies a demo exists. Now labelled "Mac only — not reachable
+  from a phone" on both the hero action and the card, guarded so it never
+  attaches to the `/qa` link, which a phone can reach. Action marked `done`;
+  pointer moves to `make-test-action-state-aware` over `automate-proof-artifacts`
+  because it names this exact gap ("rather than presenting localhost to a
+  phone") and is session-sized against the other's project-sized scope.
+  Also added `recommended_model: claude-opus-5` and
+  `recommended_reasoning_effort: high` to the plan: `arcadia go --apply`
+  refuses to launch an unpinned session, and this plan declared neither, so
+  every continuation on it required a manual `--model` override.
+  `tests/proof-targets.test.ts` 12/12, root and dashboard `tsc --noEmit` clean.
+- **Next:** `make-test-action-state-aware` on `demo-first-delivery`.
+- **Blockers:** None.
 
 ## 2026-08-18 — Documented the cwd-aware launcher and tidy for operators
 

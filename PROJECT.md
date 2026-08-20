@@ -8,7 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Every software Project always exposes a stable proof surface and a governed path from candidate demo through QA-verified release
 active_plan: demo-first-delivery
-updated: 2026-08-16
+updated: 2026-08-20
 ---
 
 # Arcadia
@@ -113,6 +113,20 @@ verified across three consecutive real runs producing a byte-identical file.
 open and blocked on an unanswered operator question; it does not gate this
 milestone, which only requires staleness to be visible rather than silent. The
 pointer has returned to `build-demo-hero-vertical-slice`.
+
+`build-demo-hero-vertical-slice` is now `done`. It was held `open` on purpose
+while [PR #77](https://github.com/pmark/arcadia/pull/77) awaited review, and
+then stayed open for three days after that PR merged, because nothing closes an
+Action on merge — the condition was recorded in the Mission Log rather than
+anywhere a command reads. Every Project Detail page now opens with one
+state-resolved demo hero above the control record, backed by a checked-in
+Stable/Candidate contract and a live reachability probe. Verified against the
+running instance: PPN resolves `ready_for_operator_demo`, showing Juniper as
+Stable and River Copy Studio as Candidate with one primary action. The pointer
+moves to `make-test-action-state-aware`, chosen over `automate-proof-artifacts`
+because closing this Action surfaced the exact gap it names — the Candidate's
+`http://127.0.0.1:4321` is a dead end from the phone the operator demos on, now
+labelled honestly and not yet fixed.
 
 The Agent Queue is documented in `docs/plans/agent-advance-queue.md`. It is a
 projection, not a second work pointer: managed documents still decide what is

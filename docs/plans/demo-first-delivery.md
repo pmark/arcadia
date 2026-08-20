@@ -5,10 +5,12 @@ slug: demo-first-delivery
 project: arcadia
 status: active
 milestone: Every software Project always exposes a stable proof surface and a governed path from candidate demo through QA-verified release
-current_action: build-demo-hero-vertical-slice
+current_action: make-test-action-state-aware
 token_impact: xlarge
 token_budget: "Stage the program Action by Action; builds, health checks, Playwright capture, and metadata sync use no LLM tokens, while implementation, failure diagnosis, visual interpretation, and independent QA reviews are model-bearing and must be batched per Candidate."
-updated: 2026-08-15
+recommended_model: claude-opus-5
+recommended_reasoning_effort: high
+updated: 2026-08-20
 actions:
   - id: build-qa-queue-vertical-slice
     title: Give the operator one QA queue for active Candidate work
@@ -165,7 +167,7 @@ actions:
     depends_on: [establish-minimal-pr-qa]
   - id: build-demo-hero-vertical-slice
     title: Put one reconciled demo-first hero and proof card on Project Detail
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: Build the smallest reusable proof-target contract and Project Detail hero, configure it for Private Practice Now's Stable and River Copy Studio Candidate targets, and make the primary Test action work without automatic GitHub or Cloudflare discovery yet.
