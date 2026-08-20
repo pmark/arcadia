@@ -23,6 +23,26 @@ export function invocationRoot(): string {
 }
 
 /**
+ * Resolve an operator-supplied path option against the directory they were
+ * standing in, rather than against `process.cwd()`.
+ *
+ * `invocationRoot` fixes the *default* for repository-scoped options, but a
+ * relative path typed explicitly went straight to `path.resolve`, which
+ * answers against the runtime's working directory -- the very thing the
+ * launcher changes to reach Arcadia's checkout. So `arcadia docket --repo .`
+ * reported Arcadia's own repository no matter where it was run, and
+ * `arcadia project setup-context --repo .` wrote `.arcadia/` files there.
+ *
+ * That is the same wrong-project failure `invocationRoot` exists to prevent,
+ * arriving through the one form that looks the most deliberate: a path the
+ * operator typed themselves. An absolute path is unaffected, because
+ * `path.resolve` still lets it win.
+ */
+export function resolveInvocationPath(input: string): string {
+  return path.resolve(invocationRoot(), input.trim());
+}
+
+/**
  * The nearest enclosing repository that declares a managed Project, or null.
  *
  * Walks upward looking for a `PROJECT.md` carrying `arcadia: v1`, which is the
