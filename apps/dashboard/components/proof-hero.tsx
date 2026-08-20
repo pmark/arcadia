@@ -2,7 +2,7 @@
 
 import { AlertTriangle, CheckCircle2, ExternalLink, HelpCircle, RefreshCw, ShieldAlert, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import type { ProofHeroState, ProofTargetListResponse, ProofTargetView } from "../lib/types";
+import type { ProofHeroState, ProofTargetConfig, ProofTargetListResponse, ProofTargetView } from "../lib/types";
 
 interface ProofHeroProps {
   projectId: string;
@@ -72,6 +72,7 @@ export function ProofHero({ projectId }: ProofHeroProps) {
 
   const { hero, targets } = data;
   const style = heroStyle(hero.state);
+  const primaryTarget = targets.find((view) => view.target.id === hero.primaryAction?.targetId)?.target ?? null;
 
   return (
     <div className="grid min-w-0 gap-4">
@@ -89,7 +90,7 @@ export function ProofHero({ projectId }: ProofHeroProps) {
         </div>
 
         {hero.primaryAction ? (
-          <div>
+          <div className="flex flex-wrap items-center gap-3">
             {hero.primaryAction.url ? (
               <a
                 href={hero.primaryAction.url}
@@ -108,6 +109,7 @@ export function ProofHero({ projectId }: ProofHeroProps) {
                 {hero.primaryAction.label}
               </a>
             )}
+            {hero.primaryAction.url && primaryTarget && macOnly(primaryTarget) ? <MacOnlyNote /> : null}
           </div>
         ) : null}
       </section>
@@ -181,6 +183,7 @@ function ProofTargetCard({
           <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
           {target.environment === "Stable" ? "Show Stable" : "Test Candidate"}
         </a>
+        {macOnly(target) ? <MacOnlyNote /> : null}
         <button
           type="button"
           onClick={onCheck}
@@ -202,6 +205,22 @@ function Field({ label, value, mono = false }: { label: string; value: string; m
       <dd className={`min-w-0 break-words text-ink ${mono ? "font-mono" : ""}`}>{value}</dd>
     </div>
   );
+}
+
+/**
+ * A target reachable only from this Mac still gets its link — it works here —
+ * but the label has to say so. Mission Control is read from a phone over the
+ * LAN or Tailscale, where a loopback URL resolves to the phone itself and the
+ * demo dead-ends with nothing explaining why. Saying "Mac only" next to the
+ * action is the difference between an honest proof surface and one that
+ * implies a demo exists wherever it happens to be read.
+ */
+function macOnly(target: ProofTargetConfig): boolean {
+  return target.environmentKind === "local" || target.accessState === "local-only";
+}
+
+function MacOnlyNote() {
+  return <span className="text-xs font-normal text-muted">Mac only — not reachable from a phone</span>;
 }
 
 function errorMessageFromBody(body: unknown): string {
