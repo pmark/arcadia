@@ -4,7 +4,8 @@
 
 Open the **Arcadia1** vault in Obsidian, then open:
 
-`Projects/arcadia/Home.md`
+[Open Arcadia Home directly](obsidian://open?vault=Arcadia1&file=Projects%2Farcadia%2FHome)
+or select `Projects/arcadia/Home.md` in the file tree.
 
 The first screen answers what Arcadia is for, names the current living-system
 Action, links directly to the two capabilities it affects, reports evidence
@@ -27,7 +28,8 @@ freshness, and offers four depths: Glance, Orient, Understand, and Audit.
 
 ### Private Practice Now — practitioner evidence to trusted launch
 
-1. Open `Projects/private-practice-now/Home.md`.
+1. [Open PPN Home directly](obsidian://open?vault=Arcadia1&file=Projects%2Fprivate-practice-now%2FHome)
+   or select `Projects/private-practice-now/Home.md`.
 2. Open **Practitioner to trusted launch** or
    `Maps/View_practitioner-to-launch.md`.
 3. Follow the ten-step journey: Practitioner interview → Structured evidence →
