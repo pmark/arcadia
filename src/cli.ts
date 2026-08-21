@@ -84,8 +84,11 @@ import {
   runIngressDescribeCommand,
   runIngressActivityCommand,
   runIngressListCommand,
-  runIngressProcessCommand
+  runIngressProcessCommand,
+  runIngressRecoverCommand,
+  renderIngressRecoverSuccess
 } from "./commands/ingress.js";
+import { runRuntimeCommand, renderRuntimeSuccess } from "./commands/runtime.js";
 import {
   renderIngressServiceDoctorSuccess,
   renderIngressServiceStatusSuccess,
@@ -1251,6 +1254,18 @@ export function buildProgram(): Command {
     )
   );
 
+  addJsonOption(
+    program
+      .command("runtime")
+      .description("Whether every installed Arcadia launch agent runs under the pinned runtime")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) => runCliAction(
+    "runtime",
+    options,
+    () => runRuntimeCommand(options),
+    renderRuntimeSuccess
+  ));
+
   const ingress = program.command("ingress").description("iCloud Drive file ingress commands");
   addJsonOption(
     ingress
@@ -1363,6 +1378,27 @@ export function buildProgram(): Command {
     options,
     () => runIngressProcessCommand({ ...options, stableSeconds: Number(options.stableSeconds ?? 30) }),
     renderIngressProcessSuccess
+  ));
+
+  addJsonOption(
+    ingress
+      .command("recover")
+      .description("Requeue files stranded in Processing by a pass that did not finish")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--source <name>", "Ingress source folder", "iCloudIdeas")
+      .option("--ingress-root <path>", "ArcadiaIngress root folder")
+      .option("--apply", "Actually requeue the files listed; without it nothing is changed")
+  ).action((options: {
+    workspace: string;
+    source?: string;
+    ingressRoot?: string;
+    apply?: boolean;
+    json?: boolean;
+  }) => runCliAction(
+    "ingress.recover",
+    options,
+    () => runIngressRecoverCommand(options),
+    renderIngressRecoverSuccess
   ));
 
   const ingressService = ingress.command("service").description("Install and inspect periodic macOS ingress processing");

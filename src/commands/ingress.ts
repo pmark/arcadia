@@ -245,6 +245,199 @@ export function runIngressListCommand(options: {
   });
 }
 
+export interface IngressRecoverFile {
+  name: string;
+  file: string;
+  modifiedAt: string;
+  /** Why this entry is or is not safe to requeue. */
+  reason: string;
+  action: "would_requeue" | "requeued" | "skipped";
+  requeuedTo?: string;
+}
+
+export interface IngressRecoverData {
+  source: string;
+  root: string;
+  processing: string;
+  in: string;
+  applied: boolean;
+  files: IngressRecoverFile[];
+  counts: { requeued: number; skipped: number };
+}
+
+/**
+ * Move files stranded in Processing back into In.
+ *
+ * `processCandidate` moves a file out of In *before* it opens the database, so
+ * a pass that dies mid-flight -- an uncaught exception, a SIGKILL, a native
+ * addon that will not load -- leaves the file in Processing with nothing that
+ * ever looks at it again. Nothing else in the pipeline reads that directory, so
+ * those files are not queued, not failed, and not reported: they are simply
+ * gone. This is the only way back.
+ *
+ * It refuses to touch anything a live pass still owns, and like every other
+ * destructive operation here it previews unless asked to apply.
+ */
+export function runIngressRecoverCommand(options: {
+  workspace: string;
+  source?: string;
+  ingressRoot?: string;
+  apply?: boolean;
+}): CommandSuccess<IngressRecoverData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const source = options.source?.trim() || DEFAULT_INGRESS_SOURCE;
+  validateSourceName(source);
+  const root = path.resolve(options.ingressRoot ?? defaultIngressRoot());
+  const directories = ingressDirectories(root, source);
+  const apply = options.apply === true;
+
+  const entries = existsSync(directories.processing)
+    ? readdirSync(directories.processing, { withFileTypes: true })
+    : [];
+
+  const files: IngressRecoverFile[] = [];
+  for (const entry of entries) {
+    const file = path.join(directories.processing, entry.name);
+
+    if (!entry.isFile()) {
+      // Workflow runs drop output directories here. They are not queue entries
+      // and requeuing one would feed a directory to the request reader.
+      files.push({
+        name: entry.name,
+        file,
+        modifiedAt: new Date(statSync(file).mtimeMs).toISOString(),
+        reason: "Not a file; workflow output directories are left alone.",
+        action: "skipped"
+      });
+      continue;
+    }
+
+    if (entry.name.startsWith(".")) {
+      files.push({
+        name: entry.name,
+        file,
+        modifiedAt: new Date(statSync(file).mtimeMs).toISOString(),
+        reason: "Dotfile.",
+        action: "skipped"
+      });
+      continue;
+    }
+
+    const holder = liveClaimFor(directories.in, entry.name);
+    if (holder !== null) {
+      files.push({
+        name: entry.name,
+        file,
+        modifiedAt: new Date(statSync(file).mtimeMs).toISOString(),
+        reason: `Claimed by a running pass (PID ${holder}).`,
+        action: "skipped"
+      });
+      continue;
+    }
+
+    const modifiedAt = new Date(statSync(file).mtimeMs).toISOString();
+    if (!apply) {
+      files.push({
+        name: entry.name,
+        file,
+        modifiedAt,
+        reason: "Stranded by a pass that did not finish.",
+        action: "would_requeue"
+      });
+      continue;
+    }
+
+    const requeuedTo = moveToUnique(file, path.join(directories.in, entry.name));
+    files.push({
+      name: entry.name,
+      file,
+      modifiedAt,
+      reason: "Stranded by a pass that did not finish.",
+      action: "requeued",
+      requeuedTo
+    });
+  }
+
+  files.sort((left, right) => left.name.localeCompare(right.name));
+
+  return createSuccess({
+    command: "ingress.recover",
+    workspace: workspacePath,
+    data: {
+      source,
+      root,
+      processing: directories.processing,
+      in: directories.in,
+      applied: apply,
+      files,
+      counts: {
+        requeued: files.filter((file) => file.action === "requeued" || file.action === "would_requeue").length,
+        skipped: files.filter((file) => file.action === "skipped").length
+      }
+    },
+    artifacts: files.filter((file) => file.action === "requeued").map((file) => file.requeuedTo ?? file.file)
+  });
+}
+
+/**
+ * The PID still holding a claim on this file, or null when nothing does.
+ *
+ * A claim whose process is gone is not a claim -- it is the wreckage of the
+ * crash that stranded the file in the first place, so it is cleared rather than
+ * treated as ownership that outlives every process forever.
+ */
+function liveClaimFor(inDirectory: string, fileName: string): number | null {
+  const claimPath = path.join(inDirectory, `.processing-${fileName}.lock`);
+  if (!existsSync(claimPath)) return null;
+
+  let pid: number | null = null;
+  try {
+    const parsed = JSON.parse(readFileSync(claimPath, "utf8")) as { pid?: unknown };
+    pid = typeof parsed.pid === "number" ? parsed.pid : null;
+  } catch {
+    pid = null;
+  }
+
+  if (pid !== null) {
+    try {
+      process.kill(pid, 0);
+      return pid;
+    } catch {
+      // Falls through: the holder is gone.
+    }
+  }
+
+  try { unlinkSync(claimPath); } catch {}
+  return null;
+}
+
+export function renderIngressRecoverSuccess(response: CommandSuccess<IngressRecoverData>): string[] {
+  const data = response.data;
+  const lines = [
+    `Ingress source: ${data.source}`,
+    `Processing: ${data.processing}`,
+    `Requeues to: ${data.in}`,
+    ""
+  ];
+
+  if (data.files.length === 0) {
+    lines.push("Nothing is stranded in Processing.");
+    return lines;
+  }
+
+  for (const file of data.files) {
+    const marker = file.action === "skipped" ? "-" : file.action === "requeued" ? "+" : "~";
+    lines.push(`${marker} ${file.name}: ${file.reason}`);
+  }
+
+  lines.push("");
+  lines.push(data.applied
+    ? `Requeued ${data.counts.requeued} file(s); skipped ${data.counts.skipped}.`
+    : `${data.counts.requeued} file(s) would be requeued; ${data.counts.skipped} skipped. Nothing was changed. Re-run with --apply.`);
+
+  return lines;
+}
+
 export function runIngressActivityCommand(options: {
   workspace: string;
   source?: string;
