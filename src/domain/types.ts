@@ -529,6 +529,8 @@ export interface CreateProjectInput {
   status: ProjectStatus;
   currentMilestone: string;
   nextAction: string;
+  /** Verbatim source intent for the initial Action; defaults to nextAction. */
+  rawInput?: string;
   expectedArtifact?: string;
   workClassification: WorkClassification;
 }

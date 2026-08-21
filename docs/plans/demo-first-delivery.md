@@ -5,7 +5,6 @@ slug: demo-first-delivery
 project: arcadia
 status: active
 milestone: Every software Project always exposes a stable proof surface and a governed path from candidate demo through QA-verified release
-current_action: make-test-action-state-aware
 token_impact: xlarge
 token_budget: "Stage the program Action by Action; builds, health checks, Playwright capture, and metadata sync use no LLM tokens, while implementation, failure diagnosis, visual interpretation, and independent QA reviews are model-bearing and must be batched per Candidate."
 recommended_model: claude-opus-5

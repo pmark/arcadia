@@ -84,6 +84,37 @@ at the front: a queue distinguishes unclassified (Inbox) from ready (Work
 Queue), while Responsibility distinguishes who works a ready item (Autonomous
 or Codex).
 
+## Start a software Project from an idea
+
+Use the explicit preparation path when the input is a new software-Project
+idea, not an idea to shelve in Back Burner:
+
+```sh
+pnpm arcadia project prepare "Teacher Commons" \
+  "A calm web app where teachers exchange classroom resources and keep attribution intact." \
+  --path /path/to/teacher-commons
+```
+
+Omit `--path` to create the repository directory under the Arcadia workspace's
+Projects directory. The command classifies the request as **Project Work → Plan
+First → Codex**, preserves the idea verbatim, creates an Active Project and its
+first Milestone and planning Action, writes the `PROJECT.md` → active plan →
+current Action pointer chain, adopts the repository's agent context, and creates
+the immutable read-only planning packet plus one Planning Decision.
+
+It invokes no model and starts no Run. Its final `Trigger:` line is the exact
+`arcadia review approve <decision>` command that authorizes one read-only
+planning Run for that packet. Approval does not authorize implementation,
+merge, deployment, release, credentials, spending, production access,
+publishing, deletion, or outbound communication. Until the accepted-plan
+promotion increment lands, accepting the resulting planning Artifact still
+ends by asking the operator to choose the implementation Action; Arcadia does
+not pretend that manual seam is closed yet.
+
+Preparation refuses an already registered Project name or repository and any
+repository that already carries a `PROJECT.md` or managed plan. It never
+replaces another Project's work pointer.
+
 ## Normal daily use
 
 1. Read **Today's Advantage**: one ready Action, its expected Artifact, and why it matters now.

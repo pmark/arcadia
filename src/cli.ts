@@ -119,6 +119,7 @@ import {
   renderProjectImportSuccess,
   renderProjectListSuccess,
   renderProjectMetadataSuccess,
+  renderProjectPrepareSuccess,
   renderProjectReplySuccess,
   renderProjectSetupContextAllSuccess,
   renderProjectSetupContextSuccess,
@@ -128,6 +129,7 @@ import {
   runProjectImportCommand,
   runProjectListCommand,
   runProjectMetadataCommand,
+  runProjectPrepareCommand,
   runProjectReplyCommand,
   runProjectSetupContextAllCommand,
   runProjectSetupContextCommand,
@@ -792,6 +794,26 @@ export function buildProgram(): Command {
       renderProjectCreateSuccess
     );
   });
+  addJsonOption(
+    project
+      .command("prepare")
+      .description("Turn an explicit software-Project idea into governed, approval-ready planning work")
+      .argument("<name>", "Project name")
+      .argument("<idea>", "Free-form project idea")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--path <path>", "Repository path; defaults to the workspace Projects directory", resolveInvocationPath)
+      .option("--agent-profile <name>", "Coding agent profile for the read-only planning packet")
+  ).action((name: string, idea: string, options: {
+    workspace: string;
+    path?: string;
+    agentProfile?: string;
+    json?: boolean;
+  }) => runCliAction(
+    "project.prepare",
+    options,
+    () => runProjectPrepareCommand({ ...options, name, idea }),
+    renderProjectPrepareSuccess
+  ));
   addJsonOption(
     project
     .command("list")

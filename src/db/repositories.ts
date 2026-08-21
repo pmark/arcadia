@@ -456,7 +456,7 @@ export function createProjectWithInitialWork(
         projectId: project.id,
         milestoneId: milestone.id,
         title: input.nextAction,
-        rawInput: input.nextAction,
+        rawInput: input.rawInput ?? input.nextAction,
         queue: queueForWorkClassification(validateWorkClassification(input.workClassification)),
         workClassification: input.workClassification,
         nextAction: input.nextAction,

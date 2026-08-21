@@ -47,6 +47,27 @@ pnpm arcadia ask \
 
 When a request needs Codex, Arcadia writes a prompt packet under `prompts/codex/<invocation-id>/` and records the invocation. It does not invoke Codex, deploy, publish, use credentials, or make unsafe changes by default.
 
+### Prepare a new software Project idea
+
+Use the explicit Project path when the input should become active planning work
+rather than a Back Burner item:
+
+```sh
+pnpm arcadia project prepare \
+  "Teacher Commons" \
+  "A calm web app where teachers exchange classroom resources and keep attribution intact." \
+  --workspace "$WORKSPACE" \
+  --path /path/to/teacher-commons \
+  --json
+```
+
+The response reports **Project Work**, **Plan First**, and **Codex**
+responsibility, plus the Project, managed planning Action, packet, Decision,
+and exact approval trigger. Preparation writes the valid managed pointer chain
+and coding-agent context but invokes no model and starts no Run. Omit `--path`
+to use the workspace Projects directory. Existing Project names, registered
+repositories, `PROJECT.md` files, and managed plans are never overwritten.
+
 ### Shelve and resurface an idea
 
 `ask --back-burner` uses the existing deterministic Ask/Intake path to shelve

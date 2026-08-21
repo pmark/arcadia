@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  realpathSync,
   statSync,
   writeFileSync
 } from "node:fs";
@@ -24,11 +25,17 @@ import {
   createProjectWithInitialWork,
   getProject,
   getProjectMetadata,
+  getWorkItem,
   listProjects,
   listProjectSummaries,
+  setWorkItemDocRef,
   updateProject,
+  updateWorkItem,
   upsertProjectMetadata
 } from "../db/repositories.js";
+import { discoverDocs } from "../docs/discover.js";
+import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
+import { actionDocRef } from "../docs/types.js";
 import { listMonitoredProjects } from "./workMonitor.js";
 import {
   applyProjectOps,
@@ -44,9 +51,11 @@ import type { CreatedProjectBundle, MissionLog, Project, ProjectMetadata, Projec
 import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../markdown/missionLog.js";
 import { promptForProjectCreate } from "../prompts/index.js";
 import { setupArcadiaProjectContext, type SetupProjectContextResult } from "../projects/contextSetup.js";
+import { seedControlDocuments, type SeedControlDocumentsResult } from "../projects/controlDocuments.js";
 import { decodeStringArray, updateProjectSetup } from "../projects/setup.js";
 import { slugify } from "../utils/slug.js";
 import { getWorkspacePaths, resolveWorkspacePath, toWorkspaceRelativePath } from "../workspace/paths.js";
+import { runWorkPlanCommand, type WorkPlanCommandData } from "./work.js";
 
 const DEFAULT_PROJECT_MISSION = "Mission needs definition.";
 const DEFAULT_PROJECT_MILESTONE = "Define the project direction.";
@@ -60,6 +69,163 @@ export interface ProjectCreateCommandData {
   metadata: ProjectMetadata | null;
   projectPath: string;
   templateUsed: string | null;
+}
+
+export interface ProjectPrepareCommandData {
+  classification: {
+    intentType: "Project Work";
+    executionPath: "Plan First";
+    responsibility: "codex";
+  };
+  project: CreatedProjectBundle["project"];
+  milestone: CreatedProjectBundle["milestone"];
+  workItem: NonNullable<ReturnType<typeof getWorkItem>>;
+  projectPath: string;
+  controlDocuments: SeedControlDocumentsResult;
+  dispatch: DispatchResolution;
+  planning: WorkPlanCommandData;
+  trigger: string;
+}
+
+/**
+ * Convert an explicit software-Project idea into the exact governed planning
+ * Action Arcadia already knows how to approve and run.
+ *
+ * The explicit command is the classification boundary: unlike generic `ask`,
+ * this input cannot be mistaken for a Back Burner thought. It still invokes no
+ * model. The output is an immutable planning packet plus the Decision that can
+ * trigger one read-only planning Run.
+ */
+export function runProjectPrepareCommand(options: {
+  workspace: string;
+  name: string;
+  idea: string;
+  path?: string;
+  agentProfile?: string;
+}): CommandSuccess<ProjectPrepareCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const name = options.name.trim();
+  const idea = options.idea.trim();
+  if (!name) {
+    throw validationError("Project name is required.");
+  }
+  if (!idea) {
+    throw validationError("Project idea is required.");
+  }
+
+  const slug = slugify(name);
+  const projectPath = resolveProjectFilesystemPath(workspacePath, slug, options.path);
+  assertProjectPreparationTargetAvailable(workspacePath, name, slug, projectPath);
+
+  const created = withDatabase(workspacePath, (db) => {
+    const bundle = createProjectWithInitialWork(db, {
+      name,
+      mission: `Turn the captured ${name} idea into a useful, validated product.`,
+      goal: idea,
+      status: "active",
+      currentMilestone: "Plan the first usable build",
+      nextAction: `Plan the first usable build for ${name}`,
+      rawInput: idea,
+      expectedArtifact: `Accepted implementation plan for ${name}`,
+      workClassification: "codex"
+    });
+    const workItem = updateWorkItem(db, bundle.workItem.id, {
+      effort: "session",
+      clarificationStatus: "clarified",
+      clarificationSource: "Explicit project idea supplied to arcadia project prepare.",
+      confidence: "high",
+      acceptanceCriteriaJson: JSON.stringify([
+        "The planning Artifact defines ordered implementation phases and the smallest useful first build.",
+        "The planning Artifact names repository impact, validation strategy, risks, open questions, and approval requirements.",
+        "The planning Artifact ends with one concrete implementation Action suitable for a coding agent."
+      ])
+    });
+    if (!workItem) {
+      throw validationError("Initial planning Action could not be prepared.", { project: name });
+    }
+    upsertProjectMetadata(db, {
+      projectId: bundle.project.id,
+      aliases: [bundle.project.slug],
+      repoPath: projectPath,
+      statusSummary: "Project idea captured; read-only coding-agent planning awaits approval.",
+      validationCommands: []
+    });
+    return { ...bundle, workItem };
+  });
+
+  mkdirSync(projectPath, { recursive: true });
+  const controlDocuments = seedControlDocuments({
+    repoPath: projectPath,
+    project: created.project,
+    milestoneTitle: created.milestone.title,
+    workItems: [created.workItem],
+    hasProjectDocument: false,
+    hasPlanDocument: false
+  });
+  if (!controlDocuments.plan || !controlDocuments.projectDocument || !controlDocuments.planSlug || !controlDocuments.currentActionId) {
+    throw validationError("Project control documents could not be created.", { projectPath, controlDocuments });
+  }
+  const planSlug = controlDocuments.planSlug;
+  const currentActionId = controlDocuments.currentActionId;
+
+  withDatabase(workspacePath, (db) => {
+    setWorkItemDocRef(
+      db,
+      created.workItem.id,
+      actionDocRef(planSlug, currentActionId)
+    );
+  });
+  createInitialProjectMissionLog(workspacePath, created.project, created.milestone);
+  withDatabase(workspacePath, (db) =>
+    setupArcadiaProjectContext({ db, projectIdentifier: created.project.id })
+  );
+
+  const dispatch = resolveDispatch(projectPath, created.project.slug);
+  if (!isDispatchable(dispatch)) {
+    throw validationError("Prepared Project did not resolve to a dispatchable planning Action.", {
+      projectPath,
+      blockers: dispatch.blockers
+    });
+  }
+
+  const planningResponse = runWorkPlanCommand({
+    workspace: workspacePath,
+    workId: created.workItem.id,
+    agentProfile: options.agentProfile
+  });
+  const decision = planningResponse.data.planningDecision;
+  if (!decision) {
+    throw validationError("Planning preparation did not create its approval Decision.", {
+      actionId: created.workItem.id,
+      planId: planningResponse.data.plan.id
+    });
+  }
+
+  const trigger = `arcadia review approve ${decision.slug ?? decision.id}`;
+  return createSuccess({
+    command: "project.prepare",
+    workspace: workspacePath,
+    data: {
+      classification: {
+        intentType: "Project Work",
+        executionPath: "Plan First",
+        responsibility: "codex"
+      },
+      project: created.project,
+      milestone: created.milestone,
+      workItem: getPreparedWorkItem(workspacePath, created.workItem.id),
+      projectPath,
+      controlDocuments,
+      dispatch,
+      planning: planningResponse.data,
+      trigger
+    },
+    artifacts: [
+      controlDocuments.projectDocument,
+      controlDocuments.plan,
+      ...(planningResponse.artifacts ?? [])
+    ]
+  });
 }
 
 export async function runProjectCreateCommand(options: {
@@ -553,6 +719,24 @@ export function renderProjectCreateSuccess(response: CommandSuccess<ProjectCreat
   ];
 }
 
+export function renderProjectPrepareSuccess(response: CommandSuccess<ProjectPrepareCommandData>): string[] {
+  const decision = response.data.planning.planningDecision;
+  return [
+    `Prepared project idea: ${response.data.project.name}`,
+    `Project: ${response.data.project.id} (${response.data.project.status})`,
+    `Repository: ${response.data.projectPath}`,
+    `Classification: ${response.data.classification.intentType}`,
+    `Execution path: ${response.data.classification.executionPath}`,
+    `Responsibility: ${WORK_CLASSIFICATION_LABELS[response.data.classification.responsibility]}`,
+    `Planning Action: ${response.data.workItem.title} (${response.data.workItem.id})`,
+    `Managed plan: ${response.data.controlDocuments.plan}`,
+    `Planning packet: ${response.data.planning.packetArtifact?.path ?? "Unavailable"}`,
+    `Planning Decision: ${decision?.slug ?? decision?.id ?? "Unavailable"}`,
+    "No model or implementation agent was invoked.",
+    `Trigger: ${response.data.trigger}`
+  ];
+}
+
 export function renderProjectUpdateSuccess(response: CommandSuccess<ProjectUpdateCommandData>): string[] {
   return [
     `Updated project: ${response.data.project.name}`,
@@ -656,6 +840,75 @@ function resolveProjectFilesystemPath(workspacePath: string, slug: string, provi
   }
 
   return path.join(getWorkspacePaths(workspacePath).projects, slug);
+}
+
+function assertProjectPreparationTargetAvailable(
+  workspacePath: string,
+  name: string,
+  slug: string,
+  projectPath: string
+): void {
+  const targetIdentity = repositoryIdentity(projectPath);
+  const conflict = withDatabase(workspacePath, (db) => {
+    for (const project of listProjects(db)) {
+      if (project.name.toLowerCase() === name.toLowerCase() || project.slug === slug) {
+        return { kind: "project", projectId: project.id, name: project.name };
+      }
+      const metadata = getProjectMetadata(db, project.id);
+      if (metadata?.repo_path && repositoryIdentity(metadata.repo_path) === targetIdentity) {
+        return { kind: "repository", projectId: project.id, name: project.name };
+      }
+    }
+    return null;
+  });
+  if (conflict) {
+    throw validationError("Project name or repository is already registered.", {
+      ...conflict,
+      projectPath
+    });
+  }
+
+  if (existsSync(path.join(projectPath, "PROJECT.md"))) {
+    throw validationError("Repository already contains PROJECT.md; Arcadia will not replace its work pointer.", {
+      projectPath
+    });
+  }
+  if (!existsSync(projectPath)) {
+    return;
+  }
+
+  const discovery = discoverDocs(projectPath);
+  const governing = discovery.docs.filter((doc) => doc.type === "project" || doc.type === "plan");
+  if (governing.length > 0 || discovery.rejected.length > 0) {
+    throw validationError("Repository already contains Arcadia control documents; preparation will not overwrite them.", {
+      projectPath,
+      documents: governing.map((doc) => doc.relativePath),
+      rejected: discovery.rejected
+    });
+  }
+  const bootstrapPlan = path.join(projectPath, "docs", "plans", `${slug}-bootstrap.md`);
+  if (existsSync(bootstrapPlan)) {
+    throw validationError("Repository already contains the bootstrap plan path; preparation will not overwrite it.", {
+      projectPath,
+      bootstrapPlan
+    });
+  }
+}
+
+function repositoryIdentity(repositoryPath: string): string {
+  try {
+    return realpathSync(repositoryPath);
+  } catch {
+    return path.resolve(repositoryPath);
+  }
+}
+
+function getPreparedWorkItem(workspacePath: string, workItemId: string): NonNullable<ReturnType<typeof getWorkItem>> {
+  const workItem = withDatabase(workspacePath, (db) => getWorkItem(db, workItemId));
+  if (!workItem) {
+    throw validationError("Prepared planning Action disappeared.", { workItemId });
+  }
+  return workItem;
 }
 
 function materializeProjectFiles(input: {

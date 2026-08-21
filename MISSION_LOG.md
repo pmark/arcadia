@@ -8,6 +8,41 @@ updated: 2026-08-20
 
 # Mission Log: Arcadia
 
+## 2026-08-20 — Made a project idea approval-ready in one command
+
+- **Did:** Added `arcadia project prepare <name> <idea> [--path]`. It performs
+  an explicit Project-work classification, creates the Active Project and
+  planning Action, preserves the idea verbatim, writes and binds a valid
+  managed pointer chain, adopts the repository context, checks dispatch, and
+  prepares the existing immutable read-only planning packet and Decision.
+- **Result:** The command reports Project Work, Plan First, Codex responsibility,
+  every receipt, and the exact approval trigger. It invokes no model and starts
+  no Run. Occupied names, registered repositories, `PROJECT.md`, managed plans,
+  and the bootstrap plan path fail before creation or overwrite. Three focused
+  tests cover the direct function, real CLI JSON envelope, dispatch readiness,
+  full-idea preservation, packet/Decision receipts, zero Runs, and refusals.
+  The root build passes; the full suite passes 923 tests with 6 skipped.
+- **Next:** Promote an accepted planning Artifact into the managed plan's one
+  current coding-agent build Action and prepare its immutable build packet.
+- **Blockers:** None.
+
+## 2026-08-20 — Prioritized the direct idea-to-managed-build path
+
+- **Did:** Recorded the operator's request to state a project idea once, have
+  Arcadia classify and plan it, and then let Arcadia manage the coding-agent
+  build. Mapped the request against the existing target development loop and
+  found the two missing seams: explicit project ideas fall into Back Burner,
+  and accepting a validated planning Artifact ends with a manual instruction to
+  choose the implementation Action.
+- **Result:** Decision 0029 activates `idea-to-managed-build`. The first Action
+  is the smallest usable entry point: one command that creates the Incubating
+  Project, preserves the idea, establishes a valid planning pointer, and
+  prepares the exact read-only planning Decision without invoking a model. The
+  second Action promotes the accepted plan into governed build work; the third
+  carries that work through Candidate and independent QA.
+- **Next:** Implement `prepare-project-idea` in an isolated worktree.
+- **Blockers:** None. Consequential transitions remain separately gated.
+
 ## 2026-08-20 — Adoption stopped one document short of working
 
 - **Did:** The operator registered a repository path for Martian Rover, ran
