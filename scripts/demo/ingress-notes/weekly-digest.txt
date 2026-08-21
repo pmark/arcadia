@@ -1,0 +1,2 @@
+Idea: a weekly digest that tells me which projects moved and which ones went
+quiet, so I notice a stalled project before it has been stalled for a month.

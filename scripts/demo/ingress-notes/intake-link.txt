@@ -1,0 +1,3 @@
+Question for Private Practice Now: how long should a per-client intake link
+live before it expires, and does the operator re-issue it or can the client
+request a new one themselves?

@@ -9,6 +9,13 @@
 set -eu
 
 MARKER="demo-2026-08-21"
+INGRESS_SOURCE="ingress:DemoNotes"
+# Ingress records its source on the Back Burner rows it creates, but not on the
+# Actions -- work_items has no provenance column. The one Action the demo pass
+# creates is matched on the note text instead, which ingress stores verbatim in
+# raw_input. The phrase below appears only in scripts/demo/ingress-notes.
+INGRESS_ACTION_MATCH="%Pinterest publishing path before the next batch of rebus shorts%"
+INGRESS_ROOT="${DEMO_INGRESS_ROOT:-$HOME/Dev/MR/Arcadia/demo-ingress}"
 WORKSPACE="${ARCADIA_WORKSPACE:-/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover}"
 STATE="$WORKSPACE/.demo-2026-08-21.env"
 DB="$WORKSPACE/database/arcadia.sqlite3"
@@ -37,6 +44,12 @@ echo
 echo "Actions matching $ACTION_WHERE:"
 sqlite3 "$DB" "SELECT '  ' || id || '  ' || title || '  [' || status || ']' FROM work_items WHERE $ACTION_WHERE;"
 echo
+echo "Rows created by the demo ingress pass (ingress_source='$INGRESS_SOURCE'):"
+sqlite3 "$DB" "SELECT '  ' || id || '  ' || classification || '  ' || substr(original_input, 1, 60) FROM back_burner_items WHERE ingress_source = '$INGRESS_SOURCE';"
+sqlite3 "$DB" "SELECT '  ' || id || '  Action  ' || substr(title, 1, 60) FROM work_items WHERE raw_input LIKE '$INGRESS_ACTION_MATCH';"
+echo
+echo "Staged notes folder: $INGRESS_ROOT"
+echo
 
 if [ "$APPLY" != "yes" ]; then
   echo "Nothing was changed. Re-run with --apply to delete the rows listed above."
@@ -49,10 +62,13 @@ sqlite3 "$DB" <<SQL
 PRAGMA foreign_keys = ON;
 BEGIN;
 DELETE FROM back_burner_items WHERE source_ref = '$MARKER';
+DELETE FROM back_burner_items WHERE ingress_source = '$INGRESS_SOURCE';
+DELETE FROM work_items WHERE raw_input LIKE '$INGRESS_ACTION_MATCH';
 DELETE FROM work_items WHERE $ACTION_WHERE;
 COMMIT;
 SQL
 
 rm -f "$STATE"
-echo "Deleted. Removed $STATE."
+rm -rf "$INGRESS_ROOT"
+echo "Deleted. Removed $STATE and $INGRESS_ROOT."
 echo "Verify with: arcadia back-burner list --fired yes"
