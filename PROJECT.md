@@ -6,8 +6,8 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: A raw software-project idea becomes governed, dispatchable coding-agent work without a manual planning-to-build handoff
-active_plan: idea-to-managed-build
+milestone: Every software Project always exposes a stable proof surface and a governed path from candidate demo through QA-verified release
+active_plan: demo-first-delivery
 updated: 2026-08-20
 ---
 
@@ -172,6 +172,16 @@ both application builds pass. A real `workers.dev` rehearsal was not performed
 because the operator's empty GitHub repository and external Cloudflare staging
 authority are demonstration inputs, not repository fixtures. The pointer now
 returns to `promote-accepted-plan`.
+
+The operator then prioritized reusable Obsidian architecture maps and required
+the work to follow Arcadia's normal continuation contract. Decision 0031
+inserts five clarified Actions into `demo-first-delivery`, beginning with the
+deterministic repository manifest contract and ending with real Arcadia vault
+proof. The project-idea plan is paused, not superseded: when the mind-map slice
+is complete, the single pointer returns to
+`idea-to-managed-build/promote-accepted-plan`. Normal map creation and updates
+must make zero model calls; an explicitly requested local-only enrichment may
+add a separately labelled interpretation without a cloud fallback.
 
 ## Links
 

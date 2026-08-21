@@ -5,7 +5,6 @@ slug: idea-to-managed-build
 project: arcadia
 status: active
 milestone: A raw software-project idea becomes governed, dispatchable coding-agent work without a manual planning-to-build handoff
-current_action: promote-accepted-plan
 token_impact: large
 token_budget: "Project creation, document rendering, readiness checks, builds, and state transitions are deterministic. Use one bounded planning Run for the idea, one coding-agent implementation Run per accepted Action, and independent QA only when deterministic readiness passes."
 updated: 2026-08-20

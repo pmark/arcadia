@@ -8,6 +8,13 @@ updated: 2026-08-20
 
 # Mission Log: Arcadia
 
+## 2026-08-20 — Made reusable Obsidian architecture maps the next governed work
+
+- **Did:** Recorded Decision 0031, inserted five clarified and dependency-ordered Actions into `demo-first-delivery`, pointed the Project at `define-architecture-map-contract`, and removed the competing pointer from `idea-to-managed-build` without changing its open Action. The plan covers a versioned Project-owned manifest, deterministic vault projection, preview/apply CLI, optional local-only enrichment, real Arcadia dogfood, plugin setup, QA, and exact restoration of the displaced pointer.
+- **Result:** `Arcadia go` now has one intended documentation-defined target for building the complete capability through normal Action-by-Action continuation. Every managed software Project with a repository path and manifest can receive the same generated Obsidian structure; the normal create/update path is specified to make zero model calls, and optional AI interpretation is local-only and isolated from architecture truth.
+- **Next:** Implement and validate the `docs/architecture-map.yaml` v1 contract and parser, then advance through the projector, CLI, local enrichment, and dogfood Actions in dependency order.
+- **Blockers:** None. Merge, external plugin installation effects, and any other gated operation remain subject to their existing authority and QA boundaries; `idea-to-managed-build/promote-accepted-plan` resumes after accepted dogfood proof.
+
 ## 2026-08-20 — Completed the Astro idea-to-staging golden path
 
 - **Did:** Implemented exact suffix-shaped Astro proposal intake; Incubating Project metadata and Dashboard setup; Discord Project-detail links; one-click proposal approval; Codex/Claude scaffold dispatch with `$create-astro-site`; scoped Codex network access; deterministic build validation; Cloudflare Workers Static Assets deployment to the named Wrangler `staging` environment; persisted staging URL and live-link Artifact; CLI fallback metadata fields; and the operator demo runbook.
