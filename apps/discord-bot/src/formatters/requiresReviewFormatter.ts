@@ -144,11 +144,19 @@ function formatRequiresReviewItem(item: ReviewItem): string {
   ].filter((line): line is string => line !== null).join("\n");
 }
 
-export function formatRequiresReviewNotificationItem(item: ReviewItem): string {
+export function formatRequiresReviewNotificationItem(item: ReviewItem, dashboardUrl?: string): string {
   if (item.resolvedIntent === "ReviewExecutionResult" && item.contextJson) {
     return formatExecutionResultFollowUp(item);
   }
-  return formatRequiresReviewItem(item);
+  const formatted = formatRequiresReviewItem(item);
+  if (item.resolvedIntent !== "ProjectProposalApproval" || !item.projectId || !dashboardUrl) {
+    return formatted;
+  }
+  return [
+    formatted,
+    "",
+    `Project details and approval: ${dashboardUrl.replace(/\/+$/, "")}/projects/${encodeURIComponent(item.projectId)}`
+  ].join("\n");
 }
 
 function formatExecutionResultFollowUp(item: ReviewItem): string {

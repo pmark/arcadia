@@ -22,7 +22,10 @@ import { openDatabase } from "../db/connection.js";
 import { withDatabase } from "../db/connection.js";
 import {
   createMissionLog,
+  createApprovalGate,
+  createExecutionPlan,
   createProjectWithInitialWork,
+  createReviewItem,
   getProject,
   getProjectMetadata,
   getWorkItem,
@@ -56,6 +59,8 @@ import { decodeStringArray, updateProjectSetup } from "../projects/setup.js";
 import { slugify } from "../utils/slug.js";
 import { getWorkspacePaths, resolveWorkspacePath, toWorkspaceRelativePath } from "../workspace/paths.js";
 import { runWorkPlanCommand, type WorkPlanCommandData } from "./work.js";
+import { ensureBuiltInSkills } from "../execution/skills.js";
+import type { ApprovalGate, ExecutionPlanSummary, ReviewItemSummary } from "../domain/types.js";
 
 const DEFAULT_PROJECT_MISSION = "Mission needs definition.";
 const DEFAULT_PROJECT_MILESTONE = "Define the project direction.";
@@ -85,6 +90,188 @@ export interface ProjectPrepareCommandData {
   dispatch: DispatchResolution;
   planning: WorkPlanCommandData;
   trigger: string;
+}
+
+export const PROJECT_PROPOSAL_APPROVAL_INTENT = "ProjectProposalApproval";
+
+export interface ProjectProposalSpec {
+  intakeTemplateId: "astro_website_blog";
+  projectTemplate: "astro_field_notes_cloudflare";
+  templateTitle: "Astro Field Notes Blog";
+  generatorSkill: "create-astro-site";
+  deploymentTarget: "Cloudflare Pages staging";
+  buildAgent: "codex" | "claude-code";
+}
+
+export interface ProjectProposeCommandData {
+  project: CreatedProjectBundle["project"];
+  milestone: CreatedProjectBundle["milestone"];
+  workItem: NonNullable<ReturnType<typeof getWorkItem>>;
+  metadata: ProjectMetadata;
+  projectPath: string;
+  plan: ExecutionPlanSummary;
+  approvalGates: ApprovalGate[];
+  decision: ReviewItemSummary;
+}
+
+/** The first proven stack only. A second concrete stack is the generalization trigger. */
+export function projectProposalSpecForTemplate(templateId: string | null | undefined): ProjectProposalSpec | null {
+  return templateId === "astro_website_blog"
+    ? {
+        intakeTemplateId: "astro_website_blog",
+        projectTemplate: "astro_field_notes_cloudflare",
+        templateTitle: "Astro Field Notes Blog",
+        generatorSkill: "create-astro-site",
+        deploymentTarget: "Cloudflare Pages staging",
+        buildAgent: "codex"
+      }
+    : null;
+}
+
+/**
+ * Create the reversible proposal record and its one exact approval boundary.
+ * No Git initialization, generator, model, credential, or deployment runs here.
+ */
+export function runProjectProposeCommand(options: {
+  workspace: string;
+  name: string;
+  idea: string;
+  spec: ProjectProposalSpec;
+  path?: string;
+}): CommandSuccess<ProjectProposeCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const name = options.name.trim();
+  const idea = options.idea.trim();
+  if (!name || !idea) {
+    throw validationError("Project proposal requires a name and the original idea.");
+  }
+
+  const slug = slugify(name);
+  const projectPath = resolveProjectFilesystemPath(workspacePath, slug, options.path);
+  assertProjectPreparationTargetAvailable(workspacePath, name, slug, projectPath);
+  const created = withDatabase(workspacePath, (db) => db.transaction(() => {
+    ensureBuiltInSkills(db);
+    const bundle = createProjectWithInitialWork(db, {
+      name,
+      mission: `Launch ${name} as a useful Astro Field Notes blog on Cloudflare Pages.`,
+      goal: idea,
+      status: "incubating",
+      currentMilestone: "Launch the staging scaffold",
+      nextAction: `Approve the proposed ${options.spec.templateTitle} scaffold and staging deployment.`,
+      rawInput: idea,
+      expectedArtifact: `Live Cloudflare Pages staging URL for ${name}`,
+      workClassification: "requires_review"
+    });
+    const workItem = updateWorkItem(db, bundle.workItem.id, {
+      effort: "session",
+      clarificationStatus: "clarified",
+      clarificationSource: "Supported Astro Project proposal resolved deterministically from natural-language intake.",
+      confidence: "high",
+      acceptanceCriteriaJson: JSON.stringify([
+        `The repository contains a generated ${options.spec.templateTitle} scaffold created through the ${options.spec.generatorSkill} skill.`,
+        "The generated site passes its configured production build.",
+        "Cloudflare Pages returns an HTTPS staging preview URL and Arcadia persists it on the Project.",
+        "No production deployment, custom domain, push, merge, or publication occurs."
+      ])
+    });
+    if (!workItem) {
+      throw validationError("Project proposal Action could not be created.", { project: name });
+    }
+    const metadata = upsertProjectMetadata(db, {
+      projectId: bundle.project.id,
+      aliases: [bundle.project.slug],
+      repoPath: projectPath,
+      repositoryUrl: null,
+      projectTemplate: options.spec.projectTemplate,
+      generatorSkill: options.spec.generatorSkill,
+      deploymentTarget: options.spec.deploymentTarget,
+      buildAgent: options.spec.buildAgent,
+      stagingUrl: null,
+      statusSummary: "Project proposed; enter an empty GitHub repository URL, then approve the scoped staging build.",
+      validationCommands: ["pnpm run build"]
+    });
+    if (!metadata) {
+      throw validationError("Project proposal metadata could not be created.", { project: name });
+    }
+    const plan = createExecutionPlan(db, {
+      workItemId: workItem.id,
+      summary: `Approved ${options.spec.templateTitle} scaffold, validation, and Cloudflare Pages staging deployment for ${name}.`,
+      steps: [{
+        skillName: "codex_build",
+        title: `Use ${options.spec.generatorSkill} to create the ${options.spec.templateTitle} scaffold`,
+        command: null,
+        executorType: "codex_build",
+        safeToRun: false,
+        needsOperator: "Approval authorizes only this Project's repository initialization, scaffold, validation, and staging deployment."
+      }]
+    });
+    if (!plan) {
+      throw validationError("Project proposal execution plan could not be created.", { actionId: workItem.id });
+    }
+    const approvalGates = [
+      ["destructive_filesystem_changes", "Initialize and scaffold only the configured Project repository."],
+      ["credentials_required", "Use existing GitHub and Cloudflare authentication only for this staging attempt."],
+      ["external_deployment", "Create or reuse one Cloudflare Pages project and deploy only the staging preview branch."],
+      ["send_email_or_messages", "Let Arcadia's configured Discord adapter report the proposal and staging result."]
+    ].map(([gateType, reason]) => createApprovalGate(db, {
+      gateType: gateType as ApprovalGate["gate_type"],
+      reason,
+      workItemId: workItem.id,
+      planId: plan.id
+    }));
+    const decision = createReviewItem(db, {
+      workItemId: workItem.id,
+      planId: plan.id,
+      projectId: bundle.project.id,
+      decisionNeeded: `Approve the ${options.spec.templateTitle} proposal, coding-agent scaffold, and Cloudflare Pages staging deployment for ${name}.`,
+      recommendation: "Open the Project details, enter the empty GitHub repository URL, confirm the selected coding agent, then approve this one scoped staging attempt.",
+      sourceInput: idea,
+      proposedAction: `Initialize ${projectPath}, attach the entered GitHub origin, invoke ${options.spec.buildAgent} with the ${options.spec.generatorSkill} skill, validate the build, deploy the staging preview branch, and report its URL through Arcadia.`,
+      resolvedIntent: PROJECT_PROPOSAL_APPROVAL_INTENT,
+      confidenceLabel: "high",
+      confidence: 1,
+      missingFields: ["repository URL"],
+      context: {
+        schemaVersion: 1,
+        interpretation: `${name} is a supported ${options.spec.templateTitle} Project proposal.`,
+        templateId: options.spec.projectTemplate,
+        generatorSkill: options.spec.generatorSkill,
+        deploymentTarget: options.spec.deploymentTarget,
+        buildAgent: options.spec.buildAgent,
+        expectedArtifact: `Live Cloudflare Pages staging URL for ${name}`,
+        approvalAuthorizes: [
+          "Initialize only the configured local Project repository and attach the entered GitHub origin.",
+          `Allow ${options.spec.buildAgent} to use outbound network access for ${options.spec.generatorSkill} and dependency installation.`,
+          "Use existing Cloudflare authentication to create or reuse the Pages project and deploy only branch staging.",
+          "Let Arcadia report the resulting staging URL through its configured Discord adapter."
+        ],
+        safetyBoundaries: [
+          "No production deployment or custom domain",
+          "No Git push, merge, or pull request",
+          "No publication, content posting, spending, deletion, or changes outside the Project repository"
+        ]
+      }
+    });
+    return { ...bundle, workItem, metadata, plan, approvalGates, decision };
+  })());
+
+  mkdirSync(projectPath, { recursive: true });
+  createInitialProjectMissionLog(workspacePath, created.project, created.milestone);
+  return createSuccess({
+    command: "project.propose",
+    workspace: workspacePath,
+    data: {
+      project: created.project,
+      milestone: created.milestone,
+      workItem: created.workItem,
+      metadata: created.metadata,
+      projectPath,
+      plan: created.plan,
+      approvalGates: created.approvalGates,
+      decision: created.decision
+    },
+    artifacts: []
+  });
 }
 
 /**
@@ -507,29 +694,34 @@ export function runProjectMetadataCommand(options: {
   projectId: string;
   aliases?: string[];
   repoPath?: string;
+  repositoryUrl?: string;
+  buildAgent?: string;
   statusSummary?: string;
   validationCommands?: string[];
 }): CommandSuccess<ProjectMetadataCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const metadata = withDatabase(workspacePath, (db) => {
+    const setup = updateProjectSetup(db, {
+      projectId: options.projectId,
+      repoPath: options.repoPath,
+      repositoryUrl: options.repositoryUrl,
+      buildAgent: options.buildAgent,
+      validationCommands: options.validationCommands
+    });
+    if (!setup) return null;
     if (options.aliases !== undefined || options.statusSummary !== undefined) {
-      const existing = getProjectMetadata(db, options.projectId);
+      const existing = setup.metadata;
       return upsertProjectMetadata(db, {
         projectId: options.projectId,
         aliases: options.aliases ?? decodeStringArray(existing?.aliases),
         repoPath: options.repoPath ?? existing?.repo_path ?? null,
+        repositoryUrl: existing?.repository_url ?? null,
+        buildAgent: existing?.build_agent ?? null,
         statusSummary: options.statusSummary ?? existing?.status_summary ?? null,
         validationCommands: options.validationCommands ?? decodeStringArray(existing?.validation_commands)
       });
     }
-
-    const result = updateProjectSetup(db, {
-      projectId: options.projectId,
-      repoPath: options.repoPath,
-      validationCommands: options.validationCommands
-    });
-
-    return result?.metadata ?? null;
+    return setup.metadata;
   });
 
   if (!metadata) {

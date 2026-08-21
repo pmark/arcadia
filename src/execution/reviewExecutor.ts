@@ -139,7 +139,14 @@ export function executeApprovedReview(
   const project = getProject(db, projectId);
   const metadata = getProjectMetadata(db, projectId);
   const repoPath = resolveValidRepoPath(metadata, review.id);
-  const executor = resolveExecutorAdapter(options.workspace, repoPath, options.executorName ?? DEFAULT_EXECUTOR);
+  const isProjectProposal = review.resolved_intent === "ProjectProposalApproval";
+  if (isProjectProposal) {
+    prepareProjectProposalRepository(repoPath, metadata, review.id);
+  }
+  const executor = withProjectProposalNetwork(
+    resolveExecutorAdapter(options.workspace, repoPath, options.executorName ?? DEFAULT_EXECUTOR),
+    isProjectProposal
+  );
   const plan = review.plan_id ? getExecutionPlan(db, review.plan_id) : null;
   const validationCommands = parseStringArray(metadata?.validation_commands);
 
@@ -155,7 +162,12 @@ export function executeApprovedReview(
     repoPath,
     planSummary: plan?.summary ?? review.plan_summary,
     validationCommands,
-    contextGuidance: readRepoContextGuidance(repoPath)
+    contextGuidance: readRepoContextGuidance(repoPath),
+    projectProposal: isProjectProposal ? {
+      generatorSkill: metadata?.generator_skill ?? "create-astro-site",
+      projectTemplate: metadata?.project_template ?? "astro_field_notes_cloudflare",
+      deploymentTarget: metadata?.deployment_target ?? "Cloudflare Pages staging"
+    } : null
   });
   const promptPath = path.join(artifactRoot, "prompt.md");
   writeFileSync(promptPath, packet, "utf8");
@@ -187,7 +199,7 @@ export function executeApprovedReview(
   const finalOutputPath = path.join(artifactRoot, "final-output.md");
   writeFileSync(finalOutputPath, finalOutput ?? "", "utf8");
 
-  const changedFiles = runGit(["diff", "--name-only"], repoPath).stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const changedFiles = changedFilesFromGitStatus(runGit(["status", "--short"], repoPath).stdout);
   const validation = validationCommands.map((commandText) => runValidationCommand(commandText, repoPath));
   const validationPath = path.join(artifactRoot, "validation.json");
   writeFileSync(validationPath, `${JSON.stringify(validation, null, 2)}\n`, "utf8");
@@ -226,7 +238,9 @@ export function executeApprovedReview(
 
   const updatedReview = updateReviewItemStatus(db, review.id, {
     status: "approved",
-    decisionNote: `Approved and executed with ${executor.name}. Implementation remains Requires Review.`
+    decisionNote: isProjectProposal
+      ? `Approved scaffold executed with ${executor.name}; deterministic staging deployment pending.`
+      : `Approved and executed with ${executor.name}. Implementation remains Requires Review.`
   });
   if (!updatedReview) {
     throw validationError("Requires Review Decision was not found.", { id: review.id });
@@ -238,7 +252,7 @@ export function executeApprovedReview(
     });
   }
 
-  const followUp = createReviewItem(db, {
+  let followUp = createReviewItem(db, {
     workItemId: workItem?.id ?? null,
     planId: review.plan_id,
     projectId,
@@ -264,6 +278,12 @@ export function executeApprovedReview(
       finalOutput
     }
   });
+  if (isProjectProposal) {
+    followUp = updateReviewItemStatus(db, followUp.id, {
+      status: "approved",
+      decisionNote: "Scaffold evidence is governed by the original Project proposal approval; no second operator approval is required before staging."
+    }) as ReviewItemSummary;
+  }
 
   return {
     review: updatedReview,
@@ -343,6 +363,67 @@ function resolveExecutorAdapter(workspace: string, repoPath: string, name: strin
   return normalizeExecutorConfig(base);
 }
 
+function withProjectProposalNetwork(
+  executor: ResolvedExecutorAdapter,
+  enabled: boolean
+): ResolvedExecutorAdapter {
+  if (!enabled || executor.name !== "codex") {
+    return executor;
+  }
+  const execIndex = executor.args.indexOf("exec");
+  const insertAt = execIndex >= 0 ? execIndex + 1 : 0;
+  return {
+    ...executor,
+    args: [
+      ...executor.args.slice(0, insertAt),
+      "-c",
+      "sandbox_workspace_write.network_access=true",
+      ...executor.args.slice(insertAt)
+    ]
+  };
+}
+
+function prepareProjectProposalRepository(
+  repoPath: string,
+  metadata: ProjectMetadata | null,
+  reviewId: string
+): void {
+  const repositoryUrl = metadata?.repository_url?.trim();
+  if (!repositoryUrl) {
+    throw validationError("Approved Project proposal is missing its GitHub repository URL.", {
+      reviewId,
+      field: "repository_url"
+    });
+  }
+  const inside = runGit(["rev-parse", "--is-inside-work-tree"], repoPath);
+  if (inside.status !== 0) {
+    const initialized = runGit(["init", "-b", "main"], repoPath);
+    if (initialized.status !== 0) {
+      throw validationError("Could not initialize the approved Project repository.", {
+        reviewId,
+        detail: initialized.stderr.trim()
+      });
+    }
+  }
+  const origin = runGit(["remote", "get-url", "origin"], repoPath);
+  if (origin.status === 0 && origin.stdout.trim() !== repositoryUrl) {
+    throw validationError("The local Project repository already has a different origin.", {
+      reviewId,
+      configured: repositoryUrl,
+      existing: origin.stdout.trim()
+    });
+  }
+  if (origin.status !== 0) {
+    const attached = runGit(["remote", "add", "origin", repositoryUrl], repoPath);
+    if (attached.status !== 0) {
+      throw validationError("Could not attach the approved GitHub origin.", {
+        reviewId,
+        detail: attached.stderr.trim()
+      });
+    }
+  }
+}
+
 function normalizeExecutorConfig(config: ExecutorAdapterConfig): ResolvedExecutorAdapter {
   return {
     name: config.name,
@@ -411,6 +492,11 @@ function buildImplementationPacket(input: {
   planSummary: string | null;
   validationCommands: string[];
   contextGuidance: string[];
+  projectProposal: {
+    generatorSkill: string;
+    projectTemplate: string;
+    deploymentTarget: string;
+  } | null;
 }): string {
   return [
     "# Arcadia Approved Review Implementation Packet",
@@ -432,6 +518,17 @@ function buildImplementationPacket(input: {
     `Proposed action: ${input.review.proposed_action}`,
     `Plan summary: ${input.planSummary ?? "None"}`,
     "",
+    ...(input.projectProposal ? [
+      "## Approved Project Scaffold Contract",
+      `- Invoke the $${input.projectProposal.generatorSkill} skill and follow it faithfully.`,
+      `- Create the ${input.projectProposal.projectTemplate} static Astro Field Notes blog in the current repository.`,
+      "- Use pnpm and install Wrangler as a development dependency.",
+      "- Configure the smallest Cloudflare Pages Direct Upload surface: a production build that writes ./dist and a Wrangler Pages configuration that names ./dist.",
+      "- Include useful starter Field Notes content and a clear README with local commands.",
+      "- Run pnpm run build and fix common-path failures.",
+      `- Prepare for ${input.projectProposal.deploymentTarget}, but do not deploy, push, open a pull request, configure production, or add a custom domain. Arcadia performs the approved staging upload after Validation.`,
+      ""
+    ] : []),
     "## Validation",
     ...(input.validationCommands.length > 0
       ? input.validationCommands.map((command) => `- ${command}`)
@@ -525,6 +622,16 @@ function runGit(args: string[], cwd: string): { stdout: string; stderr: string; 
     stderr: result.stderr ?? "",
     status: result.status
   };
+}
+
+function changedFilesFromGitStatus(output: string): string[] {
+  return Array.from(new Set(output.split(/\r?\n/).flatMap((line) => {
+    if (line.length < 4) return [];
+    const value = line.slice(3).trim();
+    if (!value) return [];
+    const renameTarget = value.includes(" -> ") ? value.split(" -> ").at(-1)?.trim() : value;
+    return renameTarget ? [renameTarget] : [];
+  })));
 }
 
 function runValidationCommand(command: string, cwd: string): ValidationCommandResult {

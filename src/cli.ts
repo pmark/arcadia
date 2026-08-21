@@ -905,12 +905,16 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--alias <alias>", "Project alias; repeat for multiple aliases", collectValues, undefined)
       .option("--repo-path <path>", "Target repository path", resolveInvocationPath)
+      .option("--repository-url <url>", "Empty GitHub repository HTTPS or SSH URL")
+      .option("--build-agent <agent>", "Approved scaffold agent: codex or claude-code")
       .option("--status-summary <summary>", "Project status summary")
       .option("--validation-command <command>", "Validation command; repeat for multiple commands", collectValues, undefined)
   ).action((projectId: string, options: {
     workspace: string;
     alias?: string[];
     repoPath?: string;
+    repositoryUrl?: string;
+    buildAgent?: string;
     statusSummary?: string;
     validationCommand?: string[];
     json?: boolean;
@@ -923,6 +927,8 @@ export function buildProgram(): Command {
         projectId,
         aliases: options.alias,
         repoPath: options.repoPath,
+        repositoryUrl: options.repositoryUrl,
+        buildAgent: options.buildAgent,
         statusSummary: options.statusSummary,
         validationCommands: options.validationCommand
       }),

@@ -10,6 +10,8 @@ const PROJECT_STATUSES = new Set(["active", "paused", "incubating", "completed"]
 
 interface ProjectUpdateRequest {
   repoPath?: unknown;
+  repositoryUrl?: unknown;
+  buildAgent?: unknown;
   validationCommands?: unknown;
   mission?: unknown;
   status?: unknown;
@@ -33,7 +35,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
 
     return NextResponse.json({
-      message: input.repoPath ? "Repository path saved. Codex work can now be prepared for this project." : "Project setup saved.",
+      message: input.repositoryUrl
+        ? "Project proposal settings saved and ready for approval."
+        : input.repoPath
+          ? "Repository path saved. Codex work can now be prepared for this project."
+          : "Project setup saved.",
       result: {
         project: result.project,
         metadata: result.metadata,
@@ -54,6 +60,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 function parseProjectUpdateRequest(body: ProjectUpdateRequest) {
   const input: {
     repoPath?: string | null;
+    repositoryUrl?: string | null;
+    buildAgent?: "codex" | "claude-code";
     validationCommands?: string[];
     mission?: string;
     status?: string;
@@ -61,6 +69,17 @@ function parseProjectUpdateRequest(body: ProjectUpdateRequest) {
 
   if ("repoPath" in body) {
     input.repoPath = typeof body.repoPath === "string" ? body.repoPath.trim() : null;
+  }
+
+  if ("repositoryUrl" in body) {
+    input.repositoryUrl = typeof body.repositoryUrl === "string" ? body.repositoryUrl.trim() : null;
+  }
+
+  if ("buildAgent" in body) {
+    if (body.buildAgent !== "codex" && body.buildAgent !== "claude-code") {
+      throw new Error("Build agent must be codex or claude-code.");
+    }
+    input.buildAgent = body.buildAgent;
   }
 
   if ("validationCommands" in body) {

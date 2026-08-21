@@ -778,14 +778,33 @@ function proposedEntityAttributeAction(input: {
 
 function parseInstantiateProject(raw: string): { templateReference: string; projectName: string } | null {
   const match = /^\s*(?:please\s+)?create\s+(?:a|an)?\s*(.+?)\s+(?:called|named)\s+(.+?)\s*[.!?]?\s*$/i.exec(raw);
-  if (!match?.[1] || !match[2]) {
-    return null;
+  if (match?.[1] && match[2]) {
+    return {
+      templateReference: match[1].replace(/^new\s+/i, "").trim(),
+      projectName: cleanTrailingPunctuation(match[2])
+    };
   }
 
-  return {
-    templateReference: match[1].replace(/^new\s+/i, "").trim(),
-    projectName: cleanTrailingPunctuation(match[2])
-  };
+  // Natural project requests often put the name before a recognizable stack
+  // or artifact suffix rather than using "named":
+  // "Create a MartianRover Field Notes blog site". Longest suffix wins so
+  // "blog site" is not shortened to the less precise "site".
+  const suffixes = INTAKE_TEMPLATES
+    .flatMap((template) => template.aliases)
+    .filter((alias) => /\b(?:site|website|blog|app|api|utility|game|experiment)$/.test(alias))
+    .sort((left, right) => right.length - left.length);
+  for (const suffix of suffixes) {
+    const suffixMatch = new RegExp(
+      `^\\s*(?:please\\s+)?create\\s+(?:a|an)\\s+(.+?)\\s+(${escapeRegExp(suffix)})\\s*[.!?]?\\s*$`,
+      "i"
+    ).exec(raw);
+    const projectName = cleanTrailingPunctuation(suffixMatch?.[1] ?? "");
+    if (suffixMatch?.[2] && projectName && normalizeText(projectName) !== "new") {
+      return { templateReference: suffixMatch[2], projectName };
+    }
+  }
+
+  return null;
 }
 
 function isPlainProjectReference(value: string): boolean {

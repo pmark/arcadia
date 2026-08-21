@@ -8,12 +8,18 @@
       "projectType": "astro_blog",
       "defaults": {
         "templateName": "Field Notes",
-        "deploymentTarget": "Cloudflare",
+        "generatorSkill": "create-astro-site",
+        "packageManager": "pnpm",
+        "buildCommand": "pnpm run build",
+        "buildOutput": "dist",
+        "deploymentTarget": "Cloudflare Pages",
+        "deploymentMode": "direct-upload",
+        "deploymentBranch": "staging",
         "contentModel": "chronological notes and updates",
         "siteNameSlot": "projectName"
       },
       "skills": {
-        "scaffold": "codex_build",
+        "scaffold": "create-astro-site",
         "plan": "codex_planning"
       },
       "approvalGates": ["external_deployment"]

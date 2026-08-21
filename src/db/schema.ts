@@ -32,6 +32,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureCapabilityCoreTables(db);
   ensureProjectSlugColumn(db);
   ensureProjectGoalColumn(db);
+  ensureProjectProposalMetadataColumns(db);
   ensureReviewItemsTable(db);
   ensureReviewItemSlugs(db);
   ensureReviewFeedbackTable(db);
@@ -64,6 +65,31 @@ export function applyMigrations(db: Database.Database): void {
   ensureNarrativeDigestScopeColumns(db);
   ensureProofTargetChecksTable(db);
   applyCapabilityMigrations(db);
+}
+
+/**
+ * Additive Project-proposal fields used by the idea-to-staging golden path.
+ * They live with repository metadata because the Project row remains Arcadia's
+ * semantic record while these values describe how its repository is built and
+ * where its Candidate is deployed.
+ */
+function ensureProjectProposalMetadataColumns(db: Database.Database): void {
+  const existing = new Set(
+    (db.prepare("PRAGMA table_info(project_metadata)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  const additions = [
+    ["repository_url", "TEXT"],
+    ["project_template", "TEXT"],
+    ["generator_skill", "TEXT"],
+    ["deployment_target", "TEXT"],
+    ["build_agent", "TEXT"],
+    ["staging_url", "TEXT"]
+  ] as const;
+  for (const [name, type] of additions) {
+    if (!existing.has(name)) {
+      db.prepare(`ALTER TABLE project_metadata ADD COLUMN ${name} ${type}`).run();
+    }
+  }
 }
 
 /**

@@ -61,6 +61,39 @@ actions:
       - src/stewardship/artifactValidator.ts
       - src/docs/sync.ts
       - src/docs/dispatch.ts
+    depends_on: [demo-astro-staging-loop]
+  - id: demo-astro-staging-loop
+    title: Prove one idea-to-live-staging loop for the tomorrow demo
+    status: done
+    responsibility: codex
+    effort: session
+    next_action: Connect the exact MartianRover Field Notes request to a populated proposed Project, one Project-scoped approval Decision, an approved coding-agent scaffold Run, and a Cloudflare Pages staging URL returned through Discord.
+    expected_artifact: A tested golden-path demo in which the exact Astro blog request creates a reviewable Project and one approval advances it to a live staging URL without production deployment
+    clarification: clarified
+    confidence: high
+    source: Operator demo direction and Decision 0030 on 2026-08-20
+    acceptance_criteria:
+      - The exact input "Create a MartianRover Field Notes blog site" deterministically resolves as a supported Astro blog Project proposal rather than Back Burner or generic clarification.
+      - Intake creates one Incubating Project whose detail page shows the original idea, selected template, generator skill, coding agent, local repository path, GitHub repository URL field, Cloudflare staging target, current Action, and approval Decision.
+      - The Discord notification for the proposal contains a direct link to that Project detail page and names what approval authorizes.
+      - Entering a valid GitHub repository URL and approving the Project queues one managed worker Run; it does not require a second execution Decision.
+      - The approved Run initializes only the Project repository, invokes the selected Codex or Claude Code build adapter with the declared Create Astro Site skill, runs deterministic build validation, and deploys only a Cloudflare Pages staging branch.
+      - Codex receives outbound network access only inside its workspace-write sandbox for this explicitly approved proposal; no danger-full-access mode is introduced.
+      - A successful staging deployment persists the URL on the Project, exposes it in the Dashboard, and produces a Discord notification containing the live link.
+      - Missing repository URL, missing generator skill behavior, missing Wrangler, agent/build failure, Cloudflare authentication failure, or absent deployment URL fails legibly without claiming the Project is live.
+      - Production deployment, merge, push, custom domains, publication, spending, and general multi-stack orchestration remain out of scope.
+      - Focused tests cover exact intake, proposal state, approval queueing, Discord links, scoped Codex networking, Cloudflare command/result handling, and failure paths; the full Arcadia test/build suite remains green.
+    decisions: ["0029", "0030"]
+    references:
+      - src/intake/index.ts
+      - src/commands/ask.ts
+      - src/commands/review.ts
+      - src/execution/reviewExecutor.ts
+      - src/commands/worker.ts
+      - apps/dashboard/app/projects/[id]/page.tsx
+      - apps/discord-bot/src/notifications/poller.ts
+      - config/defaults/template-registry.json
+      - START_HERE.md
     depends_on: [prepare-project-idea]
   - id: manage-coding-agent-build
     title: Manage the coding-agent build through Candidate and independent QA
@@ -96,7 +129,8 @@ turning an explicit new-project idea into governed planning work, and turning
 an accepted planning Artifact into the exact build Action a coding agent can
 advance.
 
-The expensive tail is deliberately deferred to the third Action. Arcadia will
-first prove that the authoritative pointer and approval chain work end to end;
-automatic provider discovery, deployment, release, and general workflow-engine
-abstractions add cost without improving that proof.
+The general expensive tail remains deferred to the third Action. The first
+proven deployment slice is intentionally smaller: one registered Astro
+template, one declared generator skill, and one deterministic Cloudflare Pages
+staging upload. Automatic provider discovery, production release, and general
+workflow-engine abstractions add cost without improving that proof.

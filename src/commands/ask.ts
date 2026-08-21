@@ -61,7 +61,11 @@ import type { ReviewRequiredCommandData } from "./review.js";
 import { runReviewRequiredCommand, runReviewResolveReplyCommand } from "./review.js";
 import type { StatusCommandData } from "./status.js";
 import { runStatusCommand } from "./status.js";
-import { createProjectWithDefaults } from "./project.js";
+import {
+  createProjectWithDefaults,
+  projectProposalSpecForTemplate,
+  runProjectProposeCommand
+} from "./project.js";
 
 export interface AskOptions {
   workspace: string;
@@ -240,6 +244,63 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         backBurnerItemId: null
       },
       artifacts: reviewResolution.artifacts
+    });
+  }
+
+  const proposalSpec = intake.action.kind === "instantiate_project"
+    ? projectProposalSpecForTemplate(intake.action.template?.id)
+    : null;
+  if (
+    intake.confidenceLabel === "high" &&
+    intake.action.kind === "instantiate_project" &&
+    intake.action.projectName &&
+    proposalSpec &&
+    /^create\s+(?:an?\s+)?\S.+\s+blog\s+site[.!]?$/i.test(request.trim())
+  ) {
+    const proposal = runProjectProposeCommand({
+      workspace: workspacePath,
+      name: intake.action.projectName,
+      idea: request,
+      spec: proposalSpec
+    });
+    const ask = withDatabase(workspacePath, (db) => createAskRequest(db, {
+      rawRequest: options.request,
+      resolvedIntent: intake.resolvedIntent,
+      registryVersion: registries.intents.version,
+      outputKind: "requires_review",
+      workItemId: proposal.data.workItem.id,
+      planId: proposal.data.plan.id,
+      stewardshipJson: stewardshipJson(stewardship),
+      status: "requires_review"
+    }));
+    return createSuccess({
+      command: "ask",
+      workspace: workspacePath,
+      data: {
+        ask,
+        stewardship,
+        intake,
+        resolvedIntent: resolvedIntentFromIntake(intake),
+        result: {
+          status: "requires_review",
+          summary: `Proposed ${proposal.data.project.name}; enter its empty GitHub repository URL and approve the scoped staging build.`
+        },
+        workItem: proposal.data.workItem,
+        plan: proposal.data.plan,
+        approvalGates: proposal.data.approvalGates,
+        codexInvocations: [],
+        run: null,
+        project: proposal.data.project,
+        projectSummary: null,
+        projects: null,
+        status: null,
+        review: null,
+        reviewItemId: proposal.data.decision.id,
+        decisionId: proposal.data.decision.id,
+        decisionSlug: proposal.data.decision.slug,
+        backBurnerItemId: null
+      },
+      artifacts: proposal.artifacts
     });
   }
 

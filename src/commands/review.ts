@@ -16,6 +16,7 @@ import {
   getProjectBySlug,
   getProjectMetadata,
   getExecutionRun,
+  getExecutionRunByReviewItem,
   getReviewItem,
   getReviewItemBySlug,
   getWorkItem,
@@ -519,6 +520,75 @@ export function runReviewApproveCommand(
     } catch (error) {
       throw validationError(error instanceof Error ? error.message : String(error), { id: specialized.id, conflict: true });
     }
+  }
+  if (specialized?.resolved_intent === "ProjectProposalApproval") {
+    const queued = withDatabase(workspacePath, (db) => db.transaction(() => {
+      const current = getReviewItem(db, specialized.id);
+      if (!current) {
+        throw validationError("Project proposal Decision was not found.", { id: specialized.id });
+      }
+      const existingRun = getExecutionRunByReviewItem(db, current.id);
+      if (existingRun) {
+        return { decision: current, run: existingRun, duplicate: true };
+      }
+      if (current.status !== "open" && current.status !== "deferred") {
+        throw validationError("Project proposal Decision is already decided.", { id: current.id, status: current.status });
+      }
+      if (!current.project_id || !current.work_item_id || !current.plan_id) {
+        throw validationError("Project proposal Decision is missing its Project, Action, or plan.", { id: current.id });
+      }
+      const metadata = getProjectMetadata(db, current.project_id);
+      const repositoryUrl = metadata?.repository_url?.trim();
+      if (!repositoryUrl) {
+        throw validationError("Enter the empty GitHub repository URL on the Project details page before approval.", {
+          id: current.id,
+          field: "repository_url"
+        });
+      }
+      if (!/^(?:https:\/\/github\.com\/[^/\s]+\/[^/\s]+(?:\.git)?|git@github\.com:[^/\s]+\/[^/\s]+(?:\.git)?)$/i.test(repositoryUrl)) {
+        throw validationError("Project proposal requires a valid GitHub repository URL.", { repositoryUrl });
+      }
+      const repoPath = metadata?.repo_path?.trim();
+      if (!repoPath || !existsSync(repoPath) || !statSync(repoPath).isDirectory()) {
+        throw validationError("Project proposal repository path is missing or invalid.", { repoPath });
+      }
+      const executorName = metadata?.build_agent === "claude-code" ? "claude-code" : "codex";
+      db.prepare(
+        "UPDATE approval_gates SET status = 'approved', updated_at = ? WHERE work_item_id = ? AND plan_id = ?"
+      ).run(new Date().toISOString(), current.work_item_id, current.plan_id);
+      updateWorkItem(db, current.work_item_id, {
+        queue: "work_queue",
+        workClassification: "codex",
+        status: "in_progress",
+        nextAction: `Run the approved ${metadata?.generator_skill ?? "project generator"}, validate it, and deploy Cloudflare staging.`
+      });
+      const decision = updateReviewItemStatus(db, current.id, {
+        status: "approved",
+        decisionNote: "Project proposal approved. Execution pending."
+      }) as ReviewItemSummary;
+      const run = createReviewExecutionRun(db, {
+        reviewItemId: decision.id,
+        executorName,
+        workItemId: decision.work_item_id,
+        planId: decision.plan_id,
+        summary: `Approved Project scaffold and staging deployment queued with ${executorName}.`
+      });
+      return { decision, run, duplicate: false };
+    })());
+    return createSuccess({
+      command: "review.approve",
+      workspace: workspacePath,
+      data: {
+        item: reviewPacketForReviewItem(queued.decision),
+        result: {
+          status: "pending_execution",
+          summary: `Project build Run ${queued.run.id} ${queued.duplicate ? "already queued" : "queued"}.`
+        },
+        approval: null,
+        execution: null,
+        run: { id: queued.run.id }
+      }
+    });
   }
   if (specialized?.resolved_intent === "CodexPlanningArtifactAcceptance") {
     const updated = withDatabase(workspacePath, (db) => {

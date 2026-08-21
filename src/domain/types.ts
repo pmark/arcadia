@@ -39,6 +39,12 @@ export interface ProjectMetadata {
   project_id: string;
   aliases: string;
   repo_path: string | null;
+  repository_url: string | null;
+  project_template: string | null;
+  generator_skill: string | null;
+  deployment_target: string | null;
+  build_agent: string | null;
+  staging_url: string | null;
   status_summary: string | null;
   validation_commands: string;
   created_at: string;
@@ -549,6 +555,12 @@ export interface UpsertProjectMetadataInput {
   projectId: string;
   aliases?: string[];
   repoPath?: string | null;
+  repositoryUrl?: string | null;
+  projectTemplate?: string | null;
+  generatorSkill?: string | null;
+  deploymentTarget?: string | null;
+  buildAgent?: string | null;
+  stagingUrl?: string | null;
   statusSummary?: string | null;
   validationCommands?: string[];
 }

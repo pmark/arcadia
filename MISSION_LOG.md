@@ -8,6 +8,20 @@ updated: 2026-08-20
 
 # Mission Log: Arcadia
 
+## 2026-08-20 — Completed the Astro idea-to-staging golden path
+
+- **Did:** Implemented exact suffix-shaped Astro proposal intake; Incubating Project metadata and Dashboard setup; Discord Project-detail links; one-click proposal approval; Codex/Claude scaffold dispatch with `$create-astro-site`; scoped Codex network access; deterministic build validation; Cloudflare Pages staging Direct Upload; persisted staging URL and live-link Artifact; CLI fallback metadata fields; and the operator demo runbook.
+- **Result:** A synthetic worker-level end-to-end test completes the exact request through a `pages.dev` URL without a second approval, Git push, production deployment, or invented result. Focused proposal/Discord/Dashboard regressions pass, the full suite passes with 928 tests and 6 skips, the core/Discord TypeScript build passes, and the optimized Dashboard build passes.
+- **Next:** Promote an accepted validated planning Artifact into the one governed build Action and immutable build packet.
+- **Blockers:** None for the implementation. A real demo rehearsal still requires the operator's empty GitHub repository URL, installed `create-astro-site` skill for the selected agent, working agent login, and Wrangler-authenticated Cloudflare account.
+
+## 2026-08-20 — Scoped the tomorrow idea-to-staging demonstration
+
+- **Did:** Recorded Decision 0030 and inserted `demo-astro-staging-loop` as the current Action ahead of the general planning-to-build promotion seam.
+- **Result:** The demo has one honest golden path: exact Astro blog intent, populated Incubating Project, Discord Project-detail link, entered GitHub URL, one Project-scoped approval, one Codex or Claude Code scaffold Run using Create Astro Site, and one Cloudflare Pages staging URL returned through Discord. Approval explicitly excludes production, merge, push, custom domains, publication, spending, and deletion.
+- **Next:** Implement and validate the exact proposal, approval, build, staging, and notification loop.
+- **Blockers:** None. A real live-link proof will still require the operator's empty GitHub repository URL, installed generator skill, selected coding-agent login, and Cloudflare Wrangler authentication at demonstration time.
+
 ## 2026-08-20 — Made a project idea approval-ready in one command
 
 - **Did:** Added `arcadia project prepare <name> <idea> [--path]`. It performs

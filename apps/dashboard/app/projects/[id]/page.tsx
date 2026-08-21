@@ -106,6 +106,8 @@ export default function ProjectDetailsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           repoPath: form.repoPath,
+          repositoryUrl: form.repositoryUrl,
+          buildAgent: form.buildAgent,
           validationCommands: linesFromTextArea(form.validationCommands),
           mission: form.mission,
           status: form.status
@@ -117,8 +119,8 @@ export default function ProjectDetailsPage() {
       }
 
       setSaveMessage(
-        form.repoPath.trim()
-          ? "Repository path saved. Codex work can now be prepared for this project."
+        form.repositoryUrl.trim()
+          ? "Project proposal settings saved. The scoped staging Decision is ready for approval."
           : typeof body.message === "string"
             ? body.message
             : "Project setup saved."
@@ -278,6 +280,12 @@ export default function ProjectDetailsPage() {
 
             <dl className="grid gap-3 text-sm md:grid-cols-2">
               <ReadOnlyField label="Repository" value={project.repoPath ?? "Not configured"} />
+              <ReadOnlyField label="GitHub Repository" value={project.repositoryUrl ?? "Enter before approval"} />
+              <ReadOnlyField label="Project Template" value={project.projectTemplate ?? "None"} />
+              <ReadOnlyField label="Generator Skill" value={project.generatorSkill ? `$${project.generatorSkill}` : "None"} />
+              <ReadOnlyField label="Build Agent" value={project.buildAgent ?? "None"} />
+              <ReadOnlyField label="Deployment Target" value={project.deploymentTarget ?? "None"} />
+              <ReadOnlyField label="Staging URL" value={project.stagingUrl ?? "Pending approval and successful build"} />
               <ReadOnlyField label="Current Milestone" value={project.currentMilestone ?? "None"} />
               <ReadOnlyField label="Next Action" value={project.nextAction ?? "None"} />
               <ReadOnlyField label="Responsibility" value={project.responsibilityLabel ?? project.workClassificationLabel ?? "None"} />
@@ -396,6 +404,35 @@ export default function ProjectDetailsPage() {
           <section id="project-setup" className="grid min-w-0 gap-3">
             <h2 className="text-base font-semibold">Project Setup</h2>
             <form onSubmit={(event) => void submitProjectSetup(event)} className="grid min-w-0 gap-4 rounded-md border border-line bg-panel p-4 shadow-soft">
+              {project.projectTemplate ? (
+                <div className="rounded-md border border-steel/30 bg-steel/10 p-3 text-sm">
+                  <div className="font-semibold text-steel">Proposed automated staging build</div>
+                  <p className="mt-1 text-muted">Save the empty GitHub repository URL and coding agent here, then approve the Project proposal Decision above. Approval covers repository initialization, scaffold generation, build validation, one Cloudflare Pages staging upload, and Discord notification. It does not cover production, a custom domain, or Git push.</p>
+                </div>
+              ) : null}
+
+              <label className="grid min-w-0 gap-1 text-sm font-semibold">
+                Empty GitHub Repository URL
+                <input
+                  value={form.repositoryUrl}
+                  onChange={(event) => setForm((current) => ({ ...current, repositoryUrl: event.target.value }))}
+                  placeholder="https://github.com/owner/repository"
+                  className="min-h-11 min-w-0 rounded-md border border-line bg-canvas px-3 font-mono text-sm font-normal text-ink outline-none transition focus:border-steel"
+                />
+              </label>
+
+              <label className="grid min-w-0 gap-1 text-sm font-semibold">
+                Coding Agent
+                <select
+                  value={form.buildAgent}
+                  onChange={(event) => setForm((current) => ({ ...current, buildAgent: event.target.value as ProjectSetupForm["buildAgent"] }))}
+                  className="min-h-11 min-w-0 rounded-md border border-line bg-canvas px-3 text-sm font-normal text-ink outline-none transition focus:border-steel"
+                >
+                  <option value="codex">Codex</option>
+                  <option value="claude-code">Claude Code</option>
+                </select>
+              </label>
+
               <label className="grid min-w-0 gap-1 text-sm font-semibold">
                 Repository Path
                 <input
@@ -526,6 +563,8 @@ export default function ProjectDetailsPage() {
 
 interface ProjectSetupForm {
   repoPath: string;
+  repositoryUrl: string;
+  buildAgent: "codex" | "claude-code";
   validationCommands: string;
   mission: string;
   status: string;
@@ -534,6 +573,8 @@ interface ProjectSetupForm {
 function emptyForm(): ProjectSetupForm {
   return {
     repoPath: "",
+    repositoryUrl: "",
+    buildAgent: "codex",
     validationCommands: "",
     mission: "",
     status: "active"
@@ -543,6 +584,8 @@ function emptyForm(): ProjectSetupForm {
 function formFromProject(project: DashboardProject): ProjectSetupForm {
   return {
     repoPath: project.repoPath ?? "",
+    repositoryUrl: project.repositoryUrl ?? "",
+    buildAgent: project.buildAgent === "claude-code" ? "claude-code" : "codex",
     validationCommands: project.validationCommands.join("\n"),
     mission: project.mission,
     status: project.status
