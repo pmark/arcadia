@@ -6,9 +6,9 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: Every software Project always exposes a stable proof surface and a governed path from candidate demo through QA-verified release
-active_plan: demo-first-delivery
-updated: 2026-08-20
+milestone: Every managed software Project can reveal what it is, what is changing, how it got here, and what proves that story through one free living-system navigator
+active_plan: living-system-v1
+updated: 2026-08-21
 ---
 
 # Arcadia
@@ -175,13 +175,25 @@ returns to `promote-accepted-plan`.
 
 The operator then prioritized reusable Obsidian architecture maps and required
 the work to follow Arcadia's normal continuation contract. Decision 0031
-inserts five clarified Actions into `demo-first-delivery`, beginning with the
+initially inserted five clarified Actions into `demo-first-delivery`, beginning with the
 deterministic repository manifest contract and ending with real Arcadia vault
 proof. The project-idea plan is paused, not superseded: when the mind-map slice
 is complete, the single pointer returns to
 `idea-to-managed-build/promote-accepted-plan`. Normal map creation and updates
 must make zero model calls; an explicitly requested local-only enrichment may
 add a separately labelled interpretation without a cloud fallback.
+
+On 2026-08-21 the operator refined that idea into living-system v1. Decision
+0032 replaces the arbitrary fixed concern categories and the planned local-AI
+step with five Pareto Actions: define one Project-extensible contract, derive
+trustworthy living state, project equal capability-map and Action-timeline
+views, integrate a zero-model preview/apply refresh path, and dogfood the
+complete experience on both Arcadia and Private Practice Now. The current Action is now
+`define-living-system-v1-contract`. Home must link directly to current work and
+affected Topics; maps and timelines must navigate both ways; provenance,
+freshness, gaps, and unlinked history must remain visible; and generated
+Markdown must stay useful without a plugin or paid service. Decision 0032's
+measured-use triggers govern every deferred enhancement.
 
 ## Links
 

@@ -3,10 +3,18 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-20
+updated: 2026-08-21
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-21 — Made the living system's map and timeline equal v1 surfaces
+
+- **Action:** `living-system-v1#define-living-system-v1-contract`
+- **Did:** Recorded Decision 0032 after refining the original architecture-map proposal around what a person repeatedly needs: rapid orientation to a Project's purpose and current work, capability-first structural navigation, and an Action-centered causal history. Extracted the work from `demo-first-delivery` into a dedicated `living-system-v1` plan with five Pareto Actions covering the extensible contract, trustworthy state derivation, paired projection, free sync integration, and governed Arcadia plus Private Practice Now dogfood.
+- **Result:** The next `arcadia advance` now implements `docs/living-system.yaml` with Project-defined Topics, Relationships, and Views plus deterministically derived Episodes and Signals. Pages, Models, Workflows, and Persistence are examples rather than imposed categories. Routine generation remains zero-model and no-cost; Home, map, timeline, Current Work, Topic notes, episode notes, and Canvas have observable cross-navigation, provenance, freshness, fallback, and usability requirements. Local AI and the expensive visualization tail are deferred behind measured-use triggers.
+- **Next:** Implement and validate the versioned manifest parser and stable target types, including safe paths, the explicit Action-linked Mission Log convention, and Arcadia plus Private Practice Now fixtures; operational state derivation follows as its own bounded Action.
+- **Blockers:** None. Private Practice Now repository edits must still follow its own governed pointer or an explicitly approved cross-Project Action, and all existing merge, plugin-installation, and external-effect boundaries remain in force.
 
 ## 2026-08-20 — Made reusable Obsidian architecture maps the next governed work
 

@@ -5,12 +5,11 @@ slug: demo-first-delivery
 project: arcadia
 status: active
 milestone: Every software Project always exposes a stable proof surface and a governed path from candidate demo through QA-verified release
-current_action: define-architecture-map-contract
 token_impact: xlarge
 token_budget: "Stage the program Action by Action; builds, health checks, Playwright capture, and metadata sync use no LLM tokens, while implementation, failure diagnosis, visual interpretation, and independent QA reviews are model-bearing and must be batched per Candidate."
 recommended_model: claude-opus-5
 recommended_reasoning_effort: high
-updated: 2026-08-20
+updated: 2026-08-21
 actions:
   - id: build-qa-queue-vertical-slice
     title: Give the operator one QA queue for active Candidate work
@@ -217,123 +216,6 @@ actions:
       - docs/decisions/0028-ppn-capability-reconciliation.md
       - "Prior art, read before designing the contract: PPN's .arcadia/demo.json and its demo() in scripts/arcadia.mjs already implement versioned proof targets, a primary flag, reachability probing with timeout and retry, and a go/no-go signal carrying its blocking reasons."
     depends_on: [build-qa-queue-vertical-slice]
-  - id: define-architecture-map-contract
-    title: Define one deterministic architecture-map contract for every software Project
-    status: open
-    responsibility: codex
-    effort: session
-    next_action: Implement and document the versioned repository manifest parser for Pages, Models, Workflows, and Persistence concerns, including safe source paths and validated cross-references.
-    expected_artifact: A tested architecture-map v1 manifest contract that any Arcadia-managed software Project can check into its repository
-    clarification: clarified
-    confidence: high
-    source: Operator direction and Decision 0031 on 2026-08-20
-    acceptance_criteria:
-      - "A software Project can declare `docs/architecture-map.yaml` with `arcadia_architecture: v1`, its stable Project slug, and Pages, Models, Workflows, and Persistence concern lists."
-      - Every concern has a stable id, title, summary, repository-relative source paths, and its category-specific relationships; cross-references resolve by id inside the manifest.
-      - Validation rejects unsupported versions, duplicate ids, missing required values, invalid category values, dangling references, missing sources, absolute paths, traversal, symlink escape, and a Project-slug mismatch.
-      - Parsing is deterministic and normalized so unchanged input produces byte-stable downstream data without a model call.
-      - The contract is documented with one valid Arcadia fixture and focused tests for every refusal class.
-    decisions: ["0031"]
-    references:
-      - src/memory/obsidian.ts
-      - src/projects/contextSetup.ts
-      - src/docs/parse.ts
-      - docs/managed-documents.md
-    depends_on: [build-demo-hero-vertical-slice]
-  - id: build-architecture-map-projector
-    title: Project a Project manifest into safe linked Obsidian architecture maps
-    status: open
-    responsibility: codex
-    effort: session
-    next_action: Build the atomic idempotent vault projector that renders concern notes, five linked Markmap notes, a project README, and an Obsidian Canvas under `Projects/<project-slug>/`.
-    expected_artifact: A reusable deterministic projector with filesystem proof for initial, unchanged, updated, stale, collision, and multi-Project cases
-    clarification: clarified
-    confidence: high
-    source: Operator direction and Decision 0031 on 2026-08-20
-    acceptance_criteria:
-      - The projector writes only beneath the configured vault's `Projects/<project-slug>/` subtree and never changes `Arcadia/Records/`, `Arcadia/Ideas/`, or `.obsidian/`.
-      - Output contains Architecture subfolders for Pages, Models, Workflows, and Persistence; one stable-id concern note per manifest entry; `00_Root_Architecture.md`; four modular maps; a project README; and `Architecture_Navigator.canvas`.
-      - Maps use headings and lists compatible with Markmap, WikiLinks for vault notes, portable source links, root-to-module links, cross-concern relationships, and root-note transclusions for Obsidian Reading View.
-      - Generated Markdown carries an ownership marker, Project slug, source manifest and hash, tags, and supported Markmap options including `initialExpandLevel: -1`, zoom, and pan; `foldAll` is never emitted.
-      - Writes are atomic and idempotent, refuse unmarked or foreign-owned files, update changed generated files, and report removed concerns as stale without deleting them.
-      - Focused integration tests prove containment, symlink safety, byte-stable reruns, collision refusal, stale reporting, valid Canvas JSON, resolvable generated links, and isolation between at least two Projects.
-    decisions: ["0031"]
-    references:
-      - src/memory/obsidian.ts
-      - src/workspace/config.ts
-      - tests/obsidian-memory.test.ts
-    depends_on: [define-architecture-map-contract]
-  - id: expose-architecture-map-sync
-    title: Give operators one preview-first architecture-map sync command
-    status: open
-    responsibility: codex
-    effort: session
-    next_action: Add `arcadia memory architecture sync` for one Project or every eligible Project, with preview-by-default output, explicit apply, JSON receipts, and independent per-Project failures.
-    expected_artifact: A documented CLI workflow that creates and updates every managed Project's architecture maps for free without guessing missing architecture
-    clarification: clarified
-    confidence: high
-    source: Operator direction and Decision 0031 on 2026-08-20
-    acceptance_criteria:
-      - "`arcadia memory architecture sync (--project <project> | --all) [--apply] [--enrich-local] [--json]` uses the configured Project repository and workspace Obsidian vault."
-      - "Without `--apply` the command reports every create, update, unchanged, stale, skipped, and refused result without writing; apply performs exactly the previewed in-scope projection."
-      - "`--all` processes every active Project with a configured repository independently, and a missing repository or manifest produces an actionable skipped or failed result without preventing valid Projects from syncing."
-      - Machine output uses Arcadia's standard JSON envelope, and unchanged inputs neither rewrite files nor invoke a model.
-      - Projects without a manifest are never assigned guessed architecture; the command names the exact repository file required to opt in.
-      - "`START_HERE.md`, `docs/COMMANDS.md`, and the generated README explain authority, preview/apply behavior, Markmap panes, transclusions, Canvas navigation, split viewing, and rollback."
-    decisions: ["0031"]
-    references:
-      - src/commands/memory.ts
-      - src/cli.ts
-      - src/cli/response.ts
-      - START_HERE.md
-      - docs/COMMANDS.md
-    depends_on: [build-architecture-map-projector]
-  - id: add-local-architecture-enrichment
-    title: Add optional local-only interpretation without weakening the free deterministic path
-    status: open
-    responsibility: codex
-    effort: short
-    next_action: Implement explicit `--enrich-local` handling that reads a bounded set of manifest-declared sources through the configured local Intelligence route and writes only a separately labelled AI context map.
-    expected_artifact: A tested optional local enrichment whose absence or failure never prevents deterministic architecture-map synchronization
-    clarification: clarified
-    confidence: high
-    source: Operator direction and Decision 0031 on 2026-08-20
-    acceptance_criteria:
-      - Normal architecture sync makes zero model calls, and enrichment occurs only when `--enrich-local` is explicitly supplied.
-      - Enrichment selects only a configured local route and never falls back to a cloud or paid provider; unavailable local Intelligence leaves deterministic sync successful with a visible warning.
-      - Input is bounded to safe manifest-declared text sources, and reuse is keyed to the manifest plus source-content hashes.
-      - Interpretation is written only to clearly labelled `Mindmaps/90_Local_AI_Context.md` and never changes the repository manifest, deterministic maps, or operational state.
-      - Tests prove explicit opt-in, local-route enforcement, no cloud fallback, bounded loading, unchanged-input reuse, truthful labelling, and deterministic success when enrichment is unavailable.
-    decisions: ["0031"]
-    references:
-      - src/intelligence/contracts.ts
-      - src/intelligence/config/defaults.ts
-      - src/commands/memory.ts
-    depends_on: [expose-architecture-map-sync]
-  - id: dogfood-architecture-maps
-    title: Prove the architecture-map path on Arcadia and restore the displaced pointer
-    status: open
-    responsibility: codex
-    effort: session
-    next_action: Add Arcadia's real architecture manifest, install the pinned Mindmap NextGen plugin in the configured vault, apply the projection, verify the visual navigation, and complete the governed QA and pointer-restoration handoff.
-    expected_artifact: Working Arcadia architecture maps in Obsidian, deterministic verification evidence, and a QA-reviewed implementation whose completion returns dispatch to the paused idea-to-managed-build Action
-    clarification: clarified
-    confidence: high
-    source: Operator direction and Decision 0031 on 2026-08-20
-    acceptance_criteria:
-      - Arcadia's checked-in manifest covers a useful first slice of current Dashboard pages, canonical domain models, key state and async workflows, and SQLite, managed Markdown, Git, cache, and Obsidian persistence concerns with valid source links.
-      - Mindmap NextGen 1.16.0 is installed and enabled once in the configured Arcadia1 vault with prior `.obsidian` configuration preserved for rollback; synchronization itself never installs or upgrades executable plugin code.
-      - Preview and apply create `Projects/arcadia/`; all generated WikiLinks, transclusions, frontmatter, source links, and Canvas JSON validate; five maps open with pan and zoom; and pinned root and modular maps can be viewed side by side.
-      - Relevant focused tests, the full test suite, and builds pass, and the pull request contains the required operator-facing QA plan plus independent Arcadia PR-QA evidence.
-      - No existing file under `Arcadia/Records/` or `Arcadia/Ideas/` changes, no cloud model is invoked, and no deployment, publishing, merge, credential use, production access, spending, deletion, or outbound communication occurs without its own authority.
-      - "On accepted completion, this plan has no `current_action`; `PROJECT.md` restores `active_plan: idea-to-managed-build` and its milestone; `idea-to-managed-build` restores `current_action: promote-accepted-plan`; and the Mission Log records the exact proof and resumption."
-    decisions: ["0031"]
-    references:
-      - docs/AGENT_ORIENTATION.md
-      - docs/operator-demo-and-release-contract.md
-      - docs/plans/idea-to-managed-build.md
-      - src/memory/obsidian.ts
-    depends_on: [add-local-architecture-enrichment]
   - id: automate-proof-artifacts
     title: Collect pull requests, deployments, health checks, and screenshots as proof Artifacts
     status: open
@@ -406,7 +288,7 @@ actions:
       - docs/operator-demo-and-release-contract.md
       - apps/dashboard/app/projects/[id]/page.tsx
       - apps/dashboard/app/api/projects/[id]/route.ts
-    depends_on: [dogfood-architecture-maps]
+    depends_on: [build-demo-hero-vertical-slice]
   - id: establish-arcadia-qa
     title: Establish Arcadia QA as an independent verification responsibility
     status: open
@@ -529,7 +411,7 @@ actions:
       - apps/dashboard/app/projects/[id]/page.tsx
     depends_on: [govern-release-and-delivery]
 questions: []
-decisions: ["0007", "0008", "0031"]
+decisions: ["0007", "0008"]
 ---
 
 # Demo-first delivery
@@ -664,13 +546,9 @@ responsibility urgent. Decision 0019 now inserts the short
 the Arcadia-led development north star. When it is complete, the pointer returns
 to `build-demo-hero-vertical-slice`, the first remaining usable proof.
 
-Decision 0031 inserts the Obsidian architecture-map sequence after the completed
-demo hero and before the state-aware Test Action. The vital first slice is the
-versioned repository manifest plus deterministic projector: it lets every
-Arcadia-managed software Project create and refresh the same linked navigation
-surface without paying for or invoking a model. The optional local-only
-interpretation is isolated and cannot become architecture truth. While this
-sequence is current, `idea-to-managed-build/promote-accepted-plan` is paused by
-removing its pointer, not by changing or superseding its Action. Accepted
-completion of `dogfood-architecture-maps` restores that exact plan and Action as
-the sole dispatch target.
+Decision 0031 temporarily inserted the original Obsidian architecture-map
+sequence after the completed demo hero. Decision 0032 refined the capability
+and extracted it into the dedicated active `living-system-v1` plan, so this
+plan retains only its own demo, QA, and release Actions. It is paused without a
+`current_action`, not superseded; the Project pointer determines which plan is
+authoritative now.
