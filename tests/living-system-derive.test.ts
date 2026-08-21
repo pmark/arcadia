@@ -139,6 +139,25 @@ describe("living-system state derivation", () => {
       expect.objectContaining({ field: "actionEvidence[0].changedPaths[0]", message: expect.stringMatching(/repository-relative/) })
     ]));
   });
+
+  it("keeps optional legacy source failures visible without erasing a valid Project story", () => {
+    const root = governedFixture("arcadia");
+    write(root, "PROJECT.md", projectDoc("arcadia", "main", "capture"));
+    write(root, "docs/plans/main.md", planDoc("arcadia", [
+      action("capture", "Capture intent", "open", ["src/capture.ts"])
+    ], "capture"));
+    write(root, "docs/legacy-record.md", `---\narcadia: v1\ntype: record\nslug: legacy\nproject: arcadia\nupdated: 2026-08-21\n---\n`);
+
+    const result = deriveLivingSystemModel({ repoRoot: root, projectSlug: "arcadia" });
+
+    expect(result.errors).toEqual([]);
+    expect(result.model?.episodes).toHaveLength(1);
+    expect(result.model?.signals).toContainEqual(expect.objectContaining({
+      kind: "validation",
+      state: "missing",
+      uncertainty: "History or status from this source may be incomplete."
+    }));
+  });
 });
 
 function governedFixture(slug: string): string {

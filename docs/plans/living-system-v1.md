@@ -121,9 +121,9 @@ actions:
   - id: dogfood-living-system-v1
     title: Prove the living-system v1 on Arcadia and Private Practice Now
     status: in_progress
-    responsibility: codex
+    responsibility: requires_review
     effort: project
-    next_action: Add governed manifests for Arcadia and Private Practice Now, generate both living-system projections, verify the linked capability and history journeys in Obsidian and plain Markdown, record discovered gaps, and complete QA before restoring the displaced pointer.
+    next_action: Open `docs/living-system-v1-demo.md`, run its two-minute Arcadia and Private Practice Now walkthrough in the Arcadia1 vault, and record whether the presentation meets the stated ten-second, one-click, two-minute, and auditability bar.
     expected_artifact: Two genuinely useful living-system navigators, evidence for every v1 usability and trust criterion, a bounded post-v1 gap list with triggers, and a QA-reviewed handoff back to idea-to-managed-build
     clarification: clarified
     confidence: high
@@ -146,7 +146,10 @@ actions:
       - docs/plans/idea-to-managed-build.md
       - src/memory/obsidian.ts
     depends_on: [integrate-living-system-sync]
-questions: []
+questions:
+  - id: living-system-v1-perceptual-acceptance
+    question: "After the two-minute walkthrough in `docs/living-system-v1-demo.md`, does the Arcadia1 presentation make both Arcadia and Private Practice Now immediately understandable, navigable, and trustworthy enough to accept v1?"
+    gap_type: missing-external-input
 decisions: ["0031", "0032"]
 ---
 

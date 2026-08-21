@@ -8,6 +8,14 @@ updated: 2026-08-21
 
 # Mission Log: Arcadia
 
+## 2026-08-21 — Delivered both living-system stories for perceptual acceptance
+
+- **Action:** `living-system-v1#dogfood-living-system-v1`
+- **Did:** Added the real Arcadia manifest and a bounded Private Practice Now manifest on its own isolated branch and draft PR #54; preserved PPN's current pointer while adding explicit source references for its current calibration Action; made legacy optional-source parse failures visible as validation Signals; generated both presentations in the configured Arcadia1 vault; installed and enabled the Decision-authorized Mindmap NextGen 1.16.0 release with checksums and a preserved rollback record; and wrote the exact morning walkthrough in `docs/living-system-v1-demo.md`.
+- **Result:** Arcadia presents 8 Topics, 63 Action episodes, 70 Signals, and 81 files. PPN presents 10 Topics, 61 episodes, 97 Signals, and 80 files. Both previews agreed with apply and subsequent refreshes rewrote nothing. Deterministic QA resolved 880 WikiLinks, 168 existing source links, 4 transclusions, both Canvas files, all generated markers, and both current-Action impact paths with zero failures. Arcadia's full suite passes 957 tests with 6 skipped; core, Discord, and optimized Dashboard builds pass; PPN typecheck passes across 16 workspace projects.
+- **Next:** The operator opens `docs/living-system-v1-demo.md`, performs its two-minute walkthrough, and records whether the ten-second orientation, one-click navigation, primary-journey comprehension, and auditability bar is met. On acceptance, restore the exact `idea-to-managed-build/promote-accepted-plan` pointer required by Decision 0032.
+- **Blockers:** Only operator perceptual acceptance remains. Automated screen capture returned a black frame under the current macOS permission context, so no screenshot is misrepresented as proof. No merge, deployment, publication, production access, credential use, or launch state changed.
+
 ## 2026-08-21 — Integrated free living-system refresh into normal operation
 
 - **Action:** `living-system-v1#integrate-living-system-sync`

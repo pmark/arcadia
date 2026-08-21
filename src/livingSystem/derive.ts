@@ -50,10 +50,18 @@ export function deriveLivingSystemModel(input: LivingSystemDerivationInput): Liv
     .filter((doc): doc is DecisionDoc => doc.type === "decision" && doc.project === input.projectSlug)
     .sort((left, right) => stableCompare(left.id, right.id));
 
-  const errors = discovered.errors.map((error) => ({
+  const discoveryErrors = discovered.errors.map((error) => ({
     field: `${error.relativePath}:${error.field}`,
     message: error.message
   }));
+  // The Project pointer and plans define the episode spine and must parse.
+  // Other managed sources are additive evidence: preserve their parse failures
+  // as visible validation Signals so one legacy Log or reference cannot erase
+  // an otherwise truthful Project presentation.
+  const errors = discoveryErrors.filter((error) =>
+    error.field.startsWith("PROJECT.md:") || error.field.startsWith("docs/plans/")
+  );
+  const sourceGaps = discoveryErrors.filter((error) => !errors.includes(error));
   if (!project) errors.push({ field: "PROJECT.md", message: `No managed Project declares ${JSON.stringify(input.projectSlug)}.` });
   if (errors.length > 0 || !project) {
     errors.sort((left, right) => stableCompare(left.field, right.field) || stableCompare(left.message, right.message));
@@ -88,6 +96,8 @@ export function deriveLivingSystemModel(input: LivingSystemDerivationInput): Liv
     operationalSignals,
     episodes
   });
+  signals.push(...sourceGaps.map((error) => sourceGapSignal(error.field, error.message)));
+  signals.sort((left, right) => stableCompare(left.id, right.id));
   const unlinkedHistory = deriveUnlinkedHistory(logs);
   const modelSources = [
     sourceReceipt("manifest", "docs/living-system.yaml", null, hashFile(path.join(input.repoRoot, "docs/living-system.yaml"))),
@@ -115,6 +125,26 @@ export function deriveLivingSystemModel(input: LivingSystemDerivationInput): Liv
       freshness: aggregateFreshness([...episodes.map((episode) => episode.freshness), ...signals.map((signal) => signal.freshness)])
     },
     errors: []
+  };
+}
+
+function sourceGapSignal(field: string, message: string): LivingSystemSignal {
+  const id = createHash("sha256").update(`${field}\n${message}`).digest("hex").slice(0, 16);
+  return {
+    id: `validation:source-gap:${id}`,
+    kind: "validation",
+    summary: `Managed source could not contribute evidence: ${field}: ${message}`,
+    state: "missing",
+    episodeId: null,
+    sources: [{
+      kind: "validation",
+      reference: field,
+      observedAt: null,
+      contentHash: null,
+      availability: "missing"
+    }],
+    freshness: freshness(null, null, "missing", "The managed source did not satisfy the current parser contract."),
+    uncertainty: "History or status from this source may be incomplete."
   };
 }
 
