@@ -126,11 +126,13 @@ This subtree is a deterministic presentation of Project-owned meaning and Arcadi
 
 ## Reading without plugins
 
-Every page is ordinary Markdown. WikiLinks, headings, lists, transclusions, and source links remain usable in Obsidian Reading View or a plain Markdown reader. The Canvas is a convenience, not the authority.
+Every page is ordinary Markdown. Headings and lists can open as Markmap panes, while WikiLinks, transclusions, and source links remain usable in Obsidian Reading View or a plain Markdown reader. The Canvas split view is a convenience, not the authority.
 
 ## Trust
 
-Status comes from managed Project documents and supplied operational receipts. Provenance and freshness are printed beside claims. Missing, stale, conflicting, unmapped, and unlinked evidence stays visible. Re-run the Arcadia living-system sync to refresh generated files; do not edit generated pages by hand.`;
+The repository's \`docs/living-system.yaml\` owns durable meaning. Managed Project documents, explicit \`Action: plan#action\` Mission Log links, and supplied operational receipts own status and history. Provenance and freshness are printed beside claims; missing, stale, conflicting, unmapped, and unlinked evidence stays visible.
+
+Preview with \`arcadia memory system sync --project ${model.project}\`; add \`--apply\` to write. Generated files are replaceable projections, so rollback means restore or remove only this generated Project subtree and re-run sync. Never edit generated pages by hand. No plugin is required, and routine sync never installs one.`;
 }
 
 function renderHome(model: LivingSystemModel, repoRoot: string): string {

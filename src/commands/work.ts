@@ -19,6 +19,7 @@ import {
   getCodexInvocationForPlan,
   getExecutionPlan,
   getLatestExecutionPlanForWorkItem,
+  getProject,
   getProjectContext,
   getReviewItemForInvocation,
   getWorkItem,
@@ -26,6 +27,7 @@ import {
   listWorkItems,
   updateWorkItem
 } from "../db/repositories.js";
+import { refreshLivingSystemAfterTransition } from "../livingSystem/sync.js";
 import {
   QUEUES,
   QUEUE_LABELS,
@@ -240,7 +242,12 @@ export function runWorkAddSubtaskCommand(
 
 export function runWorkDoneCommand(options: { workspace: string; workId: string }): CommandSuccess<WorkDoneCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const workItem = withDatabase(workspacePath, (db) => completeWorkItem(db, options.workId));
+  const completed = withDatabase(workspacePath, (db) => {
+    const workItem = completeWorkItem(db, options.workId);
+    const project = workItem?.project_id ? getProject(db, workItem.project_id) : null;
+    return { workItem, project };
+  });
+  const { workItem } = completed;
 
   if (!workItem) {
     throw workItemNotFound(options.workId);
@@ -249,8 +256,15 @@ export function runWorkDoneCommand(options: { workspace: string; workId: string 
   return createSuccess({
     command: "work.done",
     workspace: workspacePath,
-    data: { workItem }
+    data: { workItem },
+    warnings: completed.project
+      ? optionalLivingSystemWarning(refreshLivingSystemAfterTransition(workspacePath, completed.project.slug))
+      : []
   });
+}
+
+function optionalLivingSystemWarning(message: string | null): string[] {
+  return message ? [`Action completed, but living-system refresh needs attention: ${message}`] : [];
 }
 
 export function runWorkPlanCommand(options: { workspace: string; workId: string; agentProfile?: string }): CommandSuccess<WorkPlanCommandData> {

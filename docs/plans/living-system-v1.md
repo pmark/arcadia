@@ -5,7 +5,7 @@ slug: living-system-v1
 project: arcadia
 status: active
 milestone: Every managed software Project can reveal what it is, what is changing, how it got here, and what proves that story through one free living-system navigator
-current_action: integrate-living-system-sync
+current_action: dogfood-living-system-v1
 token_impact: xlarge
 token_budget: "Routine parsing, derivation, projection, link validation, and refresh make zero model calls. Use one bounded coding-agent implementation pass per Action, deterministic tests before model-based diagnosis, and operator attention only for final usability judgment and governed external effects."
 recommended_model: gpt-5.6-sol
@@ -94,7 +94,7 @@ actions:
     depends_on: [derive-living-system-state]
   - id: integrate-living-system-sync
     title: Make free living-system refresh part of normal Arcadia operation
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: Add `arcadia memory system sync` for one Project or all eligible Projects with preview-by-default output, explicit apply, JSON receipts, independent failures, and a non-blocking refresh hook after accepted Action transitions when vault sync is enabled.
@@ -120,7 +120,7 @@ actions:
     depends_on: [build-living-system-map-and-timeline]
   - id: dogfood-living-system-v1
     title: Prove the living-system v1 on Arcadia and Private Practice Now
-    status: open
+    status: in_progress
     responsibility: codex
     effort: project
     next_action: Add governed manifests for Arcadia and Private Practice Now, generate both living-system projections, verify the linked capability and history journeys in Obsidian and plain Markdown, record discovered gaps, and complete QA before restoring the displaced pointer.

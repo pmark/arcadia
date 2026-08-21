@@ -8,6 +8,14 @@ updated: 2026-08-21
 
 # Mission Log: Arcadia
 
+## 2026-08-21 — Integrated free living-system refresh into normal operation
+
+- **Action:** `living-system-v1#integrate-living-system-sync`
+- **Did:** Added `arcadia memory system sync` with required one-Project or all-active-Project scope, preview by default, explicit apply, standard JSON receipts, independent skips/refusals, and deterministic vault projection. Added best-effort refresh after explicit Action completion and accepted planning transitions, plus operator and generated guidance for authority, manifests, explicit Log links, Markmap, transclusions, Canvas, freshness, fallback, and rollback.
+- **Result:** Preview performs no writes and agrees with apply; unchanged input does not rewrite bytes; one invalid Project does not stop `--all`; disabled memory stays silent; enabled refresh failures warn without reversing the completed transition. The focused integration tests pass 2/2, the full suite passes 956 tests with 6 skipped, core and Discord builds pass, and the optimized Dashboard build passes. Routine sync makes no model, network, paid-service, or plugin-installation call.
+- **Next:** Dogfood governed Arcadia and Private Practice Now manifests, generate both stories, validate navigation and trust evidence, and prepare the morning demo proof.
+- **Blockers:** Operator perceptual QA remains for the final Action. Foreign-repository edits and plugin installation retain their existing authority boundaries.
+
 ## 2026-08-21 — Made the capability map and Action timeline a real presentation
 
 - **Action:** `living-system-v1#build-living-system-map-and-timeline`

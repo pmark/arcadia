@@ -46,6 +46,7 @@ import {
   type ParsedReviewResponse
 } from "../review/responseParser.js";
 import { localDateStamp } from "../utils/time.js";
+import { refreshLivingSystemAfterTransition } from "../livingSystem/sync.js";
 import { runAskCommand, type AskCommandData } from "./ask.js";
 
 export interface RequiresReviewPacket {
@@ -655,6 +656,12 @@ export function runReviewApproveCommand(
         }) as ReviewItemSummary;
       })();
     });
+    const livingSystemWarning = updated.project_id
+      ? withDatabase(workspacePath, (db) => getProject(db, updated.project_id as string))
+      : null;
+    const refreshWarning = livingSystemWarning
+      ? refreshLivingSystemAfterTransition(workspacePath, livingSystemWarning.slug)
+      : null;
     return createSuccess({
       command: "review.approve",
       workspace: workspacePath,
@@ -664,7 +671,10 @@ export function runReviewApproveCommand(
         approval: null,
         execution: null,
         run: null
-      }
+      },
+      warnings: refreshWarning
+        ? [`Planning Artifact accepted, but living-system refresh needs attention: ${refreshWarning}`]
+        : []
     });
   }
   if (specialized?.resolved_intent === "codex_planning_artifact_validation") {

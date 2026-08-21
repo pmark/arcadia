@@ -114,6 +114,7 @@ import {
   runMilestoneListCommand
 } from "./commands/milestone.js";
 import { renderMemorySyncSuccess, runMemorySyncCommand } from "./commands/memory.js";
+import { renderLivingSystemSyncSuccess, runLivingSystemSyncCommand } from "./livingSystem/sync.js";
 import {
   renderProjectCreateSuccess,
   renderProjectImportSuccess,
@@ -2013,6 +2014,23 @@ export function buildProgram(): Command {
       .option("--dry-run", "Report changes without modifying the vault")
   ).action((options: { workspace: string; dryRun?: boolean; json?: boolean }) =>
     runCliAction("memory.sync", options, () => runMemorySyncCommand(options), renderMemorySyncSuccess)
+  );
+  const memorySystem = memory.command("system").description("Project the Arcadia living-system presentation");
+  addJsonOption(
+    memorySystem
+      .command("sync")
+      .description("Preview or apply deterministic Project maps and Action timelines")
+      .option("--project <project>", "Project slug")
+      .option("--all", "Sync every active Project independently")
+      .option("--apply", "Write the previewed changes to the configured Obsidian vault")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; project?: string; all?: boolean; apply?: boolean; json?: boolean }) =>
+    runCliAction(
+      "memory.system.sync",
+      options,
+      () => runLivingSystemSyncCommand(options),
+      renderLivingSystemSyncSuccess
+    )
   );
 
   const review = program
