@@ -228,7 +228,10 @@ test("ambiguous Pinterest input remains recoverable in Back Burner", async ({ pa
 });
 
 test("Mission Control node navigation uses routes and preserves browser history", async ({ page, arcadia }) => {
-  await page.goto(arcadia.url);
+  // Addressed directly rather than through `/`. This test is about Mission
+  // Control's own routing, and coupling it to whatever the root redirects to
+  // made it fail for a reason that had nothing to do with what it checks.
+  await page.goto(`${arcadia.url}/mission-control`);
 
   await page.getByRole("heading", { name: "Towers" }).locator("..").getByRole("button", { name: /^Projects / }).click();
   await expect(page).toHaveURL(/\/mission-control\/tower%3Aprojects$/);
@@ -241,6 +244,16 @@ test("Mission Control node navigation uses routes and preserves browser history"
 
   await page.getByRole("link", { name: "← Back" }).click();
   await expect(page).toHaveURL(/\/mission-control$/);
+});
+
+test("the root lands on Now", async ({ page, arcadia }) => {
+  await page.goto(arcadia.url);
+
+  await expect(page).toHaveURL(/\/now$/);
+  // A fresh workspace has no NORTH_STAR.md, so this is the undeclared-target
+  // state — which still has to render a single instruction rather than an
+  // error. "Do this now" is the one heading present in both states.
+  await expect(page.getByText("Do this now")).toBeVisible({ timeout: 30_000 });
 });
 
 test("exact status-report request uses Autonomous deterministic execution", async ({ page, arcadia }) => {
