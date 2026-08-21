@@ -88,6 +88,8 @@ export interface LivingSystemEpisode {
   milestone: string | null;
   title: string;
   status: "open" | "in_progress" | "done" | "blocked";
+  /** Latest explicit linked Log date, or null when history supplies no date. */
+  occurredOn: string | null;
   why: string | null;
   changed: string | null;
   nextAction: string | null;
@@ -114,6 +116,7 @@ export interface LivingSystemUnlinkedHistory {
   id: string;
   date: string;
   title: string;
+  summary: string;
   source: LivingSystemSourceReceipt;
 }
 
@@ -125,6 +128,7 @@ export interface LivingSystemModel {
   version: LivingSystemVersion;
   project: string;
   purpose: string;
+  currentEpisodeId: string | null;
   topics: LivingSystemTopic[];
   relationships: LivingSystemRelationship[];
   views: LivingSystemView[];
@@ -134,6 +138,35 @@ export interface LivingSystemModel {
   sources: LivingSystemSourceReceipt[];
   freshness: LivingSystemFreshnessReceipt;
 }
+
+export interface LivingSystemActionEvidence {
+  /** `plan-slug#action-id`. */
+  action: string;
+  changedPaths: string[];
+  source: LivingSystemSourceReceipt;
+}
+
+export interface LivingSystemOperationalSignal {
+  id: string;
+  kind: Exclude<LivingSystemSignal["kind"], "current_pointer" | "decision">;
+  summary: string;
+  state: string;
+  episodeId: string | null;
+  source: LivingSystemSourceReceipt;
+  freshness: LivingSystemFreshnessReceipt;
+  uncertainty: string | null;
+}
+
+export interface LivingSystemDerivationInput {
+  repoRoot: string;
+  projectSlug: string;
+  actionEvidence?: LivingSystemActionEvidence[];
+  operationalSignals?: LivingSystemOperationalSignal[];
+}
+
+export type LivingSystemDerivationResult =
+  | { model: LivingSystemModel; errors: [] }
+  | { model: null; errors: LivingSystemValidationError[] };
 
 export interface LivingSystemValidationError {
   field: string;

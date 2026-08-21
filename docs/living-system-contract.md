@@ -127,8 +127,27 @@ from the manifest:
 - `LivingSystemUnlinkedHistory` preserves Log entries that carry no explicit
   Action reference.
 
-These are normalized target types, not writable manifest fields. The next
-derivation layer populates them from managed documents and operational records.
+These are normalized target types, not writable manifest fields.
+
+`deriveLivingSystemModel` in `src/livingSystem/derive.ts` populates them from
+the Project pointer, plans and Actions, explicitly linked Log entries,
+Decisions, and optional typed receipts for Runs, Artifacts, pull requests, Git,
+and validation. Callers must supply operational observation times, freshness,
+availability, and changed-file evidence explicitly; the derivation layer never
+reads the clock, guesses a timestamp, or invents a relationship.
+
+Action `references` that overlap Topic sources produce `declared` impact.
+Explicit changed paths produce `observed` impact. A declared Relationship may
+carry either kind forward exactly one hop as `downstream`; an Action unsupported
+by those rules is `unmapped`. Unknown Action references, duplicate Signal ids,
+and unsafe changed paths fail with field-level errors instead of disappearing.
+
+Completed Actions without a linked Log result or supplied operational proof
+emit a missing-evidence Signal. Supplied stale, missing, or conflicting receipts
+retain those states and uncertainty verbatim. Unlinked Log entries remain in
+`unlinkedHistory`. Arrays and receipts have stable order, file hashes are
+content-derived, and no current time enters the model, so unchanged inputs
+serialize byte-identically with `serializeLivingSystem`.
 
 ## Explicit Action links in the Log
 

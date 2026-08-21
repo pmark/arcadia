@@ -207,6 +207,19 @@ fixtures, every required refusal class, 947 passing tests, and clean core,
 Discord, and Dashboard builds prove the contract. The pointer moves to
 `derive-living-system-state` to populate that target from authoritative records.
 
+`derive-living-system-state` is now `done`. The zero-model assembler projects
+managed pointers, plans, Actions, explicit Log links, Decisions, and supplied
+Run, Artifact, pull-request, Git, and validation receipts into byte-stable
+Episodes and Signals. Action references, changed files, and one-hop declared
+Relationships produce visibly distinct declared, observed, and downstream
+impact; unsupported work stays unmapped. Missing proof, stale receipts,
+contradictions, and unlinked history remain explicit, and malformed operational
+references fail at named fields. Arcadia and Private Practice Now fixtures plus
+950 passing tests and clean core, Discord, and Dashboard builds prove the
+derivation boundary. The pointer moves to
+`build-living-system-map-and-timeline` so this truthful model becomes the
+morning demo's navigable presentation.
+
 ## Links
 
 - `docs/COMMANDS.md` — the operator-facing command guide

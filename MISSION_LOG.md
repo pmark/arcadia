@@ -8,6 +8,14 @@ updated: 2026-08-21
 
 # Mission Log: Arcadia
 
+## 2026-08-21 — Derived trustworthy living-system state without guessing
+
+- **Action:** `living-system-v1#derive-living-system-state`
+- **Did:** Added a deterministic assembler over the Project pointer, managed plans and Actions, explicit Log links, Decisions, and typed operational receipts for Runs, Artifacts, pull requests, Git, and validation. Implemented declared, observed, one-hop downstream, and unmapped Topic impact plus explicit missing, stale, conflicting, and unlinked-history states.
+- **Result:** Arcadia and Private Practice Now fixtures prove current and prior Actions, continuation, linked and unlinked history, every impact provenance class, absent evidence, stale evidence, and contradictory evidence without a clock, network call, model call, or inferred history. Unknown Actions, unsafe changed paths, and duplicate Signals fail legibly. Focused tests pass 20/20; the full suite passes 950 tests with 6 skipped; core, Discord, and optimized Dashboard builds pass.
+- **Next:** Project the normalized model into equal, cross-linked capability-map and Action-timeline views with a useful Home, Topic and episode notes, Current Work, and side-by-side Canvas.
+- **Blockers:** None. Merge, plugin installation, and foreign-repository edits retain their existing approval boundaries.
+
 ## 2026-08-21 — Defined and proved the living-system v1 contract
 
 - **Action:** `living-system-v1#define-living-system-v1-contract`

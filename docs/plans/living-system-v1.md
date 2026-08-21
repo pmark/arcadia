@@ -5,7 +5,7 @@ slug: living-system-v1
 project: arcadia
 status: active
 milestone: Every managed software Project can reveal what it is, what is changing, how it got here, and what proves that story through one free living-system navigator
-current_action: derive-living-system-state
+current_action: build-living-system-map-and-timeline
 token_impact: xlarge
 token_budget: "Routine parsing, derivation, projection, link validation, and refresh make zero model calls. Use one bounded coding-agent implementation pass per Action, deterministic tests before model-based diagnosis, and operator attention only for final usability judgment and governed external effects."
 recommended_model: gpt-5.6-sol
@@ -40,7 +40,7 @@ actions:
     depends_on: []
   - id: derive-living-system-state
     title: Derive trustworthy Episodes, Signals, and Topic impact from Arcadia truth
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: Assemble the normalized living-system model from the Project manifest, managed plans and pointer, Action-linked Mission Log entries, Decisions, Runs, Artifacts, pull-request and Git receipts, and validation evidence without guessing missing history.
@@ -62,6 +62,8 @@ actions:
       - src/docs/dispatch.ts
       - src/db/repositories.ts
       - src/domain/types.ts
+      - src/livingSystem/derive.ts
+      - tests/living-system-derive.test.ts
     depends_on: [define-living-system-v1-contract]
   - id: build-living-system-map-and-timeline
     title: Project equal capability-map and Action-timeline views into Obsidian
