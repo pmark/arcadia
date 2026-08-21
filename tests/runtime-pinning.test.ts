@@ -5,7 +5,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildWorkerPlist } from "../src/commands/worker.js";
 import { buildIngressServicePlist } from "../src/commands/ingressService.js";
 import { runIngressRecoverCommand } from "../src/commands/ingress.js";
-import { auditArcadiaLaunchAgents, launchAgentOwner, launchAgentRemedy } from "../src/runtime/launchAgents.js";
+import {
+  auditArcadiaLaunchAgents,
+  evaluateLaunchAgent,
+  launchAgentOwner,
+  launchAgentRemedy
+} from "../src/runtime/launchAgents.js";
 import { miseLeadingPath, miseNodeArgv } from "../src/runtime/mise.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -66,7 +71,42 @@ describe("generated launch agents run under the pinned runtime", () => {
     expect(plist).toContain("<string>exec</string>");
   });
 
-  it("reports an installed agent that bypasses mise, and one that does not", () => {
+  // These exercise the rules directly rather than through the filesystem.
+  // Reading a plist needs `plutil`, which exists only on macOS -- and CI runs on
+  // Linux, so routing every case through a real file would leave the rules
+  // untested on every run that actually gates merges.
+  const verdictOf = (argv: string[], pathValue: string | null) =>
+    evaluateLaunchAgent("com.arcadia.example", "/tmp/example.plist", { argv, pathValue });
+
+  it("accepts an agent whose argv[0] is mise", () => {
+    const audit = verdictOf(["/opt/homebrew/bin/mise", "-C", "/repo", "exec", "--", "node"], "/opt/homebrew/bin:/usr/bin");
+    expect(audit.verdict).toBe("pinned");
+  });
+
+  it("rejects an agent that runs a Node path directly", () => {
+    const audit = verdictOf(["/Users/x/.nvm/versions/node/v22.23.1/bin/node", "/repo/src/cli.ts"], "/Users/x/.nvm/versions/node/v22.23.1/bin");
+    expect(audit.verdict).toBe("unpinned");
+    expect(audit.detail).toContain("instead of through mise");
+  });
+
+  it("rejects the tsx bin shim, which re-execs whatever node its shebang finds", () => {
+    const audit = verdictOf(["/repo/node_modules/.bin/tsx", "/repo/src/cli.ts"], "/opt/homebrew/Cellar/node/25.6.1/bin");
+    expect(audit.verdict).toBe("unpinned");
+  });
+
+  it("flags an agent that calls mise but leads PATH with another runtime", () => {
+    // mise exec -- node still resolves `node` through PATH.
+    const audit = verdictOf(["/opt/homebrew/bin/mise", "exec", "--", "node"], "/opt/homebrew/Cellar/node/25.6.1/bin:/opt/homebrew/bin");
+    expect(audit.verdict).toBe("unpinned");
+    expect(audit.detail).toContain("shadows the runtime mise would select");
+  });
+
+  it("treats an unparseable or empty plist as unreadable rather than pinned", () => {
+    expect(evaluateLaunchAgent("com.arcadia.x", "/tmp/x.plist", null).verdict).toBe("unreadable");
+    expect(verdictOf([], "/usr/bin").verdict).toBe("unreadable");
+  });
+
+  it.runIf(process.platform === "darwin")("audits real plists on disk, and ignores non-Arcadia agents", () => {
     const home = temporary("arcadia-agents-");
     const agents = path.join(home, "Library", "LaunchAgents");
     mkdirSync(agents, { recursive: true });
@@ -85,7 +125,6 @@ describe("generated launch agents run under the pinned runtime", () => {
       plist("com.arcadia.good", "/opt/homebrew/bin/mise", "/opt/homebrew/bin:/usr/bin"), "utf8");
     writeFileSync(path.join(agents, "com.arcadia.bad.plist"),
       plist("com.arcadia.bad", "/Users/x/.nvm/versions/node/v22.23.1/bin/node", "/Users/x/.nvm/versions/node/v22.23.1/bin"), "utf8");
-    // A non-Arcadia agent must be left alone entirely.
     writeFileSync(path.join(agents, "com.example.other.plist"),
       plist("com.example.other", "/usr/bin/true", "/usr/bin"), "utf8");
 
@@ -93,26 +132,6 @@ describe("generated launch agents run under the pinned runtime", () => {
 
     expect(result.agents.map((agent) => agent.label)).toEqual(["com.arcadia.bad", "com.arcadia.good"]);
     expect(result.counts).toMatchObject({ pinned: 1, unpinned: 1 });
-    expect(result.agents.find((agent) => agent.label === "com.arcadia.bad")?.detail).toContain("instead of through mise");
-  });
-
-  it("flags an agent that calls mise but leads PATH with another runtime", () => {
-    const home = temporary("arcadia-agents-shadow-");
-    const agents = path.join(home, "Library", "LaunchAgents");
-    mkdirSync(agents, { recursive: true });
-    writeFileSync(path.join(agents, "com.arcadia.shadowed.plist"), `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.arcadia.shadowed</string>
-  <key>ProgramArguments</key><array><string>/opt/homebrew/bin/mise</string></array>
-  <key>EnvironmentVariables</key><dict><key>PATH</key><string>/opt/homebrew/Cellar/node/25.6.1/bin:/opt/homebrew/bin</string></dict>
-</dict>
-</plist>`, "utf8");
-
-    const result = auditArcadiaLaunchAgents(home);
-    expect(result.counts.unpinned).toBe(1);
-    expect(result.agents[0]?.detail).toContain("shadows the runtime mise would select");
   });
 
   it("names a remedy that actually replaces the agent, not one that duplicates it", () => {

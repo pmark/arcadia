@@ -94,58 +94,45 @@ export function auditArcadiaLaunchAgents(home = homedir()): LaunchAgentAuditResu
   };
 }
 
-function auditOne(plistPath: string): LaunchAgentAudit {
-  const label = path.basename(plistPath).replace(/\.plist$/, "");
+/**
+ * What a plist says about how it launches: argv, and the PATH it exports.
+ *
+ * Kept separate from the verdict so the rules below can be tested on any
+ * platform. Reading the file needs `plutil`, which exists only on macOS -- and
+ * launchd only exists there either, so that is the right place for the boundary
+ * rather than a reason to leave the rules untested on CI.
+ */
+export interface LaunchAgentInvocation {
+  argv: string[];
+  pathValue: string | null;
+}
 
-  let parsed: { ProgramArguments?: unknown; EnvironmentVariables?: unknown };
-  try {
-    // plutil is the only parser guaranteed present on macOS, and plists here
-    // may be binary as well as XML.
-    parsed = JSON.parse(execFileSync("plutil", ["-convert", "json", "-o", "-", plistPath], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
-    })) as { ProgramArguments?: unknown; EnvironmentVariables?: unknown };
-  } catch (error) {
-    return {
-      label,
-      plistPath,
-      owner: launchAgentOwner(label),
-      remedy: launchAgentRemedy(label),
-      verdict: "unreadable",
-      program: null,
-      pathHead: null,
-      detail: `Could not be parsed: ${(error as Error).message}`
-    };
+export function evaluateLaunchAgent(
+  label: string,
+  plistPath: string,
+  invocation: LaunchAgentInvocation | null
+): LaunchAgentAudit {
+  const base = {
+    label,
+    plistPath,
+    owner: launchAgentOwner(label),
+    remedy: launchAgentRemedy(label)
+  };
+
+  if (invocation === null) {
+    return { ...base, verdict: "unreadable", program: null, pathHead: null, detail: "Could not be parsed." };
   }
 
-  const argv = Array.isArray(parsed.ProgramArguments)
-    ? parsed.ProgramArguments.filter((value): value is string => typeof value === "string")
-    : [];
-  const program = argv[0] ?? null;
-
-  const environment = isRecord(parsed.EnvironmentVariables) ? parsed.EnvironmentVariables : {};
-  const rawPath = typeof environment["PATH"] === "string" ? environment["PATH"] : null;
-  const pathHead = rawPath ? (rawPath.split(":")[0] ?? null) : null;
+  const program = invocation.argv[0] ?? null;
+  const pathHead = invocation.pathValue ? (invocation.pathValue.split(":")[0] ?? null) : null;
 
   if (program === null) {
-    return {
-      label,
-      plistPath,
-      owner: launchAgentOwner(label),
-      remedy: launchAgentRemedy(label),
-      verdict: "unreadable",
-      program,
-      pathHead,
-      detail: "No ProgramArguments."
-    };
+    return { ...base, verdict: "unreadable", program, pathHead, detail: "No ProgramArguments." };
   }
 
   if (!isMiseExecutable(program)) {
     return {
-      label,
-      plistPath,
-      owner: launchAgentOwner(label),
-      remedy: launchAgentRemedy(label),
+      ...base,
       verdict: "unpinned",
       program,
       pathHead,
@@ -157,10 +144,7 @@ function auditOne(plistPath: string): LaunchAgentAudit {
   // PATH. A PATH led by some other runtime's bin directory defeats the point.
   if (pathHead !== null && looksLikeNodeBin(pathHead)) {
     return {
-      label,
-      plistPath,
-      owner: launchAgentOwner(label),
-      remedy: launchAgentRemedy(label),
+      ...base,
       verdict: "unpinned",
       program,
       pathHead,
@@ -168,16 +152,39 @@ function auditOne(plistPath: string): LaunchAgentAudit {
     };
   }
 
+  return { ...base, verdict: "pinned", program, pathHead, detail: "Runs through mise, so it follows mise.toml." };
+}
+
+/**
+ * Read one plist via `plutil`, the only parser guaranteed present on macOS and
+ * the only one that handles binary plists as well as XML. Returns null when the
+ * file cannot be read at all, including on a platform without `plutil`.
+ */
+export function readLaunchAgentInvocation(plistPath: string): LaunchAgentInvocation | null {
+  let parsed: { ProgramArguments?: unknown; EnvironmentVariables?: unknown };
+  try {
+    parsed = JSON.parse(execFileSync("plutil", ["-convert", "json", "-o", "-", plistPath], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    })) as { ProgramArguments?: unknown; EnvironmentVariables?: unknown };
+  } catch {
+    return null;
+  }
+
+  const argv = Array.isArray(parsed.ProgramArguments)
+    ? parsed.ProgramArguments.filter((value): value is string => typeof value === "string")
+    : [];
+  const environment = isRecord(parsed.EnvironmentVariables) ? parsed.EnvironmentVariables : {};
+
   return {
-    label,
-    plistPath,
-    owner: launchAgentOwner(label),
-    remedy: launchAgentRemedy(label),
-    verdict: "pinned",
-    program,
-    pathHead,
-    detail: "Runs through mise, so it follows mise.toml."
+    argv,
+    pathValue: typeof environment["PATH"] === "string" ? environment["PATH"] : null
   };
+}
+
+function auditOne(plistPath: string): LaunchAgentAudit {
+  const label = path.basename(plistPath).replace(/\.plist$/, "");
+  return evaluateLaunchAgent(label, plistPath, readLaunchAgentInvocation(plistPath));
 }
 
 function isMiseExecutable(program: string): boolean {
