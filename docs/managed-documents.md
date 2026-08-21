@@ -79,6 +79,17 @@ Exactly one Action may be current across the whole project. A second plan
 declaring `current_action` is reported as a competing objective rather than
 silently losing.
 
+### Where the chain comes from in a new repository
+
+`arcadia project setup-context <project>` seeds both documents when a repository
+has neither, from the Actions Arcadia already holds for that Project. It never
+overwrites either one, and a repository no Project claims is adopted without a
+`PROJECT.md` rather than given a guessed slug. The seeded plan is a starting
+point, not a managed region: nothing regenerates it, so rewrite it as soon as
+the work has a shape.
+
+Everything below is what you edit afterwards.
+
 ### Where things live
 
 | Path | What |

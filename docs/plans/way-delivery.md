@@ -8,8 +8,49 @@ milestone: Every adopting project receives Way changes and can ask for Way capab
 token_impact: medium
 token_budget: "Regeneration, drift comparison, and pull-request mechanics are deterministic and belong in code, not a model. Reserve model use for one implementation session per Action and a single review pass. A propagation run that calls a model per repository is the failure mode this budget exists to prevent."
 recommended_model: claude-sonnet-5
-updated: 2026-08-17
+updated: 2026-08-20
 actions:
+  - id: seed-the-work-pointer-when-a-repository-is-adopted
+    title: Write PROJECT.md and a first plan when a repository is adopted
+    status: done
+    responsibility: codex
+    effort: session
+    next_action: Seed the work pointer chain from the Project record `setup-context` already resolves, and offer the same adoption from the Project page where the refusal is read.
+    expected_artifact: An adopted repository that resolves to a real Action or to one operator question, instead of to "No PROJECT.md declaring slug ... was found"
+    clarification: clarified
+    confidence: high
+    source: Operator adopted martianrover-com2, ran `project setup-context`, and the Project page still refused for a missing PROJECT.md, 2026-08-20.
+    acceptance_criteria:
+      - Adopting a registered repository writes a PROJECT.md and a first plan, and `arcadia next` resolves an Action from them.
+      - Neither document is ever overwritten when the repository already has one.
+      - A repository no Project claims is adopted without a PROJECT.md, and says why.
+      - The Project page offers the same adoption where the refusal is displayed.
+    depends_on: []
+    references:
+      - src/projects/controlDocuments.ts
+      - src/projects/contextSetup.ts
+      - apps/dashboard/app/projects/[id]/page.tsx
+    result: >-
+      Adoption wrote every governance file and stopped one document short of
+      working: `setup-context` never wrote a `PROJECT.md`, so every adopted
+      repository resolved to the same refusal with no command that would
+      produce one -- while the Actions it needed sat in the database the whole
+      time. `seedControlDocuments` writes that translation. The Actions are
+      copied faithfully; the one adjustment is on the Action being pointed at,
+      which the schema requires to declare `clarified` with acceptance criteria
+      or `question_open` with a question. Rather than invent criteria it
+      derives at most one, and only from `expected_artifact` -- something that
+      either exists or does not -- and where even that is absent the Action is
+      emitted as the open question it already was. The pointer is set only when
+      one Action is unambiguous (a sole `in_progress`, else a sole startable
+      one); anything more ambiguous is left unset, and the resulting blocker
+      names every candidate id. `--repo` now resolves the Project registered at
+      that path, so it and a project identifier no longer adopt the same
+      repository differently, and it still works with no workspace at all.
+      Verified live on martianrover-com2: the Project page went from "No
+      PROJECT.md declaring slug martian-rover was found" to "Ready to prepare --
+      Implement the next code change" without leaving the page. 8 new tests in
+      tests/project-control-documents.test.ts; full suite 883 passing.
   - id: open-way-sync-pull-requests
     title: Propagate Way changes to every project as a pull request, never as a merge
     status: open

@@ -8,6 +8,38 @@ updated: 2026-08-20
 
 # Mission Log: Arcadia
 
+## 2026-08-20 — Adoption stopped one document short of working
+
+- **Did:** The operator registered a repository path for Martian Rover, ran
+  `arcadia project setup-context`, and the Project page still refused: "No
+  PROJECT.md declaring slug martian-rover was found." Traced it — setup wrote
+  every governance file (`.arcadia/*`, `AGENTS.md`, `CONSTITUTION.md`,
+  `CLAUDE.md`, the continuation protocol) and never a `PROJECT.md`. The only
+  code that wrote one was `project create`, into the workspace, not into a
+  repository. So every adopted repository resolved to the same refusal, with no
+  command that would produce the document it named — while the four Actions it
+  needed sat in the database the whole time, untranslated.
+- **Result:** `seedControlDocuments` writes that translation: a `PROJECT.md`
+  and a first plan carrying the Project's real Actions, milestone, and
+  responsibilities. Nothing is invented. The one adjustment is on the Action
+  the pointer names, which the schema requires to be `clarified` with
+  acceptance criteria or `question_open` with a question — it derives at most
+  one criterion, and only from `expected_artifact`, something that either
+  exists or does not; where even that is absent the Action is emitted as the
+  open question it already was, so the page shows one operator question rather
+  than criteria nobody agreed to. The pointer is set only when one Action is
+  unambiguous; otherwise it is left unset and the blocker names every candidate
+  id. Neither document is ever overwritten. `--repo` now resolves the Project
+  registered at that path — it and a project identifier used to adopt the same
+  repository and produce different results — and still works with no workspace.
+  The Project page offers the same adoption where the refusal is read. Verified
+  live: martianrover-com2 went from the refusal to "Ready to prepare — Implement
+  the next code change" without leaving the page. 8 new tests; full suite 883
+  passing, root and dashboard `tsc --noEmit` clean.
+- **Next:** `make-test-action-state-aware` on `demo-first-delivery` — unchanged;
+  this was operator-directed work outside the active plan and recorded on
+  `way-delivery`.
+
 ## 2026-08-20 — Closed the demo hero Action, and labelled the demo that only works on this Mac
 
 - **Did:** `arcadia go` dispatched `build-demo-hero-vertical-slice`, but the

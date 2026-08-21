@@ -119,6 +119,7 @@ export interface ProjectSetupContextCommandData {
   repoPath: string;
   project: SetupProjectContextResult["project"];
   files: SetupProjectContextResult["files"];
+  controlDocuments: SetupProjectContextResult["controlDocuments"];
   context: SetupProjectContextResult["context"];
 }
 
@@ -129,6 +130,7 @@ export interface ProjectSetupContextAllResult {
   status: "updated" | "skipped" | "failed";
   detail: string;
   files: SetupProjectContextResult["files"] | null;
+  controlDocuments: SetupProjectContextResult["controlDocuments"] | null;
 }
 
 export interface ProjectSetupContextAllCommandData {
@@ -384,26 +386,34 @@ export function runProjectSetupContextCommand(options: {
     throw validationError("Project identifier or --repo is required.");
   }
 
-  let workspacePath: string | undefined;
-  const setup = options.repoPath
-    ? setupArcadiaProjectContext({ repoPath: options.repoPath })
-    : (() => {
-        workspacePath = resolveReadyWorkspace(options.workspace).workspacePath;
-        return withDatabase(workspacePath, (db) =>
-          setupArcadiaProjectContext({ db, projectIdentifier: options.projectId })
-        );
-      })();
-  if (options.repoPath && options.workspace) {
-    workspacePath = resolveReadyWorkspace(options.workspace).workspacePath;
-  }
+  // A bare `--repo` still opens the workspace when there is one, because
+  // seeding the work pointer needs the Project this path is registered as, and
+  // setup used to skip that lookup whenever a path was supplied -- which is how
+  // `--repo` and a project id could adopt the same repository and produce
+  // different results. It stays optional there: adopting a repository from
+  // outside a workspace is a real use, and it writes the governance files
+  // exactly as before, seeding nothing.
+  const workspacePath = options.repoPath
+    ? readyWorkspaceOrNull(options.workspace)
+    : resolveReadyWorkspace(options.workspace).workspacePath;
+  const setup = workspacePath
+    ? withDatabase(workspacePath, (db) =>
+        setupArcadiaProjectContext({
+          db,
+          projectIdentifier: options.repoPath ? undefined : options.projectId,
+          repoPath: options.repoPath
+        })
+      )
+    : setupArcadiaProjectContext({ repoPath: options.repoPath });
 
   return createSuccess({
     command: "project.setup-context",
-    workspace: workspacePath,
+    workspace: workspacePath ?? undefined,
     data: {
       repoPath: setup.repoPath,
       project: setup.project,
       files: setup.files,
+      controlDocuments: setup.controlDocuments,
       context: setup.context
     },
     // A null entry means setup deliberately did not write that file -- an
@@ -427,18 +437,24 @@ export function runProjectSetupContextAllCommand(options: {
           repoPath: null,
           status: "skipped",
           detail: "No repository path is configured.",
-          files: null
+          files: null,
+          controlDocuments: null
         };
       }
       try {
-        const setup = setupArcadiaProjectContext({ repoPath: project.repositoryPath });
+        // By id, not by path: this loop already knows which Project each
+        // repository is, and passing the path alone would make setup rediscover
+        // it -- or fail to, and skip seeding the work pointer for the whole
+        // portfolio at once.
+        const setup = setupArcadiaProjectContext({ db, projectIdentifier: project.id });
         return {
           projectId: project.id,
           projectName: project.name,
           repoPath: setup.repoPath,
           status: "updated",
           detail: "Context refreshed.",
-          files: setup.files
+          files: setup.files,
+          controlDocuments: setup.controlDocuments
         };
       } catch (error) {
         return {
@@ -447,7 +463,8 @@ export function runProjectSetupContextAllCommand(options: {
           repoPath: project.repositoryPath,
           status: "failed",
           detail: error instanceof Error ? error.message : String(error),
-          files: null
+          files: null,
+          controlDocuments: null
         };
       }
     });
@@ -570,7 +587,26 @@ export function renderProjectSetupContextSuccess(response: CommandSuccess<Projec
     // the only one who can decide what happens to their own agent instructions.
     response.data.files.claude
       ? `CLAUDE.md: ${response.data.files.claude}`
-      : "CLAUDE.md: Left unchanged — it holds project-authored content. Move any shared rules into AGENTS.md, then reduce CLAUDE.md to `@AGENTS.md`."
+      : "CLAUDE.md: Left unchanged — it holds project-authored content. Move any shared rules into AGENTS.md, then reduce CLAUDE.md to `@AGENTS.md`.",
+    ...renderControlDocuments(response.data.controlDocuments)
+  ];
+}
+
+/**
+ * The work pointer half of adoption, said out loud.
+ *
+ * A run that writes every governance file and no `PROJECT.md` looks like a
+ * success and leaves the repository undispatchable, which is the defect this
+ * whole path exists to close. Reporting both what was written and what was
+ * deliberately left alone is what keeps that from being silent again.
+ */
+function renderControlDocuments(controlDocuments: SetupProjectContextResult["controlDocuments"]): string[] {
+  return [
+    controlDocuments.projectDocument
+      ? `PROJECT.md: ${controlDocuments.projectDocument}`
+      : "PROJECT.md: Not written.",
+    controlDocuments.plan ? `Plan: ${controlDocuments.plan}` : "Plan: Not written.",
+    ...controlDocuments.skipped.map((reason) => `  ${reason}`)
   ];
 }
 
@@ -587,6 +623,9 @@ export function renderProjectSetupContextAllSuccess(response: CommandSuccess<Pro
   for (const result of results) {
     if (result.status === "updated") {
       lines.push(`- ${result.projectName}: updated (${result.repoPath})`);
+      for (const line of result.controlDocuments ? renderControlDocuments(result.controlDocuments) : []) {
+        lines.push(`  ${line}`);
+      }
     } else if (result.status === "skipped") {
       lines.push(`- ${result.projectName}: skipped — ${result.detail}`);
     } else {
@@ -594,6 +633,21 @@ export function renderProjectSetupContextAllSuccess(response: CommandSuccess<Pro
     }
   }
   return lines;
+}
+
+/**
+ * The workspace, when one is both configured and initialized.
+ *
+ * Adoption by repository path must not require a workspace, so a missing or
+ * unready one is an absence rather than a failure here. Every other caller
+ * still uses `resolveReadyWorkspace`, which refuses.
+ */
+function readyWorkspaceOrNull(workspace?: string): string | null {
+  try {
+    return resolveReadyWorkspace(workspace).workspacePath;
+  } catch {
+    return null;
+  }
 }
 
 function resolveProjectFilesystemPath(workspacePath: string, slug: string, providedPath?: string): string {

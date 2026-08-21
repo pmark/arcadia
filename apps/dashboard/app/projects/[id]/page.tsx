@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { AlertTriangle, ArrowLeft, Play, Save } from "lucide-react";
+import { AlertTriangle, ArrowLeft, FileText, Play, Save } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { DashboardChrome } from "../../../components/chrome";
 import {
@@ -40,6 +40,7 @@ export default function ProjectDetailsPage() {
   const [workMessage, setWorkMessage] = useState<string | null>(null);
   const [workError, setWorkError] = useState<string | null>(null);
   const [reviewPending, setReviewPending] = useState<string | null>(null);
+  const [adopting, setAdopting] = useState(false);
 
   useEffect(() => {
     if (project) {
@@ -151,6 +152,32 @@ export default function ProjectDetailsPage() {
       setWorkError(error instanceof Error ? error.message : String(error));
     } finally {
       setWorkPending(false);
+    }
+  }
+
+  /**
+   * Write the Arcadia control documents this repository is missing.
+   *
+   * Offered next to the blockers rather than in the setup form, because the
+   * blockers are where the absence is actually read: a repository with no
+   * PROJECT.md reports a refusal here and nowhere else.
+   */
+  async function adoptRepository() {
+    setAdopting(true);
+    setWorkMessage(null);
+    setWorkError(null);
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/setup-context`, { method: "POST" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(errorMessageFromBody(body, "Arcadia could not adopt this repository."));
+      const skipped: string[] = Array.isArray(body.skipped) ? body.skipped : [];
+      setWorkMessage([typeof body.message === "string" ? body.message : "Repository adopted.", ...skipped].join(" "));
+      await loadContinuation();
+      await refresh();
+    } catch (error) {
+      setWorkError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setAdopting(false);
     }
   }
 
@@ -326,6 +353,24 @@ export default function ProjectDetailsPage() {
                     <div className="mt-2">Next: {blocker.remedy}</div>
                   </div>
                 ))}
+                {continuation.blockers.some((blocker) => blocker.relativePath === "PROJECT.md") ? (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => void adoptRepository()}
+                      disabled={adopting || !project?.repoPath}
+                      className="inline-flex min-h-11 items-center gap-2 rounded-md border border-steel/30 bg-steel/10 px-4 text-sm font-semibold text-steel transition hover:border-steel disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <FileText className="h-4 w-4" aria-hidden="true" />
+                      {adopting ? "Writing..." : "Write the missing documents"}
+                    </button>
+                    <span className="text-xs text-muted">
+                      {project?.repoPath
+                        ? "Seeds PROJECT.md and a first plan from this Project's own record. Never overwrites a document you wrote."
+                        : "Set this Project's repository path first."}
+                    </span>
+                  </div>
+                ) : null}
               </div>
             ) : null}
             {!contextLoading && continuation?.context === null && continuation?.blockers.length === 0 ? <EmptyState text="No current Action could be resolved from the project documents." /> : null}
