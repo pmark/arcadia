@@ -1,0 +1,4 @@
+Rebuster needs a Pinterest publishing path before the next batch of rebus shorts.
+Each short is a single image plus a caption, so the board layout matters more than
+the video pipeline. Figure out whether the existing scheduler can target Pinterest
+or if that is a separate integration.

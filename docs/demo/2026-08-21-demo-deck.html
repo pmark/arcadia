@@ -1,0 +1,574 @@
+<title>Arcadia Demo Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap">
+
+<style>
+  /* Arcadia's own tokens (apps/dashboard/tailwind.config.ts): canvas, ink,
+     muted, line, panel, moss, clay, gold, steel. Hues carry meaning here:
+     steel = you type it, moss = read-only and safe, clay = it writes state,
+     gold = why it lands. */
+  :root {
+    --canvas: #f5f7f8;
+    --panel: #ffffff;
+    --panel-sunk: #eef1f4;
+    --ink: #1f2328;
+    --muted: #69727d;
+    --line: #d6dde3;
+    --moss: #2f6f55;
+    --moss-bg: #eaf2ee;
+    --clay: #a7472c;
+    --clay-bg: #f9edea;
+    --gold: #8a5a12;
+    --gold-bg: #faf3e6;
+    --steel: #3264a8;
+    --steel-bg: #ecf1f8;
+    --shadow-lift: 0 2px 10px rgb(31 35 40 / 0.07);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --canvas: #12161a; --panel: #1a1f25; --panel-sunk: #14181d;
+      --ink: #e6eaee; --muted: #97a1ad; --line: #2c343d;
+      --moss: #6cbb96; --moss-bg: #16261f;
+      --clay: #e0876a; --clay-bg: #291a15;
+      --gold: #d9a94e; --gold-bg: #262013;
+      --steel: #7aa8e6; --steel-bg: #16202e;
+      --shadow-lift: 0 2px 12px rgb(0 0 0 / 0.45);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --canvas: #12161a; --panel: #1a1f25; --panel-sunk: #14181d;
+    --ink: #e6eaee; --muted: #97a1ad; --line: #2c343d;
+    --moss: #6cbb96; --moss-bg: #16261f;
+    --clay: #e0876a; --clay-bg: #291a15;
+    --gold: #d9a94e; --gold-bg: #262013;
+    --steel: #7aa8e6; --steel-bg: #16202e;
+    --shadow-lift: 0 2px 12px rgb(0 0 0 / 0.45);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 62rem;
+    margin: 0 auto;
+    padding: 3rem 1.5rem 5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2.5rem;
+  }
+
+  .eyebrow {
+    font-size: 0.75rem; font-weight: 600; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted);
+    display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem;
+  }
+
+  h1 {
+    font-family: Newsreader, ui-serif, Georgia, serif;
+    font-size: clamp(2.25rem, 6vw, 3.5rem);
+    font-weight: 500; line-height: 1.05; letter-spacing: -0.015em;
+    margin: 0; text-wrap: balance;
+  }
+
+  .standfirst {
+    font-family: Newsreader, ui-serif, Georgia, serif;
+    font-size: 1.2rem; line-height: 1.55; color: var(--muted);
+    max-width: 44em; margin: 0;
+  }
+
+  .masthead { display: flex; flex-direction: column; gap: 1rem; }
+  hr.rule { height: 1px; background: var(--line); border: 0; margin: 0; }
+
+  section { display: flex; flex-direction: column; gap: 1.25rem; }
+
+  h2 {
+    font-size: 0.8rem; font-weight: 700; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--muted); margin: 0;
+    padding-bottom: 0.6rem; border-bottom: 2px solid var(--line);
+  }
+
+  p { margin: 0; max-width: 48em; }
+  .note { color: var(--muted); font-size: 0.94rem; }
+
+  code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.88em; background: var(--panel-sunk);
+    border: 1px solid var(--line); border-radius: 3px; padding: 0.05rem 0.3rem;
+  }
+
+  pre {
+    margin: 0; background: var(--steel-bg); border: 1px solid var(--line);
+    border-radius: 4px; padding: 0.7rem 0.9rem; overflow-x: auto;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.85rem; line-height: 1.5; color: var(--ink);
+  }
+
+  /* ---------- cards ---------- */
+
+  .deck { display: flex; flex-direction: column; gap: 1.25rem; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 6px; box-shadow: var(--shadow-lift); overflow: hidden;
+  }
+
+  .card-head {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.85rem;
+    padding: 0.9rem 1.35rem; border-bottom: 1px solid var(--line);
+    background: var(--panel-sunk);
+  }
+
+  .card-id {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.95rem; font-weight: 600; color: var(--steel);
+    border: 1px solid color-mix(in srgb, var(--steel) 40%, transparent);
+    border-radius: 3px; padding: 0 0.45rem; background: var(--steel-bg);
+  }
+
+  .card-name {
+    font-family: Newsreader, ui-serif, Georgia, serif;
+    font-size: 1.4rem; font-weight: 500; margin: 0;
+    flex: 1 1 14rem; line-height: 1.2;
+  }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+  .chip {
+    font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; border-radius: 999px;
+    padding: 0.15rem 0.6rem; border: 1px solid transparent;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .chip-time { color: var(--muted); background: var(--panel); border-color: var(--line); }
+  .chip-read { color: var(--moss); background: var(--moss-bg); border-color: color-mix(in srgb, var(--moss) 35%, transparent); }
+  .chip-write { color: var(--clay); background: var(--clay-bg); border-color: color-mix(in srgb, var(--clay) 35%, transparent); }
+
+  .card-body { padding: 1.35rem; display: flex; flex-direction: column; gap: 1.1rem; }
+
+  .lane-label {
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; margin-bottom: 0.35rem;
+  }
+
+  .scenario { border-left: 3px solid var(--muted); padding-left: 0.9rem; }
+  .scenario .lane-label { color: var(--muted); }
+  .scenario p { font-family: Newsreader, ui-serif, Georgia, serif; font-size: 1.1rem; line-height: 1.5; }
+
+  .cmd .lane-label { color: var(--steel); }
+
+  .shows { border-left: 3px solid var(--moss); padding-left: 0.9rem; }
+  .shows .lane-label { color: var(--moss); }
+  .shows p { font-size: 0.94rem; }
+
+  .value { border-left: 3px solid var(--gold); padding-left: 0.9rem; }
+  .value .lane-label { color: var(--gold); }
+  .value p {
+    font-family: Newsreader, ui-serif, Georgia, serif;
+    font-size: 1.15rem; line-height: 1.5; max-width: 36em;
+  }
+
+  .caution {
+    background: var(--clay-bg);
+    border: 1px solid color-mix(in srgb, var(--clay) 30%, transparent);
+    border-radius: 4px; padding: 0.8rem 1rem; font-size: 0.92rem;
+  }
+  .caution .lane-label { color: var(--clay); }
+  .caution pre { background: var(--panel); margin-top: 0.5rem; }
+
+  /* ---------- paths ---------- */
+
+  .paths { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; }
+
+  .path {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 6px; padding: 1.1rem 1.25rem;
+    display: flex; flex-direction: column; gap: 0.5rem;
+  }
+  .path h3 { margin: 0; font-size: 1.05rem; font-weight: 600; }
+  .path .seq {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.95rem; font-weight: 600; color: var(--steel);
+    letter-spacing: 0.04em;
+  }
+  .path p { font-size: 0.9rem; color: var(--muted); }
+
+  /* ---------- tables ---------- */
+
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  th, td { text-align: left; padding: 0.65rem 1rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th {
+    font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); font-weight: 700; background: var(--panel-sunk); white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  .num { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .bookend {
+    background: var(--panel); border: 1px solid var(--line);
+    border-left: 4px solid var(--gold); border-radius: 6px; padding: 1.6rem;
+  }
+  .bookend p {
+    font-family: Newsreader, ui-serif, Georgia, serif;
+    font-size: 1.3rem; line-height: 1.5; max-width: 38em;
+  }
+
+  @media (max-width: 620px) {
+    .wrap { padding: 2rem 1.1rem 3.5rem; }
+    .card-body, .card-head { padding: 1.05rem; }
+  }
+
+  a { color: var(--steel); }
+  a:focus-visible { outline: 2px solid var(--steel); outline-offset: 2px; }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">
+      <span>Demo deck</span><span>2026-08-21</span><span>11 modules</span><span>Every one rehearsed</span>
+    </div>
+    <h1>Arcadia Demo Deck</h1>
+    <p class="standfirst">
+      Eleven independent modules. Each one names a problem, the command that answers it,
+      and why it lands — so you can pick as the conversation goes rather than follow a
+      script. Every timing here is measured wall time against a byte copy of the live
+      workspace. Nothing merges, deploys, spends, or sends.
+    </p>
+  </header>
+
+  <hr class="rule">
+
+  <section>
+    <h2>The one rule for improvising</h2>
+    <p>
+      <strong>Green cards are read-only</strong> — run them in any order, as many times as
+      you like, nothing changes. <strong>Red cards write state</strong> — each is a
+      one-shot, and everything they create comes out with the single undo command at the
+      bottom. If you are unsure mid-demo, reach for a green card.
+    </p>
+    <p class="note">
+      Only <strong>I</strong> touches the network (it fetches from origin). Everything else
+      is local SQLite and local git. No card makes a model call.
+    </p>
+  </section>
+
+  <section>
+    <h2>Pre-flight · 5 minutes before</h2>
+    <pre>cd ~/Dev/MR/Arcadia/arcadia &amp;&amp; . /Users/pmark/Dev/MR/Arcadia/workspaces/martianrover/.demo-2026-08-21.env &amp;&amp; git worktree list | grep '\[main\]' &amp;&amp; scripts/demo/seed-ingress-2026-08-21.sh &amp;&amp; arcadia back-burner list --fired yes | head -3</pre>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Check</th><th>Expected</th><th>If wrong</th></tr></thead>
+        <tbody>
+          <tr><td>Directory</td><td><code>~/Dev/MR/Arcadia/arcadia</code></td><td>Cards <strong>C</strong>, <strong>I</strong> and <strong>J</strong> read whatever repo you are standing in.</td></tr>
+          <tr><td>Runtime</td><td><code>[main]</code> on the primary checkout</td><td>The launcher runs whichever worktree holds <code>main</code>. <code>git checkout main</code> there if an agent session moved it.</td></tr>
+          <tr><td>Seed loaded</td><td><code>DEMO_ACTION</code> set</td><td>Re-source the env file, or card <strong>H</strong> has no target.</td></tr>
+          <tr><td>Notes staged</td><td>3 files listed</td><td>Card <strong>E</strong> needs them. Safe to re-run; it restages from scratch.</td></tr>
+          <tr><td>Fired items</td><td><code>Items: 1</code></td><td>Before 2026-08-21 this correctly prints <code>Items: 0</code> — the condition has not arrived. That is the mechanism working.</td></tr>
+          <tr><td>Terminal</td><td>120+ columns, large font</td><td>Card <strong>B</strong> reaches 328-character lines and <strong>D</strong> reaches 1020. They wrap by design.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="bookend">
+    <div class="lane-label" style="color: var(--gold)">If you want a cold open</div>
+    <p>
+      “I run four real projects on my own, and I don’t keep any of them in my head —
+      so let me show you the machine that does.”
+    </p>
+  </div>
+
+  <section>
+    <h2>Suggested paths</h2>
+    <div class="paths">
+      <div class="path">
+        <h3>The ten-minute version</h3>
+        <span class="seq">B → E → G → I → H</span>
+        <p>Portfolio, ingress, what came back, safety, then the condition firing live as the close. The tightest complete arc.</p>
+      </div>
+      <div class="path">
+        <h3>She asks “how does work actually get done?”</h3>
+        <span class="seq">C → J → I</span>
+        <p>The current Action with its acceptance criteria, the fail-closed handoff to a coding agent, then what it refuses to touch.</p>
+      </div>
+      <div class="path">
+        <h3>She asks “what happens to all the ideas?”</h3>
+        <span class="seq">E → F → G → H → K</span>
+        <p>The full lifecycle: raw note in, parked with a condition, only the relevant ones surface, one fires live, one becomes real work.</p>
+      </div>
+      <div class="path">
+        <h3>Two minutes in a hallway</h3>
+        <span class="seq">A → G</span>
+        <p>What needs me right now, and the idea that came back on its own. Four lines and twelve lines.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The modules</h2>
+    <div class="deck">
+
+      <!-- A -->
+      <article class="card">
+        <div class="card-head">
+          <span class="card-id">A</span>
+          <h3 class="card-name">What needs me right now</h3>
+          <div class="chips"><span class="chip chip-read">Read-only</span><span class="chip chip-time">2.6s · 4 lines</span></div>
+        </div>
+        <div class="card-body">
+          <div class="scenario"><div class="lane-label">The problem</div><p>You have twenty minutes and no idea where they should go.</p></div>
+          <div class="cmd"><div class="lane-label">Type</div><pre>arcadia mission-control overview</pre></div>
+          <div class="shows"><div class="lane-label">Shows</div><p>Four lines: <code>5 thing(s) need you</code>, then Life, Projects and Decisions counts.</p></div>
+          <div class="value"><div class="lane-label">Why it lands</div><p>“Four lines. Not a dashboard I have to interpret — a number I can act on. Everything else is one level down if I want it.”</p></div>
+        </div>
+      </article>
+
+      <!-- B -->
+      <article class="card">
+        <div class="card-head">
+          <span class="card-id">B</span>
+          <h3 class="card-name">The whole portfolio at once</h3>
+          <div class="chips"><span class="chip chip-read">Read-only</span><span class="chip chip-time">2.2s · 51 lines</span></div>
+        </div>
+        <div class="card-body">
+          <div class="scenario"><div class="lane-label">The problem</div><p>Four projects, and no one person can hold all four states in their head.</p></div>
+          <div class="cmd"><div class="lane-label">Type</div><pre>arcadia portfolio</pre></div>
+          <div class="shows"><div class="lane-label">Shows</div><p>Four active projects with open / in-progress / blocked / done counts and a clarity breakdown, then 16 open Decisions, then <code>60 Actions in flight; 28 ready to work, 35 not yet.</code></p></div>
+          <div class="value"><div class="lane-label">Why it lands</div><p>“Twenty-eight are ready to work and thirty-five aren’t — and it knows the difference. That’s the only reason I can leave a project for three weeks and come back.”</p><p>“And those sixteen are questions it needs <em>me</em> for. It stopped and asked instead of guessing.”</p></div>
+        </div>
+      </article>
+
+      <!-- C -->
+      <article class="card">
+        <div class="card-head">
+          <span class="card-id">C</span>
+          <h3 class="card-name">What this repo says to do next</h3>
+          <div class="chips"><span class="chip chip-read">Read-only</span><span class="chip chip-time">3.2s · 72 lines</span></div>
+        </div>
+        <div class="card-body">
+          <div class="scenario"><div class="lane-label">The problem</div><p>Re-deriving context every time you open a project — or every time an agent does.</p></div>
+          <div class="cmd"><div class="lane-label">Type</div><pre>arcadia docket</pre></div>
+          <div class="shows"><div class="lane-label">Shows</div><p>Active plan, token impact, milestone, the current Action, its next action, five acceptance criteria, the authorization line, then the standing constraints from <code>CONSTITUTION.md</code>.</p></div>
+          <div class="value"><div class="lane-label">Why it lands</div><p>“One command, no model call, tells me the plan, the current action, and what ‘done’ means for it.”</p><p><em>Scroll to the bottom — this is the line for a tooling builder:</em> “And that’s the constitution, printed with every dispatch. The agent doesn’t have to remember the rules. The rules ship with the objective.”</p></div>
+        </div>
+      </article>
+
+      <!-- D -->
+      <article class="card">
+        <div class="card-head">
+          <span class="card-id">D</span>
+          <h3 class="card-name">Same command, any repository</h3>
+          <div class="chips"><span class="chip chip-read">Read-only</span><span class="chip chip-time">3.4s · 66 lines</span></div>
+        </div>
+        <div class="card-body">
+          <div class="scenario"><div class="lane-label">The problem</div><p>Per-project tooling that has to be reinvented per project.</p></div>
+          <div class="cmd"><div class="lane-label">Type</div><pre>arcadia docket --repo ~/Dev/PrivatePracticeNow/platform</pre></div>
+          <div class="shows"><div class="lane-label">Shows</div><p>A different project, plan and current Action — including one 1020-character next-action paragraph. <strong>Do not read it.</strong> Let it fly past.</p></div>
+          <div class="value"><div class="lane-label">Why it lands</div><p>“Same command, different repository, different truthful answer. That paragraph is what a coding agent gets handed — I didn’t write it this morning, it accumulated. All of it cost zero model tokens.”</p></div>
+        </div>
+      </article>
+
+      <!-- E -->
+      <article class="card">
+        <div class="card-head">
+          <span class="card-id">E</span>
+          <h3 class="card-name">Raw notes become routed work</h3>
+          <div class="chips"><span class="chip chip-write">Writes state</span><span class="chip chip-time">1.3s · 13 lines</span></div>
+        </div>
+        <div class="card-body">
+          <div class="scenario"><div class="lane-label">The problem</div><p>You think in sentences on your phone. Those notes pile up somewhere and nobody ever files them.</p></div>
+          <div class="cmd"><div class="lane-label">Type — show the folder first</div><pre>ls ~/Dev/MR/Arcadia/demo-ingress/DemoNotes/In
+
+arcadia ingress process --ingress-root ~/Dev/MR/Arcadia/demo-ingress --source DemoNotes --stable-seconds 0</pre></div>
+          <div class="shows"><div class="lane-label">Shows</div><p><code>Discovered: 3 · Processed: 3</code>, then one line per file. Three plain-text notes become three <em>different</em> things:</p>
+          <pre>pinterest.txt     → an Action, open, in Rebuster
+intake-link.txt   → Back Burner Question → Private Practice Now
+weekly-digest.txt → Back Burner Idea    → unscoped</pre>
+          <p style="margin-top:0.6rem">Confirm the routing with <code>arcadia back-burner list --project private-practice-now</code>.</p></div>
+          <div class="value"><div class="lane-label">Why it lands</div><p>“Three sentences I typed on my phone. It decided one was work, one was a question, and one was just an idea — and it filed two of them against the right project without me naming the project. One point three seconds, and no model was called.”</p></div>
+          <div class="caution">
+            <div class="lane-label">Know this before you run it</div>
+            <p>This reads a <strong>local</strong> folder, not iCloud. The real source is an iCloud Drive folder, and iCloud sync is exactly the dependency a live demo shouldn’t carry — a note that hasn’t finished downloading is a dotfile placeholder, and the scanner skips dotfiles. Say “this folder syncs from my phone” only once the iCloud path is confirmed working. Byte-identical across two clean runs, so it is safe to rehearse.</p>
+          </div>
+        </div>
+      </article>
+
+      <!-- F -->
+      <article class="card">
+        <div class="card-head">
+          <span class="card-id">F</span>
+          <h3 class="card-name">Park an idea against a condition</h3>
+          <div class="chips"><span class="chip chip-write">Writes state</span><span class="chip chip-time">2.7s · 21 lines</span></div>
+        </div>
+        <div class="card-body">
+          <div class="scenario"><div class="lane-label">The problem</div><p>The good idea you have mid-conversation that is genuinely not now.</p></div>
+          <div class="cmd"><div class="lane-label">Type — live, in front of her</div><pre>arcadia ask "Try the docket output on a second screen at reading distance before the next demo" --back-burner --surface-date 2026-09-08</pre></div>
+          <div class="shows"><div class="lane-label">Shows</div><p><code>Execution path: Back Burner</code>, <code>Result: Captured in Back Burner.</code>, and a new <code>bb_</code> id.</p></div>
+          <div class="value"><div class="lane-label">Why it lands</div><p>“Out of my head in two seconds, with a date attached. It is not on any list I have to read between now and September the eighth.”</p></div>
+          <div class="caution">
+            <div class="lane-label">Fallback</div>
+            <p>Timed at 0.94s, 0.94s and 0.99s across three runs, no model call. If it somehow errors, say “I’ll do that one after” and move to <strong>G</strong> — the point still lands on the item that already fired.</p>
+          </div>
+        </div>
+      </article>
+
+      <!-- G -->
+      <article class="card">
+        <div class="card-head">
+          <span class="card-id">G</span>
+          <h3 class="card-name">Only what has become relevant</h3>
+          <div class="chips"><span class="chip chip-read">Read-only</span><span class="chip chip-time">2.6s · 12 lines</span></div>
+        </div>
+        <div class="card-body">
+          <div class="scenario"><div class="lane-label">The problem</div><p>Every backlog you have ever kept became a graveyard you stopped opening.</p></div>
+          <div class="cmd"><div class="lane-label">Type</div><pre>arcadia back-burner list --fired yes</pre></div>
+          <div class="shows"><div class="lane-label">Shows</div><p>Exactly one item — the <code>--brief</code> idea, with <code>Surface: date 2026-08-21 — fired</code>. Not the twenty-odd others that are still waiting.</p></div>
+          <div class="value"><div class="lane-label">Why it lands</div><p><em>Slowly.</em> “I had that idea yesterday. It was good, and it was not what I was doing, so I gave it a condition — come back on the twenty-first — and I forgot it completely. Today is the twenty-first.”</p><p>“Most tooling has nowhere to put the good idea that isn’t now. It becomes a TODO nobody reads, or it’s gone. This is a third option: park it against a condition and actually forget it.”</p></div>
+        </div>
+      </article>
+
+      <!-- H -->
+      <article class="card">
+        <div class="card-head">
+          <span class="card-id">H</span>
+          <h3 class="card-name">A condition fires in front of her</h3>
+          <div class="chips"><span class="chip chip-write">Writes state</span><span class="chip chip-time">4.2s · 23 lines</span></div>
+        </div>
+        <div class="card-body">
+          <div class="scenario"><div class="lane-label">The problem</div><p>“Remind me when X happens” is a thing every tool promises and none of them actually do.</p></div>
+          <div class="cmd"><div class="lane-label">Type</div><pre>arcadia work done $DEMO_ACTION
+
+arcadia back-burner list --fired yes</pre></div>
+          <div class="shows"><div class="lane-label">Shows</div><p><code>Completed Action: Deliver the 10-minute Arcadia demo to a technical peer</code>, then the list goes from one item to two — the new one reading <code>Surface: dependency "Deliver the 10-minute Arcadia demo to a technical peer" = done — fired</code>.</p></div>
+          <div class="value"><div class="lane-label">Why it lands</div><p>“This demo was itself an Action in the portfolio, and I’m marking it done because it is. I never scheduled that second idea. I attached it to a condition — when the demo is done — and the condition just happened, in front of you.”</p></div>
+          <div class="caution">
+            <div class="lane-label">One-shot</div>
+            <p>Once the Action is <code>done</code> the condition stays fired; you cannot replay this card without re-seeding. Save it for the close.</p>
+          </div>
+        </div>
+      </article>
+
+      <!-- I -->
+      <article class="card">
+        <div class="card-head">
+          <span class="card-id">I</span>
+          <h3 class="card-name">Nothing destructive without asking twice</h3>
+          <div class="chips"><span class="chip chip-read">Read-only</span><span class="chip chip-time">4.5s · 15–19 lines</span></div>
+        </div>
+        <div class="card-body">
+          <div class="scenario"><div class="lane-label">The problem</div><p>Agent sessions leave worktrees and branches everywhere, and cleaning them up by hand is how you lose work.</p></div>
+          <div class="cmd"><div class="lane-label">Type — from <code>~/Dev/MR/Arcadia/arcadia</code></div><pre>arcadia tidy</pre></div>
+          <div class="shows"><div class="lane-label">Shows</div><p><code>Where the live work is</code>, then <code>Would retire (N)</code> naming <em>why</em> each is safe — “every commit is already on main” — then <code>Nothing was changed.</code></p></div>
+          <div class="value"><div class="lane-label">Why it lands</div><p>“It can tell finished work from live work, it tells me why each one is safe, and it changed nothing. Everything destructive here makes you ask twice.”</p></div>
+          <div class="caution">
+            <div class="lane-label">The only card that touches the network — rehearse the Ctrl-C</div>
+            <p>It fetches from origin. If it hasn’t painted in about five seconds, Ctrl-C and run the offline version, timed at 1.34s:</p>
+            <pre>arcadia tidy --no-fetch --no-github</pre>
+            <p style="margin-top:0.6rem">Never run <code>--apply</code> during the demo. Refusing to is the point.</p>
+          </div>
+        </div>
+      </article>
+
+      <!-- J -->
+      <article class="card">
+        <div class="card-head">
+          <span class="card-id">J</span>
+          <h3 class="card-name">Fail-closed handoff to a coding agent</h3>
+          <div class="chips"><span class="chip chip-read">Read-only</span><span class="chip chip-time">1.1s · 15 lines</span></div>
+        </div>
+        <div class="card-body">
+          <div class="scenario"><div class="lane-label">The problem</div><p>Starting an agent session on the wrong branch, in the wrong worktree, against stale state.</p></div>
+          <div class="cmd"><div class="lane-label">Type</div><pre>arcadia go</pre></div>
+          <div class="shows"><div class="lane-label">Shows</div><p>Base and source worktree, <code>Integration: not-needed</code>, <code>Preview only: no branch, worktree, or commit was changed</code>, <code>Dispatchable: yes</code>, the current Action, its expected Artifact, and the exact prompt to hand the agent.</p></div>
+          <div class="value"><div class="lane-label">Why it lands</div><p>“It reconciles the git state first and tells me whether the next action is even dispatchable — before an agent touches anything. And like everything else, it previews: nothing moved until I add <code>--apply</code>.”</p></div>
+        </div>
+      </article>
+
+      <!-- K -->
+      <article class="card">
+        <div class="card-head">
+          <span class="card-id">K</span>
+          <h3 class="card-name">A parked idea becomes real work</h3>
+          <div class="chips"><span class="chip chip-write">Writes state</span><span class="chip chip-time">1.3s · 4 lines</span></div>
+        </div>
+        <div class="card-body">
+          <div class="scenario"><div class="lane-label">The problem</div><p>“So it resurfaces — then what?” The obvious next question after <strong>G</strong> or <strong>H</strong>.</p></div>
+          <div class="cmd"><div class="lane-label">Type</div><pre>arcadia back-burner promote $DEMO_BB_BRIEF</pre></div>
+          <div class="shows"><div class="lane-label">Shows</div><p><code>Back Burner item promoted.</code> plus the new Action id and its title, derived from the original note.</p></div>
+          <div class="value"><div class="lane-label">Why it lands</div><p>“One command and it stops being an idea. It’s an Action in the portfolio now, and it shows up in everything you just saw.”</p><p><em>Follow it with</em> <strong>B</strong> <em>to show the count moved.</em></p></div>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <div class="bookend">
+    <div class="lane-label" style="color: var(--gold)">If you want a close</div>
+    <p>
+      “Everything you just saw ran on this laptop, against SQLite and git, and cost zero
+      model tokens — the models only get called when something actually needs judgment.
+      What I don’t think you can buy anywhere is that one thing: a place to put an idea
+      that names the condition that should bring it back, so I can genuinely stop thinking
+      about it. That’s what lets one person run a portfolio instead of a project.”
+    </p>
+  </div>
+
+  <hr class="rule">
+
+  <section>
+    <h2>After the demo · one command</h2>
+    <pre>~/Dev/MR/Arcadia/arcadia/scripts/demo/unseed-2026-08-21.sh --apply</pre>
+    <p class="note">
+      Previews without <code>--apply</code>. Removes everything cards <strong>E</strong>,
+      <strong>F</strong>, <strong>H</strong> and <strong>K</strong> can create: the Back Burner
+      rows marked <code>source_ref='demo-2026-08-21'</code>, the rows marked
+      <code>ingress_source='ingress:DemoNotes'</code>, the Action ingress created, the seeded
+      demo Action, and the staged notes folder. Verified as a round trip against a copy of the
+      live workspace, leaving all 25 pre-existing Back Burner items untouched.
+    </p>
+    <p class="note">
+      <strong>Deliberately not removed:</strong> the Action <em>Schedule an Arcadia demo for a
+      non-engineering audience</em> and the Back Burner item waiting on it, which carries the
+      founder/PM and leadership scenario sets. Real deferred work with a real trigger.
+    </p>
+  </section>
+
+  <section>
+    <h2>Measured timings</h2>
+    <p class="note">Back to back against a byte copy of the live workspace, 2026-08-20. Run in isolation each is roughly a second faster.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Card</th><th>Command</th><th>Wall time</th><th>Lines</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td class="num">A</td><td><code>arcadia mission-control overview</code></td><td class="num">2.61s</td><td class="num">4</td><td>read-only</td></tr>
+          <tr><td class="num">B</td><td><code>arcadia portfolio</code></td><td class="num">2.22s</td><td class="num">51</td><td>read-only</td></tr>
+          <tr><td class="num">C</td><td><code>arcadia docket</code></td><td class="num">3.19s</td><td class="num">72</td><td>read-only</td></tr>
+          <tr><td class="num">D</td><td><code>arcadia docket --repo &lt;ppn&gt;</code></td><td class="num">3.39s</td><td class="num">66</td><td>read-only</td></tr>
+          <tr><td class="num">E</td><td><code>arcadia ingress process …</code></td><td class="num">1.32s</td><td class="num">13</td><td>writes</td></tr>
+          <tr><td class="num">F</td><td><code>arcadia ask … --back-burner</code></td><td class="num">2.66s</td><td class="num">21</td><td>writes</td></tr>
+          <tr><td class="num">G</td><td><code>arcadia back-burner list --fired yes</code></td><td class="num">2.61s</td><td class="num">12</td><td>read-only</td></tr>
+          <tr><td class="num">H</td><td><code>arcadia work done</code> + G</td><td class="num">4.15s</td><td class="num">23</td><td>writes</td></tr>
+          <tr><td class="num">I</td><td><code>arcadia tidy</code></td><td class="num">4.49s</td><td class="num">15</td><td>read-only</td></tr>
+          <tr><td class="num">I′</td><td><code>arcadia tidy --no-fetch --no-github</code></td><td class="num">1.34s</td><td class="num">15</td><td>read-only</td></tr>
+          <tr><td class="num">J</td><td><code>arcadia go</code></td><td class="num">1.10s</td><td class="num">15</td><td>read-only</td></tr>
+          <tr><td class="num">K</td><td><code>arcadia back-burner promote</code></td><td class="num">1.25s</td><td class="num">4</td><td>writes</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Every module in the deck, run end to end, is under 30 seconds of machine time. The pacing is entirely yours.</p>
+  </section>
+
+</div>
