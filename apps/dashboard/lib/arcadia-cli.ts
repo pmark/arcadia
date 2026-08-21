@@ -113,6 +113,24 @@ export async function loadProjectContinuation(projectId: string): Promise<Arcadi
   return runArcadiaCliJson<ProjectContinuationResponse>(["next", "--project", projectId]);
 }
 
+export interface ProjectSetupContextResponse {
+  repoPath: string;
+  project: { id: string; name: string } | null;
+  files: Record<string, string | null>;
+  controlDocuments: { projectDocument: string | null; plan: string | null; skipped: string[] };
+}
+
+/**
+ * Adopt a repository: write its Arcadia context files and, when it has none,
+ * seed the work pointer chain the dispatch contract requires.
+ *
+ * Given its own generous timeout because it walks the repository to build the
+ * context summary, which on a large checkout takes longer than a read command.
+ */
+export async function setupProjectContext(projectId: string): Promise<ArcadiaJsonSuccess<ProjectSetupContextResponse>> {
+  return runArcadiaCliJson<ProjectSetupContextResponse>(["project", "setup-context", projectId], { timeoutMs: 60_000 });
+}
+
 export interface DailyAdvantagePreparationResponse {
   plan: { id: string; work_item_id: string; status: string };
   planningDecision: { id: string; slug: string | null; status: string } | null;

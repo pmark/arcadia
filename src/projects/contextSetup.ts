@@ -11,9 +11,18 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
-import type { Project, ProjectMetadata } from "../domain/types.js";
-import { getProject, getProjectMetadata, listProjects } from "../db/repositories.js";
+import type { Project, ProjectMetadata, WorkItemSummary } from "../domain/types.js";
+import {
+  getActiveMilestoneForProject,
+  getProject,
+  getProjectMetadata,
+  listProjects,
+  listWorkItems
+} from "../db/repositories.js";
+import { discoverDocs } from "../docs/discover.js";
+import type { PlanDoc, ProjectDoc } from "../docs/types.js";
 import { nowIso } from "../utils/time.js";
+import { seedControlDocuments, type SeedControlDocumentsResult } from "./controlDocuments.js";
 
 export const ARCADIA_CONTEXT_DIR = ".arcadia";
 export const AGENT_CONTEXT_POLICY_FILE = "AGENT_CONTEXT_POLICY.md";
@@ -121,7 +130,22 @@ export interface SetupProjectContextResult {
     claude: string | null;
     /** The adopted continuation protocol, or null when the source is unreadable. */
     continuationProtocol: string | null;
+    /**
+     * The seeded `PROJECT.md`, or null when the repository already had one --
+     * or when setup could not tell which Project this repository is.
+     */
+    projectDocument: string | null;
+    /** The seeded bootstrap plan, or null for the same reasons. */
+    plan: string | null;
   };
+  /**
+   * What happened to the work pointer chain, in operator-facing words.
+   *
+   * Adoption writing every governance file and silently not writing the two
+   * documents that make the repository dispatchable is exactly the failure this
+   * field exists to make impossible to miss.
+   */
+  controlDocuments: SeedControlDocumentsResult;
   context: RepoContextSummary;
 }
 
@@ -182,6 +206,11 @@ export function setupArcadiaProjectContext(input: {
     writeFileSync(claudePath, wrapper, "utf8");
   }
 
+  // The work pointer chain. Written last, because it is the only part that
+  // depends on what the rest of adoption just put on disk -- and the only part
+  // that needs to know which Project this repository is.
+  const controlDocuments = seedPointerChain(resolved.repoPath, resolved.project, input.db);
+
   return {
     repoPath: resolved.repoPath,
     project: resolved.project ? { id: resolved.project.id, name: resolved.project.name } : null,
@@ -192,10 +221,63 @@ export function setupArcadiaProjectContext(input: {
       agents: agentsPath,
       constitution: constitutionWritten ? constitutionPath : null,
       claude: claudeWritten ? claudePath : null,
-      continuationProtocol: protocolWritten ? protocolPath : null
+      continuationProtocol: protocolWritten ? protocolPath : null,
+      projectDocument: controlDocuments.projectDocument,
+      plan: controlDocuments.plan
     },
+    controlDocuments,
     context
   };
+}
+
+/**
+ * Seed `PROJECT.md` and a first plan, when setup knows enough to write them.
+ *
+ * Knowing "enough" means knowing which Project the repository is, which is why
+ * this refuses rather than guesses when adoption ran against a bare path. A
+ * PROJECT.md declaring the wrong slug is worse than none: dispatch would resolve
+ * it, work would be recorded against it, and the mistake would be discovered by
+ * whoever inherits the mess.
+ */
+function seedPointerChain(
+  repoPath: string,
+  project: Project | null,
+  db: Database.Database | undefined
+): SeedControlDocumentsResult {
+  if (!project || !db) {
+    return {
+      projectDocument: null,
+      plan: null,
+      skipped: [
+        "PROJECT.md and the first plan: not written — setup ran against a repository path alone, " +
+          "so it cannot know which Project this repository is. Re-run it with the project identifier."
+      ]
+    };
+  }
+
+  // Discovery rather than a path check: the protocol locates managed documents
+  // by their frontmatter, so a project document the operator filed somewhere
+  // other than the root still counts as one, and would still be clobbered by a
+  // naive `existsSync("PROJECT.md")`.
+  const discovered = discoverDocs(repoPath);
+  const slug = project.slug.toLowerCase();
+  const hasProjectDocument = discovered.docs.some(
+    (doc): doc is ProjectDoc => doc.type === "project" && doc.slug.toLowerCase() === slug
+  );
+  const hasPlanDocument = discovered.docs.some(
+    (doc): doc is PlanDoc => doc.type === "plan" && doc.project.toLowerCase() === slug
+  );
+
+  const workItems: WorkItemSummary[] = listWorkItems(db).filter((item) => item.project_id === project.id);
+
+  return seedControlDocuments({
+    repoPath,
+    project,
+    milestoneTitle: getActiveMilestoneForProject(db, project.id)?.title ?? null,
+    workItems,
+    hasProjectDocument,
+    hasPlanDocument
+  });
 }
 
 export function hasArcadiaContext(repoPath: string): boolean {
@@ -231,7 +313,17 @@ function resolveSetupTarget(input: {
   repoPath?: string;
 }): { repoPath: string; project: Project | null; metadata: ProjectMetadata | null } {
   if (input.repoPath?.trim()) {
-    return { repoPath: validateRepoPath(input.repoPath), project: null, metadata: null };
+    const repoPath = validateRepoPath(input.repoPath);
+    // A path alone used to mean "no Project", which was harmless while setup
+    // only wrote governance text. It stopped being harmless once setup also
+    // seeds the work pointer, because the identity it declines to look up is
+    // already recorded against this very path.
+    const project = input.db ? projectForRepoPath(input.db, repoPath) : null;
+    return {
+      repoPath,
+      project,
+      metadata: project && input.db ? getProjectMetadata(input.db, project.id) : null
+    };
   }
 
   if (!input.projectIdentifier?.trim()) {
@@ -252,6 +344,31 @@ function resolveSetupTarget(input: {
   }
 
   return { repoPath: validateRepoPath(metadata.repo_path), project, metadata };
+}
+
+/**
+ * The one Project registered at this repository path, or null.
+ *
+ * Compared by resolved real path, because `repo_path` may be recorded through a
+ * symlink or with a trailing slash and neither should change the answer. Two
+ * Projects claiming one path is a registration defect, not something to pick a
+ * winner from -- so it resolves to nothing and adoption proceeds without
+ * seeding, which is recoverable.
+ */
+function projectForRepoPath(db: Database.Database, repoPath: string): Project | null {
+  const matches = listProjects(db).filter((project) => {
+    const recorded = getProjectMetadata(db, project.id)?.repo_path?.trim();
+    if (!recorded) {
+      return false;
+    }
+    try {
+      return realpathSync(path.resolve(recorded)) === repoPath;
+    } catch {
+      return false;
+    }
+  });
+
+  return matches.length === 1 ? matches[0]! : null;
 }
 
 function validateRepoPath(repoPath: string): string {
