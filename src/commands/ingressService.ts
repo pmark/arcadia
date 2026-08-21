@@ -16,6 +16,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { validationError } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
+import { miseLeadingPath, resolveMiseExecutable } from "../runtime/mise.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { runIngressProcessCommand } from "./ingress.js";
@@ -285,7 +286,7 @@ ${argumentsXml}
     <key>HOME</key>
     <string>${xmlEscape(homedir())}</string>
     <key>PATH</key>
-    <string>${xmlEscape(serviceExecutablePath(service.miseBin))}</string>
+    <string>${xmlEscape(miseLeadingPath(service.miseBin))}</string>
     <key>NODE_PATH</key>
     <string>${xmlEscape(path.join(service.repositoryRoot, "node_modules"))}</string>
   </dict>
@@ -501,29 +502,6 @@ function assertMacOS(): void {
 
 function expandHome(value: string): string {
   return value === "~" ? homedir() : value.startsWith("~/") ? path.join(homedir(), value.slice(2)) : path.resolve(value);
-}
-
-function resolveMiseExecutable(home: string): string {
-  const configured = process.env.ARCADIA_MISE_BIN?.trim();
-  if (configured) return path.resolve(configured);
-
-  const candidates = process.arch === "arm64"
-    ? ["/opt/homebrew/bin/mise", "/usr/local/bin/mise", path.join(home, ".local", "bin", "mise")]
-    : ["/usr/local/bin/mise", "/opt/homebrew/bin/mise", path.join(home, ".local", "bin", "mise")];
-  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
-}
-
-function serviceExecutablePath(miseBin: string): string {
-  return [...new Set([
-    path.dirname(miseBin),
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-    path.join(homedir(), "Library", "pnpm", "bin"),
-    "/usr/bin",
-    "/bin",
-    "/usr/sbin",
-    "/sbin"
-  ])].join(":");
 }
 
 function xmlEscape(value: string): string {

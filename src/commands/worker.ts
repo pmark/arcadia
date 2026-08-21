@@ -2,6 +2,7 @@ import { appendFileSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } fr
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
+import { miseLeadingPath, miseNodeArgv, resolveMiseExecutable } from "../runtime/mise.js";
 import { openDatabase } from "../db/connection.js";
 import {
   attachArtifactToExecutionRun,
@@ -297,21 +298,35 @@ export function runWorkerStopCommand(options: WorkerOptions): void {
   process.stdout.write(`Sent SIGTERM to worker (PID ${pid}).\n`);
 }
 
-export function runWorkerInstallCommand(options: WorkerOptions): void {
-  const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const nodeBin = process.execPath;
-  const cliPath = path.resolve(import.meta.dirname, "../../src/cli.ts");
-  const tsxBin = path.resolve(import.meta.dirname, "../../node_modules/.bin/tsx");
+export interface WorkerPlistInput {
+  workspacePath: string;
+  repositoryRoot: string;
+  miseBin: string;
+  logPath: string;
+  home: string;
+}
 
-  const plistLabel = "com.arcadia.worker";
-  const plistPath = path.join(
-    process.env["HOME"] ?? "/tmp",
-    "Library",
-    "LaunchAgents",
-    `${plistLabel}.plist`
-  );
+export const WORKER_PLIST_LABEL = "com.arcadia.worker";
 
-  const plist = `<?xml version="1.0" encoding="UTF-8"?>
+/**
+ * The worker's launch agent, always routed through mise.
+ *
+ * Separate from the install command so a test can assert what gets written
+ * without installing anything. This previously baked `process.execPath` and the
+ * installer's own `PATH` into the plist, which meant the worker ran forever
+ * under whichever Node happened to be active the day someone typed
+ * `arcadia worker install`.
+ */
+export function buildWorkerPlist(input: WorkerPlistInput): string {
+  const { workspacePath, repositoryRoot, miseBin, logPath: logFile } = input;
+  // tsx's own entrypoint, not node_modules/.bin/tsx: the bin shim re-execs
+  // whatever `node` its shebang finds, which is exactly the resolution this
+  // plist exists to take out of the picture.
+  const tsxBin = path.join(repositoryRoot, "node_modules", "tsx", "dist", "cli.mjs");
+  const cliPath = path.join(repositoryRoot, "src", "cli.ts");
+  const plistLabel = WORKER_PLIST_LABEL;
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -319,32 +334,45 @@ export function runWorkerInstallCommand(options: WorkerOptions): void {
   <string>${plistLabel}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${tsxBin}</string>
-    <string>${cliPath}</string>
-    <string>worker</string>
-    <string>start</string>
-    <string>--workspace</string>
-    <string>${workspacePath}</string>
+${[...miseNodeArgv(miseBin, repositoryRoot), tsxBin, cliPath, "worker", "start", "--workspace", workspacePath]
+  .map((argument) => `    <string>${xmlEscape(argument)}</string>`)
+  .join("\n")}
   </array>
+  <key>WorkingDirectory</key>
+  <string>${xmlEscape(repositoryRoot)}</string>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>${logPath(workspacePath)}</string>
+  <string>${xmlEscape(logFile)}</string>
   <key>StandardErrorPath</key>
-  <string>${logPath(workspacePath)}</string>
+  <string>${xmlEscape(logFile)}</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>${process.env["PATH"] ?? "/usr/local/bin:/usr/bin:/bin"}</string>
+    <string>${xmlEscape(miseLeadingPath(miseBin, input.home))}</string>
     <key>HOME</key>
-    <string>${process.env["HOME"] ?? ""}</string>
+    <string>${xmlEscape(input.home)}</string>
     <key>NODE_PATH</key>
-    <string>${path.resolve(import.meta.dirname, "../../node_modules")}</string>
+    <string>${xmlEscape(path.join(repositoryRoot, "node_modules"))}</string>
   </dict>
 </dict>
 </plist>`;
+}
+
+export function runWorkerInstallCommand(options: WorkerOptions): void {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const repositoryRoot = path.resolve(import.meta.dirname, "../..");
+  const home = process.env["HOME"] ?? "/tmp";
+  const plistPath = path.join(home, "Library", "LaunchAgents", `${WORKER_PLIST_LABEL}.plist`);
+  const plist = buildWorkerPlist({
+    workspacePath,
+    repositoryRoot,
+    miseBin: resolveMiseExecutable(),
+    logPath: logPath(workspacePath),
+    home
+  });
 
   const agentsDir = path.dirname(plistPath);
   mkdirSync(agentsDir, { recursive: true });
@@ -399,4 +427,13 @@ export function recoverOrphanedRuns(db: ReturnType<typeof openDatabase>, logfile
       log(logfile, `Recovered orphaned run ${id} (PID ${pid} is gone)`);
     }
   }
+}
+
+function xmlEscape(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
 }
