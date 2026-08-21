@@ -27,4 +27,21 @@ describe("checked-in toolchain", () => {
     expect(packageJson.volta).toBeUndefined();
     expect(existsSync(path.join(repositoryRoot, ".nvmrc"))).toBe(false);
   });
+
+  // The root was cleaned up when the warning was first diagnosed, but the
+  // workspace packages kept `engines.node: ">=20"`, which is a second, looser
+  // declaration of a version only mise.toml actually enforces. Two names for
+  // one fact is how they drift.
+  it.each([
+    "apps/dashboard/package.json",
+    "apps/discord-bot/package.json"
+  ])("declares no Node version in %s either", (relativePath) => {
+    const workspacePackage = JSON.parse(readFileSync(path.join(repositoryRoot, relativePath), "utf8")) as {
+      engines?: unknown;
+      volta?: unknown;
+    };
+
+    expect(workspacePackage.engines).toBeUndefined();
+    expect(workspacePackage.volta).toBeUndefined();
+  });
 });
