@@ -106,6 +106,30 @@ have stable order. Canonical serialization recursively sorts object keys.
 Unchanged inputs therefore produce byte-identical normalized data without a
 model call.
 
+## Generated presentation
+
+`src/livingSystem/project.ts` turns the normalized model into a progressive,
+cross-linked presentation beneath `Projects/<project-slug>/` in a configured
+vault. It generates Project Home, the whole capability map, one map per View,
+the evolution timeline, Current Work, reciprocal Topic and episode notes, a
+plain-Markdown README, and `Living_System.canvas` with map and timeline beside
+one another.
+
+Home supports four depths: glance, orient, understand, and audit. Current work
+links directly to every supported Topic impact. Topic pages link to relevant
+episodes; episodes link back while showing why, change, proof, Decisions,
+continuation, source, provenance, and freshness. Missing, stale, conflicting,
+unmapped, and unlinked states remain literal labels rather than presentation
+gaps.
+
+Projection is previewable, atomic per file, and idempotent. Every generated
+file carries a version, Project owner, source hash, and explicit refresh receipt.
+An unchanged source hash preserves the prior bytes even when a later refresh
+time is supplied. Unmarked or foreign-owned collisions refuse the whole apply;
+removed generated content is reported as stale and retained. Destination and
+ancestor checks refuse traversal and symlink escape. The projector never writes
+to `Arcadia/Records/`, `Arcadia/Ideas/`, or `.obsidian/`.
+
 ## Derived target model
 
 `src/livingSystem/types.ts` defines the shared projection target separately

@@ -220,6 +220,18 @@ derivation boundary. The pointer moves to
 `build-living-system-map-and-timeline` so this truthful model becomes the
 morning demo's navigable presentation.
 
+`build-living-system-map-and-timeline` is now `done`. The zero-model projector
+creates a presentation-grade Home, whole capability map, Project-defined
+submaps, evolution timeline, Current Work, reciprocal Topic and episode notes,
+plain-Markdown guide, and side-by-side Canvas under one isolated Project
+subtree. The generated journey supports glance, orient, understand, and audit;
+prints provenance and freshness beside claims; and keeps missing, stale,
+conflicting, unmapped, and unlinked truth visible. Preview/apply agreement,
+byte-stable reruns, collision refusal, stale retention, symlink containment,
+valid Canvas and WikiLinks, and Arcadia/PPN isolation pass alongside 954 tests
+and all builds. The pointer moves to `integrate-living-system-sync` so the two
+demo stories can be created and refreshed through a real operator command.
+
 ## Links
 
 - `docs/COMMANDS.md` — the operator-facing command guide

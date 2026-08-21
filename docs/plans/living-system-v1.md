@@ -5,7 +5,7 @@ slug: living-system-v1
 project: arcadia
 status: active
 milestone: Every managed software Project can reveal what it is, what is changing, how it got here, and what proves that story through one free living-system navigator
-current_action: build-living-system-map-and-timeline
+current_action: integrate-living-system-sync
 token_impact: xlarge
 token_budget: "Routine parsing, derivation, projection, link validation, and refresh make zero model calls. Use one bounded coding-agent implementation pass per Action, deterministic tests before model-based diagnosis, and operator attention only for final usability judgment and governed external effects."
 recommended_model: gpt-5.6-sol
@@ -67,7 +67,7 @@ actions:
     depends_on: [define-living-system-v1-contract]
   - id: build-living-system-map-and-timeline
     title: Project equal capability-map and Action-timeline views into Obsidian
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: Build the atomic idempotent projector for Home, capability maps, Project-defined submaps, the Project evolution timeline, Current Work, Topic and Action episode notes, and a side-by-side Obsidian Canvas under `Projects/<project-slug>/`.
@@ -89,6 +89,8 @@ actions:
       - src/memory/obsidian.ts
       - src/workspace/config.ts
       - tests/obsidian-memory.test.ts
+      - src/livingSystem/project.ts
+      - tests/living-system-project.test.ts
     depends_on: [derive-living-system-state]
   - id: integrate-living-system-sync
     title: Make free living-system refresh part of normal Arcadia operation

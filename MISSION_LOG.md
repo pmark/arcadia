@@ -8,6 +8,14 @@ updated: 2026-08-21
 
 # Mission Log: Arcadia
 
+## 2026-08-21 — Made the capability map and Action timeline a real presentation
+
+- **Action:** `living-system-v1#build-living-system-map-and-timeline`
+- **Did:** Built the deterministic Obsidian projector for a Project Home, whole capability map, declared submaps, evolution timeline, Current Work, reciprocal Topic and episode notes, generated guide, and side-by-side Canvas. Added progressive glance/orient/understand/audit navigation, portable source links, provenance and freshness labels, and explicit gaps.
+- **Result:** Preview and apply agree; unchanged models preserve exact bytes; changed files update atomically; unmarked and foreign collisions refuse before writes; removed generated content stays visible as stale; traversal and symlink escape fail; Canvas JSON and WikiLinks resolve; and Arcadia plus Private Practice Now remain isolated under their own Project subtrees. The focused projector suite passes 4/4, the full suite passes 954 tests with 6 skipped, and core, Discord, and optimized Dashboard builds pass.
+- **Next:** Expose projection through preview-first `arcadia memory system sync`, add safe all-Project refresh and accepted-transition warning behavior, and document the operator path.
+- **Blockers:** None. The projector does not install plugins, edit `.obsidian`, touch existing Arcadia memory Records/Ideas, merge, deploy, or edit the Private Practice Now repository.
+
 ## 2026-08-21 — Derived trustworthy living-system state without guessing
 
 - **Action:** `living-system-v1#derive-living-system-state`
