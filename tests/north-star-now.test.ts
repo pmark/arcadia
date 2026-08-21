@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -10,7 +10,12 @@ import {
   setWorkItemDocRef
 } from "../src/db/repositories.js";
 import { computeNowBrief } from "../src/northStar/compute.js";
-import { loadNorthStar, NorthStarParseError, northStarPath } from "../src/northStar/document.js";
+import {
+  loadNorthStar,
+  NorthStarParseError,
+  northStarPath,
+  setDeclaredGateStatus
+} from "../src/northStar/document.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const workspaces: string[] = [];
@@ -77,6 +82,93 @@ describe("NORTH_STAR.md", () => {
       "    status: nearly"
     ]);
     expect(() => loadNorthStar(badStatus)).toThrow(/expected one of/);
+  });
+});
+
+describe("marking a gate", () => {
+  it("sets the declared status of an operator-owned gate", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    const change = setDeclaredGateStatus(workspace, "operator-owned", "done");
+
+    expect(change.changed).toBe(true);
+    expect(change.previous).toBe("open");
+    expect(change.title).toBe("Someone agrees to be the pilot");
+    expect(loadNorthStar(workspace)?.gates.find((gate) => gate.id === "operator-owned")?.declaredStatus).toBe("done");
+  });
+
+  it("adds a status line to a gate that never had one", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, [
+      "target: Launch",
+      "project: the-thing",
+      "gates:",
+      "  - id: unstated",
+      "    title: A gate with no declared status"
+    ]);
+
+    setDeclaredGateStatus(workspace, "unstated", "done");
+
+    expect(loadNorthStar(workspace)?.gates[0].declaredStatus).toBe("done");
+  });
+
+  it("refuses a gate whose status comes from an Action", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    expect(() => setDeclaredGateStatus(workspace, "done-one", "done")).toThrow(/comes from that Action/);
+    expect(readFileSync(northStarPath(workspace), "utf8")).toContain("action: plan/p#done-one");
+  });
+
+  it("refuses an unknown gate and names the ones that exist", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    let details: unknown = null;
+    try {
+      setDeclaredGateStatus(workspace, "typo", "done");
+    } catch (error) {
+      details = (error as { details?: unknown }).details;
+    }
+
+    expect(details).toMatchObject({ known: ["done-one", "open-one", "operator-owned"] });
+  });
+
+  it("reports no change rather than rewriting when the status already matches", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+    const before = readFileSync(northStarPath(workspace), "utf8");
+
+    const change = setDeclaredGateStatus(workspace, "operator-owned", "open");
+
+    expect(change.changed).toBe(false);
+    expect(readFileSync(northStarPath(workspace), "utf8")).toBe(before);
+  });
+
+  it("leaves the rest of the document byte-for-byte alone", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+    const before = readFileSync(northStarPath(workspace), "utf8");
+
+    setDeclaredGateStatus(workspace, "operator-owned", "done");
+    const after = readFileSync(northStarPath(workspace), "utf8");
+
+    const changedLines = after
+      .split("\n")
+      .filter((line, index) => line !== before.split("\n")[index]);
+    expect(changedLines).toEqual(["    status: done"]);
+  });
+
+  it("reopens a gate that was marked done", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    setDeclaredGateStatus(workspace, "operator-owned", "done");
+    const change = setDeclaredGateStatus(workspace, "operator-owned", "open");
+
+    expect(change.previous).toBe("done");
+    expect(change.next).toBe("open");
   });
 });
 

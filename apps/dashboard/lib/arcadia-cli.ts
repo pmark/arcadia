@@ -573,6 +573,29 @@ export async function loadNowBrief(options: { narrate?: boolean } = {}) {
   });
 }
 
+export interface GateStatusChange {
+  gateId: string;
+  title: string;
+  previous: string;
+  next: string;
+  changed: boolean;
+  path: string;
+}
+
+/**
+ * Mark one operator-owned gate. Deterministic and fast — no model call — so
+ * the screen can update the distance the moment the tap lands.
+ */
+export async function setNorthStarGate(input: {
+  gateId: string;
+  status: "done" | "open";
+}): Promise<ArcadiaJsonSuccess<GateStatusChange>> {
+  return runArcadiaCliJson<GateStatusChange>(
+    ["gate", input.status === "done" ? "complete" : "reopen", input.gateId],
+    { timeoutMs: 30_000 }
+  );
+}
+
 /** The daily or weekly story. Deterministic on the CLI side. */
 export async function loadReport(kind: "daily" | "weekly"): Promise<ArcadiaJsonSuccess<ActivityReportResponse>> {
   return runArcadiaCliJson<ActivityReportResponse>(["report", kind]);

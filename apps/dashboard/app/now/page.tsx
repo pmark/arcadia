@@ -48,6 +48,8 @@ export default function NowPage() {
   const [brief, setBrief] = useState<NowBrief | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [narrating, setNarrating] = useState(false);
+  const [pendingGate, setPendingGate] = useState<string | null>(null);
+  const [gateNote, setGateNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -78,6 +80,48 @@ export default function NowPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /**
+   * Optimistic on purpose. The number falling is the only reward this screen
+   * has to give, and it has to land on the tap rather than after a round trip
+   * — a counter that lags feels like the system doubting you. The server is
+   * still the authority: a refusal reverts the change and says why.
+   */
+  const toggleGate = useCallback(
+    async (gate: ResolvedGate) => {
+      const next: GateStatus = gate.status === "done" ? "open" : "done";
+      setPendingGate(gate.id);
+      setGateNote(null);
+      setBrief((current) => (current ? applyGateStatus(current, gate.id, next) : current));
+
+      try {
+        const response = await fetch("/api/now/gate", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ gateId: gate.id, status: next })
+        });
+        const body = await response.json();
+        if (!response.ok) {
+          setBrief((current) => (current ? applyGateStatus(current, gate.id, gate.status) : current));
+          setGateNote(body?.error ?? "Could not mark that gate.");
+          return;
+        }
+        // Re-read rather than trust the optimistic view: completing a gate can
+        // change which single action the screen should be offering.
+        const refreshed = await fetch("/api/now", { cache: "no-store" });
+        const refreshedBody = await refreshed.json();
+        if (refreshed.ok) {
+          setBrief((current) => ({ ...(refreshedBody as NowBrief), reality: current?.reality ?? null }));
+        }
+      } catch (fetchError) {
+        setBrief((current) => (current ? applyGateStatus(current, gate.id, gate.status) : current));
+        setGateNote(fetchError instanceof Error ? fetchError.message : String(fetchError));
+      } finally {
+        setPendingGate(null);
+      }
+    },
+    []
+  );
 
   if (error) {
     return (
@@ -129,7 +173,11 @@ export default function NowPage() {
 
         <Attention attention={brief.attention} />
 
-        <Gates gates={brief.gates} />
+        <Gates gates={brief.gates} onToggle={toggleGate} pending={pendingGate} />
+
+        {gateNote ? (
+          <p className="rounded-md border border-clay/30 bg-clay/5 p-3 text-sm leading-snug text-clay">{gateNote}</p>
+        ) : null}
 
         <footer className="grid gap-2 pt-2">
           {brief.warnings.map((warning) => (
@@ -137,7 +185,7 @@ export default function NowPage() {
               ! {warning}
             </p>
           ))}
-          <p className="text-[11px] text-muted">
+          <p className="text-[11px] leading-relaxed text-muted [overflow-wrap:anywhere]">
             Target declared in {brief.target.documentPath ?? "NORTH_STAR.md"}. Edit that file to change what this screen measures.
           </p>
         </footer>
@@ -286,30 +334,82 @@ function Attention({ attention }: { attention: NowBrief["attention"] }) {
   );
 }
 
-/** The finish line, itemized. Last on the page: reference, not instruction. */
-function Gates({ gates }: { gates: ResolvedGate[] }) {
+/**
+ * The finish line, itemized. Last on the page: reference, not instruction.
+ *
+ * Operator-owned gates are tappable; gates that track an Action are not, and
+ * say so when tapped. That split is the honest one — a derived gate's status
+ * belongs to the record, and letting a tap overwrite it would put the document
+ * and the database into a disagreement this screen has no way to show.
+ *
+ * The tap is deliberately cheap and reversible. A mark that cannot be undone
+ * is a mark people hesitate over, and hesitation is the exact friction this
+ * removes; tapping a done gate returns it to open.
+ */
+function Gates({
+  gates,
+  onToggle,
+  pending
+}: {
+  gates: ResolvedGate[];
+  onToggle: (gate: ResolvedGate) => void;
+  pending: string | null;
+}) {
   return (
     <section className="grid min-w-0 gap-2">
       <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">The finish line</h2>
       <ul className="grid gap-1.5">
         {gates.map((gate) => {
           const mark = GATE_MARKS[gate.status];
-          return (
-            <li key={gate.id} className="flex min-w-0 items-start gap-2.5">
+          const owned = !gate.derived;
+          const busy = pending === gate.id;
+          const body = (
+            <>
               <span
-                className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border text-[11px] font-bold ${mark.className}`}
+                className={`mt-0.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded border text-[11px] font-bold ${mark.className} ${
+                  busy ? "opacity-50" : ""
+                }`}
+                aria-hidden
               >
-                {mark.glyph}
+                {busy ? "…" : mark.glyph}
               </span>
               <span
                 className={`text-sm leading-snug ${gate.status === "done" ? "text-muted line-through" : "text-ink"}`}
               >
                 {gate.title}
               </span>
+            </>
+          );
+
+          if (!owned) {
+            return (
+              <li key={gate.id} className="flex min-w-0 items-start gap-2.5 py-1.5">
+                {body}
+              </li>
+            );
+          }
+
+          return (
+            <li key={gate.id} className="min-w-0">
+              <button
+                type="button"
+                onClick={() => onToggle(gate)}
+                disabled={busy}
+                aria-pressed={gate.status === "done"}
+                className="flex w-full min-w-0 items-start gap-2.5 rounded-md py-1.5 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-moss active:opacity-60"
+              >
+                {body}
+                <span className="ml-auto shrink-0 self-center text-[11px] text-muted">
+                  {gate.status === "done" ? "undo" : "tap"}
+                </span>
+              </button>
             </li>
           );
         })}
       </ul>
+      <p className="text-[11px] text-muted">
+        Tappable gates are the ones only you can see. The rest follow their Action.
+      </p>
     </section>
   );
 }
@@ -334,6 +434,29 @@ function UndeclaredTarget({ one, warnings }: { one: TheOneThing; warnings: strin
       ))}
     </div>
   );
+}
+
+/**
+ * Apply a gate change locally and recompute the distance from it, so the
+ * headline number and the segment bar move on the same frame as the tap.
+ * Mirrors the arithmetic in `src/northStar/compute.ts`, including the half
+ * credit for a gate already underway.
+ */
+function applyGateStatus(brief: NowBrief, gateId: string, status: GateStatus): NowBrief {
+  const gates = brief.gates.map((gate) => (gate.id === gateId ? { ...gate, status } : gate));
+  const done = gates.filter((gate) => gate.status === "done").length;
+  const underway = gates.filter((gate) => gate.status === "in_progress").length;
+
+  return {
+    ...brief,
+    gates,
+    distance: {
+      total: gates.length,
+      done,
+      remaining: gates.length - done,
+      fraction: gates.length === 0 ? 0 : (done + underway * 0.5) / gates.length
+    }
+  };
 }
 
 function daysPhrase(days: number): string {
