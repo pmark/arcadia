@@ -27,6 +27,7 @@ import { isPlanningApprovalDecision } from "../execution/planningAuthorization.j
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../markdown/missionLog.js";
 import { renderRunSummary } from "../markdown/executionArtifacts.js";
+import { deployApprovedProjectProposal } from "../projects/stagingDeployment.js";
 import { createId } from "../utils/id.js";
 
 const POLL_INTERVAL_MS = 2_000;
@@ -196,13 +197,34 @@ export function runWorkerIteration(
     });
     const status = reduceExecutionOutcome(result);
     attachArtifactToExecutionRun(db, run.id, result.artifact.id);
+    let stagingUrl: string | null = null;
+    if (decision.resolved_intent === "ProjectProposalApproval" && status === "completed") {
+      if (!decision.project_id) {
+        throw new Error("Approved Project proposal is missing its Project id.");
+      }
+      const deployment = deployApprovedProjectProposal(db, {
+        projectId: decision.project_id,
+        workItemId: result.workItemId,
+        repoPath: result.repoPath
+      });
+      stagingUrl = deployment.url;
+      attachArtifactToExecutionRun(db, run.id, deployment.artifact.id);
+    }
     const summary = [
       `Executed with ${result.executor}.`,
       `${result.changedFiles.length} file(s) changed.`,
       `Validation: ${status === "completed" ? "passed" : status === "requires_review" ? "failed" : "not run"}.`,
-      `Follow-up Decision: ${result.followUpReview.slug ?? result.followUpReview.id}.`
+      stagingUrl ? `Live staging URL: ${stagingUrl}.` : `Follow-up Decision: ${result.followUpReview.slug ?? result.followUpReview.id}.`
     ].join(" ");
     finalizeGenericRun(db, workspacePath, run.id, status, summary, result.artifact.path ?? result.metadataPath);
+    if (stagingUrl && result.workItemId) {
+      updateWorkItem(db, result.workItemId, {
+        queue: "work_queue",
+        workClassification: "codex",
+        status: "done",
+        nextAction: `Review the live staging site at ${stagingUrl}.`
+      });
+    }
     log(logfile, `Run ${run.id} ${status} (exit: ${result.exitStatus})`);
   } catch (error) {
     finalizeWorkerFailure(db, workspacePath, run.id, error instanceof Error ? error.message : String(error));

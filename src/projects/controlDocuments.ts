@@ -39,6 +39,9 @@ export interface SeedControlDocumentsResult {
   /** Why a document was not written, in operator-facing words. Empty when both
    *  were written. */
   skipped: string[];
+  /** Stable identifiers needed to bind the seeded Action back to its source row. */
+  planSlug?: string;
+  currentActionId?: string | null;
 }
 
 /**
@@ -113,7 +116,7 @@ export function seedControlDocuments(input: SeedControlDocumentsInput): SeedCont
     projectDocument = projectPath;
   }
 
-  return { projectDocument, plan, skipped };
+  return { projectDocument, plan, skipped, planSlug, currentActionId };
 }
 
 export function bootstrapPlanSlug(projectSlug: string): string {

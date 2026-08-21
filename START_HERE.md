@@ -84,6 +84,87 @@ at the front: a queue distinguishes unclassified (Inbox) from ready (Work
 Queue), while Responsibility distinguishes who works a ready item (Autonomous
 or Codex).
 
+## Start a software Project from an idea
+
+### Astro Field Notes staging demo
+
+Arcadia has one deliberately narrow idea-to-live golden path. Send this shape
+through Ask or Discord:
+
+```text
+Create a MartianRover Field Notes blog site
+```
+
+Arcadia deterministically classifies it as an Astro Field Notes Project,
+creates an **Incubating** Project and one scoped proposal Decision, and sends a
+Discord notification whose Project-details link is
+`/projects/{project-id}`. The Project page is pre-populated with the template,
+`$create-astro-site` generator skill, selected coding agent, validation command,
+and Cloudflare Workers staging target.
+
+For the live demo:
+
+1. Create an empty GitHub repository. Do not initialize it with a README.
+2. Open the Project link from Discord, enter the GitHub HTTPS or SSH URL, choose
+   Codex or Claude Code, and save Project Setup.
+3. Read the proposal boundary and approve its Decision on the same page.
+4. Keep the Arcadia worker and Discord adapter running. The worker initializes
+   the configured local repository, attaches the GitHub URL as `origin`, asks
+   the selected agent to use `$create-astro-site`, runs `pnpm run build`, and
+   runs `wrangler deploy --env staging`. Wrangler creates or updates the
+   separate `{project-name}-staging` Worker with static assets from `dist`.
+5. Wait for the Discord Artifact notification titled `Live staging URL:` and
+   open the HTTPS `workers.dev` link. The same URL is stored on the Project page.
+
+Approval covers only that repository initialization, dependency/network use by
+the selected coding agent, the build, one Cloudflare Workers staging deploy, and
+the configured Discord notification. It does **not** authorize Git push, a pull
+request, merge, production deployment, custom domain, publication, deletion, or
+spending. The GitHub URL is attached as provenance/origin; this golden path does
+not push to it. Cloudflare staging uses Workers Static Assets and a named
+Wrangler `staging` environment rather than Pages or Git integration. The worker
+must already have working Cloudflare Wrangler
+authentication, and the selected coding agent must have the
+`create-astro-site` skill installed. A missing skill, build failure, missing
+Wrangler installation, missing Cloudflare authentication, or absent
+staging `workers.dev` URL fails the Run legibly and never records a fake live
+link.
+
+Next.js and Node generators are not claimed by this path yet. Add the second
+stack when its concrete generator skill, build output, and staging contract are
+ready to test end to end.
+
+### Explicit planning-first preparation
+
+Use the explicit preparation path when the input is a new software-Project
+idea, not an idea to shelve in Back Burner:
+
+```sh
+pnpm arcadia project prepare "Teacher Commons" \
+  "A calm web app where teachers exchange classroom resources and keep attribution intact." \
+  --path /path/to/teacher-commons
+```
+
+Omit `--path` to create the repository directory under the Arcadia workspace's
+Projects directory. The command classifies the request as **Project Work → Plan
+First → Codex**, preserves the idea verbatim, creates an Active Project and its
+first Milestone and planning Action, writes the `PROJECT.md` → active plan →
+current Action pointer chain, adopts the repository's agent context, and creates
+the immutable read-only planning packet plus one Planning Decision.
+
+It invokes no model and starts no Run. Its final `Trigger:` line is the exact
+`arcadia review approve <decision>` command that authorizes one read-only
+planning Run for that packet. Approval does not authorize implementation,
+merge, deployment, release, credentials, spending, production access,
+publishing, deletion, or outbound communication. Until the accepted-plan
+promotion increment lands, accepting the resulting planning Artifact still
+ends by asking the operator to choose the implementation Action; Arcadia does
+not pretend that manual seam is closed yet.
+
+Preparation refuses an already registered Project name or repository and any
+repository that already carries a `PROJECT.md` or managed plan. It never
+replaces another Project's work pointer.
+
 ## Normal daily use
 
 1. Read **Today's Advantage**: one ready Action, its expected Artifact, and why it matters now.

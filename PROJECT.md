@@ -6,8 +6,8 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: Every software Project always exposes a stable proof surface and a governed path from candidate demo through QA-verified release
-active_plan: demo-first-delivery
+milestone: A raw software-project idea becomes governed, dispatchable coding-agent work without a manual planning-to-build handoff
+active_plan: idea-to-managed-build
 updated: 2026-08-20
 ---
 
@@ -133,6 +133,45 @@ projection, not a second work pointer: managed documents still decide what is
 dispatchable, and provider limits still gate packet selection. Provider-budget
 admission is deferred until Claude Code and Codex both expose comparable fresh
 daily and weekly capacity windows.
+
+On 2026-08-20 the operator set a more direct north-star priority: they want to
+state a project idea once, have Arcadia classify and plan it into governed work,
+and then have Arcadia manage the build with a coding agent. Decision 0029
+activates `docs/plans/idea-to-managed-build.md`. The first 80/20 slice is a
+single project-preparation command that preserves the full idea, creates a
+dispatchable planning Action and control-document pointer, and produces the
+exact planning Decision without invoking a model. The next slice removes the
+manual gap after plan acceptance by promoting its smallest implementation goal
+into the current governed build Action.
+
+`prepare-project-idea` is now `done`. `arcadia project prepare` takes the name,
+free-form idea, optional repository path, and optional planning profile. It
+creates an Active Project, preserves the idea in both the Project Outcome and
+the planning Action's raw input, writes and binds the bootstrap pointer chain,
+adopts the repository context, resolves dispatch readiness, and creates the
+immutable planning packet and approval Decision through the existing path. Its
+final line is the exact approval trigger, and tests prove there is no Run or
+model invocation. The pointer moves to `promote-accepted-plan`, the remaining
+manual seam between accepted planning and coding-agent implementation.
+
+The operator then set a 2026-08-21 demonstration target and supplied the exact
+golden-path story: "Create a MartianRover Field Notes blog site" should create
+a populated proposed Project, notify Discord with a Project-detail deep link,
+accept an operator-supplied empty GitHub repository URL, and use an approved
+Codex or Claude Code Run plus the Create Astro Site skill to return a live
+Cloudflare Workers staging URL. Decision 0030 makes `demo-astro-staging-loop` the
+current Action ahead of the general accepted-plan promotion seam. The 80/20
+boundary is explicit: prove Astro/Field Notes end to end; generalize to Next.js
+and Node.js only when a second concrete stack is selected.
+
+That demo implementation is now complete and covered by a synthetic full-loop
+worker test: proposal, GitHub metadata, approval, scoped Codex packet, build,
+Cloudflare command/result handling, persisted staging URL, completed Action,
+Dashboard projection, and Discord deep link/Artifact. The full test suite and
+both application builds pass. A real `workers.dev` rehearsal was not performed
+because the operator's empty GitHub repository and external Cloudflare staging
+authority are demonstration inputs, not repository fixtures. The pointer now
+returns to `promote-accepted-plan`.
 
 ## Links
 

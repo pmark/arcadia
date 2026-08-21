@@ -11,6 +11,8 @@ export interface UpdateProjectSetupInput {
   mission?: string;
   status?: string;
   repoPath?: string | null;
+  repositoryUrl?: string | null;
+  buildAgent?: string | null;
   validationCommands?: string[];
 }
 
@@ -52,12 +54,19 @@ export function updateProjectSetup(
   }
 
   const existingMetadata = getProjectMetadata(db, input.projectId);
-  const metadataNeedsUpdate = input.repoPath !== undefined || input.validationCommands !== undefined;
+  const metadataNeedsUpdate = input.repoPath !== undefined || input.repositoryUrl !== undefined ||
+    input.buildAgent !== undefined || input.validationCommands !== undefined;
   const metadata = metadataNeedsUpdate
     ? upsertProjectMetadata(db, {
         projectId: input.projectId,
         aliases: decodeStringArray(existingMetadata?.aliases),
         repoPath: input.repoPath === undefined ? existingMetadata?.repo_path ?? null : nullable(input.repoPath),
+        repositoryUrl: input.repositoryUrl === undefined
+          ? existingMetadata?.repository_url ?? null
+          : validateGitHubRepositoryUrl(input.repositoryUrl),
+        buildAgent: input.buildAgent === undefined
+          ? existingMetadata?.build_agent ?? null
+          : validateBuildAgent(input.buildAgent),
         statusSummary: existingMetadata?.status_summary ?? null,
         validationCommands:
           input.validationCommands === undefined
@@ -69,6 +78,8 @@ export function updateProjectSetup(
         projectId: input.projectId,
         aliases: [],
         repoPath: null,
+        repositoryUrl: null,
+        buildAgent: null,
         statusSummary: null,
         validationCommands: []
       });
@@ -80,11 +91,47 @@ export function updateProjectSetup(
   if (input.repoPath !== undefined) {
     updated.push("repoPath");
   }
+  if (input.repositoryUrl !== undefined) {
+    updated.push("repositoryUrl");
+    db.prepare(
+      `UPDATE review_items
+       SET missing_fields = ?, updated_at = ?
+       WHERE project_id = ? AND resolved_intent = 'ProjectProposalApproval' AND status IN ('open', 'deferred')`
+    ).run(
+      metadata.repository_url ? "[]" : JSON.stringify(["repository URL"]),
+      new Date().toISOString(),
+      input.projectId
+    );
+  }
+  if (input.buildAgent !== undefined) {
+    updated.push("buildAgent");
+  }
   if (input.validationCommands !== undefined) {
     updated.push("validationCommands");
   }
 
   return { project, metadata, updated };
+}
+
+export function validateGitHubRepositoryUrl(value: string | null | undefined): string | null {
+  const normalized = nullable(value);
+  if (!normalized) return null;
+  if (
+    !/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?$/.test(normalized) &&
+    !/^git@github\.com:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?$/.test(normalized)
+  ) {
+    throw new Error("Repository URL must identify a GitHub repository using HTTPS or SSH.");
+  }
+  return normalized;
+}
+
+function validateBuildAgent(value: string | null | undefined): string | null {
+  const normalized = nullable(value);
+  if (!normalized) return null;
+  if (normalized !== "codex" && normalized !== "claude-code") {
+    throw new Error("Build agent must be codex or claude-code.");
+  }
+  return normalized;
 }
 
 export function decodeStringArray(raw: string | null | undefined): string[] {

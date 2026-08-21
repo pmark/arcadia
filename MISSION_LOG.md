@@ -8,6 +8,55 @@ updated: 2026-08-20
 
 # Mission Log: Arcadia
 
+## 2026-08-20 — Completed the Astro idea-to-staging golden path
+
+- **Did:** Implemented exact suffix-shaped Astro proposal intake; Incubating Project metadata and Dashboard setup; Discord Project-detail links; one-click proposal approval; Codex/Claude scaffold dispatch with `$create-astro-site`; scoped Codex network access; deterministic build validation; Cloudflare Workers Static Assets deployment to the named Wrangler `staging` environment; persisted staging URL and live-link Artifact; CLI fallback metadata fields; and the operator demo runbook.
+- **Result:** A synthetic worker-level end-to-end test completes the exact request through a staging `workers.dev` URL without a second approval, Git push, production deployment, or invented result. Focused proposal/Discord/Dashboard regressions pass, the full suite passes with 928 tests and 6 skips, the core/Discord TypeScript build passes, and the optimized Dashboard build passes.
+- **Next:** Promote an accepted validated planning Artifact into the one governed build Action and immutable build packet.
+- **Blockers:** None for the implementation. A real demo rehearsal still requires the operator's empty GitHub repository URL, installed `create-astro-site` skill for the selected agent, working agent login, and Wrangler-authenticated Cloudflare account.
+
+## 2026-08-20 — Scoped the tomorrow idea-to-staging demonstration
+
+- **Did:** Recorded Decision 0030 and inserted `demo-astro-staging-loop` as the current Action ahead of the general planning-to-build promotion seam.
+- **Result:** The demo has one honest golden path: exact Astro blog intent, populated Incubating Project, Discord Project-detail link, entered GitHub URL, one Project-scoped approval, one Codex or Claude Code scaffold Run using Create Astro Site, and one Cloudflare Workers staging URL returned through Discord. Approval explicitly excludes production, merge, push, custom domains, publication, spending, and deletion.
+- **Next:** Implement and validate the exact proposal, approval, build, staging, and notification loop.
+- **Blockers:** None. A real live-link proof will still require the operator's empty GitHub repository URL, installed generator skill, selected coding-agent login, and Cloudflare Wrangler authentication at demonstration time.
+
+## 2026-08-20 — Made a project idea approval-ready in one command
+
+- **Did:** Added `arcadia project prepare <name> <idea> [--path]`. It performs
+  an explicit Project-work classification, creates the Active Project and
+  planning Action, preserves the idea verbatim, writes and binds a valid
+  managed pointer chain, adopts the repository context, checks dispatch, and
+  prepares the existing immutable read-only planning packet and Decision.
+- **Result:** The command reports Project Work, Plan First, Codex responsibility,
+  every receipt, and the exact approval trigger. It invokes no model and starts
+  no Run. Occupied names, registered repositories, `PROJECT.md`, managed plans,
+  and the bootstrap plan path fail before creation or overwrite. Three focused
+  tests cover the direct function, real CLI JSON envelope, dispatch readiness,
+  full-idea preservation, packet/Decision receipts, zero Runs, and refusals.
+  The root build passes; the full suite passes 923 tests with 6 skipped.
+- **Next:** Promote an accepted planning Artifact into the managed plan's one
+  current coding-agent build Action and prepare its immutable build packet.
+- **Blockers:** None.
+
+## 2026-08-20 — Prioritized the direct idea-to-managed-build path
+
+- **Did:** Recorded the operator's request to state a project idea once, have
+  Arcadia classify and plan it, and then let Arcadia manage the coding-agent
+  build. Mapped the request against the existing target development loop and
+  found the two missing seams: explicit project ideas fall into Back Burner,
+  and accepting a validated planning Artifact ends with a manual instruction to
+  choose the implementation Action.
+- **Result:** Decision 0029 activates `idea-to-managed-build`. The first Action
+  is the smallest usable entry point: one command that creates the Incubating
+  Project, preserves the idea, establishes a valid planning pointer, and
+  prepares the exact read-only planning Decision without invoking a model. The
+  second Action promotes the accepted plan into governed build work; the third
+  carries that work through Candidate and independent QA.
+- **Next:** Implement `prepare-project-idea` in an isolated worktree.
+- **Blockers:** None. Consequential transitions remain separately gated.
+
 ## 2026-08-20 — Adoption stopped one document short of working
 
 - **Did:** The operator registered a repository path for Martian Rover, ran

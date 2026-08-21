@@ -22,8 +22,13 @@ Optional:
 
 ```sh
 ARCADIA_CLI_PATH=/absolute/path/to/arcadia
+ARCADIA_DASHBOARD_URL=http://192.168.1.10:3020
 ARCADIA_DISCORD_POLL_INTERVAL_SECONDS=60
 ```
+
+`ARCADIA_DASHBOARD_URL` defaults to `http://localhost:3020`. Set it to the
+Mac's LAN or Tailscale Mission Control URL when Discord is read on a phone, so
+Project proposal notifications deep-link to a reachable Project details page.
 
 If `ARCADIA_CLI_PATH` is omitted, the bot looks for the local Arcadia CLI source or built CLI.
 
@@ -99,6 +104,8 @@ The bot polls Arcadia and notifies the configured channel when:
 - a Discord-submitted run completes,
 - an observed Codex task starts, requires review, completes, or fails,
 - the Requires Review count transitions from `0` to a positive number,
+- a new Project proposal needs approval, including a Mission Control deep link,
+- a completed staging Run produces its live `workers.dev` URL Artifact,
 - a milestone is completed.
 
 The bot suppresses routine artifact generation, mission log updates, intermediate execution steps, and successful runs with no human action required.

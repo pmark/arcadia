@@ -100,6 +100,12 @@ export interface DashboardProject {
   workClassificationLabel: string | null;
   responsibilityLabel: string | null;
   repoPath: string | null;
+  repositoryUrl: string | null;
+  projectTemplate: string | null;
+  generatorSkill: string | null;
+  deploymentTarget: string | null;
+  buildAgent: string | null;
+  stagingUrl: string | null;
   statusSummary: string | null;
   validationCommands: string[];
   setupWarnings: string[];
@@ -425,6 +431,12 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
           ? labelWorkClassification((project.responsibility ?? project.work_classification) as string)
           : null,
         repoPath,
+        repositoryUrl: metadata?.repository_url ?? null,
+        projectTemplate: metadata?.project_template ?? null,
+        generatorSkill: metadata?.generator_skill ?? null,
+        deploymentTarget: metadata?.deployment_target ?? null,
+        buildAgent: metadata?.build_agent ?? null,
+        stagingUrl: metadata?.staging_url ?? null,
         statusSummary: metadata?.status_summary ?? null,
         validationCommands: decodeStringArray(metadata?.validation_commands),
         setupWarnings: repoPath ? [] : [MISSING_REPO_PATH_WARNING],

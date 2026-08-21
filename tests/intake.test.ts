@@ -57,6 +57,15 @@ describe("Arcadia Intake", () => {
     expect(result.safeToExecute).toBe(false);
   });
 
+  it("extracts a project name placed before a supported template suffix", () => {
+    const result = resolveIntake("Create a MartianRover Field Notes blog site", context);
+
+    expect(result.resolvedIntent).toBe("InstantiateProject");
+    expect(result.confidenceLabel).toBe("high");
+    expect(result.template?.id).toBe("astro_website_blog");
+    expect(result.extractedFields.projectName).toBe("MartianRover Field Notes");
+  });
+
   it("extracts plain project creation without requiring a template", () => {
     const result = resolveIntake("Create a project called Boring Defaults.", context);
 

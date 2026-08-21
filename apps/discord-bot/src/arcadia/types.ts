@@ -195,6 +195,7 @@ export interface ReviewItem {
   decisionSlug?: string;
   workItemId: string | null;
   actionId?: string | null;
+  projectId?: string | null;
   project: string | null;
   goal: string | null;
   outcome?: string | null;

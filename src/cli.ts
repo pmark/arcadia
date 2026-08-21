@@ -119,6 +119,7 @@ import {
   renderProjectImportSuccess,
   renderProjectListSuccess,
   renderProjectMetadataSuccess,
+  renderProjectPrepareSuccess,
   renderProjectReplySuccess,
   renderProjectSetupContextAllSuccess,
   renderProjectSetupContextSuccess,
@@ -128,6 +129,7 @@ import {
   runProjectImportCommand,
   runProjectListCommand,
   runProjectMetadataCommand,
+  runProjectPrepareCommand,
   runProjectReplyCommand,
   runProjectSetupContextAllCommand,
   runProjectSetupContextCommand,
@@ -794,6 +796,26 @@ export function buildProgram(): Command {
   });
   addJsonOption(
     project
+      .command("prepare")
+      .description("Turn an explicit software-Project idea into governed, approval-ready planning work")
+      .argument("<name>", "Project name")
+      .argument("<idea>", "Free-form project idea")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--path <path>", "Repository path; defaults to the workspace Projects directory", resolveInvocationPath)
+      .option("--agent-profile <name>", "Coding agent profile for the read-only planning packet")
+  ).action((name: string, idea: string, options: {
+    workspace: string;
+    path?: string;
+    agentProfile?: string;
+    json?: boolean;
+  }) => runCliAction(
+    "project.prepare",
+    options,
+    () => runProjectPrepareCommand({ ...options, name, idea }),
+    renderProjectPrepareSuccess
+  ));
+  addJsonOption(
+    project
     .command("list")
     .description("List projects")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
@@ -883,12 +905,16 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--alias <alias>", "Project alias; repeat for multiple aliases", collectValues, undefined)
       .option("--repo-path <path>", "Target repository path", resolveInvocationPath)
+      .option("--repository-url <url>", "Empty GitHub repository HTTPS or SSH URL")
+      .option("--build-agent <agent>", "Approved scaffold agent: codex or claude-code")
       .option("--status-summary <summary>", "Project status summary")
       .option("--validation-command <command>", "Validation command; repeat for multiple commands", collectValues, undefined)
   ).action((projectId: string, options: {
     workspace: string;
     alias?: string[];
     repoPath?: string;
+    repositoryUrl?: string;
+    buildAgent?: string;
     statusSummary?: string;
     validationCommand?: string[];
     json?: boolean;
@@ -901,6 +927,8 @@ export function buildProgram(): Command {
         projectId,
         aliases: options.alias,
         repoPath: options.repoPath,
+        repositoryUrl: options.repositoryUrl,
+        buildAgent: options.buildAgent,
         statusSummary: options.statusSummary,
         validationCommands: options.validationCommand
       }),

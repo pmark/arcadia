@@ -65,7 +65,8 @@ export function evaluateNotifications(
   snapshot: NotificationSnapshot,
   previous: NotificationState | null,
   now = new Date().toISOString(),
-  submissions: DiscordSubmissionState = emptyDiscordSubmissionState(now)
+  submissions: DiscordSubmissionState = emptyDiscordSubmissionState(now),
+  dashboardUrl?: string
 ): NotificationEvaluation {
   const reviewItems = snapshot.reviewItems ?? [];
   const blockedWorkItems = snapshot.blockedWorkItems ?? [];
@@ -120,7 +121,7 @@ export function evaluateNotifications(
     if (!sentReviewItems.has(item.id)) {
       messages.push({
         key: `requires-review:${item.id}`,
-        content: requiresReviewItemMessage(item)
+        content: requiresReviewItemMessage(item, dashboardUrl)
       });
     }
   }
@@ -219,8 +220,8 @@ function isRequiresReviewStatus(value: string | null | undefined): boolean {
   return value === "requires_review";
 }
 
-function requiresReviewItemMessage(item: ReviewItem): string {
-  return formatRequiresReviewNotificationItem(item);
+function requiresReviewItemMessage(item: ReviewItem, dashboardUrl?: string): string {
+  return formatRequiresReviewNotificationItem(item, dashboardUrl);
 }
 
 function blockedWorkItemMessage(item: WorkItem): string {
@@ -267,7 +268,7 @@ export function startNotificationPoller(
         (run) => run.status === "running" || run.status === "pending_execution"
       );
 
-      const evaluation = evaluateNotifications(snapshot, previous, new Date().toISOString(), submissions);
+      const evaluation = evaluateNotifications(snapshot, previous, new Date().toISOString(), submissions, config.dashboardUrl);
 
       // Persist state after each individual send succeeds, rather than once at the
       // end of the batch. Otherwise a failure partway through (rate limit, transient

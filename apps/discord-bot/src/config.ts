@@ -12,6 +12,8 @@ export interface BotConfig {
   discordGuildId: string;
   discordChannelId: string;
   arcadiaCliPath: string | null;
+  /** Browser base URL used for deep links in proposal notifications. */
+  dashboardUrl: string;
   pollIntervalSeconds: number;
   /** Per-user allowlist for the shared Discord Reply Router. Empty = no one authorized (fail closed). */
   allowedUserIds: string[];
@@ -45,6 +47,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     discordGuildId: requireEnv(env, "DISCORD_GUILD_ID"),
     discordChannelId: requireEnv(env, "DISCORD_CHANNEL_ID"),
     arcadiaCliPath: env.ARCADIA_CLI_PATH?.trim() ? path.resolve(env.ARCADIA_CLI_PATH) : null,
+    dashboardUrl: parseDashboardUrl(env.ARCADIA_DASHBOARD_URL),
     pollIntervalSeconds: parsePollInterval(env.ARCADIA_DISCORD_POLL_INTERVAL_SECONDS),
     allowedUserIds: parseAllowedUserIds(env.DISCORD_ALLOWED_USER_IDS),
     orientationTargetLocalTime: parseTargetLocalTime(env.ARCADIA_ORIENTATION_TARGET_TIME, "06:00", "ARCADIA_ORIENTATION_TARGET_TIME"),
@@ -61,6 +64,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
       900
     )
   };
+}
+
+function parseDashboardUrl(raw: string | undefined): string {
+  const value = raw?.trim() || "http://localhost:3020";
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`ARCADIA_DASHBOARD_URL must be an absolute HTTP(S) URL, got: ${value}`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(`ARCADIA_DASHBOARD_URL must be an absolute HTTP(S) URL, got: ${value}`);
+  }
+  return value.replace(/\/+$/, "");
 }
 
 function parseAllowedUserIds(raw: string | undefined): string[] {

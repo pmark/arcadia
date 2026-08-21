@@ -409,6 +409,12 @@ export interface DashboardProject {
   workClassificationLabel: string | null;
   responsibilityLabel: string | null;
   repoPath: string | null;
+  repositoryUrl: string | null;
+  projectTemplate: string | null;
+  generatorSkill: string | null;
+  deploymentTarget: string | null;
+  buildAgent: string | null;
+  stagingUrl: string | null;
   statusSummary: string | null;
   validationCommands: string[];
   setupWarnings: string[];

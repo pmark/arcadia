@@ -456,7 +456,7 @@ export function createProjectWithInitialWork(
         projectId: project.id,
         milestoneId: milestone.id,
         title: input.nextAction,
-        rawInput: input.nextAction,
+        rawInput: input.rawInput ?? input.nextAction,
         queue: queueForWorkClassification(validateWorkClassification(input.workClassification)),
         workClassification: input.workClassification,
         nextAction: input.nextAction,
@@ -600,6 +600,12 @@ export function upsertProjectMetadata(
     project_id: input.projectId,
     aliases: encodeStringArray(input.aliases),
     repo_path: nullable(input.repoPath),
+    repository_url: input.repositoryUrl === undefined ? existing?.repository_url ?? null : nullable(input.repositoryUrl),
+    project_template: input.projectTemplate === undefined ? existing?.project_template ?? null : nullable(input.projectTemplate),
+    generator_skill: input.generatorSkill === undefined ? existing?.generator_skill ?? null : nullable(input.generatorSkill),
+    deployment_target: input.deploymentTarget === undefined ? existing?.deployment_target ?? null : nullable(input.deploymentTarget),
+    build_agent: input.buildAgent === undefined ? existing?.build_agent ?? null : nullable(input.buildAgent),
+    staging_url: input.stagingUrl === undefined ? existing?.staging_url ?? null : nullable(input.stagingUrl),
     status_summary: nullable(input.statusSummary),
     validation_commands: encodeStringArray(input.validationCommands),
     created_at: existing?.created_at ?? timestamp,
@@ -608,13 +614,21 @@ export function upsertProjectMetadata(
 
   db.prepare(
     `INSERT INTO project_metadata (
-      project_id, aliases, repo_path, status_summary, validation_commands, created_at, updated_at
+      project_id, aliases, repo_path, repository_url, project_template, generator_skill,
+      deployment_target, build_agent, staging_url, status_summary, validation_commands, created_at, updated_at
     ) VALUES (
-      @project_id, @aliases, @repo_path, @status_summary, @validation_commands, @created_at, @updated_at
+      @project_id, @aliases, @repo_path, @repository_url, @project_template, @generator_skill,
+      @deployment_target, @build_agent, @staging_url, @status_summary, @validation_commands, @created_at, @updated_at
     )
     ON CONFLICT(project_id) DO UPDATE SET
       aliases = excluded.aliases,
       repo_path = excluded.repo_path,
+      repository_url = excluded.repository_url,
+      project_template = excluded.project_template,
+      generator_skill = excluded.generator_skill,
+      deployment_target = excluded.deployment_target,
+      build_agent = excluded.build_agent,
+      staging_url = excluded.staging_url,
       status_summary = excluded.status_summary,
       validation_commands = excluded.validation_commands,
       updated_at = excluded.updated_at`
