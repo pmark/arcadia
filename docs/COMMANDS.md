@@ -1127,6 +1127,29 @@ no-op — the Record is hashed with its generation timestamp excluded, so an
 unchanged window does not churn the vault. A vault misconfiguration is reported
 but never costs you the report.
 
+### Preview or refresh a Project living-system story
+
+```sh
+pnpm arcadia memory system sync --workspace "$WORKSPACE" --project arcadia
+pnpm arcadia memory system sync --workspace "$WORKSPACE" --project arcadia --apply
+pnpm arcadia memory system sync --workspace "$WORKSPACE" --all --json
+```
+
+Exactly one of `--project` and `--all` is required. Preview is read-only and
+reports created, updated, unchanged, stale, skipped, and refused entries;
+`--apply` writes the same deterministic projection beneath
+`Projects/<project-slug>/`. One bad Project does not stop `--all`. The command
+uses the configured repository and Obsidian vault, makes no model or network
+call, never installs a plugin, and never treats vault edits as authority.
+
+Each repository owns its `docs/living-system.yaml`. Managed Project documents
+and optional explicit `Action: plan-slug#action-id` Log lines supply history.
+Generated pages expose provenance and freshness and remain useful as plain
+Markdown; WikiLinks, transclusions, Markmap panes, and the Canvas split view are
+progressive enhancements. To rebuild or roll back, operate only on the marked
+generated Project subtree and re-run `--apply`; collisions with unmarked files
+are refused and stale generated pages are retained rather than deleted.
+
 Update an Action manually:
 
 ```sh

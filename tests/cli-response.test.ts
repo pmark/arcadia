@@ -530,7 +530,11 @@ describe("CLI response contract", () => {
     writeFileSync(path.join(repo, "src", "index.ts"), "export const ok = true;\n", "utf8");
     writeFileSync(path.join(repo, "README.md"), "# Fixture\n", "utf8");
 
-    const byRepo = runCli(["project", "setup-context", "--repo", repo, "--json"]);
+    const byRepo = runCli(
+      ["project", "setup-context", "--repo", repo, "--json"],
+      {},
+      { cwd: createNeutralCwd() }
+    );
 
     expect(byRepo.status).toBe(0);
     expect(byRepo.stderr).toBe("");

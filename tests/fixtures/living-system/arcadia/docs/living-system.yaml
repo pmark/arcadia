@@ -1,0 +1,50 @@
+arcadia_living_system: v1
+project: arcadia
+purpose: Turn stated outcomes into governed, evidence-backed progress.
+topics:
+  - id: capture
+    title: Capture intent
+    why: Preserve what the operator actually asked for.
+    use_when: An idea or request first enters Arcadia.
+    summary: Captures raw intent without prematurely inventing a plan.
+    sources:
+      - src/capture.ts
+    tags:
+      - operator-loop
+  - id: clarification
+    title: Clarify the next Action
+    why: Make work executable or expose exactly one missing Decision.
+    use_when: Captured intent is not yet safe to dispatch.
+    summary: Applies the clarification rubric and preserves uncertainty.
+    sources:
+      - src/clarification.ts
+    tags:
+      - operator-loop
+  - id: governed-build
+    title: Governed coding-agent build
+    why: Turn an accepted plan into bounded implementation and proof.
+    use_when: A clarified coding Action is ready for an agent.
+    summary: Dispatches code work under the repository pointer and approval boundaries.
+    sources:
+      - src/governed-build.ts
+relationships:
+  - from: capture
+    to: clarification
+    type: hands-off-to
+  - from: clarification
+    to: governed-build
+    type: authorizes
+    summary: A clarified Codex Action may enter the governed build path.
+views:
+  - id: operator-loop
+    title: Operator loop
+    purpose: Orient an operator from raw intent through a safe next Action.
+    selectors:
+      - tag: operator-loop
+    order: declaration
+  - id: whole-system
+    title: Whole system
+    purpose: Show every declared capability without imposing universal categories.
+    selectors:
+      - all: true
+    order: title

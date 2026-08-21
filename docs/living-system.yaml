@@ -1,0 +1,90 @@
+arcadia_living_system: v1
+project: arcadia
+purpose: Turn stated outcomes into clarified, governed, evidence-backed progress without making the operator hold the whole portfolio in their head.
+topics:
+  - id: capture-intent
+    title: Capture intent
+    why: Preserve what the operator actually asked for before interpretation begins.
+    use_when: An idea, request, or file first enters Arcadia.
+    summary: Creates durable raw input and an explicitly unclarified Action.
+    sources: [apps/dashboard/app/capture, src/commands/ask.ts]
+    tags: [operator-loop]
+  - id: clarify-action
+    title: Clarify the next Action
+    why: Work should be executable or expose exactly one missing Decision.
+    use_when: Captured intent is not yet safe to dispatch.
+    summary: Applies the clarification rubric while preserving uncertainty.
+    sources: [src/commands/clarify.ts]
+    tags: [operator-loop]
+  - id: prioritize-portfolio
+    title: Prioritize the portfolio
+    why: The operator needs the best next move, not another unordered backlog.
+    use_when: Several clarified Actions could advance.
+    summary: Resolves the governed pointer and surfaces the vital next Action.
+    sources: [src/commands/next.ts, src/commands/docket.ts, src/commands/portfolio.ts]
+    tags: [operator-loop, governance]
+  - id: govern-plan
+    title: Govern the plan
+    why: Coding work needs bounded authority, acceptance criteria, and durable continuation.
+    use_when: A clarified outcome requires implementation.
+    summary: Turns approved intent into one dispatchable plan and immutable packet.
+    sources: [src/codex, src/docs]
+    tags: [governance, delivery-loop]
+  - id: execute-build
+    title: Execute the build
+    why: Approved plans must become real software without crossing authority boundaries.
+    use_when: A coding-agent Action is ready for execution.
+    summary: Runs the selected coding agent in an isolated working copy and preserves receipts.
+    sources: [src/execution, src/commands/work.ts]
+    tags: [delivery-loop]
+  - id: prove-quality
+    title: Prove quality
+    why: Completion is evidence, not a claim.
+    use_when: A Candidate must satisfy acceptance criteria and operator-facing QA.
+    summary: Validates output, retains gaps, and separates proof from approval.
+    sources: [src/stewardship, src/commands/qa.ts]
+    tags: [delivery-loop, governance]
+  - id: deliver-result
+    title: Deliver the result
+    why: Governed work should reach a usable handoff while gated effects stay explicit.
+    use_when: Proof is ready for a pull request, staging handoff, or release Decision.
+    summary: Packages tested change and exact QA without silently merging or deploying.
+    sources: [src/projects/stagingDeployment.ts, src/commands/workPullRequests.ts]
+    tags: [delivery-loop]
+  - id: preserve-memory
+    title: Preserve living memory
+    why: A future session should recover purpose, current work, history, and proof quickly.
+    use_when: Accepted work changes what the Project is or how it is understood.
+    summary: Projects authoritative records into durable orientation and living-system views.
+    sources: [src/memory, src/livingSystem]
+    tags: [operator-loop, governance]
+relationships:
+  - { from: capture-intent, to: clarify-action, type: hands-off-to }
+  - { from: clarify-action, to: prioritize-portfolio, type: makes-routable }
+  - { from: prioritize-portfolio, to: govern-plan, type: selects }
+  - { from: govern-plan, to: execute-build, type: authorizes }
+  - { from: execute-build, to: prove-quality, type: produces-proof-for }
+  - { from: prove-quality, to: deliver-result, type: qualifies }
+  - { from: deliver-result, to: preserve-memory, type: records-into }
+  - { from: preserve-memory, to: prioritize-portfolio, type: informs }
+views:
+  - id: operator-loop
+    title: Operator loop
+    purpose: Follow intent into one safe next Action and recover context later.
+    selectors: [{ tag: operator-loop }]
+    order: declaration
+  - id: governed-delivery
+    title: Governed delivery
+    purpose: Follow an accepted plan through implementation, proof, and handoff.
+    selectors: [{ tag: delivery-loop }]
+    order: declaration
+  - id: governance
+    title: Trust and governance
+    purpose: Audit the boundaries that keep progress truthful and reversible.
+    selectors: [{ tag: governance }]
+    order: declaration
+  - id: whole-system
+    title: Whole system
+    purpose: See every declared Arcadia capability in journey order.
+    selectors: [{ all: true }]
+    order: declaration

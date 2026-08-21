@@ -599,6 +599,28 @@ arcadia memory sync --workspace <path>
 
 The command never reads operational state from Obsidian and never deletes vault content. Files under the vault's `Arcadia/Records/` subtree are Arcadia-managed projections, not editable inputs.
 
+## Living-system navigator
+
+A Project that owns a validated `docs/living-system.yaml` can project its
+capability map and Action timeline into `Projects/<project-slug>/` in the same
+vault. Repository files own durable meaning; managed documents, explicit
+`Action: plan-slug#action-id` Mission Log links, and operational receipts own
+status and history. Preview is the default:
+
+```sh
+arcadia memory system sync --project <project> --workspace <path>
+arcadia memory system sync --project <project> --workspace <path> --apply
+arcadia memory system sync --all --workspace <path> --json
+```
+
+Home, Topic, and episode pages work as plain Markdown. Obsidian adds WikiLinks,
+transclusions, optional Markmap panes, and a Canvas split view. Claims show
+provenance and freshness; gaps remain visible. Sync never installs plugins or
+calls a model. Generated pages are replaceable: preserve or remove only that
+Project's generated subtree, then re-run `--apply` to roll back or rebuild it.
+Accepted Action transitions attempt a refresh only when vault memory is enabled;
+a refresh warning never reverses the accepted transition.
+
 ## Automatic local services
 
 After you sign in following a laptop restart, Arcadia's managed launch agents start and keep these services running:

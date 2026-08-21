@@ -8,6 +8,46 @@ updated: 2026-08-21
 
 # Mission Log: Arcadia
 
+## 2026-08-21 — Delivered both living-system stories for perceptual acceptance
+
+- **Action:** `living-system-v1#dogfood-living-system-v1`
+- **Did:** Added the real Arcadia manifest and a bounded Private Practice Now manifest on its own isolated branch and draft PR #54; preserved PPN's current pointer while adding explicit source references for its current calibration Action; made legacy optional-source parse failures visible as validation Signals; generated both presentations in the configured Arcadia1 vault; installed and enabled the Decision-authorized Mindmap NextGen 1.16.0 release with checksums and a preserved rollback record; and wrote the exact morning walkthrough in `docs/living-system-v1-demo.md`.
+- **Result:** Arcadia presents 8 Topics, 63 Action episodes, 70 Signals, and 81 files. PPN presents 10 Topics, 61 episodes, 97 Signals, and 80 files. Both previews agreed with apply and subsequent refreshes rewrote nothing. Deterministic QA resolved 880 WikiLinks, 168 existing source links, 4 transclusions, both Canvas files, all generated markers, and both current-Action impact paths with zero failures. Arcadia's full suite passes 957 tests with 6 skipped; core, Discord, and optimized Dashboard builds pass; PPN typecheck passes across 16 workspace projects.
+- **Next:** The operator opens `docs/living-system-v1-demo.md`, performs its two-minute walkthrough, and records whether the ten-second orientation, one-click navigation, primary-journey comprehension, and auditability bar is met. On acceptance, restore the exact `idea-to-managed-build/promote-accepted-plan` pointer required by Decision 0032.
+- **Blockers:** Only operator perceptual acceptance remains. Automated screen capture returned a black frame under the current macOS permission context, so no screenshot is misrepresented as proof. No merge, deployment, publication, production access, credential use, or launch state changed.
+
+## 2026-08-21 — Integrated free living-system refresh into normal operation
+
+- **Action:** `living-system-v1#integrate-living-system-sync`
+- **Did:** Added `arcadia memory system sync` with required one-Project or all-active-Project scope, preview by default, explicit apply, standard JSON receipts, independent skips/refusals, and deterministic vault projection. Added best-effort refresh after explicit Action completion and accepted planning transitions, plus operator and generated guidance for authority, manifests, explicit Log links, Markmap, transclusions, Canvas, freshness, fallback, and rollback.
+- **Result:** Preview performs no writes and agrees with apply; unchanged input does not rewrite bytes; one invalid Project does not stop `--all`; disabled memory stays silent; enabled refresh failures warn without reversing the completed transition. The focused integration tests pass 2/2, the full suite passes 956 tests with 6 skipped, core and Discord builds pass, and the optimized Dashboard build passes. Routine sync makes no model, network, paid-service, or plugin-installation call.
+- **Next:** Dogfood governed Arcadia and Private Practice Now manifests, generate both stories, validate navigation and trust evidence, and prepare the morning demo proof.
+- **Blockers:** Operator perceptual QA remains for the final Action. Foreign-repository edits and plugin installation retain their existing authority boundaries.
+
+## 2026-08-21 — Made the capability map and Action timeline a real presentation
+
+- **Action:** `living-system-v1#build-living-system-map-and-timeline`
+- **Did:** Built the deterministic Obsidian projector for a Project Home, whole capability map, declared submaps, evolution timeline, Current Work, reciprocal Topic and episode notes, generated guide, and side-by-side Canvas. Added progressive glance/orient/understand/audit navigation, portable source links, provenance and freshness labels, and explicit gaps.
+- **Result:** Preview and apply agree; unchanged models preserve exact bytes; changed files update atomically; unmarked and foreign collisions refuse before writes; removed generated content stays visible as stale; traversal and symlink escape fail; Canvas JSON and WikiLinks resolve; and Arcadia plus Private Practice Now remain isolated under their own Project subtrees. The focused projector suite passes 4/4, the full suite passes 954 tests with 6 skipped, and core, Discord, and optimized Dashboard builds pass.
+- **Next:** Expose projection through preview-first `arcadia memory system sync`, add safe all-Project refresh and accepted-transition warning behavior, and document the operator path.
+- **Blockers:** None. The projector does not install plugins, edit `.obsidian`, touch existing Arcadia memory Records/Ideas, merge, deploy, or edit the Private Practice Now repository.
+
+## 2026-08-21 — Derived trustworthy living-system state without guessing
+
+- **Action:** `living-system-v1#derive-living-system-state`
+- **Did:** Added a deterministic assembler over the Project pointer, managed plans and Actions, explicit Log links, Decisions, and typed operational receipts for Runs, Artifacts, pull requests, Git, and validation. Implemented declared, observed, one-hop downstream, and unmapped Topic impact plus explicit missing, stale, conflicting, and unlinked-history states.
+- **Result:** Arcadia and Private Practice Now fixtures prove current and prior Actions, continuation, linked and unlinked history, every impact provenance class, absent evidence, stale evidence, and contradictory evidence without a clock, network call, model call, or inferred history. Unknown Actions, unsafe changed paths, and duplicate Signals fail legibly. Focused tests pass 20/20; the full suite passes 950 tests with 6 skipped; core, Discord, and optimized Dashboard builds pass.
+- **Next:** Project the normalized model into equal, cross-linked capability-map and Action-timeline views with a useful Home, Topic and episode notes, Current Work, and side-by-side Canvas.
+- **Blockers:** None. Merge, plugin installation, and foreign-repository edits retain their existing approval boundaries.
+
+## 2026-08-21 — Defined and proved the living-system v1 contract
+
+- **Action:** `living-system-v1#define-living-system-v1-contract`
+- **Did:** Added a zero-model parser and canonical serializer for Project-owned `docs/living-system.yaml`; normalized Project-defined Topics, Relationships, and Views; defined the derived Episode, Signal, source/freshness receipt, impact-provenance, and unlinked-history target types; added safe explicit `Action: plan-slug#action-id` Log links; documented the complete contract; and built distinct Arcadia and Private Practice Now proof fixtures.
+- **Result:** Validation now aggregates and rejects unsupported versions, Project-slug mismatch, duplicate ids and Relationships, missing values, dangling references, ambiguous or empty selectors, unsafe or missing sources, symlink escape, and attempts to duplicate operational truth. Unchanged inputs serialize byte-identically, arbitrary Topic and Relationship vocabulary needs no code change, unlinked Log history stays explicitly null, 947 tests pass with 6 skipped, and the core, Discord bot, and optimized Dashboard builds pass. [Draft PR #93](https://github.com/pmark/arcadia/pull/93) carries the source revision and operator-facing QA plan.
+- **Next:** Derive Episodes, Signals, Topic impact, freshness, gaps, and unlinked history from the manifest, managed documents, and available operational evidence without guessing.
+- **Blockers:** None. Projection, synchronization, plugin installation, and Private Practice Now repository edits remain in their later governed Actions.
+
 ## 2026-08-21 — Made the living system's map and timeline equal v1 surfaces
 
 - **Action:** `living-system-v1#define-living-system-v1-contract`

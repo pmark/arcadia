@@ -8,6 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Every managed software Project can reveal what it is, what is changing, how it got here, and what proves that story through one free living-system navigator
 active_plan: living-system-v1
+current_action: dogfood-living-system-v1
 updated: 2026-08-21
 ---
 
@@ -194,6 +195,43 @@ affected Topics; maps and timelines must navigate both ways; provenance,
 freshness, gaps, and unlinked history must remain visible; and generated
 Markdown must stay useful without a plugin or paid service. Decision 0032's
 measured-use triggers govern every deferred enhancement.
+
+`define-living-system-v1-contract` is now `done`. The versioned parser accepts
+Project-owned Topics, Relationships, and Views without imposing a fixed
+software taxonomy; validates identity, selector, reference, source-containment,
+and authority boundaries; and emits byte-stable normalized structure. The
+shared target types keep Episodes, Signals, source/freshness receipts, impact
+provenance, and unlinked history outside the writable manifest. Optional Log
+`Action: plan-slug#action-id` links now resolve against the same Project's
+managed plans rather than being inferred. Arcadia and Private Practice Now
+fixtures, every required refusal class, 947 passing tests, and clean core,
+Discord, and Dashboard builds prove the contract. The pointer moves to
+`derive-living-system-state` to populate that target from authoritative records.
+
+`derive-living-system-state` is now `done`. The zero-model assembler projects
+managed pointers, plans, Actions, explicit Log links, Decisions, and supplied
+Run, Artifact, pull-request, Git, and validation receipts into byte-stable
+Episodes and Signals. Action references, changed files, and one-hop declared
+Relationships produce visibly distinct declared, observed, and downstream
+impact; unsupported work stays unmapped. Missing proof, stale receipts,
+contradictions, and unlinked history remain explicit, and malformed operational
+references fail at named fields. Arcadia and Private Practice Now fixtures plus
+950 passing tests and clean core, Discord, and Dashboard builds prove the
+derivation boundary. The pointer moves to
+`build-living-system-map-and-timeline` so this truthful model becomes the
+morning demo's navigable presentation.
+
+`build-living-system-map-and-timeline` is now `done`. The zero-model projector
+creates a presentation-grade Home, whole capability map, Project-defined
+submaps, evolution timeline, Current Work, reciprocal Topic and episode notes,
+plain-Markdown guide, and side-by-side Canvas under one isolated Project
+subtree. The generated journey supports glance, orient, understand, and audit;
+prints provenance and freshness beside claims; and keeps missing, stale,
+conflicting, unmapped, and unlinked truth visible. Preview/apply agreement,
+byte-stable reruns, collision refusal, stale retention, symlink containment,
+valid Canvas and WikiLinks, and Arcadia/PPN isolation pass alongside 954 tests
+and all builds. The pointer moves to `integrate-living-system-sync` so the two
+demo stories can be created and refreshed through a real operator command.
 
 ## Links
 

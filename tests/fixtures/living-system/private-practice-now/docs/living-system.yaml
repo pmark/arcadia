@@ -1,0 +1,50 @@
+arcadia_living_system: v1
+project: private-practice-now
+purpose: Help a practitioner become visible online without losing their authentic voice.
+topics:
+  - id: practitioner-listening
+    title: Practitioner listening
+    why: The site must begin with the practitioner's real work and language.
+    use_when: Evidence is gathered before writing or design begins.
+    summary: Turns an interview into structured, attributable evidence.
+    sources:
+      - journeys/practitioner-listening.md
+  - id: authentic-profile
+    title: Authentic profile
+    why: Prospective clients need a truthful, recognizable account of the practice.
+    use_when: Evidence is translated into section copy for human acceptance.
+    summary: Produces normalized profile content and authentic page copy.
+    sources:
+      - journeys/authentic-profile.md
+    tags:
+      - primary-journey
+  - id: trusted-launch
+    title: Trusted launch
+    why: Accepted content must become a verifiable site and inquiry path.
+    use_when: The practitioner has accepted the profile and site direction.
+    summary: Connects site assembly, staging proof, inquiry delivery, and launch.
+    sources:
+      - journeys/trusted-launch.md
+    tags:
+      - primary-journey
+relationships:
+  - from: practitioner-listening
+    to: authentic-profile
+    type: grounds
+  - from: authentic-profile
+    to: trusted-launch
+    type: enables
+views:
+  - id: client-journey
+    title: Client journey
+    purpose: Follow the accepted profile into a working client-facing site.
+    selectors:
+      - tag: primary-journey
+    order: id
+  - id: evidence-first
+    title: Evidence first
+    purpose: Keep interview evidence visible beside the generated profile.
+    selectors:
+      - topic: practitioner-listening
+      - topic: authentic-profile
+    order: declaration

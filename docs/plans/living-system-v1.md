@@ -5,7 +5,7 @@ slug: living-system-v1
 project: arcadia
 status: active
 milestone: Every managed software Project can reveal what it is, what is changing, how it got here, and what proves that story through one free living-system navigator
-current_action: define-living-system-v1-contract
+current_action: dogfood-living-system-v1
 token_impact: xlarge
 token_budget: "Routine parsing, derivation, projection, link validation, and refresh make zero model calls. Use one bounded coding-agent implementation pass per Action, deterministic tests before model-based diagnosis, and operator attention only for final usability judgment and governed external effects."
 recommended_model: gpt-5.6-sol
@@ -14,7 +14,7 @@ updated: 2026-08-21
 actions:
   - id: define-living-system-v1-contract
     title: Define the shared contract for capability maps and Action timelines
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: Implement and document the versioned `docs/living-system.yaml` parser and normalized contract for Project-defined Topics, Relationships, and Views plus derived Episode and Signal records.
@@ -36,10 +36,11 @@ actions:
       - src/docs/parse.ts
       - src/memory/obsidian.ts
       - src/projects/contextSetup.ts
+      - docs/living-system-contract.md
     depends_on: []
   - id: derive-living-system-state
     title: Derive trustworthy Episodes, Signals, and Topic impact from Arcadia truth
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: Assemble the normalized living-system model from the Project manifest, managed plans and pointer, Action-linked Mission Log entries, Decisions, Runs, Artifacts, pull-request and Git receipts, and validation evidence without guessing missing history.
@@ -61,10 +62,12 @@ actions:
       - src/docs/dispatch.ts
       - src/db/repositories.ts
       - src/domain/types.ts
+      - src/livingSystem/derive.ts
+      - tests/living-system-derive.test.ts
     depends_on: [define-living-system-v1-contract]
   - id: build-living-system-map-and-timeline
     title: Project equal capability-map and Action-timeline views into Obsidian
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: Build the atomic idempotent projector for Home, capability maps, Project-defined submaps, the Project evolution timeline, Current Work, Topic and Action episode notes, and a side-by-side Obsidian Canvas under `Projects/<project-slug>/`.
@@ -86,10 +89,12 @@ actions:
       - src/memory/obsidian.ts
       - src/workspace/config.ts
       - tests/obsidian-memory.test.ts
+      - src/livingSystem/project.ts
+      - tests/living-system-project.test.ts
     depends_on: [derive-living-system-state]
   - id: integrate-living-system-sync
     title: Make free living-system refresh part of normal Arcadia operation
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: Add `arcadia memory system sync` for one Project or all eligible Projects with preview-by-default output, explicit apply, JSON receipts, independent failures, and a non-blocking refresh hook after accepted Action transitions when vault sync is enabled.
@@ -115,10 +120,10 @@ actions:
     depends_on: [build-living-system-map-and-timeline]
   - id: dogfood-living-system-v1
     title: Prove the living-system v1 on Arcadia and Private Practice Now
-    status: open
-    responsibility: codex
+    status: in_progress
+    responsibility: requires_review
     effort: project
-    next_action: Add governed manifests for Arcadia and Private Practice Now, generate both living-system projections, verify the linked capability and history journeys in Obsidian and plain Markdown, record discovered gaps, and complete QA before restoring the displaced pointer.
+    next_action: Open `docs/living-system-v1-demo.md`, run its two-minute Arcadia and Private Practice Now walkthrough in the Arcadia1 vault, and record whether the presentation meets the stated ten-second, one-click, two-minute, and auditability bar.
     expected_artifact: Two genuinely useful living-system navigators, evidence for every v1 usability and trust criterion, a bounded post-v1 gap list with triggers, and a QA-reviewed handoff back to idea-to-managed-build
     clarification: clarified
     confidence: high
@@ -141,7 +146,10 @@ actions:
       - docs/plans/idea-to-managed-build.md
       - src/memory/obsidian.ts
     depends_on: [integrate-living-system-sync]
-questions: []
+questions:
+  - id: living-system-v1-perceptual-acceptance
+    question: "After the two-minute walkthrough in `docs/living-system-v1-demo.md`, does the Arcadia1 presentation make both Arcadia and Private Practice Now immediately understandable, navigable, and trustworthy enough to accept v1?"
+    gap_type: missing-external-input
 decisions: ["0031", "0032"]
 ---
 
