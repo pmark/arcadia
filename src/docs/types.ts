@@ -211,6 +211,8 @@ export interface LogEntryDoc {
   /** `YYYY-MM-DD` from the entry heading — half of the entry's identity. */
   date: string;
   title: string;
+  /** Optional explicit link to the governed Action this entry records. */
+  action: string | null;
   did: string;
   result: string;
   next: string | null;

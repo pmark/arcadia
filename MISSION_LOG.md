@@ -8,6 +8,14 @@ updated: 2026-08-21
 
 # Mission Log: Arcadia
 
+## 2026-08-21 — Defined and proved the living-system v1 contract
+
+- **Action:** `living-system-v1#define-living-system-v1-contract`
+- **Did:** Added a zero-model parser and canonical serializer for Project-owned `docs/living-system.yaml`; normalized Project-defined Topics, Relationships, and Views; defined the derived Episode, Signal, source/freshness receipt, impact-provenance, and unlinked-history target types; added safe explicit `Action: plan-slug#action-id` Log links; documented the complete contract; and built distinct Arcadia and Private Practice Now proof fixtures.
+- **Result:** Validation now aggregates and rejects unsupported versions, Project-slug mismatch, duplicate ids and Relationships, missing values, dangling references, ambiguous or empty selectors, unsafe or missing sources, symlink escape, and attempts to duplicate operational truth. Unchanged inputs serialize byte-identically, arbitrary Topic and Relationship vocabulary needs no code change, unlinked Log history stays explicitly null, 947 tests pass with 6 skipped, and the core, Discord bot, and optimized Dashboard builds pass.
+- **Next:** Derive Episodes, Signals, Topic impact, freshness, gaps, and unlinked history from the manifest, managed documents, and available operational evidence without guessing.
+- **Blockers:** None. Projection, synchronization, plugin installation, and Private Practice Now repository edits remain in their later governed Actions.
+
 ## 2026-08-21 — Made the living system's map and timeline equal v1 surfaces
 
 - **Action:** `living-system-v1#define-living-system-v1-contract`

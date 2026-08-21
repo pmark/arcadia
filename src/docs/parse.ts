@@ -542,7 +542,8 @@ function parseQuestions(problems: Problems, raw: unknown): PlanQuestionDoc[] {
 }
 
 const LOG_HEADING = /^##\s+(\d{4}-\d{2}-\d{2})\s*[—-]\s*(.+?)\s*$/;
-const LOG_BULLET = /^-\s+\*\*(Did|Result|Next|Blockers):\*\*\s*(.*)$/i;
+const LOG_BULLET = /^-\s+\*\*(Action|Did|Result|Next|Blockers):\*\*\s*(.*)$/i;
+const LOG_ACTION_REFERENCE = /^[a-z0-9]+(?:-[a-z0-9]+)*#[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /**
  * Log entries are the one place the protocol parses the body, because an
@@ -560,12 +561,23 @@ function parseLogEntries(problems: Problems, body: string): LogEntryDoc[] {
       return;
     }
     const { date, title, fields } = current;
+    if (fields.action !== undefined && !fields.action.trim()) {
+      problems.add(`entry(${date}).action`, "An `Action` bullet must not be empty.");
+    }
+    const action = fields.action ? fields.action.replace(/^`|`$/g, "").trim() : null;
+    if (action && !LOG_ACTION_REFERENCE.test(action)) {
+      problems.add(
+        `entry(${date}).action`,
+        '`Action` must be a `plan-slug#action-id` reference, optionally wrapped in backticks.'
+      );
+    }
     if (!fields.did || !fields.result) {
       problems.add(`entry(${date})`, "A log entry needs at least **Did:** and **Result:** bullets.");
     } else {
       entries.push({
         date,
         title,
+        action,
         did: fields.did,
         result: fields.result,
         next: fields.next || null,

@@ -5,7 +5,7 @@ slug: living-system-v1
 project: arcadia
 status: active
 milestone: Every managed software Project can reveal what it is, what is changing, how it got here, and what proves that story through one free living-system navigator
-current_action: define-living-system-v1-contract
+current_action: derive-living-system-state
 token_impact: xlarge
 token_budget: "Routine parsing, derivation, projection, link validation, and refresh make zero model calls. Use one bounded coding-agent implementation pass per Action, deterministic tests before model-based diagnosis, and operator attention only for final usability judgment and governed external effects."
 recommended_model: gpt-5.6-sol
@@ -14,7 +14,7 @@ updated: 2026-08-21
 actions:
   - id: define-living-system-v1-contract
     title: Define the shared contract for capability maps and Action timelines
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: Implement and document the versioned `docs/living-system.yaml` parser and normalized contract for Project-defined Topics, Relationships, and Views plus derived Episode and Signal records.
@@ -36,6 +36,7 @@ actions:
       - src/docs/parse.ts
       - src/memory/obsidian.ts
       - src/projects/contextSetup.ts
+      - docs/living-system-contract.md
     depends_on: []
   - id: derive-living-system-state
     title: Derive trustworthy Episodes, Signals, and Topic impact from Arcadia truth

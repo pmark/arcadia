@@ -195,6 +195,18 @@ freshness, gaps, and unlinked history must remain visible; and generated
 Markdown must stay useful without a plugin or paid service. Decision 0032's
 measured-use triggers govern every deferred enhancement.
 
+`define-living-system-v1-contract` is now `done`. The versioned parser accepts
+Project-owned Topics, Relationships, and Views without imposing a fixed
+software taxonomy; validates identity, selector, reference, source-containment,
+and authority boundaries; and emits byte-stable normalized structure. The
+shared target types keep Episodes, Signals, source/freshness receipts, impact
+provenance, and unlinked history outside the writable manifest. Optional Log
+`Action: plan-slug#action-id` links now resolve against the same Project's
+managed plans rather than being inferred. Arcadia and Private Practice Now
+fixtures, every required refusal class, 947 passing tests, and clean core,
+Discord, and Dashboard builds prove the contract. The pointer moves to
+`derive-living-system-state` to populate that target from authoritative records.
+
 ## Links
 
 - `docs/COMMANDS.md` — the operator-facing command guide
