@@ -2,6 +2,14 @@
 
 This is the canonical brief operator guide. On this Mac, open **Mission Control** at <http://127.0.0.1:3020/>. From an iPhone or iPad, `127.0.0.1` means the phone itself; use the Mac's LAN address (for example `http://192.168.86.38:3020/`) on the same Wi-Fi, or the Mac's Tailscale address (for example `http://100.66.244.44:3020/`) when both devices are on Tailscale.
 
+Open **Now** at <http://127.0.0.1:3020/now>. This is the screen to bookmark. It answers one question — how far away is the single thing that matters, and what is the one next move toward it — and refuses to answer any other. The target, the Project that owns it, and the gates that stand between you and it are declared in `NORTH_STAR.md` at the workspace root; edit that file to change what the screen measures. Below the distance, local Intelligence writes a short, specific account of what actually happened this week from the commit subjects in each Project's repository, followed by the share of the week's commits that landed in the target Project. One action is offered at full size, and one fifteen-minute alternative that is still on the target. The same brief is available in the terminal:
+
+```bash
+pnpm arcadia now --narrate
+```
+
+Drop `--narrate` for the deterministic pass, which makes no model calls and returns immediately.
+
 Open **System Status** at <http://127.0.0.1:3020/admin/status> when you need a quick readiness check. It shows whether Arcadia is ready for normal operation, image generation, and background processing, with live dependency reachability, worker heartbeats, and Intelligence job counts.
 
 Open **Dispatch Journal** at <http://127.0.0.1:3020/admin/dispatch-journal> to see how often Arcadia refused to dispatch work, and which field in the managed documents blocked it. A field that blocks a large share of resolutions is either a rule worth relaxing or a habit worth fixing. It is read-only, like every other admin surface.

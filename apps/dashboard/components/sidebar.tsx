@@ -12,6 +12,7 @@ import {
   MessageSquarePlus,
   NotebookText,
   Radar,
+  Target,
   X,
   type LucideIcon
 } from "lucide-react";
@@ -22,6 +23,7 @@ import { createPortal } from "react-dom";
 import type { MissionControlOverview } from "../lib/mission-control-types";
 
 const PRIMARY_NAV = [
+  { href: "/now", label: "Now", icon: Target },
   { href: "/mission-control", label: "Mission Control", icon: Radar },
   { href: "/capture", label: "Capture", icon: MessageSquarePlus },
   { href: "/ingress", label: "Ingress", icon: FolderOpen },
