@@ -6,7 +6,7 @@ slug: tomorrow-astro-staging-demo
 project: arcadia
 status: approved
 question: What is the smallest honest idea-to-built-Project slice Arcadia should prove for the 2026-08-21 demonstration?
-answer: Prove the exact MartianRover Field Notes Astro-blog path from natural-language proposal through one Project-scoped approval, one coding-agent scaffold Run, and one Cloudflare Pages staging deployment whose URL returns through Discord.
+answer: Prove the exact MartianRover Field Notes Astro-blog path from natural-language proposal through one Project-scoped approval, one coding-agent scaffold Run, and one Cloudflare Workers staging deployment whose URL returns through Discord.
 recommendation: Reuse Arcadia's template registry, Project detail page, Review Decisions, managed worker, coding-agent adapters, Artifact notifications, and Project metadata. Defer generic multi-stack orchestration until this golden path succeeds with a real repository and staging URL.
 confidence: high
 decided: 2026-08-20
@@ -24,7 +24,8 @@ attempt. It authorizes Arcadia to initialize the configured local repository,
 attach the supplied GitHub origin, allow the selected coding agent the network
 access required to use the declared Create Astro Site generator skill and
 install dependencies, validate the generated scaffold, create or reuse the
-named Cloudflare Pages project, deploy the `staging` preview branch, and let
+named Cloudflare Worker `staging` environment, deploy its static assets to the
+separate `{project-name}-staging` Worker on `workers.dev`, and let
 Arcadia's configured Discord adapter report the result. Stored Cloudflare and
 GitHub authentication may be used only for those effects.
 

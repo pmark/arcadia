@@ -67,7 +67,7 @@ actions:
     status: done
     responsibility: codex
     effort: session
-    next_action: Connect the exact MartianRover Field Notes request to a populated proposed Project, one Project-scoped approval Decision, an approved coding-agent scaffold Run, and a Cloudflare Pages staging URL returned through Discord.
+    next_action: Connect the exact MartianRover Field Notes request to a populated proposed Project, one Project-scoped approval Decision, an approved coding-agent scaffold Run, and a Cloudflare Workers staging URL returned through Discord.
     expected_artifact: A tested golden-path demo in which the exact Astro blog request creates a reviewable Project and one approval advances it to a live staging URL without production deployment
     clarification: clarified
     confidence: high
@@ -77,7 +77,7 @@ actions:
       - Intake creates one Incubating Project whose detail page shows the original idea, selected template, generator skill, coding agent, local repository path, GitHub repository URL field, Cloudflare staging target, current Action, and approval Decision.
       - The Discord notification for the proposal contains a direct link to that Project detail page and names what approval authorizes.
       - Entering a valid GitHub repository URL and approving the Project queues one managed worker Run; it does not require a second execution Decision.
-      - The approved Run initializes only the Project repository, invokes the selected Codex or Claude Code build adapter with the declared Create Astro Site skill, runs deterministic build validation, and deploys only a Cloudflare Pages staging branch.
+      - The approved Run initializes only the Project repository, invokes the selected Codex or Claude Code build adapter with the declared Create Astro Site skill, runs deterministic build validation, and deploys only a Cloudflare Worker staging environment.
       - Codex receives outbound network access only inside its workspace-write sandbox for this explicitly approved proposal; no danger-full-access mode is introduced.
       - A successful staging deployment persists the URL on the Project, exposes it in the Dashboard, and produces a Discord notification containing the live link.
       - Missing repository URL, missing generator skill behavior, missing Wrangler, agent/build failure, Cloudflare authentication failure, or absent deployment URL fails legibly without claiming the Project is live.
@@ -131,6 +131,6 @@ advance.
 
 The general expensive tail remains deferred to the third Action. The first
 proven deployment slice is intentionally smaller: one registered Astro
-template, one declared generator skill, and one deterministic Cloudflare Pages
-staging upload. Automatic provider discovery, production release, and general
+template, one declared generator skill, and one deterministic Cloudflare
+Workers Static Assets staging deploy. Automatic provider discovery, production release, and general
 workflow-engine abstractions add cost without improving that proof.

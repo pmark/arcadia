@@ -99,7 +99,7 @@ export interface ProjectProposalSpec {
   projectTemplate: "astro_field_notes_cloudflare";
   templateTitle: "Astro Field Notes Blog";
   generatorSkill: "create-astro-site";
-  deploymentTarget: "Cloudflare Pages staging";
+  deploymentTarget: "Cloudflare Workers staging environment";
   buildAgent: "codex" | "claude-code";
 }
 
@@ -122,7 +122,7 @@ export function projectProposalSpecForTemplate(templateId: string | null | undef
         projectTemplate: "astro_field_notes_cloudflare",
         templateTitle: "Astro Field Notes Blog",
         generatorSkill: "create-astro-site",
-        deploymentTarget: "Cloudflare Pages staging",
+        deploymentTarget: "Cloudflare Workers staging environment",
         buildAgent: "codex"
       }
     : null;
@@ -153,13 +153,13 @@ export function runProjectProposeCommand(options: {
     ensureBuiltInSkills(db);
     const bundle = createProjectWithInitialWork(db, {
       name,
-      mission: `Launch ${name} as a useful Astro Field Notes blog on Cloudflare Pages.`,
+      mission: `Launch ${name} as a useful Astro Field Notes blog on Cloudflare Workers.`,
       goal: idea,
       status: "incubating",
       currentMilestone: "Launch the staging scaffold",
       nextAction: `Approve the proposed ${options.spec.templateTitle} scaffold and staging deployment.`,
       rawInput: idea,
-      expectedArtifact: `Live Cloudflare Pages staging URL for ${name}`,
+      expectedArtifact: `Live Cloudflare Workers staging URL for ${name}`,
       workClassification: "requires_review"
     });
     const workItem = updateWorkItem(db, bundle.workItem.id, {
@@ -170,7 +170,7 @@ export function runProjectProposeCommand(options: {
       acceptanceCriteriaJson: JSON.stringify([
         `The repository contains a generated ${options.spec.templateTitle} scaffold created through the ${options.spec.generatorSkill} skill.`,
         "The generated site passes its configured production build.",
-        "Cloudflare Pages returns an HTTPS staging preview URL and Arcadia persists it on the Project.",
+        "Cloudflare Workers returns an HTTPS staging workers.dev URL and Arcadia persists it on the Project.",
         "No production deployment, custom domain, push, merge, or publication occurs."
       ])
     });
@@ -195,7 +195,7 @@ export function runProjectProposeCommand(options: {
     }
     const plan = createExecutionPlan(db, {
       workItemId: workItem.id,
-      summary: `Approved ${options.spec.templateTitle} scaffold, validation, and Cloudflare Pages staging deployment for ${name}.`,
+      summary: `Approved ${options.spec.templateTitle} scaffold, validation, and Cloudflare Workers staging deployment for ${name}.`,
       steps: [{
         skillName: "codex_build",
         title: `Use ${options.spec.generatorSkill} to create the ${options.spec.templateTitle} scaffold`,
@@ -211,7 +211,7 @@ export function runProjectProposeCommand(options: {
     const approvalGates = [
       ["destructive_filesystem_changes", "Initialize and scaffold only the configured Project repository."],
       ["credentials_required", "Use existing GitHub and Cloudflare authentication only for this staging attempt."],
-      ["external_deployment", "Create or reuse one Cloudflare Pages project and deploy only the staging preview branch."],
+      ["external_deployment", "Create or update only the named Cloudflare Worker staging environment on workers.dev."],
       ["send_email_or_messages", "Let Arcadia's configured Discord adapter report the proposal and staging result."]
     ].map(([gateType, reason]) => createApprovalGate(db, {
       gateType: gateType as ApprovalGate["gate_type"],
@@ -223,7 +223,7 @@ export function runProjectProposeCommand(options: {
       workItemId: workItem.id,
       planId: plan.id,
       projectId: bundle.project.id,
-      decisionNeeded: `Approve the ${options.spec.templateTitle} proposal, coding-agent scaffold, and Cloudflare Pages staging deployment for ${name}.`,
+      decisionNeeded: `Approve the ${options.spec.templateTitle} proposal, coding-agent scaffold, and Cloudflare Workers staging deployment for ${name}.`,
       recommendation: "Open the Project details, enter the empty GitHub repository URL, confirm the selected coding agent, then approve this one scoped staging attempt.",
       sourceInput: idea,
       proposedAction: `Initialize ${projectPath}, attach the entered GitHub origin, invoke ${options.spec.buildAgent} with the ${options.spec.generatorSkill} skill, validate the build, deploy the staging preview branch, and report its URL through Arcadia.`,
@@ -238,11 +238,11 @@ export function runProjectProposeCommand(options: {
         generatorSkill: options.spec.generatorSkill,
         deploymentTarget: options.spec.deploymentTarget,
         buildAgent: options.spec.buildAgent,
-        expectedArtifact: `Live Cloudflare Pages staging URL for ${name}`,
+        expectedArtifact: `Live Cloudflare Workers staging URL for ${name}`,
         approvalAuthorizes: [
           "Initialize only the configured local Project repository and attach the entered GitHub origin.",
           `Allow ${options.spec.buildAgent} to use outbound network access for ${options.spec.generatorSkill} and dependency installation.`,
-          "Use existing Cloudflare authentication to create or reuse the Pages project and deploy only branch staging.",
+          "Use existing Cloudflare authentication to deploy only the Wrangler staging environment to workers.dev.",
           "Let Arcadia report the resulting staging URL through its configured Discord adapter."
         ],
         safetyBoundaries: [

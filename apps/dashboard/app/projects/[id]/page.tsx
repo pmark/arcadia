@@ -407,7 +407,7 @@ export default function ProjectDetailsPage() {
               {project.projectTemplate ? (
                 <div className="rounded-md border border-steel/30 bg-steel/10 p-3 text-sm">
                   <div className="font-semibold text-steel">Proposed automated staging build</div>
-                  <p className="mt-1 text-muted">Save the empty GitHub repository URL and coding agent here, then approve the Project proposal Decision above. Approval covers repository initialization, scaffold generation, build validation, one Cloudflare Pages staging upload, and Discord notification. It does not cover production, a custom domain, or Git push.</p>
+                  <p className="mt-1 text-muted">Save the empty GitHub repository URL and coding agent here, then approve the Project proposal Decision above. Approval covers repository initialization, scaffold generation, build validation, one Cloudflare Workers Static Assets deployment to the staging environment, and Discord notification. It does not cover production, a custom domain, or Git push.</p>
                 </div>
               ) : null}
 

@@ -159,7 +159,7 @@ golden-path story: "Create a MartianRover Field Notes blog site" should create
 a populated proposed Project, notify Discord with a Project-detail deep link,
 accept an operator-supplied empty GitHub repository URL, and use an approved
 Codex or Claude Code Run plus the Create Astro Site skill to return a live
-Cloudflare Pages staging URL. Decision 0030 makes `demo-astro-staging-loop` the
+Cloudflare Workers staging URL. Decision 0030 makes `demo-astro-staging-loop` the
 current Action ahead of the general accepted-plan promotion seam. The 80/20
 boundary is explicit: prove Astro/Field Notes end to end; generalize to Next.js
 and Node.js only when a second concrete stack is selected.
@@ -168,7 +168,7 @@ That demo implementation is now complete and covered by a synthetic full-loop
 worker test: proposal, GitHub metadata, approval, scoped Codex packet, build,
 Cloudflare command/result handling, persisted staging URL, completed Action,
 Dashboard projection, and Discord deep link/Artifact. The full test suite and
-both application builds pass. A real `pages.dev` rehearsal was not performed
+both application builds pass. A real `workers.dev` rehearsal was not performed
 because the operator's empty GitHub repository and external Cloudflare staging
 authority are demonstration inputs, not repository fixtures. The pointer now
 returns to `promote-accepted-plan`.

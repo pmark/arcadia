@@ -105,7 +105,7 @@ The bot polls Arcadia and notifies the configured channel when:
 - an observed Codex task starts, requires review, completes, or fails,
 - the Requires Review count transitions from `0` to a positive number,
 - a new Project proposal needs approval, including a Mission Control deep link,
-- a completed staging Run produces its live `pages.dev` URL Artifact,
+- a completed staging Run produces its live `workers.dev` URL Artifact,
 - a milestone is completed.
 
 The bot suppresses routine artifact generation, mission log updates, intermediate execution steps, and successful runs with no human action required.

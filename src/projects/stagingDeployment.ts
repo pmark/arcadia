@@ -13,7 +13,7 @@ import { decodeStringArray } from "./setup.js";
 
 export interface StagingDeploymentResult {
   url: string;
-  projectName: string;
+  workerName: string;
   artifact: Artifact;
   output: string;
 }
@@ -42,34 +42,21 @@ export function deployApprovedProjectProposal(
       projectTemplate: metadata.project_template
     });
   }
-  const projectName = cloudflareProjectName(project.slug);
+  const workerName = cloudflareWorkerName(project.slug);
   const run = input.run ?? runStagingCommand;
-  const listed = run("pnpm", ["exec", "wrangler", "pages", "project", "list", "--json"], input.repoPath);
-  assertCommandSucceeded(listed, "Cloudflare Pages project lookup failed. Confirm Wrangler is installed and authenticated.");
-  const existingNames = parsePagesProjectNames(listed.stdout);
-  if (!existingNames.has(projectName)) {
-    const created = run(
-      "pnpm",
-      ["exec", "wrangler", "pages", "project", "create", projectName, "--production-branch", "main"],
-      input.repoPath
-    );
-    assertCommandSucceeded(created, "Cloudflare Pages project creation failed.");
-  }
   const deployed = run(
     "pnpm",
-    [
-      "exec", "wrangler", "pages", "deploy", "dist",
-      "--project-name", projectName,
-      "--branch", "staging",
-      "--commit-dirty=true"
-    ],
+    ["exec", "wrangler", "deploy", "--env", "staging"],
     input.repoPath
   );
-  assertCommandSucceeded(deployed, "Cloudflare Pages staging deployment failed.");
+  assertCommandSucceeded(deployed, "Cloudflare Workers staging deployment failed. Confirm Wrangler is installed and authenticated.");
   const output = [deployed.stdout, deployed.stderr].filter(Boolean).join("\n").trim();
-  const url = parsePagesDeploymentUrl(output, projectName);
+  const url = parseWorkersDeploymentUrl(output, workerName);
   if (!url) {
-    throw validationError("Cloudflare reported success without an HTTPS pages.dev URL.", { output: output.slice(-2000) });
+    throw validationError("Cloudflare reported success without the expected HTTPS staging workers.dev URL.", {
+      expectedWorker: `${workerName}-staging`,
+      output: output.slice(-2000)
+    });
   }
 
   upsertProjectMetadata(db, {
@@ -94,38 +81,25 @@ export function deployApprovedProjectProposal(
     status: "ready",
     path: null
   });
-  return { url, projectName, artifact, output };
+  return { url, workerName, artifact, output };
 }
 
-export function parsePagesDeploymentUrl(output: string, projectName: string): string | null {
-  const urls = output.match(/https:\/\/[a-z0-9][a-z0-9.-]*\.pages\.dev\/?/gi) ?? [];
+export function parseWorkersDeploymentUrl(output: string, workerName: string): string | null {
+  const urls = output.match(/https:\/\/[a-z0-9][a-z0-9.-]*\.workers\.dev\/?/gi) ?? [];
   const clean = Array.from(new Set(urls.map((url) => url.replace(/\/$/, ""))));
-  return clean.find((url) => url.toLowerCase().includes(`staging.${projectName.toLowerCase()}.pages.dev`))
-    ?? clean[0]
-    ?? null;
+  const expected = `${workerName.toLowerCase()}-staging`;
+  return clean.find((url) => {
+    try {
+      return new URL(url).hostname.split(".")[0] === expected;
+    } catch {
+      return false;
+    }
+  }) ?? null;
 }
 
-function parsePagesProjectNames(output: string): Set<string> {
-  try {
-    const parsed = JSON.parse(output) as unknown;
-    const candidates = Array.isArray(parsed)
-      ? parsed
-      : parsed && typeof parsed === "object" && Array.isArray((parsed as { result?: unknown }).result)
-        ? (parsed as { result: unknown[] }).result
-        : [];
-    return new Set(candidates.flatMap((entry) => {
-      if (!entry || typeof entry !== "object") return [];
-      const name = (entry as { name?: unknown }).name;
-      return typeof name === "string" ? [name] : [];
-    }));
-  } catch {
-    throw validationError("Cloudflare Pages project lookup returned invalid JSON.", { output: output.slice(-2000) });
-  }
-}
-
-function cloudflareProjectName(slug: string): string {
-  const value = slug.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 58);
-  if (!value) throw validationError("Project name cannot be converted to a Cloudflare Pages name.", { slug });
+export function cloudflareWorkerName(slug: string): string {
+  const value = slug.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 54);
+  if (!value) throw validationError("Project name cannot be converted to a Cloudflare Worker name.", { slug });
   return value;
 }
 

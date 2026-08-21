@@ -100,7 +100,7 @@ creates an **Incubating** Project and one scoped proposal Decision, and sends a
 Discord notification whose Project-details link is
 `/projects/{project-id}`. The Project page is pre-populated with the template,
 `$create-astro-site` generator skill, selected coding agent, validation command,
-and Cloudflare Pages staging target.
+and Cloudflare Workers staging target.
 
 For the live demo:
 
@@ -111,21 +111,24 @@ For the live demo:
 4. Keep the Arcadia worker and Discord adapter running. The worker initializes
    the configured local repository, attaches the GitHub URL as `origin`, asks
    the selected agent to use `$create-astro-site`, runs `pnpm run build`, and
-   performs one Cloudflare Pages Direct Upload to branch `staging`.
+   runs `wrangler deploy --env staging`. Wrangler creates or updates the
+   separate `{project-name}-staging` Worker with static assets from `dist`.
 5. Wait for the Discord Artifact notification titled `Live staging URL:` and
-   open the HTTPS `pages.dev` link. The same URL is stored on the Project page.
+   open the HTTPS `workers.dev` link. The same URL is stored on the Project page.
 
 Approval covers only that repository initialization, dependency/network use by
-the selected coding agent, the build, one Cloudflare Pages staging upload, and
+the selected coding agent, the build, one Cloudflare Workers staging deploy, and
 the configured Discord notification. It does **not** authorize Git push, a pull
 request, merge, production deployment, custom domain, publication, deletion, or
 spending. The GitHub URL is attached as provenance/origin; this golden path does
-not push to it. Cloudflare staging uses Pages Direct Upload rather than Git
-integration. The worker must already have working Cloudflare Wrangler
+not push to it. Cloudflare staging uses Workers Static Assets and a named
+Wrangler `staging` environment rather than Pages or Git integration. The worker
+must already have working Cloudflare Wrangler
 authentication, and the selected coding agent must have the
 `create-astro-site` skill installed. A missing skill, build failure, missing
 Wrangler installation, missing Cloudflare authentication, or absent
-`pages.dev` URL fails the Run legibly and never records a fake live link.
+staging `workers.dev` URL fails the Run legibly and never records a fake live
+link.
 
 Next.js and Node generators are not claimed by this path yet. Add the second
 stack when its concrete generator skill, build output, and staging contract are

@@ -17,6 +17,7 @@ import {
 import type { Artifact, ProjectMetadata, ReviewItemSummary, WorkItemSummary } from "../domain/types.js";
 import { createId } from "../utils/id.js";
 import { getWorkspacePaths, toWorkspaceRelativePath } from "../workspace/paths.js";
+import { cloudflareWorkerName } from "../projects/stagingDeployment.js";
 
 export type ExecutorName = "codex" | "claude-code" | "gemini" | string;
 export type PromptMode = "stdin" | "prompt-file";
@@ -166,7 +167,8 @@ export function executeApprovedReview(
     projectProposal: isProjectProposal ? {
       generatorSkill: metadata?.generator_skill ?? "create-astro-site",
       projectTemplate: metadata?.project_template ?? "astro_field_notes_cloudflare",
-      deploymentTarget: metadata?.deployment_target ?? "Cloudflare Pages staging"
+      deploymentTarget: metadata?.deployment_target ?? "Cloudflare Workers staging environment",
+      workerName: cloudflareWorkerName(project?.slug ?? projectId)
     } : null
   });
   const promptPath = path.join(artifactRoot, "prompt.md");
@@ -496,6 +498,7 @@ function buildImplementationPacket(input: {
     generatorSkill: string;
     projectTemplate: string;
     deploymentTarget: string;
+    workerName: string;
   } | null;
 }): string {
   return [
@@ -523,10 +526,10 @@ function buildImplementationPacket(input: {
       `- Invoke the $${input.projectProposal.generatorSkill} skill and follow it faithfully.`,
       `- Create the ${input.projectProposal.projectTemplate} static Astro Field Notes blog in the current repository.`,
       "- Use pnpm and install Wrangler as a development dependency.",
-      "- Configure the smallest Cloudflare Pages Direct Upload surface: a production build that writes ./dist and a Wrangler Pages configuration that names ./dist.",
+      `- Configure the smallest Cloudflare Workers Static Assets surface in wrangler.jsonc: top-level name ${input.projectProposal.workerName}, today's compatibility_date, assets.directory ./dist, no main entry point, and env.staging.workers_dev true.`,
       "- Include useful starter Field Notes content and a clear README with local commands.",
       "- Run pnpm run build and fix common-path failures.",
-      `- Prepare for ${input.projectProposal.deploymentTarget}, but do not deploy, push, open a pull request, configure production, or add a custom domain. Arcadia performs the approved staging upload after Validation.`,
+      `- Prepare for ${input.projectProposal.deploymentTarget}, but do not deploy, push, open a pull request, configure production, or add a custom domain. Arcadia runs wrangler deploy --env staging after Validation, which creates only ${input.projectProposal.workerName}-staging.`,
       ""
     ] : []),
     "## Validation",

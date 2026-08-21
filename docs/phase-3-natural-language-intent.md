@@ -151,10 +151,11 @@ arcadia ask --workspace "$WORKSPACE" "Create a MartianRover Field Notes blog sit
 
 It creates an Incubating Project with template `astro_field_notes_cloudflare`,
 generator skill `create-astro-site`, an empty GitHub repository URL slot, a
-Codex/Claude selector, Cloudflare Pages staging metadata, and one
+Codex/Claude selector, Cloudflare Workers staging metadata, and one
 `ProjectProposalApproval` Decision. Approval authorizes the selected agent to
-scaffold and validate locally, then lets Arcadia perform a deterministic Pages
-Direct Upload to branch `staging`. Production and Git push remain outside the
+scaffold and validate locally, then lets Arcadia run a deterministic
+`wrangler deploy --env staging` for Workers Static Assets. Production and Git
+push remain outside the
 approval. The older “new blog site named …” form continues to create the
 general Codex build packet described above.
 

@@ -4,7 +4,7 @@
     {
       "id": "astro_field_notes_cloudflare",
       "title": "Astro Field Notes Blog",
-      "description": "A default Field Notes-style Astro blog site with Cloudflare deployment metadata.",
+      "description": "A default Field Notes-style Astro blog site with Cloudflare Workers Static Assets deployment metadata.",
       "projectType": "astro_blog",
       "defaults": {
         "templateName": "Field Notes",
@@ -12,9 +12,9 @@
         "packageManager": "pnpm",
         "buildCommand": "pnpm run build",
         "buildOutput": "dist",
-        "deploymentTarget": "Cloudflare Pages",
-        "deploymentMode": "direct-upload",
-        "deploymentBranch": "staging",
+        "deploymentTarget": "Cloudflare Workers",
+        "deploymentMode": "workers-static-assets",
+        "deploymentEnvironment": "staging",
         "contentModel": "chronological notes and updates",
         "siteNameSlot": "projectName"
       },

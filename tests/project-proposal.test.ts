@@ -18,7 +18,7 @@ import { buildDashboardSnapshot } from "../src/dashboard/snapshot.js";
 import { updateProjectSetup } from "../src/projects/setup.js";
 import {
   deployApprovedProjectProposal,
-  parsePagesDeploymentUrl,
+  parseWorkersDeploymentUrl,
   type StagingCommandResult
 } from "../src/projects/stagingDeployment.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -53,7 +53,7 @@ describe("Project idea to staging proposal", () => {
         repository_url: null,
         project_template: "astro_field_notes_cloudflare",
         generator_skill: "create-astro-site",
-        deployment_target: "Cloudflare Pages staging",
+        deployment_target: "Cloudflare Workers staging environment",
         build_agent: "codex",
         staging_url: null
       });
@@ -101,18 +101,16 @@ describe("Project idea to staging proposal", () => {
     });
   });
 
-  it("persists a successful deterministic Cloudflare Pages staging result", () => {
+  it("persists a successful deterministic Cloudflare Workers staging result", () => {
     const workspace = initializedWorkspace();
     const asked = runAskCommand({ workspace, request: "Create a MartianRover Field Notes blog site" });
     const projectId = asked.data.project!.id;
     const calls: string[][] = [];
     const runner = (_command: string, args: string[]): StagingCommandResult => {
       calls.push(args);
-      if (args.includes("list")) return { status: 0, stdout: "[]", stderr: "", error: null };
-      if (args.includes("create")) return { status: 0, stdout: "created", stderr: "", error: null };
       return {
         status: 0,
-        stdout: "Deployment complete! Take a peek over at https://abc123.martianrover-field-notes.pages.dev\nAlias: https://staging.martianrover-field-notes.pages.dev",
+        stdout: "Uploaded martianrover-field-notes-staging\nhttps://martianrover-field-notes-staging.arcadia-test.workers.dev",
         stderr: "",
         error: null
       };
@@ -124,9 +122,9 @@ describe("Project idea to staging proposal", () => {
       run: runner
     }));
 
-    expect(deployment.url).toBe("https://staging.martianrover-field-notes.pages.dev");
+    expect(deployment.url).toBe("https://martianrover-field-notes-staging.arcadia-test.workers.dev");
     expect(deployment.artifact.title).toContain(deployment.url);
-    expect(calls).toHaveLength(3);
+    expect(calls).toEqual([["exec", "wrangler", "deploy", "--env", "staging"]]);
     withDatabase(workspace, (db) => {
       expect(getProjectMetadata(db, projectId)?.staging_url).toBe(deployment.url);
       expect(getProject(db, projectId)?.status).toBe("active");
@@ -149,7 +147,7 @@ describe("Project idea to staging proposal", () => {
       const finished = withDatabase(workspace, (db) => runWorkerIteration(db, workspace, 43210));
       expect(finished?.id).toBe(approved.data.run?.id);
       expect(finished?.status).toBe("completed");
-      expect(finished?.summary).toContain("https://staging.martianrover-field-notes.pages.dev");
+      expect(finished?.summary).toContain("https://martianrover-field-notes-staging.arcadia-test.workers.dev");
       expect(finished?.artifacts.some((artifact) => artifact.title.includes("Live staging URL"))).toBe(true);
       const executionArtifact = finished?.artifacts.find((artifact) => artifact.artifact_type === "review_execution");
       const executionMetadata = JSON.parse(readFileSync(path.join(workspace, executionArtifact!.path!), "utf8")) as {
@@ -158,10 +156,12 @@ describe("Project idea to staging proposal", () => {
       };
       expect(executionMetadata.command).toContain("sandbox_workspace_write.network_access=true");
       const promptPath = executionMetadata.artifacts.find((artifactPath) => artifactPath.endsWith("prompt.md"));
-      expect(readFileSync(path.join(workspace, promptPath!), "utf8")).toContain("$create-astro-site");
+      const prompt = readFileSync(path.join(workspace, promptPath!), "utf8");
+      expect(prompt).toContain("$create-astro-site");
+      expect(prompt).toContain("env.staging.workers_dev true");
       withDatabase(workspace, (db) => {
         expect(getProjectMetadata(db, asked.data.project!.id)?.staging_url)
-          .toBe("https://staging.martianrover-field-notes.pages.dev");
+          .toBe("https://martianrover-field-notes-staging.arcadia-test.workers.dev");
         expect(asked.data.workItem && db.prepare("SELECT status FROM work_items WHERE id = ?").get(asked.data.workItem.id))
           .toMatchObject({ status: "done" });
       });
@@ -171,7 +171,7 @@ describe("Project idea to staging proposal", () => {
   });
 
   it("refuses to invent a live URL when Wrangler output has none", () => {
-    expect(parsePagesDeploymentUrl("Deployment complete", "field-notes")).toBeNull();
+    expect(parseWorkersDeploymentUrl("Deployment complete: https://field-notes.example.workers.dev", "field-notes")).toBeNull();
   });
 });
 
@@ -192,16 +192,14 @@ function fakeProjectBuildBin(): string {
     "mkdir -p src/pages",
     "printf '%s\\n' '<h1>MartianRover Field Notes</h1>' > src/pages/index.astro",
     "printf '%s\\n' '{\"name\":\"field-notes\",\"scripts\":{\"build\":\"astro build\"}}' > package.json",
-    "printf '%s\\n' '{\"pages_build_output_dir\":\"./dist\"}' > wrangler.jsonc",
+    "printf '%s\\n' '{\"name\":\"martianrover-field-notes\",\"compatibility_date\":\"2026-08-20\",\"assets\":{\"directory\":\"./dist\"},\"env\":{\"staging\":{\"workers_dev\":true}}}' > wrangler.jsonc",
     "printf '%s\\n' 'scaffold complete'"
   ].join("\n"), { encoding: "utf8", mode: 0o755 });
   writeFileSync(path.join(directory, "pnpm"), [
     "#!/bin/sh",
     "case \"$*\" in",
     "  'run build') mkdir -p dist; printf '%s\\n' '<h1>built</h1>' > dist/index.html ;;",
-    "  *'pages project list'*) printf '%s\\n' '[]' ;;",
-    "  *'pages project create'*) printf '%s\\n' 'created' ;;",
-    "  *'pages deploy'*) printf '%s\\n' 'Deployment complete: https://hash.martianrover-field-notes.pages.dev'; printf '%s\\n' 'Alias: https://staging.martianrover-field-notes.pages.dev' ;;",
+    "  *'wrangler deploy --env staging'*) printf '%s\\n' 'Uploaded martianrover-field-notes-staging'; printf '%s\\n' 'https://martianrover-field-notes-staging.arcadia-test.workers.dev' ;;",
     "  *) printf '%s\\n' \"unexpected pnpm args: $*\" >&2; exit 2 ;;",
     "esac"
   ].join("\n"), { encoding: "utf8", mode: 0o755 });
