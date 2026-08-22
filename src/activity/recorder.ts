@@ -54,9 +54,14 @@ export function recordCliActivity(input: {
 }
 
 /**
- * Which surface the operator is actually touching. The dashboard and the
- * Discord bot set ARCADIA_SURFACE when they shell out; long-running pollers
- * set "automation" so their traffic never masquerades as engagement.
+ * Which surface issued this command. The dashboard and the Discord bot set
+ * ARCADIA_SURFACE when they shell out; long-running pollers set "automation"
+ * and a coding agent driving Arcadia on the operator's behalf sets "claude",
+ * so neither masquerades as the operator being present.
+ *
+ * An unrecognized value falls back to "cli" rather than failing. A mislabelled
+ * row is a small loss; refusing to run a command because its telemetry label
+ * was wrong would be a self-inflicted outage.
  */
 export function currentSurface(env: NodeJS.ProcessEnv = process.env): ActivitySurface {
   const declared = env.ARCADIA_SURFACE?.trim().toLowerCase();

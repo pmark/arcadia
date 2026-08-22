@@ -1,3 +1,4 @@
+import { isOperatorSurface } from "./types.js";
 import type { ActivityEvent, ActivitySurface, EngagementBlock } from "./types.js";
 
 /**
@@ -18,13 +19,13 @@ const MS_PER_MINUTE = 60_000;
 
 export function deriveEngagementBlocks(
   events: ActivityEvent[],
-  options: { gapMinutes?: number; includeAutomation?: boolean } = {}
+  options: { gapMinutes?: number; includeNonOperator?: boolean } = {}
 ): EngagementBlock[] {
   const gapMs = (options.gapMinutes ?? DEFAULT_GAP_MINUTES) * MS_PER_MINUTE;
-  // Background pollers and daemons are recorded (nothing is hidden) but they
-  // are not the operator being present, so they never form a block.
+  // Background pollers and agent-issued work are recorded — nothing is hidden
+  // — but neither is the operator being present, so neither forms a block.
   const relevant = events
-    .filter((event) => (options.includeAutomation ? true : event.surface !== "automation"))
+    .filter((event) => (options.includeNonOperator ? true : isOperatorSurface(event.surface)))
     .slice()
     .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
 
