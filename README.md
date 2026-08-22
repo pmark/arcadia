@@ -8,6 +8,10 @@ built versus still proposed.
 
 For normal daily use, service expectations, and the local Today page, start with [`START_HERE.md`](START_HERE.md).
 
+For the shape of the system — one writer, three stores, the Obsidian memory
+projection, and how Intelligence routing resolves — see
+[Architecture](docs/architecture.md).
+
 Arcadia Core is the open source CLI, schema, and reporting engine. Your Arcadia workspace is private operational data.
 
 Before changing user-facing terminology, data models, CLI commands, dashboard labels, or documentation, read `docs/arcadia-semantics.md` and use Arcadia's canonical terms consistently.
