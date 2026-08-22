@@ -269,6 +269,8 @@ import {
 import { renderDocketSuccess, runDocketCommand } from "./commands/docket.js";
 import { renderTidySuccess, runTidyCommand } from "./commands/tidy.js";
 import { renderPortfolioSuccess, runPortfolioCommand } from "./commands/portfolio.js";
+import { renderNowSuccess, runNowCommand } from "./commands/now.js";
+import { renderGateSuccess, runGateStatusCommand } from "./commands/gate.js";
 import { renderWayStatusSuccess, runWayStatusCommand } from "./commands/way.js";
 import {
   renderWorkAddSubtaskSuccess,
@@ -2378,6 +2380,59 @@ export function buildProgram(): Command {
     )
   );
 
+  const gate = program
+    .command("gate")
+    .description("Mark operator-owned gates on the declared North Star");
+
+  addJsonOption(
+    gate
+      .command("complete <gateId>")
+      .description("Mark one operator-owned gate done")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((gateId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "gate.complete",
+      options,
+      () => runGateStatusCommand({ workspace: options.workspace, gateId, status: "done" }),
+      renderGateSuccess
+    )
+  );
+
+  addJsonOption(
+    gate
+      .command("reopen <gateId>")
+      .description("Return one operator-owned gate to open")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((gateId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "gate.reopen",
+      options,
+      () => runGateStatusCommand({ workspace: options.workspace, gateId, status: "open" }),
+      renderGateSuccess
+    )
+  );
+
+  addJsonOption(
+    program
+      .command("now")
+      .description("The one screen: how far the declared North Star is, and the single next move toward it")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--narrate", "Ask local Intelligence to write the orientation paragraph", false)
+      .option("--window <days>", "Attention window in days", "7")
+  ).action((options: { workspace: string; narrate?: boolean; window?: string; json?: boolean }) =>
+    runCliAction(
+      "now",
+      options,
+      () =>
+        runNowCommand({
+          workspace: options.workspace,
+          narrate: Boolean(options.narrate),
+          windowDays: Number.parseInt(options.window ?? "7", 10) || 7
+        }),
+      renderNowSuccess
+    )
+  );
+
   addJsonOption(
     program
       .command("portfolio")
@@ -3377,6 +3432,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "run" && second === "show") {
     return "run.show";
+  }
+
+  if (first === "gate" && ["complete", "reopen"].includes(second ?? "")) {
+    return `gate.${second}`;
   }
 
   if (first === "report" && second === "status") {

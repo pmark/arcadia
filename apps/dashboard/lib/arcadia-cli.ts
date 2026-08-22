@@ -16,6 +16,7 @@ import type {
   ProofTargetListResponse,
   QaCandidate
 } from "./types";
+import type { NowBrief } from "./now-types";
 import type {
   MissionControlFits,
   MissionControlNodeDetail,
@@ -554,6 +555,45 @@ export interface ActivityReportResponse {
   backlog: { totalMinutes: number; daysAtCapacity: number | null } | null;
   encouragement: { mood: string; line: string; attribution?: string };
   lines: string[];
+}
+
+/**
+ * The Now brief. Two calls, deliberately: the deterministic pass returns in
+ * well under a second and is what the screen paints first, and the narrated
+ * pass is fetched afterwards so a slow or absent Intelligence service delays
+ * a paragraph rather than the whole screen.
+ */
+export async function loadNowBrief(options: { narrate?: boolean } = {}) {
+  const args = ["now"];
+  if (options.narrate) {
+    args.push("--narrate");
+  }
+  return runArcadiaCliJson<NowBrief>(args, {
+    timeoutMs: options.narrate ? 180_000 : 30_000
+  });
+}
+
+export interface GateStatusChange {
+  gateId: string;
+  title: string;
+  previous: string;
+  next: string;
+  changed: boolean;
+  path: string;
+}
+
+/**
+ * Mark one operator-owned gate. Deterministic and fast — no model call — so
+ * the screen can update the distance the moment the tap lands.
+ */
+export async function setNorthStarGate(input: {
+  gateId: string;
+  status: "done" | "open";
+}): Promise<ArcadiaJsonSuccess<GateStatusChange>> {
+  return runArcadiaCliJson<GateStatusChange>(
+    ["gate", input.status === "done" ? "complete" : "reopen", input.gateId],
+    { timeoutMs: 30_000 }
+  );
 }
 
 /** The daily or weekly story. Deterministic on the CLI side. */
