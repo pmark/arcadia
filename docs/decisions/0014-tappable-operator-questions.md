@@ -4,12 +4,12 @@ type: decision
 id: "0014"
 slug: tappable-operator-questions
 project: arcadia
-status: open
+status: approved
 question: Operator questions asked inside a coding-agent session disappear when the session ends or the prompt is dismissed. Should Arcadia model a question with selectable answers and their consequences as durable governed data, and if so, should it learn about questions by watching sessions or by reading documents?
 gap_type: missing-decision
 recommendation: Extend the `questions:` schema that plan documents already parse with an `options:` list carrying a `label` and a `consequence` per option, and render it wherever the operator already is. Do not monitor sessions or detect formatted text in agent output — that reproduces the ephemerality it is meant to fix, contradicts Decision 0012's boundary, and reintroduces the weak intent extraction documents exist to avoid. The coding-agent harness handles the live prompt; Arcadia handles the durable one.
 confidence: high
-updated: 2026-08-09
+updated: 2026-08-22
 ---
 
 # Decision 0014: Tappable operator questions
@@ -187,6 +187,34 @@ describes. Recording them here is the proposal demonstrating itself.
 3. **Does an answered question become a Decision record automatically?** PR
    #44 does exactly this for QA sign-offs, so there is precedent — but it
    would turn every routine option-pick into a governed Decision document.
+
+## Resolution
+
+Approved as recommended by the operator on 2026-08-22, thirteen days after the
+question was opened, and re-requested independently in the interim: the
+operator asked again for the same thing without reference to this record, which
+is itself evidence for the durability argument above.
+
+Extend the `questions:` schema that plan documents already parse with an
+`options:` list carrying a `label` and a `consequence` per option, and render it
+wherever the operator already is. Do not monitor coding-agent sessions or
+detect formatted blocks in agent output.
+
+**Build is deferred, with a trigger.** The current North Star is launching
+Private Practice Now, and this is Arcadia work in a week already running at 68%
+Arcadia. The trigger is the pilot practitioner having given recorded feedback —
+the North Star being met. Between now and then this question is settled and
+does not need re-asking.
+
+One thing learned since the question was opened sharpens the case rather than
+weakening it. The same operator asked Private Practice Now for a system that
+collects information from a practitioner at many points, during discovery and
+after publication, so that answering questions over time becomes how a
+published site is changed. That is this primitive pointed at a different
+person: durable questions carrying options and consequences, answered
+incrementally, rendered where the answerer already is. The two remain separate
+systems, but what is learned building the operator-facing one transfers
+directly, which is worth weighing when the trigger fires.
 
 ## Consequences if approved
 
