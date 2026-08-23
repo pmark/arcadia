@@ -116,6 +116,32 @@ before extending it.
   `src/intelligence/contracts.ts` (re-exports `types.ts`); never deep-import
   internals. `scripts/verify-intelligence-package-exports.mjs` guards the boundary.
 
+## Who issued a command: `ARCADIA_SURFACE`
+
+Every CLI invocation is logged to `activity_events` from the one choke point in
+`runCliAction`, so this covers every surface for free — the dashboard and the
+Discord bot both reach Arcadia by shelling out to the same CLI.
+
+`ARCADIA_SURFACE` declares who is calling. Valid values are `cli`, `dashboard`,
+`discord`, `claude`, `automation`; anything unrecognized falls back to `cli`
+rather than failing, because a mislabelled telemetry row is a small loss and a
+command that refuses to run over its own label is an outage.
+
+**If you are a coding agent issuing Arcadia commands on the operator's behalf,
+set `ARCADIA_SURFACE=claude`.** Without it your traffic is indistinguishable
+from the operator typing, and no question about agent-issued work can be
+answered afterwards.
+
+Three kinds of traffic reach the same CLI and they mean different things.
+`OPERATOR_SURFACES` (`src/activity/types.ts`) names the subset where a person
+actually touched Arcadia; `automation` is a poller with nobody there, and
+`claude` is real, wanted work that the operator did not personally issue.
+**Anything measuring engagement must honor that split, not merely record it** —
+`deriveEngagementBlocks` filters to operator surfaces unless
+`includeNonOperator` is passed. Forty agent-issued commands would otherwise
+read back as an hour the operator spent working, which is the sort of
+true-but-wrong number that teaches someone to stop trusting their reports.
+
 ## Events: a log, not a bus
 
 - Generic append-only `events` table + `coreApi.emitEvent(EmitEventInput)`

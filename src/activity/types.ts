@@ -12,8 +12,27 @@
  * not get used.
  */
 
-export const ACTIVITY_SURFACES = ["cli", "dashboard", "discord", "automation"] as const;
+export const ACTIVITY_SURFACES = ["cli", "dashboard", "discord", "claude", "automation"] as const;
 export type ActivitySurface = (typeof ACTIVITY_SURFACES)[number];
+
+/**
+ * The surfaces where the operator personally touched Arcadia.
+ *
+ * Three kinds of traffic reach the same CLI and they mean different things.
+ * `automation` is a poller: nobody is there. `claude` is a coding agent acting
+ * on the operator's behalf: the work is real and wanted, but the operator is
+ * not the one issuing it. Only the rest is a person deciding to open Arcadia.
+ *
+ * The distinction has to be honored wherever engagement is measured, not just
+ * recorded. Forty agent-issued commands would otherwise read back as an hour
+ * the operator spent working — which is exactly the kind of true-but-wrong
+ * number that teaches someone to stop trusting their own reports.
+ */
+export const OPERATOR_SURFACES = ["cli", "dashboard", "discord"] as const;
+
+export function isOperatorSurface(surface: ActivitySurface): boolean {
+  return (OPERATOR_SURFACES as readonly ActivitySurface[]).includes(surface);
+}
 
 export interface ActivityEvent {
   id: string;

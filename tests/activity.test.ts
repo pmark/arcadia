@@ -101,9 +101,43 @@ describe("engagement blocks", () => {
           event({ occurredAt: "2026-07-22T03:00:00Z", surface: "automation" }),
           event({ occurredAt: "2026-07-22T04:00:00Z", surface: "automation" })
         ],
-        { includeAutomation: true }
+        { includeNonOperator: true }
       )
     ).toHaveLength(2);
+  });
+
+  it("does not let agent-issued work read back as the operator being present", () => {
+    // Forty commands a coding agent issued on the operator's behalf are real
+    // work, but they are not an hour the operator spent in Arcadia. Counting
+    // them as engagement is the true-but-wrong number that teaches someone to
+    // stop trusting their own reports.
+    expect(
+      deriveEngagementBlocks([
+        event({ occurredAt: "2026-07-22T09:00:00Z", surface: "claude" }),
+        event({ occurredAt: "2026-07-22T09:20:00Z", surface: "claude" })
+      ])
+    ).toHaveLength(0);
+
+    expect(
+      deriveEngagementBlocks(
+        [
+          event({ occurredAt: "2026-07-22T09:00:00Z", surface: "claude" }),
+          event({ occurredAt: "2026-07-22T09:20:00Z", surface: "claude" })
+        ],
+        { includeNonOperator: true }
+      )
+    ).toHaveLength(1);
+  });
+
+  it("still counts a stretch the operator was actually in", () => {
+    const blocks = deriveEngagementBlocks([
+      event({ occurredAt: "2026-07-22T09:00:00Z", surface: "cli" }),
+      event({ occurredAt: "2026-07-22T09:10:00Z", surface: "claude" }),
+      event({ occurredAt: "2026-07-22T09:20:00Z", surface: "dashboard" })
+    ]);
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].surfaces).toEqual(["cli", "dashboard"]);
   });
 
   it("reports what a stretch was mostly about, most-touched first", () => {
@@ -129,6 +163,7 @@ describe("surface attribution", () => {
     expect(currentSurface({})).toBe("cli");
     expect(currentSurface({ ARCADIA_SURFACE: "dashboard" })).toBe("dashboard");
     expect(currentSurface({ ARCADIA_SURFACE: "AUTOMATION" })).toBe("automation");
+    expect(currentSurface({ ARCADIA_SURFACE: "claude" })).toBe("claude");
   });
 
   it("falls back rather than storing a surface it does not recognize", () => {
