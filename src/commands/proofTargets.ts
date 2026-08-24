@@ -90,7 +90,7 @@ export function runProofTargetListCommand(options: { workspace: string; project:
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   return withDatabase(workspacePath, (db) => {
     const project = resolveProject(db, options.project);
-    const targets = loadProofTargetsForProject(project.slug);
+    const targets = loadProofTargetsForProject(project.slug, workspacePath);
     const checks = listLatestProofTargetChecksForProject(db, project.id);
     const checksByTarget = new Map(checks.map((check) => [check.target_id, check]));
 
@@ -111,7 +111,7 @@ export async function runProofTargetCheckCommand(
   dependencies: { performCheck?: (url: string) => Promise<ProofCheckResult> } = {}
 ): Promise<CommandSuccess<ProofTargetCheckCommandData>> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const target = getProofTargetById(options.targetId);
+  const target = getProofTargetById(options.targetId, workspacePath);
   if (!target) {
     throw validationError("Proof target was not found in checked-in configuration.", { targetId: options.targetId });
   }
@@ -130,7 +130,7 @@ export async function runProofTargetCheckCommand(
       errorMessage: result.errorMessage
     });
 
-    const siblings = loadProofTargetsForProject(project.slug);
+    const siblings = loadProofTargetsForProject(project.slug, workspacePath);
     const checks = listLatestProofTargetChecksForProject(db, project.id);
     const checksByTarget = new Map(checks.map((entry) => [entry.target_id, entry]));
 

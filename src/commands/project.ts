@@ -965,6 +965,12 @@ export function renderProjectSetupContextSuccess(response: CommandSuccess<Projec
     response.data.files.claude
       ? `CLAUDE.md: ${response.data.files.claude}`
       : "CLAUDE.md: Left unchanged — it holds project-authored content. Move any shared rules into AGENTS.md, then reduce CLAUDE.md to `@AGENTS.md`.",
+    // Scaffolded unfinished on purpose, so say so. A placeholder nobody knows
+    // to complete becomes a button in the QA queue that fails every time it is
+    // pressed, which is worse than the honest absence of one.
+    response.data.files.serviceScript
+      ? `scripts/services.sh: ${response.data.files.serviceScript} — scaffolded as a placeholder. Every verb exits non-zero until its three marked blocks are filled in.`
+      : "scripts/services.sh: Left unchanged — this repository already has one.",
     ...renderControlDocuments(response.data.controlDocuments)
   ];
 }

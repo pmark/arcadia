@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -249,10 +249,49 @@ describe("proof-target CLI commands", () => {
   });
 });
 
+/**
+ * Writes the workspace's own target list rather than leaning on whatever the
+ * repository happens to ship.
+ *
+ * These tests used to assert against ids in `config/proof-targets.json`, which
+ * made editing that file — a file whose whole job is to change as targets move
+ * — look like a regression. The list now lives in the workspace, so a test can
+ * declare exactly the targets it is about.
+ */
 function createWorkspace(): string {
   const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-proof-target-test-"));
   workspaces.push(workspace);
   initWorkspace(workspace);
+  mkdirSync(path.join(workspace, "config"), { recursive: true });
+  writeFileSync(
+    path.join(workspace, "config", "qa-targets.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      projects: { "private-practice-now": { repoPath: workspace, baseBranch: "main" } },
+      targets: [
+        {
+          id: "ppn-stable-juniper",
+          project: "private-practice-now",
+          label: "Juniper (sample portfolio)",
+          environment: "Stable",
+          environmentKind: "remote",
+          accessState: "public",
+          url: "https://juniper.example.test",
+          testProcedure: "Fixture target."
+        },
+        {
+          id: "river-copy-studio",
+          project: "private-practice-now",
+          label: "River Copy Studio",
+          environment: "Candidate",
+          environmentKind: "lan",
+          accessState: "access-protected",
+          url: "https://studio.example.test",
+          testProcedure: "Fixture target."
+        }
+      ]
+    })
+  );
   return workspace;
 }
 

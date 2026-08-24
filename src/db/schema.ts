@@ -182,7 +182,7 @@ function ensureNarrativeDigestScopeColumns(db: Database.Database): void {
 /**
  * One row per health check Arcadia actually ran against a configured proof
  * target (Stable or Candidate). `target_id` matches a checked-in id from
- * `config/proof-targets.json` rather than a foreign key, because the target
+ * the workspace's `config/qa-targets.json` rather than a foreign key, because the target
  * catalog is managed documentation, not workspace state; only the observed
  * result of checking it is workspace state.
  */

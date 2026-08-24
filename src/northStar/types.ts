@@ -41,6 +41,16 @@ export interface NorthStarDocument {
   why: string;
   /** The observable finish line — how the operator will know it is done. */
   looksLike: string;
+  /**
+   * Where to go to actually try the thing.
+   *
+   * The Now screen answers "am I closer?" but never answered "what do I open
+   * to see it?" Without that, the operator has to remember which of several
+   * surfaces is the current one to test — exactly the disorientation the one
+   * screen exists to remove. Declared rather than inferred, because only the
+   * operator knows which QA surface is the live one this week.
+   */
+  qaUrl: string | null;
   gates: NorthStarGate[];
   updated: string | null;
   /** Absolute path the document was read from. */
@@ -91,6 +101,8 @@ export interface NowBrief {
     text: string;
     why: string;
     looksLike: string;
+    /** Where to open and actually try it. See `NorthStarDocument.qaUrl`. */
+    qaUrl: string | null;
     projectName: string | null;
     documentPath: string | null;
   };

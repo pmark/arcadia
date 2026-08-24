@@ -83,6 +83,11 @@ export function renderNowSuccess(response: CommandSuccess<NowCommandData>): stri
   if (brief.target.looksLike) {
     lines.push(`Done when: ${brief.target.looksLike}`);
   }
+  // Placed with the target rather than below the fold: "what do I open to try
+  // it?" is the question the operator asks in the same breath as "am I closer?"
+  if (brief.target.qaUrl) {
+    lines.push(`Try it:    ${brief.target.qaUrl}`);
+  }
   lines.push("");
 
   const { done, total, remaining } = brief.distance;

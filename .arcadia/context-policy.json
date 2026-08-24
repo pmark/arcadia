@@ -2,6 +2,7 @@
   "allowed_context_roots": [
     ".",
     "apps",
+    "docs",
     "specs",
     "src",
     "test",
@@ -30,7 +31,9 @@
   "important_docs": [
     "AGENTS.md",
     "README.md",
-    "PROJECT.md"
+    "PROJECT.md",
+    "docs/architecture.md",
+    "docs/ARCHITECTURE.md"
   ],
   "source_roots": [
     "src",
