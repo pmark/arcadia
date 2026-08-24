@@ -259,6 +259,14 @@ import {
 } from "./commands/digest.js";
 import { renderDocsSyncSuccess, runDocsSyncCommand } from "./commands/docs.js";
 import {
+  renderDecisionApproveSuccess,
+  renderDecisionNewSuccess,
+  renderDecisionValidateSuccess,
+  runDecisionApproveCommand,
+  runDecisionNewCommand,
+  runDecisionValidateCommand
+} from "./commands/decision.js";
+import {
   renderNextHistorySuccess,
   renderNextReadySuccess,
   renderNextSuccess,
@@ -1056,6 +1064,96 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("advance.queue", options, () => runAdvanceQueueCommand(options), renderAdvanceQueueSuccess)
+  );
+
+  const decision = program.command("decision").description("Create and update checked-in Decision documents");
+  addJsonOption(
+    decision
+      .command("new")
+      .description("Write a new Decision document, validated before it is written")
+      .argument("<slug>", "Kebab-case slug for the Decision")
+      .requiredOption("--project <project>", "Project id or slug that owns this Decision")
+      .requiredOption("--question <question>", "The question this Decision answers")
+      .option("--gap-type <gap-type>", "missing-decision, missing-external-input, missing-definition, or missing-success-criteria")
+      .option("--recommendation <recommendation>", "Recommended resolution")
+      .option("--confidence <confidence>", "high, medium, or low")
+      .option("--plan <plan>", "Plan slug this Decision is scoped to")
+      .option("--action <action>", "Action reference this Decision is scoped to")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((slug: string, options: {
+    workspace: string;
+    project: string;
+    question: string;
+    gapType?: string;
+    recommendation?: string;
+    confidence?: string;
+    plan?: string;
+    action?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "decision.new",
+      options,
+      () => runDecisionNewCommand({
+        workspace: options.workspace,
+        project: options.project,
+        slug,
+        question: options.question,
+        gapType: options.gapType as never,
+        recommendation: options.recommendation,
+        confidence: options.confidence as never,
+        plan: options.plan,
+        action: options.action
+      }),
+      renderDecisionNewSuccess
+    )
+  );
+  addJsonOption(
+    decision
+      .command("approve")
+      .description("Ratify a Decision: sets status, answer, and decided date, validated before it is written")
+      .argument("<id>", "Decision numeric id, slug, or filename")
+      .requiredOption("--project <project>", "Project id or slug that owns this Decision")
+      .requiredOption("--answer <answer>", "What was actually decided")
+      .option("--decided <YYYY-MM-DD>", "Date decided; defaults to today")
+      .option("--status <status>", "open, approved, rejected, or deferred", "approved")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((id: string, options: {
+    workspace: string;
+    project: string;
+    answer: string;
+    decided?: string;
+    status?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "decision.approve",
+      options,
+      () => runDecisionApproveCommand({
+        workspace: options.workspace,
+        project: options.project,
+        id,
+        answer: options.answer,
+        decided: options.decided,
+        status: options.status as never
+      }),
+      renderDecisionApproveSuccess
+    )
+  );
+  addJsonOption(
+    decision
+      .command("validate")
+      .description("Validate one existing Decision document without a full docs sync")
+      .argument("<id>", "Decision numeric id, slug, or filename")
+      .requiredOption("--project <project>", "Project id or slug that owns this Decision")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((id: string, options: { workspace: string; project: string; json?: boolean }) =>
+    runCliAction(
+      "decision.validate",
+      options,
+      () => runDecisionValidateCommand({ workspace: options.workspace, project: options.project, id }),
+      renderDecisionValidateSuccess
+    )
   );
 
   const blog = program.command("blog").description("Blogging capability commands");

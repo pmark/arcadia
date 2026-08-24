@@ -3,10 +3,17 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-23
+updated: 2026-08-24
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-24 — Gave Decisions a validated authoring command instead of hand-written frontmatter
+
+- **Did:** Two Decisions this week (0014, 0033) shipped with invalid frontmatter — one approved with no `answer`, one with an out-of-enum `gap_type` — both caught only after the fact by a full `docs sync`/`next` run. Added `arcadia decision new`, `arcadia decision approve`, and `arcadia decision validate` (`src/commands/decision.ts`), which write or edit exactly one `docs/decisions/*.md` file and validate it with the same single-file `parseDoc` the dispatch path already trusts, before anything touches disk. `new` auto-assigns the next sequential id and quotes any field containing a colon; `approve` sets `status`/`answer`/`decided` in place without disturbing other fields or their order; `validate` checks a hand-edited file with no write and no full crawl. Extracted the frontmatter-quoting helper (`yamlScalar`) out of `project.ts` into `src/docs/frontmatter.ts` so both callers share one implementation.
+- **Result:** 10 new focused tests (`tests/decision-command.test.ts`) cover auto-incrementing ids, colon-quoting, kebab-case slug rejection, out-of-enum `gap_type` rejection, in-place approval, slug-or-id lookup, missing-answer refusal, and validation of a hand-broken file — all passing. Full suite passes 985 tests with 6 skipped; typecheck and core+Discord builds pass. No model call anywhere in the path.
+- **Next:** None required; this is a standalone tooling addition. Future Decisions should be authored through this command rather than by hand.
+- **Blockers:** None. No merge, deployment, credential use, or production access; this only changes how Decision markdown files get written.
 
 ## 2026-08-23 — Repaired the Decision 0014 frontmatter blocking dispatch
 
