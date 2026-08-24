@@ -53,6 +53,22 @@ branch first, under a safety contract the script has no way to honour:
 Splitting it this way means a script that misbehaves can cost you a restart,
 never a commit.
 
+## You do not start from a blank file
+
+`arcadia project setup-context` scaffolds `scripts/services.sh` when a project
+has none, in this contract's shape, with three marked blocks to fill in. It
+never overwrites an existing one — that is the only file adoption writes which
+is hand-authored per project rather than generated, and clobbering a working
+service script would be the most destructive thing adoption could do.
+
+**The placeholder fails loudly.** Every verb exits non-zero until its block is
+completed. A stub that exited 0 and did nothing would make `arcadia qa refresh`
+report "services restarted" when nothing had been — plausible, wrong, and
+invisible, which is the same failure as a hand-typed freshness string.
+
+Completing it is a well-shaped task for a coding agent: the interface is fixed,
+the blanks are marked, and the tests it must satisfy are the three verbs.
+
 ## Writing one
 
 The whole contract fits in a few lines. This is enough for a project whose

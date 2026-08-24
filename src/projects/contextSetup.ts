@@ -10,6 +10,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
+import { scaffoldServiceScript } from "./serviceScaffold.js";
 import { validationError } from "../cli/errors.js";
 import type { Project, ProjectMetadata, WorkItemSummary } from "../domain/types.js";
 import {
@@ -137,6 +138,12 @@ export interface SetupProjectContextResult {
     projectDocument: string | null;
     /** The seeded bootstrap plan, or null for the same reasons. */
     plan: string | null;
+    /**
+     * The scaffolded `scripts/services.sh`, or null when the repository already
+     * had one. Never overwritten: it is the only file adoption writes that is
+     * hand-authored per project rather than generated or adopted verbatim.
+     */
+    serviceScript: string | null;
   };
   /**
    * What happened to the work pointer chain, in operator-facing words.
@@ -209,6 +216,11 @@ export function setupArcadiaProjectContext(input: {
   // The work pointer chain. Written last, because it is the only part that
   // depends on what the rest of adoption just put on disk -- and the only part
   // that needs to know which Project this repository is.
+  // The one executable adoption writes: how Arcadia restarts this project's
+  // services. A placeholder in the contract's shape, never overwriting one that
+  // already exists. See `serviceScaffold.ts`.
+  const serviceScript = scaffoldServiceScript(resolved.repoPath);
+
   const controlDocuments = seedPointerChain(resolved.repoPath, resolved.project, input.db);
 
   return {
@@ -223,7 +235,8 @@ export function setupArcadiaProjectContext(input: {
       claude: claudeWritten ? claudePath : null,
       continuationProtocol: protocolWritten ? protocolPath : null,
       projectDocument: controlDocuments.projectDocument,
-      plan: controlDocuments.plan
+      plan: controlDocuments.plan,
+      serviceScript: serviceScript.written ? serviceScript.path : null
     },
     controlDocuments,
     context
