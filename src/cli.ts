@@ -161,7 +161,11 @@ import {
   renderQaRecordSuccess,
   runQaListCommand,
   runQaPrReviewCommand,
-  runQaRecordCommand
+  runQaRecordCommand,
+  runQaRefreshCommand,
+  runQaStatusCommand,
+  renderQaRefreshSuccess,
+  renderQaStatusSuccess
 } from "./commands/qa.js";
 import {
   renderProofTargetCheckSuccess,
@@ -2296,6 +2300,29 @@ export function buildProgram(): Command {
       options,
       () => runQaRecordCommand({ workspace: options.workspace, candidateId, decision: options.decision, note: options.note }),
       renderQaRecordSuccess
+    )
+  );
+  addJsonOption(
+    qa
+      .command("status")
+      .description("Read-only: how far each project's checkout is from its base branch, and what its services report")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("qa.status", options, () => runQaStatusCommand(options), renderQaStatusSuccess)
+  );
+  addJsonOption(
+    qa
+      .command("refresh")
+      .description("Fast-forward a project to its base branch, then restart its services")
+      .argument("<project>", "Project slug from the QA target configuration")
+      .option("--skip-restart", "Bring the checkout current but leave services running")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((project: string, options: { workspace: string; skipRestart?: boolean; json?: boolean }) =>
+    runCliAction(
+      "qa.refresh",
+      options,
+      () => runQaRefreshCommand({ workspace: options.workspace, project, skipRestart: options.skipRestart }),
+      renderQaRefreshSuccess
     )
   );
   addJsonOption(

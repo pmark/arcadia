@@ -47,7 +47,7 @@ export function resolveProofHeroState(input: ProofHeroInput): ProofHeroResolutio
     return {
       state: "proof_unavailable",
       headline: "No proof target is configured",
-      detail: "Add a Stable or Candidate target to config/proof-targets.json before this Project can show a demo state.",
+      detail: "Add a Stable or Candidate target to the workspace's config/qa-targets.json before this Project can show a demo state.",
       primaryAction: null
     };
   }

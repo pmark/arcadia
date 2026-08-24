@@ -1,0 +1,47 @@
+{
+  "_comment": [
+    "Example only. Copy to <workspace>/config/qa-targets.json and edit.",
+    "Repository paths and LAN hostnames are facts about one machine, so the",
+    "real file lives in the workspace beside arcadia.json — never here.",
+    "Services are controlled through each project's own scripts/services.sh;",
+    "see docs/service-contract.md."
+  ],
+  "schemaVersion": 1,
+  "projects": {
+    "example-project": {
+      "repoPath": "/absolute/path/to/your/checkout",
+      "baseBranch": "main"
+    },
+    "example-project-with-relocated-script": {
+      "repoPath": "/absolute/path/to/another/checkout",
+      "baseBranch": "main",
+      "serviceScript": "tools/dev/services.sh"
+    }
+  },
+  "targets": [
+    {
+      "id": "example-production",
+      "project": "example-project",
+      "label": "Production site",
+      "environment": "Stable",
+      "environmentKind": "remote",
+      "accessState": "public",
+      "url": "https://example.com",
+      "versionPath": "/_version",
+      "pullRequestUrl": null,
+      "testProcedure": "What to actually do here, in one or two sentences. Name the question this target answers that no other target does."
+    },
+    {
+      "id": "example-local-dev",
+      "project": "example-project",
+      "label": "Local dev server",
+      "environment": "Candidate",
+      "environmentKind": "local",
+      "accessState": "local-only",
+      "url": "http://127.0.0.1:3000",
+      "versionPath": null,
+      "pullRequestUrl": null,
+      "testProcedure": "Local targets need no versionPath: Arcadia reads the checkout's HEAD from repoPath directly. Remote targets cannot be read that way, so they self-report through versionPath or go unverified."
+    }
+  ]
+}
