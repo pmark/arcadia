@@ -71,6 +71,7 @@ export function computeNowBrief(
       text: northStar?.target ?? "No target declared.",
       why: northStar?.why ?? "",
       looksLike: northStar?.looksLike ?? "",
+      qaUrl: northStar?.qaUrl ?? null,
       projectName: targetProject?.name ?? null,
       documentPath: northStar?.path ?? null
     },

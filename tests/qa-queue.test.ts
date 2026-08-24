@@ -30,6 +30,14 @@ describe("configured QA queue", () => {
     const listed = runQaListCommand({ workspace });
     expect(listed.data.candidates.map((candidate) => candidate.id)).toContain("arcadia-qa-queue");
 
+    // Read the revision from the listing rather than hardcoding it. What is
+    // under test is that a Decision binds to whatever revision was displayed —
+    // not that one candidate carries one particular string. The candidate list
+    // is a config file that is supposed to change as targets move, and pinning
+    // a value here made editing it look like a regression.
+    const candidate = listed.data.candidates.find((entry) => entry.id === "arcadia-qa-queue");
+    expect(candidate?.revision).toBeTruthy();
+
     const recorded = runQaRecordCommand({
       workspace,
       candidateId: "arcadia-qa-queue",
@@ -39,7 +47,7 @@ describe("configured QA queue", () => {
 
     expect(recorded.data.review.status).toBe("deferred");
     const context = JSON.parse(recorded.data.review.context_json);
-    expect(context).toMatchObject({ candidateId: "arcadia-qa-queue", revision: "codex/build-qa-queue-vertical-slice-20260810T045656199Z", decision: "needs-follow-up" });
+    expect(context).toMatchObject({ candidateId: "arcadia-qa-queue", revision: candidate?.revision, decision: "needs-follow-up" });
     expect(withDatabase(workspace, (db) => getReviewItem(db, recorded.data.review.id)?.decision_note)).toBe("The configured target is not running.");
   });
 });

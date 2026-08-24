@@ -59,6 +59,7 @@ export function loadNorthStar(workspacePath: string): NorthStarDocument | null {
     projectSlug,
     why: optionalString(data, "why") ?? "",
     looksLike: optionalString(data, "looks_like") ?? "",
+    qaUrl: optionalString(data, "qa_url"),
     gates: parseGates(data.gates),
     updated: optionalString(data, "updated"),
     path: absolute

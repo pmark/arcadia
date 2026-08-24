@@ -55,6 +55,20 @@ describe("NORTH_STAR.md", () => {
     expect(northStar?.gates[1].declaredStatus).toBe("open");
   });
 
+  it("carries the QA surface when one is declared, and null when it is not", () => {
+    const withQa = initializedWorkspace();
+    writeNorthStar(withQa, [
+      "target: Launch the thing",
+      "project: the-thing",
+      "qa_url: http://127.0.0.1:3000/qa"
+    ]);
+    expect(loadNorthStar(withQa)?.qaUrl).toBe("http://127.0.0.1:3000/qa");
+
+    const withoutQa = initializedWorkspace();
+    writeNorthStar(withoutQa, ["target: Launch the thing", "project: the-thing"]);
+    expect(loadNorthStar(withoutQa)?.qaUrl).toBeNull();
+  });
+
   it("refuses a document with no target, a duplicate gate, or an unknown status", () => {
     const missingTarget = initializedWorkspace();
     writeNorthStar(missingTarget, ["project: the-thing"]);
