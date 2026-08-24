@@ -998,6 +998,53 @@ Criteria section, ahead of Arcadia's generated guardrails. Write them as the
 conditions you would check at review; they are what the agent is asked to
 satisfy.
 
+## Author A Decision Document
+
+`review open`/`review approve` (above) manage a Decision tied to one Action's
+clarification. This is the other kind: the free-standing narrative Decisions
+under `docs/decisions/` — Arcadia's own portfolio-level record of "what was
+decided and why." Until now those were hand-written markdown, validated only
+by running a full `docs sync` or `arcadia next` afterward — which is exactly
+how Decision 0014 shipped `approved` with no `answer`, and how Decision 0033
+briefly carried an out-of-enum `gap_type`. Both mistakes were only caught
+minutes later, by the full validator, after the fact.
+
+`arcadia decision new` and `arcadia decision approve` write the same
+documents deterministically and validate them with that same parser
+*before* anything touches disk — one file in, one file out, no model call,
+no repository-wide crawl:
+
+```sh
+pnpm arcadia decision new ask-request-deduplication \
+  --project arcadia \
+  --question "Should ask refuse a near-duplicate request instead of creating another packet?" \
+  --recommendation "Check undecided packets for an exact-match request first." \
+  --gap-type missing-decision \
+  --confidence high \
+  --json
+```
+
+This assigns the next `NNNN` id automatically, quotes any field containing a
+colon so the frontmatter can't break, and refuses to write anything that
+fails validation. Ratifying is the same shape:
+
+```sh
+pnpm arcadia decision approve ask-request-deduplication \
+  --project arcadia \
+  --answer "Yes: exact-match check before writing a new packet." \
+  --json
+```
+
+`approve` accepts the numeric id, the slug, or the exact filename. It sets
+`status`, `answer`, and `decided` in place — every other field an operator or
+prior agent wrote is left untouched, in the order it was written — and
+refuses to write if the result would fail validation, e.g. approving without
+`--answer`.
+
+`arcadia decision validate <id> --project <project>` checks one existing file
+against the same rule set with no write at all, for a hand-edited document or
+a suspicious one found in `advance queue`.
+
 ## Plan Work
 
 ```sh

@@ -37,6 +37,7 @@ import {
   upsertProjectMetadata
 } from "../db/repositories.js";
 import { discoverDocs } from "../docs/discover.js";
+import { yamlScalar } from "../docs/frontmatter.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import { actionDocRef } from "../docs/types.js";
 import { listMonitoredProjects } from "./workMonitor.js";
@@ -1168,16 +1169,6 @@ function materializeProjectFiles(input: {
     ].join("\n")
   );
   return null;
-}
-
-/**
- * Quote a scalar only when it would otherwise change meaning — a project name
- * or mission containing `: ` is the single most common way generated
- * frontmatter becomes unparseable.
- */
-function yamlScalar(value: string): string {
-  const trimmed = value.trim();
-  return /[:#]|^[-?&*!|>%@`"']/.test(trimmed) ? JSON.stringify(trimmed) : trimmed;
 }
 
 function findProjectTemplate(workspacePath: string): string | null {
