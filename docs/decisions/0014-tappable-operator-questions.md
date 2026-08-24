@@ -7,6 +7,8 @@ project: arcadia
 status: approved
 question: Operator questions asked inside a coding-agent session disappear when the session ends or the prompt is dismissed. Should Arcadia model a question with selectable answers and their consequences as durable governed data, and if so, should it learn about questions by watching sessions or by reading documents?
 gap_type: missing-decision
+answer: "Approved as recommended: extend the plan documents' existing `questions:` schema with an `options:` list carrying a required `label` and `consequence` per option, plus `answer` and `answered_at`, parsed deterministically with no model call, and render it wherever the operator already is. Do not monitor coding-agent sessions or detect formatted blocks in agent output. Build is deferred until the pilot practitioner has given recorded feedback on Private Practice Now."
+decided: 2026-08-22
 recommendation: Extend the `questions:` schema that plan documents already parse with an `options:` list carrying a `label` and a `consequence` per option, and render it wherever the operator already is. Do not monitor sessions or detect formatted text in agent output — that reproduces the ephemerality it is meant to fix, contradicts Decision 0012's boundary, and reintroduces the weak intent extraction documents exist to avoid. The coding-agent harness handles the live prompt; Arcadia handles the durable one.
 confidence: high
 updated: 2026-08-22
@@ -80,7 +82,7 @@ Four independent reasons, any one of which would be sufficient:
 **The split that follows: the harness owns the live prompt, Arcadia owns the
 durable one.** They are different jobs and only the second one is unbuilt.
 
-## Decision (proposed)
+## Decision
 
 ### 1. Extend the existing question schema
 
@@ -216,7 +218,7 @@ incrementally, rendered where the answerer already is. The two remain separate
 systems, but what is learned building the operator-facing one transfers
 directly, which is worth weighing when the trigger fires.
 
-## Consequences if approved
+## Consequences
 
 - Questions survive session end, dismissal, and machine restart, which is the
   defect that prompted this.
