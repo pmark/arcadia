@@ -4,11 +4,13 @@ type: decision
 id: "0033"
 slug: ask-request-deduplication
 project: arcadia
-status: open
+status: approved
 question: arcadia ask never checks whether an unresolved packet already covers a request. Should it refuse or fold a near-duplicate request into the existing one instead of creating another packet?
 gap_type: missing-decision
+answer: "Yes: before writing a planning or build packet, check the target Project's undecided packets for an exact-match request (after whitespace/case normalization) and refuse, naming the existing packet, instead of writing a duplicate. A coding agent builds it, scoped to ask.ts and packets.ts."
 recommendation: Before creating a planning or build packet, check the target Project for an existing undecided packet whose stored request text is the same or near-identical. If one exists, refuse and point at it instead of creating a new packet.
 confidence: high
+decided: 2026-08-23
 updated: 2026-08-23
 ---
 
@@ -46,10 +48,10 @@ packets stay as they are until someone resolves or discards them by hand.
 
 ## Resolution
 
-Not yet ratified. Ratify by fixing the request-comparison rule above (exact
-match is deliberately the starting bar — loosen it only if exact match proves
-too narrow in practice) and naming who builds it: a coding agent, since the
-change is deterministic and scoped to `ask.ts` and `packets.ts`.
+Approved as recommended on 2026-08-23. Exact match is deliberately the
+starting bar; loosen it only if it proves too narrow in practice. A coding
+agent builds it — the change is deterministic and scoped to `ask.ts` and
+`packets.ts`.
 
 ## Revisit triggers
 
