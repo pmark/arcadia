@@ -55,6 +55,30 @@ Commands follow the naming rule: **nouns read state, verbs may mutate it
 within declared authority**. Trust the part of speech. A noun that writes is a
 bug in the name as much as in the code.
 
+### Write Decisions with the command, never by hand
+
+A Decision under `docs/decisions/NNNN-<slug>.md` gates every Action that names
+it, so a Decision whose frontmatter does not parse blocks dispatch for the
+whole repository. Hand-written frontmatter is the way that happens: a
+`status: approved` with no `answer`, an out-of-enum `gap_type`, an unquoted
+colon breaking the YAML. Each of those looks fine until a later command
+refuses to run.
+
+Use the commands instead. They build the frontmatter deterministically and
+validate it with the same parser dispatch uses, before writing anything:
+
+```sh
+arcadia decision new <slug> --project <project> --question "..."
+arcadia decision approve <id> --project <project> --answer "..."
+arcadia decision validate <id> --project <project>
+```
+
+`new` assigns the next id and quotes what needs quoting; `approve` sets
+`status`, `answer`, and `decided` in place and leaves every other field alone;
+`validate` checks one existing file without writing. All three are
+deterministic — no model call, no repository-wide crawl. Edit a Decision's
+prose body by hand freely; it is the frontmatter that has teeth.
+
 ### A current Action is executable only when
 
 - it exists exactly once in the active plan;

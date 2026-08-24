@@ -185,6 +185,49 @@ way to start work, route it through `resolveActionReadiness` rather than
 reimplementing the checks — two implementations drift, and the looser one
 becomes the way work gets through.
 
+## Writing a Decision
+
+A Decision is one file, `docs/decisions/NNNN-<slug>.md`, in the repository of
+the Project it belongs to. Its frontmatter has teeth: `status: approved`
+**requires** an `answer`, `gap_type` must be one of `missing-decision`,
+`missing-external-input`, `missing-definition`, or `missing-success-criteria`,
+and any value containing a colon must be quoted or the YAML will not parse.
+Because an Action's `decisions: []` list blocks dispatch until every Decision
+it names is answered, a Decision that fails to parse blocks work across the
+whole repository — and the failure surfaces later, in an unrelated command,
+rather than at the moment the file was written.
+
+Write them with the commands rather than by hand. They construct the
+frontmatter deterministically and validate it with the same `parseDoc` that
+dispatch uses, before touching disk — so an invalid Decision is refused
+instead of persisted:
+
+```sh
+pnpm arcadia decision new ask-request-deduplication \
+  --project arcadia \
+  --question "Should ask refuse a near-duplicate request?" \
+  --recommendation "Check undecided packets for an exact match first." \
+  --gap-type missing-decision \
+  --confidence high
+
+pnpm arcadia decision approve ask-request-deduplication \
+  --project arcadia \
+  --answer "Yes: exact-match check before writing a new packet."
+
+pnpm arcadia decision validate ask-request-deduplication --project arcadia
+```
+
+`new` assigns the next sequential id from the files already present. `approve`
+accepts a numeric id, a slug, or an exact filename, and sets `status`,
+`answer`, and `decided` in place without disturbing any other field or its
+position — so a document an operator hand-tuned stays as they left it.
+`validate` checks one existing file with no write and no repository-wide
+crawl, which is the cheap way to check a document someone edited by hand.
+
+All three are deterministic: no model call at any point. The prose body below
+the frontmatter is yours to write however the Decision deserves — it is only
+the frontmatter that is mechanically enforced.
+
 ## Getting documents into Arcadia
 
 ```sh
