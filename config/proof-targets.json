@@ -15,9 +15,9 @@
       "project": "private-practice-now",
       "environment": "Candidate",
       "label": "River Copy Studio",
-      "url": "http://127.0.0.1:4321",
-      "environmentKind": "local",
-      "accessState": "local-only",
+      "url": "https://arcadia-1.alpine-rattlesnake.ts.net:4321",
+      "environmentKind": "lan",
+      "accessState": "access-protected",
       "sourceRevision": "configured-local-candidate"
     }
   ]
