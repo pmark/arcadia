@@ -30,9 +30,9 @@ Open **Dispatch Journal** at <http://127.0.0.1:3020/admin/dispatch-journal> to s
 
 Open **Outstanding PRs** at <http://127.0.0.1:3020/admin/pull-requests> to see every open pull request across configured Project repositories, grouped with its Project, branch, review/check state, and plain-English readiness rating. This view is read-only.
 
-Open the **QA queue** at <http://127.0.0.1:3020/qa> to test each configured Candidate from one exact procedure. The queue shows the configured revision, target state, validation and evidence freshness; **Test Candidate** opens only that configured target. Record Pass, Fail, or Needs follow-up with an optional note to create a revision-bound Decision. This records QA evidence only—it never merges, deploys, or releases work. Candidate configuration is checked in at `config/qa-candidates.json`.
+Open the **QA queue** at <http://127.0.0.1:3020/qa> to test each configured Candidate from one exact procedure. The queue shows the configured revision, target state, validation and evidence freshness; **Test Candidate** opens only that configured target. Record Pass, Fail, or Needs follow-up with an optional note to create a revision-bound Decision. This records QA evidence only—it never merges, deploys, or releases work. Target configuration lives in the workspace at `config/qa-targets.json` — repository paths and LAN hostnames are facts about one machine, so they are not checked in; `config/qa-targets.example.json` documents the shape. Revision, validation, and evidence freshness are computed from each project's checkout rather than typed by hand.
 
-Every Project Detail page at <http://127.0.0.1:3020/projects/{id}> now opens with a **demo hero**: one state — proof unavailable, Candidate failure, ready for your demo, QA failed, release Decision needed, or Stable-only — with exactly one primary next action, resolved from real checks rather than claimed. Below it, each configured Stable and Candidate target gets its own card with URL, environment kind, access state, source revision, health, and last verified time, plus its own **Show Stable** / **Test Candidate** link (works from a phone-reachable Mission Control whenever the target itself is not local-only) and a **Check now** button that runs a live reachability probe and persists the result. Stable/Candidate target configuration is checked in at `config/proof-targets.json`; a Candidate target reuses its QA queue id so a recorded QA Decision (`arcadia qa record`) is reflected in the hero automatically. Run a check from the command line with:
+Every Project Detail page at <http://127.0.0.1:3020/projects/{id}> now opens with a **demo hero**: one state — proof unavailable, Candidate failure, ready for your demo, QA failed, release Decision needed, or Stable-only — with exactly one primary next action, resolved from real checks rather than claimed. Below it, each configured Stable and Candidate target gets its own card with URL, environment kind, access state, source revision, health, and last verified time, plus its own **Show Stable** / **Test Candidate** link (works from a phone-reachable Mission Control whenever the target itself is not local-only) and a **Check now** button that runs a live reachability probe and persists the result. Stable/Candidate targets are a projection of the same workspace `config/qa-targets.json` list; a Candidate target reuses its QA queue id so a recorded QA Decision (`arcadia qa record`) is reflected in the hero automatically. Run a check from the command line with:
 
 ```sh
 pnpm arcadia proof-target check <target-id>
@@ -681,7 +681,7 @@ images as normal Artifacts. See `docs/intelligence/COMFYUI_IMAGE_EXECUTOR.md`.
 If Arcadia is unavailable, ask Codex to **check or restart all Arcadia services**. The direct fallback is:
 
 ```sh
-/Users/pmark/.codex/skills/restart-arcadia-services/scripts/restart-services.sh restart /Users/pmark/Dev/MR/Arcadia/arcadia
+scripts/services.sh restart
 ```
 
 Arcadia pins Node in `mise.toml`, and Corepack activates the pnpm version in
