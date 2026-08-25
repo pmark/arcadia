@@ -614,6 +614,41 @@ export async function loadPathBrief() {
   return runArcadiaCliJson<PathBrief>(["path"], { timeoutMs: 30_000 });
 }
 
+export interface WorkQuestionContext {
+  workItem: {
+    id: string;
+    title: string;
+    project: string | null;
+    docRef: string | null;
+    status: string;
+    clarificationStatus: string | null;
+    gapType: string | null;
+    openQuestion: string | null;
+    expectedArtifact: string | null;
+  };
+  resolvable: boolean;
+  reviewItem: { slug: string; status: string } | null;
+  blockedGate: { gateId: string; gateTitle: string; remaining: number } | null;
+}
+
+/** Full context for one Action's blocking question — what `/path/resolve/[id]` shows. */
+export async function loadWorkQuestion(workId: string) {
+  return runArcadiaCliJson<WorkQuestionContext>(["work", "show-question", workId], { timeoutMs: 30_000 });
+}
+
+export interface WorkResolveQuestionResponse {
+  workItem: { id: string; clarification_status: string | null; open_question: string | null; next_action: string };
+  reviewItem: { slug: string; status: string };
+}
+
+/** Answers an Action's blocking question, opening its Decision first if none exists. */
+export async function resolveWorkQuestion(workId: string, answer: string) {
+  return runArcadiaCliJson<WorkResolveQuestionResponse>(
+    ["work", "resolve-question", workId, "--answer", answer],
+    { timeoutMs: 30_000 }
+  );
+}
+
 export interface GateStatusChange {
   gateId: string;
   title: string;

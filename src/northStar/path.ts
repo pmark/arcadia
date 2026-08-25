@@ -48,6 +48,8 @@ export interface PathGap {
   reason: PathGapReason;
   /** One sentence naming what is missing and who can supply it. */
   detail: string;
+  /** Set only for `undefined_next_move`: the Action a resolution screen needs. */
+  workItemId?: string;
 }
 
 export type PathNode = PathStep | PathGap;
@@ -170,14 +172,17 @@ function legFor(db: Database.Database, gate: ResolvedGate): PathLeg {
     if (nextMoveUndefined(item)) {
       // The exact recorded question, not a paraphrase — a generic "not decided
       // yet" is what let an operator conflate this gap with an unrelated
-      // Decision they had just answered elsewhere. Quoting it is the fix.
+      // Decision they had just answered elsewhere. Quoting it is the fix, and
+      // carrying the Action id is what lets the screen offer somewhere to
+      // actually answer it rather than just naming the blocker.
       const question = item.open_question?.trim();
       nodes.push({
         kind: "gap",
         reason: "undefined_next_move",
         detail: question
           ? `Blocked on one open question: "${question}"`
-          : `"${item.title}" is planned but its next move is not decided yet (${item.clarification_status}). It cannot be started until that is answered.`
+          : `"${item.title}" is planned but its next move is not decided yet (${item.clarification_status}). It cannot be started until that is answered.`,
+        workItemId: item.id
       });
     }
     nodes.push({
