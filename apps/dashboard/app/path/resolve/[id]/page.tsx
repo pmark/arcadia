@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowLeft, CheckCircle2, HelpCircle } from "lucide-react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -127,7 +128,7 @@ export default function ResolveQuestionPage() {
           <div className="rounded-md border border-clay/30 bg-clay/5 p-4 shadow-soft">
             <p className="flex items-start gap-2 text-sm font-medium text-clay">
               <HelpCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              {workItem.openQuestion}
+              <span>{linkifyDocPaths(workItem.openQuestion ?? "", workItem.projectId)}</span>
             </p>
             {workItem.gapType ? <p className="mt-2 text-xs text-muted">Gap type: {workItem.gapType}</p> : null}
             {workItem.expectedArtifact ? (
@@ -167,4 +168,52 @@ function BackToPath() {
       Back to Path
     </Link>
   );
+}
+
+/**
+ * A question naming `docs/client-intake.md` gave the operator nothing to
+ * click — they had to know that path exists and go find it by hand. Every
+ * repo-relative `something/something.md` mention in the question becomes a
+ * link straight into that Project's own repository, resolved server-side by
+ * `/api/projects/[id]/file/...` so the browser never needs the actual
+ * filesystem path.
+ */
+function linkifyDocPaths(text: string, projectId: string | null): ReactNode[] {
+  if (!projectId) {
+    return [text];
+  }
+
+  const pattern = /\b[\w.-]+(?:\/[\w.-]+)+\.mdx?\b/g;
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+
+  while ((match = pattern.exec(text))) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    const relativePath = match[0];
+    parts.push(
+      <a
+        key={`doc-link-${key++}`}
+        href={`/api/projects/${encodeURIComponent(projectId)}/file/${relativePath
+          .split("/")
+          .map(encodeURIComponent)
+          .join("/")}`}
+        target="_blank"
+        rel="noreferrer"
+        className="underline decoration-clay/50 underline-offset-2 hover:decoration-clay"
+      >
+        {relativePath}
+      </a>
+    );
+    lastIndex = match.index + relativePath.length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts;
 }
