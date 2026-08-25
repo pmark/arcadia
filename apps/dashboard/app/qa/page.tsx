@@ -17,7 +17,6 @@ export default function QaPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [cardStatus, setCardStatus] = useState<Record<string, CardStatus>>({});
@@ -45,14 +44,20 @@ export default function QaPage() {
 
   async function record(candidate: QaCandidate, decision: "pass" | "fail" | "needs-follow-up") {
     setPending(`${candidate.id}:${decision}`);
-    setMessage(null);
+    setCardStatus((current) => omit(current, candidate.id));
     try {
       const response = await fetch("/api/qa", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ candidateId: candidate.id, decision, note: notes[candidate.id] ?? "" }) });
       const body = await response.json() as { error?: string; review?: { slug?: string } };
       if (!response.ok) throw new Error(body.error ?? "QA Decision could not be recorded.");
-      setMessage(`Recorded ${decision} for ${candidate.label}${body.review?.slug ? ` as ${body.review.slug}` : ""}. This does not merge, deploy, or release it.`);
+      setCardStatus((current) => ({
+        ...current,
+        [candidate.id]: {
+          tone: decision === "pass" ? "success" : decision === "fail" ? "error" : "warning",
+          message: `Recorded ${decision} for ${candidate.label}${body.review?.slug ? ` as ${body.review.slug}` : ""}. This does not merge, deploy, or release it.`
+        }
+      }));
     } catch (recordError) {
-      setError(recordError instanceof Error ? recordError.message : String(recordError));
+      setCardStatus((current) => ({ ...current, [candidate.id]: { tone: "error", message: errorMessage(recordError) } }));
     } finally {
       setPending(null);
     }
@@ -106,7 +111,6 @@ export default function QaPage() {
 
       setNotes((current) => omit(current, candidate.id));
       setReachability((current) => omit(current, candidate.id));
-      setMessage(null);
       await refresh();
       setCardStatus((current) => ({
         ...current,
@@ -126,7 +130,6 @@ export default function QaPage() {
     <DashboardChrome title="QA queue" subtitle={candidates.length ? `${candidates.length} configured Candidates` : undefined} refreshing={refreshing} lastLoadedAt={loadedAt} onRefresh={() => void refresh()}>
       <p className="mb-5 text-sm text-muted">Configured proof targets only. Test opens no inferred or unchecked destination; a Decision records operator QA against the displayed revision.</p>
       {error ? <ErrorState title="QA queue" message={error} /> : null}
-      {message ? <div className="mb-4 rounded-md border border-moss/30 bg-moss/10 p-3 text-sm font-medium text-moss">{message}</div> : null}
       {loading ? <LoadingState /> : candidates.length === 0 ? <EmptyState text="No active QA Candidates are configured." /> : (
         <div className="grid gap-4">
           {candidates.map((candidate) => (
