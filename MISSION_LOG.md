@@ -3,10 +3,17 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-24
+updated: 2026-08-25
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-25 — Decided what the Review page and the QA verdicts are for
+
+- **Did:** The operator reported that clicking Pass, Fail, or Needs follow-up changes nothing visible on a QA card, and that the Review page has never earned a visit. Both are true and both are structural. `loadQaCandidates` builds cards from `config/qa-targets.json` plus git freshness and never reads a recorded verdict back, so a card is byte-identical before and after judgment; `runQaRecordCommand` resolves its review item in the same transaction, so it enters no queue; Fail and Needs follow-up both resolve to the demo hero's `qa_failed`, differing by one sentence; and the QA note reaches only the narrative digest composer. `/review` renders all 24 open items flat — every one an `ActionClarification`, none stating what it blocks. Recorded Decision 0034 with the operator's two choices, and queued four Actions: `bind-qa-cards-to-verdicts` and `give-qa-verdicts-consequences` in `demo-first-delivery`, `scope-review-to-blocking-questions` and `build-plan-approval-surface` in `idea-to-managed-build`.
+- **Result:** Decision 0034 approved and validated; both plans parse; `docs sync` applied 9 created records with 220 unchanged. Documentation only — no code changed, no implementation started, and the work pointer was deliberately left on `living-system-v1#dogfood-living-system-v1`.
+- **Next:** Not this. `arcadia next --project private-practice-now` names `populate-pilot-record-from-notes`, responsibility `requires_review` — the operator must run `apps/intake` locally and fill the worksheet from real consultation notes. PPN's two ready Codex Actions are starved for that record until it exists, and none of the four Actions queued here sit on PPN's launch path.
+- **Blockers:** None for this change. PPN's critical path is blocked on operator action, not on any agent or decision.
 
 ## 2026-08-24 — Gave Decisions a validated authoring command instead of hand-written frontmatter
 

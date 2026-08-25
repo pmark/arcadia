@@ -9,7 +9,7 @@ token_impact: xlarge
 token_budget: "Stage the program Action by Action; builds, health checks, Playwright capture, and metadata sync use no LLM tokens, while implementation, failure diagnosis, visual interpretation, and independent QA reviews are model-bearing and must be batched per Candidate."
 recommended_model: claude-opus-5
 recommended_reasoning_effort: high
-updated: 2026-08-21
+updated: 2026-08-25
 actions:
   - id: build-qa-queue-vertical-slice
     title: Give the operator one QA queue for active Candidate work
@@ -289,6 +289,59 @@ actions:
       - apps/dashboard/app/projects/[id]/page.tsx
       - apps/dashboard/app/api/projects/[id]/route.ts
     depends_on: [build-demo-hero-vertical-slice]
+  - id: bind-qa-cards-to-verdicts
+    title: Make each QA card show its own recorded verdict
+    status: open
+    responsibility: codex
+    effort: short
+    next_action: Read each Candidate's latest CandidateQaSignoff back into the QA listing so the card states its own verdict, the revision it was recorded against, and when — and sorts undecided targets above decided ones.
+    expected_artifact: A QA queue whose cards visibly change state when a verdict is recorded and whose stale verdicts read as stale
+    clarification: clarified
+    confidence: high
+    source: Decision 0034 on 2026-08-25
+    acceptance_criteria:
+      - Recording a verdict changes the card without a page reload, and the changed state survives a reload.
+      - Each decided card names its verdict, the revision it was bound to, and when it was recorded; the existing per-verdict tone is preserved.
+      - A verdict recorded against a revision other than the one now displayed reads as stale rather than as a current result, and never suppresses the call to test again.
+      - Undecided Candidates sort above decided ones so the page opens on what still needs judgment.
+      - The card links to the Project demo hero it already feeds, so the downstream effect of a verdict is reachable from where the verdict was recorded.
+      - Recording a verdict still never merges, deploys, or releases, and the wording on the card continues to say so.
+      - Focused tests cover the read-back, revision staleness, ordering, and the no-verdict case.
+    decisions: ["0034"]
+    references:
+      - src/commands/qa.ts
+      - src/commands/proofTargets.ts
+      - apps/dashboard/app/qa/page.tsx
+      - apps/dashboard/lib/types.ts
+      - START_HERE.md
+    depends_on: [build-qa-queue-vertical-slice]
+  - id: give-qa-verdicts-consequences
+    title: Give Fail and Needs follow-up different consequences
+    status: open
+    responsibility: codex
+    effort: session
+    next_action: Make Fail create an open Action on the Candidate's Project and Needs follow-up create an open question, in both cases using the operator's QA note as the body, so the three verdicts stop resolving to two indistinguishable outcomes.
+    expected_artifact: Three QA verdicts with three distinct, visible consequences and a QA note that creates governed work
+    clarification: clarified
+    confidence: high
+    source: Decision 0034 on 2026-08-25
+    acceptance_criteria:
+      - Fail creates exactly one open Action on the Candidate's Project, carrying the QA note, the Candidate label, and the exact revision judged.
+      - Needs follow-up creates exactly one open question carrying the same provenance, and does not create an Action.
+      - Pass creates neither, and continues to record revision-bound evidence only.
+      - An empty note still produces a usable item stating the Candidate, revision, and verdict; the note is never silently required or silently discarded.
+      - The card names what its verdict just created and links to it.
+      - Re-recording the same verdict for the same Candidate and revision does not create a second Action or question.
+      - No verdict merges, deploys, releases, or changes Stable, and the created Action is not auto-dispatched.
+      - Focused tests cover each verdict path, empty notes, repeat recording, and the created items' provenance fields.
+    decisions: ["0034"]
+    references:
+      - src/commands/qa.ts
+      - src/db/repositories.ts
+      - apps/dashboard/app/qa/page.tsx
+      - apps/dashboard/app/api/qa/route.ts
+      - START_HERE.md
+    depends_on: [bind-qa-cards-to-verdicts]
   - id: establish-arcadia-qa
     title: Establish Arcadia QA as an independent verification responsibility
     status: open
