@@ -168,10 +168,16 @@ function legFor(db: Database.Database, gate: ResolvedGate): PathLeg {
   const nodes: PathNode[] = [];
   for (const { item, depth } of collected) {
     if (nextMoveUndefined(item)) {
+      // The exact recorded question, not a paraphrase — a generic "not decided
+      // yet" is what let an operator conflate this gap with an unrelated
+      // Decision they had just answered elsewhere. Quoting it is the fix.
+      const question = item.open_question?.trim();
       nodes.push({
         kind: "gap",
         reason: "undefined_next_move",
-        detail: `"${item.title}" is planned but its next move is not decided yet (${item.clarification_status}). It cannot be started until that is answered.`
+        detail: question
+          ? `Blocked on one open question: "${question}"`
+          : `"${item.title}" is planned but its next move is not decided yet (${item.clarification_status}). It cannot be started until that is answered.`
       });
     }
     nodes.push({

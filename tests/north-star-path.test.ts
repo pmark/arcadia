@@ -90,6 +90,27 @@ describe("the path to the target", () => {
     expect(leg.nodes.some((node) => node.kind === "gap" && node.reason === "undefined_next_move")).toBe(true);
   });
 
+  it("quotes the Action's own recorded question rather than a generic message", () => {
+    // An operator once answered an unrelated Decision that happened to touch
+    // the same Action and read the vague "not decided yet" wording as proof
+    // their answer had cleared it. Quoting the real question is the fix: it
+    // cannot be mistaken for a different question that was actually answered.
+    const workspace = seededWorkspace({
+      gateClarification: "question_open",
+      gateOpenQuestion: "Does the whole approach in docs/design.md deserve ratification before code is written?"
+    });
+    const brief = withDatabase(workspace, (db) => {
+      const northStar = loadNorthStar(workspace);
+      return computePathBrief(db, northStar, computeNowBrief(db, northStar, {}).gates);
+    });
+
+    const leg = brief.legs.find((entry) => entry.gateId === "tracked")!;
+    const gap = leg.nodes.find((node) => node.kind === "gap" && node.reason === "undefined_next_move");
+    expect(gap).toMatchObject({
+      detail: 'Blocked on one open question: "Does the whole approach in docs/design.md deserve ratification before code is written?"'
+    });
+  });
+
   it("has no path at all without a declared target", () => {
     const workspace = initializedWorkspace();
     const brief = withDatabase(workspace, (db) => computePathBrief(db, null, []));
@@ -166,7 +187,7 @@ function planSource(secondActionExtra: string[]): string {
   ].join("\n");
 }
 
-function seededWorkspace(options: { gateClarification?: string } = {}): string {
+function seededWorkspace(options: { gateClarification?: string; gateOpenQuestion?: string } = {}): string {
   const workspace = initializedWorkspace();
   writeFileSync(
     northStarPath(workspace),
@@ -209,7 +230,8 @@ function seededWorkspace(options: { gateClarification?: string } = {}): string {
       title: "The gate action",
       docRef: "plan/some-plan#gate-action",
       status: "open",
-      clarification: options.gateClarification ?? "clarified"
+      clarification: options.gateClarification ?? "clarified",
+      openQuestion: options.gateOpenQuestion
     });
 
     const gate = getWorkItemByDocRef(db, "plan/some-plan#gate-action")!;
@@ -232,7 +254,7 @@ function appendGate(workspace: string, lines: string[]): void {
 function seedAction(
   db: Parameters<typeof createWorkItemWithOptionalArtifact>[0],
   projectId: string,
-  input: { title: string; docRef: string; status: string; clarification?: string }
+  input: { title: string; docRef: string; status: string; clarification?: string; openQuestion?: string }
 ): void {
   const { workItem } = createWorkItemWithOptionalArtifact(db, {
     projectId,
@@ -243,9 +265,10 @@ function seedAction(
     nextAction: `Do: ${input.title}`
   });
   setWorkItemDocRef(db, workItem.id, input.docRef);
-  db.prepare("UPDATE work_items SET status = ?, clarification_status = ? WHERE id = ?").run(
+  db.prepare("UPDATE work_items SET status = ?, clarification_status = ?, open_question = ? WHERE id = ?").run(
     input.status,
     input.clarification ?? "clarified",
+    input.openQuestion ?? null,
     workItem.id
   );
 }
