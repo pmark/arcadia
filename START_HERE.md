@@ -10,6 +10,31 @@ pnpm arcadia now --narrate
 
 Drop `--narrate` for the deterministic pass, which makes no model calls and returns immediately.
 
+Open **Path** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/path> (on this Mac:
+<http://127.0.0.1:3020/path>) for the other question Now deliberately refuses: not
+"what do I do in the next hour?" but "what is actually left between here and the
+target?" Each `NORTH_STAR.md` gate becomes a leg, and under it every Action the
+plan documents place before that gate, ordered by the `depends_on` those
+documents declare — dependencies first, the gate's own Action last. Finished
+steps are kept and collapsed, because a path with sixteen done steps behind it
+reads differently from one that has not started; **Show the finished steps**
+expands them.
+
+Where nothing is planned, the path says so at full weight rather than leaving a
+blank: an operator-owned gate no Action tracks, a gate whose `action:` reference
+no plan carries any more, and an Action whose next move is still undecided each
+render as a marked gap. That unplanned stretch is usually the real distance to
+the target, and every surface that showed it as empty space taught you to read a
+short list as a short distance.
+
+Nothing can be added on this screen. It is a projection of `NORTH_STAR.md` and
+the plans behind it — to change the path, change those documents. The same view
+is in the terminal:
+
+```bash
+pnpm arcadia path
+```
+
 Under **The finish line**, gates that only you can see are tappable — a real
 practitioner agreeing to be the pilot is not something Arcadia can observe, so
 you tell it. One tap marks the gate done and the distance falls immediately;
