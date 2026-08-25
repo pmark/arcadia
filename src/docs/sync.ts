@@ -396,6 +396,10 @@ function syncPlan(
     changes.push(
       syncAction(db, project, doc, action, actionRef, actionMilestoneId, apply)
     );
+    const clarification = syncActionClarification(db, project, doc, action, actionRef, apply);
+    if (clarification) {
+      changes.push(clarification);
+    }
   }
 
   // Dependencies run as a second pass over the same plan: an action may depend
@@ -675,6 +679,76 @@ function syncAction(
     ref,
     title: action.title,
     reason: describeDrift(changed)
+  };
+}
+
+/**
+ * An Action authored with `clarification: question_open` becomes the same
+ * kind of Decision `review open` and `clarify` both author when they set that
+ * status themselves.
+ *
+ * `syncAction` above only ever writes the work item's own `open_question`
+ * column, because that is what mirrors the document. Nothing else in that
+ * path ever created a Decision — every *other* way an Action reaches
+ * `question_open` (the local clarify engine, `review open` itself) already
+ * does, and this was the one way in that silently didn't. Three Actions sat
+ * blocked with no Decision an operator could ever find through `/review`,
+ * Discord, or the Path screen's resolve flow, answerable only by hand-running
+ * `review open` with the exact question text already sitting in the file.
+ *
+ * Deliberately create-only: an existing Decision's own text and status are
+ * left alone, the same way `syncAction` leaves an already-answered
+ * clarification alone rather than fighting the operator's resolution.
+ */
+function syncActionClarification(
+  db: Database.Database,
+  project: Project,
+  plan: PlanDoc,
+  action: PlanActionDoc,
+  ref: string,
+  apply: boolean
+): DocChange | null {
+  if (action.clarification !== "question_open" || !action.question) {
+    return null;
+  }
+
+  if (getReviewItemByDocRef(db, ref)) {
+    return null;
+  }
+
+  // The work item this Decision belongs to may not exist yet on a preview
+  // pass — `syncAction` above reports its own "create" without writing
+  // anything either. Reporting this "create" only when the row is actually
+  // found would make a dry run under-count relative to `--apply`, so the two
+  // must agree on what change would happen without depending on whether the
+  // FK it needs has been written yet; the FK write itself waits for `apply`.
+  if (apply) {
+    const workItem = getWorkItemByDocRef(db, ref);
+    if (!workItem) {
+      return null;
+    }
+    const created = createReviewItem(db, {
+      workItemId: workItem.id,
+      projectId: project.id,
+      decisionNeeded: action.question,
+      recommendation: null,
+      sourceInput: `${plan.relativePath}#${action.id}`,
+      proposedAction: `Answer the clarification question for Action ${workItem.id}.`,
+      resolvedIntent: ACTION_CLARIFICATION_INTENT,
+      confidenceLabel: action.confidence ?? "medium",
+      confidence: 0,
+      missingFields: action.gapType ? [action.gapType] : [],
+      context: { schemaVersion: 1, gapType: action.gapType ?? null, docRef: ref, source: plan.relativePath }
+    });
+    setReviewItemDocRef(db, created.id, ref);
+  }
+
+  return {
+    action: "create",
+    entity: "question",
+    relativePath: plan.relativePath,
+    ref,
+    title: action.question
   };
 }
 

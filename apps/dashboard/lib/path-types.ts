@@ -25,6 +25,8 @@ export interface PathGap {
   kind: "gap";
   reason: PathGapReason;
   detail: string;
+  /** Set only for `undefined_next_move`: the Action a resolution screen needs. */
+  workItemId?: string;
 }
 
 export type PathNode = PathStep | PathGap;

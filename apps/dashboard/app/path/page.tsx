@@ -1,6 +1,7 @@
 "use client";
 
-import { AlertTriangle, Flag, HelpCircle } from "lucide-react";
+import { AlertTriangle, ArrowRight, Flag, HelpCircle } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ErrorState } from "../../components/dashboard-ui";
 import { MobileShell } from "../../components/mobile-shell";
@@ -201,11 +202,22 @@ function StepRow({ step }: { step: PathStep }) {
 function GapRow({ gap }: { gap: PathGap }) {
   const operatorOwned = gap.reason === "operator_owned" || gap.reason === "no_declared_work";
   return (
-    <li className="flex items-start gap-2.5 rounded-md border border-dashed border-clay/40 bg-clay/5 p-2.5">
-      <span className="mt-0.5 shrink-0 text-clay">
-        {operatorOwned ? <HelpCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-      </span>
-      <p className="text-xs leading-4 text-clay">{gap.detail}</p>
+    <li className="rounded-md border border-dashed border-clay/40 bg-clay/5 p-2.5">
+      <div className="flex items-start gap-2.5">
+        <span className="mt-0.5 shrink-0 text-clay">
+          {operatorOwned ? <HelpCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+        </span>
+        <p className="text-xs leading-4 text-clay">{gap.detail}</p>
+      </div>
+      {gap.reason === "undefined_next_move" && gap.workItemId ? (
+        <Link
+          href={`/path/resolve/${encodeURIComponent(gap.workItemId)}`}
+          className="mt-2 inline-flex min-h-9 items-center gap-1.5 rounded-md bg-clay px-3 text-xs font-semibold text-white"
+        >
+          Resolve this
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      ) : null}
     </li>
   );
 }

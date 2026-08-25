@@ -695,6 +695,60 @@ describe("docs sync", () => {
     expect(blocked?.next_action).toContain("Clarify the desired outcome");
   });
 
+  it("opens a Decision for a plan-declared question_open Action, so there is something to answer", () => {
+    // `syncAction` only ever writes the work item's own columns. Every other
+    // way an Action reaches question_open (the clarify engine, `review open`
+    // itself) also opens a Decision; this plan-declared path was the one that
+    // silently didn't, leaving an Action blocked with nothing an operator
+    // could find through /review, Discord, or the Path screen to answer.
+    const repo = scratch();
+    writeDoc(repo, "docs/plans/sample-plan.md", PLAN);
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const decision = withDatabase(workspace, (db) => getReviewItemByDocRef(db, "plan/sample-plan#blocked-thing"));
+    expect(decision).toMatchObject({
+      status: "open",
+      resolved_intent: "ActionClarification",
+      decision_needed: "Which environment goes first?"
+    });
+
+    const blocked = withDatabase(workspace, (db) => getWorkItemByDocRef(db, "plan/sample-plan#blocked-thing"));
+    expect(decision?.work_item_id).toBe(blocked?.id);
+  });
+
+  it("does not open a second Decision for the same question on a re-sync", () => {
+    const repo = scratch();
+    writeDoc(repo, "docs/plans/sample-plan.md", PLAN);
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const decision = withDatabase(workspace, (db) => getReviewItemByDocRef(db, "plan/sample-plan#blocked-thing"));
+    const matches = withDatabase(workspace, (db) =>
+      listReviewItems(db, "all").filter((item) => item.work_item_id === decision?.work_item_id)
+    );
+    expect(matches).toHaveLength(1);
+  });
+
+  it("leaves an operator's own resolution of the Decision alone on the next sync", () => {
+    const repo = scratch();
+    writeDoc(repo, "docs/plans/sample-plan.md", PLAN);
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const decision = withDatabase(workspace, (db) => getReviewItemByDocRef(db, "plan/sample-plan#blocked-thing"))!;
+    withDatabase(workspace, (db) =>
+      db.prepare("UPDATE review_items SET status = 'approved', decision_note = 'us-east first.' WHERE id = ?").run(decision.id)
+    );
+
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const after = withDatabase(workspace, (db) => getReviewItemByDocRef(db, "plan/sample-plan#blocked-thing"));
+    expect(after?.status).toBe("approved");
+    expect(after?.decision_note).toBe("us-east first.");
+  });
+
   it("persists a portable execution requirement for compliant runner selection", () => {
     const repo = scratch();
     const profiled = PLAN.replace(

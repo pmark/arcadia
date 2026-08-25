@@ -291,6 +291,12 @@ import { renderTidySuccess, runTidyCommand } from "./commands/tidy.js";
 import { renderPortfolioSuccess, runPortfolioCommand } from "./commands/portfolio.js";
 import { renderNowSuccess, runNowCommand } from "./commands/now.js";
 import { renderPathSuccess, runPathCommand } from "./commands/path.js";
+import {
+  renderWorkResolveQuestionSuccess,
+  renderWorkShowQuestionSuccess,
+  runWorkResolveQuestionCommand,
+  runWorkShowQuestionCommand
+} from "./commands/workQuestion.js";
 import { renderGateSuccess, runGateStatusCommand } from "./commands/gate.js";
 import { renderWayStatusSuccess, runWayStatusCommand } from "./commands/way.js";
 import {
@@ -1989,6 +1995,35 @@ export function buildProgram(): Command {
         expectedArtifact: options.expectedArtifact
       }),
       renderWorkAddSubtaskSuccess
+    )
+  );
+  addJsonOption(
+    work
+      .command("show-question")
+      .description("Full context for one Action's blocking question, and what it stands in front of on the Path")
+      .argument("<work-id>", "Action id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((workId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "work.show-question",
+      options,
+      () => runWorkShowQuestionCommand({ ...options, workId }),
+      renderWorkShowQuestionSuccess
+    )
+  );
+  addJsonOption(
+    work
+      .command("resolve-question")
+      .description("Answer an Action's blocking question, opening its Decision first if one was never opened")
+      .argument("<work-id>", "Action id")
+      .requiredOption("--answer <answer>", "The answer to record")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((workId: string, options: { workspace: string; answer: string; json?: boolean }) =>
+    runCliAction(
+      "work.resolve-question",
+      options,
+      () => runWorkResolveQuestionCommand({ ...options, workId }),
+      renderWorkResolveQuestionSuccess
     )
   );
   addJsonOption(
