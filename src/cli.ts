@@ -164,8 +164,14 @@ import {
   runQaRecordCommand,
   runQaRefreshCommand,
   runQaStatusCommand,
+  runQaFetchCommand,
+  runQaRestartCommand,
+  runQaVerdictCommand,
   renderQaRefreshSuccess,
-  renderQaStatusSuccess
+  renderQaStatusSuccess,
+  renderQaFetchSuccess,
+  renderQaRestartSuccess,
+  renderQaVerdictSuccess
 } from "./commands/qa.js";
 import {
   renderProofTargetCheckSuccess,
@@ -2309,6 +2315,48 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("qa.status", options, () => runQaStatusCommand(options), renderQaStatusSuccess)
+  );
+  addJsonOption(
+    qa
+      .command("fetch")
+      .description("Ask origin what it has. Writes refs only — never the working tree")
+      .argument("<project>", "Project slug from the QA target configuration")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((project: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "qa.fetch",
+      options,
+      () => runQaFetchCommand({ workspace: options.workspace, project }),
+      renderQaFetchSuccess
+    )
+  );
+  addJsonOption(
+    qa
+      .command("verdict")
+      .description("Read-only: whether the commits waiting at origin need a service restart")
+      .argument("<project>", "Project slug from the QA target configuration")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((project: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "qa.verdict",
+      options,
+      () => runQaVerdictCommand({ workspace: options.workspace, project }),
+      renderQaVerdictSuccess
+    )
+  );
+  addJsonOption(
+    qa
+      .command("restart")
+      .description("Restart a project's services without touching git")
+      .argument("<project>", "Project slug from the QA target configuration")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((project: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "qa.restart",
+      options,
+      () => runQaRestartCommand({ workspace: options.workspace, project }),
+      renderQaRestartSuccess
+    )
   );
   addJsonOption(
     qa

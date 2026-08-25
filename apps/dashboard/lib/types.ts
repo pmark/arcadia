@@ -51,6 +51,64 @@ export interface QaRefreshResult {
   message: string;
 }
 
+export type RestartVerdict = "install-and-restart" | "restart" | "hmr" | "inert" | "unknown";
+
+export interface VerdictReason {
+  rule: string;
+  label: string;
+  verdict: RestartVerdict;
+  paths: string[];
+}
+
+export interface ProjectVerdict {
+  project: string;
+  range: string;
+  verdict: RestartVerdict;
+  headline: string;
+  reasons: VerdictReason[];
+  migrationsChanged: boolean;
+  apps: string[];
+  changedPaths: string[];
+  truncated: boolean;
+  error: string | null;
+}
+
+export interface QaProjectRow {
+  project: string;
+  freshness: string;
+  baseBranch: string;
+  /** The branch HEAD is on, `"HEAD"` when detached. */
+  branch: string | null;
+  onBaseBranch: boolean;
+  head: string | null;
+  behind: number | null;
+  ahead: number | null;
+  dirty: boolean;
+  fetchedAt: string | null;
+  error: string | null;
+  controllable: boolean;
+  verdict: ProjectVerdict | null;
+  services: string | null;
+}
+
+export interface QaFetchResult {
+  project: string;
+  before: unknown | null;
+  after: unknown | null;
+  fetched: boolean;
+  verdict: ProjectVerdict | null;
+  refused: QaRefreshRefusalReason | null;
+  message: string;
+}
+
+export interface QaRestartResult {
+  project: string;
+  restarted: boolean;
+  output: string | null;
+  refused: QaRefreshRefusalReason | null;
+  message: string;
+}
+
 export type ProofEnvironment = "Stable" | "Candidate";
 export type ProofEnvironmentKind = "local" | "lan" | "remote" | "missing";
 export type ProofAccessState = "public" | "access-protected" | "local-only" | "unknown";

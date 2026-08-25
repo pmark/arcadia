@@ -15,7 +15,10 @@ import type {
   ProofTargetCheckResponse,
   ProofTargetListResponse,
   QaCandidate,
-  QaRefreshResult
+  QaFetchResult,
+  QaProjectRow,
+  QaRefreshResult,
+  QaRestartResult
 } from "./types";
 import type { NowBrief } from "./now-types";
 import type {
@@ -48,6 +51,27 @@ export async function listQaCandidates(): Promise<ArcadiaJsonSuccess<{ candidate
 
 export async function refreshQaProject(project: string): Promise<ArcadiaJsonSuccess<{ result: QaRefreshResult }>> {
   return runArcadiaCliJson<{ result: QaRefreshResult }>(["qa", "refresh", project], { timeoutMs: 200_000 });
+}
+
+/** Every configured project's branch, drift, verdict, and services. */
+export async function listQaProjects(): Promise<ArcadiaJsonSuccess<{ projects: QaProjectRow[] }>> {
+  return runArcadiaCliJson<{ projects: QaProjectRow[] }>(["qa", "status"], { timeoutMs: 60_000 });
+}
+
+/** Writes refs only. Safe enough to offer without a confirmation. */
+export async function fetchQaProject(project: string): Promise<ArcadiaJsonSuccess<{ result: QaFetchResult }>> {
+  return runArcadiaCliJson<{ result: QaFetchResult }>(["qa", "fetch", project], { timeoutMs: 60_000 });
+}
+
+/** Fast-forwards without restarting, so the restart stays a separate decision. */
+export async function pullQaProject(project: string): Promise<ArcadiaJsonSuccess<{ result: QaRefreshResult }>> {
+  return runArcadiaCliJson<{ result: QaRefreshResult }>(["qa", "refresh", project, "--skip-restart"], {
+    timeoutMs: 120_000
+  });
+}
+
+export async function restartQaProject(project: string): Promise<ArcadiaJsonSuccess<{ result: QaRestartResult }>> {
+  return runArcadiaCliJson<{ result: QaRestartResult }>(["qa", "restart", project], { timeoutMs: 200_000 });
 }
 
 export async function listProofTargets(projectSlug: string): Promise<ArcadiaJsonSuccess<ProofTargetListResponse>> {
