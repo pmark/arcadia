@@ -12,6 +12,7 @@ import {
   MessageSquarePlus,
   NotebookText,
   Radar,
+  Route,
   Target,
   X,
   type LucideIcon
@@ -24,6 +25,7 @@ import type { MissionControlOverview } from "../lib/mission-control-types";
 
 const PRIMARY_NAV = [
   { href: "/now", label: "Now", icon: Target },
+  { href: "/path", label: "Path", icon: Route },
   { href: "/mission-control", label: "Mission Control", icon: Radar },
   { href: "/capture", label: "Capture", icon: MessageSquarePlus },
   { href: "/ingress", label: "Ingress", icon: FolderOpen },

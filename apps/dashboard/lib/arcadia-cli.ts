@@ -21,6 +21,7 @@ import type {
   QaRestartResult,
   QaSwitchResult
 } from "./types";
+import type { PathBrief } from "./path-types";
 import type { NowBrief } from "./now-types";
 import type {
   MissionControlFits,
@@ -606,6 +607,11 @@ export async function loadNowBrief(options: { narrate?: boolean } = {}) {
   return runArcadiaCliJson<NowBrief>(args, {
     timeoutMs: options.narrate ? 180_000 : 30_000
   });
+}
+
+/** `arcadia path` — every documented step between today and the target. */
+export async function loadPathBrief() {
+  return runArcadiaCliJson<PathBrief>(["path"], { timeoutMs: 30_000 });
 }
 
 export interface GateStatusChange {

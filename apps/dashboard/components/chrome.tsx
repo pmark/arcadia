@@ -12,6 +12,7 @@ import {
   History,
   ListChecks,
   RefreshCw,
+  Route,
   ScrollText,
   Sparkles
 } from "lucide-react";
@@ -28,6 +29,7 @@ interface DashboardChromeProps {
 
 const navItems = [
   { href: "/", label: "Today", icon: Activity },
+  { href: "/path", label: "Path", icon: Route },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/review", label: "Review", icon: Eye },
   { href: "/qa", label: "QA", icon: ListChecks },

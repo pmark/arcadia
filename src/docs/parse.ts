@@ -312,6 +312,12 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
 
   const actions: PlanActionDoc[] = [];
   const seen = new Set<string>();
+  /**
+   * The legacy `dependencies` spelling, held aside until this plan's action
+   * ids are known. Kept out of `PlanActionDoc` on purpose: it is an ingestion
+   * detail, and nothing downstream should ever see two names for one edge.
+   */
+  const legacyDependencies = new Map<string, string[]>();
 
   raw.forEach((entry, index) => {
     const field = `actions[${index}]`;
@@ -426,9 +432,33 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
       execution: executionResult.requirement,
       resolvedExecution: executionResult.resolved
     });
+
+    // `depends_on` is canonical, but every Private Practice Now plan spells it
+    // `dependencies`, so 57 ordering claims were dropped without a word —
+    // enforcement that silently enforced nothing. Recorded here, resolved
+    // below, because the same key also holds component paths in some of those
+    // plans and a blind alias would invent edges that were never declared.
+    // Only when `depends_on` is absent entirely. An explicit `depends_on: []`
+    // is a statement that this Action waits on nothing, and it outranks a
+    // legacy key that happens to sit beside it.
+    if (value.depends_on === undefined) {
+      legacyDependencies.set(id, stringArray(value.dependencies));
+    }
   });
 
   const ids = new Set(actions.map((action) => action.id));
+
+  // Adopt the legacy spelling only where it unambiguously means ordering: every
+  // entry names an Action in this plan. A list of component paths resolves to
+  // nothing and is left alone, so no plan gains a dependency it never declared
+  // and no false dangling-reference warning is raised against a package name.
+  for (const action of actions) {
+    const legacy = legacyDependencies.get(action.id) ?? [];
+    if (legacy.length === 0) continue;
+    if (legacy.every((entry) => ids.has(entry))) {
+      action.dependsOn = legacy;
+    }
+  }
 
   // A pointer to an action that does not exist leaves a dispatched agent with
   // no objective at all, which is worse than having no pointer.

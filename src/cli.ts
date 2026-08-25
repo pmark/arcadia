@@ -290,6 +290,7 @@ import { renderDocketSuccess, runDocketCommand } from "./commands/docket.js";
 import { renderTidySuccess, runTidyCommand } from "./commands/tidy.js";
 import { renderPortfolioSuccess, runPortfolioCommand } from "./commands/portfolio.js";
 import { renderNowSuccess, runNowCommand } from "./commands/now.js";
+import { renderPathSuccess, runPathCommand } from "./commands/path.js";
 import { renderGateSuccess, runGateStatusCommand } from "./commands/gate.js";
 import { renderWayStatusSuccess, runWayStatusCommand } from "./commands/way.js";
 import {
@@ -2620,6 +2621,15 @@ export function buildProgram(): Command {
         }),
       renderNowSuccess
     )
+  );
+
+  addJsonOption(
+    program
+      .command("path")
+      .description("Every documented step between today and the declared North Star, in dependency order")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("path", options, () => runPathCommand({ workspace: options.workspace }), renderPathSuccess)
   );
 
   addJsonOption(
