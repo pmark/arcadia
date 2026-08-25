@@ -849,7 +849,7 @@ function TruncatedField({
  * Builds the labeled, newline-joined context string handed to the AI advice
  * affordance, dropping any empty fields so the model only sees real signal.
  */
-function composeAdviceTarget(lines: Array<[string, string | null | undefined]>): string {
+export function composeAdviceTarget(lines: Array<[string, string | null | undefined]>): string {
   return lines
     .filter((entry): entry is [string, string] => Boolean(entry[1] && entry[1].trim().length > 0))
     .map(([label, value]) => `${label}: ${value.trim()}`)

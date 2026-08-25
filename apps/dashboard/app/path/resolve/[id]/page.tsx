@@ -5,7 +5,8 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { ErrorState } from "../../../../components/dashboard-ui";
+import { ActionAdvice } from "../../../../components/action-advice";
+import { ErrorState, composeAdviceTarget } from "../../../../components/dashboard-ui";
 import { MobileShell } from "../../../../components/mobile-shell";
 import type { WorkQuestionContext } from "../../../../lib/arcadia-cli";
 
@@ -147,6 +148,21 @@ export default function ResolveQuestionPage() {
               autoFocus
             />
           </label>
+
+          <div className="mt-3">
+            <ActionAdvice
+              target={composeAdviceTarget([
+                ["Project", workItem.project],
+                ["Blocks", context.blockedGate?.gateTitle],
+                ["Question", workItem.openQuestion],
+                ["Gap type", workItem.gapType],
+                ["Expected artifact", workItem.expectedArtifact]
+              ])}
+              label="Get help answering"
+              onUse={(draft) => setAnswer(draft)}
+              useLabel="Use as draft answer"
+            />
+          </div>
 
           <button
             disabled={submitting || !answer.trim()}
