@@ -7,7 +7,7 @@ status: active
 milestone: A raw software-project idea becomes governed, dispatchable coding-agent work without a manual planning-to-build handoff
 token_impact: large
 token_budget: "Project creation, document rendering, readiness checks, builds, and state transitions are deterministic. Use one bounded planning Run for the idea, one coding-agent implementation Run per accepted Action, and independent QA only when deterministic readiness passes."
-updated: 2026-08-20
+updated: 2026-08-25
 actions:
   - id: prepare-project-idea
     title: Turn one stated project idea into a dispatchable planning Action
@@ -94,6 +94,60 @@ actions:
       - config/defaults/template-registry.json
       - START_HERE.md
     depends_on: [prepare-project-idea]
+  - id: scope-review-to-blocking-questions
+    title: Show only the questions standing in front of dispatchable work
+    status: open
+    responsibility: codex
+    effort: session
+    next_action: Filter the Review page to open questions that block a currently dispatchable Action, rank them by what they release, and state on each item the exact Action answering it unblocks.
+    expected_artifact: A Review page where every listed question names the work it is holding up, and answering one visibly moves that work
+    clarification: clarified
+    confidence: high
+    source: Decision 0034 on 2026-08-25
+    acceptance_criteria:
+      - The page lists only open items that block dispatchable work, computed from the same ready-set resolution `arcadia next --ready` already performs rather than a second implementation.
+      - Each listed item names the Project, plan, and Action it unblocks, and what becomes possible once it is answered.
+      - Items are ordered by what they release; queue position never implies priority on its own.
+      - Answering an item reports what it unblocked, replacing the current silent background continuation.
+      - Open items that block nothing dispatchable remain reachable behind an explicit control and are never deleted or hidden without saying so — as of 2026-08-25 that is most of the 24 open items.
+      - An empty list states that nothing is waiting on the operator, and is distinguishable from a failure to load.
+      - Focused tests cover the filter, the ordering, the unblock statement, the empty case, and the everything-view.
+    decisions: ["0034"]
+    references:
+      - apps/dashboard/app/review/page.tsx
+      - apps/dashboard/app/api/review-action/route.ts
+      - src/docs/dispatch.ts
+      - src/commands/next.ts
+      - START_HERE.md
+    depends_on: []
+  - id: build-plan-approval-surface
+    title: Approve or defer a prepared plan from the Review page
+    status: open
+    responsibility: codex
+    effort: project
+    next_action: Present each prepared planning Artifact on the Review page as a readable plan with its idea, milestone, Actions, and token budget, and offer exactly three governed outcomes — approve now, defer against a named trigger, or send back for refinement.
+    expected_artifact: A phone-reachable surface where a prepared plan is read and approved now, deferred against a named trigger, or returned for refinement, with the promotion path unchanged
+    clarification: clarified
+    confidence: medium
+    source: Decision 0034 on 2026-08-25
+    acceptance_criteria:
+      - A prepared planning Artifact renders as a readable plan — original idea, milestone, proposed Actions, token impact and budget, and the repository it targets — without requiring the operator to read raw markdown or JSON.
+      - Approve routes through the existing acceptance and promotion path rather than a parallel one, and starts no implementation Run by itself.
+      - Defer requires a named trigger condition before it is accepted, and a deferral with no trigger is refused with that reason stated.
+      - Send back for refinement records what was unclear and returns the plan to its planning Action without discarding the prepared Artifact.
+      - Every outcome is recorded as a Decision with provenance to the plan, the idea, and the revision judged.
+      - The surface is usable at phone width, since its whole justification is being reachable away from the terminal.
+      - Merge, deployment, release, credentials, spending, production access, and outbound messaging remain gated by their own Decisions; approving a plan authorizes planning-to-build promotion and nothing else.
+      - Focused tests cover rendering, each of the three outcomes, the missing-trigger refusal, idempotent re-approval, and the unchanged terminal path.
+    decisions: ["0034", "0029"]
+    references:
+      - apps/dashboard/app/review/page.tsx
+      - src/commands/review.ts
+      - src/execution/planningPreparation.ts
+      - src/stewardship/artifactValidator.ts
+      - docs/plans/idea-to-managed-build.md
+      - START_HERE.md
+    depends_on: [promote-accepted-plan, scope-review-to-blocking-questions]
   - id: manage-coding-agent-build
     title: Manage the coding-agent build through Candidate and independent QA
     status: open
@@ -127,6 +181,14 @@ This plan closes the two manual seams in Arcadia's target development loop:
 turning an explicit new-project idea into governed planning work, and turning
 an accepted planning Artifact into the exact build Action a coding agent can
 advance.
+
+Decision 0034 adds the operator half of the second seam. `promote-accepted-plan`
+makes an accepted plan produce a dispatchable build Action; the two Actions after
+it make the acceptance itself something the operator can perform away from a
+terminal, with defer-against-a-trigger as a first-class outcome rather than an
+absence of approval. The blocking-questions filter ships first and independently,
+because it is cheap and because it is the test of whether the Review page can
+earn attention at all.
 
 The general expensive tail remains deferred to the third Action. The first
 proven deployment slice is intentionally smaller: one registered Astro
