@@ -30,6 +30,7 @@ export interface WorkQuestionContextData {
   workItem: {
     id: string;
     title: string;
+    projectId: string | null;
     project: string | null;
     docRef: string | null;
     status: string;
@@ -84,6 +85,7 @@ export function runWorkShowQuestionCommand(options: {
       workItem: {
         id: workItem.id,
         title: workItem.title,
+        projectId: workItem.project_id,
         project: workItem.project_name,
         docRef: workItem.doc_ref,
         status: workItem.status,

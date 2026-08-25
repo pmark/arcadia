@@ -618,6 +618,7 @@ export interface WorkQuestionContext {
   workItem: {
     id: string;
     title: string;
+    projectId: string | null;
     project: string | null;
     docRef: string | null;
     status: string;
