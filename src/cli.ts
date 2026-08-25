@@ -166,11 +166,13 @@ import {
   runQaStatusCommand,
   runQaFetchCommand,
   runQaRestartCommand,
+  runQaSwitchCommand,
   runQaVerdictCommand,
   renderQaRefreshSuccess,
   renderQaStatusSuccess,
   renderQaFetchSuccess,
   renderQaRestartSuccess,
+  renderQaSwitchSuccess,
   renderQaVerdictSuccess
 } from "./commands/qa.js";
 import {
@@ -2342,6 +2344,20 @@ export function buildProgram(): Command {
       options,
       () => runQaVerdictCommand({ workspace: options.workspace, project }),
       renderQaVerdictSuccess
+    )
+  );
+  addJsonOption(
+    qa
+      .command("switch")
+      .description("Return a project's checkout to its base branch. Refuses a dirty tree; never picks any other branch")
+      .argument("<project>", "Project slug from the QA target configuration")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((project: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "qa.switch",
+      options,
+      () => runQaSwitchCommand({ workspace: options.workspace, project }),
+      renderQaSwitchSuccess
     )
   );
   addJsonOption(

@@ -1,5 +1,54 @@
-import { describe, expect, it } from "vitest";
-import { classifyChangedPaths, classifyPath } from "../src/qa/verdict.js";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { classifyChangedPaths, classifyPath, verdictForProject } from "../src/qa/verdict.js";
+
+const scratch: string[] = [];
+afterEach(() => {
+  for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+const run = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, stdio: "ignore" });
+
+/**
+ * A checkout sitting on a branch that has just been merged into origin/main.
+ *
+ * `origin/main` is one commit ahead — the merge — but its tree is identical to
+ * the branch's, so the diff is empty. Building it for real rather than stubbing
+ * git keeps the fixture honest about the case it claims to cover.
+ */
+function repoWithMergedBranch(): string {
+  const root = mkdtempSync(path.join(tmpdir(), "arcadia-qa-verdict-"));
+  scratch.push(root);
+  const origin = path.join(root, "origin");
+  const clone = path.join(root, "clone");
+
+  mkdirSync(origin);
+  run(origin, ["init", "--quiet", "--initial-branch=main"]);
+  run(origin, ["config", "user.email", "test@example.com"]);
+  run(origin, ["config", "user.name", "Test"]);
+  writeFileSync(path.join(origin, "README.md"), "one\n");
+  run(origin, ["add", "."]);
+  run(origin, ["commit", "--quiet", "-m", "first"]);
+
+  run(root, ["clone", "--quiet", origin, clone]);
+  run(clone, ["config", "user.email", "test@example.com"]);
+  run(clone, ["config", "user.name", "Test"]);
+  run(clone, ["checkout", "--quiet", "-b", "feature"]);
+  writeFileSync(path.join(clone, "feature.txt"), "work\n");
+  run(clone, ["add", "."]);
+  run(clone, ["commit", "--quiet", "-m", "feature work"]);
+
+  // Merge the branch into the origin's main with an explicit merge commit,
+  // then refresh the clone's remote refs so origin/main is one commit ahead.
+  run(origin, ["fetch", "--quiet", clone, "feature:feature"]);
+  run(origin, ["merge", "--quiet", "--no-ff", "-m", "Merge feature", "feature"]);
+  run(clone, ["fetch", "--quiet", "origin", "main"]);
+
+  return clone;
+}
 
 describe("classifyChangedPaths", () => {
   it("treats a lockfile as needing an install before the restart", () => {
@@ -72,6 +121,21 @@ describe("classifyChangedPaths", () => {
     expect(result.verdict).toBe("inert");
     expect(result.headline).toBe("No incoming changes.");
     expect(result.reasons).toEqual([]);
+  });
+
+  it("does not describe an empty diff as 'no incoming changes' when commits are waiting", () => {
+    // The merged-pull-request case: origin/main gains a merge commit whose tree
+    // this checkout already has. Counting commits and diffing files answer
+    // different questions, and "1 commit to pull. No incoming changes." was the
+    // contradiction that came from pairing their answers without saying so.
+    const repo = repoWithMergedBranch();
+    const result = verdictForProject("fixture", { repoPath: repo, baseBranch: "main" });
+
+    expect(result.commits).toBe(1);
+    expect(result.changedPaths).toEqual([]);
+    expect(result.verdict).toBe("inert");
+    expect(result.headline).toMatch(/already in this tree/i);
+    expect(result.headline).not.toMatch(/no incoming changes/i);
   });
 
   it("always carries the files that produced the verdict", () => {

@@ -29,7 +29,7 @@ export function QaProjectStrip({ rows, loading, onProjectsChanged }: Props) {
   const [pending, setPending] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  async function act(project: string, action: "fetch" | "pull" | "restart") {
+  async function act(project: string, action: "fetch" | "pull" | "restart" | "switch") {
     setPending(`${project}:${action}`);
     setNotes((current) => ({ ...current, [project]: null }));
     try {
@@ -48,7 +48,13 @@ export function QaProjectStrip({ rows, loading, onProjectsChanged }: Props) {
       } else {
         setPhases((current) => ({
           ...current,
-          [project]: action === "pull" ? "pulled" : action === "restart" ? "restarted" : (current[project] ?? "idle")
+          // A switch lands on a different branch entirely, so whatever was
+          // pulled or restarted before says nothing about where we now are.
+          [project]:
+            action === "pull" ? "pulled"
+              : action === "restart" ? "restarted"
+                : action === "switch" ? "idle"
+                  : (current[project] ?? "idle")
         }));
         setNotes((current) => ({
           ...current,
@@ -96,7 +102,7 @@ export function QaProjectStrip({ rows, loading, onProjectsChanged }: Props) {
               {state.action !== "none" ? (
                 <button
                   disabled={busy}
-                  onClick={() => void act(row.project, state.action as "fetch" | "pull" | "restart")}
+                  onClick={() => void act(row.project, state.action as "fetch" | "pull" | "restart" | "switch")}
                   className={`inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold text-white disabled:opacity-60 sm:flex-none ${
                     state.tone === "act" ? "bg-moss" : "bg-steel"
                   }`}
@@ -231,11 +237,13 @@ function ActionIcon({ action, spinning }: { action: string; spinning: boolean })
   const className = `h-4 w-4 ${spinning ? "animate-spin" : ""}`;
   if (action === "fetch") return <CloudDownload className={className} />;
   if (action === "restart") return <RotateCw className={className} />;
+  if (action === "switch") return <GitBranch className={className} />;
   return <RefreshCw className={className} />;
 }
 
 function verbing(action: string): string {
   if (action === "fetch") return "Checking";
   if (action === "pull") return "Pulling";
+  if (action === "switch") return "Switching";
   return "Restarting";
 }

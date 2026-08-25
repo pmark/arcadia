@@ -18,7 +18,8 @@ import type {
   QaFetchResult,
   QaProjectRow,
   QaRefreshResult,
-  QaRestartResult
+  QaRestartResult,
+  QaSwitchResult
 } from "./types";
 import type { NowBrief } from "./now-types";
 import type {
@@ -72,6 +73,11 @@ export async function pullQaProject(project: string): Promise<ArcadiaJsonSuccess
 
 export async function restartQaProject(project: string): Promise<ArcadiaJsonSuccess<{ result: QaRestartResult }>> {
   return runArcadiaCliJson<{ result: QaRestartResult }>(["qa", "restart", project], { timeoutMs: 200_000 });
+}
+
+/** Returns a checkout to its base branch. Never to any other branch. */
+export async function switchQaProject(project: string): Promise<ArcadiaJsonSuccess<{ result: QaSwitchResult }>> {
+  return runArcadiaCliJson<{ result: QaSwitchResult }>(["qa", "switch", project], { timeoutMs: 60_000 });
 }
 
 export async function listProofTargets(projectSlug: string): Promise<ArcadiaJsonSuccess<ProofTargetListResponse>> {
