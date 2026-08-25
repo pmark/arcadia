@@ -4,7 +4,8 @@ import {
   fetchQaProject,
   listQaProjects,
   pullQaProject,
-  restartQaProject
+  restartQaProject,
+  switchQaProject
 } from "../../../../lib/arcadia-cli";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +27,7 @@ export async function GET() {
   }
 }
 
-const ACTIONS = ["fetch", "pull", "restart"] as const;
+const ACTIONS = ["fetch", "pull", "restart", "switch"] as const;
 type Action = (typeof ACTIONS)[number];
 
 export async function POST(request: Request) {
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
 
     if (action === "fetch") return NextResponse.json((await fetchQaProject(project)).data);
     if (action === "pull") return NextResponse.json((await pullQaProject(project)).data);
+    if (action === "switch") return NextResponse.json((await switchQaProject(project)).data);
     return NextResponse.json((await restartQaProject(project)).data);
   } catch (error) {
     return failure(error);

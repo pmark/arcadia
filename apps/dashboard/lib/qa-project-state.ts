@@ -17,7 +17,7 @@ export type StripPhase =
   /** Services were restarted in this session. */
   | "restarted";
 
-export type StripAction = "fetch" | "pull" | "restart" | "none";
+export type StripAction = "fetch" | "pull" | "restart" | "switch" | "none";
 
 export interface StripState {
   /** What the primary button does. `none` means there is nothing safe to offer. */
@@ -77,21 +77,39 @@ export function stripState(
     return blockedState(row.error, false);
   }
 
-  // Branch trouble, in the order that matters. These block the pull but never
-  // the fetch — asking origin what it has is safe whatever the tree looks like,
-  // and it is often exactly what tells you why you are stuck.
+  // Dirt comes first now that a switch is on offer: it is the one state with
+  // something to lose, and it blocks every write here, so it is the most
+  // actionable thing to say regardless of which branch you are on.
+  if (row.dirty) {
+    return blockedState("Uncommitted changes. Commit or set them aside before pulling or switching.", true);
+  }
+
+  // Off the base branch, with a clean tree, the whole answer is one button.
+  // Checkout destroys nothing — the branch left behind keeps its ref — so this
+  // is offered rather than refused, unlike picking some arbitrary branch.
   if (row.branch === "HEAD") {
-    return blockedState(`Detached HEAD. Check out ${row.baseBranch} in this checkout first.`, true);
+    return {
+      action: "switch",
+      label: `Switch to ${row.baseBranch}`,
+      tone: "act",
+      detail: `Detached HEAD. Switching to ${row.baseBranch} leaves the commits reachable and deletes nothing.`,
+      offerFetch: true,
+      offerRestartAnyway: false,
+      blocked: false
+    };
   }
   if (row.branch && !row.onBaseBranch) {
-    return blockedState(
-      `On \`${row.branch}\`, not ${row.baseBranch}. Arcadia will not switch branches for you — that stays your call.`,
-      true
-    );
+    return {
+      action: "switch",
+      label: `Switch to ${row.baseBranch}`,
+      tone: "act",
+      detail: `On \`${row.branch}\`. Switching leaves that branch exactly where it is — nothing is deleted or rewritten.`,
+      offerFetch: true,
+      offerRestartAnyway: false,
+      blocked: false
+    };
   }
-  if (row.dirty) {
-    return blockedState("Uncommitted changes. Commit or set them aside before pulling.", true);
-  }
+
   if (ahead > 0) {
     return blockedState(
       `${ahead} local commit${ahead === 1 ? "" : "s"} origin does not have. Push or reconcile before pulling.`,

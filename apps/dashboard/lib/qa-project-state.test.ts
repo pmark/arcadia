@@ -29,6 +29,7 @@ function verdict(kind: RestartVerdict, headline = "Restart needed."): ProjectVer
   return {
     project: "arcadia",
     range: "HEAD..origin/main",
+    commits: 1,
     verdict: kind,
     headline,
     reasons: [],
@@ -40,23 +41,39 @@ function verdict(kind: RestartVerdict, headline = "Restart needed."): ProjectVer
   };
 }
 
-describe("stripState — blocked checkouts", () => {
-  it("refuses a pull when HEAD is on another branch, and names it", () => {
+describe("stripState — returning to the base branch", () => {
+  it("offers a switch, naming the base branch, when HEAD is elsewhere", () => {
     const state = stripState(row({ branch: "codex/fix-ports", onBaseBranch: false }), "idle", NOW);
-    expect(state.blocked).toBe(true);
-    expect(state.action).toBe("none");
-    expect(state.detail).toContain("codex/fix-ports");
+    expect(state.action).toBe("switch");
+    expect(state.label).toBe("Switch to main");
+    expect(state.blocked).toBe(false);
   });
 
-  it("never offers to switch branches", () => {
+  it("says plainly that the branch left behind survives", () => {
     const state = stripState(row({ branch: "feature/x", onBaseBranch: false }), "idle", NOW);
-    expect(state.detail).toMatch(/will not switch branches/i);
+    expect(state.detail).toContain("feature/x");
+    expect(state.detail).toMatch(/nothing is deleted or rewritten/i);
   });
 
+  it("offers the switch out of a detached HEAD too", () => {
+    const state = stripState(row({ branch: "HEAD", onBaseBranch: false }), "idle", NOW);
+    expect(state.action).toBe("switch");
+    expect(state.detail).toMatch(/deletes nothing/i);
+  });
+
+  it("refuses to switch a dirty tree, since that is the one state with something to lose", () => {
+    const state = stripState(row({ branch: "feature/x", onBaseBranch: false, dirty: true }), "idle", NOW);
+    expect(state.action).toBe("none");
+    expect(state.blocked).toBe(true);
+    expect(state.detail).toMatch(/uncommitted/i);
+  });
+});
+
+describe("stripState — blocked checkouts", () => {
   it("still offers a fetch while blocked, because fetch touches no working tree", () => {
     for (const overrides of [
       { branch: "feature/x", onBaseBranch: false },
-      { branch: "HEAD" },
+      { branch: "HEAD", onBaseBranch: false },
       { dirty: true },
       { ahead: 2 }
     ]) {
@@ -76,11 +93,6 @@ describe("stripState — blocked checkouts", () => {
     const state = stripState(row({ error: "Not a git checkout", head: null }), "idle", NOW);
     expect(state.blocked).toBe(true);
     expect(state.offerFetch).toBe(false);
-  });
-
-  it("checks branch trouble before dirtiness, since it is the more basic problem", () => {
-    const state = stripState(row({ branch: "feature/x", onBaseBranch: false, dirty: true }), "idle", NOW);
-    expect(state.detail).toContain("feature/x");
   });
 });
 

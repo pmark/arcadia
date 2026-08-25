@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { refreshProject } from "../src/qa/refresh.js";
+import { refreshProject, switchToBaseBranch } from "../src/qa/refresh.js";
 import { freshnessSummary, repoFreshness, serviceScriptPath } from "../src/qa/targets.js";
 
 const scratch: string[] = [];
@@ -91,6 +91,89 @@ describe("repo freshness", () => {
     const { clone } = repoPair();
     writeFileSync(path.join(clone, "README.md"), "edited\n");
     expect(repoFreshness({ repoPath: clone, baseBranch: "main" }).dirty).toBe(true);
+  });
+});
+
+describe("switching back to the base branch", () => {
+  it("returns a checkout to its base branch and says what it left", () => {
+    const { clone, workspace } = repoPair();
+    run(clone, ["checkout", "--quiet", "-b", "feature/thing"]);
+    writeConfig(workspace, clone);
+
+    const result = switchToBaseBranch("sample", { workspacePath: workspace });
+
+    expect(result.switched).toBe(true);
+    expect(result.from).toBe("feature/thing");
+    expect(result.to).toBe("main");
+    expect(run(clone, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("main");
+  });
+
+  it("leaves the branch it switched away from intact", () => {
+    const { clone, workspace } = repoPair();
+    run(clone, ["checkout", "--quiet", "-b", "feature/thing"]);
+    writeConfig(workspace, clone);
+
+    switchToBaseBranch("sample", { workspacePath: workspace });
+
+    expect(run(clone, ["rev-parse", "--verify", "feature/thing"])).toBeTruthy();
+  });
+
+  it("warns when the branch left behind has commits origin does not", () => {
+    const { clone, workspace } = repoPair();
+    run(clone, ["checkout", "--quiet", "-b", "feature/thing"]);
+    writeFileSync(path.join(clone, "new.txt"), "unpushed\n");
+    run(clone, ["add", "."]);
+    run(clone, ["commit", "--quiet", "-m", "unpushed work"]);
+    writeConfig(workspace, clone);
+
+    const result = switchToBaseBranch("sample", { workspacePath: workspace });
+
+    expect(result.switched).toBe(true);
+    expect(result.leftBranchMerged).toBe(false);
+    expect(result.message).toContain("origin/main does not");
+  });
+
+  it("reports a merged branch as merged", () => {
+    const { clone, workspace } = repoPair();
+    run(clone, ["checkout", "--quiet", "-b", "feature/thing"]);
+    writeConfig(workspace, clone);
+
+    expect(switchToBaseBranch("sample", { workspacePath: workspace }).leftBranchMerged).toBe(true);
+  });
+
+  it("refuses a dirty tree before touching anything", () => {
+    const { clone, workspace } = repoPair();
+    run(clone, ["checkout", "--quiet", "-b", "feature/thing"]);
+    writeFileSync(path.join(clone, "README.md"), "edited\n");
+    writeConfig(workspace, clone);
+
+    const result = switchToBaseBranch("sample", { workspacePath: workspace });
+
+    expect(result.refused).toBe("dirty");
+    expect(result.switched).toBe(false);
+    expect(run(clone, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("feature/thing");
+  });
+
+  it("is a no-op, not an error, when already on the base branch", () => {
+    const { clone, workspace } = repoPair();
+    writeConfig(workspace, clone);
+
+    const result = switchToBaseBranch("sample", { workspacePath: workspace });
+
+    expect(result.refused).toBeNull();
+    expect(result.switched).toBe(false);
+    expect(result.message).toContain("already on main");
+  });
+
+  it("switches out of a detached HEAD", () => {
+    const { clone, workspace } = repoPair();
+    run(clone, ["checkout", "--quiet", "--detach"]);
+    writeConfig(workspace, clone);
+
+    const result = switchToBaseBranch("sample", { workspacePath: workspace });
+
+    expect(result.switched).toBe(true);
+    expect(run(clone, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("main");
   });
 });
 

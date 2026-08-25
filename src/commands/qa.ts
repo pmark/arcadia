@@ -24,16 +24,19 @@ export {
   renderQaRefreshSuccess,
   renderQaRestartSuccess,
   renderQaStatusSuccess,
+  renderQaSwitchSuccess,
   renderQaVerdictSuccess,
   runQaFetchCommand,
   runQaRefreshCommand,
   runQaRestartCommand,
   runQaStatusCommand,
+  runQaSwitchCommand,
   runQaVerdictCommand,
   type QaFetchCommandData,
   type QaRefreshCommandData,
   type QaRestartCommandData,
   type QaStatusCommandData,
+  type QaSwitchCommandData,
   type QaVerdictCommandData
 } from "../qa/refreshCommand.js";
 export {

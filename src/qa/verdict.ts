@@ -278,6 +278,11 @@ export interface ProjectVerdictResult extends RestartVerdictResult {
   project: string;
   /** The range the verdict was computed over, e.g. `HEAD..origin/main`. */
   range: string;
+  /**
+   * How many commits are in the range, which is not the same question as how
+   * many files changed — see the merge-commit case in `verdictForProject`.
+   */
+  commits: number;
   error: string | null;
 }
 
@@ -298,16 +303,44 @@ export function verdictForProject(slug: string, project: QaProjectConfig): Proje
   const empty = classifyChangedPaths([]);
 
   const output = tryGit(project.repoPath, ["diff", "--name-only", range]);
-  if (output === null) {
+  const countRaw = tryGit(project.repoPath, ["rev-list", "--count", range]);
+  if (output === null || countRaw === null) {
     return {
       ...empty,
       project: slug,
       range,
+      commits: 0,
       headline: `Could not read ${range}. Fetch first, or check the repository.`,
       verdict: "unknown",
-      error: `git diff --name-only ${range} failed in ${project.repoPath}`
+      error: `Reading ${range} failed in ${project.repoPath}`
     };
   }
 
-  return { ...classifyChangedPaths(output.split("\n")), project: slug, range, error: null };
+  const commits = Number.parseInt(countRaw, 10) || 0;
+  const paths = output.split("\n").filter(Boolean);
+  const classified = classifyChangedPaths(paths);
+
+  /*
+   * Commits waiting, but nothing to show for them.
+   *
+   * This is the ordinary shape of a merged pull request seen from the branch
+   * that produced it: `origin/main` gains the merge commit, but its tree is
+   * already this checkout's tree, so the diff is empty. Counting commits and
+   * diffing files answer different questions, and pairing their answers
+   * without saying so produced "1 commit to pull. No incoming changes." —
+   * two true statements that read as a contradiction, which is exactly the
+   * confidently-wrong sentence this whole classifier exists to prevent.
+   */
+  if (commits > 0 && paths.length === 0) {
+    return {
+      ...classified,
+      project: slug,
+      range,
+      commits,
+      headline: "No file changes — the commits are already in this tree. Nothing to restart.",
+      error: null
+    };
+  }
+
+  return { ...classified, project: slug, range, commits, error: null };
 }
