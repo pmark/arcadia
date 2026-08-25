@@ -37,6 +37,7 @@ export type QaRefreshRefusalReason =
   | "diverged"
   | "fetch-failed"
   | "fast-forward-failed"
+  | "checkout-failed"
   | "restart-failed";
 
 export interface QaRefreshResult {
@@ -63,6 +64,7 @@ export interface VerdictReason {
 export interface ProjectVerdict {
   project: string;
   range: string;
+  commits: number;
   verdict: RestartVerdict;
   headline: string;
   reasons: VerdictReason[];
@@ -105,6 +107,16 @@ export interface QaRestartResult {
   project: string;
   restarted: boolean;
   output: string | null;
+  refused: QaRefreshRefusalReason | null;
+  message: string;
+}
+
+export interface QaSwitchResult {
+  project: string;
+  from: string | null;
+  to: string;
+  switched: boolean;
+  leftBranchMerged: boolean | null;
   refused: QaRefreshRefusalReason | null;
   message: string;
 }

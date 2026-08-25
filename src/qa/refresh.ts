@@ -33,6 +33,7 @@ export type RefusalReason =
   | "diverged"
   | "fetch-failed"
   | "fast-forward-failed"
+  | "checkout-failed"
   | "restart-failed";
 
 export interface RefreshResult {
@@ -254,6 +255,125 @@ export function fetchProject(slug: string, options: { workspacePath?: string } =
     message: behind > 0
       ? `${behind} commit${behind === 1 ? "" : "s"} to pull. ${verdict.headline}`
       : `Already current with origin/${project.baseBranch}.`
+  };
+}
+
+export interface SwitchResult {
+  project: string;
+  /** The branch left behind, or `"HEAD"` when the checkout was detached. */
+  from: string | null;
+  to: string;
+  switched: boolean;
+  /**
+   * Whether what we left is fully contained in `origin/<baseBranch>`.
+   *
+   * Never blocks the switch — checkout destroys no commits and the branch ref
+   * survives — but an operator moving away from unmerged work should be told,
+   * not quietly moved.
+   */
+  leftBranchMerged: boolean | null;
+  refused: RefusalReason | null;
+  message: string;
+}
+
+/**
+ * Put a checkout back on its base branch. One destination, never a choice.
+ *
+ * The refresh contract refuses to switch branches, on the grounds that
+ * "switching branches is yours to decide". That is the right rule for an
+ * arbitrary branch and the wrong one for *this* branch: returning to the base
+ * is the normal end state of every agent session, has exactly one destination
+ * already named in the project config, and is the single thing standing
+ * between a merged pull request and testing it.
+ *
+ * Safe because checkout with a clean tree is not a destructive operation: no
+ * commit is rewritten, no ref is deleted, and the branch left behind is still
+ * there afterwards. The one state with something to lose is a dirty tree, and
+ * that is refused before anything happens — as everywhere else here.
+ *
+ * Deliberately not a branch picker. Selecting an arbitrary branch is still
+ * deferred; this is the base branch or nothing.
+ */
+export function switchToBaseBranch(slug: string, options: { workspacePath?: string } = {}): SwitchResult {
+  const project = qaProject(slug, options.workspacePath);
+  if (!project) {
+    return {
+      project: slug,
+      from: null,
+      to: "",
+      switched: false,
+      leftBranchMerged: null,
+      refused: "unknown-project",
+      message: `No project \`${slug}\` in the QA target configuration.`
+    };
+  }
+
+  const to = project.baseBranch;
+  const before = repoFreshness(project);
+  if (before.error && !before.head) {
+    return { project: slug, from: null, to, switched: false, leftBranchMerged: null, refused: "no-repo", message: before.error };
+  }
+
+  if (before.dirty) {
+    return {
+      project: slug,
+      from: before.branch,
+      to,
+      switched: false,
+      leftBranchMerged: null,
+      refused: "dirty",
+      message: `${slug} has uncommitted changes. Commit or set them aside before switching to ${to}.`
+    };
+  }
+
+  const from = before.branch;
+  if (from === to) {
+    return {
+      project: slug,
+      from,
+      to,
+      switched: false,
+      leftBranchMerged: null,
+      refused: null,
+      message: `${slug} is already on ${to}.`
+    };
+  }
+
+  // Asked before the switch, while the branch we are leaving is still HEAD.
+  const leftBranchMerged =
+    from && from !== "HEAD"
+      ? tryGit(project.repoPath, ["merge-base", "--is-ancestor", from, `origin/${to}`]) !== null
+      : null;
+
+  if (tryGit(project.repoPath, ["checkout", to]) === null) {
+    return {
+      project: slug,
+      from,
+      to,
+      switched: false,
+      leftBranchMerged,
+      refused: "checkout-failed",
+      message: `Could not check out ${to} in ${slug}.`
+    };
+  }
+
+  const left =
+    from === "HEAD"
+      ? " Left a detached HEAD behind."
+      : leftBranchMerged === false
+        ? ` \`${from}\` has commits origin/${to} does not — the branch is untouched and still there.`
+        : from
+          ? ` \`${from}\` is already merged and left untouched.`
+          : "";
+
+  return {
+    project: slug,
+    from,
+    to,
+    switched: true,
+    leftBranchMerged,
+    refused: null,
+    message: `${slug} switched to ${to}.${left}`
   };
 }
 

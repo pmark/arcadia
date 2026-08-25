@@ -6,9 +6,11 @@ import {
   refreshProject,
   restartProject,
   serviceStatus,
+  switchToBaseBranch,
   type FetchResult,
   type RefreshResult,
-  type RestartOnlyResult
+  type RestartOnlyResult,
+  type SwitchResult
 } from "./refresh.js";
 import { freshnessSummary, loadQaTargetsFile, repoFreshness, serviceScriptPath } from "./targets.js";
 import { verdictForProject, type ProjectVerdictResult } from "./verdict.js";
@@ -23,6 +25,10 @@ export interface QaFetchCommandData {
 
 export interface QaRestartCommandData {
   result: RestartOnlyResult;
+}
+
+export interface QaSwitchCommandData {
+  result: SwitchResult;
 }
 
 export interface QaVerdictCommandData {
@@ -94,6 +100,19 @@ export function runQaRestartCommand(options: {
     command: "qa.restart",
     workspace: workspacePath,
     data: { result: restartProject(options.project, { workspacePath }) }
+  });
+}
+
+/** Returns one checkout to its base branch. Never to any other branch. */
+export function runQaSwitchCommand(options: {
+  workspace: string;
+  project: string;
+}): CommandSuccess<QaSwitchCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  return createSuccess({
+    command: "qa.switch",
+    workspace: workspacePath,
+    data: { result: switchToBaseBranch(options.project, { workspacePath }) }
   });
 }
 
@@ -171,6 +190,13 @@ export function renderQaRestartSuccess(response: CommandSuccess<QaRestartCommand
     lines.push("");
     lines.push(...result.output.trim().split("\n").map((line) => `  ${line}`));
   }
+  return lines;
+}
+
+export function renderQaSwitchSuccess(response: CommandSuccess<QaSwitchCommandData>): string[] {
+  const { result } = response.data;
+  const lines = [`${result.project}: ${result.message}`];
+  if (result.refused) lines.push(`Refused: ${result.refused}`);
   return lines;
 }
 

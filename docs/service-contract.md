@@ -63,6 +63,7 @@ the most expensive outcome:
 | --- | --- | --- |
 | `qa fetch <project>` | Refs only — never the working tree | Only an unreadable repository |
 | `qa verdict <project>` | Nothing; reads local refs | Nothing |
+| `qa switch <project>` | Checks out the base branch, and only that branch | A dirty tree |
 | `qa refresh <project> --skip-restart` | Fast-forwards the checkout | Dirty, detached, wrong branch, ahead, diverged |
 | `qa restart <project>` | Services only; no git at all | A project with no service script |
 
@@ -71,6 +72,14 @@ which is right for a page load and useless in the minute after a merge: the
 checkout really is up to date with a `main` whose refs are an hour old. It is
 safe in a way pull is not — no working tree, no commit, no branch — so it needs
 none of pull's refusals and is offered even when the pull is blocked.
+
+`switch` is the one exception to "switching branches is yours to decide", and
+only because it is not a choice: it has exactly one destination, already named
+in the project config, and returning to the base branch is the normal end state
+of every agent session. Checkout with a clean tree destroys no commit and
+deletes no ref, so the branch left behind is still there afterwards — and the
+result says whether it was merged, so moving away from unmerged work is stated
+rather than silent. Selecting an arbitrary branch remains out of scope.
 
 ## Whether a restart is needed
 
