@@ -23,6 +23,32 @@ export interface QaCandidate {
   validation: string;
   evidenceFreshness: string;
   testProcedure: string;
+  environmentKind: ProofEnvironmentKind;
+  accessState: ProofAccessState;
+  refreshable: boolean;
+}
+
+export type QaRefreshRefusalReason =
+  | "unknown-project"
+  | "no-repo"
+  | "dirty"
+  | "detached"
+  | "wrong-branch"
+  | "diverged"
+  | "fetch-failed"
+  | "fast-forward-failed"
+  | "restart-failed";
+
+export interface QaRefreshResult {
+  project: string;
+  before: unknown | null;
+  after: unknown | null;
+  fetched: boolean;
+  advanced: boolean;
+  restarted: boolean;
+  output: string | null;
+  refused: QaRefreshRefusalReason | null;
+  message: string;
 }
 
 export type ProofEnvironment = "Stable" | "Candidate";

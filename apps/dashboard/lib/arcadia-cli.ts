@@ -14,7 +14,8 @@ import type {
   IngressActivityResponse,
   ProofTargetCheckResponse,
   ProofTargetListResponse,
-  QaCandidate
+  QaCandidate,
+  QaRefreshResult
 } from "./types";
 import type { NowBrief } from "./now-types";
 import type {
@@ -43,6 +44,10 @@ export async function loadDashboardSnapshot(): Promise<ArcadiaJsonSuccess<Dashbo
 
 export async function listQaCandidates(): Promise<ArcadiaJsonSuccess<{ candidates: QaCandidate[] }>> {
   return runArcadiaCliJson<{ candidates: QaCandidate[] }>(["qa", "list"]);
+}
+
+export async function refreshQaProject(project: string): Promise<ArcadiaJsonSuccess<{ result: QaRefreshResult }>> {
+  return runArcadiaCliJson<{ result: QaRefreshResult }>(["qa", "refresh", project], { timeoutMs: 200_000 });
 }
 
 export async function listProofTargets(projectSlug: string): Promise<ArcadiaJsonSuccess<ProofTargetListResponse>> {
