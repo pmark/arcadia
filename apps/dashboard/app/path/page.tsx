@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ChevronDown, ChevronRight, Flag, HelpCircle } from "lucide-react";
+import { AlertTriangle, Flag, HelpCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ErrorState } from "../../components/dashboard-ui";
 import { MobileShell } from "../../components/mobile-shell";
@@ -28,9 +28,10 @@ import type { PathBrief, PathGap, PathLeg, PathStep, PathStepState } from "../..
  *     next move is undecided, a checklist shows blank space and a task list
  *     shows nothing at all — but that unplanned stretch is usually the real
  *     distance to the target.
- *   - History stays, collapsed. Finished steps are what makes the remaining
- *     three look small; hiding them entirely would make a nearly-done path
- *     look identical to one that has not started.
+ *   - Finished steps stay off the main list. Their count is stated per gate
+ *     ("6 finished steps already done") so the path never looks shorter than
+ *     it is, but the step titles themselves add nothing once done — their
+ *     record already lives on the Project and Run pages.
  */
 
 const STEP_MARK: Record<PathStepState, { glyph: string; ring: string; text: string }> = {
@@ -51,7 +52,6 @@ const GATE_MARK: Record<GateStatus, string> = {
 export default function PathPage() {
   const [brief, setBrief] = useState<PathBrief | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -108,18 +108,8 @@ export default function PathPage() {
         </div>
       </section>
 
-      <div className="mb-5 flex items-center justify-between">
-        <button
-          onClick={() => setShowHistory((current) => !current)}
-          className="inline-flex min-h-9 items-center gap-1.5 text-xs font-semibold text-steel"
-        >
-          {showHistory ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-          {showHistory ? "Hide" : "Show"} the {totals.stepsDone} finished steps
-        </button>
-      </div>
-
       <ol className="relative grid gap-6">
-        {brief.legs.map((leg) => <Leg key={leg.gateId} leg={leg} showHistory={showHistory} />)}
+        {brief.legs.map((leg) => <Leg key={leg.gateId} leg={leg} />)}
         <li className="relative flex items-start gap-3">
           <span className="z-10 mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-moss bg-moss text-white">
             <Flag className="h-4 w-4" />
@@ -139,8 +129,12 @@ export default function PathPage() {
   );
 }
 
-function Leg({ leg, showHistory }: { leg: PathLeg; showHistory: boolean }) {
-  const visible = leg.nodes.filter((node) => node.kind === "gap" || node.state !== "done" || showHistory);
+function Leg({ leg }: { leg: PathLeg }) {
+  // Finished steps stay off the screen entirely rather than behind a toggle.
+  // The interactive expand/collapse here never visibly changed anything for
+  // the operator, and a step's own record — Run, Artifact, Mission Log — is
+  // one tap away from the Project page for anyone who wants the history.
+  const visible = leg.nodes.filter((node) => node.kind === "gap" || node.state !== "done");
   const hidden = leg.nodes.length - visible.length;
 
   return (
@@ -170,8 +164,8 @@ function Leg({ leg, showHistory }: { leg: PathLeg; showHistory: boolean }) {
             ? <GapRow key={`gap-${index}`} gap={node} />
             : <StepRow key={node.workItemId} step={node} />
         )}
-        {hidden > 0 && !showHistory ? (
-          <li className="text-xs text-muted">{hidden} finished step{hidden === 1 ? "" : "s"} hidden</li>
+        {hidden > 0 ? (
+          <li className="text-xs text-muted">{hidden} finished step{hidden === 1 ? "" : "s"} already done</li>
         ) : null}
       </ul>
     </li>
