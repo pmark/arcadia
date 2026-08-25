@@ -20,13 +20,33 @@ export {
   type QaPrReviewDependencies
 } from "../qa/prReview.js";
 export {
+  renderQaFetchSuccess,
   renderQaRefreshSuccess,
+  renderQaRestartSuccess,
   renderQaStatusSuccess,
+  renderQaVerdictSuccess,
+  runQaFetchCommand,
   runQaRefreshCommand,
+  runQaRestartCommand,
   runQaStatusCommand,
+  runQaVerdictCommand,
+  type QaFetchCommandData,
   type QaRefreshCommandData,
-  type QaStatusCommandData
+  type QaRestartCommandData,
+  type QaStatusCommandData,
+  type QaVerdictCommandData
 } from "../qa/refreshCommand.js";
+export {
+  classifyChangedPaths,
+  classifyPath,
+  projectVerdict,
+  verdictForProject,
+  VERDICT_RULES,
+  type ProjectVerdictResult,
+  type RestartVerdict,
+  type RestartVerdictResult,
+  type VerdictReason
+} from "../qa/verdict.js";
 
 export type QaDecision = "pass" | "fail" | "needs-follow-up";
 

@@ -4,8 +4,9 @@ import { ExternalLink, RefreshCw, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { DashboardChrome } from "../../components/chrome";
 import { EmptyState, ErrorState, LoadingState, StatusBadge } from "../../components/dashboard-ui";
+import { QaProjectStrip } from "../../components/qa-project-strip";
 import { initialTargetStateLabel, reachabilityFromCheck, type QaReachability } from "../../lib/qa";
-import type { ProofTargetCheckResponse, QaCandidate, QaRefreshResult } from "../../lib/types";
+import type { ProofTargetCheckResponse, QaCandidate, QaProjectRow } from "../../lib/types";
 
 type CardStatus = {
   tone: "success" | "warning" | "error";
@@ -22,6 +23,8 @@ export default function QaPage() {
   const [cardStatus, setCardStatus] = useState<Record<string, CardStatus>>({});
   const [reachability, setReachability] = useState<Record<string, QaReachability>>({});
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
+  const [projects, setProjects] = useState<QaProjectRow[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
 
   async function refresh() {
     setRefreshing(true);
@@ -40,7 +43,25 @@ export default function QaPage() {
     }
   }
 
-  useEffect(() => { void refresh(); }, []);
+  /**
+   * Project rows shell out to `qa status`, which runs each project's `status`
+   * verb, so it is markedly slower than the target listing. Loading it
+   * separately keeps the cards from waiting on the services probe.
+   */
+  async function loadProjects() {
+    try {
+      const response = await fetch("/api/qa/projects", { cache: "no-store" });
+      const body = await response.json() as { projects?: QaProjectRow[]; error?: string };
+      if (!response.ok) throw new Error(body.error ?? "Project checkouts could not be read.");
+      setProjects(body.projects ?? []);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : String(loadError));
+    } finally {
+      setProjectsLoading(false);
+    }
+  }
+
+  useEffect(() => { void refresh(); void loadProjects(); }, []);
 
   async function record(candidate: QaCandidate, decision: "pass" | "fail" | "needs-follow-up") {
     setPending(`${candidate.id}:${decision}`);
@@ -90,45 +111,14 @@ export default function QaPage() {
     }
   }
 
-  async function pullAndRestart(candidate: QaCandidate) {
-    setPending(`${candidate.id}:refresh`);
-    setCardStatus((current) => omit(current, candidate.id));
-    try {
-      const response = await fetch("/api/qa", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "refresh", candidateId: candidate.id })
-      });
-      const body = await response.json() as { result?: QaRefreshResult; error?: string };
-      if (!response.ok) throw new Error(body.error ?? "The Candidate could not be refreshed.");
-      if (!body.result) throw new Error("The refresh returned no result.");
-      const result = body.result;
-
-      if (result.refused) {
-        setCardStatus((current) => ({ ...current, [candidate.id]: { tone: "error", message: result.message } }));
-        return;
-      }
-
-      setNotes((current) => omit(current, candidate.id));
-      setReachability((current) => omit(current, candidate.id));
-      await refresh();
-      setCardStatus((current) => ({
-        ...current,
-        [candidate.id]: {
-          tone: "success",
-          message: `${result.message} QA note and review state reset; Check and test this Candidate again before recording a Decision.`
-        }
-      }));
-    } catch (refreshError) {
-      setCardStatus((current) => ({ ...current, [candidate.id]: { tone: "error", message: errorMessage(refreshError) } }));
-    } finally {
-      setPending(null);
-    }
-  }
-
   return (
     <DashboardChrome title="QA queue" subtitle={candidates.length ? `${candidates.length} configured Candidates` : undefined} refreshing={refreshing} lastLoadedAt={loadedAt} onRefresh={() => void refresh()}>
       <p className="mb-5 text-sm text-muted">Configured proof targets only. Test opens no inferred or unchecked destination; a Decision records operator QA against the displayed revision.</p>
+      <QaProjectStrip
+        rows={projects}
+        loading={projectsLoading}
+        onProjectsChanged={async () => { await loadProjects(); await refresh(); }}
+      />
       {error ? <ErrorState title="QA queue" message={error} /> : null}
       {loading ? <LoadingState /> : candidates.length === 0 ? <EmptyState text="No active QA Candidates are configured." /> : (
         <div className="grid gap-4">
@@ -139,11 +129,9 @@ export default function QaPage() {
                 <StatusBadge status={candidate.environment === "Candidate" ? "active" : "completed"} label={candidate.environment} />
               </div>
               <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-                <div>
-                  <Fact label="Revision" value={candidate.revision ?? "Unknown revision"} />
-                  {(candidate.environmentKind === "local" || candidate.environmentKind === "lan") && candidate.refreshable ? <button disabled={pending !== null} onClick={() => void pullAndRestart(candidate)} className="mt-2 inline-flex min-h-9 items-center gap-2 rounded-md border border-steel/30 bg-steel/10 px-3 text-xs font-semibold text-steel disabled:opacity-60"><RefreshCw className={`h-3.5 w-3.5 ${pending === `${candidate.id}:refresh` ? "animate-spin" : ""}`} />{pending === `${candidate.id}:refresh` ? "Pulling & restarting..." : "Pull & restart"}</button> : null}
-                  {(candidate.environmentKind === "local" || candidate.environmentKind === "lan") && !candidate.refreshable ? <p className="mt-2 text-xs text-muted">This Project does not ship <code>scripts/services.sh</code>, so Arcadia cannot restart it from here.</p> : null}
-                </div>
+                {/* Updating the checkout is a project operation, so it lives once
+                    in the strip above rather than repeating on every target card. */}
+                <Fact label="Revision" value={candidate.revision ?? "Unknown revision"} />
                 <Fact label="Validation" value={candidate.validation} />
                 <Fact label="Evidence" value={candidate.evidenceFreshness} />
                 <Fact label="Target state" value={reachability[candidate.id]?.label ?? initialTargetStateLabel(candidate)} />

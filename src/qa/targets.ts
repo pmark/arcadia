@@ -126,6 +126,18 @@ export function serviceScriptPath(project: QaProjectConfig): string | null {
 export interface RepoFreshness {
   repoPath: string;
   baseBranch: string;
+  /**
+   * The branch HEAD is actually on, `"HEAD"` when detached, null when unreadable.
+   *
+   * Counts below are always measured against `origin/<baseBranch>` whatever
+   * this says. That is fine when they agree and actively misleading when they
+   * do not — "3 behind main" is a true and useless sentence about a checkout
+   * sitting on a feature branch. Reporting the branch is what lets a reader
+   * tell those two cases apart.
+   */
+  branch: string | null;
+  /** False when `branch` is a different branch, or detached. */
+  onBaseBranch: boolean;
   /** Short SHA of the checkout's HEAD. */
   head: string | null;
   /** Short SHA of `origin/<baseBranch>` as currently known locally. */
@@ -143,6 +155,8 @@ export function repoFreshness(project: QaProjectConfig): RepoFreshness {
   const empty: RepoFreshness = {
     repoPath: project.repoPath,
     baseBranch: project.baseBranch,
+    branch: null,
+    onBaseBranch: false,
     head: null,
     base: null,
     behind: null,
@@ -159,10 +173,12 @@ export function repoFreshness(project: QaProjectConfig): RepoFreshness {
   const remoteRef = `origin/${project.baseBranch}`;
   const head = tryGit(project.repoPath, ["rev-parse", "--short", "HEAD"]);
   const baseSha = tryGit(project.repoPath, ["rev-parse", "--short", remoteRef]);
+  const branch = tryGit(project.repoPath, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  const onBaseBranch = branch === project.baseBranch;
 
-  if (!head) return { ...empty, error: "Could not read HEAD." };
+  if (!head) return { ...empty, branch, onBaseBranch, error: "Could not read HEAD." };
   if (!baseSha) {
-    return { ...empty, head, error: `No local ref for ${remoteRef}. Refresh to fetch it.` };
+    return { ...empty, branch, onBaseBranch, head, error: `No local ref for ${remoteRef}. Refresh to fetch it.` };
   }
 
   const counts = tryGit(project.repoPath, ["rev-list", "--left-right", "--count", `HEAD...${remoteRef}`]);
@@ -174,6 +190,8 @@ export function repoFreshness(project: QaProjectConfig): RepoFreshness {
 
   return {
     ...empty,
+    branch,
+    onBaseBranch,
     head,
     base: baseSha,
     ahead: toCount(aheadRaw),
@@ -195,6 +213,15 @@ function fetchHeadTime(repoPath: string): string | null {
 export function freshnessSummary(freshness: RepoFreshness): string {
   if (freshness.error) return freshness.error;
   const parts: string[] = [];
+
+  // Lead with the branch when it is not the one the counts are about, so the
+  // numbers are never read as a statement about the checked-out branch.
+  if (freshness.branch === "HEAD") {
+    parts.push("detached HEAD");
+  } else if (freshness.branch && !freshness.onBaseBranch) {
+    parts.push(`on \`${freshness.branch}\`, not ${freshness.baseBranch}`);
+  }
+
   if (freshness.behind && freshness.behind > 0) {
     parts.push(`${freshness.behind} commit${freshness.behind === 1 ? "" : "s"} behind ${freshness.baseBranch}`);
   } else if (freshness.behind === 0) {

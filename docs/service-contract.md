@@ -53,6 +53,43 @@ branch first, under a safety contract the script has no way to honour:
 Splitting it this way means a script that misbehaves can cost you a restart,
 never a commit.
 
+## The three verbs are separate on purpose
+
+`arcadia qa refresh` still does the whole thing, but the pieces are also
+addressable on their own, because welding them together made every change cost
+the most expensive outcome:
+
+| Command | Touches | Refuses |
+| --- | --- | --- |
+| `qa fetch <project>` | Refs only — never the working tree | Only an unreadable repository |
+| `qa verdict <project>` | Nothing; reads local refs | Nothing |
+| `qa refresh <project> --skip-restart` | Fast-forwards the checkout | Dirty, detached, wrong branch, ahead, diverged |
+| `qa restart <project>` | Services only; no git at all | A project with no service script |
+
+`fetch` exists because `repoFreshness` deliberately never reaches the network,
+which is right for a page load and useless in the minute after a merge: the
+checkout really is up to date with a `main` whose refs are an hour old. It is
+safe in a way pull is not — no working tree, no commit, no branch — so it needs
+none of pull's refusals and is offered even when the pull is blocked.
+
+## Whether a restart is needed
+
+`qa verdict` classifies the paths in `HEAD..origin/<baseBranch>` and reports the
+strongest verdict any one file earns: dependencies changed means install first;
+environment, build config, boot-time entry points, or migrations mean restart;
+watched application source means HMR should cover it; docs and tests mean
+nothing running reads them. A path no rule recognises is reported as unknown,
+which offers the restart rather than assuming safety.
+
+It is a planning signal, not a guarantee, and the wording holds that line: the
+honest claim is "HMR should cover this", never "no restart needed". Every
+verdict carries the files that produced it, because a verdict you cannot check
+is the same unfalsifiable claim as a hand-typed freshness string.
+
+Restart remains all-or-nothing per project — the contract above has no
+per-service selector — so the verdict also names which workspace apps the
+changed paths fall under, to say plainly what a restart will cost.
+
 ## You do not start from a blank file
 
 `arcadia project setup-context` scaffolds `scripts/services.sh` when a project

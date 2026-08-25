@@ -8,6 +8,7 @@ import {
   type QaProjectConfig,
   type RepoFreshness
 } from "./targets.js";
+import { verdictForProject, type ProjectVerdictResult } from "./verdict.js";
 
 /**
  * Bring a project's checkout to its base branch, then restart its services.
@@ -176,6 +177,134 @@ export function serviceStatus(slug: string, workspacePath?: string): { ok: boole
   if (!project) return null;
   const script = serviceScriptPath(project);
   return script ? runService(project, script, "status") : null;
+}
+
+export interface FetchResult {
+  project: string;
+  before: RepoFreshness | null;
+  after: RepoFreshness | null;
+  fetched: boolean;
+  /** What origin now has that this checkout does not. */
+  verdict: ProjectVerdictResult | null;
+  refused: RefusalReason | null;
+  message: string;
+}
+
+/**
+ * Ask origin what it has. Writes refs and nothing else.
+ *
+ * This is the verb the QA surface was missing. `repoFreshness` deliberately
+ * never reaches the network, which is right for a page load and wrong for the
+ * moment just after a merge: locally the checkout really is up to date with a
+ * `main` whose refs are an hour old, so the page says so, confidently, and is
+ * useless. Fetch is the cheapest possible way to make those counts mean
+ * something, and it is safe in a way pull is not — no working tree, no commit,
+ * no branch is touched, so it needs none of pull's refusals.
+ */
+export function fetchProject(slug: string, options: { workspacePath?: string } = {}): FetchResult {
+  const project = qaProject(slug, options.workspacePath);
+  if (!project) {
+    return {
+      project: slug,
+      before: null,
+      after: null,
+      fetched: false,
+      verdict: null,
+      refused: "unknown-project",
+      message: `No project \`${slug}\` in the QA target configuration.`
+    };
+  }
+
+  const before = repoFreshness(project);
+  if (before.error && !before.head) {
+    return {
+      project: slug,
+      before,
+      after: null,
+      fetched: false,
+      verdict: null,
+      refused: "no-repo",
+      message: before.error
+    };
+  }
+
+  if (tryGit(project.repoPath, ["fetch", "origin", project.baseBranch, "--quiet"]) === null) {
+    return {
+      project: slug,
+      before,
+      after: null,
+      fetched: false,
+      verdict: null,
+      refused: "fetch-failed",
+      message: `Could not fetch origin/${project.baseBranch}.`
+    };
+  }
+
+  const after = repoFreshness(project);
+  const verdict = verdictForProject(slug, project);
+  const behind = after.behind ?? 0;
+
+  return {
+    project: slug,
+    before,
+    after,
+    fetched: true,
+    verdict,
+    refused: null,
+    message: behind > 0
+      ? `${behind} commit${behind === 1 ? "" : "s"} to pull. ${verdict.headline}`
+      : `Already current with origin/${project.baseBranch}.`
+  };
+}
+
+export interface RestartOnlyResult {
+  project: string;
+  restarted: boolean;
+  output: string | null;
+  refused: RefusalReason | null;
+  message: string;
+}
+
+/**
+ * Restart a project's services without touching git.
+ *
+ * Split out of `refreshProject` so declining the restart, or asking for it on
+ * its own, are both first-class. Pull and restart were one welded action, which
+ * made a CSS tweak cost the same seven-dev-server bounce as a lockfile change.
+ */
+export function restartProject(slug: string, options: { workspacePath?: string } = {}): RestartOnlyResult {
+  const project = qaProject(slug, options.workspacePath);
+  if (!project) {
+    return {
+      project: slug,
+      restarted: false,
+      output: null,
+      refused: "unknown-project",
+      message: `No project \`${slug}\` in the QA target configuration.`
+    };
+  }
+
+  const script = serviceScriptPath(project);
+  if (!script) {
+    return {
+      project: slug,
+      restarted: false,
+      output: null,
+      refused: "restart-failed",
+      message: `No ${project.serviceScript ?? "scripts/services.sh"} in ${slug}. See docs/service-contract.md.`
+    };
+  }
+
+  const restart = runService(project, script, "restart");
+  return {
+    project: slug,
+    restarted: restart.ok,
+    output: restart.output,
+    refused: restart.ok ? null : "restart-failed",
+    message: restart.ok
+      ? `${slug} services restarted.`
+      : `Restart failed: ${restart.output.trim() || "no output"}`
+  };
 }
 
 /**
