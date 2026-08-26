@@ -233,6 +233,17 @@ valid Canvas and WikiLinks, and Arcadia/PPN isolation pass alongside 954 tests
 and all builds. The pointer moves to `integrate-living-system-sync` so the two
 demo stories can be created and refreshed through a real operator command.
 
+On 2026-08-25 the operator returned to Arcadia Ask after dogfooding a real
+Living Songbook capture. The request exposed one connected front-door gap:
+text, links, and attachments need one auditable envelope; memorable exact
+prefixes such as `songbook` need visible deterministic routing; the operator
+must be able to inspect and change those rules without code; and capture should
+open the guided understanding session rather than stop at a generic receipt.
+`docs/plans/arcadia-ask-active-sessions.md` records the five-step plan and
+Decision 0035 records the one sequencing question. The current living-system
+review remains authoritative and untouched. The recommendation is to resolve
+that review, activate Ask active sessions next, then restore
+`idea-to-managed-build/promote-accepted-plan` after accepted Songbook dogfood.
 Living-system v1 is now accepted. The operator explicitly accepted its Arcadia
 and Private Practice Now dogfood review; the two Project-owned manifests and
 the deterministic Arcadia1-vault projections remain the proof surface. No

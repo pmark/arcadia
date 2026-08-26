@@ -8,6 +8,29 @@ updated: 2026-08-25
 
 # Mission Log: Arcadia
 
+## 2026-08-25 — Planned guided Arcadia Ask sessions from real Songbook friction
+
+- **Did:** Converted the operator's Arcadia Ask direction into
+  `docs/plans/arcadia-ask-active-sessions.md`: visible exact-prefix routing and
+  processing receipts, one text/link/attachment capture envelope, the guided
+  understanding session, preview-first rule management, and end-to-end
+  `songbook` dogfood. Recorded Decision 0035 for the only unresolved issue —
+  whether this plan activates immediately after living-system v1 review or
+  after the previously promised `idea-to-managed-build` restoration.
+- **Result:** The work now has five dependency-ordered Actions, observable
+  acceptance criteria, bounded model use, explicit authority, an 80/20 first
+  slice, and measured triggers for the expensive tail. It preserves a real
+  routing-precedence failure as a regression case and makes the operator-liked
+  guided understanding session the product anchor. The Arcadia work pointer is
+  unchanged on `living-system-v1#dogfood-living-system-v1`; no implementation,
+  model Run, workspace rule write, foreign-repository edit, merge, deployment,
+  publication, credential use, spending, or messaging occurred.
+- **Next:** The operator resolves the current living-system walkthrough, then
+  answers Decision 0035. The recommendation is to activate Ask active sessions
+  before restoring `idea-to-managed-build/promote-accepted-plan`.
+- **Blockers:** Implementation is not authorized while the current Action is
+  `requires_review` and Decision 0035 is open. The plan itself is complete as a
+  draft Artifact.
 ## 2026-08-25 — Accepted the living-system v1 operator review
 
 - **Action:** `living-system-v1#dogfood-living-system-v1`
