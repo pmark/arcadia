@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: Every managed software Project can reveal what it is, what is changing, how it got here, and what proves that story through one free living-system navigator
 active_plan: living-system-v1
 current_action: dogfood-living-system-v1
-updated: 2026-08-21
+updated: 2026-08-25
 ---
 
 # Arcadia
@@ -232,6 +232,18 @@ byte-stable reruns, collision refusal, stale retention, symlink containment,
 valid Canvas and WikiLinks, and Arcadia/PPN isolation pass alongside 954 tests
 and all builds. The pointer moves to `integrate-living-system-sync` so the two
 demo stories can be created and refreshed through a real operator command.
+
+On 2026-08-25 the operator returned to Arcadia Ask after dogfooding a real
+Living Songbook capture. The request exposed one connected front-door gap:
+text, links, and attachments need one auditable envelope; memorable exact
+prefixes such as `songbook` need visible deterministic routing; the operator
+must be able to inspect and change those rules without code; and capture should
+open the guided understanding session rather than stop at a generic receipt.
+`docs/plans/arcadia-ask-active-sessions.md` records the five-step plan and
+Decision 0035 records the one sequencing question. The current living-system
+review remains authoritative and untouched. The recommendation is to resolve
+that review, activate Ask active sessions next, then restore
+`idea-to-managed-build/promote-accepted-plan` after accepted Songbook dogfood.
 
 ## Links
 

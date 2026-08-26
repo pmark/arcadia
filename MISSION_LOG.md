@@ -8,6 +8,30 @@ updated: 2026-08-25
 
 # Mission Log: Arcadia
 
+## 2026-08-25 — Planned guided Arcadia Ask sessions from real Songbook friction
+
+- **Did:** Converted the operator's Arcadia Ask direction into
+  `docs/plans/arcadia-ask-active-sessions.md`: visible exact-prefix routing and
+  processing receipts, one text/link/attachment capture envelope, the guided
+  understanding session, preview-first rule management, and end-to-end
+  `songbook` dogfood. Recorded Decision 0035 for the only unresolved issue —
+  whether this plan activates immediately after living-system v1 review or
+  after the previously promised `idea-to-managed-build` restoration.
+- **Result:** The work now has five dependency-ordered Actions, observable
+  acceptance criteria, bounded model use, explicit authority, an 80/20 first
+  slice, and measured triggers for the expensive tail. It preserves a real
+  routing-precedence failure as a regression case and makes the operator-liked
+  guided understanding session the product anchor. The Arcadia work pointer is
+  unchanged on `living-system-v1#dogfood-living-system-v1`; no implementation,
+  model Run, workspace rule write, foreign-repository edit, merge, deployment,
+  publication, credential use, spending, or messaging occurred.
+- **Next:** The operator resolves the current living-system walkthrough, then
+  answers Decision 0035. The recommendation is to activate Ask active sessions
+  before restoring `idea-to-managed-build/promote-accepted-plan`.
+- **Blockers:** Implementation is not authorized while the current Action is
+  `requires_review` and Decision 0035 is open. The plan itself is complete as a
+  draft Artifact.
+
 ## 2026-08-25 — Decided what the Review page and the QA verdicts are for
 
 - **Did:** The operator reported that clicking Pass, Fail, or Needs follow-up changes nothing visible on a QA card, and that the Review page has never earned a visit. Both are true and both are structural. `loadQaCandidates` builds cards from `config/qa-targets.json` plus git freshness and never reads a recorded verdict back, so a card is byte-identical before and after judgment; `runQaRecordCommand` resolves its review item in the same transaction, so it enters no queue; Fail and Needs follow-up both resolve to the demo hero's `qa_failed`, differing by one sentence; and the QA note reaches only the narrative digest composer. `/review` renders all 24 open items flat — every one an `ActionClarification`, none stating what it blocks. Recorded Decision 0034 with the operator's two choices, and queued four Actions: `bind-qa-cards-to-verdicts` and `give-qa-verdicts-consequences` in `demo-first-delivery`, `scope-review-to-blocking-questions` and `build-plan-approval-surface` in `idea-to-managed-build`.
