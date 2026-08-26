@@ -287,6 +287,7 @@ import {
   runNextReadyCommand
 } from "./commands/next.js";
 import { renderDocketSuccess, runDocketCommand } from "./commands/docket.js";
+import { renderPlansSuccess, runPlansCommand } from "./commands/plans.js";
 import { renderTidySuccess, runTidyCommand } from "./commands/tidy.js";
 import { renderPortfolioSuccess, runPortfolioCommand } from "./commands/portfolio.js";
 import { renderNowSuccess, runNowCommand } from "./commands/now.js";
@@ -2534,6 +2535,16 @@ export function buildProgram(): Command {
       .option("--project <project>", "Project slug, when the repository declares more than one")
   ).action((options: { repo: string; project?: string; json?: boolean }) =>
     runCliAction("docket", options, () => runDocketCommand(options), renderDocketSuccess)
+  );
+
+  addJsonOption(
+    program
+      .command("plans")
+      .description("Every plan a repository holds, governed or not, and why each ungoverned one has not started")
+      .option("--repo <path>", "Repository to read", resolveInvocationPath, invocationRoot())
+      .option("--project <project>", "Project slug, when the repository declares more than one")
+  ).action((options: { repo: string; project?: string; json?: boolean }) =>
+    runCliAction("plans", options, () => runPlansCommand(options), renderPlansSuccess)
   );
 
   const next = program
