@@ -8,6 +8,14 @@ updated: 2026-08-25
 
 # Mission Log: Arcadia
 
+## 2026-08-25 — Accepted the living-system v1 operator review
+
+- **Action:** `living-system-v1#dogfood-living-system-v1`
+- **Did:** The operator explicitly accepted living-system v1. Arcadia and Private Practice Now retain their authoritative, isolated manifests and generated Arcadia1-vault presentations; the established preview/apply, link, source-reference, frontmatter, Canvas, test, build, and no-model proof remains the acceptance evidence. The operator identified that the Dashboard has no acceptance control for this document-owned `requires_review` Action; that product gap is not represented as a v1 living-system miss or silently added to its scope.
+- **Result:** `living-system-v1` is complete. Its `current_action` is removed, `dogfood-living-system-v1` is done, and the sole Project pointer resumes `idea-to-managed-build#promote-accepted-plan`.
+- **Next:** Promote an accepted planning Artifact into one governed build Action and immutable build packet without a manual document translation.
+- **Blockers:** None for the pointer transition. A dashboard control for accepting document-owned operator reviews requires separately governed product work.
+
 ## 2026-08-25 — Decided what the Review page and the QA verdicts are for
 
 - **Did:** The operator reported that clicking Pass, Fail, or Needs follow-up changes nothing visible on a QA card, and that the Review page has never earned a visit. Both are true and both are structural. `loadQaCandidates` builds cards from `config/qa-targets.json` plus git freshness and never reads a recorded verdict back, so a card is byte-identical before and after judgment; `runQaRecordCommand` resolves its review item in the same transaction, so it enters no queue; Fail and Needs follow-up both resolve to the demo hero's `qa_failed`, differing by one sentence; and the QA note reaches only the narrative digest composer. `/review` renders all 24 open items flat — every one an `ActionClarification`, none stating what it blocks. Recorded Decision 0034 with the operator's two choices, and queued four Actions: `bind-qa-cards-to-verdicts` and `give-qa-verdicts-consequences` in `demo-first-delivery`, `scope-review-to-blocking-questions` and `build-plan-approval-surface` in `idea-to-managed-build`.
