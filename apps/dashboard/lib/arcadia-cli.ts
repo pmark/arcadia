@@ -23,6 +23,7 @@ import type {
 } from "./types";
 import type { PathBrief } from "./path-types";
 import type { NowBrief } from "./now-types";
+import type { ProjectPlansResponse } from "./plans-types";
 import type {
   MissionControlFits,
   MissionControlNodeDetail,
@@ -148,6 +149,23 @@ export interface ProjectContinuationResponse {
 
 export async function loadProjectContinuation(projectId: string): Promise<ArcadiaJsonSuccess<ProjectContinuationResponse>> {
   return runArcadiaCliJson<ProjectContinuationResponse>(["next", "--project", projectId]);
+}
+
+/**
+ * Every plan this Project's repository holds, governed or not — the CLI's
+ * `arcadia plans`, given the repository path directly rather than a
+ * workspace-resolved id, since that command reads the filesystem only, like
+ * `docket`.
+ */
+export async function loadProjectPlans(
+  repoPath: string,
+  projectSlug: string | null
+): Promise<ArcadiaJsonSuccess<ProjectPlansResponse>> {
+  const args = ["plans", "--repo", repoPath];
+  if (projectSlug) {
+    args.push("--project", projectSlug);
+  }
+  return runArcadiaCliJson<ProjectPlansResponse>(args);
 }
 
 export interface ProjectSetupContextResponse {

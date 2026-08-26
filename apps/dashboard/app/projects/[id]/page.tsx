@@ -19,7 +19,9 @@ import {
 } from "../../../components/dashboard-ui";
 import { useArcadiaSnapshot } from "../../../hooks/use-arcadia-snapshot";
 import { ProofHero } from "../../../components/proof-hero";
+import { PlanListRow, orderPlans } from "../../../components/plans-list";
 import type { DashboardProject, DashboardReviewItem, ProjectContinuation } from "../../../lib/types";
+import type { PlanRow, ProjectPlansResponse } from "../../../lib/plans-types";
 
 const PROJECT_STATUSES = ["active", "paused", "incubating", "completed"] as const;
 
@@ -41,6 +43,9 @@ export default function ProjectDetailsPage() {
   const [workError, setWorkError] = useState<string | null>(null);
   const [reviewPending, setReviewPending] = useState<string | null>(null);
   const [adopting, setAdopting] = useState(false);
+  const [plans, setPlans] = useState<PlanRow[]>([]);
+  const [plansLoading, setPlansLoading] = useState(false);
+  const [plansError, setPlansError] = useState<string | null>(null);
 
   useEffect(() => {
     if (project) {
@@ -73,6 +78,34 @@ export default function ProjectDetailsPage() {
       })
       .finally(() => {
         if (!cancelled) setContextLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPlansLoading(true);
+    setPlansError(null);
+    fetch(`/api/projects/${encodeURIComponent(projectId)}/plans`)
+      .then(async (response) => {
+        const body = await response.json();
+        if (!response.ok) {
+          throw new Error(errorMessageFromBody(body, "Plans could not be loaded."));
+        }
+        if (!cancelled) {
+          setPlans((body as ProjectPlansResponse).plans);
+        }
+      })
+      .catch((loadError) => {
+        if (!cancelled) {
+          setPlansError(loadError instanceof Error ? loadError.message : String(loadError));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPlansLoading(false);
       });
 
     return () => {
@@ -383,6 +416,27 @@ export default function ProjectDetailsPage() {
             ) : null}
             {!contextLoading && continuation?.context === null && continuation?.blockers.length === 0 ? <EmptyState text="No current Action could be resolved from the project documents." /> : null}
           </section>
+
+          <Section title="Plans">
+            {plansError ? <ErrorState title="Plans unavailable" message={plansError} /> : null}
+            {plansLoading && plans.length === 0 && !plansError ? (
+              <p className="text-sm text-muted">Loading...</p>
+            ) : plans.length === 0 && !plansError ? (
+              <EmptyState text="No plan documents found for this project." />
+            ) : (
+              <div className="grid min-w-0 gap-2">
+                {orderPlans(plans).slice(0, 4).map((plan) => (
+                  <PlanListRow key={plan.slug} plan={plan} detailed={false} />
+                ))}
+              </div>
+            )}
+            <Link
+              href={`/projects/${encodeURIComponent(projectId)}/plans`}
+              className="inline-flex min-h-9 w-fit items-center gap-1 text-sm font-semibold text-steel transition hover:underline"
+            >
+              {plans.length > 4 ? `View all ${plans.length} plans` : "View plans"} →
+            </Link>
+          </Section>
 
           {projectReviews.length > 0 ? (
             <Section title="Resolve open questions for this project">
