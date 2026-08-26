@@ -31,6 +31,13 @@ updated: 2026-08-25
 - **Blockers:** Implementation is not authorized while the current Action is
   `requires_review` and Decision 0035 is open. The plan itself is complete as a
   draft Artifact.
+## 2026-08-25 — Accepted the living-system v1 operator review
+
+- **Action:** `living-system-v1#dogfood-living-system-v1`
+- **Did:** The operator explicitly accepted living-system v1. Arcadia and Private Practice Now retain their authoritative, isolated manifests and generated Arcadia1-vault presentations; the established preview/apply, link, source-reference, frontmatter, Canvas, test, build, and no-model proof remains the acceptance evidence. The operator identified that the Dashboard has no acceptance control for this document-owned `requires_review` Action; that product gap is not represented as a v1 living-system miss or silently added to its scope.
+- **Result:** `living-system-v1` is complete. Its `current_action` is removed, `dogfood-living-system-v1` is done, and the sole Project pointer resumes `idea-to-managed-build#promote-accepted-plan`.
+- **Next:** Promote an accepted planning Artifact into one governed build Action and immutable build packet without a manual document translation.
+- **Blockers:** None for the pointer transition. A dashboard control for accepting document-owned operator reviews requires separately governed product work.
 
 ## 2026-08-25 — Decided what the Review page and the QA verdicts are for
 
