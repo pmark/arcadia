@@ -3,14 +3,13 @@ arcadia: v1
 type: plan
 slug: living-system-v1
 project: arcadia
-status: active
+status: complete
 milestone: Every managed software Project can reveal what it is, what is changing, how it got here, and what proves that story through one free living-system navigator
-current_action: dogfood-living-system-v1
 token_impact: xlarge
 token_budget: "Routine parsing, derivation, projection, link validation, and refresh make zero model calls. Use one bounded coding-agent implementation pass per Action, deterministic tests before model-based diagnosis, and operator attention only for final usability judgment and governed external effects."
 recommended_model: gpt-5.6-sol
 recommended_reasoning_effort: high
-updated: 2026-08-21
+updated: 2026-08-25
 actions:
   - id: define-living-system-v1-contract
     title: Define the shared contract for capability maps and Action timelines
@@ -120,7 +119,7 @@ actions:
     depends_on: [build-living-system-map-and-timeline]
   - id: dogfood-living-system-v1
     title: Prove the living-system v1 on Arcadia and Private Practice Now
-    status: in_progress
+    status: done
     responsibility: requires_review
     effort: project
     next_action: Open `docs/living-system-v1-demo.md`, run its two-minute Arcadia and Private Practice Now walkthrough in the Arcadia1 vault, and record whether the presentation meets the stated ten-second, one-click, two-minute, and auditability bar.

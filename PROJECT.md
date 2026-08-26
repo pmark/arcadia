@@ -6,10 +6,10 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: Every managed software Project can reveal what it is, what is changing, how it got here, and what proves that story through one free living-system navigator
-active_plan: living-system-v1
-current_action: dogfood-living-system-v1
-updated: 2026-08-21
+milestone: A raw software-project idea becomes governed, dispatchable coding-agent work without a manual planning-to-build handoff
+active_plan: idea-to-managed-build
+current_action: promote-accepted-plan
+updated: 2026-08-25
 ---
 
 # Arcadia
@@ -232,6 +232,14 @@ byte-stable reruns, collision refusal, stale retention, symlink containment,
 valid Canvas and WikiLinks, and Arcadia/PPN isolation pass alongside 954 tests
 and all builds. The pointer moves to `integrate-living-system-sync` so the two
 demo stories can be created and refreshed through a real operator command.
+
+Living-system v1 is now accepted. The operator explicitly accepted its Arcadia
+and Private Practice Now dogfood review; the two Project-owned manifests and
+the deterministic Arcadia1-vault projections remain the proof surface. No
+dashboard acceptance control exists for a document-owned `requires_review`
+Action, so that product gap is recorded separately rather than added to the
+completed v1 scope. The pointer has resumed
+`idea-to-managed-build/promote-accepted-plan`.
 
 ## Links
 
