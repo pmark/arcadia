@@ -27,6 +27,23 @@ actions:
       - "An ungoverned plan with no such section says so explicitly, rather than rendering a blank line."
       - "A repository with no PROJECT.md fails with a named remedy rather than an empty listing."
       - "Reads only the filesystem, like docket: no workspace or database required."
+  - id: surface-plans-on-project-detail
+    title: Link to a Project's plans from its detail page, with a brief listing there too
+    status: done
+    responsibility: codex
+    effort: short
+    clarification: clarified
+    confidence: high
+    next_action: "Delivered: a Plans section on apps/dashboard/app/projects/[id]/page.tsx showing the four most relevant plans, linking to the new apps/dashboard/app/projects/[id]/plans/page.tsx full listing; both backed by GET /api/projects/[id]/plans, which resolves the Project's repo_path and slug from the workspace database and shells out to `arcadia plans`."
+    expected_artifact: A Plans section on the Project detail page and a linked full-listing page, both real data
+    source: "Operator request 2026-08-26: 'I want the plans to appear as a link from each project detail page, with a brief listing appearing on the project details page itself.'"
+    depends_on: [add-plans-command]
+    acceptance_criteria:
+      - "The Project detail page shows a Plans section listing at least the active plan and up to three others, ordered active-plan first."
+      - "A link from that section reaches a full listing of every plan the repository holds, governed or not."
+      - "The full listing page shows the same per-plan fields the CLI does: status, milestone, Action counts when governed, and the activation note when not."
+      - "A Project with no repo_path configured reports that explicitly rather than an empty or crashed section."
+      - "Verified live against a real repository (PrivatePracticeNow/platform, 10 plans, one dormant with no stated trigger) rather than only type-checked."
 decisions: []
 ---
 
@@ -67,6 +84,17 @@ validate), and searches the plan's own body for an "If not now, then when?"
 When no such heading exists, it says so by name — `independent-client-site-
 deployment` in PrivatePracticeNow/platform is exactly this case, found on the
 first real run.
+
+The same data reaches the dashboard. `GET /api/projects/[id]/plans` resolves
+the Project's `repo_path` and `slug` directly from the workspace database
+(the same lookup `getProjectMetadata`/`getProject` already do for every other
+Project route) and shells `arcadia plans --repo <repoPath> --project <slug>`
+through the existing CLI-JSON bridge in `lib/arcadia-cli.ts` — no second
+implementation of plan discovery. The Project detail page gained a "Plans"
+section showing the four most relevant plans (active pointer first, then
+`active`, then `draft`, then everything else) and a link to a full listing
+page reusing the identical row component, so "brief" and "everything" always
+agree with each other.
 
 ## Deliberately not built
 
