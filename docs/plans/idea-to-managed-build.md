@@ -7,7 +7,7 @@ status: active
 milestone: A raw software-project idea becomes governed, dispatchable coding-agent work without a manual planning-to-build handoff
 token_impact: large
 token_budget: "Project creation, document rendering, readiness checks, builds, and state transitions are deterministic. Use one bounded planning Run for the idea, one coding-agent implementation Run per accepted Action, and independent QA only when deterministic readiness passes."
-updated: 2026-08-25
+updated: 2026-08-27
 actions:
   - id: prepare-project-idea
     title: Turn one stated project idea into a dispatchable planning Action
@@ -94,30 +94,35 @@ actions:
       - config/defaults/template-registry.json
       - START_HERE.md
     depends_on: [prepare-project-idea]
-  - id: scope-review-to-blocking-questions
-    title: Show only the questions standing in front of dispatchable work
+  - id: build-operator-attention-board
+    title: Make scarce operator attention obvious and actionable
     status: open
     responsibility: codex
     effort: session
-    next_action: Filter the Review page to open questions that block a currently dispatchable Action, rank them by what they release, and state on each item the exact Action answering it unblocks.
-    expected_artifact: A Review page where every listed question names the work it is holding up, and answering one visibly moves that work
+    next_action: Replace the flat Review queue with a minimal Needs you board that selects the most consequential operator-only item, explains why it is first and what it costs, and presents outcome-specific choices with their immediate consequences.
+    expected_artifact: A phone-reachable Needs you board where the operator can understand and resolve the highest-leverage pending judgment without reconstructing Project state
     clarification: clarified
     confidence: high
-    source: Decision 0034 on 2026-08-25
+    source: Decisions 0034 and 0036, with explicit operator priority on 2026-08-27
     acceptance_criteria:
-      - The page lists only open items that block dispatchable work, computed from the same ready-set resolution `arcadia next --ready` already performs rather than a second implementation.
-      - Each listed item names the Project, plan, and Action it unblocks, and what becomes possible once it is answered.
-      - Items are ordered by what they release; queue position never implies priority on its own.
-      - Answering an item reports what it unblocked, replacing the current silent background continuation.
-      - Open items that block nothing dispatchable remain reachable behind an explicit control and are never deleted or hidden without saying so — as of 2026-08-25 that is most of the 24 open items.
-      - An empty list states that nothing is waiting on the operator, and is distinguishable from a failure to load.
-      - Focused tests cover the filter, the ordering, the unblock statement, the empty case, and the everything-view.
-    decisions: ["0034"]
+      - The operator-facing surface is named `Needs you` and shows one dominant item followed by a short ranked queue, rather than presenting every open record at equal weight.
+      - The active board contains only judgment or authority that can change what may happen next; retryable agent work, deterministic repairs, stale deferrals whose triggers have not fired, and work Arcadia can resolve safely remain off the active board and are accounted for explicitly.
+      - Ranking reuses the existing dispatch-readiness resolution and visibly explains each item's urgency or temporal trigger, relevance to the current Outcome or release path, significance measured by what it unlocks, estimated operator attention, and immediate versus downstream Token Impact; no unexplained composite score becomes a competing source of priority.
+      - The selected item names its Project, kind, affected plan and Action, why it is first, Arcadia's recommendation, the evidence available, and the uncertainty that still requires the operator.
+      - Clarifications request a natural-language answer, approvals state the exact authority granted, choices use outcome-specific labels, and deferrals require a named trigger; generic approve, reject, and defer controls are not shown where those words do not match the Decision.
+      - Before confirmation, every option previews its immediate consequence, what it unblocks, what remains blocked, and whether any Run or external effect will start; the confirmation control repeats the selected outcome instead of saying only `Approve`.
+      - After confirmation, the same surface gives a durable receipt naming the Decision recorded, the state transition, and the next Action or remaining blocker, replacing silent background continuation.
+      - Open items outside the active ranking remain reachable behind one explicit control and are never deleted or silently hidden; empty, loading, and failed states are visibly distinct.
+      - The board and its Decision interaction remain usable at phone width and by keyboard, and focused tests cover ranking, exclusion, each typed response, consequence preview, receipt, and empty and failure states.
+    decisions: ["0034", "0036"]
     references:
       - apps/dashboard/app/review/page.tsx
       - apps/dashboard/app/api/review-action/route.ts
+      - apps/dashboard/components/dashboard-ui.tsx
       - src/docs/dispatch.ts
       - src/commands/next.ts
+      - docs/decisions/0036-prioritize-operator-attention-board.md
+      - docs/arcadia-audit-command-notes.md
       - START_HERE.md
     depends_on: []
   - id: build-plan-approval-surface
@@ -147,7 +152,7 @@ actions:
       - src/stewardship/artifactValidator.ts
       - docs/plans/idea-to-managed-build.md
       - START_HERE.md
-    depends_on: [promote-accepted-plan, scope-review-to-blocking-questions]
+    depends_on: [promote-accepted-plan, build-operator-attention-board]
   - id: manage-coding-agent-build
     title: Manage the coding-agent build through Candidate and independent QA
     status: open
@@ -182,13 +187,14 @@ turning an explicit new-project idea into governed planning work, and turning
 an accepted planning Artifact into the exact build Action a coding agent can
 advance.
 
-Decision 0034 adds the operator half of the second seam. `promote-accepted-plan`
-makes an accepted plan produce a dispatchable build Action; the two Actions after
-it make the acceptance itself something the operator can perform away from a
-terminal, with defer-against-a-trigger as a first-class outcome rather than an
-absence of approval. The blocking-questions filter ships first and independently,
-because it is cheap and because it is the test of whether the Review page can
-earn attention at all.
+Decision 0034 adds the operator half of the second seam. Decision 0036 moves its
+80/20 foundation to the front of the line: the flat Review queue becomes the
+`Needs you` operator attention board before accepted-plan promotion resumes.
+The first slice reuses existing Review records and dispatch readiness, makes the
+ranking reasons and attention costs visible, and gives each Decision an
+outcome-specific consequence preview and receipt. `promote-accepted-plan` and
+the prepared-plan approval surface remain queued, not cancelled; their relative
+order is reconsidered after the board's core interaction is proven in use.
 
 The general expensive tail remains deferred to the third Action. The first
 proven deployment slice is intentionally smaller: one registered Astro

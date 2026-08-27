@@ -3,10 +3,34 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-25
+updated: 2026-08-27
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-27 — Put the operator attention board first
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Recorded Decision 0036 from explicit operator direction, promoted
+  the existing blocking-question Review slice into the broader 80/20 `Needs
+  you` board, and moved the Project pointer ahead of
+  `promote-accepted-plan`. The clarified Action now requires one dominant
+  operator-only item, a short ranked queue, visible urgency and temporal
+  trigger, Outcome and release relevance, unlock significance, operator-minute
+  and Token Impact estimates, recommendation and evidence, outcome-specific
+  choices, consequence preview, and a durable state-transition receipt.
+- **Result:** The attention board is now Arcadia's sole current Action and is
+  dispatchable. Accepted-plan promotion, prepared-plan approval, Ask active
+  sessions, and the remaining queue are preserved. Custom scoring, analytics,
+  drag-and-drop, Kanban views, and general workflow abstractions remain outside
+  the first slice.
+- **Next:** Reuse the current Review projection and shared dispatch-readiness
+  resolver to build and test the minimal phone-reachable `Needs you` board,
+  updating `START_HERE.md` with the changed operator flow.
+- **Blockers:** None. The operator authorized this documentation-only priority
+  change and its local integration. It does not start an implementation Run or
+  authorize push, deployment, publication, credentials, spending, production
+  access, or outbound messaging.
 
 ## 2026-08-25 — Planned guided Arcadia Ask sessions from real Songbook friction
 
