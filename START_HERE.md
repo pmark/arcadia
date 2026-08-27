@@ -1,5 +1,12 @@
 # Arcadia: Start Here
 
+Installing Arcadia on a new machine, especially to make sense of an existing
+AI-built project? Give your coding agent
+[`INSTALL_WITH_A_CODING_AGENT.md`](INSTALL_WITH_A_CODING_AGENT.md). It covers
+the minimal source installation, private workspace setup, repository adoption,
+and first release audit. The hostnames below describe the maintainer's
+configured instance; they are not portable installation defaults.
+
 This is the canonical brief operator guide. From an iPhone, iPad, or any device on the tailnet, open **Mission Control** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/> — this is the link that actually works from a phone, verified live rather than assumed. On this Mac only, <http://127.0.0.1:3020/> reaches the same dashboard without going through Tailscale.
 
 Open **Now** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/now> (on this Mac: <http://127.0.0.1:3020/now>). This is the screen to bookmark. It answers one question — how far away is the single thing that matters, and what is the one next move toward it — and refuses to answer any other. The target, the Project that owns it, and the gates that stand between you and it are declared in `NORTH_STAR.md` at the workspace root; edit that file to change what the screen measures. Below the distance, local Intelligence writes a short, specific account of what actually happened this week from the commit subjects in each Project's repository, followed by the share of the week's commits that landed in the target Project. One action is offered at full size, and one fifteen-minute alternative that is still on the target. The same brief is available in the terminal:

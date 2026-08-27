@@ -1,6 +1,18 @@
 # Arcadia
 
-Arcadia is a local-first project operating system for people juggling multiple creative, technical, and entrepreneurial efforts at the same time.
+Arcadia is the delivery layer for AI-built projects that have become hard to
+understand or finish. It gives people and their coding agents one durable,
+evidence-based answer to what works, what remains before release, and what to
+do next.
+
+**Want a coding agent to install Arcadia and recover a stalled existing
+project? Give it [Install Arcadia and Recover a Stalled
+Project](INSTALL_WITH_A_CODING_AGENT.md).** The guide starts with the minimal
+local CLI and ends with a checked-in release path; optional services come
+later.
+
+Arcadia is also a local-first project operating system for people juggling
+multiple creative, technical, and entrepreneurial efforts at the same time.
 
 **New here? Read [How Arcadia Works](docs/operating-model.md)** — what problem it
 solves, why plans live in your repositories rather than in Arcadia, and what is
