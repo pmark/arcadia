@@ -8,8 +8,8 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: A raw software-project idea becomes governed, dispatchable coding-agent work without a manual planning-to-build handoff
 active_plan: idea-to-managed-build
-current_action: promote-accepted-plan
-updated: 2026-08-25
+current_action: build-operator-attention-board
+updated: 2026-08-27
 ---
 
 # Arcadia
@@ -251,6 +251,16 @@ dashboard acceptance control exists for a document-owned `requires_review`
 Action, so that product gap is recorded separately rather than added to the
 completed v1 scope. The pointer has resumed
 `idea-to-managed-build/promote-accepted-plan`.
+
+On 2026-08-27 the operator moved the operator attention board to the front of
+Arcadia's product queue. Decision 0036 promotes the existing blocking-question
+slice into `build-operator-attention-board`: a minimal `Needs you` surface that
+ranks only consequential operator judgment and makes urgency, temporal trigger,
+Outcome and release relevance, what the item unlocks, operator minutes, Token
+Impact, recommendation, evidence, choices, and immediate consequences legible.
+`promote-accepted-plan`, the prepared-plan approval surface, and Ask active
+sessions remain governed work; they are not cancelled, and their post-board
+order must be chosen from evidence rather than inferred from queue position.
 
 ## Links
 
