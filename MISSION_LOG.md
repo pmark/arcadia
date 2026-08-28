@@ -10,8 +10,8 @@ updated: 2026-08-28
 
 ## 2026-08-28 — Built the Needs you board's ranking and typed confirmation
 
-- **Action:** `idea-to-managed-build#build-operator-attention-board` (still open — partial slice)
-- **Did:** Added a pure ranking module (`apps/dashboard/lib/needs-you.ts`) that
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Still open — this is a partial slice. Added a pure ranking module (`apps/dashboard/lib/needs-you.ts`) that
   turns the existing attention-item feed into one dominant item plus a ranked
   queue, with visible urgency/relevance/significance/attention-cost reasons
   per item, and excludes deterministic `blocked_work` repairs from the active

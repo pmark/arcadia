@@ -106,7 +106,7 @@ export default function ReviewPage() {
       const response = await fetch("/api/review-action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: item.id, action, reply, trigger })
+        body: JSON.stringify({ id: item.id, action, reply, trigger, requireTrigger: action === "defer" })
       });
       const body = await response.json();
       if (!response.ok) {
