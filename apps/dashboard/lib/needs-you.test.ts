@@ -115,6 +115,27 @@ describe("buildNeedsYouBoard", () => {
     expect(board.queue.map((entry) => entry.item.id)).toEqual(["review:action"]);
   });
 
+  it("ranks a resolvable Decision above a same-age blocked run that only points at it", () => {
+    const board = buildNeedsYouBoard([
+      attentionItem({
+        id: "run:failed",
+        kind: "run",
+        severity: "blocked",
+        relatedReviewId: null,
+        actionId: "action-run"
+      }),
+      attentionItem({
+        id: "review:retry",
+        kind: "review",
+        severity: "action",
+        relatedReviewId: null,
+        actionId: "action-retry"
+      })
+    ]);
+
+    expect(board.dominant?.item.id).toBe("review:retry");
+  });
+
   it("ranks an older item above a newer item of equal severity", () => {
     const board = buildNeedsYouBoard([
       attentionItem({ id: "review:old", createdAt: "2026-08-01T00:00:00.000Z", relatedReviewId: null, actionId: "action-a" }),

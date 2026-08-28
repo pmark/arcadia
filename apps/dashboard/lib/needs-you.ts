@@ -113,11 +113,20 @@ function buildReasons(item: DashboardAttentionItem, age: number, cost: Attention
   return reasons;
 }
 
+/**
+ * A `review` or `codex_packet` item carries a live Decision -- an approve
+ * button that actually grants authority. A `run` item's severity can also
+ * read "blocked" (a failed run), but its only primaryAction is a "View Run"
+ * link: it points at the Decision, it isn't one. Weighting kind ahead of raw
+ * severity keeps the resolvable Decision dominant instead of the status flag
+ * describing why the Decision exists.
+ */
 function scoreFor(item: DashboardAttentionItem, age: number, cost: AttentionCost): number {
   const severityWeight = item.severity === "blocked" ? 30 : item.severity === "action" ? 20 : 5;
+  const kindWeight = item.kind === "review" || item.kind === "codex_packet" ? 15 : 0;
   const costPenalty = cost === "long" ? 3 : cost === "medium" ? 1 : 0;
   const significanceBonus = item.expectedArtifact ? 5 : 0;
-  return severityWeight + Math.min(age, 30) + significanceBonus - costPenalty;
+  return severityWeight + kindWeight + Math.min(age, 30) + significanceBonus - costPenalty;
 }
 
 export function buildNeedsYouBoard(
