@@ -17,6 +17,9 @@ interface ReviewActionRequest {
   reply?: unknown;
   execute?: unknown;
   executor?: unknown;
+  trigger?: unknown;
+  /** Set by the Needs you board, whose defer control always collects a trigger; other quick-action surfaces don't send it and keep their untriggered defer. */
+  requireTrigger?: unknown;
 }
 
 export async function POST(request: Request) {
@@ -26,9 +29,18 @@ export async function POST(request: Request) {
     const action = typeof body.action === "string" ? body.action.trim() as ReviewAction : "";
     const execute = body.execute === true;
     const executor = typeof body.executor === "string" ? body.executor.trim() : undefined;
+    const trigger = typeof body.trigger === "string" ? body.trigger.trim() : "";
+    const requireTrigger = body.requireTrigger === true;
 
     if (!id) {
       return NextResponse.json({ error: "Requires Review Decision id is required.", details: null }, { status: 400 });
+    }
+
+    if (action === "defer" && requireTrigger && !trigger) {
+      return NextResponse.json(
+        { error: "A deferral requires a named trigger condition before it is accepted.", details: null },
+        { status: 400 }
+      );
     }
 
     if (action === "approve" && execute) {
@@ -42,7 +54,7 @@ export async function POST(request: Request) {
     }
 
     if (action === "approve" || action === "reject" || action === "defer") {
-      const response = await runReviewAction({ id, action });
+      const response = await runReviewAction({ id, action, trigger: action === "defer" ? trigger : undefined });
       return NextResponse.json({
         message: `Decision ${response.data.result.status}. ${response.data.result.summary}`,
         result: response.data

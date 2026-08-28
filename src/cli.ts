@@ -2281,12 +2281,13 @@ export function buildProgram(): Command {
       .command("defer")
       .description("Keep a Requires Review item open for future review")
       .argument("<id>", "Requires Review item id")
+      .option("--trigger <text>", "Trigger condition that will bring this Decision back for review")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((id: string, options: { workspace: string; json?: boolean }) =>
+  ).action((id: string, options: { workspace: string; trigger?: string; json?: boolean }) =>
     runCliAction(
       "review.defer",
       reviewOptionsFromArgv(options),
-      () => runReviewDeferCommand({ ...reviewOptionsFromArgv(options), id }),
+      () => runReviewDeferCommand({ ...reviewOptionsFromArgv(options), id, trigger: options.trigger }),
       renderReviewDecisionSuccess
     )
   );

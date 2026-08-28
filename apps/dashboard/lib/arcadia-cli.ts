@@ -481,8 +481,13 @@ export interface ClarifyActionResponse {
 export async function runReviewAction(input: {
   id: string;
   action: "approve" | "reject" | "defer";
+  trigger?: string;
 }): Promise<ArcadiaJsonSuccess<ReviewActionResponse>> {
-  return runArcadiaCliJson<ReviewActionResponse>(["review", input.action, input.id]);
+  const args = ["review", input.action, input.id];
+  if (input.action === "defer" && input.trigger) {
+    args.push("--trigger", input.trigger);
+  }
+  return runArcadiaCliJson<ReviewActionResponse>(args);
 }
 
 export async function reviewApproveWithExecute(input: {

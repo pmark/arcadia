@@ -305,13 +305,75 @@ export function AttentionCard({
   );
 }
 
+type ReviewOutcome =
+  | { kind: "action"; action: "approve" | "reject" | "defer" }
+  | { kind: "option"; option: string }
+  | { kind: "execute" };
+
+function outcomeLabel(outcome: ReviewOutcome, isPlanning: boolean, isAcceptance: boolean): string {
+  if (outcome.kind === "execute") {
+    return isAcceptance ? "Accept Plan" : isPlanning ? "Approve & Run" : "Approve & Execute";
+  }
+
+  if (outcome.kind === "option") {
+    return outcome.option;
+  }
+
+  if (outcome.action === "approve") {
+    return isAcceptance ? "Accept Plan" : isPlanning ? "Approve & Run" : "Approve";
+  }
+
+  return outcome.action === "reject" ? "Reject" : "Defer";
+}
+
+function consequenceFor(outcome: ReviewOutcome, isPlanning: boolean, isAcceptance: boolean): string {
+  if (outcome.kind === "execute") {
+    return isAcceptance
+      ? "Marks the plan Artifact accepted and promotes it toward build. No coding-agent Run starts by itself."
+      : "Starts an isolated coding-agent Run for this build Action. Merge, deploy, credentials, and other gated actions remain blocked without their own Decision.";
+  }
+
+  if (outcome.kind === "option") {
+    return `Records "${outcome.option}" as the outcome of this Decision and continues accordingly.`;
+  }
+
+  if (outcome.action === "approve") {
+    return isAcceptance
+      ? "Marks the plan Artifact accepted and promotes it toward build. No coding-agent Run starts by itself."
+      : isPlanning
+        ? "Starts an isolated coding-agent Run for this build Action. Merge, deploy, credentials, and other gated actions remain blocked without their own Decision."
+        : "Records this Decision as approved and lets Arcadia continue with its proposed next step.";
+  }
+
+  if (outcome.action === "reject") {
+    return "Records this Decision as rejected. No Run starts, and the Action needs a new plan before it can continue.";
+  }
+
+  return "Keeps this Decision open. It returns to the board only when the trigger condition is met.";
+}
+
+function outcomesEqual(a: ReviewOutcome, b: ReviewOutcome): boolean {
+  if (a.kind !== b.kind) {
+    return false;
+  }
+  if (a.kind === "action" && b.kind === "action") {
+    return a.action === b.action;
+  }
+  if (a.kind === "option" && b.kind === "option") {
+    return a.option === b.option;
+  }
+  return true;
+}
+
 export function ReviewCard({
   item,
   pendingAction,
   onAction,
   onApproveAndExecute,
   onResolveOption,
-  onResolveReply
+  onResolveReply,
+  onDefer,
+  rankReasons
 }: {
   item: DashboardReviewItem;
   pendingAction?: string | null;
@@ -319,14 +381,55 @@ export function ReviewCard({
   onApproveAndExecute?: (item: DashboardReviewItem) => void;
   onResolveOption?: (item: DashboardReviewItem, option: string) => void;
   onResolveReply?: (item: DashboardReviewItem, reply: string) => void;
+  onDefer?: (item: DashboardReviewItem, trigger: string) => void;
+  rankReasons?: Array<{ label: string; detail: string }>;
 }) {
   const [answer, setAnswer] = useState("");
+  const [confirming, setConfirming] = useState<ReviewOutcome | null>(null);
+  const [deferTrigger, setDeferTrigger] = useState("");
   const primaryActions = ["approve", "reject", "defer"] as const;
   const isPlanning = item.resolvedIntent === "CodexPlanningRunApproval" || item.resolvedIntent === "CodexPlanningRetryApproval";
   const isAcceptance = item.resolvedIntent === "CodexPlanningArtifactAcceptance";
   const isClarification = item.resolvedIntent === "ActionClarification";
   const extraOptions = item.options.filter((option) => !primaryActions.includes(option as (typeof primaryActions)[number]));
   const trimmedAnswer = answer.trim();
+
+  function startConfirm(outcome: ReviewOutcome) {
+    setDeferTrigger("");
+    setConfirming(outcome);
+  }
+
+  function cancelConfirm() {
+    setConfirming(null);
+    setDeferTrigger("");
+  }
+
+  function confirmOutcome() {
+    if (!confirming) {
+      return;
+    }
+    if (confirming.kind === "execute") {
+      onApproveAndExecute?.(item);
+    } else if (confirming.kind === "option") {
+      onResolveOption?.(item, confirming.option);
+    } else if (confirming.action === "defer") {
+      const trigger = deferTrigger.trim();
+      if (!trigger) {
+        return;
+      }
+      if (onDefer) {
+        onDefer(item, trigger);
+      } else {
+        onAction?.(item, "defer");
+      }
+    } else {
+      onAction?.(item, confirming.action);
+    }
+    setConfirming(null);
+  }
+
+  const confirmDisabled =
+    Boolean(pendingAction) || (confirming?.kind === "action" && confirming.action === "defer" && !deferTrigger.trim());
 
   return (
     <article className="min-w-0 rounded-md border border-line bg-panel p-4 shadow-soft">
@@ -337,6 +440,16 @@ export function ReviewCard({
         </div>
         <StatusBadge status={item.status} label={item.statusLabel} />
       </div>
+      {rankReasons?.length ? (
+        <ul className="mt-3 grid gap-1 rounded-md border border-line bg-canvas/60 p-3 text-xs">
+          {rankReasons.map((reason) => (
+            <li key={reason.label} className="flex gap-2">
+              <span className="shrink-0 font-semibold uppercase tracking-wide text-muted">{reason.label}</span>
+              <span className="text-ink/80">{reason.detail}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <dl className="mt-4 grid gap-3 text-sm">
         <Field label="Category" value={item.category} />
         <Field label="Original Request" value={item.sourceInput} />
@@ -423,18 +536,12 @@ export function ReviewCard({
         {!isClarification && onApproveAndExecute ? (
           <button
             type="button"
-            onClick={() => onApproveAndExecute(item)}
+            onClick={() => startConfirm({ kind: "execute" })}
             disabled={Boolean(pendingAction)}
             className="inline-flex min-h-10 items-center gap-2 rounded-md border border-moss/30 bg-moss/10 px-3 text-sm font-semibold text-moss transition hover:border-moss disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Play className="h-3.5 w-3.5" aria-hidden="true" />
-            {pendingAction === "approve-execute"
-              ? "Working…"
-              : isAcceptance
-                ? "Accept Plan"
-                : isPlanning
-                  ? "Approve & Run"
-                  : "Approve & Execute"}
+            {pendingAction === "approve-execute" ? "Working…" : outcomeLabel({ kind: "execute" }, isPlanning, isAcceptance)}
           </button>
         ) : null}
         {primaryActions.filter((action) =>
@@ -448,11 +555,11 @@ export function ReviewCard({
             <button
               key={action}
               type="button"
-              onClick={() => onAction?.(item, action)}
+              onClick={() => startConfirm({ kind: "action", action })}
               disabled={!onAction || disabled}
-              className={`min-h-10 rounded-md border px-3 text-sm font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-60 ${reviewActionClass(action)}`}
+              className={`min-h-10 rounded-md border px-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${reviewActionClass(action)}`}
             >
-              {pending ? "Working..." : action}
+              {pending ? "Working..." : outcomeLabel({ kind: "action", action }, isPlanning, isAcceptance)}
             </button>
           );
         })}
@@ -462,7 +569,7 @@ export function ReviewCard({
             <button
               key={option}
               type="button"
-              onClick={() => onResolveOption?.(item, option)}
+              onClick={() => startConfirm({ kind: "option", option })}
               disabled={!onResolveOption || Boolean(pendingAction)}
               className="min-h-10 rounded-md border border-steel/30 bg-steel/10 px-3 text-sm font-semibold text-steel transition hover:border-steel disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -471,6 +578,49 @@ export function ReviewCard({
           );
         }) : null}
       </div>
+      {confirming ? (
+        <div className="mt-3 rounded-md border border-steel/30 bg-steel/5 p-3">
+          <p className="text-sm leading-5 text-ink">
+            <span className="font-semibold">This will: </span>
+            {consequenceFor(confirming, isPlanning, isAcceptance)}
+          </p>
+          {confirming.kind === "action" && confirming.action === "defer" ? (
+            <div className="mt-3">
+              <label htmlFor={`defer-trigger-${item.id}`} className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Trigger condition
+              </label>
+              <input
+                id={`defer-trigger-${item.id}`}
+                type="text"
+                value={deferTrigger}
+                onChange={(event) => setDeferTrigger(event.target.value)}
+                placeholder="e.g. When a second project needs this capability"
+                disabled={Boolean(pendingAction)}
+                className="mt-1 w-full rounded-md border border-line bg-canvas px-3 py-2 text-sm leading-5 text-ink outline-none transition placeholder:text-muted/70 focus:border-steel disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              <p className="mt-1 text-xs text-muted">A deferral with no named trigger is refused.</p>
+            </div>
+          ) : null}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={confirmOutcome}
+              disabled={confirmDisabled}
+              className="min-h-10 rounded-md border border-moss/30 bg-moss/10 px-3 text-sm font-semibold text-moss transition hover:border-moss disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {Boolean(pendingAction) ? "Working..." : `Confirm: ${outcomeLabel(confirming, isPlanning, isAcceptance)}`}
+            </button>
+            <button
+              type="button"
+              onClick={cancelConfirm}
+              disabled={Boolean(pendingAction)}
+              className="min-h-10 rounded-md border border-line bg-canvas px-3 text-sm font-semibold text-muted transition hover:border-steel disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -768,7 +918,7 @@ function ActivityLink({ href, label }: { href: string; label: string }) {
   );
 }
 
-function dashboardFileHref(href: string): string {
+export function dashboardFileHref(href: string): string {
   if (href.startsWith("/") || /^[a-z][a-z0-9+.-]*:/i.test(href)) {
     return href;
   }
@@ -776,7 +926,7 @@ function dashboardFileHref(href: string): string {
   return `/api/file/${href.split("/").map(encodeURIComponent).join("/")}`;
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+export function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <dt className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</dt>
@@ -856,7 +1006,7 @@ export function composeAdviceTarget(lines: Array<[string, string | null | undefi
     .join("\n");
 }
 
-function formatDateTime(value: string): string {
+export function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
@@ -885,7 +1035,7 @@ function statusClass(status: string): string {
   return "border-line bg-canvas text-muted";
 }
 
-function reviewActionClass(action: "approve" | "reject" | "defer"): string {
+export function reviewActionClass(action: "approve" | "reject" | "defer"): string {
   if (action === "approve") {
     return "border-moss/30 bg-moss/10 text-moss hover:border-moss";
   }
