@@ -121,6 +121,8 @@ export interface ReviewDecisionCommandOptions {
   executor?: string;
   /** The operator's answer, when resolving a clarification Decision. */
   answer?: string;
+  /** The trigger condition a deferral is recorded against, when the caller has one. */
+  trigger?: string;
 }
 
 export interface ReviewDecisionCommandData {
@@ -963,7 +965,12 @@ export function runReviewRejectCommand(
 export function runReviewDeferCommand(
   options: ReviewDecisionCommandOptions
 ): CommandSuccess<ReviewDecisionCommandData> {
-  return runReviewDecisionCommand(options, "deferred", "Deferred for future review.");
+  const trigger = options.trigger?.trim();
+  return runReviewDecisionCommand(
+    options,
+    "deferred",
+    trigger ? `Deferred until: ${trigger}` : "Deferred for future review."
+  );
 }
 
 export function runReviewWeeklyCommand(

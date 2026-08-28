@@ -216,9 +216,11 @@ replaces another Project's work pointer.
 
 1. Read **Today's Advantage**: one ready Action, its expected Artifact, and why it matters now.
 2. Click **Prepare Planning Decision**. This creates the bounded planning packet but does not run Codex.
-3. Open **Review**, inspect the packet, and choose Approve & Run, Reject, or Defer.
+3. Open **Needs you**, inspect the packet, and choose Approve & Run, Reject, or Defer. Each
+   choice previews its consequence before it is confirmed, and a Defer is refused
+   until it names the trigger condition that will bring it back.
 4. Use **Runs** to follow approved work and inspect its Artifacts, Validation, and Log.
-5. Return to **Review** to accept a successful plan; acceptance marks the original Action done.
+5. Return to **Needs you** to accept a successful plan; acceptance marks the original Action done.
 
 Before feeding another coding agent, open the **Agent Queue** section in
 Mission Control. It keeps three explicit lanes in view: **Ready to feed**,
@@ -444,7 +446,7 @@ LLM tokens unless a model is asked to interpret their output. **Get to work**
 prepares a planning Decision for that exact Action; it never runs code or
 deploys. If preparation is refused, the same view names each blocking document
 field and its concrete remedy. Open questions and project Decisions can be
-answered inline, with the same answer/approval distinction used by Review.
+answered inline, with the same answer/approval distinction used by Needs you.
 
 The terminal brief resolves the same pointer:
 
@@ -672,7 +674,7 @@ a refresh warning never reverses the accepted transition.
 
 After you sign in following a laptop restart, Arcadia's managed launch agents start and keep these services running:
 
-- **Dashboard (core)** — Mission Control, Review, Runs, and System Status at port 3020.
+- **Dashboard (core)** — Mission Control, Needs you, Runs, and System Status at port 3020.
 - **Managed Run worker (core)** — executes only queued, authorized Runs with the coding agent bound to each packet.
 - **Intelligence API and worker (feature-specific)** — structured generation at port 4710. Its durable SQLite queue dispatches cloud, local LiteLLM, Codex CLI, and Claude Code CLI generation through separate bounded pools, so a long image job no longer blocks unrelated requests. Local structured-text callers can select Claude Code with `executionTarget: "claude-code"`; the default route uses the installed `claude` CLI and does not authorize paid cloud usage.
 - **ComfyUI image backend (feature-specific)** — local FLUX.2 Klein generation/editing at port 8188 when configured.

@@ -3,10 +3,51 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-27
+updated: 2026-08-28
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-28 — Built the Needs you board's ranking and typed confirmation
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board` (still open — partial slice)
+- **Did:** Added a pure ranking module (`apps/dashboard/lib/needs-you.ts`) that
+  turns the existing attention-item feed into one dominant item plus a ranked
+  queue, with visible urgency/relevance/significance/attention-cost reasons
+  per item, and excludes deterministic `blocked_work` repairs from the active
+  board with a stated reason. Rebuilt the `/review` route as the `Needs you`
+  board on top of it and renamed the nav entry. Extended `ReviewCard` with a
+  two-step confirm: every outcome now previews its consequence and the
+  confirm control repeats the outcome, with a durable receipt shown after.
+  Made Decision-defer require a named trigger end to end (API refusal, CLI
+  `--trigger` flag, persisted into the Decision's own record) without
+  touching Discord or dogfood's existing untriggered defer paths.
+- **Result:** The core ranking/exclusion logic is real and unit-tested (5
+  passing tests), the board renders and typechecks cleanly, and all 115
+  existing review/CLI/dogfood/adapter tests still pass unmodified. Not done:
+  focused tests for the UI's typed responses, consequence preview, receipt,
+  and empty/failure states named in the acceptance criteria; codex_packet and
+  run-kind attention items still render via the older generic `AttentionCard`
+  without the new confirm/receipt treatment (their current actions are
+  link/command-only, not live approve buttons, so this is a smaller gap than
+  it sounds); and downstream-dependency-based "significance" is approximated
+  by `expectedArtifact` presence rather than a real dependency graph walk.
+- **Also judged:** The operator's proposal-signal folded-in scope (surfacing
+  unresolved `type: proposal` `ask` signals on this same board) is out of
+  scope for this Action. Decision 0025 explicitly reserves proposal
+  ingestion/surfacing to `accept-upstream-proposals` on `way-delivery`
+  (`status: draft`, not dispatchable), and this Action's own clarification is
+  anchored to Decisions 0034/0036, which describe the Review-queue-to-board
+  seam, not a new document signal taxonomy. Widening it here would exceed a
+  clarified Action's scope without its own Decision. Recommend ratifying
+  `way-delivery`'s planning status (or a new Decision) before that work
+  starts; PPN's filed proposals (0001, 0003, 0004) remain visible today via
+  `docs sync`'s existing foreign-document report, just not yet on this board.
+- **Next:** Either continue this Action with UI-level test coverage for the
+  confirm/receipt flow, or take the proposal-signal work through its own
+  Decision/clarification before folding it in.
+- **Blockers:** None for continuing this Action. The folded-in proposal-signal
+  scope is blocked on a Decision, not on missing information.
 
 ## 2026-08-27 — Put the operator attention board first
 
