@@ -8,6 +8,31 @@ updated: 2026-08-28
 
 # Mission Log: Arcadia
 
+## 2026-08-28 — Closed the Needs you board's UI test-coverage gap
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Added `tests/e2e/needs-you-board.spec.ts`, five focused Playwright
+  tests exercising the confirm/consequence-preview/receipt flow this
+  Action's acceptance criteria named: the empty state, a consequence preview
+  that can be cancelled before it fires, a confirmed outcome (Reject) leaving
+  a receipt naming the Decision and transition, a defer refused without a
+  trigger and persisted with one, and confirmation that the dashboard's own
+  older quick-defer lane still works untriggered. Also fixed the ranking
+  regression the last entry's CI run surfaced: a resolvable Decision was
+  losing to the failed run's own "blocked" status flag on score alone.
+- **Result:** All 16 e2e tests (11 existing + 5 new) and the full 1088-test
+  unit suite pass locally with the monorepo and dashboard both built. The
+  approve-and-execute path still has no inline receipt by design -- it
+  navigates straight to the started Run's own detail page, which is that
+  path's existing durable record, already covered by
+  `tests/e2e/mission-control.spec.ts`.
+- **Next:** `codex_packet`/`run`-kind attention items still render via the
+  older generic `AttentionCard` without the confirm/receipt treatment; their
+  current actions are link/command-only rather than live approve buttons, so
+  this remains a live but lower-priority gap. Downstream-dependency-based
+  significance is still approximated by `expectedArtifact` presence.
+- **Blockers:** None.
+
 ## 2026-08-28 — Built the Needs you board's ranking and typed confirmation
 
 - **Action:** `idea-to-managed-build#build-operator-attention-board`
