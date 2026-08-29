@@ -218,7 +218,10 @@ replaces another Project's work pointer.
 2. Click **Prepare Planning Decision**. This creates the bounded planning packet but does not run Codex.
 3. Open **Needs you**, inspect the packet, and choose Approve & Run, Reject, or Defer. Each
    choice previews its consequence before it is confirmed, and a Defer is refused
-   until it names the trigger condition that will bring it back.
+   until it names the trigger condition that will bring it back. Packet and Run
+   handoffs use the same two-step interaction: confirmation states what will and
+   will not happen, then leaves a receipt with the durable record or guarded
+   command. Confirming a handoff alone records no Decision and starts no Run.
 4. Use **Runs** to follow approved work and inspect its Artifacts, Validation, and Log.
 5. Return to **Needs you** to accept a successful plan; acceptance marks the original Action done.
 

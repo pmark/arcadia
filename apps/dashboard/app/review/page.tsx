@@ -179,7 +179,15 @@ export default function ReviewPage() {
       );
     }
 
-    return <AttentionCard key={entry.item.id} item={entry.item} pendingAction={null} />;
+    return (
+      <AttentionCard
+        key={entry.item.id}
+        item={entry.item}
+        pendingAction={null}
+        confirmActions
+        rankReasons={emphasized ? entry.reasons : undefined}
+      />
+    );
   }
 
   return (

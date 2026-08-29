@@ -213,13 +213,39 @@ export function ProjectCard({ project }: { project: DashboardProject }) {
 export function AttentionCard({
   item,
   pendingAction,
-  onReviewAction
+  onReviewAction,
+  confirmActions = false,
+  rankReasons
 }: {
   item: DashboardAttentionItem;
   pendingAction?: string | null;
   onReviewAction?: (item: DashboardAttentionItem, action: "approve" | "reject" | "defer") => void;
+  confirmActions?: boolean;
+  rankReasons?: Array<{ label: string; detail: string }>;
 }) {
   const Icon = item.severity === "blocked" ? AlertTriangle : Radio;
+  const [confirmingAction, setConfirmingAction] = useState<DashboardAttentionItem["primaryActions"][number] | null>(null);
+  const [actionReceipt, setActionReceipt] = useState<DashboardAttentionItem["primaryActions"][number] | null>(null);
+
+  function chooseAction(action: DashboardAttentionItem["primaryActions"][number]) {
+    if (confirmActions) {
+      setActionReceipt(null);
+      setConfirmingAction(action);
+      return;
+    }
+    if (action.reviewAction) {
+      onReviewAction?.(item, action.reviewAction);
+    }
+  }
+
+  function confirmAttentionAction() {
+    if (!confirmingAction) return;
+    if (confirmingAction.reviewAction) {
+      onReviewAction?.(item, confirmingAction.reviewAction);
+    }
+    setActionReceipt(confirmingAction);
+    setConfirmingAction(null);
+  }
 
   return (
     <article className="min-w-0 rounded-md border border-line bg-panel p-4 shadow-soft">
@@ -233,6 +259,16 @@ export function AttentionCard({
             </div>
             <StatusBadge status={item.status} label={item.kind === "codex_packet" ? item.statusLabel : labelAttentionKind(item.kind)} />
           </div>
+          {rankReasons?.length ? (
+            <ul className="mt-3 grid gap-1 rounded-md border border-line bg-canvas/60 p-3 text-xs">
+              {rankReasons.map((reason) => (
+                <li key={reason.label} className="flex gap-2">
+                  <span className="shrink-0 font-semibold uppercase tracking-wide text-muted">{reason.label}</span>
+                  <span className="text-ink/80">{reason.detail}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <dl className="mt-4 grid gap-3 text-sm">
             {item.interpretation ? <Field label="Interpretation" value={item.interpretation} /> : null}
             {item.milestone ? <Field label="Milestone" value={item.milestone} /> : null}
@@ -256,7 +292,7 @@ export function AttentionCard({
                     key={action.label}
                     type="button"
                     disabled={!onReviewAction || Boolean(pendingAction)}
-                    onClick={() => onReviewAction?.(item, action.reviewAction!)}
+                    onClick={() => chooseAction(action)}
                     className={`min-h-10 rounded-md border px-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${reviewActionClass(action.reviewAction)}`}
                   >
                     {pending ? "Working..." : action.label}
@@ -265,6 +301,18 @@ export function AttentionCard({
               }
 
               if (action.href) {
+                if (confirmActions) {
+                  return (
+                    <button
+                      key={action.label}
+                      type="button"
+                      onClick={() => chooseAction(action)}
+                      className="inline-flex min-h-10 items-center rounded-md border border-steel/30 bg-steel/10 px-3 text-sm font-semibold text-steel transition hover:border-steel"
+                    >
+                      {action.label}
+                    </button>
+                  );
+                }
                 return (
                   <a
                     key={action.label}
@@ -276,7 +324,16 @@ export function AttentionCard({
                 );
               }
 
-              return action.command ? (
+              return action.command && confirmActions ? (
+                <button
+                  key={action.label}
+                  type="button"
+                  onClick={() => chooseAction(action)}
+                  className="min-h-10 rounded-md border border-moss/30 bg-moss/10 px-3 text-sm font-semibold text-moss transition hover:border-moss"
+                >
+                  {action.label}
+                </button>
+              ) : action.command ? (
                 <code
                   key={action.label}
                   className="min-w-0 break-all rounded-md border border-line bg-canvas px-3 py-2 text-xs text-muted"
@@ -286,6 +343,15 @@ export function AttentionCard({
               ) : null;
             })}
           </div>
+          {confirmingAction ? (
+            <AttentionActionConfirmation
+              item={item}
+              action={confirmingAction}
+              onConfirm={confirmAttentionAction}
+              onCancel={() => setConfirmingAction(null)}
+            />
+          ) : null}
+          {actionReceipt ? <AttentionActionReceipt item={item} action={actionReceipt} /> : null}
           <div className="mt-3">
             <ActionAdvice
               target={composeAdviceTarget([
@@ -302,6 +368,119 @@ export function AttentionCard({
         </div>
       </div>
     </article>
+  );
+}
+
+interface AttentionActionEffect {
+  immediate: string;
+  unlocks: string;
+  remainsBlocked: string;
+  effects: string;
+}
+
+function attentionActionEffect(
+  item: DashboardAttentionItem,
+  action: DashboardAttentionItem["primaryActions"][number]
+): AttentionActionEffect {
+  if (item.kind === "codex_packet" && action.command) {
+    return {
+      immediate: "Reveals the exact guarded command for this prepared packet.",
+      unlocks: "Running that command can start the prepared coding-agent work.",
+      remainsBlocked: "The packet stays pending until the command is executed successfully; merge, deployment, credentials, and release keep their own gates.",
+      effects: "Confirming here records no Decision, starts no Run, and causes no external effect."
+    };
+  }
+
+  if (item.kind === "run") {
+    return {
+      immediate: "Prepares a link to the Run's durable detail record.",
+      unlocks: "That record exposes the failure or review evidence needed to decide the next step.",
+      remainsBlocked: `The Run remains ${item.statusLabel}; resolving it still requires the Decision or repair named in its record.`,
+      effects: "Confirming here records no Decision, retries no Run, and causes no external effect."
+    };
+  }
+
+  return {
+    immediate: action.href ? `Prepares the ${action.label} link.` : `Prepares the ${action.label} handoff.`,
+    unlocks: "The linked evidence becomes available for operator review.",
+    remainsBlocked: item.nextAction,
+    effects: "Confirming here records no Decision, starts no Run, and causes no external effect."
+  };
+}
+
+function AttentionActionConfirmation({
+  item,
+  action,
+  onConfirm,
+  onCancel
+}: {
+  item: DashboardAttentionItem;
+  action: DashboardAttentionItem["primaryActions"][number];
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const effect = attentionActionEffect(item, action);
+  return (
+    <div className="mt-3 rounded-md border border-steel/30 bg-steel/5 p-3">
+      <p className="text-sm font-semibold text-ink">Before “{action.label}”</p>
+      <dl className="mt-2 grid gap-2 text-xs leading-5">
+        <Field label="Immediate consequence" value={effect.immediate} />
+        <Field label="What this unlocks" value={effect.unlocks} />
+        <Field label="What remains blocked" value={effect.remainsBlocked} />
+        <Field label="Run or external effect" value={effect.effects} />
+      </dl>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onConfirm}
+          className="min-h-10 rounded-md border border-moss/30 bg-moss/10 px-3 text-sm font-semibold text-moss transition hover:border-moss"
+        >
+          Confirm: {action.label}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="min-h-10 rounded-md border border-line bg-canvas px-3 text-sm font-semibold text-muted transition hover:border-steel"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AttentionActionReceipt({
+  item,
+  action
+}: {
+  item: DashboardAttentionItem;
+  action: DashboardAttentionItem["primaryActions"][number];
+}) {
+  const recordLabel = item.kind === "run" ? `Run ${item.relatedRunId ?? item.id}` : `Packet ${item.relatedCodexInvocationId ?? item.id}`;
+  return (
+    <div className="mt-3 rounded-md border border-moss/30 bg-moss/10 p-3 text-sm text-moss" aria-live="polite">
+      <p className="text-xs font-semibold uppercase tracking-wide">Receipt · {recordLabel}</p>
+      <p className="mt-1 font-medium leading-5">
+        “{action.label}” confirmed. No Decision was recorded and no Arcadia state changed.
+      </p>
+      {action.href ? (
+        <a
+          href={action.href}
+          className="mt-3 inline-flex min-h-10 items-center rounded-md border border-moss/30 bg-panel px-3 text-sm font-semibold text-moss transition hover:border-moss"
+        >
+          Continue: {action.label}
+        </a>
+      ) : null}
+      {action.command ? (
+        <div className="mt-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-moss/80">Next command</p>
+          <code className="mt-1 block min-w-0 break-all rounded-md border border-moss/20 bg-canvas px-3 py-2 text-xs text-ink">
+            {action.command}
+          </code>
+        </div>
+      ) : null}
+      <p className="mt-2 text-xs leading-5 text-moss/80">Next: {item.nextAction}</p>
+    </div>
   );
 }
 
