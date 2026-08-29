@@ -8,8 +8,8 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: A raw software-project idea becomes governed, dispatchable coding-agent work without a manual planning-to-build handoff
 active_plan: idea-to-managed-build
-current_action: build-operator-attention-board
-updated: 2026-08-27
+current_action: promote-accepted-plan
+updated: 2026-08-29
 ---
 
 # Arcadia
@@ -261,6 +261,17 @@ Impact, recommendation, evidence, choices, and immediate consequences legible.
 `promote-accepted-plan`, the prepared-plan approval surface, and Ask active
 sessions remain governed work; they are not cancelled, and their post-board
 order must be chosen from evidence rather than inferred from queue position.
+
+The operator attention board is now complete. `Needs you` ranks the active
+operator-only set, gives Decisions typed consequence previews and durable
+transition receipts, and now applies the same explicit handoff contract to
+standalone coding-agent packets and failed or review-required Runs without
+pretending that opening a record or revealing a guarded command changed state.
+The complete 18-test browser suite, 1,088 unit tests, and clean core, Discord,
+and Dashboard builds prove the slice. The pointer returns to
+`idea-to-managed-build/promote-accepted-plan`, because that deterministic
+accepted-plan-to-build promotion remains the direct unresolved seam in the
+current Milestone; the larger plan-reading surface still depends on it.
 
 ## Links
 

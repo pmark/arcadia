@@ -8,6 +8,30 @@ updated: 2026-08-28
 
 # Mission Log: Arcadia
 
+## 2026-08-29 — Completed the Needs you operator attention board
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Extended the board's two-step consequence preview and receipt to
+  standalone `codex_packet` and `run` items. Packet commands are no longer
+  presented as if displaying a command granted authority: confirmation states
+  that it records no Decision and starts no Run, then leaves the exact guarded
+  command. Run handoffs state that they neither retry nor resolve the Run, then
+  link to its durable detail record. Both item kinds now show the dominant
+  ranking reasons when selected. Updated the normal-use guide and added focused
+  browser tests that prove each confirmation leaves the underlying packet or
+  failed Run unchanged.
+- **Result:** `pnpm build`, `pnpm dashboard:build`, all 1,088 unit tests, and
+  all 18 Playwright tests pass. The Action's acceptance criteria are met and it
+  is `done`; `PROJECT.md` now points to `promote-accepted-plan`.
+- **Deferred:** A reverse dependency-graph walk could make significance more
+  precise than the current expected-Artifact unlock. Build it when an active
+  attention item has at least two downstream dependent Actions whose relative
+  ranking would change; until that trigger fires, the visible expected Artifact
+  is the cheaper and truthful 80/20 measure.
+- **Next:** Promote an accepted validated planning Artifact into the smallest
+  governed build Action and immutable build packet without starting a Run.
+- **Blockers:** None.
+
 ## 2026-08-28 — Closed the Needs you board's UI test-coverage gap
 
 - **Action:** `idea-to-managed-build#build-operator-attention-board`

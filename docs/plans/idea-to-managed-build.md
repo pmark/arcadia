@@ -7,7 +7,7 @@ status: active
 milestone: A raw software-project idea becomes governed, dispatchable coding-agent work without a manual planning-to-build handoff
 token_impact: large
 token_budget: "Project creation, document rendering, readiness checks, builds, and state transitions are deterministic. Use one bounded planning Run for the idea, one coding-agent implementation Run per accepted Action, and independent QA only when deterministic readiness passes."
-updated: 2026-08-27
+updated: 2026-08-29
 actions:
   - id: prepare-project-idea
     title: Turn one stated project idea into a dispatchable planning Action
@@ -96,7 +96,7 @@ actions:
     depends_on: [prepare-project-idea]
   - id: build-operator-attention-board
     title: Make scarce operator attention obvious and actionable
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: Replace the flat Review queue with a minimal Needs you board that selects the most consequential operator-only item, explains why it is first and what it costs, and presents outcome-specific choices with their immediate consequences.
@@ -195,6 +195,16 @@ ranking reasons and attention costs visible, and gives each Decision an
 outcome-specific consequence preview and receipt. `promote-accepted-plan` and
 the prepared-plan approval surface remain queued, not cancelled; their relative
 order is reconsidered after the board's core interaction is proven in use.
+
+`build-operator-attention-board` is now complete. Review Decisions, standalone
+coding-agent packets, and failed or review-required Runs all use a two-step
+interaction on `Needs you`: the preview names the immediate consequence,
+unlock, remaining blocker, and external-effect boundary; the resulting receipt
+either records the Decision transition or states truthfully that the handoff
+changed no Arcadia state and points to the durable Run record or guarded
+command. The board is covered at phone width through the complete Playwright
+suite. The pointer returns to `promote-accepted-plan`, the unresolved seam at
+the center of this plan's Milestone.
 
 The general expensive tail remains deferred to the third Action. The first
 proven deployment slice is intentionally smaller: one registered Astro
