@@ -7,9 +7,9 @@ project: arcadia
 status: open
 question: Arcadia models Projects, Plans, Actions, Decisions, Logs, Artifacts, and Runs, but has no first-class record of the thing that actually happens — one bounded stretch of coding-agent work. Should Session become a primitive, and if so, what exactly does Arcadia store about it?
 gap_type: missing-decision
-recommendation: Name Session as a primitive, but make it thin. Both agent CLIs already assign session ids, persist transcripts, and track running state, and Claude Code's session registry already correlates sessions to pull requests. Arcadia should store the governance linkage — which Action was dispatched, which Log and Decisions came back — plus a pointer to the agent's own session id, and delegate the transcript entirely. The record lives in the workspace as operational data; its governance output stays in the project repository. Arcadia records the before and the after and never observes the during.
-confidence: medium
-updated: 2026-08-07
+recommendation: Name Session as a primitive, but make it thin. Arcadia should store the governance linkage, provider session pointer, and terminal transport needed to leave and rejoin the work, while delegating the transcript to the coding agent. Use an explicitly launched tmux session as the first transport around Arcadia's existing isolated worktree; record process liveness and exit status only, then resolve the repository after exit. Arcadia records the before and after and never observes the during.
+confidence: high
+updated: 2026-08-29
 ---
 
 # Decision 0012: The Session primitive
@@ -84,7 +84,7 @@ governance linkage and a pointer.** The agent's own session id is the join key.
 | Phase | Fields |
 | --- | --- |
 | **Before** (what Arcadia dispatched) | project slug, action id, plan path, agent, model, effort, branch, worktree path, prepared-at |
-| **Join** (how to find the transcript) | the agent's own session id or name |
+| **Join** (how to return to the work) | the agent's own session id and name; optional terminal transport and tmux session name |
 | **After** (what came back) | ended-at, outcome, the Log entry it produced, any Decisions it opened, the pull request if one exists |
 
 The before-fields are exactly what `arcadia go` already computes and discards.
@@ -162,6 +162,52 @@ operator uses), **Handoff** (names only the before).
 Adopting their vocabulary keeps the join obvious and avoids a translation layer
 between what Arcadia calls a thing and what the operator sees in their app.
 
+### 9. tmux is the first transport, not the Session model
+
+The first implementation hosts an interactive Claude Code process in a named
+tmux session. tmux solves one narrow operator problem well: the terminal can be
+left and reattached without losing the exact interactive agent interface. It
+does not become the queue, transcript store, governance record, or source of
+semantic progress.
+
+Arcadia wraps tmux around the isolated worktree and launch command it already
+prepared. It does not use Claude Code's native `--tmux` path because that path
+requires Claude Code's `--worktree` mode and would give two systems overlapping
+authority for branch creation, base selection, worktree placement, and cleanup.
+Arcadia keeps those safety-sensitive responsibilities under Decisions 0009 and
+0010, while Claude Code continues to own its conversation and transcript.
+
+The first launch is opt-in and explicit. Before starting it, Arcadia persists a
+stable Claude Code session id and display name plus a collision-resistant tmux
+name. During execution Arcadia may ask only whether the named process is alive.
+After exit it may record the exit status and re-run deterministic repository
+resolution. It must not call `capture-pane`, mirror output, infer progress,
+detect prompts, or send keystrokes.
+
+tmux persistence ends with the host or tmux server. Arcadia therefore treats it
+as a reattachable local terminal, not durable job execution. The workspace
+Session receipt remains the durable operational linkage, and Git plus managed
+documents remain the recovery and governance authorities.
+
+### 10. Implementation order
+
+The implementation sequence follows the existing idea-to-managed-build plan:
+
+1. Finish accepted-plan promotion so one exact governed build Action exists.
+2. Persist and explicitly launch one tmux-backed Session, then dogfood detach,
+   reattach, exit, and provider-native resume.
+3. Reconcile exit into a thin receipt and the repository's resulting Action or
+   Decision without reading the transcript.
+4. Use those receipts in the Agent Queue and Needs you projections.
+5. Reconsider opt-in worker queueing only after one real Session succeeds and
+   the operator chooses unattended launch for another Action.
+6. Add notifications only after a real completion or needs-input state waits
+   unnoticed or must be relayed manually.
+
+This sequence implements the operator-value core before the expensive tail.
+Transcript views, prompt injection, live progress, session analytics, default-on
+queueing, and a new supervisor remain out of scope.
+
 ## Consequences
 
 - `arcadia go --apply --agent <x>` records a Session instead of discarding what
@@ -190,12 +236,10 @@ between what Arcadia calls a thing and what the operator sees in their app.
    worktree is an empirical question this decision cannot answer by reading
    code. It should be tested with one real dispatch before the pointer design
    is relied upon.
-2. Should `-n/--name` be set from the Action id so sessions are recognizable in
-   the agent's own session picker without cross-referencing Arcadia?
-3. When a session is resumed or forked in the agent's UI rather than through
+2. When a session is resumed or forked in the agent's UI rather than through
    Arcadia, does Arcadia learn about it, or does the Session record simply
    describe the dispatch that started the chain?
-4. The four mistyped specification documents remain typed `reference`. Is
+3. The four mistyped specification documents remain typed `reference`. Is
    "an approved specification that governs later work" a missing document type,
    separate from this decision? It is related but not solved here.
 
