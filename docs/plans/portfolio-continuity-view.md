@@ -7,7 +7,9 @@ status: draft
 milestone: One portfolio or Project view tells the truthful story of past, current, planned, deferred, and Incubating work while conversation reliably preserves new ideas
 token_impact: large
 token_budget: "Build the read projection, ordering, filters, fixtures, and browser checks deterministically. Use model-bearing work for implementation, one visual review of the mobile and desktop view, and bounded diagnosis only when deterministic checks fail; conversational capture routing remains rule-first."
-updated: 2026-08-15
+recommended_model: gpt-5.6-sol
+recommended_reasoning_effort: high
+updated: 2026-08-30
 actions:
   - id: build-arcadia-now-vertical-slice
     title: Make the immediate next governed move obvious and tappable
