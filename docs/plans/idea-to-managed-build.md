@@ -170,9 +170,13 @@ actions:
       - An explicit launch option on arcadia go is the only new authority to start a process; preview and the existing manual launch-command path remain non-launching and backward compatible.
       - Launch is allowed only after the existing dispatch, clean-worktree, agent-owned branch, isolated-worktree, pinned-model, and optional-effort checks have passed; tmux availability and session-name collision checks fail before Arcadia claims a Session is running.
       - Before process start, Arcadia persists one workspace-owned Session receipt linking Project, plan, Action, execution profile, provider, model, effort, branch, worktree, prepared time, stable Claude Code session id and display name, and tmux session name.
+      - The Session binds immutably to the promoted build packet id and hash, authorizing Decisions, selected provider profile, and base revision; a stale Action, packet, authority set, or provider mismatch refuses before launch.
+      - Arcadia permits only one prepared or running Session lease per repository by default, while allowing separately admitted Sessions in different repositories.
+      - arcadia go, arcadia advance, and the Agent Queue consume one deterministic project-transition resolver whose exhaustive outcomes are launch, plan, Decision, repair, reconcile, wait, or Milestone completion; a non-launch outcome creates or names the one governed step that can advance the Project instead of returning an unstructured dead end.
       - Arcadia starts tmux around the worktree it already created instead of invoking Claude Code's worktree-owning tmux mode, so Arcadia remains the single authority for branch and worktree creation and retirement.
       - A read-only Session view reports prepared, running, or exited from stored linkage plus tmux process liveness and prints the exact reattach command; it never captures panes, mirrors transcripts, estimates progress, or injects input.
       - A real Claude Code dogfood Session can detach, survive closing its launching terminal, reattach to the same interactive interface, and remain resumable by its preassigned Claude session id after exit.
+      - Cross-repository work is decomposed into linked single-repository Actions and Sessions; the first fixtures prove a dispatchable PPN Action, an operator-owned Rebuster Action that must produce a Decision rather than launch, and a new idea that must produce planning before implementation.
       - Focused tests cover preview, explicit launch, missing tmux, name collision, spawn failure, stable identifiers, liveness, reattach instructions, and unchanged manual behavior; START_HERE.md documents the operator procedure and limits.
     decisions: ["0012"]
     references:
