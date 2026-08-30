@@ -3,6 +3,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import {
   getProjectMetadata,
+  listAgentReviewFlaggedItems,
   listActionableReviewItems,
   listExecutionRuns,
   listProjects
@@ -16,7 +17,7 @@ import {
 import type { ExecutionRunSummary, Project } from "../domain/types.js";
 import { nowIso } from "../utils/time.js";
 
-export type AgentQueueEntryState = "ready" | "running" | "attention";
+export type AgentQueueEntryState = "ready" | "running" | "flagged" | "attention";
 
 export type AgentQueueAttentionKind =
   | "document"
@@ -63,10 +64,12 @@ export interface AgentQueue {
   generatedAt: string;
   ready: AgentQueueEntry[];
   running: AgentQueueEntry[];
+  flagged: AgentQueueEntry[];
   attention: AgentQueueEntry[];
   counts: {
     ready: number;
     running: number;
+    flagged: number;
     attention: number;
   };
 }
@@ -103,6 +106,7 @@ export function buildAgentQueue(
 ): AgentQueue {
   const ready: AgentQueueEntry[] = [];
   const running: AgentQueueEntry[] = [];
+  const flagged: AgentQueueEntry[] = [];
   const attention: AgentQueueEntry[] = [];
   const generatedAt = (options.now ?? new Date()).toISOString();
 
@@ -147,6 +151,34 @@ export function buildAgentQueue(
     });
   }
 
+  for (const decision of listAgentReviewFlaggedItems(db)) {
+    flagged.push({
+      id: `agent-review:${decision.id}`,
+      state: "flagged",
+      attentionKind: "decision",
+      selected: false,
+      projectId: decision.project_id,
+      projectName: decision.project_name,
+      projectSlug: null,
+      repositoryRoot: null,
+      planSlug: null,
+      planPath: null,
+      actionId: decision.work_item_id,
+      actionTitle: decision.work_item_title,
+      responsibility: "codex",
+      expectedArtifact: "Coding-agent applicability assessment",
+      tokenImpact: null,
+      tokenBudget: null,
+      status: "agent_review_flagged",
+      reason: decision.decision_needed,
+      nextAction: "Start a coding-agent applicability review when this question becomes a priority.",
+      blockers: [],
+      runId: null,
+      decisionId: decision.id,
+      updatedAt: decision.updated_at
+    });
+  }
+
   for (const packet of listPendingPackets(db)) {
     attention.push({
       id: `packet:${packet.id}`,
@@ -182,16 +214,19 @@ export function buildAgentQueue(
 
   ready.sort(sortEntries);
   running.sort(sortEntries);
+  flagged.sort(sortEntries);
   attention.sort(sortEntries);
 
   return {
     generatedAt,
     ready,
     running,
+    flagged,
     attention,
     counts: {
       ready: ready.length,
       running: running.length,
+      flagged: flagged.length,
       attention: attention.length
     }
   };

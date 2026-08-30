@@ -494,6 +494,25 @@ export async function runReviewAction(input: {
   return runArcadiaCliJson<ReviewActionResponse>(args);
 }
 
+export async function reassessReviewItem(id: string): Promise<ArcadiaJsonSuccess<{
+  item: ReviewActionResponse["item"];
+  outcome: "withdrawn" | "still_declared";
+  summary: string;
+  sourcePlan: string;
+  activePlan: string | null;
+  questionStillDeclared: boolean;
+}>> {
+  return runArcadiaCliJson(["review", "reassess", id]);
+}
+
+export async function flagReviewForAgent(id: string): Promise<ArcadiaJsonSuccess<{
+  item: ReviewActionResponse["item"];
+  outcome: "withdrawn" | "flagged_for_agent_review";
+  summary: string;
+}>> {
+  return runArcadiaCliJson(["review", "flag-agent", id]);
+}
+
 export async function reviewApproveWithExecute(input: {
   id: string;
   executor?: string;

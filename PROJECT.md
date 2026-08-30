@@ -273,6 +273,16 @@ and Dashboard builds prove the slice. The pointer returns to
 accepted-plan-to-build promotion remains the direct unresolved seam in the
 current Milestone; the larger plan-reading surface still depends on it.
 
+Dogfood on 2026-08-30 found that an old plan question (R53) was still consuming
+operator attention even though PPN had a different active plan and Codex-owned
+current Action. Needs you now exposes **Reassess** on clarification Decisions:
+the deterministic transition checks the source question against the Project's
+checked-in active plan, withdraws disconnected Decisions without erasing their
+history, and labels questions found in the active plan **Still declared**
+without claiming semantic validity. Those questions can be **Flagged for agent
+review**, which parks them outside Needs you in a dedicated Agent Queue lane
+without starting a Run or granting execution authority.
+
 On 2026-08-29 the operator selected tmux as the first concrete transport for
 Arcadia-managed coding-agent Sessions. This does not displace
 `promote-accepted-plan`: Arcadia must first produce the exact governed build

@@ -54,6 +54,14 @@ export default function ReviewPage() {
     await submitReviewAction(item, "reject", undefined, undefined, feedback);
   }
 
+  async function submitReassess(item: DashboardReviewItem) {
+    await submitReviewAction(item, "reassess");
+  }
+
+  async function submitFlagAgent(item: DashboardReviewItem) {
+    await submitReviewAction(item, "flag_agent");
+  }
+
   async function submitApproveAndExecute(item: DashboardReviewItem) {
     const key = `${item.id}:approve-execute`;
     setPendingKey(key);
@@ -99,7 +107,7 @@ export default function ReviewPage() {
 
   async function submitReviewAction(
     item: DashboardReviewItem,
-    action: "approve" | "reject" | "defer" | "resolve",
+    action: "approve" | "reject" | "defer" | "resolve" | "reassess" | "flag_agent",
     reply?: string,
     trigger?: string,
     feedback?: string
@@ -121,10 +129,11 @@ export default function ReviewPage() {
       }
 
       const message = typeof body.message === "string" ? body.message : "Review action completed.";
+      const responseNextAction = typeof body.nextAction === "string" ? body.nextAction : null;
       setReceipt({
         decisionLabel: item.displayId || item.id,
         message,
-        nextAction: item.proposedAction || null
+        nextAction: responseNextAction ?? (item.proposedAction || null)
       });
       setSelectedId(null);
       await refresh();
@@ -180,6 +189,8 @@ export default function ReviewPage() {
           onAction={(reviewItem, action) => void submitAction(reviewItem, action)}
           onDefer={(reviewItem, trigger) => void submitDefer(reviewItem, trigger)}
           onRefine={(reviewItem, feedback) => void submitRefinement(reviewItem, feedback)}
+          onReassess={(reviewItem) => void submitReassess(reviewItem)}
+          onFlagAgent={(reviewItem) => void submitFlagAgent(reviewItem)}
           onApproveAndExecute={(reviewItem) => void submitApproveAndExecute(reviewItem)}
           onResolveOption={(reviewItem, option) => void submitOption(reviewItem, option)}
           onResolveReply={(reviewItem, answer) => void submitAnswer(reviewItem, answer)}

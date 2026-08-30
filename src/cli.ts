@@ -144,11 +144,15 @@ import {
   renderReviewDecisionSuccess,
   renderReviewResolveReplySuccess,
   renderReviewOpenSuccess,
+  renderReviewFlagAgentSuccess,
+  renderReviewReassessSuccess,
   renderReviewShowSuccess,
   renderReviewWeeklySuccess,
   runReviewApproveCommand,
   runReviewDeferCommand,
   runReviewOpenCommand,
+  runReviewFlagAgentCommand,
+  runReviewReassessCommand,
   runReviewRejectCommand,
   runReviewResolveReplyCommand,
   runReviewRequiredCommand,
@@ -2242,6 +2246,34 @@ export function buildProgram(): Command {
       reviewOptionsFromArgv(options),
       () => runReviewShowCommand({ ...reviewOptionsFromArgv(options), id }),
       renderReviewShowSuccess
+    )
+  );
+  addJsonOption(
+    review
+      .command("reassess")
+      .description("Recheck a plan question against the Project's current governed state")
+      .argument("<id>", "Requires Review Decision id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((id: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "review.reassess",
+      reviewOptionsFromArgv(options),
+      () => runReviewReassessCommand({ ...reviewOptionsFromArgv(options), id }),
+      renderReviewReassessSuccess
+    )
+  );
+  addJsonOption(
+    review
+      .command("flag-agent")
+      .description("Park a plan question for later coding-agent review without starting a Run")
+      .argument("<id>", "Requires Review Decision id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((id: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "review.flag-agent",
+      reviewOptionsFromArgv(options),
+      () => runReviewFlagAgentCommand({ ...reviewOptionsFromArgv(options), id }),
+      renderReviewFlagAgentSuccess
     )
   );
   addJsonOption(

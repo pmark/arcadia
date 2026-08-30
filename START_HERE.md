@@ -246,9 +246,20 @@ Historical packets and Runs older than 30 days remain behind the history
 control unless they belong to a selected current Action. No Review, packet, or
 Run is deleted.
 
+For a clarification that looks stale or disconnected, choose **Reassess**.
+Arcadia checks the question against the Project's checked-in active plan before
+asking for an answer. If the source plan or question no longer governs current
+work, the Decision leaves **Needs you** and remains preserved in history with a
+receipt explaining why. If the active plan still declares it, Arcadia reports
+**Still declared**—not that the question remains semantically valid—and keeps
+the Decision visible. Choose **Flag for agent review** to park that Decision
+outside **Needs you** in Agent Queue for a later repository-aware assessment;
+flagging starts no coding-agent Run. The same transitions are available as
+`arcadia review reassess <id>` and `arcadia review flag-agent <id>`.
+
 Before feeding another coding agent, open the **Agent Queue** section in
-Mission Control. It keeps three explicit lanes in view: **Ready to feed**,
-**Running or queued**, and **Needs attention before dispatch**. The same
+Mission Control. It keeps four explicit lanes in view: **Ready to feed**,
+**Running or queued**, **Flagged for agent review**, and **Needs attention before dispatch**. The same
 read-only projection is available in the terminal:
 
 ```sh
