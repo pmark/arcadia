@@ -48,6 +48,10 @@ export default function ReviewPage() {
     await submitReviewAction(item, "defer", undefined, trigger);
   }
 
+  async function submitRefinement(item: DashboardReviewItem, feedback: string) {
+    await submitReviewAction(item, "reject", undefined, undefined, feedback);
+  }
+
   async function submitApproveAndExecute(item: DashboardReviewItem) {
     const key = `${item.id}:approve-execute`;
     setPendingKey(key);
@@ -95,7 +99,8 @@ export default function ReviewPage() {
     item: DashboardReviewItem,
     action: "approve" | "reject" | "defer" | "resolve",
     reply?: string,
-    trigger?: string
+    trigger?: string,
+    feedback?: string
   ) {
     const key = action === "resolve" ? `${item.id}:resolve:${reply}` : `${item.id}:${action}`;
     setPendingKey(key);
@@ -106,7 +111,7 @@ export default function ReviewPage() {
       const response = await fetch("/api/review-action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: item.id, action, reply, trigger, requireTrigger: action === "defer" })
+        body: JSON.stringify({ id: item.id, action, reply, trigger, feedback, requireTrigger: action === "defer" })
       });
       const body = await response.json();
       if (!response.ok) {
@@ -172,6 +177,7 @@ export default function ReviewPage() {
           pendingAction={pendingActionFor(review, pendingKey)}
           onAction={(reviewItem, action) => void submitAction(reviewItem, action)}
           onDefer={(reviewItem, trigger) => void submitDefer(reviewItem, trigger)}
+          onRefine={(reviewItem, feedback) => void submitRefinement(reviewItem, feedback)}
           onApproveAndExecute={(reviewItem) => void submitApproveAndExecute(reviewItem)}
           onResolveOption={(reviewItem, option) => void submitOption(reviewItem, option)}
           onResolveReply={(reviewItem, answer) => void submitAnswer(reviewItem, answer)}

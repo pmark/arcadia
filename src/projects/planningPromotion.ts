@@ -63,6 +63,8 @@ export interface ProjectIdeaPromotionReceipt {
   repoPath: string;
   planningArtifactId: string;
   planningArtifactPath: string;
+  /** Immutable content revision the operator judged. Optional for legacy receipts. */
+  planningArtifactSha256?: string;
   validationArtifactId: string;
   validationArtifactPath: string;
   acceptanceDecisionId: string;
@@ -415,6 +417,7 @@ export function persistProjectIdeaPromotion(
     repoPath: prepared.repoPath,
     planningArtifactId: prepared.planningArtifactId,
     planningArtifactPath: prepared.planningArtifactPath,
+    planningArtifactSha256: packetSha256(path.join(workspace, prepared.planningArtifactPath)),
     validationArtifactId: prepared.validationArtifactId,
     validationArtifactPath: prepared.validationArtifactPath,
     acceptanceDecisionId: decision.id,
@@ -429,7 +432,14 @@ export function persistProjectIdeaPromotion(
   };
 
   updateArtifact(db, prepared.planningArtifactId, { status: "ready" });
-  mergeReviewItemContext(db, decision.id, { planningPromotion: receipt });
+  mergeReviewItemContext(db, decision.id, {
+    planningPromotion: receipt,
+    judgedArtifact: {
+      artifactId: prepared.planningArtifactId,
+      artifactPath: prepared.planningArtifactPath,
+      sha256: receipt.planningArtifactSha256
+    }
+  });
   updateReviewItemStatus(db, decision.id, {
     status: "approved",
     decisionNote: `Validated planning Artifact accepted and promoted to ${written.actionDocRef}. Build packet prepared; no Run started.`

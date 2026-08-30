@@ -502,7 +502,7 @@ function outcomeLabel(outcome: ReviewOutcome, isPlanning: boolean, isAcceptance:
     return isAcceptance ? "Accept Plan" : isPlanning ? "Approve & Run" : "Approve";
   }
 
-  return outcome.action === "reject" ? "Reject" : "Defer";
+  return outcome.action === "reject" ? (isAcceptance ? "Send back" : "Reject") : "Defer";
 }
 
 function consequenceFor(outcome: ReviewOutcome, isPlanning: boolean, isAcceptance: boolean): string {
@@ -525,7 +525,9 @@ function consequenceFor(outcome: ReviewOutcome, isPlanning: boolean, isAcceptanc
   }
 
   if (outcome.action === "reject") {
-    return "Records this Decision as rejected. No Run starts, and the Action needs a new plan before it can continue.";
+    return isAcceptance
+      ? "Records the feedback and judged Artifact revision, preserves the plan, and reopens its planning Action for refinement. No Run starts."
+      : "Records this Decision as rejected. No Run starts, and the Action needs a new plan before it can continue.";
   }
 
   return "Keeps this Decision open. It returns to the board only when the trigger condition is met.";
@@ -552,6 +554,7 @@ export function ReviewCard({
   onResolveOption,
   onResolveReply,
   onDefer,
+  onRefine,
   rankReasons
 }: {
   item: DashboardReviewItem;
@@ -561,11 +564,13 @@ export function ReviewCard({
   onResolveOption?: (item: DashboardReviewItem, option: string) => void;
   onResolveReply?: (item: DashboardReviewItem, reply: string) => void;
   onDefer?: (item: DashboardReviewItem, trigger: string) => void;
+  onRefine?: (item: DashboardReviewItem, feedback: string) => void;
   rankReasons?: Array<{ label: string; detail: string }>;
 }) {
   const [answer, setAnswer] = useState("");
   const [confirming, setConfirming] = useState<ReviewOutcome | null>(null);
   const [deferTrigger, setDeferTrigger] = useState("");
+  const [refinementFeedback, setRefinementFeedback] = useState("");
   const primaryActions = ["approve", "reject", "defer"] as const;
   const isPlanning = item.resolvedIntent === "CodexPlanningRunApproval" || item.resolvedIntent === "CodexPlanningRetryApproval";
   const isAcceptance = item.resolvedIntent === "CodexPlanningArtifactAcceptance";
@@ -575,12 +580,14 @@ export function ReviewCard({
 
   function startConfirm(outcome: ReviewOutcome) {
     setDeferTrigger("");
+    setRefinementFeedback("");
     setConfirming(outcome);
   }
 
   function cancelConfirm() {
     setConfirming(null);
     setDeferTrigger("");
+    setRefinementFeedback("");
   }
 
   function confirmOutcome() {
@@ -601,14 +608,24 @@ export function ReviewCard({
       } else {
         onAction?.(item, "defer");
       }
+    } else if (confirming.action === "reject" && isAcceptance) {
+      const feedback = refinementFeedback.trim();
+      if (!feedback) {
+        return;
+      }
+      onRefine?.(item, feedback);
     } else {
       onAction?.(item, confirming.action);
     }
     setConfirming(null);
   }
 
-  const confirmDisabled =
-    Boolean(pendingAction) || (confirming?.kind === "action" && confirming.action === "defer" && !deferTrigger.trim());
+  const confirmDisabled = Boolean(pendingAction) || (
+    confirming?.kind === "action" && (
+      (confirming.action === "defer" && !deferTrigger.trim()) ||
+      (confirming.action === "reject" && isAcceptance && !refinementFeedback.trim())
+    )
+  );
 
   return (
     <article className="min-w-0 rounded-md border border-line bg-panel p-4 shadow-soft">
@@ -629,6 +646,7 @@ export function ReviewCard({
           ))}
         </ul>
       ) : null}
+      {isAcceptance && item.planningArtifact ? <PlanningArtifactOverview plan={item.planningArtifact} itemId={item.id} /> : null}
       <dl className="mt-4 grid gap-3 text-sm">
         <Field label="Category" value={item.category} />
         <Field label="Original Request" value={item.sourceInput} />
@@ -780,6 +798,23 @@ export function ReviewCard({
               <p className="mt-1 text-xs text-muted">A deferral with no named trigger is refused.</p>
             </div>
           ) : null}
+          {confirming.kind === "action" && confirming.action === "reject" && isAcceptance ? (
+            <div className="mt-3">
+              <label htmlFor={`refinement-feedback-${item.id}`} className="text-xs font-semibold uppercase tracking-wide text-muted">
+                What needs refinement?
+              </label>
+              <textarea
+                id={`refinement-feedback-${item.id}`}
+                value={refinementFeedback}
+                onChange={(event) => setRefinementFeedback(event.target.value)}
+                rows={4}
+                placeholder="Name what was unclear or what the next plan revision must change…"
+                disabled={Boolean(pendingAction)}
+                className="mt-1 w-full resize-y rounded-md border border-line bg-canvas px-3 py-2 text-sm leading-5 text-ink outline-none transition placeholder:text-muted/70 focus:border-steel disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              <p className="mt-1 text-xs text-muted">The feedback is recorded on this Decision; the current Artifact remains available.</p>
+            </div>
+          ) : null}
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -801,6 +836,39 @@ export function ReviewCard({
         </div>
       ) : null}
     </article>
+  );
+}
+
+function PlanningArtifactOverview({
+  plan,
+  itemId
+}: {
+  plan: NonNullable<DashboardReviewItem["planningArtifact"]>;
+  itemId: string;
+}) {
+  const headingId = `prepared-plan-heading-${itemId}`;
+  return (
+    <section className="mt-4 min-w-0 rounded-md border border-steel/30 bg-steel/5 p-4" aria-labelledby={headingId}>
+      <p className="text-xs font-semibold uppercase tracking-wide text-steel">Prepared plan</p>
+      <h4 id={headingId} className="mt-1 break-words text-lg font-semibold leading-6 text-ink">{plan.title}</h4>
+      <dl className="mt-4 grid min-w-0 gap-3 text-sm sm:grid-cols-2">
+        <Field label="Original idea" value={plan.idea} />
+        <Field label="Milestone" value={plan.milestone ?? "Not declared"} />
+        <Field label="Token Impact" value={plan.tokenImpact} />
+        <Field label="Repository" value={plan.repository} />
+      </dl>
+      <div className="mt-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted">Proposed Actions</p>
+        <ol className="mt-2 grid gap-2 pl-5 text-sm leading-5 text-ink">
+          {plan.proposedActions.map((action, index) => <li key={`${index}:${action}`} className="list-decimal break-words">{action}</li>)}
+        </ol>
+      </div>
+      <div className="mt-4 rounded-md border border-line bg-canvas/70 p-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted">Token Budget</p>
+        <p className="mt-1 break-words text-sm leading-5 text-ink/80">{plan.tokenBudget}</p>
+      </div>
+      <p className="mt-3 break-all text-[11px] text-muted">Judged revision: sha256:{plan.artifactSha256}</p>
+    </section>
   );
 }
 

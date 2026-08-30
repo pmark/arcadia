@@ -5,8 +5,9 @@ import { parse as parseYaml } from "yaml";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runProjectPrepareCommand } from "../src/commands/project.js";
-import { runReviewApproveCommand } from "../src/commands/review.js";
+import { runReviewApproveCommand, runReviewDeferCommand, runReviewRejectCommand } from "../src/commands/review.js";
 import { runWorkerIteration } from "../src/commands/worker.js";
+import { buildDashboardSnapshot } from "../src/dashboard/snapshot.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
   getReviewItem,
@@ -89,6 +90,11 @@ describe("project-idea planning promotion", () => {
         buildInvocationId: promotion!.buildInvocationId,
         trigger: promotion!.trigger
       });
+      expect(context.judgedArtifact).toMatchObject({
+        artifactId: acceptance.artifact_id,
+        artifactPath: acceptance.artifact_path,
+        sha256: expect.stringMatching(/^[a-f0-9]{64}$/)
+      });
     });
 
     const packet = readFileSync(path.join(fixture.workspace, promotion!.buildPacketPath), "utf8");
@@ -106,6 +112,78 @@ describe("project-idea planning promotion", () => {
     withDatabase(fixture.workspace, (db) => {
       const promoted = getWorkItemByDocRef(db, promotion!.actionDocRef)!;
       expect(listCodexInvocationsForWorkItem(db, promoted.id)).toHaveLength(1);
+    });
+  });
+
+  it("projects a validated Artifact as a readable governed plan", () => {
+    const fixture = preparedProjectIdea();
+    const acceptance = executePlanningRun(fixture);
+
+    const item = buildDashboardSnapshot({ workspace: fixture.workspace }).requiresReviewItems.find(
+      (candidate) => candidate.id === acceptance.id
+    );
+
+    expect(item?.planningArtifact).toMatchObject({
+      title: "Deterministic Stewardship Artifact Validation Plan",
+      idea: fixture.idea,
+      milestone: "Plan the first usable build",
+      tokenImpact: "small",
+      repository: fixture.repository,
+      artifactSha256: expect.stringMatching(/^[a-f0-9]{64}$/)
+    });
+    expect(item?.planningArtifact?.tokenBudget).toContain("Reserve model use");
+    expect(item?.planningArtifact?.proposedActions).toHaveLength(4);
+    expect(item?.planningArtifact?.proposedActions[0]).toContain("Contract extraction");
+  });
+
+  it("requires feedback to send a plan back, preserves its Artifact, and reopens planning", () => {
+    const fixture = preparedProjectIdea();
+    const acceptance = executePlanningRun(fixture);
+
+    expect(() => runReviewRejectCommand({ workspace: fixture.workspace, id: acceptance.id }))
+      .toThrow(/requires feedback/);
+
+    const feedback = "Clarify which validation fixtures prove the first build is complete.";
+    const result = runReviewRejectCommand({ workspace: fixture.workspace, id: acceptance.id, feedback });
+    expect(result.data.result.summary).toContain(feedback);
+    expect(existsSync(path.join(fixture.workspace, acceptance.artifact_path!))).toBe(true);
+    expect(frontmatter(path.join(fixture.repository, "PROJECT.md")).current_action).toBe(fixture.planningActionId);
+
+    withDatabase(fixture.workspace, (db) => {
+      const decision = getReviewItem(db, acceptance.id)!;
+      const context = JSON.parse(decision.context_json) as Record<string, any>;
+      expect(decision.status).toBe("rejected");
+      expect(context.refinementFeedback).toBe(feedback);
+      expect(context.judgedArtifact).toMatchObject({
+        artifactId: acceptance.artifact_id,
+        artifactPath: acceptance.artifact_path,
+        sha256: expect.stringMatching(/^[a-f0-9]{64}$/)
+      });
+      expect(getWorkItem(db, fixture.planningWorkItemId)).toMatchObject({
+        queue: "work_queue",
+        work_classification: "codex",
+        status: "open",
+        next_action: expect.stringContaining(feedback)
+      });
+    });
+  });
+
+  it("requires a named trigger to defer a prepared plan and records its judged revision", () => {
+    const fixture = preparedProjectIdea();
+    const acceptance = executePlanningRun(fixture);
+
+    expect(() => runReviewDeferCommand({ workspace: fixture.workspace, id: acceptance.id }))
+      .toThrow(/requires a named trigger/);
+
+    const trigger = "When the first pilot identifies a second validation strategy.";
+    runReviewDeferCommand({ workspace: fixture.workspace, id: acceptance.id, trigger });
+    withDatabase(fixture.workspace, (db) => {
+      const decision = getReviewItem(db, acceptance.id)!;
+      const context = JSON.parse(decision.context_json) as Record<string, any>;
+      expect(decision.status).toBe("deferred");
+      expect(decision.decision_note).toContain(trigger);
+      expect(context.deferralTrigger).toBe(trigger);
+      expect(context.judgedArtifact.sha256).toMatch(/^[a-f0-9]{64}$/);
     });
   });
 

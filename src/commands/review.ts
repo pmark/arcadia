@@ -31,7 +31,7 @@ import type { ArtifactSummary, ReviewFeedback, ReviewItemSummary, WorkItemSummar
 import { declaredAcceptanceCriteria } from "../codex/packets.js";
 import { executeApprovedReview, type ReviewExecutionResult } from "../execution/reviewExecutor.js";
 import { isPlanningApprovalDecision, queueApprovedPlanningRun } from "../execution/planningAuthorization.js";
-import { parseDecisionContext } from "../execution/planningAuthorization.js";
+import { packetSha256, parseDecisionContext } from "../execution/planningAuthorization.js";
 import { evaluateAcceptanceCriteria, renderAcceptanceCriteriaReport } from "../stewardship/acceptanceCriteria.js";
 import {
   exportPlanningAcceptanceBeforeTransition,
@@ -131,6 +131,8 @@ export interface ReviewDecisionCommandOptions {
   answer?: string;
   /** The trigger condition a deferral is recorded against, when the caller has one. */
   trigger?: string;
+  /** Required operator feedback when a validated plan is sent back for refinement. */
+  feedback?: string;
 }
 
 export interface ReviewDecisionCommandData {
@@ -686,6 +688,19 @@ export function runReviewApproveCommand(
         });
         if (criteriaResults.length > 0) {
           mergeReviewItemContext(db, specialized.id, { acceptanceCriteriaResults: criteriaResults });
+        }
+        const acceptedArtifact = getArtifact(db, specialized.artifact_id as string);
+        if (acceptedArtifact?.path) {
+          const absoluteArtifactPath = path.join(workspacePath, acceptedArtifact.path);
+          if (existsSync(absoluteArtifactPath)) {
+            mergeReviewItemContext(db, specialized.id, {
+              judgedArtifact: {
+                artifactId: acceptedArtifact.id,
+                artifactPath: acceptedArtifact.path,
+                sha256: packetSha256(absoluteArtifactPath)
+              }
+            });
+          }
         }
         const updated = updateReviewItemStatus(db, specialized.id, {
           status: "approved",
@@ -1342,6 +1357,7 @@ function runReviewDecisionCommand(
   summary: string
 ): CommandSuccess<ReviewDecisionCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  let resultSummary = summary;
   const updated = withDatabase(workspacePath, (db) => {
     const item = getReviewItemByIdOrSlug(db, options.id);
     if (!item) {
@@ -1350,9 +1366,46 @@ function runReviewDecisionCommand(
     if (item.status !== "open" && item.status !== "deferred") {
       throw validationError("Requires Review Decision is already decided.", { id: item.id, status: item.status });
     }
+    const isPlanningAcceptance = item.resolved_intent === "CodexPlanningArtifactAcceptance";
+    const feedback = options.feedback?.trim();
+    const trigger = options.trigger?.trim();
+    if (isPlanningAcceptance && status === "rejected" && !feedback) {
+      throw validationError("Sending a prepared plan back for refinement requires feedback stating what was unclear.", {
+        id: item.id,
+        remedy: `Retry with --feedback \"<what needs refinement>\".`
+      });
+    }
+    if (isPlanningAcceptance && status === "deferred" && !trigger) {
+      throw validationError("Deferring a prepared plan requires a named trigger condition.", {
+        id: item.id,
+        remedy: `Retry with --trigger \"<condition that revives this plan>\".`
+      });
+    }
+    const decisionSummary = isPlanningAcceptance && status === "rejected"
+      ? `Sent back for refinement: ${feedback}`
+      : summary;
+    resultSummary = decisionSummary;
+    if (isPlanningAcceptance && item.artifact_id && item.artifact_path) {
+      const absoluteArtifactPath = path.join(workspacePath, item.artifact_path);
+      if (!existsSync(absoluteArtifactPath)) {
+        throw validationError("Prepared planning Artifact is missing; the Decision was not recorded.", {
+          id: item.id,
+          artifactPath: item.artifact_path
+        });
+      }
+      mergeReviewItemContext(db, item.id, {
+        judgedArtifact: {
+          artifactId: item.artifact_id,
+          artifactPath: item.artifact_path,
+          sha256: packetSha256(absoluteArtifactPath)
+        },
+        ...(feedback ? { refinementFeedback: feedback } : {}),
+        ...(trigger ? { deferralTrigger: trigger } : {})
+      });
+    }
     const next = updateReviewItemStatus(db, item.id, {
       status,
-      decisionNote: summary
+      decisionNote: decisionSummary
     });
     if (!next) {
       throw validationError("Requires Review Decision was not found.", { id: item.id });
@@ -1373,16 +1426,23 @@ function runReviewDecisionCommand(
       "CodexPlanningArtifactAcceptance",
       "codex_planning_artifact_validation"
     ].includes(item.resolved_intent)) {
-      updateWorkItem(db, item.work_item_id, {
-        queue: "requires_review",
-        workClassification: "requires_review",
-        status: "in_progress",
-        nextAction: status === "deferred"
-          ? "Return to the deferred planning Decision when ready."
-          : item.resolved_intent === "CodexPlanningArtifactAcceptance"
-            ? "Revise or retry the planning Run."
+      if (isPlanningAcceptance && status === "rejected") {
+        updateWorkItem(db, item.work_item_id, {
+          queue: "work_queue",
+          workClassification: "codex",
+          status: "open",
+          nextAction: `Refine the planning Artifact using the operator feedback: ${feedback}`
+        });
+      } else {
+        updateWorkItem(db, item.work_item_id, {
+          queue: "requires_review",
+          workClassification: "requires_review",
+          status: "in_progress",
+          nextAction: status === "deferred"
+            ? "Return to the deferred planning Decision when its named trigger fires."
             : "Revise the planning request or packet before creating a new Decision."
-      });
+        });
+      }
     }
     return next;
   });
@@ -1392,7 +1452,7 @@ function runReviewDecisionCommand(
     workspace: workspacePath,
     data: {
       item: reviewPacketForReviewItem(updated),
-      result: { status, summary },
+      result: { status, summary: resultSummary },
       approval: null,
       execution: null,
       run: null

@@ -7,8 +7,8 @@ status: active
 milestone: A raw software-project idea becomes governed, dispatchable coding-agent work without a manual planning-to-build handoff
 token_impact: large
 token_budget: "Project creation, document rendering, Session lifecycle checks, builds, and state transitions are deterministic. Use one bounded planning Run for the idea, one explicitly launched coding-agent Session per accepted Action, and independent QA only when deterministic readiness passes."
-updated: 2026-08-29
-current_action: build-plan-approval-surface
+updated: 2026-08-30
+current_action: launch-tmux-backed-session
 actions:
   - id: prepare-project-idea
     title: Turn one stated project idea into a dispatchable planning Action
@@ -130,7 +130,7 @@ actions:
     depends_on: []
   - id: build-plan-approval-surface
     title: Approve or defer a prepared plan from the Review page
-    status: open
+    status: done
     responsibility: codex
     effort: project
     next_action: Present each prepared planning Artifact on the Review page as a readable plan with its idea, milestone, Actions, and token budget, and offer exactly three governed outcomes — approve now, defer against a named trigger, or send back for refinement.
@@ -267,18 +267,23 @@ unlock, remaining blocker, and external-effect boundary; the resulting receipt
 either records the Decision transition or states truthfully that the handoff
 changed no Arcadia state and points to the durable Run record or guarded
 command. The board is covered at phone width through the complete Playwright
-suite. The pointer returns to `promote-accepted-plan`, the unresolved seam at
-the center of this plan's Milestone.
+suite.
 
-The operator then selected tmux as the first concrete Session transport. The
-order is deliberate. `promote-accepted-plan` remains current because Arcadia
-must first produce the exact governed build Action a Session will execute.
-After that seam closes, `launch-tmux-backed-session` records and starts one
+`promote-accepted-plan` and `build-plan-approval-surface` are now complete.
+Needs you renders a validated planning Artifact as a readable plan with its
+original idea, Milestone, proposed Actions, Token Impact and Budget, target
+repository, and exact content revision. Approve reuses the deterministic
+promotion path and starts no Run; Defer requires a named trigger; and Send back
+requires feedback, preserves the Artifact, and reopens the planning Action for
+Codex refinement. Each outcome remains one provenance-bearing Decision.
+
+The operator then selected tmux as the first concrete Session transport. With
+the accepted-plan and operator-approval seams closed, `launch-tmux-backed-session`
+now records and starts one
 addressable Claude Code Session in Arcadia's own worktree, and
 `reconcile-session-exit` turns its process exit and repository outputs into the
-next governed state. The prepared-plan approval surface may proceed once
-promotion exists, but the full managed-build Action waits for both the
-operator-facing approval path and the Session before/after path.
+next governed state. The full managed-build Action waits for the Session
+before/after path.
 
 tmux is intentionally infrastructure, not a new source of truth. The first
 slice uses it only to keep an interactive terminal alive and reattachable.

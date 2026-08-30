@@ -3,10 +3,29 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-29
+updated: 2026-08-30
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-30 — Completed governed prepared-plan decisions on Needs you
+
+- **Action:** `idea-to-managed-build#build-plan-approval-surface`
+- **Did:** Projected each validated planning Artifact into a readable phone-width
+  plan with its original idea, Milestone, ordered proposed Actions, Token Impact
+  and Budget, target repository, and SHA-256 revision. Kept approval on the
+  existing idempotent promotion path, required a named trigger for plan
+  deferral, and replaced generic rejection with feedback-backed Send back.
+- **Result:** Approve prepares the promoted build packet without starting a Run.
+  Defer records its revival condition. Send back preserves the Artifact and
+  returns the planning Action to the Codex queue with the operator's feedback.
+  Every outcome records the judged Artifact id, path, and content hash on the
+  Decision. Focused command and phone-width Playwright coverage pass; a 390px
+  browser check found no horizontal overflow.
+- **Next:** Advance `launch-tmux-backed-session`, using the promoted immutable
+  packet and Decision provenance as the Session boundary.
+- **Blockers:** None. Merge, deployment, release, credentials, spending,
+  production access, and outbound messaging remain separately gated.
 
 ## 2026-08-29 — Ratified the thin, packet-bound Session primitive
 

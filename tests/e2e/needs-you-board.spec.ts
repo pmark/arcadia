@@ -1,4 +1,8 @@
+import { mkdirSync } from "node:fs";
+import path from "node:path";
 import { expect, test as base, type Page } from "@playwright/test";
+import { runProjectPrepareCommand } from "../../src/commands/project.js";
+import { runReviewApproveCommand } from "../../src/commands/review.js";
 import { withDatabase } from "../../src/db/connection.js";
 import { createCodexInvocation, createWorkItemWithOptionalArtifact } from "../../src/db/repositories.js";
 import { createE2EWorkspace, type E2EWorkspace } from "./fixtures/workspace.js";
@@ -95,6 +99,59 @@ test("a deferral without a trigger is refused and one with a trigger is persiste
   );
   expect(deferred.status).toBe("deferred");
   expect(deferred.decision_note).toContain("When Rebuster's next release adds a second channel.");
+});
+
+test("a prepared plan is readable at phone width and requires feedback before it is sent back", async ({ page, arcadia }) => {
+  const repository = path.join(arcadia.root, "repos", "prepared-plan");
+  mkdirSync(repository, { recursive: true });
+  const idea = "A calm local tool that turns workshop observations into a prioritized improvement queue.";
+  const prepared = runProjectPrepareCommand({
+    workspace: arcadia.root,
+    name: "Workshop Queue",
+    idea,
+    path: repository,
+    agentProfile: "fake_planning"
+  });
+  runReviewApproveCommand({ workspace: arcadia.root, id: prepared.data.planning.planningDecision!.id });
+
+  await expect.poll(() => withDatabase(arcadia.root, (db) =>
+    db.prepare(
+      "SELECT id FROM review_items WHERE work_item_id = ? AND resolved_intent = 'CodexPlanningArtifactAcceptance' AND status = 'open'"
+    ).get(prepared.data.workItem.id) as { id: string } | undefined
+  )).toBeTruthy();
+
+  await page.goto(`${arcadia.url}/review`);
+  const plan = page.getByRole("region", { name: "Pinterest Publishing Plan" });
+  await expect(plan.getByText("Prepared plan", { exact: true })).toBeVisible();
+  await expect(plan.getByRole("heading", { name: "Pinterest Publishing Plan" })).toBeVisible();
+  await expect(plan.getByText(idea, { exact: true })).toBeVisible();
+  await expect(plan.getByText("Plan the first usable build", { exact: true })).toBeVisible();
+  await expect(plan.getByText("Define the repository-only publishing adapter contract and fixtures.", { exact: true })).toBeVisible();
+  await expect(plan.getByText(/Reserve model use for clarifying the Actions below/)).toBeVisible();
+  await expect(plan.getByText(repository, { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Send back", exact: true }).click();
+  const confirm = page.getByRole("button", { name: "Confirm: Send back" });
+  await expect(confirm).toBeDisabled();
+  const feedback = "Clarify which fixtures prove the first Action is complete.";
+  await page.getByLabel("What needs refinement?").fill(feedback);
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+
+  await expect(page.getByText(/Sent back for refinement/)).toBeVisible();
+  const state = withDatabase(arcadia.root, (db) => ({
+    decision: db.prepare(
+      "SELECT status, decision_note, context_json FROM review_items WHERE work_item_id = ? AND resolved_intent = 'CodexPlanningArtifactAcceptance'"
+    ).get(prepared.data.workItem.id) as { status: string; decision_note: string; context_json: string },
+    action: db.prepare("SELECT status, queue, work_classification, next_action FROM work_items WHERE id = ?")
+      .get(prepared.data.workItem.id) as { status: string; queue: string; work_classification: string; next_action: string }
+  }));
+  expect(state.decision).toMatchObject({ status: "rejected", decision_note: expect.stringContaining(feedback) });
+  expect(JSON.parse(state.decision.context_json)).toMatchObject({
+    refinementFeedback: feedback,
+    judgedArtifact: { sha256: expect.stringMatching(/^[a-f0-9]{64}$/) }
+  });
+  expect(state.action).toMatchObject({ status: "open", queue: "work_queue", work_classification: "codex" });
 });
 
 test("the dashboard's own quick-defer keeps working without collecting a trigger", async ({ page, arcadia }) => {
