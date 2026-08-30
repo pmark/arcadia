@@ -8,6 +8,7 @@ milestone: A raw software-project idea becomes governed, dispatchable coding-age
 token_impact: large
 token_budget: "Project creation, document rendering, Session lifecycle checks, builds, and state transitions are deterministic. Use one bounded planning Run for the idea, one explicitly launched coding-agent Session per accepted Action, and independent QA only when deterministic readiness passes."
 updated: 2026-08-29
+current_action: build-plan-approval-surface
 actions:
   - id: prepare-project-idea
     title: Turn one stated project idea into a dispatchable planning Action
@@ -38,7 +39,7 @@ actions:
     depends_on: []
   - id: promote-accepted-plan
     title: Promote an accepted planning Artifact into the governed build Action
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: Extract the smallest implementation goal from an accepted validated planning Artifact, update the Project's managed plan and pointer atomically, sync it into operational state, and prepare the coding-agent build packet without running it.
@@ -56,10 +57,12 @@ actions:
     decisions: ["0029"]
     references:
       - src/commands/review.ts
+      - src/projects/planningPromotion.ts
       - src/execution/runner.ts
       - src/stewardship/artifactValidator.ts
       - src/docs/sync.ts
       - src/docs/dispatch.ts
+      - tests/project-plan-promotion.test.ts
     depends_on: [demo-astro-staging-loop]
   - id: demo-astro-staging-loop
     title: Prove one idea-to-live-staging loop for the tomorrow demo

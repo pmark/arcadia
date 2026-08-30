@@ -68,6 +68,18 @@ and coding-agent context but invokes no model and starts no Run. Omit `--path`
 to use the workspace Projects directory. Existing Project names, registered
 repositories, `PROJECT.md` files, and managed plans are never overwritten.
 
+After the approved read-only planning Run produces a validated Artifact,
+accept its Planning Decision with `arcadia review approve <decision>`. For this
+explicit Project-preparation workflow, acceptance deterministically updates the
+checked-in plan first: the planning Action becomes done and its smallest useful
+follow-up goal becomes exactly one clarified current Codex Action. Arcadia then
+syncs that Action and prepares one immutable build packet. The response includes
+the promoted Action, packet path, and exact `arcadia work run ...
+--allow-codex-build` trigger. Acceptance itself starts no build Run. Repeating
+the acceptance returns the original receipt; stale or malformed planning output
+is refused without moving the managed pointers. Other planning workflows keep
+their existing acceptance behavior.
+
 ### Shelve and resurface an idea
 
 `ask --back-burner` uses the existing deterministic Ask/Intake path to shelve

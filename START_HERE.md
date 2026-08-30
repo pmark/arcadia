@@ -203,10 +203,15 @@ It invokes no model and starts no Run. Its final `Trigger:` line is the exact
 `arcadia review approve <decision>` command that authorizes one read-only
 planning Run for that packet. Approval does not authorize implementation,
 merge, deployment, release, credentials, spending, production access,
-publishing, deletion, or outbound communication. Until the accepted-plan
-promotion increment lands, accepting the resulting planning Artifact still
-ends by asking the operator to choose the implementation Action; Arcadia does
-not pretend that manual seam is closed yet.
+publishing, deletion, or outbound communication. Accepting the resulting
+validated planning Artifact now marks the planning Action done, promotes its
+smallest concrete implementation goal into exactly one current managed build
+Action, and prepares that Action's immutable build packet. Acceptance starts
+no implementation Run. Its receipt prints the exact separate
+`arcadia work run ... --allow-codex-build --agent-profile ...` trigger that can
+start the build after the operator chooses to do so. Re-acceptance reuses the
+same Action and packet, while a changed or malformed planning Artifact fails
+closed before either managed pointer moves.
 
 Preparation refuses an already registered Project name or repository and any
 repository that already carries a `PROJECT.md` or managed plan. It never
@@ -223,7 +228,9 @@ replaces another Project's work pointer.
    will not happen, then leaves a receipt with the durable record or guarded
    command. Confirming a handoff alone records no Decision and starts no Run.
 4. Use **Runs** to follow approved work and inspect its Artifacts, Validation, and Log.
-5. Return to **Needs you** to accept a successful plan; acceptance marks the original Action done.
+5. Return to **Needs you** to accept a successful plan; for an explicitly
+   prepared software Project, acceptance marks the planning Action done,
+   promotes one current build Action, and prepares—but does not run—its packet.
 
 Before feeding another coding agent, open the **Agent Queue** section in
 Mission Control. It keeps three explicit lanes in view: **Ready to feed**,
