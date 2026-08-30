@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { expect, test as base, type Page } from "@playwright/test";
 import { runProjectPrepareCommand } from "../../src/commands/project.js";
@@ -37,6 +37,22 @@ test("the board shows a plain empty state with nothing open", async ({ page, arc
   await page.goto(`${arcadia.url}/review`);
   await expect(page.getByRole("heading", { name: "Needs you" })).toBeVisible();
   await expect(page.getByText("Nothing needs you right now.")).toBeVisible();
+});
+
+test("the operator can set and persist Review focus from the page", async ({ page, arcadia }) => {
+  await page.goto(`${arcadia.url}/review`);
+  await page.getByText("Focus: No Project preference", { exact: true }).click();
+  await page.getByLabel("Primary Project").selectOption("Arcadia");
+  await page.getByLabel("Rebuster").check();
+  await page.getByRole("button", { name: "Save focus" }).click();
+
+  await expect(page.getByText("Review focus saved to this Arcadia workspace.")).toBeVisible();
+  await expect(page.getByText("Focus: Arcadia · 1 parked", { exact: true })).toBeVisible();
+  const config = JSON.parse(readFileSync(path.join(arcadia.root, "config", "arcadia.json"), "utf8"));
+  expect(config.reviewFocus).toEqual({ projectOrder: ["Arcadia"], excludedProjects: ["Rebuster"], maxItems: 5 });
+
+  await page.reload();
+  await expect(page.getByText("Focus: Arcadia · 1 parked", { exact: true })).toBeVisible();
 });
 
 test("an outcome previews its consequence and can be cancelled before it fires", async ({ page, arcadia }) => {

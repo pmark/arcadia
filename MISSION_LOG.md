@@ -15,14 +15,16 @@ updated: 2026-08-30
   moved explicitly parked Projects behind the history control, archived
   non-current packet and Run attempts after 30 days, collapsed superseded
   attempts for the same Action, and stopped showing a Run beside its canonical
-  Review Decision.
+  Review Decision. Added a compact page control for choosing primary and
+  secondary Projects and parking distractions, with atomic workspace-backed
+  persistence rather than browser-local state.
 - **Result:** The operator workspace now focuses five items in Project order:
   Private Practice Now first, Arcadia second, with Rebuster parked. The real
   projection falls from 45 equally competing items to five focused items;
   every remaining open or historical record stays reachable through one
   explicit control and no evidence is deleted.
 - **Next:** Use the focused PPN Decisions to remove the next concrete blocker;
-  change `reviewFocus` only when the operator changes priorities.
+  change the page's Focus control only when the operator changes priorities.
 - **Blockers:** None. This changes presentation and priority only; it grants no
   execution, merge, deployment, or outbound authority.
 

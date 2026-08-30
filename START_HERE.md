@@ -237,12 +237,14 @@ replaces another Project's work pointer.
    condition that revives it; or **Send back** requires refinement feedback,
    preserves the current Artifact, and reopens the planning Action for Codex.
 
-**Needs you** can be narrowed to the operator's present priorities with the
-workspace `config/arcadia.json` `reviewFocus` object. `projectOrder` ranks
-Projects from first to last, `excludedProjects` keeps parked Projects behind
-the history control, and `maxItems` bounds the visible focused set. Historical
-packets and Runs older than 30 days are also kept behind that control unless
-they belong to a selected current Action. No Review, packet, or Run is deleted.
+Use the collapsed **Focus** control at the top of **Needs you** to choose a
+primary Project, an optional secondary Project, and Projects to park for now.
+**Save focus** remembers the preference in the Arcadia workspace, so the same
+ranking follows the operator across browsers and devices. The stored
+`config/arcadia.json` `reviewFocus` also keeps the visible set bounded.
+Historical packets and Runs older than 30 days remain behind the history
+control unless they belong to a selected current Action. No Review, packet, or
+Run is deleted.
 
 Before feeding another coding agent, open the **Agent Queue** section in
 Mission Control. It keeps three explicit lanes in view: **Ready to feed**,

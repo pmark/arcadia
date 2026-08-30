@@ -6,7 +6,7 @@ import { DashboardChrome } from "../../components/chrome";
 import { AttentionCard, EmptyState, ErrorState, LoadingState, ReviewCard } from "../../components/dashboard-ui";
 import { useArcadiaSnapshot } from "../../hooks/use-arcadia-snapshot";
 import { buildNeedsYouBoard, type RankedNeedsYouItem } from "../../lib/needs-you";
-import type { DashboardAttentionItem, DashboardReviewItem } from "../../lib/types";
+import type { DashboardAttentionItem, DashboardProject, DashboardReviewFocus, DashboardReviewItem } from "../../lib/types";
 
 interface Receipt {
   decisionLabel: string;
@@ -215,6 +215,14 @@ export default function ReviewPage() {
           {receipt.nextAction ? <p className="mt-1 text-xs leading-5 text-moss/80">Next: {receipt.nextAction}</p> : null}
         </div>
       ) : null}
+      {snapshot ? (
+        <ReviewFocusControls
+          key={JSON.stringify(snapshot.reviewFocus)}
+          projects={snapshot.projects}
+          focus={snapshot.reviewFocus}
+          onSaved={refresh}
+        />
+      ) : null}
       {loading && !snapshot ? (
         <LoadingState />
       ) : dominant ? (
@@ -251,6 +259,138 @@ export default function ReviewPage() {
       )}
     </DashboardChrome>
   );
+}
+
+function ReviewFocusControls({
+  projects,
+  focus,
+  onSaved
+}: {
+  projects: DashboardProject[];
+  focus: DashboardReviewFocus | null;
+  onSaved: () => Promise<void>;
+}) {
+  const available = projects.filter((project) => project.status !== "completed").map((project) => project.name);
+  const [primary, setPrimary] = useState(focus?.projectOrder[0] ?? "");
+  const [secondary, setSecondary] = useState(focus?.projectOrder[1] ?? "");
+  const [parked, setParked] = useState(() => new Set(focus?.excludedProjects ?? []));
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const prioritySummary = [primary, secondary].filter(Boolean).join(" → ") || "No Project preference";
+
+  function choosePrimary(value: string) {
+    setPrimary(value);
+    if (value === secondary) setSecondary("");
+    setParked((current) => withoutProject(current, value));
+  }
+
+  function chooseSecondary(value: string) {
+    setSecondary(value);
+    setParked((current) => withoutProject(current, value));
+  }
+
+  function toggleParked(project: string, checked: boolean) {
+    setParked((current) => {
+      const next = new Set(current);
+      if (checked) next.add(project);
+      else next.delete(project);
+      return next;
+    });
+  }
+
+  async function save() {
+    setSaving(true);
+    setMessage(null);
+    setSaveError(null);
+    try {
+      const projectOrder = [primary, secondary].filter(Boolean);
+      const excludedProjects = [...parked].filter((project) => !projectOrder.includes(project));
+      const response = await fetch("/api/review-focus", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectOrder, excludedProjects, maxItems: focus?.maxItems ?? 5 })
+      });
+      const body = await response.json() as { message?: string; error?: string };
+      if (!response.ok) throw new Error(errorMessageFromBody(body, "Review focus could not be saved."));
+      setMessage(body.message ?? "Review focus saved.");
+      await onSaved();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <details className="mb-4 rounded-md border border-line bg-panel p-3 text-sm">
+      <summary className="cursor-pointer font-semibold text-ink">
+        Focus: {prioritySummary}{parked.size > 0 ? ` · ${parked.size} parked` : ""}
+      </summary>
+      <div className="mt-4 grid gap-4">
+        <p className="text-xs leading-5 text-muted">Choose what deserves attention now. This preference is saved to the Arcadia workspace and follows you across devices.</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1 text-xs font-semibold text-muted">
+            Primary Project
+            <select
+              aria-label="Primary Project"
+              value={primary}
+              onChange={(event) => choosePrimary(event.target.value)}
+              className="min-w-0 rounded-md border border-line bg-canvas px-3 py-2 text-sm font-normal text-ink"
+            >
+              <option value="">No preference</option>
+              {available.map((project) => <option key={project} value={project}>{project}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-muted">
+            Secondary Project
+            <select
+              aria-label="Secondary Project"
+              value={secondary}
+              onChange={(event) => chooseSecondary(event.target.value)}
+              className="min-w-0 rounded-md border border-line bg-canvas px-3 py-2 text-sm font-normal text-ink"
+            >
+              <option value="">None</option>
+              {available.filter((project) => project !== primary).map((project) => <option key={project} value={project}>{project}</option>)}
+            </select>
+          </label>
+        </div>
+        <fieldset>
+          <legend className="text-xs font-semibold text-muted">Park for now</legend>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+            {available.filter((project) => project !== primary && project !== secondary).map((project) => (
+              <label key={project} className="inline-flex items-center gap-2 text-xs text-ink">
+                <input
+                  type="checkbox"
+                  checked={parked.has(project)}
+                  onChange={(event) => toggleParked(project, event.target.checked)}
+                />
+                {project}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        {saveError ? <p className="text-xs text-red-700">{saveError}</p> : null}
+        {message ? <p className="text-xs text-moss">{message}</p> : null}
+        <div>
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={saving}
+            className="rounded-md bg-ink px-3 py-2 text-xs font-semibold text-canvas disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save focus"}
+          </button>
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function withoutProject(projects: Set<string>, project: string): Set<string> {
+  const next = new Set(projects);
+  next.delete(project);
+  return next;
 }
 
 function ExcludedSection({

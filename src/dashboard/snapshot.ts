@@ -34,6 +34,7 @@ import { packetSha256 } from "../execution/planningAuthorization.js";
 import { extractPlanningReviewFields } from "../stewardship/artifactValidator.js";
 import { buildAgentQueue, type AgentQueue } from "../dispatch/queue.js";
 import { selectDailyAdvantage, type DashboardDailyAdvantage } from "./dailyAdvantage.js";
+import { readReviewFocus, type DashboardReviewFocus } from "./reviewFocus.js";
 
 export const MISSING_REPO_PATH_WARNING = CODEX_REPO_PATH_REQUIRED_MESSAGE;
 
@@ -77,12 +78,6 @@ export interface DashboardSnapshot {
   recentRuns: DashboardRun[];
   recentArtifacts: DashboardArtifact[];
   dispatchJournal: DashboardDispatchJournal;
-}
-
-export interface DashboardReviewFocus {
-  projectOrder: string[];
-  excludedProjects: string[];
-  maxItems: number;
 }
 
 /**
@@ -515,29 +510,6 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
       dispatchJournal
     };
   });
-}
-
-function readReviewFocus(workspace: string): DashboardReviewFocus | null {
-  const configPath = path.join(workspace, "config", "arcadia.json");
-  if (!existsSync(configPath)) return null;
-
-  try {
-    const parsed = JSON.parse(readFileSync(configPath, "utf8")) as { reviewFocus?: Record<string, unknown> };
-    const focus = parsed.reviewFocus;
-    if (!focus) return null;
-    const projectOrder = Array.isArray(focus.projectOrder)
-      ? focus.projectOrder.filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
-      : [];
-    const excludedProjects = Array.isArray(focus.excludedProjects)
-      ? focus.excludedProjects.filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
-      : [];
-    const maxItems = typeof focus.maxItems === "number" && Number.isInteger(focus.maxItems) && focus.maxItems > 0
-      ? focus.maxItems
-      : 5;
-    return { projectOrder, excludedProjects, maxItems };
-  } catch {
-    return null;
-  }
 }
 
 function toDashboardBackBurnerItem(item: BackBurnerItemSummary): DashboardBackBurnerItem {
