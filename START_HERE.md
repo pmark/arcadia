@@ -679,7 +679,7 @@ After you sign in following a laptop restart, Arcadia's managed launch agents st
 
 - **Dashboard (core)** — Mission Control, Needs you, Runs, and System Status at port 3020.
 - **Managed Run worker (core)** — executes only queued, authorized Runs with the coding agent bound to each packet.
-- **Intelligence API and worker (feature-specific)** — structured generation at port 4710. Its durable SQLite queue dispatches cloud, local LiteLLM, Codex CLI, and Claude Code CLI generation through separate bounded pools, so a long image job no longer blocks unrelated requests. Local structured-text callers can select Claude Code with `executionTarget: "claude-code"`; the default route uses the installed `claude` CLI and does not authorize paid cloud usage.
+- **Intelligence API and worker (feature-specific)** — structured generation at port 4710. Its durable SQLite queue dispatches cloud, local LiteLLM, Codex CLI, and Claude Code CLI generation through separate bounded pools, so a long image job no longer blocks unrelated requests. The health and admin-capability views advertise a LiteLLM offering only while its model group appears in the proxy's authenticated model inventory; a configured deployment that LiteLLM rejected is therefore unavailable before submission rather than failing as a test job. Local structured-text callers can select Claude Code with `executionTarget: "claude-code"`; the default route uses the installed `claude` CLI and does not authorize paid cloud usage.
 - **ComfyUI image backend (feature-specific)** — local FLUX.2 Klein generation/editing at port 8188 when configured.
 - **Discord adapter (feature-specific)** — capture, status, notifications, and
   the morning Orientation Packet. That packet opens with a factual narrative

@@ -98,7 +98,24 @@ describe("default route registry", () => {
 });
 
 describe("health endpoint", () => {
-  it("reports only enabled, configured routes", async () => {
+  const availableModelsFetch: typeof fetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/health/liveliness")) {
+      return new Response('"I am alive"', { status: 200 });
+    }
+    if (url.endsWith("/v1/models")) {
+      return Response.json({
+        data: [
+          { id: "arcadia-default" },
+          { id: "arcadia-image" },
+          { id: "arcadia-tts" },
+        ],
+      });
+    }
+    return new Response("Not found", { status: 404 });
+  };
+
+  it("reports only enabled, configured, and available routes", async () => {
     const repository = setupRepository();
     const config = testIntelligenceConfig("http://127.0.0.1:1", {
       routes: buildDefaultRoutes({
@@ -106,7 +123,11 @@ describe("health endpoint", () => {
         cloudImageRoute: "arcadia-image",
       }),
     });
-    const apiServer = createIntelligenceServer({ repository, config });
+    const apiServer = createIntelligenceServer({
+      repository,
+      config,
+      fetchImpl: availableModelsFetch,
+    });
     await new Promise<void>((resolve) => apiServer.listen(0, "127.0.0.1", resolve));
     servers.push(apiServer);
     const { port } = apiServer.address() as { port: number };
@@ -123,6 +144,43 @@ describe("health endpoint", () => {
     expect(body.scheduler.pools["litellm-local"]?.concurrency).toBe(1);
     expect(body.scheduler.pools["litellm-cloud-text"]?.concurrency).toBe(4);
     expect(JSON.stringify(body)).not.toMatch(/arcadia-default|arcadia-image/);
+  });
+
+  it("omits a LiteLLM route rejected by the proxy while retaining dedicated executors", async () => {
+    const repository = setupRepository();
+    const config = testIntelligenceConfig("http://127.0.0.1:1", {
+      routes: buildDefaultRoutes({
+        localTextRoute: "arcadia-default",
+        cloudTextRoute: "arcadia-cloud-text",
+        codexTextRoute: "codex-cli",
+        comfyUiImageRoute: "comfyui",
+      }),
+    });
+    const apiServer = createIntelligenceServer({
+      repository,
+      config,
+      fetchImpl: availableModelsFetch,
+    });
+    await new Promise<void>((resolve) => apiServer.listen(0, "127.0.0.1", resolve));
+    servers.push(apiServer);
+    const { port } = apiServer.address() as { port: number };
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/intelligence/health`);
+    const body = (await response.json()) as {
+      liteLlm: {
+        reachable: boolean;
+        modelInventoryReachable: boolean;
+        routes: Array<{ id: string }>;
+      };
+    };
+    const routeIds = body.liteLlm.routes.map((route) => route.id);
+
+    expect(body.liteLlm.reachable).toBe(true);
+    expect(body.liteLlm.modelInventoryReachable).toBe(true);
+    expect(routeIds).toContain("arcadia.text.generate.local.fast");
+    expect(routeIds).toContain("arcadia.text.generate.local.fast.codex");
+    expect(routeIds).toContain("arcadia.image.generate.local.quality.comfyui");
+    expect(routeIds).not.toContain("arcadia.text.generate.cloud.fast");
   });
 
   it("wakes the scheduler immediately after a job is submitted", async () => {
