@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -36,6 +36,26 @@ afterEach(() => {
 });
 
 describe("dashboard snapshot", () => {
+  it("reads the optional workspace Review focus", () => {
+    const workspace = initializedWorkspace();
+    const configPath = getWorkspacePaths(workspace).configFile;
+    const config = JSON.parse(readFileSync(configPath, "utf8"));
+    writeFileSync(configPath, `${JSON.stringify({
+      ...config,
+      reviewFocus: {
+        projectOrder: ["Private Practice Now", "Arcadia"],
+        excludedProjects: ["Rebuster"],
+        maxItems: 5
+      }
+    }, null, 2)}\n`);
+
+    expect(buildDashboardSnapshot({ workspace }).reviewFocus).toEqual({
+      projectOrder: ["Private Practice Now", "Arcadia"],
+      excludedProjects: ["Rebuster"],
+      maxItems: 5
+    });
+  });
+
   it("builds a read-only dashboard snapshot without writing the status report", () => {
     const workspace = initializedWorkspace();
     const paths = getWorkspacePaths(workspace);

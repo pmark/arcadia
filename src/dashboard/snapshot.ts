@@ -63,6 +63,7 @@ export interface DashboardSnapshot {
     activityEvents: number;
   };
   dailyAdvantage: DashboardDailyAdvantage | null;
+  reviewFocus: DashboardReviewFocus | null;
   agentQueue: AgentQueue;
   projects: DashboardProject[];
   attentionItems: DashboardAttentionItem[];
@@ -76,6 +77,12 @@ export interface DashboardSnapshot {
   recentRuns: DashboardRun[];
   recentArtifacts: DashboardArtifact[];
   dispatchJournal: DashboardDispatchJournal;
+}
+
+export interface DashboardReviewFocus {
+  projectOrder: string[];
+  excludedProjects: string[];
+  maxItems: number;
 }
 
 /**
@@ -483,6 +490,7 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
         activityEvents: activityEvents.length
       },
       dailyAdvantage,
+      reviewFocus: readReviewFocus(options.workspace),
       agentQueue,
       projects,
       attentionItems,
@@ -507,6 +515,29 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
       dispatchJournal
     };
   });
+}
+
+function readReviewFocus(workspace: string): DashboardReviewFocus | null {
+  const configPath = path.join(workspace, "config", "arcadia.json");
+  if (!existsSync(configPath)) return null;
+
+  try {
+    const parsed = JSON.parse(readFileSync(configPath, "utf8")) as { reviewFocus?: Record<string, unknown> };
+    const focus = parsed.reviewFocus;
+    if (!focus) return null;
+    const projectOrder = Array.isArray(focus.projectOrder)
+      ? focus.projectOrder.filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
+      : [];
+    const excludedProjects = Array.isArray(focus.excludedProjects)
+      ? focus.excludedProjects.filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
+      : [];
+    const maxItems = typeof focus.maxItems === "number" && Number.isInteger(focus.maxItems) && focus.maxItems > 0
+      ? focus.maxItems
+      : 5;
+    return { projectOrder, excludedProjects, maxItems };
+  } catch {
+    return null;
+  }
 }
 
 function toDashboardBackBurnerItem(item: BackBurnerItemSummary): DashboardBackBurnerItem {
@@ -1040,7 +1071,7 @@ function buildAttentionItems(
       relatedArtifactPath: run.artifacts[0]?.path ?? run.mission_log_path,
       finalArtifactPath: run.artifacts.find((artifact) => artifact.artifact_type === "planning_artifact")?.path ?? null,
       validationPath: run.artifacts.find((artifact) => artifact.artifact_type === "planning_artifact_validation")?.path ?? null,
-      relatedReviewId: null,
+      relatedReviewId: run.review_item_id,
       relatedReviewSlug: null,
       relatedDecisionId: null,
       relatedDecisionSlug: null,

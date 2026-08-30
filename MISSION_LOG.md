@@ -8,6 +8,24 @@ updated: 2026-08-30
 
 # Mission Log: Arcadia
 
+## 2026-08-30 — Focused Needs you on current operator priorities
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Added workspace-configured Review focus, bounded the visible set,
+  moved explicitly parked Projects behind the history control, archived
+  non-current packet and Run attempts after 30 days, collapsed superseded
+  attempts for the same Action, and stopped showing a Run beside its canonical
+  Review Decision.
+- **Result:** The operator workspace now focuses five items in Project order:
+  Private Practice Now first, Arcadia second, with Rebuster parked. The real
+  projection falls from 45 equally competing items to five focused items;
+  every remaining open or historical record stays reachable through one
+  explicit control and no evidence is deleted.
+- **Next:** Use the focused PPN Decisions to remove the next concrete blocker;
+  change `reviewFocus` only when the operator changes priorities.
+- **Blockers:** None. This changes presentation and priority only; it grants no
+  execution, merge, deployment, or outbound authority.
+
 ## 2026-08-30 — Completed governed prepared-plan decisions on Needs you
 
 - **Action:** `idea-to-managed-build#build-plan-approval-surface`

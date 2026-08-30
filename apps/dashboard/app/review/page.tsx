@@ -31,7 +31,9 @@ export default function ReviewPage() {
       buildNeedsYouBoard(
         snapshot?.attentionItems ?? [],
         reviewItems,
-        snapshot ? [...snapshot.agentQueue.ready, ...snapshot.agentQueue.running, ...snapshot.agentQueue.attention] : []
+        snapshot ? [...snapshot.agentQueue.ready, ...snapshot.agentQueue.running, ...snapshot.agentQueue.attention] : [],
+        Date.now(),
+        snapshot?.reviewFocus ?? null
       ),
     [snapshot, reviewItems]
   );
@@ -199,7 +201,7 @@ export default function ReviewPage() {
   return (
     <DashboardChrome
       title="Needs you"
-      subtitle={snapshot ? `${board.queue.length + (board.dominant ? 1 : 0)} active · ${board.excluded.length} off board` : undefined}
+      subtitle={snapshot ? `${board.queue.length + (board.dominant ? 1 : 0)} focused · ${board.excluded.length} more` : undefined}
       refreshing={refreshing}
       lastLoadedAt={lastLoadedAt}
       onRefresh={() => void refresh()}
@@ -271,7 +273,7 @@ function ExcludedSection({
         onClick={onToggle}
         className="text-xs font-semibold uppercase tracking-wide text-muted underline underline-offset-2"
       >
-        {show ? "Hide" : "Show"} off-board items ({excluded.length})
+        {show ? "Hide" : "Show"} lower-priority & historical ({excluded.length})
       </button>
       {show ? (
         <ul className="mt-3 grid min-w-0 gap-2">

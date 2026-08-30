@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildNeedsYouBoard } from "./needs-you";
-import type { DashboardAttentionItem, DashboardReviewItem } from "./types";
+import type { AgentQueueEntry, DashboardAttentionItem, DashboardReviewItem } from "./types";
 
 const NOW = Date.parse("2026-08-28T12:00:00.000Z");
 
@@ -83,6 +83,34 @@ function reviewItem(overrides: Partial<DashboardReviewItem>): DashboardReviewIte
   };
 }
 
+function selectedAction(actionId: string): AgentQueueEntry {
+  return {
+    id: `ready:${actionId}`,
+    state: "ready",
+    attentionKind: null,
+    selected: true,
+    projectId: "proj-1",
+    projectName: "Sample Project",
+    projectSlug: "sample-project",
+    repositoryRoot: "/tmp/sample-project",
+    planSlug: "sample-plan",
+    planPath: "docs/plans/sample-plan.md",
+    actionId,
+    actionTitle: actionId,
+    responsibility: "codex",
+    expectedArtifact: null,
+    tokenImpact: null,
+    tokenBudget: null,
+    status: "ready",
+    reason: "Ready.",
+    nextAction: "Run it.",
+    blockers: [],
+    runId: null,
+    decisionId: null,
+    updatedAt: "2026-08-28T00:00:00.000Z"
+  };
+}
+
 describe("buildNeedsYouBoard", () => {
   it("excludes deterministic blocked_work items and accounts for them separately", () => {
     const board = buildNeedsYouBoard(
@@ -152,6 +180,105 @@ describe("buildNeedsYouBoard", () => {
     );
 
     expect(board.dominant?.attentionCost).toBe("long");
+  });
+
+  it("archives an old packet for a non-current Action but keeps the current Action's packet", () => {
+    const board = buildNeedsYouBoard(
+      [
+        attentionItem({
+          id: "codex:old",
+          kind: "codex_packet",
+          relatedReviewId: null,
+          actionId: "old-action",
+          createdAt: "2026-06-01T00:00:00.000Z"
+        }),
+        attentionItem({
+          id: "codex:current",
+          kind: "codex_packet",
+          relatedReviewId: null,
+          actionId: "current-action",
+          createdAt: "2026-06-01T00:00:00.000Z"
+        })
+      ],
+      [],
+      [selectedAction("current-action")],
+      NOW
+    );
+
+    expect(board.dominant?.item.id).toBe("codex:current");
+    expect(board.excluded).toEqual([
+      expect.objectContaining({ item: expect.objectContaining({ id: "codex:old" }), exclusionReason: expect.stringMatching(/historical packet/i) })
+    ]);
+  });
+
+  it("keeps only the newest packet for the same Action", () => {
+    const board = buildNeedsYouBoard([
+      attentionItem({
+        id: "codex:older",
+        kind: "codex_packet",
+        relatedReviewId: null,
+        actionId: "action-1",
+        createdAt: "2026-08-27T00:00:00.000Z",
+        updatedAt: "2026-08-27T00:00:00.000Z"
+      }),
+      attentionItem({
+        id: "codex:newer",
+        kind: "codex_packet",
+        relatedReviewId: null,
+        actionId: "action-1",
+        createdAt: "2026-08-28T00:00:00.000Z",
+        updatedAt: "2026-08-28T00:00:00.000Z"
+      })
+    ], [], [], NOW);
+
+    expect(board.dominant?.item.id).toBe("codex:newer");
+    expect(board.excluded[0]?.exclusionReason).toMatch(/superseded/i);
+  });
+
+  it("archives a Run when its open Review already carries the Decision", () => {
+    const board = buildNeedsYouBoard([
+      attentionItem({ id: "review:retry", kind: "review", relatedRunId: "run-1" }),
+      attentionItem({ id: "run:run-1", kind: "run", relatedReviewId: null, relatedRunId: "run-1" })
+    ]);
+
+    expect(board.dominant?.item.id).toBe("review:retry");
+    expect(board.excluded[0]?.exclusionReason).toMatch(/review already carries/i);
+  });
+
+  it("archives a Run after its linked Review has been resolved", () => {
+    const board = buildNeedsYouBoard([
+      attentionItem({
+        id: "run:resolved-review",
+        kind: "run",
+        relatedReviewId: "resolved-review",
+        relatedRunId: "run-1",
+        actionId: "action-1"
+      })
+    ]);
+
+    expect(board.dominant).toBeNull();
+    expect(board.excluded[0]?.exclusionReason).toMatch(/canonical decision record/i);
+  });
+
+  it("focuses a bounded set in project priority order and removes excluded Projects", () => {
+    const board = buildNeedsYouBoard(
+      [
+        attentionItem({ id: "review:arcadia", projectName: "Arcadia", actionId: "arcadia" }),
+        attentionItem({ id: "review:ppn-a", projectName: "Private Practice Now", actionId: "ppn-a" }),
+        attentionItem({ id: "review:ppn-b", projectName: "Private Practice Now", actionId: "ppn-b" }),
+        attentionItem({ id: "review:rebuster", projectName: "Rebuster", actionId: "rebuster" })
+      ],
+      [],
+      [],
+      NOW,
+      { projectOrder: ["Private Practice Now", "Arcadia"], excludedProjects: ["Rebuster"], maxItems: 2 }
+    );
+
+    expect([board.dominant?.item.id, ...board.queue.map((entry) => entry.item.id)]).toEqual([
+      "review:ppn-a",
+      "review:ppn-b"
+    ]);
+    expect(board.excluded.map((entry) => entry.item.id)).toEqual(expect.arrayContaining(["review:rebuster", "review:arcadia"]));
   });
 
   it("returns an empty board with no dominant item when nothing needs the operator", () => {
