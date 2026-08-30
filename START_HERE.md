@@ -229,8 +229,13 @@ replaces another Project's work pointer.
    command. Confirming a handoff alone records no Decision and starts no Run.
 4. Use **Runs** to follow approved work and inspect its Artifacts, Validation, and Log.
 5. Return to **Needs you** to accept a successful plan; for an explicitly
-   prepared software Project, acceptance marks the planning Action done,
-   promotes one current build Action, and prepares—but does not run—its packet.
+   prepared software Project, the page renders the original idea, Milestone,
+   proposed Actions, Token Impact and Budget, target repository, and judged
+   Artifact revision without requiring raw Markdown. Choose exactly one outcome:
+   **Approve plan** marks the planning Action done, promotes one current build
+   Action, and prepares—but does not run—its packet; **Defer** requires the named
+   condition that revives it; or **Send back** requires refinement feedback,
+   preserves the current Artifact, and reopens the planning Action for Codex.
 
 Before feeding another coding agent, open the **Agent Queue** section in
 Mission Control. It keeps three explicit lanes in view: **Ready to feed**,

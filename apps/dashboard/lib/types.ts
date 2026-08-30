@@ -792,6 +792,16 @@ export interface DashboardReviewItem {
   promptPath: string | null;
   finalMessagePath: string | null;
   validationPath: string | null;
+  planningArtifact: {
+    title: string;
+    idea: string;
+    milestone: string | null;
+    proposedActions: string[];
+    tokenImpact: string;
+    tokenBudget: string;
+    repository: string;
+    artifactSha256: string;
+  } | null;
 }
 
 export interface DashboardBackBurnerItem {

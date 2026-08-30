@@ -35,6 +35,11 @@ export interface PlanningPromotionFields {
   approvalRequirements: string;
 }
 
+export interface PlanningReviewFields {
+  title: string;
+  proposedActions: string[];
+}
+
 interface MarkdownSection {
   title: string;
   normalizedTitle: string;
@@ -238,6 +243,27 @@ export function extractPlanningPromotionFields(artifactText: string): PlanningPr
     repositoryImpact,
     approvalRequirements
   };
+}
+
+/**
+ * Project the validated Markdown Artifact into the small readable slice the
+ * operator needs on the Review page. Validation remains authoritative; this
+ * helper only renders the already-required title and ordered phases.
+ */
+export function extractPlanningReviewFields(artifactText: string): PlanningReviewFields | null {
+  const title = /^#\s+(.+)$/m.exec(artifactText)?.[1]?.trim();
+  const sections = parseMarkdownSections(artifactText);
+  const ordered = findSection(sections, [/ordered phases?/, /implementation phases?/, /proposed actions?/]);
+  if (!title || !ordered) {
+    return null;
+  }
+
+  const proposedActions = ordered.content
+    .split(/\r?\n/)
+    .map((line) => line.match(/^\s*(?:\d+[.)]|[-*+])\s+(.+)$/)?.[1]?.trim() ?? "")
+    .filter(Boolean);
+
+  return proposedActions.length > 0 ? { title, proposedActions } : null;
 }
 
 function derivePlanningArtifactContract(

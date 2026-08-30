@@ -224,7 +224,13 @@ export default function ProjectDetailsPage() {
     setProjectReviews(body.reviewItems as DashboardReviewItem[]);
   }
 
-  async function submitReviewAction(item: DashboardReviewItem, action: "approve" | "reject" | "defer" | "resolve", reply?: string) {
+  async function submitReviewAction(
+    item: DashboardReviewItem,
+    action: "approve" | "reject" | "defer" | "resolve",
+    reply?: string,
+    trigger?: string,
+    feedback?: string
+  ) {
     const key = action === "resolve" ? `${item.id}:resolve` : `${item.id}:${action}`;
     setReviewPending(key);
     setWorkError(null);
@@ -232,7 +238,7 @@ export default function ProjectDetailsPage() {
       const response = await fetch("/api/review-action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: item.id, action, reply })
+        body: JSON.stringify({ id: item.id, action, reply, trigger, feedback, requireTrigger: action === "defer" })
       });
       const body = await response.json();
       if (!response.ok) throw new Error(errorMessageFromBody(body, "Review action failed."));
@@ -447,6 +453,8 @@ export default function ProjectDetailsPage() {
                     item={item}
                     pendingAction={reviewPending?.startsWith(`${item.id}:`) ? reviewPending.slice(item.id.length + 1) : null}
                     onAction={(reviewItem, action) => void submitReviewAction(reviewItem, action)}
+                    onDefer={(reviewItem, trigger) => void submitReviewAction(reviewItem, "defer", undefined, trigger)}
+                    onRefine={(reviewItem, feedback) => void submitReviewAction(reviewItem, "reject", undefined, undefined, feedback)}
                     onResolveOption={(reviewItem, option) => void submitReviewAction(reviewItem, "resolve", option)}
                     onResolveReply={(reviewItem, reply) => void submitReviewAction(reviewItem, "resolve", reply)}
                   />

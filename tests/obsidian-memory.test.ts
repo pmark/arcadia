@@ -66,11 +66,19 @@ describe("Obsidian accepted planning Artifact memory", () => {
 
     const awaiting = planningFixture({ memory: true });
     expect(recordFiles(awaiting.vault)).toEqual([]);
-    runReviewRejectCommand({ workspace: awaiting.workspace, id: awaiting.decisionId });
+    runReviewRejectCommand({
+      workspace: awaiting.workspace,
+      id: awaiting.decisionId,
+      feedback: "Clarify the first implementation slice before resubmitting."
+    });
     expect(recordFiles(awaiting.vault)).toEqual([]);
 
     const deferred = planningFixture({ memory: true });
-    runReviewDeferCommand({ workspace: deferred.workspace, id: deferred.decisionId });
+    runReviewDeferCommand({
+      workspace: deferred.workspace,
+      id: deferred.decisionId,
+      trigger: "When the Project is ready to choose its first implementation slice."
+    });
     expect(recordFiles(deferred.vault)).toEqual([]);
   });
 

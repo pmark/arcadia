@@ -2267,12 +2267,13 @@ export function buildProgram(): Command {
       .command("reject")
       .description("Reject a Requires Review item without executing it")
       .argument("<id>", "Requires Review item id")
+      .option("--feedback <text>", "Required feedback when sending a prepared plan back for refinement")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((id: string, options: { workspace: string; json?: boolean }) =>
+  ).action((id: string, options: { workspace: string; feedback?: string; json?: boolean }) =>
     runCliAction(
       "review.reject",
       reviewOptionsFromArgv(options),
-      () => runReviewRejectCommand({ ...reviewOptionsFromArgv(options), id }),
+      () => runReviewRejectCommand({ ...reviewOptionsFromArgv(options), id, feedback: options.feedback }),
       renderReviewDecisionSuccess
     )
   );

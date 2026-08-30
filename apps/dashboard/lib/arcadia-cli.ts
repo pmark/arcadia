@@ -482,10 +482,14 @@ export async function runReviewAction(input: {
   id: string;
   action: "approve" | "reject" | "defer";
   trigger?: string;
+  feedback?: string;
 }): Promise<ArcadiaJsonSuccess<ReviewActionResponse>> {
   const args = ["review", input.action, input.id];
   if (input.action === "defer" && input.trigger) {
     args.push("--trigger", input.trigger);
+  }
+  if (input.action === "reject" && input.feedback) {
+    args.push("--feedback", input.feedback);
   }
   return runArcadiaCliJson<ReviewActionResponse>(args);
 }

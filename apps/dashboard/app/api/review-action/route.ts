@@ -18,6 +18,7 @@ interface ReviewActionRequest {
   execute?: unknown;
   executor?: unknown;
   trigger?: unknown;
+  feedback?: unknown;
   /** Set by the Needs you board, whose defer control always collects a trigger; other quick-action surfaces don't send it and keep their untriggered defer. */
   requireTrigger?: unknown;
 }
@@ -30,6 +31,7 @@ export async function POST(request: Request) {
     const execute = body.execute === true;
     const executor = typeof body.executor === "string" ? body.executor.trim() : undefined;
     const trigger = typeof body.trigger === "string" ? body.trigger.trim() : "";
+    const feedback = typeof body.feedback === "string" ? body.feedback.trim() : "";
     const requireTrigger = body.requireTrigger === true;
 
     if (!id) {
@@ -54,7 +56,12 @@ export async function POST(request: Request) {
     }
 
     if (action === "approve" || action === "reject" || action === "defer") {
-      const response = await runReviewAction({ id, action, trigger: action === "defer" ? trigger : undefined });
+      const response = await runReviewAction({
+        id,
+        action,
+        trigger: action === "defer" ? trigger : undefined,
+        feedback: action === "reject" ? feedback : undefined
+      });
       return NextResponse.json({
         message: `Decision ${response.data.result.status}. ${response.data.result.summary}`,
         result: response.data
