@@ -270,6 +270,16 @@ changed no Arcadia state and points to the durable Run record or guarded
 command. The board is covered at phone width through the complete Playwright
 suite.
 
+Dogfood then exposed a stale-question failure: a document-backed clarification
+from a non-current plan could age upward in Needs you despite having no link to
+the current governed Action. The board now offers **Reassess** for clarification
+Decisions. It compares the source plan and question with the Project's
+authoritative active plan, withdraws provably disconnected Decisions while
+preserving their history, and labels questions found in the active plan **Still
+declared** without pretending semantic applicability was reviewed. The operator
+can **Flag for agent review** to park one outside Needs you in a dedicated Agent
+Queue lane. Both transitions are deterministic and start no Run.
+
 `promote-accepted-plan` and `build-plan-approval-surface` are now complete.
 Needs you renders a validated planning Artifact as a readable plan with its
 original idea, Milestone, proposed Actions, Token Impact and Budget, target

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import {
   ArcadiaCliError,
+  flagReviewForAgent,
+  reassessReviewItem,
   resolveReviewReply,
   reviewApproveWithExecute,
   runReviewAction
@@ -9,7 +11,7 @@ import {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-type ReviewAction = "approve" | "reject" | "defer" | "resolve";
+type ReviewAction = "approve" | "reject" | "defer" | "resolve" | "reassess" | "flag_agent";
 
 interface ReviewActionRequest {
   id?: unknown;
@@ -55,6 +57,28 @@ export async function POST(request: Request) {
       });
     }
 
+    if (action === "reassess") {
+      const response = await reassessReviewItem(id);
+      return NextResponse.json({
+        message: response.data.summary,
+        result: response.data,
+        nextAction: response.data.outcome === "still_declared"
+          ? "The question remains in Needs you because it is still declared; semantic applicability was not evaluated."
+          : "No operator answer is needed; the Decision remains preserved in history."
+      });
+    }
+
+    if (action === "flag_agent") {
+      const response = await flagReviewForAgent(id);
+      return NextResponse.json({
+        message: response.data.summary,
+        result: response.data,
+        nextAction: response.data.outcome === "flagged_for_agent_review"
+          ? "The Decision is parked in Agent Queue until a coding-agent review is deliberately started."
+          : "The deterministic check found that no coding-agent review is needed."
+      });
+    }
+
     if (action === "approve" || action === "reject" || action === "defer") {
       const response = await runReviewAction({
         id,
@@ -82,7 +106,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(
-      { error: "Review action must be approve, reject, defer, or resolve.", details: { action } },
+      { error: "Review action must be approve, reject, defer, resolve, reassess, or flag_agent.", details: { action } },
       { status: 400 }
     );
   } catch (error) {

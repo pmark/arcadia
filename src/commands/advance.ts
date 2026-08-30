@@ -21,7 +21,7 @@ export function renderAdvanceQueueSuccess(response: CommandSuccess<AdvanceQueueC
   const queue = response.data;
   return [
     "Arcadia Agent Queue",
-    `Ready: ${queue.counts.ready} · Running: ${queue.counts.running} · Needs attention: ${queue.counts.attention}`,
+    `Ready: ${queue.counts.ready} · Running: ${queue.counts.running} · Flagged: ${queue.counts.flagged} · Needs attention: ${queue.counts.attention}`,
     "",
     "Ready to feed:",
     ...renderEntries(queue.ready, renderReadyEntry),
@@ -29,8 +29,20 @@ export function renderAdvanceQueueSuccess(response: CommandSuccess<AdvanceQueueC
     "Running or queued:",
     ...renderEntries(queue.running, renderRunningEntry),
     "",
+    "Flagged for agent review:",
+    ...renderEntries(queue.flagged, renderFlaggedEntry),
+    "",
     "Needs attention before dispatch:",
     ...renderEntries(queue.attention, renderAttentionEntry)
+  ];
+}
+
+function renderFlaggedEntry(entry: AgentQueueEntry): string[] {
+  return [
+    `  ? ${entry.projectName ?? "Unassigned"} / ${entry.decisionId ?? "Decision"}`,
+    `    ${entry.reason}`,
+    "    Status: flagged; no coding-agent Run started",
+    `    Next: ${entry.nextAction}`
   ];
 }
 

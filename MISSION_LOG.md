@@ -8,6 +8,24 @@ updated: 2026-08-30
 
 # Mission Log: Arcadia
 
+## 2026-08-30 — Let the operator reassess stale Needs you questions
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Added **Reassess** to document-backed clarification Decisions on
+  Needs you and the matching `arcadia review reassess <id>` command. The
+  transition checks the source plan, question id, plan status, and Project
+  active-plan pointer before changing attention state. Added **Flag for agent
+  review** and `arcadia review flag-agent <id>` to park still-declared questions
+  in a dedicated Agent Queue lane without launching an agent.
+- **Result:** A disconnected question such as PPN R53 leaves active operator
+  attention while its Decision and reassessment receipt remain preserved in
+  history. A question found in the active plan is labeled **Still declared**,
+  not semantically validated, and can be moved out of operator attention for a
+  later coding-agent assessment. Both actions make zero model calls and start
+  no Run.
+- **Next:** Review the Candidate through its pull request QA plan.
+- **Blockers:** None.
+
 ## 2026-08-30 — Focused Needs you on current operator priorities
 
 - **Action:** `idea-to-managed-build#build-operator-attention-board`

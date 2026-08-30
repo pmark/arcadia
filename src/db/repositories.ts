@@ -1512,7 +1512,20 @@ export function listActionableReviewItems(db: Database.Database): ReviewItemSumm
   return [
     ...listReviewItems(db, "open"),
     ...listReviewItems(db, "deferred")
-  ];
+  ].filter((item) => !isFlaggedForAgentReview(item));
+}
+
+export function listAgentReviewFlaggedItems(db: Database.Database): ReviewItemSummary[] {
+  return listReviewItems(db, "deferred").filter(isFlaggedForAgentReview);
+}
+
+function isFlaggedForAgentReview(item: ReviewItemSummary): boolean {
+  try {
+    const context = JSON.parse(item.context_json) as { agentReview?: { status?: unknown } };
+    return context.agentReview?.status === "flagged";
+  } catch {
+    return false;
+  }
 }
 
 export function findFollowUpReviewForRun(db: Database.Database, runId: string): ReviewItemSummary | null {
