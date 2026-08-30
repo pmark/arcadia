@@ -160,11 +160,12 @@ actions:
   - id: launch-tmux-backed-session
     title: Launch one governed coding-agent Session through tmux
     status: open
-    responsibility: codex
+    responsibility: requires_review
     effort: session
-    next_action: Persist the thin Session receipt that arcadia go already computes, then add one explicit tmux launch path that starts Claude Code in Arcadia's existing isolated worktree with a pinned model, stable agent session id, and recognizable name.
     expected_artifact: A tested opt-in tmux launch path whose durable Session receipt lets the operator leave, find, and reattach to the exact governed Claude Code work without inspecting its transcript
-    clarification: clarified
+    clarification: question_open
+    gap_type: missing-decision
+    question: Approve one bounded real Claude Code dogfood Session, using the configured provider credentials, to verify detach, terminal-close survival, reattach, exit, and resume by the preassigned provider session id?
     confidence: high
     source: Operator direction on 2026-08-29 and Decision 0012
     acceptance_criteria:
@@ -179,7 +180,7 @@ actions:
       - A real Claude Code dogfood Session can detach, survive closing its launching terminal, reattach to the same interactive interface, and remain resumable by its preassigned Claude session id after exit.
       - Cross-repository work is decomposed into linked single-repository Actions and Sessions; the first fixtures prove a dispatchable PPN Action, an operator-owned Rebuster Action that must produce a Decision rather than launch, and a new idea that must produce planning before implementation.
       - Focused tests cover preview, explicit launch, missing tmux, name collision, spawn failure, stable identifiers, liveness, reattach instructions, and unchanged manual behavior; START_HERE.md documents the operator procedure and limits.
-    decisions: ["0012"]
+    decisions: ["0012", "0038"]
     references:
       - src/commands/go.ts
       - src/commands/worker.ts

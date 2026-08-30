@@ -212,6 +212,10 @@ Validation: pnpm test
 - Prefer "Outcome" when the object is a desired result.
 - Prefer "Log" when the object is durable history.
 - Use "Run" for a concrete execution attempt.
+- Use "Session" only for one bounded coding-agent dispatch. A Session is a thin
+  operational pointer to its governed Action, immutable packet, agent-native
+  session id, and optional terminal transport; it is not a transcript or a
+  claim that the Action completed.
 - Use "Token Impact" for relative LLM-token exposure and keep it distinct from compute time and Action effort.
 - Use "Validation" only as criteria, commands, checks, or evidence.
 - Use "Back Burner" only as a view label if the product wants that flavor; the underlying status is Incubating.
@@ -251,6 +255,7 @@ Arcadia may temporarily contain legacy implementation names:
 - `mission_logs`
 - `prompt_packet_path`
 - `execution_runs`
+- `agent_sessions`
 - `back_burner_items`
 
 These names should be treated as compatibility names. Do not add new user-facing surfaces that make them more entrenched.
