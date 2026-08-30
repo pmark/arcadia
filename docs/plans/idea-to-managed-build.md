@@ -6,7 +6,7 @@ project: arcadia
 status: active
 milestone: A raw software-project idea becomes governed, dispatchable coding-agent work without a manual planning-to-build handoff
 token_impact: large
-token_budget: "Project creation, document rendering, readiness checks, builds, and state transitions are deterministic. Use one bounded planning Run for the idea, one coding-agent implementation Run per accepted Action, and independent QA only when deterministic readiness passes."
+token_budget: "Project creation, document rendering, Session lifecycle checks, builds, and state transitions are deterministic. Use one bounded planning Run for the idea, one explicitly launched coding-agent Session per accepted Action, and independent QA only when deterministic readiness passes."
 updated: 2026-08-29
 actions:
   - id: prepare-project-idea
@@ -153,6 +153,63 @@ actions:
       - docs/plans/idea-to-managed-build.md
       - START_HERE.md
     depends_on: [promote-accepted-plan, build-operator-attention-board]
+  - id: launch-tmux-backed-session
+    title: Launch one governed coding-agent Session through tmux
+    status: open
+    responsibility: codex
+    effort: session
+    next_action: Persist the thin Session receipt that arcadia go already computes, then add one explicit tmux launch path that starts Claude Code in Arcadia's existing isolated worktree with a pinned model, stable agent session id, and recognizable name.
+    expected_artifact: A tested opt-in tmux launch path whose durable Session receipt lets the operator leave, find, and reattach to the exact governed Claude Code work without inspecting its transcript
+    clarification: clarified
+    confidence: high
+    source: Operator direction on 2026-08-29 and Decision 0012
+    acceptance_criteria:
+      - An explicit launch option on arcadia go is the only new authority to start a process; preview and the existing manual launch-command path remain non-launching and backward compatible.
+      - Launch is allowed only after the existing dispatch, clean-worktree, agent-owned branch, isolated-worktree, pinned-model, and optional-effort checks have passed; tmux availability and session-name collision checks fail before Arcadia claims a Session is running.
+      - Before process start, Arcadia persists one workspace-owned Session receipt linking Project, plan, Action, execution profile, provider, model, effort, branch, worktree, prepared time, stable Claude Code session id and display name, and tmux session name.
+      - Arcadia starts tmux around the worktree it already created instead of invoking Claude Code's worktree-owning tmux mode, so Arcadia remains the single authority for branch and worktree creation and retirement.
+      - A read-only Session view reports prepared, running, or exited from stored linkage plus tmux process liveness and prints the exact reattach command; it never captures panes, mirrors transcripts, estimates progress, or injects input.
+      - A real Claude Code dogfood Session can detach, survive closing its launching terminal, reattach to the same interactive interface, and remain resumable by its preassigned Claude session id after exit.
+      - Focused tests cover preview, explicit launch, missing tmux, name collision, spawn failure, stable identifiers, liveness, reattach instructions, and unchanged manual behavior; START_HERE.md documents the operator procedure and limits.
+    decisions: ["0012"]
+    references:
+      - src/commands/go.ts
+      - src/commands/worker.ts
+      - src/db/schema.ts
+      - docs/decisions/0009-agent-neutral-go-handoff.md
+      - docs/decisions/0010-pin-the-agent-handoff-model.md
+      - docs/decisions/0012-the-session-primitive.md
+      - docs/working-copy-safety.md
+      - START_HERE.md
+    depends_on: [promote-accepted-plan]
+  - id: reconcile-session-exit
+    title: Turn a finished Session into the next governed state
+    status: open
+    responsibility: codex
+    effort: session
+    next_action: Reconcile a tmux-hosted Session after its agent process exits, persist its terminal outcome, resolve the repository's resulting Action or Decision, and link the strongest existing Log, Artifact, pull-request, Git, and validation evidence without reading the transcript.
+    expected_artifact: A completed Session receipt that explains what was dispatched, what Candidate and governed records came back, and the one next Action or operator Decision
+    clarification: clarified
+    confidence: high
+    source: Operator direction on 2026-08-29, Decision 0012, and the thin delegated-work receipt in Decision 0020
+    acceptance_criteria:
+      - Arcadia records agent-process exit time and exit status once, idempotently, and distinguishes completed, failed, and needs-input outcomes without treating a live tmux pane as semantic progress.
+      - After exit, Arcadia reruns the existing document readiness resolver and computes needs input only when authoritative repository state resolves to an open Decision; it does not scrape terminal output for questions.
+      - The Session receipt links the resulting Log entry, Decisions, Artifacts, Candidate revision, pull request, changed-file evidence, and validation receipts when those records exist, while leaving missing proof explicitly missing.
+      - Session outcome remains distinct from implementation acceptance: a zero agent exit does not mark an Action done, approve a Candidate, merge, push, deploy, publish, spend, message, use credentials, or cross any other Decision boundary.
+      - One real dogfood Session proves the complete prepared to running to exited to next-state path, including a failure or needs-input fixture and a recovery instruction for an orphaned tmux or agent process.
+      - The Agent Queue and Needs you projections consume the Session receipt and computed dispatch state rather than maintaining a second session-attention truth store.
+      - Focused tests cover normal exit, non-zero exit, missing governed output, open-Decision resolution, idempotent reconciliation, stale process identity, and preservation of prior receipts.
+    decisions: ["0012"]
+    references:
+      - src/docs/dispatch.ts
+      - src/dispatch/queue.ts
+      - src/commands/go.ts
+      - src/commands/worker.ts
+      - docs/decisions/0012-the-session-primitive.md
+      - docs/decisions/0014-tappable-operator-questions.md
+      - docs/decisions/0020-compounding-agent-production-principles.md
+    depends_on: [launch-tmux-backed-session]
   - id: manage-coding-agent-build
     title: Manage the coding-agent build through Candidate and independent QA
     status: open
@@ -177,7 +234,7 @@ actions:
       - src/qa/prReview.ts
       - docs/arcadia-development-orchestration-vision.md
       - docs/operator-demo-and-release-contract.md
-    depends_on: [promote-accepted-plan]
+    depends_on: [build-plan-approval-surface, reconcile-session-exit]
 ---
 
 # Idea to managed build
@@ -206,8 +263,29 @@ command. The board is covered at phone width through the complete Playwright
 suite. The pointer returns to `promote-accepted-plan`, the unresolved seam at
 the center of this plan's Milestone.
 
-The general expensive tail remains deferred to the third Action. The first
-proven deployment slice is intentionally smaller: one registered Astro
+The operator then selected tmux as the first concrete Session transport. The
+order is deliberate. `promote-accepted-plan` remains current because Arcadia
+must first produce the exact governed build Action a Session will execute.
+After that seam closes, `launch-tmux-backed-session` records and starts one
+addressable Claude Code Session in Arcadia's own worktree, and
+`reconcile-session-exit` turns its process exit and repository outputs into the
+next governed state. The prepared-plan approval surface may proceed once
+promotion exists, but the full managed-build Action waits for both the
+operator-facing approval path and the Session before/after path.
+
+tmux is intentionally infrastructure, not a new source of truth. The first
+slice uses it only to keep an interactive terminal alive and reattachable.
+Queueing through the worker, Discord completion or attention notifications,
+automatic daemon installation, session analytics, transcript views, prompt
+injection, and default-on background launch remain deferred. Queueing
+reactivates after the first real tmux-backed Session completes and the operator
+chooses unattended launch for a second Action; notifications reactivate when a
+completed or needs-input Session waits unnoticed or requires manual status
+relay; analytics reactivate only when enough thin receipts exist to change
+planning or provider selection.
+
+The general deployment tail remains deferred. The first proven deployment
+slice is intentionally smaller: one registered Astro
 template, one declared generator skill, and one deterministic Cloudflare
 Workers Static Assets staging deploy. Automatic provider discovery, production release, and general
 workflow-engine abstractions add cost without improving that proof.

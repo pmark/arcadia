@@ -273,6 +273,18 @@ and Dashboard builds prove the slice. The pointer returns to
 accepted-plan-to-build promotion remains the direct unresolved seam in the
 current Milestone; the larger plan-reading surface still depends on it.
 
+On 2026-08-29 the operator selected tmux as the first concrete transport for
+Arcadia-managed coding-agent Sessions. This does not displace
+`promote-accepted-plan`: Arcadia must first produce the exact governed build
+Action a Session will execute. The active plan now orders two Session slices
+immediately after that seam: persist and explicitly launch one addressable
+Claude Code Session in Arcadia's existing isolated worktree, then reconcile
+its exit into a thin receipt and the repository's next Action or Decision.
+Only after real dogfood may worker queueing reactivate; notifications wait for
+an observed unnoticed state, and transcript monitoring, prompt injection,
+default-on launch, and session analytics remain deferred against named
+triggers.
+
 ## Links
 
 - `docs/COMMANDS.md` — the operator-facing command guide

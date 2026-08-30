@@ -3,10 +3,38 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-28
+updated: 2026-08-29
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-29 — Ordered tmux-backed Sessions into the managed-build path
+
+- **Action:** `idea-to-managed-build#promote-accepted-plan`
+- **Did:** Refined the open Session primitive Decision around a direct tmux
+  transport and added two bounded Actions to the active plan: explicitly launch
+  one thin recorded Session in Arcadia's existing isolated worktree, then
+  reconcile its exit into the resulting Log, Decisions, Artifacts, Candidate,
+  and next governed state without reading the transcript. Updated the
+  orchestration vision and operating model to show where this fits. This is
+  operator-directed follow-on planning, not claimed implementation progress on
+  the current Action.
+- **Result:** The dependency order is explicit: accepted-plan promotion first;
+  tmux launch and reattachment second; post-exit reconciliation third; the
+  phone plan-approval surface can then join that execution path before the full
+  Candidate-and-QA loop. Decision 0012 remains open and gates both Session
+  Actions, so planning does not silently authorize implementation.
+- **Deferred:** Worker queueing reactivates after one real tmux-backed Session
+  succeeds and a second Action needs unattended launch. Notifications
+  reactivate when a completed or needs-input Session waits unnoticed or must
+  be manually relayed. Analytics reactivate only when enough thin receipts
+  exist to change planning or provider choice. Transcript capture, prompt
+  injection, live progress, default-on launch, and a new supervisor are out of
+  scope.
+- **Next:** Complete `promote-accepted-plan`; then ask the operator to resolve
+  Decision 0012 before dispatching `launch-tmux-backed-session`.
+- **Blockers:** None for the current Action. The planned Session Actions are
+  intentionally gated by open Decision 0012.
 
 ## 2026-08-29 — Completed the Needs you operator attention board
 
