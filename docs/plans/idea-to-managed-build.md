@@ -116,6 +116,7 @@ actions:
       - Before confirmation, every option previews its immediate consequence, what it unblocks, what remains blocked, and whether any Run or external effect will start; the confirmation control repeats the selected outcome instead of saying only `Approve`.
       - After confirmation, the same surface gives a durable receipt naming the Decision recorded, the state transition, and the next Action or remaining blocker, replacing silent background continuation.
       - Open items outside the active ranking remain reachable behind one explicit control and are never deleted or silently hidden; empty, loading, and failed states are visibly distinct.
+      - The Needs you page can save workspace `reviewFocus` to bound the focused set, order primary and secondary Projects, and park Projects without mutating or deleting their Decisions, packets, Runs, or evidence.
       - The board and its Decision interaction remain usable at phone width and by keyboard, and focused tests cover ranking, exclusion, each typed response, consequence preview, receipt, and empty and failure states.
     decisions: ["0034", "0036"]
     references:

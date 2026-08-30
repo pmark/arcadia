@@ -337,6 +337,7 @@ export interface DashboardSnapshot {
     activityEvents: number;
   };
   dailyAdvantage: DashboardDailyAdvantage | null;
+  reviewFocus: DashboardReviewFocus | null;
   agentQueue: AgentQueue;
   projects: DashboardProject[];
   attentionItems: DashboardAttentionItem[];
@@ -349,6 +350,12 @@ export interface DashboardSnapshot {
   backBurnerItems: DashboardBackBurnerItem[];
   recentRuns: DashboardRun[];
   recentArtifacts: DashboardArtifact[];
+}
+
+export interface DashboardReviewFocus {
+  projectOrder: string[];
+  excludedProjects: string[];
+  maxItems: number;
 }
 
 export type PullRequestReadiness =

@@ -34,6 +34,7 @@ import { packetSha256 } from "../execution/planningAuthorization.js";
 import { extractPlanningReviewFields } from "../stewardship/artifactValidator.js";
 import { buildAgentQueue, type AgentQueue } from "../dispatch/queue.js";
 import { selectDailyAdvantage, type DashboardDailyAdvantage } from "./dailyAdvantage.js";
+import { readReviewFocus, type DashboardReviewFocus } from "./reviewFocus.js";
 
 export const MISSING_REPO_PATH_WARNING = CODEX_REPO_PATH_REQUIRED_MESSAGE;
 
@@ -63,6 +64,7 @@ export interface DashboardSnapshot {
     activityEvents: number;
   };
   dailyAdvantage: DashboardDailyAdvantage | null;
+  reviewFocus: DashboardReviewFocus | null;
   agentQueue: AgentQueue;
   projects: DashboardProject[];
   attentionItems: DashboardAttentionItem[];
@@ -483,6 +485,7 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
         activityEvents: activityEvents.length
       },
       dailyAdvantage,
+      reviewFocus: readReviewFocus(options.workspace),
       agentQueue,
       projects,
       attentionItems,
@@ -1040,7 +1043,7 @@ function buildAttentionItems(
       relatedArtifactPath: run.artifacts[0]?.path ?? run.mission_log_path,
       finalArtifactPath: run.artifacts.find((artifact) => artifact.artifact_type === "planning_artifact")?.path ?? null,
       validationPath: run.artifacts.find((artifact) => artifact.artifact_type === "planning_artifact_validation")?.path ?? null,
-      relatedReviewId: null,
+      relatedReviewId: run.review_item_id,
       relatedReviewSlug: null,
       relatedDecisionId: null,
       relatedDecisionSlug: null,
