@@ -17,7 +17,7 @@ updated: 2026-08-30
   attempts for the same Action, and stopped showing a Run beside its canonical
   Review Decision. Added a compact page control for choosing primary and
   secondary Projects and parking distractions, with atomic workspace-backed
-  persistence rather than browser-local state.
+  auto-persistence rather than a Save step or browser-local state.
 - **Result:** The operator workspace now focuses five items in Project order:
   Private Practice Now first, Arcadia second, with Rebuster parked. The real
   projection falls from 45 equally competing items to five focused items;

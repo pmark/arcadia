@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DashboardChrome } from "../../components/chrome";
 import { AttentionCard, EmptyState, ErrorState, LoadingState, ReviewCard } from "../../components/dashboard-ui";
 import { useArcadiaSnapshot } from "../../hooks/use-arcadia-snapshot";
@@ -217,7 +217,6 @@ export default function ReviewPage() {
       ) : null}
       {snapshot ? (
         <ReviewFocusControls
-          key={JSON.stringify(snapshot.reviewFocus)}
           projects={snapshot.projects}
           focus={snapshot.reviewFocus}
           onSaved={refresh}
@@ -274,20 +273,80 @@ function ReviewFocusControls({
   const [primary, setPrimary] = useState(focus?.projectOrder[0] ?? "");
   const [secondary, setSecondary] = useState(focus?.projectOrder[1] ?? "");
   const [parked, setParked] = useState(() => new Set(focus?.excludedProjects ?? []));
+  const [hasEdited, setHasEdited] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const savedFocus = useRef({ primary, secondary, parked: new Set(parked) });
   const prioritySummary = [primary, secondary].filter(Boolean).join(" → ") || "No Project preference";
+  const parkedSignature = [...parked].sort().join("\n");
+  const incomingFocusSignature = JSON.stringify(focus);
+
+  useEffect(() => {
+    if (hasEdited) return;
+    const next = {
+      primary: focus?.projectOrder[0] ?? "",
+      secondary: focus?.projectOrder[1] ?? "",
+      parked: new Set(focus?.excludedProjects ?? [])
+    };
+    savedFocus.current = next;
+    setPrimary(next.primary);
+    setSecondary(next.secondary);
+    setParked(next.parked);
+  }, [incomingFocusSignature, hasEdited, focus]);
+
+  useEffect(() => {
+    if (!hasEdited) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setSaving(true);
+      setMessage(null);
+      setSaveError(null);
+      const projectOrder = [primary, secondary].filter(Boolean);
+      const excludedProjects = [...parked].filter((project) => !projectOrder.includes(project));
+      try {
+        const response = await fetch("/api/review-focus", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectOrder, excludedProjects, maxItems: focus?.maxItems ?? 5 }),
+          signal: controller.signal
+        });
+        const body = await response.json() as { error?: string };
+        if (!response.ok) throw new Error(errorMessageFromBody(body, "Review focus could not be saved."));
+        savedFocus.current = { primary, secondary, parked: new Set(excludedProjects) };
+        setSaving(false);
+        setMessage("Saved");
+        setHasEdited(false);
+        void onSaved();
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        const previous = savedFocus.current;
+        setSaving(false);
+        setHasEdited(false);
+        setPrimary(previous.primary);
+        setSecondary(previous.secondary);
+        setParked(new Set(previous.parked));
+        setSaveError(error instanceof Error ? error.message : String(error));
+      }
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [focus?.maxItems, hasEdited, onSaved, parkedSignature, primary, secondary]);
 
   function choosePrimary(value: string) {
     setPrimary(value);
     if (value === secondary) setSecondary("");
     setParked((current) => withoutProject(current, value));
+    setHasEdited(true);
   }
 
   function chooseSecondary(value: string) {
     setSecondary(value);
     setParked((current) => withoutProject(current, value));
+    setHasEdited(true);
   }
 
   function toggleParked(project: string, checked: boolean) {
@@ -297,29 +356,9 @@ function ReviewFocusControls({
       else next.delete(project);
       return next;
     });
-  }
-
-  async function save() {
-    setSaving(true);
+    setHasEdited(true);
     setMessage(null);
     setSaveError(null);
-    try {
-      const projectOrder = [primary, secondary].filter(Boolean);
-      const excludedProjects = [...parked].filter((project) => !projectOrder.includes(project));
-      const response = await fetch("/api/review-focus", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectOrder, excludedProjects, maxItems: focus?.maxItems ?? 5 })
-      });
-      const body = await response.json() as { message?: string; error?: string };
-      if (!response.ok) throw new Error(errorMessageFromBody(body, "Review focus could not be saved."));
-      setMessage(body.message ?? "Review focus saved.");
-      await onSaved();
-    } catch (error) {
-      setSaveError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setSaving(false);
-    }
   }
 
   return (
@@ -328,7 +367,7 @@ function ReviewFocusControls({
         Focus: {prioritySummary}{parked.size > 0 ? ` · ${parked.size} parked` : ""}
       </summary>
       <div className="mt-4 grid gap-4">
-        <p className="text-xs leading-5 text-muted">Choose what deserves attention now. This preference is saved to the Arcadia workspace and follows you across devices.</p>
+        <p className="text-xs leading-5 text-muted">Choose what deserves attention now. Changes save automatically to the Arcadia workspace and follow you across devices.</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-xs font-semibold text-muted">
             Primary Project
@@ -370,18 +409,10 @@ function ReviewFocusControls({
             ))}
           </div>
         </fieldset>
-        {saveError ? <p className="text-xs text-red-700">{saveError}</p> : null}
-        {message ? <p className="text-xs text-moss">{message}</p> : null}
-        <div>
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={saving}
-            className="rounded-md bg-ink px-3 py-2 text-xs font-semibold text-canvas disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Save focus"}
-          </button>
-        </div>
+        {saveError ? <p role="alert" className="text-xs text-red-700">{saveError} The previous focus was restored.</p> : null}
+        <p role="status" aria-live="polite" className="min-h-5 text-xs text-muted">
+          {saving ? "Saving…" : message}
+        </p>
       </div>
     </details>
   );

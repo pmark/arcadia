@@ -239,8 +239,8 @@ replaces another Project's work pointer.
 
 Use the collapsed **Focus** control at the top of **Needs you** to choose a
 primary Project, an optional secondary Project, and Projects to park for now.
-**Save focus** remembers the preference in the Arcadia workspace, so the same
-ranking follows the operator across browsers and devices. The stored
+Each completed change saves automatically in the Arcadia workspace, so the
+same ranking follows the operator across browsers and devices. The stored
 `config/arcadia.json` `reviewFocus` also keeps the visible set bounded.
 Historical packets and Runs older than 30 days remain behind the history
 control unless they belong to a selected current Action. No Review, packet, or

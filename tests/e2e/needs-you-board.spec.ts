@@ -44,15 +44,28 @@ test("the operator can set and persist Review focus from the page", async ({ pag
   await page.getByText("Focus: No Project preference", { exact: true }).click();
   await page.getByLabel("Primary Project").selectOption("Arcadia");
   await page.getByLabel("Rebuster").check();
-  await page.getByRole("button", { name: "Save focus" }).click();
 
-  await expect(page.getByText("Review focus saved to this Arcadia workspace.")).toBeVisible();
+  await expect(page.getByRole("status")).toHaveText("Saved");
   await expect(page.getByText("Focus: Arcadia · 1 parked", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save focus" })).toHaveCount(0);
   const config = JSON.parse(readFileSync(path.join(arcadia.root, "config", "arcadia.json"), "utf8"));
   expect(config.reviewFocus).toEqual({ projectOrder: ["Arcadia"], excludedProjects: ["Rebuster"], maxItems: 5 });
 
   await page.reload();
   await expect(page.getByText("Focus: Arcadia · 1 parked", { exact: true })).toBeVisible();
+});
+
+test("a failed automatic focus save restores the last confirmed setting", async ({ page, arcadia }) => {
+  await page.route("**/api/review-focus", async (route) => {
+    await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "Workspace write failed." }) });
+  });
+  await page.goto(`${arcadia.url}/review`);
+  await page.getByText("Focus: No Project preference", { exact: true }).click();
+  await page.getByLabel("Primary Project").selectOption("Arcadia");
+
+  await expect(page.getByText("Workspace write failed. The previous focus was restored.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Focus: No Project preference", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Primary Project")).toHaveValue("");
 });
 
 test("an outcome previews its consequence and can be cancelled before it fires", async ({ page, arcadia }) => {
