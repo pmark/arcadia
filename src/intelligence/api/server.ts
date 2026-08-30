@@ -271,12 +271,23 @@ async function handleHealth(
   repository: IntelligenceJobRepository,
   scheduler: IntelligenceServerOptions["scheduler"],
 ): Promise<void> {
-  const liteLlmReachable = await pingLiteLlm(config.liteLlmBaseUrl, fetchImpl);
+  const liteLlmStatus = await inspectLiteLlm(
+    config.liteLlmBaseUrl,
+    config.liteLlmApiKey,
+    fetchImpl,
+  );
   const operationalSummary = repository.getOperationalSummary
     ? await repository.getOperationalSummary()
     : { queuedCount: 0, activeCount: 0, failedCount: 0, lastSuccessfulRequest: null };
   const routes = config.routes
     .filter((route) => route.enabled)
+    .filter((route) => {
+      const executor = route.executor ?? "litellm";
+      if (executor !== "litellm" && executor !== "speech") {
+        return true;
+      }
+      return liteLlmStatus.modelAliases?.has(route.liteLlmRoute) ?? false;
+    })
     .map((route) => ({
       id: route.id,
       capability: route.capability,
@@ -300,7 +311,8 @@ async function handleHealth(
     version: process.env.ARCADIA_VERSION?.trim() || "0.1.0",
     liteLlm: {
       baseUrl: config.liteLlmBaseUrl,
-      reachable: liteLlmReachable,
+      reachable: liteLlmStatus.reachable,
+      modelInventoryReachable: liteLlmStatus.modelAliases !== null,
       routes,
     },
     jobs: operationalSummary,
@@ -308,15 +320,55 @@ async function handleHealth(
   });
 }
 
-async function pingLiteLlm(baseUrl: string, fetchImpl: typeof fetch): Promise<boolean> {
+async function inspectLiteLlm(
+  baseUrl: string,
+  apiKey: string | undefined,
+  fetchImpl: typeof fetch,
+): Promise<{ reachable: boolean; modelAliases: Set<string> | null }> {
+  const normalizedBaseUrl = baseUrl.replace(/\/$/, "");
+  const reachable = await fetchLiteLlmOk(
+    `${normalizedBaseUrl}/health/liveliness`,
+    fetchImpl,
+  );
+  if (!reachable) {
+    return { reachable: false, modelAliases: null };
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 2_000);
   try {
-    // LiteLLM's plain /health actively probes every configured model and can
-    // take several seconds; /health/liveliness just confirms the proxy
-    // process itself is up, which is what we want for a quick reachability
-    // check here.
-    const response = await fetchImpl(`${baseUrl.replace(/\/$/, "")}/health/liveliness`, {
+    const response = await fetchImpl(`${normalizedBaseUrl}/v1/models`, {
+      headers: apiKey ? { authorization: `Bearer ${apiKey}` } : undefined,
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      return { reachable: true, modelAliases: null };
+    }
+    const body = await response.json() as { data?: Array<{ id?: unknown }> };
+    if (!Array.isArray(body.data)) {
+      return { reachable: true, modelAliases: null };
+    }
+    return {
+      reachable: true,
+      modelAliases: new Set(
+        body.data.flatMap((model) => typeof model.id === "string" ? [model.id] : []),
+      ),
+    };
+  } catch {
+    return { reachable: true, modelAliases: null };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchLiteLlmOk(url: string, fetchImpl: typeof fetch): Promise<boolean> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2_000);
+  try {
+    // LiteLLM's plain /health actively calls every configured model and can
+    // spend provider capacity. Liveliness plus the authenticated model
+    // inventory gives us a quick, non-generating availability check instead.
+    const response = await fetchImpl(url, {
       signal: controller.signal,
     });
     return response.ok;
