@@ -8,6 +8,27 @@ updated: 2026-08-29
 
 # Mission Log: Arcadia
 
+## 2026-08-29 — Ratified the thin, packet-bound Session primitive
+
+- **Action:** `idea-to-managed-build#launch-tmux-backed-session`
+- **Did:** Approved Decision 0012 after testing its proposed boundary against
+  Arcadia, Private Practice Now, Rebuster, and the idea-to-new-Project path.
+  Strengthened the answer so a Session is bound to the exact immutable packet,
+  authority set, provider profile, and base revision; one repository has only
+  one prepared or running Session lease by default; and `go`, `advance`, and
+  the Agent Queue consume one exhaustive deterministic transition resolver.
+- **Result:** A Project transition must now produce exactly one of launch,
+  plan, Decision, repair, reconcile, wait, or Milestone completion. Refusing
+  unsafe execution is no longer sufficient if Arcadia cannot also name or
+  prepare the governed step that permits progress. tmux remains only the first
+  reattachable terminal transport, and process success never accepts an Action.
+- **Next:** Complete the current plan-approval surface, then implement the
+  shared transition resolver and packet-bound repository lease as the first
+  part of `launch-tmux-backed-session` before adding tmux process launch.
+- **Blockers:** None in the Session definition. The three empirical provider-UI
+  questions in Decision 0012 remain dogfood checks rather than architecture
+  choices.
+
 ## 2026-08-29 — Closed the accepted-plan-to-build handoff
 
 - **Action:** `idea-to-managed-build#promote-accepted-plan`
