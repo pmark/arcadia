@@ -58,13 +58,14 @@ Action is.
 
 ## Immediate 80/20 boundary
 
-The current slice closes the two remaining local handoffs between an accepted
-plan and a managed build. Arcadia first promotes the accepted planning Artifact
-into one exact build Action. It then records and launches one opt-in Claude Code
-Session in an Arcadia-owned worktree through tmux, lets the operator detach and
-reattach to the native interface, and reconciles the repository only after the
-agent process exits. It does not build a general workflow engine, transcript
-viewer, live-progress monitor, or autonomous software factory.
+The first of the two remaining local handoffs is now closed: Arcadia promotes
+an accepted planning Artifact into one exact build Action and prepares its
+immutable build packet without starting a Run. The next slice records and
+launches one opt-in Claude Code Session in an Arcadia-owned worktree through
+tmux, lets the operator detach and reattach to the native interface, and
+reconciles the repository only after the agent process exits. It does not build
+a general workflow engine, transcript viewer, live-progress monitor, or
+autonomous software factory.
 
 ## Triggered increments
 

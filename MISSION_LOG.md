@@ -8,6 +8,27 @@ updated: 2026-08-29
 
 # Mission Log: Arcadia
 
+## 2026-08-29 — Closed the accepted-plan-to-build handoff
+
+- **Action:** `idea-to-managed-build#promote-accepted-plan`
+- **Did:** Added a deterministic promotion path specifically for software ideas
+  captured through `arcadia project prepare`. Acceptance revalidates the exact
+  planning packet and Artifact, extracts the already-required smallest useful
+  follow-up goal, marks the planning Action done, writes one clarified current
+  Codex Action into the authoritative plan, syncs it, and prepares one immutable
+  build packet without starting a Run.
+- **Result:** The receipt preserves the source idea, planning Artifact,
+  Validation result, acceptance Decision, repository, selected build profile,
+  packet hash, and exact explicit build trigger. Re-acceptance is idempotent;
+  changed output fails closed; and a persistence failure restores both managed
+  pointers. Focused promotion, project preparation, and legacy planning
+  acceptance tests pass.
+- **Next:** Build `build-plan-approval-surface`, now that its promotion
+  dependency and the Needs you board are both complete. The tmux-backed Session
+  slice follows the same prepared build packet after Decision 0012 is resolved.
+- **Blockers:** Decision 0012 still gates tmux Session implementation. It does
+  not block the current plan-approval surface Action.
+
 ## 2026-08-29 — Ordered tmux-backed Sessions into the managed-build path
 
 - **Action:** `idea-to-managed-build#promote-accepted-plan`

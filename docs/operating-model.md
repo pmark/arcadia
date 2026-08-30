@@ -205,7 +205,8 @@ would be dishonest to imply otherwise:
 | Discord notifications on run state | Implemented |
 | Local file ingress | Implemented |
 | Natural-language intent (`arcadia ask`) | Implemented |
-| Thin Session receipt and opt-in tmux launch from `go` | **Planned** after accepted-plan promotion (Decision 0012) |
+| Accepted planning Artifact to one managed build Action and packet | **Implemented** for the explicit `project prepare` workflow |
+| Thin Session receipt and opt-in tmux launch from `go` | **Planned next** after Decision 0012 is resolved |
 | Post-exit Session reconciliation into Action or Decision state | **Planned** after tmux launch dogfood (Decision 0012) |
 | Worker-queued coding-agent Sessions | **Triggered** after one real tmux-backed Session and a second unattended-launch need |
 | Discord alerting on Session completion or attention state | **Triggered** after a real state waits unnoticed or requires manual relay |

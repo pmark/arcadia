@@ -27,6 +27,14 @@ export interface PlanningArtifactValidationResult {
   warnings: PlanningArtifactValidationIssue[];
 }
 
+export interface PlanningPromotionFields {
+  recommendedNextAction: string;
+  smallestFollowUpGoal: string;
+  validationStrategy: string;
+  repositoryImpact: string;
+  approvalRequirements: string;
+}
+
 interface MarkdownSection {
   title: string;
   normalizedTitle: string;
@@ -190,6 +198,45 @@ export function validatePlanningArtifact(input: {
     contract,
     failures,
     warnings
+  };
+}
+
+/**
+ * Extract only the already-required sections used to promote an accepted plan
+ * into its first implementation Action. Validation decides whether the
+ * Artifact is acceptable; this function keeps promotion from growing a second,
+ * subtly different Markdown parser.
+ */
+export function extractPlanningPromotionFields(artifactText: string): PlanningPromotionFields | null {
+  const sections = parseMarkdownSections(artifactText);
+  const recommendedNextAction = extractRecommendedNextAction(sections, artifactText);
+  const smallestFollowUpGoal = extractSmallestFollowUpGoal(sections, artifactText);
+  const validationStrategy = cleanSectionValue(
+    findSection(sections, [/validation strategy/, /verification strategy/, /test strategy/])?.content ?? ""
+  );
+  const repositoryImpact = cleanSectionValue(
+    findSection(sections, [/repository impact/, /repo impact/, /affected (?:files|areas|modules)/])?.content ?? ""
+  );
+  const approvalRequirements = cleanSectionValue(
+    findSection(sections, [/approval requirements?/, /approval needs?/, /^approvals?$/])?.content ?? ""
+  );
+
+  if (
+    !recommendedNextAction ||
+    !smallestFollowUpGoal ||
+    !validationStrategy ||
+    !repositoryImpact ||
+    !approvalRequirements
+  ) {
+    return null;
+  }
+
+  return {
+    recommendedNextAction,
+    smallestFollowUpGoal,
+    validationStrategy,
+    repositoryImpact,
+    approvalRequirements
   };
 }
 

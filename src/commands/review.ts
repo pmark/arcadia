@@ -47,6 +47,14 @@ import {
 } from "../review/responseParser.js";
 import { localDateStamp } from "../utils/time.js";
 import { refreshLivingSystemAfterTransition } from "../livingSystem/sync.js";
+import {
+  existingProjectIdeaPromotion,
+  persistProjectIdeaPromotion,
+  prepareProjectIdeaPromotion,
+  rollbackProjectIdeaPromotionDocuments,
+  writeProjectIdeaPromotionDocuments,
+  type ProjectIdeaPromotionReceipt
+} from "../projects/planningPromotion.js";
 import { runAskCommand, type AskCommandData } from "./ask.js";
 
 export interface RequiresReviewPacket {
@@ -134,6 +142,7 @@ export interface ReviewDecisionCommandData {
   approval: AskCommandData | null;
   execution: ReviewExecutionPacket | null;
   run: { id: string } | null;
+  promotion?: ProjectIdeaPromotionReceipt | null;
 }
 
 export interface ReviewExecutionPacket {
@@ -594,7 +603,7 @@ export function runReviewApproveCommand(
     });
   }
   if (specialized?.resolved_intent === "CodexPlanningArtifactAcceptance") {
-    const updated = withDatabase(workspacePath, (db) => {
+    const accepted = withDatabase(workspacePath, (db) => {
       if (specialized.status === "approved") {
         try {
           exportPlanningAcceptanceBeforeTransition(
@@ -609,7 +618,8 @@ export function runReviewApproveCommand(
             retry: `arcadia memory sync --workspace ${workspacePath}`
           });
         }
-        return getReviewItem(db, specialized.id) as ReviewItemSummary;
+        const updated = getReviewItem(db, specialized.id) as ReviewItemSummary;
+        return { updated, promotion: existingProjectIdeaPromotion(updated) };
       }
       if (specialized.status !== "open" && specialized.status !== "deferred") {
         throw validationError("Plan acceptance Decision is already decided.", { id: specialized.id, status: specialized.status });
@@ -637,11 +647,36 @@ export function runReviewApproveCommand(
         ? evaluateAcceptanceCriteria(criteria, readAcceptedArtifactText(workspacePath, getArtifact(db, specialized.artifact_id as string)))
         : [];
       const criteriaReport = renderAcceptanceCriteriaReport(criteriaResults);
-      const decisionNote = criteriaReport
-        ? `Validated planning Artifact accepted.\n\n${criteriaReport}`
-        : "Validated planning Artifact accepted.";
+      const promotionPreparation = prepareProjectIdeaPromotion(db, workspacePath, specialized);
+      const promotionDocuments = promotionPreparation
+        ? writeProjectIdeaPromotionDocuments(promotionPreparation)
+        : null;
 
-      return db.transaction(() => {
+      const accept = db.transaction(() => {
+        if (promotionPreparation && promotionDocuments) {
+          const promotion = persistProjectIdeaPromotion(
+            db,
+            workspacePath,
+            specialized,
+            promotionPreparation,
+            promotionDocuments
+          );
+          if (criteriaResults.length > 0) {
+            mergeReviewItemContext(db, specialized.id, { acceptanceCriteriaResults: criteriaResults });
+          }
+          const decisionNote = criteriaReport
+            ? `Validated planning Artifact accepted and promoted to ${promotion.actionDocRef}. Build packet prepared; no Run started.\n\n${criteriaReport}`
+            : `Validated planning Artifact accepted and promoted to ${promotion.actionDocRef}. Build packet prepared; no Run started.`;
+          const updated = updateReviewItemStatus(db, specialized.id, {
+            status: "approved",
+            decisionNote
+          }) as ReviewItemSummary;
+          return { updated, promotion };
+        }
+
+        const decisionNote = criteriaReport
+          ? `Validated planning Artifact accepted.\n\n${criteriaReport}`
+          : "Validated planning Artifact accepted.";
         updateArtifact(db, specialized.artifact_id as string, { status: "ready" });
         updateWorkItem(db, specialized.work_item_id as string, {
           queue: "work_queue",
@@ -652,12 +687,22 @@ export function runReviewApproveCommand(
         if (criteriaResults.length > 0) {
           mergeReviewItemContext(db, specialized.id, { acceptanceCriteriaResults: criteriaResults });
         }
-        return updateReviewItemStatus(db, specialized.id, {
+        const updated = updateReviewItemStatus(db, specialized.id, {
           status: "approved",
           decisionNote
         }) as ReviewItemSummary;
-      })();
+        return { updated, promotion: null };
+      });
+      try {
+        return accept();
+      } catch (error) {
+        if (promotionDocuments) {
+          rollbackProjectIdeaPromotionDocuments(promotionDocuments);
+        }
+        throw error;
+      }
     });
+    const { updated, promotion } = accepted;
     const livingSystemWarning = updated.project_id
       ? withDatabase(workspacePath, (db) => getProject(db, updated.project_id as string))
       : null;
@@ -669,10 +714,16 @@ export function runReviewApproveCommand(
       workspace: workspacePath,
       data: {
         item: reviewPacketForReviewItem(updated),
-        result: { status: "approved", summary: "Validated planning Artifact accepted; no executor was invoked." },
+        result: {
+          status: "approved",
+          summary: promotion
+            ? `Validated planning Artifact accepted; promoted ${promotion.actionDocRef} and prepared its build packet. No Run started. Trigger: ${promotion.trigger}`
+            : "Validated planning Artifact accepted; no executor was invoked."
+        },
         approval: null,
         execution: null,
-        run: null
+        run: null,
+        promotion
       },
       warnings: refreshWarning
         ? [`Planning Artifact accepted, but living-system refresh needs attention: ${refreshWarning}`]
@@ -1114,6 +1165,11 @@ export function renderReviewDecisionSuccess(response: CommandSuccess<ReviewDecis
     lines.push(`Changed files: ${response.data.execution.changedFiles.length > 0 ? response.data.execution.changedFiles.join(", ") : "None"}`);
     lines.push(`Follow-up review: ${response.data.execution.followUpReviewSlug}`);
     lines.push(`Metadata: ${response.data.execution.metadataPath}`);
+  }
+  if (response.data.promotion) {
+    lines.push(`Promoted Action: ${response.data.promotion.actionDocRef}`);
+    lines.push(`Build packet: ${response.data.promotion.buildPacketPath}`);
+    lines.push(`Build trigger: ${response.data.promotion.trigger}`);
   }
   return lines;
 }
