@@ -130,3 +130,7 @@ This Decision preserves Decision 0031's Project-owned manifest, deterministic
 projection, vault isolation, preview/apply safety, and pointer-restoration
 sequence. It supersedes 0031 only where that Decision prescribed four fixed
 software categories or put local-AI enrichment inside v1.
+
+Decision 0035 approved on 2026-08-30 amends the pointer-restoration sequence:
+after the living-system review, `arcadia-ask-active-sessions` runs before
+`idea-to-managed-build/promote-accepted-plan` is restored.

@@ -4,6 +4,8 @@ import path from "node:path";
 import { validationError } from "../cli/errors.js";
 import { invocationRoot } from "../cli/invocation.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
+import { resolveReadyWorkspace } from "../cli/workspace.js";
+import { withDatabase } from "../db/connection.js";
 import { discoverDocs } from "../docs/discover.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import {
@@ -21,6 +23,15 @@ import {
   tryGit,
   type ClutterSummary
 } from "../git/worktrees.js";
+import {
+  launchPreparedSession,
+  prepareSession,
+  resolveProjectTransition,
+  systemTmux,
+  type AgentSession,
+  type ProjectTransition,
+  type TmuxAdapter
+} from "../sessions/index.js";
 
 export interface GoCommandOptions {
   repo?: string;
@@ -31,10 +42,15 @@ export interface GoCommandOptions {
   model?: string;
   /** Overrides the plan's `recommended_reasoning_effort` for this one invocation. */
   effort?: string;
+  workspace?: string;
+  /** The only option that authorizes process creation. */
+  launch?: boolean;
   /** Test-only override; the CLI intentionally does not expose it. */
   agentWorktreeRoot?: string;
   /** Test-only clock injection. */
   now?: Date;
+  /** Test-only process boundary. */
+  tmux?: TmuxAdapter;
 }
 
 export interface GoCommandData {
@@ -61,6 +77,8 @@ export interface GoCommandData {
   } | null;
   dispatch: DispatchResolution;
   dispatchable: boolean;
+  transition: ProjectTransition;
+  session: AgentSession | null;
   handoff: {
     baseRef: string;
     prompt: "arcadia advance";
@@ -70,6 +88,9 @@ export interface GoCommandData {
 }
 
 export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoCommandData> {
+  if (options.launch && (!options.apply || options.agent !== "claude")) {
+    throw validationError("--launch requires --apply --agent claude; it is the only authority to start a process.");
+  }
   const requestedRepo = options.repo ?? invocationRoot();
   const requestedSource = options.source ?? requestedRepo;
   const repo = existingDirectory(requestedRepo, "repository");
@@ -136,6 +157,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
   let sourceWorktreeRemoved = false;
   let sourceBranchDeleted = false;
   let nextWorktree: GoCommandData["nextWorktree"] = null;
+  let session: AgentSession | null = null;
   let dispatch = sourceDispatch;
   if (options.apply && integration === "fast-forward") {
     if (baseRecord) {
@@ -204,6 +226,24 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     }
     const effort = options.effort ?? dispatch.context?.planRecommendedReasoningEffort ?? null;
 
+    let workspacePath: string | null = null;
+    if (options.launch) {
+      workspacePath = resolveReadyWorkspace(options.workspace).workspacePath;
+      const transition = withDatabase(workspacePath, (db) => resolveProjectTransition({
+        repoRoot: controlWorktree,
+        projectSlug,
+        db,
+        tmux: options.tmux ?? systemTmux
+      }));
+      if (transition.kind !== "launch") {
+        throw validationError("The Project transition does not authorize a new Session launch.", {
+          transition: transition.kind,
+          reason: transition.reason,
+          nextAction: transition.nextAction
+        });
+      }
+    }
+
     nextWorktree = createAgentWorktree({
       agent: options.agent,
       actionId,
@@ -214,7 +254,34 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       model,
       effort
     });
+
+    if (options.launch && workspacePath) {
+      const prepared = withDatabase(workspacePath, (db) => prepareSession({
+        db,
+        workspace: workspacePath,
+        repoRoot: controlWorktree,
+        dispatch,
+        agent: "claude",
+        model,
+        effort,
+        baseRevision: git(controlWorktree, ["rev-parse", baseBranch]).trim(),
+        branch: nextWorktree!.branch,
+        worktreePath: nextWorktree!.path,
+        now: options.now ?? new Date(),
+        tmux: options.tmux
+      }));
+      session = withDatabase(workspacePath, (db) => launchPreparedSession(db, prepared, options.tmux));
+    }
   }
+
+  const transition = session && options.workspace
+    ? withDatabase(resolveReadyWorkspace(options.workspace).workspacePath, (db) => resolveProjectTransition({
+        repoRoot: controlWorktree,
+        projectSlug,
+        db,
+        tmux: options.tmux ?? systemTmux
+      }))
+    : resolveProjectTransition({ repoRoot: controlWorktree, projectSlug });
 
   return createSuccess({
     command: "go",
@@ -233,6 +300,8 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       nextWorktree,
       dispatch,
       dispatchable: isDispatchable(dispatch),
+      transition,
+      session,
       handoff: {
         baseRef: baseBranch,
         prompt: "arcadia advance"
@@ -281,6 +350,12 @@ export function renderGoSuccess(response: CommandSuccess<GoCommandData>): string
   if (data.nextWorktree) {
     lines.push(`Model: ${data.nextWorktree.model}${data.nextWorktree.effort ? ` (${data.nextWorktree.effort} effort)` : ""}`);
     lines.push(`Launch: ${data.nextWorktree.command}`);
+  }
+  if (data.session) {
+    lines.push(
+      `Session: ${data.session.id} (${data.session.status})`,
+      `Reattach: tmux attach-session -t ${data.session.tmux_session_name}`
+    );
   }
 
   if (data.clutter) {
@@ -371,4 +446,3 @@ function resolveProjectSlug(repoRoot: string): string {
   }
   return projects[0].slug;
 }
-

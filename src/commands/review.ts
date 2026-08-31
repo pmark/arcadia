@@ -5,6 +5,7 @@ import { createSuccess } from "../cli/response.js";
 import { projectNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
+import { discoverDocs } from "../docs/discover.js";
 import {
   buildStatusReportData,
   buildWeeklyReviewData,
@@ -28,6 +29,7 @@ import {
 } from "../db/repositories.js";
 import { GAP_TYPES } from "../domain/constants.js";
 import type { ArtifactSummary, ReviewFeedback, ReviewItemSummary, WorkItemSummary } from "../domain/types.js";
+import type { PlanDoc, ProjectDoc } from "../docs/types.js";
 import { declaredAcceptanceCriteria } from "../codex/packets.js";
 import { executeApprovedReview, type ReviewExecutionResult } from "../execution/reviewExecutor.js";
 import { isPlanningApprovalDecision, queueApprovedPlanningRun } from "../execution/planningAuthorization.js";
@@ -45,7 +47,7 @@ import {
   parseReviewResponse,
   type ParsedReviewResponse
 } from "../review/responseParser.js";
-import { localDateStamp } from "../utils/time.js";
+import { localDateStamp, nowIso } from "../utils/time.js";
 import { refreshLivingSystemAfterTransition } from "../livingSystem/sync.js";
 import {
   existingProjectIdeaPromotion,
@@ -120,6 +122,21 @@ export interface ReviewOpenCommandData {
 
 export interface ReviewShowCommandData {
   item: RequiresReviewPacket;
+}
+
+export interface ReviewReassessCommandData {
+  item: RequiresReviewPacket;
+  outcome: "withdrawn" | "still_declared";
+  summary: string;
+  sourcePlan: string;
+  activePlan: string | null;
+  questionStillDeclared: boolean;
+}
+
+export interface ReviewFlagAgentCommandData {
+  item: RequiresReviewPacket;
+  outcome: "withdrawn" | "flagged_for_agent_review";
+  summary: string;
 }
 
 export interface ReviewDecisionCommandOptions {
@@ -347,6 +364,203 @@ export function runReviewShowCommand(
     command: "review.show",
     workspace: workspacePath,
     data: { item }
+  });
+}
+
+/**
+ * Recheck a document-backed clarification against the Project's current
+ * governed state. This is deliberately deterministic: an old question can be
+ * withdrawn without spending reviewer tokens, while a question that is still
+ * declared by the active plan remains visible for real operator judgment.
+ */
+export function runReviewReassessCommand(
+  options: ReviewShowCommandOptions
+): CommandSuccess<ReviewReassessCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const resolved = withDatabase(workspacePath, (db) => {
+    const item = getReviewItemByIdOrSlug(db, options.id);
+    if (!item) {
+      throw validationError("Requires Review Decision was not found.", { id: options.id });
+    }
+    if (item.status !== "open" && item.status !== "deferred") {
+      throw validationError("Requires Review Decision is already decided.", { id: item.id, status: item.status });
+    }
+    if (item.resolved_intent !== ACTION_CLARIFICATION_INTENT) {
+      throw validationError("Only clarification Decisions can be reassessed against governed plan state.", {
+        id: item.id,
+        resolvedIntent: item.resolved_intent
+      });
+    }
+    const context = parseObject(item.context_json);
+    const docRef = typeof context.docRef === "string" ? context.docRef : "";
+    const match = /^plan\/([^?#]+)\?question=([^&]+)$/.exec(docRef);
+    if (!match) {
+      throw validationError("This clarification has no plan-question source to reassess.", {
+        id: item.id,
+        remedy: "Answer, reject, or defer it normally; only document-backed plan questions support Reassess."
+      });
+    }
+    if (!item.project_id) {
+      throw validationError("This clarification has no Project to reassess.", { id: item.id });
+    }
+    const project = getProject(db, item.project_id);
+    const metadata = getProjectMetadata(db, item.project_id);
+    if (!project || !metadata?.repo_path?.trim()) {
+      throw validationError("The clarification's Project has no readable repository path.", {
+        id: item.id,
+        projectId: item.project_id
+      });
+    }
+    let planSlug: string;
+    let questionId: string;
+    try {
+      planSlug = decodeURIComponent(match[1]);
+      questionId = decodeURIComponent(match[2]);
+    } catch {
+      throw validationError("This clarification's plan-question source is malformed.", { id: item.id, docRef });
+    }
+    return {
+      item,
+      project,
+      repoPath: metadata.repo_path.trim(),
+      planSlug,
+      questionId,
+      sourcePath: typeof context.source === "string" ? context.source : `docs/plans/${planSlug}.md`
+    };
+  });
+
+  if (!existsSync(resolved.repoPath) || !statSync(resolved.repoPath).isDirectory()) {
+    throw validationError("The clarification's Project repository path is missing or invalid.", {
+      id: resolved.item.id,
+      repoPath: resolved.repoPath
+    });
+  }
+  const repoRoot = realpathSync(resolved.repoPath);
+  const discovered = discoverDocs(repoRoot);
+  const relevantErrors = discovered.errors.filter(
+    (error) => error.relativePath === "PROJECT.md" || error.relativePath === resolved.sourcePath
+  );
+  if (relevantErrors.length > 0) {
+    throw validationError("The governing documents cannot be reassessed until their validation errors are repaired.", {
+      id: resolved.item.id,
+      errors: relevantErrors
+    });
+  }
+  const projectDoc = discovered.docs.find(
+    (doc): doc is ProjectDoc => doc.type === "project" && doc.slug.toLowerCase() === resolved.project.slug.toLowerCase()
+  ) ?? null;
+  if (!projectDoc) {
+    throw validationError("The clarification's Project document could not be resolved.", {
+      id: resolved.item.id,
+      project: resolved.project.slug
+    });
+  }
+  const sourcePlan = discovered.docs.find(
+    (doc): doc is PlanDoc => doc.type === "plan" && doc.slug === resolved.planSlug && doc.project.toLowerCase() === resolved.project.slug.toLowerCase()
+  ) ?? null;
+  const questionStillDeclared = Boolean(sourcePlan?.questions.some((question) => question.id === resolved.questionId));
+  const activePlan = projectDoc?.activePlan ?? null;
+  const stillDeclared = Boolean(
+    projectDoc &&
+    sourcePlan &&
+    sourcePlan.status === "active" &&
+    activePlan === sourcePlan.slug &&
+    questionStillDeclared
+  );
+  const checkedAt = nowIso();
+  const summary = stillDeclared
+    ? `Still declared: ${resolved.planSlug} is the Project's active plan and still contains question ${resolved.questionId}; semantic applicability was not evaluated.`
+    : !sourcePlan
+      ? `Withdrawn: source plan ${resolved.planSlug} no longer exists.`
+      : !questionStillDeclared
+        ? `Withdrawn: source plan ${resolved.planSlug} no longer declares question ${resolved.questionId}.`
+        : sourcePlan.status !== "active"
+          ? `Withdrawn: source plan ${resolved.planSlug} is ${sourcePlan.status}, not active.`
+          : `Withdrawn: ${resolved.planSlug} is not the Project's active plan${activePlan ? ` (${activePlan})` : ""}.`;
+
+  const updated = withDatabase(workspacePath, (db) => db.transaction(() => {
+    mergeReviewItemContext(db, resolved.item.id, {
+      reassessment: {
+        checkedAt,
+        outcome: stillDeclared ? "still_declared" : "withdrawn",
+        sourcePlan: resolved.planSlug,
+        activePlan,
+        questionId: resolved.questionId,
+        questionStillDeclared
+      }
+    });
+    if (!stillDeclared) {
+      updateReviewItemStatus(db, resolved.item.id, { status: "rejected", decisionNote: summary });
+    }
+    return getReviewItem(db, resolved.item.id);
+  })());
+  if (!updated) {
+    throw validationError("Requires Review Decision was not found after reassessment.", { id: resolved.item.id });
+  }
+
+  return createSuccess({
+    command: "review.reassess",
+    workspace: workspacePath,
+    data: {
+      item: reviewPacketForReviewItem(updated),
+      outcome: stillDeclared ? "still_declared" : "withdrawn",
+      summary,
+      sourcePlan: resolved.planSlug,
+      activePlan,
+      questionStillDeclared
+    }
+  });
+}
+
+/**
+ * Park a plan-backed question for later semantic review by a coding agent.
+ * Reassessment runs first so an already-disconnected question is withdrawn
+ * instead of entering an agent lane. This transition never creates a Run.
+ */
+export function runReviewFlagAgentCommand(
+  options: ReviewShowCommandOptions
+): CommandSuccess<ReviewFlagAgentCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const reassessed = runReviewReassessCommand(options);
+  if (reassessed.data.outcome === "withdrawn") {
+    return createSuccess({
+      command: "review.flag-agent",
+      workspace: workspacePath,
+      data: {
+        item: reassessed.data.item,
+        outcome: "withdrawn",
+        summary: reassessed.data.summary
+      }
+    });
+  }
+
+  const flaggedAt = nowIso();
+  const summary = `Flagged ${reassessed.data.item.slug} for coding-agent review because active plan ${reassessed.data.sourcePlan} still declares it. No Run started.`;
+  const updated = withDatabase(workspacePath, (db) => db.transaction(() => {
+    mergeReviewItemContext(db, reassessed.data.item.id, {
+      agentReview: {
+        status: "flagged",
+        flaggedAt,
+        runId: null
+      }
+    });
+    updateReviewItemStatus(db, reassessed.data.item.id, { status: "deferred", decisionNote: summary });
+    return getReviewItem(db, reassessed.data.item.id);
+  })());
+  if (!updated) {
+    throw validationError("Requires Review Decision was not found after agent-review flagging.", {
+      id: reassessed.data.item.id
+    });
+  }
+
+  return createSuccess({
+    command: "review.flag-agent",
+    workspace: workspacePath,
+    data: {
+      item: reviewPacketForReviewItem(updated),
+      outcome: "flagged_for_agent_review",
+      summary
+    }
   });
 }
 
@@ -1160,6 +1374,24 @@ export function renderReviewShowSuccess(response: CommandSuccess<ReviewShowComma
   ];
 }
 
+export function renderReviewReassessSuccess(response: CommandSuccess<ReviewReassessCommandData>): string[] {
+  return [
+    `Reassessed ${response.data.item.slug}.`,
+    response.data.summary,
+    `Source plan: ${response.data.sourcePlan}`,
+    `Active plan: ${response.data.activePlan ?? "None"}`,
+    `Needs you: ${response.data.outcome === "still_declared" ? "Yes" : "No"}`
+  ];
+}
+
+export function renderReviewFlagAgentSuccess(response: CommandSuccess<ReviewFlagAgentCommandData>): string[] {
+  return [
+    response.data.summary,
+    `Agent review: ${response.data.outcome === "flagged_for_agent_review" ? "Flagged; not started" : "Not needed"}`,
+    "Needs you: No"
+  ];
+}
+
 export function renderReviewDecisionSuccess(response: CommandSuccess<ReviewDecisionCommandData>): string[] {
   const lines = [
     `Decision ${response.data.result.status}.`,
@@ -1485,6 +1717,17 @@ function reviewExecutionPacket(result: ReviewExecutionResult): ReviewExecutionPa
 
 function getReviewItemByIdOrSlug(db: Parameters<typeof getReviewItem>[0], idOrSlug: string): ReviewItemSummary | null {
   return getReviewItem(db, idOrSlug) ?? getReviewItemBySlug(db, idOrSlug);
+}
+
+function parseObject(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 function todayLocalDate(): Date {

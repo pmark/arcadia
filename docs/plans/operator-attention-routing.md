@@ -7,7 +7,9 @@ status: draft
 milestone: Every Project can durably request operator attention through GitHub and Arcadia surfaces each meaningful next action once in Discord
 token_impact: medium
 token_budget: "Repository scans, snapshot comparison, state persistence, CLI fixtures, and delivery tests stay deterministic. Reserve model-bearing work for implementation and one bounded review pass; do not add model classification to notification routing."
-updated: 2026-08-15
+recommended_model: gpt-5.6-terra
+recommended_reasoning_effort: high
+updated: 2026-08-30
 actions:
   - id: build-attention-source-projection
     title: Normalize local and GitHub work that genuinely needs the operator

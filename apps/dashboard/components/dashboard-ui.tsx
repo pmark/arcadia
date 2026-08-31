@@ -485,7 +485,7 @@ function AttentionActionReceipt({
 }
 
 type ReviewOutcome =
-  | { kind: "action"; action: "approve" | "reject" | "defer" }
+  | { kind: "action"; action: "approve" | "reject" | "defer" | "reassess" | "flag_agent" }
   | { kind: "option"; option: string }
   | { kind: "execute" };
 
@@ -500,6 +500,14 @@ function outcomeLabel(outcome: ReviewOutcome, isPlanning: boolean, isAcceptance:
 
   if (outcome.action === "approve") {
     return isAcceptance ? "Accept Plan" : isPlanning ? "Approve & Run" : "Approve";
+  }
+
+  if (outcome.action === "reassess") {
+    return "Reassess";
+  }
+
+  if (outcome.action === "flag_agent") {
+    return "Flag for agent review";
   }
 
   return outcome.action === "reject" ? (isAcceptance ? "Send back" : "Reject") : "Defer";
@@ -530,7 +538,31 @@ function consequenceFor(outcome: ReviewOutcome, isPlanning: boolean, isAcceptanc
       : "Records this Decision as rejected. No Run starts, and the Action needs a new plan before it can continue.";
   }
 
+  if (outcome.action === "reassess") {
+    return "Rechecks the question against the Project's authoritative active plan. Disconnected questions leave Needs you but remain preserved in history; current questions stay visible. No Run starts.";
+  }
+
+  if (outcome.action === "flag_agent") {
+    return "Runs the deterministic check first, then parks a still-declared question in Agent Queue for later coding-agent review. No Run starts.";
+  }
+
   return "Keeps this Decision open. It returns to the board only when the trigger condition is met.";
+}
+
+function canReassessPlanQuestion(item: DashboardReviewItem): boolean {
+  if (item.resolvedIntent !== "ActionClarification" || !item.contextJson) {
+    return false;
+  }
+
+  try {
+    const context: unknown = JSON.parse(item.contextJson);
+    if (!context || typeof context !== "object" || !("docRef" in context)) {
+      return false;
+    }
+    return typeof context.docRef === "string" && /^plan\/[^?#]+\?question=[^&]+$/.test(context.docRef);
+  } catch {
+    return false;
+  }
 }
 
 function outcomesEqual(a: ReviewOutcome, b: ReviewOutcome): boolean {
@@ -555,6 +587,8 @@ export function ReviewCard({
   onResolveReply,
   onDefer,
   onRefine,
+  onReassess,
+  onFlagAgent,
   rankReasons
 }: {
   item: DashboardReviewItem;
@@ -565,6 +599,8 @@ export function ReviewCard({
   onResolveReply?: (item: DashboardReviewItem, reply: string) => void;
   onDefer?: (item: DashboardReviewItem, trigger: string) => void;
   onRefine?: (item: DashboardReviewItem, feedback: string) => void;
+  onReassess?: (item: DashboardReviewItem) => void;
+  onFlagAgent?: (item: DashboardReviewItem) => void;
   rankReasons?: Array<{ label: string; detail: string }>;
 }) {
   const [answer, setAnswer] = useState("");
@@ -575,6 +611,8 @@ export function ReviewCard({
   const isPlanning = item.resolvedIntent === "CodexPlanningRunApproval" || item.resolvedIntent === "CodexPlanningRetryApproval";
   const isAcceptance = item.resolvedIntent === "CodexPlanningArtifactAcceptance";
   const isClarification = item.resolvedIntent === "ActionClarification";
+  const canReassess = Boolean(onReassess) && canReassessPlanQuestion(item);
+  const canFlagAgent = Boolean(onFlagAgent) && canReassessPlanQuestion(item);
   const extraOptions = item.options.filter((option) => !primaryActions.includes(option as (typeof primaryActions)[number]));
   const trimmedAnswer = answer.trim();
 
@@ -598,6 +636,10 @@ export function ReviewCard({
       onApproveAndExecute?.(item);
     } else if (confirming.kind === "option") {
       onResolveOption?.(item, confirming.option);
+    } else if (confirming.action === "reassess") {
+      onReassess?.(item);
+    } else if (confirming.action === "flag_agent") {
+      onFlagAgent?.(item);
     } else if (confirming.action === "defer") {
       const trigger = deferTrigger.trim();
       if (!trigger) {
@@ -631,7 +673,7 @@ export function ReviewCard({
     <article className="min-w-0 rounded-md border border-line bg-panel p-4 shadow-soft">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="break-words text-base font-semibold leading-6">{item.displayId || item.id}</h3>
+          <h3 className="break-words text-base font-semibold leading-6">Decision {item.displayId || item.id}</h3>
           <p className="mt-1 break-words text-sm text-muted">{item.project ?? "Unassigned"}</p>
         </div>
         <StatusBadge status={item.status} label={item.statusLabel} />
@@ -739,6 +781,26 @@ export function ReviewCard({
           >
             <Play className="h-3.5 w-3.5" aria-hidden="true" />
             {pendingAction === "approve-execute" ? "Working…" : outcomeLabel({ kind: "execute" }, isPlanning, isAcceptance)}
+          </button>
+        ) : null}
+        {canReassess ? (
+          <button
+            type="button"
+            onClick={() => startConfirm({ kind: "action", action: "reassess" })}
+            disabled={Boolean(pendingAction)}
+            className="min-h-10 rounded-md border border-steel/30 bg-steel/10 px-3 text-sm font-semibold text-steel transition hover:border-steel disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {pendingAction === "reassess" ? "Checking…" : "Reassess"}
+          </button>
+        ) : null}
+        {canFlagAgent ? (
+          <button
+            type="button"
+            onClick={() => startConfirm({ kind: "action", action: "flag_agent" })}
+            disabled={Boolean(pendingAction)}
+            className="min-h-10 rounded-md border border-gold/40 bg-gold/10 px-3 text-sm font-semibold text-gold transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {pendingAction === "flag_agent" ? "Flagging…" : "Flag for agent review"}
           </button>
         ) : null}
         {primaryActions.filter((action) =>

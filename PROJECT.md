@@ -7,8 +7,8 @@ status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: A raw software-project idea becomes governed, dispatchable coding-agent work without a manual planning-to-build handoff
-active_plan: idea-to-managed-build
-current_action: launch-tmux-backed-session
+active_plan: arcadia-ask-active-sessions
+current_action: make-special-routing-visible
 updated: 2026-08-30
 ---
 
@@ -273,6 +273,16 @@ and Dashboard builds prove the slice. The pointer returns to
 accepted-plan-to-build promotion remains the direct unresolved seam in the
 current Milestone; the larger plan-reading surface still depends on it.
 
+Dogfood on 2026-08-30 found that an old plan question (R53) was still consuming
+operator attention even though PPN had a different active plan and Codex-owned
+current Action. Needs you now exposes **Reassess** on clarification Decisions:
+the deterministic transition checks the source question against the Project's
+checked-in active plan, withdraws disconnected Decisions without erasing their
+history, and labels questions found in the active plan **Still declared**
+without claiming semantic validity. Those questions can be **Flagged for agent
+review**, which parks them outside Needs you in a dedicated Agent Queue lane
+without starting a Run or granting execution authority.
+
 On 2026-08-29 the operator selected tmux as the first concrete transport for
 Arcadia-managed coding-agent Sessions. This does not displace
 `promote-accepted-plan`: Arcadia must first produce the exact governed build
@@ -284,6 +294,14 @@ Only after real dogfood may worker queueing reactivate; notifications wait for
 an observed unnoticed state, and transcript monitoring, prompt injection,
 default-on launch, and session analytics remain deferred against named
 triggers.
+
+On 2026-08-30 the operator approved Decision 0035's sequence amendment: the
+living-system review is resolved, so Ask active sessions now runs before the
+idea-to-managed-build pointer is restored. Decision 0038 is also approved for
+one bounded credential-backed dogfood rehearsal, but that rehearsal remains a
+separate, later Action after the Ask sequence; approval does not claim it has
+run. Decisions 0028 and 0037 were ratified as written, making their follow-up
+implementation and adoption work explicit rather than implicit.
 
 ## Links
 

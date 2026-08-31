@@ -4,13 +4,15 @@ type: decision
 id: "0035"
 slug: ask-active-session-sequencing
 project: arcadia
-status: open
+status: approved
 question: When should Arcadia activate the Ask active-session plan relative to the living-system v1 review and the promised return to idea-to-managed-build?
 gap_type: missing-decision
 recommendation: Resolve the current living-system v1 operator review, then activate arcadia-ask-active-sessions before restoring idea-to-managed-build/promote-accepted-plan; this explicitly amends Decision 0032's pointer-restoration sequence because repeated capture, routing, attachment, and intent-calibration friction is now blocking real Living Songbook use.
 confidence: high
+answer: Resolve the living-system v1 review, then activate arcadia-ask-active-sessions before restoring idea-to-managed-build/promote-accepted-plan.
+decided: 2026-08-30
 plan: arcadia-ask-active-sessions
-updated: 2026-08-25
+updated: 2026-08-30
 ---
 
 # Decision 0035: Ask Active Session Sequencing
@@ -59,6 +61,8 @@ another indefinitely incubating idea.
 
 ## Resolution
 
-Open. Approval changes only the post-review pointer sequence. It does not accept
-living-system v1, start implementation, approve a Run, modify Living Songbook,
-merge, deploy, publish, use credentials, spend, or send messages.
+Approved on 2026-08-30. The current living-system review is already resolved;
+the Project pointer therefore activates `arcadia-ask-active-sessions` now. This
+changes sequencing only: it does not accept a future Ask Artifact, approve a
+Run, modify Living Songbook, merge, deploy, publish, use credentials, spend, or
+send messages.

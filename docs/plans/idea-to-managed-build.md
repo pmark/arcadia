@@ -10,7 +10,6 @@ token_budget: "Project creation, document rendering, Session lifecycle checks, b
 recommended_model: gpt-5.6-sol
 recommended_reasoning_effort: high
 updated: 2026-08-30
-current_action: launch-tmux-backed-session
 actions:
   - id: prepare-project-idea
     title: Turn one stated project idea into a dispatchable planning Action
@@ -164,11 +163,11 @@ actions:
     status: open
     responsibility: codex
     effort: session
-    next_action: Persist the thin Session receipt that arcadia go already computes, then add one explicit tmux launch path that starts Claude Code in Arcadia's existing isolated worktree with a pinned model, stable agent session id, and recognizable name.
     expected_artifact: A tested opt-in tmux launch path whose durable Session receipt lets the operator leave, find, and reattach to the exact governed Claude Code work without inspecting its transcript
     clarification: clarified
+    next_action: Prepare one disposable-repository rehearsal through the exact explicit Claude Code launch path and record only the bounded detach, reattach, exit, and resume evidence.
     confidence: high
-    source: Operator direction on 2026-08-29 and Decision 0012
+    source: Decision 0038 approved by the operator on 2026-08-30, with Decision 0012
     acceptance_criteria:
       - An explicit launch option on arcadia go is the only new authority to start a process; preview and the existing manual launch-command path remain non-launching and backward compatible.
       - Launch is allowed only after the existing dispatch, clean-worktree, agent-owned branch, isolated-worktree, pinned-model, and optional-effort checks have passed; tmux availability and session-name collision checks fail before Arcadia claims a Session is running.
@@ -181,7 +180,7 @@ actions:
       - A real Claude Code dogfood Session can detach, survive closing its launching terminal, reattach to the same interactive interface, and remain resumable by its preassigned Claude session id after exit.
       - Cross-repository work is decomposed into linked single-repository Actions and Sessions; the first fixtures prove a dispatchable PPN Action, an operator-owned Rebuster Action that must produce a Decision rather than launch, and a new idea that must produce planning before implementation.
       - Focused tests cover preview, explicit launch, missing tmux, name collision, spawn failure, stable identifiers, liveness, reattach instructions, and unchanged manual behavior; START_HERE.md documents the operator procedure and limits.
-    decisions: ["0012"]
+    decisions: ["0012", "0038"]
     references:
       - src/commands/go.ts
       - src/commands/worker.ts
@@ -271,6 +270,16 @@ either records the Decision transition or states truthfully that the handoff
 changed no Arcadia state and points to the durable Run record or guarded
 command. The board is covered at phone width through the complete Playwright
 suite.
+
+Dogfood then exposed a stale-question failure: a document-backed clarification
+from a non-current plan could age upward in Needs you despite having no link to
+the current governed Action. The board now offers **Reassess** for clarification
+Decisions. It compares the source plan and question with the Project's
+authoritative active plan, withdraws provably disconnected Decisions while
+preserving their history, and labels questions found in the active plan **Still
+declared** without pretending semantic applicability was reviewed. The operator
+can **Flag for agent review** to park one outside Needs you in a dedicated Agent
+Queue lane. Both transitions are deterministic and start no Run.
 
 `promote-accepted-plan` and `build-plan-approval-surface` are now complete.
 Needs you renders a validated planning Artifact as a readable plan with its

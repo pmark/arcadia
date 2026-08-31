@@ -6,6 +6,7 @@ import { DashboardChrome } from "../../components/chrome";
 import { AttentionCard, EmptyState, ErrorState, LoadingState, ReviewCard } from "../../components/dashboard-ui";
 import { useArcadiaSnapshot } from "../../hooks/use-arcadia-snapshot";
 import { buildNeedsYouBoard, type RankedNeedsYouItem } from "../../lib/needs-you";
+import { decisionLabelForAttention, reviewSearchText } from "../../lib/review-search";
 import type { DashboardAttentionItem, DashboardProject, DashboardReviewFocus, DashboardReviewItem } from "../../lib/types";
 
 interface Receipt {
@@ -22,6 +23,7 @@ export default function ReviewPage() {
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showExcluded, setShowExcluded] = useState(false);
+  const [search, setSearch] = useState("");
 
   const reviewItems = snapshot?.requiresReviewItems ?? [];
   const reviewById = useMemo(() => new Map(reviewItems.map((review) => [review.id, review])), [reviewItems]);
@@ -38,8 +40,26 @@ export default function ReviewPage() {
     [snapshot, reviewItems]
   );
 
-  const all = board.dominant ? [board.dominant, ...board.queue] : board.queue;
-  const dominant = selectedId ? all.find((entry) => entry.item.id === selectedId) ?? board.dominant : board.dominant;
+  const focused = board.dominant ? [board.dominant, ...board.queue] : board.queue;
+  const searchable = useMemo(() => [
+    ...focused,
+    ...board.excluded.map(({ item }) => ({
+      item,
+      reasons: [],
+      attentionCost: "medium" as const,
+      tokenImpact: null,
+      tokenBudget: null
+    }))
+  ], [board]);
+  const normalizedSearch = search.trim().toLocaleLowerCase();
+  const searchResults = useMemo(
+    () => normalizedSearch
+      ? searchable.filter((entry) => reviewSearchText(entry.item, reviewById).includes(normalizedSearch))
+      : focused,
+    [focused, normalizedSearch, reviewById, searchable]
+  );
+  const all = normalizedSearch ? searchResults : focused;
+  const dominant = selectedId ? all.find((entry) => entry.item.id === selectedId) ?? all[0] ?? null : all[0] ?? null;
   const queue = all.filter((entry) => entry.item.id !== dominant?.item.id);
 
   async function submitAction(item: DashboardReviewItem, action: "approve" | "reject" | "defer") {
@@ -52,6 +72,14 @@ export default function ReviewPage() {
 
   async function submitRefinement(item: DashboardReviewItem, feedback: string) {
     await submitReviewAction(item, "reject", undefined, undefined, feedback);
+  }
+
+  async function submitReassess(item: DashboardReviewItem) {
+    await submitReviewAction(item, "reassess");
+  }
+
+  async function submitFlagAgent(item: DashboardReviewItem) {
+    await submitReviewAction(item, "flag_agent");
   }
 
   async function submitApproveAndExecute(item: DashboardReviewItem) {
@@ -99,7 +127,7 @@ export default function ReviewPage() {
 
   async function submitReviewAction(
     item: DashboardReviewItem,
-    action: "approve" | "reject" | "defer" | "resolve",
+    action: "approve" | "reject" | "defer" | "resolve" | "reassess" | "flag_agent",
     reply?: string,
     trigger?: string,
     feedback?: string
@@ -121,10 +149,11 @@ export default function ReviewPage() {
       }
 
       const message = typeof body.message === "string" ? body.message : "Review action completed.";
+      const responseNextAction = typeof body.nextAction === "string" ? body.nextAction : null;
       setReceipt({
         decisionLabel: item.displayId || item.id,
         message,
-        nextAction: item.proposedAction || null
+        nextAction: responseNextAction ?? (item.proposedAction || null)
       });
       setSelectedId(null);
       await refresh();
@@ -180,6 +209,8 @@ export default function ReviewPage() {
           onAction={(reviewItem, action) => void submitAction(reviewItem, action)}
           onDefer={(reviewItem, trigger) => void submitDefer(reviewItem, trigger)}
           onRefine={(reviewItem, feedback) => void submitRefinement(reviewItem, feedback)}
+          onReassess={(reviewItem) => void submitReassess(reviewItem)}
+          onFlagAgent={(reviewItem) => void submitFlagAgent(reviewItem)}
           onApproveAndExecute={(reviewItem) => void submitApproveAndExecute(reviewItem)}
           onResolveOption={(reviewItem, option) => void submitOption(reviewItem, option)}
           onResolveReply={(reviewItem, answer) => void submitAnswer(reviewItem, answer)}
@@ -215,6 +246,19 @@ export default function ReviewPage() {
           {receipt.nextAction ? <p className="mt-1 text-xs leading-5 text-moss/80">Next: {receipt.nextAction}</p> : null}
         </div>
       ) : null}
+      <label className="mb-4 grid gap-1 text-xs font-semibold text-muted">
+        Search Decisions
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            setSelectedId(null);
+          }}
+          placeholder="Decision number, question, or Project"
+          className="min-w-0 rounded-md border border-line bg-panel px-3 py-2 text-sm font-normal text-ink shadow-soft"
+        />
+      </label>
       {snapshot ? (
         <ReviewFocusControls
           projects={snapshot.projects}
@@ -224,15 +268,17 @@ export default function ReviewPage() {
       ) : null}
       {loading && !snapshot ? (
         <LoadingState />
+      ) : normalizedSearch && searchResults.length === 0 ? (
+        <EmptyState text={`No Decisions match “${search.trim()}”.`} />
       ) : dominant ? (
         <div className="grid min-w-0 gap-6">
           <section>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Highest leverage</h2>
-            {renderRankedItem(dominant, true)}
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">{normalizedSearch ? "Selected result" : "Highest leverage"}</h2>
+            {renderRankedItem(dominant, !normalizedSearch)}
           </section>
           {queue.length > 0 ? (
             <section>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Also waiting ({queue.length})</h2>
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">{normalizedSearch ? `Other matches (${queue.length})` : `Also waiting (${queue.length})`}</h2>
               <div className="grid min-w-0 gap-3 md:grid-cols-2">
                 {queue.map((entry) => (
                   <button
@@ -241,6 +287,11 @@ export default function ReviewPage() {
                     onClick={() => setSelectedId(entry.item.id)}
                     className="min-w-0 rounded-md border border-line bg-panel p-3 text-left text-sm shadow-soft transition hover:border-steel"
                   >
+                    {decisionLabelForAttention(entry.item, reviewById) ? (
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-steel">
+                        {decisionLabelForAttention(entry.item, reviewById)}
+                      </p>
+                    ) : null}
                     <p className="break-words font-semibold leading-5">{entry.item.reason}</p>
                     <p className="mt-1 break-words text-xs text-muted">{entry.item.projectName ?? "Unassigned"}</p>
                   </button>
@@ -248,12 +299,24 @@ export default function ReviewPage() {
               </div>
             </section>
           ) : null}
-          <ExcludedSection excluded={board.excluded} show={showExcluded} onToggle={() => setShowExcluded((prev) => !prev)} />
+          {!normalizedSearch ? (
+            <ExcludedSection
+              excluded={board.excluded}
+              reviewById={reviewById}
+              show={showExcluded}
+              onToggle={() => setShowExcluded((prev) => !prev)}
+            />
+          ) : null}
         </div>
       ) : (
         <div className="grid min-w-0 gap-6">
           <EmptyState text="Nothing needs you right now." />
-          <ExcludedSection excluded={board.excluded} show={showExcluded} onToggle={() => setShowExcluded((prev) => !prev)} />
+          <ExcludedSection
+            excluded={board.excluded}
+            reviewById={reviewById}
+            show={showExcluded}
+            onToggle={() => setShowExcluded((prev) => !prev)}
+          />
         </div>
       )}
     </DashboardChrome>
@@ -426,10 +489,12 @@ function withoutProject(projects: Set<string>, project: string): Set<string> {
 
 function ExcludedSection({
   excluded,
+  reviewById,
   show,
   onToggle
 }: {
   excluded: Array<{ item: DashboardAttentionItem; exclusionReason: string }>;
+  reviewById: Map<string, DashboardReviewItem>;
   show: boolean;
   onToggle: () => void;
 }) {
@@ -450,6 +515,11 @@ function ExcludedSection({
         <ul className="mt-3 grid min-w-0 gap-2">
           {excluded.map(({ item, exclusionReason }) => (
             <li key={item.id} className="min-w-0 rounded-md border border-line bg-canvas p-3 text-xs text-muted">
+              {decisionLabelForAttention(item, reviewById) ? (
+                <p className="mb-1 font-semibold uppercase tracking-wide text-steel">
+                  {decisionLabelForAttention(item, reviewById)}
+                </p>
+              ) : null}
               <p className="break-words font-medium text-ink/80">{item.reason}</p>
               <p className="mt-1 break-words">{exclusionReason}</p>
             </li>

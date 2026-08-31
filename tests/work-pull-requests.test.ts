@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildPullRequestBriefing,
   derivePullRequestReadiness,
   normalizePullRequest
 } from "../src/workMonitoring/pullRequests.js";
@@ -61,5 +62,23 @@ describe("outstanding pull-request readiness", () => {
     });
     expect(pullRequest?.summary).toContain("waiting for review");
   });
-});
 
+  it("computes deterministic material facts for the briefing layer", () => {
+    const pullRequest = normalizePullRequest(
+      { id: "project-1", name: "Arcadia", repositoryPath: "/tmp/arcadia" },
+      "/tmp/arcadia", "pmark/arcadia", {
+        number: 42, title: "Brief", url: "https://github.com/pmark/arcadia/pull/42",
+        state: "OPEN", isDraft: false, mergeStateStatus: "CLEAN", headRefName: "feature/brief",
+        baseRefName: "main", reviewDecision: "REVIEW_REQUIRED", statusCheckRollup: []
+      }
+    );
+    expect(pullRequest).not.toBeNull();
+    const briefing = buildPullRequestBriefing(pullRequest!, {
+      body: "Updates docs/decisions/0038-authorize-real-session-dogfood.md",
+      files: ["docs/decisions/0038-authorize-real-session-dogfood.md", "src/db/schema.ts", "src/new-file.ts"]
+    }, new Map([["pmark/arcadia:main", { ...pullRequest!, number: 41, title: "Earlier", headBranch: "main" }]]));
+    expect(briefing.decisionFiles).toEqual(["docs/decisions/0038-authorize-real-session-dogfood.md"]);
+    expect(briefing.unmentionedFiles).toEqual(["src/db/schema.ts", "src/new-file.ts"]);
+    expect(briefing.materialFacts.join(" ")).toMatch(/database schema|not named/i);
+  });
+});

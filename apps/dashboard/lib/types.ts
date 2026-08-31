@@ -395,6 +395,15 @@ export interface DashboardOutstandingPullRequest {
   readiness: PullRequestReadiness;
   readinessLabel: string;
   summary: string;
+  briefing: DashboardPullRequestBriefing | null;
+}
+
+export interface DashboardPullRequestBriefing {
+  changedFiles: string[];
+  unmentionedFiles: string[];
+  decisionFiles: string[];
+  materialFacts: string[];
+  basePullRequest: { number: number; title: string; headBranch: string } | null;
 }
 
 export interface DashboardPullRequestProjectError {
@@ -421,7 +430,7 @@ export interface DashboardOutstandingPullRequests {
   };
 }
 
-export type AgentQueueEntryState = "ready" | "running" | "attention";
+export type AgentQueueEntryState = "ready" | "running" | "flagged" | "attention";
 export type AgentQueueAttentionKind =
   | "document"
   | "repository"
@@ -467,10 +476,12 @@ export interface AgentQueue {
   generatedAt: string;
   ready: AgentQueueEntry[];
   running: AgentQueueEntry[];
+  flagged: AgentQueueEntry[];
   attention: AgentQueueEntry[];
   counts: {
     ready: number;
     running: number;
+    flagged: number;
     attention: number;
   };
 }

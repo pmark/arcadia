@@ -78,7 +78,9 @@ function NodeSummaryRow({ node, onSelect }: { node: MissionControlNodeSummary; o
 }
 
 function AgentQueueEntryCard({ entry }: { entry: AgentQueueEntry }) {
-  const href = entry.decisionId
+  const href = entry.state === "flagged"
+    ? null
+    : entry.decisionId
     ? "/review"
     : entry.runId
       ? `/runs/${encodeURIComponent(entry.runId)}`
@@ -95,6 +97,9 @@ function AgentQueueEntryCard({ entry }: { entry: AgentQueueEntry }) {
             {entry.actionTitle ? ` · ${entry.actionTitle}` : ""}
           </p>
           <p className="mt-1 text-xs text-muted">{entry.reason}</p>
+          {entry.state === "flagged" ? (
+            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-steel">Awaiting agent review · no Run started</p>
+          ) : null}
           {entry.tokenImpact || entry.tokenBudget ? (
             <p className="mt-1 text-xs text-muted">
               Token impact: {entry.tokenImpact ?? "unknown"}
@@ -134,7 +139,7 @@ function AgentQueuePanel({ queue }: { queue: AgentQueue }) {
           <p className="mt-1 text-xs text-muted">The shared feeder view: ready work, active Runs, and every stop before dispatch.</p>
         </div>
         <p className="text-xs tabular-nums text-muted">
-          {queue.counts.ready} ready · {queue.counts.running} running · {queue.counts.attention} need attention
+          {queue.counts.ready} ready · {queue.counts.running} running · {queue.counts.flagged} flagged · {queue.counts.attention} need attention
         </p>
       </div>
 
@@ -157,6 +162,17 @@ function AgentQueuePanel({ queue }: { queue: AgentQueue }) {
           ) : (
             <div className="mt-2 grid gap-2">
               {queue.running.map((entry) => <AgentQueueEntryCard key={entry.id} entry={entry} />)}
+            </div>
+          )}
+        </div>
+
+        <div className={queue.flagged.length > 0 ? "rounded-md border border-steel/40 bg-steel/5 p-3" : ""}>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-steel">Flagged for agent review</h3>
+          {queue.flagged.length === 0 ? (
+            <p className="mt-2 text-sm text-muted">No question is parked for later coding-agent review.</p>
+          ) : (
+            <div className="mt-2 grid gap-2">
+              {queue.flagged.map((entry) => <AgentQueueEntryCard key={entry.id} entry={entry} />)}
             </div>
           )}
         </div>

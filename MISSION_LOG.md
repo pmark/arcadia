@@ -24,6 +24,108 @@ updated: 2026-08-30
   delivered; it will prepare the next Codex worktree against the pinned model.
 - **Blockers:** Delivery still requires the normal commit, push, and pull
   request authority. No coding-agent process, merge, or deployment started.
+## 2026-08-30 — Added the deterministic PR briefing layer
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Extended the read-only Outstanding PRs surface with deterministic
+  material facts from each PR's changed paths, body, branch relationship, and
+  reported checks: undisclosed paths, managed pointer changes, Decisions,
+  schema or migration edits, outward-facing paths, and open-branch ordering.
+- **Result:** The operator can inspect what is at stake in an open PR without
+  reading every diff first. Detail failure leaves the existing inventory and
+  readiness rating intact; the briefing never approves, merges, comments, or
+  dispatches. Focused pull-request tests and both production builds pass.
+- **Next:** Continue the active Ask routing Action; add a separately scoped
+  implementation Action if the briefing is prioritized for further delivery.
+- **Blockers:** Live browser verification was unavailable on this host; the
+  local target is `http://127.0.0.1:3020/admin/pull-requests`.
+
+## 2026-08-30 — Ratified Decision 0013
+
+- **Did:** Approved the small scheduled pull-request briefing layer over the
+  existing inventory and review-feedback paths, including the material-fact
+  checks named by Decision 0013.
+- **Result:** Decision 0013 is closed with an explicit answer. No briefing
+  implementation Action was created, no pull request was inspected, and no
+  digest, merge, message, or other external effect occurred.
+- **Next:** Continue with the active Ask routing Action; propose a separately
+  scoped implementation Action for the briefing when that work is prioritized.
+- **Blockers:** None from the Decision menu; the briefing remains unbuilt by
+  deliberate scope control.
+
+## 2026-08-30 — Ratified four governed Decisions
+
+- **Did:** Recorded the operator's selections: approved one bounded real
+  Claude Code Session rehearsal (0038), activated Ask active sessions before
+  restoring idea-to-managed-build (0035), accepted the proposed PPN capability
+  reconciliation (0028), and adopted governed Decision documents as the
+  project-to-Arcadia signal channel (0037). Moved the Project pointer to
+  `arcadia-ask-active-sessions#make-special-routing-visible` and made the
+  approved Session Action ready for its later rehearsal.
+- **Result:** Four Decisions are closed with explicit answers and dates. The
+  0038 credential authorization remains unused until its one rehearsal is
+  deliberately started; no PPN edits or promoted capability implementation
+  occurred. The next governed Action is the Ask routing slice.
+- **Next:** Implement `arcadia-ask-active-sessions#make-special-routing-visible`
+  after the remaining open Decision menu pass, then return to the approved
+  Session rehearsal in its declared sequence.
+- **Blockers:** Decision 0013 remains open for the next operator menu pass.
+
+## 2026-08-30 — Made every open Decision findable by its governed number
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Added a simple Needs you search across focused, parked,
+  lower-priority, and historical items; projected the governed numeric id from
+  document-backed Decisions; and displayed the Decision number on the detail
+  card, compact queue rows, and excluded rows.
+- **Result:** A synchronized Decision such as 0038 is findable by `0038`, its
+  question, recommendation, or Project even when review focus excludes it.
+  Database-native Decisions keep their existing `R…` number. Focused tests,
+  both TypeScript builds, and the production Dashboard build pass. The live
+  browser surface was unavailable on this host, so no visual-runtime result is
+  claimed.
+- **Next:** Answer Decision 0038 and the remaining open governed Decisions.
+- **Blockers:** The app's native multiple-choice picker failed before rendering
+  in this session; the same bounded choices must be collected through the
+  documented text fallback unless the picker becomes available.
+
+## 2026-08-30 — Built the governed tmux Session launch boundary
+
+- **Action:** `idea-to-managed-build#launch-tmux-backed-session`
+- **Did:** Added the thin workspace-owned Session receipt, immutable promoted
+  packet and authority rechecks, one-repository lease, explicit Claude Code
+  `--launch` path through Arcadia-owned worktrees and tmux, read-only Session
+  view, and one total Project-transition resolver shared by `go`, bare
+  `advance`, and the Agent Queue. Kept preview and manual launch non-spawning.
+- **Result:** Both TypeScript builds, smoke, and all 1,117 tests pass. Focused
+  fixtures prove launch, planning, operator Decision, repair, wait, and
+  reconciliation behavior; tmux missing/collision/spawn failures; stable
+  identifiers; liveness; exact reattach/resume instructions; stale packet,
+  provider, authority, and base-revision refusal; and cross-repository leases.
+  No real coding-agent process, transcript inspection, credential use, merge,
+  deployment, publication, or messaging occurred.
+- **Next:** Answer Decision 0038. If approved, run exactly one bounded real
+  Claude Code detach/reattach/exit/resume rehearsal and record its evidence.
+- **Blockers:** The remaining empirical dogfood criterion requires configured
+  provider credentials, which Decision 0012 deliberately did not authorize.
+
+## 2026-08-30 — Let the operator reassess stale Needs you questions
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Added **Reassess** to document-backed clarification Decisions on
+  Needs you and the matching `arcadia review reassess <id>` command. The
+  transition checks the source plan, question id, plan status, and Project
+  active-plan pointer before changing attention state. Added **Flag for agent
+  review** and `arcadia review flag-agent <id>` to park still-declared questions
+  in a dedicated Agent Queue lane without launching an agent.
+- **Result:** A disconnected question such as PPN R53 leaves active operator
+  attention while its Decision and reassessment receipt remain preserved in
+  history. A question found in the active plan is labeled **Still declared**,
+  not semantically validated, and can be moved out of operator attention for a
+  later coding-agent assessment. Both actions make zero model calls and start
+  no Run.
+- **Next:** Review the Candidate through its pull request QA plan.
+- **Blockers:** None.
 
 ## 2026-08-30 — Focused Needs you on current operator priorities
 
