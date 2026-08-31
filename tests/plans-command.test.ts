@@ -48,6 +48,7 @@ status: active
 milestone: Ship the visible thing
 token_impact: small
 token_budget: "Deterministic."
+recommended_model: gpt-5.6-terra
 updated: 2026-08-26
 actions:
   - id: do-the-thing

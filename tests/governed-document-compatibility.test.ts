@@ -45,6 +45,7 @@ project: demo
 status: active
 token_impact: small
 token_budget: Tests stay deterministic; one implementation pass is bounded.
+recommended_model: gpt-5.6-terra
 current_action: record-verdict
 updated: 2026-08-14
 actions:

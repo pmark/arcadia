@@ -161,6 +161,7 @@ function planSource(secondActionExtra: string[]): string {
     "milestone: A milestone",
     "token_impact: small",
     "token_budget: Deterministic parsing only.",
+    "recommended_model: gpt-5.6-terra",
     "updated: 2026-08-25",
     "actions:",
     "  - id: first",

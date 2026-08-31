@@ -114,6 +114,8 @@ milestone: What this plan advances
 current_action: some-action  # omit unless this is the active plan
 token_impact: medium         # none | small | medium | large | xlarge
 token_budget: "Routine checks are deterministic; reserve model calls for implementation and one review pass."
+recommended_model: gpt-5.6-terra # required while status is active; pin the handoff model
+recommended_reasoning_effort: medium # optional; omit to use the agent CLI default
 updated: 2026-07-28
 actions:
   - id: some-action
@@ -149,6 +151,11 @@ decisions: []
   a model, what stays deterministic, and the guardrail that bounds repeated use.
   Playwright capture, builds, tests, and health checks are `none` unless a model
   interprets their output.
+
+- **`recommended_model`** is required on an active plan. It pins the model for
+  every `arcadia go --apply --agent …` handoff from that plan, so an otherwise
+  dispatchable Action cannot fail later solely because its model was omitted.
+  `recommended_reasoning_effort` remains optional.
 
 - **`depends_on`** is an ordering claim that is enforced, not decoration.
   Dependency cycles are rejected at parse time, and dispatch is blocked while

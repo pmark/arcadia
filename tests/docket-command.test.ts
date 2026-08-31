@@ -54,6 +54,7 @@ milestone: Orientation works in a fresh clone
 current_action: do-the-thing
 token_impact: small
 token_budget: "Deterministic."
+recommended_model: gpt-5.6-terra
 updated: 2026-08-16
 actions:
   - id: do-the-thing

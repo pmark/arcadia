@@ -251,6 +251,7 @@ milestone: Accurate reporting
 current_action: report-it
 token_impact: small
 token_budget: One bounded implementation pass; tests are deterministic.
+recommended_model: gpt-5.6-terra
 updated: 2026-08-11
 actions:
   - id: report-it

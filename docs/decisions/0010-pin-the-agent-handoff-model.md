@@ -7,11 +7,11 @@ project: arcadia
 status: approved
 question: When arcadia go prepares the next agent worktree, how should it choose which model and reasoning effort that session launches with?
 gap_type: missing-decision
-recommendation: Resolve the model from an explicit --model flag, else the plan's recommended_model, and refuse to launch an agent session when neither resolves, rather than launching unpinned against whatever the invoking shell already defaults to. Reasoning effort follows the same precedence but stays optional.
+recommendation: Require an active plan to declare its pinned model, then resolve `arcadia go` from that governed value unless an explicit compatible override is provided; never launch against an unstated shell default. Reasoning effort follows the same precedence but stays optional.
 confidence: high
 decided: 2026-08-07
-answer: "arcadia go --apply --agent <x> resolves the launch model as --model if given, else the active plan's recommended_model, and refuses with a named remedy if neither resolves — it never launches an agent session against an unstated default. Reasoning effort follows identical precedence (--effort, else recommended_reasoning_effort) but is optional throughout: its absence omits the flag and lets the agent CLI use its own default. Both fields are free-form strings in plan frontmatter, validated by the downstream agent CLI rather than by Arcadia. The model check runs after the fast-forward integration, deliberately, so a plan's own recommendation is read from its state after the merge that may have just introduced it — refusing to launch an agent session is therefore independent of, and never undoes, an already-completed retirement of the finished worktree."
-updated: 2026-08-07
+answer: "Every active plan must declare a nonblank recommended_model before it can govern a dispatchable Action. arcadia go --apply --agent <x> resolves the launch model from that governed value unless an explicit --model override is given; it never launches against an unstated shell default. Reasoning effort follows identical precedence (--effort, else recommended_reasoning_effort) but is optional throughout: its absence omits the flag and lets the agent CLI use its own default. Model and effort strings stay provider-owned values, while Arcadia enforces their presence at the governed-plan boundary so a handoff never discovers a missing model only after reconciling Git state."
+updated: 2026-08-30
 ---
 
 # Decision 0010: Pin the agent handoff model

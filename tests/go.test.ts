@@ -117,22 +117,16 @@ describe("arcadia go", () => {
 });
 
 describe("arcadia go — next-session model resolution", () => {
-  it("refuses to launch an agent session with no model resolved anywhere", () => {
-    const fixture = createFixture("codex/no-model");
+  it("refuses an active plan with no pinned model before it can dispatch", () => {
+    const fixture = createFixture("codex/no-model", planDocument.replace("recommended_model: gpt-5.6-terra\n", ""));
     commitFeature(fixture.feature, "proof.txt", "proof\n");
 
-    // The model check runs after the fast-forward, deliberately: the plan's
-    // recommended_model must be read as it exists on the base branch after
-    // the merge, not before it, since the recommendation itself may be new
-    // content the merge just introduced. So refusing here does not roll back
-    // an already-completed, independently-valid git reconciliation — it only
-    // means the *next agent worktree* was not prepared.
     expectValidation(
       () => runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "claude" }),
-      "will not launch one unpinned"
+      "does not resolve exactly one dispatchable"
     );
-    expect(existsSync(fixture.feature)).toBe(false);
-    expect(git(fixture.main, ["log", "-1", "--format=%s"]).trim()).toBe("feature proof");
+    expect(existsSync(fixture.feature)).toBe(true);
+    expect(git(fixture.main, ["log", "-1", "--format=%s"]).trim()).toBe("initial");
   });
 
   it("uses the plan's recommended_model and recommended_reasoning_effort when no override is given", () => {
@@ -141,9 +135,9 @@ describe("arcadia go — next-session model resolution", () => {
 
     const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "claude" });
 
-    expect(result.data.nextWorktree?.model).toBe("claude-opus-5");
+    expect(result.data.nextWorktree?.model).toBe("opus");
     expect(result.data.nextWorktree?.effort).toBe("high");
-    expect(result.data.nextWorktree?.command).toContain('claude --model "claude-opus-5" --effort "high" "arcadia advance"');
+    expect(result.data.nextWorktree?.command).toContain('claude --model "opus" --effort "high" "arcadia advance"');
   });
 
   it("an explicit --model/--effort overrides the plan's recommendation", () => {
@@ -169,7 +163,7 @@ describe("arcadia go — next-session model resolution", () => {
 
     const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "codex" });
 
-    expect(result.data.nextWorktree?.command).toContain('-m "claude-opus-5"');
+    expect(result.data.nextWorktree?.command).toContain('-m "opus"');
     expect(result.data.nextWorktree?.command).toContain('-c model_reasoning_effort="high"');
     expect(result.data.nextWorktree?.command).not.toContain("--effort");
   });
@@ -253,6 +247,7 @@ status: active
 milestone: Prove the copy contract
 token_impact: medium
 token_budget: "Use one bounded coding-agent session; keep Git and validation deterministic."
+recommended_model: gpt-5.6-terra
 updated: 2026-08-05
 actions:
   - id: define-contract
@@ -271,8 +266,7 @@ actions:
 `;
 
 const planDocumentWithModel = planDocument.replace(
-  'token_budget: "Use one bounded coding-agent session; keep Git and validation deterministic."\n',
-  'token_budget: "Use one bounded coding-agent session; keep Git and validation deterministic."\n' +
-    "recommended_model: claude-opus-5\n" +
+  "recommended_model: gpt-5.6-terra\n",
+  "recommended_model: opus\n" +
     "recommended_reasoning_effort: high\n"
 );

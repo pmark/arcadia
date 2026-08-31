@@ -161,6 +161,15 @@ function resolveActivePlan(repoRoot: string, projectSlug?: string): ActivePlanRe
     return { discovered, project, plan: null, blockers };
   }
 
+  if (plan.status !== "active") {
+    blockers.push({
+      relativePath: plan.relativePath,
+      field: "status",
+      message: `The active plan "${plan.slug}" is "${plan.status}", not active; Arcadia does not dispatch work from it.`,
+      remedy: 'Set `status: active` only when this plan is ready to govern executable work.'
+    });
+  }
+
   // Only one action may be current across the whole project. Checked only once
   // the active plan resolves: if `active_plan` itself is wrong, saying "this
   // other plan is competing" sends the operator to fix the wrong file.

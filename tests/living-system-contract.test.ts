@@ -249,6 +249,7 @@ status: active
 milestone: Demonstrate explicit history
 token_impact: none
 token_budget: Parsing and link validation are deterministic.
+recommended_model: gpt-5.6-terra
 updated: 2026-08-21
 actions:
   - id: ship-it

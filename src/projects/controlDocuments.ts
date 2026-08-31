@@ -347,6 +347,10 @@ export function renderBootstrapPlan(input: {
   frontmatter.token_budget =
     "Seeded from Arcadia's own records, so producing this plan cost no model tokens. " +
     "Reserve model use for clarifying the Actions below, one at a time.";
+  // An active plan must already pin a valid launch model before it can point
+  // at a dispatchable Action. The bundled Codex adapter is the deterministic
+  // default; an operator may replace it in the authored plan before launch.
+  frontmatter.recommended_model = "gpt-5.6-terra";
   frontmatter.updated = localDateStamp();
   frontmatter.actions = input.actions.map((action) => {
     const entry: Record<string, unknown> = {

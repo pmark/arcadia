@@ -109,6 +109,7 @@ milestone: Living system v1
 current_action: project
 token_impact: none
 token_budget: Deterministic only.
+recommended_model: gpt-5.6-terra
 updated: 2026-08-21
 actions:
   - id: project

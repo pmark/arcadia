@@ -8,6 +8,22 @@ updated: 2026-08-30
 
 # Mission Log: Arcadia
 
+## 2026-08-30 — Made pinned models part of executable plan validity
+
+- **Action:** `idea-to-managed-build#launch-tmux-backed-session`
+- **Did:** Made `recommended_model` required for every active plan, made a
+  non-active plan in the work pointer refuse dispatch, seeded newly generated
+  active plans with the configured Codex default, and updated the active
+  Arcadia plans and Decision 0010. The now-governed current Action pins
+  `gpt-5.6-sol` at high effort.
+- **Result:** A missing model is reported as a control-document repair before
+  `arcadia go` reconciles Git or creates a worktree; it cannot recur as a
+  late handoff refusal. Draft and historical plans remain readable without
+  inventing a model choice.
+- **Next:** Run Arcadia Go from this branch after its change is reviewed and
+  delivered; it will prepare the next Codex worktree against the pinned model.
+- **Blockers:** Delivery still requires the normal commit, push, and pull
+  request authority. No coding-agent process, merge, or deployment started.
 ## 2026-08-30 — Added the deterministic PR briefing layer
 
 - **Action:** `idea-to-managed-build#build-operator-attention-board`
