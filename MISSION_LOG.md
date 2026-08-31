@@ -8,6 +8,26 @@ updated: 2026-08-30
 
 # Mission Log: Arcadia
 
+## 2026-08-30 — Built the governed tmux Session launch boundary
+
+- **Action:** `idea-to-managed-build#launch-tmux-backed-session`
+- **Did:** Added the thin workspace-owned Session receipt, immutable promoted
+  packet and authority rechecks, one-repository lease, explicit Claude Code
+  `--launch` path through Arcadia-owned worktrees and tmux, read-only Session
+  view, and one total Project-transition resolver shared by `go`, bare
+  `advance`, and the Agent Queue. Kept preview and manual launch non-spawning.
+- **Result:** Both TypeScript builds, smoke, and all 1,117 tests pass. Focused
+  fixtures prove launch, planning, operator Decision, repair, wait, and
+  reconciliation behavior; tmux missing/collision/spawn failures; stable
+  identifiers; liveness; exact reattach/resume instructions; stale packet,
+  provider, authority, and base-revision refusal; and cross-repository leases.
+  No real coding-agent process, transcript inspection, credential use, merge,
+  deployment, publication, or messaging occurred.
+- **Next:** Answer Decision 0038. If approved, run exactly one bounded real
+  Claude Code detach/reattach/exit/resume rehearsal and record its evidence.
+- **Blockers:** The remaining empirical dogfood criterion requires configured
+  provider credentials, which Decision 0012 deliberately did not authorize.
+
 ## 2026-08-30 — Let the operator reassess stale Needs you questions
 
 - **Action:** `idea-to-managed-build#build-operator-attention-board`

@@ -145,6 +145,7 @@ describe("path options are wired to the invocation-aware resolver", () => {
     // someone states whether it resolves against the operator's directory --
     // which is the decision that got skipped the first time.
     expect(found.sort()).toEqual([
+      "advance --repo",
       "configure --repo-path",
       "docket --repo",
       "go --repo",

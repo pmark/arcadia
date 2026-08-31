@@ -340,6 +340,50 @@ local base branch and prints the exact Codex or Claude Code launch command with
 `arcadia advance`. The personal `arcadia-go` skill performs the preview/apply
 sequence and uses the current agent's native session handoff when available.
 
+To opt into Arcadia launching the next Claude Code process, add `--launch`.
+This is the only `go` option that authorizes process creation; preview and the
+manual command above remain non-launching:
+
+```sh
+pnpm arcadia go \
+  --repo /path/to/project \
+  --source /path/to/finished-worktree \
+  --agent claude \
+  --apply \
+  --launch \
+  --workspace "$WORKSPACE"
+```
+
+Launch requires the current governed Action's approved, immutable promoted
+build packet; matching provider profile, binding, model, and Git base revision;
+a clean agent-owned source and isolated target worktree; available `tmux`; and
+no prepared or running Session lease for the same repository. Arcadia creates
+the worktree itself and wraps Claude Code in tmux—it does not use Claude Code's
+worktree-owning tmux mode. A separately admitted repository may hold its own
+Session.
+
+The command prints the Session id and exact reattach command. The same
+read-only receipt is available later:
+
+```sh
+pnpm arcadia session show --workspace "$WORKSPACE"
+pnpm arcadia session show <session-id> --workspace "$WORKSPACE"
+tmux attach-session -t <printed-tmux-name>
+```
+
+`session show` reports only stored linkage and whether the named tmux process
+is alive. It never captures panes, mirrors transcripts, estimates progress, or
+injects input. If tmux has exited, use the printed `claude --resume
+<provider-session-id>` command from the recorded worktree. A successful process
+exit does not complete the Action or approve, merge, deploy, publish, message,
+spend, or use credentials; repository reconciliation is a separate governed
+transition.
+
+Bare `arcadia advance` and `arcadia advance --session <id>` resolve the same
+deterministic Project transition used by `go` and the Agent Queue. Its result
+is exactly one of launch, plan, Decision, repair, reconcile, wait, or Milestone
+completion, with one concrete next step.
+
 To shelve an idea until a concrete condition is true, use the existing Ask
 path with `--back-burner`. For example:
 
