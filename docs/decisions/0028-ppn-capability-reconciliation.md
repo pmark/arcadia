@@ -4,7 +4,7 @@ type: decision
 id: "0028"
 slug: ppn-capability-reconciliation
 project: arcadia
-status: open
+status: approved
 question: Which capabilities Private Practice Now built locally does Arcadia promote for every project, which are deleted there as superseded, and which are struck as never-implemented?
 gap_type: missing-decision
 recommendation: >-
@@ -16,7 +16,9 @@ recommendation: >-
   currently writing deferrals in nine of its own governed documents that
   nothing can evaluate.
 confidence: high
-updated: 2026-08-17
+answer: Promote trigger evaluation, the operator task ledger, and the demo proof-target registry; retire PPN's duplicate docket, advance, report, and go; strike the nine unbuilt registry entries; and trigger-defer capabilities.
+decided: 2026-08-30
+updated: 2026-08-30
 ---
 
 # Reconciling what PPN built locally
@@ -145,6 +147,13 @@ genuinely minor.
 | Re-propose any struck command | Someone states the concrete work it would unblock, as a proposal under 0025. |
 | Resolve the bare-`arcadia` name collision | ~~The operator decides how the global script should behave~~ — **fired and resolved 2026-08-18.** The operator ruled: make it work from any directory or remove it. It now works. `scripts/arcadia` moved into this repository, records `ARCADIA_INVOKED_FROM` before changing directory, and the CLI resolves repositories and Projects from that. Verified: `arcadia docket` from PPN returns PPN. |
 | Promote PPN's `plan` brief renderer | A second project wants the same brief format, which would make it general rather than local. |
+
+## Resolution
+
+Approved on 2026-08-30. The promotions, retirements, and strikes remain
+separate implementation and cross-repository Actions; this ratification does
+not authorize editing PPN or implementing the three promoted capabilities in
+this Action.
 
 ## What this Decision does not authorize
 

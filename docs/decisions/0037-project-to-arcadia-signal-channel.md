@@ -6,7 +6,7 @@ slug: project-to-arcadia-signal-channel
 project: arcadia
 plan: null
 action: null
-status: open
+status: approved
 question: How does an agent working in an adopting project send Arcadia something that needs Arcadia's own governance — a Way change, a defect in Arcadia's own code, or a finding worth recording — and have it actually reach the operator, rather than sitting in a document type that is recognized but never surfaced?
 gap_type: missing-decision
 recommendation: >-
@@ -29,7 +29,9 @@ recommendation: >-
   exactly as it is for genuine evidence — a finding that would inform a
   future decision but obliges no answer now.
 confidence: high
-updated: 2026-08-28
+answer: A project-to-Arcadia request needing operator judgment is authored directly as an open Decision in the Arcadia repository; proposals remain evidence-only, and ingress notes are retired after the first confirmed path.
+decided: 2026-08-30
+updated: 2026-08-30
 ---
 
 # Project-to-Arcadia signal channel
@@ -147,3 +149,9 @@ classification). Both are read, both are reasoned, and both have been
 sitting unanswered because they arrived through a document type that cannot
 carry them to a decision. Confirming this decision and re-filing them as
 Decisions is the fastest way to find out whether the diagnosis is right.
+
+## Resolution
+
+Approved on 2026-08-30. The governed Decision vehicle is adopted as the
+project-to-Arcadia signal channel; no new signal schema or implementation is
+authorized by this ratification.
