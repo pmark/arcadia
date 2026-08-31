@@ -195,6 +195,7 @@ milestone: Living system v1
 current_action: ${currentAction}
 token_impact: none
 token_budget: Derivation is deterministic and makes no model calls.
+recommended_model: gpt-5.6-terra
 updated: 2026-08-21
 actions:
 ${actions.join("\n")}

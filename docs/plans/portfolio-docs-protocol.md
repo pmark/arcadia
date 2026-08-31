@@ -6,6 +6,8 @@ project: arcadia
 status: active
 milestone: docs sync ingests a real project's markdown
 token_impact: xlarge
+recommended_model: gpt-5.6-sol
+recommended_reasoning_effort: high
 token_budget: "The historical protocol program required several agentic implementation sessions; parsing, sync, dependency resolution, and validation are deterministic, and deferred narrative summarization is the only routine model-bearing path."
 updated: 2026-08-01
 actions:
