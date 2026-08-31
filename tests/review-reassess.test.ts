@@ -147,6 +147,7 @@ status: active
 milestone: Current work
 token_impact: small
 token_budget: Reassessment is deterministic.
+recommended_model: gpt-5.6-terra
 updated: 2026-08-30
 actions: []
 ${questions.length ? `questions:\n${questions.map((id) => `  - id: ${id}\n    question: Does this still apply?\n    gap_type: missing-decision`).join("\n")}` : "questions: []"}

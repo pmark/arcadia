@@ -321,6 +321,7 @@ milestone: Prove the transition
 current_action: next-step
 token_impact: medium
 token_budget: One bounded pass.
+recommended_model: gpt-5.6-terra
 updated: 2026-08-30
 actions:
   - id: next-step
