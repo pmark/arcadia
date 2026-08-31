@@ -10,7 +10,6 @@ token_budget: "Project creation, document rendering, Session lifecycle checks, b
 recommended_model: gpt-5.6-sol
 recommended_reasoning_effort: high
 updated: 2026-08-30
-current_action: launch-tmux-backed-session
 actions:
   - id: prepare-project-idea
     title: Turn one stated project idea into a dispatchable planning Action
@@ -162,14 +161,13 @@ actions:
   - id: launch-tmux-backed-session
     title: Launch one governed coding-agent Session through tmux
     status: open
-    responsibility: requires_review
+    responsibility: codex
     effort: session
     expected_artifact: A tested opt-in tmux launch path whose durable Session receipt lets the operator leave, find, and reattach to the exact governed Claude Code work without inspecting its transcript
-    clarification: question_open
-    gap_type: missing-decision
-    question: Approve one bounded real Claude Code dogfood Session, using the configured provider credentials, to verify detach, terminal-close survival, reattach, exit, and resume by the preassigned provider session id?
+    clarification: clarified
+    next_action: Prepare one disposable-repository rehearsal through the exact explicit Claude Code launch path and record only the bounded detach, reattach, exit, and resume evidence.
     confidence: high
-    source: Operator direction on 2026-08-29 and Decision 0012
+    source: Decision 0038 approved by the operator on 2026-08-30, with Decision 0012
     acceptance_criteria:
       - An explicit launch option on arcadia go is the only new authority to start a process; preview and the existing manual launch-command path remain non-launching and backward compatible.
       - Launch is allowed only after the existing dispatch, clean-worktree, agent-owned branch, isolated-worktree, pinned-model, and optional-effort checks have passed; tmux availability and session-name collision checks fail before Arcadia claims a Session is running.

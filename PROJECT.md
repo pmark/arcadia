@@ -7,8 +7,8 @@ status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: A raw software-project idea becomes governed, dispatchable coding-agent work without a manual planning-to-build handoff
-active_plan: idea-to-managed-build
-current_action: launch-tmux-backed-session
+active_plan: arcadia-ask-active-sessions
+current_action: make-special-routing-visible
 updated: 2026-08-30
 ---
 
@@ -294,6 +294,14 @@ Only after real dogfood may worker queueing reactivate; notifications wait for
 an observed unnoticed state, and transcript monitoring, prompt injection,
 default-on launch, and session analytics remain deferred against named
 triggers.
+
+On 2026-08-30 the operator approved Decision 0035's sequence amendment: the
+living-system review is resolved, so Ask active sessions now runs before the
+idea-to-managed-build pointer is restored. Decision 0038 is also approved for
+one bounded credential-backed dogfood rehearsal, but that rehearsal remains a
+separate, later Action after the Ask sequence; approval does not claim it has
+run. Decisions 0028 and 0037 were ratified as written, making their follow-up
+implementation and adoption work explicit rather than implicit.
 
 ## Links
 

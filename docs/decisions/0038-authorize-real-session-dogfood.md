@@ -6,11 +6,13 @@ slug: authorize-real-session-dogfood
 project: arcadia
 plan: idea-to-managed-build
 action: launch-tmux-backed-session
-status: open
+status: approved
 question: Approve one bounded real Claude Code dogfood Session, using the configured provider credentials, to verify detach, terminal-close survival, reattach, exit, and resume by the preassigned provider session id?
 gap_type: missing-decision
 recommendation: Approve one disposable-repository rehearsal only after reviewing the implementation and deterministic evidence. The rehearsal may invoke Claude Code through the new explicit --launch path and inspect only tmux liveness plus the agent-native interface; it may not capture panes, mirror transcripts, inject input, merge, deploy, publish, message, spend beyond the configured provider invocation, access production data, or reuse the approval for another Session.
 confidence: high
+answer: Approve one bounded real Claude Code dogfood Session under the documented disposable-repository, no-transcript, no-input-injection, no-merge/deploy/publish boundary.
+decided: 2026-08-30
 updated: 2026-08-30
 ---
 
@@ -48,3 +50,8 @@ Action alone does not authorize the rehearsal.
 This Decision authorizes at most one dogfood Session if approved. It does not
 authorize merge, deployment, publication, outbound messaging, production-data
 access, transcript capture, input injection, or a default-on Session worker.
+
+## Resolution
+
+Approved on 2026-08-30. The authorization is for one rehearsal only and does
+not itself claim that the rehearsal has run or that the Action is complete.
