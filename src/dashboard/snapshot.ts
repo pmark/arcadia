@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { RequiresReviewPacket } from "../commands/review.js";
 import { reviewPacketForReviewItem } from "../commands/review.js";
+import { decisionDisplayId } from "./decisionDisplay.js";
 import type { ArtifactSummary, BackBurnerItemSummary, ExecutionRunSummary, MilestoneSummary } from "../domain/types.js";
 import { listCapabilities } from "../capabilities/registry.js";
 import { listBlogDashboardSites, listBlogReviewItems } from "../capabilities/blogging/repository.js";
@@ -553,7 +554,7 @@ function toDashboardReviewItem(
   const packet = reviewPacketForReviewItem(item);
   return {
     ...packet,
-    displayId: packet.slug || packet.id,
+    displayId: decisionDisplayId(packet),
     statusLabel: labelStatus(packet.status),
     planningArtifact: buildPlanningArtifactProjection(db, workspace, item)
   };

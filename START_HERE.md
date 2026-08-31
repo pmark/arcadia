@@ -242,6 +242,12 @@ primary Project, an optional secondary Project, and Projects to park for now.
 Each completed change saves automatically in the Arcadia workspace, so the
 same ranking follows the operator across browsers and devices. The stored
 `config/arcadia.json` `reviewFocus` also keeps the visible set bounded.
+Use **Search Decisions** above that control to find a Decision by its governed
+number, question text, recommendation, or Project. Search includes focused,
+parked, lower-priority, and historical items rather than treating the focus
+limit as a search boundary. Document-backed items display their governed
+number (for example, **Decision 0038**) on the selected card, compact queue
+rows, and excluded rows; database-native Decisions retain their `R…` number.
 Historical packets and Runs older than 30 days remain behind the history
 control unless they belong to a selected current Action. No Review, packet, or
 Run is deleted.
