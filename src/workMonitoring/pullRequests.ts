@@ -41,6 +41,20 @@ export interface OutstandingPullRequest {
   readiness: PullRequestReadiness;
   readinessLabel: string;
   summary: string;
+  briefing: PullRequestBriefing | null;
+}
+
+export interface PullRequestBriefing {
+  changedFiles: string[];
+  unmentionedFiles: string[];
+  decisionFiles: string[];
+  materialFacts: string[];
+  basePullRequest: { number: number; title: string; headBranch: string } | null;
+}
+
+export interface PullRequestDetails {
+  body: string;
+  files: string[];
 }
 
 export interface PullRequestProjectError {
@@ -88,6 +102,11 @@ interface RawPullRequest {
   }> | null;
 }
 
+interface RawPullRequestDetails {
+  body?: unknown;
+  files?: Array<{ path?: unknown }> | null;
+}
+
 interface PullRequestScanOptions {
   now?: Date;
   runCommand?: (cwd: string, command: string, args: string[]) => CommandResult;
@@ -117,6 +136,7 @@ export function listOutstandingPullRequests(
   const pullRequests: OutstandingPullRequest[] = [];
   const errors: PullRequestProjectError[] = [];
   const seenRepositories = new Set<string>();
+  const detailsByPullRequest = new Map<string, PullRequestDetails>();
 
   for (const project of projects) {
     const configuredPath = project.repositoryPath?.trim() || null;
@@ -167,7 +187,11 @@ export function listOutstandingPullRequests(
 
     for (const item of raw) {
       const pullRequest = normalizePullRequest(project, repositoryPath, repository, item as RawPullRequest);
-      if (pullRequest) pullRequests.push(pullRequest);
+      if (pullRequest) {
+        pullRequests.push(pullRequest);
+        const details = readPullRequestDetails(repositoryPath, repository, pullRequest.number, runCommand);
+        if (details) detailsByPullRequest.set(pullRequestKey(pullRequest), details);
+      }
     }
   }
 
@@ -177,6 +201,23 @@ export function listOutstandingPullRequests(
     a.projectName.localeCompare(b.projectName) ||
     a.number - b.number
   );
+
+  const openPullRequestsByBranch = new Map(sorted.map((pullRequest) => [
+    `${pullRequest.repository}:${pullRequest.headBranch}`,
+    pullRequest
+  ]));
+  const decisionFilesByPullRequest = new Map(
+    [...detailsByPullRequest.entries()].map(([key, details]) => [
+      key,
+      details.files.filter((file) => /^docs\/decisions\/\d{4}-/i.test(file))
+    ])
+  );
+  for (const pullRequest of sorted) {
+    const details = detailsByPullRequest.get(pullRequestKey(pullRequest));
+    pullRequest.briefing = details
+      ? buildPullRequestBriefing(pullRequest, details, openPullRequestsByBranch, decisionFilesByPullRequest)
+      : null;
+  }
 
   return {
     generatedAt: (options.now ?? new Date()).toISOString(),
@@ -238,8 +279,50 @@ export function normalizePullRequest(
     checks,
     readiness,
     readinessLabel: READINESS_LABELS[readiness],
-    summary: pullRequestSummary(readiness, checks, reviewDecision)
+    summary: pullRequestSummary(readiness, checks, reviewDecision),
+    briefing: null
   };
+}
+
+export function buildPullRequestBriefing(
+  pullRequest: OutstandingPullRequest,
+  details: PullRequestDetails,
+  openPullRequestsByBranch: Map<string, OutstandingPullRequest>,
+  decisionFilesByPullRequest: Map<string, string[]> = new Map()
+): PullRequestBriefing {
+  const changedFiles = [...new Set(details.files)].sort();
+  const body = details.body.toLocaleLowerCase();
+  const unmentionedFiles = changedFiles.filter((file) => {
+    const normalized = file.toLocaleLowerCase();
+    const basename = normalized.split("/").pop() ?? normalized;
+    return !body.includes(normalized) && !body.includes(basename);
+  });
+  const decisionFiles = changedFiles.filter((file) => /^docs\/decisions\/\d{4}-/i.test(file));
+  const pointerFiles = changedFiles.filter((file) => file === "PROJECT.md" || /^docs\/plans\/.*\.md$/i.test(file));
+  const schemaFiles = changedFiles.filter((file) => file === "src/db/schema.ts" || /(^|\/)migrations?\//i.test(file));
+  const outwardFiles = changedFiles.filter((file) => /(^|\/)(discord|email|deploy|publish|webhook|notifications?)\b/i.test(file));
+  const basePullRequest = openPullRequestsByBranch.get(`${pullRequest.repository}:${pullRequest.baseBranch}`);
+  const decisionCollisions = decisionFiles.filter((file) => [...openPullRequestsByBranch.values()].some((other) =>
+    other.number !== pullRequest.number && other.repository === pullRequest.repository &&
+    (decisionFilesByPullRequest.get(pullRequestKey(other))?.includes(file) ?? false)
+  ));
+  const materialFacts: string[] = [];
+  if (basePullRequest) materialFacts.push(`Base branch ${pullRequest.baseBranch} is another open PR (#${basePullRequest.number}).`);
+  if (pointerFiles.length > 0) materialFacts.push(`Touches managed pointer or plan files (${pointerFiles.length}).`);
+  if (decisionFiles.length > 0) materialFacts.push(`Adds or changes ${decisionFiles.length} governed Decision document${decisionFiles.length === 1 ? "" : "s"}.`);
+  if (schemaFiles.length > 0) materialFacts.push(`Changes database schema or migration files (${schemaFiles.length}).`);
+  if (outwardFiles.length > 0) materialFacts.push(`Touches outward-facing behavior (${outwardFiles.length} path${outwardFiles.length === 1 ? "" : "s"}).`);
+  if (unmentionedFiles.length > 0) materialFacts.push(`${unmentionedFiles.length} changed file${unmentionedFiles.length === 1 ? " is" : "s are"} not named in the PR body.`);
+  if (decisionCollisions.length > 0) materialFacts.push(`Decision documents overlap another open PR (${decisionCollisions.length}).`);
+  const ciConclusion = pullRequest.checks.length === 0
+    ? "no checks reported"
+    : pullRequest.checks.map((check) => `${check.name}: ${check.conclusion ?? check.status ?? "unknown"}`).join(", ");
+  materialFacts.push(`CI checks: ${ciConclusion}.`);
+  return { changedFiles, unmentionedFiles, decisionFiles, materialFacts, basePullRequest: basePullRequest ? {
+    number: basePullRequest.number,
+    title: basePullRequest.title,
+    headBranch: basePullRequest.headBranch
+  } : null };
 }
 
 export function derivePullRequestReadiness(input: {
@@ -284,6 +367,29 @@ function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function pullRequestKey(pullRequest: Pick<OutstandingPullRequest, "repository" | "number">): string {
+  return `${pullRequest.repository}#${pullRequest.number}`;
+}
+
+function readPullRequestDetails(
+  cwd: string,
+  repository: string,
+  number: number,
+  runCommand: (cwd: string, command: string, args: string[]) => CommandResult
+): PullRequestDetails | null {
+  const result = runCommand(cwd, "gh", ["pr", "view", String(number), "--repo", repository, "--json", "body,files"]);
+  if (!result.ok) return null;
+  try {
+    const raw = JSON.parse(result.stdout) as RawPullRequestDetails;
+    return {
+      body: typeof raw.body === "string" ? raw.body : "",
+      files: (raw.files ?? []).map((file) => stringValue(file.path)).filter((file): file is string => Boolean(file))
+    };
+  } catch {
+    return null;
+  }
+}
+
 function projectError(project: WorkMonitorProject, repositoryPath: string | null, message: string): PullRequestProjectError {
   return { projectId: project.id, projectName: project.name, repositoryPath, message };
 }
@@ -302,4 +408,3 @@ function run(cwd: string, command: string, args: string[]): CommandResult {
     stderr: result.stderr ?? result.error?.message ?? ""
   };
 }
-

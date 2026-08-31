@@ -8,6 +8,22 @@ updated: 2026-08-30
 
 # Mission Log: Arcadia
 
+## 2026-08-30 — Added the deterministic PR briefing layer
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Extended the read-only Outstanding PRs surface with deterministic
+  material facts from each PR's changed paths, body, branch relationship, and
+  reported checks: undisclosed paths, managed pointer changes, Decisions,
+  schema or migration edits, outward-facing paths, and open-branch ordering.
+- **Result:** The operator can inspect what is at stake in an open PR without
+  reading every diff first. Detail failure leaves the existing inventory and
+  readiness rating intact; the briefing never approves, merges, comments, or
+  dispatches. Focused pull-request tests and both production builds pass.
+- **Next:** Continue the active Ask routing Action; add a separately scoped
+  implementation Action if the briefing is prioritized for further delivery.
+- **Blockers:** Live browser verification was unavailable on this host; the
+  local target is `http://127.0.0.1:3020/admin/pull-requests`.
+
 ## 2026-08-30 — Ratified Decision 0013
 
 - **Did:** Approved the small scheduled pull-request briefing layer over the

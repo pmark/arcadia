@@ -395,6 +395,15 @@ export interface DashboardOutstandingPullRequest {
   readiness: PullRequestReadiness;
   readinessLabel: string;
   summary: string;
+  briefing: DashboardPullRequestBriefing | null;
+}
+
+export interface DashboardPullRequestBriefing {
+  changedFiles: string[];
+  unmentionedFiles: string[];
+  decisionFiles: string[];
+  materialFacts: string[];
+  basePullRequest: { number: number; title: string; headBranch: string } | null;
 }
 
 export interface DashboardPullRequestProjectError {
