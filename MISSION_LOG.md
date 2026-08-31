@@ -8,6 +8,24 @@ updated: 2026-08-30
 
 # Mission Log: Arcadia
 
+## 2026-08-30 — Made every open Decision findable by its governed number
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Added a simple Needs you search across focused, parked,
+  lower-priority, and historical items; projected the governed numeric id from
+  document-backed Decisions; and displayed the Decision number on the detail
+  card, compact queue rows, and excluded rows.
+- **Result:** A synchronized Decision such as 0038 is findable by `0038`, its
+  question, recommendation, or Project even when review focus excludes it.
+  Database-native Decisions keep their existing `R…` number. Focused tests,
+  both TypeScript builds, and the production Dashboard build pass. The live
+  browser surface was unavailable on this host, so no visual-runtime result is
+  claimed.
+- **Next:** Answer Decision 0038 and the remaining open governed Decisions.
+- **Blockers:** The app's native multiple-choice picker failed before rendering
+  in this session; the same bounded choices must be collected through the
+  documented text fallback unless the picker becomes available.
+
 ## 2026-08-30 — Built the governed tmux Session launch boundary
 
 - **Action:** `idea-to-managed-build#launch-tmux-backed-session`

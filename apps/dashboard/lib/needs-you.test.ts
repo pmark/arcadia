@@ -1,87 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildNeedsYouBoard } from "./needs-you";
-import type { AgentQueueEntry, DashboardAttentionItem, DashboardReviewItem } from "./types";
+import { attentionItem, reviewItem } from "./needs-you.test-fixtures";
+import type { AgentQueueEntry } from "./types";
 
 const NOW = Date.parse("2026-08-28T12:00:00.000Z");
-
-function attentionItem(overrides: Partial<DashboardAttentionItem>): DashboardAttentionItem {
-  return {
-    id: "review:r1",
-    kind: "review",
-    severity: "action",
-    projectName: "Sample Project",
-    projectId: "proj-1",
-    milestone: null,
-    goal: null,
-    outcome: null,
-    status: "requires_review",
-    statusLabel: "Requires Review",
-    reason: "A Decision needs an answer.",
-    workItemId: null,
-    actionId: "action-1",
-    workItemTitle: null,
-    actionTitle: null,
-    expectedArtifact: null,
-    targetRepositoryRoot: null,
-    relatedArtifactId: null,
-    relatedArtifactTitle: null,
-    relatedArtifactPath: null,
-    finalArtifactPath: null,
-    validationPath: null,
-    relatedReviewId: "r1",
-    relatedReviewSlug: "r1",
-    relatedDecisionId: null,
-    relatedDecisionSlug: null,
-    relatedRunId: null,
-    relatedCodexInvocationId: null,
-    nextAction: "Answer the question.",
-    interpretation: null,
-    safetyBoundaries: [],
-    responsibility: null,
-    primaryActions: [],
-    createdAt: "2026-08-20T12:00:00.000Z",
-    updatedAt: "2026-08-20T12:00:00.000Z",
-    ...overrides
-  };
-}
-
-function reviewItem(overrides: Partial<DashboardReviewItem>): DashboardReviewItem {
-  return {
-    id: "r1",
-    slug: "r1",
-    decisionId: "d1",
-    decisionSlug: "d1",
-    displayId: "R1",
-    workItemId: null,
-    actionId: "action-1",
-    projectId: "proj-1",
-    project: "Sample Project",
-    goal: null,
-    outcome: null,
-    status: "requires_review",
-    statusLabel: "Requires Review",
-    category: "decision",
-    decisionNeeded: "What should happen next?",
-    context: "",
-    recommendation: null,
-    proposedAction: "",
-    missingFields: [],
-    options: ["approve", "reject", "defer"],
-    sourceInput: "",
-    createdAt: "2026-08-20T12:00:00.000Z",
-    updatedAt: "2026-08-20T12:00:00.000Z",
-    resultingAskRequestId: null,
-    contextJson: null,
-    resolvedIntent: "ActionClarification",
-    packetArtifactId: null,
-    codexInvocationId: null,
-    artifactPath: null,
-    promptPath: null,
-    finalMessagePath: null,
-    validationPath: null,
-    ...overrides
-  };
-}
 
 function selectedAction(actionId: string): AgentQueueEntry {
   return {
