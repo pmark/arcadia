@@ -8,6 +8,19 @@ updated: 2026-08-30
 
 # Mission Log: Arcadia
 
+## 2026-08-30 — Ratified Decision 0013
+
+- **Did:** Approved the small scheduled pull-request briefing layer over the
+  existing inventory and review-feedback paths, including the material-fact
+  checks named by Decision 0013.
+- **Result:** Decision 0013 is closed with an explicit answer. No briefing
+  implementation Action was created, no pull request was inspected, and no
+  digest, merge, message, or other external effect occurred.
+- **Next:** Continue with the active Ask routing Action; propose a separately
+  scoped implementation Action for the briefing when that work is prioritized.
+- **Blockers:** None from the Decision menu; the briefing remains unbuilt by
+  deliberate scope control.
+
 ## 2026-08-30 — Ratified four governed Decisions
 
 - **Did:** Recorded the operator's selections: approved one bounded real
