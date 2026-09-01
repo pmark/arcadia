@@ -10,11 +10,11 @@ token_budget: "Parsing, normalization, validation, queue ordering, readiness, re
 recommended_model: gpt-5.6-sol
 recommended_reasoning_effort: high
 updated: 2026-09-01
-current_action: define-agent-ask-management-contract
+current_action: establish-approved-action-queue
 actions:
   - id: define-agent-ask-management-contract
     title: Give coding agents a conventional Ask contract for Project management intent
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: "Define and implement Agent Ask v1 as one normalized proposal contract that accepts a strict conventional envelope or natural fallback, previews the exact canonical Project changes, and never treats an agent's claim as operator approval."
@@ -37,6 +37,9 @@ actions:
       - docs/managed-documents.md
       - docs/arcadia-semantics.md
       - src/commands/ask.ts
+      - src/commands/agentAsk.ts
+      - src/ask/agentAsk.ts
+      - tests/agent-ask.test.ts
       - src/docs/parse.ts
       - src/docs/sync.ts
       - src/stewardship/index.ts
