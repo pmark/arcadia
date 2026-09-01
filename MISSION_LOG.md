@@ -8,6 +8,30 @@ updated: 2026-09-01
 
 # Mission Log: Arcadia
 
+## 2026-09-01 — Settled Agent Ask Actions into the queue and Discord outbox
+
+- **Action:** `agent-ask-execution-queue#connect-agent-ask-to-queue`
+- **Did:** Added fingerprinted preview/apply settlement for strict new-Action
+  Agent Asks and terminal rejection for every proposal. Accepted Action
+  settlement writes the active managed Plan, synchronizes operational state,
+  inserts the Action at an explicit revisioned queue position, and persists one
+  receipt. Both dispositions create a durable Discord outbox item; the existing
+  bot posts its generated effect summary and records the message id only after
+  send succeeds.
+- **Result:** Preview, refusal, conflict, and rollback send no ping. Successful
+  settlement replay is idempotent, changed settlement request ids are refused,
+  Project file failure restores the prior Plan, and a Discord delivery remains
+  pending until acknowledged. Fifty focused Agent Ask, queue, and Discord tests
+  pass; the full suite passes 1,156 tests with 6 skipped; core, Discord,
+  Dashboard production, and package-boundary builds pass.
+- **Next:** Extend accepted settlement from new Actions to the remaining Agent
+  Ask intent kinds and Plan/Action amendments without duplicating canonical
+  records, then complete the current Action's mixed-granularity integration
+  proof.
+- **Blockers:** None. Accepted non-Action and amendment effects deliberately
+  remain proposed in this slice rather than being mapped to guessed Project
+  mutations. Decision 0040 authorizes only the configured settlement ping.
+
 ## 2026-09-01 — Established one explicit approved Action order
 
 - **Action:** `agent-ask-execution-queue#establish-approved-action-queue`

@@ -243,6 +243,29 @@ CREATE TABLE IF NOT EXISTS agent_ask_proposals (
   FOREIGN KEY (capture_id) REFERENCES ask_capture_envelopes(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS agent_ask_settlements (
+  id TEXT PRIMARY KEY,
+  proposal_id TEXT NOT NULL UNIQUE,
+  request_id TEXT NOT NULL UNIQUE,
+  operation_json TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  disposition TEXT NOT NULL CHECK (disposition IN ('accepted', 'rejected')),
+  project_slug TEXT NOT NULL,
+  effects_json TEXT NOT NULL,
+  queue_action_key TEXT,
+  queue_position INTEGER,
+  next_action_key TEXT,
+  notification_status TEXT NOT NULL CHECK (notification_status IN ('pending', 'sent')) DEFAULT 'pending',
+  discord_message_id TEXT,
+  notified_at TEXT,
+  receipt_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (proposal_id) REFERENCES agent_ask_proposals(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_ask_settlements_notification
+  ON agent_ask_settlements(notification_status, created_at);
+
 CREATE TABLE IF NOT EXISTS action_queue_state (
   id TEXT PRIMARY KEY CHECK (id = 'portfolio'),
   revision INTEGER NOT NULL,

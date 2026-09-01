@@ -54,6 +54,22 @@ export interface QueueData {
   };
 }
 
+export interface AgentAskNotificationItem {
+  settlementId: string;
+  projectSlug: string;
+  disposition: "accepted" | "rejected";
+  intent: string;
+  effects: string[];
+  queueActionKey: string | null;
+  queuePosition: number | null;
+  nextActionKey: string | null;
+  createdAt: string;
+}
+
+export interface AgentAskNotificationsData {
+  notifications: AgentAskNotificationItem[];
+}
+
 export interface ExecutionRunStep {
   status: string;
   plan_step_title: string;

@@ -19,7 +19,16 @@ import {
 } from "./commands/artifact.js";
 import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
 import { renderAskRuleTestSuccess, runAskRuleTestCommand } from "./commands/askRule.js";
-import { renderAgentAskPreviewSuccess, runAgentAskPreviewCommand } from "./commands/agentAsk.js";
+import {
+  renderAgentAskNotificationSentSuccess,
+  renderAgentAskNotificationsSuccess,
+  renderAgentAskPreviewSuccess,
+  renderAgentAskSettleSuccess,
+  runAgentAskNotificationSentCommand,
+  runAgentAskNotificationsCommand,
+  runAgentAskPreviewCommand,
+  runAgentAskSettleCommand
+} from "./commands/agentAsk.js";
 import {
   renderBackBurnerArchiveSuccess,
   renderBackBurnerListSuccess,
@@ -660,6 +669,42 @@ export function buildProgram(): Command {
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((request: string | undefined, options: { workspace: string; file?: string; requestId?: string; project?: string; json?: boolean }) =>
     runCliAction("agent-ask.preview", options, () => runAgentAskPreviewCommand({ ...options, request }), renderAgentAskPreviewSuccess)
+  );
+  addJsonOption(agentAsk.command("settle")
+    .description("Preview or apply the terminal disposition and effects of one Agent Ask proposal")
+    .requiredOption("--proposal <id>", "Proposal id or original Agent Ask request id")
+    .requiredOption("--request-id <id>", "Idempotency key for this settlement")
+    .requiredOption("--disposition <accepted|rejected>", "Terminal proposal disposition")
+    .option("--responsibility <autonomous|codex>", "Approved Responsibility for a created Action")
+    .option("--top", "Insert the accepted Action at the top of the queue")
+    .option("--before <project/action>", "Insert before this ordered Action")
+    .option("--after <project/action>", "Insert after this ordered Action")
+    .option("--revision <number>", "Expected queue revision")
+    .option("--preview <sha256>", "Exact preview fingerprint required with --apply")
+    .option("--apply", "Apply the exact previewed settlement")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: {
+    workspace: string; proposal: string; requestId: string; disposition: string; responsibility?: string;
+    top?: boolean; before?: string; after?: string; revision?: string; preview?: string; apply?: boolean; json?: boolean;
+  }) => runCliAction("agent-ask.settle", options, () => runAgentAskSettleCommand({
+    ...options,
+    disposition: options.disposition as "accepted" | "rejected",
+    responsibility: options.responsibility as "autonomous" | "codex" | undefined,
+    revision: options.revision === undefined ? undefined : Number(options.revision)
+  }), renderAgentAskSettleSuccess));
+  addJsonOption(agentAsk.command("notifications")
+    .description("List durable Agent Ask settlement pings pending Discord delivery")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("agent-ask.notifications", options, () => runAgentAskNotificationsCommand(options), renderAgentAskNotificationsSuccess)
+  );
+  addJsonOption(agentAsk.command("notification-sent")
+    .description("Record successful Discord delivery for one Agent Ask settlement")
+    .requiredOption("--settlement <id>", "Settlement id")
+    .requiredOption("--message-id <id>", "Discord message id")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; settlement: string; messageId: string; json?: boolean }) =>
+    runCliAction("agent-ask.notification-sent", options, () => runAgentAskNotificationSentCommand(options), renderAgentAskNotificationSentSuccess)
   );
   addJsonOption(
     askRule

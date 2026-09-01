@@ -8,6 +8,16 @@ import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
+import {
+  listPendingAgentAskNotifications,
+  markAgentAskNotificationSent,
+  settleAgentAsk,
+  type AgentAskDisposition,
+  type AgentAskPlacement,
+  type AgentAskResponsibility,
+  type AgentAskSettlementReceipt,
+  type PendingAgentAskNotification
+} from "../ask/settlement.js";
 
 export interface AgentAskPreviewOptions { workspace: string; request?: string; file?: string; requestId?: string; project?: string; }
 export interface AgentAskPreviewData { proposal: AgentAskProposal; preview: string[]; projectWritesPerformed: 0; replayed: boolean; }
@@ -44,3 +54,93 @@ export function runAgentAskPreviewCommand(options: AgentAskPreviewOptions): Comm
 }
 export function renderAgentAskPreviewSuccess(response: CommandSuccess<AgentAskPreviewData>): string[] { return ["Agent Ask v1 preview", ...response.data.preview]; }
 function renderAgentAskPreview(proposal: AgentAskProposal): string[] { const effect = proposal.effects[0]!; return [`Request: ${proposal.normalized.requestId}${proposal.normalized.format === "natural" ? " (natural fallback)" : ""}`, `Project: ${proposal.normalized.project}`, `Intent: ${proposal.normalized.intent}`, `Proposed effect: ${effect.operation} ${effect.targetKind}${effect.targetRef ? ` ${effect.targetRef}` : ""}`, `Decisions required: ${proposal.requiredDecisions.length}`, "Queue: no entry until accepted", "Project writes: 0"]; }
+
+export interface AgentAskSettleData { receipt: AgentAskSettlementReceipt; }
+
+export function runAgentAskSettleCommand(options: {
+  workspace: string;
+  proposal: string;
+  requestId: string;
+  disposition: AgentAskDisposition;
+  responsibility?: AgentAskResponsibility;
+  top?: boolean;
+  before?: string;
+  after?: string;
+  revision?: number;
+  preview?: string;
+  apply?: boolean;
+}): CommandSuccess<AgentAskSettleData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  if (options.disposition !== "accepted" && options.disposition !== "rejected") {
+    throw validationError("Agent Ask disposition must be accepted or rejected.");
+  }
+  if (options.responsibility && options.responsibility !== "autonomous" && options.responsibility !== "codex") {
+    throw validationError("Agent Ask Action Responsibility must be autonomous or codex.");
+  }
+  const placements = [options.top ? "top" : null, options.before ? "before" : null, options.after ? "after" : null].filter(Boolean);
+  if (options.disposition === "accepted" && placements.length !== 1) {
+    throw validationError("Accepted Action settlement requires exactly one queue placement: --top, --before, or --after.");
+  }
+  if (options.disposition === "rejected" && placements.length > 0) {
+    throw validationError("Rejected Agent Ask settlement cannot declare a queue position.");
+  }
+  const receipt = withDatabase(workspacePath, (db) => settleAgentAsk(db, {
+    proposalRef: options.proposal,
+    settlementRequestId: options.requestId,
+    disposition: options.disposition,
+    responsibility: options.responsibility,
+    placement: placements[0] as AgentAskPlacement | undefined,
+    anchor: options.before ?? options.after,
+    expectedQueueRevision: options.revision,
+    previewFingerprint: options.preview,
+    apply: options.apply
+  }));
+  return createSuccess({ command: "agent-ask.settle", workspace: workspacePath, data: { receipt } });
+}
+
+export function renderAgentAskSettleSuccess(response: CommandSuccess<AgentAskSettleData>): string[] {
+  const receipt = response.data.receipt;
+  return [
+    receipt.applied ? `Agent Ask ${receipt.disposition}.` : `Agent Ask ${receipt.disposition} settlement preview.`,
+    `Project: ${receipt.projectSlug}`,
+    ...receipt.effects.map((effect) => `Effect: ${effect}`),
+    `Queue: ${receipt.queueActionKey ? `${receipt.queueActionKey} at position ${(receipt.queuePosition ?? 0) + 1}` : "no executable entry"}`,
+    `Next: ${receipt.nextActionKey ?? "none"}`,
+    `Discord: ${receipt.notificationStatus}`,
+    `Preview fingerprint: ${receipt.previewFingerprint}`,
+    `Receipt: ${receipt.id}`
+  ];
+}
+
+export function runAgentAskNotificationsCommand(options: { workspace: string }): CommandSuccess<{ notifications: PendingAgentAskNotification[] }> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const notifications = withDatabase(workspacePath, (db) => listPendingAgentAskNotifications(db));
+  return createSuccess({ command: "agent-ask.notifications", workspace: workspacePath, data: { notifications } });
+}
+
+export function renderAgentAskNotificationsSuccess(response: CommandSuccess<{ notifications: PendingAgentAskNotification[] }>): string[] {
+  if (response.data.notifications.length === 0) return ["No Agent Ask settlement pings are pending Discord delivery."];
+  return response.data.notifications.flatMap((notification) => [
+    `${notification.settlementId} · ${notification.projectSlug} · ${notification.disposition}`,
+    ...notification.effects.map((effect) => `  ${effect}`),
+    `  Next: ${notification.nextActionKey ?? "none"}`
+  ]);
+}
+
+export function runAgentAskNotificationSentCommand(options: {
+  workspace: string;
+  settlement: string;
+  messageId: string;
+}): CommandSuccess<{ settlementId: string; messageId: string }> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  withDatabase(workspacePath, (db) => markAgentAskNotificationSent(db, options.settlement, options.messageId));
+  return createSuccess({
+    command: "agent-ask.notification-sent",
+    workspace: workspacePath,
+    data: { settlementId: options.settlement, messageId: options.messageId }
+  });
+}
+
+export function renderAgentAskNotificationSentSuccess(response: CommandSuccess<{ settlementId: string; messageId: string }>): string[] {
+  return [`Agent Ask settlement ${response.data.settlementId} notification recorded as ${response.data.messageId}.`];
+}

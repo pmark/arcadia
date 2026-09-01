@@ -425,8 +425,37 @@ ARCADIA_SURFACE=claude pnpm arcadia agent-ask preview \
 ```
 
 The fallback never invents a Project, intent kind, dependency, date, priority,
-or approval. Acceptance and persistence of proposed Project changes belong to
-later governed Actions; this command is the normalized preview boundary.
+or approval.
+
+The first settlement path now accepts a strict new-Action proposal for an
+explicit configured Project. The operator supplies the approved Responsibility
+and queue position, previews the exact managed Plan and portfolio-order effect,
+then applies only that fingerprint:
+
+```sh
+pnpm arcadia agent-ask settle \
+  --proposal agent-example-001 --request-id settle-agent-example-001 \
+  --disposition accepted --responsibility codex --top --revision 4 \
+  --workspace "$WORKSPACE"
+pnpm arcadia agent-ask settle \
+  --proposal agent-example-001 --request-id settle-agent-example-001 \
+  --disposition accepted --responsibility codex --top --revision 4 \
+  --preview <sha256-from-preview> --apply --workspace "$WORKSPACE"
+```
+
+Apply requires a clean Project worktree, at least one observable acceptance
+criterion, valid active-Plan dependencies, a valid existing queue, and the
+unchanged preview fingerprint. It writes the canonical Action, synchronizes the
+operational projection, assigns one explicit queue position, and persists a
+settlement receipt. Use `--disposition rejected` without a Responsibility or
+queue placement to preserve the proposal while creating no executable work.
+
+Every applied accepted or rejected settlement creates one durable Discord
+outbox item. The configured Arcadia Discord bot posts a brief effect summary,
+queue position, and resulting next Action, then records the Discord message id.
+Preview, refusal, conflict, and rollback create no ping. Plan amendments and
+non-Action accepted effects remain proposed until their later settlement slices
+land; rejection is supported for every proposal now.
 
 ## Protect active coding work
 

@@ -383,6 +383,15 @@ eligible Action. Previews, refusals, conflicts, and partial persistence do not
 send settlement pings. Delivery failure remains observable and retryable without
 rolling back Project truth or duplicating the notification.
 
+The first `connect-agent-ask-to-queue` vertical slice now works for strict new
+Action proposals and for rejection of any proposal. Fingerprinted acceptance
+creates and syncs the canonical active-Plan Action, assigns the operator-approved
+Responsibility and explicit queue position, and records a pending Discord
+effect summary; the bot acknowledges delivery only after a successful send.
+The Action remains current while accepted non-Action effects, amendments,
+correction, and mixed-granularity settlement are extended through the same
+receipt path.
+
 ## Links
 
 - `docs/COMMANDS.md` — the operator-facing command guide

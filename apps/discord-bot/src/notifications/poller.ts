@@ -1,6 +1,6 @@
 import type { Client } from "discord.js";
 import type { ArcadiaCli } from "../arcadia/cli.js";
-import type { CodexTask, ExecutionRun, Milestone, ReviewItem, WorkItem } from "../arcadia/types.js";
+import type { AgentAskNotificationItem, CodexTask, ExecutionRun, Milestone, ReviewItem, WorkItem } from "../arcadia/types.js";
 import type { BotConfig } from "../config.js";
 import { formatCodexTaskNotification } from "../formatters/codexFormatter.js";
 import { formatMilestoneCompletedNotification } from "../formatters/milestoneFormatter.js";
@@ -29,6 +29,7 @@ export interface NotificationSnapshot {
   runs: ExecutionRun[];
   completedMilestones: Milestone[];
   codexTasks: CodexTask[];
+  agentAskNotifications?: AgentAskNotificationItem[];
 }
 
 export interface NotificationMessage {
@@ -42,13 +43,14 @@ export interface NotificationEvaluation {
 }
 
 export async function loadNotificationSnapshot(cli: ArcadiaCli): Promise<NotificationSnapshot> {
-  const [status, review, queue, runs, milestones, codex] = await Promise.all([
+  const [status, review, queue, runs, milestones, codex, agentAsk] = await Promise.all([
     cli.status(),
     cli.review(),
     cli.queue(),
     cli.runs(20),
     cli.milestones("completed", 20),
-    cli.codexTasks(false)
+    cli.codexTasks(false),
+    cli.agentAskNotifications()
   ]);
 
   return {
@@ -57,7 +59,8 @@ export async function loadNotificationSnapshot(cli: ArcadiaCli): Promise<Notific
     blockedWorkItems: queue.data.queues.blocked,
     runs: runs.data.runs,
     completedMilestones: milestones.data.milestones,
-    codexTasks: codex.data.tasks
+    codexTasks: codex.data.tasks,
+    agentAskNotifications: agentAsk.data.notifications
   };
 }
 
@@ -86,10 +89,14 @@ export function evaluateNotifications(
   const codexTerminalOrReviewEvents = snapshot.codexTasks
     .map((task) => codexEventForStatus(null, task.status) ? `${task.id}:${codexEventForStatus(null, task.status)}` : null)
     .filter((event): event is string => Boolean(event));
+  const agentAskMessages = (snapshot.agentAskNotifications ?? []).map((notification) => ({
+    key: `agent-ask:${notification.settlementId}`,
+    content: agentAskSettlementMessage(notification)
+  }));
 
   if (!previous) {
     return {
-      messages: [],
+      messages: agentAskMessages,
       nextState: {
         initializedAt: now,
         lastRequiresReviewCount: snapshot.requiresReviewCount,
@@ -115,7 +122,7 @@ export function evaluateNotifications(
   const sentBlockedWorkItems = new Set(previousBlockedWorkItemIds);
   const sentArtifacts = new Set(previousArtifactIds);
   const sentCodexEvents = new Set(previous.notifiedCodexTaskEvents);
-  const messages: NotificationMessage[] = [];
+  const messages: NotificationMessage[] = [...agentAskMessages];
 
   for (const item of reviewItems) {
     if (!sentReviewItems.has(item.id)) {
@@ -280,6 +287,10 @@ export function startNotificationPoller(
 
       for (const message of evaluation.messages) {
         const sent = await sendToConfiguredChannel(client, config.discordChannelId, message.content);
+        const agentAskSettlementId = agentAskSettlementIdFromNotificationKey(message.key);
+        if (agentAskSettlementId) {
+          await cli.agentAskNotificationSent(agentAskSettlementId, sent.id);
+        }
         const reviewId = reviewIdFromNotificationKey(message.key);
         if (reviewId) {
           const item = snapshot.reviewItems.find((candidate) => candidate.id === reviewId);
@@ -343,6 +354,24 @@ function reviewIdFromNotificationKey(key: string): string | null {
   return key.startsWith("requires-review:") && key !== "requires-review:transition"
     ? key.slice("requires-review:".length)
     : null;
+}
+
+function agentAskSettlementIdFromNotificationKey(key: string): string | null {
+  return key.startsWith("agent-ask:") ? key.slice("agent-ask:".length) : null;
+}
+
+export function agentAskSettlementMessage(notification: AgentAskNotificationItem): string {
+  return [
+    `Agent Ask settled: ${notification.disposition}`,
+    `Project: ${notification.projectSlug}`,
+    `Intent: ${notification.intent}`,
+    ...notification.effects.map((effect) => `• ${effect}`),
+    notification.queueActionKey
+      ? `Queue: ${notification.queueActionKey} at position ${(notification.queuePosition ?? 0) + 1}`
+      : "Queue: no executable Action created",
+    `Next: ${notification.nextActionKey ?? "none"}`,
+    `Settlement: ${notification.settlementId}`
+  ].join("\n");
 }
 
 function withNotifiedMessageKey(

@@ -4,6 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type {
   AskData,
+  AgentAskNotificationsData,
   ArcadiaJsonFailure,
   ArcadiaJsonSuccess,
   ClarifyData,
@@ -64,6 +65,19 @@ export class ArcadiaCli {
 
   queue(): Promise<ArcadiaJsonSuccess<QueueData>> {
     return this.runJson<QueueData>(this.withWorkspace(["queue", "--json"]));
+  }
+
+  agentAskNotifications(): Promise<ArcadiaJsonSuccess<AgentAskNotificationsData>> {
+    return this.runJson<AgentAskNotificationsData>(this.withWorkspace(["agent-ask", "notifications", "--json"]));
+  }
+
+  agentAskNotificationSent(settlementId: string, messageId: string): Promise<ArcadiaJsonSuccess<{ settlementId: string; messageId: string }>> {
+    return this.runJson(this.withWorkspace([
+      "agent-ask", "notification-sent",
+      "--settlement", settlementId,
+      "--message-id", messageId,
+      "--json"
+    ]));
   }
 
   review(): Promise<ArcadiaJsonSuccess<ReviewData>> {

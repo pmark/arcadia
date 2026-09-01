@@ -102,6 +102,8 @@ The bot polls Arcadia and notifies the configured channel when:
 - a run fails,
 - a run pauses with Requires Review,
 - a Discord-submitted run completes,
+- an Agent Ask is durably accepted or rejected, with a brief summary of its
+  canonical effects, queue placement, and resulting next Action,
 - an observed Codex task starts, requires review, completes, or fails,
 - the Requires Review count transitions from `0` to a positive number,
 - a new Project proposal needs approval, including a Mission Control deep link,
