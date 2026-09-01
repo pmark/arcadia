@@ -19,6 +19,7 @@ import {
 } from "./commands/artifact.js";
 import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
 import { renderAskRuleTestSuccess, runAskRuleTestCommand } from "./commands/askRule.js";
+import { renderAgentAskPreviewSuccess, runAgentAskPreviewCommand } from "./commands/agentAsk.js";
 import {
   renderBackBurnerArchiveSuccess,
   renderBackBurnerListSuccess,
@@ -642,6 +643,18 @@ export function buildProgram(): Command {
   ));
 
   const askRule = program.command("ask-rule").description("Inspect deterministic Ask routing rules");
+
+  const agentAsk = program.command("agent-ask").description("Preview coding-agent Project management intent");
+  addJsonOption(agentAsk.command("preview")
+    .description("Normalize Agent Ask v1 and preview canonical effects without Project writes")
+    .argument("[request]", "Strict Agent Ask v1 YAML or natural fallback text")
+    .option("--file <path>", "Read the Agent Ask from a file")
+    .option("--request-id <id>", "Required idempotency key for natural fallback")
+    .option("--project <project>", "Destination Project for natural fallback")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((request: string | undefined, options: { workspace: string; file?: string; requestId?: string; project?: string; json?: boolean }) =>
+    runCliAction("agent-ask.preview", options, () => runAgentAskPreviewCommand({ ...options, request }), renderAgentAskPreviewSuccess)
+  );
   addJsonOption(
     askRule
       .command("test")

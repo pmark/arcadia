@@ -8,6 +8,28 @@ updated: 2026-09-01
 
 # Mission Log: Arcadia
 
+## 2026-09-01 — Delivered the Agent Ask v1 proposal boundary
+
+- **Action:** `agent-ask-execution-queue#define-agent-ask-management-contract`
+- **Did:** Added strict YAML normalization and natural `auto` fallback through
+  `agent-ask preview`, covering Outcomes, Milestones, Plans, proposals,
+  Decisions, Actions, Artifacts, Logs, and Project updates. Added atomic SQLite
+  capture/proposal receipts, deterministic effects and managed-document
+  transition metadata, exact replay, changed-replay refusal, and CLI guidance
+  for coding agents.
+- **Result:** An agent can now hand Arcadia structured Project-management intent
+  without writing Project truth or entering the future queue. Explicit Projects
+  resolve before capture; agent Decisions remain open; authority claims,
+  malformed strict YAML, unknown fields, and invalid Projects fail before
+  receipt writes. Eight focused scenario groups, the full suite (1,147 passed,
+  6 skipped), and the core/Discord build pass.
+- **Next:** Advance `establish-approved-action-queue` to give every approved
+  Action one explicit portfolio position and select the first pointer-authorized,
+  dispatch-ready item without hiding higher waiting work.
+- **Blockers:** The implementation is stacked on the still-open, green planning
+  PR #138. It performs no Project apply, queue insertion, merge, deployment,
+  publication, credential use, external messaging, or model call.
+
 ## 2026-09-01 — Prioritized agent Ask and one execution queue
 
 - **Action:** `agent-ask-execution-queue#define-agent-ask-management-contract`

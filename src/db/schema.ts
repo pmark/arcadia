@@ -40,6 +40,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureBackBurnerSurfaceColumns(db);
   ensureAskRequestStewardshipColumn(db);
   ensureAskCaptureEnvelopeTables(db);
+  ensureAgentAskProposalTable(db);
   ensureRequiresReviewCompatibility(db);
   ensureOperatorAgnosticSchema(db);
   ensureExecutionRunWorkerColumns(db);
@@ -67,6 +68,15 @@ export function applyMigrations(db: Database.Database): void {
   ensureProofTargetChecksTable(db);
   ensureAgentSessionsTable(db);
   applyCapabilityMigrations(db);
+}
+
+function ensureAgentAskProposalTable(db: Database.Database): void {
+  db.exec(`CREATE TABLE IF NOT EXISTS agent_ask_proposals (
+    id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, capture_id TEXT NOT NULL,
+    fingerprint TEXT NOT NULL, format TEXT NOT NULL CHECK (format IN ('strict', 'natural')),
+    intent_kind TEXT NOT NULL, project_ref TEXT NOT NULL, proposal_json TEXT NOT NULL,
+    created_at TEXT NOT NULL, FOREIGN KEY (capture_id) REFERENCES ask_capture_envelopes(id) ON DELETE CASCADE
+  );`);
 }
 
 function ensureAskCaptureEnvelopeTables(db: Database.Database): void {

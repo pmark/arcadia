@@ -8,7 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Coding agents can Ask Arcadia to create governed Project progress, accepted Actions enter one operator-owned execution order, and Arcadia always explains which eligible Action is next
 active_plan: agent-ask-execution-queue
-current_action: define-agent-ask-management-contract
+current_action: establish-approved-action-queue
 updated: 2026-09-01
 ---
 
@@ -347,6 +347,18 @@ second task model; readiness, dependencies, Decisions, responsibility, and
 authority remain enforced. The completed Ask routing and capture work stays
 accepted, while the guided understanding session, rule management, and Songbook
 dogfood wait for accepted agent-managed queue proof before reprioritization.
+
+`define-agent-ask-management-contract` is now `done`. `agent-ask preview`
+accepts strict Agent Ask v1 YAML for every supported Project-management intent
+or an explicitly keyed natural `auto` fallback, preserves immutable capture and
+proposal receipts, previews canonical create/update/interpret effects, and
+withholds every Project, managed-document, and queue change until acceptance.
+Explicit Projects resolve before capture; Decisions remain open; unknown fields,
+unsafe authority claims, malformed strict input, and changed request-id replays
+are refused before contradictory writes. Eight focused scenario groups, the
+1,153-test full suite, and the core/Discord build pass. The pointer moves to
+`establish-approved-action-queue` so accepted work can receive one explicit,
+explainable portfolio order.
 
 ## Links
 
