@@ -3,10 +3,32 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-31
+updated: 2026-09-01
 ---
 
 # Mission Log: Arcadia
+
+## 2026-09-01 — Captured Ask ceremony removal and provider-capacity harvesting
+
+- **Action:** `arcadia-ask-active-sessions#make-special-routing-visible`
+- **Did:** Added the operator's requirement that PM-only Ask interactions avoid
+  personal coding-worktree, implementation-branch, and pull-request ceremony;
+  preserved repository truth and approvals behind Arcadia's exact preview and
+  persistence boundary; and created the proposed
+  `provider-capacity-harvesting` plan with modular Actions, T-shirt estimates,
+  dependency graph, critical credit reporting, reset semantics, and the
+  `expiring-agent-capacity` Back Burner trigger.
+- **Result:** `arcadia advance` still resolves the same clarified active Ask
+  Action, while the non-urgent capacity system is governed and dependency-
+  shaped without competing for the Project pointer. Included allowance,
+  purchased credits, API spend, and reset benefits are explicitly different
+  resources; observation grants neither spending nor execution authority.
+- **Next:** Begin `make-special-routing-visible` through `arcadia advance`; the
+  proposed capacity plan remains non-active until its declared activation
+  condition and pointer transition occur.
+- **Blockers:** Provider personal-plan telemetry may remain partial or manual;
+  unknown fields stay visible. No reset, purchase, paid-credit use, Run, merge,
+  deployment, or notification is authorized by this planning Artifact.
 
 ## 2026-08-31 — Crystallized the Arcadia Ask product thesis
 
