@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -300,6 +300,7 @@ export interface IngressDescribeResponse {
   selectedFiles: string[];
   attachmentFiles: string[];
   description: string;
+  captureEnvelope?: import("./types").CaptureEnvelope;
 }
 
 export async function listIngressFiles(): Promise<ArcadiaJsonSuccess<IngressListResponse>> {
@@ -326,17 +327,21 @@ export async function describeIngressFiles(input: {
 export async function captureIngressFiles(input: {
   files: Array<{ name: string; bytes: Uint8Array }>;
   description?: string;
+  requestId?: string;
 }): Promise<ArcadiaJsonSuccess<IngressDescribeResponse>> {
   const temporaryDirectory = await mkdtemp(path.join(tmpdir(), "arcadia-dashboard-ingress-"));
   try {
     const args = ["ingress", "capture"];
-    for (const file of input.files) {
+    for (const [index, file] of input.files.entries()) {
       const safeName = path.basename(file.name) || "upload.bin";
-      const temporaryPath = path.join(temporaryDirectory, safeName);
+      const uploadDirectory = path.join(temporaryDirectory, String(index));
+      await mkdir(uploadDirectory);
+      const temporaryPath = path.join(uploadDirectory, safeName);
       await writeFile(temporaryPath, file.bytes);
       args.push("--file", temporaryPath);
     }
     if (input.description?.trim()) args.push("--description", input.description.trim());
+    if (input.requestId?.trim()) args.push("--request-id", input.requestId.trim());
     return await runArcadiaCliJson<IngressDescribeResponse>(args);
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
@@ -345,14 +350,17 @@ export async function captureIngressFiles(input: {
 
 export async function runAsk(input: {
   request: string;
+  requestId?: string;
 }): Promise<ArcadiaJsonSuccess<AskResponse>> {
-  return runArcadiaCliJson<AskResponse>([
+  const args = [
     "ask",
     input.request,
     "--source-ingress",
     "dashboard.ask",
     "--run-safe"
-  ]);
+  ];
+  if (input.requestId?.trim()) args.push("--request-id", input.requestId.trim());
+  return runArcadiaCliJson<AskResponse>(args);
 }
 
 export async function recordAskFeedback(input: {

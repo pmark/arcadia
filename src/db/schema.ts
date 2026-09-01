@@ -39,6 +39,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureBackBurnerItemsTable(db);
   ensureBackBurnerSurfaceColumns(db);
   ensureAskRequestStewardshipColumn(db);
+  ensureAskCaptureEnvelopeTables(db);
   ensureRequiresReviewCompatibility(db);
   ensureOperatorAgnosticSchema(db);
   ensureExecutionRunWorkerColumns(db);
@@ -66,6 +67,24 @@ export function applyMigrations(db: Database.Database): void {
   ensureProofTargetChecksTable(db);
   ensureAgentSessionsTable(db);
   applyCapabilityMigrations(db);
+}
+
+function ensureAskCaptureEnvelopeTables(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ask_capture_envelopes (
+      id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, fingerprint TEXT NOT NULL,
+      original_text TEXT NOT NULL, ingress_source TEXT NOT NULL, captured_at TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('captured', 'processing', 'partial', 'completed', 'failed')),
+      envelope_json TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS ask_capture_attachments (
+      id TEXT PRIMARY KEY, capture_id TEXT NOT NULL, original_filename TEXT NOT NULL,
+      media_type TEXT NOT NULL, byte_size INTEGER NOT NULL, sha256 TEXT NOT NULL,
+      storage_reference TEXT NOT NULL, proposed_role TEXT NOT NULL, derivation_status TEXT NOT NULL,
+      FOREIGN KEY (capture_id) REFERENCES ask_capture_envelopes(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_ask_capture_attachments_capture ON ask_capture_attachments(capture_id);
+  `);
 }
 
 /** Thin operational linkage for one bounded coding-agent dispatch. */

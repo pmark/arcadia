@@ -206,6 +206,30 @@ CREATE TABLE IF NOT EXISTS ask_requests (
   FOREIGN KEY (plan_id) REFERENCES execution_plans(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS ask_capture_envelopes (
+  id TEXT PRIMARY KEY,
+  request_id TEXT NOT NULL UNIQUE,
+  fingerprint TEXT NOT NULL,
+  original_text TEXT NOT NULL,
+  ingress_source TEXT NOT NULL,
+  captured_at TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('captured', 'processing', 'partial', 'completed', 'failed')),
+  envelope_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ask_capture_attachments (
+  id TEXT PRIMARY KEY,
+  capture_id TEXT NOT NULL,
+  original_filename TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  byte_size INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  storage_reference TEXT NOT NULL,
+  proposed_role TEXT NOT NULL,
+  derivation_status TEXT NOT NULL,
+  FOREIGN KEY (capture_id) REFERENCES ask_capture_envelopes(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS review_items (
   id TEXT PRIMARY KEY,
   slug TEXT UNIQUE,

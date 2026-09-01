@@ -8,6 +8,51 @@ updated: 2026-09-01
 
 # Mission Log: Arcadia
 
+## 2026-09-01 — Unified text and file capture receipts
+
+- **Action:** `arcadia-ask-active-sessions#unify-ask-capture-envelope`
+- **Did:** Added an atomic, idempotent operational capture envelope shared by
+  Dashboard text Ask and file ingress. It preserves original text and URLs,
+  emits separately labelled Google-wrapper candidates without fetching them,
+  records collision-safe attachment receipts with SHA-256 hashes, and keeps
+  metadata, text extraction, transcription, OCR, and media-analysis derivations
+  distinct from their source attachment. Dashboard submissions now supply one
+  request id and render the same compact receipt for text, files, or both.
+- **Result:** Duplicate and unsafe filenames retain their original names while
+  storage paths remain collision-free; binary or unavailable processing stays
+  visible without losing the original or blocking other inputs; retries return
+  byte-stable receipts and changed retries are refused. Eighteen focused tests,
+  the full suite (1,140 passed, 6 skipped), the core/Discord build, and the
+  optimized Dashboard build pass.
+- **Next:** Advance `build-guided-understanding-session` to make the immutable
+  receipt the start of an editable, corrigible Ask working session.
+- **Blockers:** None for the completed Action. Delivery is through the pull
+  request recorded with this batch; merge, deployment, publication, external
+  messaging, and application model calls remain outside this Action.
+
+## 2026-09-01 — Made special Ask routing visible and testable
+
+- **Action:** `arcadia-ask-active-sessions#make-special-routing-visible`
+- **Did:** Added strict workspace-owned `ask-rules.json` v1 validation, a
+  case-insensitive exact-prefix matcher, the fixed destination precedence, a
+  stable processing receipt, and `arcadia ask-rule test` as a standard-envelope
+  no-write preview. Began with the registered `living-songbook-v1` profile and
+  documented the concrete `songbook` rule.
+- **Result:** Live Ask preserves the submitted text, strips only the selector
+  from processing, keeps lower-precedence Project candidates visible, and
+  reports extracted fields, submitted and canonical link candidates,
+  attachments, processors, proposed writes, non-actions, and approval gates.
+  Fifteen focused tests cover exact boundaries, stable output, zero writes,
+  explicit Arcadia routing, full precedence, and every required refusal class;
+  existing Ask/CLI regressions, the 1,143-test full suite, TypeScript, the root
+  build, and the optimized Dashboard build pass.
+- **Next:** Advance `unify-ask-capture-envelope` to converge Dashboard text and
+  file ingress on one immutable capture id and receipt.
+- **Blockers:** Delivery is local-only in this session. Decision 0035 does not
+  authorize credential use, so pushing the branch and opening its pull request
+  remain the exact external handoff; no merge, deployment, publication,
+  credentials, external messaging, or application model call occurred.
+
 ## 2026-09-01 — Captured Ask ceremony removal and provider-capacity harvesting
 
 - **Action:** `arcadia-ask-active-sessions#make-special-routing-visible`

@@ -18,6 +18,7 @@ import {
   runArtifactUpdateCommand
 } from "./commands/artifact.js";
 import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
+import { renderAskRuleTestSuccess, runAskRuleTestCommand } from "./commands/askRule.js";
 import {
   renderBackBurnerArchiveSuccess,
   renderBackBurnerListSuccess,
@@ -599,6 +600,7 @@ export function buildProgram(): Command {
       .option("--milestone <milestone-id>", "Optional milestone id")
       .option("--agent-profile <name>", "Coding agent profile for planning or build packets")
       .option("--source-ingress <source>", "Ingress source for audit trails")
+      .option("--request-id <id>", "Idempotency key for this submitted capture")
       .option("--back-burner", "Shelve this request through the existing Back Burner intake path")
       .option("--source-ref <reference>", "Path, document id, or URL containing the full idea")
       .option("--surface-date <YYYY-MM-DD>", "Resurface on or after this date")
@@ -614,6 +616,7 @@ export function buildProgram(): Command {
     milestone?: string;
     agentProfile?: string;
     sourceIngress?: string;
+    requestId?: string;
     backBurner?: boolean;
     sourceRef?: string;
     surfaceDate?: string;
@@ -637,6 +640,23 @@ export function buildProgram(): Command {
     }),
     renderAskSuccess
   ));
+
+  const askRule = program.command("ask-rule").description("Inspect deterministic Ask routing rules");
+  addJsonOption(
+    askRule
+      .command("test")
+      .description("Preview matching, extraction, routing, and processing without writes")
+      .argument("<request>", "Ask message to test")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--project <project>", "Explicit destination Project id, slug, or name")
+  ).action((request: string, options: { workspace: string; project?: string; json?: boolean }) =>
+    runCliAction(
+      "ask-rule.test",
+      options,
+      () => runAskRuleTestCommand({ ...options, request }),
+      renderAskRuleTestSuccess
+    )
+  );
 
   addJsonOption(
     program
@@ -1516,12 +1536,14 @@ export function buildProgram(): Command {
       .option("--ingress-root <path>", "ArcadiaIngress root folder")
       .requiredOption("--file <path>", "Local file path; repeat for multiple files", collectValues, [])
       .option("--description <text>", "Optional instruction for the captured files")
+      .option("--request-id <id>", "Idempotency key for this submitted capture")
   ).action((options: {
     workspace: string;
     source?: string;
     ingressRoot?: string;
     file?: string[];
     description?: string;
+    requestId?: string;
     json?: boolean;
   }) => runCliAction(
     "ingress.capture",

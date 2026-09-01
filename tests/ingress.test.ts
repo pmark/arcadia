@@ -54,6 +54,22 @@ describe("ingress process command", () => {
     expect(readFileSync(result.data.requestFile, "utf8")).toContain("Capture this idea");
     expect(readFileSync(result.data.requestFile, "utf8")).toContain("# A captured idea");
     expect(readFileSync(result.data.attachmentFiles[0]!, "utf8")).toContain("A captured idea");
+    expect(result.data.captureEnvelope).toMatchObject({
+      originalText: "Capture this idea and route it deterministically.",
+      ingressSource: "ingress:iCloudIdeas",
+      status: "captured"
+    });
+    expect(result.data.captureEnvelope?.attachments[0]).toMatchObject({
+      originalFilename: "idea.md",
+      mediaType: "text/markdown",
+      derivationStatus: "completed"
+    });
+    const processed = runIngressProcessCommand({ workspace, ingressRoot, stableSeconds: 0 });
+    expect(processed.data.counts.processed).toBe(1);
+    withDatabase(workspace, (db) => {
+      const row = db.prepare("SELECT COUNT(*) AS count FROM ask_capture_envelopes").get() as { count: number };
+      expect(row.count).toBe(1);
+    });
   });
 
   it("routes a labeled Markdown app idea to Back Burner and Done/Ideas", () => {

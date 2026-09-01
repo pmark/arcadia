@@ -305,6 +305,49 @@ they exist.
 
 Use the **Ask** box for a new request that is not already an Action in Arcadia.
 
+Deterministic special routes are declared in the operator workspace at
+`config/ask-rules.json`. Version 1 rules use one exact, case-insensitive
+start-of-message prefix with explicit colon, whitespace, or end boundaries;
+they cannot contain regular expressions, code, nested conditions, or hidden
+priority. Ask reports the matched rule, route evidence, stripped processing
+payload, ordered processors, proposed writes, non-actions, and approval gates
+while preserving the submitted message unchanged.
+
+For the first Living Songbook route, point `sourceRef` at the checked-in file
+that defines the Project-owned processing contract:
+
+```json
+{
+  "version": 1,
+  "rules": [{
+    "id": "songbook",
+    "enabled": true,
+    "prefix": "songbook",
+    "boundaries": ["colon", "whitespace", "end"],
+    "destinationProject": "living-songbook",
+    "processingProfile": "living-songbook-v1",
+    "sourceRef": "docs/ask-processing.md",
+    "examples": {
+      "matches": ["songbook", "songbook repertoire", "songbook: practice 20"],
+      "misses": ["Please update my songbook", "songbooks"]
+    }
+  }]
+}
+```
+
+Test a rule through the same matcher and deterministic extractor used by live
+Ask. This performs no capture or Project write and supports the standard JSON
+envelope:
+
+```sh
+pnpm arcadia ask-rule test "songbook: add this source https://example.com/song" --workspace "$WORKSPACE"
+pnpm arcadia ask-rule test "songbook plan Living Songbook work" --project arcadia --workspace "$WORKSPACE" --json
+```
+
+Routing precedence is explicit `--project`, exact enabled prefix, unambiguous
+reply context, extracted Project reference, then the general intent registry.
+The receipt retains lower-precedence disagreements as ignored candidates.
+
 ## Protect active coding work
 
 The Morning Packet puts **Coding work safety** first whenever an active
@@ -521,8 +564,14 @@ Band-practice `.m4a` files run the configured `/opt/homebrew/bin/rehearsal run
 <absolute-recording-path>` Workflow and publish the extracted MP3 Artifacts to
 the configured Google Drive Desktop folder. Arcadia asks macOS to launch Google
 Drive in the background before starting extraction.
-The **Capture** Ask surface accepts the same arbitrary files with an optional
-instruction and queues them through this identical ingress path.
+The **Capture** Ask surface accepts text, arbitrary files, or both. Every Send
+creates one immutable receipt before routing begins: it names the capture id,
+source, time, submitted URLs, and attachment count. File receipts preserve the
+original filename, byte size, media type, SHA-256, and outside-repository
+storage reference; text extraction and unavailable media processors are shown
+as derived results and never replace the original. Retrying the same submitted
+request id returns the same receipt, while different content under that id is
+refused. File submissions then continue through the identical ingress path.
 
 ### Project continuation
 

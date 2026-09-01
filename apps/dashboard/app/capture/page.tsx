@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Send, ThumbsDown, ThumbsUp, Upload } from "lucide-react";
 import { MobileShell } from "../../components/mobile-shell";
 import { ErrorState } from "../../components/dashboard-ui";
-import type { AskResponse } from "../../lib/types";
+import type { AskResponse, CaptureEnvelope } from "../../lib/types";
 
 type FeedbackDecision = "up" | "down";
 
@@ -19,6 +19,7 @@ export default function CapturePage() {
   const [feedbackPending, setFeedbackPending] = useState<FeedbackDecision | null>(null);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const [captureMessage, setCaptureMessage] = useState<string | null>(null);
+  const [captureEnvelope, setCaptureEnvelope] = useState<CaptureEnvelope | null>(null);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -31,12 +32,14 @@ export default function CapturePage() {
     setError(null);
 
     try {
+      const requestId = crypto.randomUUID();
       const res = await fetch(files.length > 0 ? "/api/ingress" : "/api/ask", {
         method: "POST",
         ...(files.length > 0
           ? {
               body: (() => {
                 const form = new FormData();
+                form.set("requestId", requestId);
                 if (request) form.set("description", request);
                 files.forEach((file) => form.append("file", file, file.name));
                 return form;
@@ -44,7 +47,7 @@ export default function CapturePage() {
             }
           : {
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ request })
+              body: JSON.stringify({ request, requestId })
             })
       });
       const body = await res.json();
@@ -58,7 +61,9 @@ export default function CapturePage() {
       setCaptureMessage(files.length > 0 ? (typeof body.message === "string" ? body.message : "Files queued for ingress processing.") : null);
       setFeedbackGiven(null);
       setFeedbackError(null);
-      setResponse(files.length > 0 ? null : body.result as AskResponse);
+      const nextResponse = files.length > 0 ? null : body.result as AskResponse;
+      setResponse(nextResponse);
+      setCaptureEnvelope((files.length > 0 ? body.result?.captureEnvelope : nextResponse?.captureEnvelope) ?? null);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : String(submitError));
     } finally {
@@ -126,6 +131,14 @@ export default function CapturePage() {
       </form>
 
       {captureMessage ? <p className="mt-4 rounded-md border border-moss/30 bg-moss/10 px-3 py-2 text-sm font-medium text-moss">{captureMessage}</p> : null}
+
+      {captureEnvelope ? (
+        <div className="mt-4 grid gap-1 rounded-md border border-line bg-panel p-3 text-xs text-muted">
+          <p className="font-semibold text-ink">Capture receipt {captureEnvelope.id}</p>
+          <p>{captureEnvelope.attachments.length} attachment{captureEnvelope.attachments.length === 1 ? "" : "s"} · {captureEnvelope.submittedUrls.length} submitted URL{captureEnvelope.submittedUrls.length === 1 ? "" : "s"}</p>
+          <p>Captured {new Date(captureEnvelope.capturedAt).toLocaleString()} from {captureEnvelope.ingressSource}</p>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="mt-4">

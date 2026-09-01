@@ -235,7 +235,22 @@ export interface IngressActivityResponse {
   };
 }
 
+export interface CaptureEnvelope {
+  id: string;
+  requestId: string;
+  originalText: string;
+  ingressSource: string;
+  capturedAt: string;
+  submittedUrls: string[];
+  canonicalLinkCandidates: Array<{ submittedUrl: string; canonicalCandidate: string; reason: string }>;
+  attachments: Array<{ id: string; originalFilename: string; mediaType: string; byteSize: number; sha256: string; storageReference: string; proposedRole: string; derivationStatus: string }>;
+  derivations: Array<{ processor: string; source: string; processedAt: string; status: string; confidence: number | null; result: Record<string, unknown> | null }>;
+  status: "captured";
+  authority: "untrusted_input";
+}
+
 export interface AskResponse {
+  captureEnvelope: CaptureEnvelope;
   ask: {
     id: string;
     raw_request: string;
