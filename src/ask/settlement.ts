@@ -31,10 +31,12 @@ export interface AgentAskSettlementReceipt {
   intent: string;
   effects: string[];
   queueActionKey: string | null;
+  queueActionKeys: string[];
   queuePosition: number | null;
   nextActionKey: string | null;
   previewFingerprint: string;
   applied: boolean;
+  authority: { kind: "operator_acceptance"; requestedAuthority: string; boundedPolicyDecision: null };
   notificationStatus: "withheld_until_apply" | "pending" | "sent";
   createdAt: string;
 }
@@ -46,6 +48,7 @@ export interface PendingAgentAskNotification {
   intent: string;
   effects: string[];
   queueActionKey: string | null;
+  queueActionKeys: string[];
   queuePosition: number | null;
   nextActionKey: string | null;
   createdAt: string;
@@ -105,8 +108,9 @@ export function settleAgentAsk(db: Database.Database, input: {
 
   const fileMutations: FileMutation[] = [];
   let queueActionKey: string | null = null;
+  let queueActionKeys: string[] = [];
   let queueAfter = queue.ordered.flatMap((entry) => entry.orderKey ? [entry.orderKey] : []);
-  let actionIdToValidate: string | null = null;
+  const actionIdsToValidate: string[] = [];
   let arrangeQueue = false;
   let artifactInput: { title: string; path?: string } | null = null;
   const effects: string[] = [];
@@ -126,19 +130,20 @@ export function settleAgentAsk(db: Database.Database, input: {
 
     switch (proposal.normalized.intent) {
       case "action": {
-        if (proposal.normalized.acceptance.length === 0) {
-          throw validationError("Accepted Action settlement requires at least one observable acceptance criterion in the proposal.");
-        }
-        const dependencies = normalizeDependencies(proposal.normalized.dependencies);
-        const unknownDependencies = dependencies.filter((dependency) => !plan.actions.some((action) => action.id === dependency));
-        if (unknownDependencies.length > 0) throw validationError("Agent Ask names dependencies outside the active Plan.", { dependencies: unknownDependencies });
         const planBefore = readFileSync(activePlanPath, "utf8");
         if (targetRef) {
+          if (proposal.normalized.acceptance.length === 0) {
+            throw validationError("Accepted Action settlement requires at least one observable acceptance criterion in the proposal.");
+          }
+          const dependencies = normalizeDependencies(proposal.normalized.dependencies, project.slug);
+          const unknownDependencies = dependencies.filter((dependency) => !plan.actions.some((action) => action.id === dependency));
+          if (unknownDependencies.length > 0) throw validationError("Agent Ask names dependencies outside the active Plan.", { dependencies: unknownDependencies });
           if (input.placement || input.responsibility) throw validationError("Action amendment preserves its existing Responsibility and queue position.");
-          const actionId = targetRef.split("/").at(-1)!;
+          const actionId = resolveManagedTargetRef(targetRef, "action", project.slug);
           if (!plan.actions.some((action) => action.id === actionId)) throw validationError("Agent Ask Action amendment target was not found.", { targetRef });
           queueActionKey = `${project.slug}/${actionId}`;
-          actionIdToValidate = actionId;
+          queueActionKeys = [queueActionKey];
+          actionIdsToValidate.push(actionId);
           fileMutations.push({
             path: activePlanPath,
             before: planBefore,
@@ -150,22 +155,45 @@ export function settleAgentAsk(db: Database.Database, input: {
           if (!input.responsibility) throw validationError("Accepted Action settlement requires --responsibility autonomous or codex.");
           if (!queue.orderValid) throw validationError("Position every existing approved Action before accepting another into the queue.", { unpositionedCount: queue.unpositionedCount });
           if (!input.placement) throw validationError("Accepted Action settlement requires --top, --before, or --after.");
-          const actionId = uniqueActionId(plan, slugify(proposal.normalized.desiredResult));
-          queueActionKey = `${project.slug}/${actionId}`;
-          actionIdToValidate = actionId;
+          const proposedActions = (proposal.normalized.actions ?? []).length > 0
+            ? proposal.normalized.actions
+            : [{ desiredResult: proposal.normalized.desiredResult, acceptance: proposal.normalized.acceptance, dependencies: proposal.normalized.dependencies }];
+          if (proposedActions.some((action) => action.acceptance.length === 0)) {
+            throw validationError("Every accepted Action requires at least one observable acceptance criterion in the proposal.");
+          }
+          const takenIds = new Set(plan.actions.map((action) => action.id));
+          const actionIds = proposedActions.map((action) => allocateUniqueActionId(takenIds, slugify(action.desiredResult)));
+          const availableIds = new Set([...takenIds, ...actionIds]);
+          const normalizedActions = proposedActions.map((action, index) => {
+            const dependencies = normalizeDependencies(action.dependencies, project.slug);
+            const unknownDependencies = dependencies.filter((dependency) => !availableIds.has(dependency));
+            if (unknownDependencies.length > 0) {
+              throw validationError("Agent Ask names dependencies outside the active Plan or proposed Action bundle.", {
+                action: actionIds[index], dependencies: unknownDependencies
+              });
+            }
+            return { ...action, id: actionIds[index]!, dependencies };
+          });
+          queueActionKeys = actionIds.map((actionId) => `${project.slug}/${actionId}`);
+          queueActionKey = queueActionKeys[0]!;
+          actionIdsToValidate.push(...actionIds);
           arrangeQueue = true;
+          let planAfter = planBefore;
+          for (const action of normalizedActions) {
+            planAfter = appendAction(planAfter, {
+              id: action.id, title: action.desiredResult, responsibility: input.responsibility,
+              acceptance: action.acceptance, dependencies: action.dependencies, source: `Agent Ask ${proposal.normalized.requestId}`
+            });
+          }
           fileMutations.push({
             path: activePlanPath,
             before: planBefore,
-            after: appendAction(planBefore, {
-              id: actionId, title: proposal.normalized.desiredResult, responsibility: input.responsibility,
-              acceptance: proposal.normalized.acceptance, dependencies, source: `Agent Ask ${proposal.normalized.requestId}`
-            })
+            after: planAfter
           });
-          queueAfter = insertQueueKey(queueAfter, queueActionKey, input.placement, input.anchor);
-          effects.push(`Created Action ${queueActionKey} in active Plan ${plan.slug}.`);
-          effects.push(`Assigned Responsibility ${input.responsibility}.`);
-          effects.push(`Inserted the Action at queue position ${queueAfter.indexOf(queueActionKey) + 1}.`);
+          queueAfter = insertQueueKeys(queueAfter, queueActionKeys, input.placement, input.anchor);
+          effects.push(`Created ${queueActionKeys.length} Action${queueActionKeys.length === 1 ? "" : "s"} in active Plan ${plan.slug}: ${queueActionKeys.join(", ")}.`);
+          effects.push(`Assigned Responsibility ${input.responsibility} to the accepted Action${queueActionKeys.length === 1 ? "" : "s"}.`);
+          effects.push(`Inserted the Action${queueActionKeys.length === 1 ? "" : " bundle"} starting at queue position ${queueAfter.indexOf(queueActionKey) + 1}.`);
         }
         break;
       }
@@ -201,7 +229,7 @@ export function settleAgentAsk(db: Database.Database, input: {
       case "plan": {
         requireNoQueueOptions(input);
         if (targetRef) {
-          const targetSlug = targetRef.split("/").at(-1)!;
+          const targetSlug = resolveManagedTargetRef(targetRef, "plan", project.slug);
           const target = discovered.docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug && doc.slug === targetSlug);
           if (!target) throw validationError("Agent Ask Plan amendment target was not found.", { targetRef });
           const targetPath = path.join(repoRoot, target.relativePath);
@@ -278,10 +306,16 @@ export function settleAgentAsk(db: Database.Database, input: {
     intent: proposal.normalized.intent,
     effects,
     queueActionKey,
+    queueActionKeys,
     queuePosition: queueActionKey ? queueAfter.indexOf(queueActionKey) : null,
     nextActionKey: input.disposition === "accepted" ? queue.nextActionKey : queue.nextActionKey,
     previewFingerprint,
     applied: input.apply === true,
+    authority: {
+      kind: "operator_acceptance",
+      requestedAuthority: proposal.normalized.requestedAuthority,
+      boundedPolicyDecision: null
+    },
     notificationStatus: input.apply ? "pending" : "withheld_until_apply",
     createdAt: now
   };
@@ -291,11 +325,13 @@ export function settleAgentAsk(db: Database.Database, input: {
   try {
     return db.transaction(() => {
       for (const mutation of fileMutations) writeAtomically(mutation.path, mutation.after);
-      if (actionIdToValidate) {
-        const readiness = resolveActionReadiness(repoRoot, project.slug, actionIdToValidate);
-        if (!readiness.found || readiness.blockers.length > 0 || readiness.operatorQuestion) {
+      for (const actionId of actionIdsToValidate) {
+        const readiness = resolveActionReadiness(repoRoot, project.slug, actionId);
+        const structuralBlockers = readiness.blockers.filter((blocker) => !blocker.field.endsWith(".depends_on"));
+        if (!readiness.found || structuralBlockers.length > 0 || readiness.operatorQuestion) {
           throw validationError("Accepted Agent Ask did not produce a ready canonical Action.", {
-            blockers: readiness.blockers,
+            actionId,
+            blockers: structuralBlockers,
             operatorQuestion: readiness.operatorQuestion
           });
         }
@@ -314,7 +350,7 @@ export function settleAgentAsk(db: Database.Database, input: {
         });
         effects.push(`Artifact receipt: ${artifact.id}.`);
       }
-      if (arrangeQueue && queueActionKey) {
+      if (arrangeQueue && queueActionKeys.length > 0) {
         const currentKeys = buildAgentQueue(db).ordered.flatMap((entry) => entry.orderKey ? [entry.orderKey] : []);
         arrangeActionOrder(db, {
           currentKeys,
@@ -357,6 +393,7 @@ export function listPendingAgentAskNotifications(db: Database.Database): Pending
         intent: receipt.intent,
         effects: JSON.parse(String(value.effects_json)) as string[],
         queueActionKey: value.queue_action_key === null ? null : String(value.queue_action_key),
+        queueActionKeys: receipt.queueActionKeys ?? (value.queue_action_key === null ? [] : [String(value.queue_action_key)]),
         queuePosition: value.queue_position === null ? null : Number(value.queue_position),
         nextActionKey: value.next_action_key === null ? null : String(value.next_action_key),
         createdAt: String(value.created_at)
@@ -402,27 +439,53 @@ function appendAction(content: string, action: {
   return `${content.slice(0, end)}\n${lines.join("\n")}${content.slice(end)}`;
 }
 
-function uniqueActionId(plan: PlanDoc, base: string): string {
+function allocateUniqueActionId(taken: Set<string>, base: string): string {
   const stem = base || "agent-ask-action";
-  if (!plan.actions.some((action) => action.id === stem)) return stem;
+  if (!taken.has(stem)) {
+    taken.add(stem);
+    return stem;
+  }
   for (let index = 2; index < 1000; index += 1) {
     const candidate = `${stem}-${index}`;
-    if (!plan.actions.some((action) => action.id === candidate)) return candidate;
+    if (!taken.has(candidate)) {
+      taken.add(candidate);
+      return candidate;
+    }
   }
   throw validationError("Agent Ask could not allocate a unique Action id.");
 }
 
-function insertQueueKey(current: string[], key: string, placement: AgentAskPlacement, anchor?: string): string[] {
-  const next = current.filter((item) => item !== key);
-  if (placement === "top") return [key, ...next];
+function insertQueueKeys(current: string[], keys: string[], placement: AgentAskPlacement, anchor?: string): string[] {
+  const keySet = new Set(keys);
+  const next = current.filter((item) => !keySet.has(item));
+  if (placement === "top") return [...keys, ...next];
   if (!anchor || !next.includes(anchor)) throw validationError("Agent Ask queue anchor was not found.", { anchor: anchor ?? null });
   const index = next.indexOf(anchor) + (placement === "after" ? 1 : 0);
-  next.splice(index, 0, key);
+  next.splice(index, 0, ...keys);
   return next;
 }
 
-function normalizeDependencies(dependencies: string[]): string[] {
-  return dependencies.map((dependency) => dependency.split("/").at(-1)!).filter(Boolean);
+function normalizeDependencies(dependencies: string[], projectSlug: string): string[] {
+  return dependencies.map((dependency) => {
+    const parts = dependency.split("/").filter(Boolean);
+    if (parts.length > 1 && parts[0] !== projectSlug) {
+      throw validationError("Agent Ask cannot mutate or depend on another Project without explicit governed authority.", {
+        destinationProject: projectSlug,
+        reference: dependency
+      });
+    }
+    return parts.at(-1)!;
+  }).filter(Boolean);
+}
+
+function resolveManagedTargetRef(targetRef: string, kind: "action" | "plan", projectSlug: string): string {
+  const parts = targetRef.split("/").filter(Boolean);
+  if (parts.length === 1) return parts[0]!;
+  if (parts.length === 2 && (parts[0] === kind || parts[0] === projectSlug)) return parts[1]!;
+  throw validationError("Agent Ask cannot mutate another Project without explicit governed authority.", {
+    destinationProject: projectSlug,
+    targetRef
+  });
 }
 
 function requireNoQueueOptions(input: { responsibility?: AgentAskResponsibility; placement?: AgentAskPlacement; anchor?: string }): void {

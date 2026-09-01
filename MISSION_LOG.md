@@ -8,6 +8,30 @@ updated: 2026-09-01
 
 # Mission Log: Arcadia
 
+## 2026-09-01 — Completed the governed Agent Ask settlement contract
+
+- **Action:** `agent-ask-execution-queue#connect-agent-ask-to-queue`
+- **Did:** Extended strict Agent Ask v1 with structured Action bundles, applied
+  each accepted bundle as one contiguous explicitly positioned queue change,
+  preserved sibling dependencies, and included every resulting queue key in
+  the settlement receipt and Discord effects summary. Added correction and
+  rejection provenance, stale checked-in revision refusal, named Plan and
+  Action amendment proofs, and cross-Project target refusal.
+- **Result:** A coding agent can now submit every supported Arcadia
+  Project-management intent without hand-authoring managed records. The exact
+  operator-accepted preview either settles canonical documents, operational
+  projections, queue order, and the retry-safe Discord outbox together or
+  changes none of them. The receipt explicitly records operator acceptance and
+  does not imply a bounded-policy Decision. Seventeen focused settlement tests
+  pass; the full suite passes 1,163 tests with 6 skipped; core and Discord
+  builds pass.
+- **Next:** Build the operator Dashboard's complete ordered queue, explainable
+  next Action, reorder controls, conflict handling, and receipt-backed undo.
+- **Blockers:** None. Automatic bounded-policy settlement remains unavailable
+  until Arcadia has a ratified machine-readable policy scope to name and prove
+  in the receipt; `apply_if_approved` still requires the exact fingerprinted
+  operator settlement.
+
 ## 2026-09-01 — Mapped every Agent Ask intent to canonical settlement effects
 
 - **Action:** `agent-ask-execution-queue#connect-agent-ask-to-queue`

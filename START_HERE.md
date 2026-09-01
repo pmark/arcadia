@@ -427,6 +427,36 @@ ARCADIA_SURFACE=claude pnpm arcadia agent-ask preview \
 The fallback never invents a Project, intent kind, dependency, date, priority,
 or approval.
 
+One `action` Ask may describe an ordered bundle with the optional `actions`
+list. Each child uses only `desired_result`, `acceptance`, and `dependencies`;
+dependencies may name an existing Action in the active Plan or an earlier
+Action in the same bundle:
+
+```yaml
+agent_ask: v1
+request_id: agent-release-001
+project: arcadia
+intent: action
+desired_result: Deliver a queue-aware release.
+actions:
+  - desired_result: Build release proof.
+    acceptance:
+      - The release proof exists.
+    dependencies: []
+  - desired_result: Publish the release guide.
+    acceptance:
+      - The release guide exists.
+    dependencies:
+      - build-release-proof
+requested_authority: apply_if_approved
+```
+
+Preview lists every proposed Action. Acceptance inserts the whole bundle at
+one approved `--top`, `--before`, or `--after` boundary while preserving its
+declared order; the settlement receipt and Discord summary name every queue
+key. To correct a proposal, reject it and submit the corrected content with a
+new request id. Both dispositions remain traceable.
+
 Settlement accepts strict proposals for an explicit configured Project. For a
 new Action, the operator supplies the approved Responsibility and queue
 position, previews the exact managed Plan and portfolio-order effect, then
@@ -445,10 +475,11 @@ pnpm arcadia agent-ask settle \
 
 Apply requires a clean Project worktree, at least one observable acceptance
 criterion, valid active-Plan dependencies, a valid existing queue, and the
-unchanged preview fingerprint. It writes the canonical Action, synchronizes the
-operational projection, assigns one explicit queue position, and persists a
-settlement receipt. Use `--disposition rejected` without a Responsibility or
-queue placement to preserve the proposal while creating no executable work.
+unchanged preview fingerprint. It writes the canonical Action or Action bundle,
+synchronizes the operational projection, assigns explicit contiguous queue
+positions, and persists a settlement receipt. Use `--disposition rejected`
+without a Responsibility or queue placement to preserve the proposal while
+creating no executable work.
 
 Every applied accepted or rejected settlement creates one durable Discord
 outbox item. The configured Arcadia Discord bot posts a brief effect summary,

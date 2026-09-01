@@ -366,8 +366,8 @@ export function agentAskSettlementMessage(notification: AgentAskNotificationItem
     `Project: ${notification.projectSlug}`,
     `Intent: ${notification.intent}`,
     ...notification.effects.map((effect) => `• ${effect}`),
-    notification.queueActionKey
-      ? `Queue: ${notification.queueActionKey} at position ${(notification.queuePosition ?? 0) + 1}`
+    notification.queueActionKeys.length > 0
+      ? `Queue: ${notification.queueActionKeys.join(", ")} starting at position ${(notification.queuePosition ?? 0) + 1}`
       : "Queue: no executable Action created",
     `Next: ${notification.nextActionKey ?? "none"}`,
     `Settlement: ${notification.settlementId}`

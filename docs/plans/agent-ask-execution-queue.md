@@ -10,7 +10,7 @@ token_budget: "Parsing, normalization, validation, queue ordering, readiness, re
 recommended_model: gpt-5.6-sol
 recommended_reasoning_effort: high
 updated: 2026-09-01
-current_action: connect-agent-ask-to-queue
+current_action: build-operator-work-queue-dashboard
 actions:
   - id: define-agent-ask-management-contract
     title: Give coding agents a conventional Ask contract for Project management intent
@@ -75,7 +75,7 @@ actions:
     depends_on: [define-agent-ask-management-contract]
   - id: connect-agent-ask-to-queue
     title: Turn accepted Agent Asks into queued governed work
-    status: open
+    status: done
     responsibility: codex
     effort: project
     next_action: "Connect Agent Ask preview and acceptance to one atomic persistence path that creates or amends the proposed Project records and inserts every accepted Action at the approved queue position."
@@ -97,8 +97,12 @@ actions:
       - docs/decisions/0040-notify-discord-when-agent-ask-settles.md
       - src/commands/ask.ts
       - src/commands/review.ts
+      - src/ask/agentAsk.ts
+      - src/ask/settlement.ts
       - src/docs/sync.ts
       - src/db/repositories.ts
+      - tests/agent-ask.test.ts
+      - tests/agent-ask-settlement.test.ts
     depends_on: [establish-approved-action-queue]
   - id: build-operator-work-queue-dashboard
     title: Give the operator complete, low-friction control of work order
