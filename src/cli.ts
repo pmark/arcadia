@@ -66,10 +66,14 @@ import {
 } from "./commands/dashboard.js";
 import {
   renderAdvanceQueueSuccess,
+  renderAdvanceQueueReorderSuccess,
   renderAdvanceSuccess,
   renderSessionShowSuccess,
   runAdvanceCommand,
   runAdvanceQueueCommand,
+  runAdvanceQueueArrangeCommand,
+  runAdvanceQueueReorderCommand,
+  runAdvanceQueueUndoCommand,
   runSessionShowCommand
 } from "./commands/advance.js";
 import {
@@ -1129,7 +1133,7 @@ export function buildProgram(): Command {
   ).action((options: { workspace: string; repo: string; session?: string; json?: boolean }) =>
     runCliAction("advance", options, () => runAdvanceCommand(options), renderAdvanceSuccess)
   );
-  addJsonOption(
+  const advanceQueue = addJsonOption(
     advance
       .command("queue")
       .description("Show ready Actions, active Runs, and every stop before dispatch")
@@ -1137,6 +1141,90 @@ export function buildProgram(): Command {
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("advance.queue", options, () => runAdvanceQueueCommand(options), renderAdvanceQueueSuccess)
   );
+  addJsonOption(
+    advanceQueue
+      .command("reorder")
+      .description("Preview or atomically apply one approved Action queue move")
+      .requiredOption("--move <project/action>", "Ordered Action key to move")
+      .option("--top", "Move the Action to the top")
+      .option("--before <project/action>", "Move before this Action")
+      .option("--after <project/action>", "Move after this Action")
+      .requiredOption("--request-id <id>", "Idempotency key for this reorder")
+      .option("--revision <number>", "Expected queue revision for optimistic concurrency")
+      .option("--apply", "Persist the previewed reorder")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: {
+    workspace: string;
+    move: string;
+    top?: boolean;
+    before?: string;
+    after?: string;
+    requestId: string;
+    revision?: string;
+    apply?: boolean;
+    json?: boolean;
+  }) => runCliAction(
+    "advance.queue.reorder",
+    options,
+    () => runAdvanceQueueReorderCommand({
+      ...options,
+      revision: options.revision === undefined ? undefined : Number(options.revision)
+    }),
+    renderAdvanceQueueReorderSuccess
+  ));
+  addJsonOption(
+    advanceQueue
+      .command("arrange")
+      .description("Preview or atomically replace the complete approved Action order")
+      .requiredOption("--order <project/action...>", "Every active approved Action key in desired order")
+      .requiredOption("--request-id <id>", "Idempotency key for this batch arrangement")
+      .option("--revision <number>", "Expected queue revision for optimistic concurrency")
+      .option("--apply", "Persist the previewed arrangement")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: {
+    workspace: string;
+    order: string[];
+    requestId: string;
+    revision?: string;
+    apply?: boolean;
+    json?: boolean;
+  }) => runCliAction(
+    "advance.queue.arrange",
+    options,
+    () => runAdvanceQueueArrangeCommand({
+      ...options,
+      revision: options.revision === undefined ? undefined : Number(options.revision)
+    }),
+    renderAdvanceQueueReorderSuccess
+  ));
+  addJsonOption(
+    advanceQueue
+      .command("undo")
+      .description("Preview or atomically undo the current applied queue receipt")
+      .requiredOption("--receipt <id>", "Applied queue receipt to undo")
+      .requiredOption("--request-id <id>", "Idempotency key for this undo")
+      .option("--revision <number>", "Expected queue revision for optimistic concurrency")
+      .option("--apply", "Persist the previewed undo")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: {
+    workspace: string;
+    receipt: string;
+    requestId: string;
+    revision?: string;
+    apply?: boolean;
+    json?: boolean;
+  }) => runCliAction(
+    "advance.queue.undo",
+    options,
+    () => runAdvanceQueueUndoCommand({
+      workspace: options.workspace,
+      receiptId: options.receipt,
+      requestId: options.requestId,
+      revision: options.revision === undefined ? undefined : Number(options.revision),
+      apply: options.apply
+    }),
+    renderAdvanceQueueReorderSuccess
+  ));
 
   const session = program.command("session").description("Inspect thin coding-agent Session receipts");
   addJsonOption(

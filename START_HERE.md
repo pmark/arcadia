@@ -270,10 +270,12 @@ outside **Needs you** in Agent Queue for a later repository-aware assessment;
 flagging starts no coding-agent Run. The same transitions are available as
 `arcadia review reassess <id>` and `arcadia review flag-agent <id>`.
 
-Before feeding another coding agent, open the **Agent Queue** section in
-Mission Control. It keeps four explicit lanes in view: **Ready to feed**,
-**Running or queued**, **Flagged for agent review**, and **Needs attention before dispatch**. The same
-read-only projection is available in the terminal:
+Before feeding another coding agent, inspect the portfolio **Agent Queue**. It
+keeps every approved, unfinished Action in one explicit order, including work
+that is blocked, dependency-waiting, operator-owned, or waiting for its
+checked-in Project pointer. The terminal projection reports the queue revision,
+whether every Action has a position, and the first pointer-authorized eligible
+Action:
 
 ```sh
 pnpm arcadia advance queue --workspace "$WORKSPACE"
@@ -282,7 +284,25 @@ pnpm arcadia advance queue --workspace "$WORKSPACE"
 An item in the attention lane always names the reason and next repair or
 Decision. The queue never grants authority: a ready row still passes through
 the existing document, responsibility, approval, repository, and provider
-availability gates.
+availability gates. An unpositioned Action makes the order invalid and leaves
+`Next` empty until its position is explicitly approved.
+
+Preview a move, then apply the exact move against the displayed revision:
+
+```sh
+pnpm arcadia advance queue reorder --move arcadia/example-action --top \
+  --revision 7 --request-id operator-20260901-1 --workspace "$WORKSPACE"
+pnpm arcadia advance queue reorder --move arcadia/example-action --top \
+  --revision 7 --request-id operator-20260901-1 --apply --workspace "$WORKSPACE"
+```
+
+Use `--before <project/action>` or `--after <project/action>` instead of
+`--top`. For a complete drag-and-drop style replacement, use `advance queue
+arrange --order <project/action...>` with every active Action exactly once.
+Every applied mutation returns a receipt; preview and then apply
+`advance queue undo --receipt <receipt-id>` to restore the immediately prior
+order. Request ids are idempotent, stale revisions are refused, and undo is
+refused after the queue has changed again.
 
 For software work, use the demo-first handoff contract even while Mission
 Control's richer proof surface is still being built:
