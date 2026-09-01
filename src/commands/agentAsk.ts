@@ -78,9 +78,7 @@ export function runAgentAskSettleCommand(options: {
     throw validationError("Agent Ask Action Responsibility must be autonomous or codex.");
   }
   const placements = [options.top ? "top" : null, options.before ? "before" : null, options.after ? "after" : null].filter(Boolean);
-  if (options.disposition === "accepted" && placements.length !== 1) {
-    throw validationError("Accepted Action settlement requires exactly one queue placement: --top, --before, or --after.");
-  }
+  if (placements.length > 1) throw validationError("Choose at most one queue placement: --top, --before, or --after.");
   if (options.disposition === "rejected" && placements.length > 0) {
     throw validationError("Rejected Agent Ask settlement cannot declare a queue position.");
   }

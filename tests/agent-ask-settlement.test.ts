@@ -116,6 +116,96 @@ describe("Agent Ask settlement", () => {
       queueActionKey: null
     });
   });
+
+  it("settles every non-Action intent into the smallest canonical Project effect", () => {
+    const scenarios = [
+      { intent: "outcome", desired: "Deliver a safer outcome", effect: "Updated Project demo Outcome." },
+      { intent: "milestone", desired: "Reach the settlement milestone", effect: "Updated Project demo and active Plan demo-plan Milestone." },
+      { intent: "plan", desired: "Plan safer delivery", effect: "Created draft Plan plan-safer-delivery" },
+      { intent: "decision", desired: "Should this approach ship?", effect: "Created one open Decision" },
+      { intent: "auto", desired: "Make the ambiguous thing happen", effect: "Created one open interpretation Decision" },
+      { intent: "log", desired: "Recorded settlement learning", effect: "Appended one Project Log entry" },
+      { intent: "artifact", desired: "Settlement design reference", targetRef: "docs/design.md", effect: "Created one planned Artifact reference" },
+      { intent: "proposal", desired: "Consider a future queue experiment", effect: "Accepted the proposal as preserved evidence" },
+      { intent: "project_update", desired: "Deliver a clearer Project outcome", targetRef: "outcome", effect: "Updated Project demo Outcome." }
+    ];
+
+    for (const [index, scenario] of scenarios.entries()) {
+      const { workspace, repo } = fixture();
+      const requestId = `effect-${index}`;
+      const proposal = runAgentAskPreviewCommand({
+        workspace,
+        request: askForIntent(requestId, scenario.intent, scenario.desired, scenario.targetRef)
+      });
+      const preview = runAgentAskSettleCommand({
+        workspace,
+        proposal: proposal.data.proposal.id,
+        requestId: `settle-${requestId}`,
+        disposition: "accepted",
+        revision: 1
+      });
+      const applied = runAgentAskSettleCommand({
+        workspace,
+        proposal: proposal.data.proposal.id,
+        requestId: `settle-${requestId}`,
+        disposition: "accepted",
+        revision: 1,
+        preview: preview.data.receipt.previewFingerprint,
+        apply: true
+      });
+      expect(applied.data.receipt.effects.join(" ")).toContain(scenario.effect);
+      expect(applied.data.receipt.queueActionKey).toBeNull();
+      expect(runAgentAskNotificationsCommand({ workspace }).data.notifications).toHaveLength(1);
+
+      if (scenario.intent === "outcome" || scenario.intent === "project_update") {
+        expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain(`goal: ${scenario.desired}`);
+      } else if (scenario.intent === "milestone") {
+        expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain(`milestone: ${scenario.desired}`);
+        expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toContain(`milestone: ${scenario.desired}`);
+      } else if (scenario.intent === "plan") {
+        expect(readFileSync(path.join(repo, "docs/plans/plan-safer-delivery.md"), "utf8")).toContain("status: draft");
+      } else if (scenario.intent === "decision" || scenario.intent === "auto") {
+        expect(readFileSync(path.join(repo, "docs/decisions/0001-" + (scenario.intent === "decision" ? "should-this-approach-ship" : "how-should-arcadia-structure-this-request-make-the-ambiguous-thing-happen") + ".md"), "utf8"))
+          .toContain("status: open");
+      } else if (scenario.intent === "log") {
+        expect(readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8")).toContain(`Agent Ask ${requestId}`);
+      } else if (scenario.intent === "artifact") {
+        withDatabase(workspace, (db) => {
+          expect((db.prepare("SELECT COUNT(*) AS count FROM artifacts WHERE path = 'docs/design.md'").get() as { count: number }).count).toBe(1);
+        });
+      }
+    }
+  });
+
+  it("amends an existing Action without changing its Responsibility or queue position", () => {
+    const { workspace, repo } = fixture();
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: askForIntent("amend-action", "action", "Improve existing proof", "action/existing", ["Improved proof exists."])
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace,
+      proposal: proposal.data.proposal.id,
+      requestId: "settle-amend-action",
+      disposition: "accepted",
+      revision: 1
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace,
+      proposal: proposal.data.proposal.id,
+      requestId: "settle-amend-action",
+      disposition: "accepted",
+      revision: 1,
+      preview: preview.data.receipt.previewFingerprint,
+      apply: true
+    });
+    expect(applied.data.receipt).toMatchObject({ queueActionKey: "demo/existing", queuePosition: 0 });
+    const plan = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
+    expect(plan).toContain("next_action: Improve existing proof");
+    expect(plan).toContain("- Improved proof exists.");
+    expect(plan).toContain("responsibility: codex");
+    withDatabase(workspace, (db) => expect(loadActionOrder(db).revision).toBe(1));
+  });
 });
 
 function fixture(): { workspace: string; repo: string } {
@@ -158,6 +248,16 @@ function actionAsk(requestId: string): string {
     "dependencies: []",
     "requested_authority: apply_if_approved",
     ""
+  ].join("\n");
+}
+
+function askForIntent(requestId: string, intent: string, desired: string, targetRef?: string, acceptance: string[] = []): string {
+  return [
+    "agent_ask: v1", `request_id: ${requestId}`, "project: demo", `intent: ${intent}`,
+    `desired_result: ${desired}`, "rationale: It advances the governed Project",
+    "acceptance:", ...acceptance.map((criterion) => `  - ${criterion}`),
+    "dependencies: []", ...(targetRef ? [`target_ref: ${targetRef}`] : []),
+    "requested_authority: apply_if_approved", ""
   ].join("\n");
 }
 

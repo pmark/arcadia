@@ -392,6 +392,15 @@ The Action remains current while accepted non-Action effects, amendments,
 correction, and mixed-granularity settlement are extended through the same
 receipt path.
 
+Accepted settlement now covers every Agent Ask v1 intent with the smallest
+canonical effect: Outcome and Milestone updates, draft Plan creation or named
+Plan amendment, named Action amendment, open Decisions for decision/auto or
+ambiguous Project updates, planned Artifact references, Project Log entries,
+and evidence-only proposals. All reuse existing truth stores and feed the same
+Discord settlement receipt. The current Action remains open for strict
+multi-Action settlement, correction and stale-amendment conflict proof before
+the pointer advances to the operator queue Dashboard.
+
 ## Links
 
 - `docs/COMMANDS.md` — the operator-facing command guide
