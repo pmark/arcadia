@@ -36,6 +36,7 @@ export function initWorkspace(workspace: string): InitWorkspaceResult {
   copyRegistryIfMissing("template-registry.json", paths.templateRegistry);
   copyRegistryIfMissing("coding-agent-profiles.json", paths.codingAgentProfiles);
   copyRegistryIfMissing("provider-adapters.json", paths.providerAdapters);
+  copyRegistryIfMissing("ask-rules.json", paths.askRules);
   copyRegistryIfMissing("operator-context.md", paths.operatorContext);
 
   const db: Database.Database = openDatabase(paths.root);

@@ -19,6 +19,7 @@ export interface WorkspacePaths {
   templateRegistry: string;
   codingAgentProfiles: string;
   providerAdapters: string;
+  askRules: string;
 }
 
 export function resolveWorkspacePath(workspace: string): string {
@@ -46,7 +47,8 @@ export function getWorkspacePaths(workspace: string): WorkspacePaths {
     intentRegistry: path.join(root, "config", "intent-registry.json"),
     templateRegistry: path.join(root, "config", "template-registry.json"),
     codingAgentProfiles: path.join(root, "config", "coding-agent-profiles.json"),
-    providerAdapters: path.join(root, "config", "provider-adapters.json")
+    providerAdapters: path.join(root, "config", "provider-adapters.json"),
+    askRules: path.join(root, "config", "ask-rules.json")
   };
 }
 

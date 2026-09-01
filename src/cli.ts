@@ -18,6 +18,7 @@ import {
   runArtifactUpdateCommand
 } from "./commands/artifact.js";
 import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
+import { renderAskRuleTestSuccess, runAskRuleTestCommand } from "./commands/askRule.js";
 import {
   renderBackBurnerArchiveSuccess,
   renderBackBurnerListSuccess,
@@ -637,6 +638,23 @@ export function buildProgram(): Command {
     }),
     renderAskSuccess
   ));
+
+  const askRule = program.command("ask-rule").description("Inspect deterministic Ask routing rules");
+  addJsonOption(
+    askRule
+      .command("test")
+      .description("Preview matching, extraction, routing, and processing without writes")
+      .argument("<request>", "Ask message to test")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--project <project>", "Explicit destination Project id, slug, or name")
+  ).action((request: string, options: { workspace: string; project?: string; json?: boolean }) =>
+    runCliAction(
+      "ask-rule.test",
+      options,
+      () => runAskRuleTestCommand({ ...options, request }),
+      renderAskRuleTestSuccess
+    )
+  );
 
   addJsonOption(
     program

@@ -1,4 +1,14 @@
 import path from "node:path";
+import {
+  buildAskProcessingReceipt,
+  buildAskRoutingDecision,
+  loadAskRuleRegistry,
+  matchAskRule,
+  resolveGeneralProjectReference,
+  resolveProjectReference,
+  validateAskRuleRegistry,
+  type AskProcessingReceipt
+} from "../ask/rules.js";
 import { createCodexPacket, selectAgentProfileForWorkItem } from "../codex/packets.js";
 import { milestoneNotFound, projectNotFound, validationError, workItemNotFound } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
@@ -18,6 +28,8 @@ import {
   getMilestone,
   getProject,
   getProjectContext,
+  getReviewItem,
+  getReviewItemBySlug,
   getWorkItem,
   listProjects,
   listProjectSummaries,
@@ -113,17 +125,44 @@ export interface AskCommandData {
   decisionId: string | null;
   decisionSlug?: string | null;
   backBurnerItemId: string | null;
+  processingReceipt: AskProcessingReceipt | null;
 }
 
 export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const normalizedInput = normalizeAskInput(options.request);
-  const request = normalizedInput.askText;
+  const submittedRequest = normalizedInput.askText;
+  const askRules = withDatabase(workspacePath, (db) =>
+    validateAskRuleRegistry(workspacePath, db, loadAskRuleRegistry(workspacePath))
+  );
+  const ruleMatch = matchAskRule(submittedRequest, askRules);
+  const request = ruleMatch?.payload ?? submittedRequest;
+  let processingReceipt: AskProcessingReceipt | null = null;
   if (!request.trim()) {
+    if (ruleMatch) {
+      const routing = withDatabase(workspacePath, (db) => {
+        const explicit = resolveProjectReference(db, options.project);
+        if (options.project && !explicit) throw projectNotFound(options.project);
+        return buildAskRoutingDecision({ explicit, prefix: ruleMatch.rule.destination });
+      });
+      processingReceipt = buildAskProcessingReceipt({
+        match: ruleMatch,
+        routing,
+        originalRequest: submittedRequest,
+        adapterMetadata: options.adapterMetadata
+      });
+    }
+    const ignored = ignoredAskData(options.request);
     return createSuccess({
       command: "ask",
       workspace: workspacePath,
-      data: ignoredAskData(options.request)
+      data: {
+        ...ignored,
+        processingReceipt,
+        result: ruleMatch
+          ? { status: "ignored", summary: "Ask rule matched; processing payload is empty." }
+          : ignored.result
+      }
     });
   }
 
@@ -180,6 +219,36 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         classificationReason: "Explicit idea capture is deterministically routed to Back Burner."
       }
     : computedStewardship;
+  const routing = withDatabase(workspacePath, (db) => {
+    const explicit = resolveProjectReference(db, options.project);
+    if (options.project && !explicit) {
+      throw projectNotFound(options.project);
+    }
+    const review = parsedReviewResponse.reviewId
+      ? getReviewItem(db, parsedReviewResponse.reviewId)
+      : parsedReviewResponse.reviewSlug
+        ? getReviewItemBySlug(db, parsedReviewResponse.reviewSlug)
+        : null;
+    const extractedId = projectIdFromIntake(intake) ?? intake.project?.id ?? null;
+    const extracted = resolveProjectReference(db, extractedId);
+    return buildAskRoutingDecision({
+      explicit,
+      prefix: ruleMatch?.rule.destination,
+      reply: resolveProjectReference(db, review?.project_id),
+      extracted,
+      general: resolveGeneralProjectReference(db, request)
+    });
+  });
+  const routedProjectId = routing.selected?.projectId ?? null;
+  if (ruleMatch) {
+    processingReceipt = buildAskProcessingReceipt({
+      match: ruleMatch,
+      routing,
+      originalRequest: submittedRequest,
+      extractedFields: intake.extractedFields,
+      adapterMetadata: options.adapterMetadata
+    });
+  }
   if (
     stewardship.recommendedExecutionPath !== "Back Burner" &&
     (options.surfaceCondition || options.sourceRef || (options.facetTags?.length ?? 0) > 0)
@@ -193,7 +262,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   // A reply tied to a known Decision belongs to the review workflow even when
   // it is free-form prose. Clarification answers are intentionally not one of
   // the short approve/reject/defer tokens recognized by the parser.
-  if (parsedReviewResponse.hasReviewReference) {
+  if (parsedReviewResponse.hasReviewReference && !options.project && !ruleMatch) {
     const reviewResolution = runReviewResolveReplyCommand({
       workspace: workspacePath,
       id: parsedReviewResponse.reviewId,
@@ -216,6 +285,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        processingReceipt,
         ask,
         stewardship,
         intake,
@@ -277,6 +347,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        processingReceipt,
         ask,
         stewardship,
         intake,
@@ -320,6 +391,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        processingReceipt,
         ask,
         stewardship,
         intake,
@@ -362,6 +434,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        processingReceipt,
         ask,
         stewardship,
         intake,
@@ -415,6 +488,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        processingReceipt,
         ask,
         stewardship,
         intake,
@@ -450,7 +524,9 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     intake.action.value &&
     !intake.action.invalidReason
   ) {
-    const action = intake.action;
+    const action = routedProjectId && routedProjectId !== intake.action.entityId
+      ? { ...intake.action, entityId: routedProjectId }
+      : intake.action;
     const { ask, project } = withDatabase(workspacePath, (db) => {
       const project = applyProjectAttributeUpdate(db, action);
 
@@ -472,6 +548,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       intake,
       resolved,
       project,
+      processingReceipt,
       summary: `Updated ${renderResolvedAttribute(intake)} for ${project.name}.`
     });
   }
@@ -481,7 +558,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     intake.action.kind === "show_project" &&
     intake.action.projectId
   ) {
-    const projectId = intake.action.projectId;
+    const projectId = routedProjectId ?? intake.action.projectId;
     const { ask, projectSummary } = withDatabase(workspacePath, (db) => {
       const projectSummary = listProjectSummaries(db).find((candidate) => candidate.id === projectId) ?? null;
       if (!projectSummary) {
@@ -503,6 +580,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        processingReceipt,
         ask,
         stewardship,
         intake,
@@ -542,6 +620,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        processingReceipt,
         ask,
         stewardship,
         intake,
@@ -566,7 +645,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
 
   if (stewardship.recommendedExecutionPath === "Back Burner" && !options.approvedReviewItemId) {
     const { ask, backBurnerItem } = withDatabase(workspacePath, (db) => {
-      const projectId = projectIdFromIntake(intake) ?? intake.project?.id ?? options.project ?? null;
+      const projectId = routedProjectId;
       if (projectId && !getProject(db, projectId)) {
         throw projectNotFound(projectId);
       }
@@ -598,6 +677,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        processingReceipt,
         ask,
         stewardship,
         intake,
@@ -640,7 +720,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       });
       const reviewItem = createReviewItem(db, {
         askRequestId: ask.id,
-        projectId: projectIdFromIntake(intake) ?? intake.project?.id ?? null,
+        projectId: routedProjectId,
         decisionNeeded: decisionNeededForStewardship(intake, stewardship),
         recommendation: recommendationForStewardship(intake, stewardship),
         sourceInput: intake.rawInput,
@@ -665,6 +745,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        processingReceipt,
         ask,
         stewardship,
         intake,
@@ -694,7 +775,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     ensureBuiltInSkills(db);
     const context = resolveAskContext(db, {
       ...options,
-      project: projectIdFromIntake(intake) ?? intake.project?.id ?? options.project
+      project: routedProjectId ?? undefined,
+      request
     });
     const created = createWorkItemWithOptionalArtifact(db, {
       projectId: context.projectId,
@@ -787,6 +869,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        processingReceipt,
         ask: data.ask,
         stewardship,
         intake,
@@ -891,6 +974,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     command: "ask",
     workspace: workspacePath,
     data: {
+      processingReceipt,
       ask: data.ask,
       stewardship,
       intake,
@@ -937,12 +1021,14 @@ function actedProjectUpdate(input: {
   intake: IntakeResult;
   resolved: ResolvedIntent;
   project: Project;
+  processingReceipt: AskProcessingReceipt | null;
   summary: string;
 }): CommandSuccess<AskCommandData> {
   return createSuccess({
     command: "ask",
     workspace: input.workspacePath,
     data: {
+      processingReceipt: input.processingReceipt,
       ask: input.ask,
       stewardship: input.stewardship,
       intake: input.intake,
@@ -1104,6 +1190,20 @@ export function renderAskSuccess(response: CommandSuccess<AskCommandData>): stri
   if (response.data.projects) {
     lines.push(`Projects: ${response.data.projects.length}`);
     lines.push(...response.data.projects.map((project) => `- ${project.name} (${project.status})`));
+  }
+
+  if (response.data.processingReceipt) {
+    const receipt = response.data.processingReceipt;
+    lines.push(
+      `Ask rule: ${receipt.ruleId} v${receipt.ruleVersion}`,
+      `Rule evidence: ${JSON.stringify(receipt.matchEvidence.matchedText)} at start (${receipt.matchEvidence.boundary})`,
+      `Rule destination: ${receipt.routing.selected?.projectName ?? receipt.destination.projectName} via ${receipt.routing.selected?.source ?? "exact_prefix"}`,
+      `Ignored routes: ${receipt.routing.ignored.map((candidate) => `${candidate.source} -> ${candidate.projectName} (${candidate.reason})`).join("; ") || "None"}`,
+      `Processing payload: ${receipt.strippedPayload || "(empty)"}`,
+      `Processors: ${receipt.orderedProcessors.join(" -> ")}`,
+      `Proposed writes: ${receipt.proposedWrites.join("; ") || "None"}`,
+      `Non-actions: ${receipt.nonActions.join("; ") || "None"}`
+    );
   }
 
   lines.push(
@@ -1406,7 +1506,8 @@ function ignoredAskData(rawRequest: string): AskCommandData {
     review: null,
     reviewItemId: null,
     decisionId: null,
-    backBurnerItemId: null
+    backBurnerItemId: null,
+    processingReceipt: null
   };
 }
 
