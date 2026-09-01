@@ -173,9 +173,9 @@ export interface PlanDoc extends DocLocation {
    * with, e.g. `claude-sonnet-5` or `gpt-5.6-sol`. Free-form: validated by the
    * downstream agent CLI, not by Arcadia.
    *
-   * Absent by default. `go` requires an explicit `--model` on the command line
-   * when neither this nor a CLI override resolves one, rather than launching
-   * an unpinned session silently.
+   * Required for an active plan, so every dispatchable Action carries a
+   * pinned model before `go` starts preparing a worktree. Inactive plans may
+   * omit it while they are drafts or retained history.
    */
   recommendedModel: string | null;
   /** The paired effort/reasoning level, e.g. `high` or `standard`. Optional

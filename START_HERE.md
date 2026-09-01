@@ -60,7 +60,7 @@ Open **System Status** at <http://127.0.0.1:3020/admin/status> when you need a q
 
 Open **Dispatch Journal** at <http://127.0.0.1:3020/admin/dispatch-journal> to see how often Arcadia refused to dispatch work, and which field in the managed documents blocked it. A field that blocks a large share of resolutions is either a rule worth relaxing or a habit worth fixing. It is read-only, like every other admin surface.
 
-Open **Outstanding PRs** at <http://127.0.0.1:3020/admin/pull-requests> to see every open pull request across configured Project repositories, grouped with its Project, branch, review/check state, and plain-English readiness rating. This view is read-only.
+Open **Outstanding PRs** at <http://127.0.0.1:3020/admin/pull-requests> to see every open pull request across configured Project repositories, grouped with its Project, branch, review/check state, and plain-English readiness rating. Each card now includes a deterministic **Briefing**: changed paths, files not named in the PR body, managed pointer or plan changes, governed Decision documents, schema or migration changes, outward-facing paths, branch-order collisions, and the current CI conclusion. Expand the changed-path list when you need the evidence behind a fact. This view is read-only and never approves, merges, comments, or dispatches a PR; if GitHub cannot provide the detail payload, the inventory remains visible and the card says that briefing facts are unavailable.
 
 Open the **QA queue** at <http://127.0.0.1:3020/qa> to test each configured Candidate from one exact procedure. The queue shows the configured revision, target state, validation and evidence freshness; **Test Candidate** opens only that configured target. **Check** runs the live reachability probe without delaying page load; an access-protected target that returns 403 is labelled unverifiable from here, not unhealthy. Above the Candidate cards, a **project strip** shows each configured Project once — the branch its checkout is actually on, its HEAD, how far it has drifted, and what its services report. Updating a checkout is a Project operation, so it lives there rather than repeating on every target card. Each strip offers one primary action for the state it is in: **Check for updates** fetches origin's refs and touches nothing else, **Pull *n* commits** fast-forwards without restarting, and **Restart services** is offered separately — and only when the incoming diff says it is needed. The verdict is computed from the changed paths before you pull, so a lockfile change reads as *install then restart* while a stylesheet reads as *HMR should cover this*; the files behind every verdict are one tap away, and the wording never claims a restart is unnecessary, only that HMR should cover it. **Check** stays available even when the pull is refused, because fetching never touches the working tree. When a checkout is on some other branch or detached, the strip offers **Switch to *base*** — one destination, the Project's own base branch, never a branch picker. Switching leaves the branch it moved away from exactly where it was, and says whether that branch had commits origin does not, so moving away from unmerged work is stated rather than silent. A dirty tree is refused before anything happens, and being ahead of origin is refused too — those stay yours to resolve. Remote targets never offer pull or restart because their deployment workflow owns that authority, and Projects without `scripts/services.sh` say plainly that Arcadia cannot restart them. Record Pass, Fail, or Needs follow-up with an optional note to create a revision-bound Decision. This records QA evidence only—it never merges, deploys, or releases work. Target configuration lives in the workspace at `config/qa-targets.json` — repository paths and LAN hostnames are facts about one machine, so they are not checked in; `config/qa-targets.example.json` documents the shape. Revision, validation, and evidence freshness are computed from each project's checkout rather than typed by hand.
 
@@ -210,10 +210,15 @@ It invokes no model and starts no Run. Its final `Trigger:` line is the exact
 `arcadia review approve <decision>` command that authorizes one read-only
 planning Run for that packet. Approval does not authorize implementation,
 merge, deployment, release, credentials, spending, production access,
-publishing, deletion, or outbound communication. Until the accepted-plan
-promotion increment lands, accepting the resulting planning Artifact still
-ends by asking the operator to choose the implementation Action; Arcadia does
-not pretend that manual seam is closed yet.
+publishing, deletion, or outbound communication. Accepting the resulting
+validated planning Artifact now marks the planning Action done, promotes its
+smallest concrete implementation goal into exactly one current managed build
+Action, and prepares that Action's immutable build packet. Acceptance starts
+no implementation Run. Its receipt prints the exact separate
+`arcadia work run ... --allow-codex-build --agent-profile ...` trigger that can
+start the build after the operator chooses to do so. Re-acceptance reuses the
+same Action and packet, while a changed or malformed planning Artifact fails
+closed before either managed pointer moves.
 
 Preparation refuses an already registered Project name or repository and any
 repository that already carries a `PROJECT.md` or managed plan. It never
@@ -223,13 +228,51 @@ replaces another Project's work pointer.
 
 1. Read **Today's Advantage**: one ready Action, its expected Artifact, and why it matters now.
 2. Click **Prepare Planning Decision**. This creates the bounded planning packet but does not run Codex.
-3. Open **Review**, inspect the packet, and choose Approve & Run, Reject, or Defer.
+3. Open **Needs you**, inspect the packet, and choose Approve & Run, Reject, or Defer. Each
+   choice previews its consequence before it is confirmed, and a Defer is refused
+   until it names the trigger condition that will bring it back. Packet and Run
+   handoffs use the same two-step interaction: confirmation states what will and
+   will not happen, then leaves a receipt with the durable record or guarded
+   command. Confirming a handoff alone records no Decision and starts no Run.
 4. Use **Runs** to follow approved work and inspect its Artifacts, Validation, and Log.
-5. Return to **Review** to accept a successful plan; acceptance marks the original Action done.
+5. Return to **Needs you** to accept a successful plan; for an explicitly
+   prepared software Project, the page renders the original idea, Milestone,
+   proposed Actions, Token Impact and Budget, target repository, and judged
+   Artifact revision without requiring raw Markdown. Choose exactly one outcome:
+   **Approve plan** marks the planning Action done, promotes one current build
+   Action, and prepares—but does not run—its packet; **Defer** requires the named
+   condition that revives it; or **Send back** requires refinement feedback,
+   preserves the current Artifact, and reopens the planning Action for Codex.
+
+Use the collapsed **Focus** control at the top of **Needs you** to choose a
+primary Project, an optional secondary Project, and Projects to park for now.
+Each completed change saves automatically in the Arcadia workspace, so the
+same ranking follows the operator across browsers and devices. The stored
+`config/arcadia.json` `reviewFocus` also keeps the visible set bounded.
+Use **Search Decisions** above that control to find a Decision by its governed
+number, question text, recommendation, or Project. Search includes focused,
+parked, lower-priority, and historical items rather than treating the focus
+limit as a search boundary. Document-backed items display their governed
+number (for example, **Decision 0038**) on the selected card, compact queue
+rows, and excluded rows; database-native Decisions retain their `R…` number.
+Historical packets and Runs older than 30 days remain behind the history
+control unless they belong to a selected current Action. No Review, packet, or
+Run is deleted.
+
+For a clarification that looks stale or disconnected, choose **Reassess**.
+Arcadia checks the question against the Project's checked-in active plan before
+asking for an answer. If the source plan or question no longer governs current
+work, the Decision leaves **Needs you** and remains preserved in history with a
+receipt explaining why. If the active plan still declares it, Arcadia reports
+**Still declared**—not that the question remains semantically valid—and keeps
+the Decision visible. Choose **Flag for agent review** to park that Decision
+outside **Needs you** in Agent Queue for a later repository-aware assessment;
+flagging starts no coding-agent Run. The same transitions are available as
+`arcadia review reassess <id>` and `arcadia review flag-agent <id>`.
 
 Before feeding another coding agent, open the **Agent Queue** section in
-Mission Control. It keeps three explicit lanes in view: **Ready to feed**,
-**Running or queued**, and **Needs attention before dispatch**. The same
+Mission Control. It keeps four explicit lanes in view: **Ready to feed**,
+**Running or queued**, **Flagged for agent review**, and **Needs attention before dispatch**. The same
 read-only projection is available in the terminal:
 
 ```sh
@@ -309,6 +352,50 @@ non-dispatchable state. It never commits, force-merges, resets, or pushes. With
 local base branch and prints the exact Codex or Claude Code launch command with
 `arcadia advance`. The personal `arcadia-go` skill performs the preview/apply
 sequence and uses the current agent's native session handoff when available.
+
+To opt into Arcadia launching the next Claude Code process, add `--launch`.
+This is the only `go` option that authorizes process creation; preview and the
+manual command above remain non-launching:
+
+```sh
+pnpm arcadia go \
+  --repo /path/to/project \
+  --source /path/to/finished-worktree \
+  --agent claude \
+  --apply \
+  --launch \
+  --workspace "$WORKSPACE"
+```
+
+Launch requires the current governed Action's approved, immutable promoted
+build packet; matching provider profile, binding, model, and Git base revision;
+a clean agent-owned source and isolated target worktree; available `tmux`; and
+no prepared or running Session lease for the same repository. Arcadia creates
+the worktree itself and wraps Claude Code in tmux—it does not use Claude Code's
+worktree-owning tmux mode. A separately admitted repository may hold its own
+Session.
+
+The command prints the Session id and exact reattach command. The same
+read-only receipt is available later:
+
+```sh
+pnpm arcadia session show --workspace "$WORKSPACE"
+pnpm arcadia session show <session-id> --workspace "$WORKSPACE"
+tmux attach-session -t <printed-tmux-name>
+```
+
+`session show` reports only stored linkage and whether the named tmux process
+is alive. It never captures panes, mirrors transcripts, estimates progress, or
+injects input. If tmux has exited, use the printed `claude --resume
+<provider-session-id>` command from the recorded worktree. A successful process
+exit does not complete the Action or approve, merge, deploy, publish, message,
+spend, or use credentials; repository reconciliation is a separate governed
+transition.
+
+Bare `arcadia advance` and `arcadia advance --session <id>` resolve the same
+deterministic Project transition used by `go` and the Agent Queue. Its result
+is exactly one of launch, plan, Decision, repair, reconcile, wait, or Milestone
+completion, with one concrete next step.
 
 To shelve an idea until a concrete condition is true, use the existing Ask
 path with `--back-burner`. For example:
@@ -451,7 +538,7 @@ LLM tokens unless a model is asked to interpret their output. **Get to work**
 prepares a planning Decision for that exact Action; it never runs code or
 deploys. If preparation is refused, the same view names each blocking document
 field and its concrete remedy. Open questions and project Decisions can be
-answered inline, with the same answer/approval distinction used by Review.
+answered inline, with the same answer/approval distinction used by Needs you.
 
 The terminal brief resolves the same pointer:
 
@@ -679,9 +766,9 @@ a refresh warning never reverses the accepted transition.
 
 After you sign in following a laptop restart, Arcadia's managed launch agents start and keep these services running:
 
-- **Dashboard (core)** — Mission Control, Review, Runs, and System Status at port 3020.
+- **Dashboard (core)** — Mission Control, Needs you, Runs, and System Status at port 3020.
 - **Managed Run worker (core)** — executes only queued, authorized Runs with the coding agent bound to each packet.
-- **Intelligence API and worker (feature-specific)** — structured generation at port 4710. Its durable SQLite queue dispatches cloud, local LiteLLM, Codex CLI, and Claude Code CLI generation through separate bounded pools, so a long image job no longer blocks unrelated requests. Local structured-text callers can select Claude Code with `executionTarget: "claude-code"`; the default route uses the installed `claude` CLI and does not authorize paid cloud usage.
+- **Intelligence API and worker (feature-specific)** — structured generation at port 4710. Its durable SQLite queue dispatches cloud, local LiteLLM, Codex CLI, and Claude Code CLI generation through separate bounded pools, so a long image job no longer blocks unrelated requests. The health and admin-capability views advertise a LiteLLM offering only while its model group appears in the proxy's authenticated model inventory; a configured deployment that LiteLLM rejected is therefore unavailable before submission rather than failing as a test job. Local structured-text callers can select Claude Code with `executionTarget: "claude-code"`; the default route uses the installed `claude` CLI and does not authorize paid cloud usage.
 - **ComfyUI image backend (feature-specific)** — local FLUX.2 Klein generation/editing at port 8188 when configured.
 - **Discord adapter (feature-specific)** — capture, status, notifications, and
   the morning Orientation Packet. That packet opens with a factual narrative

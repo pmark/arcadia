@@ -213,13 +213,39 @@ export function ProjectCard({ project }: { project: DashboardProject }) {
 export function AttentionCard({
   item,
   pendingAction,
-  onReviewAction
+  onReviewAction,
+  confirmActions = false,
+  rankReasons
 }: {
   item: DashboardAttentionItem;
   pendingAction?: string | null;
   onReviewAction?: (item: DashboardAttentionItem, action: "approve" | "reject" | "defer") => void;
+  confirmActions?: boolean;
+  rankReasons?: Array<{ label: string; detail: string }>;
 }) {
   const Icon = item.severity === "blocked" ? AlertTriangle : Radio;
+  const [confirmingAction, setConfirmingAction] = useState<DashboardAttentionItem["primaryActions"][number] | null>(null);
+  const [actionReceipt, setActionReceipt] = useState<DashboardAttentionItem["primaryActions"][number] | null>(null);
+
+  function chooseAction(action: DashboardAttentionItem["primaryActions"][number]) {
+    if (confirmActions) {
+      setActionReceipt(null);
+      setConfirmingAction(action);
+      return;
+    }
+    if (action.reviewAction) {
+      onReviewAction?.(item, action.reviewAction);
+    }
+  }
+
+  function confirmAttentionAction() {
+    if (!confirmingAction) return;
+    if (confirmingAction.reviewAction) {
+      onReviewAction?.(item, confirmingAction.reviewAction);
+    }
+    setActionReceipt(confirmingAction);
+    setConfirmingAction(null);
+  }
 
   return (
     <article className="min-w-0 rounded-md border border-line bg-panel p-4 shadow-soft">
@@ -233,6 +259,16 @@ export function AttentionCard({
             </div>
             <StatusBadge status={item.status} label={item.kind === "codex_packet" ? item.statusLabel : labelAttentionKind(item.kind)} />
           </div>
+          {rankReasons?.length ? (
+            <ul className="mt-3 grid gap-1 rounded-md border border-line bg-canvas/60 p-3 text-xs">
+              {rankReasons.map((reason) => (
+                <li key={reason.label} className="flex gap-2">
+                  <span className="shrink-0 font-semibold uppercase tracking-wide text-muted">{reason.label}</span>
+                  <span className="text-ink/80">{reason.detail}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <dl className="mt-4 grid gap-3 text-sm">
             {item.interpretation ? <Field label="Interpretation" value={item.interpretation} /> : null}
             {item.milestone ? <Field label="Milestone" value={item.milestone} /> : null}
@@ -256,7 +292,7 @@ export function AttentionCard({
                     key={action.label}
                     type="button"
                     disabled={!onReviewAction || Boolean(pendingAction)}
-                    onClick={() => onReviewAction?.(item, action.reviewAction!)}
+                    onClick={() => chooseAction(action)}
                     className={`min-h-10 rounded-md border px-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${reviewActionClass(action.reviewAction)}`}
                   >
                     {pending ? "Working..." : action.label}
@@ -265,6 +301,18 @@ export function AttentionCard({
               }
 
               if (action.href) {
+                if (confirmActions) {
+                  return (
+                    <button
+                      key={action.label}
+                      type="button"
+                      onClick={() => chooseAction(action)}
+                      className="inline-flex min-h-10 items-center rounded-md border border-steel/30 bg-steel/10 px-3 text-sm font-semibold text-steel transition hover:border-steel"
+                    >
+                      {action.label}
+                    </button>
+                  );
+                }
                 return (
                   <a
                     key={action.label}
@@ -276,7 +324,16 @@ export function AttentionCard({
                 );
               }
 
-              return action.command ? (
+              return action.command && confirmActions ? (
+                <button
+                  key={action.label}
+                  type="button"
+                  onClick={() => chooseAction(action)}
+                  className="min-h-10 rounded-md border border-moss/30 bg-moss/10 px-3 text-sm font-semibold text-moss transition hover:border-moss"
+                >
+                  {action.label}
+                </button>
+              ) : action.command ? (
                 <code
                   key={action.label}
                   className="min-w-0 break-all rounded-md border border-line bg-canvas px-3 py-2 text-xs text-muted"
@@ -286,6 +343,15 @@ export function AttentionCard({
               ) : null;
             })}
           </div>
+          {confirmingAction ? (
+            <AttentionActionConfirmation
+              item={item}
+              action={confirmingAction}
+              onConfirm={confirmAttentionAction}
+              onCancel={() => setConfirmingAction(null)}
+            />
+          ) : null}
+          {actionReceipt ? <AttentionActionReceipt item={item} action={actionReceipt} /> : null}
           <div className="mt-3">
             <ActionAdvice
               target={composeAdviceTarget([
@@ -305,13 +371,225 @@ export function AttentionCard({
   );
 }
 
+interface AttentionActionEffect {
+  immediate: string;
+  unlocks: string;
+  remainsBlocked: string;
+  effects: string;
+}
+
+function attentionActionEffect(
+  item: DashboardAttentionItem,
+  action: DashboardAttentionItem["primaryActions"][number]
+): AttentionActionEffect {
+  if (item.kind === "codex_packet" && action.command) {
+    return {
+      immediate: "Reveals the exact guarded command for this prepared packet.",
+      unlocks: "Running that command can start the prepared coding-agent work.",
+      remainsBlocked: "The packet stays pending until the command is executed successfully; merge, deployment, credentials, and release keep their own gates.",
+      effects: "Confirming here records no Decision, starts no Run, and causes no external effect."
+    };
+  }
+
+  if (item.kind === "run") {
+    return {
+      immediate: "Prepares a link to the Run's durable detail record.",
+      unlocks: "That record exposes the failure or review evidence needed to decide the next step.",
+      remainsBlocked: `The Run remains ${item.statusLabel}; resolving it still requires the Decision or repair named in its record.`,
+      effects: "Confirming here records no Decision, retries no Run, and causes no external effect."
+    };
+  }
+
+  return {
+    immediate: action.href ? `Prepares the ${action.label} link.` : `Prepares the ${action.label} handoff.`,
+    unlocks: "The linked evidence becomes available for operator review.",
+    remainsBlocked: item.nextAction,
+    effects: "Confirming here records no Decision, starts no Run, and causes no external effect."
+  };
+}
+
+function AttentionActionConfirmation({
+  item,
+  action,
+  onConfirm,
+  onCancel
+}: {
+  item: DashboardAttentionItem;
+  action: DashboardAttentionItem["primaryActions"][number];
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const effect = attentionActionEffect(item, action);
+  return (
+    <div className="mt-3 rounded-md border border-steel/30 bg-steel/5 p-3">
+      <p className="text-sm font-semibold text-ink">Before “{action.label}”</p>
+      <dl className="mt-2 grid gap-2 text-xs leading-5">
+        <Field label="Immediate consequence" value={effect.immediate} />
+        <Field label="What this unlocks" value={effect.unlocks} />
+        <Field label="What remains blocked" value={effect.remainsBlocked} />
+        <Field label="Run or external effect" value={effect.effects} />
+      </dl>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onConfirm}
+          className="min-h-10 rounded-md border border-moss/30 bg-moss/10 px-3 text-sm font-semibold text-moss transition hover:border-moss"
+        >
+          Confirm: {action.label}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="min-h-10 rounded-md border border-line bg-canvas px-3 text-sm font-semibold text-muted transition hover:border-steel"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AttentionActionReceipt({
+  item,
+  action
+}: {
+  item: DashboardAttentionItem;
+  action: DashboardAttentionItem["primaryActions"][number];
+}) {
+  const recordLabel = item.kind === "run" ? `Run ${item.relatedRunId ?? item.id}` : `Packet ${item.relatedCodexInvocationId ?? item.id}`;
+  return (
+    <div className="mt-3 rounded-md border border-moss/30 bg-moss/10 p-3 text-sm text-moss" aria-live="polite">
+      <p className="text-xs font-semibold uppercase tracking-wide">Receipt · {recordLabel}</p>
+      <p className="mt-1 font-medium leading-5">
+        “{action.label}” confirmed. No Decision was recorded and no Arcadia state changed.
+      </p>
+      {action.href ? (
+        <a
+          href={action.href}
+          className="mt-3 inline-flex min-h-10 items-center rounded-md border border-moss/30 bg-panel px-3 text-sm font-semibold text-moss transition hover:border-moss"
+        >
+          Continue: {action.label}
+        </a>
+      ) : null}
+      {action.command ? (
+        <div className="mt-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-moss/80">Next command</p>
+          <code className="mt-1 block min-w-0 break-all rounded-md border border-moss/20 bg-canvas px-3 py-2 text-xs text-ink">
+            {action.command}
+          </code>
+        </div>
+      ) : null}
+      <p className="mt-2 text-xs leading-5 text-moss/80">Next: {item.nextAction}</p>
+    </div>
+  );
+}
+
+type ReviewOutcome =
+  | { kind: "action"; action: "approve" | "reject" | "defer" | "reassess" | "flag_agent" }
+  | { kind: "option"; option: string }
+  | { kind: "execute" };
+
+function outcomeLabel(outcome: ReviewOutcome, isPlanning: boolean, isAcceptance: boolean): string {
+  if (outcome.kind === "execute") {
+    return isAcceptance ? "Accept Plan" : isPlanning ? "Approve & Run" : "Approve & Execute";
+  }
+
+  if (outcome.kind === "option") {
+    return outcome.option;
+  }
+
+  if (outcome.action === "approve") {
+    return isAcceptance ? "Accept Plan" : isPlanning ? "Approve & Run" : "Approve";
+  }
+
+  if (outcome.action === "reassess") {
+    return "Reassess";
+  }
+
+  if (outcome.action === "flag_agent") {
+    return "Flag for agent review";
+  }
+
+  return outcome.action === "reject" ? (isAcceptance ? "Send back" : "Reject") : "Defer";
+}
+
+function consequenceFor(outcome: ReviewOutcome, isPlanning: boolean, isAcceptance: boolean): string {
+  if (outcome.kind === "execute") {
+    return isAcceptance
+      ? "Marks the plan Artifact accepted and promotes it toward build. No coding-agent Run starts by itself."
+      : "Starts an isolated coding-agent Run for this build Action. Merge, deploy, credentials, and other gated actions remain blocked without their own Decision.";
+  }
+
+  if (outcome.kind === "option") {
+    return `Records "${outcome.option}" as the outcome of this Decision and continues accordingly.`;
+  }
+
+  if (outcome.action === "approve") {
+    return isAcceptance
+      ? "Marks the plan Artifact accepted and promotes it toward build. No coding-agent Run starts by itself."
+      : isPlanning
+        ? "Starts an isolated coding-agent Run for this build Action. Merge, deploy, credentials, and other gated actions remain blocked without their own Decision."
+        : "Records this Decision as approved and lets Arcadia continue with its proposed next step.";
+  }
+
+  if (outcome.action === "reject") {
+    return isAcceptance
+      ? "Records the feedback and judged Artifact revision, preserves the plan, and reopens its planning Action for refinement. No Run starts."
+      : "Records this Decision as rejected. No Run starts, and the Action needs a new plan before it can continue.";
+  }
+
+  if (outcome.action === "reassess") {
+    return "Rechecks the question against the Project's authoritative active plan. Disconnected questions leave Needs you but remain preserved in history; current questions stay visible. No Run starts.";
+  }
+
+  if (outcome.action === "flag_agent") {
+    return "Runs the deterministic check first, then parks a still-declared question in Agent Queue for later coding-agent review. No Run starts.";
+  }
+
+  return "Keeps this Decision open. It returns to the board only when the trigger condition is met.";
+}
+
+function canReassessPlanQuestion(item: DashboardReviewItem): boolean {
+  if (item.resolvedIntent !== "ActionClarification" || !item.contextJson) {
+    return false;
+  }
+
+  try {
+    const context: unknown = JSON.parse(item.contextJson);
+    if (!context || typeof context !== "object" || !("docRef" in context)) {
+      return false;
+    }
+    return typeof context.docRef === "string" && /^plan\/[^?#]+\?question=[^&]+$/.test(context.docRef);
+  } catch {
+    return false;
+  }
+}
+
+function outcomesEqual(a: ReviewOutcome, b: ReviewOutcome): boolean {
+  if (a.kind !== b.kind) {
+    return false;
+  }
+  if (a.kind === "action" && b.kind === "action") {
+    return a.action === b.action;
+  }
+  if (a.kind === "option" && b.kind === "option") {
+    return a.option === b.option;
+  }
+  return true;
+}
+
 export function ReviewCard({
   item,
   pendingAction,
   onAction,
   onApproveAndExecute,
   onResolveOption,
-  onResolveReply
+  onResolveReply,
+  onDefer,
+  onRefine,
+  onReassess,
+  onFlagAgent,
+  rankReasons
 }: {
   item: DashboardReviewItem;
   pendingAction?: string | null;
@@ -319,24 +597,98 @@ export function ReviewCard({
   onApproveAndExecute?: (item: DashboardReviewItem) => void;
   onResolveOption?: (item: DashboardReviewItem, option: string) => void;
   onResolveReply?: (item: DashboardReviewItem, reply: string) => void;
+  onDefer?: (item: DashboardReviewItem, trigger: string) => void;
+  onRefine?: (item: DashboardReviewItem, feedback: string) => void;
+  onReassess?: (item: DashboardReviewItem) => void;
+  onFlagAgent?: (item: DashboardReviewItem) => void;
+  rankReasons?: Array<{ label: string; detail: string }>;
 }) {
   const [answer, setAnswer] = useState("");
+  const [confirming, setConfirming] = useState<ReviewOutcome | null>(null);
+  const [deferTrigger, setDeferTrigger] = useState("");
+  const [refinementFeedback, setRefinementFeedback] = useState("");
   const primaryActions = ["approve", "reject", "defer"] as const;
   const isPlanning = item.resolvedIntent === "CodexPlanningRunApproval" || item.resolvedIntent === "CodexPlanningRetryApproval";
   const isAcceptance = item.resolvedIntent === "CodexPlanningArtifactAcceptance";
   const isClarification = item.resolvedIntent === "ActionClarification";
+  const canReassess = Boolean(onReassess) && canReassessPlanQuestion(item);
+  const canFlagAgent = Boolean(onFlagAgent) && canReassessPlanQuestion(item);
   const extraOptions = item.options.filter((option) => !primaryActions.includes(option as (typeof primaryActions)[number]));
   const trimmedAnswer = answer.trim();
+
+  function startConfirm(outcome: ReviewOutcome) {
+    setDeferTrigger("");
+    setRefinementFeedback("");
+    setConfirming(outcome);
+  }
+
+  function cancelConfirm() {
+    setConfirming(null);
+    setDeferTrigger("");
+    setRefinementFeedback("");
+  }
+
+  function confirmOutcome() {
+    if (!confirming) {
+      return;
+    }
+    if (confirming.kind === "execute") {
+      onApproveAndExecute?.(item);
+    } else if (confirming.kind === "option") {
+      onResolveOption?.(item, confirming.option);
+    } else if (confirming.action === "reassess") {
+      onReassess?.(item);
+    } else if (confirming.action === "flag_agent") {
+      onFlagAgent?.(item);
+    } else if (confirming.action === "defer") {
+      const trigger = deferTrigger.trim();
+      if (!trigger) {
+        return;
+      }
+      if (onDefer) {
+        onDefer(item, trigger);
+      } else {
+        onAction?.(item, "defer");
+      }
+    } else if (confirming.action === "reject" && isAcceptance) {
+      const feedback = refinementFeedback.trim();
+      if (!feedback) {
+        return;
+      }
+      onRefine?.(item, feedback);
+    } else {
+      onAction?.(item, confirming.action);
+    }
+    setConfirming(null);
+  }
+
+  const confirmDisabled = Boolean(pendingAction) || (
+    confirming?.kind === "action" && (
+      (confirming.action === "defer" && !deferTrigger.trim()) ||
+      (confirming.action === "reject" && isAcceptance && !refinementFeedback.trim())
+    )
+  );
 
   return (
     <article className="min-w-0 rounded-md border border-line bg-panel p-4 shadow-soft">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="break-words text-base font-semibold leading-6">{item.displayId || item.id}</h3>
+          <h3 className="break-words text-base font-semibold leading-6">Decision {item.displayId || item.id}</h3>
           <p className="mt-1 break-words text-sm text-muted">{item.project ?? "Unassigned"}</p>
         </div>
         <StatusBadge status={item.status} label={item.statusLabel} />
       </div>
+      {rankReasons?.length ? (
+        <ul className="mt-3 grid gap-1 rounded-md border border-line bg-canvas/60 p-3 text-xs">
+          {rankReasons.map((reason) => (
+            <li key={reason.label} className="flex gap-2">
+              <span className="shrink-0 font-semibold uppercase tracking-wide text-muted">{reason.label}</span>
+              <span className="text-ink/80">{reason.detail}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {isAcceptance && item.planningArtifact ? <PlanningArtifactOverview plan={item.planningArtifact} itemId={item.id} /> : null}
       <dl className="mt-4 grid gap-3 text-sm">
         <Field label="Category" value={item.category} />
         <Field label="Original Request" value={item.sourceInput} />
@@ -423,18 +775,32 @@ export function ReviewCard({
         {!isClarification && onApproveAndExecute ? (
           <button
             type="button"
-            onClick={() => onApproveAndExecute(item)}
+            onClick={() => startConfirm({ kind: "execute" })}
             disabled={Boolean(pendingAction)}
             className="inline-flex min-h-10 items-center gap-2 rounded-md border border-moss/30 bg-moss/10 px-3 text-sm font-semibold text-moss transition hover:border-moss disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Play className="h-3.5 w-3.5" aria-hidden="true" />
-            {pendingAction === "approve-execute"
-              ? "Working…"
-              : isAcceptance
-                ? "Accept Plan"
-                : isPlanning
-                  ? "Approve & Run"
-                  : "Approve & Execute"}
+            {pendingAction === "approve-execute" ? "Working…" : outcomeLabel({ kind: "execute" }, isPlanning, isAcceptance)}
+          </button>
+        ) : null}
+        {canReassess ? (
+          <button
+            type="button"
+            onClick={() => startConfirm({ kind: "action", action: "reassess" })}
+            disabled={Boolean(pendingAction)}
+            className="min-h-10 rounded-md border border-steel/30 bg-steel/10 px-3 text-sm font-semibold text-steel transition hover:border-steel disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {pendingAction === "reassess" ? "Checking…" : "Reassess"}
+          </button>
+        ) : null}
+        {canFlagAgent ? (
+          <button
+            type="button"
+            onClick={() => startConfirm({ kind: "action", action: "flag_agent" })}
+            disabled={Boolean(pendingAction)}
+            className="min-h-10 rounded-md border border-gold/40 bg-gold/10 px-3 text-sm font-semibold text-gold transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {pendingAction === "flag_agent" ? "Flagging…" : "Flag for agent review"}
           </button>
         ) : null}
         {primaryActions.filter((action) =>
@@ -448,11 +814,11 @@ export function ReviewCard({
             <button
               key={action}
               type="button"
-              onClick={() => onAction?.(item, action)}
+              onClick={() => startConfirm({ kind: "action", action })}
               disabled={!onAction || disabled}
-              className={`min-h-10 rounded-md border px-3 text-sm font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-60 ${reviewActionClass(action)}`}
+              className={`min-h-10 rounded-md border px-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${reviewActionClass(action)}`}
             >
-              {pending ? "Working..." : action}
+              {pending ? "Working..." : outcomeLabel({ kind: "action", action }, isPlanning, isAcceptance)}
             </button>
           );
         })}
@@ -462,7 +828,7 @@ export function ReviewCard({
             <button
               key={option}
               type="button"
-              onClick={() => onResolveOption?.(item, option)}
+              onClick={() => startConfirm({ kind: "option", option })}
               disabled={!onResolveOption || Boolean(pendingAction)}
               className="min-h-10 rounded-md border border-steel/30 bg-steel/10 px-3 text-sm font-semibold text-steel transition hover:border-steel disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -471,7 +837,100 @@ export function ReviewCard({
           );
         }) : null}
       </div>
+      {confirming ? (
+        <div className="mt-3 rounded-md border border-steel/30 bg-steel/5 p-3">
+          <p className="text-sm leading-5 text-ink">
+            <span className="font-semibold">This will: </span>
+            {consequenceFor(confirming, isPlanning, isAcceptance)}
+          </p>
+          {confirming.kind === "action" && confirming.action === "defer" ? (
+            <div className="mt-3">
+              <label htmlFor={`defer-trigger-${item.id}`} className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Trigger condition
+              </label>
+              <input
+                id={`defer-trigger-${item.id}`}
+                type="text"
+                value={deferTrigger}
+                onChange={(event) => setDeferTrigger(event.target.value)}
+                placeholder="e.g. When a second project needs this capability"
+                disabled={Boolean(pendingAction)}
+                className="mt-1 w-full rounded-md border border-line bg-canvas px-3 py-2 text-sm leading-5 text-ink outline-none transition placeholder:text-muted/70 focus:border-steel disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              <p className="mt-1 text-xs text-muted">A deferral with no named trigger is refused.</p>
+            </div>
+          ) : null}
+          {confirming.kind === "action" && confirming.action === "reject" && isAcceptance ? (
+            <div className="mt-3">
+              <label htmlFor={`refinement-feedback-${item.id}`} className="text-xs font-semibold uppercase tracking-wide text-muted">
+                What needs refinement?
+              </label>
+              <textarea
+                id={`refinement-feedback-${item.id}`}
+                value={refinementFeedback}
+                onChange={(event) => setRefinementFeedback(event.target.value)}
+                rows={4}
+                placeholder="Name what was unclear or what the next plan revision must change…"
+                disabled={Boolean(pendingAction)}
+                className="mt-1 w-full resize-y rounded-md border border-line bg-canvas px-3 py-2 text-sm leading-5 text-ink outline-none transition placeholder:text-muted/70 focus:border-steel disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              <p className="mt-1 text-xs text-muted">The feedback is recorded on this Decision; the current Artifact remains available.</p>
+            </div>
+          ) : null}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={confirmOutcome}
+              disabled={confirmDisabled}
+              className="min-h-10 rounded-md border border-moss/30 bg-moss/10 px-3 text-sm font-semibold text-moss transition hover:border-moss disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {Boolean(pendingAction) ? "Working..." : `Confirm: ${outcomeLabel(confirming, isPlanning, isAcceptance)}`}
+            </button>
+            <button
+              type="button"
+              onClick={cancelConfirm}
+              disabled={Boolean(pendingAction)}
+              className="min-h-10 rounded-md border border-line bg-canvas px-3 text-sm font-semibold text-muted transition hover:border-steel disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
     </article>
+  );
+}
+
+function PlanningArtifactOverview({
+  plan,
+  itemId
+}: {
+  plan: NonNullable<DashboardReviewItem["planningArtifact"]>;
+  itemId: string;
+}) {
+  const headingId = `prepared-plan-heading-${itemId}`;
+  return (
+    <section className="mt-4 min-w-0 rounded-md border border-steel/30 bg-steel/5 p-4" aria-labelledby={headingId}>
+      <p className="text-xs font-semibold uppercase tracking-wide text-steel">Prepared plan</p>
+      <h4 id={headingId} className="mt-1 break-words text-lg font-semibold leading-6 text-ink">{plan.title}</h4>
+      <dl className="mt-4 grid min-w-0 gap-3 text-sm sm:grid-cols-2">
+        <Field label="Original idea" value={plan.idea} />
+        <Field label="Milestone" value={plan.milestone ?? "Not declared"} />
+        <Field label="Token Impact" value={plan.tokenImpact} />
+        <Field label="Repository" value={plan.repository} />
+      </dl>
+      <div className="mt-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted">Proposed Actions</p>
+        <ol className="mt-2 grid gap-2 pl-5 text-sm leading-5 text-ink">
+          {plan.proposedActions.map((action, index) => <li key={`${index}:${action}`} className="list-decimal break-words">{action}</li>)}
+        </ol>
+      </div>
+      <div className="mt-4 rounded-md border border-line bg-canvas/70 p-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted">Token Budget</p>
+        <p className="mt-1 break-words text-sm leading-5 text-ink/80">{plan.tokenBudget}</p>
+      </div>
+      <p className="mt-3 break-all text-[11px] text-muted">Judged revision: sha256:{plan.artifactSha256}</p>
+    </section>
   );
 }
 
@@ -768,7 +1227,7 @@ function ActivityLink({ href, label }: { href: string; label: string }) {
   );
 }
 
-function dashboardFileHref(href: string): string {
+export function dashboardFileHref(href: string): string {
   if (href.startsWith("/") || /^[a-z][a-z0-9+.-]*:/i.test(href)) {
     return href;
   }
@@ -776,7 +1235,7 @@ function dashboardFileHref(href: string): string {
   return `/api/file/${href.split("/").map(encodeURIComponent).join("/")}`;
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+export function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <dt className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</dt>
@@ -856,7 +1315,7 @@ export function composeAdviceTarget(lines: Array<[string, string | null | undefi
     .join("\n");
 }
 
-function formatDateTime(value: string): string {
+export function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
@@ -885,7 +1344,7 @@ function statusClass(status: string): string {
   return "border-line bg-canvas text-muted";
 }
 
-function reviewActionClass(action: "approve" | "reject" | "defer"): string {
+export function reviewActionClass(action: "approve" | "reject" | "defer"): string {
   if (action === "approve") {
     return "border-moss/30 bg-moss/10 text-moss hover:border-moss";
   }

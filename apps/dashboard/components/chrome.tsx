@@ -31,7 +31,7 @@ const navItems = [
   { href: "/", label: "Today", icon: Activity },
   { href: "/path", label: "Path", icon: Route },
   { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/review", label: "Review", icon: Eye },
+  { href: "/review", label: "Needs you", icon: Eye },
   { href: "/qa", label: "QA", icon: ListChecks },
   { href: "/back-burner", label: "Back Burner", icon: Archive },
   { href: "/runs", label: "Runs", icon: History },

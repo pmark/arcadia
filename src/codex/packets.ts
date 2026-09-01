@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { buildCodingAgentCommand, codingAgentLabel } from "../codingAgents/adapters.js";
@@ -146,6 +147,7 @@ export function createCodexPacket(input: {
           : null,
         command,
         workspaceScope,
+        baseRevision: resolveBaseRevision(workspaceScope),
         workItemId: input.workItem.id,
         planId: input.planId,
         project: input.projectContext
@@ -197,6 +199,18 @@ export function createCodexPacket(input: {
     agentConfiguration: input.agentConfiguration ?? null,
     executionRequirement: input.executionRequirement ?? null
   };
+}
+
+function resolveBaseRevision(repositoryPath: string): string | null {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: repositoryPath,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+  } catch {
+    return null;
+  }
 }
 
 export function selectAgentProfileForWorkItem(input: {

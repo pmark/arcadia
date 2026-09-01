@@ -182,6 +182,9 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
       const status = enumField(problems, data, "status", PLAN_STATUSES);
       const tokenImpact = enumField(problems, data, "token_impact", TOKEN_IMPACTS);
       const tokenBudget = requiredString(problems, data, "token_budget");
+      const recommendedModel = status === "active"
+        ? requiredString(problems, data, "recommended_model")
+        : optionalString(data, "recommended_model");
       const currentAction = optionalSlug(problems, data, "current_action");
       const actions = parseActions(problems, data.actions, currentAction);
       const questions = parseQuestions(problems, data.questions);
@@ -200,7 +203,7 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
           currentAction,
           tokenImpact: tokenImpact as never,
           tokenBudget: tokenBudget!,
-          recommendedModel: optionalString(data, "recommended_model"),
+          recommendedModel: recommendedModel!,
           recommendedReasoningEffort: optionalString(data, "recommended_reasoning_effort"),
           updated: updated!,
           actions,

@@ -481,8 +481,36 @@ export interface ClarifyActionResponse {
 export async function runReviewAction(input: {
   id: string;
   action: "approve" | "reject" | "defer";
+  trigger?: string;
+  feedback?: string;
 }): Promise<ArcadiaJsonSuccess<ReviewActionResponse>> {
-  return runArcadiaCliJson<ReviewActionResponse>(["review", input.action, input.id]);
+  const args = ["review", input.action, input.id];
+  if (input.action === "defer" && input.trigger) {
+    args.push("--trigger", input.trigger);
+  }
+  if (input.action === "reject" && input.feedback) {
+    args.push("--feedback", input.feedback);
+  }
+  return runArcadiaCliJson<ReviewActionResponse>(args);
+}
+
+export async function reassessReviewItem(id: string): Promise<ArcadiaJsonSuccess<{
+  item: ReviewActionResponse["item"];
+  outcome: "withdrawn" | "still_declared";
+  summary: string;
+  sourcePlan: string;
+  activePlan: string | null;
+  questionStillDeclared: boolean;
+}>> {
+  return runArcadiaCliJson(["review", "reassess", id]);
+}
+
+export async function flagReviewForAgent(id: string): Promise<ArcadiaJsonSuccess<{
+  item: ReviewActionResponse["item"];
+  outcome: "withdrawn" | "flagged_for_agent_review";
+  summary: string;
+}>> {
+  return runArcadiaCliJson(["review", "flag-agent", id]);
 }
 
 export async function reviewApproveWithExecute(input: {

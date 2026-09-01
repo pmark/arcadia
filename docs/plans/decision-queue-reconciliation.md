@@ -7,7 +7,9 @@ status: proposed
 milestone: The operator is asked exactly one question a day, and it is never one already answered
 token_impact: low
 token_budget: "Reconciliation is pure document parsing and SQL — no model calls. The dashboard slice is deterministic React. Only the deferred recommendation work in 'If not now, then when?' would spend model tokens."
-updated: 2026-08-26
+recommended_model: gpt-5.6-luna
+recommended_reasoning_effort: medium
+updated: 2026-08-30
 open_questions: []
 actions:
   - id: build-resolution-reconciler

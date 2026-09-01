@@ -43,6 +43,7 @@ Operator intent
   -> Capture and clarify
   -> Project / Outcome / Milestone / Action
   -> Select and dispatch configured coding agent
+  -> Record one thin, reattachable Session
   -> Produce Candidate and deterministic proof
   -> Readiness gate (zero model tokens)
   -> Independent Arcadia QA (one bounded judgment)
@@ -57,16 +58,22 @@ Action is.
 
 ## Immediate 80/20 boundary
 
-The current slice improves the already working `arcadia qa pr` path. It does
-not build a general workflow engine or autonomous software factory. It removes
-model calls that deterministic readiness can reject, eliminates one proven CI
-race, and documents the sequence that normally produces one independent review
-per Candidate.
+The first of the two remaining local handoffs is now closed: Arcadia promotes
+an accepted planning Artifact into one exact build Action and prepares its
+immutable build packet without starting a Run. The next slice records and
+launches one opt-in Claude Code Session in an Arcadia-owned worktree through
+tmux, lets the operator detach and reattach to the native interface, and
+reconciles the repository only after the agent process exits. It does not build
+a general workflow engine, transcript viewer, live-progress monitor, or
+autonomous software factory.
 
 ## Triggered increments
 
 | Deferred increment | Reactivate when |
 | --- | --- |
+| Worker-queued coding-agent Sessions | One real tmux-backed Session completes successfully and the operator chooses unattended launch for a second governed Action. |
+| Session completion and needs-input notifications | A completed or needs-input Session waits unnoticed, or its state must be manually relayed to the operator. |
+| Session analytics and duration estimates | Enough thin Session receipts exist that aggregate history would change planning, admission, or provider selection. |
 | Automatic QA invocation and Arcadia Now or Discord delivery | A QA-ready Candidate waits unnoticed, or a real review requires the operator to relay the CLI result manually. |
 | Claim-to-proof manifest, local validation, or browser proof | A second real Candidate contains a material behavioral claim that completed green CI cannot substantiate. |
 | Managed QA Runs | Artifact and Decision receipts no longer make QA history or recovery operable. |

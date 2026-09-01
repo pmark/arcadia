@@ -44,7 +44,7 @@ test("canonical dashboard capture completes as a Decision-gated validated planni
 
   await page.goto(`${arcadia.url}/review`);
   await expect(page.getByRole("button", { name: "Accept Plan" })).toBeVisible();
-  await page.getByRole("button", { name: "Accept Plan" }).click();
+  await confirmOutcome(page, "Accept Plan");
   await waitFor(() => planningState(arcadia).finalArtifact?.status === "ready");
   const accepted = planningState(arcadia);
   expect(accepted.action?.status).toBe("done");
@@ -103,14 +103,14 @@ test("Today prepares and completes one existing Daily Advantage Action", async (
   await page.getByRole("link", { name: "Open Review" }).click();
   await expect(page).toHaveURL(/\/review$/);
   await expect(page.getByText(action.raw_input)).toBeVisible();
-  await page.getByRole("button", { name: "Approve & Run" }).click();
+  await confirmOutcome(page, "Approve & Run");
   const run = await waitForRun(arcadia, (row) => row.work_item_id === action.id && row.status === "completed");
   expect(run.mission_log_id).toBeTruthy();
   expect(arcadia.fakeInvocationCount()).toBe(1);
 
   await page.goto(`${arcadia.url}/review`);
   await expect(page.getByRole("button", { name: "Accept Plan" })).toBeVisible();
-  await page.getByRole("button", { name: "Accept Plan" }).click();
+  await confirmOutcome(page, "Accept Plan");
   await waitFor(() => withDatabase(arcadia.root, (db) =>
     (db.prepare("SELECT status FROM work_items WHERE id = ?").get(action.id) as { status: string }).status === "done"
   ));
@@ -310,7 +310,7 @@ test("non-zero planning executor exit remains failed and recoverable", async ({ 
 
   arcadia.setMode("success");
   await page.goto(`${arcadia.url}/review`);
-  await page.getByRole("button", { name: "Approve & Run" }).click();
+  await confirmOutcome(page, "Approve & Run");
   const retry = await waitForRun(arcadia, (row) => row.retry_of_run_id === failed.id && row.status === "completed");
   expect(retry.id).not.toBe(failed.id);
   const after = planningState(arcadia);
@@ -319,6 +319,15 @@ test("non-zero planning executor exit remains failed and recoverable", async ({ 
     (db.prepare("SELECT status FROM execution_runs WHERE id = ?").get(failed.id) as { status: string }).status
   )).toBe("failed");
 });
+
+// The Needs you board's ReviewCard requires a second click that repeats the
+// outcome before it fires (acceptance criterion: consequence preview before
+// confirmation), so every live approve/accept button on /review needs both
+// clicks -- `exact` avoids ambiguity with the "Confirm: <label>" button.
+async function confirmOutcome(page: Page, label: string) {
+  await page.getByRole("button", { name: label, exact: true }).click();
+  await page.getByRole("button", { name: `Confirm: ${label}` }).click();
+}
 
 async function submitAsk(page: Page, arcadia: E2EWorkspace, request: string) {
   await page.goto(`${arcadia.url}/dashboard`);

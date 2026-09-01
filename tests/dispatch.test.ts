@@ -53,7 +53,8 @@ function planDoc(overrides: { currentAction?: string | null; slug?: string; extr
     "status: active",
     "milestone: First milestone",
     "token_impact: medium",
-    "token_budget: One bounded implementation pass; tests are deterministic."
+    "token_budget: One bounded implementation pass; tests are deterministic.",
+    "recommended_model: gpt-5.6-terra"
   ];
   if (overrides.currentAction !== null) {
     lines.push(`current_action: ${overrides.currentAction ?? "ship-it"}`);
@@ -110,6 +111,17 @@ describe("dispatch resolution", () => {
     expect(blocker?.message).toContain("no active_plan");
     // The remedy must name the real candidates, not just describe the problem.
     expect(blocker?.remedy).toContain("main-plan");
+  });
+
+  it("does not dispatch a draft plan merely because it has a current Action", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(root, "docs/plans/main-plan.md", planDoc().replace("status: active", "status: draft"));
+
+    const resolution = resolveDispatch(root, "demo");
+
+    expect(resolution.blockers.some((entry) => entry.field === "status" && entry.message.includes('"draft"'))).toBe(true);
+    expect(isDispatchable(resolution)).toBe(false);
   });
 
   it("reports an active_plan pointing at a plan that does not exist", () => {
@@ -196,6 +208,7 @@ describe("dispatch resolution", () => {
         "status: active",
         "token_impact: small",
         "token_budget: One bounded clarification pass.",
+        "recommended_model: gpt-5.6-terra",
         "current_action: undecided",
         "updated: 2026-07-25",
         "actions:",
@@ -370,7 +383,8 @@ function graphPlanDoc(
     "status: active",
     "milestone: First milestone",
     "token_impact: medium",
-    "token_budget: One bounded implementation pass; tests are deterministic."
+    "token_budget: One bounded implementation pass; tests are deterministic.",
+    "recommended_model: gpt-5.6-terra"
   ];
   if (current !== null) {
     lines.push(`current_action: ${current}`);

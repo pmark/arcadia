@@ -337,6 +337,7 @@ export interface DashboardSnapshot {
     activityEvents: number;
   };
   dailyAdvantage: DashboardDailyAdvantage | null;
+  reviewFocus: DashboardReviewFocus | null;
   agentQueue: AgentQueue;
   projects: DashboardProject[];
   attentionItems: DashboardAttentionItem[];
@@ -349,6 +350,12 @@ export interface DashboardSnapshot {
   backBurnerItems: DashboardBackBurnerItem[];
   recentRuns: DashboardRun[];
   recentArtifacts: DashboardArtifact[];
+}
+
+export interface DashboardReviewFocus {
+  projectOrder: string[];
+  excludedProjects: string[];
+  maxItems: number;
 }
 
 export type PullRequestReadiness =
@@ -388,6 +395,15 @@ export interface DashboardOutstandingPullRequest {
   readiness: PullRequestReadiness;
   readinessLabel: string;
   summary: string;
+  briefing: DashboardPullRequestBriefing | null;
+}
+
+export interface DashboardPullRequestBriefing {
+  changedFiles: string[];
+  unmentionedFiles: string[];
+  decisionFiles: string[];
+  materialFacts: string[];
+  basePullRequest: { number: number; title: string; headBranch: string } | null;
 }
 
 export interface DashboardPullRequestProjectError {
@@ -414,7 +430,7 @@ export interface DashboardOutstandingPullRequests {
   };
 }
 
-export type AgentQueueEntryState = "ready" | "running" | "attention";
+export type AgentQueueEntryState = "ready" | "running" | "flagged" | "attention";
 export type AgentQueueAttentionKind =
   | "document"
   | "repository"
@@ -460,10 +476,12 @@ export interface AgentQueue {
   generatedAt: string;
   ready: AgentQueueEntry[];
   running: AgentQueueEntry[];
+  flagged: AgentQueueEntry[];
   attention: AgentQueueEntry[];
   counts: {
     ready: number;
     running: number;
+    flagged: number;
     attention: number;
   };
 }
@@ -792,6 +810,16 @@ export interface DashboardReviewItem {
   promptPath: string | null;
   finalMessagePath: string | null;
   validationPath: string | null;
+  planningArtifact: {
+    title: string;
+    idea: string;
+    milestone: string | null;
+    proposedActions: string[];
+    tokenImpact: string;
+    tokenBudget: string;
+    repository: string;
+    artifactSha256: string;
+  } | null;
 }
 
 export interface DashboardBackBurnerItem {

@@ -7,9 +7,9 @@ status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: A raw software-project idea becomes governed, dispatchable coding-agent work without a manual planning-to-build handoff
-active_plan: idea-to-managed-build
-current_action: promote-accepted-plan
-updated: 2026-08-25
+active_plan: arcadia-ask-active-sessions
+current_action: make-special-routing-visible
+updated: 2026-08-30
 ---
 
 # Arcadia
@@ -251,6 +251,57 @@ dashboard acceptance control exists for a document-owned `requires_review`
 Action, so that product gap is recorded separately rather than added to the
 completed v1 scope. The pointer has resumed
 `idea-to-managed-build/promote-accepted-plan`.
+
+On 2026-08-27 the operator moved the operator attention board to the front of
+Arcadia's product queue. Decision 0036 promotes the existing blocking-question
+slice into `build-operator-attention-board`: a minimal `Needs you` surface that
+ranks only consequential operator judgment and makes urgency, temporal trigger,
+Outcome and release relevance, what the item unlocks, operator minutes, Token
+Impact, recommendation, evidence, choices, and immediate consequences legible.
+`promote-accepted-plan`, the prepared-plan approval surface, and Ask active
+sessions remain governed work; they are not cancelled, and their post-board
+order must be chosen from evidence rather than inferred from queue position.
+
+The operator attention board is now complete. `Needs you` ranks the active
+operator-only set, gives Decisions typed consequence previews and durable
+transition receipts, and now applies the same explicit handoff contract to
+standalone coding-agent packets and failed or review-required Runs without
+pretending that opening a record or revealing a guarded command changed state.
+The complete 18-test browser suite, 1,088 unit tests, and clean core, Discord,
+and Dashboard builds prove the slice. The pointer returns to
+`idea-to-managed-build/promote-accepted-plan`, because that deterministic
+accepted-plan-to-build promotion remains the direct unresolved seam in the
+current Milestone; the larger plan-reading surface still depends on it.
+
+Dogfood on 2026-08-30 found that an old plan question (R53) was still consuming
+operator attention even though PPN had a different active plan and Codex-owned
+current Action. Needs you now exposes **Reassess** on clarification Decisions:
+the deterministic transition checks the source question against the Project's
+checked-in active plan, withdraws disconnected Decisions without erasing their
+history, and labels questions found in the active plan **Still declared**
+without claiming semantic validity. Those questions can be **Flagged for agent
+review**, which parks them outside Needs you in a dedicated Agent Queue lane
+without starting a Run or granting execution authority.
+
+On 2026-08-29 the operator selected tmux as the first concrete transport for
+Arcadia-managed coding-agent Sessions. This does not displace
+`promote-accepted-plan`: Arcadia must first produce the exact governed build
+Action a Session will execute. The active plan now orders two Session slices
+immediately after that seam: persist and explicitly launch one addressable
+Claude Code Session in Arcadia's existing isolated worktree, then reconcile
+its exit into a thin receipt and the repository's next Action or Decision.
+Only after real dogfood may worker queueing reactivate; notifications wait for
+an observed unnoticed state, and transcript monitoring, prompt injection,
+default-on launch, and session analytics remain deferred against named
+triggers.
+
+On 2026-08-30 the operator approved Decision 0035's sequence amendment: the
+living-system review is resolved, so Ask active sessions now runs before the
+idea-to-managed-build pointer is restored. Decision 0038 is also approved for
+one bounded credential-backed dogfood rehearsal, but that rehearsal remains a
+separate, later Action after the Ask sequence; approval does not claim it has
+run. Decisions 0028 and 0037 were ratified as written, making their follow-up
+implementation and adoption work explicit rather than implicit.
 
 ## Links
 

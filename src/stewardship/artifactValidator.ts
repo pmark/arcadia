@@ -27,6 +27,19 @@ export interface PlanningArtifactValidationResult {
   warnings: PlanningArtifactValidationIssue[];
 }
 
+export interface PlanningPromotionFields {
+  recommendedNextAction: string;
+  smallestFollowUpGoal: string;
+  validationStrategy: string;
+  repositoryImpact: string;
+  approvalRequirements: string;
+}
+
+export interface PlanningReviewFields {
+  title: string;
+  proposedActions: string[];
+}
+
 interface MarkdownSection {
   title: string;
   normalizedTitle: string;
@@ -191,6 +204,66 @@ export function validatePlanningArtifact(input: {
     failures,
     warnings
   };
+}
+
+/**
+ * Extract only the already-required sections used to promote an accepted plan
+ * into its first implementation Action. Validation decides whether the
+ * Artifact is acceptable; this function keeps promotion from growing a second,
+ * subtly different Markdown parser.
+ */
+export function extractPlanningPromotionFields(artifactText: string): PlanningPromotionFields | null {
+  const sections = parseMarkdownSections(artifactText);
+  const recommendedNextAction = extractRecommendedNextAction(sections, artifactText);
+  const smallestFollowUpGoal = extractSmallestFollowUpGoal(sections, artifactText);
+  const validationStrategy = cleanSectionValue(
+    findSection(sections, [/validation strategy/, /verification strategy/, /test strategy/])?.content ?? ""
+  );
+  const repositoryImpact = cleanSectionValue(
+    findSection(sections, [/repository impact/, /repo impact/, /affected (?:files|areas|modules)/])?.content ?? ""
+  );
+  const approvalRequirements = cleanSectionValue(
+    findSection(sections, [/approval requirements?/, /approval needs?/, /^approvals?$/])?.content ?? ""
+  );
+
+  if (
+    !recommendedNextAction ||
+    !smallestFollowUpGoal ||
+    !validationStrategy ||
+    !repositoryImpact ||
+    !approvalRequirements
+  ) {
+    return null;
+  }
+
+  return {
+    recommendedNextAction,
+    smallestFollowUpGoal,
+    validationStrategy,
+    repositoryImpact,
+    approvalRequirements
+  };
+}
+
+/**
+ * Project the validated Markdown Artifact into the small readable slice the
+ * operator needs on the Review page. Validation remains authoritative; this
+ * helper only renders the already-required title and ordered phases.
+ */
+export function extractPlanningReviewFields(artifactText: string): PlanningReviewFields | null {
+  const title = /^#\s+(.+)$/m.exec(artifactText)?.[1]?.trim();
+  const sections = parseMarkdownSections(artifactText);
+  const ordered = findSection(sections, [/ordered phases?/, /implementation phases?/, /proposed actions?/]);
+  if (!title || !ordered) {
+    return null;
+  }
+
+  const proposedActions = ordered.content
+    .split(/\r?\n/)
+    .map((line) => line.match(/^\s*(?:\d+[.)]|[-*+])\s+(.+)$/)?.[1]?.trim() ?? "")
+    .filter(Boolean);
+
+  return proposedActions.length > 0 ? { title, proposedActions } : null;
 }
 
 function derivePlanningArtifactContract(

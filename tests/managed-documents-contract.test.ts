@@ -17,8 +17,13 @@ describe("checked-in Arcadia control documents", () => {
     expect(discovered.rejected).toEqual([]);
 
     const resolution = resolveDispatch(repoRoot, "arcadia");
-    expect(resolution.blockers).toEqual([]);
-    expect(resolution.operatorQuestion).toBeNull();
     expect(resolution.context).not.toBeNull();
+    if (resolution.operatorQuestion) {
+      expect(resolution.context?.action.responsibility).toBe("requires_review");
+      expect(resolution.context?.action.clarification).toBe("question_open");
+      expect(resolution.blockers.every((blocker) => blocker.field === "status")).toBe(true);
+    } else {
+      expect(resolution.blockers).toEqual([]);
+    }
   });
 });

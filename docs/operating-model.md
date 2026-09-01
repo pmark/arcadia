@@ -78,13 +78,16 @@ The second is what makes the next session cheap.
    │   2. arcadia go prepares an isolated         │
    │      worktree, pinned to a model             │
    │                     ↓                        │
-   │   3. The agent works, and records what       │
-   │      it learned as documents alongside       │
-   │      its commits                             │
+   │   3. Arcadia records and launches one        │
+   │      reattachable Session in that worktree   │
    │                     ↓                        │
-   │   4. You review the pull request             │
+   │   4. The agent works and records what it     │
+   │      learned beside its commits              │
    │                     ↓                        │
-   │   5. arcadia go retires the finished         │
+   │   5. Arcadia reconciles the exited Session;  │
+   │      you review its exact Candidate          │
+   │                     ↓                        │
+   │   6. arcadia go retires the finished         │
    │      worktree and resolves what's next ──────┼──┐
    │                                              │  │
    └──────────────────────────────────────────────┘  │
@@ -96,9 +99,10 @@ Step 1 is deliberately singular. Arcadia refuses to dispatch when a repository
 resolves zero or several dispatchable actions, because "what should I work on"
 is exactly the question you do not want an agent guessing at.
 
-Step 4 is deliberately GitHub. Arcadia does not review your diffs — pull
-requests already do that better, and every reviewer already knows how they
-work.
+Step 5 is deliberately evidence-bound and may use GitHub. Arcadia does not
+replace independent QA or your review of a consequential Candidate — it
+connects the exact Session, revision, proof, and resulting Decision. Pull
+requests remain the familiar delivery and review surface.
 
 ## Attention is the scarce resource
 
@@ -201,8 +205,11 @@ would be dishonest to imply otherwise:
 | Discord notifications on run state | Implemented |
 | Local file ingress | Implemented |
 | Natural-language intent (`arcadia ask`) | Implemented |
-| Queued, supervised agent sessions from `go` | **Proposed** (Decision 0012, superseding 0011) |
-| Discord alerting on session attention state | **Proposed** (Decision 0012, superseding 0011) |
+| Accepted planning Artifact to one managed build Action and packet | **Implemented** for the explicit `project prepare` workflow |
+| Thin Session receipt, total project-transition resolver, and opt-in tmux launch from `go` | **Planned next** under approved Decision 0012 |
+| Post-exit Session reconciliation into Action or Decision state | **Planned** after tmux launch dogfood (Decision 0012) |
+| Worker-queued coding-agent Sessions | **Triggered** after one real tmux-backed Session and a second unattended-launch need |
+| Discord alerting on Session completion or attention state | **Triggered** after a real state waits unnoticed or requires manual relay |
 | Cross-project attention view as a live surface | **Partial** — state is computed; the surface is not built |
 | Unified context across repos, ingress, and reports | **Not designed** — open direction, deliberately unscoped |
 

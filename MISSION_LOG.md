@@ -3,10 +3,371 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-25
+updated: 2026-08-31
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-31 — Crystallized the Arcadia Ask product thesis
+
+- **Action:** `arcadia-ask-active-sessions#make-special-routing-visible`
+- **Did:** Recorded `docs/arcadia-ask-product-vision.md` as the durable product
+  lens for Arcadia Ask and linked it from the active plan. It defines the
+  minimal-signaling promise, visible Ingress working session, least-cost
+  Intelligence role, Arcadia Way structure proposal, informed authority
+  contract, and end-to-end traceability requirement.
+- **Result:** "Ask and you shall receive" now has an explicit Arcadia meaning:
+  the operator states what should become true, corrects and authorizes a
+  legible interpretation, and Arcadia carries that intent into governed,
+  evidenced Project progress without making the operator author its machinery
+  by hand. The plan pointer, Action order, and approval boundaries are
+  unchanged.
+- **Next:** Implement the current deterministic Ask-rule Action and judge each
+  later active-session slice against the product thesis.
+- **Blockers:** None for the vision Artifact. Execution remains governed by the
+  active plan and its existing Decisions.
+
+## 2026-08-30 — Made pinned models part of executable plan validity
+
+- **Action:** `idea-to-managed-build#launch-tmux-backed-session`
+- **Did:** Made `recommended_model` required for every active plan, made a
+  non-active plan in the work pointer refuse dispatch, seeded newly generated
+  active plans with the configured Codex default, and updated the active
+  Arcadia plans and Decision 0010. The now-governed current Action pins
+  `gpt-5.6-sol` at high effort.
+- **Result:** A missing model is reported as a control-document repair before
+  `arcadia go` reconciles Git or creates a worktree; it cannot recur as a
+  late handoff refusal. Draft and historical plans remain readable without
+  inventing a model choice.
+- **Next:** Run Arcadia Go from this branch after its change is reviewed and
+  delivered; it will prepare the next Codex worktree against the pinned model.
+- **Blockers:** Delivery still requires the normal commit, push, and pull
+  request authority. No coding-agent process, merge, or deployment started.
+## 2026-08-30 — Added the deterministic PR briefing layer
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Extended the read-only Outstanding PRs surface with deterministic
+  material facts from each PR's changed paths, body, branch relationship, and
+  reported checks: undisclosed paths, managed pointer changes, Decisions,
+  schema or migration edits, outward-facing paths, and open-branch ordering.
+- **Result:** The operator can inspect what is at stake in an open PR without
+  reading every diff first. Detail failure leaves the existing inventory and
+  readiness rating intact; the briefing never approves, merges, comments, or
+  dispatches. Focused pull-request tests and both production builds pass.
+- **Next:** Continue the active Ask routing Action; add a separately scoped
+  implementation Action if the briefing is prioritized for further delivery.
+- **Blockers:** Live browser verification was unavailable on this host; the
+  local target is `http://127.0.0.1:3020/admin/pull-requests`.
+
+## 2026-08-30 — Ratified Decision 0013
+
+- **Did:** Approved the small scheduled pull-request briefing layer over the
+  existing inventory and review-feedback paths, including the material-fact
+  checks named by Decision 0013.
+- **Result:** Decision 0013 is closed with an explicit answer. No briefing
+  implementation Action was created, no pull request was inspected, and no
+  digest, merge, message, or other external effect occurred.
+- **Next:** Continue with the active Ask routing Action; propose a separately
+  scoped implementation Action for the briefing when that work is prioritized.
+- **Blockers:** None from the Decision menu; the briefing remains unbuilt by
+  deliberate scope control.
+
+## 2026-08-30 — Ratified four governed Decisions
+
+- **Did:** Recorded the operator's selections: approved one bounded real
+  Claude Code Session rehearsal (0038), activated Ask active sessions before
+  restoring idea-to-managed-build (0035), accepted the proposed PPN capability
+  reconciliation (0028), and adopted governed Decision documents as the
+  project-to-Arcadia signal channel (0037). Moved the Project pointer to
+  `arcadia-ask-active-sessions#make-special-routing-visible` and made the
+  approved Session Action ready for its later rehearsal.
+- **Result:** Four Decisions are closed with explicit answers and dates. The
+  0038 credential authorization remains unused until its one rehearsal is
+  deliberately started; no PPN edits or promoted capability implementation
+  occurred. The next governed Action is the Ask routing slice.
+- **Next:** Implement `arcadia-ask-active-sessions#make-special-routing-visible`
+  after the remaining open Decision menu pass, then return to the approved
+  Session rehearsal in its declared sequence.
+- **Blockers:** Decision 0013 remains open for the next operator menu pass.
+
+## 2026-08-30 — Made every open Decision findable by its governed number
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Added a simple Needs you search across focused, parked,
+  lower-priority, and historical items; projected the governed numeric id from
+  document-backed Decisions; and displayed the Decision number on the detail
+  card, compact queue rows, and excluded rows.
+- **Result:** A synchronized Decision such as 0038 is findable by `0038`, its
+  question, recommendation, or Project even when review focus excludes it.
+  Database-native Decisions keep their existing `R…` number. Focused tests,
+  both TypeScript builds, and the production Dashboard build pass. The live
+  browser surface was unavailable on this host, so no visual-runtime result is
+  claimed.
+- **Next:** Answer Decision 0038 and the remaining open governed Decisions.
+- **Blockers:** The app's native multiple-choice picker failed before rendering
+  in this session; the same bounded choices must be collected through the
+  documented text fallback unless the picker becomes available.
+
+## 2026-08-30 — Built the governed tmux Session launch boundary
+
+- **Action:** `idea-to-managed-build#launch-tmux-backed-session`
+- **Did:** Added the thin workspace-owned Session receipt, immutable promoted
+  packet and authority rechecks, one-repository lease, explicit Claude Code
+  `--launch` path through Arcadia-owned worktrees and tmux, read-only Session
+  view, and one total Project-transition resolver shared by `go`, bare
+  `advance`, and the Agent Queue. Kept preview and manual launch non-spawning.
+- **Result:** Both TypeScript builds, smoke, and all 1,117 tests pass. Focused
+  fixtures prove launch, planning, operator Decision, repair, wait, and
+  reconciliation behavior; tmux missing/collision/spawn failures; stable
+  identifiers; liveness; exact reattach/resume instructions; stale packet,
+  provider, authority, and base-revision refusal; and cross-repository leases.
+  No real coding-agent process, transcript inspection, credential use, merge,
+  deployment, publication, or messaging occurred.
+- **Next:** Answer Decision 0038. If approved, run exactly one bounded real
+  Claude Code detach/reattach/exit/resume rehearsal and record its evidence.
+- **Blockers:** The remaining empirical dogfood criterion requires configured
+  provider credentials, which Decision 0012 deliberately did not authorize.
+
+## 2026-08-30 — Let the operator reassess stale Needs you questions
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Added **Reassess** to document-backed clarification Decisions on
+  Needs you and the matching `arcadia review reassess <id>` command. The
+  transition checks the source plan, question id, plan status, and Project
+  active-plan pointer before changing attention state. Added **Flag for agent
+  review** and `arcadia review flag-agent <id>` to park still-declared questions
+  in a dedicated Agent Queue lane without launching an agent.
+- **Result:** A disconnected question such as PPN R53 leaves active operator
+  attention while its Decision and reassessment receipt remain preserved in
+  history. A question found in the active plan is labeled **Still declared**,
+  not semantically validated, and can be moved out of operator attention for a
+  later coding-agent assessment. Both actions make zero model calls and start
+  no Run.
+- **Next:** Review the Candidate through its pull request QA plan.
+- **Blockers:** None.
+
+## 2026-08-30 — Focused Needs you on current operator priorities
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Added workspace-configured Review focus, bounded the visible set,
+  moved explicitly parked Projects behind the history control, archived
+  non-current packet and Run attempts after 30 days, collapsed superseded
+  attempts for the same Action, and stopped showing a Run beside its canonical
+  Review Decision. Added a compact page control for choosing primary and
+  secondary Projects and parking distractions, with atomic workspace-backed
+  auto-persistence rather than a Save step or browser-local state.
+- **Result:** The operator workspace now focuses five items in Project order:
+  Private Practice Now first, Arcadia second, with Rebuster parked. The real
+  projection falls from 45 equally competing items to five focused items;
+  every remaining open or historical record stays reachable through one
+  explicit control and no evidence is deleted.
+- **Next:** Use the focused PPN Decisions to remove the next concrete blocker;
+  change the page's Focus control only when the operator changes priorities.
+- **Blockers:** None. This changes presentation and priority only; it grants no
+  execution, merge, deployment, or outbound authority.
+
+## 2026-08-30 — Completed governed prepared-plan decisions on Needs you
+
+- **Action:** `idea-to-managed-build#build-plan-approval-surface`
+- **Did:** Projected each validated planning Artifact into a readable phone-width
+  plan with its original idea, Milestone, ordered proposed Actions, Token Impact
+  and Budget, target repository, and SHA-256 revision. Kept approval on the
+  existing idempotent promotion path, required a named trigger for plan
+  deferral, and replaced generic rejection with feedback-backed Send back.
+- **Result:** Approve prepares the promoted build packet without starting a Run.
+  Defer records its revival condition. Send back preserves the Artifact and
+  returns the planning Action to the Codex queue with the operator's feedback.
+  Every outcome records the judged Artifact id, path, and content hash on the
+  Decision. Focused command and phone-width Playwright coverage pass; a 390px
+  browser check found no horizontal overflow.
+- **Next:** Advance `launch-tmux-backed-session`, using the promoted immutable
+  packet and Decision provenance as the Session boundary.
+- **Blockers:** None. Merge, deployment, release, credentials, spending,
+  production access, and outbound messaging remain separately gated.
+
+## 2026-08-29 — Ratified the thin, packet-bound Session primitive
+
+- **Action:** `idea-to-managed-build#launch-tmux-backed-session`
+- **Did:** Approved Decision 0012 after testing its proposed boundary against
+  Arcadia, Private Practice Now, Rebuster, and the idea-to-new-Project path.
+  Strengthened the answer so a Session is bound to the exact immutable packet,
+  authority set, provider profile, and base revision; one repository has only
+  one prepared or running Session lease by default; and `go`, `advance`, and
+  the Agent Queue consume one exhaustive deterministic transition resolver.
+- **Result:** A Project transition must now produce exactly one of launch,
+  plan, Decision, repair, reconcile, wait, or Milestone completion. Refusing
+  unsafe execution is no longer sufficient if Arcadia cannot also name or
+  prepare the governed step that permits progress. tmux remains only the first
+  reattachable terminal transport, and process success never accepts an Action.
+- **Next:** Complete the current plan-approval surface, then implement the
+  shared transition resolver and packet-bound repository lease as the first
+  part of `launch-tmux-backed-session` before adding tmux process launch.
+- **Blockers:** None in the Session definition. The three empirical provider-UI
+  questions in Decision 0012 remain dogfood checks rather than architecture
+  choices.
+
+## 2026-08-29 — Closed the accepted-plan-to-build handoff
+
+- **Action:** `idea-to-managed-build#promote-accepted-plan`
+- **Did:** Added a deterministic promotion path specifically for software ideas
+  captured through `arcadia project prepare`. Acceptance revalidates the exact
+  planning packet and Artifact, extracts the already-required smallest useful
+  follow-up goal, marks the planning Action done, writes one clarified current
+  Codex Action into the authoritative plan, syncs it, and prepares one immutable
+  build packet without starting a Run.
+- **Result:** The receipt preserves the source idea, planning Artifact,
+  Validation result, acceptance Decision, repository, selected build profile,
+  packet hash, and exact explicit build trigger. Re-acceptance is idempotent;
+  changed output fails closed; and a persistence failure restores both managed
+  pointers. Focused promotion, project preparation, and legacy planning
+  acceptance tests pass.
+- **Next:** Build `build-plan-approval-surface`, now that its promotion
+  dependency and the Needs you board are both complete. The tmux-backed Session
+  slice follows the same prepared build packet after Decision 0012 is resolved.
+- **Blockers:** Decision 0012 still gates tmux Session implementation. It does
+  not block the current plan-approval surface Action.
+
+## 2026-08-29 — Ordered tmux-backed Sessions into the managed-build path
+
+- **Action:** `idea-to-managed-build#promote-accepted-plan`
+- **Did:** Refined the open Session primitive Decision around a direct tmux
+  transport and added two bounded Actions to the active plan: explicitly launch
+  one thin recorded Session in Arcadia's existing isolated worktree, then
+  reconcile its exit into the resulting Log, Decisions, Artifacts, Candidate,
+  and next governed state without reading the transcript. Updated the
+  orchestration vision and operating model to show where this fits. This is
+  operator-directed follow-on planning, not claimed implementation progress on
+  the current Action.
+- **Result:** The dependency order is explicit: accepted-plan promotion first;
+  tmux launch and reattachment second; post-exit reconciliation third; the
+  phone plan-approval surface can then join that execution path before the full
+  Candidate-and-QA loop. Decision 0012 remains open and gates both Session
+  Actions, so planning does not silently authorize implementation.
+- **Deferred:** Worker queueing reactivates after one real tmux-backed Session
+  succeeds and a second Action needs unattended launch. Notifications
+  reactivate when a completed or needs-input Session waits unnoticed or must
+  be manually relayed. Analytics reactivate only when enough thin receipts
+  exist to change planning or provider choice. Transcript capture, prompt
+  injection, live progress, default-on launch, and a new supervisor are out of
+  scope.
+- **Next:** Complete `promote-accepted-plan`; then ask the operator to resolve
+  Decision 0012 before dispatching `launch-tmux-backed-session`.
+- **Blockers:** None for the current Action. The planned Session Actions are
+  intentionally gated by open Decision 0012.
+
+## 2026-08-29 — Completed the Needs you operator attention board
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Extended the board's two-step consequence preview and receipt to
+  standalone `codex_packet` and `run` items. Packet commands are no longer
+  presented as if displaying a command granted authority: confirmation states
+  that it records no Decision and starts no Run, then leaves the exact guarded
+  command. Run handoffs state that they neither retry nor resolve the Run, then
+  link to its durable detail record. Both item kinds now show the dominant
+  ranking reasons when selected. Updated the normal-use guide and added focused
+  browser tests that prove each confirmation leaves the underlying packet or
+  failed Run unchanged.
+- **Result:** `pnpm build`, `pnpm dashboard:build`, all 1,088 unit tests, and
+  all 18 Playwright tests pass. The Action's acceptance criteria are met and it
+  is `done`; `PROJECT.md` now points to `promote-accepted-plan`.
+- **Deferred:** A reverse dependency-graph walk could make significance more
+  precise than the current expected-Artifact unlock. Build it when an active
+  attention item has at least two downstream dependent Actions whose relative
+  ranking would change; until that trigger fires, the visible expected Artifact
+  is the cheaper and truthful 80/20 measure.
+- **Next:** Promote an accepted validated planning Artifact into the smallest
+  governed build Action and immutable build packet without starting a Run.
+- **Blockers:** None.
+
+## 2026-08-28 — Closed the Needs you board's UI test-coverage gap
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Added `tests/e2e/needs-you-board.spec.ts`, five focused Playwright
+  tests exercising the confirm/consequence-preview/receipt flow this
+  Action's acceptance criteria named: the empty state, a consequence preview
+  that can be cancelled before it fires, a confirmed outcome (Reject) leaving
+  a receipt naming the Decision and transition, a defer refused without a
+  trigger and persisted with one, and confirmation that the dashboard's own
+  older quick-defer lane still works untriggered. Also fixed the ranking
+  regression the last entry's CI run surfaced: a resolvable Decision was
+  losing to the failed run's own "blocked" status flag on score alone.
+- **Result:** All 16 e2e tests (11 existing + 5 new) and the full 1088-test
+  unit suite pass locally with the monorepo and dashboard both built. The
+  approve-and-execute path still has no inline receipt by design -- it
+  navigates straight to the started Run's own detail page, which is that
+  path's existing durable record, already covered by
+  `tests/e2e/mission-control.spec.ts`.
+- **Next:** `codex_packet`/`run`-kind attention items still render via the
+  older generic `AttentionCard` without the confirm/receipt treatment; their
+  current actions are link/command-only rather than live approve buttons, so
+  this remains a live but lower-priority gap. Downstream-dependency-based
+  significance is still approximated by `expectedArtifact` presence.
+- **Blockers:** None.
+
+## 2026-08-28 — Built the Needs you board's ranking and typed confirmation
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Still open — this is a partial slice. Added a pure ranking module (`apps/dashboard/lib/needs-you.ts`) that
+  turns the existing attention-item feed into one dominant item plus a ranked
+  queue, with visible urgency/relevance/significance/attention-cost reasons
+  per item, and excludes deterministic `blocked_work` repairs from the active
+  board with a stated reason. Rebuilt the `/review` route as the `Needs you`
+  board on top of it and renamed the nav entry. Extended `ReviewCard` with a
+  two-step confirm: every outcome now previews its consequence and the
+  confirm control repeats the outcome, with a durable receipt shown after.
+  Made Decision-defer require a named trigger end to end (API refusal, CLI
+  `--trigger` flag, persisted into the Decision's own record) without
+  touching Discord or dogfood's existing untriggered defer paths.
+- **Result:** The core ranking/exclusion logic is real and unit-tested (5
+  passing tests), the board renders and typechecks cleanly, and all 115
+  existing review/CLI/dogfood/adapter tests still pass unmodified. Not done:
+  focused tests for the UI's typed responses, consequence preview, receipt,
+  and empty/failure states named in the acceptance criteria; codex_packet and
+  run-kind attention items still render via the older generic `AttentionCard`
+  without the new confirm/receipt treatment (their current actions are
+  link/command-only, not live approve buttons, so this is a smaller gap than
+  it sounds); and downstream-dependency-based "significance" is approximated
+  by `expectedArtifact` presence rather than a real dependency graph walk.
+- **Also judged:** The operator's proposal-signal folded-in scope (surfacing
+  unresolved `type: proposal` `ask` signals on this same board) is out of
+  scope for this Action. Decision 0025 explicitly reserves proposal
+  ingestion/surfacing to `accept-upstream-proposals` on `way-delivery`
+  (`status: draft`, not dispatchable), and this Action's own clarification is
+  anchored to Decisions 0034/0036, which describe the Review-queue-to-board
+  seam, not a new document signal taxonomy. Widening it here would exceed a
+  clarified Action's scope without its own Decision. Recommend ratifying
+  `way-delivery`'s planning status (or a new Decision) before that work
+  starts; PPN's filed proposals (0001, 0003, 0004) remain visible today via
+  `docs sync`'s existing foreign-document report, just not yet on this board.
+- **Next:** Either continue this Action with UI-level test coverage for the
+  confirm/receipt flow, or take the proposal-signal work through its own
+  Decision/clarification before folding it in.
+- **Blockers:** None for continuing this Action. The folded-in proposal-signal
+  scope is blocked on a Decision, not on missing information.
+
+## 2026-08-27 — Put the operator attention board first
+
+- **Action:** `idea-to-managed-build#build-operator-attention-board`
+- **Did:** Recorded Decision 0036 from explicit operator direction, promoted
+  the existing blocking-question Review slice into the broader 80/20 `Needs
+  you` board, and moved the Project pointer ahead of
+  `promote-accepted-plan`. The clarified Action now requires one dominant
+  operator-only item, a short ranked queue, visible urgency and temporal
+  trigger, Outcome and release relevance, unlock significance, operator-minute
+  and Token Impact estimates, recommendation and evidence, outcome-specific
+  choices, consequence preview, and a durable state-transition receipt.
+- **Result:** The attention board is now Arcadia's sole current Action and is
+  dispatchable. Accepted-plan promotion, prepared-plan approval, Ask active
+  sessions, and the remaining queue are preserved. Custom scoring, analytics,
+  drag-and-drop, Kanban views, and general workflow abstractions remain outside
+  the first slice.
+- **Next:** Reuse the current Review projection and shared dispatch-readiness
+  resolver to build and test the minimal phone-reachable `Needs you` board,
+  updating `START_HERE.md` with the changed operator flow.
+- **Blockers:** None. The operator authorized this documentation-only priority
+  change and its local integration. It does not start an implementation Run or
+  authorize push, deployment, publication, credentials, spending, production
+  access, or outbound messaging.
 
 ## 2026-08-25 — Planned guided Arcadia Ask sessions from real Songbook friction
 

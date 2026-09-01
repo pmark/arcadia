@@ -58,6 +58,7 @@ function planDoc(): string {
     "milestone: Queue milestone",
     "token_impact: medium",
     "token_budget: One bounded implementation pass; validation is deterministic.",
+    "recommended_model: gpt-5.6-terra",
     "current_action: ship-it",
     "updated: 2026-08-02",
     "actions:",

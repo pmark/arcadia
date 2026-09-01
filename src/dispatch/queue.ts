@@ -3,20 +3,17 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import {
   getProjectMetadata,
+  listAgentReviewFlaggedItems,
   listActionableReviewItems,
   listExecutionRuns,
   listProjects
 } from "../db/repositories.js";
-import {
-  isDispatchable,
-  resolveDispatch,
-  resolveReadySet,
-  type DispatchBlocker
-} from "../docs/dispatch.js";
+import { isDispatchable, resolveReadySet, type DispatchBlocker } from "../docs/dispatch.js";
 import type { ExecutionRunSummary, Project } from "../domain/types.js";
 import { nowIso } from "../utils/time.js";
+import { getSession, resolveProjectTransition } from "../sessions/index.js";
 
-export type AgentQueueEntryState = "ready" | "running" | "attention";
+export type AgentQueueEntryState = "ready" | "running" | "flagged" | "attention";
 
 export type AgentQueueAttentionKind =
   | "document"
@@ -24,6 +21,7 @@ export type AgentQueueAttentionKind =
   | "decision"
   | "packet"
   | "run"
+  | "session"
   | "responsibility";
 
 export interface AgentQueueBlocker {
@@ -63,10 +61,12 @@ export interface AgentQueue {
   generatedAt: string;
   ready: AgentQueueEntry[];
   running: AgentQueueEntry[];
+  flagged: AgentQueueEntry[];
   attention: AgentQueueEntry[];
   counts: {
     ready: number;
     running: number;
+    flagged: number;
     attention: number;
   };
 }
@@ -103,11 +103,12 @@ export function buildAgentQueue(
 ): AgentQueue {
   const ready: AgentQueueEntry[] = [];
   const running: AgentQueueEntry[] = [];
+  const flagged: AgentQueueEntry[] = [];
   const attention: AgentQueueEntry[] = [];
   const generatedAt = (options.now ?? new Date()).toISOString();
 
   for (const project of listProjects(db).filter((candidate) => candidate.status === "active")) {
-    inspectProject(db, project, ready, attention);
+    inspectProject(db, project, ready, running, attention);
   }
 
   const runs = listExecutionRuns(db, options.runLimit ?? 100);
@@ -140,6 +141,34 @@ export function buildAgentQueue(
       status: decision.status,
       reason: decision.decision_needed,
       nextAction: decision.recommendation ?? "Open the Decision and choose the appropriate resolution.",
+      blockers: [],
+      runId: null,
+      decisionId: decision.id,
+      updatedAt: decision.updated_at
+    });
+  }
+
+  for (const decision of listAgentReviewFlaggedItems(db)) {
+    flagged.push({
+      id: `agent-review:${decision.id}`,
+      state: "flagged",
+      attentionKind: "decision",
+      selected: false,
+      projectId: decision.project_id,
+      projectName: decision.project_name,
+      projectSlug: null,
+      repositoryRoot: null,
+      planSlug: null,
+      planPath: null,
+      actionId: decision.work_item_id,
+      actionTitle: decision.work_item_title,
+      responsibility: "codex",
+      expectedArtifact: "Coding-agent applicability assessment",
+      tokenImpact: null,
+      tokenBudget: null,
+      status: "agent_review_flagged",
+      reason: decision.decision_needed,
+      nextAction: "Start a coding-agent applicability review when this question becomes a priority.",
       blockers: [],
       runId: null,
       decisionId: decision.id,
@@ -182,16 +211,19 @@ export function buildAgentQueue(
 
   ready.sort(sortEntries);
   running.sort(sortEntries);
+  flagged.sort(sortEntries);
   attention.sort(sortEntries);
 
   return {
     generatedAt,
     ready,
     running,
+    flagged,
     attention,
     counts: {
       ready: ready.length,
       running: running.length,
+      flagged: flagged.length,
       attention: attention.length
     }
   };
@@ -201,6 +233,7 @@ function inspectProject(
   db: Database.Database,
   project: Project,
   ready: AgentQueueEntry[],
+  running: AgentQueueEntry[],
   attention: AgentQueueEntry[]
 ): void {
   const metadata = getProjectMetadata(db, project.id);
@@ -224,8 +257,40 @@ function inspectProject(
     }
 
     const resolvedRoot = realpathSync(repositoryRoot);
-    const dispatch = resolveDispatch(resolvedRoot, project.slug);
+    const transition = resolveProjectTransition({ repoRoot: resolvedRoot, projectSlug: project.slug, db });
+    const dispatch = transition.dispatch;
     const readySet = resolveReadySet(resolvedRoot, project.slug);
+
+    if (transition.sessionId) {
+      const session = getSession(db, transition.sessionId);
+      const entry: AgentQueueEntry = {
+        id: `session:${transition.sessionId}`,
+        state: transition.kind === "wait" ? "running" : "attention",
+        attentionKind: "session",
+        selected: true,
+        projectId: project.id,
+        projectName: project.name,
+        projectSlug: project.slug,
+        repositoryRoot: resolvedRoot,
+        planSlug: session?.plan_slug ?? dispatch.context?.activePlan ?? null,
+        planPath: session?.plan_path ?? dispatch.context?.planPath ?? null,
+        actionId: session?.action_id ?? dispatch.context?.action.id ?? null,
+        actionTitle: dispatch.context?.action.title ?? null,
+        responsibility: dispatch.context?.action.responsibility ?? "codex",
+        expectedArtifact: dispatch.context?.action.expectedArtifact ?? null,
+        tokenImpact: dispatch.context?.planTokenImpact ?? null,
+        tokenBudget: dispatch.context?.planTokenBudget ?? null,
+        status: session?.status ?? transition.kind,
+        reason: transition.reason,
+        nextAction: transition.nextAction,
+        blockers: [],
+        runId: null,
+        decisionId: null,
+        updatedAt: session?.updated_at ?? project.updated_at
+      };
+      (transition.kind === "wait" ? running : attention).push(entry);
+      return;
+    }
 
     if (readySet.blockers.length > 0) {
       attention.push(documentAttention(
@@ -276,16 +341,8 @@ function inspectProject(
     if (!isDispatchable(dispatch)) {
       const context = dispatch.context;
       const blockers = dispatch.blockers;
-      const reason = dispatch.operatorQuestion
-        ? "The current Action has an open question."
-        : blockers[0]?.message
-          ?? (context
-            ? `Current Action responsibility is ${context.action.responsibility}.`
-            : "The current Action cannot be resolved.");
-      const nextAction = dispatch.operatorQuestion
-        ?? blockers[0]?.remedy
-        ?? context?.action.nextAction
-        ?? "Repair the current Action pointer before dispatching.";
+      const reason = transition.reason;
+      const nextAction = transition.nextAction;
 
       attention.push(documentAttention(
         project,

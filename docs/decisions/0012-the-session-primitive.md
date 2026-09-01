@@ -4,12 +4,16 @@ type: decision
 id: "0012"
 slug: the-session-primitive
 project: arcadia
-status: open
+status: approved
 question: Arcadia models Projects, Plans, Actions, Decisions, Logs, Artifacts, and Runs, but has no first-class record of the thing that actually happens — one bounded stretch of coding-agent work. Should Session become a primitive, and if so, what exactly does Arcadia store about it?
 gap_type: missing-decision
-recommendation: Name Session as a primitive, but make it thin. Both agent CLIs already assign session ids, persist transcripts, and track running state, and Claude Code's session registry already correlates sessions to pull requests. Arcadia should store the governance linkage — which Action was dispatched, which Log and Decisions came back — plus a pointer to the agent's own session id, and delegate the transcript entirely. The record lives in the workspace as operational data; its governance output stays in the project repository. Arcadia records the before and the after and never observes the during.
-confidence: medium
-updated: 2026-08-07
+recommendation: Name Session as a primitive, but make it thin. Arcadia should store the governance linkage, provider session pointer, and terminal transport needed to leave and rejoin the work, while delegating the transcript to the coding agent. Use an explicitly launched tmux session as the first transport around Arcadia's existing isolated worktree; record process liveness and exit status only, then resolve the repository after exit. Arcadia records the before and after and never observes the during.
+confidence: high
+plan: idea-to-managed-build
+action: launch-tmux-backed-session
+decided: 2026-08-29
+answer: "Yes. Session becomes a thin workspace-owned operational primitive for one bounded coding-agent dispatch. It records the exact Project, plan, Action, immutable packet id and hash, authorizing Decisions, provider profile, model, effort, base revision, branch, worktree, provider session pointer, and optional terminal transport before launch; after exit it records only process outcome and links to the resulting Log, Decisions, Artifacts, Candidate, validation, and delivery evidence. Arcadia stores no transcript and observes no semantic progress during execution. arcadia go owns repository-local reconciliation, isolated-worktree preparation, Session persistence, and explicit launch; arcadia advance and its queue consume the same total project-transition resolver, which must produce exactly one of launch, plan, Decision, repair, reconcile, wait, or milestone completion. Only one prepared or running Session may hold a repository lease by default. tmux is the first reattachable transport, not the Session model, and a successful process exit never completes or accepts an Action by itself."
+updated: 2026-08-29
 ---
 
 # Decision 0012: The Session primitive
@@ -83,12 +87,38 @@ governance linkage and a pointer.** The agent's own session id is the join key.
 
 | Phase | Fields |
 | --- | --- |
-| **Before** (what Arcadia dispatched) | project slug, action id, plan path, agent, model, effort, branch, worktree path, prepared-at |
-| **Join** (how to find the transcript) | the agent's own session id or name |
-| **After** (what came back) | ended-at, outcome, the Log entry it produced, any Decisions it opened, the pull request if one exists |
+| **Before** (what Arcadia dispatched) | project slug, plan path, action id, immutable packet id and hash, authorizing Decision ids, provider profile, agent, model, effort, base revision, branch, worktree path, prepared-at |
+| **Join** (how to return to the work) | the agent's own session id and name; optional terminal transport and tmux session name |
+| **After** (what came back) | ended-at, process outcome, the Log entry it produced, any Decisions it opened, resulting Artifacts and Candidate revision, validation evidence, and delivery or pull-request evidence when they exist |
 
 The before-fields are exactly what `arcadia go` already computes and discards.
 This decision is, in large part, "stop throwing that away."
+
+The packet and authority fields close a second loss of identity: a Session must
+execute the exact prepared work, not merely launch an agent in the right
+directory and ask it to reinterpret the Action. A stale packet, changed Action,
+provider-profile mismatch, or changed authority set refuses before process
+creation.
+
+### 2a. One repository lease and one total transition
+
+Only one Session in `prepared` or `running` state may hold a repository lease by
+default. Cross-repository work is decomposed into linked Actions and Sessions,
+one repository each; concurrency across repositories may be admitted later,
+but concurrency inside one repository requires a separate explicit design.
+
+`arcadia go` and `arcadia advance` must call one deterministic project-transition
+resolver rather than grow parallel readiness rules. For any observed Project
+state it produces exactly one result:
+
+`launch | plan | decision | repair | reconcile | wait | complete_milestone`
+
+Launching is only one successful form of advancement. When implementation is
+not authorized or not yet shaped, applying the transition prepares the exact
+planning Artifact and Decision, records the one operator Decision, identifies
+the deterministic repository repair, waits on named acceptance or delivery
+evidence, or closes the Milestone and requires its next plan. It never launches
+an agent to improvise across a missing plan or Decision.
 
 ### 3. Before and after, never during
 
@@ -137,6 +167,12 @@ dispatchable Action, the session needs the operator. The agent did not get
 stuck — it recorded a question as a document and stopped, which is the correct
 behavior.
 
+A terminal Session outcome describes the agent process, not the governed
+Action. `completed` never marks an Action done, accepts a Candidate, advances a
+managed pointer, merges, deploys, publishes, spends, uses credentials, accesses
+production, or sends a message. Those transitions continue to require their
+declared Artifact, Validation, delivery evidence, and Decisions.
+
 ### 7. Relationship to ExecutionRun — both are kept
 
 | | ExecutionRun | Session |
@@ -162,11 +198,65 @@ operator uses), **Handoff** (names only the before).
 Adopting their vocabulary keeps the join obvious and avoids a translation layer
 between what Arcadia calls a thing and what the operator sees in their app.
 
+### 9. tmux is the first transport, not the Session model
+
+The first implementation hosts an interactive Claude Code process in a named
+tmux session. tmux solves one narrow operator problem well: the terminal can be
+left and reattached without losing the exact interactive agent interface. It
+does not become the queue, transcript store, governance record, or source of
+semantic progress.
+
+Arcadia wraps tmux around the isolated worktree and launch command it already
+prepared. It does not use Claude Code's native `--tmux` path because that path
+requires Claude Code's `--worktree` mode and would give two systems overlapping
+authority for branch creation, base selection, worktree placement, and cleanup.
+Arcadia keeps those safety-sensitive responsibilities under Decisions 0009 and
+0010, while Claude Code continues to own its conversation and transcript.
+
+The first launch is opt-in and explicit. Before starting it, Arcadia persists a
+stable Claude Code session id and display name plus a collision-resistant tmux
+name. During execution Arcadia may ask only whether the named process is alive.
+After exit it may record the exit status and re-run deterministic repository
+resolution. It must not call `capture-pane`, mirror output, infer progress,
+detect prompts, or send keystrokes.
+
+tmux persistence ends with the host or tmux server. Arcadia therefore treats it
+as a reattachable local terminal, not durable job execution. The workspace
+Session receipt remains the durable operational linkage, and Git plus managed
+documents remain the recovery and governance authorities.
+
+### 10. Implementation order
+
+The implementation sequence follows the existing idea-to-managed-build plan:
+
+1. Finish accepted-plan promotion so one exact governed build Action and packet
+   exist.
+2. Put one total project-transition resolver beneath `go`, `advance`, and the
+   Agent Queue; bind its launch result to the exact packet and one repository
+   Session lease.
+3. Persist and explicitly launch one tmux-backed Session, then dogfood detach,
+   reattach, exit, and provider-native resume.
+4. Reconcile exit into a thin receipt and the repository's resulting Action or
+   Decision without reading the transcript.
+5. Use those receipts in the Agent Queue and Needs you projections.
+6. Reconsider opt-in worker queueing only after one real Session succeeds and
+   the operator chooses unattended launch for another Action.
+7. Add notifications only after a real completion or needs-input state waits
+   unnoticed or must be relayed manually.
+
+This sequence implements the operator-value core before the expensive tail.
+Transcript views, prompt injection, live progress, session analytics, default-on
+queueing, and a new supervisor remain out of scope.
+
 ## Consequences
 
 - `arcadia go --apply --agent <x>` records a Session instead of discarding what
   it computed. Decision 0011's queue becomes one consumer of this primitive
   rather than the reason it exists.
+- `arcadia advance` becomes the portfolio-facing consumer of the same
+  transition result, while `arcadia advance --session <id>` (or an equivalent
+  exact bootstrap) gives the launched agent the immutable packet rather than a
+  free-form request to reinterpret Project state.
 - "Where does this need me?" becomes answerable across projects from recorded
   Sessions plus computed dispatch state, without a parallel queue to keep in
   sync.
@@ -181,7 +271,7 @@ between what Arcadia calls a thing and what the operator sees in their app.
   concept under different names, and leaving it unnamed means each of them
   invents it again slightly differently.
 
-## Open questions
+## Implementation questions that do not block this Decision
 
 1. **Does an Arcadia-launched session appear in the Claude and ChatGPT desktop
    and mobile apps?** Investigation confirms CLI sessions are persisted, named,
@@ -190,12 +280,10 @@ between what Arcadia calls a thing and what the operator sees in their app.
    worktree is an empirical question this decision cannot answer by reading
    code. It should be tested with one real dispatch before the pointer design
    is relied upon.
-2. Should `-n/--name` be set from the Action id so sessions are recognizable in
-   the agent's own session picker without cross-referencing Arcadia?
-3. When a session is resumed or forked in the agent's UI rather than through
+2. When a session is resumed or forked in the agent's UI rather than through
    Arcadia, does Arcadia learn about it, or does the Session record simply
    describe the dispatch that started the chain?
-4. The four mistyped specification documents remain typed `reference`. Is
+3. The four mistyped specification documents remain typed `reference`. Is
    "an approved specification that governs later work" a missing document type,
    separate from this decision? It is related but not solved here.
 

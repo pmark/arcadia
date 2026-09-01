@@ -62,7 +62,14 @@ import {
   runAttentionCommand,
   runDashboardSnapshotCommand
 } from "./commands/dashboard.js";
-import { renderAdvanceQueueSuccess, runAdvanceQueueCommand } from "./commands/advance.js";
+import {
+  renderAdvanceQueueSuccess,
+  renderAdvanceSuccess,
+  renderSessionShowSuccess,
+  runAdvanceCommand,
+  runAdvanceQueueCommand,
+  runSessionShowCommand
+} from "./commands/advance.js";
 import {
   renderDogfoodAskSuccess,
   renderDogfoodInitSuccess,
@@ -144,11 +151,15 @@ import {
   renderReviewDecisionSuccess,
   renderReviewResolveReplySuccess,
   renderReviewOpenSuccess,
+  renderReviewFlagAgentSuccess,
+  renderReviewReassessSuccess,
   renderReviewShowSuccess,
   renderReviewWeeklySuccess,
   runReviewApproveCommand,
   runReviewDeferCommand,
   runReviewOpenCommand,
+  runReviewFlagAgentCommand,
+  runReviewReassessCommand,
   runReviewRejectCommand,
   runReviewResolveReplyCommand,
   runReviewRequiredCommand,
@@ -1076,7 +1087,15 @@ export function buildProgram(): Command {
     runCliAction("attention", options, () => runAttentionCommand(options), renderAttentionSuccess)
   );
 
-  const advance = program.command("advance").description("Inspect the coding-agent advance queue");
+  const advance = addJsonOption(
+    program.command("advance")
+      .description("Resolve the one governed Project transition")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--repo <path>", "Project repository", resolveInvocationPath, invocationRoot())
+      .option("--session <id>", "Open the immutable packet for one launched Session")
+  ).action((options: { workspace: string; repo: string; session?: string; json?: boolean }) =>
+    runCliAction("advance", options, () => runAdvanceCommand(options), renderAdvanceSuccess)
+  );
   addJsonOption(
     advance
       .command("queue")
@@ -1084,6 +1103,15 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("advance.queue", options, () => runAdvanceQueueCommand(options), renderAdvanceQueueSuccess)
+  );
+
+  const session = program.command("session").description("Inspect thin coding-agent Session receipts");
+  addJsonOption(
+    session.command("show [id]")
+      .description("Show one Session, process liveness, and exact reattach command")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((id: string | undefined, options: { workspace: string; json?: boolean }) =>
+    runCliAction("session.show", options, () => runSessionShowCommand({ workspace: options.workspace, id }), renderSessionShowSuccess)
   );
 
   const decision = program.command("decision").description("Create and update checked-in Decision documents");
@@ -2246,6 +2274,34 @@ export function buildProgram(): Command {
   );
   addJsonOption(
     review
+      .command("reassess")
+      .description("Recheck a plan question against the Project's current governed state")
+      .argument("<id>", "Requires Review Decision id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((id: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "review.reassess",
+      reviewOptionsFromArgv(options),
+      () => runReviewReassessCommand({ ...reviewOptionsFromArgv(options), id }),
+      renderReviewReassessSuccess
+    )
+  );
+  addJsonOption(
+    review
+      .command("flag-agent")
+      .description("Park a plan question for later coding-agent review without starting a Run")
+      .argument("<id>", "Requires Review Decision id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((id: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "review.flag-agent",
+      reviewOptionsFromArgv(options),
+      () => runReviewFlagAgentCommand({ ...reviewOptionsFromArgv(options), id }),
+      renderReviewFlagAgentSuccess
+    )
+  );
+  addJsonOption(
+    review
       .command("approve")
       .description("Approve a Requires Review item and continue the intended Arcadia workflow")
       .argument("<id>", "Requires Review item id")
@@ -2267,12 +2323,13 @@ export function buildProgram(): Command {
       .command("reject")
       .description("Reject a Requires Review item without executing it")
       .argument("<id>", "Requires Review item id")
+      .option("--feedback <text>", "Required feedback when sending a prepared plan back for refinement")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((id: string, options: { workspace: string; json?: boolean }) =>
+  ).action((id: string, options: { workspace: string; feedback?: string; json?: boolean }) =>
     runCliAction(
       "review.reject",
       reviewOptionsFromArgv(options),
-      () => runReviewRejectCommand({ ...reviewOptionsFromArgv(options), id }),
+      () => runReviewRejectCommand({ ...reviewOptionsFromArgv(options), id, feedback: options.feedback }),
       renderReviewDecisionSuccess
     )
   );
@@ -2281,12 +2338,13 @@ export function buildProgram(): Command {
       .command("defer")
       .description("Keep a Requires Review item open for future review")
       .argument("<id>", "Requires Review item id")
+      .option("--trigger <text>", "Trigger condition that will bring this Decision back for review")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((id: string, options: { workspace: string; json?: boolean }) =>
+  ).action((id: string, options: { workspace: string; trigger?: string; json?: boolean }) =>
     runCliAction(
       "review.defer",
       reviewOptionsFromArgv(options),
-      () => runReviewDeferCommand({ ...reviewOptionsFromArgv(options), id }),
+      () => runReviewDeferCommand({ ...reviewOptionsFromArgv(options), id, trigger: options.trigger }),
       renderReviewDecisionSuccess
     )
   );
@@ -2590,7 +2648,9 @@ export function buildProgram(): Command {
       .option("--apply", "Fast-forward and retire the source worktree; without it nothing is changed")
       .option("--model <model>", "Override the plan's recommended_model for the next agent session")
       .option("--effort <level>", "Override the plan's recommended_reasoning_effort for the next agent session")
-  ).action((options: { repo?: string; source?: string; agent?: string; apply?: boolean; model?: string; effort?: string; json?: boolean }) =>
+      .option("--workspace <path>", "Workspace path used for the Session receipt", defaultWorkspace())
+      .option("--launch", "Explicitly launch Claude Code in a detached tmux Session")
+  ).action((options: { repo?: string; source?: string; agent?: string; apply?: boolean; model?: string; effort?: string; workspace?: string; launch?: boolean; json?: boolean }) =>
     runCliAction("go", options, () => {
       if (options.agent !== undefined && options.agent !== "codex" && options.agent !== "claude") {
         throw validationError("--agent must be codex or claude.", { agent: options.agent });

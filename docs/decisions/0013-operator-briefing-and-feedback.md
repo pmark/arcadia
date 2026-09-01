@@ -4,12 +4,14 @@ type: decision
 id: "0013"
 slug: operator-briefing-and-feedback
 project: arcadia
-status: open
+status: approved
 question: The operator has to read every open pull request across every managed Project to learn what is actually at stake in them. Should Arcadia produce that briefing itself, and capture the operator's response to it as governed feedback?
 gap_type: missing-decision
 recommendation: Yes, but build almost none of it. Operator directed on 2026-08-09 that it run scheduled alongside the digests, which makes a model-free deterministic path binding rather than optional. `work pull-requests` already inventories open pull requests across monitored Projects, and `review`/`feedback` already capture an operator verdict with a note. Neither reads what a pull request contains. Add one interpretation layer over the existing inventory — undisclosed content, forced merge order, control-document pointer moves, schema migrations, approval-boundary crossings, and open Decisions that collide — and route the operator's answer into the review-feedback path that already exists. One connection and one new read view, not a new subsystem.
 confidence: medium
-updated: 2026-08-09
+answer: Build the small scheduled briefing layer over the existing pull-request inventory and review-feedback paths, covering undisclosed content, merge order, pointer moves, schema changes, approval-boundary crossings, and colliding open Decisions.
+decided: 2026-08-30
+updated: 2026-08-30
 ---
 
 # Decision 0013: The operator briefing, and taking the operator's answer back
@@ -232,3 +234,9 @@ Two properties keep it from becoming the friction the operator does not want:
   view rather than two.
 - Pull request bodies become reliably complete, which would retire the
   undisclosed-content check rather than keep paying for it.
+
+## Resolution
+
+Approved on 2026-08-30. This ratifies the direction and scope only; it does
+not create an implementation Action, schedule a digest, inspect a pull
+request, merge, message, or cross any other approval boundary.

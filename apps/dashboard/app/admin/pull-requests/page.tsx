@@ -124,6 +124,7 @@ function PullRequestCard({ pullRequest }: { pullRequest: DashboardOutstandingPul
             <Detail label="Checks" value={checkCounts} />
             <div className="sm:col-span-2"><Detail label="Readiness" value={pullRequest.summary} /></div>
           </dl>
+          <PullRequestBriefing briefing={pullRequest.briefing} />
           <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted">
             {pullRequest.isDraft ? <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" aria-hidden="true" /> Draft</span> : null}
             {pullRequest.readiness === "merge_ready" ? <span className="inline-flex items-center gap-1 text-moss"><GitMerge className="h-3.5 w-3.5" aria-hidden="true" /> Approved and merge-ready</span> : null}
@@ -132,6 +133,34 @@ function PullRequestCard({ pullRequest }: { pullRequest: DashboardOutstandingPul
         </div>
       </div>
     </article>
+  );
+}
+
+function PullRequestBriefing({ briefing }: { briefing: DashboardOutstandingPullRequest["briefing"] }) {
+  return (
+    <section className="mt-4 rounded-md border border-steel/20 bg-steel/5 p-3" aria-label="Pull-request briefing">
+      <h4 className="text-xs font-semibold uppercase tracking-wide text-steel">Briefing</h4>
+      {briefing ? (
+        <>
+          <ul className="mt-2 grid gap-1 text-sm leading-5 text-ink">
+            {briefing.materialFacts.map((fact) => <li key={fact}>• {fact}</li>)}
+          </ul>
+          {briefing.unmentionedFiles.length > 0 ? (
+            <p className="mt-2 text-xs text-muted">Unmentioned paths: {briefing.unmentionedFiles.join(", ")}</p>
+          ) : null}
+          {briefing.changedFiles.length > 0 ? (
+            <details className="mt-2 text-xs text-muted">
+              <summary className="cursor-pointer font-semibold">Changed paths ({briefing.changedFiles.length})</summary>
+              <ul className="mt-1 grid gap-1 break-all pl-4">
+                {briefing.changedFiles.map((file) => <li key={file}>{file}</li>)}
+              </ul>
+            </details>
+          ) : null}
+        </>
+      ) : (
+        <p className="mt-1 text-xs leading-5 text-muted">Material facts are unavailable; the pull-request inventory remains visible.</p>
+      )}
+    </section>
   );
 }
 
@@ -176,4 +205,3 @@ function errorMessage(body: unknown, fallback: string): string {
   if (!body || typeof body !== "object") return fallback;
   return "error" in body && typeof body.error === "string" ? body.error : fallback;
 }
-

@@ -214,7 +214,10 @@ Lower a cloud limit to match provider/account quotas. Raise a local limit only
 after verifying RAM/VRAM headroom and backend support for simultaneous work.
 These are execution limits, not route-selection weights, retries, or fallback
 rules. The health endpoint exposes configured, active, and waiting counts for
-each pool.
+each pool. Its route list includes a LiteLLM-backed semantic route only when
+the configured alias is also present in the proxy's authenticated model
+inventory; dedicated Codex, Claude Code, and ComfyUI routes do not depend on
+that inventory.
 
 ### Example: this repo's current local LiteLLM setup
 

@@ -3,13 +3,14 @@ arcadia: v1
 type: plan
 slug: arcadia-ask-active-sessions
 project: arcadia
-status: draft
+status: active
 milestone: Every Arcadia Ask becomes a visible, corrigible working session that preserves text, links, and files, explains special processing, and commits only the operator-approved destinations and triggers
 token_impact: large
 token_budget: "Rule matching, URL extraction, attachment receipts, routing precedence, preview/apply, and regression tests are deterministic and make zero model calls. Use one bounded coding-agent implementation pass per Action. Any intent refinement is separately labelled, uses the configured local-preferred route, and never replaces the deterministic extraction or original capture."
 recommended_model: gpt-5.6-sol
 recommended_reasoning_effort: high
-updated: 2026-08-25
+updated: 2026-08-31
+current_action: make-special-routing-visible
 actions:
   - id: make-special-routing-visible
     title: Make deterministic special routing explicit and inspectable
@@ -143,14 +144,18 @@ actions:
       - docs/operator-demo-and-release-contract.md
       - START_HERE.md
     depends_on: [make-ask-rules-easy-to-manage]
-questions:
-  - id: ask-active-session-activation
-    question: "Should Arcadia resolve the current living-system v1 review and then activate `arcadia-ask-active-sessions` before restoring `idea-to-managed-build/promote-accepted-plan`, as recommended by Decision 0035?"
-    gap_type: missing-decision
 decisions: ["0035"]
 ---
 
 # Arcadia Ask active sessions
+
+## Product thesis
+
+This plan implements the durable product promise captured in
+[`docs/arcadia-ask-product-vision.md`](../arcadia-ask-product-vision.md): the
+operator asks for what should become true, Arcadia proposes the machinery and
+authority boundary needed to make it so, and the complete transformation from
+Ingress through governed effects remains visible and traceable.
 
 ## Outcome
 
@@ -203,10 +208,10 @@ replace captured text, route authority, Project pointers, or accepted records.
 ## Activation recommendation
 
 Decision 0032 currently requires accepted living-system dogfood to restore the
-pointer to `idea-to-managed-build/promote-accepted-plan`. This plan does not
-silently break that promise. Decision 0035 recommends resolving the current
-operator review, activating this plan next, and restoring the idea-to-managed-
-build pointer after accepted Songbook dogfood.
+pointer to `idea-to-managed-build/promote-accepted-plan`. Decision 0035 was
+approved on 2026-08-30 and amends that sequence: the living-system review is
+resolved, so this plan is active now and the idea-to-managed-build pointer is
+restored after accepted Songbook dogfood.
 
 That is the soonest clean trigger: it respects the current operator-only review,
 then addresses a repeated core-product failure before another idea depends on

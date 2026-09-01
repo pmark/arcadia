@@ -64,7 +64,55 @@ export function applyMigrations(db: Database.Database): void {
   ensureNarrativeDigestsTable(db);
   ensureNarrativeDigestScopeColumns(db);
   ensureProofTargetChecksTable(db);
+  ensureAgentSessionsTable(db);
   applyCapabilityMigrations(db);
+}
+
+/** Thin operational linkage for one bounded coding-agent dispatch. */
+function ensureAgentSessionsTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_sessions (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      project_slug TEXT NOT NULL,
+      repository_path TEXT NOT NULL,
+      plan_path TEXT NOT NULL,
+      plan_slug TEXT NOT NULL,
+      action_id TEXT NOT NULL,
+      work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+      packet_id TEXT NOT NULL REFERENCES codex_invocations(id) ON DELETE RESTRICT,
+      packet_path TEXT NOT NULL,
+      packet_sha256 TEXT NOT NULL,
+      authorizing_decisions_json TEXT NOT NULL,
+      execution_profile_json TEXT,
+      provider_profile TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      model TEXT NOT NULL,
+      effort TEXT,
+      provider_mapping_id TEXT,
+      provider_binding_id TEXT,
+      base_revision TEXT NOT NULL,
+      branch TEXT NOT NULL,
+      worktree_path TEXT NOT NULL,
+      provider_session_id TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      terminal_transport TEXT NOT NULL CHECK (terminal_transport IN ('tmux')),
+      tmux_session_name TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL CHECK (status IN ('prepared', 'running', 'completed', 'failed', 'needs_input')),
+      prepared_at TEXT NOT NULL,
+      started_at TEXT,
+      ended_at TEXT,
+      exit_status INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_sessions_provider_session
+      ON agent_sessions(provider, provider_session_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_sessions_repository_lease
+      ON agent_sessions(repository_path)
+      WHERE status IN ('prepared', 'running');
+    CREATE INDEX IF NOT EXISTS idx_agent_sessions_project ON agent_sessions(project_id, prepared_at DESC);
+  `);
 }
 
 /**

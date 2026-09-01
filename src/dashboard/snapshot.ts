@@ -1,6 +1,9 @@
 import type Database from "better-sqlite3";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import type { RequiresReviewPacket } from "../commands/review.js";
 import { reviewPacketForReviewItem } from "../commands/review.js";
+import { decisionDisplayId } from "./decisionDisplay.js";
 import type { ArtifactSummary, BackBurnerItemSummary, ExecutionRunSummary, MilestoneSummary } from "../domain/types.js";
 import { listCapabilities } from "../capabilities/registry.js";
 import { listBlogDashboardSites, listBlogReviewItems } from "../capabilities/blogging/repository.js";
@@ -15,6 +18,8 @@ import {
 } from "../capabilities/rebuster/repository.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
 import { summarizeDispatchEvents } from "../docs/journal.js";
+import { parseDoc } from "../docs/parse.js";
+import { parseActionDocRef } from "../docs/types.js";
 import {
   buildStatusReportData,
   getProjectMetadata,
@@ -26,8 +31,11 @@ import {
   listMilestones
 } from "../db/repositories.js";
 import { CODEX_REPO_PATH_REQUIRED_MESSAGE } from "../projects/setup.js";
+import { packetSha256 } from "../execution/planningAuthorization.js";
+import { extractPlanningReviewFields } from "../stewardship/artifactValidator.js";
 import { buildAgentQueue, type AgentQueue } from "../dispatch/queue.js";
 import { selectDailyAdvantage, type DashboardDailyAdvantage } from "./dailyAdvantage.js";
+import { readReviewFocus, type DashboardReviewFocus } from "./reviewFocus.js";
 
 export const MISSING_REPO_PATH_WARNING = CODEX_REPO_PATH_REQUIRED_MESSAGE;
 
@@ -57,6 +65,7 @@ export interface DashboardSnapshot {
     activityEvents: number;
   };
   dailyAdvantage: DashboardDailyAdvantage | null;
+  reviewFocus: DashboardReviewFocus | null;
   agentQueue: AgentQueue;
   projects: DashboardProject[];
   attentionItems: DashboardAttentionItem[];
@@ -314,6 +323,18 @@ export interface DashboardMilestone {
 export interface DashboardReviewItem extends RequiresReviewPacket {
   displayId: string;
   statusLabel: string;
+  planningArtifact: DashboardPlanningArtifact | null;
+}
+
+export interface DashboardPlanningArtifact {
+  title: string;
+  idea: string;
+  milestone: string | null;
+  proposedActions: string[];
+  tokenImpact: string;
+  tokenBudget: string;
+  repository: string;
+  artifactSha256: string;
 }
 
 export interface DashboardBackBurnerItem {
@@ -386,7 +407,8 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
     const rebusterIntegrations = listRebusterIntegrations(db);
     const rebusterEvents = listRebusterEvents(db, 10);
     const rebusterDecisions = listOpenRebusterDecisionEvents(db);
-    const attentionItems = buildAttentionItems(db, reviewItems.map(toDashboardReviewItem), runs);
+    const dashboardReviewItems = reviewItems.map((item) => toDashboardReviewItem(db, options.workspace, item));
+    const attentionItems = buildAttentionItems(db, dashboardReviewItems, runs);
     const agentQueue = buildAgentQueue(db, { runLimit: Math.max(runLimit, 100) });
     const activityEvents = buildActivityEvents(db, 30);
     const backBurnerItems = listBackBurnerItems(db, "all").filter((item) =>
@@ -464,6 +486,7 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
         activityEvents: activityEvents.length
       },
       dailyAdvantage,
+      reviewFocus: readReviewFocus(options.workspace),
       agentQueue,
       projects,
       attentionItems,
@@ -481,7 +504,7 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
       },
       rebuster: toDashboardRebusterSnapshot(db, rebusterIntegrations, rebusterEvents, rebusterDecisions),
       currentMilestones: currentMilestones.map(toDashboardMilestone),
-      requiresReviewItems: reviewItems.map(toDashboardReviewItem),
+      requiresReviewItems: dashboardReviewItems,
       backBurnerItems: backBurnerItems.map(toDashboardBackBurnerItem),
       recentRuns: runs.map(toDashboardRun),
       recentArtifacts: artifacts.slice(0, artifactLimit).map(toDashboardArtifact),
@@ -523,12 +546,66 @@ function toDashboardMilestone(milestone: MilestoneSummary): DashboardMilestone {
   };
 }
 
-function toDashboardReviewItem(item: Parameters<typeof reviewPacketForReviewItem>[0]): DashboardReviewItem {
+function toDashboardReviewItem(
+  db: Database.Database,
+  workspace: string,
+  item: Parameters<typeof reviewPacketForReviewItem>[0]
+): DashboardReviewItem {
   const packet = reviewPacketForReviewItem(item);
   return {
     ...packet,
-    displayId: packet.slug || packet.id,
-    statusLabel: labelStatus(packet.status)
+    displayId: decisionDisplayId(packet),
+    statusLabel: labelStatus(packet.status),
+    planningArtifact: buildPlanningArtifactProjection(db, workspace, item)
+  };
+}
+
+function buildPlanningArtifactProjection(
+  db: Database.Database,
+  workspace: string,
+  item: Parameters<typeof reviewPacketForReviewItem>[0]
+): DashboardPlanningArtifact | null {
+  if (item.resolved_intent !== "CodexPlanningArtifactAcceptance" || !item.work_item_id || !item.artifact_path) {
+    return null;
+  }
+
+  const work = db.prepare(
+    `SELECT wi.doc_ref, pm.repo_path
+     FROM work_items wi
+     LEFT JOIN project_metadata pm ON pm.project_id = wi.project_id
+     WHERE wi.id = ?`
+  ).get(item.work_item_id) as { doc_ref: string | null; repo_path: string | null } | undefined;
+  const parsedRef = work?.doc_ref ? parseActionDocRef(work.doc_ref) : null;
+  if (!work?.repo_path || !parsedRef) {
+    return null;
+  }
+
+  const artifactPath = path.join(workspace, item.artifact_path);
+  const planPath = path.join(work.repo_path, "docs", "plans", `${parsedRef.planSlug}.md`);
+  if (!existsSync(artifactPath) || !existsSync(planPath)) {
+    return null;
+  }
+
+  const artifactText = readFileSync(artifactPath, "utf8");
+  const reviewFields = extractPlanningReviewFields(artifactText);
+  const parsedPlan = parseDoc(
+    path.relative(work.repo_path, planPath),
+    planPath,
+    readFileSync(planPath, "utf8")
+  ).doc;
+  if (!reviewFields || parsedPlan?.type !== "plan") {
+    return null;
+  }
+
+  return {
+    title: reviewFields.title,
+    idea: item.source_input,
+    milestone: parsedPlan.milestone,
+    proposedActions: reviewFields.proposedActions,
+    tokenImpact: parsedPlan.tokenImpact,
+    tokenBudget: parsedPlan.tokenBudget,
+    repository: work.repo_path,
+    artifactSha256: packetSha256(artifactPath)
   };
 }
 
@@ -967,7 +1044,7 @@ function buildAttentionItems(
       relatedArtifactPath: run.artifacts[0]?.path ?? run.mission_log_path,
       finalArtifactPath: run.artifacts.find((artifact) => artifact.artifact_type === "planning_artifact")?.path ?? null,
       validationPath: run.artifacts.find((artifact) => artifact.artifact_type === "planning_artifact_validation")?.path ?? null,
-      relatedReviewId: null,
+      relatedReviewId: run.review_item_id,
       relatedReviewSlug: null,
       relatedDecisionId: null,
       relatedDecisionSlug: null,
