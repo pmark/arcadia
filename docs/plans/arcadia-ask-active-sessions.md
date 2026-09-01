@@ -9,7 +9,7 @@ token_impact: large
 token_budget: "Rule matching, URL extraction, attachment receipts, routing precedence, preview/apply, and regression tests are deterministic and make zero model calls. Use one bounded coding-agent implementation pass per Action. Any intent refinement is separately labelled, uses the configured local-preferred route, and never replaces the deterministic extraction or original capture."
 recommended_model: gpt-5.6-sol
 recommended_reasoning_effort: high
-updated: 2026-08-25
+updated: 2026-08-31
 current_action: make-special-routing-visible
 actions:
   - id: make-special-routing-visible
@@ -148,6 +148,14 @@ decisions: ["0035"]
 ---
 
 # Arcadia Ask active sessions
+
+## Product thesis
+
+This plan implements the durable product promise captured in
+[`docs/arcadia-ask-product-vision.md`](../arcadia-ask-product-vision.md): the
+operator asks for what should become true, Arcadia proposes the machinery and
+authority boundary needed to make it so, and the complete transformation from
+Ingress through governed effects remains visible and traceable.
 
 ## Outcome
 

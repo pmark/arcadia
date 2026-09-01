@@ -3,10 +3,29 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-08-30
+updated: 2026-08-31
 ---
 
 # Mission Log: Arcadia
+
+## 2026-08-31 — Crystallized the Arcadia Ask product thesis
+
+- **Action:** `arcadia-ask-active-sessions#make-special-routing-visible`
+- **Did:** Recorded `docs/arcadia-ask-product-vision.md` as the durable product
+  lens for Arcadia Ask and linked it from the active plan. It defines the
+  minimal-signaling promise, visible Ingress working session, least-cost
+  Intelligence role, Arcadia Way structure proposal, informed authority
+  contract, and end-to-end traceability requirement.
+- **Result:** "Ask and you shall receive" now has an explicit Arcadia meaning:
+  the operator states what should become true, corrects and authorizes a
+  legible interpretation, and Arcadia carries that intent into governed,
+  evidenced Project progress without making the operator author its machinery
+  by hand. The plan pointer, Action order, and approval boundaries are
+  unchanged.
+- **Next:** Implement the current deterministic Ask-rule Action and judge each
+  later active-session slice against the product thesis.
+- **Blockers:** None for the vision Artifact. Execution remains governed by the
+  active plan and its existing Decisions.
 
 ## 2026-08-30 — Made pinned models part of executable plan validity
 
