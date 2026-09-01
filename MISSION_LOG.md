@@ -8,6 +8,47 @@ updated: 2026-09-01
 
 # Mission Log: Arcadia
 
+## 2026-09-01 — Delivered the Agent Ask v1 proposal boundary
+
+- **Action:** `agent-ask-execution-queue#define-agent-ask-management-contract`
+- **Did:** Added strict YAML normalization and natural `auto` fallback through
+  `agent-ask preview`, covering Outcomes, Milestones, Plans, proposals,
+  Decisions, Actions, Artifacts, Logs, and Project updates. Added atomic SQLite
+  capture/proposal receipts, deterministic effects and managed-document
+  transition metadata, exact replay, changed-replay refusal, and CLI guidance
+  for coding agents.
+- **Result:** An agent can now hand Arcadia structured Project-management intent
+  without writing Project truth or entering the future queue. Explicit Projects
+  resolve before capture; agent Decisions remain open; authority claims,
+  malformed strict YAML, unknown fields, and invalid Projects fail before
+  receipt writes. Eight focused scenario groups, the full suite (1,147 passed,
+  6 skipped), and the core/Discord build pass.
+- **Next:** Advance `establish-approved-action-queue` to give every approved
+  Action one explicit portfolio position and select the first pointer-authorized,
+  dispatch-ready item without hiding higher waiting work.
+- **Blockers:** The implementation is stacked on the still-open, green planning
+  PR #138. It performs no Project apply, queue insertion, merge, deployment,
+  publication, credential use, external messaging, or model call.
+
+## 2026-09-01 — Prioritized agent Ask and one execution queue
+
+- **Action:** `agent-ask-execution-queue#define-agent-ask-management-contract`
+- **Did:** Recorded Decision 0039 and a five-Action active plan that gives
+  coding agents a conventional Ask contract, orders every approved canonical
+  Action in one portfolio queue, connects accepted Ask proposals to explicit
+  queue positions, exposes complete reorder and next-work evidence in the
+  Dashboard, and proves the loop through real coding-agent dogfood.
+- **Result:** The Project pointer moves ahead of the unstarted guided Ask UI to
+  `define-agent-ask-management-contract`. “Always knows next” now means the
+  first eligible Action in explicit operator order, with every higher blocked
+  item and reason preserved. The queue is ordering metadata, not a second task
+  model, and agent input can propose but never manufacture operator approval.
+- **Next:** Define and implement the deterministic Agent Ask v1 normalized
+  proposal and exact preview contract before building queue storage or UI.
+- **Blockers:** None. The completed Ask routing and capture work remains
+  accepted. The guided session, rule management, and Songbook dogfood reactivate
+  only after accepted agent-managed queue proof and a new priority Decision.
+
 ## 2026-09-01 — Unified text and file capture receipts
 
 - **Action:** `arcadia-ask-active-sessions#unify-ask-capture-envelope`

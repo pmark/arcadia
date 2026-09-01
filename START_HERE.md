@@ -348,6 +348,50 @@ Routing precedence is explicit `--project`, exact enabled prefix, unambiguous
 reply context, extracted Project reference, then the general intent registry.
 The receipt retains lower-precedence disagreements as ignored candidates.
 
+### Agent Ask v1
+
+A coding agent can hand Project-management intent back to Arcadia without
+authoring managed documents or database rows. The reliable form is strict YAML:
+
+```yaml
+agent_ask: v1
+request_id: agent-example-001
+project: arcadia
+intent: action
+desired_result: Add deterministic validation for Agent Ask envelopes.
+rationale: Agents need a reliable handoff into governed Project work.
+acceptance:
+  - Invalid authority claims are refused before capture.
+  - Exact retries return the original receipt.
+dependencies: []
+requested_authority: propose
+```
+
+Save the envelope to a file and preview it:
+
+```sh
+ARCADIA_SURFACE=claude pnpm arcadia agent-ask preview --file /absolute/path/agent-ask.yaml --workspace "$WORKSPACE" --json
+```
+
+Preview preserves an immutable capture and proposal receipt but performs zero
+Project writes and creates no queue entry. `requested_authority` may be
+`propose` or `apply_if_approved`; an agent cannot claim that work is approved,
+answer its own Decision, or grant execution authority. Exact request-id replay
+returns the first receipt, while changed content under that id is refused.
+
+Plain text is available as a deliberately less precise `auto` fallback and
+requires an explicit request id:
+
+```sh
+ARCADIA_SURFACE=claude pnpm arcadia agent-ask preview \
+  "Make Arcadia explain why one Action is next." \
+  --request-id agent-natural-001 --project arcadia --workspace "$WORKSPACE" --json
+```
+
+The fallback never invents a Project, intent kind, dependency, date, priority,
+or approval. Acceptance and persistence of proposed Project changes belong to
+later governed Actions; this command is the normalized preview boundary.
+
 ## Protect active coding work
 
 The Morning Packet puts **Coding work safety** first whenever an active

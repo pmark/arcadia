@@ -10,10 +10,11 @@ reports, or status updates.
 
 Arcadia turns that interaction into governed progress. It captures the intent,
 associates it with the right Project and Outcome, maintains one legible current
-Action, selects the least-cost configured coding agent that satisfies the work,
-stages independent work safely, gathers deterministic proof, invokes independent
-QA when the evidence is ready, and advances until human authority or judgment is
-actually required.
+execution order over approved Actions, names the first eligible Action and why
+higher items are waiting, selects the least-cost configured coding agent that
+satisfies the work, stages independent work safely, gathers deterministic proof,
+invokes independent QA when the evidence is ready, and advances until human
+authority or judgment is actually required.
 
 When the operator is needed, Arcadia sends one concise, actionable notification
 through Arcadia Now or the configured delivery surface. That notification says
@@ -42,6 +43,7 @@ advances the state after its named conditions are satisfied.
 Operator intent
   -> Capture and clarify
   -> Project / Outcome / Milestone / Action
+  -> Accept and explicitly position Actions in the execution queue
   -> Select and dispatch configured coding agent
   -> Record one thin, reattachable Session
   -> Produce Candidate and deterministic proof
@@ -53,25 +55,25 @@ Operator intent
 ```
 
 At every point Arcadia can answer: what is happening, what evidence exists,
-what is waiting, who or what can advance it, and what the single best next
-Action is.
+what is waiting, the complete operator-owned work order, who or what can advance
+each item, and why one Action is next.
 
 ## Immediate 80/20 boundary
 
-The first of the two remaining local handoffs is now closed: Arcadia promotes
-an accepted planning Artifact into one exact build Action and prepares its
-immutable build packet without starting a Run. The next slice records and
-launches one opt-in Claude Code Session in an Arcadia-owned worktree through
-tmux, lets the operator detach and reattach to the native interface, and
-reconciles the repository only after the agent process exits. It does not build
-a general workflow engine, transcript viewer, live-progress monitor, or
-autonomous software factory.
+Decision 0039 makes the agent-to-Arcadia management seam the current 80/20
+boundary. First, a coding agent submits one conventional Ask that Arcadia can
+normalize into exact proposed Project records without granting the agent
+approval. Next, every accepted Action receives an explicit position and the
+first dispatch-eligible item becomes Arcadia's explainable next work. Only then
+does the Dashboard add direct reorder controls and the full ordered projection.
+This sequence does not build a general workflow engine, autonomous priority
+model, transcript viewer, or autonomous software factory.
 
 ## Triggered increments
 
 | Deferred increment | Reactivate when |
 | --- | --- |
-| Worker-queued coding-agent Sessions | One real tmux-backed Session completes successfully and the operator chooses unattended launch for a second governed Action. |
+| Unattended worker execution of coding-agent Sessions | One real tmux-backed Session completes successfully and the operator chooses unattended launch for a second governed Action. |
 | Session completion and needs-input notifications | A completed or needs-input Session waits unnoticed, or its state must be manually relayed to the operator. |
 | Session analytics and duration estimates | Enough thin Session receipts exist that aggregate history would change planning, admission, or provider selection. |
 | Automatic QA invocation and Arcadia Now or Discord delivery | A QA-ready Candidate waits unnoticed, or a real review requires the operator to relay the CLI result manually. |
