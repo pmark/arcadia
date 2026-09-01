@@ -10,7 +10,7 @@ token_budget: "Parsing, normalization, validation, queue ordering, readiness, re
 recommended_model: gpt-5.6-sol
 recommended_reasoning_effort: high
 updated: 2026-09-01
-current_action: establish-approved-action-queue
+current_action: connect-agent-ask-to-queue
 actions:
   - id: define-agent-ask-management-contract
     title: Give coding agents a conventional Ask contract for Project management intent
@@ -47,7 +47,7 @@ actions:
     depends_on: []
   - id: establish-approved-action-queue
     title: Put every approved Action in one explicit execution order
-    status: open
+    status: done
     responsibility: codex
     effort: project
     next_action: "Implement the portfolio Action queue as explicit, revisioned ordering metadata over canonical Actions, with deterministic readiness and next-selection projections that preserve blockers and approval boundaries."
@@ -82,17 +82,19 @@ actions:
     expected_artifact: An end-to-end receipt from immutable agent input through accepted Project records to an explicitly positioned executable Action
     clarification: clarified
     confidence: high
-    source: Operator direction on 2026-09-01 and Decision 0039
+    source: Operator direction on 2026-09-01 and Decisions 0039 and 0040
     acceptance_criteria:
       - "A coding agent can Ask for a desired result at any supported granularity and receive one traceable proposal containing the minimal Project structures needed to steward delivery, without manually choosing files, database commands, branches, or record ids."
       - "Acceptance applies the exact previewed revision atomically: managed documents, operational projections, open Decisions, Artifacts, Logs, and queue insertions either agree or the operation reports a recoverable partial failure without claiming completion."
       - "If operator judgment materially changes Project ownership, desired Outcome, acceptance criteria, dependencies, authority, or queue position, Ask creates exactly one focused Decision rather than guessing. Previously approved bounded policy may apply without a new Decision only when the receipt names that policy and proves the request is inside it."
       - "Accepted Actions enter at the explicitly approved position and immediately participate in deterministic next selection. Rejected or corrected proposals preserve the original capture and proposal history but create no executable queue item."
       - "Agent Ask can amend an existing Plan or Action without duplicating it, detects conflicting checked-in revisions, and refuses cross-Project mutation unless the destination Project's governed authority is explicit."
+      - "After an Agent Ask is durably settled, Arcadia sends exactly one retry-safe ping through its configured Discord channel with a brief summary of the Project, disposition, created or changed Project artifacts, Decisions, queue placement, and resulting next eligible Action. Preview, refusal, conflict, and partial persistence send no settlement ping; delivery failure stays visible and retryable without rolling back the settlement or duplicating the message."
       - "Focused integration tests cover new Project-shaped intent, small Action intent, Plan amendment, Decision-only input, multiple resulting Actions, correction before acceptance, rejection, stale preview, approved bounded policy, cross-Project refusal, and exact provenance from Ask to queue."
-    decisions: ["0039"]
+    decisions: ["0039", "0040"]
     references:
       - docs/decisions/0039-prioritize-agent-ask-and-work-queue.md
+      - docs/decisions/0040-notify-discord-when-agent-ask-settles.md
       - src/commands/ask.ts
       - src/commands/review.ts
       - src/docs/sync.ts
@@ -144,7 +146,7 @@ actions:
       - docs/operator-demo-and-release-contract.md
       - START_HERE.md
     depends_on: [build-operator-work-queue-dashboard]
-decisions: ["0039"]
+decisions: ["0039", "0040"]
 ---
 
 # Agent Ask and execution queue

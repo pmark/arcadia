@@ -304,6 +304,22 @@ Every applied mutation returns a receipt; preview and then apply
 order. Request ids are idempotent, stale revisions are refused, and undo is
 refused after the queue has changed again.
 
+Queue order does not override checked-in dispatch truth. To choose a ready
+queued Action that is labelled `waiting_for_pointer`, preview the exact Project
+and active Plan patch, then apply its fingerprint:
+
+```sh
+pnpm arcadia advance queue make-next --action arcadia/example-action \
+  --revision 7 --request-id pointer-20260901-1 --workspace "$WORKSPACE"
+pnpm arcadia advance queue make-next --action arcadia/example-action \
+  --revision 7 --request-id pointer-20260901-1 \
+  --preview <sha256-from-preview> --apply --workspace "$WORKSPACE"
+```
+
+Apply is refused when the queue revision, Git worktree, managed documents, or
+preview fingerprint changed. Arcadia re-resolves dispatch from the edited
+documents before recording the receipt and restores both files on failure.
+
 For software work, use the demo-first handoff contract even while Mission
 Control's richer proof surface is still being built:
 

@@ -67,11 +67,13 @@ import {
 import {
   renderAdvanceQueueSuccess,
   renderAdvanceQueueReorderSuccess,
+  renderAdvanceQueueMakeNextSuccess,
   renderAdvanceSuccess,
   renderSessionShowSuccess,
   runAdvanceCommand,
   runAdvanceQueueCommand,
   runAdvanceQueueArrangeCommand,
+  runAdvanceQueueMakeNextCommand,
   runAdvanceQueueReorderCommand,
   runAdvanceQueueUndoCommand,
   runSessionShowCommand
@@ -1171,6 +1173,37 @@ export function buildProgram(): Command {
       revision: options.revision === undefined ? undefined : Number(options.revision)
     }),
     renderAdvanceQueueReorderSuccess
+  ));
+  addJsonOption(
+    advanceQueue
+      .command("make-next")
+      .description("Preview or apply the governed Project pointer transition for one eligible queued Action")
+      .requiredOption("--action <project/action>", "Explicitly ordered Action key")
+      .requiredOption("--revision <number>", "Expected queue revision")
+      .requiredOption("--request-id <id>", "Idempotency key for this pointer transition")
+      .option("--preview <sha256>", "Exact preview fingerprint required with --apply")
+      .option("--apply", "Apply the exact previewed Project and Plan pointer patch")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: {
+    workspace: string;
+    action: string;
+    revision: string;
+    requestId: string;
+    preview?: string;
+    apply?: boolean;
+    json?: boolean;
+  }) => runCliAction(
+    "advance.queue.make-next",
+    options,
+    () => runAdvanceQueueMakeNextCommand({
+      workspace: options.workspace,
+      actionKey: options.action,
+      revision: Number(options.revision),
+      requestId: options.requestId,
+      previewFingerprint: options.preview,
+      apply: options.apply
+    }),
+    renderAdvanceQueueMakeNextSuccess
   ));
   addJsonOption(
     advanceQueue

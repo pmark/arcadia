@@ -6,11 +6,13 @@ import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
 import { existingDirectory } from "../git/worktrees.js";
 import { buildAgentQueue, type AgentQueue, type AgentQueueEntry } from "../dispatch/queue.js";
 import { arrangeActionOrder, moveActionOrder, undoActionOrder, type ActionOrderReceipt } from "../dispatch/order.js";
+import { transitionActionPointer, type PointerTransitionReceipt } from "../dispatch/pointer.js";
 import { discoverDocs } from "../docs/discover.js";
 import { getLatestSession, getSession, resolveProjectTransition, sessionView, type ProjectTransition } from "../sessions/index.js";
 
 export interface AdvanceQueueCommandData extends AgentQueue {}
 export interface AdvanceQueueReorderData { receipt: ActionOrderReceipt; nextActionKey: string | null; }
+export interface AdvanceQueueMakeNextData { receipt: PointerTransitionReceipt; nextActionKey: string | null; }
 
 interface AdvanceCommandData {
   session: ReturnType<typeof sessionView> | null;
@@ -141,6 +143,66 @@ export function renderAdvanceQueueReorderSuccess(response: CommandSuccess<Advanc
     receipt.applied ? "Action queue order updated." : "Action queue order preview.",
     `Revision: ${receipt.revisionBefore} → ${receipt.revisionAfter}`,
     `Operation: ${renderOrderOperation(receipt)}`,
+    `Next: ${response.data.nextActionKey ?? "none"}`,
+    `Receipt: ${receipt.id}`
+  ];
+}
+
+export function runAdvanceQueueMakeNextCommand(options: {
+  workspace: string;
+  actionKey: string;
+  requestId: string;
+  revision: number;
+  previewFingerprint?: string;
+  apply?: boolean;
+}): CommandSuccess<AdvanceQueueMakeNextData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const result = withDatabase(workspacePath, (db) => {
+    const queue = buildAgentQueue(db);
+    if (queue.revision !== options.revision) {
+      throw validationError("Action queue revision changed; refresh before changing the governed pointer.", {
+        expectedRevision: options.revision,
+        actualRevision: queue.revision
+      });
+    }
+    if (!queue.orderValid) {
+      throw validationError("Action queue order is invalid; position every approved Action before choosing next.", {
+        unpositionedCount: queue.unpositionedCount
+      });
+    }
+    const entry = queue.ordered.find((candidate) => candidate.orderKey === options.actionKey);
+    if (!entry || !entry.projectSlug || !entry.repositoryRoot || !entry.actionId || entry.state !== "ready") {
+      throw validationError("Only an explicitly ordered eligible Action can become the governed pointer.", {
+        actionKey: options.actionKey,
+        state: entry?.state ?? null,
+        reason: entry?.reason ?? null
+      });
+    }
+    const receipt = transitionActionPointer(db, {
+      repoRoot: entry.repositoryRoot,
+      projectSlug: entry.projectSlug,
+      actionId: entry.actionId,
+      actionKey: options.actionKey,
+      queueRevision: options.revision,
+      requestId: options.requestId,
+      previewFingerprint: options.previewFingerprint,
+      apply: options.apply
+    });
+    const appliedQueue = options.apply ? buildAgentQueue(db) : null;
+    const nextActionKey = appliedQueue?.nextActionKey ?? options.actionKey;
+    return { receipt, nextActionKey };
+  });
+  return createSuccess({ command: "advance.queue.make-next", workspace: workspacePath, data: result });
+}
+
+export function renderAdvanceQueueMakeNextSuccess(response: CommandSuccess<AdvanceQueueMakeNextData>): string[] {
+  const receipt = response.data.receipt;
+  return [
+    receipt.applied ? "Governed Project pointer updated." : "Governed Project pointer preview.",
+    `Action: ${receipt.previousAction ?? "none"} → ${receipt.nextAction}`,
+    `Project: ${receipt.projectPath}`,
+    `Plan: ${receipt.planPath}`,
+    `Preview fingerprint: ${receipt.previewFingerprint}`,
     `Next: ${response.data.nextActionKey ?? "none"}`,
     `Receipt: ${receipt.id}`
   ];

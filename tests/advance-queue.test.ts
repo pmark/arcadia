@@ -1,9 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildAgentQueue } from "../src/dispatch/queue.js";
 import { arrangeActionOrder } from "../src/dispatch/order.js";
+import { runAdvanceQueueMakeNextCommand } from "../src/commands/advance.js";
 import { withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -105,6 +107,14 @@ function queueWorkspace(repoRoot: string): string {
     upsertProjectMetadata(db, { projectId: project.id, repoPath: repoRoot });
   });
   return workspace;
+}
+
+function commitFixture(repoRoot: string): void {
+  execFileSync("git", ["init", "-q"], { cwd: repoRoot });
+  execFileSync("git", ["config", "user.email", "queue-test@example.invalid"], { cwd: repoRoot });
+  execFileSync("git", ["config", "user.name", "Queue Test"], { cwd: repoRoot });
+  execFileSync("git", ["add", "PROJECT.md", "docs/plans/queue-plan.md"], { cwd: repoRoot });
+  execFileSync("git", ["commit", "-qm", "Add queue fixture"], { cwd: repoRoot });
 }
 
 describe("Agent Queue", () => {
@@ -234,4 +244,65 @@ describe("Agent Queue", () => {
     expect(inserted.orderValid).toBe(false);
     expect(inserted.nextActionKey).toBeNull();
   });
+
+  it("previews and applies the exact governed pointer transition", () => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", projectDoc());
+    writeDoc(repo, "docs/plans/queue-plan.md", planDoc());
+    commitFixture(repo);
+    const workspace = queueWorkspace(repo);
+    withDatabase(workspace, (db) => arrangeActionOrder(db, {
+      currentKeys: ["demo/migrate", "demo/ship-it"],
+      order: ["demo/migrate", "demo/ship-it"],
+      requestId: "pointer-order",
+      apply: true
+    }));
+
+    const preview = runAdvanceQueueMakeNextCommand({
+      workspace,
+      actionKey: "demo/migrate",
+      requestId: "pointer-1",
+      revision: 1
+    });
+    expect(preview.data.receipt).toMatchObject({
+      applied: false,
+      previousAction: "ship-it",
+      nextAction: "migrate"
+    });
+    expect(() => runAdvanceQueueMakeNextCommand({
+      workspace,
+      actionKey: "demo/migrate",
+      requestId: "pointer-1",
+      revision: 1,
+      apply: true
+    })).toThrow(/does not match the current preview/);
+
+    const applied = runAdvanceQueueMakeNextCommand({
+      workspace,
+      actionKey: "demo/migrate",
+      requestId: "pointer-1",
+      revision: 1,
+      previewFingerprint: preview.data.receipt.previewFingerprint,
+      apply: true
+    });
+    expect(applied.data.nextActionKey).toBe("demo/migrate");
+    expect(applied.data.receipt.applied).toBe(true);
+    expect(projectDoc().includes("current_action: ship-it")).toBe(true);
+    expect(readFile(repo, "PROJECT.md")).toContain("current_action: migrate");
+    expect(readFile(repo, "docs/plans/queue-plan.md")).toContain("current_action: migrate");
+
+    const replay = runAdvanceQueueMakeNextCommand({
+      workspace,
+      actionKey: "demo/migrate",
+      requestId: "pointer-1",
+      revision: 1,
+      previewFingerprint: preview.data.receipt.previewFingerprint,
+      apply: true
+    });
+    expect(replay.data.receipt).toEqual(applied.data.receipt);
+  });
 });
+
+function readFile(root: string, relativePath: string): string {
+  return readFileSync(path.join(root, relativePath), "utf8");
+}

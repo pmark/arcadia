@@ -8,6 +8,45 @@ updated: 2026-09-01
 
 # Mission Log: Arcadia
 
+## 2026-09-01 — Established one explicit approved Action order
+
+- **Action:** `agent-ask-execution-queue#establish-approved-action-queue`
+- **Did:** Added revisioned SQLite ordering metadata over canonical managed
+  Actions; projected every approved unfinished Action with readiness,
+  responsibility, dependency, pointer, and position evidence; and added
+  preview/apply operations for move, complete arrangement, undo, and the exact
+  governed `make-next` Project/Plan pointer transition.
+- **Result:** Queue order never manufactures dispatch authority. Unpositioned
+  work invalidates next selection; blocked and operator/external work remains
+  visible in place; stale revisions and changed idempotency replays fail; done
+  work leaves the active projection while receipts retain history. PR #140
+  delivered the durable order core. The follow-up pointer contract passes eight
+  focused queue tests, the full suite (1,154 passed, 6 skipped), core and Discord
+  builds, Dashboard production build, and package-boundary verification.
+- **Next:** Advance `connect-agent-ask-to-queue`: atomically settle accepted Ask
+  proposals into canonical Project effects and explicit queue positions, then
+  enqueue the Decision 0040 Discord effect summary.
+- **Blockers:** None. One first full arrangement remains an explicit operator
+  choice for any existing workspace whose approved Actions predate queue
+  positions; Arcadia reports that state as invalid rather than inventing
+  priority.
+
+## 2026-09-01 — Authorized Agent Ask settlement pings
+
+- **Action:** `agent-ask-execution-queue#connect-agent-ask-to-queue`
+- **Did:** Recorded Decision 0040 from direct operator instruction and added
+  one configured-channel Discord notification to the Agent Ask settlement
+  acceptance contract.
+- **Result:** A durably settled Ask will produce one retry-safe brief naming its
+  Project, disposition, canonical effects, Decisions, queue placement, and
+  resulting next eligible Action. Preview, refusal, conflict, and partial
+  persistence are explicitly not settlements and send no ping.
+- **Next:** Finish the approved Action queue, then implement settlement and its
+  notification through Arcadia's existing Discord delivery path.
+- **Blockers:** None. Decision 0040 authorizes only the configured settlement
+  ping; it does not authorize arbitrary recipients or any execution, merge,
+  deployment, publication, spending, credential, or production effect.
+
 ## 2026-09-01 — Delivered the Agent Ask v1 proposal boundary
 
 - **Action:** `agent-ask-execution-queue#define-agent-ask-management-contract`
