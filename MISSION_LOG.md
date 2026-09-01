@@ -8,6 +8,26 @@ updated: 2026-09-01
 
 # Mission Log: Arcadia
 
+## 2026-09-01 — Mapped every Agent Ask intent to canonical settlement effects
+
+- **Action:** `agent-ask-execution-queue#connect-agent-ask-to-queue`
+- **Did:** Generalized the fingerprinted settlement transaction across Outcome,
+  Milestone, Plan, Decision, Action amendment, Artifact, Log, proposal, auto,
+  and targeted Project-update intents. Reused managed Project/Plan/Decision/Log
+  documents and the existing Artifact store; ambiguous interpretation and
+  Project updates create one open Decision instead of guessed structure.
+- **Result:** New Plans remain draft and cannot steal the active pointer;
+  Action amendments preserve Responsibility and queue position; every applied
+  disposition still enters the Decision 0040 Discord outbox. Fifty-one focused
+  tests and the full suite (1,158 passed, 6 skipped) pass with clean core and
+  Discord builds.
+- **Next:** Add strict multi-Action proposal settlement, correction and stale
+  amendment conflict proofs, then complete the current Action's end-to-end
+  provenance contract.
+- **Blockers:** None. Untargeted `project_update` intentionally becomes an open
+  Decision because Agent Ask v1 does not carry enough field-level authority to
+  choose a Project mutation safely.
+
 ## 2026-09-01 — Settled Agent Ask Actions into the queue and Discord outbox
 
 - **Action:** `agent-ask-execution-queue#connect-agent-ask-to-queue`

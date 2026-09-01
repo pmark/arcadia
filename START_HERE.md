@@ -427,10 +427,10 @@ ARCADIA_SURFACE=claude pnpm arcadia agent-ask preview \
 The fallback never invents a Project, intent kind, dependency, date, priority,
 or approval.
 
-The first settlement path now accepts a strict new-Action proposal for an
-explicit configured Project. The operator supplies the approved Responsibility
-and queue position, previews the exact managed Plan and portfolio-order effect,
-then applies only that fingerprint:
+Settlement accepts strict proposals for an explicit configured Project. For a
+new Action, the operator supplies the approved Responsibility and queue
+position, previews the exact managed Plan and portfolio-order effect, then
+applies only that fingerprint:
 
 ```sh
 pnpm arcadia agent-ask settle \
@@ -453,9 +453,24 @@ queue placement to preserve the proposal while creating no executable work.
 Every applied accepted or rejected settlement creates one durable Discord
 outbox item. The configured Arcadia Discord bot posts a brief effect summary,
 queue position, and resulting next Action, then records the Discord message id.
-Preview, refusal, conflict, and rollback create no ping. Plan amendments and
-non-Action accepted effects remain proposed until their later settlement slices
-land; rejection is supported for every proposal now.
+Preview, refusal, conflict, and rollback create no ping. Other accepted intents
+use the same receipt path and smallest canonical effect:
+
+- `outcome` updates the Project Outcome; `milestone` updates the Project and
+  active Plan together.
+- `plan` creates a non-active draft Plan, or amends the named Plan Milestone.
+- `action` with `target_ref` amends that Action's next step, acceptance, and
+  explicit dependencies while preserving Responsibility and queue position.
+- `decision` creates one open Decision; `auto` and an untargeted
+  `project_update` also create one open Decision instead of guessing structure.
+- `artifact` creates a planned Project Artifact reference, `log` appends the
+  Project Log, and `proposal` preserves accepted evidence without inventing a
+  parallel Project record.
+- `project_update` currently accepts explicit `target_ref: outcome` (or `goal`)
+  and `target_ref: milestone`; other targets become the focused open Decision
+  above.
+
+Rejection is supported for every proposal and never creates executable work.
 
 ## Protect active coding work
 
