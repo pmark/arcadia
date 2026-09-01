@@ -15,6 +15,8 @@ import {
 } from "../ask/rules.js";
 import { withDatabase } from "../db/connection.js";
 import { normalizeAskInput } from "../intake/normalization.js";
+import { resolveIntake } from "../intake/index.js";
+import { buildIntakeContext, projectIdFromIntake } from "./ask.js";
 
 export interface AskRuleTestOptions {
   workspace: string;
@@ -39,14 +41,23 @@ export function runAskRuleTestCommand(options: AskRuleTestOptions): CommandSucce
     const match = matchAskRule(request, validated);
     const explicit = resolveProjectReference(db, options.project);
     if (options.project && !explicit) throw projectNotFound(options.project);
-    const general = resolveGeneralProjectReference(db, match?.payload ?? request);
+    const processingPayload = match?.payload ?? request;
+    const intake = resolveIntake(processingPayload, buildIntakeContext(db));
+    const extracted = resolveProjectReference(db, projectIdFromIntake(intake) ?? intake.project?.id);
+    const general = resolveGeneralProjectReference(db, processingPayload);
     const routing = buildAskRoutingDecision({
       explicit,
       prefix: match?.rule.destination,
+      extracted,
       general
     });
     const receipt = match
-      ? buildAskProcessingReceipt({ match, routing, originalRequest: request })
+      ? buildAskProcessingReceipt({
+          match,
+          routing,
+          originalRequest: request,
+          extractedFields: intake.extractedFields
+        })
       : null;
     return { validated, receipt };
   });

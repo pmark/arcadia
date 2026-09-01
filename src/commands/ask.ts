@@ -1202,7 +1202,8 @@ export function renderAskSuccess(response: CommandSuccess<AskCommandData>): stri
       `Processing payload: ${receipt.strippedPayload || "(empty)"}`,
       `Processors: ${receipt.orderedProcessors.join(" -> ")}`,
       `Proposed writes: ${receipt.proposedWrites.join("; ") || "None"}`,
-      `Non-actions: ${receipt.nonActions.join("; ") || "None"}`
+      `Non-actions: ${receipt.nonActions.join("; ") || "None"}`,
+      `Rule approval gates: ${receipt.approvalGates.join("; ") || "None"}`
     );
   }
 
@@ -1610,7 +1611,7 @@ function recommendationForIntake(intake: IntakeResult): string {
   return "Review the proposed action before execution.";
 }
 
-function projectIdFromIntake(intake: IntakeResult): string | null {
+export function projectIdFromIntake(intake: IntakeResult): string | null {
   switch (intake.action.kind) {
     case "create_work":
       return intake.action.projectId;

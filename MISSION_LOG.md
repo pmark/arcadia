@@ -20,16 +20,16 @@ updated: 2026-09-01
   from processing, keeps lower-precedence Project candidates visible, and
   reports extracted fields, submitted and canonical link candidates,
   attachments, processors, proposed writes, non-actions, and approval gates.
-  Thirteen focused tests cover exact boundaries, stable output, zero writes,
+  Fifteen focused tests cover exact boundaries, stable output, zero writes,
   explicit Arcadia routing, full precedence, and every required refusal class;
-  existing Ask/CLI regressions, the full suite, TypeScript, and the root build
-  pass.
+  existing Ask/CLI regressions, the 1,143-test full suite, TypeScript, the root
+  build, and the optimized Dashboard build pass.
 - **Next:** Advance `unify-ask-capture-envelope` to converge Dashboard text and
   file ingress on one immutable capture id and receipt.
 - **Blockers:** Delivery is local-only in this session. Decision 0035 does not
   authorize credential use, so pushing the branch and opening its pull request
   remain the exact external handoff; no merge, deployment, publication,
-  credentials, external messaging, or model call occurred.
+  credentials, external messaging, or application model call occurred.
 
 ## 2026-09-01 — Captured Ask ceremony removal and provider-capacity harvesting
 

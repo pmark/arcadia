@@ -74,6 +74,31 @@ describe("Ask rules", () => {
     }))).toEqual(before);
   });
 
+  it("uses the live deterministic intake extractor in the no-write preview", () => {
+    const fixture = initializedRuleWorkspace();
+    const result = runAskRuleTestCommand({
+      workspace: fixture.workspace,
+      request: "songbook Plan Living Songbook repertoire cleanup.",
+      project: "arcadia"
+    });
+
+    expect(result.data.receipt).toMatchObject({
+      destination: { projectId: fixture.arcadiaId, projectName: "Arcadia" },
+      extractedFields: expect.objectContaining({ project: "Living Songbook" }),
+      routing: {
+        selected: { source: "explicit_destination", projectId: fixture.arcadiaId },
+        ignored: expect.arrayContaining([
+          expect.objectContaining({ source: "exact_prefix", projectId: fixture.songbookId }),
+          expect.objectContaining({ source: "extracted_project", projectId: fixture.songbookId })
+        ])
+      }
+    });
+    expect(result.data.preview).toEqual(expect.arrayContaining([
+      expect.stringContaining("Proposed writes:"),
+      expect.stringContaining("Approval gates:")
+    ]));
+  });
+
   it("emits a live receipt when the selector is the whole message", () => {
     const fixture = initializedRuleWorkspace();
     const result = runAskCommand({ workspace: fixture.workspace, request: "songbook" });
@@ -152,7 +177,8 @@ describe("Ask rules", () => {
     ["stale-source", (base: RuleFile) => ({ ...base, rules: [{ ...base.rules[0], sourceRef: "docs/missing.md" }] })],
     ["unknown-Project", (base: RuleFile) => ({ ...base, rules: [{ ...base.rules[0], destinationProject: "missing" }] })],
     ["unknown-processing-profile", (base: RuleFile) => ({ ...base, rules: [{ ...base.rules[0], processingProfile: "missing-v1" }] })],
-    ["unsupported-fields", (base: RuleFile) => ({ ...base, rules: [{ ...base.rules[0], regex: ".*" }] })]
+    ["unsupported-fields", (base: RuleFile) => ({ ...base, rules: [{ ...base.rules[0], regex: ".*" }] })],
+    ["hidden-root-priority", (base: RuleFile) => ({ ...base, priority: ["songbook"] })]
   ])("rejects %s rules before capture writes", (_label, mutate) => {
     const fixture = initializedRuleWorkspace();
     const before = withDatabase(fixture.workspace, (db) => countRows(db, "ask_requests"));

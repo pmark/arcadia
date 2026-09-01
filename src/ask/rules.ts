@@ -11,6 +11,7 @@ import { getWorkspacePaths } from "../workspace/paths.js";
 const RULE_KEYS = new Set([
   "id", "enabled", "prefix", "boundaries", "destinationProject", "processingProfile", "sourceRef", "examples"
 ]);
+const REGISTRY_KEYS = new Set(["version", "rules"]);
 const EXAMPLE_KEYS = new Set(["matches", "misses"]);
 const REQUIRED_BOUNDARIES = ["colon", "whitespace", "end"] as const;
 
@@ -132,6 +133,7 @@ export function validateAskRuleRegistry(
   if (!isRecord(registry) || registry.version !== 1 || !Array.isArray(registry.rules)) {
     throw validationError("Ask rules must use version 1 and include a rules array.", { reason: "unsupported-version" });
   }
+  assertOnlyKeys(registry, REGISTRY_KEYS, "Ask rule registry");
 
   const seenIds = new Set<string>();
   const seenPrefixes = new Set<string>();
@@ -298,10 +300,15 @@ export function buildAskProcessingReceipt(input: {
       matchedText: input.match.matchedText,
       position: 0
     },
-    destination: {
-      projectId: input.match.rule.destination.id,
-      projectName: input.match.rule.destination.name
-    },
+    destination: input.routing.selected
+      ? {
+          projectId: input.routing.selected.projectId,
+          projectName: input.routing.selected.projectName
+        }
+      : {
+          projectId: input.match.rule.destination.id,
+          projectName: input.match.rule.destination.name
+        },
     routing: input.routing,
     originalText: input.originalRequest,
     strippedPayload: input.match.payload,
@@ -327,9 +334,14 @@ export function renderAskProcessingPreview(receipt: AskProcessingReceipt | null)
     `Destination: ${receipt.routing.selected?.projectName ?? receipt.destination.projectName} via ${receipt.routing.selected?.source ?? "exact_prefix"}`,
     `Ignored routes: ${receipt.routing.ignored.map((candidate) => `${candidate.source} -> ${candidate.projectName} (${candidate.reason})`).join("; ") || "None"}`,
     `Processing payload: ${receipt.strippedPayload || "(empty)"}`,
+    `Extracted fields: ${Object.keys(receipt.extractedFields).length > 0 ? JSON.stringify(receipt.extractedFields) : "None"}`,
     `Processors: ${receipt.orderedProcessors.join(" -> ")}`,
-    `Submitted links: ${receipt.submittedLinks.length}`,
-    `Attachments: ${receipt.attachmentInventory.length}`,
+    `Submitted links: ${receipt.submittedLinks.join("; ") || "None"}`,
+    `Canonical link candidates: ${receipt.canonicalLinkCandidates.map((candidate) => candidate.candidate).join("; ") || "None"}`,
+    `Attachments: ${receipt.attachmentInventory.length > 0 ? JSON.stringify(receipt.attachmentInventory) : "None"}`,
+    `Proposed writes: ${receipt.proposedWrites.join("; ") || "None"}`,
+    `Non-actions: ${receipt.nonActions.join("; ") || "None"}`,
+    `Approval gates: ${receipt.approvalGates.join("; ") || "None"}`,
     "Writes: None (test mode)"
   ];
 }
