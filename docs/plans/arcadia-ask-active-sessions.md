@@ -10,7 +10,7 @@ token_budget: "Rule matching, URL extraction, attachment receipts, routing prece
 recommended_model: gpt-5.6-sol
 recommended_reasoning_effort: high
 updated: 2026-09-01
-current_action: unify-ask-capture-envelope
+current_action: build-guided-understanding-session
 actions:
   - id: make-special-routing-visible
     title: Make deterministic special routing explicit and inspectable
@@ -44,7 +44,7 @@ actions:
     depends_on: []
   - id: unify-ask-capture-envelope
     title: Preserve text, links, and attachments as one capture envelope
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: "Converge Dashboard text Ask and file ingress on one immutable capture-envelope contract with URL and attachment receipts plus separately labelled derived content."

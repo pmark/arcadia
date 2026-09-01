@@ -9,6 +9,7 @@ import {
   validateAskRuleRegistry,
   type AskProcessingReceipt
 } from "../ask/rules.js";
+import { captureAskEnvelope, type AskCaptureEnvelope, type CaptureAttachmentInput } from "../ask/captureEnvelope.js";
 import { createCodexPacket, selectAgentProfileForWorkItem } from "../codex/packets.js";
 import { milestoneNotFound, projectNotFound, validationError, workItemNotFound } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
@@ -92,6 +93,9 @@ export interface AskOptions {
   conversationIdentifier?: string;
   replyToMessageIdentifier?: string;
   adapterMetadata?: Record<string, unknown>;
+  requestId?: string;
+  attachments?: CaptureAttachmentInput[];
+  reuseCaptureEnvelope?: boolean;
   executeReview?: boolean;
   reviewExecutor?: string;
   agentProfile?: string;
@@ -103,6 +107,7 @@ export interface AskOptions {
 }
 
 export interface AskCommandData {
+  captureEnvelope: AskCaptureEnvelope;
   ask: AskRequestSummary | null;
   stewardship: GoalStewardshipResult;
   intake: IntakeResult;
@@ -135,6 +140,13 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   const askRules = withDatabase(workspacePath, (db) =>
     validateAskRuleRegistry(workspacePath, db, loadAskRuleRegistry(workspacePath))
   );
+  const captureEnvelope = withDatabase(workspacePath, (db) => captureAskEnvelope(db, {
+    requestId: options.requestId,
+    originalText: options.request,
+    ingressSource: options.sourceIngress?.trim() || "ask",
+    attachments: options.attachments,
+    reuseExisting: options.reuseCaptureEnvelope
+  }));
   const ruleMatch = matchAskRule(submittedRequest, askRules);
   const request = ruleMatch?.payload ?? submittedRequest;
   let processingReceipt: AskProcessingReceipt | null = null;
@@ -158,6 +170,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       workspace: workspacePath,
       data: {
         ...ignored,
+        captureEnvelope,
         processingReceipt,
         result: ruleMatch
           ? { status: "ignored", summary: "Ask rule matched; processing payload is empty." }
@@ -285,6 +298,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        captureEnvelope,
         processingReceipt,
         ask,
         stewardship,
@@ -347,6 +361,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        captureEnvelope,
         processingReceipt,
         ask,
         stewardship,
@@ -391,6 +406,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        captureEnvelope,
         processingReceipt,
         ask,
         stewardship,
@@ -434,6 +450,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        captureEnvelope,
         processingReceipt,
         ask,
         stewardship,
@@ -488,6 +505,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        captureEnvelope,
         processingReceipt,
         ask,
         stewardship,
@@ -548,6 +566,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       intake,
       resolved,
       project,
+      captureEnvelope,
       processingReceipt,
       summary: `Updated ${renderResolvedAttribute(intake)} for ${project.name}.`
     });
@@ -580,6 +599,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        captureEnvelope,
         processingReceipt,
         ask,
         stewardship,
@@ -620,6 +640,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        captureEnvelope,
         processingReceipt,
         ask,
         stewardship,
@@ -677,6 +698,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        captureEnvelope,
         processingReceipt,
         ask,
         stewardship,
@@ -745,6 +767,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        captureEnvelope,
         processingReceipt,
         ask,
         stewardship,
@@ -869,6 +892,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       command: "ask",
       workspace: workspacePath,
       data: {
+        captureEnvelope,
         processingReceipt,
         ask: data.ask,
         stewardship,
@@ -974,6 +998,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     command: "ask",
     workspace: workspacePath,
     data: {
+      captureEnvelope,
       processingReceipt,
       ask: data.ask,
       stewardship,
@@ -1021,6 +1046,7 @@ function actedProjectUpdate(input: {
   intake: IntakeResult;
   resolved: ResolvedIntent;
   project: Project;
+  captureEnvelope: AskCaptureEnvelope;
   processingReceipt: AskProcessingReceipt | null;
   summary: string;
 }): CommandSuccess<AskCommandData> {
@@ -1028,6 +1054,7 @@ function actedProjectUpdate(input: {
     command: "ask",
     workspace: input.workspacePath,
     data: {
+      captureEnvelope: input.captureEnvelope,
       processingReceipt: input.processingReceipt,
       ask: input.ask,
       stewardship: input.stewardship,
@@ -1436,7 +1463,7 @@ function stewardshipJson(stewardship: GoalStewardshipResult): string {
   return JSON.stringify(stewardship);
 }
 
-function ignoredAskData(rawRequest: string): AskCommandData {
+function ignoredAskData(rawRequest: string): Omit<AskCommandData, "captureEnvelope"> {
   const stewardship: GoalStewardshipResult = {
     originalInput: rawRequest,
     interpretedIntent: "Ignore empty input.",

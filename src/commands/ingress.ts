@@ -23,6 +23,7 @@ import { withDatabase } from "../db/connection.js";
 import { createArtifactRecord, createMissionLog, getMilestone, getProject } from "../db/repositories.js";
 import type { AskCommandData, AskOptions } from "./ask.js";
 import { runAskCommand } from "./ask.js";
+import { captureAskEnvelope, findCaptureRequestIdByStorageReferences, type AskCaptureEnvelope } from "../ask/captureEnvelope.js";
 import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../markdown/missionLog.js";
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
@@ -162,6 +163,7 @@ export interface IngressDescribeData {
   selectedFiles: string[];
   attachmentFiles: string[];
   description: string;
+  captureEnvelope?: AskCaptureEnvelope;
 }
 
 export interface IngressCaptureOptions {
@@ -170,6 +172,7 @@ export interface IngressCaptureOptions {
   ingressRoot?: string;
   files: string[];
   description?: string;
+  requestId?: string;
 }
 
 interface IngressDirectories {
@@ -799,7 +802,7 @@ export function runIngressCaptureCommand(options: IngressCaptureOptions): Comman
   mkdirSync(attachmentDirectory, { recursive: true });
   const selectedFiles = files.map((file) => path.basename(file));
   const attachmentFiles = files.map((file, index) => {
-    const destination = path.join(attachmentDirectory, selectedFiles[index]!);
+    const destination = path.join(attachmentDirectory, `${String(index + 1).padStart(3, "0")}-${selectedFiles[index]!}`);
     copyFileSync(file, destination);
     return destination;
   });
@@ -807,16 +810,24 @@ export function runIngressCaptureCommand(options: IngressCaptureOptions): Comman
     .filter((file) => [".txt", ".md", ".markdown"].includes(path.extname(file).toLowerCase()))
     .map((file) => `\n\nCaptured file: ${path.basename(file)}\n\n${readFileSync(file, "utf8")}`)
     .join("");
-  writeFileSync(
-    requestFile,
-    `${description}\n\nCaptured ingress Artifacts:\n${selectedFiles.map((file) => `- ${file}`).join("\n")}${textualContents}\n`,
-    "utf8"
-  );
+  const requestText = `${description}\n\nCaptured ingress Artifacts:\n${selectedFiles.map((file) => `- ${file}`).join("\n")}${textualContents}`;
+  writeFileSync(requestFile, `${requestText}\n`, "utf8");
+  const requestId = options.requestId?.trim() || ingressCaptureRequestId(source, path.basename(requestFile));
+  const captureEnvelope = withDatabase(workspacePath, (db) => captureAskEnvelope(db, {
+    requestId,
+    originalText: options.description?.trim() || "",
+    ingressSource: `ingress:${source}`,
+    attachments: attachmentFiles.map((attachmentPath, index) => ({
+      path: attachmentPath,
+      originalFilename: selectedFiles[index],
+      storageReference: attachmentPath
+    }))
+  }));
 
   return createSuccess({
     command: "ingress.capture",
     workspace: workspacePath,
-    data: { source, root, requestFile, selectedFiles, attachmentFiles, description },
+    data: { source, root, requestFile, selectedFiles, attachmentFiles, description, captureEnvelope },
     artifacts: [requestFile, ...attachmentFiles]
   });
 }
@@ -976,9 +987,19 @@ function processCandidate(input: {
   }
 
   try {
+    const capturedRequestId = withDatabase(workspacePath, (db) =>
+      findCaptureRequestIdByStorageReferences(db, candidate.sharedArtifactPaths)
+    );
     const response = askRunner({
       workspace: workspacePath,
       request,
+      requestId: capturedRequestId ?? ingressCaptureRequestId(source, candidate.fileName),
+      reuseCaptureEnvelope: capturedRequestId !== null,
+      attachments: candidate.sharedArtifactPaths.map((attachmentPath) => ({
+        path: attachmentPath,
+        originalFilename: path.basename(attachmentPath).replace(/^\d{3}-/, ""),
+        storageReference: attachmentPath
+      })),
       runSafe,
       sourceIngress: `ingress:${source}`,
       adapterMetadata: {
@@ -1104,6 +1125,10 @@ function processCandidate(input: {
       failureReason: normalized.message
     };
   }
+}
+
+function ingressCaptureRequestId(source: string, requestFileName: string): string {
+  return `ingress:${source}:${path.parse(requestFileName).name}`;
 }
 
 function processUnclassifiedCandidate(input: {

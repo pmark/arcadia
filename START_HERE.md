@@ -564,8 +564,14 @@ Band-practice `.m4a` files run the configured `/opt/homebrew/bin/rehearsal run
 <absolute-recording-path>` Workflow and publish the extracted MP3 Artifacts to
 the configured Google Drive Desktop folder. Arcadia asks macOS to launch Google
 Drive in the background before starting extraction.
-The **Capture** Ask surface accepts the same arbitrary files with an optional
-instruction and queues them through this identical ingress path.
+The **Capture** Ask surface accepts text, arbitrary files, or both. Every Send
+creates one immutable receipt before routing begins: it names the capture id,
+source, time, submitted URLs, and attachment count. File receipts preserve the
+original filename, byte size, media type, SHA-256, and outside-repository
+storage reference; text extraction and unavailable media processors are shown
+as derived results and never replace the original. Retrying the same submitted
+request id returns the same receipt, while different content under that id is
+refused. File submissions then continue through the identical ingress path.
 
 ### Project continuation
 

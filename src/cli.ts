@@ -600,6 +600,7 @@ export function buildProgram(): Command {
       .option("--milestone <milestone-id>", "Optional milestone id")
       .option("--agent-profile <name>", "Coding agent profile for planning or build packets")
       .option("--source-ingress <source>", "Ingress source for audit trails")
+      .option("--request-id <id>", "Idempotency key for this submitted capture")
       .option("--back-burner", "Shelve this request through the existing Back Burner intake path")
       .option("--source-ref <reference>", "Path, document id, or URL containing the full idea")
       .option("--surface-date <YYYY-MM-DD>", "Resurface on or after this date")
@@ -615,6 +616,7 @@ export function buildProgram(): Command {
     milestone?: string;
     agentProfile?: string;
     sourceIngress?: string;
+    requestId?: string;
     backBurner?: boolean;
     sourceRef?: string;
     surfaceDate?: string;
@@ -1534,12 +1536,14 @@ export function buildProgram(): Command {
       .option("--ingress-root <path>", "ArcadiaIngress root folder")
       .requiredOption("--file <path>", "Local file path; repeat for multiple files", collectValues, [])
       .option("--description <text>", "Optional instruction for the captured files")
+      .option("--request-id <id>", "Idempotency key for this submitted capture")
   ).action((options: {
     workspace: string;
     source?: string;
     ingressRoot?: string;
     file?: string[];
     description?: string;
+    requestId?: string;
     json?: boolean;
   }) => runCliAction(
     "ingress.capture",

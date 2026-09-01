@@ -8,6 +8,28 @@ updated: 2026-09-01
 
 # Mission Log: Arcadia
 
+## 2026-09-01 — Unified text and file capture receipts
+
+- **Action:** `arcadia-ask-active-sessions#unify-ask-capture-envelope`
+- **Did:** Added an atomic, idempotent operational capture envelope shared by
+  Dashboard text Ask and file ingress. It preserves original text and URLs,
+  emits separately labelled Google-wrapper candidates without fetching them,
+  records collision-safe attachment receipts with SHA-256 hashes, and keeps
+  metadata, text extraction, transcription, OCR, and media-analysis derivations
+  distinct from their source attachment. Dashboard submissions now supply one
+  request id and render the same compact receipt for text, files, or both.
+- **Result:** Duplicate and unsafe filenames retain their original names while
+  storage paths remain collision-free; binary or unavailable processing stays
+  visible without losing the original or blocking other inputs; retries return
+  byte-stable receipts and changed retries are refused. Eighteen focused tests,
+  the full suite (1,140 passed, 6 skipped), the core/Discord build, and the
+  optimized Dashboard build pass.
+- **Next:** Advance `build-guided-understanding-session` to make the immutable
+  receipt the start of an editable, corrigible Ask working session.
+- **Blockers:** None for the completed Action. Delivery is through the pull
+  request recorded with this batch; merge, deployment, publication, external
+  messaging, and application model calls remain outside this Action.
+
 ## 2026-09-01 — Made special Ask routing visible and testable
 
 - **Action:** `arcadia-ask-active-sessions#make-special-routing-visible`

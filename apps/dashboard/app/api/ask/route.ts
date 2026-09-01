@@ -6,6 +6,7 @@ export const runtime = "nodejs";
 
 interface AskRequest {
   request?: unknown;
+  requestId?: unknown;
 }
 
 export async function POST(request: Request) {
@@ -17,7 +18,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Ask request is required.", details: null }, { status: 400 });
     }
 
-    const response = await runAsk({ request: text });
+    const response = await runAsk({
+      request: text,
+      requestId: typeof body.requestId === "string" ? body.requestId : undefined
+    });
     return NextResponse.json({
       message: response.data.result.summary,
       result: response.data

@@ -61,6 +61,7 @@ export async function POST(request: Request) {
     if (request.headers.get("content-type")?.toLowerCase().includes("multipart/form-data")) {
       const form = await request.formData();
       const descriptionValue = form.get("description");
+      const requestIdValue = form.get("requestId");
       const description = typeof descriptionValue === "string" ? descriptionValue.trim() : "";
       const uploads = form.getAll("file").filter((value): value is File => value instanceof File && value.size > 0);
       if (uploads.length === 0) {
@@ -68,6 +69,7 @@ export async function POST(request: Request) {
       }
       const response = await captureIngressFiles({
         description: description || undefined,
+        requestId: typeof requestIdValue === "string" ? requestIdValue : undefined,
         files: await Promise.all(uploads.map(async (file) => ({ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) })))
       });
       return NextResponse.json({ message: "Files queued for Arcadia ingress processing.", result: response.data });

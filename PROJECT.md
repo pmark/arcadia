@@ -8,7 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: A raw software-project idea becomes governed, dispatchable coding-agent work without a manual planning-to-build handoff
 active_plan: arcadia-ask-active-sessions
-current_action: unify-ask-capture-envelope
+current_action: build-guided-understanding-session
 updated: 2026-09-01
 ---
 
@@ -324,6 +324,18 @@ the `songbook` boundaries, explicit `--project arcadia` precedence, stable
 normalization, and pre-write rejection of invalid rule state; the full suite
 and build pass. The pointer moves to `unify-ask-capture-envelope` so text,
 links, and attachments share one immutable capture and derivation record.
+
+`unify-ask-capture-envelope` is now `done`. Dashboard text, file-only, and
+combined submissions carry one caller-generated request id into an atomic,
+idempotent capture envelope. The envelope preserves original text and submitted
+URLs, proposes but never follows known Google wrapper targets, hashes every
+attachment, retains duplicate original filenames with collision-free storage,
+and labels metadata, text extraction, transcription, OCR, and media-analysis
+results independently. Both Dashboard paths return the same compact receipt;
+downstream ingress processing reuses the immutable envelope. Eighteen focused
+tests plus the 1,146-test full suite and both production builds pass. The
+pointer moves to `build-guided-understanding-session` to turn that receipt into
+the editable, corrigible operator interaction defined by Decision 0035.
 
 ## Links
 
