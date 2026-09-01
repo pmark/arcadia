@@ -41,6 +41,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureAskRequestStewardshipColumn(db);
   ensureAskCaptureEnvelopeTables(db);
   ensureAgentAskProposalTable(db);
+  ensureAgentAskSettlementTable(db);
   ensureActionQueueOrderTables(db);
   ensureRequiresReviewCompatibility(db);
   ensureOperatorAgnosticSchema(db);
@@ -100,6 +101,21 @@ function ensureAgentAskProposalTable(db: Database.Database): void {
     intent_kind TEXT NOT NULL, project_ref TEXT NOT NULL, proposal_json TEXT NOT NULL,
     created_at TEXT NOT NULL, FOREIGN KEY (capture_id) REFERENCES ask_capture_envelopes(id) ON DELETE CASCADE
   );`);
+}
+
+function ensureAgentAskSettlementTable(db: Database.Database): void {
+  db.exec(`CREATE TABLE IF NOT EXISTS agent_ask_settlements (
+    id TEXT PRIMARY KEY, proposal_id TEXT NOT NULL UNIQUE, request_id TEXT NOT NULL UNIQUE,
+    operation_json TEXT NOT NULL, fingerprint TEXT NOT NULL,
+    disposition TEXT NOT NULL CHECK (disposition IN ('accepted', 'rejected')),
+    project_slug TEXT NOT NULL, effects_json TEXT NOT NULL,
+    queue_action_key TEXT, queue_position INTEGER, next_action_key TEXT,
+    notification_status TEXT NOT NULL CHECK (notification_status IN ('pending', 'sent')) DEFAULT 'pending',
+    discord_message_id TEXT, notified_at TEXT, receipt_json TEXT NOT NULL, created_at TEXT NOT NULL,
+    FOREIGN KEY (proposal_id) REFERENCES agent_ask_proposals(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_agent_ask_settlements_notification
+    ON agent_ask_settlements(notification_status, created_at);`);
 }
 
 function ensureAskCaptureEnvelopeTables(db: Database.Database): void {
