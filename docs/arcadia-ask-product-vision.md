@@ -107,6 +107,34 @@ structure, such as:
 The operator may correct that structure before it becomes durable truth. They
 should not have to know which structure is appropriate in advance.
 
+### Coding agents use the same intent interface
+
+A coding agent collaborating with the operator should not stop at prose or make
+the operator translate its conclusions into Arcadia records. It can submit a
+conventional Agent Ask containing the desired result, likely Project and intent
+kind, acceptance evidence, and known dependencies. Arcadia normalizes that
+input into the same corrigible proposal it would form for an operator.
+
+The convention is optimized for reliable intent extraction, not for granting
+agents special authority. An agent can propose an Outcome, Milestone, Plan,
+Decision, Action, Artifact, Log entry, or Project update; it cannot approve its
+own Decision, claim the operator agreed, or turn imperative attachment content
+into execution authority.
+
+### Accepted work has one explicit order
+
+Every approved Action belongs to one operator-owned portfolio execution order.
+The queue is a projection over canonical Actions, never a parallel task store.
+Blocked and waiting Actions retain their chosen position and show why they are
+not eligible. Arcadia's default next work is the first eligible Action in that
+explicit order, and the operator can rearrange the order directly with a
+reversible receipt instead of editing priorities or reconstructing context.
+
+“Always knows what is next” therefore has a precise meaning: Arcadia names the
+first eligible Action, explains every higher skipped item, or names the one
+concrete condition preventing any selection. It never fills an empty queue with
+invented work or lets a model-derived score silently choose priority.
+
 ## The authority contract
 
 Arcadia's leverage comes from building on foundations it already has: immutable
@@ -147,9 +175,13 @@ effects, and then watch that intent become governed, evidenced Project progress
 without manually translating it into Arcadia's internal machinery.
 
 This thesis is realized incrementally by
-[`docs/plans/arcadia-ask-active-sessions.md`](plans/arcadia-ask-active-sessions.md).
-That plan's Actions are implementation slices of this promise; this document is
-the durable product lens by which the complete feature should be judged.
+[`docs/plans/agent-ask-execution-queue.md`](plans/agent-ask-execution-queue.md).
+The earlier
+[`docs/plans/arcadia-ask-active-sessions.md`](plans/arcadia-ask-active-sessions.md)
+delivered visible routing and unified capture before Decision 0039 superseded
+its unstarted sequence. These plans are implementation slices of the promise;
+this document is the durable product lens by which the complete feature should
+be judged.
 
 ## Spare capacity as a planning resource
 

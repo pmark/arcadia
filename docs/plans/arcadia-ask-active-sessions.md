@@ -3,14 +3,13 @@ arcadia: v1
 type: plan
 slug: arcadia-ask-active-sessions
 project: arcadia
-status: active
+status: superseded
 milestone: Every Arcadia Ask becomes a visible, corrigible working session that preserves text, links, and files, explains special processing, and commits only the operator-approved destinations and triggers
 token_impact: large
 token_budget: "Rule matching, URL extraction, attachment receipts, routing precedence, preview/apply, and regression tests are deterministic and make zero model calls. Use one bounded coding-agent implementation pass per Action. Any intent refinement is separately labelled, uses the configured local-preferred route, and never replaces the deterministic extraction or original capture."
 recommended_model: gpt-5.6-sol
 recommended_reasoning_effort: high
 updated: 2026-09-01
-current_action: build-guided-understanding-session
 actions:
   - id: make-special-routing-visible
     title: Make deterministic special routing explicit and inspectable
@@ -153,6 +152,14 @@ decisions: ["0035"]
 ---
 
 # Arcadia Ask active sessions
+
+## Supersession
+
+Decision 0039 preserves the completed special-routing and capture-envelope
+Actions but supersedes this plan's unstarted sequence with
+`agent-ask-execution-queue`. The guided understanding session, Ask-rule
+management, and Songbook dogfood are not rejected; reconsider their relative
+priority only after accepted `dogfood-agent-managed-queue` proof.
 
 ## Product thesis
 
