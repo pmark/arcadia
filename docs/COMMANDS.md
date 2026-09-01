@@ -944,6 +944,23 @@ declared T-shirt Token Impact and plain-language Token Budget remain visible;
 provider usage limits are still observed by the existing coding-agent
 availability gate and are not treated as unlimited when unknown.
 
+Changing order still does not grant dispatch authority. Promote one eligible
+`waiting_for_pointer` Action through an exact governed pointer transition:
+
+```sh
+pnpm arcadia advance queue make-next --action demo/write-copy \
+  --revision 4 --request-id pointer-1 --workspace "$WORKSPACE"
+pnpm arcadia advance queue make-next --action demo/write-copy \
+  --revision 4 --request-id pointer-1 --preview <sha256> --apply \
+  --workspace "$WORKSPACE"
+```
+
+The preview fingerprints the queue revision, repository HEAD, and before/after
+Project and active Plan contents. Apply requires that exact fingerprint, a
+clean Project worktree, and an eligible Action; after writing both pointer
+fields atomically, Arcadia re-runs the shared dispatch resolver before it
+records the idempotent receipt. Any failure restores both files.
+
 ### Whether the documents are earning their keep
 
 Every resolution — from `next` and from `work plan` alike — is journalled:

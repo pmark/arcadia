@@ -8,7 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Coding agents can Ask Arcadia to create governed Project progress, accepted Actions enter one operator-owned execution order, and Arcadia always explains which eligible Action is next
 active_plan: agent-ask-execution-queue
-current_action: establish-approved-action-queue
+current_action: connect-agent-ask-to-queue
 updated: 2026-09-01
 ---
 
@@ -359,6 +359,29 @@ are refused before contradictory writes. Eight focused scenario groups, the
 1,153-test full suite, and the core/Discord build pass. The pointer moves to
 `establish-approved-action-queue` so accepted work can receive one explicit,
 explainable portfolio order.
+
+`establish-approved-action-queue` is now `done`. The Agent Queue projects every
+approved unfinished Action in each active Project into one revisioned order,
+keeps blocked and responsibility-owned work visible with its reason, refuses an
+unpositioned Action as invalid priority, and selects only the first eligible
+Action whose checked-in Project pointer grants dispatch authority. Operators
+can preview and atomically apply top/before/after moves or complete batch order,
+use optimistic revisions and idempotent request ids, and restore the current
+order from a durable undo receipt. `advance queue make-next` separately previews
+the exact Project and active Plan patch and requires its fingerprint before
+changing governed dispatch truth. The full suite passes 1,154 tests with 6
+skipped; core, Discord, Dashboard production, and package-boundary builds pass.
+The pointer moves to `connect-agent-ask-to-queue` so accepted proposals create
+canonical Project effects, enter this order explicitly, and issue the approved
+Discord settlement ping.
+
+The operator additionally approved Decision 0040 on 2026-09-01: after an Agent
+Ask reaches a durable settled disposition, Arcadia will send one retry-safe ping
+through its configured Discord channel with a brief summary of the Project,
+disposition, canonical effects, Decisions, queue placement, and resulting next
+eligible Action. Previews, refusals, conflicts, and partial persistence do not
+send settlement pings. Delivery failure remains observable and retryable without
+rolling back Project truth or duplicating the notification.
 
 ## Links
 

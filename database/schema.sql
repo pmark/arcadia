@@ -269,6 +269,18 @@ CREATE TABLE IF NOT EXISTS action_queue_receipts (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS action_queue_pointer_receipts (
+  id TEXT PRIMARY KEY,
+  request_id TEXT NOT NULL UNIQUE,
+  action_key TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  queue_revision INTEGER NOT NULL,
+  repo_root TEXT NOT NULL,
+  head_before TEXT NOT NULL,
+  receipt_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS review_items (
   id TEXT PRIMARY KEY,
   slug TEXT UNIQUE,

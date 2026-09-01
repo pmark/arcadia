@@ -217,7 +217,7 @@ export function buildAgentQueue(
   }
 
   const order = loadActionOrder(db);
-  const actionEntries = dedupeActionEntries([...ready, ...running, ...attention]);
+  const actionEntries = dedupeActionEntries([...running, ...ready, ...attention]);
   for (const entry of [...ready, ...running, ...flagged, ...attention]) {
     const orderKey = entry.projectSlug && entry.actionId ? `${entry.projectSlug}/${entry.actionId}` : null;
     entry.orderKey = orderKey;
@@ -313,9 +313,11 @@ function inspectProject(
     const transition = resolveProjectTransition({ repoRoot: resolvedRoot, projectSlug: project.slug, db });
     const dispatch = transition.dispatch;
     const readySet = resolveReadySet(resolvedRoot, project.slug);
+    let activeSessionActionId: string | null = null;
 
     if (transition.sessionId) {
       const session = getSession(db, transition.sessionId);
+      activeSessionActionId = session?.action_id ?? dispatch.context?.action.id ?? null;
       const entry: AgentQueueEntry = {
         id: `session:${transition.sessionId}`,
         state: transition.kind === "wait" ? "running" : "attention",
@@ -327,7 +329,7 @@ function inspectProject(
         repositoryRoot: resolvedRoot,
         planSlug: session?.plan_slug ?? dispatch.context?.activePlan ?? null,
         planPath: session?.plan_path ?? dispatch.context?.planPath ?? null,
-        actionId: session?.action_id ?? dispatch.context?.action.id ?? null,
+        actionId: activeSessionActionId,
         actionTitle: dispatch.context?.action.title ?? null,
         responsibility: dispatch.context?.action.responsibility ?? "codex",
         expectedArtifact: dispatch.context?.action.expectedArtifact ?? null,
@@ -342,7 +344,6 @@ function inspectProject(
         updatedAt: session?.updated_at ?? project.updated_at
       };
       (transition.kind === "wait" ? running : attention).push(entry);
-      return;
     }
 
     if (readySet.blockers.length > 0) {
@@ -359,6 +360,7 @@ function inspectProject(
     }
 
     for (const candidate of readySet.ready) {
+      if (candidate.actionId === activeSessionActionId) continue;
       const action = dispatch.context?.action.id === candidate.actionId
         ? dispatch.context.action
         : null;
@@ -398,7 +400,7 @@ function inspectProject(
     );
     const readyIds = new Set(readySet.ready.map((candidate) => candidate.actionId));
     for (const action of activePlan?.actions.filter((candidate) => candidate.status !== "done") ?? []) {
-      if (readyIds.has(action.id)) continue;
+      if (readyIds.has(action.id) || action.id === activeSessionActionId) continue;
       const readiness = resolveActionReadiness(resolvedRoot, project.slug, action.id);
       const responsibilityReason = action.responsibility === "requires_review"
         ? "Action requires operator review and remains ordered but ineligible."
@@ -446,7 +448,9 @@ function inspectProject(
       const reason = transition.reason;
       const nextAction = transition.nextAction;
 
-      if (!context?.action.id || !attention.some((entry) => entry.projectId === project.id && entry.actionId === context.action.id)) {
+      if (!context?.action.id || ![...running, ...attention].some(
+        (entry) => entry.projectId === project.id && entry.actionId === context.action.id
+      )) {
         attention.push(documentAttention(
           project,
           resolvedRoot,
