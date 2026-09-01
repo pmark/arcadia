@@ -1,13 +1,16 @@
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
+import { validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { withReadOnlyDatabase } from "../db/connection.js";
+import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
 import { existingDirectory } from "../git/worktrees.js";
 import { buildAgentQueue, type AgentQueue, type AgentQueueEntry } from "../dispatch/queue.js";
+import { arrangeActionOrder, moveActionOrder, undoActionOrder, type ActionOrderReceipt } from "../dispatch/order.js";
 import { discoverDocs } from "../docs/discover.js";
 import { getLatestSession, getSession, resolveProjectTransition, sessionView, type ProjectTransition } from "../sessions/index.js";
 
 export interface AdvanceQueueCommandData extends AgentQueue {}
+export interface AdvanceQueueReorderData { receipt: ActionOrderReceipt; nextActionKey: string | null; }
 
 interface AdvanceCommandData {
   session: ReturnType<typeof sessionView> | null;
@@ -84,6 +87,8 @@ export function renderAdvanceQueueSuccess(response: CommandSuccess<AdvanceQueueC
   const queue = response.data;
   return [
     "Arcadia Agent Queue",
+    `Revision: ${queue.revision} · Ordered Actions: ${queue.ordered.length} · Unpositioned: ${queue.unpositionedCount} · Order: ${queue.orderValid ? "valid" : "invalid"}`,
+    `Next: ${queue.nextActionKey ?? "none"}`,
     `Ready: ${queue.counts.ready} · Running: ${queue.counts.running} · Flagged: ${queue.counts.flagged} · Needs attention: ${queue.counts.attention}`,
     "",
     "Ready to feed:",
@@ -98,6 +103,109 @@ export function renderAdvanceQueueSuccess(response: CommandSuccess<AdvanceQueueC
     "Needs attention before dispatch:",
     ...renderEntries(queue.attention, renderAttentionEntry)
   ];
+}
+
+export function runAdvanceQueueReorderCommand(options: {
+  workspace: string;
+  move: string;
+  top?: boolean;
+  before?: string;
+  after?: string;
+  requestId: string;
+  revision?: number;
+  apply?: boolean;
+}): CommandSuccess<AdvanceQueueReorderData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const placements = [options.top ? "top" : null, options.before ? "before" : null, options.after ? "after" : null].filter(Boolean);
+  if (placements.length !== 1) throw validationError("Choose exactly one placement: --top, --before, or --after.");
+  const result = withDatabase(workspacePath, (db) => {
+    const queue = buildAgentQueue(db);
+    const receipt = moveActionOrder(db, {
+      currentKeys: queue.ordered.flatMap((entry) => entry.orderKey ? [entry.orderKey] : []),
+      move: options.move,
+      placement: placements[0] as "top" | "before" | "after",
+      anchor: options.before ?? options.after,
+      requestId: options.requestId,
+      expectedRevision: options.revision,
+      apply: options.apply
+    });
+    const selected = receipt.after.find((key) => queue.ordered.find((entry) => entry.orderKey === key && entry.state === "ready" && entry.pointerAuthorized));
+    return { receipt, nextActionKey: selected ?? null };
+  });
+  return createSuccess({ command: "advance.queue.reorder", workspace: workspacePath, data: result });
+}
+
+export function renderAdvanceQueueReorderSuccess(response: CommandSuccess<AdvanceQueueReorderData>): string[] {
+  const receipt = response.data.receipt;
+  return [
+    receipt.applied ? "Action queue order updated." : "Action queue order preview.",
+    `Revision: ${receipt.revisionBefore} → ${receipt.revisionAfter}`,
+    `Operation: ${renderOrderOperation(receipt)}`,
+    `Next: ${response.data.nextActionKey ?? "none"}`,
+    `Receipt: ${receipt.id}`
+  ];
+}
+
+export function runAdvanceQueueArrangeCommand(options: {
+  workspace: string;
+  order: string[];
+  requestId: string;
+  revision?: number;
+  apply?: boolean;
+}): CommandSuccess<AdvanceQueueReorderData> {
+  return runQueueMutation(options.workspace, "advance.queue.arrange", (db, queue) => arrangeActionOrder(db, {
+    currentKeys: queueKeys(queue),
+    order: options.order,
+    requestId: options.requestId,
+    expectedRevision: options.revision,
+    apply: options.apply
+  }));
+}
+
+export function runAdvanceQueueUndoCommand(options: {
+  workspace: string;
+  receiptId: string;
+  requestId: string;
+  revision?: number;
+  apply?: boolean;
+}): CommandSuccess<AdvanceQueueReorderData> {
+  return runQueueMutation(options.workspace, "advance.queue.undo", (db, queue) => undoActionOrder(db, {
+    currentKeys: queueKeys(queue),
+    receiptId: options.receiptId,
+    requestId: options.requestId,
+    expectedRevision: options.revision,
+    apply: options.apply
+  }));
+}
+
+function runQueueMutation(
+  workspace: string,
+  command: string,
+  mutate: (db: import("better-sqlite3").Database, queue: AgentQueue) => ActionOrderReceipt
+): CommandSuccess<AdvanceQueueReorderData> {
+  const { workspacePath } = resolveReadyWorkspace(workspace);
+  const result = withDatabase(workspacePath, (db) => {
+    const queue = buildAgentQueue(db);
+    const receipt = mutate(db, queue);
+    const nextActionKey = receipt.after.find((key) => queue.ordered.some(
+      (entry) => entry.orderKey === key && entry.state === "ready" && entry.pointerAuthorized
+    )) ?? null;
+    return { receipt, nextActionKey };
+  });
+  return createSuccess({ command, workspace: workspacePath, data: result });
+}
+
+function queueKeys(queue: AgentQueue): string[] {
+  return queue.ordered.flatMap((entry) => entry.orderKey ? [entry.orderKey] : []);
+}
+
+function renderOrderOperation(receipt: ActionOrderReceipt): string {
+  const operation = receipt.operation;
+  if (operation.kind === "move") {
+    return `move ${operation.move} ${operation.placement}${operation.anchor ? ` ${operation.anchor}` : ""}`;
+  }
+  if (operation.kind === "undo") return `undo ${operation.receiptId}`;
+  return `arrange ${operation.order.join(" → ")}`;
 }
 
 function renderFlaggedEntry(entry: AgentQueueEntry): string[] {

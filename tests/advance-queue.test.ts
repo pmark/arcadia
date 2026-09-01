@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildAgentQueue } from "../src/dispatch/queue.js";
+import { arrangeActionOrder } from "../src/dispatch/order.js";
 import { withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -118,7 +119,9 @@ describe("Agent Queue", () => {
     expect(queue.counts.ready).toBe(1);
     expect(queue.ready[0]).toMatchObject({
       actionId: "migrate",
-      selected: true,
+      selected: false,
+      pointerAuthorized: false,
+      reason: expect.stringContaining("waiting_for_pointer"),
       planSlug: "queue-plan",
       tokenImpact: "medium",
       tokenBudget: "One bounded implementation pass; validation is deterministic."
@@ -133,6 +136,10 @@ describe("Agent Queue", () => {
       field: "actions.ship-it.depends_on",
       remedy: expect.stringContaining("migrate")
     });
+    expect(queue.ordered.map((entry) => entry.orderKey)).toEqual(["demo/migrate", "demo/ship-it"]);
+    expect(queue.unpositionedCount).toBe(2);
+    expect(queue.orderValid).toBe(false);
+    expect(queue.nextActionKey).toBeNull();
   });
 
   it("keeps a missing repository path visible as attention", () => {
@@ -158,5 +165,73 @@ describe("Agent Queue", () => {
       attentionKind: "repository",
       reason: "Project repository path is missing or not a directory."
     });
+  });
+
+  it("skips an explicitly higher blocked Action without overriding the checked-in pointer", () => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", projectDoc().replaceAll("current_action: ship-it", "current_action: migrate"));
+    writeDoc(repo, "docs/plans/queue-plan.md", planDoc().replaceAll("current_action: ship-it", "current_action: migrate"));
+    const workspace = queueWorkspace(repo);
+
+    const queue = withDatabase(workspace, (db) => {
+      arrangeActionOrder(db, {
+        currentKeys: ["demo/migrate", "demo/ship-it"],
+        order: ["demo/ship-it", "demo/migrate"],
+        requestId: "blocked-first",
+        apply: true
+      });
+      return buildAgentQueue(db);
+    });
+
+    expect(queue.orderValid).toBe(true);
+    expect(queue.ordered.map((entry) => [entry.orderKey, entry.state])).toEqual([
+      ["demo/ship-it", "attention"],
+      ["demo/migrate", "ready"]
+    ]);
+    expect(queue.nextActionKey).toBe("demo/migrate");
+    expect(queue.ready[0]).toMatchObject({ actionId: "migrate", pointerAuthorized: true });
+  });
+
+  it("removes completed Actions and rejects newly discovered Actions without an explicit position", () => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", projectDoc());
+    writeDoc(repo, "docs/plans/queue-plan.md", planDoc());
+    const workspace = queueWorkspace(repo);
+    withDatabase(workspace, (db) => arrangeActionOrder(db, {
+      currentKeys: ["demo/migrate", "demo/ship-it"],
+      order: ["demo/migrate", "demo/ship-it"],
+      requestId: "initial-order",
+      apply: true
+    }));
+
+    writeDoc(repo, "docs/plans/queue-plan.md", planDoc().replace("    status: open\n    responsibility: codex", "    status: done\n    responsibility: codex"));
+    const completed = withDatabase(workspace, (db) => buildAgentQueue(db));
+    expect(completed.ordered.map((entry) => entry.orderKey)).toEqual(["demo/ship-it"]);
+    expect(completed.orderValid).toBe(true);
+    expect(completed.nextActionKey).toBe("demo/ship-it");
+
+    const withNewAction = planDoc()
+      .replace("    status: open\n    responsibility: codex", "    status: done\n    responsibility: codex")
+      .replace("---\n\n# Queue plan", [
+        "  - id: document-it",
+        "    title: Document the queue",
+        "    status: open",
+        "    responsibility: codex",
+        "    next_action: Write the queue guide.",
+        "    expected_artifact: A queue guide",
+        "    clarification: clarified",
+        "    acceptance_criteria:",
+        "      - The guide exists.",
+        "    depends_on: []",
+        "---",
+        "",
+        "# Queue plan"
+      ].join("\n"));
+    writeDoc(repo, "docs/plans/queue-plan.md", withNewAction);
+    const inserted = withDatabase(workspace, (db) => buildAgentQueue(db));
+    expect(inserted.ordered.map((entry) => entry.orderKey)).toEqual(["demo/ship-it", "demo/document-it"]);
+    expect(inserted.unpositionedCount).toBe(1);
+    expect(inserted.orderValid).toBe(false);
+    expect(inserted.nextActionKey).toBeNull();
   });
 });

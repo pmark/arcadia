@@ -893,29 +893,56 @@ dispatch attempts — with exploratory queries that never dispatched anything.
 ### The Agent Queue
 
 When the operator wants to keep work moving across Projects, `advance queue`
-is the single read-only feeder view. It composes the document-authoritative
-ready set with active Runs, pending coding-agent packets, open Decisions, and
-known repository or dispatch blockers:
+is the single portfolio feeder view. It composes every approved, unfinished
+Action in active Projects with the document-authoritative ready set, active
+Runs, pending coding-agent packets, open Decisions, and known repository or
+dispatch blockers:
 
 ```sh
 pnpm arcadia advance queue --workspace "$WORKSPACE"
 ```
 
-It reports three lanes:
+The response includes an optimistic revision, explicit positions, order
+validity, and `nextActionKey`. It reports four lanes:
 
 - **Ready to feed** — Actions that satisfy the same readiness and
   responsibility rules as `next --ready`.
 - **Running or queued** — Runs already admitted to the worker; wait for their
   evidence before starting another one for the same stream.
+- **Flagged for agent review** — parked Decisions awaiting a later
+  repository-aware assessment; no Run has started.
 - **Needs attention before dispatch** — every known stop, with its reason,
   concrete next action, and named file/field remedy where applicable.
 
-Mission Control shows the same projection above **What fits?**, with direct
-links to the strongest existing Project, Review, or Run surface. It is a view,
-not a second queue and not an approval shortcut. A plan's declared T-shirt
-Token Impact and plain-language Token Budget remain visible; provider usage
-limits are still observed by the existing coding-agent availability gate and
-are not treated as unlimited when unknown.
+The queue stores only revisioned ordering metadata over canonical Actions; it
+is not a second task store and is not an approval shortcut. The checked-in
+Project pointer remains dispatch authority, so a ready Action elsewhere in the
+order is labelled `waiting_for_pointer` and cannot become `nextActionKey`.
+Unpositioned new Actions invalidate the order rather than inheriting priority.
+
+Mutations live under the verb `advance` and preview by default:
+
+```sh
+# Move one Action.
+pnpm arcadia advance queue reorder --move demo/write-copy --before demo/ship \
+  --revision 3 --request-id reorder-1 --workspace "$WORKSPACE"
+
+# Replace the full active order.
+pnpm arcadia advance queue arrange \
+  --order demo/write-copy arcadia/fix-queue demo/ship \
+  --revision 3 --request-id arrange-1 --workspace "$WORKSPACE"
+
+# Restore the current applied receipt.
+pnpm arcadia advance queue undo --receipt qorder_example \
+  --revision 4 --request-id undo-1 --workspace "$WORKSPACE"
+```
+
+Add `--apply` only after inspecting the before/after preview. Exact request-id
+replays return the original receipt; changed replays, stale revisions,
+incomplete batch orders, and stale undo attempts are refused. A plan's
+declared T-shirt Token Impact and plain-language Token Budget remain visible;
+provider usage limits are still observed by the existing coding-agent
+availability gate and are not treated as unlimited when unknown.
 
 ### Whether the documents are earning their keep
 

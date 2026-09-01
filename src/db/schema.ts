@@ -41,6 +41,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureAskRequestStewardshipColumn(db);
   ensureAskCaptureEnvelopeTables(db);
   ensureAgentAskProposalTable(db);
+  ensureActionQueueOrderTables(db);
   ensureRequiresReviewCompatibility(db);
   ensureOperatorAgnosticSchema(db);
   ensureExecutionRunWorkerColumns(db);
@@ -68,6 +69,23 @@ export function applyMigrations(db: Database.Database): void {
   ensureProofTargetChecksTable(db);
   ensureAgentSessionsTable(db);
   applyCapabilityMigrations(db);
+}
+
+function ensureActionQueueOrderTables(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS action_queue_state (
+      id TEXT PRIMARY KEY CHECK (id = 'portfolio'), revision INTEGER NOT NULL, updated_at TEXT NOT NULL
+    );
+    INSERT OR IGNORE INTO action_queue_state (id, revision, updated_at) VALUES ('portfolio', 0, '1970-01-01T00:00:00.000Z');
+    CREATE TABLE IF NOT EXISTS action_queue_positions (
+      action_key TEXT PRIMARY KEY, position INTEGER NOT NULL UNIQUE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS action_queue_receipts (
+      id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, revision_before INTEGER NOT NULL,
+      revision_after INTEGER NOT NULL, before_json TEXT NOT NULL, after_json TEXT NOT NULL,
+      operation_json TEXT NOT NULL, receipt_json TEXT NOT NULL, created_at TEXT NOT NULL
+    );
+  `);
 }
 
 function ensureAgentAskProposalTable(db: Database.Database): void {

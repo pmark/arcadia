@@ -8,10 +8,13 @@ import {
   listExecutionRuns,
   listProjects
 } from "../db/repositories.js";
-import { isDispatchable, resolveReadySet, type DispatchBlocker } from "../docs/dispatch.js";
+import { isDispatchable, resolveActionReadiness, resolveReadySet, type DispatchBlocker } from "../docs/dispatch.js";
+import { discoverDocs } from "../docs/discover.js";
+import type { PlanDoc } from "../docs/types.js";
 import type { ExecutionRunSummary, Project } from "../domain/types.js";
 import { nowIso } from "../utils/time.js";
 import { getSession, resolveProjectTransition } from "../sessions/index.js";
+import { loadActionOrder } from "./order.js";
 
 export type AgentQueueEntryState = "ready" | "running" | "flagged" | "attention";
 
@@ -36,6 +39,7 @@ export interface AgentQueueEntry {
   state: AgentQueueEntryState;
   attentionKind: AgentQueueAttentionKind | null;
   selected: boolean;
+  pointerAuthorized?: boolean;
   projectId: string | null;
   projectName: string | null;
   projectSlug: string | null;
@@ -55,10 +59,18 @@ export interface AgentQueueEntry {
   runId: string | null;
   decisionId: string | null;
   updatedAt: string;
+  orderKey?: string | null;
+  position?: number | null;
+  orderStatus?: "explicit" | "unpositioned" | "not_applicable";
 }
 
 export interface AgentQueue {
   generatedAt: string;
+  revision: number;
+  ordered: AgentQueueEntry[];
+  nextActionKey: string | null;
+  unpositionedCount: number;
+  orderValid: boolean;
   ready: AgentQueueEntry[];
   running: AgentQueueEntry[];
   flagged: AgentQueueEntry[];
@@ -204,8 +216,27 @@ export function buildAgentQueue(
     });
   }
 
+  const order = loadActionOrder(db);
+  const actionEntries = dedupeActionEntries([...ready, ...running, ...attention]);
+  for (const entry of [...ready, ...running, ...flagged, ...attention]) {
+    const orderKey = entry.projectSlug && entry.actionId ? `${entry.projectSlug}/${entry.actionId}` : null;
+    entry.orderKey = orderKey;
+    entry.position = orderKey ? order.positions.get(orderKey) ?? null : null;
+    entry.orderStatus = orderKey ? (entry.position === null ? "unpositioned" : "explicit") : "not_applicable";
+  }
+  const discoveredPosition = new Map(actionEntries.map((entry, index) => [`${entry.projectSlug}/${entry.actionId}`, index]));
+  const ordered = actionEntries.sort((left, right) =>
+    compareOptionalPosition(left.position ?? null, right.position ?? null) ||
+    (discoveredPosition.get(`${left.projectSlug}/${left.actionId}`) ?? 0) - (discoveredPosition.get(`${right.projectSlug}/${right.actionId}`) ?? 0) ||
+    left.id.localeCompare(right.id)
+  );
+  const unpositionedCount = ordered.filter((entry) => entry.orderStatus === "unpositioned").length;
+  const orderValid = unpositionedCount === 0;
+  const nextActionKey = orderValid
+    ? ordered.find((entry) => entry.state === "ready" && entry.pointerAuthorized)?.orderKey ?? null
+    : null;
   const sortEntries = (left: AgentQueueEntry, right: AgentQueueEntry): number =>
-    Number(right.selected) - Number(left.selected) ||
+    compareOptionalPosition(left.position ?? null, right.position ?? null) || Number(right.selected) - Number(left.selected) ||
     right.updatedAt.localeCompare(left.updatedAt) ||
     left.id.localeCompare(right.id);
 
@@ -216,6 +247,11 @@ export function buildAgentQueue(
 
   return {
     generatedAt,
+    revision: order.revision,
+    ordered,
+    nextActionKey,
+    unpositionedCount,
+    orderValid,
     ready,
     running,
     flagged,
@@ -227,6 +263,23 @@ export function buildAgentQueue(
       attention: attention.length
     }
   };
+}
+
+function dedupeActionEntries(entries: AgentQueueEntry[]): AgentQueueEntry[] {
+  const byKey = new Map<string, AgentQueueEntry>();
+  for (const entry of entries) {
+    if (!entry.projectSlug || !entry.actionId) continue;
+    const key = `${entry.projectSlug}/${entry.actionId}`;
+    if (!byKey.has(key)) byKey.set(key, entry);
+  }
+  return [...byKey.values()];
+}
+
+function compareOptionalPosition(left: number | null, right: number | null): number {
+  if (left !== null && right !== null) return left - right;
+  if (left !== null) return -1;
+  if (right !== null) return 1;
+  return 0;
 }
 
 function inspectProject(
@@ -309,11 +362,13 @@ function inspectProject(
       const action = dispatch.context?.action.id === candidate.actionId
         ? dispatch.context.action
         : null;
+      const pointerAuthorized = action !== null && isDispatchable(dispatch);
       ready.push({
         id: `ready:${project.id}:${candidate.actionId}`,
         state: "ready",
         attentionKind: null,
-        selected: candidate.actionId === readySet.suggestedCurrentAction,
+        selected: pointerAuthorized,
+        pointerAuthorized,
         projectId: project.id,
         projectName: project.name,
         projectSlug: project.slug,
@@ -327,14 +382,61 @@ function inspectProject(
         tokenImpact: readySet.planTokenImpact,
         tokenBudget: readySet.planTokenBudget,
         status: "ready",
-        reason: candidate.actionId === readySet.suggestedCurrentAction
-          ? "Selected current Action is ready for a coding agent."
-          : "Action is ready by its plan and waiting behind the selected current Action.",
+        reason: pointerAuthorized
+          ? "The checked-in Project pointer authorizes this ready Action."
+          : "Action is ready but waiting_for_pointer; queue order alone does not authorize dispatch.",
         nextAction: action?.nextAction ?? `Prepare the plan for ${candidate.title}.`,
         blockers: [],
         runId: null,
         decisionId: null,
         updatedAt: readySet.planPath ? project.updated_at : nowIso()
+      });
+    }
+
+    const activePlan = discoverDocs(resolvedRoot).docs.find(
+      (doc): doc is PlanDoc => doc.type === "plan" && doc.slug === readySet.planSlug && doc.project === project.slug
+    );
+    const readyIds = new Set(readySet.ready.map((candidate) => candidate.actionId));
+    for (const action of activePlan?.actions.filter((candidate) => candidate.status !== "done") ?? []) {
+      if (readyIds.has(action.id)) continue;
+      const readiness = resolveActionReadiness(resolvedRoot, project.slug, action.id);
+      const responsibilityReason = action.responsibility === "requires_review"
+        ? "Action requires operator review and remains ordered but ineligible."
+        : action.responsibility === "blocked"
+          ? "Action is externally blocked and remains ordered but ineligible."
+          : readiness.operatorQuestion
+            ? "Action has an open clarification question and remains ordered but ineligible."
+            : readiness.blockers[0]?.message ?? "Action is not yet eligible for dispatch.";
+      const nextAction = readiness.operatorQuestion
+        ? readiness.operatorQuestion
+        : readiness.blockers[0]?.remedy
+          ?? action.nextAction
+          ?? "Resolve the Action's eligibility before dispatching it.";
+      attention.push({
+        id: `action:${project.id}:${action.id}`,
+        state: "attention",
+        attentionKind: action.responsibility === "requires_review" || action.responsibility === "blocked" ? "responsibility" : "document",
+        selected: dispatch.context?.action.id === action.id,
+        pointerAuthorized: false,
+        projectId: project.id,
+        projectName: project.name,
+        projectSlug: project.slug,
+        repositoryRoot: resolvedRoot,
+        planSlug: activePlan?.slug ?? readySet.planSlug,
+        planPath: activePlan?.relativePath ?? readySet.planPath,
+        actionId: action.id,
+        actionTitle: action.title,
+        responsibility: action.responsibility,
+        expectedArtifact: action.expectedArtifact,
+        tokenImpact: activePlan?.tokenImpact ?? readySet.planTokenImpact,
+        tokenBudget: activePlan?.tokenBudget ?? readySet.planTokenBudget,
+        status: action.status,
+        reason: responsibilityReason,
+        nextAction,
+        blockers: dedupeBlockers(readiness.blockers),
+        runId: null,
+        decisionId: null,
+        updatedAt: project.updated_at
       });
     }
 
@@ -344,22 +446,24 @@ function inspectProject(
       const reason = transition.reason;
       const nextAction = transition.nextAction;
 
-      attention.push(documentAttention(
-        project,
-        resolvedRoot,
-        context?.action.id ?? null,
-        context?.activePlan ?? readySet.planSlug,
-        context?.planPath ?? readySet.planPath,
-        blockers,
-        nextAction,
-        reason,
-        context?.action.title ?? null,
-        context?.action.responsibility === "requires_review" || context?.action.responsibility === "blocked"
-          ? "responsibility"
-          : "document",
-        context?.planTokenImpact ?? readySet.planTokenImpact,
-        context?.planTokenBudget ?? readySet.planTokenBudget,
-      ));
+      if (!context?.action.id || !attention.some((entry) => entry.projectId === project.id && entry.actionId === context.action.id)) {
+        attention.push(documentAttention(
+          project,
+          resolvedRoot,
+          context?.action.id ?? null,
+          context?.activePlan ?? readySet.planSlug,
+          context?.planPath ?? readySet.planPath,
+          blockers,
+          nextAction,
+          reason,
+          context?.action.title ?? null,
+          context?.action.responsibility === "requires_review" || context?.action.responsibility === "blocked"
+            ? "responsibility"
+            : "document",
+          context?.planTokenImpact ?? readySet.planTokenImpact,
+          context?.planTokenBudget ?? readySet.planTokenBudget,
+        ));
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
