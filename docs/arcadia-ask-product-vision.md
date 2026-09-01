@@ -15,6 +15,13 @@ The operator should not need to manually author a proposal, Outcome, Milestone,
 Action, Artifact, Decision, or CLI sequence before Arcadia can help. Choosing
 and proposing the right structure is part of Arcadia's work.
 
+Planning and Project management should not require the operator to create or
+coordinate a coding worktree, implementation branch, or pull request. A PM-only
+Ask should produce governed records without pretending implementation has
+begun. When checked-in managed documents require a Git transition, Arcadia owns
+the exact preview and governed persistence path; the operator supplies judgment
+and authority rather than hand-authoring files or managing delivery ceremony.
+
 The promise is:
 
 > Ask for what should become true. Arcadia determines the project-management
@@ -143,3 +150,15 @@ This thesis is realized incrementally by
 [`docs/plans/arcadia-ask-active-sessions.md`](plans/arcadia-ask-active-sessions.md).
 That plan's Actions are implementation slices of this promise; this document is
 the durable product lens by which the complete feature should be judged.
+
+## Spare capacity as a planning resource
+
+Arcadia may use otherwise-expiring included model allowance as a scheduling
+signal for safe Back Burner work. It must distinguish included allowance,
+banked resets, purchased credits, and API spend; unknown capacity is never
+represented as free capacity, and a scheduling opportunity never grants new
+execution or spending authority.
+
+The provider-capacity design, modular estimates, dependency graph, critical-
+usage reporting, and reset boundary are captured in
+[`docs/plans/provider-capacity-harvesting.md`](plans/provider-capacity-harvesting.md).

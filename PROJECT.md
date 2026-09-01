@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: A raw software-project idea becomes governed, dispatchable coding-agent work without a manual planning-to-build handoff
 active_plan: arcadia-ask-active-sessions
 current_action: make-special-routing-visible
-updated: 2026-08-30
+updated: 2026-09-01
 ---
 
 # Arcadia
@@ -134,6 +134,16 @@ projection, not a second work pointer: managed documents still decide what is
 dispatchable, and provider limits still gate packet selection. Provider-budget
 admission is deferred until Claude Code and Codex both expose comparable fresh
 daily and weekly capacity windows.
+
+The operator clarified on 2026-09-01 that Ask should remove personal Git and PR
+ceremony from planning and Project management, while preserving repository
+truth and approval boundaries behind the interaction. They also want otherwise-
+expiring included Claude Code and Codex capacity to advance safe Back Burner
+work without silently consuming paid credits or resets. The non-active
+`docs/plans/provider-capacity-harvesting.md` captures the modular estimates,
+dependency graph, critical-usage reporting, and activation boundary. It extends
+the completed Agent Queue plan's deferred `budget-aware-admission` Action and
+does not compete with the active Ask pointer.
 
 On 2026-08-20 the operator set a more direct north-star priority: they want to
 state a project idea once, have Arcadia classify and plan it into governed work,

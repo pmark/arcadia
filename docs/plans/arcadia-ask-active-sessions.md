@@ -9,7 +9,7 @@ token_impact: large
 token_budget: "Rule matching, URL extraction, attachment receipts, routing precedence, preview/apply, and regression tests are deterministic and make zero model calls. Use one bounded coding-agent implementation pass per Action. Any intent refinement is separately labelled, uses the configured local-preferred route, and never replaces the deterministic extraction or original capture."
 recommended_model: gpt-5.6-sol
 recommended_reasoning_effort: high
-updated: 2026-08-31
+updated: 2026-09-01
 current_action: make-special-routing-visible
 actions:
   - id: make-special-routing-visible
@@ -81,6 +81,7 @@ actions:
       - "Arcadia asks at most one question before preserving the capture, and only when its answer would materially change routing, safety, or the committed records; unknown values remain visibly unknown."
       - "The matched-rule card is always visible for special processing and offers Continue, Use normal Ask, and Edit rule. Safe read-only work may proceed with the card visible; every consequential write waits for an exact commit preview."
       - "The commit boundary states every create, update, unchanged, deferred, skipped, and refused result plus what will not happen; apply is atomic for approved records and returns direct links and receipts without creating a second truth store."
+      - "A PM-only Ask creates or updates the accepted governed Project records without starting a coding-agent Run, code worktree, implementation branch, or pull request; when checked-in managed documents require a Git transition, Arcadia prepares and previews that exact transition instead of making the operator author files or coordinate delivery ceremony."
       - "Activation is phrased as `When should Arcadia bring this forward?` and supports immediate work, explicit Decision, dependency, date, registered predicate, or manual condition while refusing an untriggered deferral."
       - "The session retains enough bounded context for replies such as `started`, `I did it`, `change the route`, or `that is not what I meant`; ambiguous simultaneous contexts cause one selection question rather than a guessed association."
       - "The complete flow works at phone width, is keyboard and screen-reader usable, distinguishes model-derived suggestions from deterministic facts, and updates `START_HERE.md` with the normal operator procedure."
