@@ -99,6 +99,34 @@ describe("Agent Ask v1", () => {
       request: request.replace("    dependencies: []", "    dependencies: []\n    approved: true")
     })).toThrow("action contains unknown fields");
   });
+
+  it("accepts Plan-shaped Actions with shared references and per-Action amendment targets", () => {
+    const workspace = initializedWorkspace();
+    const request = [
+      "agent_ask: v1", "request_id: plan-shaped", "project: unknown", "intent: plan",
+      "desired_result: Deliver the release", "acceptance: []", "dependencies: []",
+      "references:", "  - docs/release.md", "target_ref: plan/release",
+      "actions:",
+      "  - desired_result: Build the release", "    acceptance:", "      - Build passes.",
+      "    dependencies: []", "    references:", "      - src/release.ts",
+      "  - target_ref: action/publish", "    desired_result: Publish the release",
+      "    acceptance:", "      - Release is published.", "    dependencies:", "      - build-the-release",
+      "    references: []", "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const result = runAgentAskPreviewCommand({ workspace, request });
+    expect(result.data.proposal.normalized).toMatchObject({ intent: "plan", targetRef: "plan/release", references: ["docs/release.md"] });
+    expect(result.data.proposal.normalized.actions).toEqual([
+      {
+        desiredResult: "Build the release", acceptance: ["Build passes."], dependencies: [],
+        references: ["src/release.ts"], targetRef: null
+      },
+      {
+        desiredResult: "Publish the release", acceptance: ["Release is published."],
+        dependencies: ["build-the-release"], references: [], targetRef: "action/publish"
+      }
+    ]);
+    expect(result.data.proposal.effects.map((effect) => effect.operation)).toEqual(["update", "update"]);
+  });
 });
 
 function strictAsk(requestId: string, intent: string): string {

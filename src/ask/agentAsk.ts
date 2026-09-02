@@ -5,13 +5,19 @@ import { validationError } from "../cli/errors.js";
 export const AGENT_ASK_INTENTS = ["auto", "outcome", "milestone", "plan", "proposal", "decision", "action", "artifact", "log", "project_update"] as const;
 export type AgentAskIntent = (typeof AGENT_ASK_INTENTS)[number];
 export type AgentAskAuthority = "propose" | "apply_if_approved";
-export interface NormalizedAgentAskAction { desiredResult: string; acceptance: string[]; dependencies: string[]; }
-export interface NormalizedAgentAsk { version: "v1"; format: "strict" | "natural"; requestId: string; project: string; intent: AgentAskIntent; desiredResult: string; rationale: string | null; acceptance: string[]; dependencies: string[]; actions: NormalizedAgentAskAction[]; targetRef: string | null; requestedAuthority: AgentAskAuthority; }
+export interface NormalizedAgentAskAction {
+  desiredResult: string;
+  acceptance: string[];
+  dependencies: string[];
+  references: string[];
+  targetRef: string | null;
+}
+export interface NormalizedAgentAsk { version: "v1"; format: "strict" | "natural"; requestId: string; project: string; intent: AgentAskIntent; desiredResult: string; rationale: string | null; acceptance: string[]; dependencies: string[]; references: string[]; actions: NormalizedAgentAskAction[]; targetRef: string | null; requestedAuthority: AgentAskAuthority; }
 export interface AgentAskEffect { operation: "interpret" | "create" | "update"; targetKind: Exclude<AgentAskIntent, "auto"> | "interpretation"; targetRef: string | null; fields: Record<string, unknown>; status: "proposed"; authority: "operator_acceptance_required"; }
 export interface AgentAskProposal { id: string; captureId: string; normalized: NormalizedAgentAsk; effects: AgentAskEffect[]; requiredDecisions: string[]; unchanged: string[]; conflicts: string[]; refused: string[]; managedDocumentTransition: { required: boolean; status: "withheld_until_acceptance"; authority: "checked_in_documents" }; queueConsequence: "none_until_accepted"; writes: { captureReceipt: true; proposalReceipt: true; projectChanges: false }; nonActions: string[]; fingerprint: string; createdAt: string; }
 
-const STRICT_FIELDS = new Set(["agent_ask", "request_id", "project", "intent", "desired_result", "rationale", "acceptance", "dependencies", "actions", "target_ref", "requested_authority"]);
-const STRICT_ACTION_FIELDS = new Set(["desired_result", "acceptance", "dependencies"]);
+const STRICT_FIELDS = new Set(["agent_ask", "request_id", "project", "intent", "desired_result", "rationale", "acceptance", "dependencies", "references", "actions", "target_ref", "requested_authority"]);
+const STRICT_ACTION_FIELDS = new Set(["desired_result", "acceptance", "dependencies", "references", "target_ref"]);
 
 export function normalizeAgentAsk(input: { request: string; requestId?: string; project?: string }): NormalizedAgentAsk {
   const request = input.request.trim();
@@ -24,7 +30,7 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   const strict = isRecord(parsed) && Object.hasOwn(parsed, "agent_ask");
   if (!strict) {
     const requestId = requiredText(input.requestId, "Natural Agent Ask requires --request-id.");
-    return { version: "v1", format: "natural", requestId, project: input.project?.trim() || "unknown", intent: "auto", desiredResult: request, rationale: null, acceptance: [], dependencies: [], actions: [], targetRef: null, requestedAuthority: "propose" };
+    return { version: "v1", format: "natural", requestId, project: input.project?.trim() || "unknown", intent: "auto", desiredResult: request, rationale: null, acceptance: [], dependencies: [], references: [], actions: [], targetRef: null, requestedAuthority: "propose" };
   }
   const data = parsed as Record<string, unknown>;
   const unknown = Object.keys(data).filter((key) => !STRICT_FIELDS.has(key));
@@ -36,9 +42,13 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   if (!(["propose", "apply_if_approved"] as string[]).includes(authority)) throw validationError("Agent Ask cannot claim or expand execution authority.", { requestedAuthority: authority });
   const actions = actionList(data.actions);
   const targetRef = optionalText(data.target_ref);
-  if (actions.length > 0 && intent !== "action") throw validationError("Agent Ask actions are only supported for action intent.");
-  if (actions.length > 0 && targetRef) throw validationError("A multi-Action Agent Ask cannot also amend one target_ref.");
-  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance: stringList(data.acceptance, "acceptance"), dependencies: stringList(data.dependencies, "dependencies"), actions, targetRef, requestedAuthority: authority };
+  if (actions.length > 0 && !(["action", "plan"] as string[]).includes(intent)) {
+    throw validationError("Agent Ask actions are only supported for action or plan intent.");
+  }
+  if (actions.length > 0 && targetRef && intent === "action") {
+    throw validationError("A multi-Action Agent Ask cannot also amend one Action target_ref.");
+  }
+  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance: stringList(data.acceptance, "acceptance"), dependencies: stringList(data.dependencies, "dependencies"), references: stringList(data.references, "references"), actions, targetRef, requestedAuthority: authority };
 }
 
 export function agentAskFingerprint(request: string, normalized: NormalizedAgentAsk): string { return createHash("sha256").update(JSON.stringify({ request, normalized })).digest("hex"); }
@@ -48,12 +58,13 @@ export function buildAgentAskEffects(normalized: NormalizedAgentAsk): { effects:
   if (normalized.intent === "auto") requiredDecisions.push("Confirm the proposed Arcadia structure after interpretation.");
   if (normalized.requestedAuthority === "apply_if_approved") requiredDecisions.push("Accept the exact preview before apply.");
   const targetKind = normalized.intent === "auto" ? "interpretation" : normalized.intent;
-  const proposedItems = normalized.actions.length > 0 ? normalized.actions : [{ desiredResult: normalized.desiredResult, acceptance: normalized.acceptance, dependencies: normalized.dependencies }];
+  const proposedItems = normalized.actions.length > 0 ? normalized.actions : [{ desiredResult: normalized.desiredResult, acceptance: normalized.acceptance, dependencies: normalized.dependencies, references: normalized.references, targetRef: null }];
   const effects = proposedItems.map((item) => {
-    const operation = normalized.intent === "auto" ? "interpret" : normalized.targetRef || ["outcome", "project_update"].includes(normalized.intent) ? "update" : "create";
-    const fields: Record<string, unknown> = { project: normalized.project, desiredResult: item.desiredResult, rationale: normalized.rationale, acceptance: item.acceptance, dependencies: item.dependencies };
+    const itemTargetRef = item.targetRef ?? normalized.targetRef;
+    const operation = normalized.intent === "auto" ? "interpret" : itemTargetRef || ["outcome", "project_update"].includes(normalized.intent) ? "update" : "create";
+    const fields: Record<string, unknown> = { project: normalized.project, desiredResult: item.desiredResult, rationale: normalized.rationale, acceptance: item.acceptance, dependencies: item.dependencies, references: item.references };
     if (normalized.intent === "decision") fields.status = "open";
-    return { operation, targetKind, targetRef: normalized.targetRef, fields, status: "proposed", authority: "operator_acceptance_required" } satisfies AgentAskEffect;
+    return { operation, targetKind, targetRef: itemTargetRef, fields, status: "proposed", authority: "operator_acceptance_required" } satisfies AgentAskEffect;
   });
   return { effects, requiredDecisions };
 }
@@ -72,7 +83,9 @@ function actionList(value: unknown): NormalizedAgentAskAction[] {
     return {
       desiredResult: requiredText(item.desired_result, `Agent Ask actions[${index}].desired_result is required.`),
       acceptance: stringList(item.acceptance, `actions[${index}].acceptance`),
-      dependencies: stringList(item.dependencies, `actions[${index}].dependencies`)
+      dependencies: stringList(item.dependencies, `actions[${index}].dependencies`),
+      references: stringList(item.references, `actions[${index}].references`),
+      targetRef: optionalText(item.target_ref)
     };
   });
 }

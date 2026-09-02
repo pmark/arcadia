@@ -247,6 +247,82 @@ describe("Agent Ask settlement", () => {
     expect(message).toContain("demo/build-release-proof, demo/publish-release-guide starting at position 1");
   });
 
+  it("creates a complete inactive draft Plan from one plan-shaped Ask", () => {
+    const { workspace, repo } = fixture();
+    const proposal = runAgentAskPreviewCommand({ workspace, request: draftPlanAsk("ask-draft-plan") });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-draft-plan",
+      disposition: "accepted", responsibility: "codex", revision: 1
+    });
+    expect(preview.data.receipt).toMatchObject({ queueActionKey: null, queueActionKeys: [], queuePosition: null });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-draft-plan",
+      disposition: "accepted", responsibility: "codex", revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const plan = readFileSync(path.join(repo, "docs/plans/deliver-release-readiness.md"), "utf8");
+    expect(plan).toContain("status: draft");
+    expect(plan).toContain("id: build-release-proof");
+    expect(plan).toContain("id: publish-release-guide");
+    expect(plan).toContain("depends_on: [build-release-proof]");
+    expect(plan).toContain("references: [docs/release.md, src/release.ts]");
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("active_plan: demo-plan");
+    expect(applied.data.receipt.effects.join(" ")).toContain("active Plan, Project pointer, dispatch authority, and execution queue are unchanged");
+    withDatabase(workspace, (db) => expect(loadActionOrder(db).revision).toBe(1));
+  });
+
+  it("refuses incomplete or prematurely queued draft Plans without Project writes", () => {
+    const { workspace, repo } = fixture();
+    const incomplete = runAgentAskPreviewCommand({
+      workspace,
+      request: draftPlanAsk("ask-incomplete-draft").replace("      - Release proof exists.", "")
+    });
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: incomplete.data.proposal.id, requestId: "settle-incomplete-draft",
+      disposition: "accepted", responsibility: "codex", revision: 1
+    })).toThrow("observable acceptance criterion");
+
+    const queued = runAgentAskPreviewCommand({ workspace, request: draftPlanAsk("ask-queued-draft") });
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: queued.data.proposal.id, requestId: "settle-queued-draft",
+      disposition: "accepted", responsibility: "codex", top: true, revision: 1
+    })).toThrow("cannot be placed in the execution queue before activation");
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("active_plan: demo-plan");
+    expect(() => readFileSync(path.join(repo, "docs/plans/deliver-release-readiness.md"), "utf8")).toThrow();
+  });
+
+  it("amends an active Plan and reprioritizes all unfinished Actions as one segment", () => {
+    const { workspace, repo } = fixture();
+    addOtherProject(workspace, repo);
+    const proposal = runAgentAskPreviewCommand({ workspace, request: activePlanAsk("ask-amend-plan-segment") });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-amend-plan-segment",
+      disposition: "accepted", responsibility: "codex", after: "other/waiting", revision: 2
+    });
+    expect(preview.data.receipt).toMatchObject({
+      queueActionKeys: ["demo/existing", "demo/audit-release"], queuePosition: 1
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-amend-plan-segment",
+      disposition: "accepted", responsibility: "codex", after: "other/waiting", revision: 2,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const plan = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
+    expect(plan).toContain("next_action: Tighten existing release proof");
+    expect(plan).toContain("references: [docs/release.md, tests/existing.test.ts]");
+    expect(plan).toContain("id: audit-release");
+    expect(plan).toContain("depends_on: [existing]");
+    expect(applied.data.receipt.effects).toContain("Reprioritized active Plan demo-plan as one dependency-safe queue segment: demo/existing, demo/audit-release.");
+    withDatabase(workspace, (db) => {
+      expect([...loadActionOrder(db).positions]).toEqual([
+        ["other/waiting", 0], ["demo/existing", 1], ["demo/audit-release", 2]
+      ]);
+    });
+    const message = agentAskSettlementMessage(runAgentAskNotificationsCommand({ workspace }).data.notifications[0]!);
+    expect(message).toContain("Reprioritized active Plan demo-plan as one dependency-safe queue segment");
+    expect(message).toContain("demo/existing, demo/audit-release starting at position 2");
+  });
+
   it("preserves rejected input and accepts a corrected Ask under a new request id", () => {
     const { workspace, repo } = fixture();
     const original = runAgentAskPreviewCommand({ workspace, request: actionAsk("ask-needs-correction") });
@@ -403,6 +479,57 @@ function multiActionAsk(requestId: string): string {
     "requested_authority: apply_if_approved",
     ""
   ].join("\n");
+}
+
+function draftPlanAsk(requestId: string): string {
+  return [
+    "agent_ask: v1", `request_id: ${requestId}`, "project: demo", "intent: plan",
+    "desired_result: Deliver release readiness", "rationale: Make the release tractable",
+    "acceptance: []", "dependencies: []", "references:", "  - docs/release.md", "actions:",
+    "  - desired_result: Publish release guide", "    acceptance:", "      - Release guide exists.",
+    "    dependencies:", "      - build-release-proof", "    references: []",
+    "  - desired_result: Build release proof", "    acceptance:", "      - Release proof exists.",
+    "    dependencies: []", "    references:", "      - src/release.ts",
+    "requested_authority: apply_if_approved", ""
+  ].join("\n");
+}
+
+function activePlanAsk(requestId: string): string {
+  return [
+    "agent_ask: v1", `request_id: ${requestId}`, "project: demo", "intent: plan",
+    "desired_result: Tighten and prioritize release delivery", "rationale: Release work is now urgent",
+    "acceptance: []", "dependencies: []", "references:", "  - docs/release.md",
+    "target_ref: plan/demo-plan", "actions:",
+    "  - target_ref: action/existing", "    desired_result: Tighten existing release proof",
+    "    acceptance:", "      - Existing release proof is deterministic.", "    dependencies: []",
+    "    references:", "      - tests/existing.test.ts",
+    "  - desired_result: Audit release", "    acceptance:", "      - Release audit passes.",
+    "    dependencies:", "      - existing", "    references:", "      - src/release.ts",
+    "requested_authority: apply_if_approved", ""
+  ].join("\n");
+}
+
+function addOtherProject(workspace: string, repo: string): void {
+  const otherRepo = path.join(path.dirname(repo), "other-repo");
+  mkdirSync(path.join(otherRepo, "docs/plans"), { recursive: true });
+  writeFileSync(path.join(otherRepo, "PROJECT.md"), projectDoc().replaceAll("demo", "other").replaceAll("Demo", "Other").replaceAll("existing", "waiting"), "utf8");
+  writeFileSync(path.join(otherRepo, "docs/plans/other-plan.md"), planDoc().replaceAll("demo", "other").replaceAll("Demo", "Other").replaceAll("existing", "waiting"), "utf8");
+  execFileSync("git", ["init", "-q"], { cwd: otherRepo });
+  execFileSync("git", ["config", "user.email", "ask-test@example.invalid"], { cwd: otherRepo });
+  execFileSync("git", ["config", "user.name", "Ask Test"], { cwd: otherRepo });
+  execFileSync("git", ["add", "."], { cwd: otherRepo });
+  execFileSync("git", ["commit", "-qm", "Add other Ask fixture"], { cwd: otherRepo });
+  withDatabase(workspace, (db) => {
+    const other = upsertProject(db, {
+      name: "Other", mission: "Provide an external queue anchor.", goal: "Wait safely.",
+      status: "active", currentMilestone: "Settlement", nextAction: "Wait.", workClassification: "codex"
+    });
+    upsertProjectMetadata(db, { projectId: other.id, repoPath: otherRepo });
+    arrangeActionOrder(db, {
+      currentKeys: ["demo/existing", "other/waiting"],
+      order: ["demo/existing", "other/waiting"], requestId: "add-other-order", expectedRevision: 1, apply: true
+    });
+  });
 }
 
 function askForIntent(requestId: string, intent: string, desired: string, targetRef?: string, acceptance: string[] = []): string {
