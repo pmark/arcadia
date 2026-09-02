@@ -8,6 +8,43 @@ updated: 2026-09-01
 
 # Mission Log: Arcadia
 
+## 2026-09-01 — Settled a real Agent Ask through the live Work Queue and Discord
+
+- **Action:** `agent-ask-execution-queue#verify-the-live-work-queue-and-discord-settlement-summary-end-to-end`
+- **Did:** Established the first complete cross-Project order, moving the
+  operator-owned Arcadia dogfood Action from position 10 to position 2 while
+  preserving the Private Practice Now dependency chain. Submitted strict Agent
+  Ask `agent-live-queue-discord-proof-20260901`, accepted its exact preview,
+  inserted the resulting Arcadia Action at position 3, and applied the governed
+  **Make next** pointer preview from the Work Queue. The first settlement attempt
+  exposed a real YAML insertion defect when a Plan carried a top-level field
+  after `actions`; PR #146 fixed the insertion boundary and the same immutable
+  Ask then settled successfully.
+- **Result:** At selection time, queue revision 2 was valid, had zero
+  unpositioned Actions, and held one copy of all 11 approved unfinished Actions.
+  After the proof Action became `done`, it left the active projection, producing
+  the expected 10-Action view without another reorder. Dashboard and CLI agree that
+  Private Practice Now's blocked audit is position 1, the operator-owned Arcadia
+  dogfood Action is position 2, and the accepted Ask Action is the first eligible
+  item at position 3 with the checked-in pointer authorizing it. Pointer receipt
+  `qpointer_7fa6cb515baa45fcb1` records that transition. Settlement receipt
+  `asksettle_d52f96f30a6b443497` records one created Action, Responsibility
+  `codex`, and queue position 3. The Discord outbox drained and the adapter
+  recorded exactly one send at `2026-09-02T01:10:51.977Z` under idempotency key
+  `agent-ask:asksettle_d52f96f30a6b443497`. Its rendered message names the
+  accepted disposition, Arcadia Project, created Action, assigned
+  Responsibility, queue position, resulting next state, and settlement id.
+  Phone-width browser QA passed at 390×844 with no horizontal overflow. The
+  immutable command and receipt outputs are preserved in
+  `docs/evidence/agent-ask-work-queue-discord-dogfood-2026-09-01.md`.
+- **Next:** Obtain the operator's acceptance of this proof and answer Decision
+  0041 so Arcadia can activate the highest-value preserved Ask tail without
+  guessing priority.
+- **Blockers:** Decision 0041 is intentionally open. It asks whether to resume
+  the guided understanding session that unlocks Ask-rule management and
+  Songbook dogfood; the implemented Agent Ask, Work Queue, governed pointer,
+  and Discord settlement path are live and unblocked.
+
 ## 2026-09-01 — Put the complete approved Action order in the operator Dashboard
 
 - **Action:** `agent-ask-execution-queue#build-operator-work-queue-dashboard`
