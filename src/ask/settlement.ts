@@ -419,6 +419,16 @@ function appendAction(content: string, action: {
 }): string {
   const end = content.indexOf("\n---", 4);
   if (end < 0) throw validationError("Managed Plan has no closing frontmatter marker.");
+  const frontmatter = content.slice(0, end);
+  const actions = /^actions:\s*$/m.exec(frontmatter);
+  if (!actions || actions.index === undefined) {
+    throw validationError("Managed Plan has no block-form actions list.");
+  }
+  const actionsEnd = actions.index + actions[0].length;
+  const nextTopLevelField = /\n(?=[a-z_][a-z0-9_]*:\s*)/i.exec(frontmatter.slice(actionsEnd));
+  const insertAt = nextTopLevelField
+    ? actionsEnd + nextTopLevelField.index
+    : end;
   const lines = [
     `  - id: ${action.id}`,
     `    title: ${yamlScalar(action.title)}`,
@@ -436,7 +446,7 @@ function appendAction(content: string, action: {
     "    decisions: []",
     "    references: []"
   ];
-  return `${content.slice(0, end)}\n${lines.join("\n")}${content.slice(end)}`;
+  return `${content.slice(0, insertAt)}\n${lines.join("\n")}${content.slice(insertAt)}`;
 }
 
 function allocateUniqueActionId(taken: Set<string>, base: string): string {
