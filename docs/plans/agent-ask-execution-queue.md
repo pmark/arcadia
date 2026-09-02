@@ -10,7 +10,7 @@ token_budget: "Parsing, normalization, validation, queue ordering, readiness, re
 recommended_model: gpt-5.6-sol
 recommended_reasoning_effort: high
 updated: 2026-09-02
-current_action: enable-coding-agents-to-naturally-create-amend-and-reprioritize-plan-shaped-work
+current_action: dogfood-agent-managed-queue
 actions:
   - id: define-agent-ask-management-contract
     title: Give coding agents a conventional Ask contract for Project management intent
@@ -174,10 +174,10 @@ actions:
       - docs/evidence/agent-ask-work-queue-discord-dogfood-2026-09-01.md
   - id: enable-coding-agents-to-naturally-create-amend-and-reprioritize-plan-shaped-work
     title: Enable coding agents to naturally create, amend, and reprioritize Plan-shaped work on the fly through Arcadia Ask.
-    status: open
+    status: done
     responsibility: codex
     effort: session
-    next_action: Finish and prove natural Plan creation, amendment, and reprioritization through Agent Ask.
+    next_action: Preserve the verified Plan Ask receipts and continue only after Decision 0041 selects the next planning priority.
     expected_artifact: Evidence satisfying Agent Ask enable-coding-agents-to-naturally-create-amend-and-reprioritize-plan-shaped-work
     clarification: clarified
     confidence: high
@@ -191,7 +191,7 @@ actions:
       - Focused tests, full suite, builds, phone-width Work Queue QA, independent PR QA, and one real Agent Ask dogfood prove plan creation and reprioritization end to end.
     depends_on: []
     decisions: []
-    references: [START_HERE.md, src/ask/agentAsk.ts, src/ask/settlement.ts, tests/agent-ask-settlement.test.ts]
+    references: [START_HERE.md, src/ask/agentAsk.ts, src/ask/settlement.ts, tests/agent-ask-settlement.test.ts, docs/evidence/agent-ask-plan-management-dogfood-2026-09-01.md]
 decisions: ["0039", "0040", "0041"]
 ---
 

@@ -8,6 +8,37 @@ updated: 2026-09-01
 
 # Mission Log: Arcadia
 
+## 2026-09-01 — Made Plans writable and reprioritizable through Agent Ask
+
+- **Action:** `agent-ask-execution-queue#enable-coding-agents-to-naturally-create-amend-and-reprioritize-plan-shaped-work`
+- **Did:** Extended strict Agent Ask v1 so one `plan` envelope can carry shared
+  and per-Action references, create a complete inactive draft Plan, or target a
+  named Plan to create and amend Actions. Active-Plan settlement can now move
+  every unfinished Plan Action at one approved top/before/after boundary while
+  deriving a stable dependency-safe segment. It refuses incomplete Actions,
+  dependency cycles, cross-Project targets, stale revisions, unpositioned
+  queues, and any attempt to queue a draft. Updated the canonical operator
+  guide and CLI help.
+- **Result:** Focused tests pass 21/21, the full suite passes 1,168 with 6
+  skipped, core and Discord TypeScript builds pass, and the live services were
+  restarted from the committed feature branch. Real Plan Ask
+  `agent-plan-priority-dogfood-20260901` amended the current Action and moved
+  the two unfinished Arcadia Plan Actions as one queue segment at the top.
+  Settlement `asksettle_1c38b693b26b492999` recorded the exact Plan and queue
+  effects, resulting next Action, and operator-acceptance authority boundary;
+  Discord delivered the same effects once as message
+  `1544532698129891468`. After two concurrent Private Practice Now Actions
+  entered the portfolio, Arcadia failed closed as designed; explicit receipt
+  `qorder_68d100e95ecc489991` restored the complete revision-7 order. At
+  390×844 the live Work Queue had no horizontal overflow and selected this
+  Action beneath the higher blocked proof Action.
+- **Next:** Ask the operator to answer Decision 0041 before activating a
+  preserved guided-Ask tail; proof completion does not infer that priority.
+- **Blockers:** Decision 0041 is the one intentional operator question. The
+  implementation, local services, queue, and Discord delivery are otherwise
+  complete. Detailed receipts and QA evidence are preserved in
+  `docs/evidence/agent-ask-plan-management-dogfood-2026-09-01.md`.
+
 ## 2026-09-01 — Settled a real Agent Ask through the live Work Queue and Discord
 
 - **Action:** `agent-ask-execution-queue#verify-the-live-work-queue-and-discord-settlement-summary-end-to-end`

@@ -8,7 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Coding agents can Ask Arcadia to create governed Project progress, accepted Actions enter one operator-owned execution order, and Arcadia always explains which eligible Action is next
 active_plan: agent-ask-execution-queue
-current_action: enable-coding-agents-to-naturally-create-amend-and-reprioritize-plan-shaped-work
+current_action: dogfood-agent-managed-queue
 updated: 2026-09-01
 ---
 

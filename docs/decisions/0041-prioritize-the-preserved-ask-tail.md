@@ -30,6 +30,20 @@ Action, a governed pointer preview selected it, the Dashboard and CLI agree on
 the selected next Action and every higher skip reason, and Discord delivered
 the retry-safe settlement effects summary exactly once.
 
+The operator then required a stronger proof before answering this Decision:
+coding agents must be able to create complete draft Plans and amend plus
+reprioritize an active Plan through Ask. That increment is now implemented and
+verified as well. Strict Plan-shaped Ask creates governed Actions with
+acceptance, dependencies, and references in an inactive draft; a targeted Plan
+Ask can amend or add Actions and move all unfinished Plan Actions as one
+dependency-safe queue segment. Live settlement
+`asksettle_1c38b693b26b492999` amended the current Action, reprioritized the
+active Arcadia Plan segment, and delivered Discord message
+`1544532698129891468`. The immutable evidence is in
+`docs/evidence/agent-ask-plan-management-dogfood-2026-09-01.md`. This Decision
+remains open because proof completion does not answer which preserved tail the
+operator wants next.
+
 ## Recommendation
 
 Reactivate `arcadia-ask-active-sessions` at
