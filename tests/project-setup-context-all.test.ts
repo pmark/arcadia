@@ -97,6 +97,37 @@ describe("runProjectSetupContextAllCommand", () => {
     expect(context).not.toContain("- docs/ARCHITECTURE.md");
   });
 
+  // The Generated stamp was the only line that differed between two runs over
+  // an unchanged repository, so setup-context dirtied every tree it touched --
+  // and Agent Ask settlement refuses to write into a dirty repository.
+  it("rewrites the repo context only when the repository actually changed", () => {
+    const workspace = tempWorkspace();
+    const repo = tempRepo("stable-context");
+    mkdirSync(path.join(repo, "src"), { recursive: true });
+
+    withDatabase(workspace, (db) => {
+      const project = upsertProject(db, projectInput({ name: "Stable Context Project" }));
+      upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
+    });
+
+    const contextPath = path.join(repo, ".arcadia/repo-context.md");
+    // The first run writes AGENTS.md and CLAUDE.md, so the second legitimately
+    // sees a changed repository. Steady state begins at the second run.
+    runProjectSetupContextAllCommand({ workspace });
+    runProjectSetupContextAllCommand({ workspace });
+    const first = readFileSync(contextPath, "utf8");
+    runProjectSetupContextAllCommand({ workspace });
+    expect(readFileSync(contextPath, "utf8")).toBe(first);
+
+    // A real change still refreshes the file, stamp included.
+    mkdirSync(path.join(repo, "docs"), { recursive: true });
+    writeFileSync(path.join(repo, "docs/architecture.md"), "# Architecture\n");
+    runProjectSetupContextAllCommand({ workspace });
+    const third = readFileSync(contextPath, "utf8");
+    expect(third).not.toBe(first);
+    expect(third).toContain("- docs/architecture.md");
+  });
+
   it("reports a per-project failure without aborting the rest of the batch", () => {
     const workspace = tempWorkspace();
     const goodRepo = tempRepo("good");

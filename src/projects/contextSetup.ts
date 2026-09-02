@@ -174,7 +174,7 @@ export function setupArcadiaProjectContext(input: {
   const constitutionPath = path.join(resolved.repoPath, "CONSTITUTION.md");
 
   writeFileSync(agentPolicyPath, renderAgentContextPolicy(), "utf8");
-  writeFileSync(repoContextPath, renderRepoContext(context), "utf8");
+  writeFileSync(repoContextPath, renderRepoContextPreservingUnchanged(repoContextPath, renderRepoContext(context)), "utf8");
   writeFileSync(contextPolicyPath, `${JSON.stringify(contextPolicyFromSummary(context), null, 2)}\n`, "utf8");
   writeFileSync(agentsPath, updateAgentsMarkdown(existsSync(agentsPath) ? readFileSync(agentsPath, "utf8") : null), "utf8");
 
@@ -789,6 +789,28 @@ function safeReadDir(directory: string): import("node:fs").Dirent[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * The rendered repo context, carrying the previous `Generated:` stamp when
+ * nothing else about the repository changed.
+ *
+ * The stamp is the only line that differs between two runs over an unchanged
+ * repository, so writing it unconditionally made `setup-context` dirty every
+ * working tree it touched. That is not merely noise in `git status`: Agent Ask
+ * settlement refuses to write managed documents into a dirty repository, so
+ * propagating context blocked the next Ask until someone committed a changed
+ * timestamp. The stamp now means what it says — when this context last
+ * changed, not when the command last ran.
+ */
+function renderRepoContextPreservingUnchanged(repoContextPath: string, rendered: string): string {
+  if (!existsSync(repoContextPath)) return rendered;
+  let previous: string;
+  try { previous = readFileSync(repoContextPath, "utf8"); } catch { return rendered; }
+  const previousStamp = /^Generated: .*$/m.exec(previous)?.[0];
+  if (!previousStamp) return rendered;
+  const withPreviousStamp = rendered.replace(/^Generated: .*$/m, previousStamp);
+  return withPreviousStamp === previous ? previous : rendered;
 }
 
 function existingRoots(repoPath: string, roots: string[]): string[] {

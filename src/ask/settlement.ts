@@ -178,6 +178,10 @@ export function settleAgentAsk(db: Database.Database, input: {
             }
             return { ...action, id: actionIds[index]!, dependencies };
           });
+          // A cycle inside the bundle would leave every Action in it waiting on
+          // another forever — permanently ineligible, with no event that could
+          // ever free them. The Plan paths already refuse one; so does this.
+          dependencyOrderedActionIds(normalizedActions.map((action) => ({ id: action.id, dependencies: action.dependencies })));
           queueActionKeys = actionIds.map((actionId) => `${project.slug}/${actionId}`);
           queueActionKey = queueActionKeys[0]!;
           actionIdsToValidate.push(...actionIds);
