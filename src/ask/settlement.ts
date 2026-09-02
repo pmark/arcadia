@@ -158,13 +158,15 @@ export function settleAgentAsk(db: Database.Database, input: {
           if (!input.placement) throw validationError("Accepted Action settlement requires --top, --before, or --after.");
           const proposedActions = (proposal.normalized.actions ?? []).length > 0
             ? proposal.normalized.actions
-            : [{ desiredResult: proposal.normalized.desiredResult, acceptance: proposal.normalized.acceptance,
+            : [{ id: null, desiredResult: proposal.normalized.desiredResult, acceptance: proposal.normalized.acceptance,
               dependencies: proposal.normalized.dependencies, references: proposal.normalized.references, targetRef: null }];
           if (proposedActions.some((action) => action.acceptance.length === 0)) {
             throw validationError("Every accepted Action requires at least one observable acceptance criterion in the proposal.");
           }
           const takenIds = new Set(plan.actions.map((action) => action.id));
-          const actionIds = proposedActions.map((action) => allocateUniqueActionId(takenIds, slugify(action.desiredResult)));
+          const actionIds = proposedActions.map((action) => (action.id
+            ? claimExplicitActionId(takenIds, action.id)
+            : allocateUniqueActionId(takenIds, deriveActionId(action.desiredResult))));
           const availableIds = new Set([...takenIds, ...actionIds]);
           const normalizedActions = proposedActions.map((action, index) => {
             const dependencies = normalizeDependencies(action.dependencies, project.slug);
@@ -578,6 +580,45 @@ function appendAction(content: string, action: {
     `    references: [${action.references.map(yamlScalar).join(", ")}]`
   ];
   return `${content.slice(0, insertAt)}\n${lines.join("\n")}${content.slice(insertAt)}`;
+}
+
+// The derived id is the handle an operator types into `advance queue reorder`,
+// `--before`, `--after`, and `depends_on`, so it is built to be short and
+// pronounceable rather than to reproduce the sentence it came from. Slugifying
+// a whole `desired_result` produced ids like
+// `reconcile-open-operator-questions-against-answers-the-checked-in-documents-alrea`,
+// truncated mid-word by the slug length cap and unusable as a handle.
+const DERIVED_ID_MAX_WORDS = 6;
+const DERIVED_ID_MAX_CHARS = 48;
+
+function deriveActionId(desiredResult: string): string {
+  const clause = desiredResult.split(/[.;:!?]|,\s|\s[\u2014\u2013-]\s/)[0] ?? desiredResult;
+  const words = clause
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .slice(0, DERIVED_ID_MAX_WORDS);
+  const chosen: string[] = [];
+  for (const word of words) {
+    const candidate = chosen.length === 0 ? word : `${chosen.join("-")}-${word}`;
+    // Stop on a whole-word boundary. A first word longer than the cap is kept
+    // intact: an over-long id is still typeable, a half-word one is not.
+    if (candidate.length > DERIVED_ID_MAX_CHARS && chosen.length > 0) break;
+    chosen.push(word);
+    if (candidate.length >= DERIVED_ID_MAX_CHARS) break;
+  }
+  return chosen.join("-") || "agent-ask-action";
+}
+
+// An explicit id is the agent's own commitment to a handle. Silently renaming
+// it would break the `depends_on` entries written against it, so a collision
+// is refused rather than suffixed.
+function claimExplicitActionId(taken: Set<string>, id: string): string {
+  if (taken.has(id)) throw validationError("Agent Ask action id is already used in the active Plan.", { id });
+  taken.add(id);
+  return id;
 }
 
 function allocateUniqueActionId(taken: Set<string>, base: string): string {

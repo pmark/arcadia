@@ -120,11 +120,11 @@ describe("Agent Ask v1", () => {
     expect(result.data.proposal.normalized).toMatchObject({ intent: "plan", targetRef: "plan/release", references: ["docs/release.md"] });
     expect(result.data.proposal.normalized.actions).toEqual([
       {
-        desiredResult: "Build the release", acceptance: ["Build passes."], dependencies: [],
+        id: null, desiredResult: "Build the release", acceptance: ["Build passes."], dependencies: [],
         references: ["src/release.ts"], targetRef: null
       },
       {
-        desiredResult: "Publish the release", acceptance: ["Release is published."],
+        id: null, desiredResult: "Publish the release", acceptance: ["Release is published."],
         dependencies: ["build-the-release"], references: [], targetRef: "action/publish"
       }
     ]);

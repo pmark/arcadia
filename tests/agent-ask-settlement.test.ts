@@ -355,6 +355,104 @@ describe("Agent Ask settlement", () => {
     expect(existingBlock).not.toContain("docs/stale.md");
   });
 
+  it("honors an explicit child Action id and refuses one already used in the Plan", () => {
+    const { workspace, repo } = fixture();
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: bundleAsk("ask-explicit-id", [
+        { id: "queue-handle", desiredResult: "Make the queue handle short enough for an operator to type by hand" }
+      ])
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-explicit-id",
+      disposition: "accepted", responsibility: "codex", top: true, revision: 1
+    });
+    expect(preview.data.receipt.queueActionKeys).toEqual(["demo/queue-handle"]);
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-explicit-id",
+      disposition: "accepted", responsibility: "codex", top: true, revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toContain("id: queue-handle");
+
+    const collision = runAgentAskPreviewCommand({
+      workspace,
+      request: bundleAsk("ask-explicit-collision", [{ id: "existing", desiredResult: "Redo the existing proof" }])
+    });
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: collision.data.proposal.id, requestId: "settle-explicit-collision",
+      disposition: "accepted", responsibility: "codex", top: true, revision: 2
+    })).toThrow(/already used in the active Plan/);
+  });
+
+  it("derives a short whole-word Action id from a long desired result", () => {
+    const { workspace, repo } = fixture();
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: bundleAsk("ask-derived-id", [
+        { desiredResult: "Reconcile open operator questions against answers the checked-in documents already contain." },
+        { desiredResult: "Make a natural language Agent Ask propose the concrete canonical effect when the request arrives as plain prose." }
+      ])
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-derived-id",
+      disposition: "accepted", responsibility: "codex", top: true, revision: 1
+    });
+    expect(preview.data.receipt.queueActionKeys).toEqual([
+      "demo/reconcile-open-operator-questions-against",
+      "demo/make-a-natural-language-agent-ask"
+    ]);
+    for (const key of preview.data.receipt.queueActionKeys) {
+      const id = key.slice("demo/".length);
+      expect(id.length).toBeLessThanOrEqual(48);
+      // The old derivation cut the slug at a fixed character count, leaving
+      // handles that ended mid-word such as "...-documents-alrea".
+      expect("Reconcile open operator questions against answers the checked-in documents already contain. Make a natural language Agent Ask propose the concrete canonical effect when the request arrives as plain prose."
+        .toLowerCase().split(/[^a-z0-9]+/).filter(Boolean))
+        .toEqual(expect.arrayContaining(id.split("-")));
+    }
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-derived-id",
+      disposition: "accepted", responsibility: "codex", top: true, revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const plan = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
+    expect(plan).toContain("id: reconcile-open-operator-questions-against");
+    expect(plan).not.toContain("documents-alrea");
+  });
+
+  it("breaks a derived id collision with a numeric suffix and replays byte-stably", () => {
+    const { workspace, repo } = fixture();
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: bundleAsk("ask-derived-collision", [
+        { desiredResult: "Existing" },
+        { desiredResult: "Existing" }
+      ])
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-derived-collision",
+      disposition: "accepted", responsibility: "codex", top: true, revision: 1
+    });
+    expect(preview.data.receipt.queueActionKeys).toEqual(["demo/existing-2", "demo/existing-3"]);
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-derived-collision",
+      disposition: "accepted", responsibility: "codex", top: true, revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const planPath = path.join(repo, "docs/plans/demo-plan.md");
+    const settledPlan = readFileSync(planPath, "utf8");
+    expect(settledPlan).toContain("id: existing-2");
+    expect(settledPlan).toContain("id: existing-3");
+    const replay = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-derived-collision",
+      disposition: "accepted", responsibility: "codex", top: true, revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    expect(replay.data.receipt).toEqual(applied.data.receipt);
+    expect(readFileSync(planPath, "utf8")).toBe(settledPlan);
+  });
+
   it("preserves rejected input and accepts a corrected Ask under a new request id", () => {
     const { workspace, repo } = fixture();
     const original = runAgentAskPreviewCommand({ workspace, request: actionAsk("ask-needs-correction") });
@@ -483,6 +581,28 @@ function actionAsk(requestId: string): string {
     "acceptance:",
     "  - The settlement proof exists.",
     "dependencies: []",
+    "requested_authority: apply_if_approved",
+    ""
+  ].join("\n");
+}
+
+function bundleAsk(requestId: string, actions: Array<{ id?: string; desiredResult: string }>): string {
+  return [
+    "agent_ask: v1",
+    `request_id: ${requestId}`,
+    "project: demo",
+    "intent: action",
+    "desired_result: Give every accepted Action a typeable handle",
+    "acceptance: []",
+    "dependencies: []",
+    "actions:",
+    ...actions.flatMap((action) => [
+      ...(action.id ? [`  - id: ${action.id}`, `    desired_result: ${JSON.stringify(action.desiredResult)}`]
+        : [`  - desired_result: ${JSON.stringify(action.desiredResult)}`]),
+      "    acceptance:",
+      "      - The handle is typeable.",
+      "    dependencies: []"
+    ]),
     "requested_authority: apply_if_approved",
     ""
   ].join("\n");

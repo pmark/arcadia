@@ -450,15 +450,16 @@ The fallback never invents a Project, intent kind, dependency, date, priority,
 or approval.
 
 Both `action` and `plan` Asks may carry an `actions` list. Each child accepts
-`desired_result`, `acceptance`, `dependencies`, optional `references`, and —
-when amending a Plan — an optional Action `target_ref`. Top-level `references`
-are shared by every child. Dependencies stay inside the target Plan.
+an optional `id`, `desired_result`, `acceptance`, `dependencies`, optional
+`references`, and — when amending a Plan — an optional Action `target_ref`.
+Dependencies may name an existing Action in the target Plan or an earlier
+Action in the same bundle. Top-level `references` are shared by every child.
 For an Action amendment, `dependencies` and the merged `references` are
 replacement lists: an explicit empty list clears stale values.
 
 With `intent: plan` and no Plan `target_ref`, one settlement creates a complete
-non-active draft Plan. Arcadia chooses the managed-document path, Action ids,
-and dependency-safe Action order; the agent supplies the desired results and
+non-active draft Plan. Arcadia chooses the managed-document path and a
+dependency-safe Action order; the agent supplies the desired results and
 observable evidence. At least one complete Action is required:
 
 ```yaml
@@ -470,7 +471,8 @@ desired_result: Deliver a queue-aware release.
 references:
   - docs/release-contract.md
 actions:
-  - desired_result: Build release proof.
+  - id: build-release-proof
+    desired_result: Build release proof.
     acceptance:
       - The release proof exists.
     dependencies: []
@@ -483,6 +485,15 @@ actions:
       - build-release-proof
 requested_authority: apply_if_approved
 ```
+
+`id` is optional and names the Action handle operators type into
+`advance queue reorder --move/--before/--after`, `advance queue make-next
+--action`, and `depends_on`. It must be a lowercase hyphenated slug of at most
+64 characters, and settlement refuses one already used in the active Plan
+rather than silently renaming it. Omit it and Arcadia derives a short handle
+from the leading clause of `desired_result` — at most six words and 48
+characters, never cut mid-word — appending `-2`, `-3`, and so on only to break
+a collision.
 
 Settle that proposal with `--responsibility autonomous` or `codex`, but without
 a queue placement. The draft remains inactive: Arcadia does not change the
@@ -497,12 +508,13 @@ dependency-safe queue segment in the same settlement. Adding an Action to the
 active Plan requires both its approved Responsibility and a placement. A draft
 Plan can be amended but cannot be queued before activation.
 
-An `action` Ask still supports a smaller ordered bundle in the active Plan.
-Preview lists every proposed effect, and the settlement receipt and Discord
-summary name the affected Plan, every created or amended Action, the changed
-queue segment and position, and the resulting next eligible Action. To correct
-a proposal, reject it and submit corrected content with a new request id. Both
-dispositions remain traceable.
+An `action` Ask still supports a smaller ordered bundle in the active Plan,
+inserted at one approved boundary while preserving its declared order. Preview
+lists every proposed effect, and the settlement receipt and Discord summary
+name the affected Plan, every created or amended Action, every queue key, the
+changed queue segment and position, and the resulting next eligible Action. To
+correct a proposal, reject it and submit corrected content with a new request
+id. Both dispositions remain traceable.
 
 Settlement accepts strict proposals for an explicit configured Project. For a
 new Action or an active-Plan reprioritization, the operator supplies any
