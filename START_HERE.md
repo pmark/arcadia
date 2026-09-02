@@ -449,23 +449,35 @@ ARCADIA_SURFACE=claude pnpm arcadia agent-ask preview \
 The fallback never invents a Project, intent kind, dependency, date, priority,
 or approval.
 
-One `action` Ask may describe an ordered bundle with the optional `actions`
-list. Each child uses only `id`, `desired_result`, `acceptance`, and
-`dependencies`; dependencies may name an existing Action in the active Plan or
-an earlier Action in the same bundle:
+Both `action` and `plan` Asks may carry an `actions` list. Each child accepts
+an optional `id`, `desired_result`, `acceptance`, `dependencies`, optional
+`references`, and — when amending a Plan — an optional Action `target_ref`.
+Dependencies may name an existing Action in the target Plan or an earlier
+Action in the same bundle. Top-level `references` are shared by every child.
+For an Action amendment, `dependencies` and the merged `references` are
+replacement lists: an explicit empty list clears stale values.
+
+With `intent: plan` and no Plan `target_ref`, one settlement creates a complete
+non-active draft Plan. Arcadia chooses the managed-document path and a
+dependency-safe Action order; the agent supplies the desired results and
+observable evidence. At least one complete Action is required:
 
 ```yaml
 agent_ask: v1
-request_id: agent-release-001
+request_id: agent-release-plan-001
 project: arcadia
-intent: action
+intent: plan
 desired_result: Deliver a queue-aware release.
+references:
+  - docs/release-contract.md
 actions:
   - id: build-release-proof
     desired_result: Build release proof.
     acceptance:
       - The release proof exists.
     dependencies: []
+    references:
+      - tests/release.test.ts
   - desired_result: Publish the release guide.
     acceptance:
       - The release guide exists.
@@ -483,16 +495,31 @@ from the leading clause of `desired_result` — at most six words and 48
 characters, never cut mid-word — appending `-2`, `-3`, and so on only to break
 a collision.
 
-Preview lists every proposed Action. Acceptance inserts the whole bundle at
-one approved `--top`, `--before`, or `--after` boundary while preserving its
-declared order; the settlement receipt and Discord summary name every queue
-key. To correct a proposal, reject it and submit the corrected content with a
-new request id. Both dispositions remain traceable.
+Settle that proposal with `--responsibility autonomous` or `codex`, but without
+a queue placement. The draft remains inactive: Arcadia does not change the
+Project pointer, grant dispatch authority, or put its Actions in the execution
+queue.
+
+To change an existing Plan, set top-level `target_ref: plan/<slug>`. Children
+without a target create Actions; children with `target_ref: action/<id>` amend
+the named Action. When the target is active, one approved `--top`, `--before`,
+or `--after` moves every unfinished Action in that Plan as one contiguous,
+dependency-safe queue segment in the same settlement. Adding an Action to the
+active Plan requires both its approved Responsibility and a placement. A draft
+Plan can be amended but cannot be queued before activation.
+
+An `action` Ask still supports a smaller ordered bundle in the active Plan,
+inserted at one approved boundary while preserving its declared order. Preview
+lists every proposed effect, and the settlement receipt and Discord summary
+name the affected Plan, every created or amended Action, every queue key, the
+changed queue segment and position, and the resulting next eligible Action. To
+correct a proposal, reject it and submit corrected content with a new request
+id. Both dispositions remain traceable.
 
 Settlement accepts strict proposals for an explicit configured Project. For a
-new Action, the operator supplies the approved Responsibility and queue
-position, previews the exact managed Plan and portfolio-order effect, then
-applies only that fingerprint:
+new Action or an active-Plan reprioritization, the operator supplies any
+required Responsibility and the approved queue position, previews the exact
+managed Plan and portfolio-order effect, then applies only that fingerprint:
 
 ```sh
 pnpm arcadia agent-ask settle \
@@ -507,7 +534,7 @@ pnpm arcadia agent-ask settle \
 
 Apply requires a clean Project worktree, at least one observable acceptance
 criterion, valid active-Plan dependencies, a valid existing queue, and the
-unchanged preview fingerprint. It writes the canonical Action or Action bundle,
+unchanged preview fingerprint. It writes the canonical Plan or Action effects,
 synchronizes the operational projection, assigns explicit contiguous queue
 positions, and persists a settlement receipt. Use `--disposition rejected`
 without a Responsibility or queue placement to preserve the proposal while
@@ -521,7 +548,10 @@ use the same receipt path and smallest canonical effect:
 
 - `outcome` updates the Project Outcome; `milestone` updates the Project and
   active Plan together.
-- `plan` creates a non-active draft Plan, or amends the named Plan Milestone.
+- `plan` creates a complete non-active draft Plan, amends Actions in a named
+  Plan, or reprioritizes the active Plan's unfinished Actions as one segment. A
+  targeted Plan Ask with no child Actions or placement retains the concise
+  Milestone-amendment behavior.
 - `action` with `target_ref` amends that Action's next step, acceptance, and
   explicit dependencies while preserving Responsibility and queue position.
 - `decision` creates one open Decision; `auto` and an untargeted

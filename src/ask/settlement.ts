@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
-import type { AgentAskProposal, NormalizedAgentAsk } from "./agentAsk.js";
+import type { AgentAskProposal, NormalizedAgentAsk, NormalizedAgentAskAction } from "./agentAsk.js";
 import { validationError } from "../cli/errors.js";
 import { createArtifactRecord, getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
 import { discoverDocs } from "../docs/discover.js";
@@ -147,7 +147,8 @@ export function settleAgentAsk(db: Database.Database, input: {
           fileMutations.push({
             path: activePlanPath,
             before: planBefore,
-            after: amendAction(planBefore, actionId, proposal.normalized.desiredResult, proposal.normalized.acceptance, dependencies, proposal.normalized.requestId)
+            after: amendAction(planBefore, actionId, proposal.normalized.desiredResult, proposal.normalized.acceptance,
+              dependencies, proposal.normalized.references, proposal.normalized.requestId)
           });
           effects.push(`Amended Action ${queueActionKey} in active Plan ${plan.slug}.`);
           effects.push("Preserved the Action's existing Responsibility and queue position.");
@@ -157,7 +158,8 @@ export function settleAgentAsk(db: Database.Database, input: {
           if (!input.placement) throw validationError("Accepted Action settlement requires --top, --before, or --after.");
           const proposedActions = (proposal.normalized.actions ?? []).length > 0
             ? proposal.normalized.actions
-            : [{ id: null, desiredResult: proposal.normalized.desiredResult, acceptance: proposal.normalized.acceptance, dependencies: proposal.normalized.dependencies }];
+            : [{ id: null, desiredResult: proposal.normalized.desiredResult, acceptance: proposal.normalized.acceptance,
+              dependencies: proposal.normalized.dependencies, references: proposal.normalized.references, targetRef: null }];
           if (proposedActions.some((action) => action.acceptance.length === 0)) {
             throw validationError("Every accepted Action requires at least one observable acceptance criterion in the proposal.");
           }
@@ -184,7 +186,8 @@ export function settleAgentAsk(db: Database.Database, input: {
           for (const action of normalizedActions) {
             planAfter = appendAction(planAfter, {
               id: action.id, title: action.desiredResult, responsibility: input.responsibility,
-              acceptance: action.acceptance, dependencies: action.dependencies, source: `Agent Ask ${proposal.normalized.requestId}`
+              acceptance: action.acceptance, dependencies: action.dependencies, references: action.references,
+              source: `Agent Ask ${proposal.normalized.requestId}`
             });
           }
           fileMutations.push({
@@ -229,20 +232,148 @@ export function settleAgentAsk(db: Database.Database, input: {
         break;
       }
       case "plan": {
-        requireNoQueueOptions(input);
         if (targetRef) {
           const targetSlug = resolveManagedTargetRef(targetRef, "plan", project.slug);
           const target = discovered.docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug && doc.slug === targetSlug);
           if (!target) throw validationError("Agent Ask Plan amendment target was not found.", { targetRef });
           const targetPath = path.join(repoRoot, target.relativePath);
           const before = readFileSync(targetPath, "utf8");
-          fileMutations.push({ path: targetPath, before, after: replaceTopLevelField(before, "milestone", proposal.normalized.desiredResult) });
-          effects.push(`Amended Plan ${target.slug} Milestone.`);
+          const proposedActions = proposal.normalized.actions;
+          if (proposedActions.length === 0) {
+            if (input.placement) {
+              if (input.responsibility) throw validationError("Plan reprioritization preserves existing Action Responsibilities.");
+              if (target.status !== "active" || target.slug !== plan.slug) {
+                throw validationError("Only the active Plan can be placed in the execution queue; draft Plans remain inactive.", { targetRef });
+              }
+              if (!queue.orderValid) throw validationError("Position every existing approved Action before reprioritizing a Plan.", { unpositionedCount: queue.unpositionedCount });
+              queueActionKeys = dependencyOrderedActionIds(target.actions
+                .filter((action) => action.status !== "done")
+                .map((action) => ({ id: action.id, dependencies: action.dependsOn })))
+                .map((actionId) => `${project.slug}/${actionId}`);
+              if (queueActionKeys.length === 0) throw validationError("A complete Plan has no unfinished Actions to reprioritize.", { targetRef });
+              queueActionKey = queueActionKeys[0]!;
+              queueAfter = insertQueueKeys(queueAfter, queueActionKeys, input.placement, input.anchor);
+              arrangeQueue = true;
+              effects.push(`Reprioritized active Plan ${target.slug} as one dependency-safe queue segment: ${queueActionKeys.join(", ")}.`);
+              effects.push(`Moved the Plan segment to start at queue position ${queueAfter.indexOf(queueActionKey) + 1}.`);
+            } else {
+              requireNoQueueOptions(input);
+              fileMutations.push({ path: targetPath, before, after: replaceTopLevelField(before, "milestone", proposal.normalized.desiredResult) });
+              effects.push(`Amended Plan ${target.slug} Milestone.`);
+            }
+            break;
+          }
+
+          const takenIds = new Set(target.actions.map((action) => action.id));
+          const newActionIds = proposedActions.map((action) => action.targetRef
+            ? resolveManagedTargetRef(action.targetRef, "action", project.slug)
+            : allocateUniqueActionId(takenIds, slugify(action.desiredResult)));
+          const duplicateTargets = newActionIds.filter((id, index) => newActionIds.indexOf(id) !== index);
+          if (duplicateTargets.length > 0) throw validationError("A Plan Ask cannot amend the same Action more than once.", { actions: [...new Set(duplicateTargets)] });
+          const existingIds = new Set(target.actions.map((action) => action.id));
+          const availableIds = new Set([...existingIds, ...newActionIds]);
+          const normalizedActions = proposedActions.map((action, index) => {
+            const id = newActionIds[index]!;
+            const existing = action.targetRef !== null;
+            if (existing && !existingIds.has(id)) throw validationError("Agent Ask Plan Action amendment target was not found.", { targetRef: action.targetRef });
+            if (action.acceptance.length === 0) throw validationError("Every created or amended Plan Action requires at least one observable acceptance criterion.", { action: id });
+            const dependencies = normalizeDependencies(action.dependencies, project.slug);
+            const unknownDependencies = dependencies.filter((dependency) => !availableIds.has(dependency));
+            if (unknownDependencies.length > 0) {
+              throw validationError("Agent Ask names dependencies outside the target Plan or proposed Action set.", { action: id, dependencies: unknownDependencies });
+            }
+            return { ...action, id, existing, dependencies, references: uniqueStrings([...proposal.normalized.references, ...action.references]) };
+          });
+          const createsActions = normalizedActions.some((action) => !action.existing);
+          if (createsActions && !input.responsibility) throw validationError("Creating Actions in a Plan requires --responsibility autonomous or codex.");
+          if (!createsActions && input.responsibility) throw validationError("Plan Action amendments preserve existing Responsibilities.");
+
+          const isActivePlan = target.status === "active" && target.slug === plan.slug;
+          if (!isActivePlan && input.placement) {
+            throw validationError("Only the active Plan can be placed in the execution queue; draft Plans remain inactive.", { targetRef });
+          }
+          if (isActivePlan && createsActions && !input.placement) {
+            throw validationError("Adding Actions to the active Plan requires --top, --before, or --after so no approved work is left unpositioned.");
+          }
+          if (input.anchor && !input.placement) throw validationError("A queue anchor requires --before or --after.");
+          if (input.placement && !queue.orderValid) throw validationError("Position every existing approved Action before reprioritizing a Plan.", { unpositionedCount: queue.unpositionedCount });
+
+          let after = before;
+          for (const action of normalizedActions) {
+            if (action.existing) {
+              after = amendAction(after, action.id, action.desiredResult, action.acceptance, action.dependencies,
+                action.references, proposal.normalized.requestId);
+              effects.push(`Amended Action ${project.slug}/${action.id} in Plan ${target.slug}.`);
+              actionIdsToValidate.push(action.id);
+            } else {
+              after = appendAction(after, {
+                id: action.id, title: action.desiredResult, responsibility: input.responsibility!,
+                acceptance: action.acceptance, dependencies: action.dependencies, references: action.references,
+                source: `Agent Ask ${proposal.normalized.requestId}`
+              });
+              effects.push(`Created Action ${project.slug}/${action.id} in Plan ${target.slug} with Responsibility ${input.responsibility}.`);
+              actionIdsToValidate.push(action.id);
+            }
+          }
+          fileMutations.push({ path: targetPath, before, after });
+
+          if (input.placement) {
+            const changes = new Map(normalizedActions.map((action) => [action.id, action.dependencies]));
+            const finalActions = target.actions.map((action) => ({
+              id: action.id,
+              dependencies: changes.get(action.id) ?? action.dependsOn,
+              status: action.status
+            }));
+            for (const action of normalizedActions.filter((candidate) => !candidate.existing)) {
+              finalActions.push({ id: action.id, dependencies: action.dependencies, status: "open" });
+            }
+            queueActionKeys = dependencyOrderedActionIds(finalActions
+              .filter((action) => action.status !== "done")
+              .map(({ id, dependencies }) => ({ id, dependencies })))
+              .map((actionId) => `${project.slug}/${actionId}`);
+            queueActionKey = queueActionKeys[0] ?? null;
+            if (!queueActionKey) throw validationError("A complete Plan has no unfinished Actions to reprioritize.", { targetRef });
+            queueAfter = insertQueueKeys(queueAfter, queueActionKeys, input.placement, input.anchor);
+            arrangeQueue = true;
+            effects.push(`Reprioritized active Plan ${target.slug} as one dependency-safe queue segment: ${queueActionKeys.join(", ")}.`);
+            effects.push(`Moved the Plan segment to start at queue position ${queueAfter.indexOf(queueActionKey) + 1}.`);
+          } else {
+            effects.push(`Preserved Plan ${target.slug} activation, pointer, and queue position.`);
+          }
         } else {
+          if (input.placement || input.anchor) throw validationError("A draft Plan cannot be placed in the execution queue before activation.");
+          const proposedActions = proposal.normalized.actions;
+          if (proposedActions.length > 0 && !input.responsibility) {
+            throw validationError("Creating Actions in a draft Plan requires --responsibility autonomous or codex.");
+          }
+          if (proposedActions.length === 0 && input.responsibility) {
+            throw validationError("Responsibility applies only when the Plan Ask creates Actions.");
+          }
+          if (proposedActions.some((action) => action.targetRef)) {
+            throw validationError("A new draft Plan cannot amend an existing Action target_ref.");
+          }
+          if (proposedActions.some((action) => action.acceptance.length === 0)) {
+            throw validationError("Every draft Plan Action requires at least one observable acceptance criterion.");
+          }
           const planSlug = uniquePlanSlug(discovered.docs.filter((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug), slugify(proposal.normalized.desiredResult));
           const targetPath = path.join(repoRoot, "docs", "plans", `${planSlug}.md`);
-          fileMutations.push({ path: targetPath, before: null, after: newDraftPlan(project.slug, planSlug, proposal.normalized.desiredResult, proposal.normalized.requestId) });
-          effects.push(`Created draft Plan ${planSlug}; active Plan and pointer are unchanged.`);
+          const takenIds = new Set<string>();
+          const actionIds = proposedActions.map((action) => allocateUniqueActionId(takenIds, slugify(action.desiredResult)));
+          const availableIds = new Set(actionIds);
+          const actions = proposedActions.map((action, index) => {
+            const dependencies = normalizeDependencies(action.dependencies, project.slug);
+            const unknownDependencies = dependencies.filter((dependency) => !availableIds.has(dependency));
+            if (unknownDependencies.length > 0) {
+              throw validationError("Draft Plan Action dependencies must name another Action in the same Ask.", { action: actionIds[index], dependencies: unknownDependencies });
+            }
+            return { ...action, id: actionIds[index]!, dependencies, references: uniqueStrings([...proposal.normalized.references, ...action.references]) };
+          });
+          const orderedIds = dependencyOrderedActionIds(actions.map((action) => ({ id: action.id, dependencies: action.dependencies })));
+          const orderedActions = orderedIds.map((id) => actions.find((action) => action.id === id)!);
+          fileMutations.push({ path: targetPath, before: null, after: newDraftPlan(project.slug, planSlug,
+            proposal.normalized.desiredResult, proposal.normalized.requestId, input.responsibility, orderedActions) });
+          effects.push(`Created draft Plan ${planSlug} with ${orderedActions.length} governed Action${orderedActions.length === 1 ? "" : "s"}: ${orderedActions.map((action) => `${project.slug}/${action.id}`).join(", ") || "none"}.`);
+          effects.push("Kept the draft inactive; active Plan, Project pointer, dispatch authority, and execution queue are unchanged.");
         }
         break;
       }
@@ -417,7 +548,7 @@ export function markAgentAskNotificationSent(db: Database.Database, settlementId
 }
 
 function appendAction(content: string, action: {
-  id: string; title: string; responsibility: AgentAskResponsibility; acceptance: string[]; dependencies: string[]; source: string;
+  id: string; title: string; responsibility: AgentAskResponsibility; acceptance: string[]; dependencies: string[]; references: string[]; source: string;
 }): string {
   const end = content.indexOf("\n---", 4);
   if (end < 0) throw validationError("Managed Plan has no closing frontmatter marker.");
@@ -446,7 +577,7 @@ function appendAction(content: string, action: {
     ...action.acceptance.map((criterion) => `      - ${yamlScalar(criterion)}`),
     `    depends_on: [${action.dependencies.join(", ")}]`,
     "    decisions: []",
-    "    references: []"
+    `    references: [${action.references.map(yamlScalar).join(", ")}]`
   ];
   return `${content.slice(0, insertAt)}\n${lines.join("\n")}${content.slice(insertAt)}`;
 }
@@ -529,6 +660,27 @@ function normalizeDependencies(dependencies: string[], projectSlug: string): str
   }).filter(Boolean);
 }
 
+function dependencyOrderedActionIds(actions: Array<{ id: string; dependencies: string[] }>): string[] {
+  const ids = new Set(actions.map((action) => action.id));
+  const remaining = [...actions];
+  const ordered: string[] = [];
+  const resolved = new Set<string>();
+  while (remaining.length > 0) {
+    const index = remaining.findIndex((action) => action.dependencies.every((dependency) => !ids.has(dependency) || resolved.has(dependency)));
+    if (index < 0) {
+      throw validationError("Agent Ask Plan Actions contain a dependency cycle.", { actions: remaining.map((action) => action.id) });
+    }
+    const [next] = remaining.splice(index, 1);
+    ordered.push(next!.id);
+    resolved.add(next!.id);
+  }
+  return ordered;
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
 function resolveManagedTargetRef(targetRef: string, kind: "action" | "plan", projectSlug: string): string {
   const parts = targetRef.split("/").filter(Boolean);
   if (parts.length === 1) return parts[0]!;
@@ -609,12 +761,37 @@ function uniquePlanSlug(plans: PlanDoc[], base: string): string {
   throw validationError("Agent Ask could not allocate a unique Plan slug.");
 }
 
-function newDraftPlan(projectSlug: string, planSlug: string, milestone: string, requestId: string): string {
+function newDraftPlan(
+  projectSlug: string,
+  planSlug: string,
+  milestone: string,
+  requestId: string,
+  responsibility?: AgentAskResponsibility,
+  actions: Array<NormalizedAgentAskAction & { id: string }> = []
+): string {
+  const actionLines = actions.flatMap((action) => [
+    `  - id: ${action.id}`,
+    `    title: ${yamlScalar(action.desiredResult)}`,
+    "    status: open",
+    `    responsibility: ${responsibility}`,
+    "    effort: session",
+    `    next_action: ${yamlScalar(action.desiredResult)}`,
+    `    expected_artifact: ${yamlScalar(`Evidence satisfying Agent Ask ${action.id}`)}`,
+    "    clarification: clarified",
+    "    confidence: high",
+    `    source: ${yamlScalar(`Agent Ask ${requestId}`)}`,
+    "    acceptance_criteria:",
+    ...action.acceptance.map((criterion) => `      - ${yamlScalar(criterion)}`),
+    `    depends_on: [${action.dependencies.join(", ")}]`,
+    "    decisions: []",
+    `    references: [${action.references.map(yamlScalar).join(", ")}]`
+  ]);
   return [
     "---", "arcadia: v1", "type: plan", `slug: ${planSlug}`, `project: ${projectSlug}`, "status: draft",
     `milestone: ${yamlScalar(milestone)}`, "token_impact: medium",
     `token_budget: ${yamlScalar("Deterministic management; one bounded coding-agent implementation pass after activation.")}`,
-    `updated: ${today()}`, "actions: []", "questions: []", "decisions: []", "---", "",
+    `updated: ${today()}`, ...(actionLines.length > 0 ? ["actions:", ...actionLines] : ["actions: []"]),
+    "questions: []", "decisions: []", "---", "",
     `# ${milestone}`, "", `Created from accepted Agent Ask ${requestId}. This draft is not active and changes no pointer.`, ""
   ].join("\n");
 }
@@ -625,6 +802,7 @@ function amendAction(
   nextAction: string,
   acceptance: string[],
   dependencies: string[],
+  references: string[],
   requestId: string
 ): string {
   const pattern = new RegExp(`(^  - id: ${escapeRegex(actionId)}\\r?$[\\s\\S]*?)(?=^  - id: |^---\\r?$)`, "m");
@@ -637,9 +815,10 @@ function amendAction(
     const replacement = ["    acceptance_criteria:", ...acceptance.map((criterion) => `      - ${yamlScalar(criterion)}`)].join("\n");
     block = block.replace(/^    acceptance_criteria:\r?\n(?:      - .*\r?\n?)*/m, `${replacement}\n`);
   }
-  if (dependencies.length > 0) {
-    block = block.replace(/^    depends_on:.*$/m, `    depends_on: [${dependencies.join(", ")}]`);
-  }
+  block = block.replace(/^    depends_on:.*$/m,
+    dependencies.length > 0 ? `    depends_on: [${dependencies.join(", ")}]` : "    depends_on: []");
+  block = block.replace(/^    references:.*$/m,
+    references.length > 0 ? `    references: [${references.map(yamlScalar).join(", ")}]` : "    references: []");
   block = /^    source:/m.test(block)
     ? block.replace(/^    source:.*$/m, `    source: ${yamlScalar(`Agent Ask ${requestId}`)}`)
     : block.replace(/^    clarification:.*$/m, `$&\n    source: ${yamlScalar(`Agent Ask ${requestId}`)}`);

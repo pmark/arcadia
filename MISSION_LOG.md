@@ -8,6 +8,81 @@ updated: 2026-09-01
 
 # Mission Log: Arcadia
 
+## 2026-09-01 — Dogfooded Agent Ask and the queue, then activated way-delivery
+
+- **Action:** `agent-ask-execution-queue#dogfood-agent-managed-queue`
+- **Did:** Ran the Ask-to-queue path on real work rather than fixtures. A
+  natural-language reprioritization request was submitted through
+  `agent-ask preview`, correctly refused to guess, and opened Decision 0042;
+  the operator's answer ratified it. A strict `plan` envelope targeting the
+  active Plan then created two Actions with zero required Decisions and zero
+  conflicts, and two applied `advance queue reorder` moves exercised
+  preview/apply, optimistic revisions, and undo receipts. Decision 0043 then
+  moved the pointer to `way-delivery` at `evaluate-document-triggers`, which
+  `arcadia next` and `arcadia docket` both resolve with full authorization.
+- **Result:** Queue order does not grant dispatch authority: two Arcadia
+  Actions sat at positions 0 and 1 reported as `waiting_for_pointer` while
+  Arcadia selected a pointer-authorized Action beneath them and explained the
+  skip. Four newly activated Actions with no explicit positions set
+  `orderValid` false and the next Action to `None` rather than inferring
+  priority from document order; one explicit placement restored revision 11.
+  Three real defects surfaced. Natural-language Ask punts to a generic
+  interpretation Decision even when the repository names the plan, Action, and
+  Decision — now a governed Action. Decision 0042 duplicated Decision 0041's
+  question with nothing to catch it — now a governed Action, with 0042 against
+  0041 as its named regression fixture. Agent Ask derives Action ids by
+  slugifying the whole `desired_result`, producing 70-plus character ids, one
+  truncated mid-word at `-alrea`; those ids are the handle for every reorder
+  and `depends_on`, so it is filed separately. Focused tests pass 31/31.
+- **Next:** Implement `arcadia triggers` under the new pointer.
+- **Blockers:** Phone-width browser QA and independent PR QA for
+  `dogfood-agent-managed-queue` have not run, so that Action stays open with
+  its question unanswered. Writing this entry broke
+  `managed-documents-contract` by naming two Actions and omitting `Result`,
+  which is itself evidence that the contract is enforced only by the full
+  suite and never at authoring time.
+
+## 2026-09-01 — Made Plans writable and reprioritizable through Agent Ask
+
+- **Action:** `agent-ask-execution-queue#enable-coding-agents-to-naturally-create-amend-and-reprioritize-plan-shaped-work`
+- **Did:** Extended strict Agent Ask v1 so one `plan` envelope can carry shared
+  and per-Action references, create a complete inactive draft Plan, or target a
+  named Plan to create and amend Actions. Active-Plan settlement can now move
+  every unfinished Plan Action at one approved top/before/after boundary while
+  deriving a stable dependency-safe segment. It refuses incomplete Actions,
+  dependency cycles, cross-Project targets, stale revisions, unpositioned
+  queues, and any attempt to queue a draft. Updated the canonical operator
+  guide and CLI help.
+- **Result:** Focused tests pass 23/23, the corrected full suite passes 1,170
+  with 6 skipped, core and Discord TypeScript builds pass, and the live services were
+  restarted from the committed feature branch. Real Plan Ask
+  `agent-plan-priority-dogfood-20260901` amended the current Action and moved
+  the two unfinished Arcadia Plan Actions as one queue segment at the top.
+  Settlement `asksettle_1c38b693b26b492999` recorded the exact Plan and queue
+  effects, resulting next Action, and operator-acceptance authority boundary;
+  Discord delivered the same effects once as message
+  `1544532698129891468`. After two concurrent Private Practice Now Actions
+  entered the portfolio, Arcadia failed closed as designed; explicit receipt
+  `qorder_68d100e95ecc489991` restored the complete revision-7 order. At
+  390×844 the live Work Queue had no horizontal overflow and selected this
+  Action beneath the higher blocked proof Action.
+- **Next:** Ask the operator to answer Decision 0041 before activating a
+  preserved guided-Ask tail; proof completion does not infer that priority.
+- **Blockers:** Decision 0041 is the one intentional operator question. The
+  implementation, local services, queue, and Discord delivery are otherwise
+  complete. Detailed receipts and QA evidence are preserved in
+  `docs/evidence/agent-ask-plan-management-dogfood-2026-09-01.md`.
+
+### Independent QA follow-up
+
+The first independent review of PR #148 failed at Candidate `475d3226a1b8` and
+was preserved as Decision R150. It found that explicit empty dependency and
+reference lists did not clear stale Action metadata and that new Plan preview
+still admitted an empty draft. The Action was reopened immediately; the fix
+uses replacement-list semantics, rejects an untargeted Plan with no Actions,
+and adds regression coverage. Focused tests pass 23/23 and the full suite passes
+1,170 tests with 6 skipped before the next immutable QA attempt.
+
 ## 2026-09-01 — Settled a real Agent Ask through the live Work Queue and Discord
 
 - **Action:** `agent-ask-execution-queue#verify-the-live-work-queue-and-discord-settlement-summary-end-to-end`

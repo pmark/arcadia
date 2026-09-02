@@ -172,6 +172,64 @@ actions:
       - MISSION_LOG.md
       - docs/decisions/0040-notify-discord-when-agent-ask-settles.md
       - docs/evidence/agent-ask-work-queue-discord-dogfood-2026-09-01.md
+  - id: enable-coding-agents-to-naturally-create-amend-and-reprioritize-plan-shaped-work
+    title: Enable coding agents to naturally create, amend, and reprioritize Plan-shaped work on the fly through Arcadia Ask.
+    status: done
+    responsibility: codex
+    effort: session
+    next_action: Preserve the verified Plan Ask receipts and continue only after Decision 0041 selects the next planning priority.
+    expected_artifact: Evidence satisfying Agent Ask enable-coding-agents-to-naturally-create-amend-and-reprioritize-plan-shaped-work
+    clarification: clarified
+    confidence: high
+    source: Agent Ask agent-plan-priority-dogfood-20260901
+    acceptance_criteria:
+      - A strict conventional Agent Ask can create a complete draft Plan with one or more governed Actions, acceptance criteria, dependencies, and references without the filing agent choosing document paths, queue ids, or Git operations.
+      - A Plan Ask targeting an existing Plan can add or amend Actions and can explicitly reprioritize that Plan's unfinished Actions at top, before, or after another queued Action in the same exact preview and settlement.
+      - Reprioritization remains ordering metadata over canonical Actions, preserves dependency order, never activates a draft Plan or grants dispatch authority, and refuses ambiguous plan membership, stale queue revisions, cross-Project targets, or incomplete placement.
+      - Preview and settlement receipts name the Plan create or amendment, every Action effect, the complete changed queue segment, authority boundary, and resulting next eligible Action; the Discord settlement summary reports the same canonical effects.
+      - Strict plan-shaped input is deterministic and byte-stable, while natural fallback may propose one labelled interpretation but cannot invent approval, Project ownership, dependencies, or priority.
+      - Focused tests, full suite, builds, phone-width Work Queue QA, independent PR QA, and one real Agent Ask dogfood prove plan creation and reprioritization end to end.
+    depends_on: []
+    decisions: []
+    references: [START_HERE.md, src/ask/agentAsk.ts, src/ask/settlement.ts, tests/agent-ask-settlement.test.ts, docs/evidence/agent-ask-plan-management-dogfood-2026-09-01.md]
+  - id: make-a-natural-language-agent-ask-propose-the-concrete-canonical-effect-when-the
+    title: Make a natural-language Agent Ask propose the concrete canonical effect when the repository already contains the facts that identify it, instead of always falling back to a generic interpretation Decision.
+    status: open
+    responsibility: codex
+    effort: session
+    next_action: Make a natural-language Agent Ask propose the concrete canonical effect when the repository already contains the facts that identify it, instead of always falling back to a generic interpretation Decision.
+    expected_artifact: Evidence satisfying Agent Ask make-a-natural-language-agent-ask-propose-the-concrete-canonical-effect-when-the
+    clarification: clarified
+    confidence: high
+    source: Agent Ask arcadia-ask-quality-additions-2026-09-01
+    acceptance_criteria:
+      - When natural text names an existing plan slug, Action id, or Decision id that resolves in the destination Project, the preview proposes the specific create or amend effect against that target rather than a bare interpretation effect.
+      - Resolution is deterministic and makes zero model calls; only exact identifiers already present in checked-in documents are matched, and no priority, date, dependency, approval, or Project ownership is inferred.
+      - When no identifier resolves, or more than one resolves ambiguously, the existing interpretation Decision path is preserved unchanged, and the receipt names the candidates it considered and rejected.
+      - A resolved proposal still requires operator acceptance and still opens a focused Decision whenever it would materially change Project ownership, acceptance criteria, authority, or queue position.
+      - Focused tests cover a resolved plan reference, a resolved Action reference, a resolved Decision reference, an unresolvable reference, an ambiguous reference, and byte-stable replay of each.
+    depends_on: []
+    decisions: []
+    references: [docs/decisions/0041-prioritize-the-preserved-ask-tail.md, docs/decisions/0042-how-should-arcadia-structure-this-request-reactivate-the-arcadia-ask-active-sess.md, docs/plans/decision-queue-reconciliation.md, src/ask/agentAsk.ts, src/ask/settlement.ts, tests/agent-ask.test.ts]
+  - id: reconcile-open-operator-questions-against-answers-the-checked-in-documents-alrea
+    title: Reconcile open operator questions against answers the checked-in documents already carry, so the same question is never asked twice.
+    status: open
+    responsibility: codex
+    effort: session
+    next_action: Reconcile open operator questions against answers the checked-in documents already carry, so the same question is never asked twice.
+    expected_artifact: Evidence satisfying Agent Ask reconcile-open-operator-questions-against-answers-the-checked-in-documents-alrea
+    clarification: clarified
+    confidence: high
+    source: Agent Ask arcadia-ask-quality-additions-2026-09-01
+    acceptance_criteria:
+      - A deterministic reconciler matches each open Decision and Requires Review question against resolutions already recorded in the owning Project's checked-in plans and Decisions, with zero model calls.
+      - A question whose answer already exists is reported as already-answered with the exact source document and field that answers it; nothing is closed silently and no answer is invented.
+      - A command closes the already-answered items the operator confirms, preserving each original question and its resolution provenance.
+      - Decision 0042 against Decision 0041 is covered as a regression fixture, because that exact duplication is what motivated this Action.
+      - Questions with no recorded answer remain open and visibly unchanged.
+    depends_on: []
+    decisions: []
+    references: [docs/decisions/0041-prioritize-the-preserved-ask-tail.md, docs/decisions/0042-how-should-arcadia-structure-this-request-reactivate-the-arcadia-ask-active-sess.md, docs/plans/decision-queue-reconciliation.md, src/ask/agentAsk.ts, src/ask/settlement.ts, src/commands/review.ts]
 decisions: ["0039", "0040", "0041"]
 ---
 

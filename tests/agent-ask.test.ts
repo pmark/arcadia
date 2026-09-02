@@ -14,7 +14,10 @@ describe("Agent Ask v1", () => {
   it("normalizes every supported Project-management contribution without Project writes", () => {
     const workspace = initializedWorkspace();
     for (const intent of AGENT_ASK_INTENTS) {
-      const result = runAgentAskPreviewCommand({ workspace, request: strictAsk(`kind-${intent}`, intent) });
+      const request = intent === "plan"
+        ? `${strictAsk(`kind-${intent}`, intent)}actions:\n  - desired_result: Deliver the Plan Action\n    acceptance:\n      - Plan Action proof exists.\n    dependencies: []\n`
+        : strictAsk(`kind-${intent}`, intent);
+      const result = runAgentAskPreviewCommand({ workspace, request });
       expect(result.data.proposal.normalized.intent).toBe(intent);
       expect(result.data.proposal.effects[0]?.targetKind).toBe(intent === "auto" ? "interpretation" : intent);
       expect(result.data.projectWritesPerformed).toBe(0);
@@ -98,6 +101,40 @@ describe("Agent Ask v1", () => {
       workspace,
       request: request.replace("    dependencies: []", "    dependencies: []\n    approved: true")
     })).toThrow("action contains unknown fields");
+  });
+
+  it("accepts Plan-shaped Actions with shared references and per-Action amendment targets", () => {
+    const workspace = initializedWorkspace();
+    const request = [
+      "agent_ask: v1", "request_id: plan-shaped", "project: unknown", "intent: plan",
+      "desired_result: Deliver the release", "acceptance: []", "dependencies: []",
+      "references:", "  - docs/release.md", "target_ref: plan/release",
+      "actions:",
+      "  - desired_result: Build the release", "    acceptance:", "      - Build passes.",
+      "    dependencies: []", "    references:", "      - src/release.ts",
+      "  - target_ref: action/publish", "    desired_result: Publish the release",
+      "    acceptance:", "      - Release is published.", "    dependencies:", "      - build-the-release",
+      "    references: []", "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const result = runAgentAskPreviewCommand({ workspace, request });
+    expect(result.data.proposal.normalized).toMatchObject({ intent: "plan", targetRef: "plan/release", references: ["docs/release.md"] });
+    expect(result.data.proposal.normalized.actions).toEqual([
+      {
+        id: null, desiredResult: "Build the release", acceptance: ["Build passes."], dependencies: [],
+        references: ["src/release.ts"], targetRef: null
+      },
+      {
+        id: null, desiredResult: "Publish the release", acceptance: ["Release is published."],
+        dependencies: ["build-the-release"], references: [], targetRef: "action/publish"
+      }
+    ]);
+    expect(result.data.proposal.effects.map((effect) => effect.operation)).toEqual(["update", "update"]);
+  });
+
+  it("refuses an untargeted Plan without governed Actions", () => {
+    const workspace = initializedWorkspace();
+    expect(() => runAgentAskPreviewCommand({ workspace, request: strictAsk("empty-plan", "plan") }))
+      .toThrow("requires at least one governed Action");
   });
 });
 
