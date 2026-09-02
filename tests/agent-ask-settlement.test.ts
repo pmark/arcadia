@@ -355,6 +355,51 @@ describe("Agent Ask settlement", () => {
     expect(existingBlock).not.toContain("docs/stale.md");
   });
 
+  // Explicit ids were honored on the `action` bundle path while both Plan paths
+  // still derived from `desired_result`, so a Plan Ask silently produced the
+  // long truncated ids explicit ids exist to prevent.
+  it("honors an explicit child Action id when amending an active Plan", () => {
+    const { workspace, repo } = fixture();
+    const request = activePlanAsk("ask-plan-explicit-id")
+      .replace("  - desired_result: Audit release", "  - id: audit-release-proof\n    desired_result: Audit release");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    expect(proposal.data.proposal.normalized.actions.map((action) => action.id)).toEqual([null, "audit-release-proof"]);
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-plan-explicit-id",
+      disposition: "accepted", responsibility: "codex", top: true, revision: 1
+    });
+    expect(preview.data.receipt.queueActionKeys).toEqual(["demo/existing", "demo/audit-release-proof"]);
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-plan-explicit-id",
+      disposition: "accepted", responsibility: "codex", top: true, revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const plan = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
+    expect(plan).toContain("id: audit-release-proof");
+    expect(plan).not.toContain("id: audit-release\n");
+  });
+
+  it("honors an explicit child Action id when creating a draft Plan", () => {
+    const { workspace, repo } = fixture();
+    const request = draftPlanAsk("ask-draft-explicit-id")
+      .replace("  - desired_result: Build release proof", "  - id: build-proof\n    desired_result: Build release proof")
+      .replace("      - build-release-proof", "      - build-proof");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    expect(proposal.data.proposal.normalized.actions.map((action) => action.id)).toEqual([null, "build-proof"]);
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-draft-explicit-id",
+      disposition: "accepted", responsibility: "codex", revision: 1
+    });
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-draft-explicit-id",
+      disposition: "accepted", responsibility: "codex", revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const plan = readFileSync(path.join(repo, "docs/plans/deliver-release-readiness.md"), "utf8");
+    expect(plan).toContain("id: build-proof");
+    expect(plan).not.toContain("id: build-release-proof");
+  });
+
   it("honors an explicit child Action id and refuses one already used in the Plan", () => {
     const { workspace, repo } = fixture();
     const proposal = runAgentAskPreviewCommand({

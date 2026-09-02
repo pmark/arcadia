@@ -267,7 +267,9 @@ export function settleAgentAsk(db: Database.Database, input: {
           const takenIds = new Set(target.actions.map((action) => action.id));
           const newActionIds = proposedActions.map((action) => action.targetRef
             ? resolveManagedTargetRef(action.targetRef, "action", project.slug)
-            : allocateUniqueActionId(takenIds, slugify(action.desiredResult)));
+            : action.id
+              ? claimExplicitActionId(takenIds, action.id)
+              : allocateUniqueActionId(takenIds, deriveActionId(action.desiredResult)));
           const duplicateTargets = newActionIds.filter((id, index) => newActionIds.indexOf(id) !== index);
           if (duplicateTargets.length > 0) throw validationError("A Plan Ask cannot amend the same Action more than once.", { actions: [...new Set(duplicateTargets)] });
           const existingIds = new Set(target.actions.map((action) => action.id));
@@ -358,7 +360,9 @@ export function settleAgentAsk(db: Database.Database, input: {
           const planSlug = uniquePlanSlug(discovered.docs.filter((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug), slugify(proposal.normalized.desiredResult));
           const targetPath = path.join(repoRoot, "docs", "plans", `${planSlug}.md`);
           const takenIds = new Set<string>();
-          const actionIds = proposedActions.map((action) => allocateUniqueActionId(takenIds, slugify(action.desiredResult)));
+          const actionIds = proposedActions.map((action) => (action.id
+            ? claimExplicitActionId(takenIds, action.id)
+            : allocateUniqueActionId(takenIds, deriveActionId(action.desiredResult))));
           const availableIds = new Set(actionIds);
           const actions = proposedActions.map((action, index) => {
             const dependencies = normalizeDependencies(action.dependencies, project.slug);
