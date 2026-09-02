@@ -172,6 +172,26 @@ actions:
       - MISSION_LOG.md
       - docs/decisions/0040-notify-discord-when-agent-ask-settles.md
       - docs/evidence/agent-ask-work-queue-discord-dogfood-2026-09-01.md
+  - id: enable-coding-agents-to-naturally-create-amend-and-reprioritize-plan-shaped-work
+    title: Enable coding agents to naturally create, amend, and reprioritize Plan-shaped work on the fly through Arcadia Ask.
+    status: open
+    responsibility: codex
+    effort: session
+    next_action: Enable coding agents to naturally create, amend, and reprioritize Plan-shaped work on the fly through Arcadia Ask.
+    expected_artifact: Evidence satisfying Agent Ask enable-coding-agents-to-naturally-create-amend-and-reprioritize-plan-shaped-work
+    clarification: clarified
+    confidence: high
+    source: Agent Ask agent-natural-plan-priority-20260901-v2
+    acceptance_criteria:
+      - A strict conventional Agent Ask can create a complete draft Plan with one or more governed Actions, acceptance criteria, dependencies, and references without the filing agent choosing document paths, queue ids, or Git operations.
+      - A Plan Ask targeting an existing Plan can add or amend Actions and can explicitly reprioritize that Plan's unfinished Actions at top, before, or after another queued Action in the same exact preview and settlement.
+      - Reprioritization remains ordering metadata over canonical Actions, preserves dependency order, never activates a draft Plan or grants dispatch authority, and refuses ambiguous plan membership, stale queue revisions, cross-Project targets, or incomplete placement.
+      - Preview and settlement receipts name the Plan create or amendment, every Action effect, the complete changed queue segment, authority boundary, and resulting next eligible Action; the Discord settlement summary reports the same canonical effects.
+      - Strict plan-shaped input is deterministic and byte-stable, while natural fallback may propose one labelled interpretation but cannot invent approval, Project ownership, dependencies, or priority.
+      - Focused tests, full suite, builds, phone-width Work Queue QA, independent PR QA, and one real Agent Ask dogfood prove plan creation and reprioritization end to end.
+    depends_on: []
+    decisions: []
+    references: []
 decisions: ["0039", "0040", "0041"]
 ---
 
