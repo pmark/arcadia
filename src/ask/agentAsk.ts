@@ -5,13 +5,18 @@ import { validationError } from "../cli/errors.js";
 export const AGENT_ASK_INTENTS = ["auto", "outcome", "milestone", "plan", "proposal", "decision", "action", "artifact", "log", "project_update"] as const;
 export type AgentAskIntent = (typeof AGENT_ASK_INTENTS)[number];
 export type AgentAskAuthority = "propose" | "apply_if_approved";
-export interface NormalizedAgentAskAction { desiredResult: string; acceptance: string[]; dependencies: string[]; }
+export interface NormalizedAgentAskAction { id: string | null; desiredResult: string; acceptance: string[]; dependencies: string[]; }
 export interface NormalizedAgentAsk { version: "v1"; format: "strict" | "natural"; requestId: string; project: string; intent: AgentAskIntent; desiredResult: string; rationale: string | null; acceptance: string[]; dependencies: string[]; actions: NormalizedAgentAskAction[]; targetRef: string | null; requestedAuthority: AgentAskAuthority; }
 export interface AgentAskEffect { operation: "interpret" | "create" | "update"; targetKind: Exclude<AgentAskIntent, "auto"> | "interpretation"; targetRef: string | null; fields: Record<string, unknown>; status: "proposed"; authority: "operator_acceptance_required"; }
 export interface AgentAskProposal { id: string; captureId: string; normalized: NormalizedAgentAsk; effects: AgentAskEffect[]; requiredDecisions: string[]; unchanged: string[]; conflicts: string[]; refused: string[]; managedDocumentTransition: { required: boolean; status: "withheld_until_acceptance"; authority: "checked_in_documents" }; queueConsequence: "none_until_accepted"; writes: { captureReceipt: true; proposalReceipt: true; projectChanges: false }; nonActions: string[]; fingerprint: string; createdAt: string; }
 
 const STRICT_FIELDS = new Set(["agent_ask", "request_id", "project", "intent", "desired_result", "rationale", "acceptance", "dependencies", "actions", "target_ref", "requested_authority"]);
-const STRICT_ACTION_FIELDS = new Set(["desired_result", "acceptance", "dependencies"]);
+const STRICT_ACTION_FIELDS = new Set(["id", "desired_result", "acceptance", "dependencies"]);
+// An explicit id is the agent stating the handle operators will type into
+// `advance queue reorder` and `depends_on`. It must look like every other
+// plan-authored Action id, so it is validated here rather than at settlement.
+const ACTION_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const ACTION_ID_MAX_LENGTH = 64;
 
 export function normalizeAgentAsk(input: { request: string; requestId?: string; project?: string }): NormalizedAgentAsk {
   const request = input.request.trim();
@@ -70,10 +75,19 @@ function actionList(value: unknown): NormalizedAgentAskAction[] {
     const unknown = Object.keys(item).filter((key) => !STRICT_ACTION_FIELDS.has(key));
     if (unknown.length > 0) throw validationError("Agent Ask action contains unknown fields.", { index, fields: unknown.sort() });
     return {
+      id: actionId(item.id, index),
       desiredResult: requiredText(item.desired_result, `Agent Ask actions[${index}].desired_result is required.`),
       acceptance: stringList(item.acceptance, `actions[${index}].acceptance`),
       dependencies: stringList(item.dependencies, `actions[${index}].dependencies`)
     };
   });
+}
+function actionId(value: unknown, index: number): string | null {
+  const id = optionalText(value);
+  if (id === null) return null;
+  if (!ACTION_ID_PATTERN.test(id) || id.length > ACTION_ID_MAX_LENGTH) {
+    throw validationError("Agent Ask action id must be a lowercase hyphenated slug.", { index, id, maxLength: ACTION_ID_MAX_LENGTH });
+  }
+  return id;
 }
 function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }

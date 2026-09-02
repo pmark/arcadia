@@ -450,9 +450,9 @@ The fallback never invents a Project, intent kind, dependency, date, priority,
 or approval.
 
 One `action` Ask may describe an ordered bundle with the optional `actions`
-list. Each child uses only `desired_result`, `acceptance`, and `dependencies`;
-dependencies may name an existing Action in the active Plan or an earlier
-Action in the same bundle:
+list. Each child uses only `id`, `desired_result`, `acceptance`, and
+`dependencies`; dependencies may name an existing Action in the active Plan or
+an earlier Action in the same bundle:
 
 ```yaml
 agent_ask: v1
@@ -461,7 +461,8 @@ project: arcadia
 intent: action
 desired_result: Deliver a queue-aware release.
 actions:
-  - desired_result: Build release proof.
+  - id: build-release-proof
+    desired_result: Build release proof.
     acceptance:
       - The release proof exists.
     dependencies: []
@@ -472,6 +473,15 @@ actions:
       - build-release-proof
 requested_authority: apply_if_approved
 ```
+
+`id` is optional and names the Action handle operators type into
+`advance queue reorder --move/--before/--after`, `advance queue make-next
+--action`, and `depends_on`. It must be a lowercase hyphenated slug of at most
+64 characters, and settlement refuses one already used in the active Plan
+rather than silently renaming it. Omit it and Arcadia derives a short handle
+from the leading clause of `desired_result` — at most six words and 48
+characters, never cut mid-word — appending `-2`, `-3`, and so on only to break
+a collision.
 
 Preview lists every proposed Action. Acceptance inserts the whole bundle at
 one approved `--top`, `--before`, or `--after` boundary while preserving its
