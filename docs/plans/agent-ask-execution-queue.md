@@ -171,6 +171,7 @@ actions:
     references:
       - MISSION_LOG.md
       - docs/decisions/0040-notify-discord-when-agent-ask-settles.md
+      - docs/evidence/agent-ask-work-queue-discord-dogfood-2026-09-01.md
 decisions: ["0039", "0040", "0041"]
 ---
 

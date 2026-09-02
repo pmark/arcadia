@@ -20,8 +20,10 @@ updated: 2026-09-01
   exposed a real YAML insertion defect when a Plan carried a top-level field
   after `actions`; PR #146 fixed the insertion boundary and the same immutable
   Ask then settled successfully.
-- **Result:** Queue revision 2 is valid, has zero unpositioned Actions, and has
-  one copy of every 11 approved unfinished Actions. Dashboard and CLI agree that
+- **Result:** At selection time, queue revision 2 was valid, had zero
+  unpositioned Actions, and held one copy of all 11 approved unfinished Actions.
+  After the proof Action became `done`, it left the active projection, producing
+  the expected 10-Action view without another reorder. Dashboard and CLI agree that
   Private Practice Now's blocked audit is position 1, the operator-owned Arcadia
   dogfood Action is position 2, and the accepted Ask Action is the first eligible
   item at position 3 with the checked-in pointer authorizing it. Pointer receipt
@@ -32,7 +34,9 @@ updated: 2026-09-01
   `agent-ask:asksettle_d52f96f30a6b443497`. Its rendered message names the
   accepted disposition, Arcadia Project, created Action, assigned
   Responsibility, queue position, resulting next state, and settlement id.
-  Phone-width browser QA passed at 390×844 with no horizontal overflow.
+  Phone-width browser QA passed at 390×844 with no horizontal overflow. The
+  immutable command and receipt outputs are preserved in
+  `docs/evidence/agent-ask-work-queue-discord-dogfood-2026-09-01.md`.
 - **Next:** Obtain the operator's acceptance of this proof and answer Decision
   0041 so Arcadia can activate the highest-value preserved Ask tail without
   guessing priority.
