@@ -9,7 +9,7 @@ token_impact: xlarge
 token_budget: "Parsing, normalization, validation, queue ordering, readiness, reorder operations, and projections are deterministic and make zero model calls. Use one bounded coding-agent implementation pass per Action. Optional intent inference uses the configured local-preferred route once per novel Ask; strict agent envelopes and retries must remain zero-model and byte-stable."
 recommended_model: gpt-5.6-sol
 recommended_reasoning_effort: high
-updated: 2026-09-01
+updated: 2026-09-02
 current_action: dogfood-agent-managed-queue
 actions:
   - id: define-agent-ask-management-contract
@@ -129,12 +129,13 @@ actions:
     depends_on: [connect-agent-ask-to-queue]
   - id: dogfood-agent-managed-queue
     title: Prove agent Ask can manage and reprioritize real Project delivery
-    status: open
+    status: blocked
     responsibility: requires_review
     effort: project
-    next_action: "Use one real coding-agent collaboration to articulate a desired Outcome, submit the resulting conventional Asks, accept the proposed Project records, reorder the resulting Actions midstream, and verify Arcadia dispatches and explains the correct next work."
     expected_artifact: Operator-accepted evidence that coding-agent collaboration can become governed, reprioritizable Arcadia delivery without manual Project-document translation
-    clarification: clarified
+    clarification: question_open
+    gap_type: missing-decision
+    question: Do you accept the live agent-managed queue proof and, if so, should Arcadia reactivate the guided understanding session as the next preserved Ask tail?
     confidence: high
     source: Operator direction on 2026-09-01 and Decision 0039
     acceptance_criteria:
@@ -144,15 +145,16 @@ actions:
       - "One higher blocked or dependency-waiting Action remains visible while Arcadia dispatches the first eligible item beneath it and explains both the skip and reactivation condition."
       - "The resulting coding-agent handoff contains the accepted Outcome, next Action, acceptance criteria, dependencies, references, queue evidence, and authority boundary, and completion advances the same queue without manual pointer repair."
       - "Full suite, builds, phone-width browser QA, independent PR QA, and operator acceptance pass. Remaining guided-session, Ask-rule management, and Songbook work receives an explicit priority Decision only after this proof."
-    decisions: ["0039"]
+    decisions: ["0039", "0041"]
     references:
       - docs/decisions/0039-prioritize-agent-ask-and-work-queue.md
+      - docs/decisions/0041-prioritize-the-preserved-ask-tail.md
       - docs/operator-demo-and-release-contract.md
       - START_HERE.md
     depends_on: [build-operator-work-queue-dashboard]
   - id: verify-the-live-work-queue-and-discord-settlement-summary-end-to-end
     title: Verify the live Work Queue and Discord settlement summary end to end.
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: Verify the live Work Queue and Discord settlement summary end to end.
@@ -166,8 +168,10 @@ actions:
       - The Dashboard and CLI report the same queue revision, complete order, readiness explanations, and selected next Action.
     depends_on: []
     decisions: []
-    references: []
-decisions: ["0039", "0040"]
+    references:
+      - MISSION_LOG.md
+      - docs/decisions/0040-notify-discord-when-agent-ask-settles.md
+decisions: ["0039", "0040", "0041"]
 ---
 
 # Agent Ask and execution queue
