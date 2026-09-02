@@ -177,11 +177,11 @@ actions:
     status: open
     responsibility: codex
     effort: session
-    next_action: Enable coding agents to naturally create, amend, and reprioritize Plan-shaped work on the fly through Arcadia Ask.
+    next_action: Finish and prove natural Plan creation, amendment, and reprioritization through Agent Ask.
     expected_artifact: Evidence satisfying Agent Ask enable-coding-agents-to-naturally-create-amend-and-reprioritize-plan-shaped-work
     clarification: clarified
     confidence: high
-    source: Agent Ask agent-natural-plan-priority-20260901-v2
+    source: Agent Ask agent-plan-priority-dogfood-20260901
     acceptance_criteria:
       - A strict conventional Agent Ask can create a complete draft Plan with one or more governed Actions, acceptance criteria, dependencies, and references without the filing agent choosing document paths, queue ids, or Git operations.
       - A Plan Ask targeting an existing Plan can add or amend Actions and can explicitly reprioritize that Plan's unfinished Actions at top, before, or after another queued Action in the same exact preview and settlement.
@@ -191,7 +191,7 @@ actions:
       - Focused tests, full suite, builds, phone-width Work Queue QA, independent PR QA, and one real Agent Ask dogfood prove plan creation and reprioritization end to end.
     depends_on: []
     decisions: []
-    references: []
+    references: [START_HERE.md, src/ask/agentAsk.ts, src/ask/settlement.ts, tests/agent-ask-settlement.test.ts]
 decisions: ["0039", "0040", "0041"]
 ---
 
