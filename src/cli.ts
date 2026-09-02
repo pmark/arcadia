@@ -1185,9 +1185,10 @@ export function buildProgram(): Command {
       .command("queue")
       .description("Show ready Actions, active Runs, and every stop before dispatch")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((options: { workspace: string; json?: boolean }) =>
-    runCliAction("advance.queue", options, () => runAdvanceQueueCommand(options), renderAdvanceQueueSuccess)
-  );
+  ).action((options: { workspace: string; json?: boolean }) => {
+    const resolved = reviewOptionsFromArgv(options);
+    return runCliAction("advance.queue", resolved, () => runAdvanceQueueCommand(resolved), renderAdvanceQueueSuccess);
+  });
   addJsonOption(
     advanceQueue
       .command("reorder")
@@ -1210,15 +1211,18 @@ export function buildProgram(): Command {
     revision?: string;
     apply?: boolean;
     json?: boolean;
-  }) => runCliAction(
-    "advance.queue.reorder",
-    options,
-    () => runAdvanceQueueReorderCommand({
-      ...options,
-      revision: options.revision === undefined ? undefined : Number(options.revision)
-    }),
-    renderAdvanceQueueReorderSuccess
-  ));
+  }) => {
+    const resolved = reviewOptionsFromArgv(options);
+    return runCliAction(
+      "advance.queue.reorder",
+      resolved,
+      () => runAdvanceQueueReorderCommand({
+        ...resolved,
+        revision: resolved.revision === undefined ? undefined : Number(resolved.revision)
+      }),
+      renderAdvanceQueueReorderSuccess
+    );
+  });
   addJsonOption(
     advanceQueue
       .command("make-next")
@@ -1237,19 +1241,22 @@ export function buildProgram(): Command {
     preview?: string;
     apply?: boolean;
     json?: boolean;
-  }) => runCliAction(
-    "advance.queue.make-next",
-    options,
-    () => runAdvanceQueueMakeNextCommand({
-      workspace: options.workspace,
-      actionKey: options.action,
-      revision: Number(options.revision),
-      requestId: options.requestId,
-      previewFingerprint: options.preview,
-      apply: options.apply
-    }),
-    renderAdvanceQueueMakeNextSuccess
-  ));
+  }) => {
+    const resolved = reviewOptionsFromArgv(options);
+    return runCliAction(
+      "advance.queue.make-next",
+      resolved,
+      () => runAdvanceQueueMakeNextCommand({
+        workspace: resolved.workspace,
+        actionKey: resolved.action,
+        revision: Number(resolved.revision),
+        requestId: resolved.requestId,
+        previewFingerprint: resolved.preview,
+        apply: resolved.apply
+      }),
+      renderAdvanceQueueMakeNextSuccess
+    );
+  });
   addJsonOption(
     advanceQueue
       .command("arrange")
@@ -1266,15 +1273,18 @@ export function buildProgram(): Command {
     revision?: string;
     apply?: boolean;
     json?: boolean;
-  }) => runCliAction(
-    "advance.queue.arrange",
-    options,
-    () => runAdvanceQueueArrangeCommand({
-      ...options,
-      revision: options.revision === undefined ? undefined : Number(options.revision)
-    }),
-    renderAdvanceQueueReorderSuccess
-  ));
+  }) => {
+    const resolved = reviewOptionsFromArgv(options);
+    return runCliAction(
+      "advance.queue.arrange",
+      resolved,
+      () => runAdvanceQueueArrangeCommand({
+        ...resolved,
+        revision: resolved.revision === undefined ? undefined : Number(resolved.revision)
+      }),
+      renderAdvanceQueueReorderSuccess
+    );
+  });
   addJsonOption(
     advanceQueue
       .command("undo")
@@ -1291,18 +1301,21 @@ export function buildProgram(): Command {
     revision?: string;
     apply?: boolean;
     json?: boolean;
-  }) => runCliAction(
-    "advance.queue.undo",
-    options,
-    () => runAdvanceQueueUndoCommand({
-      workspace: options.workspace,
-      receiptId: options.receipt,
-      requestId: options.requestId,
-      revision: options.revision === undefined ? undefined : Number(options.revision),
-      apply: options.apply
-    }),
-    renderAdvanceQueueReorderSuccess
-  ));
+  }) => {
+    const resolved = reviewOptionsFromArgv(options);
+    return runCliAction(
+      "advance.queue.undo",
+      resolved,
+      () => runAdvanceQueueUndoCommand({
+        workspace: resolved.workspace,
+        receiptId: resolved.receipt,
+        requestId: resolved.requestId,
+        revision: resolved.revision === undefined ? undefined : Number(resolved.revision),
+        apply: resolved.apply
+      }),
+      renderAdvanceQueueReorderSuccess
+    );
+  });
 
   const session = program.command("session").description("Inspect thin coding-agent Session receipts");
   addJsonOption(

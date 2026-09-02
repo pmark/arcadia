@@ -8,6 +8,30 @@ updated: 2026-09-01
 
 # Mission Log: Arcadia
 
+## 2026-09-01 — Put the complete approved Action order in the operator Dashboard
+
+- **Action:** `agent-ask-execution-queue#build-operator-work-queue-dashboard`
+- **Did:** Added a phone-usable Work Queue screen and shared API over the
+  revisioned queue CLI. Enriched the canonical projection with Outcome,
+  Milestone, effort, dependencies, Decisions, acceptance, Token Impact, and
+  the latest undoable receipt. Added exact preview/apply flows for top,
+  before/after, bounded batch arrangement, governed Make next, and Undo, plus
+  Project/readiness view filters and visible concurrency refresh behavior.
+- **Result:** The page displays every approved Action in operator order and
+  explains why each is ready, waiting for the checked-in pointer, active,
+  operator-owned, or blocked. Browser QA against the real cross-Project
+  workspace verified a non-mutating batch preview and a 390×844 viewport with
+  no horizontal overflow. The browser pass also exposed and fixed nested
+  `advance queue --json` output, making the shared CLI consumable by adapters.
+  Eighty-five focused tests, core/Discord builds, and the Dashboard production
+  build pass.
+- **Next:** Use Agent Ask on one real desired result, explicitly establish the
+  initial portfolio order in Work Queue, and prove reprioritization, governed
+  pointer selection, Discord settlement summary, and next-work explanation.
+- **Blockers:** The existing workspace correctly reports eleven unpositioned
+  approved Actions. Selecting their first explicit portfolio order is an
+  operator priority Decision; Arcadia will not infer it from discovery order.
+
 ## 2026-09-01 — Completed the governed Agent Ask settlement contract
 
 - **Action:** `agent-ask-execution-queue#connect-agent-ask-to-queue`

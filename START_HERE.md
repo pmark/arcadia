@@ -17,6 +17,28 @@ pnpm arcadia now --narrate
 
 Drop `--narrate` for the deterministic pass, which makes no model calls and returns immediately.
 
+Open **Work Queue** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/work-queue>
+(on this Mac: <http://127.0.0.1:3020/work-queue>) to see and control the
+complete approved Action order. The selected next Action is prominent; every
+higher ineligible Action remains in place with its reason, repair, Project,
+Outcome or Milestone, Responsibility, dependencies, Decisions, effort, Token
+Impact, and acceptance summary.
+
+Use **Top**, the up/down controls, or **Reorder multiple** to draft a change.
+Arcadia shows the exact changed segment before **Apply exact preview** writes
+anything. **Make next** separately previews the governed `PROJECT.md` and Plan
+pointer transition; queue order alone never grants dispatch authority. Each
+applied order change returns a durable receipt and exposes **Undo** while that
+receipt is still the current revision. A simultaneous edit is refused and the
+page refreshes both choices instead of overwriting either one. Project and
+readiness filters only change the view.
+
+If the queue says Actions are unpositioned, choose **Reorder multiple**, arrange
+every approved Action, and preview the initial order. Arcadia deliberately does
+not infer that first portfolio priority. The same read and mutation contract is
+available through `arcadia advance queue`, `reorder`, `arrange`, `make-next`,
+and `undo`.
+
 Open **Path** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/path> (on this Mac:
 <http://127.0.0.1:3020/path>) for the other question Now deliberately refuses: not
 "what do I do in the next hour?" but "what is actually left between here and the

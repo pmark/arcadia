@@ -10,7 +10,7 @@ token_budget: "Parsing, normalization, validation, queue ordering, readiness, re
 recommended_model: gpt-5.6-sol
 recommended_reasoning_effort: high
 updated: 2026-09-01
-current_action: build-operator-work-queue-dashboard
+current_action: dogfood-agent-managed-queue
 actions:
   - id: define-agent-ask-management-contract
     title: Give coding agents a conventional Ask contract for Project management intent
@@ -106,7 +106,7 @@ actions:
     depends_on: [establish-approved-action-queue]
   - id: build-operator-work-queue-dashboard
     title: Give the operator complete, low-friction control of work order
-    status: open
+    status: done
     responsibility: codex
     effort: project
     next_action: "Build the operator Dashboard queue with a prominent explainable next Action, the complete ordered portfolio, direct reorder controls, readiness reasons, and durable change receipts."

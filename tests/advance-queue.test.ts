@@ -134,7 +134,12 @@ describe("Agent Queue", () => {
       reason: expect.stringContaining("waiting_for_pointer"),
       planSlug: "queue-plan",
       tokenImpact: "medium",
-      tokenBudget: "One bounded implementation pass; validation is deterministic."
+      tokenBudget: "One bounded implementation pass; validation is deterministic.",
+      outcome: "Exercise the Agent Queue.",
+      milestone: "Queue milestone",
+      acceptanceCriteria: ["The fixture is prepared."],
+      dependencies: [],
+      decisions: []
     });
     expect(queue.counts.attention).toBe(1);
     expect(queue.attention[0]).toMatchObject({
@@ -200,6 +205,7 @@ describe("Agent Queue", () => {
     ]);
     expect(queue.nextActionKey).toBe("demo/migrate");
     expect(queue.ready[0]).toMatchObject({ actionId: "migrate", pointerAuthorized: true });
+    expect(queue.undoReceipt).toMatchObject({ requestId: "blocked-first", revisionAfter: 1, applied: true });
   });
 
   it("removes completed Actions and rejects newly discovered Actions without an explicit position", () => {
