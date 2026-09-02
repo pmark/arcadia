@@ -67,7 +67,10 @@ describe("Agent Ask settlement", () => {
       apply: true
     });
     expect(applied.data.receipt).toMatchObject({ applied: true, notificationStatus: "pending" });
-    expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toContain("id: add-settlement-proof");
+    const settledPlan = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
+    expect(settledPlan).toContain("id: add-settlement-proof");
+    expect(settledPlan.indexOf("id: add-settlement-proof")).toBeLessThan(settledPlan.indexOf("questions: []"));
+    expect(settledPlan).toContain("questions: []");
     withDatabase(workspace, (db) => {
       expect([...loadActionOrder(db).positions]).toEqual([["demo/add-settlement-proof", 0], ["demo/existing", 1]]);
       expect(loadActionOrder(db).revision).toBe(2);
@@ -426,5 +429,5 @@ function planDoc(): string {
     "    responsibility: codex", "    effort: session", "    next_action: Keep existing work moving.",
     "    expected_artifact: Existing proof", "    clarification: clarified", "    confidence: high",
     "    acceptance_criteria:", "      - Existing proof exists.", "    depends_on: []", "    decisions: []",
-    "    references: []", "---", "", "# Demo plan", ""].join("\n");
+    "    references: []", "questions: []", "---", "", "# Demo plan", ""].join("\n");
 }
