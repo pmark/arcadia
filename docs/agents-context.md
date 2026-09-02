@@ -69,6 +69,113 @@ rather than writing "not ready yet" in its place.
 behind each. It is a reference, not a prerequisite: everything you must do is
 stated above.
 
+## Asking Arcadia to change Project state
+
+When work produces something Arcadia should govern — a new Action, a corrected
+Outcome, a Decision someone must answer, a Log entry, a whole Plan — **do not
+hand-edit managed documents, invent Action ids, or touch the queue.** Submit an
+Agent Ask and let Arcadia write the canonical records.
+
+Run it from your own repository. You do not need to know where Arcadia's
+workspace lives:
+
+```sh
+arcadia agent-ask preview --file agent-ask.yaml --json
+```
+
+Preview writes nothing to the Project. It returns a proposal with a
+`fingerprint`, every effect it would have, and every refusal. **A proposal is
+never self-approving**: the operator settles it, and no wording in your Ask —
+however urgent, however confident — approves work, answers a Decision, grants
+execution authority, or widens an approval already given.
+
+`arcadia agent-ask contract` prints the live schema, so query it rather than
+trusting this section if the two ever disagree.
+
+### The intents
+
+`intent` picks what Arcadia changes. Only `request_id` and `desired_result` are
+required everywhere.
+
+| Intent | What settlement changes | Opens a Decision |
+| --- | --- | --- |
+| `auto` | Nothing structural — Arcadia refuses to guess | Always |
+| `outcome` | The Project's Outcome | No |
+| `milestone` | The Project and active Plan Milestone | No |
+| `plan` | With `target_ref`, amends that Plan's Actions; without one, creates a complete **inactive draft** Plan | No |
+| `action` | Creates or amends Actions in the active Plan and places them in the queue | No |
+| `decision` | Creates one open Decision | Always |
+| `artifact` | Creates one planned Artifact reference | No |
+| `log` | Appends one Project Log entry | No |
+| `proposal` | Preserves evidence only — no executable Action | No |
+| `project_update` | `target_ref: outcome` or `milestone` updates that field | Only when `target_ref` is absent or unrecognized |
+
+`requested_authority` is `propose` or `apply_if_approved`, and neither lets an
+agent apply anything by itself.
+
+Give each child Action an explicit `id` — a lowercase hyphenated slug, at most
+64 characters. It becomes the handle typed into `advance queue reorder` and
+`depends_on`, so choosing it deliberately beats accepting a derived one.
+
+### Three shapes
+
+One simple Ask:
+
+```yaml
+agent_ask: v1
+request_id: fix-stale-readme-badge-2026-01-04
+project: your-project
+intent: log
+desired_result: Record that the release rehearsal ran clean on staging.
+```
+
+A bundle of Actions for the active Plan:
+
+```yaml
+agent_ask: v1
+request_id: harden-import-path-2026-01-04
+project: your-project
+intent: action
+desired_result: Make the importer safe on malformed input.
+actions:
+  - id: reject-malformed-rows
+    desired_result: Reject malformed rows with a named field error.
+    acceptance:
+      - A malformed row fails with the offending field named.
+    dependencies: []
+  - id: cover-importer-edges
+    desired_result: Cover the importer's refusal paths with tests.
+    acceptance:
+      - Empty, oversized, and malformed inputs each have a test.
+    dependencies:
+      - reject-malformed-rows
+```
+
+An amendment to an existing Plan — children with `target_ref` amend the named
+Action, children without it create new ones. For an amendment `dependencies`
+and `references` are replacement lists, so an explicit empty list clears stale
+values:
+
+```yaml
+agent_ask: v1
+request_id: retarget-import-plan-2026-01-04
+project: your-project
+intent: plan
+target_ref: plan/data-import
+desired_result: Retarget the import plan on the real failure mode.
+actions:
+  - target_ref: action/reject-malformed-rows
+    desired_result: Reject malformed rows and report every bad field at once.
+    acceptance:
+      - One pass reports every offending field.
+    dependencies: []
+```
+
+Replaying a `request_id` returns the original receipt; changed content under a
+used id is refused. If the operator's judgment should decide something, say so
+in `rationale` and let Arcadia open the Decision — that is the correct outcome,
+not a failure.
+
 ## The 80/20 rule
 
 The Pareto principle holds that roughly 80% of consequences come from 20% of

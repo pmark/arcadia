@@ -174,7 +174,7 @@ export function setupArcadiaProjectContext(input: {
   const constitutionPath = path.join(resolved.repoPath, "CONSTITUTION.md");
 
   writeFileSync(agentPolicyPath, renderAgentContextPolicy(), "utf8");
-  writeFileSync(repoContextPath, renderRepoContext(context), "utf8");
+  writeFileSync(repoContextPath, renderRepoContextPreservingUnchanged(repoContextPath, renderRepoContext(context)), "utf8");
   writeFileSync(contextPolicyPath, `${JSON.stringify(contextPolicyFromSummary(context), null, 2)}\n`, "utf8");
   writeFileSync(agentsPath, updateAgentsMarkdown(existsSync(agentsPath) ? readFileSync(agentsPath, "utf8") : null), "utf8");
 
@@ -425,7 +425,7 @@ function inspectRepository(repoPath: string, metadata: ProjectMetadata | null): 
   const discovered = discoverFiles(repoPath);
   const sourceRoots = existingRoots(repoPath, SOURCE_ROOT_NAMES);
   const testRoots = existingRoots(repoPath, TEST_ROOT_NAMES);
-  const importantDocs = DOC_NAMES.filter((doc) => existsSync(path.join(repoPath, doc)));
+  const importantDocs = DOC_NAMES.filter((doc) => existsWithExactCase(repoPath, doc));
   const safeCommands = detectSafeCommands(packageJson, metadata);
   const allowedRoots = uniqueSorted([".", ...importantDocs.map((doc) => path.dirname(doc)).filter((doc) => doc !== "."), ...sourceRoots, ...testRoots]);
 
@@ -791,8 +791,52 @@ function safeReadDir(directory: string): import("node:fs").Dirent[] {
   }
 }
 
+/**
+ * The rendered repo context, carrying the previous `Generated:` stamp when
+ * nothing else about the repository changed.
+ *
+ * The stamp is the only line that differs between two runs over an unchanged
+ * repository, so writing it unconditionally made `setup-context` dirty every
+ * working tree it touched. That is not merely noise in `git status`: Agent Ask
+ * settlement refuses to write managed documents into a dirty repository, so
+ * propagating context blocked the next Ask until someone committed a changed
+ * timestamp. The stamp now means what it says — when this context last
+ * changed, not when the command last ran.
+ */
+function renderRepoContextPreservingUnchanged(repoContextPath: string, rendered: string): string {
+  if (!existsSync(repoContextPath)) return rendered;
+  let previous: string;
+  try { previous = readFileSync(repoContextPath, "utf8"); } catch { return rendered; }
+  const previousStamp = /^Generated: .*$/m.exec(previous)?.[0];
+  if (!previousStamp) return rendered;
+  const withPreviousStamp = rendered.replace(/^Generated: .*$/m, previousStamp);
+  return withPreviousStamp === previous ? previous : rendered;
+}
+
 function existingRoots(repoPath: string, roots: string[]): string[] {
-  return roots.filter((root) => existsSync(path.join(repoPath, root)) && statSync(path.join(repoPath, root)).isDirectory());
+  return roots.filter((root) => existsWithExactCase(repoPath, root) && statSync(path.join(repoPath, root)).isDirectory());
+}
+
+/**
+ * Whether a repository-relative path exists spelled exactly this way.
+ *
+ * `existsSync` answers the filesystem's question, not the repository's: on the
+ * case-insensitive volumes macOS uses by default it reports `true` for
+ * `docs/ARCHITECTURE.md` when only `docs/architecture.md` is committed. The
+ * generated context is read by agents on case-sensitive Linux and in CI, where
+ * that path does not resolve, so every candidate is confirmed against the real
+ * directory entry instead.
+ */
+function existsWithExactCase(repoPath: string, relativePath: string): boolean {
+  const segments = relativePath.split("/").filter(Boolean);
+  let current = repoPath;
+  for (const segment of segments) {
+    let entries: string[];
+    try { entries = readdirSync(current); } catch { return false; }
+    if (!entries.includes(segment)) return false;
+    current = path.join(current, segment);
+  }
+  return segments.length > 0;
 }
 
 function detectLanguages(files: string[]): string[] {

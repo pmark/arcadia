@@ -153,7 +153,8 @@ describe("path options are wired to the invocation-aware resolver", () => {
       "metadata --repo-path",
       "plans --repo",
       "setup-context --repo",
-      "tidy --repo"
+      "tidy --repo",
+      "triggers --repo"
     ]);
   });
 });

@@ -5,6 +5,7 @@ import { validationError } from "../cli/errors.js";
 export const AGENT_ASK_INTENTS = ["auto", "outcome", "milestone", "plan", "proposal", "decision", "action", "artifact", "log", "project_update"] as const;
 export type AgentAskIntent = (typeof AGENT_ASK_INTENTS)[number];
 export type AgentAskAuthority = "propose" | "apply_if_approved";
+export const AGENT_ASK_AUTHORITIES = ["propose", "apply_if_approved"] as const;
 export interface NormalizedAgentAskAction {
   id: string | null;
   desiredResult: string;
@@ -17,13 +18,13 @@ export interface NormalizedAgentAsk { version: "v1"; format: "strict" | "natural
 export interface AgentAskEffect { operation: "interpret" | "create" | "update"; targetKind: Exclude<AgentAskIntent, "auto"> | "interpretation"; targetRef: string | null; fields: Record<string, unknown>; status: "proposed"; authority: "operator_acceptance_required"; }
 export interface AgentAskProposal { id: string; captureId: string; normalized: NormalizedAgentAsk; effects: AgentAskEffect[]; requiredDecisions: string[]; unchanged: string[]; conflicts: string[]; refused: string[]; managedDocumentTransition: { required: boolean; status: "withheld_until_acceptance"; authority: "checked_in_documents" }; queueConsequence: "none_until_accepted"; writes: { captureReceipt: true; proposalReceipt: true; projectChanges: false }; nonActions: string[]; fingerprint: string; createdAt: string; }
 
-const STRICT_FIELDS = new Set(["agent_ask", "request_id", "project", "intent", "desired_result", "rationale", "acceptance", "dependencies", "references", "actions", "target_ref", "requested_authority"]);
-const STRICT_ACTION_FIELDS = new Set(["id", "desired_result", "acceptance", "dependencies", "references", "target_ref"]);
+export const STRICT_FIELDS = new Set(["agent_ask", "request_id", "project", "intent", "desired_result", "rationale", "acceptance", "dependencies", "references", "actions", "target_ref", "requested_authority"]);
+export const STRICT_ACTION_FIELDS = new Set(["id", "desired_result", "acceptance", "dependencies", "references", "target_ref"]);
 // An explicit id is the agent stating the handle operators will type into
 // `advance queue reorder` and `depends_on`. It must look like every other
 // plan-authored Action id, so it is validated here rather than at settlement.
-const ACTION_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const ACTION_ID_MAX_LENGTH = 64;
+export const ACTION_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const ACTION_ID_MAX_LENGTH = 64;
 
 export function normalizeAgentAsk(input: { request: string; requestId?: string; project?: string }): NormalizedAgentAsk {
   const request = input.request.trim();

@@ -9,7 +9,7 @@ token_impact: medium
 token_budget: "Regeneration, drift comparison, and pull-request mechanics are deterministic and belong in code, not a model. Reserve model use for one implementation session per Action and a single review pass. A propagation run that calls a model per repository is the failure mode this budget exists to prevent."
 recommended_model: claude-sonnet-5
 updated: 2026-09-01
-current_action: evaluate-document-triggers
+current_action: accept-upstream-proposals
 actions:
   - id: seed-the-work-pointer-when-a-repository-is-adopted
     title: Write PROJECT.md and a first plan when a repository is adopted
@@ -99,7 +99,7 @@ actions:
       - docs/decisions/0025-upstream-way-change-requests.md
   - id: evaluate-document-triggers
     title: Evaluate the deferrals Arcadia's own documents already declare
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: "Add an `arcadia triggers` noun that reads a repository's declared deferral conditions and reports which have fired, evaluating them repo-locally with no workspace, the way `resolveDispatch` does."
@@ -137,6 +137,43 @@ actions:
     references:
       - docs/decisions/0028-ppn-capability-reconciliation.md
       - src/commands/attention.ts
+  - id: propagate-agent-ask-contract
+    title: Document the Agent Ask contract inside the propagated AGENTS.md region so every adopting project receives it and `arcadia way` reports it stale when it drifts.
+    status: done
+    responsibility: codex
+    effort: session
+    next_action: Document the Agent Ask contract inside the propagated AGENTS.md region so every adopting project receives it and `arcadia way` reports it stale when it drifts.
+    expected_artifact: Evidence satisfying Agent Ask propagate-agent-ask-contract
+    clarification: clarified
+    confidence: high
+    source: Agent Ask document-agent-ask-for-adopters-2026-09-02b
+    acceptance_criteria:
+      - docs/agents-context.md carries an Agent Ask section stating what the facility is for, the exact command an agent runs from its own repository without knowing Arcadia's workspace path, and the rule that a proposal is never self-approving.
+      - Every intent in AGENT_ASK_INTENTS appears in one table with what it changes and whether it opens a Decision; the table is complete against the constant rather than a prose subset.
+      - Three worked examples cover the distinct envelope shapes — one simple single-intent Ask, one multi-Action bundle, and one target_ref amendment — instead of one example per intent.
+      - Running `arcadia project setup-context --all` writes the new section into every adopting repository, and `arcadia way` then reports each adopting AGENTS.md region as matching rather than stale.
+      - Private Practice Now's AGENTS.md contains the section after that run, verified by reading the file rather than by inferring it from a command's exit status.
+    depends_on: []
+    decisions: []
+    references: [docs/agents-context.md, src/projects/contextSetup.ts, src/projects/wayDrift.ts, src/ask/agentAsk.ts, START_HERE.md]
+  - id: report-agent-ask-contract
+    title: Add a read-only `arcadia agent-ask contract` noun that prints the live envelope schema, every supported intent, and the validation rules, so an agent can query the contract instead of trusting a possibly stale file.
+    status: done
+    responsibility: codex
+    effort: session
+    next_action: Add a read-only `arcadia agent-ask contract` noun that prints the live envelope schema, every supported intent, and the validation rules, so an agent can query the contract instead of trusting a possibly stale file.
+    expected_artifact: Evidence satisfying Agent Ask report-agent-ask-contract
+    clarification: clarified
+    confidence: high
+    source: Agent Ask document-agent-ask-for-adopters-2026-09-02b
+    acceptance_criteria:
+      - The command derives intents from AGENT_ASK_INTENTS and accepted fields from STRICT_FIELDS and STRICT_ACTION_FIELDS, so it cannot describe an intent or field the parser does not accept.
+      - "It is a noun: it reports and never writes, makes zero model calls, and needs no Project, workspace, or database, so it answers from a fresh clone."
+      - Output includes the requested_authority values, the explicit Action id rules, and the statement that agent text never grants approval.
+      - It emits Arcadia's standard JSON envelope with --json, and a focused test asserts the printed intent list equals AGENT_ASK_INTENTS so the two cannot drift.
+    depends_on: []
+    decisions: []
+    references: [docs/agents-context.md, src/projects/contextSetup.ts, src/projects/wayDrift.ts, src/ask/agentAsk.ts, START_HERE.md, src/cli.ts]
 questions: []
 decisions: ["0024", "0025", "0028"]
 ---

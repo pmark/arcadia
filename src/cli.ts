@@ -20,10 +20,12 @@ import {
 import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
 import { renderAskRuleTestSuccess, runAskRuleTestCommand } from "./commands/askRule.js";
 import {
+  renderAgentAskContractSuccess,
   renderAgentAskNotificationSentSuccess,
   renderAgentAskNotificationsSuccess,
   renderAgentAskPreviewSuccess,
   renderAgentAskSettleSuccess,
+  runAgentAskContractCommand,
   runAgentAskNotificationSentCommand,
   runAgentAskNotificationsCommand,
   runAgentAskPreviewCommand,
@@ -315,6 +317,7 @@ import {
   runNextReadyCommand
 } from "./commands/next.js";
 import { renderDocketSuccess, runDocketCommand } from "./commands/docket.js";
+import { renderTriggersSuccess, runTriggersCommand } from "./commands/triggers.js";
 import { renderPlansSuccess, runPlansCommand } from "./commands/plans.js";
 import { renderTidySuccess, runTidyCommand } from "./commands/tidy.js";
 import { renderPortfolioSuccess, runPortfolioCommand } from "./commands/portfolio.js";
@@ -692,6 +695,11 @@ export function buildProgram(): Command {
     responsibility: options.responsibility as "autonomous" | "codex" | undefined,
     revision: options.revision === undefined ? undefined : Number(options.revision)
   }), renderAgentAskSettleSuccess));
+  addJsonOption(agentAsk.command("contract")
+    .description("Print the Agent Ask v1 schema, intents, and authority boundary")
+  ).action((options: { json?: boolean }) =>
+    runCliAction("agent-ask.contract", options, () => runAgentAskContractCommand(), renderAgentAskContractSuccess)
+  );
   addJsonOption(agentAsk.command("notifications")
     .description("List durable Agent Ask settlement pings pending Discord delivery")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
@@ -2797,6 +2805,15 @@ export function buildProgram(): Command {
       () => runTidyCommand({ ...options, noFetch: options.fetch === false, noGithub: options.github === false }),
       renderTidySuccess
     )
+  );
+
+  addJsonOption(
+    program
+      .command("triggers")
+      .description("Every deferral this repository declares, and which have fired")
+      .option("--repo <path>", "Repository to read", resolveInvocationPath, invocationRoot())
+  ).action((options: { repo: string; json?: boolean }) =>
+    runCliAction("triggers", options, () => runTriggersCommand(options), renderTriggersSuccess)
   );
 
   addJsonOption(

@@ -32,8 +32,7 @@
     "AGENTS.md",
     "README.md",
     "PROJECT.md",
-    "docs/architecture.md",
-    "docs/ARCHITECTURE.md"
+    "docs/architecture.md"
   ],
   "source_roots": [
     "src",

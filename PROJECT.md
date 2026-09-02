@@ -8,7 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Every adopting project receives Way changes and can ask for Way capabilities without anyone writing Arcadia twice
 active_plan: way-delivery
-current_action: evaluate-document-triggers
+current_action: accept-upstream-proposals
 updated: 2026-09-01
 ---
 
