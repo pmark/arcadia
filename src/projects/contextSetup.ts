@@ -425,7 +425,7 @@ function inspectRepository(repoPath: string, metadata: ProjectMetadata | null): 
   const discovered = discoverFiles(repoPath);
   const sourceRoots = existingRoots(repoPath, SOURCE_ROOT_NAMES);
   const testRoots = existingRoots(repoPath, TEST_ROOT_NAMES);
-  const importantDocs = DOC_NAMES.filter((doc) => existsSync(path.join(repoPath, doc)));
+  const importantDocs = DOC_NAMES.filter((doc) => existsWithExactCase(repoPath, doc));
   const safeCommands = detectSafeCommands(packageJson, metadata);
   const allowedRoots = uniqueSorted([".", ...importantDocs.map((doc) => path.dirname(doc)).filter((doc) => doc !== "."), ...sourceRoots, ...testRoots]);
 
@@ -792,7 +792,29 @@ function safeReadDir(directory: string): import("node:fs").Dirent[] {
 }
 
 function existingRoots(repoPath: string, roots: string[]): string[] {
-  return roots.filter((root) => existsSync(path.join(repoPath, root)) && statSync(path.join(repoPath, root)).isDirectory());
+  return roots.filter((root) => existsWithExactCase(repoPath, root) && statSync(path.join(repoPath, root)).isDirectory());
+}
+
+/**
+ * Whether a repository-relative path exists spelled exactly this way.
+ *
+ * `existsSync` answers the filesystem's question, not the repository's: on the
+ * case-insensitive volumes macOS uses by default it reports `true` for
+ * `docs/ARCHITECTURE.md` when only `docs/architecture.md` is committed. The
+ * generated context is read by agents on case-sensitive Linux and in CI, where
+ * that path does not resolve, so every candidate is confirmed against the real
+ * directory entry instead.
+ */
+function existsWithExactCase(repoPath: string, relativePath: string): boolean {
+  const segments = relativePath.split("/").filter(Boolean);
+  let current = repoPath;
+  for (const segment of segments) {
+    let entries: string[];
+    try { entries = readdirSync(current); } catch { return false; }
+    if (!entries.includes(segment)) return false;
+    current = path.join(current, segment);
+  }
+  return segments.length > 0;
 }
 
 function detectLanguages(files: string[]): string[] {

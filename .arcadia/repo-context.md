@@ -1,6 +1,6 @@
 # Arcadia Repo Context
 
-Generated: 2026-08-24T18:19:39.251Z
+Generated: 2026-09-02T20:45:09.703Z
 Repo path: /Users/pmark/Dev/MR/Arcadia/arcadia
 
 ## Detected Languages
@@ -20,7 +20,6 @@ Repo path: /Users/pmark/Dev/MR/Arcadia/arcadia
 - README.md
 - PROJECT.md
 - docs/architecture.md
-- docs/ARCHITECTURE.md
 
 ## Source Roots
 - src

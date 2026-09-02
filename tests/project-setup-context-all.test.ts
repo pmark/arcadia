@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -74,6 +74,27 @@ describe("runProjectSetupContextAllCommand", () => {
     expect(skipped?.repoPath).toBeNull();
 
     expect(response.data.results.some((result) => result.projectName === "Retired Project")).toBe(false);
+  });
+
+  // macOS volumes are case-insensitive by default, so `existsSync` answered
+  // true for `docs/ARCHITECTURE.md` when only `docs/architecture.md` existed
+  // and the generated context named a path that does not resolve on Linux.
+  it("lists an important doc only under the casing actually committed", () => {
+    const workspace = tempWorkspace();
+    const repo = tempRepo("case-variant-docs");
+    mkdirSync(path.join(repo, "docs"), { recursive: true });
+    writeFileSync(path.join(repo, "docs/architecture.md"), "# Architecture\n");
+
+    withDatabase(workspace, (db) => {
+      const project = upsertProject(db, projectInput({ name: "Case Variant Project" }));
+      upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
+    });
+
+    runProjectSetupContextAllCommand({ workspace });
+
+    const context = readFileSync(path.join(repo, ".arcadia/repo-context.md"), "utf8");
+    expect(context).toContain("- docs/architecture.md");
+    expect(context).not.toContain("- docs/ARCHITECTURE.md");
   });
 
   it("reports a per-project failure without aborting the rest of the batch", () => {
