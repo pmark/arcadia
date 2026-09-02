@@ -150,6 +150,23 @@ actions:
       - docs/operator-demo-and-release-contract.md
       - START_HERE.md
     depends_on: [build-operator-work-queue-dashboard]
+  - id: verify-the-live-work-queue-and-discord-settlement-summary-end-to-end
+    title: Verify the live Work Queue and Discord settlement summary end to end.
+    status: open
+    responsibility: codex
+    effort: session
+    next_action: Verify the live Work Queue and Discord settlement summary end to end.
+    expected_artifact: Evidence satisfying Agent Ask verify-the-live-work-queue-and-discord-settlement-summary-end-to-end
+    clarification: clarified
+    confidence: high
+    source: Agent Ask agent-live-queue-discord-proof-20260901
+    acceptance_criteria:
+      - The live Work Queue shows one explicit complete portfolio order and the first eligible Action beneath every visible higher blocked or operator-owned Action.
+      - The accepted Agent Ask produces one durable settlement receipt and exactly one Discord message naming the Project, disposition, canonical effects, queue placement, and resulting next eligible Action.
+      - The Dashboard and CLI report the same queue revision, complete order, readiness explanations, and selected next Action.
+    depends_on: []
+    decisions: []
+    references: []
 decisions: ["0039", "0040"]
 ---
 
