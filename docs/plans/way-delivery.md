@@ -3,12 +3,13 @@ arcadia: v1
 type: plan
 slug: way-delivery
 project: arcadia
-status: draft
+status: active
 milestone: Every adopting project receives Way changes and can ask for Way capabilities without anyone writing Arcadia twice
 token_impact: medium
 token_budget: "Regeneration, drift comparison, and pull-request mechanics are deterministic and belong in code, not a model. Reserve model use for one implementation session per Action and a single review pass. A propagation run that calls a model per repository is the failure mode this budget exists to prevent."
 recommended_model: claude-sonnet-5
-updated: 2026-08-20
+updated: 2026-09-01
+current_action: evaluate-document-triggers
 actions:
   - id: seed-the-work-pointer-when-a-repository-is-adopted
     title: Write PROJECT.md and a first plan when a repository is adopted

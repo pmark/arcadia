@@ -6,9 +6,9 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: Coding agents can Ask Arcadia to create governed Project progress, accepted Actions enter one operator-owned execution order, and Arcadia always explains which eligible Action is next
-active_plan: agent-ask-execution-queue
-current_action: dogfood-agent-managed-queue
+milestone: Every adopting project receives Way changes and can ask for Way capabilities without anyone writing Arcadia twice
+active_plan: way-delivery
+current_action: evaluate-document-triggers
 updated: 2026-09-01
 ---
 
@@ -400,6 +400,36 @@ and evidence-only proposals. All reuse existing truth stores and feed the same
 Discord settlement receipt. The current Action remains open for strict
 multi-Action settlement, correction and stale-amendment conflict proof before
 the pointer advances to the operator queue Dashboard.
+
+On 2026-09-01 a live dogfood of that Ask-and-queue path ran end to end and
+exposed two defects inside its own milestone. A natural-language Ask that named
+an existing plan, Action id, and Decision still produced only a generic
+interpretation Decision (0042) rather than a concrete proposal, and that
+Decision duplicated a question Decision 0041 already carried. Both are now
+governed Actions in `agent-ask-execution-queue`, added through Agent Ask itself
+rather than by hand. The same session proved the queue's reorder path — two
+applied moves with before/after previews, optimistic revisions, and undo
+receipts — and proved that queue order does not grant dispatch authority: two
+Arcadia Actions sat at positions 0 and 1 as `waiting_for_pointer` while Arcadia
+dispatched a pointer-authorized Action beneath them and said why.
+
+Decision 0043 then moved the pointer to `way-delivery` at
+`evaluate-document-triggers`. The pointer had been parked on
+`dogfood-agent-managed-queue`, which is `requires_review` and therefore
+undispatchable, so nothing in Arcadia was startable. The triggers Action is
+clarified, codex-owned, session-sized, and zero-model, and it closes a standing
+contradiction: nine Arcadia documents declare deferrals with reviving
+conditions, the continuation protocol says a firing trigger outranks
+`current_action`, and until now no command could evaluate a single one.
+`agent-ask-execution-queue` is paused, not superseded — it keeps its active
+status, its two new Ask-quality Actions, and its open dogfood question, and
+Decision 0042's answer still governs what reactivates after it.
+
+Activating the plan also surfaced a real queue behavior worth remembering: four
+newly active Actions arrived with no explicit queue positions, which set
+`orderValid` to false and made the selected next Action `None` rather than
+letting Arcadia infer priority from document order. One explicit placement
+restored a valid order.
 
 ## Links
 

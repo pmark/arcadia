@@ -8,6 +8,36 @@ updated: 2026-09-01
 
 # Mission Log: Arcadia
 
+## 2026-09-01 — Dogfooded Agent Ask and the queue, then activated way-delivery
+
+- **Action:** `agent-ask-execution-queue#dogfood-agent-managed-queue`, then
+  `way-delivery#evaluate-document-triggers`
+- **Did:** Ran the Ask-to-queue path on real work rather than fixtures. A
+  natural-language reprioritization request was submitted through
+  `agent-ask preview`, correctly refused to guess, and opened Decision 0042;
+  the operator's answer ratified it. A strict `plan` envelope targeting the
+  active Plan then created two Actions with zero required Decisions and zero
+  conflicts, and two applied `advance queue reorder` moves proved
+  preview/apply, optimistic revisions, and undo receipts. Decision 0043 moved
+  the pointer to `way-delivery` at `evaluate-document-triggers`.
+- **Found:** Three real defects. Natural-language Ask punts to a generic
+  interpretation Decision even when the repository names the plan, Action, and
+  Decision — now a governed Action. Decision 0042 duplicated Decision 0041's
+  question with nothing to catch it — now a governed Action, with 0042-vs-0041
+  as its named regression fixture. Agent Ask derives Action ids by slugifying
+  the whole `desired_result`, producing 70-plus character ids, one truncated
+  mid-word at `...-alrea`; those ids are the handle for every reorder and
+  `depends_on`, so this is filed separately.
+- **Proved:** Queue order does not grant dispatch authority. Two Arcadia
+  Actions sat at positions 0 and 1 reported as `waiting_for_pointer` while
+  Arcadia selected a pointer-authorized Action beneath them and explained the
+  skip. Separately, four newly activated Actions with no explicit positions set
+  `orderValid` to false and the next Action to `None` rather than inferring
+  priority from document order.
+- **Did not:** Phone-width browser QA and independent PR QA for
+  `dogfood-agent-managed-queue` have not run, so that Action stays open with
+  its question unanswered.
+
 ## 2026-09-01 — Made Plans writable and reprioritizable through Agent Ask
 
 - **Action:** `agent-ask-execution-queue#enable-coding-agents-to-naturally-create-amend-and-reprioritize-plan-shaped-work`
