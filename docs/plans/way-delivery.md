@@ -9,7 +9,7 @@ token_impact: medium
 token_budget: "Regeneration, drift comparison, and pull-request mechanics are deterministic and belong in code, not a model. Reserve model use for one implementation session per Action and a single review pass. A propagation run that calls a model per repository is the failure mode this budget exists to prevent."
 recommended_model: claude-sonnet-5
 updated: 2026-09-01
-current_action: evaluate-document-triggers
+current_action: accept-upstream-proposals
 actions:
   - id: seed-the-work-pointer-when-a-repository-is-adopted
     title: Write PROJECT.md and a first plan when a repository is adopted
@@ -99,7 +99,7 @@ actions:
       - docs/decisions/0025-upstream-way-change-requests.md
   - id: evaluate-document-triggers
     title: Evaluate the deferrals Arcadia's own documents already declare
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: "Add an `arcadia triggers` noun that reads a repository's declared deferral conditions and reports which have fired, evaluating them repo-locally with no workspace, the way `resolveDispatch` does."

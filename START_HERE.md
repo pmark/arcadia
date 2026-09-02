@@ -838,6 +838,37 @@ keep in step. A repository without a `CONSTITUTION.md` simply omits the section;
 its absence never blocks dispatch, because foreign repositories Arcadia manages
 are not required to adopt one.
 
+### What a repository deferred, and whether it is time yet
+
+The Way says a deferral must name the condition that revives it, and that a
+firing trigger outranks `current_action`. Both rules were unreadable: the
+conditions lived in prose that no command could evaluate, so a deferral was
+remembered only if someone happened to reread the document at the right moment.
+
+```sh
+pnpm arcadia triggers --repo /path/to/project
+```
+
+Like `docket`, it reads only that repository and takes no `--workspace`, so it
+answers in a fresh clone or a container. It reports four states:
+
+- **fired** — the condition is met. Resolve it before dispatching.
+- **waiting** — evaluated, not met. A real answer, not a silence.
+- **unevaluable** — declared in prose. Reported anyway, so nothing is invisible.
+- **untriggered** — deferred while naming no condition at all. `AGENTS.md`
+  calls that a rejection; write the condition or close the item.
+
+To make a deferral machine-checkable, move it into `.arcadia/triggers.json`
+(`schema: arcadia.triggers.v0`). Each entry names what it `watches`, the plan or
+Action it `fires`, and a `condition` of one of two kinds:
+
+- `count` — reads a repository-local JSON file and compares matching records
+  against `atLeast`. Files outside the repository are refused.
+- `observed` — a person sets `observed: true` when the thing happens. Use it
+  for conditions no file can reveal, like a client asking for a guarantee.
+
+Anything else is reported `unevaluable` rather than guessed at.
+
 ## Working across many projects without losing the thread
 
 Momentum across several projects at once depends on two things nobody usually

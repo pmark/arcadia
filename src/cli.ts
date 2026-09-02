@@ -317,6 +317,7 @@ import {
   runNextReadyCommand
 } from "./commands/next.js";
 import { renderDocketSuccess, runDocketCommand } from "./commands/docket.js";
+import { renderTriggersSuccess, runTriggersCommand } from "./commands/triggers.js";
 import { renderPlansSuccess, runPlansCommand } from "./commands/plans.js";
 import { renderTidySuccess, runTidyCommand } from "./commands/tidy.js";
 import { renderPortfolioSuccess, runPortfolioCommand } from "./commands/portfolio.js";
@@ -2804,6 +2805,15 @@ export function buildProgram(): Command {
       () => runTidyCommand({ ...options, noFetch: options.fetch === false, noGithub: options.github === false }),
       renderTidySuccess
     )
+  );
+
+  addJsonOption(
+    program
+      .command("triggers")
+      .description("Every deferral this repository declares, and which have fired")
+      .option("--repo <path>", "Repository to read", resolveInvocationPath, invocationRoot())
+  ).action((options: { repo: string; json?: boolean }) =>
+    runCliAction("triggers", options, () => runTriggersCommand(options), renderTriggersSuccess)
   );
 
   addJsonOption(

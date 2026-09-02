@@ -8,6 +8,37 @@ updated: 2026-09-01
 
 # Mission Log: Arcadia
 
+## 2026-09-02 — Gave Arcadia's own deferrals something that reads them
+
+- **Action:** `way-delivery#evaluate-document-triggers`
+- **Did:** Added `arcadia triggers`, a read-only noun reporting every deferral a
+  repository declares and what each is doing now: `fired`, `waiting`,
+  `unevaluable`, or `untriggered`. Machine-checkable conditions come from
+  `.arcadia/triggers.json`, promoting the registry shape Private Practice Now
+  proved, with `count` conditions read from repository-local JSON and `observed`
+  conditions a person records. Prose deferrals are reported rather than
+  evaluated, in every spelling the documents actually use — `**Trigger:**`,
+  `*Trigger:`, `revives when`, and the `Reactivate when` tables that turned out
+  to be the dominant form.
+- **Result:** Arcadia's own repository reports **39 deferrals across 14
+  documents** where nothing could previously list one, plus one deferred
+  Decision that names no reviving condition at all. Run against Private
+  Practice Now it evaluates its registry and reports **2 fired and 8 waiting**,
+  with counts checked against real data — five sites, all `review`, zero
+  `live`, so `0 of 5 match; 3 needed` is correct. Eleven focused tests cover
+  both condition kinds, malformed and future-schema registries, an unsupported
+  kind, a count file escaping the repository, all four prose spellings,
+  frontmatter restatement, prose *about* triggers, and proof the command writes
+  nothing. Full suite passes 1,197 with 6 skipped.
+- **Next:** `way-delivery#accept-upstream-proposals`, now the current Action.
+- **Blockers:** None. Two findings worth recording: Decision 0028 claimed
+  Decisions 0021 through 0027 carried `**Trigger:**` clauses, and they no longer
+  do — their deferrals are `Reactivate when` tables instead, which is why a
+  reader built to 0028's description alone would have found nothing. And the
+  first parser written here silently dropped a mid-line clause, the exact
+  failure this Action exists to end; it was caught only by counting the results
+  against a manual grep.
+
 ## 2026-09-02 — Made the Agent Ask contract reach every adopting project
 
 - **Action:** `way-delivery#propagate-agent-ask-contract`
