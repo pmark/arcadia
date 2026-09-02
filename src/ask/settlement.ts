@@ -774,12 +774,10 @@ function amendAction(
     const replacement = ["    acceptance_criteria:", ...acceptance.map((criterion) => `      - ${yamlScalar(criterion)}`)].join("\n");
     block = block.replace(/^    acceptance_criteria:\r?\n(?:      - .*\r?\n?)*/m, `${replacement}\n`);
   }
-  if (dependencies.length > 0) {
-    block = block.replace(/^    depends_on:.*$/m, `    depends_on: [${dependencies.join(", ")}]`);
-  }
-  if (references.length > 0) {
-    block = block.replace(/^    references:.*$/m, `    references: [${references.map(yamlScalar).join(", ")}]`);
-  }
+  block = block.replace(/^    depends_on:.*$/m,
+    dependencies.length > 0 ? `    depends_on: [${dependencies.join(", ")}]` : "    depends_on: []");
+  block = block.replace(/^    references:.*$/m,
+    references.length > 0 ? `    references: [${references.map(yamlScalar).join(", ")}]` : "    references: []");
   block = /^    source:/m.test(block)
     ? block.replace(/^    source:.*$/m, `    source: ${yamlScalar(`Agent Ask ${requestId}`)}`)
     : block.replace(/^    clarification:.*$/m, `$&\n    source: ${yamlScalar(`Agent Ask ${requestId}`)}`);

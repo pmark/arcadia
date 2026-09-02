@@ -19,8 +19,8 @@ updated: 2026-09-01
   dependency cycles, cross-Project targets, stale revisions, unpositioned
   queues, and any attempt to queue a draft. Updated the canonical operator
   guide and CLI help.
-- **Result:** Focused tests pass 21/21, the full suite passes 1,168 with 6
-  skipped, core and Discord TypeScript builds pass, and the live services were
+- **Result:** Focused tests pass 23/23, the corrected full suite passes 1,170
+  with 6 skipped, core and Discord TypeScript builds pass, and the live services were
   restarted from the committed feature branch. Real Plan Ask
   `agent-plan-priority-dogfood-20260901` amended the current Action and moved
   the two unfinished Arcadia Plan Actions as one queue segment at the top.
@@ -38,6 +38,16 @@ updated: 2026-09-01
   implementation, local services, queue, and Discord delivery are otherwise
   complete. Detailed receipts and QA evidence are preserved in
   `docs/evidence/agent-ask-plan-management-dogfood-2026-09-01.md`.
+
+### Independent QA follow-up
+
+The first independent review of PR #148 failed at Candidate `475d3226a1b8` and
+was preserved as Decision R150. It found that explicit empty dependency and
+reference lists did not clear stale Action metadata and that new Plan preview
+still admitted an empty draft. The Action was reopened immediately; the fix
+uses replacement-list semantics, rejects an untargeted Plan with no Actions,
+and adds regression coverage. Focused tests pass 23/23 and the full suite passes
+1,170 tests with 6 skipped before the next immutable QA attempt.
 
 ## 2026-09-01 — Settled a real Agent Ask through the live Work Queue and Discord
 

@@ -129,7 +129,6 @@ describe("Agent Ask settlement", () => {
     const scenarios = [
       { intent: "outcome", desired: "Deliver a safer outcome", effect: "Updated Project demo Outcome." },
       { intent: "milestone", desired: "Reach the settlement milestone", effect: "Updated Project demo and active Plan demo-plan Milestone." },
-      { intent: "plan", desired: "Plan safer delivery", effect: "Created draft Plan plan-safer-delivery" },
       { intent: "decision", desired: "Should this approach ship?", effect: "Created one open Decision" },
       { intent: "auto", desired: "Make the ambiguous thing happen", effect: "Created one open interpretation Decision" },
       { intent: "log", desired: "Recorded settlement learning", effect: "Appended one Project Log entry" },
@@ -170,8 +169,6 @@ describe("Agent Ask settlement", () => {
       } else if (scenario.intent === "milestone") {
         expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain(`milestone: ${scenario.desired}`);
         expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toContain(`milestone: ${scenario.desired}`);
-      } else if (scenario.intent === "plan") {
-        expect(readFileSync(path.join(repo, "docs/plans/plan-safer-delivery.md"), "utf8")).toContain("status: draft");
       } else if (scenario.intent === "decision" || scenario.intent === "auto") {
         expect(readFileSync(path.join(repo, "docs/decisions/0001-" + (scenario.intent === "decision" ? "should-this-approach-ship" : "how-should-arcadia-structure-this-request-make-the-ambiguous-thing-happen") + ".md"), "utf8"))
           .toContain("status: open");
@@ -321,6 +318,41 @@ describe("Agent Ask settlement", () => {
     const message = agentAskSettlementMessage(runAgentAskNotificationsCommand({ workspace }).data.notifications[0]!);
     expect(message).toContain("Reprioritized active Plan demo-plan as one dependency-safe queue segment");
     expect(message).toContain("demo/existing, demo/audit-release starting at position 2");
+  });
+
+  it("replaces explicit empty dependency and reference lists during a Plan Action amendment", () => {
+    const { workspace, repo } = fixture();
+    const planPath = path.join(repo, "docs/plans/demo-plan.md");
+    const before = readFileSync(planPath, "utf8");
+    const finished = [
+      "  - id: finished", "    title: Finished prerequisite", "    status: done",
+      "    responsibility: codex", "    effort: session", "    next_action: Preserve proof.",
+      "    expected_artifact: Finished proof", "    clarification: clarified", "    confidence: high",
+      "    acceptance_criteria:", "      - Finished proof exists.", "    depends_on: []",
+      "    decisions: []", "    references: []"
+    ].join("\n");
+    const changed = before
+      .replace("    depends_on: []", "    depends_on: [finished]")
+      .replace("    references: []", "    references: [docs/stale.md]")
+      .replace("questions: []", `${finished}\nquestions: []`);
+    writeFileSync(planPath, changed, "utf8");
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Add stale Action metadata"], { cwd: repo });
+
+    const proposal = runAgentAskPreviewCommand({ workspace, request: clearPlanActionAsk("ask-clear-plan-action") });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-clear-plan-action",
+      disposition: "accepted", revision: 1
+    });
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-clear-plan-action",
+      disposition: "accepted", revision: 1, preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const settled = readFileSync(planPath, "utf8");
+    const existingBlock = settled.match(/  - id: existing[\s\S]*?(?=  - id: finished)/)?.[0] ?? "";
+    expect(existingBlock).toContain("depends_on: []");
+    expect(existingBlock).toContain("references: []");
+    expect(existingBlock).not.toContain("docs/stale.md");
   });
 
   it("preserves rejected input and accepts a corrected Ask under a new request id", () => {
@@ -505,6 +537,17 @@ function activePlanAsk(requestId: string): string {
     "    references:", "      - tests/existing.test.ts",
     "  - desired_result: Audit release", "    acceptance:", "      - Release audit passes.",
     "    dependencies:", "      - existing", "    references:", "      - src/release.ts",
+    "requested_authority: apply_if_approved", ""
+  ].join("\n");
+}
+
+function clearPlanActionAsk(requestId: string): string {
+  return [
+    "agent_ask: v1", `request_id: ${requestId}`, "project: demo", "intent: plan",
+    "desired_result: Clear stale Action metadata", "acceptance: []", "dependencies: []",
+    "target_ref: plan/demo-plan", "actions:", "  - target_ref: action/existing",
+    "    desired_result: Continue without stale metadata", "    acceptance:",
+    "      - Existing proof remains valid.", "    dependencies: []", "    references: []",
     "requested_authority: apply_if_approved", ""
   ].join("\n");
 }

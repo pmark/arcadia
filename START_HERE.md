@@ -453,11 +453,13 @@ Both `action` and `plan` Asks may carry an `actions` list. Each child accepts
 `desired_result`, `acceptance`, `dependencies`, optional `references`, and —
 when amending a Plan — an optional Action `target_ref`. Top-level `references`
 are shared by every child. Dependencies stay inside the target Plan.
+For an Action amendment, `dependencies` and the merged `references` are
+replacement lists: an explicit empty list clears stale values.
 
 With `intent: plan` and no Plan `target_ref`, one settlement creates a complete
 non-active draft Plan. Arcadia chooses the managed-document path, Action ids,
 and dependency-safe Action order; the agent supplies the desired results and
-observable evidence:
+observable evidence. At least one complete Action is required:
 
 ```yaml
 agent_ask: v1

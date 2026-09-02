@@ -14,7 +14,10 @@ describe("Agent Ask v1", () => {
   it("normalizes every supported Project-management contribution without Project writes", () => {
     const workspace = initializedWorkspace();
     for (const intent of AGENT_ASK_INTENTS) {
-      const result = runAgentAskPreviewCommand({ workspace, request: strictAsk(`kind-${intent}`, intent) });
+      const request = intent === "plan"
+        ? `${strictAsk(`kind-${intent}`, intent)}actions:\n  - desired_result: Deliver the Plan Action\n    acceptance:\n      - Plan Action proof exists.\n    dependencies: []\n`
+        : strictAsk(`kind-${intent}`, intent);
+      const result = runAgentAskPreviewCommand({ workspace, request });
       expect(result.data.proposal.normalized.intent).toBe(intent);
       expect(result.data.proposal.effects[0]?.targetKind).toBe(intent === "auto" ? "interpretation" : intent);
       expect(result.data.projectWritesPerformed).toBe(0);
@@ -126,6 +129,12 @@ describe("Agent Ask v1", () => {
       }
     ]);
     expect(result.data.proposal.effects.map((effect) => effect.operation)).toEqual(["update", "update"]);
+  });
+
+  it("refuses an untargeted Plan without governed Actions", () => {
+    const workspace = initializedWorkspace();
+    expect(() => runAgentAskPreviewCommand({ workspace, request: strictAsk("empty-plan", "plan") }))
+      .toThrow("requires at least one governed Action");
   });
 });
 

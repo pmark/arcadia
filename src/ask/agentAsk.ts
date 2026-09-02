@@ -42,6 +42,9 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   if (!(["propose", "apply_if_approved"] as string[]).includes(authority)) throw validationError("Agent Ask cannot claim or expand execution authority.", { requestedAuthority: authority });
   const actions = actionList(data.actions);
   const targetRef = optionalText(data.target_ref);
+  if (intent === "plan" && !targetRef && actions.length === 0) {
+    throw validationError("A new Plan Agent Ask requires at least one governed Action.");
+  }
   if (actions.length > 0 && !(["action", "plan"] as string[]).includes(intent)) {
     throw validationError("Agent Ask actions are only supported for action or plan intent.");
   }

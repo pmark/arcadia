@@ -25,7 +25,8 @@ repository contains `docs/plans/deliver-release-readiness.md` with:
 - no Project pointer, dispatch-authority, or execution-queue change.
 
 The adjacent refusal proof shows that missing acceptance evidence and any
-attempt to place a new draft in the queue produce no managed-document write.
+attempt to create an empty draft or place a new draft in the queue produces no
+managed-document write.
 
 ## Live targeted Plan Ask
 
@@ -91,8 +92,9 @@ The restarted Dashboard at `http://127.0.0.1:3020/work-queue` was inspected at
 ## Validation
 
 - `pnpm exec vitest run tests/agent-ask.test.ts tests/agent-ask-settlement.test.ts`
-  — 21 passed.
-- `pnpm test` — 1,168 passed, 6 skipped across 122 test files.
+  — 23 passed after the independent-QA corrections.
+- `pnpm test` — 1,170 passed, 6 skipped across 122 test files after the
+  independent-QA corrections.
 - `pnpm build` — core and Discord TypeScript builds passed.
 - `git diff --check` — passed before the implementation checkpoint.
 - `/Users/pmark/.codex/skills/restart-arcadia-services/scripts/restart-services.sh restart /Users/pmark/Dev/MR/Arcadia/arcadia`
@@ -105,3 +107,13 @@ Natural free text remains a labelled `auto` fallback. It cannot invent a
 Project, intent, approval, dependency, or priority. Draft creation does not
 activate a Plan. Queue order remains metadata over canonical checked-in
 Actions and does not grant dispatch authority.
+
+## Independent QA correction
+
+The first independent review of PR #148 at `475d3226a1b8` failed and was
+preserved as QA Decision R150. It correctly found that explicit empty
+dependency/reference lists retained stale values and that an untargeted Plan
+Ask could still create an empty draft. The Candidate now treats those lists as
+replacement values, tests removal of real stale metadata, and refuses an empty
+new Plan at preview before capture or settlement. Focused coverage passes 23/23
+and the corrected full suite passes 1,170 tests with 6 skipped.
