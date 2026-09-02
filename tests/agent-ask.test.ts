@@ -86,6 +86,19 @@ describe("Agent Ask v1", () => {
     const workspace = initializedWorkspace();
     expect(() => runAgentAskPreviewCommand({ workspace, request: "agent_ask: v1\nrequest_id: [broken\n" })).toThrow("invalid YAML");
   });
+
+  it("previews each structured Action and rejects speculative nested fields", () => {
+    const workspace = initializedWorkspace();
+    const request = `${strictAsk("multi-action", "action")}actions:\n  - desired_result: Build proof\n    acceptance:\n      - Proof exists\n    dependencies: []\n  - desired_result: Publish guide\n    acceptance:\n      - Guide exists\n    dependencies:\n      - build-proof\n`;
+    const result = runAgentAskPreviewCommand({ workspace, request });
+    expect(result.data.proposal.effects).toHaveLength(2);
+    expect(result.data.proposal.normalized.actions.map((action) => action.desiredResult)).toEqual(["Build proof", "Publish guide"]);
+    expect(result.data.preview.filter((line) => line.startsWith("Proposed effect"))).toHaveLength(2);
+    expect(() => runAgentAskPreviewCommand({
+      workspace,
+      request: request.replace("    dependencies: []", "    dependencies: []\n    approved: true")
+    })).toThrow("action contains unknown fields");
+  });
 });
 
 function strictAsk(requestId: string, intent: string): string {

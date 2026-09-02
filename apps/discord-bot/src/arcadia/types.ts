@@ -61,6 +61,7 @@ export interface AgentAskNotificationItem {
   intent: string;
   effects: string[];
   queueActionKey: string | null;
+  queueActionKeys: string[];
   queuePosition: number | null;
   nextActionKey: string | null;
   createdAt: string;

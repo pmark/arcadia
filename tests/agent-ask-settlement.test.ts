@@ -36,6 +36,11 @@ describe("Agent Ask settlement", () => {
       disposition: "accepted",
       queueActionKey: "demo/add-settlement-proof",
       queuePosition: 0,
+      authority: {
+        kind: "operator_acceptance",
+        requestedAuthority: "apply_if_approved",
+        boundedPolicyDecision: null
+      },
       notificationStatus: "withheld_until_apply"
     });
     expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).not.toContain("add-settlement-proof");
@@ -84,7 +89,7 @@ describe("Agent Ask settlement", () => {
     const pending = runAgentAskNotificationsCommand({ workspace });
     expect(pending.data.notifications).toHaveLength(1);
     expect(agentAskSettlementMessage(pending.data.notifications[0]!)).toContain("Agent Ask settled: accepted");
-    expect(agentAskSettlementMessage(pending.data.notifications[0]!)).toContain("Queue: demo/add-settlement-proof at position 1");
+    expect(agentAskSettlementMessage(pending.data.notifications[0]!)).toContain("Queue: demo/add-settlement-proof starting at position 1");
     runAgentAskNotificationSentCommand({ workspace, settlement: applied.data.receipt.id, messageId: "discord-ask-1" });
     expect(runAgentAskNotificationsCommand({ workspace }).data.notifications).toEqual([]);
   });
@@ -206,6 +211,127 @@ describe("Agent Ask settlement", () => {
     expect(plan).toContain("responsibility: codex");
     withDatabase(workspace, (db) => expect(loadActionOrder(db).revision).toBe(1));
   });
+
+  it("accepts a structured multi-Action Ask as one contiguous queue bundle", () => {
+    const { workspace, repo } = fixture();
+    const proposal = runAgentAskPreviewCommand({ workspace, request: multiActionAsk("ask-bundle-1") });
+    expect(proposal.data.proposal.effects).toHaveLength(2);
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-bundle-1",
+      disposition: "accepted", responsibility: "codex", top: true, revision: 1
+    });
+    expect(preview.data.receipt).toMatchObject({
+      queueActionKey: "demo/build-release-proof",
+      queueActionKeys: ["demo/build-release-proof", "demo/publish-release-guide"],
+      queuePosition: 0
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-bundle-1",
+      disposition: "accepted", responsibility: "codex", top: true, revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    expect(applied.data.receipt.queueActionKeys).toEqual(["demo/build-release-proof", "demo/publish-release-guide"]);
+    const plan = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
+    expect(plan).toContain("id: build-release-proof");
+    expect(plan).toContain("id: publish-release-guide");
+    expect(plan).toContain("depends_on: [build-release-proof]");
+    withDatabase(workspace, (db) => {
+      expect([...loadActionOrder(db).positions]).toEqual([
+        ["demo/build-release-proof", 0], ["demo/publish-release-guide", 1], ["demo/existing", 2]
+      ]);
+    });
+    const message = agentAskSettlementMessage(runAgentAskNotificationsCommand({ workspace }).data.notifications[0]!);
+    expect(message).toContain("demo/build-release-proof, demo/publish-release-guide starting at position 1");
+  });
+
+  it("preserves rejected input and accepts a corrected Ask under a new request id", () => {
+    const { workspace, repo } = fixture();
+    const original = runAgentAskPreviewCommand({ workspace, request: actionAsk("ask-needs-correction") });
+    const rejectionPreview = runAgentAskSettleCommand({
+      workspace, proposal: original.data.proposal.id, requestId: "reject-needs-correction",
+      disposition: "rejected", revision: 1
+    });
+    runAgentAskSettleCommand({
+      workspace, proposal: original.data.proposal.id, requestId: "reject-needs-correction",
+      disposition: "rejected", revision: 1, preview: rejectionPreview.data.receipt.previewFingerprint, apply: true
+    });
+
+    const corrected = runAgentAskPreviewCommand({
+      workspace,
+      request: actionAsk("ask-corrected").replace("Add settlement proof", "Add corrected settlement proof")
+    });
+    const acceptancePreview = runAgentAskSettleCommand({
+      workspace, proposal: corrected.data.proposal.id, requestId: "accept-corrected",
+      disposition: "accepted", responsibility: "codex", top: true, revision: 1
+    });
+    runAgentAskSettleCommand({
+      workspace, proposal: corrected.data.proposal.id, requestId: "accept-corrected",
+      disposition: "accepted", responsibility: "codex", top: true, revision: 1,
+      preview: acceptancePreview.data.receipt.previewFingerprint, apply: true
+    });
+
+    const plan = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
+    expect(plan).not.toContain("id: add-settlement-proof\n");
+    expect(plan).toContain("id: add-corrected-settlement-proof");
+    withDatabase(workspace, (db) => {
+      const settlements = db.prepare("SELECT disposition, proposal_id FROM agent_ask_settlements ORDER BY created_at, id").all() as Array<{ disposition: string; proposal_id: string }>;
+      expect(settlements).toEqual([
+        { disposition: "rejected", proposal_id: original.data.proposal.id },
+        { disposition: "accepted", proposal_id: corrected.data.proposal.id }
+      ]);
+    });
+  });
+
+  it("refuses a stale amendment preview without changing the managed Action", () => {
+    const { workspace, repo } = fixture();
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: askForIntent("stale-amendment", "action", "Improve existing proof", "action/existing", ["Improved proof exists."])
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-stale-amendment",
+      disposition: "accepted", revision: 1
+    });
+    const planPath = path.join(repo, "docs/plans/demo-plan.md");
+    writeFileSync(planPath, `${readFileSync(planPath, "utf8")}\n<!-- concurrent edit -->\n`, "utf8");
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-stale-amendment",
+      disposition: "accepted", revision: 1, preview: preview.data.receipt.previewFingerprint, apply: true
+    })).toThrow("does not match the current preview");
+    expect(readFileSync(planPath, "utf8")).not.toContain("next_action: Improve existing proof");
+    withDatabase(workspace, (db) => {
+      expect((db.prepare("SELECT COUNT(*) AS count FROM agent_ask_settlements").get() as { count: number }).count).toBe(0);
+    });
+  });
+
+  it("amends a named Plan once and refuses a cross-Project target", () => {
+    const { workspace, repo } = fixture();
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: askForIntent("amend-plan", "plan", "A sharper delivery milestone", "plan/demo-plan")
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-amend-plan",
+      disposition: "accepted", revision: 1
+    });
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-amend-plan",
+      disposition: "accepted", revision: 1, preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const planPath = path.join(repo, "docs/plans/demo-plan.md");
+    expect(readFileSync(planPath, "utf8")).toContain("milestone: A sharper delivery milestone");
+    expect(readFileSync(planPath, "utf8").match(/milestone: A sharper delivery milestone/g)).toHaveLength(1);
+
+    const crossProject = runAgentAskPreviewCommand({
+      workspace,
+      request: askForIntent("cross-project", "action", "Cross Project edit", "another-project/existing", ["Cross Project proof exists."])
+    });
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: crossProject.data.proposal.id, requestId: "settle-cross-project",
+      disposition: "accepted", revision: 1
+    })).toThrow("cannot mutate another Project");
+    expect(readFileSync(planPath, "utf8")).not.toContain("Cross Project edit");
+  });
 });
 
 function fixture(): { workspace: string; repo: string } {
@@ -246,6 +372,31 @@ function actionAsk(requestId: string): string {
     "acceptance:",
     "  - The settlement proof exists.",
     "dependencies: []",
+    "requested_authority: apply_if_approved",
+    ""
+  ].join("\n");
+}
+
+function multiActionAsk(requestId: string): string {
+  return [
+    "agent_ask: v1",
+    `request_id: ${requestId}`,
+    "project: demo",
+    "intent: action",
+    "desired_result: Deliver a queue-aware release",
+    "rationale: It proves one Ask can establish ordered work",
+    "acceptance: []",
+    "dependencies: []",
+    "actions:",
+    "  - desired_result: Build release proof",
+    "    acceptance:",
+    "      - Release proof exists.",
+    "    dependencies: []",
+    "  - desired_result: Publish release guide",
+    "    acceptance:",
+    "      - Release guide exists.",
+    "    dependencies:",
+    "      - build-release-proof",
     "requested_authority: apply_if_approved",
     ""
   ].join("\n");

@@ -53,7 +53,17 @@ export function runAgentAskPreviewCommand(options: AgentAskPreviewOptions): Comm
   return createSuccess({ command: "agent-ask.preview", workspace: workspacePath, data: { proposal: result.proposal, preview, projectWritesPerformed: 0, replayed: result.replayed } });
 }
 export function renderAgentAskPreviewSuccess(response: CommandSuccess<AgentAskPreviewData>): string[] { return ["Agent Ask v1 preview", ...response.data.preview]; }
-function renderAgentAskPreview(proposal: AgentAskProposal): string[] { const effect = proposal.effects[0]!; return [`Request: ${proposal.normalized.requestId}${proposal.normalized.format === "natural" ? " (natural fallback)" : ""}`, `Project: ${proposal.normalized.project}`, `Intent: ${proposal.normalized.intent}`, `Proposed effect: ${effect.operation} ${effect.targetKind}${effect.targetRef ? ` ${effect.targetRef}` : ""}`, `Decisions required: ${proposal.requiredDecisions.length}`, "Queue: no entry until accepted", "Project writes: 0"]; }
+function renderAgentAskPreview(proposal: AgentAskProposal): string[] {
+  return [
+    `Request: ${proposal.normalized.requestId}${proposal.normalized.format === "natural" ? " (natural fallback)" : ""}`,
+    `Project: ${proposal.normalized.project}`,
+    `Intent: ${proposal.normalized.intent}`,
+    ...proposal.effects.map((effect, index) => `Proposed effect ${index + 1}: ${effect.operation} ${effect.targetKind}${effect.targetRef ? ` ${effect.targetRef}` : ""}`),
+    `Decisions required: ${proposal.requiredDecisions.length}`,
+    "Queue: no entry until accepted",
+    "Project writes: 0"
+  ];
+}
 
 export interface AgentAskSettleData { receipt: AgentAskSettlementReceipt; }
 
@@ -98,11 +108,12 @@ export function runAgentAskSettleCommand(options: {
 
 export function renderAgentAskSettleSuccess(response: CommandSuccess<AgentAskSettleData>): string[] {
   const receipt = response.data.receipt;
+  const queueActionKeys = receipt.queueActionKeys ?? (receipt.queueActionKey ? [receipt.queueActionKey] : []);
   return [
     receipt.applied ? `Agent Ask ${receipt.disposition}.` : `Agent Ask ${receipt.disposition} settlement preview.`,
     `Project: ${receipt.projectSlug}`,
     ...receipt.effects.map((effect) => `Effect: ${effect}`),
-    `Queue: ${receipt.queueActionKey ? `${receipt.queueActionKey} at position ${(receipt.queuePosition ?? 0) + 1}` : "no executable entry"}`,
+    `Queue: ${queueActionKeys.length > 0 ? `${queueActionKeys.join(", ")} starting at position ${(receipt.queuePosition ?? 0) + 1}` : "no executable entry"}`,
     `Next: ${receipt.nextActionKey ?? "none"}`,
     `Discord: ${receipt.notificationStatus}`,
     `Preview fingerprint: ${receipt.previewFingerprint}`,
