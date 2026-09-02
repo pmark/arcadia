@@ -20,10 +20,12 @@ import {
 import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
 import { renderAskRuleTestSuccess, runAskRuleTestCommand } from "./commands/askRule.js";
 import {
+  renderAgentAskContractSuccess,
   renderAgentAskNotificationSentSuccess,
   renderAgentAskNotificationsSuccess,
   renderAgentAskPreviewSuccess,
   renderAgentAskSettleSuccess,
+  runAgentAskContractCommand,
   runAgentAskNotificationSentCommand,
   runAgentAskNotificationsCommand,
   runAgentAskPreviewCommand,
@@ -692,6 +694,11 @@ export function buildProgram(): Command {
     responsibility: options.responsibility as "autonomous" | "codex" | undefined,
     revision: options.revision === undefined ? undefined : Number(options.revision)
   }), renderAgentAskSettleSuccess));
+  addJsonOption(agentAsk.command("contract")
+    .description("Print the Agent Ask v1 schema, intents, and authority boundary")
+  ).action((options: { json?: boolean }) =>
+    runCliAction("agent-ask.contract", options, () => runAgentAskContractCommand(), renderAgentAskContractSuccess)
+  );
   addJsonOption(agentAsk.command("notifications")
     .description("List durable Agent Ask settlement pings pending Discord delivery")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())

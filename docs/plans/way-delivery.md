@@ -139,7 +139,7 @@ actions:
       - src/commands/attention.ts
   - id: propagate-agent-ask-contract
     title: Document the Agent Ask contract inside the propagated AGENTS.md region so every adopting project receives it and `arcadia way` reports it stale when it drifts.
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: Document the Agent Ask contract inside the propagated AGENTS.md region so every adopting project receives it and `arcadia way` reports it stale when it drifts.
@@ -158,7 +158,7 @@ actions:
     references: [docs/agents-context.md, src/projects/contextSetup.ts, src/projects/wayDrift.ts, src/ask/agentAsk.ts, START_HERE.md]
   - id: report-agent-ask-contract
     title: Add a read-only `arcadia agent-ask contract` noun that prints the live envelope schema, every supported intent, and the validation rules, so an agent can query the contract instead of trusting a possibly stale file.
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: Add a read-only `arcadia agent-ask contract` noun that prints the live envelope schema, every supported intent, and the validation rules, so an agent can query the contract instead of trusting a possibly stale file.

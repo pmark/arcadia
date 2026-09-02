@@ -8,6 +8,35 @@ updated: 2026-09-01
 
 # Mission Log: Arcadia
 
+## 2026-09-02 — Made the Agent Ask contract reach every adopting project
+
+- **Action:** `way-delivery#propagate-agent-ask-contract`
+- **Did:** Added an "Asking Arcadia to change Project state" section to
+  `docs/agents-context.md`, the region propagated into every adopting
+  AGENTS.md: the command an agent runs from its own repository without knowing
+  Arcadia's workspace path, the rule that a proposal is never self-approving, a
+  table of all ten intents with what each changes and whether it opens a
+  Decision, and three worked examples covering the distinct envelope shapes.
+  Added `arcadia agent-ask contract`, a read-only noun that prints the live
+  schema from the parser's own constants so an agent can confirm rather than
+  trust a possibly stale copy. Exported the constants it derives from.
+- **Result:** `project setup-context --all` wrote the section into all five
+  adopting repositories, verified by reading each AGENTS.md from disk rather
+  than by trusting exit status; Private Practice Now carries all ten intents
+  and all three examples where it previously had zero mentions of Agent Ask.
+  `arcadia way` reports 5 current, 0 stale. The contract command runs from
+  Private Practice Now's checkout with no workspace, Project, or database. A
+  focused test asserts its intent list equals AGENT_ASK_INTENTS and its field
+  lists equal STRICT_FIELDS and STRICT_ACTION_FIELDS, so prose and parser
+  cannot drift. Full suite passes 1,179 with 6 skipped.
+- **Next:** Implement `arcadia triggers`, the current Action under the pointer.
+- **Blockers:** None for this Action. Two findings recorded but not fixed:
+  `.arcadia/repo-context.md` rewrites a `Generated:` timestamp on every run, so
+  `setup-context` always dirties the tree and then blocks `agent-ask settle
+  --apply`, which refuses on a dirty repository; and the local `arcadia` shim
+  prints banner lines before `--json` output, which would break an agent
+  piping it.
+
 ## 2026-09-01 — Dogfooded Agent Ask and the queue, then activated way-delivery
 
 - **Action:** `agent-ask-execution-queue#dogfood-agent-managed-queue`

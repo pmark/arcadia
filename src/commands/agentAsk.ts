@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { agentAskFingerprint, buildAgentAskEffects, normalizeAgentAsk, requiresManagedDocumentTransition, stableProposalId, type AgentAskProposal } from "../ask/agentAsk.js";
+import { ACTION_ID_MAX_LENGTH, ACTION_ID_PATTERN, AGENT_ASK_AUTHORITIES, AGENT_ASK_INTENTS, STRICT_ACTION_FIELDS, STRICT_FIELDS, agentAskFingerprint, buildAgentAskEffects, normalizeAgentAsk, requiresManagedDocumentTransition, stableProposalId, type AgentAskProposal } from "../ask/agentAsk.js";
 import { captureAskEnvelope } from "../ask/captureEnvelope.js";
 import { resolveProjectReference } from "../ask/rules.js";
 import { validationError } from "../cli/errors.js";
@@ -152,4 +152,59 @@ export function runAgentAskNotificationSentCommand(options: {
 
 export function renderAgentAskNotificationSentSuccess(response: CommandSuccess<{ settlementId: string; messageId: string }>): string[] {
   return [`Agent Ask settlement ${response.data.settlementId} notification recorded as ${response.data.messageId}.`];
+}
+
+export interface AgentAskContractData {
+  version: "v1";
+  intents: readonly string[];
+  authorities: readonly string[];
+  fields: { envelope: string[]; action: string[]; required: string[] };
+  actionId: { pattern: string; maxLength: number; derivedWhenOmitted: true };
+  authorityBoundary: string[];
+}
+
+/**
+ * The Agent Ask contract, derived from the parser's own constants.
+ *
+ * Adopting repositories carry a copy of this contract in their AGENTS.md
+ * region, and a copy can go stale. This reports what the parser actually
+ * accepts right now, so an agent can confirm rather than trust the prose. It
+ * is a noun: it reads no Project, workspace, or database and writes nothing.
+ */
+export function runAgentAskContractCommand(): CommandSuccess<AgentAskContractData> {
+  return createSuccess({
+    command: "agent-ask.contract",
+    data: {
+      version: "v1",
+      intents: AGENT_ASK_INTENTS,
+      authorities: AGENT_ASK_AUTHORITIES,
+      fields: {
+        envelope: [...STRICT_FIELDS].sort(),
+        action: [...STRICT_ACTION_FIELDS].sort(),
+        required: ["request_id", "desired_result"]
+      },
+      actionId: { pattern: ACTION_ID_PATTERN.source, maxLength: ACTION_ID_MAX_LENGTH, derivedWhenOmitted: true },
+      authorityBoundary: [
+        "A proposal is never self-approving; the operator settles it.",
+        "Agent text cannot approve, reject, defer, answer a Decision, merge, deploy, publish, spend, use credentials, message externally, or widen a prior approval.",
+        "Preview performs zero Project writes and creates no queue entry.",
+        "Replaying a request_id returns the original receipt; changed content under a used id is refused."
+      ]
+    }
+  });
+}
+
+export function renderAgentAskContractSuccess(response: CommandSuccess<AgentAskContractData>): string[] {
+  const d = response.data;
+  return [
+    `Agent Ask ${d.version} contract`,
+    `Intents: ${d.intents.join(", ")}`,
+    `Requested authority: ${d.authorities.join(" | ")}`,
+    `Required fields: ${d.fields.required.join(", ")}`,
+    `Envelope fields: ${d.fields.envelope.join(", ")}`,
+    `Action fields: ${d.fields.action.join(", ")}`,
+    `Action id: ${d.actionId.pattern} (max ${d.actionId.maxLength}; derived from desired_result when omitted)`,
+    "Authority boundary:",
+    ...d.authorityBoundary.map((line) => `  - ${line}`)
+  ];
 }
