@@ -25,6 +25,18 @@ afterEach(() => {
 });
 
 describe("CLI response contract", () => {
+  it("emits JSON for the nested approved Action queue", () => {
+    const workspace = initializedWorkspace();
+    const result = runCli(["advance", "queue", "--workspace", workspace, "--json"]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const json = parseJson(result.stdout);
+    expect(json.ok).toBe(true);
+    expect(json.command).toBe("advance.queue");
+    expect(json.data).toMatchObject({ revision: 0, ordered: [], orderValid: true });
+  });
+
   it("emits JSON success for init", () => {
     const workspace = createTempWorkspacePath();
     const result = runCli(["init", workspace, "--json"]);

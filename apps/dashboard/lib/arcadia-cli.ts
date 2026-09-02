@@ -25,6 +25,11 @@ import type { PathBrief } from "./path-types";
 import type { NowBrief } from "./now-types";
 import type { ProjectPlansResponse } from "./plans-types";
 import type {
+  WorkQueue,
+  WorkQueueMakeNextResponse,
+  WorkQueueMutationResponse
+} from "./work-queue-types";
+import type {
   MissionControlFits,
   MissionControlNodeDetail,
   MissionControlOverview,
@@ -46,6 +51,53 @@ const execFileAsync = promisify(execFile);
 
 export async function loadDashboardSnapshot(): Promise<ArcadiaJsonSuccess<DashboardSnapshotResponse>> {
   return runArcadiaCliJson<DashboardSnapshotResponse>(["dashboard", "snapshot"]);
+}
+
+export async function loadWorkQueue(): Promise<ArcadiaJsonSuccess<WorkQueue>> {
+  return runArcadiaCliJson<WorkQueue>(["advance", "queue"]);
+}
+
+export async function mutateWorkQueue(input: {
+  action: "move" | "arrange" | "undo";
+  requestId: string;
+  revision: number;
+  apply: boolean;
+  move?: string;
+  placement?: "top" | "before" | "after";
+  anchor?: string;
+  order?: string[];
+  receiptId?: string;
+}): Promise<ArcadiaJsonSuccess<WorkQueueMutationResponse>> {
+  const args = ["advance", "queue"];
+  if (input.action === "move") {
+    args.push("reorder", "--move", input.move ?? "");
+    if (input.placement === "top") args.push("--top");
+    if (input.placement === "before") args.push("--before", input.anchor ?? "");
+    if (input.placement === "after") args.push("--after", input.anchor ?? "");
+  } else if (input.action === "arrange") {
+    args.push("arrange", "--order", ...(input.order ?? []));
+  } else {
+    args.push("undo", "--receipt", input.receiptId ?? "");
+  }
+  args.push("--request-id", input.requestId, "--revision", String(input.revision));
+  if (input.apply) args.push("--apply");
+  return runArcadiaCliJson<WorkQueueMutationResponse>(args);
+}
+
+export async function makeWorkQueueActionNext(input: {
+  actionKey: string;
+  requestId: string;
+  revision: number;
+  previewFingerprint?: string;
+  apply: boolean;
+}): Promise<ArcadiaJsonSuccess<WorkQueueMakeNextResponse>> {
+  const args = [
+    "advance", "queue", "make-next", "--action", input.actionKey,
+    "--request-id", input.requestId, "--revision", String(input.revision)
+  ];
+  if (input.previewFingerprint) args.push("--preview", input.previewFingerprint);
+  if (input.apply) args.push("--apply");
+  return runArcadiaCliJson<WorkQueueMakeNextResponse>(args);
 }
 
 export async function listQaCandidates(): Promise<ArcadiaJsonSuccess<{ candidates: QaCandidate[] }>> {

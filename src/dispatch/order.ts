@@ -41,6 +41,21 @@ export function loadActionOrder(db: Database.Database): ActionOrderState {
   }
 }
 
+export function loadLatestApplicableActionOrderReceipt(
+  db: Database.Database,
+  revision: number
+): ActionOrderReceipt | null {
+  try {
+    const row = db.prepare(`SELECT receipt_json FROM action_queue_receipts
+      WHERE revision_after = ? ORDER BY created_at DESC, id DESC LIMIT 1`)
+      .get(revision) as { receipt_json: string } | undefined;
+    return row ? JSON.parse(row.receipt_json) as ActionOrderReceipt : null;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("no such table")) return null;
+    throw error;
+  }
+}
+
 export function moveActionOrder(db: Database.Database, input: MutationInput & {
   currentKeys: string[];
   move: string;

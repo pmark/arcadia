@@ -10,11 +10,11 @@ import {
 } from "../db/repositories.js";
 import { isDispatchable, resolveActionReadiness, resolveReadySet, type DispatchBlocker } from "../docs/dispatch.js";
 import { discoverDocs } from "../docs/discover.js";
-import type { PlanDoc } from "../docs/types.js";
+import type { PlanActionDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import type { ExecutionRunSummary, Project } from "../domain/types.js";
 import { nowIso } from "../utils/time.js";
 import { getSession, resolveProjectTransition } from "../sessions/index.js";
-import { loadActionOrder } from "./order.js";
+import { loadActionOrder, loadLatestApplicableActionOrderReceipt, type ActionOrderReceipt } from "./order.js";
 
 export type AgentQueueEntryState = "ready" | "running" | "flagged" | "attention";
 
@@ -52,6 +52,12 @@ export interface AgentQueueEntry {
   expectedArtifact: string | null;
   tokenImpact: string | null;
   tokenBudget: string | null;
+  outcome?: string | null;
+  milestone?: string | null;
+  effort?: string | null;
+  acceptanceCriteria?: string[];
+  dependencies?: string[];
+  decisions?: string[];
   status: string;
   reason: string;
   nextAction: string;
@@ -71,6 +77,7 @@ export interface AgentQueue {
   nextActionKey: string | null;
   unpositionedCount: number;
   orderValid: boolean;
+  undoReceipt: ActionOrderReceipt | null;
   ready: AgentQueueEntry[];
   running: AgentQueueEntry[];
   flagged: AgentQueueEntry[];
@@ -252,6 +259,7 @@ export function buildAgentQueue(
     nextActionKey,
     unpositionedCount,
     orderValid,
+    undoReceipt: loadLatestApplicableActionOrderReceipt(db, order.revision),
     ready,
     running,
     flagged,
@@ -313,6 +321,13 @@ function inspectProject(
     const transition = resolveProjectTransition({ repoRoot: resolvedRoot, projectSlug: project.slug, db });
     const dispatch = transition.dispatch;
     const readySet = resolveReadySet(resolvedRoot, project.slug);
+    const discovered = discoverDocs(resolvedRoot);
+    const projectDoc = discovered.docs.find(
+      (doc): doc is ProjectDoc => doc.type === "project" && doc.slug === project.slug
+    ) ?? null;
+    const activePlan = discovered.docs.find(
+      (doc): doc is PlanDoc => doc.type === "plan" && doc.slug === readySet.planSlug && doc.project === project.slug
+    ) ?? null;
     let activeSessionActionId: string | null = null;
 
     if (transition.sessionId) {
@@ -335,6 +350,7 @@ function inspectProject(
         expectedArtifact: dispatch.context?.action.expectedArtifact ?? null,
         tokenImpact: dispatch.context?.planTokenImpact ?? null,
         tokenBudget: dispatch.context?.planTokenBudget ?? null,
+        ...actionContext(projectDoc, activePlan, dispatch.context?.action ?? null),
         status: session?.status ?? transition.kind,
         reason: transition.reason,
         nextAction: transition.nextAction,
@@ -361,10 +377,8 @@ function inspectProject(
 
     for (const candidate of readySet.ready) {
       if (candidate.actionId === activeSessionActionId) continue;
-      const action = dispatch.context?.action.id === candidate.actionId
-        ? dispatch.context.action
-        : null;
-      const pointerAuthorized = action !== null && isDispatchable(dispatch);
+      const action = activePlan?.actions.find((entry) => entry.id === candidate.actionId) ?? null;
+      const pointerAuthorized = dispatch.context?.action.id === candidate.actionId && isDispatchable(dispatch);
       ready.push({
         id: `ready:${project.id}:${candidate.actionId}`,
         state: "ready",
@@ -383,6 +397,7 @@ function inspectProject(
         expectedArtifact: action?.expectedArtifact ?? null,
         tokenImpact: readySet.planTokenImpact,
         tokenBudget: readySet.planTokenBudget,
+        ...actionContext(projectDoc, activePlan, action),
         status: "ready",
         reason: pointerAuthorized
           ? "The checked-in Project pointer authorizes this ready Action."
@@ -395,9 +410,6 @@ function inspectProject(
       });
     }
 
-    const activePlan = discoverDocs(resolvedRoot).docs.find(
-      (doc): doc is PlanDoc => doc.type === "plan" && doc.slug === readySet.planSlug && doc.project === project.slug
-    );
     const readyIds = new Set(readySet.ready.map((candidate) => candidate.actionId));
     for (const action of activePlan?.actions.filter((candidate) => candidate.status !== "done") ?? []) {
       if (readyIds.has(action.id) || action.id === activeSessionActionId) continue;
@@ -432,6 +444,7 @@ function inspectProject(
         expectedArtifact: action.expectedArtifact,
         tokenImpact: activePlan?.tokenImpact ?? readySet.planTokenImpact,
         tokenBudget: activePlan?.tokenBudget ?? readySet.planTokenBudget,
+        ...actionContext(projectDoc, activePlan, action),
         status: action.status,
         reason: responsibilityReason,
         nextAction,
@@ -486,6 +499,20 @@ function inspectProject(
       "Repair the repository's managed documents before dispatching an Action."
     ));
   }
+}
+
+function actionContext(project: ProjectDoc | null, plan: PlanDoc | null, action: PlanActionDoc | null): Pick<
+  AgentQueueEntry,
+  "outcome" | "milestone" | "effort" | "acceptanceCriteria" | "dependencies" | "decisions"
+> {
+  return {
+    outcome: project?.outcome ?? project?.goal ?? null,
+    milestone: action?.milestone ?? plan?.milestone ?? project?.milestone ?? null,
+    effort: action?.effort ?? null,
+    acceptanceCriteria: action?.acceptanceCriteria ?? [],
+    dependencies: action?.dependsOn ?? [],
+    decisions: action?.decisions ?? []
+  };
 }
 
 function repositoryAttention(

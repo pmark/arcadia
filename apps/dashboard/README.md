@@ -8,6 +8,8 @@ It shows:
 - current milestones
 - Requires Review items
 - recent execution runs and artifacts
+- the complete approved Action order at `/work-queue`, with previewed reorder,
+  governed Make next, revision conflict, and receipt-backed Undo controls
 - System Status at `/admin/status`, including readiness for normal operation, image generation, and background processing
 
 It can approve, reject, defer, or answer Decisions through the same CLI commands used in a terminal. Clarification Decisions show a free-text answer field instead of a misleading approval control. Submitting an answer records it and immediately runs clarification again, producing either a concrete next Action or one focused follow-up question. AI advice can be copied into that field as an editable draft but is never submitted automatically. Planning approval atomically queues one managed Run for the existing Arcadia worker; the dashboard never invokes a planning provider directly and maintains no dashboard-only approval state.
