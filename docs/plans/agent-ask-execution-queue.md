@@ -10,7 +10,7 @@ token_budget: "Parsing, normalization, validation, queue ordering, readiness, re
 recommended_model: gpt-5.6-sol
 recommended_reasoning_effort: high
 updated: 2026-09-02
-current_action: dogfood-agent-managed-queue
+current_action: enable-coding-agents-to-naturally-create-amend-and-reprioritize-plan-shaped-work
 actions:
   - id: define-agent-ask-management-contract
     title: Give coding agents a conventional Ask contract for Project management intent
