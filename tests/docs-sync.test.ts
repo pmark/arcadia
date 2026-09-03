@@ -1001,7 +1001,10 @@ updated: 2026-07-26
     );
   });
 
-  it("still refuses half a structured Log entry, which is malformed rather than narrative", () => {
+  it("accepts a hybrid entry that labels what was done and then continues in prose", () => {
+    // The shape an adopting project's log actually drifted into: **Did:** kept,
+    // **Result:** dropped, the rest narrated. Refusing it would mean rewriting
+    // history that was written this way on purpose.
     const repo = scratch();
     writeDoc(
       repo,
@@ -1016,16 +1019,51 @@ updated: 2026-07-26
 
 # Mission Log: Demo
 
-## 2026-07-26 — Reached for the labels and stopped
+## 2026-07-26 — Labelled the doing, narrated the rest
 
-- **Did:** Started writing this the structured way.
+- **Did:** Closed the record and advanced dispatch.
+- **The source was not notes.** The questionnaire was decoded directly after
+  the existing conversion was proven lossy.
+`
+    );
+    const workspace = workspaceWithProject(repo);
+
+    const applied = runDocsSyncCommand({ workspace, apply: true });
+    expect(applied.data.errorCount).toBe(0);
+
+    const rows = withDatabase(workspace, (db) => listRecentMissionLogs(db, 50));
+    expect(rows[0]?.work_performed).toContain("Closed the record and advanced dispatch.");
+    expect(rows[0]?.work_performed).toContain("The source was not notes.");
+    expect(rows[0]?.result).toBe(
+      "Recorded as narrative; this entry does not state its result separately."
+    );
+  });
+
+  it("still refuses a Log entry that records a result with nothing done", () => {
+    const repo = scratch();
+    writeDoc(
+      repo,
+      "MISSION_LOG.md",
+      `---
+arcadia: v1
+type: log
+slug: demo-log
+project: demo
+updated: 2026-07-26
+---
+
+# Mission Log: Demo
+
+## 2026-07-26 — An outcome attributed to no action
+
+- **Result:** Something apparently came of nothing.
 `
     );
     const workspace = workspaceWithProject(repo);
 
     const result = runDocsSyncCommand({ workspace, apply: false });
     expect(result.data.errorCount).toBeGreaterThan(0);
-    expect(JSON.stringify(result.data.projects[0].errors)).toContain("needs both");
+    expect(JSON.stringify(result.data.projects[0].errors)).toContain("must also record what was done");
   });
 
   it("stops reporting Log files as skipped", () => {

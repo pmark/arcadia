@@ -631,6 +631,22 @@ function parseLogEntries(problems: Problems, body: string): LogEntryDoc[] {
         next: fields.next || null,
         blockers: fields.blockers && !/^none$/i.test(fields.blockers) ? fields.blockers : null
       });
+    } else if (fields.did && !fields.result) {
+      // A hybrid: the entry labels what was done and then continues in prose
+      // rather than labelling an outcome. Accepted for the same reason a fully
+      // narrative entry is — the entry does say what happened, it just does not
+      // separate the result — and refusing it would mean rewriting history that
+      // was written this way deliberately, which part 4 of Decision 0044 exists
+      // to avoid.
+      entries.push({
+        date,
+        title,
+        action,
+        did: narrative ? `${fields.did} ${narrative}`.trim() : fields.did,
+        result: NARRATIVE_RESULT_NOT_SEPARATED,
+        next: fields.next || null,
+        blockers: fields.blockers && !/^none$/i.test(fields.blockers) ? fields.blockers : null
+      });
     } else if (!fields.did && !fields.result && narrative) {
       // A narrative entry: prose rather than the labelled bullets. Accepted
       // under Decision 0044, which found this schema rejecting every recent
@@ -653,15 +669,13 @@ function parseLogEntries(problems: Problems, body: string): LogEntryDoc[] {
         next: fields.next || null,
         blockers: fields.blockers && !/^none$/i.test(fields.blockers) ? fields.blockers : null
       });
-    } else if (fields.did || fields.result) {
-      // Half a structured entry is a malformed structured entry, not a
-      // narrative one: someone reached for the labelled shape and stopped.
-      problems.add(
-        `entry(${date})`,
-        "A log entry using **Did:** or **Result:** needs both; prose with neither is accepted as a narrative entry."
-      );
+    } else if (fields.result) {
+      // A result with nothing done is the one shape that is genuinely
+      // incoherent rather than merely informal: an outcome attributed to no
+      // action at all.
+      problems.add(`entry(${date})`, "A log entry recording a **Result:** must also record what was done.");
     } else {
-      problems.add(`entry(${date})`, "A log entry needs either **Did:** and **Result:** bullets, or prose.");
+      problems.add(`entry(${date})`, "A log entry needs **Did:** or prose describing what happened.");
     }
     current = null;
   };
