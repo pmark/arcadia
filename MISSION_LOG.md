@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-01
+updated: 2026-09-03
 ---
 
 # Mission Log: Arcadia
@@ -2360,3 +2360,14 @@ and adds regression coverage. Focused tests pass 23/23 and the full suite passes
 - **Result:** No personal name remains in the persisted vocabulary or CLI output.
 - **Next:** Begin the clarification pass.
 - **Blockers:** none
+
+## 2026-09-03 — Agent Ask correction-intent-alone-deadlocks-2026-09-03
+
+- **Did:** Record that a correction intent alone cannot clear pre-existing managed document debt, because settlement's full-corpus validation refuses the very Ask that would pay the debt down.
+- **Result:** Found after Decision 0044 was already filed, so it is not in that document.
+settle --apply runs syncProjectDocs over the entire repository (src/docs/sync.ts:105 and :135) and throws on any error anywhere (src/ask/settlement.ts:482). A correction Ask that fixes 1 of N pre-existing errors therefore still trips on the remaining N-1 and is refused. The debt cannot be paid down incrementally through the gate the debt is blocking.
+Consequence for 0044: option A (a correction intent) does not work on its own. Option B (scoping settlement's validation to the documents the Ask actually wrote) is the real unblocker and is the smaller change. If A ships without B, the only correction Ask that could ever apply is one that fixes every outstanding error in the repository in a single settlement.
+Also noted while reading: the log entry validator (src/docs/parse.ts:608) hard-requires **Did:** and **Result:** bullets, while at least one adopting project's mission log deliberately moved to narrative bullets and now fails on every recent entry. Whether the schema should accept narrative entries is a separate call that decides whether 45 documents in that repository are broken or fine.
+Filed as a Log entry rather than as an amendment to Decision 0044 because Agent Ask has no intent that can amend an existing document - which is the gap 0044 itself is about.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
