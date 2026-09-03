@@ -579,6 +579,16 @@ const LOG_BULLET = /^-\s+\*\*(Action|Did|Result|Next|Blockers):\*\*\s*(.*)$/i;
 const LOG_ACTION_REFERENCE = /^[a-z0-9]+(?:-[a-z0-9]+)*#[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /**
+ * What a narrative Log entry's `result` says. The column is NOT NULL and the
+ * prose does not separate outcome from action, so the absence is stated rather
+ * than filled — the same choice `NO_LOGGED_NEXT_ACTION` makes in `sync.ts`,
+ * for the same reason: putting a sentence nobody wrote into the operator's own
+ * history is worse than recording that they did not write one.
+ */
+const NARRATIVE_RESULT_NOT_SEPARATED =
+  "Recorded as narrative; this entry does not state its result separately.";
+
+/**
  * Log entries are the one place the protocol parses the body, because an
  * append-only log in frontmatter would be unreadable to the human who writes
  * it. The heading shape is strict; a heading that does not match is skipped
@@ -587,7 +597,13 @@ const LOG_ACTION_REFERENCE = /^[a-z0-9]+(?:-[a-z0-9]+)*#[a-z0-9]+(?:-[a-z0-9]+)*
 function parseLogEntries(problems: Problems, body: string): LogEntryDoc[] {
   const lines = body.split(/\r?\n/);
   const entries: LogEntryDoc[] = [];
-  let current: { date: string; title: string; fields: Record<string, string> } | null = null;
+  let current: {
+    date: string;
+    title: string;
+    fields: Record<string, string>;
+    /** Every non-bullet line under the heading, kept for a narrative entry. */
+    body: string[];
+  } | null = null;
 
   const flush = (): void => {
     if (!current) {
@@ -604,9 +620,8 @@ function parseLogEntries(problems: Problems, body: string): LogEntryDoc[] {
         '`Action` must be a `plan-slug#action-id` reference, optionally wrapped in backticks.'
       );
     }
-    if (!fields.did || !fields.result) {
-      problems.add(`entry(${date})`, "A log entry needs at least **Did:** and **Result:** bullets.");
-    } else {
+    const narrative = current.body.join(" ").replace(/\s+/g, " ").trim();
+    if (fields.did && fields.result) {
       entries.push({
         date,
         title,
@@ -616,6 +631,37 @@ function parseLogEntries(problems: Problems, body: string): LogEntryDoc[] {
         next: fields.next || null,
         blockers: fields.blockers && !/^none$/i.test(fields.blockers) ? fields.blockers : null
       });
+    } else if (!fields.did && !fields.result && narrative) {
+      // A narrative entry: prose rather than the labelled bullets. Accepted
+      // under Decision 0044, which found this schema rejecting every recent
+      // entry of an adopting project's log — a log that had deliberately
+      // converged on prose, because the labelled shape is what Arcadia
+      // generates and not what a person reaches for. Rejecting the human's
+      // own log was the schema being wrong about its author, not the author
+      // being wrong about the log.
+      //
+      // The prose goes in whole as `did`, because in a narrative entry what
+      // happened and what came of it are told together rather than split.
+      // `result` states that absence instead of inventing a sentence nobody
+      // wrote, exactly as `next` already does when no **Next:** bullet exists.
+      entries.push({
+        date,
+        title,
+        action,
+        did: narrative,
+        result: NARRATIVE_RESULT_NOT_SEPARATED,
+        next: fields.next || null,
+        blockers: fields.blockers && !/^none$/i.test(fields.blockers) ? fields.blockers : null
+      });
+    } else if (fields.did || fields.result) {
+      // Half a structured entry is a malformed structured entry, not a
+      // narrative one: someone reached for the labelled shape and stopped.
+      problems.add(
+        `entry(${date})`,
+        "A log entry using **Did:** or **Result:** needs both; prose with neither is accepted as a narrative entry."
+      );
+    } else {
+      problems.add(`entry(${date})`, "A log entry needs either **Did:** and **Result:** bullets, or prose.");
     }
     current = null;
   };
@@ -624,13 +670,18 @@ function parseLogEntries(problems: Problems, body: string): LogEntryDoc[] {
     const heading = LOG_HEADING.exec(line);
     if (heading) {
       flush();
-      current = { date: heading[1], title: heading[2], fields: {} };
+      current = { date: heading[1], title: heading[2], fields: {}, body: [] };
       continue;
     }
     const bullet = LOG_BULLET.exec(line.trim());
     if (bullet && current) {
       current.fields[bullet[1].toLowerCase()] = bullet[2].trim();
+      continue;
     }
+    // Anything else under the heading is prose. Collected unconditionally so a
+    // narrative entry has something to record; ignored when the entry turns
+    // out to carry the labelled bullets after all.
+    if (current && line.trim()) current.body.push(line.trim());
   }
   flush();
 

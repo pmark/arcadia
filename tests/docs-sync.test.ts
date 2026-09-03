@@ -957,6 +957,77 @@ describe("docs sync", () => {
     expect(withDatabase(workspace, (db) => listRecentMissionLogs(db, 50))).toHaveLength(2);
   });
 
+  it("accepts a narrative Log entry, because the labelled bullets are what Arcadia writes and not what a person does", () => {
+    // Decision 0044. An adopting project's log had converged on prose, and
+    // this validator rejected every recent entry in it — which, because the
+    // refusal gated all settlement, meant the project could not record
+    // anything at all.
+    const repo = scratch();
+    writeDoc(
+      repo,
+      "MISSION_LOG.md",
+      `---
+arcadia: v1
+type: log
+slug: demo-log
+project: demo
+updated: 2026-07-26
+---
+
+# Mission Log: Demo
+
+## 2026-07-26 — Narrated rather than tabulated
+
+- **The image was refused on eligibility, not preference.** The slot table has
+  no page-opening row, so there was nowhere truthful to put one.
+- **A briefing error was corrected on the way.** Provenance lives in the
+  attested profile, not the ingest log.
+`
+    );
+    const workspace = workspaceWithProject(repo);
+
+    const applied = runDocsSyncCommand({ workspace, apply: true });
+    expect(applied.data.errorCount).toBe(0);
+
+    const rows = withDatabase(workspace, (db) => listRecentMissionLogs(db, 50));
+    expect(rows).toHaveLength(1);
+    // The prose is kept whole rather than split, because a narrative entry
+    // tells what happened and what came of it together.
+    expect(rows[0]?.work_performed).toContain("The image was refused on eligibility");
+    expect(rows[0]?.work_performed).toContain("A briefing error was corrected");
+    // And the absent result is stated, never invented.
+    expect(rows[0]?.result).toBe(
+      "Recorded as narrative; this entry does not state its result separately."
+    );
+  });
+
+  it("still refuses half a structured Log entry, which is malformed rather than narrative", () => {
+    const repo = scratch();
+    writeDoc(
+      repo,
+      "MISSION_LOG.md",
+      `---
+arcadia: v1
+type: log
+slug: demo-log
+project: demo
+updated: 2026-07-26
+---
+
+# Mission Log: Demo
+
+## 2026-07-26 — Reached for the labels and stopped
+
+- **Did:** Started writing this the structured way.
+`
+    );
+    const workspace = workspaceWithProject(repo);
+
+    const result = runDocsSyncCommand({ workspace, apply: false });
+    expect(result.data.errorCount).toBeGreaterThan(0);
+    expect(JSON.stringify(result.data.projects[0].errors)).toContain("needs both");
+  });
+
   it("stops reporting Log files as skipped", () => {
     const repo = scratch();
     writeDoc(repo, "MISSION_LOG.md", MISSION_LOG);

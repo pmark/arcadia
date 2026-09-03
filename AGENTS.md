@@ -103,8 +103,27 @@ stated above.
 
 When work produces something Arcadia should govern — a new Action, a corrected
 Outcome, a Decision someone must answer, a Log entry, a whole Plan — **do not
-hand-edit managed documents, invent Action ids, or touch the queue.** Submit an
+hand-edit governance state, invent Action ids, or touch the queue.** Submit an
 Agent Ask and let Arcadia write the canonical records.
+
+Governance state is what a document *asserts about the work*: an Action's
+`status`, `delivered`, or `result`; the `current_action` and `active_plan`
+pointers; a Decision's answer; a Milestone or Outcome; anything in the queue.
+Writing those by hand is fabricating a record of something nobody decided, and
+it is the whole reason this rule exists.
+
+**Document hygiene is not governance state.** A malformed `type:` in
+frontmatter, a heading that does not parse, a stale date, a typo — these assert
+nothing about the work, and fixing one is an ordinary file edit that needs no
+Ask. Decision 0044 settled this after the broader reading of the rule left an
+adopting project unable to repair 49 schema errors through any available path:
+every intent could create records, none could correct a document, and the
+errors blocked all further governance until someone edited the files. A rule
+that forbids fixing a typo is not protecting the record, it is stranding it.
+
+If you cannot tell which side something falls on, ask: *would writing this by
+hand claim that work happened, or that someone decided something?* If yes, it
+is governance state — file an Ask. If no, fix it and move on.
 
 Run it from your own repository. You do not need to know where Arcadia's
 workspace lives:
