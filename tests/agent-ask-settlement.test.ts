@@ -699,8 +699,57 @@ describe("Agent Ask safety boundaries", () => {
 
     expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toBe(planBefore);
   });
+
+  it("lands its own output, so a second settlement is not refused by the first", () => {
+    // Decision 0044. `assertClean` refuses a dirty repository, but settlement
+    // used to leave the documents it wrote uncommitted — so settlement N+1 was
+    // refused by settlement N, and no two Asks could settle without a person
+    // committing in between. Observed in the wild before it was fixed.
+    const { workspace, repo } = fixture();
+    const head = (): string => execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo }).toString().trim();
+    const porcelain = (): string => execFileSync("git", ["status", "--porcelain"], { cwd: repo }).toString().trim();
+    const before = head();
+
+    settleOne(workspace, "log", "First record", "land-first");
+    expect(head(), "settlement should have committed its own output").not.toBe(before);
+    expect(porcelain()).toBe("");
+
+    // The real proof: a second settlement runs with no manual commit between.
+    const second = settleOne(workspace, "log", "Second record", "land-second");
+    expect(second.data.receipt.applied).toBe(true);
+    expect(porcelain()).toBe("");
+    expect(execFileSync("git", ["log", "--oneline", "-1"], { cwd: repo }).toString()).toContain("land-second");
+  });
+
+  it("settles despite an unrelated pre-existing corpus error it did not introduce", () => {
+    // Decision 0044. This check used to refuse on any error anywhere in the
+    // corpus, so one stale document blocked every future settlement — and
+    // because no intent can amend a document, nothing could ever clear it.
+    const { workspace, repo } = fixture();
+    writeFileSync(
+      path.join(repo, "docs/stale.md"),
+      ["---", "arcadia: v1", "type: artifact", "slug: stale", "project: demo",
+        "updated: 2026-08-01", "---", "", "# Stale", ""].join("\n"),
+      "utf8"
+    );
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Add a document whose type this schema no longer accepts"], { cwd: repo });
+
+    expect(settleOne(workspace, "log", "Recorded anyway", "unrelated-debt").data.receipt.applied).toBe(true);
+  });
 });
 
+/** Preview one Ask, then apply its settlement. Returns the applied result. */
+function settleOne(workspace: string, intent: string, desired: string, requestId: string) {
+  const proposal = runAgentAskPreviewCommand({ workspace, request: askForIntent(requestId, intent, desired) });
+  const preview = runAgentAskSettleCommand({
+    workspace, proposal: proposal.data.proposal.id, requestId: `${requestId}-settle`, disposition: "accepted"
+  });
+  return runAgentAskSettleCommand({
+    workspace, proposal: proposal.data.proposal.id, requestId: `${requestId}-settle`,
+    disposition: "accepted", preview: preview.data.receipt.previewFingerprint, apply: true
+  });
+}
 
 function fixture(): { workspace: string; repo: string } {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-agent-ask-settle-"));

@@ -12,7 +12,7 @@ import { syncProjectDocs } from "../docs/sync.js";
 import type { DecisionDoc, LogDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import { buildAgentQueue } from "../dispatch/queue.js";
 import { arrangeActionOrder } from "../dispatch/order.js";
-import { assertClean } from "../git/worktrees.js";
+import { assertClean, git } from "../git/worktrees.js";
 import { slugify } from "../utils/slug.js";
 
 export type AgentAskDisposition = "accepted" | "rejected";
@@ -464,7 +464,7 @@ export function settleAgentAsk(db: Database.Database, input: {
 
   if (fileMutations.length > 0) assertClean(repoRoot, "Agent Ask Project repository");
   try {
-    return db.transaction(() => {
+    const settled = db.transaction(() => {
       for (const mutation of fileMutations) writeAtomically(mutation.path, mutation.after);
       for (const actionId of actionIdsToValidate) {
         const readiness = resolveActionReadiness(repoRoot, project.slug, actionId);
@@ -479,7 +479,29 @@ export function settleAgentAsk(db: Database.Database, input: {
       }
       if (fileMutations.length > 0) {
         const sync = syncProjectDocs(db, project, { apply: true });
-        if (sync.errors.length > 0) throw validationError("Accepted Agent Ask managed documents failed operational sync.", { errors: sync.errors });
+        // A settlement answers for the documents it wrote, and for nothing
+        // else. Decision 0044: this check used to refuse on any error anywhere
+        // in the corpus, so one stale document from weeks ago permanently
+        // blocked every future settlement in that repository — and, because no
+        // intent can amend an existing document, blocked the very Ask that
+        // would have cleared it. An adopting project hit exactly that on its
+        // first real use, with 49 pre-existing errors it had not introduced.
+        //
+        // The crawl still covers everything, because cross-document checks and
+        // ingestion need the whole graph; only the refusal narrows. Unrelated
+        // corpus errors remain real and remain reportable — `arcadia docs` is
+        // where the operator asks that question deliberately, rather than
+        // discovering it as a refusal of unrelated work.
+        const written = new Set(
+          fileMutations.map((mutation) => path.relative(repoRoot, mutation.path)),
+        );
+        const blocking = sync.errors.filter((error) => written.has(error.relativePath));
+        if (blocking.length > 0) {
+          throw validationError("Accepted Agent Ask managed documents failed operational sync.", {
+            errors: blocking,
+            unrelatedCorpusErrors: sync.errors.length - blocking.length,
+          });
+        }
       }
       if (artifactInput) {
         const artifact = createArtifactRecord(db, {
@@ -513,9 +535,60 @@ export function settleAgentAsk(db: Database.Database, input: {
           nextActionKey, JSON.stringify(receipt), now);
       return receipt;
     })();
+    // Settlement lands what it writes. Decision 0044: `assertClean` above
+    // refuses a dirty repository, but settlement used to leave its own output
+    // uncommitted — so settlement N+1 was refused by settlement N, and two
+    // settlements could not run without a person committing in between. That
+    // is not a workflow, it is a deadlock with a manual override.
+    //
+    // Deliberately after the transaction, never inside it: a git failure must
+    // not roll back a settlement that genuinely happened, and the restore path
+    // below must never run against files already committed. If the commit
+    // fails — unconfigured identity, a hook, a detached state — the settlement
+    // still stands and the tree is simply left dirty, which is exactly the old
+    // behaviour, and the next `assertClean` explains it with its own remedy.
+    if (fileMutations.length > 0) {
+      commitSettlementOutput(repoRoot, fileMutations, settled);
+    }
+    return settled;
   } catch (error) {
     for (const mutation of [...fileMutations].reverse()) restoreMutation(mutation);
     throw error;
+  }
+}
+
+/**
+ * Commit the managed documents one settlement wrote, on whatever branch the
+ * repository is currently on. Never pushes: landing a record locally is
+ * Arcadia's job, publishing it is the operator's.
+ *
+ * Paths are passed explicitly to `add` and `commit` so that nothing outside
+ * this settlement can be swept into the commit, even though `assertClean`
+ * already established there was nothing else to sweep.
+ */
+function commitSettlementOutput(
+  repoRoot: string,
+  fileMutations: FileMutation[],
+  receipt: AgentAskSettlementReceipt
+): void {
+  const paths = fileMutations.map((mutation) => path.relative(repoRoot, mutation.path));
+  const message = [
+    `chore(arcadia): settle ${receipt.proposalRequestId}`,
+    "",
+    ...receipt.effects.map((effect) => `- ${effect}`),
+    "",
+    `Written by \`arcadia agent-ask settle --apply\` (${receipt.id}).`,
+    "Arcadia writes and lands its own managed documents; it did not author the",
+    "decision they record."
+  ].join("\n");
+  try {
+    git(repoRoot, ["add", "--", ...paths]);
+    git(repoRoot, ["commit", "-m", message, "--", ...paths]);
+  } catch {
+    // Intentionally swallowed — see the call site. The settlement is already
+    // durable in both the database and the working tree; only the convenience
+    // of landing it failed, and the next command to touch this repository
+    // reports the dirty tree far more clearly than a rethrow here would.
   }
 }
 

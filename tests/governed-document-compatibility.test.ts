@@ -100,9 +100,9 @@ project: demo
 updated: 2026-08-14
 ---
 
-## 2026-08-14 — Missing result
+## 2026-08-14 — An outcome attributed to no action
 
-- **Did:** Recorded the work.
+- **Result:** Something apparently came of nothing.
 `);
 
     const discovered = discoverDocs(root);
