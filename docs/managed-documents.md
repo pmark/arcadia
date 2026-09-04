@@ -40,7 +40,7 @@ to do. It has three complete answers:
 
 | Outcome | What it means |
 | --- | --- |
-| **Dispatchable** | One Action resolved, nothing blocking, responsibility is `codex` or `autonomous`. Begin. |
+| **Dispatchable** | One Action resolved, nothing blocking, responsibility is `agent` or `autonomous`. Begin. |
 | **One operator question** | The Action is `question_open`. Surface that one question. Do not pick a different Action to fill the gap. |
 | **Blockers** | Each names a file, a field, and a remedy. Repairing them is the work. |
 
@@ -131,7 +131,7 @@ actions:
   - id: some-action
     title: What to do
     status: open             # open | in_progress | done | blocked
-    responsibility: codex    # autonomous | codex | requires_review | blocked
+    responsibility: agent    # autonomous | agent | requires_review | blocked
     effort: session          # quick | short | session | project
     next_action: The concrete thing to do first.
     expected_artifact: What existing when this is finished

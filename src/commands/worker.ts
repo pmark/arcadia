@@ -220,7 +220,7 @@ export function runWorkerIteration(
     if (stagingUrl && result.workItemId) {
       updateWorkItem(db, result.workItemId, {
         queue: "work_queue",
-        workClassification: "codex",
+        workClassification: "agent",
         status: "done",
         nextAction: `Review the live staging site at ${stagingUrl}.`
       });

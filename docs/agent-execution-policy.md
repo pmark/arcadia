@@ -126,7 +126,7 @@ Small localized documentation edit:
 - id: fix-command-example
   title: Correct one command example
   status: open
-  responsibility: codex
+  responsibility: agent
   clarification: clarified
   confidence: high
   acceptance_criteria:
@@ -142,7 +142,7 @@ Routine implementation with clear tests:
 - id: add-status-filter
   title: Add the established status filter to the list command
   status: open
-  responsibility: codex
+  responsibility: agent
   clarification: clarified
   confidence: high
   acceptance_criteria:
@@ -160,7 +160,7 @@ Cross-package architectural change:
 - id: unify-event-contract
   title: Unify the persisted event contract across API and worker packages
   status: open
-  responsibility: codex
+  responsibility: agent
   clarification: clarified
   confidence: medium
   acceptance_criteria:
@@ -183,7 +183,7 @@ Security- or privacy-sensitive change:
 - id: protect-inquiry-submissions
   title: Protect inquiry submissions and delivery
   status: open
-  responsibility: codex
+  responsibility: agent
   clarification: clarified
   confidence: medium
   acceptance_criteria:

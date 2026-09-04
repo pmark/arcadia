@@ -154,7 +154,7 @@ export function planStepsForWorkItem(workItem: WorkItemSummary): PlannedSkillSte
     ];
   }
 
-  if (workItem.work_classification === "codex" || requiresCodex(raw)) {
+  if (workItem.work_classification === "agent" || requiresCodex(raw)) {
     // A Codex Action whose concrete next step is to write an implementation
     // plan is still a planning handoff, even when the surrounding context
     // mentions implementation. Keep this deterministic so docs-backed

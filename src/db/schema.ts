@@ -69,7 +69,28 @@ export function applyMigrations(db: Database.Database): void {
   ensureNarrativeDigestScopeColumns(db);
   ensureProofTargetChecksTable(db);
   ensureAgentSessionsTable(db);
+  ensureAgentResponsibilityValue(db);
   applyCapabilityMigrations(db);
+}
+
+/**
+ * The WorkClassification/responsibility value "codex" was renamed to "agent".
+ * `work_items.work_classification` carries a CHECK constraint naming the
+ * allowed values, so a plain UPDATE on a database still holding the old
+ * constraint would reject "agent" rows. Rebuild the table from the current
+ * schema first — same approach as `ensureOperatorAgnosticSchema` above.
+ */
+function ensureAgentResponsibilityValue(db: Database.Database): void {
+  const row = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'work_items'")
+    .get() as { sql: string } | undefined;
+  if (!row?.sql || row.sql.includes("'agent'")) {
+    return;
+  }
+
+  rebuildTableWithCurrentSchema(db, "work_items", [
+    { column: "work_classification", from: "codex", to: "agent" }
+  ]);
 }
 
 function ensureActionQueueOrderTables(db: Database.Database): void {

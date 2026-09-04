@@ -14,7 +14,7 @@ actions:
   - id: make-special-routing-visible
     title: Make deterministic special routing explicit and inspectable
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: "Define and implement the validated Ask-rule contract, exact-prefix matcher, routing precedence, processing receipt, and no-write test path, beginning with the `songbook` selector."
     expected_artifact: A zero-model Ask-rule layer that explains exactly why a special route matched, what it extracted, which processing profile it selected, and what authority that processing has
@@ -44,7 +44,7 @@ actions:
   - id: unify-ask-capture-envelope
     title: Preserve text, links, and attachments as one capture envelope
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: "Converge Dashboard text Ask and file ingress on one immutable capture-envelope contract with URL and attachment receipts plus separately labelled derived content."
     expected_artifact: One auditable capture response for text-only, attachment-only, and combined submissions, with originals and derivations independently preserved
@@ -71,7 +71,7 @@ actions:
   - id: build-guided-understanding-session
     title: Turn the capture receipt into a guided understanding session
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: project
     next_action: "Replace the post-submit receipt with the guided understanding interaction: durable acknowledgment, editable shared interpretation, proposed destinations, activation conditions, correction conversation, and one atomic commit preview."
     expected_artifact: A phone-usable Arcadia Ask session that feels present while keeping deterministic extraction, uncertainty, authority, and resulting records legible
@@ -100,7 +100,7 @@ actions:
   - id: make-ask-rules-easy-to-manage
     title: Manage deterministic Ask rules from the same interaction surface
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: "Add preview-first Dashboard and CLI paths to inspect, test, create, edit, enable, and disable Ask rules without code changes or hidden configuration edits."
     expected_artifact: One safe management surface where the operator can understand and change every deterministic special route and prove its examples before apply

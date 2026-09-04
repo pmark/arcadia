@@ -2547,7 +2547,7 @@ export function buildStatusReportData(db: Database.Database, workspacePath: stri
       db,
       "wi.work_classification = 'autonomous' AND wi.queue != 'blocked'"
     ),
-    codexItems: listOpenWorkItems(db, "wi.work_classification = 'codex' AND wi.queue != 'blocked'"),
+    agentItems: listOpenWorkItems(db, "wi.work_classification = 'agent' AND wi.queue != 'blocked'"),
     blockedItems: listOpenWorkItems(
       db,
       "wi.queue = 'blocked' OR wi.work_classification = 'blocked' OR wi.status = 'blocked'"
@@ -2597,9 +2597,9 @@ export function buildWeeklyReviewData(
     scoped("wi.work_classification = 'autonomous' AND wi.queue != 'blocked'"),
     parameters
   );
-  const codexItems = listOpenWorkItems(
+  const agentItems = listOpenWorkItems(
     db,
-    scoped("wi.work_classification = 'codex' AND wi.queue != 'blocked'"),
+    scoped("wi.work_classification = 'agent' AND wi.queue != 'blocked'"),
     parameters
   );
   const artifactItems = listArtifactChangesOrUpcoming(db, window, scope);
@@ -2620,14 +2620,14 @@ export function buildWeeklyReviewData(
     blockedItems,
     requiresReviewItems,
     autonomousItems,
-    codexItems,
+    agentItems,
     artifactItems,
     projectsWithoutOpenNextActions,
     suggestedNextActions: buildSuggestedNextActions({
       projectsWithoutOpenNextActions,
       requiresReviewItems,
       blockedItems,
-      codexItems,
+      agentItems,
       autonomousItems,
       artifactItems
     })
@@ -2792,7 +2792,7 @@ function buildSuggestedNextActions(input: {
   projectsWithoutOpenNextActions: ProjectSummary[];
   requiresReviewItems: WorkItemSummary[];
   blockedItems: WorkItemSummary[];
-  codexItems: WorkItemSummary[];
+  agentItems: WorkItemSummary[];
   autonomousItems: WorkItemSummary[];
   artifactItems: ArtifactSummary[];
 }): SuggestedNextAction[] {
@@ -2821,7 +2821,7 @@ function buildSuggestedNextActions(input: {
     suggestions.push(workItemSuggestion(item, "Blocked"));
   }
 
-  for (const item of [...input.codexItems, ...input.autonomousItems]) {
+  for (const item of [...input.agentItems, ...input.autonomousItems]) {
     if (seenWorkItems.has(item.id)) {
       continue;
     }

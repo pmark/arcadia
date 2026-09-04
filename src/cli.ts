@@ -692,7 +692,7 @@ export function buildProgram(): Command {
     .requiredOption("--proposal <id>", "Proposal id or original Agent Ask request id")
     .requiredOption("--request-id <id>", "Idempotency key for this settlement")
     .requiredOption("--disposition <accepted|rejected>", "Terminal proposal disposition")
-    .option("--responsibility <autonomous|codex>", "Approved Responsibility for each created Action")
+    .option("--responsibility <autonomous|agent>", "Approved Responsibility for each created Action")
     .option("--top", "Place the accepted Action bundle or active Plan at the top of the queue")
     .option("--before <project/action>", "Place the accepted Action bundle or active Plan before this ordered Action")
     .option("--after <project/action>", "Place the accepted Action bundle or active Plan after this ordered Action")
@@ -706,7 +706,7 @@ export function buildProgram(): Command {
   }) => runCliAction("agent-ask.settle", options, () => runAgentAskSettleCommand({
     ...options,
     disposition: options.disposition as "accepted" | "rejected",
-    responsibility: options.responsibility as "autonomous" | "codex" | undefined,
+    responsibility: options.responsibility as "autonomous" | "agent" | undefined,
     revision: options.revision === undefined ? undefined : Number(options.revision)
   }), renderAgentAskSettleSuccess));
   addJsonOption(agentAsk.command("contract")
@@ -806,7 +806,7 @@ export function buildProgram(): Command {
       .option("--project <project-id>", "Optional project id")
       .option("--next-action <text>", "Action next action")
       .option("--classification <classification>", "Legacy alias for --responsibility")
-      .option("--responsibility <responsibility>", "Responsibility: autonomous or codex")
+      .option("--responsibility <responsibility>", "Responsibility: autonomous or agent")
   ).action((id: string, options: {
     workspace: string;
     title?: string;
@@ -996,7 +996,7 @@ export function buildProgram(): Command {
       .requiredOption("--milestone <milestone>", "Initial active milestone")
       .requiredOption("--next-action <action>", "Initial next action")
       .option("--classification <classification>", "Legacy alias for --responsibility")
-      .option("--responsibility <responsibility>", "Responsibility: autonomous, codex, requires_review, blocked")
+      .option("--responsibility <responsibility>", "Responsibility: autonomous, agent, requires_review, blocked")
       .option("--status <status>", "Project status: active, paused, incubating, completed", "active")
       .option("--expected-artifact <artifact>", "Initial expected artifact")
   ).action((options: {
@@ -1149,7 +1149,7 @@ export function buildProgram(): Command {
       .requiredOption("--input <text>", "Raw input text")
       .requiredOption("--queue <queue>", "Queue: inbox, work_queue, requires_review, blocked")
       .option("--classification <classification>", "Legacy alias for --responsibility")
-      .option("--responsibility <responsibility>", "Responsibility: autonomous, codex, requires_review, blocked")
+      .option("--responsibility <responsibility>", "Responsibility: autonomous, agent, requires_review, blocked")
       .requiredOption("--next-action <action>", "Next action")
       .option("--project <project-id>", "Optional project id")
       .option("--milestone <milestone-id>", "Optional milestone id")
@@ -2175,7 +2175,7 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--queue <queue>", "Queue: inbox, work_queue, requires_review, blocked")
       .option("--classification <classification>", "Legacy alias for --responsibility")
-      .option("--responsibility <responsibility>", "Responsibility: autonomous, codex, requires_review, blocked")
+      .option("--responsibility <responsibility>", "Responsibility: autonomous, agent, requires_review, blocked")
       .option("--next-action <action>", "Next action")
       .option("--status <status>", "Status: open, in_progress, done, blocked")
       .option("--effort <size>", "Coarse time cost: quick|short|session|project, or none to clear")
@@ -2235,7 +2235,7 @@ export function buildProgram(): Command {
       .requiredOption("--title <title>", "Subtask title")
       .option("--next-action <action>", "Concrete next action; defaults to the title, left unclarified")
       .option("--queue <queue>", "Queue: inbox, work_queue, requires_review, blocked")
-      .option("--responsibility <responsibility>", "Responsibility: autonomous, codex, requires_review, blocked")
+      .option("--responsibility <responsibility>", "Responsibility: autonomous, agent, requires_review, blocked")
       .option("--expected-artifact <artifact>", "Optional expected artifact")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((parentId: string, options: {

@@ -7,7 +7,7 @@ references.
 Next Action: Companion apps can integrate against the standard Intelligence
 request/result contract using `capability: "image.generate"`.
 
-Work Responsibility: Codex.
+Work Responsibility: Agent.
 
 Required Artifacts: route config, executor code, tests, this design note, and
 example request payloads.

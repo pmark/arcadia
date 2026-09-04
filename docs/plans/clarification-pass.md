@@ -12,7 +12,7 @@ actions:
   - id: phase-1-plumbing
     title: Thin CLI plumbing — artifact create and work update --expected-artifact
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Merged as PR #3; no further work.
     expected_artifact: Merged PR adding artifact create and --expected-artifact
@@ -23,7 +23,7 @@ actions:
   - id: phase-2-fields
     title: Structured clarification fields on work_items
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Merged as PR #6; no further work.
     expected_artifact: Merged PR adding the five clarification columns
@@ -34,7 +34,7 @@ actions:
   - id: phase-3-decisions-subtasks
     title: Clarification Decisions and Action subtasks
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Merged as PR #10; no further work.
     expected_artifact: Merged PR adding review open and parent_work_item_id
@@ -45,7 +45,7 @@ actions:
   - id: phase-4-orchestrator
     title: The arcadia clarify orchestrator over Arcadia Intelligence
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: project
     next_action: Merged as PR #8; no further work.
     expected_artifact: Merged PR adding the clarify command

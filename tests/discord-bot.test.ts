@@ -445,7 +445,7 @@ describe("discord bot end-to-end fixture", () => {
         currentMilestone: "Pinterest publishing support",
         nextAction: "Define Pinterest posting support boundaries.",
         expectedArtifact: "Pinterest implementation plan",
-        workClassification: "codex"
+        workClassification: "agent"
       });
       upsertProjectMetadata(db, {
         projectId: created.project.id,
@@ -1082,13 +1082,13 @@ function sampleReviewDecision(): ReviewDecisionData {
         intentId: "CreateWork",
         matched: true,
         outputKind: "codex_build_packet",
-        workClassification: "codex"
+        workClassification: "agent"
       },
       workItem: {
         ...sampleWorkItem(),
         id: "work_2",
         queue: "work_queue",
-        work_classification: "codex"
+        work_classification: "agent"
       },
       plan: null,
       approvalGates: [],
@@ -1256,7 +1256,7 @@ process.stdout.write(JSON.stringify({
       intentId: "codex_plan",
       matched: false,
       outputKind: "codex_planning_packet",
-      workClassification: "codex"
+      workClassification: "agent"
     },
     workItem: {
       id: "work_1",
@@ -1265,7 +1265,7 @@ process.stdout.write(JSON.stringify({
       project_id: "proj_rebuster",
       milestone_id: "ms_pinterest",
       queue: "work_queue",
-      work_classification: "codex",
+      work_classification: "agent",
       next_action: "Review the Codex planning packet for this request.",
       expected_artifact: "Codex planning packet",
       status: "open",

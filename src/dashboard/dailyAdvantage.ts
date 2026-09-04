@@ -61,7 +61,7 @@ export function selectDailyAdvantage(db: Database.Database): DashboardDailyAdvan
      JOIN project_metadata pm ON pm.project_id = p.id
      WHERE wi.status = 'open'
        AND wi.queue = 'work_queue'
-       AND wi.work_classification = 'codex'
+       AND wi.work_classification = 'agent'
        AND p.status = 'active'
        AND m.status = 'active'
        AND trim(COALESCE(wi.expected_artifact, '')) != ''

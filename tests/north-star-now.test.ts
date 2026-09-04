@@ -339,7 +339,7 @@ function seedProject(db: Parameters<typeof createProjectWithInitialWork>[0]) {
     status: "active",
     currentMilestone: "First milestone",
     nextAction: "Do the first thing.",
-    workClassification: "codex"
+    workClassification: "agent"
   });
 }
 
@@ -353,7 +353,7 @@ function seedAction(
     title: input.title,
     rawInput: input.title,
     queue: "work_queue",
-    workClassification: "codex",
+    workClassification: "agent",
     nextAction: input.nextAction ?? input.title
   });
   setWorkItemDocRef(db, workItem.id, input.docRef);

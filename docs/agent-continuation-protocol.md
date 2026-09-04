@@ -55,7 +55,7 @@ noun command reads state and never mutates it.
 - it exists exactly once in the active plan;
 - its status is anything but `done`;
 - its clarification is `clarified`;
-- its responsibility is `autonomous` or `codex`;
+- its responsibility is `autonomous` or `agent`;
 - its `next_action` begins with a concrete verb; and
 - its acceptance criteria define observable completion.
 

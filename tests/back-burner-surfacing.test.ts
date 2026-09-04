@@ -44,7 +44,7 @@ describe("Back Burner surface conditions", () => {
         status: "active",
         currentMilestone: "Deliver",
         nextAction: "Continue",
-        workClassification: "codex"
+        workClassification: "agent"
       });
       const second = createWorkItemWithOptionalArtifact(db, {
         projectId: project.project.id,
@@ -125,7 +125,7 @@ describe("Back Burner surface conditions", () => {
       status: "active",
       currentMilestone: "Resurface",
       nextAction: "Test",
-      workClassification: "codex"
+      workClassification: "agent"
     }).project.id);
 
     const captured = runAskCommand({
@@ -213,7 +213,7 @@ describe("Back Burner surface conditions", () => {
         status: "active",
         currentMilestone: "Deliver",
         nextAction: "Continue",
-        workClassification: "codex"
+        workClassification: "agent"
       });
       const gate = createWorkItemWithOptionalArtifact(db, {
         projectId: project.project.id,

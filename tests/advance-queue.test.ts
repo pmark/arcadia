@@ -102,7 +102,7 @@ function queueWorkspace(repoRoot: string): string {
       status: "active",
       currentMilestone: "Queue milestone",
       nextAction: "Implement the queue view.",
-      workClassification: "codex"
+      workClassification: "agent"
     });
     upsertProjectMetadata(db, { projectId: project.id, repoPath: repoRoot });
   });
@@ -167,7 +167,7 @@ describe("Agent Queue", () => {
         status: "active",
         currentMilestone: "Queue milestone",
         nextAction: "Configure the repository.",
-        workClassification: "codex"
+        workClassification: "agent"
       });
       upsertProjectMetadata(db, { projectId: project.id, repoPath: path.join(workspace, "does-not-exist") });
     });

@@ -495,7 +495,7 @@ from the leading clause of `desired_result` — at most six words and 48
 characters, never cut mid-word — appending `-2`, `-3`, and so on only to break
 a collision.
 
-Settle that proposal with `--responsibility autonomous` or `codex`, but without
+Settle that proposal with `--responsibility autonomous` or `agent`, but without
 a queue placement. The draft remains inactive: Arcadia does not change the
 Project pointer, grant dispatch authority, or put its Actions in the execution
 queue.
@@ -524,11 +524,11 @@ managed Plan and portfolio-order effect, then applies only that fingerprint:
 ```sh
 pnpm arcadia agent-ask settle \
   --proposal agent-example-001 --request-id settle-agent-example-001 \
-  --disposition accepted --responsibility codex --top --revision 4 \
+  --disposition accepted --responsibility agent --top --revision 4 \
   --workspace "$WORKSPACE"
 pnpm arcadia agent-ask settle \
   --proposal agent-example-001 --request-id settle-agent-example-001 \
-  --disposition accepted --responsibility codex --top --revision 4 \
+  --disposition accepted --responsibility agent --top --revision 4 \
   --preview <sha256-from-preview> --apply --workspace "$WORKSPACE"
 ```
 

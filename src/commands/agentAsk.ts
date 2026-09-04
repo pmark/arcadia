@@ -84,7 +84,7 @@ export function runAgentAskSettleCommand(options: {
   if (options.disposition !== "accepted" && options.disposition !== "rejected") {
     throw validationError("Agent Ask disposition must be accepted or rejected.");
   }
-  if (options.responsibility && options.responsibility !== "autonomous" && options.responsibility !== "codex") {
+  if (options.responsibility && options.responsibility !== "autonomous" && options.responsibility !== "agent") {
     throw validationError("Agent Ask Action Responsibility must be autonomous or codex.");
   }
   const placements = [options.top ? "top" : null, options.before ? "before" : null, options.after ? "after" : null].filter(Boolean);

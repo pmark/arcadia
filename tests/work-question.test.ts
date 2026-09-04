@@ -161,7 +161,7 @@ function seedProjectInput() {
     status: "active" as const,
     currentMilestone: "First milestone",
     nextAction: "Do the first thing.",
-    workClassification: "codex" as const
+    workClassification: "agent" as const
   };
 }
 
@@ -171,7 +171,7 @@ function seedWorkItemInput(projectId: string) {
     title: "Build the surface",
     rawInput: "Build the surface",
     queue: "work_queue" as const,
-    workClassification: "codex" as const,
+    workClassification: "agent" as const,
     nextAction: "Clarify the desired outcome or approve a Codex execution path."
   };
 }

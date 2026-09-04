@@ -14,7 +14,7 @@ import type {
   WorkItem
 } from "../domain/types.js";
 
-export type CapabilityPermission = "autonomous" | "codex" | "requires_review" | "blocked";
+export type CapabilityPermission = "autonomous" | "agent" | "requires_review" | "blocked";
 
 export interface CapabilityMigration {
   id: string;

@@ -92,7 +92,7 @@ function workspaceFor(repoRoot: string): string {
       status: "active",
       currentMilestone: "First milestone",
       nextAction: "Start",
-      workClassification: "codex"
+      workClassification: "agent"
     });
     upsertProjectMetadata(db, {
       projectId: project.id,
@@ -202,7 +202,7 @@ describe("planning preparation honors the managed plan", () => {
         title: "Something captured directly",
         rawInput: "Something captured directly",
         queue: "work_queue",
-        workClassification: "codex",
+        workClassification: "agent",
         nextAction: "Do the captured thing.",
         expectedArtifact: "A captured result"
       }).workItem;

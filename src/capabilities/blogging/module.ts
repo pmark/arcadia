@@ -98,7 +98,7 @@ export const bloggingModule: CapabilityModule = {
     { id: "blog.record_published", title: "Record published blog post", permission: "requires_review", approvalGates: ["publication"] }
   ],
   eventHandlers: [],
-  permissions: ["autonomous", "codex", "requires_review", "blocked"],
+  permissions: ["autonomous", "agent", "requires_review", "blocked"],
   artifactTypes: [
     { type: "blog_idea", title: "Blog idea" },
     { type: "blog_brief", title: "Blog brief" },

@@ -65,7 +65,7 @@ export function transitionActionPointer(db: Database.Database, input: {
   }
   const readiness = resolveActionReadiness(input.repoRoot, input.projectSlug, input.actionId);
   const responsibility = readiness.action?.responsibility;
-  if (readiness.blockers.length > 0 || readiness.operatorQuestion || (responsibility !== "codex" && responsibility !== "autonomous")) {
+  if (readiness.blockers.length > 0 || readiness.operatorQuestion || (responsibility !== "agent" && responsibility !== "autonomous")) {
     throw validationError("Queued Action is not eligible to become the governed pointer.", {
       actionKey: input.actionKey,
       responsibility,

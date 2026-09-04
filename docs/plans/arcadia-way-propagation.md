@@ -13,7 +13,7 @@ actions:
   - id: give-arcadia-its-own-context-files
     title: Give Arcadia the .arcadia context files it tells every project to read
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: quick
     next_action: Run `arcadia project setup-context` against this repository, or hedge the shared region's wording the way its `docs/managed-documents.md` line already is.
     expected_artifact: Either `.arcadia/AGENT_CONTEXT_POLICY.md`, `.arcadia/repo-context.md`, and `.arcadia/context-policy.json` in this repository, or a shared region that does not instruct agents to read files a repository may not have
@@ -36,7 +36,7 @@ actions:
   - id: stop-duplicating-a-canonical-protocol-on-adopter-zero
     title: Stop appending a second copy of the continuation protocol to the repository that authored it
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: quick
     next_action: Treat an existing `docs/agent-continuation-protocol.md` whose body already equals the canonical source as the managed region itself, rather than as a project-authored section to preserve below it.
     expected_artifact: A `setup-context` run against Arcadia that leaves `docs/agent-continuation-protocol.md` byte-identical instead of doubling it, covered by a test
@@ -78,7 +78,7 @@ actions:
   - id: report-way-drift
     title: Report which projects are stale on the Way, without writing anything
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Add a read-only command that compares each adopting repository's managed regions against the canonical text and reports per project what differs.
     expected_artifact: A noun command reporting, per adopting project, whether CONSTITUTION.md, the shared AGENTS.md region, and docs/agent-continuation-protocol.md match the canonical text, and what its adoption.json upgrade_policy is

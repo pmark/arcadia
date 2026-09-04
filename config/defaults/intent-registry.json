@@ -6,7 +6,7 @@
       "aliases": ["create project", "new project"],
       "examples": ["Create a new project named Example"],
       "outputKind": "execution_plan",
-      "workClassification": "codex",
+      "workClassification": "agent",
       "nextAction": "Create a reviewable project creation plan.",
       "skillSequence": [
         {
@@ -24,7 +24,7 @@
       "aliases": ["create site", "new site", "create website"],
       "examples": ["Create a new site named Example"],
       "outputKind": "execution_plan",
-      "workClassification": "codex",
+      "workClassification": "agent",
       "nextAction": "Create a reviewable site creation plan.",
       "skillSequence": [
         {
@@ -51,7 +51,7 @@
       ],
       "outputKind": "codex_build_packet",
       "templateRefs": ["astro_field_notes_cloudflare"],
-      "workClassification": "codex",
+      "workClassification": "agent",
       "nextAction": "Review the Astro Field Notes site build packet and approve Codex build if appropriate.",
       "expectedArtifact": "Astro Field Notes site build packet",
       "skillSequence": [
@@ -100,7 +100,7 @@
         "Build Pinterest posting support for Rebuster."
       ],
       "outputKind": "codex_build_packet",
-      "workClassification": "codex",
+      "workClassification": "agent",
       "nextAction": "Review the social posting support build packet and approve credentialed posting work if appropriate.",
       "expectedArtifact": "Social posting support Codex build packet",
       "skillSequence": [
@@ -132,7 +132,7 @@
         "Generate strict Rebuster specs from rebus candidates."
       ],
       "outputKind": "codex_build_packet",
-      "workClassification": "codex",
+      "workClassification": "agent",
       "nextAction": "Review the Rebuster Studio bridge build packet and approve repository changes if appropriate.",
       "expectedArtifact": "Rebuster Studio bridge Codex build packet",
       "skillSequence": [
@@ -158,7 +158,7 @@
         "I need MIDI Opener app analytics data downloaded from PostHog and Apple's Analytics Report API and processed for the Field Notes blog."
       ],
       "outputKind": "codex_planning_packet",
-      "workClassification": "codex",
+      "workClassification": "agent",
       "nextAction": "Review credential gates and Codex planning packet before any analytics access.",
       "expectedArtifact": "Analytics pipeline planning packet",
       "skillSequence": [
@@ -238,7 +238,7 @@
       "aliases": ["codex plan", "plan with codex"],
       "examples": ["Use Codex to plan this implementation."],
       "outputKind": "codex_planning_packet",
-      "workClassification": "codex",
+      "workClassification": "agent",
       "nextAction": "Review the Codex planning packet.",
       "skillSequence": [
         {
@@ -256,7 +256,7 @@
       "aliases": ["codex build", "build with codex", "implement with codex"],
       "examples": ["Use Codex to build this feature."],
       "outputKind": "codex_build_packet",
-      "workClassification": "codex",
+      "workClassification": "agent",
       "nextAction": "Review the Codex build packet and approve repository changes if appropriate.",
       "skillSequence": [
         {

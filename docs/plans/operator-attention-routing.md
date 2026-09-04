@@ -14,7 +14,7 @@ actions:
   - id: build-attention-source-projection
     title: Normalize local and GitHub work that genuinely needs the operator
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Extend the existing read-only GitHub and Arcadia snapshots into one deterministic internal attention projection covering reviewable pull requests, merge-ready pull requests, arcadia:attention issues, local Decisions, and blocked Actions.
     expected_artifact: A typed attention projection with deterministic fixtures and no new source-of-truth table
@@ -39,7 +39,7 @@ actions:
   - id: deliver-attention-through-discord
     title: Deliver each meaningful operator action once through Discord
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Add attention fingerprints to the existing Discord notification snapshot and state transition evaluator, then format one concise message with Project, reason, next action, completion condition, and source link.
     expected_artifact: Retry-safe Discord attention delivery with first-run backlog summary and duplicate suppression
@@ -63,7 +63,7 @@ actions:
   - id: include-attention-in-orientation
     title: Keep unresolved operator attention visible after the first notification
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: short
     next_action: Add the normalized open attention set to the deterministic daily orientation facts and portfolio status without turning unresolved items into repeated Discord alerts.
     expected_artifact: Daily orientation and portfolio status show unresolved operator actions with source links

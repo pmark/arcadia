@@ -1282,7 +1282,7 @@ function resolvedIntentForStewardship(
       title: titleFromRequest(intake.rawInput),
       outputKind: "codex_planning_packet",
       queue: "work_queue",
-      workClassification: "codex",
+      workClassification: "agent",
       nextAction: "Review the Codex planning packet and use it to choose the next execution step.",
       expectedArtifact: stewardship.intentType === "Research Request"
         ? "Research brief and recommendation"
@@ -1346,7 +1346,7 @@ function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = fal
       title: `Create ${templateName}: ${projectName}`,
       outputKind: "codex_build_packet",
       queue: "work_queue",
-      workClassification: intake.action.template?.workClassification ?? "codex",
+      workClassification: intake.action.template?.workClassification ?? "agent",
       nextAction: `Review the ${templateName} build packet and approve Codex build if appropriate.`,
       expectedArtifact: intake.action.template?.expectedArtifact ?? "Templated project Codex build packet",
       skillSequence: [

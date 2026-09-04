@@ -59,14 +59,14 @@ describe("execution-profile provenance", () => {
         status: "active",
         currentMilestone: "Selection",
         nextAction: "Test",
-        workClassification: "codex"
+        workClassification: "agent"
       });
       const action = createWorkItemRecord(db, {
         projectId: project.id,
         title: "Change a contract",
         rawInput: "Change a contract",
         queue: "work_queue",
-        workClassification: "codex",
+        workClassification: "agent",
         nextAction: "Inspect the contract."
       });
       const from = resolved("routine_implementation").baseline;
@@ -105,14 +105,14 @@ describe("execution-profile provenance", () => {
         status: "active",
         currentMilestone: "Selection",
         nextAction: "Test",
-        workClassification: "codex"
+        workClassification: "agent"
       });
       const action = createWorkItemRecord(db, {
         projectId: project.id,
         title: "Change a contract",
         rawInput: "Change a contract",
         queue: "work_queue",
-        workClassification: "codex",
+        workClassification: "agent",
         nextAction: "Inspect the contract."
       });
       recordExecutionProfileEvent(db, {
@@ -136,14 +136,14 @@ describe("execution-profile provenance", () => {
         status: "active",
         currentMilestone: "Selection",
         nextAction: "Test",
-        workClassification: "codex"
+        workClassification: "agent"
       });
       const action = createWorkItemRecord(db, {
         projectId: project.id,
         title: "Change a contract",
         rawInput: "Change a contract",
         queue: "work_queue",
-        workClassification: "codex",
+        workClassification: "agent",
         nextAction: "Inspect the contract."
       });
       try {

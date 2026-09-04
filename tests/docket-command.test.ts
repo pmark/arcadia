@@ -94,7 +94,7 @@ describe("arcadia docket", () => {
 
     // These are exactly the fields the first PPN session said it could not
     // confirm from PROJECT.md alone.
-    expect(lines).toContain("Responsibility: codex");
+    expect(lines).toContain("Responsibility: agent");
     expect(lines).toContain("Clarification: clarified");
     expect(lines).toContain("The thing exists.");
     expect(lines).toContain("Dispatchable: a coding agent may begin this action now.");

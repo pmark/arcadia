@@ -6,7 +6,7 @@ Mission 1 is the exact first implementation mission: add disabled-by-default Int
 
 ## Mission 1: Config And Health Skeleton
 
-- Responsibility: Codex
+- Responsibility: Agent
 - Objective: Add local config loading and `arcadia intelligence health --json`.
 - Scope: config types, loader, command, CLI registration, tests.
 - Likely files: `src/commands/intelligence.ts`, `src/cli.ts`, `src/workspace/paths.ts`, `tests/intelligence-gateway.test.ts`, optional default config docs.
@@ -17,7 +17,7 @@ Mission 1 is the exact first implementation mission: add disabled-by-default Int
 
 ## Mission 2: Capability Module And Migrations
 
-- Responsibility: Codex
+- Responsibility: Agent
 - Objective: Add `intelligence` capability module and metadata tables.
 - Scope: module declaration, migrations, repository helpers.
 - Likely files: `src/capabilities/intelligence/module.ts`, `src/capabilities/intelligence/repository.ts`, `src/capabilities/registry.ts`, tests.
@@ -28,7 +28,7 @@ Mission 1 is the exact first implementation mission: add disabled-by-default Int
 
 ## Mission 3: Request Contract And Validator
 
-- Responsibility: Codex
+- Responsibility: Agent
 - Objective: Implement `structured_text.generate` request validation and `structured_text_list_v1` result validation.
 - Scope: TypeScript types, parser, validator, fixtures.
 - Likely files: `src/capabilities/intelligence/contracts.ts`, tests.
@@ -39,7 +39,7 @@ Mission 1 is the exact first implementation mission: add disabled-by-default Int
 
 ## Mission 4: Policy Evaluator
 
-- Responsibility: Codex
+- Responsibility: Agent
 - Objective: Implement deterministic routing policy with dry-run result.
 - Scope: policy config, Project overrides, executor class decision, denial reasons.
 - Likely files: `src/capabilities/intelligence/policy.ts`, `config/defaults/*`, tests.
@@ -50,7 +50,7 @@ Mission 1 is the exact first implementation mission: add disabled-by-default Int
 
 ## Mission 5: Request Submit With Fake Executor
 
-- Responsibility: Codex
+- Responsibility: Agent
 - Objective: Submit a request through policy and fake executor, then record accepted/failed metadata.
 - Scope: command, repository writes, Artifact and Log creation.
 - Likely files: `src/commands/intelligence.ts`, `src/capabilities/intelligence/actions.ts`, tests.
@@ -61,7 +61,7 @@ Mission 1 is the exact first implementation mission: add disabled-by-default Int
 
 ## Mission 6: LiteLLM HTTP Adapter
 
-- Responsibility: Codex
+- Responsibility: Agent
 - Objective: Add OpenAI-compatible HTTP executor behind config.
 - Scope: request translation, timeout, auth header, response parsing, usage capture.
 - Likely files: `src/capabilities/intelligence/litellm.ts`, tests.
@@ -72,7 +72,7 @@ Mission 1 is the exact first implementation mission: add disabled-by-default Int
 
 ## Mission 7: CLI List And Show
 
-- Responsibility: Codex
+- Responsibility: Agent
 - Objective: Add request inspection commands.
 - Scope: `show`, `list`, filters, human renderers.
 - Likely files: `src/commands/intelligence.ts`, `src/cli.ts`, tests.
@@ -83,7 +83,7 @@ Mission 1 is the exact first implementation mission: add disabled-by-default Int
 
 ## Mission 8: Dashboard Snapshot
 
-- Responsibility: Codex
+- Responsibility: Agent
 - Objective: Expose gateway health and recent Intelligence Request summaries.
 - Scope: snapshot types, dashboard UI section.
 - Likely files: `src/dashboard/snapshot.ts`, `apps/dashboard/lib/types.ts`, `apps/dashboard/components/dashboard-ui.tsx`, tests.

@@ -486,7 +486,7 @@ export interface StatusReportData {
   queues: QueueGroups;
   requiresReviewItems: WorkItemSummary[];
   autonomousItems: WorkItemSummary[];
-  codexItems: WorkItemSummary[];
+  agentItems: WorkItemSummary[];
   blockedItems: WorkItemSummary[];
   recentlyCompletedWorkItems: WorkItemSummary[];
   recentMissionLogs: MissionLogSummary[];
@@ -522,7 +522,7 @@ export interface WeeklyReviewData {
   blockedItems: WorkItemSummary[];
   requiresReviewItems: WorkItemSummary[];
   autonomousItems: WorkItemSummary[];
-  codexItems: WorkItemSummary[];
+  agentItems: WorkItemSummary[];
   artifactItems: ArtifactSummary[];
   projectsWithoutOpenNextActions: ProjectSummary[];
   suggestedNextActions: SuggestedNextAction[];

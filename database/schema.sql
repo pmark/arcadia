@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS work_items (
   title TEXT NOT NULL,
   raw_input TEXT NOT NULL,
   queue TEXT NOT NULL CHECK (queue IN ('inbox', 'work_queue', 'requires_review', 'blocked')),
-  work_classification TEXT NOT NULL CHECK (work_classification IN ('autonomous', 'codex', 'requires_review', 'blocked')),
+  work_classification TEXT NOT NULL CHECK (work_classification IN ('autonomous', 'agent', 'requires_review', 'blocked')),
   next_action TEXT NOT NULL,
   expected_artifact TEXT,
   status TEXT NOT NULL CHECK (status IN ('open', 'in_progress', 'done', 'blocked')),

@@ -230,7 +230,7 @@ export interface ReviewWeeklyCommandData {
     missionLogs: number;
     blockedWork: number;
     requiresReview: number;
-    codexWork: number;
+    agentWork: number;
     autonomousWork: number;
     artifacts: number;
     projectsWithoutOpenNextActions: number;
@@ -786,7 +786,7 @@ export function runReviewApproveCommand(
       ).run(new Date().toISOString(), current.work_item_id, current.plan_id);
       updateWorkItem(db, current.work_item_id, {
         queue: "work_queue",
-        workClassification: "codex",
+        workClassification: "agent",
         status: "in_progress",
         nextAction: `Run the approved ${metadata?.generator_skill ?? "project generator"}, validate it, and deploy Cloudflare staging.`
       });
@@ -1309,7 +1309,7 @@ export function runReviewWeeklyCommand(
         missionLogs: data.missionLogs.length,
         blockedWork: data.blockedItems.length,
         requiresReview: data.requiresReviewItems.length,
-        codexWork: data.codexItems.length,
+        agentWork: data.agentItems.length,
         autonomousWork: data.autonomousItems.length,
         artifacts: data.artifactItems.length,
         projectsWithoutOpenNextActions: data.projectsWithoutOpenNextActions.length,
@@ -1661,7 +1661,7 @@ function runReviewDecisionCommand(
       if (isPlanningAcceptance && status === "rejected") {
         updateWorkItem(db, item.work_item_id, {
           queue: "work_queue",
-          workClassification: "codex",
+          workClassification: "agent",
           status: "open",
           nextAction: `Refine the planning Artifact using the operator feedback: ${feedback}`
         });

@@ -15,7 +15,7 @@ actions:
   - id: build-resolution-reconciler
     title: Match plan-document resolutions to open review items
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: short
     clarification: clarified
     confidence: high
@@ -32,7 +32,7 @@ actions:
   - id: add-review-reconcile-command
     title: Close already-answered decisions from the command line
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: short
     clarification: clarified
     confidence: high
@@ -49,7 +49,7 @@ actions:
   - id: carry-answer-affordance-into-now
     title: Give the Now brief what it needs to be acted on
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: short
     clarification: clarified
     confidence: high
@@ -65,7 +65,7 @@ actions:
   - id: make-the-now-card-answerable
     title: Answer the one thing without leaving the screen
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: short
     clarification: clarified
     confidence: medium

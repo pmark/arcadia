@@ -230,7 +230,7 @@ describe("clarify orchestrator", () => {
         title: "Legacy Action",
         rawInput: "Legacy Action",
         queue: "work_queue",
-        workClassification: "codex",
+        workClassification: "agent",
         nextAction: "Already decided"
       })
     );
@@ -252,7 +252,7 @@ describe("clarify orchestrator", () => {
         title: "Named explicitly",
         rawInput: "Named explicitly",
         queue: "work_queue",
-        workClassification: "codex",
+        workClassification: "agent",
         nextAction: "Already decided"
       })
     );
