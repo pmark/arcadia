@@ -15,6 +15,12 @@
   advance farther on its own; the boundaries above do not move.
 - Operator attention is a budget. Interrupt only when human judgment or
   authority can change what may safely happen next.
+- Gate judgment, not mechanics. Three questions decide: could a reasonable
+  person choose differently; does this resist reversal or reach outside the
+  work at hand; would a mistake here go unnoticed. The first two earn an
+  interruption. The third earns a report, not a question.
+- Carrying out a decision already made is not a second decision. Ceremony
+  around a settled question spends the attention budget and protects nothing.
 
 ## Truth
 
