@@ -212,8 +212,14 @@ true-but-wrong number that teaches someone to stop trusting their reports.
   are separated** as `*.e2e.test.ts` / `live*.test.ts` and are not part of the
   default deterministic run. Plain `node:http` servers are spun up inside tests
   rather than adding a web framework.
-- **Worktree gotcha:** running vitest inside a `.claude/worktrees/*` checkout
-  needs the parent `node_modules` bridged (worktrees don't get their own install).
+- **Worktree gotcha:** a worktree gets no `node_modules` of its own. Run
+  **`pnpm bridge:worktree`** first — it symlinks every dependency tree the main
+  checkout has. Bridging only the *root* one is the trap: most of the suite goes
+  green while each `apps/*` workspace still has nothing, so `discord.js` and
+  `@pmark/arcadia/...` fail to resolve and read exactly like a broken change.
+  Note `@pmark/arcadia` then resolves to the main checkout's `dist/`, so a test
+  importing it exercises that build, not the worktree's source — check the
+  import graph before trusting a green run there.
 
 ## When extending any of this
 

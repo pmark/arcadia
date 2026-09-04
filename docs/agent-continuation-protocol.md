@@ -116,6 +116,39 @@ Before starting the next batch:
 - **Say which model and effort level the next batch needs**, sized to that work
   rather than defaulted to whatever is already running.
 
+### Ending a stopping point with choices
+
+A report that ends in prose hands the operator one more job: read it, work out
+what could happen next, and decide which of those to ask for. That job is the
+agent's, and doing it badly is how momentum dies at exactly the moment there is
+the most to show for the work.
+
+So every stopping point ends with the actual choices, presented as a picker.
+
+- **Each option states its consequence.** Selecting is only cheap when the cost
+  of each option is already on screen; otherwise the operator has to reconstruct
+  it, which is the work the picker was supposed to remove. If a consequence
+  cannot be stated, that option has not been thought through and is not ready to
+  be offered.
+- **Only live options appear.** A settled question re-asked is a decision taken
+  twice at full price — the same failure "If not now, then when?" names for
+  deferrals without triggers.
+- **Ending the session is a legitimate option, and sometimes the right one.**
+  Say so plainly when it is: context volume, a clean boundary between unrelated
+  work, or a long session worth resetting. Say what opens the next one, which is
+  almost always `arcadia go` — the pointer already resolves what comes next, so
+  naming a specific task in its place is guessing ahead of the document that
+  actually knows. Name a different opening move only when it genuinely differs,
+  and say why.
+- **Size the next batch** — model and effort for the work being chosen, not for
+  the work just finished.
+
+This is the same principle as the `OK to go` line below, at a different width.
+That line is what a picker collapses to when exactly one thing can happen next;
+the picker is what it expands to when several can. Neither is optional, and
+between them there is no stopping point where the operator is left to derive
+the next move unaided.
+
 ### The "OK to go" line
 
 A coding agent is not the final authority on whether to execute; the operator

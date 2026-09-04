@@ -3250,16 +3250,46 @@ export interface PortfolioDecisionRow {
   created_at: string;
 }
 
-/** Every Decision waiting on a human, newest last so the oldest debt reads first. */
+const WAITING_ON_YOU_STATUSES = "('open', 'deferred')";
+
+/**
+ * Every Decision waiting on a human, newest last so the oldest debt reads first.
+ *
+ * Way-change requests share this table and this wait, but they are not
+ * Decisions and counting them as such would overstate how much of the
+ * portfolio is blocked on the operator's own judgment. They come back from
+ * {@link listPortfolioOpenProposals} instead.
+ */
 export function listPortfolioOpenDecisions(db: Database.Database, limit = 20): PortfolioDecisionRow[] {
   return db
     .prepare(
       `SELECT ri.id, ri.slug, p.name AS project_name, ri.decision_needed, ri.status, ri.created_at
        FROM review_items ri
        LEFT JOIN projects p ON p.id = ri.project_id
-       WHERE ri.status IN ('open', 'deferred')
+       WHERE ri.status IN ${WAITING_ON_YOU_STATUSES} AND ri.resolved_intent != ?
        ORDER BY ri.created_at ASC
        LIMIT ?`
     )
-    .all(limit) as PortfolioDecisionRow[];
+    .all(WAY_PROPOSAL_REVIEW_INTENT, limit) as PortfolioDecisionRow[];
+}
+
+/**
+ * The intent `docs sync` files a Way-change request under. Declared here rather
+ * than imported from the sync module so the query layer does not depend on the
+ * ingestion layer; the two must agree, and the constant is asserted in tests.
+ */
+export const WAY_PROPOSAL_REVIEW_INTENT = "WayProposal";
+
+/** Every unanswered Way-change request, oldest first, same as Decisions. */
+export function listPortfolioOpenProposals(db: Database.Database, limit = 20): PortfolioDecisionRow[] {
+  return db
+    .prepare(
+      `SELECT ri.id, ri.slug, p.name AS project_name, ri.decision_needed, ri.status, ri.created_at
+       FROM review_items ri
+       LEFT JOIN projects p ON p.id = ri.project_id
+       WHERE ri.status IN ${WAITING_ON_YOU_STATUSES} AND ri.resolved_intent = ?
+       ORDER BY ri.created_at ASC
+       LIMIT ?`
+    )
+    .all(WAY_PROPOSAL_REVIEW_INTENT, limit) as PortfolioDecisionRow[];
 }
