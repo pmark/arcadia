@@ -9,7 +9,7 @@ token_impact: medium
 token_budget: "Regeneration, drift comparison, and pull-request mechanics are deterministic and belong in code, not a model. Reserve model use for one implementation session per Action and a single review pass. A propagation run that calls a model per repository is the failure mode this budget exists to prevent."
 recommended_model: claude-sonnet-5
 updated: 2026-09-04
-current_action: adopt-operator-task-ledger
+current_action: rename-codex-responsibility-to-agent
 actions:
   - id: seed-the-work-pointer-when-a-repository-is-adopted
     title: Write PROJECT.md and a first plan when a repository is adopted
@@ -137,7 +137,7 @@ actions:
       - src/docs/dispatch.ts
   - id: adopt-operator-task-ledger
     title: Record work only the operator can do, separately from decisions awaiting review
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: "Adopt PPN's operator task ledger - append-only entries citing an action or decision, stating why an agent cannot act, with agent evidence separated from operator-only closure."
@@ -155,6 +155,28 @@ actions:
     references:
       - docs/decisions/0028-ppn-capability-reconciliation.md
       - src/commands/attention.ts
+    result: >-
+      `.arcadia/operator-tasks.jsonl` is an append-only, repo-local ledger --
+      no workspace, no database, the same shape as `resolveDispatch` and
+      `evaluateTriggers` -- deliberately, since an agent raising a task is
+      often reporting exactly the kind of environment gap (no reachable
+      workspace, no credential) that would make a database-backed ledger
+      unusable at the moment it is needed most. `arcadia operator-task raise`
+      requires an origin already in project control (an Action id from
+      `docs/plans/*.md` or a Decision id from `docs/decisions/`) and a
+      `--because` explaining why only the operator can act; `evidence`
+      attaches an agent's non-binding note without closing anything; `close`
+      and `decline` are terminal and refuse without an explicit `--operator`
+      flag, the same loud-escape-hatch shape as `--allow-blocking` elsewhere,
+      since this CLI holds no credentials to enforce it harder. `docket`
+      reports the open count so entries surface without a separate hunt.
+      Proposal 0002's third origin kind, a "recorded blocker," is deferred
+      exactly as the PPN reference implementation deferred it -- Arcadia
+      declares no such record type, and every real task cites an Action or a
+      Decision. 13 new tests in tests/operator-task-ledger.test.ts, plus the
+      full suite (1,225 passing, 7 skipped; one pre-existing, unrelated
+      Obsidian-memory failure untouched by this change) and a clean
+      typecheck.
   - id: propagate-agent-ask-contract
     title: Document the Agent Ask contract inside the propagated AGENTS.md region so every adopting project receives it and `arcadia way` reports it stale when it drifts.
     status: done
