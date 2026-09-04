@@ -4,6 +4,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import type { AgentAskProposal, NormalizedAgentAsk, NormalizedAgentAskAction } from "./agentAsk.js";
 import { validationError } from "../cli/errors.js";
+import { writeTransaction } from "../db/connection.js";
 import { createArtifactRecord, getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
 import { discoverDocs } from "../docs/discover.js";
 import { resolveActionReadiness } from "../docs/dispatch.js";
@@ -469,7 +470,7 @@ export function settleAgentAsk(db: Database.Database, input: {
 
   if (fileMutations.length > 0) assertClean(repoRoot, "Agent Ask Project repository");
   try {
-    const settled = db.transaction(() => {
+    const settled = writeTransaction(db, () => {
       for (const mutation of fileMutations) writeAtomically(mutation.path, mutation.after);
       for (const actionId of actionIdsToValidate) {
         const readiness = resolveActionReadiness(repoRoot, project.slug, actionId);
@@ -539,7 +540,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           input.disposition, project.slug, JSON.stringify(effects), queueActionKey, receipt.queuePosition,
           nextActionKey, JSON.stringify(receipt), now);
       return receipt;
-    })();
+    });
     // Settlement lands what it writes. Decision 0044: `assertClean` above
     // refuses a dirty repository, but settlement used to leave its own output
     // uncommitted — so settlement N+1 was refused by settlement N, and two
