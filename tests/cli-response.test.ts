@@ -320,7 +320,7 @@ describe("CLI response contract", () => {
       "--next-action",
       "Define Pinterest posting support boundaries.",
       "--responsibility",
-      "codex",
+      "agent",
       "--expected-artifact",
       "Pinterest implementation plan",
       "--json"
@@ -337,8 +337,8 @@ describe("CLI response contract", () => {
     expect(json.data.project.outcome).toBe("Ship Pinterest support.");
     expect(json.data.milestone.title).toBe("Pinterest publishing support");
     expect(json.data.workItem.next_action).toBe("Define Pinterest posting support boundaries.");
-    expect(json.data.workItem.work_classification).toBe("codex");
-    expect(json.data.workItem.responsibility).toBe("codex");
+    expect(json.data.workItem.work_classification).toBe("agent");
+    expect(json.data.workItem.responsibility).toBe("agent");
   });
 
   it("keeps legacy project goal and classification flags working", () => {
@@ -397,7 +397,7 @@ describe("CLI response contract", () => {
       "--workspace",
       workspace,
       "--classification",
-      "codex",
+      "agent",
       "--responsibility",
       "autonomous",
       "--json"
@@ -1085,7 +1085,7 @@ describe("CLI response contract", () => {
     const workItem = importWorkItem(workspace, {
       title: "Link this artifact",
       queue: "work_queue",
-      classification: "codex",
+      classification: "agent",
       nextAction: "Produce the artifact"
     });
 
@@ -1189,7 +1189,7 @@ describe("CLI response contract", () => {
       "--queue",
       "work_queue",
       "--classification",
-      "codex",
+      "agent",
       "--next-action",
       "Implement the update",
       "--status",
@@ -1205,8 +1205,8 @@ describe("CLI response contract", () => {
     expect(json.data.updated).toEqual(["queue", "classification", "nextAction", "status"]);
     expect(json.data.workItem.id).toBe(workItem.id);
     expect(json.data.workItem.queue).toBe("work_queue");
-    expect(json.data.workItem.work_classification).toBe("codex");
-    expect(json.data.workItem.responsibility).toBe("codex");
+    expect(json.data.workItem.work_classification).toBe("agent");
+    expect(json.data.workItem.responsibility).toBe("agent");
     expect(json.data.workItem.next_action).toBe("Implement the update");
     expect(json.data.workItem.status).toBe("in_progress");
   });
@@ -1216,7 +1216,7 @@ describe("CLI response contract", () => {
     const workItem = importWorkItem(workspace, {
       title: "Set an expected artifact",
       queue: "work_queue",
-      classification: "codex",
+      classification: "agent",
       nextAction: "Produce the artifact"
     });
 
@@ -1625,7 +1625,7 @@ describe("CLI response contract", () => {
     const workItem = importWorkItem(workspace, {
       title: "Complete this work",
       queue: "work_queue",
-      classification: "codex",
+      classification: "agent",
       nextAction: "Finish it"
     });
 
@@ -1654,7 +1654,7 @@ describe("CLI response contract", () => {
       "--queue",
       "bad_queue",
       "--classification",
-      "codex",
+      "agent",
       "--next-action",
       "Should fail",
       "--json"
@@ -1727,7 +1727,7 @@ describe("CLI response contract", () => {
       "--queue",
       "work_queue",
       "--classification",
-      "codex",
+      "agent",
       "--next-action",
       "Find project",
       "--project",
@@ -1785,7 +1785,7 @@ describe("CLI response contract", () => {
       "--next-action",
       "Exercise the CLI",
       "--classification",
-      "codex",
+      "agent",
       "--json"
     ]);
 
@@ -1919,7 +1919,7 @@ describe("CLI response contract", () => {
     const workItem = importWorkItem(workspace, {
       title: "Invalid update target",
       queue: "work_queue",
-      classification: "codex",
+      classification: "agent",
       nextAction: "Stay valid"
     });
 
@@ -1948,7 +1948,7 @@ describe("CLI response contract", () => {
     const workItem = importWorkItem(workspace, {
       title: "No fields target",
       queue: "work_queue",
-      classification: "codex",
+      classification: "agent",
       nextAction: "Stay valid"
     });
 
@@ -2194,7 +2194,7 @@ function createProject(workspace: string) {
       currentMilestone: "Initial milestone",
       nextAction: "Exercise the CLI",
       expectedArtifact: "CLI Fixture Artifact",
-      workClassification: "codex"
+      workClassification: "agent"
     })
   );
 }
@@ -2208,7 +2208,7 @@ function createExecutableReview(workspace: string, repoPath: string) {
       currentMilestone: "Execution milestone",
       nextAction: "Review the executor output",
       expectedArtifact: "Review execution artifact",
-      workClassification: "codex"
+      workClassification: "agent"
     });
     upsertProjectMetadata(db, {
       projectId: created.project.id,

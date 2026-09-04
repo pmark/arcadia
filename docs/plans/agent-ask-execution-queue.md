@@ -15,7 +15,7 @@ actions:
   - id: define-agent-ask-management-contract
     title: Give coding agents a conventional Ask contract for Project management intent
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: "Define and implement Agent Ask v1 as one normalized proposal contract that accepts a strict conventional envelope or natural fallback, previews the exact canonical Project changes, and never treats an agent's claim as operator approval."
     expected_artifact: A documented, machine-readable, idempotent Agent Ask v1 contract with preview receipts and fixtures for every Project-management contribution Arcadia supports
@@ -48,7 +48,7 @@ actions:
   - id: establish-approved-action-queue
     title: Put every approved Action in one explicit execution order
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: project
     next_action: "Implement the portfolio Action queue as explicit, revisioned ordering metadata over canonical Actions, with deterministic readiness and next-selection projections that preserve blockers and approval boundaries."
     expected_artifact: One durable, atomically reorderable portfolio execution queue whose first eligible Action is Arcadia's explainable default next work
@@ -76,7 +76,7 @@ actions:
   - id: connect-agent-ask-to-queue
     title: Turn accepted Agent Asks into queued governed work
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: project
     next_action: "Connect Agent Ask preview and acceptance to one atomic persistence path that creates or amends the proposed Project records and inserts every accepted Action at the approved queue position."
     expected_artifact: An end-to-end receipt from immutable agent input through accepted Project records to an explicitly positioned executable Action
@@ -107,7 +107,7 @@ actions:
   - id: build-operator-work-queue-dashboard
     title: Give the operator complete, low-friction control of work order
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: project
     next_action: "Build the operator Dashboard queue with a prominent explainable next Action, the complete ordered portfolio, direct reorder controls, readiness reasons, and durable change receipts."
     expected_artifact: A phone-usable operator queue that makes all approved work, priority changes, and the reason for Arcadia's next choice immediately legible
@@ -155,7 +155,7 @@ actions:
   - id: verify-the-live-work-queue-and-discord-settlement-summary-end-to-end
     title: Verify the live Work Queue and Discord settlement summary end to end.
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Verify the live Work Queue and Discord settlement summary end to end.
     expected_artifact: Evidence satisfying Agent Ask verify-the-live-work-queue-and-discord-settlement-summary-end-to-end
@@ -175,7 +175,7 @@ actions:
   - id: enable-coding-agents-to-naturally-create-amend-and-reprioritize-plan-shaped-work
     title: Enable coding agents to naturally create, amend, and reprioritize Plan-shaped work on the fly through Arcadia Ask.
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Preserve the verified Plan Ask receipts and continue only after Decision 0041 selects the next planning priority.
     expected_artifact: Evidence satisfying Agent Ask enable-coding-agents-to-naturally-create-amend-and-reprioritize-plan-shaped-work
@@ -195,7 +195,7 @@ actions:
   - id: make-a-natural-language-agent-ask-propose-the-concrete-canonical-effect-when-the
     title: Make a natural-language Agent Ask propose the concrete canonical effect when the repository already contains the facts that identify it, instead of always falling back to a generic interpretation Decision.
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Make a natural-language Agent Ask propose the concrete canonical effect when the repository already contains the facts that identify it, instead of always falling back to a generic interpretation Decision.
     expected_artifact: Evidence satisfying Agent Ask make-a-natural-language-agent-ask-propose-the-concrete-canonical-effect-when-the
@@ -214,7 +214,7 @@ actions:
   - id: reconcile-open-operator-questions-against-answers-the-checked-in-documents-alrea
     title: Reconcile open operator questions against answers the checked-in documents already carry, so the same question is never asked twice.
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Reconcile open operator questions against answers the checked-in documents already carry, so the same question is never asked twice.
     expected_artifact: Evidence satisfying Agent Ask reconcile-open-operator-questions-against-answers-the-checked-in-documents-alrea

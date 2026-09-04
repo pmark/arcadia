@@ -77,7 +77,7 @@ describe("morning narrative", () => {
       status: "paused",
       currentMilestone: "Unused",
       nextAction: "Unused",
-      workClassification: "codex"
+      workClassification: "agent"
     });
     const old = upsertProject(db, {
       name: "Lifecycle Active",
@@ -85,7 +85,7 @@ describe("morning narrative", () => {
       status: "active",
       currentMilestone: "Unused",
       nextAction: "Unused",
-      workClassification: "codex"
+      workClassification: "agent"
     });
 
     const yesterday = createMissionLog(db, {
@@ -156,7 +156,7 @@ describe("morning narrative", () => {
       status: "paused",
       currentMilestone: "Unused",
       nextAction: "Unused",
-      workClassification: "codex"
+      workClassification: "agent"
     });
     const stale = upsertProject(db, {
       name: "Old Branch",
@@ -164,14 +164,14 @@ describe("morning narrative", () => {
       status: "active",
       currentMilestone: "Unused",
       nextAction: "Unused",
-      workClassification: "codex"
+      workClassification: "agent"
     });
     createWorkItemRecord(db, {
       projectId: current.id,
       title: "Finish the stand-up",
       rawInput: "Finish the stand-up",
       queue: "work_queue",
-      workClassification: "codex",
+      workClassification: "agent",
       nextAction: "Verify the Morning Packet",
       status: "open"
     });

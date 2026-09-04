@@ -148,7 +148,7 @@ describe("Phase 0 data operations", () => {
         currentMilestone: "Create a working CLI",
         nextAction: "Run the first smoke test",
         expectedArtifact: "Implementation summary",
-        workClassification: "codex"
+        workClassification: "agent"
       })
     );
 
@@ -476,14 +476,14 @@ describe("Phase 0 data operations", () => {
           title: "Ship the billing rewrite",
           rawInput: "Ship the billing rewrite",
           queue: "work_queue",
-          workClassification: "codex",
+          workClassification: "agent",
           nextAction: "Decompose the rewrite"
         });
         const child = createWorkItemWithOptionalArtifact(db, {
           title: "Migrate the invoice table",
           rawInput: "Migrate the invoice table",
           queue: "work_queue",
-          workClassification: "codex",
+          workClassification: "agent",
           nextAction: "Write the migration",
           parentWorkItemId: parent.workItem.id
         });
@@ -508,14 +508,14 @@ describe("Phase 0 data operations", () => {
           title: "Parent Action",
           rawInput: "Parent Action",
           queue: "work_queue",
-          workClassification: "codex",
+          workClassification: "agent",
           nextAction: "Do the parent work"
         });
         const child = createWorkItemWithOptionalArtifact(db, {
           title: "Child Action",
           rawInput: "Child Action",
           queue: "work_queue",
-          workClassification: "codex",
+          workClassification: "agent",
           nextAction: "Do the child work",
           parentWorkItemId: parent.workItem.id
         });
@@ -603,13 +603,13 @@ describe("Phase 0 data operations", () => {
 
       const updated = updateWorkItem(db, created.workItem.id, {
         queue: "work_queue",
-        workClassification: "codex",
+        workClassification: "agent",
         nextAction: "Implement the task",
         status: "in_progress"
       });
 
       expect(updated?.queue).toBe("work_queue");
-      expect(updated?.work_classification).toBe("codex");
+      expect(updated?.work_classification).toBe("agent");
       expect(updated?.next_action).toBe("Implement the task");
       expect(updated?.status).toBe("in_progress");
 
@@ -636,7 +636,7 @@ describe("Phase 0 data operations", () => {
         title: "Keep valid state",
         rawInput: "Keep valid state",
         queue: "work_queue",
-        workClassification: "codex",
+        workClassification: "agent",
         nextAction: "Stay valid"
       });
 
@@ -706,7 +706,7 @@ describe("Phase 0 data operations", () => {
         status: "active",
         currentMilestone: "Start",
         nextAction: "Move project",
-        workClassification: "codex"
+        workClassification: "agent"
       });
 
       const updatedProject = updateProjectStatus(db, created.project.id, "paused");
@@ -744,7 +744,7 @@ describe("Phase 0 data operations", () => {
         status: "active",
         currentMilestone: "Start",
         nextAction: "Validate statuses",
-        workClassification: "codex"
+        workClassification: "agent"
       });
 
       expect(() => updateProjectStatus(db, created.project.id, "invalid_status")).toThrow(
@@ -769,7 +769,7 @@ describe("Phase 0 data operations", () => {
         currentMilestone: "Start",
         nextAction: "Create an artifact",
         expectedArtifact: "Artifact draft",
-        workClassification: "codex"
+        workClassification: "agent"
       });
 
       expect(listArtifacts(db)).toHaveLength(1);
@@ -805,7 +805,7 @@ describe("Phase 0 data operations", () => {
         currentMilestone: "Start",
         nextAction: "Validate artifact",
         expectedArtifact: "Validated artifact",
-        workClassification: "codex"
+        workClassification: "agent"
       });
 
       const artifactId = created.artifact?.id ?? "";
@@ -884,7 +884,7 @@ describe("Phase 0 data operations", () => {
     const report = readFileSync(reportPath, "utf8");
     expect(report).toContain("Example Project");
     expect(report).toContain("Run the first smoke test");
-    expect(report).toContain("Codex Actions");
+    expect(report).toContain("Agent Actions");
   });
 
   it("writes expanded status report sections from SQLite state", () => {
@@ -943,7 +943,7 @@ describe("Phase 0 data operations", () => {
         title: "Old completed work",
         rawInput: "Old completed work",
         queue: "work_queue",
-        workClassification: "codex",
+        workClassification: "agent",
         nextAction: "This should stay outside the weekly review"
       });
       completeWorkItem(db, oldWork.workItem.id);
@@ -977,7 +977,7 @@ describe("Phase 0 data operations", () => {
         title: "Codex implementation",
         rawInput: "Codex implementation",
         queue: "work_queue",
-        workClassification: "codex",
+        workClassification: "agent",
         nextAction: "Implement the CLI slice"
       });
 
@@ -1006,7 +1006,7 @@ describe("Phase 0 data operations", () => {
       expect(data.requiresReviewItems.map((item) => item.title)).toContain("Needs a review decision");
       expect(data.blockedItems.map((item) => item.title)).toContain("Blocked dependency");
       expect(data.autonomousItems.map((item) => item.title)).toContain("Autonomous local script");
-      expect(data.codexItems.map((item) => item.title)).toContain("Codex implementation");
+      expect(data.agentItems.map((item) => item.title)).toContain("Codex implementation");
       expect(data.artifactItems.map((item) => item.title)).toContain("Implementation summary");
       expect(data.projectsWithoutOpenNextActions.map((project) => project.name)).toContain("Example Project");
       expect(data.suggestedNextActions.length).toBeGreaterThan(0);
@@ -1023,7 +1023,7 @@ describe("Phase 0 data operations", () => {
     expect(report).toContain("## Mission Logs Created");
     expect(report).toContain("Weekly review report is generated.");
     expect(report).toContain("## Requires Review Decisions");
-    expect(report).toContain("## Active Codex/Autonomous Actions");
+    expect(report).toContain("## Active Agent/Autonomous Actions");
     expect(report).toContain("## Artifact Changes Or Upcoming Artifacts");
     expect(report).toContain("artifacts/implementation-summary.md");
     expect(report).toContain("## Projects Without Open Next Actions");
@@ -1039,7 +1039,7 @@ describe("Phase 0 data operations", () => {
           title: "Bad queue",
           rawInput: "Bad queue",
           queue: "not_a_queue" as never,
-          workClassification: "codex",
+          workClassification: "agent",
           nextAction: "Do not store this"
         })
       )
@@ -1068,7 +1068,7 @@ function createExampleProject(workspace: string) {
       currentMilestone: "Create a working CLI",
       nextAction: "Run the first smoke test",
       expectedArtifact: "Implementation summary",
-      workClassification: "codex"
+      workClassification: "agent"
     })
   );
 }

@@ -17,7 +17,7 @@ import { assertClean, git } from "../git/worktrees.js";
 import { slugify } from "../utils/slug.js";
 
 export type AgentAskDisposition = "accepted" | "rejected";
-export type AgentAskResponsibility = "autonomous" | "codex";
+export type AgentAskResponsibility = "autonomous" | "agent";
 export type AgentAskPlacement = "top" | "before" | "after";
 
 interface FileMutation { path: string; before: string | null; after: string; }
@@ -154,7 +154,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           effects.push(`Amended Action ${queueActionKey} in active Plan ${plan.slug}.`);
           effects.push("Preserved the Action's existing Responsibility and queue position.");
         } else {
-          if (!input.responsibility) throw validationError("Accepted Action settlement requires --responsibility autonomous or codex.");
+          if (!input.responsibility) throw validationError("Accepted Action settlement requires --responsibility autonomous or agent.");
           const unpositionedInProject = unpositionedCountForProject(queue, project.slug);
           if (unpositionedInProject > 0) throw validationError("Position every existing approved Action in this Plan before accepting another into the queue.", { unpositionedCount: unpositionedInProject });
           if (!input.placement) throw validationError("Accepted Action settlement requires --top, --before, or --after.");
@@ -294,7 +294,7 @@ export function settleAgentAsk(db: Database.Database, input: {
             return { ...action, id, existing, dependencies, references: uniqueStrings([...proposal.normalized.references, ...action.references]) };
           });
           const createsActions = normalizedActions.some((action) => !action.existing);
-          if (createsActions && !input.responsibility) throw validationError("Creating Actions in a Plan requires --responsibility autonomous or codex.");
+          if (createsActions && !input.responsibility) throw validationError("Creating Actions in a Plan requires --responsibility autonomous or agent.");
           if (!createsActions && input.responsibility) throw validationError("Plan Action amendments preserve existing Responsibilities.");
 
           const isActivePlan = target.status === "active" && target.slug === plan.slug;
@@ -356,7 +356,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           if (input.placement || input.anchor) throw validationError("A draft Plan cannot be placed in the execution queue before activation.");
           const proposedActions = proposal.normalized.actions;
           if (proposedActions.length > 0 && !input.responsibility) {
-            throw validationError("Creating Actions in a draft Plan requires --responsibility autonomous or codex.");
+            throw validationError("Creating Actions in a draft Plan requires --responsibility autonomous or agent.");
           }
           if (proposedActions.length === 0 && input.responsibility) {
             throw validationError("Responsibility applies only when the Plan Ask creates Actions.");

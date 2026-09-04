@@ -19,7 +19,7 @@ function selectedAction(actionId: string): AgentQueueEntry {
     planPath: "docs/plans/sample-plan.md",
     actionId,
     actionTitle: actionId,
-    responsibility: "codex",
+    responsibility: "agent",
     expectedArtifact: null,
     tokenImpact: null,
     tokenBudget: null,

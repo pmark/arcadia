@@ -13,7 +13,7 @@ export const WORKSPACE_FOLDERS = [
 export const PROJECT_STATUSES = ["active", "paused", "incubating", "completed"] as const;
 export const MILESTONE_STATUSES = ["active", "paused", "completed"] as const;
 export const QUEUES = ["inbox", "work_queue", "requires_review", "blocked"] as const;
-export const WORK_CLASSIFICATIONS = ["autonomous", "codex", "requires_review", "blocked"] as const;
+export const WORK_CLASSIFICATIONS = ["autonomous", "agent", "requires_review", "blocked"] as const;
 export const WORK_ITEM_STATUSES = ["open", "in_progress", "done", "blocked"] as const;
 export const ARTIFACT_STATUSES = ["planned", "drafted", "ready", "published"] as const;
 export const EXECUTOR_TYPES = ["deterministic", "codex_planning", "codex_build", "operator"] as const;
@@ -78,7 +78,7 @@ export const QUEUE_LABELS: Record<QueueName, string> = {
 
 export const WORK_CLASSIFICATION_LABELS: Record<WorkClassification, string> = {
   autonomous: "Autonomous",
-  codex: "Codex",
+  agent: "Agent",
   requires_review: "Requires Review",
   blocked: "Blocked"
 };

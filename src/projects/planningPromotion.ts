@@ -254,7 +254,7 @@ export function writeProjectIdeaPromotionDocuments(
     id: actionId,
     title,
     status: "open",
-    responsibility: "codex",
+    responsibility: "agent",
     effort: "session",
     next_action: prepared.fields.smallestFollowUpGoal,
     expected_artifact: expectedArtifact,

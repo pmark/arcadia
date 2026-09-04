@@ -34,7 +34,7 @@ const created = withDatabase(workspace, (db) =>
     currentMilestone: "Prove the core loop works",
     nextAction: "Generate a status report",
     expectedArtifact: "Smoke test report",
-    workClassification: "codex"
+    workClassification: "agent"
   })
 );
 

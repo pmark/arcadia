@@ -14,7 +14,7 @@ actions:
   - id: define-living-system-v1-contract
     title: Define the shared contract for capability maps and Action timelines
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Implement and document the versioned `docs/living-system.yaml` parser and normalized contract for Project-defined Topics, Relationships, and Views plus derived Episode and Signal records.
     expected_artifact: A tested living-system v1 contract that gives every Arcadia-managed Project one safe, extensible source for structural meaning and one stable target model for authoritative change history
@@ -40,7 +40,7 @@ actions:
   - id: derive-living-system-state
     title: Derive trustworthy Episodes, Signals, and Topic impact from Arcadia truth
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Assemble the normalized living-system model from the Project manifest, managed plans and pointer, Action-linked Mission Log entries, Decisions, Runs, Artifacts, pull-request and Git receipts, and validation evidence without guessing missing history.
     expected_artifact: A deterministic source adapter and impact resolver that explains current and previous Actions, affected Topics, evidence, freshness, and gaps with explicit provenance
@@ -67,7 +67,7 @@ actions:
   - id: build-living-system-map-and-timeline
     title: Project equal capability-map and Action-timeline views into Obsidian
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Build the atomic idempotent projector for Home, capability maps, Project-defined submaps, the Project evolution timeline, Current Work, Topic and Action episode notes, and a side-by-side Obsidian Canvas under `Projects/<project-slug>/`.
     expected_artifact: A reusable zero-model projector whose linked map and timeline make current structure, current work, causal history, proof, and gaps navigable at progressively deeper attention levels
@@ -94,7 +94,7 @@ actions:
   - id: integrate-living-system-sync
     title: Make free living-system refresh part of normal Arcadia operation
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Add `arcadia memory system sync` for one Project or all eligible Projects with preview-by-default output, explicit apply, JSON receipts, independent failures, and a non-blocking refresh hook after accepted Action transitions when vault sync is enabled.
     expected_artifact: A documented operator and automation path that creates and updates any managed Project's living-system documentation with zero model calls and no paid Arcadia dependency

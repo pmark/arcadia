@@ -12,7 +12,7 @@ actions:
   - id: build-agent-queue-view
     title: Build the shared Agent Queue projection
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Delivered as src/dispatch/queue.ts with focused readiness and attention tests; no further work.
     expected_artifact: A deterministic Agent Queue projection exposing every ready Action, active Run, and pre-dispatch stop.
@@ -31,7 +31,7 @@ actions:
   - id: surface-agent-advance-queue
     title: Surface the Agent Queue in the operator workflow
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Delivered as `advance queue`, Mission Control's Agent Queue, START_HERE.md, and docs/COMMANDS.md; no further work.
     expected_artifact: A CLI and Mission Control view where ready work and every intervention stop are obvious at a glance.
@@ -46,7 +46,7 @@ actions:
   - id: budget-aware-admission
     title: Add provider-budget-aware admission to the feeder
     status: blocked
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Resume when both Claude Code and Codex expose comparable current daily and weekly remaining-capacity data to Arcadia.
     expected_artifact: A deterministic admission decision that selects an eligible provider or leaves work visible with a precise quota stop.

@@ -371,7 +371,7 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
     const status = enumField(problems, value, "status", WORK_ITEM_STATUSES, field);
     // An action nobody can start yet often has no meaningful owner. Defaulting
     // to requires_review routes it to a human, which is the safe direction; the
-    // unsafe one would be defaulting to codex and handing an undecided task to
+    // unsafe one would be defaulting to agent and handing an undecided task to
     // an executor.
     const responsibility =
       value.responsibility === undefined || value.responsibility === null
@@ -380,7 +380,13 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
         // safe Arcadia meaning rather than allowing an agent to execute it.
         : value.responsibility === "operator"
           ? "requires_review"
-          : enumField(problems, value, "responsibility", WORK_CLASSIFICATIONS, field);
+          // `codex` is the pre-rename spelling of this value. Plan documents in
+          // this repository and in adopting projects reach the Way change on
+          // their own schedule, so the legacy spelling must keep reading as the
+          // same classification rather than failing validation.
+          : value.responsibility === "codex"
+            ? "agent"
+            : enumField(problems, value, "responsibility", WORK_CLASSIFICATIONS, field);
     const effort = optionalEnum(problems, value, "effort", ORIENTATION_EFFORTS, field);
     const clarification = optionalEnum(problems, value, "clarification", CLARIFICATION_STATUSES, field);
     const gapType = optionalEnum(problems, value, "gap_type", GAP_TYPES, field);

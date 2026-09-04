@@ -53,7 +53,7 @@ function fixture(options: { memory: boolean }): { workspace: string; vault: stri
       status: "active",
       currentMilestone: "First",
       nextAction: "Start",
-      workClassification: "codex"
+      workClassification: "agent"
     });
     const log = createMissionLog(db, {
       projectId: project.id,

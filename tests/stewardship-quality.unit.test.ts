@@ -93,7 +93,7 @@ function resolvedFromIntakeForUnit(input: string, intake: ReturnType<typeof reso
     matched: intake.confidenceLabel === "high",
     title: intake.action.title,
     outputKind: "codex_build_packet",
-    workClassification: "codex",
+    workClassification: "agent",
     expectedArtifact: intake.extractedFields.requestedArtifact ?? "Requested work artifact",
     slots: intake.extractedFields,
     codexPurpose: "build"

@@ -339,7 +339,7 @@ export function queueApprovedPlanningRun(
     }
     updateWorkItem(db, action.id, {
       queue: "work_queue",
-      workClassification: "codex",
+      workClassification: "agent",
       status: "in_progress",
       nextAction: "Wait for the approved planning Run, then review its Validation and Artifact."
     });

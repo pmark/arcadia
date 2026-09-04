@@ -49,7 +49,7 @@ function workspaceWithProject(repoRoot: string, slug = "demo"): string {
       status: "active",
       currentMilestone: "Initial",
       nextAction: "Start",
-      workClassification: "codex"
+      workClassification: "agent"
     });
     upsertProjectMetadata(db, { projectId: project.id, repoPath: repoRoot });
   });
@@ -163,7 +163,7 @@ describe("document parsing", () => {
     expect(plan.actions).toHaveLength(2);
     expect(plan.actions[0]).toMatchObject({
       id: "do-the-thing",
-      responsibility: "codex",
+      responsibility: "agent",
       effort: "short",
       clarification: "clarified"
     });
@@ -232,7 +232,26 @@ describe("document parsing", () => {
     expect(doc).toBeNull();
     const error = errors.find((entry) => entry.field.endsWith("responsibility"));
     expect(error?.message).toContain("must be one of");
-    expect(error?.message).toContain("codex");
+    expect(error?.message).toContain("agent");
+  });
+
+  it("accepts the current `responsibility: agent` spelling directly", () => {
+    const { doc, errors } = parseDoc("p.md", "/abs/p.md", PLAN.replace("responsibility: codex", "responsibility: agent"));
+
+    expect(errors).toEqual([]);
+    const plan = doc as never as { actions: Array<{ responsibility: string }> };
+    expect(plan.actions[0].responsibility).toBe("agent");
+  });
+
+  it("normalizes the legacy `responsibility: codex` spelling to agent rather than rejecting it", () => {
+    // Arcadia Way changes reach adopting projects and older documents in this
+    // repository on their own schedule, so the pre-rename spelling must keep
+    // reading as the same classification instead of failing validation.
+    const { doc, errors } = parseDoc("p.md", "/abs/p.md", PLAN);
+
+    expect(errors).toEqual([]);
+    const plan = doc as never as { actions: Array<{ responsibility: string }> };
+    expect(plan.actions[0].responsibility).toBe("agent");
   });
 
   it("requires a T-shirt token impact and a plain-language token budget on every plan", () => {
@@ -460,7 +479,7 @@ describe("docs sync", () => {
         title: "Hand-captured prerequisite",
         rawInput: "captured by hand",
         queue: "work_queue",
-        workClassification: "codex",
+        workClassification: "agent",
         nextAction: "Do it.",
         status: "open"
       });
@@ -678,7 +697,7 @@ describe("docs sync", () => {
     );
     expect(clarified).toMatchObject({
       title: "Do the thing",
-      work_classification: "codex",
+      work_classification: "agent",
       queue: "work_queue",
       next_action: "Run the migration against staging.",
       effort: "short",
@@ -1222,7 +1241,7 @@ updated: 2026-07-26
         status: "active",
         currentMilestone: "Initial",
         nextAction: "Start",
-        workClassification: "codex"
+        workClassification: "agent"
       })
     );
 

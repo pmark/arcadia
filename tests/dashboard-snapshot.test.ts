@@ -70,7 +70,7 @@ describe("dashboard snapshot", () => {
         currentMilestone: "Ship Mission Control",
         nextAction: "Open the local dashboard",
         expectedArtifact: "Dashboard v0",
-        workClassification: "codex"
+        workClassification: "agent"
       });
       const paused = createProjectWithInitialWork(db, {
         name: "Paused Project",
@@ -363,7 +363,7 @@ describe("dashboard snapshot", () => {
         status: "active",
         currentMilestone: "Repository setup",
         nextAction: "Set repository path.",
-        workClassification: "codex"
+        workClassification: "agent"
       });
       projectId = created.project.id;
     });
@@ -434,7 +434,7 @@ describe("dashboard snapshot", () => {
         status: "active",
         currentMilestone: "Packet audit",
         nextAction: "Set repository path.",
-        workClassification: "codex"
+        workClassification: "agent"
       });
       const workItem = getWorkItem(db, created.workItem.id);
       expect(workItem).not.toBeNull();

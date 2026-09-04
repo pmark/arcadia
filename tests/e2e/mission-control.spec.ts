@@ -64,7 +64,7 @@ test("Today prepares and completes one existing Daily Advantage Action", async (
       title: "Define Pinterest posting support boundaries",
       rawInput: "Define Pinterest posting support boundaries.",
       queue: "work_queue",
-      workClassification: "codex",
+      workClassification: "agent",
       nextAction: "Prepare a bounded Pinterest posting plan.",
       expectedArtifact: "Pinterest implementation plan with risks and acceptance criteria"
     }).workItem;

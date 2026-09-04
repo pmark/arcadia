@@ -836,7 +836,7 @@ Three outcomes are possible, and each is a complete answer:
 
 | Outcome | Meaning |
 | ------- | ------- |
-| **Dispatchable** | One action resolved, no blockers, responsibility is `codex` or `autonomous`. An agent may begin. |
+| **Dispatchable** | One action resolved, no blockers, responsibility is `agent` or `autonomous`. An agent may begin. |
 | **One operator question** | The current action is `question_open`. The single question is surfaced; no other action is promoted to fill the gap. |
 | **Blockers** | Named file, field, and remedy for each. Repair those first. |
 
@@ -857,8 +857,8 @@ pnpm arcadia next --ready --workspace "$WORKSPACE" --project arcadia
 Active plan: dispatch-contract-enforcement — docs/plans/dispatch-contract-enforcement.md
 
 Ready set (2):
-  * compute-ready-set — Compute the ready set instead of only refusing a bad pointer [codex]
-    surface-dispatch-journal — Surface the dispatch journal where the operator already looks [codex]
+  * compute-ready-set — Compute the ready set instead of only refusing a bad pointer [agent]
+    surface-dispatch-journal — Surface the dispatch journal where the operator already looks [agent]
 
 Suggested current_action: compute-ready-set (the operator still decides; nothing was written).
 ```
@@ -879,7 +879,7 @@ Ready set: empty. No unfinished Action is fully ready.
 
 Nearest to ready: ship-it
   Ship the thing
-  Responsibility: codex
+  Responsibility: agent
   Blockers:
   ! docs/plans/sample-plan.md [actions.ship-it.depends_on]: Depends on "migrate", which is "open", not done.
       Finish "migrate" first, or make it the current_action, or drop the dependency if it no longer holds.

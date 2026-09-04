@@ -52,9 +52,9 @@ export function renderStatusReport(data: StatusReportData): string {
   lines.push("");
   lines.push(renderWorkItems(data.autonomousItems));
   lines.push("");
-  lines.push("### Codex Actions");
+  lines.push("### Agent Actions");
   lines.push("");
-  lines.push(renderWorkItems(data.codexItems));
+  lines.push(renderWorkItems(data.agentItems));
   lines.push("");
   lines.push("## Blocked Actions");
   lines.push("");

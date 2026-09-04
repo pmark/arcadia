@@ -14,7 +14,7 @@ actions:
   - id: prepare-project-idea
     title: Turn one stated project idea into a dispatchable planning Action
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Add one project preparation command that records the full idea, classifies it as plan-first software Project work, writes a valid managed pointer chain, and prepares the exact coding-agent planning Decision without invoking the agent.
     expected_artifact: A tested project-idea preparation command whose output names the classification, Project, managed planning Action, planning packet, Decision, and exact trigger
@@ -41,7 +41,7 @@ actions:
   - id: promote-accepted-plan
     title: Promote an accepted planning Artifact into the governed build Action
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Extract the smallest implementation goal from an accepted validated planning Artifact, update the Project's managed plan and pointer atomically, sync it into operational state, and prepare the coding-agent build packet without running it.
     expected_artifact: An accepted plan deterministically produces one current dispatchable build Action and immutable build packet with no manual document translation
@@ -68,7 +68,7 @@ actions:
   - id: demo-astro-staging-loop
     title: Prove one idea-to-live-staging loop for the tomorrow demo
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Connect the exact MartianRover Field Notes request to a populated proposed Project, one Project-scoped approval Decision, an approved coding-agent scaffold Run, and a Cloudflare Workers staging URL returned through Discord.
     expected_artifact: A tested golden-path demo in which the exact Astro blog request creates a reviewable Project and one approval advances it to a live staging URL without production deployment
@@ -101,7 +101,7 @@ actions:
   - id: build-operator-attention-board
     title: Make scarce operator attention obvious and actionable
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Replace the flat Review queue with a minimal Needs you board that selects the most consequential operator-only item, explains why it is first and what it costs, and presents outcome-specific choices with their immediate consequences.
     expected_artifact: A phone-reachable Needs you board where the operator can understand and resolve the highest-leverage pending judgment without reconstructing Project state
@@ -133,7 +133,7 @@ actions:
   - id: build-plan-approval-surface
     title: Approve or defer a prepared plan from the Review page
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: project
     next_action: Present each prepared planning Artifact on the Review page as a readable plan with its idea, milestone, Actions, and token budget, and offer exactly three governed outcomes — approve now, defer against a named trigger, or send back for refinement.
     expected_artifact: A phone-reachable surface where a prepared plan is read and approved now, deferred against a named trigger, or returned for refinement, with the promotion path unchanged
@@ -161,7 +161,7 @@ actions:
   - id: launch-tmux-backed-session
     title: Launch one governed coding-agent Session through tmux
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     expected_artifact: A tested opt-in tmux launch path whose durable Session receipt lets the operator leave, find, and reattach to the exact governed Claude Code work without inspecting its transcript
     clarification: clarified
@@ -194,7 +194,7 @@ actions:
   - id: reconcile-session-exit
     title: Turn a finished Session into the next governed state
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Reconcile a tmux-hosted Session after its agent process exits, persist its terminal outcome, resolve the repository's resulting Action or Decision, and link the strongest existing Log, Artifact, pull-request, Git, and validation evidence without reading the transcript.
     expected_artifact: A completed Session receipt that explains what was dispatched, what Candidate and governed records came back, and the one next Action or operator Decision
@@ -222,7 +222,7 @@ actions:
   - id: manage-coding-agent-build
     title: Manage the coding-agent build through Candidate and independent QA
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: project
     next_action: Orchestrate the current build Action through isolated coding-agent execution, deterministic validation, Candidate proof, independent QA, and the next required Decision while preserving Stable and every approval boundary.
     expected_artifact: Arcadia advances a prepared software Project from approved build Action to evidence-bound Candidate and QA Decision with one visible next step throughout

@@ -248,7 +248,7 @@ describe("Daily Advantage existing-Action planning preparation", () => {
       title: "Prepare a bounded layout remediation plan",
       rawInput: "Prepare a bounded layout remediation plan for Eyes on the Prize.",
       queue: "work_queue",
-      workClassification: "codex",
+      workClassification: "agent",
       nextAction: "Prepare a bounded layout remediation plan.",
       expectedArtifact: "Layout remediation plan"
     }).workItem);
@@ -289,7 +289,7 @@ describe("Daily Advantage existing-Action planning preparation", () => {
         title: "Map the single-line answer layout boundary",
         rawInput: "Map the single-line answer layout boundary.",
         queue: "work_queue",
-        workClassification: "codex",
+        workClassification: "agent",
         nextAction: "Prepare a bounded typography layout plan.",
         expectedArtifact: "Single-line typography boundary plan"
       }).workItem;
@@ -338,7 +338,7 @@ function createRebusterFixture(options: FixtureOptions = {}) {
       currentMilestone: "Correct text layout in generated videos",
       nextAction: "Prepare a bounded remediation plan for the Eyes on the Prize text layout bug.",
       expectedArtifact: expectedArtifact ?? undefined,
-      workClassification: "codex"
+      workClassification: "agent"
     });
     upsertProjectMetadata(db, {
       projectId: bundle.project.id,

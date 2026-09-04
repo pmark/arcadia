@@ -81,7 +81,7 @@ export interface ProjectPrepareCommandData {
   classification: {
     intentType: "Project Work";
     executionPath: "Plan First";
-    responsibility: "codex";
+    responsibility: "agent";
   };
   project: CreatedProjectBundle["project"];
   milestone: CreatedProjectBundle["milestone"];
@@ -315,7 +315,7 @@ export function runProjectPrepareCommand(options: {
       nextAction: `Plan the first usable build for ${name}`,
       rawInput: idea,
       expectedArtifact: `Accepted implementation plan for ${name}`,
-      workClassification: "codex"
+      workClassification: "agent"
     });
     const workItem = updateWorkItem(db, bundle.workItem.id, {
       effort: "session",
@@ -397,7 +397,7 @@ export function runProjectPrepareCommand(options: {
       classification: {
         intentType: "Project Work",
         executionPath: "Plan First",
-        responsibility: "codex"
+        responsibility: "agent"
       },
       project: created.project,
       milestone: created.milestone,

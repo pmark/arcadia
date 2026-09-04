@@ -604,7 +604,7 @@ function createFixture(): { workspace: string; repository: string } {
       status: "active",
       currentMilestone: "Independent QA",
       nextAction: "Review a pull request",
-      workClassification: "codex"
+      workClassification: "agent"
     });
     upsertProjectMetadata(db, { projectId: created.project.id, repoPath: repository });
   });

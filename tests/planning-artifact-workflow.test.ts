@@ -368,7 +368,7 @@ function setupCodexRun(
       status: "active",
       currentMilestone: "Planning validation",
       nextAction: input.purpose === "planning" ? "Prepare planning artifact" : "Prepare build artifact",
-      workClassification: "codex"
+      workClassification: "agent"
     });
     upsertProjectMetadata(db, {
       projectId: created.project.id,

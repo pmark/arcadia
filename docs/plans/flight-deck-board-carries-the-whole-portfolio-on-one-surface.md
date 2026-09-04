@@ -12,7 +12,7 @@ actions:
   - id: project-plan-lanes-and-pipeline-columns
     title: Project every object from `advance queue` and `dashboard snapshot` into one swimlane board whose lanes are Plans within a Project and whose columns are Arcadia's dispatch gates — Needs You, Ready to dispatch, Running, Proving, Landed — with objects that name no Plan placed in an explicit unattached lane rather than hidden or invented into one.
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Render every governed object as one swimlane board whose lanes are Plans within a Project and whose columns are Arcadia's dispatch gates, placing objects that name no Plan in an explicit unattached lane.
     expected_artifact: Evidence satisfying Agent Ask project-plan-lanes-and-pipeline-columns
@@ -31,7 +31,7 @@ actions:
   - id: open-the-object-detail-rail
     title: Selecting a card opens a rail carrying that object's full record and its relationship chain — Project, Plan, Action, Decision, Artifact — with every edge named, so an operator never reads a Decision without the work it belongs to.
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Open a detail rail on card selection that carries the object's full record and its relationship chain, with every node typed and every edge named.
     expected_artifact: Evidence satisfying Agent Ask open-the-object-detail-rail
@@ -49,7 +49,7 @@ actions:
   - id: carry-the-dispatch-command
     title: Every card that can move carries the exact command that moves it, so the gap between "this is ready" and "a session is running" is one copy rather than a hunt through the CLI.
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Show the exact dispatch command on every card that can move, so reaching a coding session is one copy rather than a hunt through the CLI.
     expected_artifact: Evidence satisfying Agent Ask carry-the-dispatch-command
@@ -67,7 +67,7 @@ actions:
   - id: focus-the-board-on-active-work
     title: Open the board on the handful of objects that can actually move today, with everything else one click away rather than deleted, so a 54-object portfolio does not read as a 54-object demand.
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Open the board on active-plan work and collapse every dormant lane behind one click, so a 54-object portfolio does not read as a 54-object demand.
     expected_artifact: Evidence satisfying Agent Ask focus-the-board-on-active-work

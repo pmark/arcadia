@@ -14,7 +14,7 @@ export interface StatusCommandData {
   requiresReviewWorkCount: number;
   requiresReviewCount: number;
   autonomousCount: number;
-  codexCount: number;
+  agentCount: number;
   blockedCount: number;
   recentMissionLogCount: number;
   recentArtifactCount: number;
@@ -49,7 +49,7 @@ export function runStatusCommand(options: { workspace: string }): CommandSuccess
       requiresReviewWorkCount: data.requiresReviewItems.length,
       requiresReviewCount: reviewItemCount + data.requiresReviewItems.length,
       autonomousCount: data.autonomousItems.length,
-      codexCount: data.codexItems.length,
+      agentCount: data.agentItems.length,
       blockedCount: data.blockedItems.length,
       recentMissionLogCount: data.recentMissionLogs.length,
       recentArtifactCount: data.upcomingArtifacts.length,
@@ -87,7 +87,7 @@ export function renderStatusSuccess(response: CommandSuccess<StatusCommandData>)
 
   lines.push(`Requires Review: ${response.data.requiresReviewCount}`);
   lines.push(`Autonomous: ${response.data.autonomousCount}`);
-  lines.push(`Codex: ${response.data.codexCount}`);
+  lines.push(`Agent: ${response.data.agentCount}`);
   lines.push(`Blocked: ${response.data.blockedCount}`);
   lines.push(`Recent mission logs: ${response.data.recentMissionLogCount}`);
   lines.push(`Report: ${response.data.reportPath}`);

@@ -34,7 +34,7 @@ function workspaceWithProjects(names: string[]): { workspace: string; projectIds
       status: "active",
       currentMilestone: "Tell the story",
       nextAction: "Compose the digest",
-      workClassification: "codex"
+      workClassification: "agent"
     }).id)
   );
   return { workspace, projectIds };

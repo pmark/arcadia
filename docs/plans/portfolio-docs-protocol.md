@@ -14,7 +14,7 @@ actions:
   - id: build-parser
     title: Build the frontmatter parser and vocabulary validator
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Delivered in src/docs/parse.ts; no further work.
     expected_artifact: Frontmatter parser reporting per-field validation errors
@@ -25,7 +25,7 @@ actions:
   - id: build-upsert
     title: Build the upsert layer (project/plan/decision -> DB rows)
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Delivered in src/docs/sync.ts, keyed by doc_ref; no further work.
     expected_artifact: Idempotent doc_ref-keyed upsert
@@ -36,7 +36,7 @@ actions:
   - id: wire-docs-sync-command
     title: Wire arcadia docs sync [--project] [--apply] into the CLI
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: short
     next_action: Delivered alongside arcadia portfolio; no further work.
     expected_artifact: docs sync and portfolio commands
@@ -47,7 +47,7 @@ actions:
   - id: contract-work-pointer
     title: Add the authoritative work pointer and dispatch resolution
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Delivered as active_plan, current_action, acceptance_criteria, and arcadia next.
     expected_artifact: arcadia next resolving or refusing a dispatch with named remedies
@@ -63,7 +63,7 @@ actions:
   - id: second-project-validation
     title: Validate the protocol against a non-Arcadia repository
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     clarification: clarified
     confidence: high
@@ -109,7 +109,7 @@ actions:
   - id: repair-clarification-response-ux
     title: Make clarification Decisions directly answerable in Mission Control and Discord
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     clarification: clarified
     confidence: high
@@ -157,7 +157,7 @@ actions:
   - id: ingest-mission-logs
     title: Ingest MISSION_LOG.md entries as mission_logs rows
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: short
     clarification: clarified
     confidence: high
@@ -198,7 +198,7 @@ actions:
   - id: persist-dependencies
     title: Persist action depends_on ordering rather than only validating it
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: short
     clarification: clarified
     confidence: high
@@ -243,7 +243,7 @@ actions:
   - id: narrative-summarization
     title: Queue an Intelligence summarization job for narrative docs
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: short
     acceptance_criteria:
       - A narrative doc produces an Artifact holding its summary.
@@ -311,7 +311,7 @@ first foreign repository. Its applicable `AGENTS.md`, `.arcadia` context policy,
 `PROJECT.md`, continuation protocol, active plan, and mission Log were read
 before discovery. The resolved state was milestone **Define the shared
 production inquiry service boundary now that the bootstrap publishing model is
-proven**, Action `define-shared-inquiry-service`, Responsibility **Codex**, and
+proven**, Action `define-shared-inquiry-service`, Responsibility **Agent**, and
 required Artifact **a build-ready implementation plan covering durable capture,
 site authorization, abuse controls, queued delivery, idempotency, monitoring,
 retention, and minimum-data handling**.
@@ -548,7 +548,7 @@ only legal values. Anything else fails ingestion.
 | project `status` | `active` `paused` `incubating` `completed` |
 | milestone `status` | `active` `paused` `completed` |
 | action `status` | `open` `in_progress` `done` `blocked` |
-| `responsibility` | `autonomous` `codex` `requires_review` `blocked` |
+| `responsibility` | `autonomous` `agent` `requires_review` `blocked` |
 | `effort` | `quick` (≤15m) `short` (≤1h) `session` (1–3h) `project` (multi-session) |
 | `clarification` | `unclarified` `clarified` `question_open` |
 | `gap_type` | `missing-decision` `missing-external-input` `missing-definition` `missing-success-criteria` |
@@ -606,7 +606,7 @@ actions:
   - id: phase-2-fields            # stable within this plan
     title: Structured clarification fields
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Merge the Phase 2 PR.
     expected_artifact: Merged PR adding the five columns
@@ -653,7 +653,7 @@ Rules:
   evaluated" and carries neither.
 - Exactly one `question` per item — the single highest-leverage one.
 - `responsibility` routes the queue: `requires_review` → operator,
-  `codex` → coding agent, `blocked` → waiting on outside.
+  `agent` → coding agent, `blocked` → waiting on outside.
 - `current_action` must name an action id in this plan. A dangling pointer
   fails validation: leaving an agent with no objective is worse than leaving it
   with no pointer.
@@ -808,8 +808,8 @@ starts, and `references:` for paths a worker needs to read.
 - project status: `active` `paused` `incubating` `completed`
 - plan status: `draft` `active` `complete` `superseded`
 - action status: `open` `in_progress` `done` `blocked`
-- responsibility: `autonomous` `codex` `requires_review` `blocked`
-  (`codex` = a coding agent can do it; `requires_review` = the operator must
+- responsibility: `autonomous` `agent` `requires_review` `blocked`
+  (`agent` = a coding agent can do it; `requires_review` = the operator must
   act or decide; `blocked` = waiting on an outside party)
 - effort: `quick` (≤15 min) `short` (≤1 h) `session` (1–3 h) `project`
   (multi-session) — set it only when the conversation actually implied a

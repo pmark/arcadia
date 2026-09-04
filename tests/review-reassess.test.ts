@@ -58,7 +58,7 @@ describe("review reassess", () => {
     expect(queue.flagged).toHaveLength(1);
     expect(queue.flagged[0]).toMatchObject({
       decisionId: fixture.reviewId,
-      responsibility: "codex",
+      responsibility: "agent",
       status: "agent_review_flagged"
     });
     expect(queue.running).toHaveLength(0);
@@ -101,7 +101,7 @@ function setup(activePlan: "current-plan" | "old-plan") {
       status: "active",
       currentMilestone: "Current work",
       nextAction: "Do current work.",
-      workClassification: "codex"
+      workClassification: "agent"
     });
     upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
     const review = createReviewItem(db, {
