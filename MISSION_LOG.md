@@ -2396,3 +2396,10 @@ STILL OPEN. Nineteen other write transactions across src/ still use the deferred
 - **Result:** Decision 0025 approved the mechanism and explicitly withheld authority to implement it, naming this Action as where that happens. The work is complete and pushed, so the Log entry records the delivery. Also fixed in passing: the `sectionParagraph` helper terminated on `\Z`, unsupported in JavaScript and read as a literal "Z", so the last `##` section of any document matched only by luck.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-04 — Agent Ask rename-codex-responsibility-log-2026-09-04
+
+- **Did:** Record that the codex-to-agent responsibility rename Action opened PR
+- **Result:** Implemented Action rename-codex-responsibility-to-agent: renamed the WorkClassification value "codex" to "agent" across constants, CLI, validation, docs, and every Plan document's Action frontmatter; added a legacy-read compatibility path in src/docs/parse.ts and a database migration in src/db/schema.ts for existing work_items rows. Build is clean and the full test suite passes (1231 passed, 6 skipped, 0 failed), including new tests covering both the current literal and the legacy normalization path. Opened https://github.com/pmark/arcadia/pull/164 on branch claude/rename-codex-responsibility-to-agent-20260904T221634594Z for operator review and merge.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
