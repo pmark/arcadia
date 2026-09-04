@@ -8,8 +8,8 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Every adopting project receives Way changes and can ask for Way capabilities without anyone writing Arcadia twice
 active_plan: way-delivery
-current_action: accept-upstream-proposals
-updated: 2026-09-01
+current_action: adopt-operator-task-ledger
+updated: 2026-09-04
 ---
 
 # Arcadia
@@ -430,6 +430,31 @@ newly active Actions arrived with no explicit queue positions, which set
 `orderValid` to false and made the selected next Action `None` rather than
 letting Arcadia infer priority from document order. One explicit placement
 restored a valid order.
+
+`accept-upstream-proposals` is now `done`. A 2026-09-04 cloud session with no
+reachable Arcadia workspace found the code already complete and merged
+(commit `1b8e3b0`, present on `main` before this session began): `proposal`
+parses as a first-class document keyed on its question, `docs sync` ingests
+each as a `WayProposal` review item, `arcadia portfolio` lists unresolved ones
+under "Waiting on you" and stops once a Decision closes them, and the shared
+AGENTS.md region states the file-a-proposal rule. `tests/upstream-proposals.test.ts`
+passes 8/8 and the full suite passes 1,199 of 1,207 (7 skipped, 3 files
+failing on a pre-existing dashboard workspace-link error and an unrelated
+Obsidian-memory assertion, both present before this session and untouched by
+it). No code change was needed, so nothing was pushed. The pointer moves to
+`adopt-operator-task-ledger`, the next executable Action in document order;
+`carry-decision-options` and `stop-dumping-rationale-into-recommendation` are
+also open but not currently executable — their `next_action` fields do not
+begin with a concrete verb, a control-document defect worth repairing in a
+future session rather than silently skipped.
+
+Because this container has no `ARCADIA_WORKSPACE`, `arcadia next`,
+`arcadia work done`, and `arcadia agent-ask preview` all refuse with
+"Arcadia workspace is not configured" — the workspace is the operator's
+private operational data and lives outside this repository. This pointer move
+and result are recorded directly in the checked-in documents, which are
+authoritative per `docs/managed-documents.md`; a session with the operator's
+workspace can run `docs sync` to reconcile the database projection.
 
 ## Links
 
