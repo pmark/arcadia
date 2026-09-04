@@ -210,6 +210,25 @@ actions:
     depends_on: []
     decisions: []
     references: [src/ask/settlement.ts, docs/decisions/0044-decide-whether-agent-ask-should-gain-a-capability-to-correct-or-amend-an-existin.md]
+  - id: rename-codex-responsibility-to-agent
+    title: "Rename the \"codex\" value of WorkClassification to \"agent\" in src/domain/constants.ts (WORK_CLASSIFICATIONS and WORK_CLASSIFICATION_LABELS), update every reference in AGENTS.md, the agent-ask CLI (validation, help text, `agent-ask contract` output), and other docs under docs/ that name \"codex\" as a responsibility value, and rewrite every Plan document under docs/plans/ in this repository whose Action frontmatter reads `responsibility: codex` to `responsibility: agent`. Add a compatibility read path so a Plan document (in this repository or an adopting project) that still has `responsibility: codex` is accepted and normalized to `agent` rather than rejected, since Arcadia Way changes reach adopting projects on their own schedule, not instantaneously."
+    status: open
+    responsibility: codex
+    effort: session
+    next_action: "Rename the \"codex\" value of WorkClassification to \"agent\" in src/domain/constants.ts (WORK_CLASSIFICATIONS and WORK_CLASSIFICATION_LABELS), update every reference in AGENTS.md, the agent-ask CLI (validation, help text, `agent-ask contract` output), and other docs under docs/ that name \"codex\" as a responsibility value, and rewrite every Plan document under docs/plans/ in this repository whose Action frontmatter reads `responsibility: codex` to `responsibility: agent`. Add a compatibility read path so a Plan document (in this repository or an adopting project) that still has `responsibility: codex` is accepted and normalized to `agent` rather than rejected, since Arcadia Way changes reach adopting projects on their own schedule, not instantaneously."
+    expected_artifact: Evidence satisfying Agent Ask rename-codex-responsibility-to-agent
+    clarification: clarified
+    confidence: high
+    source: Agent Ask rename-codex-responsibility-to-agent-2026-09-04
+    acceptance_criteria:
+      - WORK_CLASSIFICATIONS in src/domain/constants.ts contains "agent", not "codex", and WORK_CLASSIFICATION_LABELS maps agent to "Agent".
+      - Every place in AGENTS.md, docs/, and the agent-ask CLI (validation messages, help text, arcadia agent-ask contract output) that names codex as a responsibility value now names agent instead.
+      - Every Plan document under docs/plans/ in this repository with responsibility codex (as an Action's responsibility field) is rewritten to responsibility agent.
+      - Reading a Plan document that still has responsibility codex (this repository mid-migration, or an adopting project that has not yet received the Way change) is accepted and normalized to agent, not rejected.
+      - A test covers both the new literal value and the legacy-value read/normalization path.
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: ["0024", "0025", "0028"]
 ---
