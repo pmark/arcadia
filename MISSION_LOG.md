@@ -2389,3 +2389,10 @@ PROOF. Two settlements that had failed eleven consecutive times over roughly for
 STILL OPEN. Nineteen other write transactions across src/ still use the deferred form and remain exposed to the same failure. None has been observed failing, so converting them is deliberately deferred rather than bundled here; the trigger is the first SQLITE_BUSY_SNAPSHOT observed outside settlement, or any change that adds a second long-running writer to the workspace database.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-04 — Agent Ask accept-upstream-proposals-delivered-2026-09-04
+
+- **Did:** Record that `accept-upstream-proposals` is delivered: `type: proposal` documents now ingest as pending operator requests, unresolved ones surface in `arcadia portfolio` under "Waiting on you" marked as proposals, `decision: "NNNN"` closes one, and the shared AGENTS.md region states the file-a-proposal rule. Delivered on branch claude/accept-upstream-proposals-20260904T185144146Z; 1168 tests pass.
+- **Result:** Decision 0025 approved the mechanism and explicitly withheld authority to implement it, naming this Action as where that happens. The work is complete and pushed, so the Log entry records the delivery. Also fixed in passing: the `sectionParagraph` helper terminated on `\Z`, unsupported in JavaScript and read as a literal "Z", so the last `##` section of any document matched only by luck.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
