@@ -10,7 +10,7 @@ import { resolveActionReadiness } from "../docs/dispatch.js";
 import { yamlScalar } from "../docs/frontmatter.js";
 import { syncProjectDocs } from "../docs/sync.js";
 import type { DecisionDoc, LogDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
-import { buildAgentQueue } from "../dispatch/queue.js";
+import { buildAgentQueue, unpositionedCountForProject } from "../dispatch/queue.js";
 import { arrangeActionOrder } from "../dispatch/order.js";
 import { assertClean, git } from "../git/worktrees.js";
 import { slugify } from "../utils/slug.js";
@@ -154,7 +154,8 @@ export function settleAgentAsk(db: Database.Database, input: {
           effects.push("Preserved the Action's existing Responsibility and queue position.");
         } else {
           if (!input.responsibility) throw validationError("Accepted Action settlement requires --responsibility autonomous or codex.");
-          if (!queue.orderValid) throw validationError("Position every existing approved Action before accepting another into the queue.", { unpositionedCount: queue.unpositionedCount });
+          const unpositionedInProject = unpositionedCountForProject(queue, project.slug);
+          if (unpositionedInProject > 0) throw validationError("Position every existing approved Action in this Plan before accepting another into the queue.", { unpositionedCount: unpositionedInProject });
           if (!input.placement) throw validationError("Accepted Action settlement requires --top, --before, or --after.");
           const proposedActions = (proposal.normalized.actions ?? []).length > 0
             ? proposal.normalized.actions
@@ -249,7 +250,8 @@ export function settleAgentAsk(db: Database.Database, input: {
               if (target.status !== "active" || target.slug !== plan.slug) {
                 throw validationError("Only the active Plan can be placed in the execution queue; draft Plans remain inactive.", { targetRef });
               }
-              if (!queue.orderValid) throw validationError("Position every existing approved Action before reprioritizing a Plan.", { unpositionedCount: queue.unpositionedCount });
+              const unpositionedInProject = unpositionedCountForProject(queue, project.slug);
+              if (unpositionedInProject > 0) throw validationError("Position every existing approved Action in this Plan before reprioritizing it.", { unpositionedCount: unpositionedInProject });
               queueActionKeys = dependencyOrderedActionIds(target.actions
                 .filter((action) => action.status !== "done")
                 .map((action) => ({ id: action.id, dependencies: action.dependsOn })))
@@ -302,7 +304,10 @@ export function settleAgentAsk(db: Database.Database, input: {
             throw validationError("Adding Actions to the active Plan requires --top, --before, or --after so no approved work is left unpositioned.");
           }
           if (input.anchor && !input.placement) throw validationError("A queue anchor requires --before or --after.");
-          if (input.placement && !queue.orderValid) throw validationError("Position every existing approved Action before reprioritizing a Plan.", { unpositionedCount: queue.unpositionedCount });
+          if (input.placement) {
+            const unpositionedInProject = unpositionedCountForProject(queue, project.slug);
+            if (unpositionedInProject > 0) throw validationError("Position every existing approved Action in this Plan before reprioritizing it.", { unpositionedCount: unpositionedInProject });
+          }
 
           let after = before;
           for (const action of normalizedActions) {

@@ -273,6 +273,17 @@ export function buildAgentQueue(
   };
 }
 
+/**
+ * Unpositioned count within one project's slice of the portfolio-wide queue.
+ * `AgentQueue.orderValid`/`unpositionedCount` cover every active project, so a
+ * guard that reads them directly blocks every project whenever any project
+ * has unpositioned Actions. A guard deciding whether to accept work for one
+ * project should ask this instead.
+ */
+export function unpositionedCountForProject(queue: AgentQueue, projectSlug: string): number {
+  return queue.ordered.filter((entry) => entry.orderStatus === "unpositioned" && entry.projectSlug === projectSlug).length;
+}
+
 function dedupeActionEntries(entries: AgentQueueEntry[]): AgentQueueEntry[] {
   const byKey = new Map<string, AgentQueueEntry>();
   for (const entry of entries) {
