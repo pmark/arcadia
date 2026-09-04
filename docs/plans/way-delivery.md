@@ -174,6 +174,42 @@ actions:
     depends_on: []
     decisions: []
     references: [docs/agents-context.md, src/projects/contextSetup.ts, src/projects/wayDrift.ts, src/ask/agentAsk.ts, START_HERE.md, src/cli.ts]
+  - id: carry-decision-options
+    title: A Decision can state the choices it is between, each with its consequence, and mark one as recommended - and an agent filing a Decision supplies them rather than leaving the operator to infer them from prose.
+    status: open
+    responsibility: codex
+    effort: session
+    next_action: A Decision can state the choices it is between, each with its consequence, and mark one as recommended - and an agent filing a Decision supplies them rather than leaving the operator to infer them from prose.
+    expected_artifact: Evidence satisfying Agent Ask carry-decision-options
+    clarification: clarified
+    confidence: high
+    source: Agent Ask decisions-should-offer-choices-2026-09-03
+    acceptance_criteria:
+      - A Decision document carries an ordered `options` list, each entry with a short label, the consequence of choosing it, and whether it is the recommendation.
+      - The rendered Decision shows those options as a list a person can answer by picking one, without reading the rationale first.
+      - Agent Ask's `decision` intent accepts `options`, and `agent-ask contract` reports the field and its shape so an agent learns it from the contract.
+      - A `decision` Ask filed without options is still accepted, so this never becomes a reason a finding cannot be reported.
+      - "`arcadia decision approve` accepts an option's label as the answer and records which option was chosen."
+    depends_on: []
+    decisions: []
+    references: [src/docs/types.ts, src/ask/agentAsk.ts, src/commands/decision.ts]
+  - id: stop-dumping-rationale-into-recommendation
+    title: A Decision's recommendation field holds a recommendation, and the filing Ask's rationale lands where a reader expects to find reasoning.
+    status: open
+    responsibility: codex
+    effort: session
+    next_action: A Decision's recommendation field holds a recommendation, and the filing Ask's rationale lands where a reader expects to find reasoning.
+    expected_artifact: Evidence satisfying Agent Ask stop-dumping-rationale-into-recommendation
+    clarification: clarified
+    confidence: high
+    source: Agent Ask decisions-should-offer-choices-2026-09-03
+    acceptance_criteria:
+      - An Ask's `rationale` is written into the Decision's body, not into `recommendation`.
+      - "`recommendation` holds only the recommended course of action, and is empty when the Ask recommends none."
+      - A test asserts a multi-paragraph rationale does not appear in `recommendation`.
+    depends_on: []
+    decisions: []
+    references: [src/ask/settlement.ts, docs/decisions/0044-decide-whether-agent-ask-should-gain-a-capability-to-correct-or-amend-an-existin.md]
 questions: []
 decisions: ["0024", "0025", "0028"]
 ---
