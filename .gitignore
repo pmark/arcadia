@@ -1,5 +1,7 @@
 # Operating system files
-.claude
+.claude/*
+!.claude/settings.json
+!.claude/hooks
 .DS_Store
 Thumbs.db
 Desktop.ini

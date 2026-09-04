@@ -121,3 +121,95 @@ duplicating logic that plainly belongs in `arcadia` itself (a `--workspace
 none` / offline mode of `next`, a `mise` presence check with a documented
 fallback, a `docket --explain-gap`-style check against `HEAD`). Building any
 of that here is the local reimplementation this proposal exists to avoid.
+
+## Round 3: found why mise is missing, and fixed it at the session-infra layer
+
+A later cloud session, asked specifically to run `arcadia go` and log
+friction, reproduced friction point 1 above from an even colder start: the
+container had no `node_modules` at all, not just no `mise` — a genuinely
+fresh clone, not a warm one missing one tool.
+
+Two things were new this time:
+
+### 7. `mise.run` is blocked by this environment's own egress policy
+
+`curl -fsSL https://mise.run` returned HTTP 403. The agent proxy's status
+endpoint (`$HTTPS_PROXY/__agentproxy/status`) confirmed it plainly:
+`recentRelayFailures` recorded `"kind": "connect_rejected", "detail": "gateway
+answered 403 to CONNECT (policy denial or upstream failure)", "host":
+"mise.run:443"`. This upgrades friction point 1 from "the container happens
+not to have mise" to "this class of cloud session cannot install mise through
+its documented method, ever, under the current egress policy." Any future fix
+has to route around mise entirely for this surface rather than trying harder
+to install it.
+
+### 8. `pnpm install` itself fails its exit code on a fresh clone, even though the dependencies it fetched are fine
+
+Running plain `pnpm install` (no mise) on the fresh clone worked all the way
+through fetching and building every package — including `better-sqlite3`,
+whose `prebuild-install` step found a prebuilt binary matching the
+container's Node 22.22.2 ABI and loaded successfully with no rebuild needed —
+and then failed its overall exit code solely because the top-level
+`postinstall` script (`mise exec -- pnpm rebuild better-sqlite3`) hit `sh: 1:
+mise: not found`. Any automation that gates on `pnpm install`'s exit status
+(a CI step, a session hook, a human's `&&`) sees total failure for a checkout
+that is actually 100% usable.
+
+### The fix: a Claude Code SessionStart hook, not another documentation section
+
+Both `AGENTS.md`'s "Asking Arcadia to change Project state" (governance state
+must go through an Agent Ask) and "Asking for a capability the Way does not
+have" (file a proposal, don't reimplement Arcadia locally) were considered and
+found not to apply here: nothing about this fix touches `PROJECT.md`, a plan,
+or a Decision, and nothing about it reimplements any `arcadia` command or
+governance logic. It is ordinary repository infrastructure scoped to one
+coding-agent vendor's session lifecycle, exactly the kind of thing
+`CLAUDE.md`'s own "Claude Code specifics" section already carves out as
+vendor-specific and out of `AGENTS.md`'s shared-rules scope.
+
+`.claude/hooks/session-start.sh`, registered in `.claude/settings.json` as a
+`SessionStart` hook and gated on `CLAUDE_CODE_REMOTE=true` (so it never runs
+on the operator's own Mac, which has real `mise`), shims a `mise` binary onto
+`PATH` that understands the one invocation shape this repository's scripts
+actually use — `mise exec -- <command...>` — and simply execs the command
+directly, then runs `pnpm install`. It does not try `mise.run` again and does
+not try to match the pinned Node version exactly; it trusts the
+already-verified fact that the container's preinstalled Node/pnpm satisfy
+what mise would have activated closely enough for this repository's own
+tooling to work.
+
+Validated end to end from a reset state (`node_modules` and the shim removed,
+then the hook run exactly as Claude Code on the web would run it):
+`pnpm install` completes with exit 0 including the postinstall rebuild step,
+`better-sqlite3` loads, `pnpm arcadia docket --repo .` runs successfully
+end to end (previously always failed with `mise: not found`), a sampled test
+file passes under `vitest`, and `tsc --noEmit` reports no errors.
+
+### 9. `.gitignore` blanket-excluded `.claude/`, which would have silently thrown this fix away
+
+`.gitignore` ignored `.claude` outright, filed under a "# Operating system
+files" heading next to `.DS_Store` — clearly a generic template line from
+before this repository had any real Claude Code project configuration to
+track, not a deliberate decision to keep `.claude/settings.json` or hooks out
+of version control. Writing the hook files above did not even show them as
+untracked; `git status` was silent about them until this was found and fixed.
+A session that built exactly this fix and committed without checking
+`git status --short --ignored` would have shipped a no-op commit: the hook
+would work for the rest of that one session (already on disk) and then vanish
+the moment the container was reclaimed, with nothing in the merged PR to show
+it had ever existed. Changed to `.claude/*` with explicit `!.claude/settings.json`
+and `!.claude/hooks` negations — narrow enough that personal/local Claude
+Code state under `.claude/` stays ignored by default, but the two paths that
+are genuinely project configuration are tracked. (The negation had to target
+`.claude/*`, not `.claude`, plus the directory itself: git does not descend
+into an ignored directory to evaluate negation patterns for files inside it —
+`!.claude/settings.json` alone was silently ineffective on the first attempt.)
+
+This closes friction points 1, 7, and 8 for every future Claude Code cloud
+session against this repository, without changing anything about how the
+operator's own machine or Codex's environment works. It does not address
+friction points 2–6 above, or the open question this proposal exists to ask —
+Arcadia itself still has no offline/workspace-less mode, no built-in `mise`
+presence check, and no first-class way to record an already-authorized
+Action's completion from a session with no reachable workspace. Those remain
+open.
