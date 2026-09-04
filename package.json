@@ -38,7 +38,8 @@
     "dashboard:build": "pnpm --filter arcadia-dashboard build",
     "test:e2e": "playwright test",
     "smoke": "tsx scripts/smoke.ts",
-    "verify:package-boundary": "node scripts/verify-intelligence-package-exports.mjs"
+    "verify:package-boundary": "node scripts/verify-intelligence-package-exports.mjs",
+    "bridge:worktree": "node scripts/bridge-worktree-deps.mjs"
   },
   "dependencies": {
     "@clack/prompts": "^1.5.1",
