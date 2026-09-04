@@ -1,6 +1,7 @@
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
+import { listOperatorTasks } from "../docs/operatorTasks.js";
 import { renderDispatchResolution } from "./next.js";
 
 export interface DocketCommandOptions {
@@ -13,6 +14,8 @@ export interface DocketCommandOptions {
 export interface DocketCommandData extends DispatchResolution {
   dispatchable: boolean;
   repoRoot: string;
+  /** Count of open operator tasks, so they surface without a separate hunt. */
+  openOperatorTasks: number;
 }
 
 /**
@@ -38,13 +41,15 @@ export interface DocketCommandData extends DispatchResolution {
 export function runDocketCommand(options: DocketCommandOptions): CommandSuccess<DocketCommandData> {
   const repoRoot = options.repo;
   const resolution = resolveDispatch(repoRoot, options.project);
+  const openOperatorTasks = listOperatorTasks(repoRoot, "waiting").length;
 
   return createSuccess({
     command: "docket",
     data: {
       ...resolution,
       dispatchable: isDispatchable(resolution),
-      repoRoot
+      repoRoot,
+      openOperatorTasks
     }
   });
 }
@@ -56,5 +61,10 @@ export function renderDocketSuccess(response: CommandSuccess<DocketCommandData>)
   // one, and a docket that quietly omits cross-project state is exactly the
   // kind of silent staleness the Way exists to prevent.
   lines.push("", "Source: this repository's managed documents only — no workspace, no portfolio context.");
+  if (response.data.openOperatorTasks > 0) {
+    lines.push(
+      `${response.data.openOperatorTasks} operator task(s) waiting — run \`arcadia operator-task list\` to see them.`
+    );
+  }
   return lines;
 }

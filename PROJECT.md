@@ -8,7 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Every adopting project receives Way changes and can ask for Way capabilities without anyone writing Arcadia twice
 active_plan: way-delivery
-current_action: adopt-operator-task-ledger
+current_action: rename-codex-responsibility-to-agent
 updated: 2026-09-04
 ---
 
@@ -455,6 +455,25 @@ private operational data and lives outside this repository. This pointer move
 and result are recorded directly in the checked-in documents, which are
 authoritative per `docs/managed-documents.md`; a session with the operator's
 workspace can run `docs sync` to reconcile the database projection.
+
+`adopt-operator-task-ledger` is now `done`. `.arcadia/operator-tasks.jsonl`
+is an append-only, repo-local ledger promoted from PPN's ADR 0025 by
+Decision 0028 — deliberately no workspace and no database, the same shape
+as `resolveDispatch` and `evaluateTriggers`, since an agent raising a task
+is often reporting exactly the environment gap (no reachable workspace, no
+credential) that would make a database-backed ledger unusable when needed
+most. `arcadia operator-task raise` requires an origin already in project
+control (an Action id or a Decision id) and a `--because`; `evidence`
+attaches an agent's non-binding note without closing anything; `close` and
+`decline` are terminal, operator-only, and refuse without an explicit
+`--operator` flag. `docket` now reports the open count so entries surface
+without a separate hunt. Verified with 13 new tests, the full suite (1,225
+passing, 7 skipped, the one pre-existing unrelated Obsidian-memory failure
+untouched), and a clean typecheck. The pointer moves to
+`rename-codex-responsibility-to-agent`, the next executable Action in
+document order; `carry-decision-options` and
+`stop-dumping-rationale-into-recommendation` remain open but not yet
+executable for the same next-action-defect reason noted above.
 
 ## Links
 

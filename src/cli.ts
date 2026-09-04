@@ -320,6 +320,20 @@ import { renderDocketSuccess, runDocketCommand } from "./commands/docket.js";
 import { renderTriggersSuccess, runTriggersCommand } from "./commands/triggers.js";
 import { renderPlansSuccess, runPlansCommand } from "./commands/plans.js";
 import { renderTidySuccess, runTidyCommand } from "./commands/tidy.js";
+import {
+  renderOperatorTaskCloseSuccess,
+  renderOperatorTaskDeclineSuccess,
+  renderOperatorTaskEvidenceSuccess,
+  renderOperatorTaskListSuccess,
+  renderOperatorTaskRaiseSuccess,
+  renderOperatorTaskShowSuccess,
+  runOperatorTaskCloseCommand,
+  runOperatorTaskDeclineCommand,
+  runOperatorTaskEvidenceCommand,
+  runOperatorTaskListCommand,
+  runOperatorTaskRaiseCommand,
+  runOperatorTaskShowCommand
+} from "./commands/operatorTasks.js";
 import { renderPortfolioSuccess, runPortfolioCommand } from "./commands/portfolio.js";
 import { renderNowSuccess, runNowCommand } from "./commands/now.js";
 import { renderPathSuccess, runPathCommand } from "./commands/path.js";
@@ -2836,6 +2850,114 @@ export function buildProgram(): Command {
     runCliAction("plans", options, () => runPlansCommand(options), renderPlansSuccess)
   );
 
+  const operatorTask = program
+    .command("operator-task")
+    .description("Work only the operator can do, cited against project control (ADR 0025 / Decision 0028)");
+  addJsonOption(
+    operatorTask
+      .command("list")
+      .description("List operator tasks")
+      .option("--repo <path>", "Repository to read", resolveInvocationPath, invocationRoot())
+      .option("--status <status>", "Status filter: waiting, done, declined, all", "waiting")
+  ).action((options: { repo: string; status?: string; json?: boolean }) =>
+    runCliAction(
+      "operator-task.list",
+      options,
+      () => runOperatorTaskListCommand({
+        ...options,
+        status: options.status as Parameters<typeof runOperatorTaskListCommand>[0]["status"]
+      }),
+      renderOperatorTaskListSuccess
+    )
+  );
+  addJsonOption(
+    operatorTask
+      .command("show")
+      .description("Show one operator task")
+      .argument("<id>", "Operator task id")
+      .option("--repo <path>", "Repository to read", resolveInvocationPath, invocationRoot())
+  ).action((id: string, options: { repo: string; json?: boolean }) =>
+    runCliAction("operator-task.show", options, () => runOperatorTaskShowCommand({ ...options, id }), renderOperatorTaskShowSuccess)
+  );
+  addJsonOption(
+    operatorTask
+      .command("raise")
+      .description("Raise a task only the operator can do")
+      .argument("<asks>", "What the operator should do")
+      .requiredOption("--because <reason>", "Why only the operator can do this")
+      .option("--action <action-id>", "Action id already in project control this task blocks")
+      .option("--decision <decision-id>", "Decision id already in project control this task blocks")
+      .option("--reference <text>", "Optional free-text reference (a URL, a console name)")
+      .option("--by <name>", "Who is raising this task", "agent")
+      .option("--id-hint <hint>", "Readable slug hint for the task id")
+      .option("--repo <path>", "Repository to write", resolveInvocationPath, invocationRoot())
+  ).action((asks: string, options: {
+    repo: string;
+    because: string;
+    action?: string;
+    decision?: string;
+    reference?: string;
+    by?: string;
+    idHint?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "operator-task.raise",
+      options,
+      () => runOperatorTaskRaiseCommand({ ...options, asks }),
+      renderOperatorTaskRaiseSuccess
+    )
+  );
+  addJsonOption(
+    operatorTask
+      .command("evidence")
+      .description("Attach an agent's non-binding note that a task looks complete; never closes it")
+      .argument("<id>", "Operator task id")
+      .requiredOption("--note <text>", "What looks complete")
+      .option("--by <name>", "Who is attaching this evidence", "agent")
+      .option("--repo <path>", "Repository to write", resolveInvocationPath, invocationRoot())
+  ).action((id: string, options: { repo: string; note: string; by?: string; json?: boolean }) =>
+    runCliAction(
+      "operator-task.evidence",
+      options,
+      () => runOperatorTaskEvidenceCommand({ ...options, id }),
+      renderOperatorTaskEvidenceSuccess
+    )
+  );
+  addJsonOption(
+    operatorTask
+      .command("close")
+      .description("Close a task as done (operator-only)")
+      .argument("<id>", "Operator task id")
+      .option("--operator", "Confirm this is the operator closing the task")
+      .option("--by <name>", "Who is closing this task", "operator")
+      .option("--repo <path>", "Repository to write", resolveInvocationPath, invocationRoot())
+  ).action((id: string, options: { repo: string; operator?: boolean; by?: string; json?: boolean }) =>
+    runCliAction(
+      "operator-task.close",
+      options,
+      () => runOperatorTaskCloseCommand({ ...options, id }),
+      renderOperatorTaskCloseSuccess
+    )
+  );
+  addJsonOption(
+    operatorTask
+      .command("decline")
+      .description("Decline a task (operator-only)")
+      .argument("<id>", "Operator task id")
+      .requiredOption("--because <reason>", "Why this task is declined")
+      .option("--operator", "Confirm this is the operator declining the task")
+      .option("--by <name>", "Who is declining this task", "operator")
+      .option("--repo <path>", "Repository to write", resolveInvocationPath, invocationRoot())
+  ).action((id: string, options: { repo: string; because: string; operator?: boolean; by?: string; json?: boolean }) =>
+    runCliAction(
+      "operator-task.decline",
+      options,
+      () => runOperatorTaskDeclineCommand({ ...options, id }),
+      renderOperatorTaskDeclineSuccess
+    )
+  );
+
   const next = program
     .command("next")
     .description("Resolve the authoritative current action a coding agent should advance");
@@ -3913,6 +4035,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "back-burner" && ["list", "show", "promote", "archive"].includes(second ?? "")) {
     return `back-burner.${second}`;
+  }
+
+  if (first === "operator-task" && ["list", "show", "raise", "evidence", "close", "decline"].includes(second ?? "")) {
+    return `operator-task.${second}`;
   }
 
   if (first === "feedback" && ["record", "list"].includes(second ?? "")) {
