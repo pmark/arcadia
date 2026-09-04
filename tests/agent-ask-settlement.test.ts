@@ -721,6 +721,32 @@ describe("Agent Ask safety boundaries", () => {
     expect(execFileSync("git", ["log", "--oneline", "-1"], { cwd: repo }).toString()).toContain("land-second");
   });
 
+  it("commits its own output but never pushes it, by design", () => {
+    // Landing the record locally is Arcadia's job; publishing it is the
+    // operator's. An agent pushing a shared branch on its own initiative is
+    // exactly the boundary Working-Copy Safety exists to hold, so this asserts
+    // the negative: a settlement leaves the local branch ahead of its remote,
+    // not caught up with it.
+    const { workspace, repo } = fixture();
+    const branch = execFileSync("git", ["branch", "--show-current"], { cwd: repo }).toString().trim();
+    const remote = path.join(path.dirname(repo), "remote.git");
+    execFileSync("git", ["init", "-q", "--bare", remote]);
+    execFileSync("git", ["remote", "add", "origin", remote], { cwd: repo });
+    execFileSync("git", ["push", "-q", "-u", "origin", "HEAD"], { cwd: repo });
+    const remoteHead = (): string =>
+      execFileSync("git", ["rev-parse", `origin/${branch}`], { cwd: repo }).toString().trim();
+    const pushedHead = remoteHead();
+
+    settleOne(workspace, "log", "A record nobody pushed", "no-auto-push");
+
+    const localHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo }).toString().trim();
+    expect(localHead).not.toBe(pushedHead);
+    // The remote ref unmoved (no fetch happened either) is exactly the check:
+    // settlement never ran a push of its own.
+    expect(remoteHead()).toBe(pushedHead);
+    expect(execFileSync("git", ["status", "--porcelain", "-b"], { cwd: repo }).toString()).toMatch(/ahead 1/);
+  });
+
   it("settles despite an unrelated pre-existing corpus error it did not introduce", () => {
     // Decision 0044. This check used to refuse on any error anywhere in the
     // corpus, so one stale document blocked every future settlement — and

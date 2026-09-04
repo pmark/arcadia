@@ -219,6 +219,27 @@ used id is refused. If the operator's judgment should decide something, say so
 in `rationale` and let Arcadia open the Decision — that is the correct outcome,
 not a failure.
 
+### Settling commits locally and never pushes
+
+`arcadia agent-ask settle --apply` writes the managed documents its effects
+describe and commits them, on whatever branch the repository is currently on —
+but it never pushes. That is deliberate: landing the record locally is
+Arcadia's job, publishing it is the operator's, and an agent pushing straight to
+a shared branch on its own initiative is exactly the boundary
+`docs/working-copy-safety.md` exists to hold.
+
+The gap this leaves is real, not theoretical: a settlement against a repository
+already checked out locally produces exactly one commit that only exists there
+until something pushes it. Nothing currently reminds anyone to, which is how it
+was found — a settled Log entry sat as `LOCAL ONLY` until the next session
+noticed the divergence.
+
+**Push before ending a session in which you settled anything.** Treat it the
+same as any other `LOCAL ONLY` state under Working-Copy Safety: check
+`arcadia work monitor`, or simply push the branch settlement just committed to.
+An Agent Ask you only previewed needs nothing further — this applies to
+`settle --apply`, not `preview`.
+
 ## Asking for a capability the Way does not have
 
 Arcadia will not have every capability you need. When it does not, **file a
