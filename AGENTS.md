@@ -83,6 +83,30 @@ being asked, and without waiting for the plan to close out. Then say whether to
 continue in this session or start a new one and why, and which model and effort
 level the next batch actually needs.
 
+**End every stopping point with the choices, not with prose.** The operator
+should never have to read a report and work out what happens next from it.
+Present the real options — the next Action, a Decision waiting on an answer, a
+pull request to review or merge, the draft ask a blocker needs, ending the
+session — as a picker they can select from.
+
+- **Every option states its consequence**, not just its name. "Merge #159" is a
+  label; "Merge #159 — proposals go live for every adopting repo, and the
+  pointer advances" is a choice. An option whose consequence you cannot state
+  is one you have not thought through yet.
+- **Offer only live options.** Something already settled is not a choice, and
+  re-asking it spends the attention budget this rule exists to protect.
+- **Say when the session should end, and what opens the next one.** Almost
+  always that is `arcadia go` in a new session: the pointer already knows what
+  comes next, so naming a task instead would be guessing ahead of it. Name a
+  different opening move only when it genuinely differs, and say why.
+- **Size the next batch.** Which model and effort level that work actually
+  needs, not whatever is already running.
+
+The picker and the `OK to go` line below are the same commitment made at
+different widths: never leave the operator to derive the next move. Use the
+picker whenever more than one thing could reasonably happen next, and the line
+when exactly one can.
+
 When a message ends with exactly one concrete, immediately actionable next
 step — nothing blocking, no open question, no choice pending — end it with a
 fixed line, last in the message, preceded by a blank line:
