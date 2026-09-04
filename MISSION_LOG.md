@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-03
+updated: 2026-09-04
 ---
 
 # Mission Log: Arcadia
@@ -2369,5 +2369,12 @@ settle --apply runs syncProjectDocs over the entire repository (src/docs/sync.ts
 Consequence for 0044: option A (a correction intent) does not work on its own. Option B (scoping settlement's validation to the documents the Ask actually wrote) is the real unblocker and is the smaller change. If A ships without B, the only correction Ask that could ever apply is one that fixes every outstanding error in the repository in a single settlement.
 Also noted while reading: the log entry validator (src/docs/parse.ts:608) hard-requires **Did:** and **Result:** bullets, while at least one adopting project's mission log deliberately moved to narrative bullets and now fails on every recent entry. Whether the schema should accept narrative entries is a separate call that decides whether 45 documents in that repository are broken or fine.
 Filed as a Log entry rather than as an amendment to Decision 0044 because Agent Ask has no intent that can amend an existing document - which is the gap 0044 itself is about.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-09-04 — Agent Ask scope-queue-guard-by-project-2026-09-04
+
+- **Did:** Record that item #4 from docs/self-blocking-guards.md (the queue's unpositioned-Action guard blocking Action filing in every project, not just the one holding unpositioned rows) has a fix up for review in pmark/arcadia#155: unpositionedCountForProject() scopes the three settlement.ts guard sites to the requesting project instead of reading buildAgentQueue()'s portfolio-wide orderValid. Type check and full test suite pass (1189 passed, 0 failures attributable to the change). Action retirement (so the 38 junk rows can be deleted, not just fenced off) and item #5 (SQLite lock contention) remain open and out of scope for this fix.
+- **Result:** Discussed with the operator after reviewing #153's findings: this guard was a pure aggregation bug (buildAgentQueue never scoped by project before the boolean gate was derived), not a resource-contention problem, so it had a small, contained fix distinct from item #5. The operator asked for both the code fix now and a governed record of it, rather than an ad hoc diff with no trace in Arcadia's own Log.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
