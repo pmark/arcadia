@@ -46,3 +46,16 @@ constraints arrive with the objective rather than depending on this file.
   comparing against) were two names for one fact. If a command fails with a
   Node-version-shaped error, it is a real failure — investigate it — not this
   warning, because this warning no longer exists.
+- `pnpm-workspace.yaml` sets `verifyDepsBeforeRun: warn` for a related reason,
+  and this one had teeth. pnpm's default is `install`: before running any
+  script it checks dependency freshness and, if unsatisfied, shells out to
+  `pnpm install` — which asks to **remove the modules directory** first. An
+  agent worktree bridges `node_modules` in as a symlink to the main checkout's
+  (a per-worktree install is slow, and the `better-sqlite3` ABI rebuild makes
+  it fragile), and pnpm reads that bridge as out of sync, so a bare
+  `pnpm arcadia` in a worktree offered to purge the dependency tree *every*
+  checkout shares. Nothing but the absence of a TTY stopped it. `warn` keeps
+  the diagnosis and drops the action, and stays silent in a synced checkout.
+  So the `[WARN] Your node_modules are out of sync` line in a worktree is
+  expected and harmless; the same line in the main checkout means run
+  `mise exec -- pnpm install`.

@@ -2,6 +2,27 @@ packages:
   - apps/discord-bot
   - apps/dashboard
 
+# Report out-of-sync dependencies; never act on them behind a script.
+#
+# pnpm's default here is `install`: every `pnpm <script>` first runs a deps
+# check and, if it is unsatisfied, silently shells out to `pnpm install` --
+# which asks to REMOVE the modules directory before reinstalling.
+#
+# A coding-agent worktree bridges `node_modules` in as a symlink to the main
+# checkout's, because installing a second copy per worktree is slow and the
+# `better-sqlite3` ABI rebuild makes it fragile. pnpm reads that bridge as
+# out-of-sync (the workspace-state file names another directory), so a bare
+# `pnpm arcadia` in a worktree proposes to purge the *shared* dependency tree
+# that every worktree and the main checkout are using. Only the absence of a
+# TTY stops it, which means an interactive session is one keystroke from it.
+#
+# `warn` keeps the diagnosis and drops the action. A synced checkout returns
+# early and prints nothing, so this is silent in normal use -- the same reason
+# `engines.node` is deliberately absent from package.json: a preflight warning
+# that never reflects a real problem is noise, and one that mutates state
+# behind a read-only-looking command is worse.
+verifyDepsBeforeRun: warn
+
 onlyBuiltDependencies:
   - better-sqlite3
   - esbuild
