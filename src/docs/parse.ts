@@ -124,6 +124,42 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
     };
   }
 
+  // A Way-change request (Decision 0025). Parsed before the required `slug` and
+  // `updated` fields below, because that friction is exactly what makes an agent
+  // give up and implement Arcadia locally instead of asking: only the question
+  // itself is load-bearing. `project` defaults to whichever Project owns the
+  // repository the document was found in, and the slug to the filename.
+  //
+  // A proposal that states no question at all stays a scoped-out supporting
+  // record, which is what every proposal was before this. There is nothing to
+  // route and nobody owes an answer, and rejecting a document someone committed
+  // in good faith would help no one.
+  if (type === "proposal") {
+    const question = optionalString(data, "question") ?? headingTitle(body);
+    const proposalSlug = optionalString(data, "slug") ?? slugFromFilename(relativePath);
+    if (!question || !proposalSlug) {
+      return {
+        doc: { ...location, type: "scoped_out", sourceType: "proposal", sourceStatus: null, body },
+        errors: problems.errors
+      };
+    }
+    return {
+      doc: {
+        ...location,
+        type: "proposal",
+        slug: proposalSlug,
+        project: optionalString(data, "project"),
+        question,
+        recommendation:
+          optionalString(data, "recommendation") ?? sectionParagraph(body, "What we would build locally"),
+        decision: optionalString(data, "decision"),
+        updated: data.updated === undefined || data.updated === null ? null : dateField(problems, data, "updated"),
+        body
+      },
+      errors: problems.errors
+    };
+  }
+
   // `dormant` and `proposed` plans are similarly governed outside Arcadia:
   // their trigger/order semantics live in the repository-local shim. They must
   // not become competing plans or require execution-budget metadata here.
@@ -715,9 +751,16 @@ function headingTitle(body: string): string | null {
   return match[1].replace(/^ADR\s+\d+\s*[:\u2014-]\s*/i, "").trim() || null;
 }
 
-/** First paragraph under a named `##` section. */
+/**
+ * First paragraph under a named `##` section.
+ *
+ * The terminator is `$(?![\s\S])` rather than `\Z`, which JavaScript does not
+ * support and silently reads as a literal "Z": the *last* section of a document
+ * matched only if some later line happened to contain that letter. A PROJECT.md
+ * whose `## Mission` was its final section reported no goal at all.
+ */
 function sectionParagraph(body: string, heading: string): string | null {
-  const pattern = new RegExp(`^##\\s+${heading}\\s*$([\\s\\S]*?)(?=^##\\s|\\Z)`, "mi");
+  const pattern = new RegExp(`^##\\s+${heading}\\s*$([\\s\\S]*?)(?=^##\\s|$(?![\\s\\S]))`, "mi");
   const match = pattern.exec(body);
   if (!match) {
     return null;
@@ -730,6 +773,17 @@ function sectionParagraph(body: string, heading: string): string | null {
 }
 
 /** The `NNNN` prefix the protocol already requires in a decision filename. */
+/**
+ * A proposal's slug when its frontmatter omits one — the filename without its
+ * extension, and without a leading ordinal if the file is numbered like a
+ * Decision.
+ */
+function slugFromFilename(relativePath: string): string | null {
+  const base = (relativePath.split(/[\\/]/).pop() ?? "").replace(/\.md$/i, "");
+  const candidate = base.replace(/^\d{3,}-/, "").toLowerCase();
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(candidate) ? candidate : null;
+}
+
 function idFromFilename(relativePath: string): string | null {
   const base = relativePath.split(/[\\/]/).pop() ?? "";
   const match = /^(\d{3,})-/.exec(base);

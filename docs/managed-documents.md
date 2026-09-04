@@ -53,17 +53,27 @@ Discovery is by **frontmatter marker, not by path**. A file becomes Arcadia's
 business only when it opts in with `arcadia: v1`; everything else is ordinary
 prose that no tool parses.
 
-**Managed control documents** carry `arcadia: v1` and a `type`. Four types are
-parsed into rows — `project`, `plan`, `decision`, `log` — and their frontmatter
-is validated field by field. `PROJECT.md`, `docs/plans/`, and `docs/decisions/`
-are dispatch authorities; defects there refuse dispatch.
+**Managed control documents** carry `arcadia: v1` and a `type`. Five types are
+parsed into rows — `project`, `plan`, `decision`, `log`, and `proposal` — and
+the first four are validated field by field. `PROJECT.md`, `docs/plans/`, and
+`docs/decisions/` are dispatch authorities; defects there refuse dispatch.
+
+A `proposal` is the exception to that strictness by design (Decision 0025). It
+is how a project asks for a capability the Way does not have, and it must be
+cheap enough to file that improvising a local implementation is never the
+easier move — so only the question is load-bearing. State it as `question:` or
+as the document's first `#` heading; the slug falls back to the filename and
+the project to whoever owns the repository. Unanswered proposals surface in
+`arcadia portfolio` under "Waiting on you", marked as proposals, and adding
+`decision: "NNNN"` closes one. A proposal that asks nothing stays a supporting
+record.
 
 **Narrative documents** (`architecture`, `strategy`, `reference`, and unmarked
 files) are recognized and reported but not turned into rows. Write them freely.
 
-**Supporting records** (`continuation`, `proposal`, `template`, and `review`)
-are recognized but governed by their repository-local protocol, so they cannot
-block or redirect dispatch. A `plan` with status `dormant` or `proposed` is also
+**Supporting records** (`continuation`, `template`, and `review`) are recognized
+but governed by their repository-local protocol, so they cannot block or
+redirect dispatch. A `plan` with status `dormant` or `proposed` is also
 supporting: Arcadia does not evaluate its activation conditions or claim its
 ordering authority.
 

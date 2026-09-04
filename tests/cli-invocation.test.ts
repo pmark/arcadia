@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Command } from "commander";
@@ -199,5 +199,23 @@ describe("enclosingProjectRoot", () => {
     process.env.ARCADIA_INVOKED_FROM = root;
 
     expect(enclosingProjectRoot()).toBe(root);
+  });
+});
+
+describe("running the CLI through pnpm", () => {
+  it("never lets a script invocation reinstall dependencies behind the operator", () => {
+    // pnpm's default `verifyDepsBeforeRun: install` shells out to `pnpm
+    // install` before running any script, and that install asks to remove the
+    // modules directory first. An agent worktree symlinks `node_modules` to
+    // the main checkout's, so in a worktree the offer is to purge the tree
+    // every checkout shares -- and only a missing TTY declined it.
+    //
+    // Asserted here rather than trusted, because this is one line of YAML that
+    // would regress silently and only bite inside a worktree, which is exactly
+    // where nobody is watching.
+    // Resolved from this file, not the working directory, so the assertion is
+    // about the repository rather than about wherever vitest was launched.
+    const workspace = readFileSync(new URL("../pnpm-workspace.yaml", import.meta.url), "utf8");
+    expect(workspace).toMatch(/^verifyDepsBeforeRun:\s*warn$/m);
   });
 });
