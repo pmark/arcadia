@@ -269,6 +269,24 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: go-fetches-and-fast-forwards-base-from-remote
+    title: Before preparing the next worktree, arcadia go fetches the base branch's remote and fast-forwards local base onto it when it is a clean ancestor, failing closed on divergence.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Before preparing the next worktree, arcadia go fetches the base branch's remote and fast-forwards local base onto it when it is a clean ancestor, failing closed on divergence.
+    expected_artifact: Evidence satisfying Agent Ask go-fetches-and-fast-forwards-base-from-remote
+    clarification: clarified
+    confidence: high
+    source: Agent Ask go-fetches-remote-base-before-worktree-2026-09-04
+    acceptance_criteria:
+      - Before computing the next worktree, arcadia go runs a remote fetch for the base branch's tracked remote (skipping cleanly, with a reported reason, when the repository has no remote configured).
+      - When the local base branch is a clean fast-forward candidate onto the fetched remote ref, arcadia go fast-forwards it before proceeding, and this shows in the JSON result.
+      - When the local base branch has diverged from the fetched remote ref (unmergeable without rebase/merge), arcadia go refuses with a clear message rather than silently proceeding on stale or diverged state, per the existing fail-closed safety contract in docs/agent-continuation-protocol.md and the arcadia-go skill.
+      - A test covers each path — no remote configured, clean fast-forward applied, and divergence refused.
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: ["0024", "0025", "0028"]
 ---
