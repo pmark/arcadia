@@ -8,8 +8,8 @@ milestone: Every adopting project receives Way changes and can ask for Way capab
 token_impact: medium
 token_budget: "Regeneration, drift comparison, and pull-request mechanics are deterministic and belong in code, not a model. Reserve model use for one implementation session per Action and a single review pass. A propagation run that calls a model per repository is the failure mode this budget exists to prevent."
 recommended_model: claude-sonnet-5
-updated: 2026-09-01
-current_action: accept-upstream-proposals
+updated: 2026-09-04
+current_action: adopt-operator-task-ledger
 actions:
   - id: seed-the-work-pointer-when-a-repository-is-adopted
     title: Write PROJECT.md and a first plan when a repository is adopted
@@ -76,7 +76,7 @@ actions:
       - docs/decisions/0024-way-propagation-tiers-and-push-authority.md
   - id: accept-upstream-proposals
     title: Let a project ask for a Way capability instead of building one
-    status: open
+    status: done
     responsibility: codex
     effort: session
     next_action: "Ingest `type: proposal` documents as pending operator requests, surface unresolved ones in `arcadia portfolio` under 'Waiting on you', and add the request path to the shared AGENTS.md region."
@@ -97,6 +97,24 @@ actions:
       - src/docs/discover.ts
       - src/commands/portfolio.ts
       - docs/decisions/0025-upstream-way-change-requests.md
+    result: >-
+      `proposal` is a first-class parsed document: only the question is
+      load-bearing (frontmatter or first `#` heading), the slug falls back to
+      the filename, and the project to whoever owns the repository. `docs
+      sync` ingests each one as a review item under the `WayProposal` intent
+      -- reusing the operator's existing answer table rather than opening a
+      second queue -- and `arcadia portfolio` lists unresolved proposals under
+      "Waiting on you", counted separately from Decisions so they do not
+      inflate that count. A proposal that names `decision: "NNNN"` is closed
+      and stops appearing. The shared AGENTS.md region ("Asking for a
+      capability the Way does not have") states the file-a-proposal rule so it
+      reaches every adopting repository through propagation. Filing is a
+      committed Markdown file: no network access, credentials, or reachable
+      Arcadia workspace required. Verified via `tests/upstream-proposals.test.ts`
+      (8/8 passing) and the full suite (1,199 passing, 7 skipped, 3 files
+      failing on a pre-existing dashboard workspace-link error and an
+      unrelated Obsidian-memory assertion -- both present before this session
+      and untouched by it).
   - id: evaluate-document-triggers
     title: Evaluate the deferrals Arcadia's own documents already declare
     status: done
