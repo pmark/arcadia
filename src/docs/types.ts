@@ -36,8 +36,13 @@ export type DocType = (typeof DOC_TYPES)[number];
 /**
  * Documents that opt into Arcadia's vocabulary but remain governed by their
  * own local protocol. They are recognized and reported, never dispatched.
+ *
+ * `proposal` was one of these until Decision 0025: a Way-change request that
+ * only got reported was indistinguishable from a narrative record nobody owed
+ * an answer to, which is the whole gap that decision closed. A proposal that
+ * states no question still lands here, because there is nothing to ask.
  */
-export const SUPPORTING_DOC_TYPES = ["continuation", "proposal", "template", "review"] as const;
+export const SUPPORTING_DOC_TYPES = ["continuation", "template", "review"] as const;
 export type SupportingDocType = (typeof SUPPORTING_DOC_TYPES)[number];
 
 /** Plan states whose activation and ordering are owned by an external shim. */
@@ -236,15 +241,48 @@ export interface NarrativeDoc extends DocLocation {
   body: string;
 }
 
+/**
+ * A request for a capability the Way does not have yet (Decision 0025).
+ *
+ * It travels as a committed document rather than a message, so filing one
+ * needs no network access, credentials, or reachable Arcadia — an agent in a
+ * cloud container can ask for a capability and continue without it. Its
+ * frontmatter is deliberately the cheapest in the protocol: everything but
+ * `project` has a fallback, because a request that is expensive to file is a
+ * request that gets improvised locally instead.
+ */
+export interface ProposalDoc extends DocLocation {
+  type: "proposal";
+  slug: string;
+  /** Absent when the request simply belongs to whoever owns this repository. */
+  project: string | null;
+  /** One sentence naming the capability being asked for. */
+  question: string;
+  /** What the agent would otherwise have built locally, when it said so. */
+  recommendation: string | null;
+  /** The Decision that answered this, e.g. `0025`. Its presence closes it. */
+  decision: string | null;
+  /** Absent on a freshly filed proposal; staleness is not guarded without it. */
+  updated: string | null;
+  body: string;
+}
+
 /** A recognized record that deliberately cannot participate in Arcadia dispatch. */
 export interface ScopedOutDoc extends DocLocation {
   type: "scoped_out";
-  sourceType: SupportingDocType | "plan";
+  sourceType: SupportingDocType | "plan" | "proposal";
   sourceStatus: ScopedOutPlanStatus | null;
   body: string;
 }
 
-export type ArcadiaDoc = ProjectDoc | PlanDoc | DecisionDoc | LogDoc | NarrativeDoc | ScopedOutDoc;
+export type ArcadiaDoc =
+  | ProjectDoc
+  | PlanDoc
+  | DecisionDoc
+  | LogDoc
+  | NarrativeDoc
+  | ProposalDoc
+  | ScopedOutDoc;
 
 /**
  * Stable external keys. Built only from identifiers the protocol promises never
@@ -288,6 +326,10 @@ function slugifyMilestone(title: string): string {
 
 export function decisionDocRef(decisionSlug: string): string {
   return `decision/${decisionSlug}`;
+}
+
+export function proposalDocRef(proposalSlug: string): string {
+  return `proposal/${proposalSlug}`;
 }
 
 /**

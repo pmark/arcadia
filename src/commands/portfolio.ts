@@ -4,6 +4,7 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import {
   listPortfolioOpenDecisions,
+  listPortfolioOpenProposals,
   listPortfolioProjects,
   type PortfolioDecisionRow,
   type PortfolioProjectRow
@@ -12,6 +13,8 @@ import {
 export interface PortfolioCommandData {
   projects: PortfolioProjectRow[];
   openDecisions: PortfolioDecisionRow[];
+  /** Way-change requests filed by adopting projects, awaiting a Decision. */
+  openProposals: PortfolioDecisionRow[];
   totals: {
     projects: number;
     activeProjects: number;
@@ -21,6 +24,7 @@ export interface PortfolioCommandData {
     questionOpen: number;
     unevaluated: number;
     openDecisions: number;
+    openProposals: number;
   };
 }
 
@@ -38,9 +42,10 @@ export function runPortfolioCommand(options: {
 }): CommandSuccess<PortfolioCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
 
-  const { projects, openDecisions } = withDatabase(workspacePath, (db) => ({
+  const { projects, openDecisions, openProposals } = withDatabase(workspacePath, (db) => ({
     projects: listPortfolioProjects(db),
-    openDecisions: listPortfolioOpenDecisions(db)
+    openDecisions: listPortfolioOpenDecisions(db),
+    openProposals: listPortfolioOpenProposals(db)
   }));
 
   const totals = {
@@ -51,18 +56,19 @@ export function runPortfolioCommand(options: {
     unclarified: sum(projects, (p) => p.unclarified),
     questionOpen: sum(projects, (p) => p.question_open),
     unevaluated: sum(projects, (p) => p.unevaluated),
-    openDecisions: openDecisions.length
+    openDecisions: openDecisions.length,
+    openProposals: openProposals.length
   };
 
   return createSuccess({
     command: "portfolio",
     workspace: workspacePath,
-    data: { projects, openDecisions, totals }
+    data: { projects, openDecisions, openProposals, totals }
   });
 }
 
 export function renderPortfolioSuccess(response: CommandSuccess<PortfolioCommandData>): string[] {
-  const { projects, openDecisions, totals } = response.data;
+  const { projects, openDecisions, openProposals, totals } = response.data;
 
   if (projects.length === 0) {
     return ["No Projects yet."];
@@ -94,12 +100,16 @@ export function renderPortfolioSuccess(response: CommandSuccess<PortfolioCommand
     lines.push("");
   }
 
-  if (openDecisions.length > 0) {
+  if (openDecisions.length > 0 || openProposals.length > 0) {
     lines.push("Waiting on you:");
     for (const decision of openDecisions) {
-      const label = decision.slug ?? decision.id;
-      const project = decision.project_name ? ` [${decision.project_name}]` : "";
-      lines.push(`  ${label}${project} — ${decision.decision_needed}`);
+      lines.push(`  ${waitingLine(decision)}`);
+    }
+    // A proposal is a project asking for a capability the Way does not have, so
+    // it is marked: the operator answers it with a Decision in the Arcadia
+    // repository, not by deciding something inside the asking project.
+    for (const proposal of openProposals) {
+      lines.push(`  ${waitingLine(proposal)}  (proposal)`);
     }
     lines.push("");
   }
@@ -116,8 +126,19 @@ export function renderPortfolioSuccess(response: CommandSuccess<PortfolioCommand
   if (totals.openDecisions > 0) {
     lines.push(`${totals.openDecisions} Decision(s) need an answer before their work can move.`);
   }
+  if (totals.openProposals > 0) {
+    lines.push(
+      `${totals.openProposals} Way-change request(s) filed by adopting projects await a Decision here.`
+    );
+  }
 
   return lines;
+}
+
+function waitingLine(row: PortfolioDecisionRow): string {
+  const label = row.slug ?? row.id;
+  const project = row.project_name ? ` [${row.project_name}]` : "";
+  return `${label}${project} — ${row.decision_needed}`;
 }
 
 /** Zero-count states are omitted so the line reads as a finding, not a form. */

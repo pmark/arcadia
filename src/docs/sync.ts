@@ -31,6 +31,7 @@ import {
   actionDocRef,
   decisionDocRef,
   logEntryDocRef,
+  proposalDocRef,
   planDocRef,
   planMilestoneDocRef,
   planQuestionDocRef,
@@ -41,7 +42,8 @@ import {
   type PlanDoc,
   type PlanActionDoc,
   type PlanStatus,
-  type ProjectDoc
+  type ProjectDoc,
+  type ProposalDoc
 } from "./types.js";
 
 /**
@@ -62,6 +64,14 @@ const NO_LOGGED_NEXT_ACTION = "No next action recorded in this Log entry.";
 /** The intent Phase 3 uses for a question awaiting an answer. */
 const ACTION_CLARIFICATION_INTENT = "ActionClarification";
 
+/**
+ * The intent that marks a review item as a Way-change request rather than a
+ * Decision the operator owes an answer to inside their own project. Both wait
+ * on the same person, which is why they share a table and a section; this label
+ * is the only thing that distinguishes what is being asked for.
+ */
+export const WAY_PROPOSAL_INTENT = "WayProposal";
+
 export type ChangeAction = "create" | "update" | "unchanged" | "skipped";
 export type ChangeEntity =
   | "project"
@@ -70,6 +80,7 @@ export type ChangeEntity =
   | "dependency"
   | "question"
   | "decision"
+  | "proposal"
   | "log"
   | "narrative";
 
@@ -149,7 +160,10 @@ export function syncProjectDocs(
       });
       continue;
     }
-    const owner = doc.type === "project" ? doc.slug : doc.project;
+    // A proposal may name no project: it was found in this repository, and this
+    // repository has exactly one owning Project, so the attribution is already
+    // known. Requiring the agent to repeat it is friction for no information.
+    const owner = doc.type === "project" ? doc.slug : (doc.project ?? project.slug);
     if (owner.toLowerCase() !== project.slug.toLowerCase()) {
       result.foreign.push(`${doc.relativePath} (project: ${owner})`);
       continue;
@@ -161,6 +175,7 @@ export function syncProjectDocs(
   const plans = mine.filter((doc): doc is PlanDoc => doc.type === "plan");
   const decisions = mine.filter((doc): doc is DecisionDoc => doc.type === "decision");
   const logs = mine.filter((doc): doc is LogDoc => doc.type === "log");
+  const proposals = mine.filter((doc): doc is ProposalDoc => doc.type === "proposal");
 
   // A ref claimed twice would make ingestion order decide who wins, so refuse
   // both rather than silently letting the later file overwrite the earlier.
@@ -243,6 +258,10 @@ export function syncProjectDocs(
       continue;
     }
     result.changes.push(syncDecision(db, project, decision, options.apply));
+  }
+
+  for (const proposal of proposals) {
+    result.changes.push(syncProposal(db, project, proposal, options.apply));
   }
 
   for (const log of logs) {
@@ -1063,6 +1082,109 @@ function syncDecision(
     relativePath: doc.relativePath,
     ref,
     title,
+    reason: describeDrift(changed)
+  };
+}
+
+/**
+ * Ingest one Way-change request.
+ *
+ * A proposal is a review item because that is exactly what it is: something
+ * waiting on the operator, surfaced beside the Decisions they already answer.
+ * Reusing the table is what makes this an inch of work rather than a second
+ * queue with its own lifecycle, listing, and rendering.
+ *
+ * A proposal naming a `decision:` is closed. The Decision itself lives in the
+ * Arcadia repository, not this one, so there is nothing here to verify against
+ * — the document records which answer it received, and stops asking.
+ */
+function syncProposal(
+  db: Database.Database,
+  project: Project,
+  doc: ProposalDoc,
+  apply: boolean
+): DocChange {
+  const ref = proposalDocRef(doc.slug);
+  const existing = getReviewItemByDocRef(db, ref);
+  const answered = Boolean(doc.decision);
+  const status = answered ? "approved" : "open";
+  const note = doc.decision ? `Answered by Decision ${doc.decision}.` : null;
+
+  if (!existing) {
+    if (apply) {
+      const created = createReviewItem(db, {
+        projectId: project.id,
+        decisionNeeded: doc.question,
+        recommendation: doc.recommendation,
+        sourceInput: `${doc.relativePath} (${doc.slug})`,
+        proposedAction: `Answer Way-change request ${doc.slug} with a Decision in the Arcadia repository.`,
+        resolvedIntent: WAY_PROPOSAL_INTENT,
+        confidenceLabel: "medium",
+        confidence: 0,
+        missingFields: [],
+        context: { schemaVersion: 1, docRef: ref, source: doc.relativePath, decision: doc.decision }
+      });
+      setReviewItemDocRef(db, created.id, ref);
+      if (answered) {
+        updateReviewItemFromDoc(db, created.id, {
+          decisionNeeded: doc.question,
+          recommendation: doc.recommendation,
+          status,
+          decisionNote: note,
+          decidedAt: doc.updated,
+          confidenceLabel: "medium",
+          missingFields: []
+        });
+      }
+    }
+    return { action: "create", entity: "proposal", relativePath: doc.relativePath, ref, title: doc.question };
+  }
+
+  const drift: Array<[string, unknown, unknown]> = [
+    ["question", existing.decision_needed, doc.question],
+    ["recommendation", existing.recommendation, doc.recommendation],
+    ["status", existing.status, status],
+    ["decision", existing.decision_note, note]
+  ];
+  const changed = drift.filter(([, current, next]) => (current ?? null) !== (next ?? null));
+
+  if (changed.length === 0) {
+    return { action: "unchanged", entity: "proposal", relativePath: doc.relativePath, ref, title: doc.question };
+  }
+
+  // A proposal may be filed without an `updated:` date at all, and the staleness
+  // guard has nothing to compare against then. The document wins in that case:
+  // nothing but this document ever writes these columns.
+  const staleness = doc.updated ? stalenessOf(doc.updated, existing.updated_at) : null;
+  if (staleness) {
+    return {
+      action: "skipped",
+      entity: "proposal",
+      relativePath: doc.relativePath,
+      ref,
+      title: doc.question,
+      reason: staleness
+    };
+  }
+
+  if (apply) {
+    updateReviewItemFromDoc(db, existing.id, {
+      decisionNeeded: doc.question,
+      recommendation: doc.recommendation,
+      status,
+      decisionNote: note,
+      decidedAt: answered ? doc.updated : null,
+      confidenceLabel: existing.confidence_label,
+      missingFields: []
+    });
+  }
+
+  return {
+    action: "update",
+    entity: "proposal",
+    relativePath: doc.relativePath,
+    ref,
+    title: doc.question,
     reason: describeDrift(changed)
   };
 }
