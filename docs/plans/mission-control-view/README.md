@@ -5,13 +5,17 @@ with a default view that oversees the operator's whole world — Life,
 Projects, Decisions — where any visible area can be zoomed into for its
 status, its urgent action items, or a place to add context/ask a question.
 
-**Design-only through this entire series.** The only things actually
-written are view-model types
+**Design-only through doc 08.** The only things written across 00–08 are
+view-model types
 ([mission-control-types.ts](../../../apps/dashboard/lib/mission-control-types.ts))
 and a small pure-math reference module
 ([mission-control-math.ts](../../../apps/dashboard/lib/mission-control-math.ts))
-— no renderer, no components, no pages, no wiring. Building begins only
-after the UI/UX is crystallized, per explicit instruction.
+— no renderer, no components, no pages, no wiring, per explicit instruction
+that building begins only after the UI/UX is crystallized.
+
+**That instruction is now satisfied for one slice.** Doc 09 is a build
+specification with a filed, governed plan behind it. Doc 10 records an
+adjacent question that was deliberately deferred against a named trigger.
 
 ## Documents, in order
 
@@ -24,6 +28,8 @@ after the UI/UX is crystallized, per explicit instruction.
 | 04 | [Camera & Navigation](./04-camera-and-navigation.md) | Real depth via Three.js from the start; a fixed-height, non-rotating, translate-only camera; Cartesian lane layout; altitude as tree-depth (ground vs. overview); motion timing rules; remembered lane position. |
 | 05 | [List/Graph Parity](./05-list-view-parity.md) | The list view is the same data, permanently in parity with the spatial view — not a temporary experiment, a shared ranking and a shared camera-state. |
 | 06 | [Concrete UI Specification](./06-concrete-ui-specification.md) | The walkthrough: exactly what's visible, tappable, and doable at every screen state (Overview, Ground-ambient, Node detail per kind, List). Makes the final call on every question 00–05 left open. **Start here if you want to know what the finished thing actually looks like.** |
+| 09 | [Flight Deck Build Spec](./09-flight-deck-board-build-spec.md) | The buildable slice: Plan swimlanes, Arcadia's dispatch gates as columns, the labeled relationship chain, and one copyable dispatch command per card. **Governed by a filed plan — start here to build.** |
+| 10 | [Session Unit Ledger (deferred)](./10-session-unit-ledger-deferred.md) | Weekly coding-agent budgeting: the Session Unit model, provider-neutral assignment, three gaps it surfaced, and the trigger that reactivates it. |
 
 ## The throughline, if you only read one paragraph
 
