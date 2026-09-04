@@ -310,6 +310,41 @@ The test for whether this rule is being followed: read any deferred item and ask
 what would have to be true for it to start. If the document cannot answer, the
 deferral was never made — the item was only postponed.
 
+## Stop the line
+
+A defect that blocks work outranks the plan it interrupted. Promoting a
+showstopper to first priority is the default; **continuing past one is what
+needs justifying.** This is the counterweight to the rule above: deferral is a
+real answer for work, and not an answer at all for a defect that is stopping
+work from happening.
+
+- **Severity is a feeling. Blast radius is a test.** Promote when any of these
+  holds: it blocks work unrelated to itself; its only workaround is one a
+  person has to remember; or — the strongest case — **it blocks its own
+  repair.** A defect that has eaten the mechanism for reporting it cannot wait
+  its turn, because there is no turn to wait for.
+- **Promotion is a move, not an opinion.** File it, place it at the top of the
+  queue, and make it the `current_action`. "We know about it" is not
+  promotion; it is a deferral without a trigger wearing an urgent face.
+- **When the defect blocks the record, repair precedes the record.**
+  Governance normally comes first, and this is the one inversion: fix it, then
+  file the Log entry describing what was fixed and why the usual order could
+  not hold. Say so explicitly in that entry — an unexplained inversion is
+  indistinguishable from skipping the rule.
+- **"Almost" earns its place exactly once.** A showstopper may wait when a
+  workaround exists, is written down where the next person will hit it, and
+  carries a trigger for removing it. An undocumented workaround is not an
+  exception, it is the bug plus a secret.
+- **This does not license urgency generally.** A bug that is merely annoying,
+  expensive, or embarrassing is ordinary work and goes through the 80/20 rule
+  like anything else. Nor does it relax any approval boundary: a showstopper
+  never authorizes a shortcut through a gate.
+
+The test for whether this rule is being followed: when something was found
+broken and the plan continued anyway, the document should say what the
+workaround was and when it expires. If it says nothing, the rule was skipped,
+not applied.
+
 ## Make it real
 
 Plans, analysis, and architecture are valuable when they turn into something a
