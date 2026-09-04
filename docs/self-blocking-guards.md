@@ -49,7 +49,17 @@ including the two projects that mattered. Not fixed.
 **5. SQLite lock contention.** Four long-running services hold the workspace
 database open. Settlement writes intermittently fail with `database is locked`;
 during this session one settlement was blocked for over seven minutes and
-another could not be retried at all until a service was killed. Not fixed.
+another could not be retried at all until a service was killed. **Fixed
+2026-09-04.** The error was `SQLITE_BUSY_SNAPSHOT`, not ordinary contention:
+`db.transaction()` issues a deferred `BEGIN`, taking a read snapshot and
+asking for the write lock only at the first write, so any commit by a service
+inside that window invalidates the snapshot and SQLite refuses to upgrade it.
+`busy_timeout` cannot help — waiting does not make a stale snapshot fresh —
+which is exactly why retrying was useless until a service was killed.
+`writeTransaction` in `src/db/connection.ts` runs write paths under `BEGIN
+IMMEDIATE`, taking the lock before reading anything. Nineteen other write
+transactions still use the deferred form and are deliberately left alone until
+one is observed failing.
 
 ## The rule that would have prevented all five
 
