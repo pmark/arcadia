@@ -224,6 +224,42 @@ describe("Agent Ask settlement", () => {
     expect(content).toContain("- **Hold for review**: Delays the fix by a day.");
   });
 
+  it("writes a settled decision Ask's rationale into the body, and leaves recommendation empty without a recommended option", () => {
+    const { workspace, repo } = fixture();
+    const request = [
+      "agent_ask: v1", "request_id: decision-with-rationale", "project: demo", "intent: decision",
+      "desired_result: Should we ship the risky change?", "rationale: |",
+      "  Paragraph one explains the discovery in detail.",
+      "",
+      "  Paragraph two explains why the operator should decide, not the agent.",
+      "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace,
+      proposal: proposal.data.proposal.id,
+      requestId: "settle-decision-with-rationale",
+      disposition: "accepted",
+      revision: 1
+    });
+    runAgentAskSettleCommand({
+      workspace,
+      proposal: proposal.data.proposal.id,
+      requestId: "settle-decision-with-rationale",
+      disposition: "accepted",
+      revision: 1,
+      preview: preview.data.receipt.previewFingerprint,
+      apply: true
+    });
+
+    const content = readFileSync(path.join(repo, "docs/decisions/0001-should-we-ship-the-risky-change.md"), "utf8");
+    const frontmatter = content.slice(0, content.indexOf("\n---", 4));
+    expect(frontmatter).not.toContain("recommendation:");
+    expect(content).toContain("## Rationale");
+    expect(content).toContain("Paragraph one explains the discovery in detail.");
+    expect(content).toContain("Paragraph two explains why the operator should decide, not the agent.");
+  });
+
   it("amends an existing Action without changing its Responsibility or queue position", () => {
     const { workspace, repo } = fixture();
     const proposal = runAgentAskPreviewCommand({

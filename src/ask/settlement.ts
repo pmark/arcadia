@@ -812,7 +812,7 @@ function addDecisionMutation(
   planSlug: string,
   actionId: string | null,
   question: string,
-  recommendation: string | null,
+  rationale: string | null,
   requestId: string,
   options: NormalizedAgentAskOption[] = []
 ): void {
@@ -820,6 +820,9 @@ function addDecisionMutation(
   const id = String(nextNumber).padStart(4, "0");
   const slug = uniqueDecisionSlug(decisions, slugify(question) || `agent-ask-${id}`);
   const targetPath = path.join(repoRoot, "docs", "decisions", `${id}-${slug}.md`);
+  // `recommendation` holds only the recommended course of action, read from
+  // the options list an Ask can supply — never the filing Ask's rationale.
+  const recommendation = options.find((option) => option.recommended)?.label ?? null;
   const optionsFrontmatter =
     options.length === 0
       ? []
@@ -842,6 +845,7 @@ function addDecisionMutation(
           ...options.map((option) => `- **${option.label}**${option.recommended ? " (recommended)" : ""}: ${option.consequence}`),
           ""
         ];
+  const rationaleBody = rationale ? ["## Rationale", "", rationale, ""] : [];
   const frontmatter = [
     "---", "arcadia: v1", "type: decision", `id: ${JSON.stringify(id)}`, `slug: ${slug}`,
     `project: ${projectSlug}`, "status: open", `question: ${yamlScalar(question)}`, "gap_type: missing-decision",
@@ -850,6 +854,7 @@ function addDecisionMutation(
     "confidence: high", `plan: ${planSlug}`, ...(actionId ? [`action: ${actionId}`] : []),
     `updated: ${today()}`, "---", "", `# Decision ${id}: ${question}`, "",
     ...optionsBody,
+    ...rationaleBody,
     `Proposed by Agent Ask ${requestId}. This Decision remains open until the operator answers it.`, ""
   ].join("\n");
   mutations.push({ path: targetPath, before: null, after: frontmatter });
