@@ -51,6 +51,14 @@ For continuation requests — "arcadia go", a bare "go", or "Get to work" —
 resolve `active_plan` and `current_action` from `PROJECT.md`; never select
 work from an unordered backlog.
 
+When your environment lets you name or title the current session or
+conversation, set it to the resolved scope — `<active_plan>: <current_action>`
+(e.g. `way-delivery: stop-dumping-rationale-into-recommendation`) — instead of
+a generic label like "Arcadia Go" or "Continue session". Retitle it again if
+the session moves on to a different Action before it ends. Skip this silently
+in a coding-agent runtime with no such naming capability; it is a convenience
+for the operator scanning a session list, not a governed artifact.
+
 Commands follow the naming rule: **nouns read state, verbs may mutate it
 within declared authority**. Trust the part of speech. A noun that writes is a
 bug in the name as much as in the code.
