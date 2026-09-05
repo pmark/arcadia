@@ -1,0 +1,318 @@
+agent_ask: v1
+request_id: flight-deck-built-by-managed-production-2026-09-05
+project: arcadia
+intent: plan
+target_ref: plan/flight-deck-board-carries-the-whole-portfolio-on-one-surface
+requested_authority: propose
+desired_result: Build Flight Deck through the proven Managed Production system, then make it the operator production home.
+rationale: Operator explicitly requires bootstrap-first sequencing and Flight Deck itself as real dogfood. This amendment contains presentation/integration and real self-hosted production proof; production engine implementation belongs solely to the separate bootstrap Plan. Earlier unsettled single-plan proposals must not also be applied. Do not activate this consumer Plan before the bootstrap proof and approved single-pointer transition.
+references:
+  - docs/plans/mission-control-view/11-existing-surfaces-audit.md
+  - docs/plans/mission-control-view/12-flight-deck-operations-contract.md
+  - docs/plans/mission-control-view/13-flight-deck-delivery-sequence.md
+  - docs/plans/mission-control-view/15-flight-deck-acceptance-matrix.md
+  - docs/plans/mission-control-view/17-managed-production-contract.md
+  - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+actions:
+  - id: project-plan-lanes-and-pipeline-columns
+    target_ref: action/project-plan-lanes-and-pipeline-columns
+    desired_result: Render the Flight Deck route with a truthful portfolio projection and bounded independent source states.
+    acceptance:
+      - Render /flight-deck with Project and Plan lanes, Milestone context and typed Action, Decision, Run and Artifact identities; preserve distinct Session references.
+      - Deduplicate projections of the same entity and retain unknown, unattached, waiting-for-pointer and flagged states with named reasons; fixture coverage accounts for every input identity exactly once.
+      - Separate stage from who owes the next move; unresolved QA judgment remains visible in Proving and Artifact existence never implies Landed.
+      - Expose loaded coverage, source observation times and partial failures; a stalled source yields a recoverable status within 12 seconds and does not block independent content.
+      - Reuse queue/snapshot contracts and shared UI; browsing creates no governed writes, queue changes or model calls.
+      - "Preserve the proof Artifact: Projection/state fixtures and first route desktop screenshot; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+      - Include unsettled Agent Ask proposals in the Needs operator inventory through a canonical read projection; the current snapshot omits this store. Give each proposal a stable direct review URL and show missing coverage explicitly until supported.
+      - This is admitted by the frozen proven Managed Production runtime after the approved bootstrap-to-Flight-Deck Plan transition; preserve Session/policy/runtime evidence proving real dogfood.
+    dependencies: []
+    references:
+      - apps/dashboard/app/api/work-queue/route.ts
+      - apps/dashboard/app/api/snapshot/route.ts
+      - src/dashboard/snapshot.ts
+      - apps/dashboard/lib/work-queue-types.ts
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+  - id: focus-the-board-on-active-work
+    target_ref: action/focus-the-board-on-active-work
+    desired_result: Show a concise Flight Deck orientation with active work first and all other work discoverable.
+    acceptance:
+      - Show Outcome/Milestone, observed running work, Needs operator, recent verified results and the canonical next eligible Action with its selection reason.
+      - Expand active Plan lanes and collapse dormant/unattached context with honest counts; Projects without an active plan and empty Plans stay discoverable.
+      - Preserve cross-portfolio urgent obligations outside filters with an explicit hidden-item count and reveal control.
+      - Reuse deterministic Now/Path facts where relevant without requesting narration; filters and reset change only view state.
+      - "Preserve the proof Artifact: Cold-open orientation fixture and visible/hidden count evidence; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+      - The first operational view includes prioritized Plan segments, production desired state, actual activity, current provider capacity and next admission/reason; distinguish Active but waiting from Inactive.
+    dependencies:
+      - project-plan-lanes-and-pipeline-columns
+    references:
+      - apps/dashboard/app/now/page.tsx
+      - apps/dashboard/app/path/page.tsx
+      - apps/dashboard/lib/needs-you.ts
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+  - id: dogfood-production-building-flight-deck
+    desired_result: Prove Managed Production built the first two real Flight Deck Actions without manual Session relays.
+    dependencies:
+      - focus-the-board-on-active-work
+    references:
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+    acceptance:
+      - Link the production policy, frozen controller revision, queue/pointer receipts, provider selections, Sessions, commits and validation for the actual board and orientation Actions.
+      - Prove the controller launched the first Action and automatically admitted the dependent second Action after its required evidence/authority gates; a toy fixture or manual launch does not satisfy this Action.
+      - Record every operator intervention and classify it as required product/merge authority or a production defect. Manual session creation, packet copying or pointer bookkeeping is a defect to repair.
+      - Exercise Off and subsequent explicit reactivation through the independent existing Work Queue control while Flight Deck is incomplete; preserve work and prevent duplicate execution.
+      - Keep controller repairs on the stable-runtime upgrade procedure; the Flight Deck Candidate must not overwrite the supervisor building it. Preserve the real dogfood report as the proof Artifact.
+  - id: reuse-queue-steering-controls
+    desired_result: Embed the existing queue order and Make next controls in Flight Deck.
+    acceptance:
+      - Extract the working Work Queue move, arrange, preview, apply and undo interaction for use by both routes without duplicating order logic.
+      - Make next preserves the exact pointer fingerprint flow and is separate from order changes and launch.
+      - Display canonical nextActionKey and every higher skipped Action reason before and after an operation; invalid initial order has an explicit repair path.
+      - Concurrent revisions are refused, pending edits preserved, cancellation writes nothing and durable receipts drive refreshed state.
+      - Reordering explains that it changes future selection and does not interrupt the current Session.
+      - "Preserve the proof Artifact: Two-route queue parity, conflict and undo tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+    dependencies:
+      - project-plan-lanes-and-pipeline-columns
+    references:
+      - apps/dashboard/app/work-queue/page.tsx
+      - apps/dashboard/app/api/work-queue/route.ts
+      - src/dispatch/order.ts
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+  - id: reuse-contextual-decision-controls
+    desired_result: Resolve operator Decisions from Flight Deck using the existing consequence and receipt flows.
+    acceptance:
+      - Reuse approve/reject/defer/reply/reassess/flag-agent and clarification capabilities where valid for the selected Decision; do not replace them with generic approve commands.
+      - Present each option consequence and required artifact context before confirmation; recommendation remains non-binding.
+      - Require a named trigger for deferral and preserve rejection feedback and user text on errors.
+      - Refresh affected Decision, Action and queue state after resolution; show what became eligible or the remaining blocker.
+      - QA judgments stay in global Needs operator even while shown in Proving; deduplication does not erase obligations.
+      - "Preserve the proof Artifact: Decision journey parity with rejection, deferral and conflict cases; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+      - "Expose pending Agent Ask proposal review and exact settlement using the existing settlement core: summary, affected Project/Plan/Actions, before/after effects, options with consequences, authority scope, and prerequisite queue repair. Proposal approval is not review approve against an unrelated Decision id."
+      - The operator can accept or reject the exact proposal from its direct link; a changed preview requires renewed judgment, failures preserve the pending obligation, and success leaves a canonical receipt and resulting next move. Proposal capture must return this link; do not require finding YAML, CLI ids or this chat.
+    dependencies:
+      - project-plan-lanes-and-pipeline-columns
+    references:
+      - apps/dashboard/app/review/page.tsx
+      - apps/dashboard/app/api/review-action/route.ts
+      - apps/dashboard/lib/needs-you.ts
+      - src/commands/agentAsk.ts
+      - src/ask/settlement.ts
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+  - id: control-plan-production-from-flight-deck
+    desired_result: Control prioritized Plan production with a persistent Active/Inactive switch and truthful activity status.
+    acceptance:
+      - Show included Plans in explicit priority order with Action dependencies and resulting queue order; reuse Plan segment/make-next previews and receipts, never a second priority store.
+      - Provide scoped activation preview and one obvious Off control usable on phone and desktop; read desired state separately from Building, waiting capacity, blocked, finishing and worker unavailable.
+      - Display selected/next Action and agent, why higher work is skipped, provider observation age/reset, approval obligations and exact next automatic check.
+      - Browser closure does not pause production; two tabs and stale activation previews cannot overwrite policy; confirmed Off has a receipt and never silently interrupts existing native work.
+      - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
+      - Reuse the bootstrap Work Queue production control and same persisted policy; toggling on either screen is reflected on the other and launches no duplicate scheduler.
+    dependencies:
+      - focus-the-board-on-active-work
+      - reuse-queue-steering-controls
+      - reuse-contextual-decision-controls
+    references:
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - apps/dashboard/app/work-queue/page.tsx
+      - apps/dashboard/components/sidebar.tsx
+      - apps/dashboard/lib/arcadia-cli.ts
+      - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+  - id: open-the-object-detail-rail
+    target_ref: action/open-the-object-detail-rail
+    desired_result: Open contextual object details with typed relationships and stable navigation.
+    acceptance:
+      - Render Project, Plan, Action, Decision, Run, Session and Artifact neighbors with named edges; distinguish structural, prose-recovered, missing and ambiguous relationships.
+      - Show expected output, acceptance criteria, dependencies, required Decisions/options/consequences, budget and every blocker remedy where present; gaps are explicit.
+      - Selection survives URL reload and browser Back; Escape closes and returns focus, and missing object links fail legibly.
+      - Reuse existing Project, Run, proof, file and Plan destinations with a return path preserving Flight Deck scope.
+      - "Preserve the proof Artifact: Keyboard/deep-link test and typed relationship fixtures; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+    dependencies:
+      - dogfood-production-building-flight-deck
+    references:
+      - apps/dashboard/components/dashboard-ui.tsx
+      - apps/dashboard/app/projects/[id]/page.tsx
+      - apps/dashboard/app/runs/[id]/page.tsx
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+  - id: expose-planned-portfolio-work
+    desired_result: Expose all Project Plans and their planned Actions without inventing dispatch authority.
+    acceptance:
+      - Reuse project Plans inventory for active, draft, dormant and completed plans, including plans with no current queue objects.
+      - Provide Action/dependency detail through existing document readers or a minimal extension of their canonical read contract; missing references and undeclared stretches are explicit.
+      - Show activation notes, counts and source links; search reveals dormant and unattached matches with bounded history coverage.
+      - Make draft versus approved versus pointer-authorized work visibly distinct; viewing a Plan neither activates it nor queues its Actions.
+      - "Preserve the proof Artifact: Multi-Project planned-work fixture with empty and dormant Plans; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+    dependencies:
+      - open-the-object-detail-rail
+    references:
+      - src/commands/plans.ts
+      - apps/dashboard/components/plans-list.tsx
+      - apps/dashboard/app/api/projects/[id]/plans/route.ts
+      - src/docs/dispatch.ts
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+  - id: carry-the-dispatch-command
+    target_ref: action/carry-the-dispatch-command
+    desired_result: Reuse the proven production selection and launch-preview contract in Flight Deck Action details.
+    acceptance:
+      - Reuse selectCompliantCodingAgent and portable execution requirements; automatic selection shows agent, model, effort, rationale and binding provenance without an operator provider choice.
+      - Bind Action/doc_ref, current documents, queue revision, packet hash, authorizing Decisions, repository/base and binding to a launch preview and request id.
+      - Selection accounts for launch-adapter availability, rejects unsatisfied requirements without downgrade, and never silently changes an immutable packet provider.
+      - Preview starts no process and performs no Git mutation; expose missing packet, stale pointer, unavailable provider and conflicting execution as named prerequisites.
+      - Generate any advanced copyable command from the supported server contract; the primary required outcome is browser-triggered launch, superseding the original copy-only acceptance criteria.
+      - "Preserve the proof Artifact: Selection and launch-preview contract fixtures including both providers; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+      - Consume the bootstrap production selection/packet contract without reimplementing provider selection, admission or launch mechanics.
+    dependencies:
+      - open-the-object-detail-rail
+    references:
+      - src/codingAgents/providerAdapters.ts
+      - src/execution/profiles.ts
+      - src/commands/go.ts
+      - src/sessions/index.ts
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+  - id: launch-selected-agent-from-flight-deck
+    desired_result: Launch the automatically selected coding agent directly from the Flight Deck Action detail.
+    acceptance:
+      - An executable Action offers selection preview and Launch without manual agent choice or terminal copying; the click authorizes exactly the displayed Session.
+      - Wrong pointer, missing packet, required Decision, unavailable provider and existing lease route to their specific existing remedy without silently choosing another Action.
+      - Show pending, confirmed, refused, conflict and unknown-result states; reconcile unknown result by request id before retry.
+      - Successful launch opens the confirmed Session in context, and reload recovers it without launching again.
+      - Show host, selected agent/model/effort and bounded effect before launch on both desktop and phone.
+      - "Preserve the proof Artifact: Browser launch journeys for both adapter fixtures and lost response; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+    dependencies:
+      - reuse-queue-steering-controls
+      - reuse-contextual-decision-controls
+      - carry-the-dispatch-command
+    references:
+      - apps/dashboard/app/work-queue/page.tsx
+      - apps/dashboard/lib/arcadia-cli.ts
+      - src/sessions/index.ts
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+  - id: reuse-proof-and-delivery-controls
+    desired_result: Connect Flight Deck results to existing Candidate proof, QA and delivery evidence.
+    acceptance:
+      - Reuse ProofHero/QA components and target contracts for Stable, Candidate, exact revision, reachability, procedure and verdict.
+      - Differentiate produced, validation pending/failed, accepted, PR preserved, merged and released from their authoritative receipts; missing evidence is explicit.
+      - Open real configured targets and QA/PR/Log evidence from Action/Artifact detail; preserve return scope.
+      - Record QA through existing revision-bound controls; no QA or Artifact state grants merge or release authority.
+      - Local-only and stale/unreachable targets remain labeled honestly on phone and desktop.
+      - "Preserve the proof Artifact: Proof-state and exact-revision QA parity fixtures; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+    dependencies:
+      - open-the-object-detail-rail
+    references:
+      - apps/dashboard/components/proof-hero.tsx
+      - apps/dashboard/app/qa/page.tsx
+      - apps/dashboard/app/api/qa/route.ts
+      - apps/dashboard/app/admin/pull-requests/page.tsx
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+  - id: capture-and-correct-work-in-context
+    desired_result: Capture new intent or proposed corrections in Flight Deck through the existing Ask envelope.
+    acceptance:
+      - Reuse text/file capture and stable request identity with explicit Project and optional Action context.
+      - Preserve original input and attachment provenance, show capture/interpretation/settlement distinctions and link resulting records.
+      - An ambiguous or rejected request preserves user text and explains what is required; submitting intent never grants execution authority.
+      - Use existing feedback and ingress detail destinations with context-preserving return; do not duplicate an Ask interpreter.
+      - "Preserve the proof Artifact: Capture replay, attachment and correction browser fixtures; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+    dependencies:
+      - open-the-object-detail-rail
+    references:
+      - apps/dashboard/app/capture/page.tsx
+      - apps/dashboard/app/api/ask/route.ts
+      - apps/dashboard/app/api/ingress/route.ts
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+  - id: surface-operational-exceptions-and-changes
+    desired_result: Surface actionable operational exceptions and recent changes without another reporting engine.
+    acceptance:
+      - Show current service/source failures, dispatch refusals, fired deferral triggers and unresolved operator tasks from their canonical existing readers.
+      - Keep low-priority or dormant obligations discoverable while escalating actual blocked execution with its owner and remedy.
+      - Summarize recent verified changes deterministically with evidence links and an explicit history window; no model call on open or refresh.
+      - Route deeper diagnosis to status, dispatch journal, Back Burner, reports or the operator-task record; no fabricated healthy/empty state when a source fails.
+      - "Preserve the proof Artifact: Failure, fired-trigger and evidence-linked change fixtures; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+    dependencies:
+      - expose-planned-portfolio-work
+    references:
+      - apps/dashboard/lib/system-status.ts
+      - apps/dashboard/app/admin/dispatch-journal/page.tsx
+      - apps/dashboard/app/back-burner/page.tsx
+      - apps/dashboard/app/reports/page.tsx
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+  - id: complete-flight-deck-mobile-and-navigation-parity
+    desired_result: Complete keyboard, phone and specialist-return parity across Flight Deck operations.
+    acceptance:
+      - Desktop board/rail and phone grouped-list/detail expose the same canonical objects, primary actions, previews and receipts without horizontal scrolling for primary controls.
+      - Search, filters, selection, reload, browser Back and specialist-return preserve context; reset returns to portfolio overview.
+      - Keyboard focus, Escape, readable labels, touch targets and non-color state cues are verified.
+      - Provide a consistent Flight Deck return link in both existing navigation shells while retaining the old default until real-week acceptance.
+      - "Preserve the proof Artifact: Desktop/phone screenshots and keyboard/navigation Playwright evidence; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+    dependencies:
+      - focus-the-board-on-active-work
+      - expose-planned-portfolio-work
+      - launch-selected-agent-from-flight-deck
+      - reuse-proof-and-delivery-controls
+      - capture-and-correct-work-in-context
+      - surface-operational-exceptions-and-changes
+    references:
+      - apps/dashboard/components/chrome.tsx
+      - apps/dashboard/components/sidebar.tsx
+      - apps/dashboard/components/mobile-shell.tsx
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+  - id: verify-flight-deck-operational-loop
+    desired_result: Verify the complete Flight Deck loop and failure recovery with deterministic end-to-end evidence.
+    acceptance:
+      - Execute the scenario matrix in document 15 against isolated fixtures, including both provider selections, stale previews, duplicate launch, no packet, lost response and old active execution.
+      - Demonstrate orientation within 30 seconds of operator reading, healthy fixture useful content within 3 seconds, and visible timeout/retry within 12 seconds for a stalled source.
+      - Verify browse-only activity changes no governed state, queue revision or model invocation count, and mutations use canonical receipts.
+      - Run relevant core/dashboard/package-boundary checks and broader regression tests for extracted shared behavior; freeze the Candidate revision and publish exact QA procedure.
+      - "Preserve the proof Artifact: Frozen Candidate QA pack and full journey/failure matrix; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+    dependencies:
+      - complete-flight-deck-mobile-and-navigation-parity
+    references:
+      - tests/e2e
+      - docs/operator-demo-and-release-contract.md
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+  - id: dogfood-flight-deck-as-operations-home
+    desired_result: Rehearse Flight Deck as the operator entry point for a real week and record remaining gaps.
+    acceptance:
+      - Provide reachable Candidate and preserved Stable with exact revision, host/URL, recovery command and operator procedure before requesting rehearsal.
+      - Collect real operator evidence of orienting, inspecting planned work, changing priority, resolving judgment, launching an automatically selected agent and reviewing its result.
+      - Record each required detour with its cause; specialist deep inspection is allowed, routine-loop archaeology is a failure requiring repair before acceptance.
+      - Exercise live Codex and Claude only within separately authorized bounded Sessions; fixture proof is never labeled live success.
+      - When elapsed use or operator feedback is missing, record one precise review question/external condition rather than mark done; accept only with explicit operator judgment.
+      - "Preserve the proof Artifact: Dated real-week operator rehearsal and acceptance record; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+      - Use Active production to progress multiple Actions without manual session launches, observe capacity waiting/recovery, and exercise Off. Accept only after the multi-provider production proof passes.
+    dependencies:
+      - verify-flight-deck-operational-loop
+    references:
+      - docs/operator-demo-and-release-contract.md
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+  - id: make-flight-deck-the-default-entrance
+    desired_result: Make the accepted Flight Deck the default operational entrance while preserving specialist links.
+    acceptance:
+      - After recorded acceptance, route / to /flight-deck and update both nav shells, manifest entry behavior and START_HERE.md in the same change.
+      - Keep existing /now, /path, /review, /work-queue, Project, Run and Discord deep links working with clear return to Flight Deck.
+      - Verify desktop and phone cold-open, upgrade/bookmark behavior and direct links against the accepted revision.
+      - Publish rollback instructions for the root-route change and the final proof Artifact; retire no specialist route and widen no deployment exposure.
+      - "Preserve the proof Artifact: Default-entry and legacy-link smoke evidence plus rollback note; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+    dependencies:
+      - dogfood-flight-deck-as-operations-home
+    references:
+      - apps/dashboard/app/page.tsx
+      - apps/dashboard/app/manifest.ts
+      - apps/dashboard/components/chrome.tsx
+      - apps/dashboard/components/sidebar.tsx
+      - START_HERE.md
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md

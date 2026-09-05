@@ -427,7 +427,12 @@ describe("CLI response contract", () => {
   it("emits a usage error for project create when no workspace is configured", () => {
     const projectPath = createTempWorkspacePath();
 
-    const result = runCli(["project", "create", "Boring Defaults", projectPath, "--json"]);
+    // Workspace discovery includes repository-local markers, independently of user config.
+    const result = runCli(
+      ["project", "create", "Boring Defaults", projectPath, "--json"],
+      {},
+      { cwd: createNeutralCwd() }
+    );
 
     expect(result.status).toBe(2);
     const json = parseJson(result.stderr);

@@ -1,5 +1,10 @@
 # Session Unit Ledger — Deferred, With a Trigger
 
+> Scope distinction, 2026-09-05: [17](./17-managed-production-contract.md)
+> now prioritizes real capacity-aware production and automatic continuation.
+> This document's synthetic weekly Session Unit planning model remains deferred;
+> it is not a reason to defer operational capacity admission or worker proof.
+
 Explored on 2026-09-04 alongside the Flight Deck board, then set aside as
 independent of it. Preserved as evidence by Agent Ask
 `session-unit-ledger-deferred-2026-09-04`, which creates no executable Action.

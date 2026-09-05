@@ -10,7 +10,7 @@ updated: 2026-09-05
 
 ## 2026-09-05 — Flight Deck board plan activated on operator direction
 
-- **Action:** Pointer change only; no Action implemented.
+- **Scope:** Pointer change only; no Action implemented.
 - **Did:** The operator chose the Flight Deck / Mission Control plan as the
   next `active_plan` directly (not inferred). `PROJECT.md` now points at
   `flight-deck-board-carries-the-whole-portfolio-on-one-surface` with
