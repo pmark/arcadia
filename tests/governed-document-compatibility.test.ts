@@ -115,6 +115,9 @@ updated: 2026-08-14
     expect(resolution.context?.action.id).toBe("record-verdict");
     const activePlan = discovered.docs.find((doc) => doc.type === "plan");
     expect(activePlan?.type === "plan" && activePlan.actions[0].responsibility).toBe("requires_review");
+    // `codex` is the pre-rename spelling of the `agent` responsibility value;
+    // it must keep reading as `agent` rather than fail validation.
+    expect(activePlan?.type === "plan" && activePlan.actions[1].responsibility).toBe("agent");
   });
 
   it("continues to fail closed for malformed project-control YAML", () => {

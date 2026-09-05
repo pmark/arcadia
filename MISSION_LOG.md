@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-04
+updated: 2026-09-05
 ---
 
 # Mission Log: Arcadia
@@ -2401,5 +2401,12 @@ STILL OPEN. Nineteen other write transactions across src/ still use the deferred
 
 - **Did:** Record that the codex-to-agent responsibility rename Action opened PR
 - **Result:** Implemented Action rename-codex-responsibility-to-agent: renamed the WorkClassification value "codex" to "agent" across constants, CLI, validation, docs, and every Plan document's Action frontmatter; added a legacy-read compatibility path in src/docs/parse.ts and a database migration in src/db/schema.ts for existing work_items rows. Build is clean and the full test suite passes (1231 passed, 6 skipped, 0 failed), including new tests covering both the current literal and the legacy normalization path. Opened https://github.com/pmark/arcadia/pull/164 on branch claude/rename-codex-responsibility-to-agent-20260904T221634594Z for operator review and merge.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-09-05 — Agent Ask log-codex-responsibility-migration-fix-2026-09-05
+
+- **Did:** Record that dispatching rename-codex-responsibility-to-agent found the rename's code was already merged, but a dead legacy migration (ensureCodexClassificationRename) broke every fresh database because the current schema now legitimately contains 'agent' in its CHECK constraint. Fixed by removing the dead migration, fixing a stale CLI validation message, and updating/strengthening tests. Full suite (1232 tests) and build pass. Opened pull request https://github.com/pmark/arcadia/pull/165 on branch claude/fix-agent-responsibility-migration-20260905T003728Z; not yet merged.
+- **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.

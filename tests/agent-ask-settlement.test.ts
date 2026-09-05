@@ -764,27 +764,27 @@ describe("Agent Ask safety boundaries", () => {
     expect(settleOne(workspace, "log", "Recorded anyway", "unrelated-debt").data.receipt.applied).toBe(true);
   });
 
-  it("settles a log-intent Ask on a database whose work_items table predates the codex Responsibility rename", () => {
-    // Root cause of the reported bug: a database created under an older
-    // schema generation still enforces `work_classification IN ('autonomous',
-    // 'agent', 'requires_review', 'blocked')` — the current vocabulary calls
-    // that same Responsibility `codex` (WORK_CLASSIFICATIONS in
-    // src/domain/constants.ts), but nothing ever rebuilt that table's CHECK
-    // constraint. `syncProjectDocs` writes `codex` for the demo plan's
+  it("settles a log-intent Ask on a database whose work_items table predates the agent Responsibility rename", () => {
+    // Root cause of the reported bug (now inverted): a database created
+    // under the prior schema generation still enforces `work_classification
+    // IN ('autonomous', 'codex', 'requires_review', 'blocked')` — the current
+    // vocabulary calls that same Responsibility `agent` (WORK_CLASSIFICATIONS
+    // in src/domain/constants.ts), but nothing ever rebuilt that table's
+    // CHECK constraint. `syncProjectDocs` writes `agent` for the demo plan's
     // existing Action the first time it discovers it, which every settlement
     // triggers regardless of intent — Agent Ask `log` was where this
     // surfaced because its file mutation (the Mission Log append) always
     // exists, so it always runs a full-corpus docs sync, while the demo
     // fixture's other scenarios do not always touch an unsynced Action first.
-    // The fix is `ensureCodexClassificationRename` in src/db/schema.ts, which
+    // The fix is `ensureAgentResponsibilityValue` in src/db/schema.ts, which
     // rebuilds `work_items` with the current CHECK constraint and remaps any
-    // stored `agent` rows to `codex`, exactly as `ensureOperatorAgnosticSchema`
+    // stored `codex` rows to `agent`, exactly as `ensureOperatorAgnosticSchema`
     // already does for the `needs_mark` -> `requires_review` rename.
     const { workspace, repo } = fixture();
     withDatabase(workspace, (db) => {
       db.exec(`
         PRAGMA foreign_keys = OFF;
-        CREATE TABLE work_items__legacy_agent_check AS SELECT * FROM work_items;
+        CREATE TABLE work_items__legacy_codex_check AS SELECT * FROM work_items;
         DROP TABLE work_items;
         CREATE TABLE work_items (
           id TEXT PRIMARY KEY,
@@ -793,7 +793,7 @@ describe("Agent Ask safety boundaries", () => {
           title TEXT NOT NULL,
           raw_input TEXT NOT NULL,
           queue TEXT NOT NULL CHECK (queue IN ('inbox', 'work_queue', 'requires_review', 'blocked')),
-          work_classification TEXT NOT NULL CHECK (work_classification IN ('autonomous', 'agent', 'requires_review', 'blocked')),
+          work_classification TEXT NOT NULL CHECK (work_classification IN ('autonomous', 'codex', 'requires_review', 'blocked')),
           next_action TEXT NOT NULL,
           expected_artifact TEXT,
           status TEXT NOT NULL CHECK (status IN ('open', 'in_progress', 'done', 'blocked')),
@@ -819,8 +819,8 @@ describe("Agent Ask safety boundaries", () => {
           FOREIGN KEY (milestone_id) REFERENCES milestones(id) ON DELETE SET NULL,
           FOREIGN KEY (parent_work_item_id) REFERENCES work_items(id) ON DELETE SET NULL
         );
-        INSERT INTO work_items SELECT * FROM work_items__legacy_agent_check;
-        DROP TABLE work_items__legacy_agent_check;
+        INSERT INTO work_items SELECT * FROM work_items__legacy_codex_check;
+        DROP TABLE work_items__legacy_codex_check;
         CREATE INDEX idx_work_items_project_id ON work_items(project_id);
         CREATE INDEX idx_work_items_queue ON work_items(queue);
         CREATE INDEX idx_work_items_classification ON work_items(work_classification);
@@ -831,7 +831,7 @@ describe("Agent Ask safety boundaries", () => {
       const legacySchema = db
         .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'work_items'")
         .get() as { sql: string };
-      expect(legacySchema.sql).toContain("'agent'");
+      expect(legacySchema.sql).toContain("'codex'");
     });
 
     // Agent Ask preview -> settle preview -> settle --apply, end to end.
@@ -846,12 +846,12 @@ describe("Agent Ask safety boundaries", () => {
       const migratedSchema = db
         .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'work_items'")
         .get() as { sql: string };
-      expect(migratedSchema.sql).not.toContain("'agent'");
-      expect(migratedSchema.sql).toContain("'codex'");
+      expect(migratedSchema.sql).not.toContain("'codex'");
+      expect(migratedSchema.sql).toContain("'agent'");
       const existing = db
         .prepare("SELECT work_classification FROM work_items WHERE doc_ref = 'plan/demo-plan#existing'")
         .get() as { work_classification: string } | undefined;
-      expect(existing?.work_classification).toBe("codex");
+      expect(existing?.work_classification).toBe("agent");
     });
   });
 });
