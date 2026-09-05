@@ -8,8 +8,8 @@ milestone: Every adopting project receives Way changes and can ask for Way capab
 token_impact: medium
 token_budget: "Regeneration, drift comparison, and pull-request mechanics are deterministic and belong in code, not a model. Reserve model use for one implementation session per Action and a single review pass. A propagation run that calls a model per repository is the failure mode this budget exists to prevent."
 recommended_model: claude-sonnet-5
-updated: 2026-09-04
-current_action: carry-decision-options
+updated: 2026-09-05
+current_action: stop-dumping-rationale-into-recommendation
 actions:
   - id: seed-the-work-pointer-when-a-repository-is-adopted
     title: Write PROJECT.md and a first plan when a repository is adopted
@@ -216,7 +216,7 @@ actions:
     references: [docs/agents-context.md, src/projects/contextSetup.ts, src/projects/wayDrift.ts, src/ask/agentAsk.ts, START_HERE.md, src/cli.ts]
   - id: carry-decision-options
     title: A Decision can state the choices it is between, each with its consequence, and mark one as recommended - and an agent filing a Decision supplies them rather than leaving the operator to infer them from prose.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: A Decision can state the choices it is between, each with its consequence, and mark one as recommended - and an agent filing a Decision supplies them rather than leaving the operator to infer them from prose.
