@@ -290,6 +290,54 @@ describe("Agent Ask settlement", () => {
     withDatabase(workspace, (db) => expect(loadActionOrder(db).revision).toBe(1));
   });
 
+  it("amends an existing Action's Responsibility per Decision 0045 when the operator explicitly directs it", () => {
+    const { workspace, repo } = fixture();
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: askForIntent("amend-responsibility", "action", "Improve existing proof", "action/existing", ["Improved proof exists."])
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace,
+      proposal: proposal.data.proposal.id,
+      requestId: "settle-amend-responsibility",
+      disposition: "accepted",
+      responsibility: "agent",
+      revision: 1
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace,
+      proposal: proposal.data.proposal.id,
+      requestId: "settle-amend-responsibility",
+      disposition: "accepted",
+      responsibility: "agent",
+      revision: 1,
+      preview: preview.data.receipt.previewFingerprint,
+      apply: true
+    });
+    expect(applied.data.receipt).toMatchObject({ queueActionKey: "demo/existing", queuePosition: 0 });
+    expect(applied.data.receipt.effects).toContain("Set Responsibility to agent on the operator's explicit direction, per Decision 0045.");
+    const plan = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
+    expect(plan).toContain("responsibility: agent");
+    expect(plan).not.toContain("responsibility: codex");
+    withDatabase(workspace, (db) => expect(loadActionOrder(db).revision).toBe(1));
+  });
+
+  it("still refuses to move an existing Action's queue position during an amendment", () => {
+    const { workspace } = fixture();
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: askForIntent("amend-placement", "action", "Improve existing proof", "action/existing", ["Improved proof exists."])
+    });
+    expect(() => runAgentAskSettleCommand({
+      workspace,
+      proposal: proposal.data.proposal.id,
+      requestId: "settle-amend-placement",
+      disposition: "accepted",
+      top: true,
+      revision: 1
+    })).toThrow("Action amendment preserves its existing queue position.");
+  });
+
   it("accepts a structured multi-Action Ask as one contiguous queue bundle", () => {
     const { workspace, repo } = fixture();
     const proposal = runAgentAskPreviewCommand({ workspace, request: multiActionAsk("ask-bundle-1") });
