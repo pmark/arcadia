@@ -942,9 +942,13 @@ function amendAction(
     const replacement = ["    acceptance_criteria:", ...acceptance.map((criterion) => `      - ${yamlScalar(criterion)}`)].join("\n");
     block = block.replace(/^    acceptance_criteria:\r?\n(?:      - .*\r?\n?)*/m, `${replacement}\n`);
   }
-  block = block.replace(/^    depends_on:.*$/m,
+  // depends_on/references may already be written as a multi-line block list
+  // (each item on its own "      - " line) rather than an inline [a, b]; the
+  // continuation lines must be consumed too, or they survive as an orphaned
+  // sequence the YAML parser rejects.
+  block = block.replace(/^    depends_on:.*(?:\r?\n      - .*)*/m,
     dependencies.length > 0 ? `    depends_on: [${dependencies.join(", ")}]` : "    depends_on: []");
-  block = block.replace(/^    references:.*$/m,
+  block = block.replace(/^    references:.*(?:\r?\n      - .*)*/m,
     references.length > 0 ? `    references: [${references.map(yamlScalar).join(", ")}]` : "    references: []");
   block = /^    source:/m.test(block)
     ? block.replace(/^    source:.*$/m, `    source: ${yamlScalar(`Agent Ask ${requestId}`)}`)

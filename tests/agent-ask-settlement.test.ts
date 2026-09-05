@@ -11,6 +11,7 @@ import {
   runAgentAskSettleCommand
 } from "../src/commands/agentAsk.js";
 import { withDatabase } from "../src/db/connection.js";
+import { discoverDocs } from "../src/docs/discover.js";
 import { arrangeActionOrder, loadActionOrder } from "../src/dispatch/order.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -336,6 +337,40 @@ describe("Agent Ask settlement", () => {
       top: true,
       revision: 1
     })).toThrow("Action amendment preserves its existing queue position.");
+  });
+
+  it("amends an Action whose references and depends_on are written as a multi-line block list, not just inline", () => {
+    const { workspace, repo } = fixture();
+    const planPath = path.join(repo, "docs/plans/demo-plan.md");
+    const blockStylePlan = readFileSync(planPath, "utf8")
+      .replace("    depends_on: []", "    depends_on:\n      - another")
+      .replace("    references: []", "    references:\n      - docs/design.md\n      - docs/other.md")
+      .replace("  - id: existing", "  - id: another\n    title: Another\n    status: open\n    responsibility: agent\n    effort: session\n    next_action: Keep another moving.\n    expected_artifact: Another proof\n    clarification: clarified\n    confidence: high\n    acceptance_criteria:\n      - Another proof exists.\n    depends_on: []\n    decisions: []\n    references: []\n  - id: existing");
+    writeFileSync(planPath, blockStylePlan, "utf8");
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Rewrite existing Action's references and depends_on as block lists"], { cwd: repo });
+
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: askForIntent("amend-block-lists", "action", "Improve existing proof", "action/existing", ["Improved proof exists."])
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-amend-block-lists",
+      disposition: "accepted", responsibility: "agent", revision: 1
+    });
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-amend-block-lists",
+      disposition: "accepted", responsibility: "agent", revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+
+    const plan = readFileSync(planPath, "utf8");
+    expect(plan).toContain("references: []");
+    expect(plan).toContain("depends_on: []");
+    expect(plan).not.toMatch(/references:\r?\n      - docs\/design\.md/);
+    expect(plan).not.toMatch(/depends_on:\r?\n      - existing/);
+    const discovered = discoverDocs(repo);
+    expect(discovered.errors.filter((error) => error.relativePath === "docs/plans/demo-plan.md")).toEqual([]);
   });
 
   it("accepts a structured multi-Action Ask as one contiguous queue bundle", () => {
