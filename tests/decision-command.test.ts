@@ -105,6 +105,58 @@ describe("decision new", () => {
       })
     ).toThrow();
   });
+
+  it("writes options as a pickable list ahead of the rationale, with the recommendation flagged", () => {
+    const { workspace, repoRoot, projectSlug } = workspaceWithProject();
+    runDecisionNewCommand({
+      workspace,
+      project: projectSlug,
+      slug: "with-options",
+      question: "Merge now or hold?",
+      options: [
+        { label: "Merge now", consequence: "Ships immediately.", recommended: true },
+        { label: "Hold", consequence: "Delays the fix by a day." }
+      ]
+    });
+
+    const content = readFileSync(path.join(repoRoot, "docs/decisions/0001-with-options.md"), "utf8");
+    expect(content).toContain("options:\n  - label: Merge now\n    consequence: Ships immediately.\n    recommended: true");
+    expect(content).toContain("  - label: Hold\n    consequence: Delays the fix by a day.\n    recommended: false");
+    // The options list appears before "## Context", so a reader sees the choices first.
+    expect(content.indexOf("## Options")).toBeLessThan(content.indexOf("## Context"));
+    expect(content).toContain("- **Merge now** (recommended): Ships immediately.");
+
+    const validated = runDecisionValidateCommand({ workspace, project: projectSlug, id: "0001" });
+    expect(validated.data.valid).toBe(true);
+  });
+
+  it("is still valid without options — an Ask filed without any is never a reason a finding cannot be reported", () => {
+    const { workspace, projectSlug } = workspaceWithProject();
+    runDecisionNewCommand({ workspace, project: projectSlug, slug: "no-options", question: "Q?" });
+    const validated = runDecisionValidateCommand({ workspace, project: projectSlug, id: "0001" });
+    expect(validated.data.valid).toBe(true);
+  });
+
+  it("rejects more than one option marked recommended before ever writing the file", () => {
+    const { workspace, projectSlug } = workspaceWithProject();
+    let thrown: unknown;
+    try {
+      runDecisionNewCommand({
+        workspace,
+        project: projectSlug,
+        slug: "double-recommend",
+        question: "Q?",
+        options: [
+          { label: "A", consequence: "A happens.", recommended: true },
+          { label: "B", consequence: "B happens.", recommended: true }
+        ]
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect(JSON.stringify((thrown as { details?: unknown }).details)).toMatch(/one option may be marked/);
+  });
 });
 
 describe("decision approve", () => {
@@ -166,6 +218,43 @@ describe("decision approve", () => {
     expect(() =>
       runDecisionApproveCommand({ workspace, project: projectSlug, id: "9999", answer: "Anything" })
     ).toThrow(/No decision file matches/);
+  });
+
+  it("accepts an option's label as the answer, case-insensitively, and records it verbatim", () => {
+    const { workspace, repoRoot, projectSlug } = workspaceWithProject();
+    runDecisionNewCommand({
+      workspace,
+      project: projectSlug,
+      slug: "pick-one",
+      question: "Merge now or hold?",
+      options: [
+        { label: "Merge now", consequence: "Ships immediately.", recommended: true },
+        { label: "Hold", consequence: "Delays the fix by a day." }
+      ]
+    });
+
+    runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "merge now" });
+
+    const content = readFileSync(path.join(repoRoot, "docs/decisions/0001-pick-one.md"), "utf8");
+    expect(content).toContain("answer: Merge now");
+  });
+
+  it("refuses an answer that names no declared option", () => {
+    const { workspace, projectSlug } = workspaceWithProject();
+    runDecisionNewCommand({
+      workspace,
+      project: projectSlug,
+      slug: "pick-one-again",
+      question: "Merge now or hold?",
+      options: [
+        { label: "Merge now", consequence: "Ships immediately.", recommended: true },
+        { label: "Hold", consequence: "Delays the fix by a day." }
+      ]
+    });
+
+    expect(() =>
+      runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Something else entirely" })
+    ).toThrow(/offers specific options/);
   });
 });
 

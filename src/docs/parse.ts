@@ -19,6 +19,7 @@ import {
   SUPPORTING_DOC_TYPES,
   TOKEN_IMPACTS,
   type ArcadiaDoc,
+  type DecisionOptionDoc,
   type DocType,
   type DocValidationError,
   type LogEntryDoc,
@@ -275,6 +276,7 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
       if (status === "approved" && !answer) {
         problems.add("answer", 'A decision with status "approved" must record an `answer`.');
       }
+      const options = parseDecisionOptions(problems, data.options);
 
       if (!problems.ok) {
         return { doc: null, errors: problems.errors };
@@ -292,6 +294,7 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
           question: question!,
           gapType: gapType as never,
           recommendation: optionalString(data, "recommendation"),
+          options,
           confidence: confidence as never,
           decided,
           answer,
@@ -614,6 +617,53 @@ function parseQuestions(problems: Problems, raw: unknown): PlanQuestionDoc[] {
   });
 
   return questions;
+}
+
+/**
+ * `options` is optional on every Decision — an Ask filed without them, or an
+ * older document written before this field existed, must still parse. Only
+ * once the list is present does each entry owe a label and a consequence.
+ */
+function parseDecisionOptions(problems: Problems, raw: unknown): DecisionOptionDoc[] {
+  if (raw === undefined || raw === null) {
+    return [];
+  }
+  if (!Array.isArray(raw)) {
+    problems.add("options", "`options` must be a list.");
+    return [];
+  }
+
+  const options: DecisionOptionDoc[] = [];
+  let recommendedCount = 0;
+  raw.forEach((entry, index) => {
+    const field = `options[${index}]`;
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      problems.add(field, "Each option must be a mapping.");
+      return;
+    }
+    const value = entry as Record<string, unknown>;
+    const label = requiredString(problems, value, "label", field);
+    const consequence = requiredString(problems, value, "consequence", field);
+    const recommendedRaw = value.recommended;
+    if (recommendedRaw !== undefined && typeof recommendedRaw !== "boolean") {
+      problems.add(`${field}.recommended`, "`recommended` must be true or false.");
+      return;
+    }
+    const recommended = recommendedRaw === true;
+    if (!label || !consequence) {
+      return;
+    }
+    if (recommended) {
+      recommendedCount += 1;
+    }
+    options.push({ label, consequence, recommended });
+  });
+
+  if (recommendedCount > 1) {
+    problems.add("options", "At most one option may be marked `recommended`.");
+  }
+
+  return options;
 }
 
 const LOG_HEADING = /^##\s+(\d{4}-\d{2}-\d{2})\s*[—-]\s*(.+?)\s*$/;

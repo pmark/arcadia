@@ -194,6 +194,19 @@ export interface PlanDoc extends DocLocation {
   body: string;
 }
 
+/**
+ * One choice a Decision is between.
+ *
+ * An operator answering a Decision should be able to pick from these without
+ * reading the rationale first — the consequence is what a choice costs or
+ * buys, stated plainly enough to decide from alone.
+ */
+export interface DecisionOptionDoc {
+  label: string;
+  consequence: string;
+  recommended: boolean;
+}
+
 export interface DecisionDoc extends DocLocation {
   type: "decision";
   id: string;
@@ -205,6 +218,8 @@ export interface DecisionDoc extends DocLocation {
   question: string;
   gapType: GapType | null;
   recommendation: string | null;
+  /** Ordered choices the Decision is between. Empty when the Ask offered none. */
+  options: DecisionOptionDoc[];
   confidence: ClarificationConfidence | null;
   decided: string | null;
   answer: string | null;

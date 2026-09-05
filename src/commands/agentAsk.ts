@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { ACTION_ID_MAX_LENGTH, ACTION_ID_PATTERN, AGENT_ASK_AUTHORITIES, AGENT_ASK_INTENTS, STRICT_ACTION_FIELDS, STRICT_FIELDS, agentAskFingerprint, buildAgentAskEffects, normalizeAgentAsk, requiresManagedDocumentTransition, stableProposalId, type AgentAskProposal } from "../ask/agentAsk.js";
+import { ACTION_ID_MAX_LENGTH, ACTION_ID_PATTERN, AGENT_ASK_AUTHORITIES, AGENT_ASK_INTENTS, STRICT_ACTION_FIELDS, STRICT_FIELDS, STRICT_OPTION_FIELDS, agentAskFingerprint, buildAgentAskEffects, normalizeAgentAsk, requiresManagedDocumentTransition, stableProposalId, type AgentAskProposal } from "../ask/agentAsk.js";
 import { captureAskEnvelope } from "../ask/captureEnvelope.js";
 import { resolveProjectReference } from "../ask/rules.js";
 import { validationError } from "../cli/errors.js";
@@ -158,7 +158,7 @@ export interface AgentAskContractData {
   version: "v1";
   intents: readonly string[];
   authorities: readonly string[];
-  fields: { envelope: string[]; action: string[]; required: string[] };
+  fields: { envelope: string[]; action: string[]; option: string[]; required: string[] };
   actionId: { pattern: string; maxLength: number; derivedWhenOmitted: true };
   authorityBoundary: string[];
 }
@@ -181,6 +181,7 @@ export function runAgentAskContractCommand(): CommandSuccess<AgentAskContractDat
       fields: {
         envelope: [...STRICT_FIELDS].sort(),
         action: [...STRICT_ACTION_FIELDS].sort(),
+        option: [...STRICT_OPTION_FIELDS].sort(),
         required: ["request_id", "desired_result"]
       },
       actionId: { pattern: ACTION_ID_PATTERN.source, maxLength: ACTION_ID_MAX_LENGTH, derivedWhenOmitted: true },
@@ -203,6 +204,7 @@ export function renderAgentAskContractSuccess(response: CommandSuccess<AgentAskC
     `Required fields: ${d.fields.required.join(", ")}`,
     `Envelope fields: ${d.fields.envelope.join(", ")}`,
     `Action fields: ${d.fields.action.join(", ")}`,
+    `Option fields (decision intent only): ${d.fields.option.join(", ")}`,
     `Action id: ${d.actionId.pattern} (max ${d.actionId.maxLength}; derived from desired_result when omitted)`,
     "Authority boundary:",
     ...d.authorityBoundary.map((line) => `  - ${line}`)
