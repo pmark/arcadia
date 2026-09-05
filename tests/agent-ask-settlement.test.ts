@@ -763,6 +763,97 @@ describe("Agent Ask safety boundaries", () => {
 
     expect(settleOne(workspace, "log", "Recorded anyway", "unrelated-debt").data.receipt.applied).toBe(true);
   });
+
+  it("settles a log-intent Ask on a database whose work_items table predates the codex Responsibility rename", () => {
+    // Root cause of the reported bug: a database created under an older
+    // schema generation still enforces `work_classification IN ('autonomous',
+    // 'agent', 'requires_review', 'blocked')` — the current vocabulary calls
+    // that same Responsibility `codex` (WORK_CLASSIFICATIONS in
+    // src/domain/constants.ts), but nothing ever rebuilt that table's CHECK
+    // constraint. `syncProjectDocs` writes `codex` for the demo plan's
+    // existing Action the first time it discovers it, which every settlement
+    // triggers regardless of intent — Agent Ask `log` was where this
+    // surfaced because its file mutation (the Mission Log append) always
+    // exists, so it always runs a full-corpus docs sync, while the demo
+    // fixture's other scenarios do not always touch an unsynced Action first.
+    // The fix is `ensureCodexClassificationRename` in src/db/schema.ts, which
+    // rebuilds `work_items` with the current CHECK constraint and remaps any
+    // stored `agent` rows to `codex`, exactly as `ensureOperatorAgnosticSchema`
+    // already does for the `needs_mark` -> `requires_review` rename.
+    const { workspace, repo } = fixture();
+    withDatabase(workspace, (db) => {
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+        CREATE TABLE work_items__legacy_agent_check AS SELECT * FROM work_items;
+        DROP TABLE work_items;
+        CREATE TABLE work_items (
+          id TEXT PRIMARY KEY,
+          project_id TEXT,
+          milestone_id TEXT,
+          title TEXT NOT NULL,
+          raw_input TEXT NOT NULL,
+          queue TEXT NOT NULL CHECK (queue IN ('inbox', 'work_queue', 'requires_review', 'blocked')),
+          work_classification TEXT NOT NULL CHECK (work_classification IN ('autonomous', 'agent', 'requires_review', 'blocked')),
+          next_action TEXT NOT NULL,
+          expected_artifact TEXT,
+          status TEXT NOT NULL CHECK (status IN ('open', 'in_progress', 'done', 'blocked')),
+          effort TEXT CHECK (effort IS NULL OR effort IN ('quick', 'short', 'session', 'project')),
+          clarification_status TEXT CHECK (
+            clarification_status IS NULL
+            OR clarification_status IN ('unclarified', 'clarified', 'question_open')
+          ),
+          gap_type TEXT CHECK (
+            gap_type IS NULL
+            OR gap_type IN ('missing-decision', 'missing-external-input', 'missing-definition', 'missing-success-criteria')
+          ),
+          open_question TEXT,
+          clarification_source TEXT,
+          confidence TEXT CHECK (confidence IS NULL OR confidence IN ('high', 'medium', 'low')),
+          parent_work_item_id TEXT,
+          doc_ref TEXT,
+          execution_requirement_json TEXT,
+          acceptance_criteria_json TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+          FOREIGN KEY (milestone_id) REFERENCES milestones(id) ON DELETE SET NULL,
+          FOREIGN KEY (parent_work_item_id) REFERENCES work_items(id) ON DELETE SET NULL
+        );
+        INSERT INTO work_items SELECT * FROM work_items__legacy_agent_check;
+        DROP TABLE work_items__legacy_agent_check;
+        CREATE INDEX idx_work_items_project_id ON work_items(project_id);
+        CREATE INDEX idx_work_items_queue ON work_items(queue);
+        CREATE INDEX idx_work_items_classification ON work_items(work_classification);
+        CREATE INDEX idx_work_items_parent ON work_items(parent_work_item_id);
+        CREATE INDEX idx_work_items_doc_ref ON work_items(doc_ref);
+        PRAGMA foreign_keys = ON;
+      `);
+      const legacySchema = db
+        .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'work_items'")
+        .get() as { sql: string };
+      expect(legacySchema.sql).toContain("'agent'");
+    });
+
+    // Agent Ask preview -> settle preview -> settle --apply, end to end.
+    const applied = settleOne(workspace, "log", "Recorded on a pre-rename database", "settle-legacy-classification");
+    expect(applied.data.receipt.applied).toBe(true);
+    expect(applied.data.receipt.effects.join(" ")).toContain("Appended one Project Log entry");
+    expect(readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8")).toContain(
+      "Agent Ask settle-legacy-classification"
+    );
+
+    withDatabase(workspace, (db) => {
+      const migratedSchema = db
+        .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'work_items'")
+        .get() as { sql: string };
+      expect(migratedSchema.sql).not.toContain("'agent'");
+      expect(migratedSchema.sql).toContain("'codex'");
+      const existing = db
+        .prepare("SELECT work_classification FROM work_items WHERE doc_ref = 'plan/demo-plan#existing'")
+        .get() as { work_classification: string } | undefined;
+      expect(existing?.work_classification).toBe("codex");
+    });
+  });
 });
 
 /** Preview one Ask, then apply its settlement. Returns the applied result. */

@@ -45,6 +45,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureActionQueueOrderTables(db);
   ensureRequiresReviewCompatibility(db);
   ensureOperatorAgnosticSchema(db);
+  ensureCodexClassificationRename(db);
   ensureExecutionRunWorkerColumns(db);
   ensureDecisionGatedPlanningColumns(db);
   ensureAskFeedbackTable(db);
@@ -1039,6 +1040,39 @@ function ensureRequiresReviewCompatibility(db: Database.Database): void {
   }
 
   repairLegacyRequiresReviewReferences(db);
+}
+
+/**
+ * Retire the legacy `agent` Responsibility value from `work_items`. An older
+ * schema generation's CHECK constraint accepted `agent`; the current
+ * vocabulary calls that same Responsibility `codex` (see
+ * `WORK_CLASSIFICATIONS` in `src/domain/constants.ts`). A database created
+ * under the old CHECK never had its table rebuilt when the rename landed, so
+ * `work_items` on such a database still enforces `('autonomous', 'agent',
+ * 'requires_review', 'blocked')` while every write path now produces
+ * `'codex'` — every INSERT/UPDATE that creates or reclassifies a Codex Action
+ * on that database fails `CHECK constraint failed: work_classification`,
+ * including the settle-time `syncProjectDocs` pass that Agent Ask settlement
+ * runs for every intent (not only `log` — `log` merely fires the full
+ * corpus resync, so it discovers unsynced Actions other intents happened not
+ * to touch yet).
+ *
+ * Existing rows are remapped from `agent` to `codex` as part of the same
+ * rebuild that installs the current CHECK constraint, mirroring
+ * `ensureOperatorAgnosticSchema`'s `needs_mark` -> `requires_review` repair
+ * immediately above.
+ */
+function ensureCodexClassificationRename(db: Database.Database): void {
+  const row = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'work_items'")
+    .get() as { sql: string } | undefined;
+  if (!row?.sql || !row.sql.includes("'agent'")) {
+    return;
+  }
+
+  rebuildTableWithCurrentSchema(db, "work_items", [
+    { column: "work_classification", from: "agent", to: "codex" }
+  ]);
 }
 
 function ensureOperatorAgnosticSchema(db: Database.Database): void {
