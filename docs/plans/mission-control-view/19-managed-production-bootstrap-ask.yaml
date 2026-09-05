@@ -1,5 +1,5 @@
 agent_ask: v1
-request_id: managed-production-bootstrap-plan-2026-09-05
+request_id: managed-production-bootstrap-quality-gates-2026-09-05
 project: arcadia
 intent: plan
 requested_authority: propose
@@ -8,6 +8,7 @@ rationale: Operator explicitly requires managed production first so it can build
 references:
   - docs/plans/mission-control-view/17-managed-production-contract.md
   - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+  - docs/plans/mission-control-view/20-production-quality-and-reliability.md
 actions:
   - id: define-managed-production-policy
     desired_result: Persist a bounded Active/Inactive production policy and admission authority in the existing workspace.
@@ -17,6 +18,7 @@ actions:
       - Off fences new admissions and queued-but-unlaunched production work before confirmation; default lets committed running work finish/reconcile, with exact displayed consequence.
       - Policy state remains accessible when queue/provider reads or execution block; race tests define the cutoff for already-committed launches.
       - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
+      - Define measurable control deadlines and bounded attempt budgets from contract 20; policy-store failure cannot report confirmed Off or admit new work.
     dependencies: []
     references:
       - docs/plans/mission-control-view/17-managed-production-contract.md
@@ -24,6 +26,7 @@ actions:
       - src/sessions/index.ts
       - src/db/schema.ts
       - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+      - docs/plans/mission-control-view/20-production-quality-and-reliability.md
   - id: prove-provider-capacity-admission
     desired_result: Prove and reuse existing Codex and Claude telemetry for unattended included-capacity admission.
     acceptance:
@@ -42,6 +45,7 @@ actions:
       - docs/plans/provider-capacity-harvesting.md
       - docs/plans/agent-advance-queue.md
       - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+      - docs/plans/mission-control-view/20-production-quality-and-reliability.md
   - id: resolve-production-agent-and-launch-preview
     desired_result: Preview execution with automatic coding-agent selection and an exact bounded launch contract.
     acceptance:
@@ -50,6 +54,7 @@ actions:
       - Selection accounts for launch-adapter availability, rejects unsatisfied requirements without downgrade, and never silently changes an immutable packet provider.
       - Preview starts no process and performs no Git mutation; expose missing packet, stale pointer, unavailable provider and conflicting execution as named prerequisites.
       - "Preserve the proof Artifact: Selection and launch-preview contract fixtures including both providers; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+      - Bind criterion-level validation and required review to the packet; preserve capability floors regardless of remaining provider capacity.
     dependencies:
       - define-managed-production-policy
     references:
@@ -59,6 +64,7 @@ actions:
       - src/sessions/index.ts
       - docs/plans/mission-control-view/17-managed-production-contract.md
       - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+      - docs/plans/mission-control-view/20-production-quality-and-reliability.md
   - id: connect-action-to-launch-packet
     desired_result: Connect a dispatchable Action to its existing preparation and approval path before launch.
     acceptance:
@@ -77,6 +83,7 @@ actions:
       - apps/dashboard/app/api/projects/[id]/continuation/route.ts
       - docs/plans/mission-control-view/17-managed-production-contract.md
       - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+      - docs/plans/mission-control-view/20-production-quality-and-reliability.md
   - id: support-selected-codex-and-claude-sessions
     desired_result: Launch the selected Codex or Claude adapter through the canonical Session subsystem.
     acceptance:
@@ -95,6 +102,7 @@ actions:
       - src/db/schema.ts
       - docs/plans/mission-control-view/17-managed-production-contract.md
       - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+      - docs/plans/mission-control-view/20-production-quality-and-reliability.md
   - id: expose-guarded-host-session-launch
     desired_result: Expose a bounded server launch operation with replay-safe receipts and fresh authority checks.
     acceptance:
@@ -105,6 +113,7 @@ actions:
       - Launch grants no implicit merge, integration, cleanup, deployment, spending, credential expansion or messaging; failures preserve recoverable work.
       - "Preserve the proof Artifact: Launch boundary, replay, crash-window and conflict integration tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
       - Support either a current explicit one-Session launch grant or a valid standing managed-production policy with an epoch-bound admission receipt; recheck Off immediately before launch commitment. Do not require a new human launch click for every authorized Action.
+      - Inject pre/post-spawn crashes and lost responses; reconcile ambiguous launch identity without blind retry and prove at most one live conflicting execution.
     dependencies:
       - support-selected-codex-and-claude-sessions
     references:
@@ -114,6 +123,7 @@ actions:
       - src/execution/planningAuthorization.ts
       - docs/plans/mission-control-view/17-managed-production-contract.md
       - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+      - docs/plans/mission-control-view/20-production-quality-and-reliability.md
   - id: observe-portfolio-agent-sessions
     desired_result: Show all active Sessions and Runs with fresh observation and native recovery access.
     acceptance:
@@ -132,6 +142,7 @@ actions:
       - apps/dashboard/hooks/use-arcadia-snapshot.ts
       - docs/plans/mission-control-view/17-managed-production-contract.md
       - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+      - docs/plans/mission-control-view/20-production-quality-and-reliability.md
   - id: reconcile-session-exits-to-next-move
     desired_result: Reconcile Session exit into durable evidence and the next governed Action or Decision.
     acceptance:
@@ -141,6 +152,8 @@ actions:
       - Display the resulting canonical next Action or exact judgment/blocker with a usable link; automatic next admission only under the current Active production policy; no hand-edited governance state.
       - Retry/reconcile/reload is idempotent and does not duplicate completion, Decisions or execution.
       - "Preserve the proof Artifact: Exit-to-evidence-to-next-move lifecycle integration tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+      - Require criterion-level evidence bound to the exact Candidate revision and a separate review pass for nontrivial code and safety boundaries; unresolved blocking findings, missing/skipped checks and stale evidence prevent acceptance.
+      - Prove the quality gate rejects deliberately failed tests, absent artifacts and false agent completion claims as specified in contract 20.
     dependencies:
       - observe-portfolio-agent-sessions
     references:
@@ -150,6 +163,7 @@ actions:
       - src/docs/dispatch.ts
       - docs/plans/mission-control-view/17-managed-production-contract.md
       - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+      - docs/plans/mission-control-view/20-production-quality-and-reliability.md
   - id: advance-approved-production-work
     desired_result: Advance accepted production work through canonical completion, Log and pointer transitions.
     acceptance:
@@ -158,6 +172,7 @@ actions:
       - Within approved scope select the next dependency-ready Action or already-authorized Plan activation, with exact receipts; draft/unapproved Plan activation never occurs by queue inference.
       - Repeated reconciliation and crash recovery cannot duplicate completion, logs, Decisions or pointer changes; failure preserves evidence and isolates that Project.
       - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
+      - Inject crashes across document write, commit, projection and receipt boundaries; recover one canonical transition without duplicate Logs or skipped Actions, and invalidate affected proof after Candidate/base changes.
     dependencies:
       - reconcile-session-exits-to-next-move
       - define-managed-production-policy
@@ -169,6 +184,7 @@ actions:
       - src/dispatch/pointer.ts
       - src/ask/settlement.ts
       - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+      - docs/plans/mission-control-view/20-production-quality-and-reliability.md
   - id: feed-and-supervise-managed-production
     desired_result: Extend the existing worker to continuously admit, supervise and advance approved Sessions while Active.
     acceptance:
@@ -178,6 +194,7 @@ actions:
       - Off remains responsive during running work and stops future launch commitments; worker restart reconciles existing work and policy epoch before admission.
       - Blocked approval, unavailable provider or failed Project permits independent eligible work to progress. Exhausted capacity schedules bounded rechecks; repeated failures have finite repair/retry limits and one actionable stop.
       - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
+      - Enforce finite repair/model-attempt budgets and deadlines; hung processes and disk/write failure remain visible and preserve work; do not release uncertain leases or loop across providers to bypass a failure.
     dependencies:
       - advance-approved-production-work
       - prove-provider-capacity-admission
@@ -189,6 +206,7 @@ actions:
       - src/dispatch/order.ts
       - src/sessions/index.ts
       - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+      - docs/plans/mission-control-view/20-production-quality-and-reliability.md
   - id: expose-bootstrap-production-controls
     desired_result: Expose the production switch, priority, capacity and review stops on the existing Work Queue.
     dependencies:
@@ -198,12 +216,14 @@ actions:
       - apps/dashboard/app/api/work-queue/route.ts
       - docs/plans/mission-control-view/17-managed-production-contract.md
       - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
+      - docs/plans/mission-control-view/20-production-quality-and-reliability.md
     acceptance:
       - Add a minimal Active/Inactive control and desired-versus-observed status to /work-queue using the production service; no /flight-deck route or component is required.
       - Reuse existing Plan segment/Action priority previews, review destinations and Session links; show included scope, selected/next Action, capacity age and exact operator stops.
       - The control works on phone and desktop and remains responsive during execution and slow source reads; Off follows the documented policy.
       - Extract the concrete production control for reuse by Flight Deck rather than building a second controller or state store.
       - Preserve a runnable QA Artifact naming exact URL, host, revision and recovery command.
+      - Measure durable Off acknowledgment within two seconds on the recorded healthy local host under stalled execution/provider reads; persistence failure is visible within five seconds without false confirmation.
   - id: prove-two-action-unattended-production
     desired_result: Prove two dependent Actions run from one activation using the existing Work Queue production control.
     acceptance:
@@ -219,6 +239,7 @@ actions:
       - docs/plans/mission-control-view/17-managed-production-contract.md
       - docs/operator-demo-and-release-contract.md
       - docs/plans/idea-to-managed-build.md
+      - docs/plans/mission-control-view/20-production-quality-and-reliability.md
   - id: prove-multi-provider-production-recovery
     desired_result: Prove continuous production across configured providers, independent Plans and capacity recovery.
     acceptance:
@@ -228,6 +249,7 @@ actions:
       - Exercise failed validation, bounded repair, mid-Session exhaustion/checkpoint recovery, stale policy, duplicate worker and approval boundaries; partial work must not be rerun blindly.
       - Publish live/fixture evidence for each boundary and exact outstanding gap; final acceptance requires supported automatic telemetry and no manual refresh/Session relay disguised as unattended operation.
       - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
+      - Pass the contract 20 deterministic fault matrix, at least 100 reproducible interleavings per race scenario, and bounded live soak of ten accepted Actions across two Projects/both providers with restart, Off and recoverable failure; retain all interventions and failures.
     dependencies:
       - prove-two-action-unattended-production
     references:
@@ -235,6 +257,7 @@ actions:
       - src/codingAgents/availability.ts
       - src/commands/worker.ts
       - docs/plans/provider-capacity-harvesting.md
+      - docs/plans/mission-control-view/20-production-quality-and-reliability.md
   - id: freeze-production-runtime-and-handoff-flight-deck
     desired_result: Freeze the proven production runtime and prepare Flight Deck as its first real production workload.
     dependencies:
@@ -244,9 +267,11 @@ actions:
       - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
       - docs/working-copy-safety.md
       - docs/plans/mission-control-view/14-flight-deck-plan-amendment.yaml
+      - docs/plans/mission-control-view/20-production-quality-and-reliability.md
     acceptance:
       - Identify and preserve the exact proven worker/runtime revision, service command, workspace/schema compatibility and rollback/recovery procedure independently of coding worktrees.
       - Prove that editing/building Flight Deck in an isolated Arcadia worktree does not replace, hot-reload or restart the controller; runtime upgrades require a separate controlled handoff.
       - Present the Flight Deck Plan scope and first two dependent Actions, current queue segment, automatic completion policy and external merge/publication boundaries as one handoff Artifact.
       - After bootstrap acceptance and approved Plan transition, the canonical pointer selects Flight Deck and production admits its first Action; no repeated human Session setup is required.
       - If Flight Deck cannot advance without a merge or subjective acceptance, show that exact approval in the existing review surface. Never weaken a gate to manufacture uninterrupted progress.
+      - Publish the contract 20 release evidence index; every required proof is passed at the accepted revision, blocking findings are resolved, and independent status/Off plus recovery are exercised before unattended Flight Deck handoff.

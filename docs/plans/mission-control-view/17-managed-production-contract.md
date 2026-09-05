@@ -168,3 +168,5 @@ receipts and exact operator interventions. Simulated limits are labeled fixtures
 The full feature is not accepted until both configured providers, automatic
 capacity recovery and the production switch are demonstrated. A read-only board
 or a single manually launched Session is not the claimed product.
+
+Quality and release gates: [20](./20-production-quality-and-reliability.md) adds criterion-level revision-bound acceptance, independent review, fault injection and a bounded live soak. The revised bootstrap Ask incorporates these gates without adding a second implementation or changing its 14-Action order.

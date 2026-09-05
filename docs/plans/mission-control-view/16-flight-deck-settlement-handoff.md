@@ -166,3 +166,15 @@ acyclic and referenced source/doc paths exist. Neither proposal is settled.
 Preview validation proves proposal shape, not a working production controller.
 The canonical pointer still requires the explicit bootstrap activation described
 in [18](./18-bootstrap-then-dogfood.md).
+
+## Latest bootstrap quality-gate revision
+
+The operator requested strong output quality and reliability. The 14-Action
+bootstrap proposal now includes contract 20; this preview supersedes the prior
+bootstrap receipt above. Flight Deck amendment remains unchanged.
+
+- Proposal: `agentask_d2fb50b216146e5e08`
+- Fingerprint: `d2fb50b216146e5e0834a3a4531b5fa814183ea5ccda7346fd93ddb5874aac5c`
+- Preview passed with no conflicts/refusals and zero Project writes.
+- This proves proposal validity only; implementation, live soak and release
+  acceptance remain outstanding. Do not settle the superseded bootstrap version.

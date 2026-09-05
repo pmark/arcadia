@@ -97,3 +97,5 @@ When bootstrap is proven, activate Flight Deck as the next authorized Plan and
 start its admitted production scope once. The first two Flight Deck Actions are
 the real dogfood; the third verifies their actual controller receipts. The old
 queue repair remains valid historical preservation, not final Plan A priority.
+
+Quality and release gates: [20](./20-production-quality-and-reliability.md) adds criterion-level revision-bound acceptance, independent review, fault injection and a bounded live soak. The revised bootstrap Ask incorporates these gates without adding a second implementation or changing its 14-Action order.

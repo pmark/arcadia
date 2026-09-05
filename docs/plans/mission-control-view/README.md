@@ -78,3 +78,5 @@ Plans and protects the stable controller during its own repository's development
 14 Actions with no Flight Deck dependency; [14](./14-flight-deck-plan-amendment.yaml)
 now proposes 17 Flight Deck Actions executed by that controller. This replaces
 the pending combined Plan. Plan creation alone does not activate it.
+
+- [20: Production quality and reliability](./20-production-quality-and-reliability.md) — output acceptance, recovery invariants and required release evidence.
