@@ -1,5 +1,9 @@
 # Flight Deck Board — Build Specification
 
+> Latest scope: [continuous managed production](./17-managed-production-contract.md)
+> is now the primary requirement, with prioritized Plans and Active/Inactive
+> control. Build the unattended production proof before broad presentation polish.
+
 > Scope update proposed 2026-09-05: read [the reuse audit](./11-existing-surfaces-audit.md),
 > [operations contract](./12-flight-deck-operations-contract.md), and
 > [delivery sequence](./13-flight-deck-delivery-sequence.md) before implementation.

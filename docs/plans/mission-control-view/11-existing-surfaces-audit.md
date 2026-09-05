@@ -148,7 +148,8 @@ under `apps/dashboard/app/api/`; pages under `apps/dashboard/app/`.
 3D/force layout: revisit only after the complete operational loop works and a
 recorded navigation task remains materially hard with board/list/search.
 Weekly provider budgeting: retain doc 10's existing telemetry/operator-request
-trigger. Continuous autonomous scheduling, arbitrary terminal streaming/control,
+trigger. Continuous managed production is now required by the operator; see the source
+audit and scope in 17. Arbitrary terminal streaming/control,
 transcript interpretation and agent chat injection: revisit when a documented
 operator task cannot be completed through one explicit Session plus native
 reattach/resume. Deleting specialist routes: only after real-week parity proof

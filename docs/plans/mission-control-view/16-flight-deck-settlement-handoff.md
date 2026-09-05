@@ -1,5 +1,21 @@
 # Flight Deck: reviewable settlement handoff
 
+## Current pending production revision
+
+The operator paused merge approval and requested continuously managed production
+as the urgent feature on 2026-09-05. The intended request is now
+`flight-deck-managed-production-2026-09-05`: 27 Actions and the contract in 17.
+Do not apply the earlier twenty-Action requests or their settlement fingerprints.
+The existing queue repair and publication approvals remain valid; expanded
+production-policy approval and PR merge remain pending. No worker was enabled,
+provider Session started, or new plan amendment settled by this revision.
+
+The source audit, intended approval surface and current state must show this
+revised proposal directly, with the earlier versions preserved as history.
+The old requests remain unsettled receipts; a supporting document is not a
+canonical rejection or supersession. At settlement, explicitly dispose of old
+versions under operator authority rather than silently executing both.
+
 ## Current handoff after operator approval
 
 The operator explicitly approved the revised proposal, queue repair, and

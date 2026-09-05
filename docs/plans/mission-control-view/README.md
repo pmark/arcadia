@@ -60,3 +60,12 @@ These are supporting design/proposal Artifacts. They do not independently change
 the Project pointer, mark work complete, or settle the proposed amendments.
 
 - [16 — Settlement handoff](./16-flight-deck-settlement-handoff.md): validated proposal, queue prerequisite, exact operator question and safe application sequence.
+
+## Latest priority: managed production
+
+[17 — Managed production](./17-managed-production-contract.md) is the latest
+operator scope: prioritized Plans, Active/Inactive control, automatic capacity
+admission, worker-supervised Sessions and automatic next-Action advancement.
+The revised Ask contains 27 Actions, with a real two-Action production proof
+before broad UI polish. The earlier manual-launch-only proposal is no longer
+the intended feature for settlement; this expanded version awaits review.

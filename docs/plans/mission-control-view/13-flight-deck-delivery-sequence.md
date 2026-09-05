@@ -1,7 +1,7 @@
 # Flight Deck: delivery sequence and continuation guide
 
-This is the readable companion to the exact Agent Ask in 14. It proposes 20
-session-sized Actions: four amendments preserving existing ids and sixteen new
+This is the readable companion to the current exact Agent Ask in 14, revised for the production contract in 17. It proposes 27
+session-sized Actions: four amendments preserving existing ids and twenty-three new
 Actions. It is not a second managed plan and does not change the current pointer.
 
 ## Milestone and order
@@ -10,34 +10,41 @@ Current governed Milestone: Flight Deck board carries the whole portfolio on one
 surface. Completion of this expanded feature additionally requires the full loop
 in 12 and acceptance matrix in 15; a board alone does not satisfy the proposal.
 
-Build the truthful shell and reused controls first, then launch/observe/prove,
-then integrate, rehearse and make it home. The existing current Action remains
+Build the minimum operational shell, then prove the continuously managed
+production loop in 17 before broader presentation and default-home migration. The existing current Action remains
 first and independently executable. Dependencies below are required prerequisites,
 not permission to start parallel sessions. At each stopping point the governed
 pointer selects the next accepted Action, not this table or document order.
 
-| Order | Action | Prerequisites | Execution sizing | Proof Artifact |
-| --- | --- | --- | --- | --- |
-| 1 | `project-plan-lanes-and-pipeline-columns` | None; current pointer | `routine_implementation`; medium effort | Projection/state fixtures and first route desktop screenshot |
-| 2 | `focus-the-board-on-active-work` | `project-plan-lanes-and-pipeline-columns` | `routine_implementation`; medium effort | Cold-open orientation fixture and visible/hidden count evidence |
-| 3 | `open-the-object-detail-rail` | `project-plan-lanes-and-pipeline-columns` | `routine_implementation`; medium effort | Keyboard/deep-link test and typed relationship fixtures |
-| 4 | `expose-planned-portfolio-work` | `open-the-object-detail-rail` | `routine_implementation`; medium effort | Multi-Project planned-work fixture with empty and dormant Plans |
-| 5 | `reuse-queue-steering-controls` | `open-the-object-detail-rail` | `routine_implementation`; medium effort | Two-route queue parity, conflict and undo tests |
-| 6 | `reuse-contextual-decision-controls` | `open-the-object-detail-rail` | `routine_implementation`; medium effort | Decision journey parity with rejection, deferral and conflict cases |
-| 7 | `carry-the-dispatch-command` | `open-the-object-detail-rail` | `systems_change`; high effort | Selection and launch-preview contract fixtures including both providers |
-| 8 | `connect-action-to-launch-packet` | `carry-the-dispatch-command` | `systems_change`; high effort | Packet lifecycle and authority-boundary integration fixtures |
-| 9 | `support-selected-codex-and-claude-sessions` | `connect-action-to-launch-packet` | `systems_change`; high effort | Provider adapter, lease conflict and backward-compatibility tests |
-| 10 | `expose-guarded-host-session-launch` | `support-selected-codex-and-claude-sessions` | `systems_change`; high effort | Launch boundary, replay, crash-window and conflict integration tests |
-| 11 | `launch-selected-agent-from-flight-deck` | `expose-guarded-host-session-launch`, `reuse-queue-steering-controls`, `reuse-contextual-decision-controls` | `routine_implementation`; medium effort | Browser launch journeys for both adapter fixtures and lost response |
-| 12 | `observe-portfolio-agent-sessions` | `launch-selected-agent-from-flight-deck` | `systems_change`; high effort | Active-history truncation, reconnect and lifecycle fixtures |
-| 13 | `reconcile-session-exits-to-next-move` | `observe-portfolio-agent-sessions` | `systems_change`; high effort | Exit-to-evidence-to-next-move lifecycle integration tests |
-| 14 | `reuse-proof-and-delivery-controls` | `open-the-object-detail-rail`, `reconcile-session-exits-to-next-move` | `routine_implementation`; medium effort | Proof-state and exact-revision QA parity fixtures |
-| 15 | `capture-and-correct-work-in-context` | `open-the-object-detail-rail` | `routine_implementation`; medium effort | Capture replay, attachment and correction browser fixtures |
-| 16 | `surface-operational-exceptions-and-changes` | `observe-portfolio-agent-sessions`, `expose-planned-portfolio-work` | `routine_implementation`; medium effort | Failure, fired-trigger and evidence-linked change fixtures |
-| 17 | `complete-flight-deck-mobile-and-navigation-parity` | `focus-the-board-on-active-work`, `expose-planned-portfolio-work`, `launch-selected-agent-from-flight-deck`, `reuse-proof-and-delivery-controls`, `capture-and-correct-work-in-context`, `surface-operational-exceptions-and-changes` | `routine_implementation`; medium effort | Desktop/phone screenshots and keyboard/navigation Playwright evidence |
-| 18 | `verify-flight-deck-operational-loop` | `complete-flight-deck-mobile-and-navigation-parity`, `reconcile-session-exits-to-next-move` | `systems_change`; high effort | Frozen Candidate QA pack and full journey/failure matrix |
-| 19 | `dogfood-flight-deck-as-operations-home` | `verify-flight-deck-operational-loop` | `routine_implementation`; medium effort | Dated real-week operator rehearsal and acceptance record |
-| 20 | `make-flight-deck-the-default-entrance` | `dogfood-flight-deck-as-operations-home` | `routine_implementation`; medium effort | Default-entry and legacy-link smoke evidence plus rollback note |
+| Order | Action | Prerequisites |
+| --- | --- | --- |
+| 1 | `project-plan-lanes-and-pipeline-columns` | Current pointer; none |
+| 2 | `define-managed-production-policy` | `project-plan-lanes-and-pipeline-columns` |
+| 3 | `prove-provider-capacity-admission` | `define-managed-production-policy` |
+| 4 | `carry-the-dispatch-command` | `define-managed-production-policy` |
+| 5 | `connect-action-to-launch-packet` | `carry-the-dispatch-command` |
+| 6 | `support-selected-codex-and-claude-sessions` | `connect-action-to-launch-packet` |
+| 7 | `expose-guarded-host-session-launch` | `support-selected-codex-and-claude-sessions` |
+| 8 | `observe-portfolio-agent-sessions` | `expose-guarded-host-session-launch` |
+| 9 | `reconcile-session-exits-to-next-move` | `observe-portfolio-agent-sessions` |
+| 10 | `advance-approved-production-work` | `reconcile-session-exits-to-next-move`, `define-managed-production-policy` |
+| 11 | `feed-and-supervise-managed-production` | `advance-approved-production-work`, `prove-provider-capacity-admission`, `expose-guarded-host-session-launch` |
+| 12 | `focus-the-board-on-active-work` | `project-plan-lanes-and-pipeline-columns` |
+| 13 | `reuse-queue-steering-controls` | `project-plan-lanes-and-pipeline-columns` |
+| 14 | `reuse-contextual-decision-controls` | `project-plan-lanes-and-pipeline-columns` |
+| 15 | `control-plan-production-from-flight-deck` | `feed-and-supervise-managed-production`, `reuse-queue-steering-controls`, `reuse-contextual-decision-controls`, `focus-the-board-on-active-work` |
+| 16 | `prove-two-action-unattended-production` | `control-plan-production-from-flight-deck` |
+| 17 | `prove-multi-provider-production-recovery` | `prove-two-action-unattended-production` |
+| 18 | `open-the-object-detail-rail` | `prove-two-action-unattended-production` |
+| 19 | `expose-planned-portfolio-work` | `open-the-object-detail-rail` |
+| 20 | `launch-selected-agent-from-flight-deck` | `expose-guarded-host-session-launch`, `reuse-queue-steering-controls`, `reuse-contextual-decision-controls` |
+| 21 | `reuse-proof-and-delivery-controls` | `open-the-object-detail-rail`, `reconcile-session-exits-to-next-move` |
+| 22 | `capture-and-correct-work-in-context` | `open-the-object-detail-rail` |
+| 23 | `surface-operational-exceptions-and-changes` | `observe-portfolio-agent-sessions`, `expose-planned-portfolio-work` |
+| 24 | `complete-flight-deck-mobile-and-navigation-parity` | `focus-the-board-on-active-work`, `expose-planned-portfolio-work`, `launch-selected-agent-from-flight-deck`, `reuse-proof-and-delivery-controls`, `capture-and-correct-work-in-context`, `surface-operational-exceptions-and-changes` |
+| 25 | `verify-flight-deck-operational-loop` | `complete-flight-deck-mobile-and-navigation-parity`, `reconcile-session-exits-to-next-move`, `prove-multi-provider-production-recovery` |
+| 26 | `dogfood-flight-deck-as-operations-home` | `verify-flight-deck-operational-loop` |
+| 27 | `make-flight-deck-the-default-entrance` | `dogfood-flight-deck-as-operations-home` |
 
 ## Recommended agent, effort and budget
 
@@ -56,9 +63,9 @@ provider-selection algorithm and must not override immutable packet provenance.
 
 Budget one bounded coding session per Action, deterministic checks before model
 review, and one independent review where the authority boundary warrants it.
-No speculative token totals, new weekly allowance model, continuous agent loop,
-or narration on browsing. The active plan's existing one-pass token_budget text
-predates this expanded scope; the estimate here is twenty bounded sessions,
+No speculative token totals, new weekly planning model or narration on browsing.
+The continuous production loop and real capacity admission are now required. The active plan's existing one-pass token_budget text
+predates this expanded scope; the estimate here is twenty-seven bounded sessions,
 subject to splitting a leaf if actual evidence makes it too large.
 
 The Agent Ask v1 child schema cannot set execution, effort, expected_artifact,
@@ -112,7 +119,7 @@ settlement succeeds and the expanded plan is in the source used by continuation.
 The documentation PR itself does not settle the Ask, approve implementation,
 launch a provider, or authorize merge/deployment.
 
-## Preview result and prerequisite
+## Historical initial preview result and prerequisite
 
 The live proposal was accepted by the schema with twenty effects and zero
 Project writes. The first settlement preview refused because the four existing
@@ -126,3 +133,13 @@ The exact current handoff is in [16](./16-flight-deck-settlement-handoff.md).
 Approve/apply the queue prerequisite before generating a fresh full settlement
 fingerprint; a proposal fingerprint is not a settlement fingerprint. Neither
 preview has been applied, and no canonical plan Actions were changed here.
+
+## Production-first revision
+
+The current request is `flight-deck-managed-production-2026-09-05`, with 27
+Actions. The earlier twenty-Action version was approved; this materially expanded
+production scope awaits its own review and replaces that version for the intended
+settlement. It is not permission to apply both bundles. No new daemon is planned.
+Use the current configured agent with high effort for policy, capacity, admission,
+completion and supervision; ordinary UI integration remains medium. The first real
+production proof is prioritized before the broad object rail and other polish.

@@ -1,16 +1,17 @@
 agent_ask: v1
-request_id: flight-deck-operations-reviewable-2026-09-05
+request_id: flight-deck-managed-production-2026-09-05
 project: arcadia
 intent: plan
 target_ref: plan/flight-deck-board-carries-the-whole-portfolio-on-one-surface
 requested_authority: propose
-desired_result: Deliver Flight Deck as the first operator destination for orientation, planned work, judgment, queue steering, automatically selected coding-agent launch, Session observation and proven results.
-rationale: Operator requested a thorough reuse audit and complete iterative delivery plan. Amend the four existing unstarted Actions and add sixteen bounded Actions. Preserve the current pointer and plan activation. The supplemental contract supersedes copy-only launch, two-endpoint-only coverage and Artifact-equals-Landed assumptions. Settlement needs operator judgment on this exact bundle and its queue placement; this proposal does not approve itself. The operator could not find this proposal in the web UI. Pending Agent Ask proposals are a required first-class review input, with contextual approve/reject controls and exact settlement receipts; generic Decision controls alone cannot satisfy this.
+desired_result: "Deliver Flight Deck as the prioritized Plan production console: Active/Inactive control, automatic capacity-aware coding-agent execution, proven reconciliation and automatic continuation, with answerable operator review."
+rationale: "The operator explicitly prioritized continuously managed production ASAP: turn production on once, advance queued approved Actions across configured coding agents whenever supported capacity permits, and expose an off switch. This materially expands the previously approved manual-launch proposal and awaits review; it does not enable a worker, grant real provider execution or merge authority. Reuse existing worker, Session, queue, availability telemetry and overlapping capacity/orchestration plans. Prove a two-Action unattended loop before broad UI polish. Off defaults to stopping new launches while current work finishes unless the operator selects a different supported behavior."
 references:
   - docs/plans/mission-control-view/11-existing-surfaces-audit.md
   - docs/plans/mission-control-view/12-flight-deck-operations-contract.md
   - docs/plans/mission-control-view/13-flight-deck-delivery-sequence.md
   - docs/plans/mission-control-view/15-flight-deck-acceptance-matrix.md
+  - docs/plans/mission-control-view/17-managed-production-contract.md
 actions:
   - id: project-plan-lanes-and-pipeline-columns
     target_ref: action/project-plan-lanes-and-pipeline-columns
@@ -29,85 +30,38 @@ actions:
       - apps/dashboard/app/api/snapshot/route.ts
       - src/dashboard/snapshot.ts
       - apps/dashboard/lib/work-queue-types.ts
-  - id: focus-the-board-on-active-work
-    target_ref: action/focus-the-board-on-active-work
-    desired_result: Show a concise Flight Deck orientation with active work first and all other work discoverable.
+  - id: define-managed-production-policy
+    desired_result: Persist a bounded Active/Inactive production policy and admission authority in the existing workspace.
     acceptance:
-      - Show Outcome/Milestone, observed running work, Needs operator, recent verified results and the canonical next eligible Action with its selection reason.
-      - Expand active Plan lanes and collapse dormant/unattached context with honest counts; Projects without an active plan and empty Plans stay discoverable.
-      - Preserve cross-portfolio urgent obligations outside filters with an explicit hidden-item count and reveal control.
-      - Reuse deterministic Now/Path facts where relevant without requesting narration; filters and reset change only view state.
-      - "Preserve the proof Artifact: Cold-open orientation fixture and visible/hidden count evidence; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+      - Activation previews included Projects/Plans, ordered Action scope, providers, concurrency and permitted mechanical validation/acceptance/pointer transitions; new scope and consequential authority require explicit judgment.
+      - Persist desired state, revision/epoch and authority receipt; default Inactive on first setup, preserve valid Active state across restart and never resurrect revoked policy.
+      - Off fences new admissions and queued-but-unlaunched production work before confirmation; default lets committed running work finish/reconcile, with exact displayed consequence.
+      - Policy state remains accessible when queue/provider reads or execution block; race tests define the cutoff for already-committed launches.
+      - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
     dependencies:
       - project-plan-lanes-and-pipeline-columns
     references:
-      - apps/dashboard/app/now/page.tsx
-      - apps/dashboard/app/path/page.tsx
-      - apps/dashboard/lib/needs-you.ts
-  - id: open-the-object-detail-rail
-    target_ref: action/open-the-object-detail-rail
-    desired_result: Open contextual object details with typed relationships and stable navigation.
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - src/commands/worker.ts
+      - src/sessions/index.ts
+      - src/db/schema.ts
+  - id: prove-provider-capacity-admission
+    desired_result: Prove and reuse existing Codex and Claude telemetry for unattended included-capacity admission.
     acceptance:
-      - Render Project, Plan, Action, Decision, Run, Session and Artifact neighbors with named edges; distinguish structural, prose-recovered, missing and ambiguous relationships.
-      - Show expected output, acceptance criteria, dependencies, required Decisions/options/consequences, budget and every blocker remedy where present; gaps are explicit.
-      - Selection survives URL reload and browser Back; Escape closes and returns focus, and missing object links fail legibly.
-      - Reuse existing Project, Run, proof, file and Plan destinations with a return path preserving Flight Deck scope.
-      - "Preserve the proof Artifact: Keyboard/deep-link test and typed relationship fixtures; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+      - Reuse availability.ts observers and the provider-capacity-harvesting receipt contract; record real supported windows, source, observed age, reset, account scope and included/paid/unknown policy.
+      - Unattended admission rejects unknown/stale capacity and unknown paid mode with a visible reason; an explicit bounded manual receipt is labeled and is not indefinite unattended proof.
+      - Refresh with deadlines/backoff and no model calls; after an observed reset, automatically refresh and readmit while Active. Do not redeem resets, buy credits or enable paid fallback.
+      - Reuse compliant provider selection after admission filters; a limited provider permits a different eligible configured provider, without weaker substitution or replaying partial work blindly.
+      - Prove supported host telemetry for each configured provider during authorized rehearsal; unavailable fields remain explicit and do not require invented comparable daily/weekly metrics.
+      - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
     dependencies:
-      - project-plan-lanes-and-pipeline-columns
+      - define-managed-production-policy
     references:
-      - apps/dashboard/components/dashboard-ui.tsx
-      - apps/dashboard/app/projects/[id]/page.tsx
-      - apps/dashboard/app/runs/[id]/page.tsx
-  - id: expose-planned-portfolio-work
-    desired_result: Expose all Project Plans and their planned Actions without inventing dispatch authority.
-    acceptance:
-      - Reuse project Plans inventory for active, draft, dormant and completed plans, including plans with no current queue objects.
-      - Provide Action/dependency detail through existing document readers or a minimal extension of their canonical read contract; missing references and undeclared stretches are explicit.
-      - Show activation notes, counts and source links; search reveals dormant and unattached matches with bounded history coverage.
-      - Make draft versus approved versus pointer-authorized work visibly distinct; viewing a Plan neither activates it nor queues its Actions.
-      - "Preserve the proof Artifact: Multi-Project planned-work fixture with empty and dormant Plans; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
-    dependencies:
-      - open-the-object-detail-rail
-    references:
-      - src/commands/plans.ts
-      - apps/dashboard/components/plans-list.tsx
-      - apps/dashboard/app/api/projects/[id]/plans/route.ts
-      - src/docs/dispatch.ts
-  - id: reuse-queue-steering-controls
-    desired_result: Embed the existing queue order and Make next controls in Flight Deck.
-    acceptance:
-      - Extract the working Work Queue move, arrange, preview, apply and undo interaction for use by both routes without duplicating order logic.
-      - Make next preserves the exact pointer fingerprint flow and is separate from order changes and launch.
-      - Display canonical nextActionKey and every higher skipped Action reason before and after an operation; invalid initial order has an explicit repair path.
-      - Concurrent revisions are refused, pending edits preserved, cancellation writes nothing and durable receipts drive refreshed state.
-      - Reordering explains that it changes future selection and does not interrupt the current Session.
-      - "Preserve the proof Artifact: Two-route queue parity, conflict and undo tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
-    dependencies:
-      - open-the-object-detail-rail
-    references:
-      - apps/dashboard/app/work-queue/page.tsx
-      - apps/dashboard/app/api/work-queue/route.ts
-      - src/dispatch/order.ts
-  - id: reuse-contextual-decision-controls
-    desired_result: Resolve operator Decisions from Flight Deck using the existing consequence and receipt flows.
-    acceptance:
-      - Reuse approve/reject/defer/reply/reassess/flag-agent and clarification capabilities where valid for the selected Decision; do not replace them with generic approve commands.
-      - Present each option consequence and required artifact context before confirmation; recommendation remains non-binding.
-      - Require a named trigger for deferral and preserve rejection feedback and user text on errors.
-      - Refresh affected Decision, Action and queue state after resolution; show what became eligible or the remaining blocker.
-      - QA judgments stay in global Needs operator even while shown in Proving; deduplication does not erase obligations.
-      - "Preserve the proof Artifact: Decision journey parity with rejection, deferral and conflict cases; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
-      - "Expose pending Agent Ask proposal review and exact settlement using the existing settlement core: summary, affected Project/Plan/Actions, before/after effects, options with consequences, authority scope, and prerequisite queue repair. Proposal approval is not review approve against an unrelated Decision id."
-      - The operator can accept or reject the exact proposal from its direct link; a changed preview requires renewed judgment, failures preserve the pending obligation, and success leaves a canonical receipt and resulting next move. Proposal capture must return this link; do not require finding YAML, CLI ids or this chat.
-    dependencies:
-      - open-the-object-detail-rail
-    references:
-      - apps/dashboard/app/review/page.tsx
-      - apps/dashboard/app/api/review-action/route.ts
-      - apps/dashboard/lib/needs-you.ts
-      - src/commands/agentAsk.ts
-      - src/ask/settlement.ts
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - src/codingAgents/availability.ts
+      - src/codingAgents/providerAdapters.ts
+      - docs/plans/provider-capacity-harvesting.md
+      - docs/plans/agent-advance-queue.md
   - id: carry-the-dispatch-command
     target_ref: action/carry-the-dispatch-command
     desired_result: Preview execution with automatic coding-agent selection and an exact bounded launch contract.
@@ -119,7 +73,7 @@ actions:
       - Generate any advanced copyable command from the supported server contract; the primary required outcome is browser-triggered launch, superseding the original copy-only acceptance criteria.
       - "Preserve the proof Artifact: Selection and launch-preview contract fixtures including both providers; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
     dependencies:
-      - open-the-object-detail-rail
+      - define-managed-production-policy
     references:
       - src/codingAgents/providerAdapters.ts
       - src/execution/profiles.ts
@@ -166,6 +120,7 @@ actions:
       - Two tabs or retried requests start at most one Session; lost-response recovery returns the durable result across restart.
       - Launch grants no implicit merge, integration, cleanup, deployment, spending, credential expansion or messaging; failures preserve recoverable work.
       - "Preserve the proof Artifact: Launch boundary, replay, crash-window and conflict integration tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+      - Support either a current explicit one-Session launch grant or a valid standing managed-production policy with an epoch-bound admission receipt; recheck Off immediately before launch commitment. Do not require a new human launch click for every authorized Action.
     dependencies:
       - support-selected-codex-and-claude-sessions
     references:
@@ -173,6 +128,204 @@ actions:
       - src/sessions/index.ts
       - src/docs/dispatch.ts
       - src/execution/planningAuthorization.ts
+  - id: observe-portfolio-agent-sessions
+    desired_result: Show all active Sessions and Runs with fresh observation and native recovery access.
+    acceptance:
+      - Query active Sessions and active Runs independently of recent-history limits, keeping every repository lease visible.
+      - Show Action, packet, agent/model, host, worktree, native identity, lifecycle status and observed time; live process never implies semantic progress.
+      - Provide supported host-specific native reattach/resume and existing Run evidence links; phone-only limitations are explicit.
+      - Coalesce polling with visibility/reconnect refresh and bounded failure/backoff; source errors preserve labeled last-known state.
+      - Prove an old still-active Session/Run remains visible after more than ten newer terminal records.
+      - "Preserve the proof Artifact: Active-history truncation, reconnect and lifecycle fixtures; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+    dependencies:
+      - expose-guarded-host-session-launch
+    references:
+      - src/sessions/index.ts
+      - src/commands/advance.ts
+      - src/dashboard/snapshot.ts
+      - apps/dashboard/hooks/use-arcadia-snapshot.ts
+  - id: reconcile-session-exits-to-next-move
+    desired_result: Reconcile Session exit into durable evidence and the next governed Action or Decision.
+    acceptance:
+      - Persist a thin exit observation/receipt through the existing operational model and link available Run, Artifact and Decision proof.
+      - Distinguish successful exit, failed execution, missing evidence, needs input and accepted Action completion; zero exit never marks done by itself.
+      - Release repository leases only on proven terminal state and preserve recoverable reconciliation errors.
+      - Display the resulting canonical next Action or exact judgment/blocker with a usable link; automatic next admission only under the current Active production policy; no hand-edited governance state.
+      - Retry/reconcile/reload is idempotent and does not duplicate completion, Decisions or execution.
+      - "Preserve the proof Artifact: Exit-to-evidence-to-next-move lifecycle integration tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+    dependencies:
+      - observe-portfolio-agent-sessions
+    references:
+      - src/sessions/index.ts
+      - src/commands/advance.ts
+      - src/stewardship/artifactValidator.ts
+      - src/docs/dispatch.ts
+  - id: advance-approved-production-work
+    desired_result: Advance accepted production work through canonical completion, Log and pointer transitions.
+    acceptance:
+      - Reuse canonical evidence/acceptance writers and implement only the missing core bridge from Session outcome to managed Action completion and next pointer; database-only work done is insufficient.
+      - Automatically advance objective evidence-based completion only under the explicit production policy; subjective judgment and merge/deploy/publication gates remain answerable obligations.
+      - Within approved scope select the next dependency-ready Action or already-authorized Plan activation, with exact receipts; draft/unapproved Plan activation never occurs by queue inference.
+      - Repeated reconciliation and crash recovery cannot duplicate completion, logs, Decisions or pointer changes; failure preserves evidence and isolates that Project.
+      - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
+    dependencies:
+      - reconcile-session-exits-to-next-move
+      - define-managed-production-policy
+    references:
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - src/sessions/index.ts
+      - src/stewardship/artifactValidator.ts
+      - src/docs/dispatch.ts
+      - src/dispatch/pointer.ts
+      - src/ask/settlement.ts
+  - id: feed-and-supervise-managed-production
+    desired_result: Extend the existing worker to continuously admit, supervise and advance approved Sessions while Active.
+    acceptance:
+      - Reuse the existing persistent worker ownership, recovery, queue and Session paths; no second daemon, queue or browser-owned scheduling loop.
+      - After a terminal accepted Action, re-evaluate current priority/capacity and launch the next eligible Action without a new human session, chat or Launch click.
+      - Use atomic leases and capacity reservations across competing ticks/workers; independent Projects may run concurrently within configured provider/host limits, but conflicting repositories cannot.
+      - Off remains responsive during running work and stops future launch commitments; worker restart reconciles existing work and policy epoch before admission.
+      - Blocked approval, unavailable provider or failed Project permits independent eligible work to progress. Exhausted capacity schedules bounded rechecks; repeated failures have finite repair/retry limits and one actionable stop.
+      - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
+    dependencies:
+      - advance-approved-production-work
+      - prove-provider-capacity-admission
+      - expose-guarded-host-session-launch
+    references:
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - src/commands/worker.ts
+      - src/dispatch/queue.ts
+      - src/dispatch/order.ts
+      - src/sessions/index.ts
+  - id: focus-the-board-on-active-work
+    target_ref: action/focus-the-board-on-active-work
+    desired_result: Show a concise Flight Deck orientation with active work first and all other work discoverable.
+    acceptance:
+      - Show Outcome/Milestone, observed running work, Needs operator, recent verified results and the canonical next eligible Action with its selection reason.
+      - Expand active Plan lanes and collapse dormant/unattached context with honest counts; Projects without an active plan and empty Plans stay discoverable.
+      - Preserve cross-portfolio urgent obligations outside filters with an explicit hidden-item count and reveal control.
+      - Reuse deterministic Now/Path facts where relevant without requesting narration; filters and reset change only view state.
+      - "Preserve the proof Artifact: Cold-open orientation fixture and visible/hidden count evidence; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+      - The first operational view includes prioritized Plan segments, production desired state, actual activity, current provider capacity and next admission/reason; distinguish Active but waiting from Inactive.
+    dependencies:
+      - project-plan-lanes-and-pipeline-columns
+    references:
+      - apps/dashboard/app/now/page.tsx
+      - apps/dashboard/app/path/page.tsx
+      - apps/dashboard/lib/needs-you.ts
+  - id: reuse-queue-steering-controls
+    desired_result: Embed the existing queue order and Make next controls in Flight Deck.
+    acceptance:
+      - Extract the working Work Queue move, arrange, preview, apply and undo interaction for use by both routes without duplicating order logic.
+      - Make next preserves the exact pointer fingerprint flow and is separate from order changes and launch.
+      - Display canonical nextActionKey and every higher skipped Action reason before and after an operation; invalid initial order has an explicit repair path.
+      - Concurrent revisions are refused, pending edits preserved, cancellation writes nothing and durable receipts drive refreshed state.
+      - Reordering explains that it changes future selection and does not interrupt the current Session.
+      - "Preserve the proof Artifact: Two-route queue parity, conflict and undo tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+    dependencies:
+      - project-plan-lanes-and-pipeline-columns
+    references:
+      - apps/dashboard/app/work-queue/page.tsx
+      - apps/dashboard/app/api/work-queue/route.ts
+      - src/dispatch/order.ts
+  - id: reuse-contextual-decision-controls
+    desired_result: Resolve operator Decisions from Flight Deck using the existing consequence and receipt flows.
+    acceptance:
+      - Reuse approve/reject/defer/reply/reassess/flag-agent and clarification capabilities where valid for the selected Decision; do not replace them with generic approve commands.
+      - Present each option consequence and required artifact context before confirmation; recommendation remains non-binding.
+      - Require a named trigger for deferral and preserve rejection feedback and user text on errors.
+      - Refresh affected Decision, Action and queue state after resolution; show what became eligible or the remaining blocker.
+      - QA judgments stay in global Needs operator even while shown in Proving; deduplication does not erase obligations.
+      - "Preserve the proof Artifact: Decision journey parity with rejection, deferral and conflict cases; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+      - "Expose pending Agent Ask proposal review and exact settlement using the existing settlement core: summary, affected Project/Plan/Actions, before/after effects, options with consequences, authority scope, and prerequisite queue repair. Proposal approval is not review approve against an unrelated Decision id."
+      - The operator can accept or reject the exact proposal from its direct link; a changed preview requires renewed judgment, failures preserve the pending obligation, and success leaves a canonical receipt and resulting next move. Proposal capture must return this link; do not require finding YAML, CLI ids or this chat.
+    dependencies:
+      - project-plan-lanes-and-pipeline-columns
+    references:
+      - apps/dashboard/app/review/page.tsx
+      - apps/dashboard/app/api/review-action/route.ts
+      - apps/dashboard/lib/needs-you.ts
+      - src/commands/agentAsk.ts
+      - src/ask/settlement.ts
+  - id: control-plan-production-from-flight-deck
+    desired_result: Control prioritized Plan production with a persistent Active/Inactive switch and truthful activity status.
+    acceptance:
+      - Show included Plans in explicit priority order with Action dependencies and resulting queue order; reuse Plan segment/make-next previews and receipts, never a second priority store.
+      - Provide scoped activation preview and one obvious Off control usable on phone and desktop; read desired state separately from Building, waiting capacity, blocked, finishing and worker unavailable.
+      - Display selected/next Action and agent, why higher work is skipped, provider observation age/reset, approval obligations and exact next automatic check.
+      - Browser closure does not pause production; two tabs and stale activation previews cannot overwrite policy; confirmed Off has a receipt and never silently interrupts existing native work.
+      - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
+    dependencies:
+      - feed-and-supervise-managed-production
+      - reuse-queue-steering-controls
+      - reuse-contextual-decision-controls
+      - focus-the-board-on-active-work
+    references:
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - apps/dashboard/app/work-queue/page.tsx
+      - apps/dashboard/components/sidebar.tsx
+      - apps/dashboard/lib/arcadia-cli.ts
+  - id: prove-two-action-unattended-production
+    desired_result: Prove the urgent two-Action production loop with one activation and a working shutoff.
+    acceptance:
+      - Provide a disposable or explicitly approved real Project with two small dependent Actions and a reachable Flight Deck production view before requesting live execution.
+      - "Under bounded rehearsal authority activate once: Action A launches, validates, records canonical completion/pointer, and B launches without manual session setup or launch confirmation in between."
+      - Turn Off during work; prove no later launch, preserved current output and visible terminal reconciliation. Close browser/restart worker and prove no duplicate or reactivation after Off.
+      - Record exact revision, host, provider, Action/Session identities, receipts and every operator intervention; missing real authorization/input remains one precise review, never fixture-as-live success.
+      - Complete this vertical proof before broad rail, capture, navigation polish or default-home cutover; reuse existing review/proof specialists as needed.
+      - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
+    dependencies:
+      - control-plan-production-from-flight-deck
+    references:
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - docs/operator-demo-and-release-contract.md
+      - docs/plans/idea-to-managed-build.md
+  - id: prove-multi-provider-production-recovery
+    desired_result: Prove continuous production across configured providers, independent Plans and capacity recovery.
+    acceptance:
+      - Demonstrate automatic selection/launch with both configured Codex and Claude, preserving per-account capacity and repository isolation; one-provider proof alone is not full acceptance.
+      - Prove higher-priority provider-ineligible work remains visible while independent eligible work proceeds, and Plan order edits change subsequent admission without preempting running work.
+      - Prove depletion/reset/re-observation resumes automatically while Active, with no paid/reset effect; distinguish simulated limit tests from observed live capacity evidence.
+      - Exercise failed validation, bounded repair, mid-Session exhaustion/checkpoint recovery, stale policy, duplicate worker and approval boundaries; partial work must not be rerun blindly.
+      - Publish live/fixture evidence for each boundary and exact outstanding gap; final acceptance requires supported automatic telemetry and no manual refresh/Session relay disguised as unattended operation.
+      - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
+    dependencies:
+      - prove-two-action-unattended-production
+    references:
+      - docs/plans/mission-control-view/17-managed-production-contract.md
+      - src/codingAgents/availability.ts
+      - src/commands/worker.ts
+      - docs/plans/provider-capacity-harvesting.md
+  - id: open-the-object-detail-rail
+    target_ref: action/open-the-object-detail-rail
+    desired_result: Open contextual object details with typed relationships and stable navigation.
+    acceptance:
+      - Render Project, Plan, Action, Decision, Run, Session and Artifact neighbors with named edges; distinguish structural, prose-recovered, missing and ambiguous relationships.
+      - Show expected output, acceptance criteria, dependencies, required Decisions/options/consequences, budget and every blocker remedy where present; gaps are explicit.
+      - Selection survives URL reload and browser Back; Escape closes and returns focus, and missing object links fail legibly.
+      - Reuse existing Project, Run, proof, file and Plan destinations with a return path preserving Flight Deck scope.
+      - "Preserve the proof Artifact: Keyboard/deep-link test and typed relationship fixtures; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+    dependencies:
+      - prove-two-action-unattended-production
+    references:
+      - apps/dashboard/components/dashboard-ui.tsx
+      - apps/dashboard/app/projects/[id]/page.tsx
+      - apps/dashboard/app/runs/[id]/page.tsx
+  - id: expose-planned-portfolio-work
+    desired_result: Expose all Project Plans and their planned Actions without inventing dispatch authority.
+    acceptance:
+      - Reuse project Plans inventory for active, draft, dormant and completed plans, including plans with no current queue objects.
+      - Provide Action/dependency detail through existing document readers or a minimal extension of their canonical read contract; missing references and undeclared stretches are explicit.
+      - Show activation notes, counts and source links; search reveals dormant and unattached matches with bounded history coverage.
+      - Make draft versus approved versus pointer-authorized work visibly distinct; viewing a Plan neither activates it nor queues its Actions.
+      - "Preserve the proof Artifact: Multi-Project planned-work fixture with empty and dormant Plans; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+    dependencies:
+      - open-the-object-detail-rail
+    references:
+      - src/commands/plans.ts
+      - apps/dashboard/components/plans-list.tsx
+      - apps/dashboard/app/api/projects/[id]/plans/route.ts
+      - src/docs/dispatch.ts
   - id: launch-selected-agent-from-flight-deck
     desired_result: Launch the automatically selected coding agent directly from the Flight Deck Action detail.
     acceptance:
@@ -190,38 +343,6 @@ actions:
       - apps/dashboard/app/work-queue/page.tsx
       - apps/dashboard/lib/arcadia-cli.ts
       - src/sessions/index.ts
-  - id: observe-portfolio-agent-sessions
-    desired_result: Show all active Sessions and Runs with fresh observation and native recovery access.
-    acceptance:
-      - Query active Sessions and active Runs independently of recent-history limits, keeping every repository lease visible.
-      - Show Action, packet, agent/model, host, worktree, native identity, lifecycle status and observed time; live process never implies semantic progress.
-      - Provide supported host-specific native reattach/resume and existing Run evidence links; phone-only limitations are explicit.
-      - Coalesce polling with visibility/reconnect refresh and bounded failure/backoff; source errors preserve labeled last-known state.
-      - Prove an old still-active Session/Run remains visible after more than ten newer terminal records.
-      - "Preserve the proof Artifact: Active-history truncation, reconnect and lifecycle fixtures; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
-    dependencies:
-      - launch-selected-agent-from-flight-deck
-    references:
-      - src/sessions/index.ts
-      - src/commands/advance.ts
-      - src/dashboard/snapshot.ts
-      - apps/dashboard/hooks/use-arcadia-snapshot.ts
-  - id: reconcile-session-exits-to-next-move
-    desired_result: Reconcile Session exit into durable evidence and the next governed Action or Decision.
-    acceptance:
-      - Persist a thin exit observation/receipt through the existing operational model and link available Run, Artifact and Decision proof.
-      - Distinguish successful exit, failed execution, missing evidence, needs input and accepted Action completion; zero exit never marks done by itself.
-      - Release repository leases only on proven terminal state and preserve recoverable reconciliation errors.
-      - Display the resulting canonical next Action or exact judgment/blocker with a usable link; no automatic next launch or hand-edited governance state.
-      - Retry/reconcile/reload is idempotent and does not duplicate completion, Decisions or execution.
-      - "Preserve the proof Artifact: Exit-to-evidence-to-next-move lifecycle integration tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
-    dependencies:
-      - observe-portfolio-agent-sessions
-    references:
-      - src/sessions/index.ts
-      - src/commands/advance.ts
-      - src/stewardship/artifactValidator.ts
-      - src/docs/dispatch.ts
   - id: reuse-proof-and-delivery-controls
     desired_result: Connect Flight Deck results to existing Candidate proof, QA and delivery evidence.
     acceptance:
@@ -299,6 +420,7 @@ actions:
     dependencies:
       - complete-flight-deck-mobile-and-navigation-parity
       - reconcile-session-exits-to-next-move
+      - prove-multi-provider-production-recovery
     references:
       - tests/e2e
       - docs/operator-demo-and-release-contract.md
@@ -311,6 +433,7 @@ actions:
       - Exercise live Codex and Claude only within separately authorized bounded Sessions; fixture proof is never labeled live success.
       - When elapsed use or operator feedback is missing, record one precise review question/external condition rather than mark done; accept only with explicit operator judgment.
       - "Preserve the proof Artifact: Dated real-week operator rehearsal and acceptance record; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+      - Use Active production to progress multiple Actions without manual session launches, observe capacity waiting/recovery, and exercise Off. Accept only after the multi-provider production proof passes.
     dependencies:
       - verify-flight-deck-operational-loop
     references:

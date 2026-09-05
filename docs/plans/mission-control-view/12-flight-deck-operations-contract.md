@@ -1,5 +1,9 @@
 # Flight Deck: operator experience and execution contract
 
+> Production-first revision: [17](./17-managed-production-contract.md) now
+> requires continuous, capacity-aware execution under an Active/Inactive policy.
+> It replaces the original per-Session-only scope and scheduling deferrals.
+
 Supplement to 09, based on the audit in 11 and operator direction on 2026-09-05.
 This specifies proposed behavior; the Agent Ask in 14 carries the corresponding
 managed Action amendments. It does not assert implementation or settlement.
@@ -81,6 +85,8 @@ and retrievable portfolio records, reveals dormant matches, and labels coverage.
 | Inspect/recover execution | Open Session details and native reattach/resume; inspect linked Run; request retry when supported | Exit is not completion; retry is the existing Decision flow, not blind replay. |
 | Test/accept output | Show Stable/Candidate, exact revision, procedure, evidence and QA choices | QA evidence does not merge, publish, release or complete unrelated work. |
 
+Managed-production activation and revocation follow the policy in 17; repeated
+launch mechanics within that policy do not ask for another human confirmation.
 Every mutation has pending/confirmed/refused/conflicted/unknown-result states.
 A success toast alone is insufficient: show receipt, resulting state and next
 available move. After an ambiguous timeout, reconcile by request id before
@@ -151,7 +157,10 @@ Reconciliation persists an exit receipt and links available Run/Artifact/Decisio
 proof. It checks canonical completion evidence rather than inferring done from
 exit zero or a PR link. It makes the next Action/Decision visible through the
 existing governance path and releases leases only on proven terminal state.
-Work never automatically chains into another launch. Reprioritizing queued work
+While Inactive, work never automatically chains into another launch. While
+Active, the standing policy in 17 authorizes automatic admission of the next
+eligible Action after reconciliation; new scope or consequential effects still
+require their separate authority. Reprioritizing queued work
 does not interrupt a running Session; say so beside the control. Arbitrary
 mid-session chat, kill/pause controls and transcript ingestion are deferred;
 existing native-session access is the first recovery route.

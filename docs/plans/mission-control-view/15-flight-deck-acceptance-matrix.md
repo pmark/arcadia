@@ -104,3 +104,20 @@ prerequisite, stale proposal evidence, failed settlement and phone deep link.
 The obligation must remain visible on failure; zero pending is never inferred
 from an unavailable proposal source. This extends the projection and contextual
 Decision-control Actions and is mandatory before home-page cutover.
+
+## Managed-production acceptance (supersedes manual-only continuation)
+
+| ID | Procedure | Required result |
+| --- | --- | --- |
+| J22 | Activate an approved scope with two dependent Actions; close the browser after admission. | A completes with canonical evidence, B starts without another operator chat or launch. No unapproved Plan or authority expansion. |
+| J23 | Turn Off while an Action runs; race a second tick, delayed launch request and second worker. | No new launch after the acknowledged cutoff; already committed work is named, preserved and reconciled according to the displayed Off policy. |
+| J24 | Restart worker/browser while Active, then repeat after Off. | Existing lease/receipt prevents duplicates; valid Active scope resumes after reconciliation, revoked scope stays off. Worker unavailable is not confused with Inactive. |
+| J25 | Limit provider A, retain compliant capacity on B, then restore A. | Independent eligible work continues through B; observed capacity refresh readmits A without manual Session setup or paid/reset effects. Both real provider paths must be proven; synthetic depletion is labeled. |
+| J26 | Reorder included Plans while work runs; block one Project on judgment; include a draft Plan outside the grant. | Existing queue segment receipts determine future order, running work is not preempted, unrelated authorized work continues and the draft is never silently activated. |
+| J27 | Force validation failure, repeated repair failure, mid-Session exhaustion and missing completion evidence. | Bounded retry/checkpoint recovery preserves work, no fabricated canonical done, no infinite token-consuming loop, and one directly answerable operator obligation when required. |
+| J28 | Leave production Active across a real capacity stop and recovery using configured provider observation. | Automatic recheck/resume with freshness and source evidence; unknown/paid mode never masquerades as free tokens, and manual refresh is not labeled unattended proof. |
+
+The first real two-Action proof J22–J24 is the urgent vertical milestone. Full
+acceptance requires J25–J28 plus the prior orientation/review/proof/phone
+scenarios. Implementation work is not complete merely because a switch renders
+or a worker process exists. A screenshot is not a continuous-production proof.
