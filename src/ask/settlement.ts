@@ -7,7 +7,7 @@ import { validationError } from "../cli/errors.js";
 import { writeTransaction } from "../db/connection.js";
 import { createArtifactRecord, getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
 import { discoverDocs } from "../docs/discover.js";
-import { resolveActionReadiness } from "../docs/dispatch.js";
+import { isDispatchable, resolveActionReadiness, resolveDispatch } from "../docs/dispatch.js";
 import { yamlScalar } from "../docs/frontmatter.js";
 import { syncProjectDocs } from "../docs/sync.js";
 import type { DecisionDoc, LogDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
@@ -65,13 +65,20 @@ export function settleAgentAsk(db: Database.Database, input: {
   expectedQueueRevision?: number;
   previewFingerprint?: string;
   apply?: boolean;
+  activate?: boolean;
+  action?: string;
+  model?: string;
+  effort?: string;
 }): AgentAskSettlementReceipt {
   const operation = {
     proposalRef: input.proposalRef,
     disposition: input.disposition,
     responsibility: input.responsibility ?? null,
     placement: input.placement ?? null,
-    anchor: input.anchor ?? null
+    anchor: input.anchor ?? null,
+    ...(input.activate || input.action || input.model || input.effort
+      ? { activate: input.activate ?? false, action: input.action ?? null, model: input.model ?? null, effort: input.effort ?? null }
+      : {})
   };
   const existingByRequest = db.prepare("SELECT operation_json, receipt_json FROM agent_ask_settlements WHERE request_id = ?")
     .get(input.settlementRequestId) as { operation_json: string; receipt_json: string } | undefined;
@@ -86,6 +93,10 @@ export function settleAgentAsk(db: Database.Database, input: {
     WHERE id = ? OR request_id = ?`).get(input.proposalRef, input.proposalRef) as { proposal_json: string } | undefined;
   if (!proposalRow) throw validationError("Agent Ask proposal was not found.", { proposal: input.proposalRef });
   const proposal = JSON.parse(proposalRow.proposal_json) as AgentAskProposal;
+  if ((input.activate || input.action || input.model || input.effort) &&
+      (input.disposition !== "accepted" || proposal.normalized.intent !== "plan" || !proposal.normalized.targetRef || !input.activate)) {
+    throw validationError("Activation options require an accepted Plan target and --activate.");
+  }
   const existingSettlement = db.prepare("SELECT receipt_json FROM agent_ask_settlements WHERE proposal_id = ?").get(proposal.id) as { receipt_json: string } | undefined;
   if (existingSettlement) {
     throw validationError("Agent Ask proposal is already settled.", {
@@ -249,6 +260,63 @@ export function settleAgentAsk(db: Database.Database, input: {
           const targetPath = path.join(repoRoot, target.relativePath);
           const before = readFileSync(targetPath, "utf8");
           const proposedActions = proposal.normalized.actions;
+          if (input.activate) {
+            if (proposedActions.length || input.responsibility) throw validationError("Activate an existing Plan separately from Action amendments.");
+            if (target.slug === plan.slug || target.status !== "draft") throw validationError("Activation requires a different draft Plan.");
+            if (!input.action || !input.model || !input.placement) throw validationError("Activation requires --action, --model and an explicit queue placement.");
+            if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/.test(input.model)) throw validationError("Activation model must be a CLI model identifier.");
+            if (input.effort && !["low", "medium", "high", "xhigh", "max", "ultra"].includes(input.effort)) throw validationError("Activation effort is unsupported.");
+            const activeRun = db.prepare(`SELECT er.id FROM execution_runs er JOIN work_items wi ON wi.id = er.work_item_id
+              WHERE wi.project_id = ? AND er.status IN ('pending_execution', 'running') LIMIT 1`).get(project.id);
+            const activeSession = db.prepare(`SELECT id FROM agent_sessions
+              WHERE project_id = ? AND status IN ('prepared', 'running', 'needs_input') LIMIT 1`).get(project.id);
+            if (activeRun || activeSession || queue.running.some((entry) => entry.projectId === project.id) ||
+                queue.attention.some((entry) => entry.projectId === project.id && entry.attentionKind === "session")) {
+              throw validationError("Reconcile the Project's existing Session or Run before activating another Plan.");
+            }
+            const selected = target.actions.find((action) => action.id === input.action);
+            const matches = discovered.docs.filter((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug)
+              .flatMap((doc) => doc.actions.filter((action) => action.id === input.action));
+            const readiness = resolveActionReadiness(repoRoot, project.slug, input.action);
+            if (!selected || matches.length !== 1 || selected.status === "done" ||
+                !["agent", "autonomous"].includes(selected.responsibility) || selected.clarification !== "clarified" ||
+                readiness.blockers.length || readiness.operatorQuestion) {
+              throw validationError("Activation requires one unambiguous, eligible first Action.", { action: input.action, blockers: readiness.blockers });
+            }
+            const projectBefore = readFileSync(projectPath, "utf8");
+            const previousBefore = readFileSync(activePlanPath, "utf8");
+            const updated = today();
+            fileMutations.push(
+              { path: projectPath, before: projectBefore, after: setTopLevelFields(projectBefore, {
+                active_plan: target.slug, current_action: selected.id, milestone: target.milestone ?? proposal.normalized.desiredResult, updated
+              }) },
+              { path: activePlanPath, before: previousBefore, after: setTopLevelFields(previousBefore, { status: "draft", current_action: null, updated }) },
+              { path: targetPath, before, after: setTopLevelFields(before, {
+                status: "active", current_action: selected.id, recommended_model: input.model,
+                recommended_reasoning_effort: input.effort ?? null, updated
+              }) }
+            );
+            queueActionKeys = dependencyOrderedActionIds(target.actions.filter((action) => action.status !== "done")
+              .map((action) => ({ id: action.id, dependencies: action.dependsOn })))
+              .map((id) => `${project.slug}/${id}`);
+            queueActionKey = `${project.slug}/${selected.id}`;
+            // Only active-plan Actions belong to the order; preserve every other Project's order.
+            queueAfter = insertQueueKeys(queueAfter.filter((key) => !key.startsWith(`${project.slug}/`)), queueActionKeys, input.placement, input.anchor);
+            arrangeQueue = true;
+            actionIdsToValidate.push(selected.id);
+            effects.push(`Activated Plan ${target.slug}; selected ${queueActionKey} with ${input.model}${input.effort ? ` / ${input.effort}` : ""}.`);
+            effects.push(`Returned Plan ${plan.slug} to draft without changing any Action completion state.`);
+            effects.push("Replaced this Project's queue segment; preserved every other Project's relative order. Started no process.");
+            const log = discovered.docs.find((doc): doc is LogDoc => doc.type === "log" && doc.project === project.slug);
+            const logPath = path.join(repoRoot, log?.relativePath ?? "MISSION_LOG.md");
+            const logBefore = existsSync(logPath) ? readFileSync(logPath, "utf8") : null;
+            fileMutations.push({ path: logPath, before: logBefore, after: appendLog(logBefore, project.slug, {
+              ...proposal.normalized,
+              desiredResult: `Activated ${target.slug} at ${selected.id}.`,
+              rationale: `Operator-settled Plan transition. Previous Plan ${plan.slug} remains draft with completion state preserved. ${proposal.normalized.rationale ?? ""}`
+            }) });
+            break;
+          }
           if (proposedActions.length === 0) {
             if (input.placement) {
               if (input.responsibility) throw validationError("Plan reprioritization preserves existing Action Responsibilities.");
@@ -474,9 +542,16 @@ export function settleAgentAsk(db: Database.Database, input: {
   if (!input.apply) return baseReceipt;
 
   if (fileMutations.length > 0) assertClean(repoRoot, "Agent Ask Project repository");
+  let settled: AgentAskSettlementReceipt;
   try {
-    const settled = writeTransaction(db, () => {
+    settled = writeTransaction(db, () => {
       for (const mutation of fileMutations) writeAtomically(mutation.path, mutation.after);
+      if (input.activate) {
+        const dispatch = resolveDispatch(repoRoot, project.slug);
+        if (!isDispatchable(dispatch) || dispatch.context?.action.id !== input.action) {
+          throw validationError("Plan activation did not produce dispatchable canonical truth.", { blockers: dispatch.blockers, question: dispatch.operatorQuestion });
+        }
+      }
       for (const actionId of actionIdsToValidate) {
         const readiness = resolveActionReadiness(repoRoot, project.slug, actionId);
         const structuralBlockers = readiness.blockers.filter((blocker) => !blocker.field.endsWith(".depends_on"));
@@ -546,26 +621,14 @@ export function settleAgentAsk(db: Database.Database, input: {
           nextActionKey, JSON.stringify(receipt), now);
       return receipt;
     });
-    // Settlement lands what it writes. Decision 0044: `assertClean` above
-    // refuses a dirty repository, but settlement used to leave its own output
-    // uncommitted — so settlement N+1 was refused by settlement N, and two
-    // settlements could not run without a person committing in between. That
-    // is not a workflow, it is a deadlock with a manual override.
-    //
-    // Deliberately after the transaction, never inside it: a git failure must
-    // not roll back a settlement that genuinely happened, and the restore path
-    // below must never run against files already committed. If the commit
-    // fails — unconfigured identity, a hook, a detached state — the settlement
-    // still stands and the tree is simply left dirty, which is exactly the old
-    // behaviour, and the next `assertClean` explains it with its own remedy.
-    if (fileMutations.length > 0) {
-      commitSettlementOutput(repoRoot, fileMutations, settled);
-    }
-    return settled;
   } catch (error) {
     for (const mutation of [...fileMutations].reverse()) restoreMutation(mutation);
     throw error;
   }
+  // Commit after the database transaction and outside its rollback handler.
+  // A Git failure must leave the settled documents intact for recovery.
+  if (fileMutations.length > 0) commitSettlementOutput(repoRoot, fileMutations, settled);
+  return settled;
 }
 
 /**
@@ -799,6 +862,20 @@ function replaceTopLevelField(content: string, field: string, value: string): st
   return content.replace(match[0], `---\n${lines.join("\n")}\n---`);
 }
 
+/** Update only the frontmatter's top level, preserving Action state and narrative. */
+function setTopLevelFields(content: string, fields: Record<string, string | null>): string {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) throw validationError("Managed document has no YAML frontmatter block to update.");
+  const lines = match[1].split(/\r?\n/);
+  for (const [field, value] of Object.entries(fields)) {
+    const index = lines.findIndex((line) => line.startsWith(`${field}:`));
+    if (value === null) { if (index >= 0) lines.splice(index, 1); }
+    else if (index >= 0) lines[index] = `${field}: ${yamlScalar(value)}`;
+    else lines.push(`${field}: ${yamlScalar(value)}`);
+  }
+  return content.replace(match[0], `---\n${lines.join("\n")}\n---`);
+}
+
 function addMilestoneMutations(mutations: FileMutation[], projectPath: string, planPath: string, milestone: string): void {
   const projectBefore = readFileSync(projectPath, "utf8");
   const planBefore = readFileSync(planPath, "utf8");
@@ -911,10 +988,10 @@ function newDraftPlan(
   return [
     "---", "arcadia: v1", "type: plan", `slug: ${planSlug}`, `project: ${projectSlug}`, "status: draft",
     `milestone: ${yamlScalar(milestone)}`, "token_impact: medium",
-    `token_budget: ${yamlScalar("Deterministic management; one bounded coding-agent implementation pass after activation.")}`,
+    `token_budget: ${yamlScalar("Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.")}`,
     `updated: ${today()}`, ...(actionLines.length > 0 ? ["actions:", ...actionLines] : ["actions: []"]),
     "questions: []", "decisions: []", "---", "",
-    `# ${milestone}`, "", `Created from accepted Agent Ask ${requestId}. This draft is not active and changes no pointer.`, ""
+    `# ${milestone}`, "", `Created as an inactive draft from accepted Agent Ask ${requestId}; creation changed no pointer. Current activation is recorded in frontmatter.`, ""
   ].join("\n");
 }
 

@@ -12,14 +12,114 @@ import {
 } from "../src/commands/agentAsk.js";
 import { withDatabase } from "../src/db/connection.js";
 import { discoverDocs } from "../src/docs/discover.js";
+import { resolveDispatch, isDispatchable } from "../src/docs/dispatch.js";
 import { arrangeActionOrder, loadActionOrder } from "../src/dispatch/order.js";
-import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
+import { createExecutionPlan, createExecutionRun, createWorkItemRecord, getProjectBySlug, upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 describe("Agent Ask settlement", () => {
+  it("refuses activation while an old Run is active outside the recent-history window", () => {
+    const { workspace } = activationFixture();
+    withDatabase(workspace, (db) => {
+      const project = getProjectBySlug(db, "demo")!;
+      const work = createWorkItemRecord(db, { projectId: project.id, title: "Old Run", rawInput: "Old Run",
+        queue: "work_queue", workClassification: "agent", nextAction: "Finish old work" });
+      const plan = createExecutionPlan(db, { workItemId: work.id, summary: "Old Run", steps: [] })!;
+      const run = createExecutionRun(db, { workItemId: work.id, planId: plan.id, status: "running", summary: "Still active", steps: [] })!;
+      db.prepare("UPDATE execution_runs SET updated_at = '2000-01-01' WHERE id = ?").run(run.id);
+      for (let i = 0; i < 101; i++) createExecutionRun(db, { workItemId: work.id, planId: plan.id, status: "completed", summary: "Newer history", steps: [] });
+    });
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: "activate-production", requestId: "active-run", disposition: "accepted",
+      activate: true, action: "first", model: "gpt-6-astra", top: true
+    })).toThrow(/Reconcile/);
+  });
+
+  it("replaces only the activated Project's queue segment", () => {
+    const { workspace, repo } = activationFixture();
+    addOtherProject(workspace, repo);
+    const options = { workspace, proposal: "activate-production", requestId: "activation-other-project",
+      disposition: "accepted" as const, activate: true, action: "first", model: "gpt-6-astra",
+      after: "other/waiting", revision: 2 };
+    const preview = runAgentAskSettleCommand(options);
+    runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
+    withDatabase(workspace, (db) => expect([...loadActionOrder(db).positions.keys()]).toEqual(["other/waiting", "demo/first"]));
+  });
+
+  it("refuses a first Action with an unmet dependency", () => {
+    const { workspace, repo } = activationFixture();
+    const file = path.join(repo, "docs/plans/production.md");
+    const content = readFileSync(file, "utf8");
+    const prerequisite = content.slice(content.indexOf("  - id:"), content.indexOf("questions:"))
+      .replace("id: first", "id: prerequisite");
+    writeFileSync(file, content.replace("depends_on: []", "depends_on: [prerequisite]").replace("questions: []", prerequisite + "questions: []"));
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: "activate-production", requestId: "dependency-blocked", disposition: "accepted",
+      activate: true, action: "first", model: "gpt-6-astra", top: true
+    })).toThrow(/eligible first Action/);
+  });
+
+  it("activates a draft Plan with an exact preview, one pointer, and replay-safe queue replacement", () => {
+    const { workspace, repo } = activationFixture();
+    const options = { workspace, proposal: "activate-production", requestId: "settle-activation", disposition: "accepted" as const,
+      activate: true, action: "first", model: "gpt-6-astra", effort: "high", top: true, revision: 1 };
+    const before = readFileSync(path.join(repo, "PROJECT.md"), "utf8");
+    const preview = runAgentAskSettleCommand(options);
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toBe(before);
+    expect(() => runAgentAskSettleCommand({ ...options, apply: true })).toThrow(/current preview/);
+    const applied = runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
+    const dispatch = resolveDispatch(repo, "demo");
+    expect(isDispatchable(dispatch)).toBe(true);
+    expect(dispatch.context).toMatchObject({ activePlan: "production", action: { id: "first" }, planRecommendedModel: "gpt-6-astra", planRecommendedReasoningEffort: "high" });
+    const previous = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
+    expect(previous).toMatchObject({ status: "draft", currentAction: null, actions: [expect.objectContaining({ id: "existing", status: "open" })] });
+    withDatabase(workspace, (db) => expect([...loadActionOrder(db).positions.keys()]).toEqual(["demo/first"]));
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+    expect(runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint }).data.receipt).toEqual(applied.data.receipt);
+    expect(() => runAgentAskSettleCommand({ ...options, model: "different" })).toThrow(/different operation/);
+  });
+
+  it("refuses incomplete activation choices and stale document previews", () => {
+    const { workspace, repo } = activationFixture();
+    const options = { workspace, proposal: "activate-production", requestId: "settle-activation", disposition: "accepted" as const,
+      activate: true, action: "first", model: "gpt-6-astra", top: true };
+    expect(() => runAgentAskSettleCommand({ ...options, action: undefined })).toThrow(/requires --action/);
+    expect(() => runAgentAskSettleCommand({ ...options, action: "missing" })).toThrow(/eligible first Action/);
+    expect(() => runAgentAskSettleCommand({ ...options, activate: false })).toThrow(/Activation options/);
+    const preview = runAgentAskSettleCommand(options);
+    writeFileSync(path.join(repo, "docs/plans/production.md"), readFileSync(path.join(repo, "docs/plans/production.md"), "utf8") + "\nChanged after preview.\n");
+    expect(() => runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint })).toThrow(/current preview/);
+    expect(resolveDispatch(repo, "demo").context?.activePlan).toBe("demo-plan");
+  });
+
+  it("refuses activation of unclarified work", () => {
+    const { workspace, repo } = activationFixture();
+    const file = path.join(repo, "docs/plans/production.md");
+    writeFileSync(file, readFileSync(file, "utf8").replace("clarification: clarified", "clarification: unclarified"));
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: "activate-production", requestId: "unclarified", disposition: "accepted",
+      activate: true, action: "first", model: "gpt-6-astra", top: true
+    })).toThrow(/eligible first Action/);
+  });
+
+  it("preserves settled documents if the Git commit fails after database commit", () => {
+    const { workspace, repo } = activationFixture();
+    execFileSync("git", ["config", "core.hooksPath", path.join(repo, ".git", "failing-hooks")], { cwd: repo });
+    mkdirSync(path.join(repo, ".git", "failing-hooks"));
+    const hook = path.join(repo, ".git", "failing-hooks", "pre-commit");
+    writeFileSync(hook, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const options = { workspace, proposal: "activate-production", requestId: "commit-failure", disposition: "accepted" as const,
+      activate: true, action: "first", model: "gpt-6-astra", top: true };
+    const preview = runAgentAskSettleCommand(options);
+    expect(runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint }).data.receipt.applied).toBe(true);
+    expect(resolveDispatch(repo, "demo").context?.activePlan).toBe("production");
+    withDatabase(workspace, (db) => expect([...loadActionOrder(db).positions.keys()]).toEqual(["demo/first"]));
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).not.toBe("");
+  });
+
   it("previews and atomically accepts a canonical Action at an explicit queue position", () => {
     const { workspace, repo } = fixture();
     const proposal = runAgentAskPreviewCommand({ workspace, request: actionAsk("ask-action-1") });
@@ -1054,6 +1154,19 @@ function fixture(): { workspace: string; repo: string } {
     });
   });
   return { workspace, repo };
+}
+
+function activationFixture() {
+  const context = fixture();
+  writeFileSync(path.join(context.repo, "docs/plans/production.md"),
+    planDoc().replaceAll("demo-plan", "production").replaceAll("existing", "first").replace("status: active", "status: draft"));
+  execFileSync("git", ["add", "."], { cwd: context.repo });
+  execFileSync("git", ["commit", "-qm", "Add inactive production Plan"], { cwd: context.repo });
+  runAgentAskPreviewCommand({ workspace: context.workspace, request: [
+    "agent_ask: v1", "request_id: activate-production", "project: demo", "intent: plan",
+    "target_ref: plan/production", "desired_result: Activate production"
+  ].join("\n") });
+  return context;
 }
 
 function actionAsk(requestId: string): string {

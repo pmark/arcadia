@@ -79,6 +79,10 @@ export function runAgentAskSettleCommand(options: {
   revision?: number;
   preview?: string;
   apply?: boolean;
+  activate?: boolean;
+  action?: string;
+  model?: string;
+  effort?: string;
 }): CommandSuccess<AgentAskSettleData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   if (options.disposition !== "accepted" && options.disposition !== "rejected") {
@@ -101,7 +105,11 @@ export function runAgentAskSettleCommand(options: {
     anchor: options.before ?? options.after,
     expectedQueueRevision: options.revision,
     previewFingerprint: options.preview,
-    apply: options.apply
+    apply: options.apply,
+    activate: options.activate,
+    action: options.action,
+    model: options.model,
+    effort: options.effort
   }));
   return createSuccess({ command: "agent-ask.settle", workspace: workspacePath, data: { receipt } });
 }

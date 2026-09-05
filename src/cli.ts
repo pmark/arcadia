@@ -693,6 +693,10 @@ export function buildProgram(): Command {
     .requiredOption("--request-id <id>", "Idempotency key for this settlement")
     .requiredOption("--disposition <accepted|rejected>", "Terminal proposal disposition")
     .option("--responsibility <autonomous|agent>", "Approved Responsibility for each created Action")
+    .option("--activate", "Activate the named draft Plan, preserving unfinished work in the previous Plan")
+    .option("--action <id>", "Explicit eligible first Action for Plan activation")
+    .option("--model <id>", "Explicit coding-agent model pin for Plan activation")
+    .option("--effort <level>", "Reasoning effort for Plan activation")
     .option("--top", "Place the accepted Action bundle or active Plan at the top of the queue")
     .option("--before <project/action>", "Place the accepted Action bundle or active Plan before this ordered Action")
     .option("--after <project/action>", "Place the accepted Action bundle or active Plan after this ordered Action")
@@ -702,6 +706,7 @@ export function buildProgram(): Command {
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: {
     workspace: string; proposal: string; requestId: string; disposition: string; responsibility?: string;
+    activate?: boolean; action?: string; model?: string; effort?: string;
     top?: boolean; before?: string; after?: string; revision?: string; preview?: string; apply?: boolean; json?: boolean;
   }) => runCliAction("agent-ask.settle", options, () => runAgentAskSettleCommand({
     ...options,

@@ -365,6 +365,7 @@ export interface DashboardSnapshot {
   backBurnerItems: DashboardBackBurnerItem[];
   recentRuns: DashboardRun[];
   recentArtifacts: DashboardArtifact[];
+  managedActions?: Array<{ workItemId: string; projectId: string; planSlug: string; actionId: string }>;
 }
 
 export interface DashboardReviewFocus {
@@ -858,6 +859,7 @@ export interface DashboardBackBurnerItem {
 
 export interface DashboardRun {
   id: string;
+  workItemId?: string | null;
   status: string;
   statusLabel: string;
   projectId: string | null;
@@ -879,6 +881,7 @@ export interface DashboardRun {
 
 export interface DashboardArtifact {
   id: string;
+  workItemId?: string | null;
   title: string;
   artifactType: string;
   status: string;

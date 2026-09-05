@@ -58,7 +58,7 @@ Action become the controller's real input. Exact amendment: [14](./14-flight-dec
 
 ## Execution sizing and continuation
 
-Use the current configured Claude Sonnet 5 handoff, high effort for the bootstrap
+Use Codex Astra (`gpt-6-astra`), high effort for the initial bootstrap
 policy, capacity, admission, canonical completion and supervision boundaries;
 medium for focused UI integration. Runtime routing uses the existing portable
 execution profiles and supported provider bindings, not this prose as a provider
@@ -66,11 +66,10 @@ configuration. Verify installed model/effort support rather than silently guessi
 
 Each Action is a bounded session with an observable proof Artifact. Reuse the
 named source mechanisms; deterministic checks precede model review. A missing
-telemetry field is unknown, not free quota. The Ask schema cannot set all model,
-execution and token-budget metadata; see the existing metadata capability
-proposal. At activation, explicitly supply the supported model pin and accurate
-Plan budget through governed tooling. Do not hand-edit the pointer or claim the
-default one-pass generated budget describes the whole bootstrap.
+telemetry field is unknown, not free quota. The settlement activation options
+supply the model and effort pin. The generated Plan budget allows a bounded
+implementation and review per Action with finite repair attempts; it does not
+budget the whole bootstrap as one model call.
 
 Initially, normal `arcadia go` sessions build and prove the bootstrap. Thereafter
 the production controller performs repeated Action admission/Session launch and

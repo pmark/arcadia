@@ -62,6 +62,9 @@ export interface WorkQueue {
   generatedAt: string;
   revision: number;
   ordered: WorkQueueEntry[];
+  running?: WorkQueueEntry[];
+  attention?: WorkQueueEntry[];
+  flagged?: WorkQueueEntry[];
   nextActionKey: string | null;
   unpositionedCount: number;
   orderValid: boolean;
