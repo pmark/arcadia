@@ -1,5 +1,29 @@
 # Flight Deck: reviewable settlement handoff
 
+## Current handoff after operator approval
+
+The operator explicitly approved the revised proposal, queue repair, and
+publication as a draft PR in the originating conversation on 2026-09-05.
+[PR #177](https://github.com/pmark/arcadia/pull/177) preserves this documentation.
+Merge remains a separate approval. This supporting note preserves the handoff;
+it does not claim the Agent Ask has been settled.
+
+The refreshed inventory had 50 keys. Queue repair was applied with receipt
+`qorder_d7375cb6dc4546f6af`, advancing revision 17 to 18. The four existing
+Flight Deck Actions are explicitly positioned first; the other 46 keys retain
+their relative order. The selected next Action is
+`arcadia/project-plan-lanes-and-pipeline-columns`.
+
+The revised twenty-Action amendment remains approved but unapplied pending
+documentation merge. After merge, refresh and apply its exact settlement preview
+within the recorded approval; do not ask for proposal approval again unless
+its effects materially change. Verify the configured checkout and preserve the
+settlement commit. Do not start the old copy-only implementation scope while
+the approved expansion is awaiting this landing step.
+
+The sections below preserve the earlier preview evidence and original question.
+They are historical wherever the current handoff above updates their state.
+
 2026-09-05. Supporting evidence, not a canonical Log or operator approval.
 
 ## Completed in this documentation pass
