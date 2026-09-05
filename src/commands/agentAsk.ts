@@ -85,7 +85,7 @@ export function runAgentAskSettleCommand(options: {
     throw validationError("Agent Ask disposition must be accepted or rejected.");
   }
   if (options.responsibility && options.responsibility !== "autonomous" && options.responsibility !== "agent") {
-    throw validationError("Agent Ask Action Responsibility must be autonomous or codex.");
+    throw validationError("Agent Ask Action Responsibility must be autonomous or agent.");
   }
   const placements = [options.top ? "top" : null, options.before ? "before" : null, options.after ? "after" : null].filter(Boolean);
   if (placements.length > 1) throw validationError("Choose at most one queue placement: --top, --before, or --after.");
