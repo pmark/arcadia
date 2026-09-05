@@ -314,6 +314,24 @@ actions:
       skipped; the 4 failing files are pre-existing worktree
       environment/build gaps in discord-bot and the dashboard's Intelligence
       client, unrelated to this change).
+  - id: relax-responsibility-refusal-per-decision-0045
+    title: settleAgentAsk accepts an explicit --responsibility value on an Action amendment (targetRef path) and writes it to the Plan document, instead of unconditionally refusing with "Action amendment preserves its existing Responsibility and queue position."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: settleAgentAsk accepts an explicit --responsibility value on an Action amendment (targetRef path) and writes it to the Plan document, instead of unconditionally refusing with "Action amendment preserves its existing Responsibility and queue position."
+    expected_artifact: Evidence satisfying Agent Ask relax-responsibility-refusal-per-decision-0045
+    clarification: clarified
+    confidence: high
+    source: Agent Ask relax-responsibility-refusal-2026-09-05
+    acceptance_criteria:
+      - An Agent Ask Action amendment (targetRef set) that supplies --responsibility autonomous or --responsibility agent updates that field in the Plan document's frontmatter for the targeted Action.
+      - An Agent Ask Action amendment that supplies --placement is still refused for a targetRef amendment; only responsibility gains a path, matching Decision 0045's scope.
+      - "An Agent Ask Action amendment that supplies neither --responsibility nor --placement behaves exactly as before: preserves the existing Responsibility and queue position."
+      - Existing tests covering the unconditional refusal are updated, and new tests cover the accepted responsibility-amendment path and the still-refused placement-amendment path.
+    depends_on: []
+    decisions: []
+    references: [src/ask/settlement.ts, src/ask/agentAsk.ts, docs/decisions/0045-agent-ask-can-amend-action-responsibility.md, tests/agent-ask-settlement.test.ts]
 questions: []
 decisions: ["0024", "0025", "0028"]
 ---
