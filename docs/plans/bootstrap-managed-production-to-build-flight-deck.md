@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: bootstrap-managed-production-to-build-flight-deck
 project: arcadia
-status: draft
+status: active
 milestone: Bootstrap managed production to build Flight Deck
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -320,6 +320,9 @@ actions:
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/working-copy-safety.md", "docs/plans/mission-control-view/14-flight-deck-plan-amendment.yaml"]
 questions: []
 decisions: []
+current_action: implement-evidence-bound-action-completion
+recommended_model: gpt-6-astra
+recommended_reasoning_effort: high
 ---
 
 # Bootstrap managed production to build Flight Deck

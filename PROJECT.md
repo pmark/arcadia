@@ -6,9 +6,9 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: Flight Deck board carries the whole portfolio on one surface
-active_plan: flight-deck-board-carries-the-whole-portfolio-on-one-surface
-current_action: project-plan-lanes-and-pipeline-columns
+milestone: Bootstrap managed production to build Flight Deck
+active_plan: bootstrap-managed-production-to-build-flight-deck
+current_action: implement-evidence-bound-action-completion
 updated: 2026-09-05
 ---
 

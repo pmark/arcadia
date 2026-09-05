@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: flight-deck-board-carries-the-whole-portfolio-on-one-surface
 project: arcadia
-status: active
+status: draft
 milestone: Flight Deck board carries the whole portfolio on one surface
 token_impact: medium
 token_budget: Deterministic management; one bounded coding-agent implementation pass after activation.

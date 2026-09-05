@@ -2546,3 +2546,10 @@ STILL OPEN. Nineteen other write transactions across src/ still use the deferred
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-05 — Agent Ask activate-managed-production-completion-first-2026-09-05
+
+- **Did:** Activated bootstrap-managed-production-to-build-flight-deck at implement-evidence-bound-action-completion.
+- **Result:** Operator-settled Plan transition. Previous Plan flight-deck-board-carries-the-whole-portfolio-on-one-surface remains draft with completion state preserved. The operator explicitly requested production routines first, whole-Plan execution and contextual multiple-choice judgment gates. Activate the accepted bootstrap at implement-evidence-bound-action-completion with Astra/high and put its Action segment first. Completion must precede production policy so the bootstrap does not repeat the evidence-without-advancement failure on its own first eight Actions. Preserve Flight Deck's unfinished state as draft work; do not claim completion, launch a Session, merge code, or enable unattended execution. The canonical activation path repairs the missing handoff mechanism before recording this transition.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
