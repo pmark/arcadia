@@ -8,6 +8,38 @@ updated: 2026-09-05
 
 # Mission Log: Arcadia
 
+## 2026-09-05 — Closed out the codex→agent responsibility rename and repaired the stale pointer
+
+- **Action:** `way-delivery#rename-codex-responsibility-to-agent`
+- **Did:** Dispatch handed this Action to a fresh agent worktree, but every
+  acceptance criterion was already satisfied by earlier work: `feat(domain):
+  rename codex responsibility value to agent` (PR #164) and the follow-up
+  fix cycle for the regression it caused (PR #165) had already landed
+  `WORK_CLASSIFICATIONS`/`WORK_CLASSIFICATION_LABELS` using `agent`, the
+  `responsibility: codex` → `agent` legacy-read normalization in
+  `src/docs/parse.ts`, every plan document already rewritten to
+  `responsibility: agent`, and test coverage for both the new literal value
+  and the legacy spelling (`tests/docs-sync.test.ts`). What was missing was
+  the record: both settle commits for that earlier work (`rename-codex-
+  responsibility-log-2026-09-04`, `log-codex-responsibility-migration-fix-
+  2026-09-05`) were Log-only Agent Asks, so this Action's `status` in
+  `docs/plans/way-delivery.md` was never flipped to `done`, and `PROJECT.md`
+  and the plan's `current_action` both still pointed at it — a stale pointer
+  that would have kept re-dispatching finished work.
+- **Result:** Verified every acceptance criterion directly (constants, parse.ts
+  compatibility path, a repo-wide grep for `responsibility: codex` in
+  `docs/plans/`, and the targeted test files), then marked the Action `done`
+  and repointed `current_action` (in both `PROJECT.md` and the plan) to
+  `carry-decision-options`, the next `agent`-responsibility Action with no
+  unmet dependencies. `arcadia advance --json` now resolves cleanly with no
+  blockers.
+- **Next:** `way-delivery#carry-decision-options`, now the current Action.
+- **Blockers:** None. Worth naming so it does not recur: an Agent Ask's
+  `log` intent can settle without ever touching the Action it was about,
+  so a session finishing real work under one request id should also confirm
+  the plan document's own `status` and `current_action` fields moved, not
+  just that a Log entry was written.
+
 ## 2026-09-02 — Gave Arcadia's own deferrals something that reads them
 
 - **Action:** `way-delivery#evaluate-document-triggers`

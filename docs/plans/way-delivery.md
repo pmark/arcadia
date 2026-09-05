@@ -9,7 +9,7 @@ token_impact: medium
 token_budget: "Regeneration, drift comparison, and pull-request mechanics are deterministic and belong in code, not a model. Reserve model use for one implementation session per Action and a single review pass. A propagation run that calls a model per repository is the failure mode this budget exists to prevent."
 recommended_model: claude-sonnet-5
 updated: 2026-09-04
-current_action: rename-codex-responsibility-to-agent
+current_action: carry-decision-options
 actions:
   - id: seed-the-work-pointer-when-a-repository-is-adopted
     title: Write PROJECT.md and a first plan when a repository is adopted
@@ -252,7 +252,7 @@ actions:
     references: [src/ask/settlement.ts, docs/decisions/0044-decide-whether-agent-ask-should-gain-a-capability-to-correct-or-amend-an-existin.md]
   - id: rename-codex-responsibility-to-agent
     title: "Rename the \"codex\" value of WorkClassification to \"agent\" in src/domain/constants.ts (WORK_CLASSIFICATIONS and WORK_CLASSIFICATION_LABELS), update every reference in AGENTS.md, the agent-ask CLI (validation, help text, `agent-ask contract` output), and other docs under docs/ that name \"codex\" as a responsibility value, and rewrite every Plan document under docs/plans/ in this repository whose Action frontmatter reads `responsibility: codex` to `responsibility: agent`. Add a compatibility read path so a Plan document (in this repository or an adopting project) that still has `responsibility: codex` is accepted and normalized to `agent` rather than rejected, since Arcadia Way changes reach adopting projects on their own schedule, not instantaneously."
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: "Rename the \"codex\" value of WorkClassification to \"agent\" in src/domain/constants.ts (WORK_CLASSIFICATIONS and WORK_CLASSIFICATION_LABELS), update every reference in AGENTS.md, the agent-ask CLI (validation, help text, `agent-ask contract` output), and other docs under docs/ that name \"codex\" as a responsibility value, and rewrite every Plan document under docs/plans/ in this repository whose Action frontmatter reads `responsibility: codex` to `responsibility: agent`. Add a compatibility read path so a Plan document (in this repository or an adopting project) that still has `responsibility: codex` is accepted and normalized to `agent` rather than rejected, since Arcadia Way changes reach adopting projects on their own schedule, not instantaneously."
