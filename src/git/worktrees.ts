@@ -124,6 +124,11 @@ export function hasUpstream(cwd: string, branch: string): boolean {
   return tryGit(cwd, ["rev-parse", "--verify", `${branch}@{upstream}`]) !== null;
 }
 
+/** The branch's upstream in `remote/branch` form, or null when none is configured. */
+export function upstreamRef(cwd: string, branch: string): string | null {
+  return tryGit(cwd, ["rev-parse", "--abbrev-ref", `${branch}@{upstream}`]);
+}
+
 export function git(cwd: string, args: string[]): string {
   try {
     return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });

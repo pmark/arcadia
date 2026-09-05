@@ -116,6 +116,62 @@ describe("arcadia go", () => {
   });
 });
 
+describe("arcadia go — base branch remote sync", () => {
+  it("skips cleanly when the base branch has no tracked remote", () => {
+    const fixture = createFixture("claude/no-tracked-remote");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true });
+
+    expect(result.data.baseRemoteSync).toEqual({
+      attempted: false,
+      remote: null,
+      fastForwarded: false,
+      reason: "The base branch has no tracked remote configured."
+    });
+  });
+
+  it("does not fetch or modify the base branch during preview", () => {
+    const fixture = createFixtureWithRemote("claude/preview-copy");
+    git(fixture.remote, ["commit", "--allow-empty", "-m", "remote-only commit"]);
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature });
+
+    expect(result.data.baseRemoteSync.attempted).toBe(false);
+    expect(git(fixture.main, ["rev-list", "--count", "main..origin/main"]).trim()).toBe("0");
+  });
+
+  it("fetches and fast-forwards the local base branch when it is a clean ancestor of its remote", () => {
+    const fixture = createFixtureWithRemote("claude/fast-forward-base");
+    git(fixture.remote, ["commit", "--allow-empty", "-m", "remote-only commit"]);
+    // Advance the feature branch past the not-yet-fetched remote commit first,
+    // so the source-into-base fast-forward below still holds once `go` itself
+    // brings local main up to date with that same remote commit.
+    git(fixture.main, ["fetch", "origin"]);
+    git(fixture.feature, ["merge", "--ff-only", "origin/main"]);
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true });
+
+    expect(result.data.baseRemoteSync).toEqual({ attempted: true, remote: "origin", fastForwarded: true, reason: null });
+    expect(git(fixture.main, ["log", "--format=%s", "main"])).toContain("remote-only commit");
+  });
+
+  it("refuses when the local base branch has diverged from its fetched remote", () => {
+    const fixture = createFixtureWithRemote("claude/diverged-base");
+    git(fixture.remote, ["commit", "--allow-empty", "-m", "remote-only commit"]);
+    git(fixture.main, ["commit", "--allow-empty", "-m", "local-only commit"]);
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+
+    expectValidation(
+      () => runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true }),
+      "diverged from its remote"
+    );
+    expect(git(fixture.main, ["log", "-1", "--format=%s", "main"]).trim()).toBe("local-only commit");
+  });
+});
+
 describe("arcadia go — next-session model resolution", () => {
   it("refuses an active plan with no pinned model before it can dispatch", () => {
     const fixture = createFixture("codex/no-model", planDocument.replace("recommended_model: gpt-5.6-terra\n", ""));
@@ -198,6 +254,29 @@ function createFixture(branch: string, plan: string = planDocument): { root: str
   git(main, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
   git(main, ["worktree", "add", "-q", "-b", branch, feature, "main"]);
   return { root, main, feature };
+}
+
+/** Like createFixture, but `main` is a real clone of a separate remote repo, so `git fetch` has something distinct to pull. */
+function createFixtureWithRemote(branch: string, plan: string = planDocument): { root: string; remote: string; main: string; feature: string } {
+  const root = mkdtempSync(path.join(tmpdir(), "arcadia-go-remote-"));
+  roots.push(root);
+  const remote = path.join(root, "remote");
+  const main = path.join(root, "repo");
+  const feature = path.join(root, "feature");
+  mkdirSync(remote);
+  git(remote, ["init", "-q", "-b", "main"]);
+  git(remote, ["config", "user.email", "arcadia@example.test"]);
+  git(remote, ["config", "user.name", "Arcadia Test"]);
+  writeFileSync(path.join(remote, "PROJECT.md"), projectDocument);
+  mkdirSync(path.join(remote, "docs", "plans"), { recursive: true });
+  writeFileSync(path.join(remote, "docs", "plans", "copy-proof.md"), plan);
+  git(remote, ["add", "."]);
+  git(remote, ["commit", "-m", "initial"]);
+  git(root, ["clone", "-q", remote, main]);
+  git(main, ["config", "user.email", "arcadia@example.test"]);
+  git(main, ["config", "user.name", "Arcadia Test"]);
+  git(main, ["worktree", "add", "-q", "-b", branch, feature, "main"]);
+  return { root, remote, main, feature };
 }
 
 function commitFeature(cwd: string, file: string, content: string): void {
