@@ -344,7 +344,7 @@ import {
   runWorkShowQuestionCommand
 } from "./commands/workQuestion.js";
 import { renderGateSuccess, runGateStatusCommand } from "./commands/gate.js";
-import { renderWayStatusSuccess, runWayStatusCommand } from "./commands/way.js";
+import { renderWayPropagateSuccess, renderWayStatusSuccess, runWayPropagateCommand, runWayStatusCommand } from "./commands/way.js";
 import {
   renderWorkAddSubtaskSuccess,
   renderWorkDoneSuccess,
@@ -3100,13 +3100,32 @@ export function buildProgram(): Command {
     runCliAction("portfolio", options, () => runPortfolioCommand(options), renderPortfolioSuccess)
   );
 
-  addJsonOption(
+  const way = addJsonOption(
     program
       .command("way")
       .description("Report which projects have drifted from the canonical Arcadia Way text")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((options: { workspace: string; json?: boolean }) =>
+  );
+  way.action((options: { workspace: string; json?: boolean }) =>
     runCliAction("way", options, () => runWayStatusCommand(options), renderWayStatusSuccess)
+  );
+  addJsonOption(
+    way
+      .command("propagate")
+      .description(
+        "Open one pull request per adopting repository with Way changes -- auto-merging a mechanical-tier " +
+          "change, leaving a governing-tier change (Constitution, continuation protocol) open for a human"
+      )
+      .argument("[project-id]", "Restrict to one project id or name; every adopting project otherwise")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--dry-run", "Report what would happen without writing, committing, or pushing anything")
+  ).action((projectId: string | undefined, options: { workspace: string; dryRun?: boolean; json?: boolean }) =>
+    runCliAction(
+      "way.propagate",
+      options,
+      () => runWayPropagateCommand({ workspace: options.workspace, project: projectId, dryRun: options.dryRun }),
+      renderWayPropagateSuccess
+    )
   );
 
   const worker = program.command("worker").description("Background execution worker daemon");

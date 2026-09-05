@@ -8,6 +8,54 @@ updated: 2026-09-05
 
 # Mission Log: Arcadia
 
+## 2026-09-05 — Way propagation delivers, and `way-delivery` reaches its milestone
+
+- **Action:** `way-delivery#open-way-sync-pull-requests`
+- **Did:** Built `arcadia way propagate`, delivering the two tiers Decision
+  0024 defines: `src/projects/wayPropagation.ts` diffs an adopting
+  repository's AGENTS.md region and CLAUDE.md wrapper (mechanical) and its
+  CONSTITUTION.md and continuation protocol (governing) against Arcadia's
+  canonical text, reusing the same pure generators `setup-context` writes
+  with. `src/projects/wayPropagate.ts` orchestrates one pull request per
+  repository through an injectable command runner — refusing a dirty working
+  tree, a repository with no GitHub remote, or one whose
+  `.arcadia/arcadia-way/adoption.json` declares `upgrade_policy:
+  "explicit-only"` — and merges immediately only when a run touched the
+  mechanical tier alone; a governing-tier change, alone or alongside a
+  mechanical one, always leaves the pull request open. Wired as `arcadia way
+  propagate [project-id] [--dry-run]`.
+- **Result:** All five acceptance criteria covered by 12 new tests in
+  `tests/way-propagation.test.ts`, including full orchestration against a
+  real local Git repository and a local bare "origin" with `gh` faked
+  through the injected runner. `tsc --noEmit` clean; full suite 1,212 passed,
+  8 skipped, the same pre-existing worktree environment gaps untouched by
+  this change. This was the last `open` Action in `way-delivery`, so the
+  plan is marked `complete` and its milestone — every adopting project can
+  receive Way changes and ask for Way capabilities without anyone writing
+  Arcadia twice — is reached. `way-delivery` no longer designates a
+  `current_action` (its `checked-in Arcadia control documents` contract test
+  requires every active plan to resolve one, so leaving the pointer on a
+  complete plan with none is a real defect, not a stylistic gap — CI caught
+  it). `PROJECT.md`'s `active_plan` moves to `agent-ask-execution-queue`,
+  which was already `status: active` with its own `current_action:
+  dogfood-agent-managed-queue` declared — a competing pointer `resolveDispatch`
+  already refused to allow alongside an active `way-delivery`. That Action is
+  `blocked` behind open Decision 0041 and resolves as the operator question
+  it already was, which is the sanctioned outcome here: the choice of the
+  *next milestone* (`flight-deck-board-carries-the-whole-portfolio-on-one-
+  surface`, still `draft`, is the evident candidate behind Arcadia's own
+  recorded milestone) is a materially different decision than this session
+  was dispatched to make, so it falls to the operator rather than being
+  picked unilaterally to satisfy CI.
+- **Next:** Operator answers Decision 0041 (reactivates
+  `agent-ask-execution-queue`'s dogfood tail), or explicitly activates
+  `flight-deck-board-carries-the-whole-portfolio-on-one-surface` instead.
+- **Blockers:** None. Real propagation was implemented and tested against
+  local fixtures only; it was not run against any real adopting repository
+  in this session (that would push branches and, for a mechanical-only
+  change, merge them without further review), pending the operator wanting
+  a live run.
+
 ## 2026-09-05 — Decisions can carry options with consequences
 
 - **Action:** `way-delivery#carry-decision-options`

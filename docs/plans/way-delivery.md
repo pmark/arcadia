@@ -3,13 +3,12 @@ arcadia: v1
 type: plan
 slug: way-delivery
 project: arcadia
-status: active
+status: complete
 milestone: Every adopting project receives Way changes and can ask for Way capabilities without anyone writing Arcadia twice
 token_impact: medium
 token_budget: "Regeneration, drift comparison, and pull-request mechanics are deterministic and belong in code, not a model. Reserve model use for one implementation session per Action and a single review pass. A propagation run that calls a model per repository is the failure mode this budget exists to prevent."
 recommended_model: claude-sonnet-5
 updated: 2026-09-05
-current_action: open-way-sync-pull-requests
 actions:
   - id: seed-the-work-pointer-when-a-repository-is-adopted
     title: Write PROJECT.md and a first plan when a repository is adopted
@@ -54,7 +53,7 @@ actions:
       tests/project-control-documents.test.ts; full suite 883 passing.
   - id: open-way-sync-pull-requests
     title: Propagate Way changes to every project as a pull request, never as a merge
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Implement tiered propagation — regenerate each adopting repository's mechanical tier, open one pull request per repository, and auto-merge only the mechanical tier within the guardrails Decision 0024 sets.
@@ -71,6 +70,46 @@ actions:
     decisions: ["0024"]
     depends_on: []
     references: [docs/agents-context.md, src/projects/contextSetup.ts, docs/decisions/0024-way-propagation-tiers-and-push-authority.md]
+    result: >-
+      `arcadia way propagate` delivers the two tiers Decision 0024 defines.
+      `src/projects/wayPropagation.ts` diffs an adopting repository against
+      Arcadia's canonical text using the same pure generators `setup-context`
+      writes with (`updateAgentsMarkdown`, `thinClaudeWrapper`,
+      `adoptContinuationProtocol`) — AGENTS.md and CLAUDE.md classified
+      mechanical, CONSTITUTION.md and the continuation protocol governing — so
+      propagation and `arcadia way`'s drift report cannot disagree about what
+      "current" means, and a byte-identical repository yields no changes and
+      no pull request. `src/projects/wayPropagate.ts` orchestrates the rest
+      through an injectable command runner (the same pattern
+      `workMonitoring/pullRequests.ts` already uses): refuse a dirty working
+      tree or a repository with no GitHub remote, branch off the resolved
+      base branch, write only the changed managed files, commit, push, open
+      one pull request per repository, and merge it immediately only when the
+      run touched the mechanical tier alone — a governing-tier change, alone
+      or alongside a mechanical one, always leaves the pull request open. A
+      repository's own `.arcadia/arcadia-way/adoption.json` declaring
+      `upgrade_policy: "explicit-only"` is skipped and reported before any
+      git command runs. Arcadia never proposes propagating the Way to itself
+      (`arcadiaRepoRoot()` in `contextSetup.ts`, exported for this). Wired as
+      `arcadia way propagate [project-id] [--dry-run]`, nested under the
+      existing `way` noun alongside its unchanged bare status report. 12 new
+      tests in `tests/way-propagation.test.ts` cover the pure tiering (both
+      tiers individually, together, and an unmanageable hand-authored
+      CLAUDE.md), the upgrade-policy read, and full orchestration against a
+      real local Git repository and a local bare "origin" (a GitHub-shaped
+      fetch URL with a local push URL, so `parseGithubSlug` sees exactly what
+      a real adopter would report while every push stays disk-local) with
+      `gh` faked through the injected runner — current/no-op, mechanical
+      merge, combined-tier open-without-merge, and declined-policy skip.
+      `tsc --noEmit` clean; full suite 1,212 passed, 8 skipped. Three files
+      fail on pre-existing worktree environment gaps untouched by this change
+      (discord.js not installed for discord-bot.test.ts;
+      `@pmark/arcadia/intelligence/client` resolving to built output for two
+      dashboard Intelligence tests) and one hook timeout building that same
+      package boundary; `tests/cli-response.test.ts`'s three apparent
+      timeouts under the full run were resource contention, confirmed by a
+      clean standalone run (77/77 passing). This Action was the last `open`
+      item in this plan, so `way-delivery` reaches its milestone.
   - id: accept-upstream-proposals
     title: Let a project ask for a Way capability instead of building one
     status: done
