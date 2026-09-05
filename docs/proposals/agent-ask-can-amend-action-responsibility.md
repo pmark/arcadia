@@ -3,6 +3,7 @@ arcadia: v1
 type: proposal
 project: arcadia
 question: Should an Agent Ask amendment be able to change an existing Action's `responsibility`, when the operator explicitly directs it?
+decision: "0045"
 ---
 
 # Agent Ask amending Action responsibility
