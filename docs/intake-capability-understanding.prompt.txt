@@ -11,7 +11,7 @@ Arcadia's input understanding is the trust boundary for the whole system.
 If Arcadia under-matches clear requests, it creates review noise and feels like clerical software.
 If Arcadia over-matches vague requests, it creates the wrong work and damages confidence.
 If Arcadia misses project/capability context, it loses the thread of creative momentum.
-If Arcadia hides interpretation, Mark cannot correct it quickly.
+If Arcadia hides interpretation, the operator cannot correct it quickly.
 If Arcadia routes publishing, credential, deployment, spending, destructive, or code-changing work too aggressively, it violates the core safety model.
 
 The target is not "parse more phrases." The target is an auditable understanding layer that can explain:
@@ -105,11 +105,11 @@ The same system should also handle non-blog capability-shaped requests without s
 - "Draft the next <project> update."
 - "Configure <capability> for <project>."
 - "What is blocked for <project>?"
-- "What needs Mark's approval for <project>?"
+- "What needs the operator's approval for <project>?"
 
 Do not broaden execution unsafely. If a request contains any of these risk indicators, create or preserve approval gates:
 
-- publishing, scheduling public release, deployment, credentials, analytics/production data, spending, destructive filesystem changes, merge to main, outbound messages/email/social posting, sensitive claims, strategic positioning, Mark's voice.
+- publishing, scheduling public release, deployment, credentials, analytics/production data, spending, destructive filesystem changes, merge to main, outbound messages/email/social posting, sensitive claims, strategic positioning, the operator's voice.
 
 Design changes to implement:
 
@@ -280,7 +280,7 @@ Every ask result should make the interpretation obvious:
 - Artifact to be created/read
 - Next action
 
-This is critical because Mark must be able to correct Arcadia quickly.
+This is critical because the operator must be able to correct Arcadia quickly.
 
 Testing requirements:
 
@@ -299,7 +299,7 @@ Blogging:
 
 Core:
 
-- "What needs Mark's approval?"
+- "What needs the operator's approval?"
 - "What is blocked for Rebuster?"
 - "Set MIDI Opener goal to improve App Store conversion."
 - "Pause Rebuster."
@@ -340,7 +340,7 @@ Acceptance criteria:
 - All Blogging examples above succeed with precise, non-generic interpretation.
 - Existing ask/review/status/project flows continue to pass.
 - Existing approval-gated Codex behavior remains intact.
-- The dashboard and CLI show enough interpretation detail for Mark to correct mistakes.
+- The dashboard and CLI show enough interpretation detail for the operator to correct mistakes.
 - `pnpm test`, `pnpm build`, `pnpm dashboard:build`, and `pnpm smoke` pass.
 
 Deliverable:

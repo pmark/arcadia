@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Arcadia should accept arbitrary material from Mark's mind and devices, preserve it, understand it as far as evidence allows, project useful Actions, execute explicitly safe high-confidence work, and deliver durable Artifacts through immediately accessible destinations. Every capture should leave a receipt. Every interpretation should be inspectable. Every automated Action should be policy-authorized. Every result should be recoverable and attributable.
+Arcadia should accept arbitrary material from the operator's mind and devices, preserve it, understand it as far as evidence allows, project useful Actions, execute explicitly safe high-confidence work, and deliver durable Artifacts through immediately accessible destinations. Every capture should leave a receipt. Every interpretation should be inspectable. Every automated Action should be policy-authorized. Every result should be recoverable and attributable.
 
 The desired operating loop is:
 
@@ -28,7 +28,7 @@ Maintain momentum across arbitrary creative and software work with minimal cogni
 
 ## Outcome
 
-Mark can send Arcadia text, clipboard contents, URLs, files, images, audio, or explicit commands from any supported surface and quickly receive:
+The operator can send Arcadia text, clipboard contents, URLs, files, images, audio, or explicit commands from any supported surface and quickly receive:
 
 - an immutable source Artifact and capture receipt;
 - Arcadia's interpretation, confidence, and Project attribution;
@@ -83,7 +83,7 @@ The program must not create parallel versions of these concepts. Where two exist
 | M8 | Artifact Delivery Broker | Local, iCloud Drive, and Google Drive delivery use one verified, idempotent sink contract. |
 | M9 | HTTP Artifact Access | Approved local or deployed HTTP delivery produces stable, access-controlled Artifact URLs. |
 | M10 | Obsidian Vault Handoff | Arcadia stages structured Markdown and attachments into configured vault locations without curating the vault. |
-| M11 | Receipts, Dashboard, Digest, And Recovery | Mark can immediately see what happened, what needs a Decision, Artifact links, and recovery Actions. |
+| M11 | Receipts, Dashboard, Digest, And Recovery | The operator can immediately see what happened, what needs a Decision, Artifact links, and recovery Actions. |
 | M12 | Quick Thought And Idea Workflow | Random thoughts become durable Ideas, Back Burner items, or Actions without over-interpreting them. |
 | M13 | Voice Thought And Meeting Workflow | Speech becomes transcript, summary, candidate Decisions and Actions, and a vault handoff. |
 | M14 | URL, Research, And Arbitrary File Workflow | Shared URLs and files become preserved, classified research or Project Artifacts with useful extracts. |

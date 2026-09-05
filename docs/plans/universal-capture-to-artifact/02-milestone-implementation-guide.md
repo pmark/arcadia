@@ -111,7 +111,7 @@ Codex.
 
 ### Objective
 
-Give Mark complete, inspectable control over enabled workflows without expanding execution power.
+Give the operator complete, inspectable control over enabled workflows without expanding execution power.
 
 ### Scope
 

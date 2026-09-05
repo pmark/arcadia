@@ -200,7 +200,7 @@ export function prepareBlogScheduleAction(
     milestoneId: context.activeMilestone?.id ?? null,
     workPerformed: `Prepared Blogging schedule for ${site.name}.`,
     result: `Created schedule artifact and Requires Review item ${review.slug ?? review.id}.`,
-    nextAction: "Mark should approve, reject, defer, or clarify the schedule.",
+    nextAction: "The operator should approve, reject, defer, or clarify the schedule.",
     artifactImpact: artifactPath
   });
 
@@ -288,7 +288,7 @@ export function draftBlogPostAction(
     milestoneId: context.activeMilestone?.id ?? null,
     workPerformed: `Drafted Blogging post scaffold for ${site.name}.`,
     result: `Created draft artifact and Requires Review item ${review.slug ?? review.id}.`,
-    nextAction: "Mark should review voice, positioning, and claims before scheduling or publishing.",
+    nextAction: "The operator should review voice, positioning, and claims before scheduling or publishing.",
     artifactImpact: artifactPath
   });
   const updatedPost = updateBlogPostLinks(runtime.db, post.id, { missionLogId: missionLog.id, stage: "review" }) ?? post;

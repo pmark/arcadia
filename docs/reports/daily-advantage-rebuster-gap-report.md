@@ -6,7 +6,7 @@ Current Milestone: make one existing SQLite Action usable from Today through acc
 
 Next Action: use the live Today recommendation; maintain the selector rules as Action data quality improves.
 
-Responsibility: Codex for implementation; Mark for each Decision.
+Responsibility: Codex for implementation; the operator for each Decision.
 
 Required Artifacts: this report, `START_HERE.md`, `tests/daily-advantage-loop.test.ts`, and the packet, Validation, planning Artifact, and Log produced by each approved Run.
 
@@ -118,7 +118,7 @@ All mutation/execution verification uses disposable workspaces and a fake planni
 
 ## Risks and Assumptions
 
-- “Value” is bounded to readiness plus recency; Arcadia does not invent business priority. Mark can change Action data or finish/defer Decisions to influence the next recommendation.
+- “Value” is bounded to readiness plus recency; Arcadia does not invent business priority. The operator can change Action data or finish/defer Decisions to influence the next recommendation.
 - Existing historical planning packets without Decisions are excluded instead of silently repaired.
 - Build-oriented Actions are excluded because Daily Advantage currently prepares read-only planning only.
 - The current native SQLite install requires Node 25.6.1; the managed restart and operator fallback pin that runtime.
