@@ -16,7 +16,9 @@ export interface WorkQueueEntry {
   projectId: string | null;
   projectName: string | null;
   projectSlug: string | null;
+  repositoryRoot?: string | null;
   planSlug: string | null;
+  planPath?: string | null;
   actionId: string | null;
   actionTitle: string | null;
   responsibility: string | null;

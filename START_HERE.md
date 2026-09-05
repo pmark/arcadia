@@ -17,6 +17,8 @@ pnpm arcadia now --narrate
 
 Drop `--narrate` for the deterministic pass, which makes no model calls and returns immediately.
 
+Open **Flight Deck** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/flight-deck> (on this Mac: <http://127.0.0.1:3020/flight-deck>) for a read-only portfolio board. It groups the existing Work Queue and dashboard snapshot into Project and Plan lanes, with the same five dispatch gates: Needs You, Ready to dispatch, Running, Proving, and Landed. An object whose Plan cannot be derived is shown in that Project's **Unattached** lane rather than being hidden. Refreshing and browsing this board never changes Arcadia state.
+
 Open **Work Queue** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/work-queue>
 (on this Mac: <http://127.0.0.1:3020/work-queue>) to see and control the
 complete approved Action order. The selected next Action is prominent; every
