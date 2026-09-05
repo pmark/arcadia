@@ -1369,10 +1369,15 @@ The first command is a deterministic preview. `--apply` is accepted only when:
   Decision or document blocker; and
 - the source is neither detached nor historically divergent.
 
-On success, Arcadia fast-forwards the local base branch, removes a linked
-source worktree or switches a primary task checkout back to the base branch,
-deletes only the now-merged source branch, prunes worktree metadata, rechecks
-dispatch, and reports the base ref plus the `arcadia advance` handoff. With
+On `--apply`, Arcadia first fetches the base branch's tracked remote and
+fast-forwards local base onto it when that is a clean ancestor merge —
+skipping cleanly (reported in `baseRemoteSync`) when no remote is tracked, and
+refusing outright when local base has diverged from the fetched remote rather
+than silently dispatching from stale state. It then fast-forwards the local
+base branch with the source, removes a linked source worktree or switches a
+primary task checkout back to the base branch, deletes only the now-merged
+source branch, prunes worktree metadata, rechecks dispatch, and reports the
+base ref plus the `arcadia advance` handoff. With
 `--agent codex` or `--agent claude`, it also creates a uniquely named isolated
 worktree from that updated local base and prints an exact launch command,
 pinned to a model: `--model` on the command line, else the plan's

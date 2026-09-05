@@ -17,10 +17,12 @@ import {
   isAncestor,
   isInside,
   parseWorktrees,
+  refExists,
   resolveBaseBranch,
   samePath,
   summarizeClutter,
   tryGit,
+  upstreamRef,
   type ClutterSummary
 } from "../git/worktrees.js";
 import {
@@ -53,6 +55,16 @@ export interface GoCommandOptions {
   tmux?: TmuxAdapter;
 }
 
+export interface BaseRemoteSync {
+  /** False when the base branch has no tracked remote; every other field is then null/false. */
+  attempted: boolean;
+  /** The remote name (e.g. "origin"), present whenever a fetch was attempted. */
+  remote: string | null;
+  fastForwarded: boolean;
+  /** Set whenever fastForwarded is false, explaining why (no remote, already current). */
+  reason: string | null;
+}
+
 export interface GoCommandData {
   applied: boolean;
   projectSlug: string;
@@ -61,6 +73,7 @@ export interface GoCommandData {
   sourceBranch: string;
   baseBranch: string;
   baseWorktree: string | null;
+  baseRemoteSync: BaseRemoteSync;
   integration: "not-needed" | "fast-forward";
   commitsToIntegrate: number;
   sourceWorktreeRemoved: boolean;
@@ -120,6 +133,16 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
   if (baseRecord && !samePath(baseRecord.path, sourceRecord.path)) {
     assertClean(baseRecord.path, "base worktree");
   }
+
+  // Fetches and fast-forwards local base onto its remote before anything below
+  // reads from it — dispatch, `commitsToIntegrate`, and the next worktree all
+  // have to see current state, not whatever the last session happened to leave
+  // on disk. Failing closed on divergence here is the same fail-closed
+  // contract the rest of this command already applies to the source branch.
+  // Preview changes no Git state, fetch included, so this only runs on apply.
+  const baseRemoteSync: BaseRemoteSync = options.apply
+    ? syncBaseBranchWithRemote({ controlWorktree, baseBranch, baseWorktreePath: baseRecord?.path ?? null })
+    : { attempted: false, remote: null, fastForwarded: false, reason: "Preview does not fetch or modify the base branch." };
 
   const sourceBranch = sourceRecord.branch.replace(/^refs\/heads\//, "");
   const integration = sourceBranch === baseBranch ? "not-needed" : "fast-forward";
@@ -293,6 +316,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       sourceBranch,
       baseBranch,
       baseWorktree: baseRecord?.path ?? null,
+      baseRemoteSync,
       integration,
       commitsToIntegrate,
       sourceWorktreeRemoved,
@@ -320,6 +344,16 @@ export function renderGoSuccess(response: CommandSuccess<GoCommandData>): string
     `Source: ${data.sourceBranch} — ${data.sourceWorktree}`,
     `Integration: ${data.integration}${data.commitsToIntegrate ? ` (${data.commitsToIntegrate} commit${data.commitsToIntegrate === 1 ? "" : "s"})` : ""}`
   ];
+
+  if (data.baseRemoteSync.attempted) {
+    lines.push(
+      data.baseRemoteSync.fastForwarded
+        ? `Base remote sync: fast-forwarded ${data.baseBranch} from ${data.baseRemoteSync.remote}.`
+        : `Base remote sync: ${data.baseRemoteSync.reason}`
+    );
+  } else if (data.baseRemoteSync.reason) {
+    lines.push(`Base remote sync: ${data.baseRemoteSync.reason}`);
+  }
 
   if (!data.applied) {
     lines.push(
@@ -433,6 +467,47 @@ function buildLaunchCommand(agent: "codex" | "claude", worktreePath: string, mod
   }
   const effortFlag = effort ? ` -c model_reasoning_effort=${JSON.stringify(effort)}` : "";
   return `codex -C ${quotedPath} -m ${quotedModel}${effortFlag} "arcadia advance"`;
+}
+
+/**
+ * Fetch the base branch's tracked remote and fast-forward the local base onto
+ * it when that is a clean ancestor merge. Skips cleanly when no remote is
+ * configured, and refuses (never silently proceeds) when local base has
+ * diverged from the fetched remote ref in a way a fast-forward cannot resolve.
+ */
+function syncBaseBranchWithRemote(input: {
+  controlWorktree: string;
+  baseBranch: string;
+  baseWorktreePath: string | null;
+}): BaseRemoteSync {
+  const { controlWorktree, baseBranch, baseWorktreePath } = input;
+  const upstream = upstreamRef(controlWorktree, baseBranch);
+  if (!upstream) {
+    return { attempted: false, remote: null, fastForwarded: false, reason: "The base branch has no tracked remote configured." };
+  }
+  const remoteName = upstream.split("/")[0]!;
+  git(controlWorktree, ["fetch", remoteName]);
+  const remoteRef = `refs/remotes/${upstream}`;
+  const baseHeadRef = `refs/heads/${baseBranch}`;
+  if (!refExists(controlWorktree, remoteRef)) {
+    return { attempted: true, remote: remoteName, fastForwarded: false, reason: "The fetch produced no remote-tracking ref for the base branch." };
+  }
+  if (isAncestor(controlWorktree, remoteRef, baseHeadRef)) {
+    return { attempted: true, remote: remoteName, fastForwarded: false, reason: "Local base branch is already current with its remote." };
+  }
+  if (!isAncestor(controlWorktree, baseHeadRef, remoteRef)) {
+    throw validationError("The local base branch has diverged from its remote; Arcadia go will not fast-forward through a rewrite.", {
+      baseBranch,
+      remote: upstream,
+      remedy: "Reconcile the divergence manually (rebase or merge) before retrying."
+    });
+  }
+  if (baseWorktreePath) {
+    git(baseWorktreePath, ["merge", "--ff-only", remoteRef]);
+  } else {
+    git(controlWorktree, ["branch", "-f", baseBranch, remoteRef]);
+  }
+  return { attempted: true, remote: remoteName, fastForwarded: true, reason: null };
 }
 
 function resolveProjectSlug(repoRoot: string): string {
