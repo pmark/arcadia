@@ -139,7 +139,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           const dependencies = normalizeDependencies(proposal.normalized.dependencies, project.slug);
           const unknownDependencies = dependencies.filter((dependency) => !plan.actions.some((action) => action.id === dependency));
           if (unknownDependencies.length > 0) throw validationError("Agent Ask names dependencies outside the active Plan.", { dependencies: unknownDependencies });
-          if (input.placement || input.responsibility) throw validationError("Action amendment preserves its existing Responsibility and queue position.");
+          if (input.placement) throw validationError("Action amendment preserves its existing queue position.");
           const actionId = resolveManagedTargetRef(targetRef, "action", project.slug);
           if (!plan.actions.some((action) => action.id === actionId)) throw validationError("Agent Ask Action amendment target was not found.", { targetRef });
           queueActionKey = `${project.slug}/${actionId}`;
@@ -149,10 +149,14 @@ export function settleAgentAsk(db: Database.Database, input: {
             path: activePlanPath,
             before: planBefore,
             after: amendAction(planBefore, actionId, proposal.normalized.desiredResult, proposal.normalized.acceptance,
-              dependencies, proposal.normalized.references, proposal.normalized.requestId)
+              dependencies, proposal.normalized.references, proposal.normalized.requestId, input.responsibility)
           });
           effects.push(`Amended Action ${queueActionKey} in active Plan ${plan.slug}.`);
-          effects.push("Preserved the Action's existing Responsibility and queue position.");
+          if (input.responsibility) {
+            effects.push(`Set Responsibility to ${input.responsibility} on the operator's explicit direction, per Decision 0045.`);
+          } else {
+            effects.push("Preserved the Action's existing Responsibility and queue position.");
+          }
         } else {
           if (!input.responsibility) throw validationError("Accepted Action settlement requires --responsibility autonomous or agent.");
           const unpositionedInProject = unpositionedCountForProject(queue, project.slug);
@@ -921,7 +925,8 @@ function amendAction(
   acceptance: string[],
   dependencies: string[],
   references: string[],
-  requestId: string
+  requestId: string,
+  responsibility?: AgentAskResponsibility
 ): string {
   const pattern = new RegExp(`(^  - id: ${escapeRegex(actionId)}\\r?$[\\s\\S]*?)(?=^  - id: |^---\\r?$)`, "m");
   const match = content.match(pattern);
@@ -929,13 +934,21 @@ function amendAction(
   let block = match[1];
   if (!/^    next_action:/m.test(block)) throw validationError("Managed Plan Action has no next_action field to amend.", { actionId });
   block = block.replace(/^    next_action:.*$/m, `    next_action: ${yamlScalar(nextAction)}`);
+  if (responsibility) {
+    if (!/^    responsibility:/m.test(block)) throw validationError("Managed Plan Action has no responsibility field to amend.", { actionId });
+    block = block.replace(/^    responsibility:.*$/m, `    responsibility: ${responsibility}`);
+  }
   if (acceptance.length > 0) {
     const replacement = ["    acceptance_criteria:", ...acceptance.map((criterion) => `      - ${yamlScalar(criterion)}`)].join("\n");
     block = block.replace(/^    acceptance_criteria:\r?\n(?:      - .*\r?\n?)*/m, `${replacement}\n`);
   }
-  block = block.replace(/^    depends_on:.*$/m,
+  // depends_on/references may already be written as a multi-line block list
+  // (each item on its own "      - " line) rather than an inline [a, b]; the
+  // continuation lines must be consumed too, or they survive as an orphaned
+  // sequence the YAML parser rejects.
+  block = block.replace(/^    depends_on:.*(?:\r?\n      - .*)*/m,
     dependencies.length > 0 ? `    depends_on: [${dependencies.join(", ")}]` : "    depends_on: []");
-  block = block.replace(/^    references:.*$/m,
+  block = block.replace(/^    references:.*(?:\r?\n      - .*)*/m,
     references.length > 0 ? `    references: [${references.map(yamlScalar).join(", ")}]` : "    references: []");
   block = /^    source:/m.test(block)
     ? block.replace(/^    source:.*$/m, `    source: ${yamlScalar(`Agent Ask ${requestId}`)}`)

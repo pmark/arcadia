@@ -55,13 +55,13 @@ actions:
   - id: open-way-sync-pull-requests
     title: Propagate Way changes to every project as a pull request, never as a merge
     status: open
-    responsibility: requires_review
+    responsibility: agent
     effort: session
     next_action: Implement tiered propagation — regenerate each adopting repository's mechanical tier, open one pull request per repository, and auto-merge only the mechanical tier within the guardrails Decision 0024 sets.
     expected_artifact: A command that regenerates managed regions in each adopting repository and opens one pull request per repository, auto-merging only the mechanical tier
     clarification: clarified
     confidence: medium
-    source: Operator asked whether Way updates should reach projects automatically, 2026-08-16; answered by Decision 0024 on 2026-08-17. Rehomed here from arcadia-way-propagation on 2026-08-17, which had reached its milestone while this Action was still blocked.
+    source: Agent Ask reclassify-open-way-sync-pull-requests-2026-09-05
     acceptance_criteria:
       - A mechanical-tier change propagates to every adopting repository as one pull request per repository and merges without review.
       - A governing-tier change opens a pull request and never merges automatically, including when a run would touch both tiers.
@@ -70,10 +70,7 @@ actions:
       - A repository whose `adoption.json` declines automatic upgrades is skipped and reported.
     decisions: ["0024"]
     depends_on: []
-    references:
-      - docs/agents-context.md
-      - src/projects/contextSetup.ts
-      - docs/decisions/0024-way-propagation-tiers-and-push-authority.md
+    references: [docs/agents-context.md, src/projects/contextSetup.ts, docs/decisions/0024-way-propagation-tiers-and-push-authority.md]
   - id: accept-upstream-proposals
     title: Let a project ask for a Way capability instead of building one
     status: done
@@ -316,7 +313,7 @@ actions:
       client, unrelated to this change).
   - id: relax-responsibility-refusal-per-decision-0045
     title: settleAgentAsk accepts an explicit --responsibility value on an Action amendment (targetRef path) and writes it to the Plan document, instead of unconditionally refusing with "Action amendment preserves its existing Responsibility and queue position."
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: settleAgentAsk accepts an explicit --responsibility value on an Action amendment (targetRef path) and writes it to the Plan document, instead of unconditionally refusing with "Action amendment preserves its existing Responsibility and queue position."
@@ -332,6 +329,18 @@ actions:
     depends_on: []
     decisions: []
     references: [src/ask/settlement.ts, src/ask/agentAsk.ts, docs/decisions/0045-agent-ask-can-amend-action-responsibility.md, tests/agent-ask-settlement.test.ts]
+    result: >-
+      `settleAgentAsk`'s targetRef amendment path now refuses only
+      `--placement`; an explicit `--responsibility autonomous`/`agent` is
+      accepted and `amendAction` writes it into the targeted Action's
+      `responsibility:` frontmatter field, leaving queue position untouched.
+      Two new tests cover the accepted responsibility path and the
+      still-refused placement path; the pre-existing "amends an existing
+      Action without changing its Responsibility" test (neither flag
+      supplied) is unchanged and still passes. Full suite:
+      tests/agent-ask-settlement.test.ts 31/31 passing; `tsc --noEmit` clean;
+      `pnpm test` 1247 passed, 1 unrelated pre-existing timeout
+      (discord-bot.test.ts e2e fixture, untouched by this change).
 questions: []
 decisions: ["0024", "0025", "0028"]
 ---
