@@ -14,7 +14,7 @@ actions:
   - id: define-provider-usage-snapshot
     title: Define the provider-neutral usage and reset receipt
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: short
     next_action: Define a versioned normalized receipt for included allowance windows, reset times, paid-credit state, banked benefits, freshness, confidence, provenance, and unsupported fields.
     expected_artifact: A validated provider-neutral usage snapshot contract with fixtures for known, partial, stale, and unavailable telemetry
@@ -33,7 +33,7 @@ actions:
   - id: observe-codex-capacity
     title: Observe Codex allowance, resets, and credit state
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Implement the strongest read-only Codex observation available on the configured host, with a manual or status receipt fallback and explicit unsupported fields.
     expected_artifact: Fresh, provenance-bearing Codex usage snapshots without reset redemption or credit purchase
@@ -49,7 +49,7 @@ actions:
   - id: observe-claude-capacity
     title: Observe Claude Code allowance, resets, and credit state
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Implement the strongest read-only Claude Code observation available on the configured host, preserving whether plan allowance or paid API credits are active.
     expected_artifact: Fresh, provenance-bearing Claude Code usage snapshots without enabling credits or auto-reload
@@ -65,7 +65,7 @@ actions:
   - id: report-critical-provider-usage
     title: Report critical allowance, reset, and credit events
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Add deterministic severity rules and one provider-usage report covering opportunity, warning, and critical states.
     expected_artifact: A read-only report that distinguishes expiring included allowance from paid-credit or reset Decisions
@@ -81,7 +81,7 @@ actions:
   - id: fire-expiring-capacity-predicate
     title: Make expiring included capacity an observable Back Burner trigger
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Register `expiring-agent-capacity` against fresh normalized receipts and make its complete evaluation legible in Back Burner output.
     expected_artifact: The existing Back Burner item fires only when usable included capacity would otherwise expire and higher-priority governed work cannot use it
@@ -97,7 +97,7 @@ actions:
   - id: shape-smallest-back-burner-slice
     title: Shape eligible Back Burner work into the smallest useful slice
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: project
     next_action: Extend Back Burner candidates with provider capability, model, effort, token impact, dependency, validation-cost, and approval metadata, then produce one governed smallest-slice proposal.
     expected_artifact: A corrigible proposed Action and supporting PM Artifacts sized to the observed allowance without implementation ceremony
@@ -115,7 +115,7 @@ actions:
   - id: admit-bounded-spare-capacity-run
     title: Admit one bounded provider-matched Run
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Join the fired capacity opportunity to one ready smallest slice through the existing Agent Queue, execution-profile resolver, lease, packet, and Run boundaries.
     expected_artifact: One deterministic admission receipt selecting a provider and bounded Action or refusing with a precise capacity stop
@@ -131,7 +131,7 @@ actions:
   - id: reconcile-and-graph-capacity-use
     title: Reconcile actual usage and graph the complete work flow
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Persist prediction-versus-actual receipts and project usage windows, reset boundaries, selected work, Runs, Artifacts, alerts, and blocked edges into one live dependency graph.
     expected_artifact: A zero-model reconciliation record and graphic engineering surface tracing capacity through governed effects
@@ -147,7 +147,7 @@ actions:
   - id: guard-reset-and-credit-effects
     title: Keep resets and purchased credits behind explicit Decisions
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: short
     next_action: Define preview-only recommendations and exact Decision shapes for reset redemption, paid-credit enablement, auto-reload changes, and approved spend ceilings.
     expected_artifact: A provider-neutral consequential-usage Decision contract with no automatic purchase or redemption path

@@ -12,7 +12,7 @@ actions:
   - id: add-plans-command
     title: Add a read-only command listing a repository's plans and their states
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: short
     clarification: clarified
     confidence: high
@@ -30,7 +30,7 @@ actions:
   - id: surface-plans-on-project-detail
     title: Link to a Project's plans from its detail page, with a brief listing there too
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: short
     clarification: clarified
     confidence: high

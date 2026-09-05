@@ -60,7 +60,7 @@ describe("Codex Companion", () => {
         status: "active",
         currentMilestone: "Observe Codex work",
         nextAction: "Associate Codex task",
-        workClassification: "codex"
+        workClassification: "agent"
       })
     );
 
@@ -240,7 +240,7 @@ describe("arcadia ask command", () => {
 
     expect(result.intake.resolvedIntent).toBe("InstantiateProject");
     expect(result.resolvedIntent.intentId).toBe("InstantiateProject");
-    expect(result.workItem?.work_classification).toBe("codex");
+    expect(result.workItem?.work_classification).toBe("agent");
     expect(result.plan?.steps[0].skill_name).toBe("codex_build");
     expect(result.approvalGates.map((gate) => gate.gate_type)).toContain("external_deployment");
     expect(result.codexInvocations).toHaveLength(1);
@@ -292,7 +292,7 @@ describe("arcadia ask command", () => {
         status: "active",
         currentMilestone: "Pinterest publishing support",
         nextAction: "Define Pinterest support boundaries.",
-        workClassification: "codex"
+        workClassification: "agent"
       });
       upsertProjectMetadata(db, {
         projectId: created.project.id,
@@ -397,7 +397,7 @@ describe("arcadia ask command", () => {
 
     const approved = runReviewApproveCommand({ workspace, id: asked.data.reviewItemId, execute: false });
     expect(approved.data.result.status).toBe("approved");
-    expect(approved.data.approval?.workItem?.work_classification).toBe("codex");
+    expect(approved.data.approval?.workItem?.work_classification).toBe("agent");
     expect(approved.data.approval?.codexInvocations).toHaveLength(1);
     expect(approved.data.item.resultingAskRequestId).toBe(approved.data.approval?.ask.id);
 
@@ -533,7 +533,7 @@ describe("arcadia ask command", () => {
         status: "active",
         currentMilestone: "Universal ask router",
         nextAction: "Implement shared ask routing.",
-        workClassification: "codex"
+        workClassification: "agent"
       });
       upsertProjectMetadata(db, { projectId: arcadia.project.id, aliases: ["Arcadia"] });
       const rebuster = createProjectWithInitialWork(db, {
@@ -543,7 +543,7 @@ describe("arcadia ask command", () => {
         status: "active",
         currentMilestone: "Pinterest publishing support",
         nextAction: "Define Pinterest support boundaries.",
-        workClassification: "codex"
+        workClassification: "agent"
       });
       upsertProjectMetadata(db, { projectId: rebuster.project.id, aliases: ["Rebuster"] });
       const midiOpener = createProjectWithInitialWork(db, {
@@ -553,7 +553,7 @@ describe("arcadia ask command", () => {
         status: "active",
         currentMilestone: "Playback reliability",
         nextAction: "Triage loop playback bugs.",
-        workClassification: "codex"
+        workClassification: "agent"
       });
       upsertProjectMetadata(db, { projectId: midiOpener.project.id, aliases: ["MIDI Opener", "midi opener app"] });
     });
@@ -638,7 +638,7 @@ describe("arcadia ask command", () => {
     expect(approved.data.result.summary).toContain("Action created.");
     expect(approved.data.result.summary).toContain("Run pending as Requires Review Decision");
     expect(approved.data.approval?.workItem?.queue).toBe("work_queue");
-    expect(approved.data.approval?.workItem?.work_classification).toBe("codex");
+    expect(approved.data.approval?.workItem?.work_classification).toBe("agent");
     expect(approved.data.approval?.reviewItemId).toBeNull();
   });
 
@@ -682,7 +682,7 @@ describe("arcadia ask command", () => {
         currentMilestone: "Pinterest publishing support",
         nextAction: "Define Pinterest posting support boundaries.",
         expectedArtifact: "Pinterest implementation plan",
-        workClassification: "codex"
+        workClassification: "agent"
       });
       upsertProjectMetadata(db, {
         projectId: created.project.id,
@@ -758,7 +758,7 @@ describe("arcadia ask command", () => {
         currentMilestone: "Pinterest publishing support",
         nextAction: "Define Pinterest posting support boundaries.",
         expectedArtifact: "Pinterest publishing implementation plan",
-        workClassification: "codex"
+        workClassification: "agent"
       });
       upsertProjectMetadata(db, {
         projectId: created.project.id,
@@ -801,7 +801,7 @@ describe("arcadia ask command", () => {
         status: "active",
         currentMilestone: "Pinterest publishing support",
         nextAction: "Set repository metadata.",
-        workClassification: "codex"
+        workClassification: "agent"
       })
     );
 
@@ -856,7 +856,7 @@ describe("arcadia ask command", () => {
         status: "active",
         currentMilestone: "Conversion",
         nextAction: "Review App Store funnel.",
-        workClassification: "codex"
+        workClassification: "agent"
       })
     );
 
@@ -1123,7 +1123,7 @@ describe("arcadia ask command", () => {
         status: "active",
         currentMilestone: "Candidate review",
         nextAction: "Define candidate review flow.",
-        workClassification: "codex"
+        workClassification: "agent"
       })
     );
     const paths = getWorkspacePaths(workspace);

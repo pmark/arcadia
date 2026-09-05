@@ -93,7 +93,7 @@ describe("arcadia dogfood", () => {
         title: "A newer Action created first",
         rawInput: "A newer Action created first",
         queue: "work_queue",
-        workClassification: "codex",
+        workClassification: "agent",
         nextAction: "The newer Action's next move"
       });
 
@@ -186,7 +186,7 @@ describe("arcadia dogfood", () => {
     expect(status.command).toBe("dogfood.status");
     expect(status.workspace).toBe(dogfoodWorkspacePath());
     expect(status.data.projectCount).toBeGreaterThan(0);
-    expect(status.data.codexCount).toBeGreaterThan(0);
+    expect(status.data.agentCount).toBeGreaterThan(0);
   });
 
   it("emits JSON for dogfood review decision subcommands", () => {

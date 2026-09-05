@@ -64,7 +64,7 @@ function unknownIntent(request: string): ResolvedIntent {
     title: titleFromRequest(request),
     outputKind: "codex_planning_packet",
     queue: "work_queue",
-    workClassification: "codex",
+    workClassification: "agent",
     nextAction: "Review the Codex planning packet for this request.",
     expectedArtifact: "Codex planning packet",
     skillSequence: [

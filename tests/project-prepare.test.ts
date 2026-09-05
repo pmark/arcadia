@@ -40,7 +40,7 @@ describe("project prepare", () => {
     expect(response.data.classification).toEqual({
       intentType: "Project Work",
       executionPath: "Plan First",
-      responsibility: "codex"
+      responsibility: "agent"
     });
     expect(response.data.project.status).toBe("active");
     expect(response.data.project.goal).toBe(idea);

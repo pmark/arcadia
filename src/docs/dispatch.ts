@@ -71,7 +71,7 @@ export interface DispatchResolution {
 
 const AUTHORIZATION: Record<string, string> = {
   autonomous: "Arcadia may execute and advance this action without review.",
-  codex: "A coding agent may implement this using normal repository authority.",
+  agent: "A coding agent may implement this using normal repository authority.",
   requires_review: "The operator must act, approve, or decide. A coding agent must not implement this.",
   blocked: "Progress depends on an outside party or an external state change."
 };
@@ -551,7 +551,7 @@ export function isDispatchable(resolution: DispatchResolution): boolean {
     resolution.context !== null &&
     resolution.blockers.length === 0 &&
     resolution.operatorQuestion === null &&
-    (resolution.context.action.responsibility === "codex" ||
+    (resolution.context.action.responsibility === "agent" ||
       resolution.context.action.responsibility === "autonomous")
   );
 }
@@ -644,7 +644,7 @@ export function resolveReadySet(repoRoot: string, projectSlug?: string): ReadySe
 
   const evaluated = unfinished.map((action) => {
     const readiness = resolveActionReadiness(repoRoot, resolvedProjectSlug, action.id);
-    const authorized = action.responsibility === "codex" || action.responsibility === "autonomous";
+    const authorized = action.responsibility === "agent" || action.responsibility === "autonomous";
     const isReady = readiness.blockers.length === 0 && readiness.operatorQuestion === null && authorized;
     return { action, readiness, isReady };
   });

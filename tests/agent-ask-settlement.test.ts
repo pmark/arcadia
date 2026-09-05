@@ -27,7 +27,7 @@ describe("Agent Ask settlement", () => {
       proposal: proposal.data.proposal.id,
       requestId: "settle-action-1",
       disposition: "accepted",
-      responsibility: "codex",
+      responsibility: "agent",
       top: true,
       revision: 1
     });
@@ -49,7 +49,7 @@ describe("Agent Ask settlement", () => {
       proposal: proposal.data.proposal.id,
       requestId: "settle-action-1",
       disposition: "accepted",
-      responsibility: "codex",
+      responsibility: "agent",
       top: true,
       revision: 1,
       apply: true
@@ -60,7 +60,7 @@ describe("Agent Ask settlement", () => {
       proposal: proposal.data.proposal.id,
       requestId: "settle-action-1",
       disposition: "accepted",
-      responsibility: "codex",
+      responsibility: "agent",
       top: true,
       revision: 1,
       preview: preview.data.receipt.previewFingerprint,
@@ -81,7 +81,7 @@ describe("Agent Ask settlement", () => {
       proposal: proposal.data.proposal.id,
       requestId: "settle-action-1",
       disposition: "accepted",
-      responsibility: "codex",
+      responsibility: "agent",
       top: true,
       revision: 1,
       preview: preview.data.receipt.previewFingerprint,
@@ -218,7 +218,7 @@ describe("Agent Ask settlement", () => {
     expect(proposal.data.proposal.effects).toHaveLength(2);
     const preview = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-bundle-1",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1
     });
     expect(preview.data.receipt).toMatchObject({
       queueActionKey: "demo/build-release-proof",
@@ -227,7 +227,7 @@ describe("Agent Ask settlement", () => {
     });
     const applied = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-bundle-1",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1,
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1,
       preview: preview.data.receipt.previewFingerprint, apply: true
     });
     expect(applied.data.receipt.queueActionKeys).toEqual(["demo/build-release-proof", "demo/publish-release-guide"]);
@@ -249,12 +249,12 @@ describe("Agent Ask settlement", () => {
     const proposal = runAgentAskPreviewCommand({ workspace, request: draftPlanAsk("ask-draft-plan") });
     const preview = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-draft-plan",
-      disposition: "accepted", responsibility: "codex", revision: 1
+      disposition: "accepted", responsibility: "agent", revision: 1
     });
     expect(preview.data.receipt).toMatchObject({ queueActionKey: null, queueActionKeys: [], queuePosition: null });
     const applied = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-draft-plan",
-      disposition: "accepted", responsibility: "codex", revision: 1,
+      disposition: "accepted", responsibility: "agent", revision: 1,
       preview: preview.data.receipt.previewFingerprint, apply: true
     });
     const plan = readFileSync(path.join(repo, "docs/plans/deliver-release-readiness.md"), "utf8");
@@ -276,13 +276,13 @@ describe("Agent Ask settlement", () => {
     });
     expect(() => runAgentAskSettleCommand({
       workspace, proposal: incomplete.data.proposal.id, requestId: "settle-incomplete-draft",
-      disposition: "accepted", responsibility: "codex", revision: 1
+      disposition: "accepted", responsibility: "agent", revision: 1
     })).toThrow("observable acceptance criterion");
 
     const queued = runAgentAskPreviewCommand({ workspace, request: draftPlanAsk("ask-queued-draft") });
     expect(() => runAgentAskSettleCommand({
       workspace, proposal: queued.data.proposal.id, requestId: "settle-queued-draft",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1
     })).toThrow("cannot be placed in the execution queue before activation");
     expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("active_plan: demo-plan");
     expect(() => readFileSync(path.join(repo, "docs/plans/deliver-release-readiness.md"), "utf8")).toThrow();
@@ -294,14 +294,14 @@ describe("Agent Ask settlement", () => {
     const proposal = runAgentAskPreviewCommand({ workspace, request: activePlanAsk("ask-amend-plan-segment") });
     const preview = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-amend-plan-segment",
-      disposition: "accepted", responsibility: "codex", after: "other/waiting", revision: 2
+      disposition: "accepted", responsibility: "agent", after: "other/waiting", revision: 2
     });
     expect(preview.data.receipt).toMatchObject({
       queueActionKeys: ["demo/existing", "demo/audit-release"], queuePosition: 1
     });
     const applied = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-amend-plan-segment",
-      disposition: "accepted", responsibility: "codex", after: "other/waiting", revision: 2,
+      disposition: "accepted", responsibility: "agent", after: "other/waiting", revision: 2,
       preview: preview.data.receipt.previewFingerprint, apply: true
     });
     const plan = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
@@ -366,12 +366,12 @@ describe("Agent Ask settlement", () => {
     expect(proposal.data.proposal.normalized.actions.map((action) => action.id)).toEqual([null, "audit-release-proof"]);
     const preview = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-plan-explicit-id",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1
     });
     expect(preview.data.receipt.queueActionKeys).toEqual(["demo/existing", "demo/audit-release-proof"]);
     runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-plan-explicit-id",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1,
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1,
       preview: preview.data.receipt.previewFingerprint, apply: true
     });
     const plan = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
@@ -388,11 +388,11 @@ describe("Agent Ask settlement", () => {
     expect(proposal.data.proposal.normalized.actions.map((action) => action.id)).toEqual([null, "build-proof"]);
     const preview = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-draft-explicit-id",
-      disposition: "accepted", responsibility: "codex", revision: 1
+      disposition: "accepted", responsibility: "agent", revision: 1
     });
     runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-draft-explicit-id",
-      disposition: "accepted", responsibility: "codex", revision: 1,
+      disposition: "accepted", responsibility: "agent", revision: 1,
       preview: preview.data.receipt.previewFingerprint, apply: true
     });
     const plan = readFileSync(path.join(repo, "docs/plans/deliver-release-readiness.md"), "utf8");
@@ -410,12 +410,12 @@ describe("Agent Ask settlement", () => {
     });
     const preview = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-explicit-id",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1
     });
     expect(preview.data.receipt.queueActionKeys).toEqual(["demo/queue-handle"]);
     runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-explicit-id",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1,
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1,
       preview: preview.data.receipt.previewFingerprint, apply: true
     });
     expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toContain("id: queue-handle");
@@ -426,7 +426,7 @@ describe("Agent Ask settlement", () => {
     });
     expect(() => runAgentAskSettleCommand({
       workspace, proposal: collision.data.proposal.id, requestId: "settle-explicit-collision",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 2
+      disposition: "accepted", responsibility: "agent", top: true, revision: 2
     })).toThrow(/already used in the active Plan/);
   });
 
@@ -441,7 +441,7 @@ describe("Agent Ask settlement", () => {
     });
     const preview = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-derived-id",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1
     });
     expect(preview.data.receipt.queueActionKeys).toEqual([
       "demo/reconcile-open-operator-questions-against",
@@ -458,7 +458,7 @@ describe("Agent Ask settlement", () => {
     }
     runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-derived-id",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1,
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1,
       preview: preview.data.receipt.previewFingerprint, apply: true
     });
     const plan = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
@@ -477,12 +477,12 @@ describe("Agent Ask settlement", () => {
     });
     const preview = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-derived-collision",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1
     });
     expect(preview.data.receipt.queueActionKeys).toEqual(["demo/existing-2", "demo/existing-3"]);
     const applied = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-derived-collision",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1,
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1,
       preview: preview.data.receipt.previewFingerprint, apply: true
     });
     const planPath = path.join(repo, "docs/plans/demo-plan.md");
@@ -491,7 +491,7 @@ describe("Agent Ask settlement", () => {
     expect(settledPlan).toContain("id: existing-3");
     const replay = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-derived-collision",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1,
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1,
       preview: preview.data.receipt.previewFingerprint, apply: true
     });
     expect(replay.data.receipt).toEqual(applied.data.receipt);
@@ -516,11 +516,11 @@ describe("Agent Ask settlement", () => {
     });
     const acceptancePreview = runAgentAskSettleCommand({
       workspace, proposal: corrected.data.proposal.id, requestId: "accept-corrected",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1
     });
     runAgentAskSettleCommand({
       workspace, proposal: corrected.data.proposal.id, requestId: "accept-corrected",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1,
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1,
       preview: acceptancePreview.data.receipt.previewFingerprint, apply: true
     });
 
@@ -601,11 +601,11 @@ describe("Agent Ask safety boundaries", () => {
     // Preview is safe on a dirty tree; apply is what would clobber the edit.
     const preview = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-dirty-repo",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1
     });
     expect(() => runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-dirty-repo",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1,
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1,
       preview: preview.data.receipt.previewFingerprint, apply: true
     })).toThrow("not clean");
 
@@ -624,7 +624,7 @@ describe("Agent Ask safety boundaries", () => {
 
     expect(() => runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-dependency-cycle",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1
     })).toThrow(/cycle/i);
 
     expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toBe(planBefore);
@@ -660,7 +660,7 @@ describe("Agent Ask safety boundaries", () => {
       const proposal = runAgentAskPreviewCommand({ workspace, request });
       runAgentAskSettleCommand({
         workspace, proposal: proposal.data.proposal.id, requestId: "settle-target-traversal",
-        disposition: "accepted", responsibility: "codex", top: true, revision: 1
+        disposition: "accepted", responsibility: "agent", top: true, revision: 1
       });
       settled = true;
     } catch { /* refused at parse or settlement; either is correct */ }
@@ -673,17 +673,17 @@ describe("Agent Ask safety boundaries", () => {
     const proposal = runAgentAskPreviewCommand({ workspace, request: actionAsk("ask-settle-once") });
     const preview = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-once",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1
     });
     runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-once",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 1,
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1,
       preview: preview.data.receipt.previewFingerprint, apply: true
     });
 
     expect(() => runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-once-again",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 2
+      disposition: "accepted", responsibility: "agent", top: true, revision: 2
     })).toThrow("already settled");
   });
 
@@ -694,7 +694,7 @@ describe("Agent Ask safety boundaries", () => {
 
     expect(() => runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-stale-revision",
-      disposition: "accepted", responsibility: "codex", top: true, revision: 99
+      disposition: "accepted", responsibility: "agent", top: true, revision: 99
     })).toThrow(/revision/i);
 
     expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toBe(planBefore);
@@ -885,7 +885,7 @@ function fixture(): { workspace: string; repo: string } {
   withDatabase(workspace, (db) => {
     const project = upsertProject(db, {
       name: "Demo", mission: "Test Agent Ask settlement.", goal: "Settle work safely.",
-      status: "active", currentMilestone: "Settlement", nextAction: "Keep going.", workClassification: "codex"
+      status: "active", currentMilestone: "Settlement", nextAction: "Keep going.", workClassification: "agent"
     });
     upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
     arrangeActionOrder(db, {
@@ -1010,7 +1010,7 @@ function addOtherProject(workspace: string, repo: string): void {
   withDatabase(workspace, (db) => {
     const other = upsertProject(db, {
       name: "Other", mission: "Provide an external queue anchor.", goal: "Wait safely.",
-      status: "active", currentMilestone: "Settlement", nextAction: "Wait.", workClassification: "codex"
+      status: "active", currentMilestone: "Settlement", nextAction: "Wait.", workClassification: "agent"
     });
     upsertProjectMetadata(db, { projectId: other.id, repoPath: otherRepo });
     arrangeActionOrder(db, {

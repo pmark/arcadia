@@ -14,7 +14,7 @@ actions:
   - id: build-qa-queue-vertical-slice
     title: Give the operator one QA queue for active Candidate work
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Build an Arcadia QA tab that reads a small configured Candidate list and shows each Candidate's Project, pull request, demo link, exact test procedure, evidence freshness, and a human sign-off Decision without automatic provider discovery or release automation.
     expected_artifact: A usable Arcadia QA queue for the current PPN and Arcadia Candidates, with one-click Test links and durable operator sign-off evidence
@@ -66,7 +66,7 @@ actions:
   - id: establish-minimal-pr-qa
     title: Give Arcadia QA one independent pull-request review path
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Add a CLI-first qa pr command that freezes a configured Project pull request at its head SHA, gathers deterministic GitHub evidence, runs one separately executed read-only structured review, and persists a QA report Artifact plus a decided revision-bound Decision.
     expected_artifact: A tested minimal PR-QA command and a real QA report and Decision for Arcadia PR #54 at an immutable revision
@@ -118,7 +118,7 @@ actions:
   - id: streamline-minimal-pr-qa
     title: Remove avoidable model calls and CI noise from pull-request QA
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: short
     next_action: Add a deterministic readiness refusal before any PR-QA reviewer work, isolate the workspace-resolution test from the repository-local dogfood workspace, and document the one-pass operator sequence and triggered deferrals.
     expected_artifact: A tested zero-token not-ready path, a deterministic regression for the former CI race, and an authoritative Arcadia-orchestrated development vision with triggered follow-on Actions
@@ -167,7 +167,7 @@ actions:
   - id: build-demo-hero-vertical-slice
     title: Put one reconciled demo-first hero and proof card on Project Detail
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Build the smallest reusable proof-target contract and Project Detail hero, configure it for Private Practice Now's Stable and River Copy Studio Candidate targets, and make the primary Test action work without automatic GitHub or Cloudflare discovery yet.
     expected_artifact: A tested PPN Project Detail vertical slice with one exact next thing, Show Stable and Test Candidate actions, and truthful proof status
@@ -219,7 +219,7 @@ actions:
   - id: automate-proof-artifacts
     title: Collect pull requests, deployments, health checks, and screenshots as proof Artifacts
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: project
     next_action: Add commit-bound proof ingestion behind the manual proof-target contract, starting with local Playwright screenshots and GitHub/Cloudflare read-only metadata rather than deployment automation.
     expected_artifact: Each Candidate has a timestamped proof gallery linked to its revision, PR, validation, health, and configured routes
@@ -270,7 +270,7 @@ actions:
   - id: make-test-action-state-aware
     title: Make Test open or recover the selected deployment safely
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Add a deterministic Test resolver that opens healthy remote targets, opens healthy local targets with a phone-reachable address, and offers to start only an explicitly configured local service when it is stopped.
     expected_artifact: A Test action that reliably reaches the selected Candidate and explains any recovery or access requirement
@@ -292,7 +292,7 @@ actions:
   - id: bind-qa-cards-to-verdicts
     title: Make each QA card show its own recorded verdict
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: short
     next_action: Read each Candidate's latest CandidateQaSignoff back into the QA listing so the card states its own verdict, the revision it was recorded against, and when — and sorts undecided targets above decided ones.
     expected_artifact: A QA queue whose cards visibly change state when a verdict is recorded and whose stale verdicts read as stale
@@ -318,7 +318,7 @@ actions:
   - id: give-qa-verdicts-consequences
     title: Give Fail and Needs follow-up different consequences
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Make Fail create an open Action on the Candidate's Project and Needs follow-up create an open question, in both cases using the operator's QA note as the body, so the three verdicts stop resolving to two indistinguishable outcomes.
     expected_artifact: Three QA verdicts with three distinct, visible consequences and a QA note that creates governed work
@@ -345,7 +345,7 @@ actions:
   - id: establish-arcadia-qa
     title: Establish Arcadia QA as an independent verification responsibility
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: project
     next_action: Define a QA Run profile and evidence contract that freezes one Candidate revision, executes Project validation and browser checks independently of the build Run, and returns a QA report Decision without modifying the Candidate.
     expected_artifact: An independent Arcadia QA Run, report Artifact, and pass/fail Decision bound to an exact Candidate revision
@@ -395,7 +395,7 @@ actions:
   - id: govern-release-and-delivery
     title: Add release management from QA-passed Candidate to verified client delivery
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: project
     next_action: Model an immutable release candidate and its approval, merge, deployment, post-release verification, rollback, and delivery evidence without weakening existing approval gates.
     expected_artifact: A release workflow that proves exactly what shipped, where it is running, how it was verified, and whether it was delivered
@@ -446,7 +446,7 @@ actions:
   - id: roll-out-proof-surfaces
     title: Roll the proven demo, QA, and release contract across software Projects
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: After the PPN vertical slice and one real QA-to-release cycle, add Project adapters and configuration for each remaining software Project without inventing a universal deployment provider.
     expected_artifact: Every active software Project reports Stable, Candidate, proof freshness, QA state, and the exact next operator action or an explicit unsupported reason

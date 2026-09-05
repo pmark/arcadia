@@ -195,7 +195,7 @@ describe("proof-target CLI commands", () => {
         status: "active",
         currentMilestone: "Beta",
         nextAction: "Finish the exemplar",
-        workClassification: "codex"
+        workClassification: "agent"
       });
     });
 
@@ -224,7 +224,7 @@ describe("proof-target CLI commands", () => {
         status: "active",
         currentMilestone: "Beta",
         nextAction: "Finish the exemplar",
-        workClassification: "codex"
+        workClassification: "agent"
       });
       createReviewItem(db, {
         projectId: bundle.project.id,

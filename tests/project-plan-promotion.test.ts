@@ -49,7 +49,7 @@ describe("project-idea planning promotion", () => {
     const dispatch = resolveDispatch(fixture.repository, fixture.projectSlug);
     expect(isDispatchable(dispatch)).toBe(true);
     expect(dispatch.context?.action.id).toBe(promotion?.actionDocRef.split("#")[1]);
-    expect(dispatch.context?.action.responsibility).toBe("codex");
+    expect(dispatch.context?.action.responsibility).toBe("agent");
     expect(dispatch.context?.action.clarification).toBe("clarified");
 
     const projectDoc = frontmatter(path.join(fixture.repository, "PROJECT.md"));
@@ -63,7 +63,7 @@ describe("project-idea planning promotion", () => {
     expect(promotedActions).toHaveLength(1);
     expect(promotedActions[0]).toMatchObject({
       status: "open",
-      responsibility: "codex",
+      responsibility: "agent",
       clarification: "clarified",
       depends_on: [fixture.planningActionId]
     });
@@ -73,7 +73,7 @@ describe("project-idea planning promotion", () => {
       const promoted = getWorkItemByDocRef(db, promotion!.actionDocRef);
       expect(promoted).toBeTruthy();
       expect(promoted?.status).toBe("open");
-      expect(promoted?.work_classification).toBe("codex");
+      expect(promoted?.work_classification).toBe("agent");
       const invocations = listCodexInvocationsForWorkItem(db, promoted!.id);
       expect(invocations).toHaveLength(1);
       expect(invocations[0]).toMatchObject({
@@ -161,7 +161,7 @@ describe("project-idea planning promotion", () => {
       });
       expect(getWorkItem(db, fixture.planningWorkItemId)).toMatchObject({
         queue: "work_queue",
-        work_classification: "codex",
+        work_classification: "agent",
         status: "open",
         next_action: expect.stringContaining(feedback)
       });

@@ -12,9 +12,9 @@ import type { WorkItemSummary } from "../domain/types.js";
 export const CLARIFY_ACTORS = ["operator", "coding-agent", "external-party"] as const;
 export type ClarifyActor = (typeof CLARIFY_ACTORS)[number];
 
-export const RESPONSIBILITY_FOR_ACTOR: Record<ClarifyActor, "requires_review" | "codex" | "blocked"> = {
+export const RESPONSIBILITY_FOR_ACTOR: Record<ClarifyActor, "requires_review" | "agent" | "blocked"> = {
   operator: "requires_review",
-  "coding-agent": "codex",
+  "coding-agent": "agent",
   "external-party": "blocked"
 };
 

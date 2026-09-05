@@ -40,7 +40,7 @@ function twoProjectWorkspace(): { workspace: string; alphaId: string; betaId: st
       status: "active",
       currentMilestone: "First",
       nextAction: "Start",
-      workClassification: "codex"
+      workClassification: "agent"
     });
     const beta = upsertProject(db, {
       name: "Beta",
@@ -48,7 +48,7 @@ function twoProjectWorkspace(): { workspace: string; alphaId: string; betaId: st
       status: "active",
       currentMilestone: "First",
       nextAction: "Start",
-      workClassification: "codex"
+      workClassification: "agent"
     });
 
     for (const [project, label] of [
@@ -60,7 +60,7 @@ function twoProjectWorkspace(): { workspace: string; alphaId: string; betaId: st
         title: `${label} completed work`,
         rawInput: `${label} completed work`,
         queue: "work_queue",
-        workClassification: "codex",
+        workClassification: "agent",
         nextAction: "Done already",
         status: "done"
       }).workItem;

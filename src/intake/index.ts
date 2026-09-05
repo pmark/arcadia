@@ -240,42 +240,42 @@ export const INTAKE_TEMPLATES: IntakeTemplateDefinition[] = [
     id: "astro_website_blog",
     name: "Astro website/blog",
     aliases: ["astro", "astro site", "astro website", "astro blog", "blog", "blog site", "website", "website blog"],
-    workClassification: "codex",
+    workClassification: "agent",
     expectedArtifact: "Astro website/blog Codex build packet"
   },
   {
     id: "phaser_game",
     name: "Phaser game",
     aliases: ["phaser", "phaser game", "2d game", "browser game"],
-    workClassification: "codex",
+    workClassification: "agent",
     expectedArtifact: "Phaser game Codex build packet"
   },
   {
     id: "threejs_game_experiment",
     name: "Three.js game/experiment",
     aliases: ["threejs", "three js", "three.js", "three.js game", "threejs game", "3d experiment", "3d game"],
-    workClassification: "codex",
+    workClassification: "agent",
     expectedArtifact: "Three.js game or experiment Codex build packet"
   },
   {
     id: "nextjs_web_app",
     name: "NextJS web app",
     aliases: ["nextjs", "next js", "next.js", "nextjs app", "nextjs web app", "next app", "web app"],
-    workClassification: "codex",
+    workClassification: "agent",
     expectedArtifact: "NextJS web app Codex build packet"
   },
   {
     id: "serverless_api",
     name: "serverless API",
     aliases: ["serverless", "serverless api", "api", "serverless service"],
-    workClassification: "codex",
+    workClassification: "agent",
     expectedArtifact: "Serverless API Codex build packet"
   },
   {
     id: "nodejs_utility_app",
     name: "NodeJS utility app",
     aliases: ["nodejs", "node js", "node.js", "node utility", "nodejs utility", "utility app", "cli utility"],
-    workClassification: "codex",
+    workClassification: "agent",
     expectedArtifact: "NodeJS utility app Codex build packet"
   }
 ];
@@ -502,7 +502,7 @@ function resolveIntakeWithoutClassification(
         kind: "create_work",
         title: capitalize(work.action),
         projectId: project.reference?.id ?? null,
-        workClassification: "codex"
+        workClassification: "agent"
       },
       project: project.reference,
       template: null,

@@ -40,7 +40,7 @@ function workspaceWithProject(repoRoot: string, slug = "demo"): string {
       status: "active",
       currentMilestone: "Initial",
       nextAction: "Start",
-      workClassification: "codex"
+      workClassification: "agent"
     });
     upsertProjectMetadata(db, { projectId: project.id, repoPath: repoRoot });
     expect(project.slug).toBe(slug);

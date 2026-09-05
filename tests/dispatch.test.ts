@@ -396,7 +396,7 @@ function graphPlanDoc(
       `  - id: ${action.id}`,
       `    title: Action ${action.id}`,
       `    status: ${action.status ?? "open"}`,
-      `    responsibility: ${action.responsibility ?? "codex"}`,
+      `    responsibility: ${action.responsibility ?? "agent"}`,
       `    clarification: ${clarification}`
     );
     if (clarification === "question_open") {

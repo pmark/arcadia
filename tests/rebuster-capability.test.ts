@@ -215,7 +215,7 @@ function createRebusterProject(workspace: string) {
       status: "active",
       currentMilestone: "Rebuster Studio bridge",
       nextAction: "Connect Rebuster Decisions to Arcadia.",
-      workClassification: "codex"
+      workClassification: "agent"
     }).project
   );
 }

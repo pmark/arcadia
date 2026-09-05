@@ -194,7 +194,7 @@ function initializedWorkspace(fixture: StewardshipQualityFixture): string {
         currentMilestone: project.activeMilestone ?? "Current milestone",
         nextAction: project.nextAction ?? "Continue stewardship hardening.",
         expectedArtifact: "Seed artifact",
-        workClassification: "codex"
+        workClassification: "agent"
       });
       upsertProjectMetadata(db, {
         projectId: created.project.id,

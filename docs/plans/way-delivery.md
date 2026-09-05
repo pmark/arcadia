@@ -14,7 +14,7 @@ actions:
   - id: seed-the-work-pointer-when-a-repository-is-adopted
     title: Write PROJECT.md and a first plan when a repository is adopted
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Seed the work pointer chain from the Project record `setup-context` already resolves, and offer the same adoption from the Project page where the refusal is read.
     expected_artifact: An adopted repository that resolves to a real Action or to one operator question, instead of to "No PROJECT.md declaring slug ... was found"
@@ -77,7 +77,7 @@ actions:
   - id: accept-upstream-proposals
     title: Let a project ask for a Way capability instead of building one
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: "Ingest `type: proposal` documents as pending operator requests, surface unresolved ones in `arcadia portfolio` under 'Waiting on you', and add the request path to the shared AGENTS.md region."
     expected_artifact: A proposal filed in an adopting repository that reaches the operator through docs sync and portfolio without any new channel, plus the AGENTS.md rule that tells agents to file rather than implement
@@ -118,7 +118,7 @@ actions:
   - id: evaluate-document-triggers
     title: Evaluate the deferrals Arcadia's own documents already declare
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: "Add an `arcadia triggers` noun that reads a repository's declared deferral conditions and reports which have fired, evaluating them repo-locally with no workspace, the way `resolveDispatch` does."
     expected_artifact: A read-only `arcadia triggers` command reporting fired, waiting, and watch states for every deferral declared in a repository's governed documents
@@ -138,7 +138,7 @@ actions:
   - id: adopt-operator-task-ledger
     title: Record work only the operator can do, separately from decisions awaiting review
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: "Adopt PPN's operator task ledger - append-only entries citing an action or decision, stating why an agent cannot act, with agent evidence separated from operator-only closure."
     expected_artifact: An operator task ledger with raise, read, close, and decline paths, where closure is operator-only and an agent may attach evidence without closing
@@ -180,7 +180,7 @@ actions:
   - id: propagate-agent-ask-contract
     title: Document the Agent Ask contract inside the propagated AGENTS.md region so every adopting project receives it and `arcadia way` reports it stale when it drifts.
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Document the Agent Ask contract inside the propagated AGENTS.md region so every adopting project receives it and `arcadia way` reports it stale when it drifts.
     expected_artifact: Evidence satisfying Agent Ask propagate-agent-ask-contract
@@ -199,7 +199,7 @@ actions:
   - id: report-agent-ask-contract
     title: Add a read-only `arcadia agent-ask contract` noun that prints the live envelope schema, every supported intent, and the validation rules, so an agent can query the contract instead of trusting a possibly stale file.
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Add a read-only `arcadia agent-ask contract` noun that prints the live envelope schema, every supported intent, and the validation rules, so an agent can query the contract instead of trusting a possibly stale file.
     expected_artifact: Evidence satisfying Agent Ask report-agent-ask-contract
@@ -217,7 +217,7 @@ actions:
   - id: carry-decision-options
     title: A Decision can state the choices it is between, each with its consequence, and mark one as recommended - and an agent filing a Decision supplies them rather than leaving the operator to infer them from prose.
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: A Decision can state the choices it is between, each with its consequence, and mark one as recommended - and an agent filing a Decision supplies them rather than leaving the operator to infer them from prose.
     expected_artifact: Evidence satisfying Agent Ask carry-decision-options
@@ -236,7 +236,7 @@ actions:
   - id: stop-dumping-rationale-into-recommendation
     title: A Decision's recommendation field holds a recommendation, and the filing Ask's rationale lands where a reader expects to find reasoning.
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: A Decision's recommendation field holds a recommendation, and the filing Ask's rationale lands where a reader expects to find reasoning.
     expected_artifact: Evidence satisfying Agent Ask stop-dumping-rationale-into-recommendation
@@ -253,7 +253,7 @@ actions:
   - id: rename-codex-responsibility-to-agent
     title: "Rename the \"codex\" value of WorkClassification to \"agent\" in src/domain/constants.ts (WORK_CLASSIFICATIONS and WORK_CLASSIFICATION_LABELS), update every reference in AGENTS.md, the agent-ask CLI (validation, help text, `agent-ask contract` output), and other docs under docs/ that name \"codex\" as a responsibility value, and rewrite every Plan document under docs/plans/ in this repository whose Action frontmatter reads `responsibility: codex` to `responsibility: agent`. Add a compatibility read path so a Plan document (in this repository or an adopting project) that still has `responsibility: codex` is accepted and normalized to `agent` rather than rejected, since Arcadia Way changes reach adopting projects on their own schedule, not instantaneously."
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: "Rename the \"codex\" value of WorkClassification to \"agent\" in src/domain/constants.ts (WORK_CLASSIFICATIONS and WORK_CLASSIFICATION_LABELS), update every reference in AGENTS.md, the agent-ask CLI (validation, help text, `agent-ask contract` output), and other docs under docs/ that name \"codex\" as a responsibility value, and rewrite every Plan document under docs/plans/ in this repository whose Action frontmatter reads `responsibility: codex` to `responsibility: agent`. Add a compatibility read path so a Plan document (in this repository or an adopting project) that still has `responsibility: codex` is accepted and normalized to `agent` rather than rejected, since Arcadia Way changes reach adopting projects on their own schedule, not instantaneously."
     expected_artifact: Evidence satisfying Agent Ask rename-codex-responsibility-to-agent

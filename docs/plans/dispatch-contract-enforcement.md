@@ -12,7 +12,7 @@ actions:
   - id: verify-acceptance-criteria
     title: Check finished work against the Action's declared acceptance criteria
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Delivered as src/stewardship/acceptanceCriteria.ts, wired into the artifact-acceptance approval in review.ts; no further work.
     expected_artifact: Per-criterion pass/fail on the acceptance Decision, from the plan's own criteria
@@ -27,7 +27,7 @@ actions:
   - id: compute-ready-set
     title: Compute the ready set instead of only refusing a bad pointer
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Delivered as resolveReadySet in src/docs/dispatch.ts and arcadia next --ready; no further work.
     expected_artifact: arcadia next --ready listing dispatchable Actions across the active plan
@@ -71,7 +71,7 @@ actions:
   - id: recheck-readiness-at-approval
     title: Decide whether readiness is rechecked when a planning Decision is approved
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Delivered as the hybrid recheck under Decision 0005; no further work.
     expected_artifact: Approval refuses a packet whose plan document changed and now fails readiness, and passes through unchanged otherwise.
@@ -88,7 +88,7 @@ actions:
   - id: surface-dispatch-journal
     title: Surface the dispatch journal where the operator already looks
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: short
     next_action: Delivered as DashboardSnapshot.dispatchJournal in src/dashboard/snapshot.ts; no further work.
     expected_artifact: Refusal tally in the dashboard snapshot

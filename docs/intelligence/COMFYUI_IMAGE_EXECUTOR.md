@@ -6,7 +6,7 @@ durable local image generation and single-reference image editing.
 Next Action: exercise the backend with an Arcadia image Artifact and add
 companion-app-specific prompt presets as needed.
 
-Work Responsibility: Codex.
+Work Responsibility: Agent.
 
 Required Artifacts: ComfyUI installation, FLUX.2 Klein 4B model files, API
 workflows, Arcadia route configuration, and generated image Artifacts.

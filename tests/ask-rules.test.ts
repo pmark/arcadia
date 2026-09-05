@@ -211,7 +211,7 @@ function initializedRuleWorkspace(): { workspace: string; arcadiaId: string; son
       status: "active",
       currentMilestone: "Visible routing",
       nextAction: "Test Ask routing.",
-      workClassification: "codex"
+      workClassification: "agent"
     });
     const songbook = createProjectWithInitialWork(db, {
       name: "Living Songbook",

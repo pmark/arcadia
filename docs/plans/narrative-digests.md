@@ -12,7 +12,7 @@ actions:
   - id: compose-project-digest
     title: Compose one Project's narrative digest for a window, narrated by local AI
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Delivered as the explicit-window digest composer and `arcadia digest compose`; no further work.
     expected_artifact: A composer producing one narrative_digest Artifact per (Project, window), idempotent on re-run
@@ -61,7 +61,7 @@ actions:
   - id: export-digest-to-obsidian
     title: Export a composed digest into the Obsidian vault
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: short
     next_action: Delivered as `arcadia digest export <digest-id>`; no further work.
     expected_artifact: A vault Record for each composed digest, written the same safe way progress reviews already are
@@ -81,7 +81,7 @@ actions:
   - id: schedule-portfolio-digests
     title: Schedule daily, weekly, and monthly Project and portfolio digests
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Delivered as `arcadia digest run --if-due`, `arcadia digest mark-posted`, and the Discord bot's digest scheduler; no further work.
     expected_artifact: The Discord bot automatically produces and delivers every active Project's and the collective portfolio's due digests, unattended

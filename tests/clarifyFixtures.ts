@@ -40,7 +40,7 @@ export const clarifyGoldenExamples: ClarifyGoldenExample[] = [
     expectedAfterApply: {
       clarification_status: "clarified",
       gap_type: null,
-      work_classification: "codex",
+      work_classification: "agent",
       queue: "work_queue"
     }
   },

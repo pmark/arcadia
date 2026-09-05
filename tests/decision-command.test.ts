@@ -38,7 +38,7 @@ function workspaceWithProject(): { workspace: string; repoRoot: string; projectS
       status: "active",
       currentMilestone: "Initial",
       nextAction: "Start",
-      workClassification: "codex"
+      workClassification: "agent"
     });
     upsertProjectMetadata(db, { projectId: project.id, repoPath: repoRoot });
   });

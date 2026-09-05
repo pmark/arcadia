@@ -40,7 +40,7 @@ export function seedArcadiaProject(db: Database.Database, workspace: string): Ar
     status: "active",
     currentMilestone: ARCADIA_PROJECT_MILESTONE,
     nextAction: ARCADIA_PROJECT_NEXT_ACTION,
-    workClassification: "codex"
+    workClassification: "agent"
   });
   const milestone = ensureArcadiaMilestone(db, project.id);
   const workItem = ensureArcadiaWorkItem(db, project.id, milestone.id);
@@ -78,7 +78,7 @@ function ensureArcadiaWorkItem(db: Database.Database, projectId: string, milesto
   if (existing) {
     const updated = updateWorkItem(db, existing.id, {
       queue: "work_queue",
-      workClassification: "codex",
+      workClassification: "agent",
       nextAction: ARCADIA_PROJECT_NEXT_ACTION,
       status: "open"
     });
@@ -94,7 +94,7 @@ function ensureArcadiaWorkItem(db: Database.Database, projectId: string, milesto
     title: ARCADIA_PROJECT_NEXT_ACTION,
     rawInput: ARCADIA_PROJECT_NEXT_ACTION,
     queue: "work_queue",
-    workClassification: "codex",
+    workClassification: "agent",
     nextAction: ARCADIA_PROJECT_NEXT_ACTION
   }).workItem;
 }

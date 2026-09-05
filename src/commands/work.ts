@@ -598,7 +598,7 @@ function assertPlanningPreparationEligibility(
       docRef: workItem.doc_ref
     });
   }
-  if (workItem.work_classification !== "codex" || workItem.queue !== "work_queue") {
+  if (workItem.work_classification !== "agent" || workItem.queue !== "work_queue") {
     throw validationError("Action must have Codex Responsibility in the Work Queue before planning preparation.", {
       actionId: workItem.id,
       queue: workItem.queue,

@@ -14,7 +14,7 @@ actions:
   - id: build-arcadia-now-vertical-slice
     title: Make the immediate next governed move obvious and tappable
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: project
     next_action: Implement one deterministic Arcadia Now snapshot and a phone-friendly Dashboard view that explains the current situation and exposes only typed, freshly revalidated transition options with explicit consequences and receipts.
     expected_artifact: A tested Arcadia Now CLI snapshot, mobile web view, and governed transition endpoint proving one safe end-to-end advance path
@@ -43,7 +43,7 @@ actions:
   - id: define-portfolio-continuity-projection
     title: Define one truthful Past, Now, Next, and Later projection
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Specify and implement a read-only projection over existing managed plans, Actions, Decisions, Runs, Artifacts, Logs, and Incubating material, with portfolio scope and an optional Project filter.
     expected_artifact: A typed continuity snapshot and fixture suite that explains placement and ordering for every supported Arcadia record
@@ -70,7 +70,7 @@ actions:
   - id: build-portfolio-continuity-view
     title: Make the whole portfolio story navigable in one view
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: project
     next_action: Build a mobile-first Dashboard view over the continuity snapshot with portfolio and Project scope, compact horizon navigation, source links, and truthful empty or unknown states.
     expected_artifact: One responsive portfolio continuity view that makes past, current, next, deferred, and Incubating work legible without visiting separate queues
@@ -95,7 +95,7 @@ actions:
   - id: make-conversation-capture-explicit
     title: Give every tangential idea a visible Arcadia capture receipt
     status: open
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Add and document a conversation handoff contract that preserves materially separate operator input through managed documents or Arcadia intake and reports whether it joined the current Action, became a separate planned Action or Decision, or entered Incubating with a trigger.
     expected_artifact: A tested conversational capture receipt contract used by Arcadia's coding-agent guidance and surfaced in operator handoffs

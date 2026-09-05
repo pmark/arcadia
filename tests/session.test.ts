@@ -186,9 +186,9 @@ describe("tmux-backed Sessions", () => {
   });
 
   it("resolves cross-repository launch, operator Decision, and planning outcomes without improvising", () => {
-    const ppn = transitionRepo("Private Practice Now", "private-practice-now", "codex", true);
+    const ppn = transitionRepo("Private Practice Now", "private-practice-now", "agent", true);
     const rebuster = transitionRepo("Rebuster", "rebuster", "requires_review", true);
-    const idea = transitionRepo("Field Notes", "field-notes", "codex", false);
+    const idea = transitionRepo("Field Notes", "field-notes", "agent", false);
 
     expect(resolveProjectTransition({ repoRoot: ppn, projectSlug: "private-practice-now" }).kind).toBe("launch");
     expect(resolveProjectTransition({ repoRoot: rebuster, projectSlug: "rebuster" }).kind).toBe("decision");
@@ -296,7 +296,7 @@ function git(cwd: string, args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" });
 }
 
-function transitionRepo(name: string, slug: string, responsibility: "codex" | "requires_review", withPlan: boolean): string {
+function transitionRepo(name: string, slug: string, responsibility: "agent" | "requires_review", withPlan: boolean): string {
   const repo = mkdtempSync(path.join(tmpdir(), "arcadia-transition-"));
   roots.push(repo);
   mkdirSync(path.join(repo, "docs", "plans"), { recursive: true });
@@ -329,7 +329,7 @@ actions:
     status: open
     responsibility: ${responsibility}
     clarification: clarified
-    next_action: ${responsibility === "codex" ? "Build the bounded slice." : "Choose whether to proceed."}
+    next_action: ${responsibility === "agent" ? "Build the bounded slice." : "Choose whether to proceed."}
     expected_artifact: A transition receipt
     acceptance_criteria:
       - The transition is explicit.

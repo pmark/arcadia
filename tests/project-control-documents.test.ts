@@ -54,7 +54,7 @@ function workItem(overrides: Partial<CreateWorkItemInput> & { title: string }): 
   return {
     rawInput: overrides.title,
     queue: "work_queue",
-    workClassification: "codex",
+    workClassification: "agent",
     nextAction: "Make the scoped code change, then run tests",
     ...overrides
   };

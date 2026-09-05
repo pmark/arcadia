@@ -180,7 +180,7 @@ test("a prepared plan is readable at phone width and requires feedback before it
     refinementFeedback: feedback,
     judgedArtifact: { sha256: expect.stringMatching(/^[a-f0-9]{64}$/) }
   });
-  expect(state.action).toMatchObject({ status: "open", queue: "work_queue", work_classification: "codex" });
+  expect(state.action).toMatchObject({ status: "open", queue: "work_queue", work_classification: "agent" });
 });
 
 test("the dashboard's own quick-defer keeps working without collecting a trigger", async ({ page, arcadia }) => {
@@ -220,7 +220,7 @@ test("a standalone Codex packet previews the guarded handoff and leaves an hones
       title: "Build Pinterest publishing adapter",
       rawInput: "Build the approved Pinterest publishing adapter.",
       queue: "work_queue",
-      workClassification: "codex",
+      workClassification: "agent",
       nextAction: "Run the prepared build packet.",
       expectedArtifact: "Working Pinterest publishing adapter"
     }).workItem;

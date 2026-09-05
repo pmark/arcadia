@@ -23,7 +23,7 @@ describe("configured QA queue", () => {
         status: "active",
         currentMilestone: "QA queue",
         nextAction: "Test Candidate",
-        workClassification: "codex"
+        workClassification: "agent"
       });
     });
 

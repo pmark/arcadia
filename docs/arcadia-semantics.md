@@ -140,7 +140,7 @@ Responsibility describes who or what can advance an Action.
 Canonical values:
 
 - Autonomous
-- Codex
+- Agent
 - Requires Review
 - Blocked
 
@@ -180,7 +180,7 @@ failures may have Token Impact.
 | Work Packet | Artifact or execution input | Avoid making this a primary concept. |
 | Packet | Artifact | Use only as a low-level implementation/detail word. |
 | Back Burner | Incubating status/view | Keep as a view name only if desired; the semantic state is Incubating. |
-| Classification | Responsibility | Use Responsibility when values are Autonomous, Codex, Requires Review, or Blocked. |
+| Classification | Responsibility | Use Responsibility when values are Autonomous, Agent, Requires Review, or Blocked. |
 | Execution | Workflow or Run | Use Run for a concrete execution instance; Workflow for a process. |
 | Stewardship | Routing/governance behavior | Keep for internal AI/request-routing behavior, not as a primary user object. |
 
@@ -198,7 +198,7 @@ Action: Add a golden request for ambiguous project updates.
 Artifact: docs/reports/golden-request-suite.md
 Decision: Confirm whether vague requests should become Incubating or require review.
 Log: mission_logs/2026/06/...
-Responsibility: Codex
+Responsibility: Agent
 Validation: pnpm test
 ```
 

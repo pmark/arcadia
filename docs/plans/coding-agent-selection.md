@@ -12,7 +12,7 @@ actions:
   - id: execution-profile-contract
     title: Add the vendor-neutral execution-profile contract
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Delivered in src/execution/profiles.ts and schemas/arcadia-execution-profile-v1.schema.json.
     expected_artifact: Versioned execution-profile types, defaults, parser support, and validation tests
@@ -40,7 +40,7 @@ actions:
   - id: compliant-provider-selection
     title: Select the least costly compliant coding-agent configuration
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Delivered in src/codingAgents/providerAdapters.ts and config/defaults/provider-adapters.json.
     acceptance_criteria:
@@ -56,7 +56,7 @@ actions:
   - id: execution-profile-provenance
     title: Record resolved profiles and runtime escalation
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: session
     next_action: Delivered through additive provenance columns and append-only execution-profile events.
     acceptance_criteria:
@@ -73,7 +73,7 @@ actions:
   - id: continuation-policy-migration
     title: Adopt execution profiles in Arcadia's continuation workflow
     status: done
-    responsibility: codex
+    responsibility: agent
     effort: short
     next_action: Delivered in docs/agent-execution-policy.md, docs/arcadia-protocol.md, and START_HERE.md.
     acceptance_criteria:
@@ -108,7 +108,7 @@ programs are visible without presenting speculation as precision.
 
 - Milestone: vendor-neutral coding-agent selection
 - Next Action: none; restore the prior portfolio-docs-protocol work pointer
-- Responsibility: Codex (complete)
+- Responsibility: Agent (complete)
 - Required Artifact: delivered — authoritative policy, portable schema,
   provider adapters, deterministic selection, provenance, and continuation docs
 - Decisions open: none
