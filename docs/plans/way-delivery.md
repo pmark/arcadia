@@ -316,7 +316,7 @@ actions:
       client, unrelated to this change).
   - id: relax-responsibility-refusal-per-decision-0045
     title: settleAgentAsk accepts an explicit --responsibility value on an Action amendment (targetRef path) and writes it to the Plan document, instead of unconditionally refusing with "Action amendment preserves its existing Responsibility and queue position."
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: settleAgentAsk accepts an explicit --responsibility value on an Action amendment (targetRef path) and writes it to the Plan document, instead of unconditionally refusing with "Action amendment preserves its existing Responsibility and queue position."
@@ -332,6 +332,18 @@ actions:
     depends_on: []
     decisions: []
     references: [src/ask/settlement.ts, src/ask/agentAsk.ts, docs/decisions/0045-agent-ask-can-amend-action-responsibility.md, tests/agent-ask-settlement.test.ts]
+    result: >-
+      `settleAgentAsk`'s targetRef amendment path now refuses only
+      `--placement`; an explicit `--responsibility autonomous`/`agent` is
+      accepted and `amendAction` writes it into the targeted Action's
+      `responsibility:` frontmatter field, leaving queue position untouched.
+      Two new tests cover the accepted responsibility path and the
+      still-refused placement path; the pre-existing "amends an existing
+      Action without changing its Responsibility" test (neither flag
+      supplied) is unchanged and still passes. Full suite:
+      tests/agent-ask-settlement.test.ts 31/31 passing; `tsc --noEmit` clean;
+      `pnpm test` 1247 passed, 1 unrelated pre-existing timeout
+      (discord-bot.test.ts e2e fixture, untouched by this change).
 questions: []
 decisions: ["0024", "0025", "0028"]
 ---
