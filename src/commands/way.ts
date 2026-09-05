@@ -3,6 +3,7 @@ import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import { reportWayDrift, type WayDriftReport } from "../projects/wayDrift.js";
+import { runWayPropagation, type WayPropagationSummary } from "../projects/wayPropagate.js";
 
 export interface WayStatusCommandData {
   projects: WayDriftReport[];
@@ -71,6 +72,45 @@ export function renderWayStatusSuccess(response: CommandSuccess<WayStatusCommand
       lines.push(`  Drifted: ${drifted.join(", ")}`);
     }
     lines.push(`  Upgrade policy: ${project.upgradePolicy ?? "none declared"}`);
+  }
+
+  return lines;
+}
+
+export interface WayPropagateCommandData {
+  summary: WayPropagationSummary;
+}
+
+export function runWayPropagateCommand(options: {
+  workspace: string;
+  project?: string;
+  dryRun?: boolean;
+}): CommandSuccess<WayPropagateCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const summary = withDatabase(workspacePath, (db) =>
+    runWayPropagation({ db, projectIdentifier: options.project, dryRun: options.dryRun })
+  );
+
+  return createSuccess({
+    command: "way.propagate",
+    workspace: workspacePath,
+    data: { summary }
+  });
+}
+
+export function renderWayPropagateSuccess(response: CommandSuccess<WayPropagateCommandData>): string[] {
+  const { summary } = response.data;
+  const lines: string[] = [
+    `Arcadia Way propagation${summary.dryRun ? " (dry run)" : ""} — ${summary.results.length} project${summary.results.length === 1 ? "" : "s"}`,
+    ""
+  ];
+
+  for (const result of summary.results) {
+    lines.push(`${result.projectName}  [${result.status}]`);
+    lines.push(`  ${result.detail}`);
+    if (result.pullRequestUrl) lines.push(`  Pull request: ${result.pullRequestUrl}`);
+    if (result.filesChanged.length > 0) lines.push(`  Files: ${result.filesChanged.join(", ")}`);
+    if (result.unmanageable.length > 0) lines.push(`  Unmanageable: ${result.unmanageable.join(", ")}`);
   }
 
   return lines;

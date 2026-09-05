@@ -576,6 +576,15 @@ export function readAdoptedFile(relativePath: string): string | null {
  * than flattening it. Walking up to the nearest `package.json` works from
  * either location.
  */
+/**
+ * Arcadia's own repository root, exported so callers can recognize "this is
+ * Arcadia itself" rather than an adopting project -- e.g. Way propagation,
+ * which never opens a pull request against its own source of truth.
+ */
+export function arcadiaRepoRoot(): string {
+  return findArcadiaRepoRoot();
+}
+
 function findArcadiaRepoRoot(): string {
   let dir = path.dirname(fileURLToPath(import.meta.url));
   while (true) {
