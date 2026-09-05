@@ -16,7 +16,9 @@ describe("Agent Ask v1", () => {
     for (const intent of AGENT_ASK_INTENTS) {
       const request = intent === "plan"
         ? `${strictAsk(`kind-${intent}`, intent)}actions:\n  - desired_result: Deliver the Plan Action\n    acceptance:\n      - Plan Action proof exists.\n    dependencies: []\n`
-        : strictAsk(`kind-${intent}`, intent);
+        : intent === "complete"
+          ? `${strictAsk(`kind-${intent}`, intent)}target_ref: action/existing\ncandidate_revision: abadc0deabadc0deabadc0deabadc0deabadc0de\nevidence:\n  - criterion: "Observable proof exists"\n    status: met\n`
+          : strictAsk(`kind-${intent}`, intent);
       const result = runAgentAskPreviewCommand({ workspace, request });
       expect(result.data.proposal.normalized.intent).toBe(intent);
       expect(result.data.proposal.effects[0]?.targetKind).toBe(intent === "auto" ? "interpretation" : intent);
