@@ -10,8 +10,8 @@ previous Plan's unfinished Actions as draft work and logs the transition.
 The operator requested the next session build managed plan production. The
 bootstrap Ask is [19](./19-managed-production-bootstrap-ask.yaml), followed by the
 separate activation Ask [22](./22-activate-production-bootstrap-ask.yaml). The
-completion transition remains a named prerequisite in
-`advance-approved-production-work`; no unattended feeder may bypass it.
+operator-settled completion transition is the first build Action; later
+`advance-approved-production-work` reuses it under approved production policy.
 
 ## Deterministic proof
 
@@ -46,7 +46,7 @@ completion transition remains a named prerequisite in
 5. After the explicitly approved canonical activation, run
    `pnpm arcadia next --project arcadia`. Expected: active Plan
    `bootstrap-managed-production-to-build-flight-deck`, Action
-   `define-managed-production-policy`, with Astra/high guidance. Plan creation
+   `implement-evidence-bound-action-completion`, with Astra/high guidance. Plan creation
    alone must leave the previous pointer unchanged. Do not apply settlement as
    an exploratory QA step against a real workspace.
 
@@ -58,5 +58,5 @@ Canonical settlement remains an operator-authorized operation.
 The handoff is not complete merely because this file exists or tests pass.
 Require published code, canonical Plan creation and explicit activation, clean
 published managed-document commits, and a successful read-only `arcadia next`
-plus `arcadia go` preview. The next fresh session builds the first policy Action;
+plus `arcadia go` preview. The next fresh session builds the completion routine;
 it does not resume the old board Action or imply the production engine exists.

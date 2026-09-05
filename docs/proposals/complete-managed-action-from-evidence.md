@@ -37,5 +37,7 @@ an inactive Plan from queue order alone.
 
 Required refusal tests cover missing/failed/skipped validation, stale revision,
 unresolved blocking review, absent authority, and replay/crash recovery without
-duplicate Logs or skipped Actions. Implement this in the production bootstrap's
-`advance-approved-production-work` Action before enabling unattended admission.
+duplicate Logs or skipped Actions. Implement the operator-settled routine first
+in `implement-evidence-bound-action-completion`, so bootstrap Actions themselves
+can finish canonically. Later, `advance-approved-production-work` reuses it under
+explicit production policy before enabling unattended admission.

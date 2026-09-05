@@ -21,6 +21,31 @@ const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 describe("Agent Ask settlement", () => {
+  it("rehearses the checked-in production handoff Asks in an isolated repository", () => {
+    const { workspace, repo } = fixture();
+    const request = readFileSync(path.resolve("docs/plans/mission-control-view/19-managed-production-bootstrap-ask.yaml"), "utf8")
+      .replace("project: arcadia", "project: demo");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const creation = { workspace, proposal: proposal.data.proposal.id, requestId: "bootstrap-rehearsal",
+      disposition: "accepted" as const, responsibility: "agent" as const };
+    const preview = runAgentAskSettleCommand(creation);
+    runAgentAskSettleCommand({ ...creation, apply: true, preview: preview.data.receipt.previewFingerprint });
+    expect(resolveDispatch(repo, "demo").context?.activePlan).toBe("demo-plan");
+    const activation = runAgentAskPreviewCommand({ workspace, request:
+      readFileSync(path.resolve("docs/plans/mission-control-view/22-activate-production-bootstrap-ask.yaml"), "utf8")
+        .replace("project: arcadia", "project: demo") });
+    const options = { workspace, proposal: activation.data.proposal.id, requestId: "activate-bootstrap-rehearsal",
+      disposition: "accepted" as const, activate: true, action: "implement-evidence-bound-action-completion",
+      model: "gpt-6-astra", effort: "high", top: true };
+    const activationPreview = runAgentAskSettleCommand(options);
+    runAgentAskSettleCommand({ ...options, apply: true, preview: activationPreview.data.receipt.previewFingerprint });
+    const dispatch = resolveDispatch(repo, "demo");
+    expect(isDispatchable(dispatch)).toBe(true);
+    expect(dispatch.context).toMatchObject({ activePlan: "bootstrap-managed-production-to-build-flight-deck",
+      action: { id: "implement-evidence-bound-action-completion" }, planRecommendedModel: "gpt-6-astra" });
+    withDatabase(workspace, (db) => expect([...loadActionOrder(db).positions.keys()]).toHaveLength(15));
+  });
+
   it("refuses activation while an old Run is active outside the recent-history window", () => {
     const { workspace } = activationFixture();
     withDatabase(workspace, (db) => {
@@ -523,7 +548,7 @@ describe("Agent Ask settlement", () => {
     expect(plan).toContain("id: build-release-proof");
     expect(plan).toContain("id: publish-release-guide");
     expect(plan).toContain("depends_on: [build-release-proof]");
-    expect(plan).toContain("references: [docs/release.md, src/release.ts]");
+    expect(plan).toContain('references: ["docs/release.md", "src/release.ts"]');
     expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("active_plan: demo-plan");
     expect(applied.data.receipt.effects.join(" ")).toContain("active Plan, Project pointer, dispatch authority, and execution queue are unchanged");
     withDatabase(workspace, (db) => expect(loadActionOrder(db).revision).toBe(1));
@@ -567,7 +592,7 @@ describe("Agent Ask settlement", () => {
     });
     const plan = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
     expect(plan).toContain("next_action: Tighten existing release proof");
-    expect(plan).toContain("references: [docs/release.md, tests/existing.test.ts]");
+    expect(plan).toContain('references: ["docs/release.md", "tests/existing.test.ts"]');
     expect(plan).toContain("id: audit-release");
     expect(plan).toContain("depends_on: [existing]");
     expect(applied.data.receipt.effects).toContain("Reprioritized active Plan demo-plan as one dependency-safe queue segment: demo/existing, demo/audit-release.");

@@ -94,6 +94,17 @@ describe("buildFlightDeck", () => {
     expect(buildFlightDeck(q, productionSnapshot()).find((lane) => lane.planSlug === "deck")?.cards).toHaveLength(3);
   });
 
+  it("shows a Session's managed Action even when it is absent from ordered work", () => {
+    const q = queue();
+    q.running = [{ ...q.ordered[0]!, id: "session:live", attentionKind: "session", state: "running", status: "running" }];
+    q.ordered = [];
+    const cards = () => buildFlightDeck(q, productionSnapshot()).flatMap((lane) => lane.cards);
+    expect(cards().filter((card) => card.kind === "action")).toEqual([expect.objectContaining({ column: "running", planSlug: "deck" })]);
+    q.ordered = queue().ordered;
+    expect(cards().filter((card) => card.kind === "action")).toHaveLength(1);
+    expect(cards().find((card) => card.kind === "action")?.column).toBe("running");
+  });
+
   it.each(["other-deck", "decks", "deck other-plan"])("does not invent a prose link from %s", (context) => {
     const q = queue();
     q.ordered.push({ ...q.ordered[0]!, actionId: "other", planSlug: "other-plan" });

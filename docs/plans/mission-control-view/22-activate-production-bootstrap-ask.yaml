@@ -1,11 +1,11 @@
 agent_ask: v1
-request_id: activate-managed-production-directed-handoff-2026-09-05
+request_id: activate-managed-production-completion-first-2026-09-05
 project: arcadia
 intent: plan
 target_ref: plan/bootstrap-managed-production-to-build-flight-deck
 requested_authority: apply_if_approved
-desired_result: Activate managed production bootstrap so the next arcadia go session builds its production policy.
-rationale: The operator explicitly requested production routines first, whole-Plan execution and contextual multiple-choice judgment gates. Activate the accepted bootstrap at define-managed-production-policy with Astra/high and put its Action segment first. Preserve Flight Deck's unfinished state as draft work; do not claim completion, launch a Session, merge code, or enable unattended execution. The canonical activation path repairs the missing handoff mechanism before recording this transition; evidence-bound completion is a named bootstrap prerequisite before unattended admission.
+desired_result: Activate managed production bootstrap so the next arcadia go session builds its evidence-bound completion routine.
+rationale: The operator explicitly requested production routines first, whole-Plan execution and contextual multiple-choice judgment gates. Activate the accepted bootstrap at implement-evidence-bound-action-completion with Astra/high and put its Action segment first. Completion must precede production policy so the bootstrap does not repeat the evidence-without-advancement failure on its own first eight Actions. Preserve Flight Deck's unfinished state as draft work; do not claim completion, launch a Session, merge code, or enable unattended execution. The canonical activation path repairs the missing handoff mechanism before recording this transition.
 references:
   - docs/plans/mission-control-view/19-managed-production-bootstrap-ask.yaml
   - docs/plans/mission-control-view/20-production-quality-and-reliability.md

@@ -32,7 +32,9 @@ const actionKey = (project: string | null, plan: string | null, action: string) 
 export function buildFlightDeck(queue: WorkQueue, snapshot: DashboardSnapshot): FlightDeckLane[] {
   const cards = new Map<string, FlightDeckCard>();
   const actions = new Map<string, FlightDeckCard>();
-  for (const entry of queue.ordered) {
+  const sessionActions = [...(queue.running ?? []), ...(queue.attention ?? [])]
+    .filter((entry) => entry.attentionKind === "session");
+  for (const entry of [...queue.ordered, ...sessionActions]) {
     if (!entry.actionId) continue;
     const card = actionCard(entry, queue.orderValid);
     actions.set(actionKey(entry.projectId, entry.planSlug, entry.actionId), card);

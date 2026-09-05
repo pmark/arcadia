@@ -732,7 +732,7 @@ function appendAction(content: string, action: {
     ...action.acceptance.map((criterion) => `      - ${yamlScalar(criterion)}`),
     `    depends_on: [${action.dependencies.join(", ")}]`,
     "    decisions: []",
-    `    references: [${action.references.map(yamlScalar).join(", ")}]`
+    `    references: [${action.references.map((reference) => JSON.stringify(reference)).join(", ")}]`
   ];
   return `${content.slice(0, insertAt)}\n${lines.join("\n")}${content.slice(insertAt)}`;
 }
@@ -983,7 +983,7 @@ function newDraftPlan(
     ...action.acceptance.map((criterion) => `      - ${yamlScalar(criterion)}`),
     `    depends_on: [${action.dependencies.join(", ")}]`,
     "    decisions: []",
-    `    references: [${action.references.map(yamlScalar).join(", ")}]`
+    `    references: [${action.references.map((reference) => JSON.stringify(reference)).join(", ")}]`
   ]);
   return [
     "---", "arcadia: v1", "type: plan", `slug: ${planSlug}`, `project: ${projectSlug}`, "status: draft",
@@ -1026,7 +1026,7 @@ function amendAction(
   block = block.replace(/^    depends_on:.*(?:\r?\n      - .*)*/m,
     dependencies.length > 0 ? `    depends_on: [${dependencies.join(", ")}]` : "    depends_on: []");
   block = block.replace(/^    references:.*(?:\r?\n      - .*)*/m,
-    references.length > 0 ? `    references: [${references.map(yamlScalar).join(", ")}]` : "    references: []");
+    references.length > 0 ? `    references: [${references.map((reference) => JSON.stringify(reference)).join(", ")}]` : "    references: []");
   block = /^    source:/m.test(block)
     ? block.replace(/^    source:.*$/m, `    source: ${yamlScalar(`Agent Ask ${requestId}`)}`)
     : block.replace(/^    clarification:.*$/m, `$&\n    source: ${yamlScalar(`Agent Ask ${requestId}`)}`);

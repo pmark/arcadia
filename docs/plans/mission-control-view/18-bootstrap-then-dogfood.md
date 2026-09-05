@@ -107,4 +107,4 @@ these separate Plans. The new separation is the operator's chosen direction;
 merge, canonical settlement and activation still need the exact applicable
 review/authority steps, without re-asking whether the Plans should be separated.
 
-Quality and release gates: [20](./20-production-quality-and-reliability.md) adds criterion-level revision-bound acceptance, independent review, fault injection and a bounded live soak. The revised bootstrap Ask incorporates these gates without adding a second implementation or changing its 14-Action order.
+Quality and release gates: [20](./20-production-quality-and-reliability.md) adds criterion-level revision-bound acceptance, independent review, fault injection and a bounded live soak. The completion-first bootstrap preserves those gates and the existing runtime integrations.
