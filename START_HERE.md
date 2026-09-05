@@ -26,6 +26,13 @@ higher ineligible Action remains in place with its reason, repair, Project,
 Outcome or Milestone, Responsibility, dependencies, Decisions, effort, Token
 Impact, and acceptance summary.
 
+Flight Deck shows queued Actions and recent evidence, not an exhaustive history.
+Cards distinguish operator judgment, agent repair, external blockers and waiting
+for the pointer. Completed Runs and draft Artifacts stay in Proving. Landed
+means a ready/published Artifact with a recorded location, not Action acceptance
+or PR merge. Structural links use managed document references; inferred Plan
+mentions are labeled as prose.
+
 Use **Top**, the up/down controls, or **Reorder multiple** to draft a change.
 Arcadia shows the exact changed segment before **Apply exact preview** writes
 anything. **Make next** separately previews the governed `PROJECT.md` and Plan
@@ -541,6 +548,17 @@ synchronizes the operational projection, assigns explicit contiguous queue
 positions, and persists a settlement receipt. Use `--disposition rejected`
 without a Responsibility or queue placement to preserve the proposal while
 creating no executable work.
+
+To activate an existing draft Plan, preview a `plan` Ask targeting
+`plan/<slug>` with no child Actions. Settle it using `--activate`,
+`--action <id>`, `--model <model-id>`, optional `--effort high`, and
+`--top` (or `--before`/`--after`). Apply requires the same options and
+exact preview fingerprint. The writer changes the Project milestone and both
+pointers, returns the previous Plan to draft without claiming completion, and
+replaces only that Project's queue segment. An ineligible first Action or
+unreconciled Project Session refuses activation. Activation starts no process
+and grants no merge, deployment, spending or unattended-production authority.
+Select a model supported by the agent that will launch the next session.
 
 Every applied accepted or rejected settlement creates one durable Discord
 outbox item. The configured Arcadia Discord bot posts a brief effect summary,

@@ -1,5 +1,5 @@
 agent_ask: v1
-request_id: managed-production-bootstrap-quality-gates-2026-09-05
+request_id: managed-production-completion-first-handoff-2026-09-05
 project: arcadia
 intent: plan
 requested_authority: propose
@@ -10,6 +10,23 @@ references:
   - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
   - docs/plans/mission-control-view/20-production-quality-and-reliability.md
 actions:
+  - id: implement-evidence-bound-action-completion
+    desired_result: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
+    acceptance:
+      - Extend the existing Agent Ask settlement and canonical writer rather than introducing a parallel completion command, approval store or queue.
+      - Bind one exact Project, Plan and Action, Candidate revision, criterion-level acceptance evidence and required review to a preview; changed documents, evidence or revision invalidate it.
+      - Refuse missing, failed or skipped required validation, unresolved blocking review and absent operator authority; passing tests or a merged PR alone never imply acceptance.
+      - One operator-settled recoverable transition records accepted evidence, marks the managed Action done, appends its Log and resolves the next governed Action, question, external blocker or completed Plan without leaving a done dispatch pointer.
+      - Replays and injected failures across document, commit, projection and receipt boundaries preserve one recoverable outcome without duplicate Logs or skipped Actions; no inactive Plan is inferred from queue order.
+      - Prove the operator completion path in temporary repositories, preserve a runnable exact-preview QA procedure and use it for this Action's own completion only after the operator accepts its evidence.
+      - Grant no automatic acceptance, Session launch, merge, deployment, spending or production authority; the later policy and production reconciliation Actions reuse this routine under separately approved scope.
+    dependencies: []
+    references:
+      - docs/proposals/complete-managed-action-from-evidence.md
+      - src/ask/settlement.ts
+      - src/docs/dispatch.ts
+      - src/dispatch/pointer.ts
+      - docs/plans/mission-control-view/20-production-quality-and-reliability.md
   - id: define-managed-production-policy
     desired_result: Persist a bounded Active/Inactive production policy and admission authority in the existing workspace.
     acceptance:
@@ -19,7 +36,9 @@ actions:
       - Policy state remains accessible when queue/provider reads or execution block; race tests define the cutoff for already-committed launches.
       - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
       - Define measurable control deadlines and bounded attempt budgets from contract 20; policy-store failure cannot report confirmed Off or admit new work.
-    dependencies: []
+      - Carry the operator's whole-Plan intent in the policy scope; routine implementation and mechanical continuation require no per-Action relay. Genuine judgments show the affected objective, current evidence and two or more meaningful options with consequences and a recommendation.
+    dependencies:
+      - implement-evidence-bound-action-completion
     references:
       - docs/plans/mission-control-view/17-managed-production-contract.md
       - src/commands/worker.ts
@@ -173,6 +192,7 @@ actions:
       - Repeated reconciliation and crash recovery cannot duplicate completion, logs, Decisions or pointer changes; failure preserves evidence and isolates that Project.
       - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
       - Inject crashes across document write, commit, projection and receipt boundaries; recover one canonical transition without duplicate Logs or skipped Actions, and invalidate affected proof after Candidate/base changes.
+      - Resolve the next governed Action, question, external blocker or completed Plan as part of completion; never leave a done Action as the dispatch pointer. Support one operator-settled completion as well as explicitly delegated mechanical production acceptance.
     dependencies:
       - reconcile-session-exits-to-next-move
       - define-managed-production-policy
@@ -183,6 +203,7 @@ actions:
       - src/docs/dispatch.ts
       - src/dispatch/pointer.ts
       - src/ask/settlement.ts
+      - docs/proposals/complete-managed-action-from-evidence.md
       - docs/plans/mission-control-view/18-bootstrap-then-dogfood.md
       - docs/plans/mission-control-view/20-production-quality-and-reliability.md
   - id: feed-and-supervise-managed-production
@@ -220,6 +241,7 @@ actions:
     acceptance:
       - Add a minimal Active/Inactive control and desired-versus-observed status to /work-queue using the production service; no /flight-deck route or component is required.
       - Reuse existing Plan segment/Action priority previews, review destinations and Session links; show included scope, selected/next Action, capacity age and exact operator stops.
+      - Every operator stop offers contextual multiple-choice options with the affected Project/Plan/Action, evidence, recommendation and consequence of each choice; preserve free-text direction and route the selected answer through existing canonical review/settlement controls.
       - The control works on phone and desktop and remains responsive during execution and slow source reads; Off follows the documented policy.
       - Extract the concrete production control for reuse by Flight Deck rather than building a second controller or state store.
       - Preserve a runnable QA Artifact naming exact URL, host, revision and recovery command.

@@ -5,30 +5,38 @@ Asks propose the records; neither changes the current Project pointer by itself.
 Read [18](./18-bootstrap-then-dogfood.md) for the cross-Plan handoff and runtime
 safety contract. Do not apply the earlier single-plan proposal versions.
 
-## Plan A: bootstrap Managed Production (14 Actions)
+## Plan A: bootstrap Managed Production (15 Actions)
 
 Proposed slug: `bootstrap-managed-production-to-build-flight-deck`. The first
-Action is `define-managed-production-policy`. Milestone: a proven persistent
+Action is `implement-evidence-bound-action-completion`. Milestone: a proven persistent
 controller can build approved Actions from the existing Work Queue, then take
 Flight Deck as its first real workload. Existing CLI/Work Queue remain usable
 without any Flight Deck code. Exact proposal: [19](./19-managed-production-bootstrap-ask.yaml).
 
 | Order | Action | Prerequisites |
 | --- | --- | --- |
-| 1 | `define-managed-production-policy` | None within this Plan |
-| 2 | `prove-provider-capacity-admission` | `define-managed-production-policy` |
-| 3 | `resolve-production-agent-and-launch-preview` | `define-managed-production-policy` |
-| 4 | `connect-action-to-launch-packet` | `resolve-production-agent-and-launch-preview` |
-| 5 | `support-selected-codex-and-claude-sessions` | `connect-action-to-launch-packet` |
-| 6 | `expose-guarded-host-session-launch` | `support-selected-codex-and-claude-sessions` |
-| 7 | `observe-portfolio-agent-sessions` | `expose-guarded-host-session-launch` |
-| 8 | `reconcile-session-exits-to-next-move` | `observe-portfolio-agent-sessions` |
-| 9 | `advance-approved-production-work` | `reconcile-session-exits-to-next-move`, `define-managed-production-policy` |
-| 10 | `feed-and-supervise-managed-production` | `advance-approved-production-work`, `prove-provider-capacity-admission`, `expose-guarded-host-session-launch` |
-| 11 | `expose-bootstrap-production-controls` | `feed-and-supervise-managed-production` |
-| 12 | `prove-two-action-unattended-production` | `expose-bootstrap-production-controls` |
-| 13 | `prove-multi-provider-production-recovery` | `prove-two-action-unattended-production` |
-| 14 | `freeze-production-runtime-and-handoff-flight-deck` | `prove-multi-provider-production-recovery` |
+| 1 | `implement-evidence-bound-action-completion` | None within this Plan |
+| 2 | `define-managed-production-policy` | `implement-evidence-bound-action-completion` |
+| 3 | `prove-provider-capacity-admission` | `define-managed-production-policy` |
+| 4 | `resolve-production-agent-and-launch-preview` | `define-managed-production-policy` |
+| 5 | `connect-action-to-launch-packet` | `resolve-production-agent-and-launch-preview` |
+| 6 | `support-selected-codex-and-claude-sessions` | `connect-action-to-launch-packet` |
+| 7 | `expose-guarded-host-session-launch` | `support-selected-codex-and-claude-sessions` |
+| 8 | `observe-portfolio-agent-sessions` | `expose-guarded-host-session-launch` |
+| 9 | `reconcile-session-exits-to-next-move` | `observe-portfolio-agent-sessions` |
+| 10 | `advance-approved-production-work` | `reconcile-session-exits-to-next-move`, `define-managed-production-policy` |
+| 11 | `feed-and-supervise-managed-production` | `advance-approved-production-work`, `prove-provider-capacity-admission`, `expose-guarded-host-session-launch` |
+| 12 | `expose-bootstrap-production-controls` | `feed-and-supervise-managed-production` |
+| 13 | `prove-two-action-unattended-production` | `expose-bootstrap-production-controls` |
+| 14 | `prove-multi-provider-production-recovery` | `prove-two-action-unattended-production` |
+| 15 | `freeze-production-runtime-and-handoff-flight-deck` | `prove-multi-provider-production-recovery` |
+
+Completion comes first because the bootstrap must not reproduce the current
+evidence-without-advancement loop. Its first implementation can use its own
+operator-settled path after acceptance; later production reconciliation reuses
+that routine instead of implementing a second writer. Only settle the latest
+`managed-production-completion-first-handoff-2026-09-05` Ask; earlier preview
+versions are historical proposals, not the selected handoff.
 
 ## Plan B: Flight Deck (17 Actions)
 
@@ -58,7 +66,7 @@ Action become the controller's real input. Exact amendment: [14](./14-flight-dec
 
 ## Execution sizing and continuation
 
-Use the current configured Claude Sonnet 5 handoff, high effort for the bootstrap
+Use Codex Astra (`gpt-6-astra`), high effort for the initial bootstrap
 policy, capacity, admission, canonical completion and supervision boundaries;
 medium for focused UI integration. Runtime routing uses the existing portable
 execution profiles and supported provider bindings, not this prose as a provider
@@ -66,11 +74,10 @@ configuration. Verify installed model/effort support rather than silently guessi
 
 Each Action is a bounded session with an observable proof Artifact. Reuse the
 named source mechanisms; deterministic checks precede model review. A missing
-telemetry field is unknown, not free quota. The Ask schema cannot set all model,
-execution and token-budget metadata; see the existing metadata capability
-proposal. At activation, explicitly supply the supported model pin and accurate
-Plan budget through governed tooling. Do not hand-edit the pointer or claim the
-default one-pass generated budget describes the whole bootstrap.
+telemetry field is unknown, not free quota. The settlement activation options
+supply the model and effort pin. The generated Plan budget allows a bounded
+implementation and review per Action with finite repair attempts; it does not
+budget the whole bootstrap as one model call.
 
 Initially, normal `arcadia go` sessions build and prove the bootstrap. Thereafter
 the production controller performs repeated Action admission/Session launch and
@@ -98,4 +105,4 @@ start its admitted production scope once. The first two Flight Deck Actions are
 the real dogfood; the third verifies their actual controller receipts. The old
 queue repair remains valid historical preservation, not final Plan A priority.
 
-Quality and release gates: [20](./20-production-quality-and-reliability.md) adds criterion-level revision-bound acceptance, independent review, fault injection and a bounded live soak. The revised bootstrap Ask incorporates these gates without adding a second implementation or changing its 14-Action order.
+Quality and release gates: [20](./20-production-quality-and-reliability.md) adds criterion-level revision-bound acceptance, independent review, fault injection and a bounded live soak. The completion-first bootstrap preserves those gates and the existing runtime integrations.

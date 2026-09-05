@@ -78,7 +78,16 @@ export interface DashboardSnapshot {
   backBurnerItems: DashboardBackBurnerItem[];
   recentRuns: DashboardRun[];
   recentArtifacts: DashboardArtifact[];
+  /** Database identities translated through authoritative managed document references. */
+  managedActions: DashboardManagedAction[];
   dispatchJournal: DashboardDispatchJournal;
+}
+
+export interface DashboardManagedAction {
+  workItemId: string;
+  projectId: string;
+  planSlug: string;
+  actionId: string;
 }
 
 /**
@@ -358,6 +367,7 @@ export interface DashboardBackBurnerItem {
 
 export interface DashboardRun {
   id: string;
+  workItemId?: string | null;
   status: string;
   statusLabel: string;
   projectId: string | null;
@@ -379,6 +389,7 @@ export interface DashboardRun {
 
 export interface DashboardArtifact {
   id: string;
+  workItemId?: string | null;
   title: string;
   artifactType: string;
   status: string;
@@ -408,8 +419,23 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
     const rebusterEvents = listRebusterEvents(db, 10);
     const rebusterDecisions = listOpenRebusterDecisionEvents(db);
     const dashboardReviewItems = reviewItems.map((item) => toDashboardReviewItem(db, options.workspace, item));
-    const attentionItems = buildAttentionItems(db, dashboardReviewItems, runs);
     const agentQueue = buildAgentQueue(db, { runLimit: Math.max(runLimit, 100) });
+    const referencedWork = new Set([
+      ...reviewItems.map((item) => item.work_item_id),
+      ...runs.map((run) => run.work_item_id),
+      ...artifacts.slice(0, artifactLimit).map((artifact) => artifact.work_item_id),
+      ...runs.flatMap((run) => run.artifacts.map((artifact) => artifact.work_item_id)),
+      ...[...agentQueue.running, ...agentQueue.attention, ...agentQueue.flagged]
+        .filter((entry) => entry.runId || entry.decisionId).map((entry) => entry.actionId)
+    ].filter((id): id is string => Boolean(id)));
+    const workReference = db.prepare("SELECT project_id, doc_ref FROM work_items WHERE id = ?");
+    const managedActions: DashboardManagedAction[] = [];
+    for (const workItemId of referencedWork) {
+      const work = workReference.get(workItemId) as { project_id: string | null; doc_ref: string | null } | undefined;
+      const ref = work?.doc_ref ? parseActionDocRef(work.doc_ref) : null;
+      if (ref && work?.project_id) managedActions.push({ workItemId, projectId: work.project_id, ...ref });
+    }
+    const attentionItems = buildAttentionItems(db, dashboardReviewItems, runs);
     const activityEvents = buildActivityEvents(db, 30);
     const backBurnerItems = listBackBurnerItems(db, "all").filter((item) =>
       item.effective_status === "incubating" || item.effective_status === "opportunistic"
@@ -508,6 +534,7 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
       backBurnerItems: backBurnerItems.map(toDashboardBackBurnerItem),
       recentRuns: runs.map(toDashboardRun),
       recentArtifacts: artifacts.slice(0, artifactLimit).map(toDashboardArtifact),
+      managedActions,
       dispatchJournal
     };
   });
@@ -622,6 +649,7 @@ function toDashboardRun(run: ExecutionRunSummary): DashboardRun {
 
   return {
     id: run.id,
+    workItemId: run.work_item_id,
     status: run.status,
     statusLabel: labelStatus(run.status),
     projectId: run.project_id,
@@ -645,6 +673,7 @@ function toDashboardRun(run: ExecutionRunSummary): DashboardRun {
 function toDashboardArtifact(artifact: ArtifactSummary): DashboardArtifact {
   return {
     id: artifact.id,
+    workItemId: artifact.work_item_id,
     title: artifact.title,
     artifactType: artifact.artifact_type,
     status: artifact.status,

@@ -19,6 +19,7 @@ import {
   createWorkItemWithOptionalArtifact,
   getProjectMetadata,
   getWorkItem,
+  setWorkItemDocRef,
   upsertProjectMetadata,
   updateProjectStatus
 } from "../src/db/repositories.js";
@@ -36,6 +37,50 @@ afterEach(() => {
 });
 
 describe("dashboard snapshot", () => {
+  it("retains managed identities for queued Runs outside the recent snapshot window", () => {
+    const workspace = initializedWorkspace();
+    const workId = withDatabase(workspace, (db) => {
+      ensureBuiltInSkills(db);
+      const created = createProjectWithInitialWork(db, {
+        name: "Old active Run", mission: "Keep active work visible.", status: "active",
+        currentMilestone: "Proof", nextAction: "Build proof", workClassification: "agent"
+      });
+      setWorkItemDocRef(db, created.workItem.id, "plan/old-plan#still-running");
+      const work = getWorkItem(db, created.workItem.id)!;
+      const plan = createExecutionPlan(db, { workItemId: work.id, summary: "Old work", steps: planStepsForWorkItem(work) })!;
+      createExecutionRun(db, { workItemId: work.id, planId: plan.id, status: "running", summary: "Still running", steps: [] });
+      return work.id;
+    });
+    const snapshot = buildDashboardSnapshot({ workspace, runLimit: 0, artifactLimit: 0 });
+    expect(snapshot.recentRuns).toEqual([]);
+    expect(snapshot.managedActions).toContainEqual(expect.objectContaining({ workItemId: workId, planSlug: "old-plan", actionId: "still-running" }));
+  });
+
+  it("carries database-to-managed identities for Decisions, Runs, and Artifacts", () => {
+    const workspace = initializedWorkspace();
+    const ids = withDatabase(workspace, (db) => {
+      ensureBuiltInSkills(db);
+      const created = createProjectWithInitialWork(db, {
+        name: "Identity proof", mission: "Keep links truthful.", status: "active",
+        currentMilestone: "Proof", nextAction: "Build proof", workClassification: "agent"
+      });
+      setWorkItemDocRef(db, created.workItem.id, "plan/identity-plan#build-proof");
+      const work = getWorkItem(db, created.workItem.id)!;
+      const plan = createExecutionPlan(db, { workItemId: work.id, summary: "Prove identity", steps: planStepsForWorkItem(work) })!;
+      const run = createExecutionRun(db, { workItemId: work.id, planId: plan.id, status: "completed", summary: "Proof", steps: [] })!;
+      const artifact = createArtifactRecord(db, { projectId: created.project.id, workItemId: work.id, title: "Proof", artifactType: "report", status: "ready", path: "proof.md" });
+      const decision = createReviewItem(db, {
+        projectId: created.project.id, workItemId: work.id, decisionNeeded: "Accept proof", sourceInput: "Proof",
+        proposedAction: "Review proof", resolvedIntent: "CandidateQaSignoff", confidenceLabel: "high", confidence: 1
+      });
+      return { project: created.project.id, work: work.id, run: run.id, artifact: artifact.id, decision: decision.id };
+    });
+    const snapshot = buildDashboardSnapshot({ workspace });
+    expect(snapshot.managedActions).toContainEqual({ workItemId: ids.work, projectId: ids.project, planSlug: "identity-plan", actionId: "build-proof" });
+    expect(snapshot.recentRuns.find((run) => run.id === ids.run)?.workItemId).toBe(ids.work);
+    expect(snapshot.recentArtifacts.find((artifact) => artifact.id === ids.artifact)?.workItemId).toBe(ids.work);
+    expect(snapshot.requiresReviewItems.find((decision) => decision.id === ids.decision)?.actionId).toBe(ids.work);
+  });
   it("reads the optional workspace Review focus", () => {
     const workspace = initializedWorkspace();
     const configPath = getWorkspacePaths(workspace).configFile;

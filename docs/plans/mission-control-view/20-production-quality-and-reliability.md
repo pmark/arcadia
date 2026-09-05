@@ -5,7 +5,8 @@ release requirements, not evidence that the controller already meets them.
 The milestone remains proven Managed Production before Flight Deck production.
 This work is specification and acceptance design; its artifacts are this contract,
 the revised strict Ask, and the preview receipt. The proposed first implementation
-Action remains define-managed-production-policy after governed activation.
+Action is implement-evidence-bound-action-completion after governed activation;
+production policy follows once bootstrap work can complete canonically.
 
 ## Excellent output is a separate gate from reliable execution
 

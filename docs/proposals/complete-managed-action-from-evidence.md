@@ -2,7 +2,7 @@
 arcadia: v1
 type: proposal
 project: arcadia
-question: Can Arcadia provide a previewable, operator-settled completion transition that marks one managed Action `done`, records supplied validation evidence, and advances the pointer only when the next Action is dispatchable?
+question: Can Arcadia provide a previewable completion transition that records accepted revision-bound evidence, marks one managed Action done, and resolves the next governed Action, question, blocker, or completed Plan without redispatching finished work?
 ---
 
 # Complete a managed Action from evidence
@@ -20,3 +20,24 @@ Agent Ask contract field can make the managed completion transition.
 A direct document edit or a local completion command. This proposal exists to
 avoid both: completion must remain previewable, operator-settled, evidence
 bound, and written by Arcadia's canonical managed-document writer.
+
+## Smallest implementation
+
+Extend the existing settlement and canonical writer path. Bind the exact
+Project/Plan/Action, Candidate revision, acceptance criteria and evidence to the
+preview; changed evidence or documents invalidate it. Operator settlement can
+authorize one transition. Automatic settlement requires a separately approved
+production policy that explicitly delegates mechanical acceptance.
+
+Completion and next-state resolution form one recoverable transition. Select
+the next governed Action even when it needs judgment or an external input;
+report that stop instead of leaving a done Action dispatchable. A finished Plan
+must report completion or an explicitly authorized Plan handoff. Never choose
+an inactive Plan from queue order alone.
+
+Required refusal tests cover missing/failed/skipped validation, stale revision,
+unresolved blocking review, absent authority, and replay/crash recovery without
+duplicate Logs or skipped Actions. Implement the operator-settled routine first
+in `implement-evidence-bound-action-completion`, so bootstrap Actions themselves
+can finish canonically. Later, `advance-approved-production-work` reuses it under
+explicit production policy before enabling unattended admission.
