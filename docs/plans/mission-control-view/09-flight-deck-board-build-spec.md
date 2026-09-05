@@ -1,5 +1,9 @@
 # Flight Deck Board — Build Specification
 
+> Latest sequencing: [18](./18-bootstrap-then-dogfood.md) separates Managed
+> Production bootstrap from Flight Deck. Build and prove the controller through
+> the existing Work Queue first; use it to produce the real Flight Deck Actions.
+
 > Latest scope: [continuous managed production](./17-managed-production-contract.md)
 > is now the primary requirement, with prioritized Plans and Active/Inactive
 > control. Build the unattended production proof before broad presentation polish.

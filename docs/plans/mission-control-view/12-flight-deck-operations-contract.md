@@ -1,5 +1,9 @@
 # Flight Deck: operator experience and execution contract
 
+> Latest sequencing: [18](./18-bootstrap-then-dogfood.md) separates Managed
+> Production bootstrap from Flight Deck. Build and prove the controller through
+> the existing Work Queue first; use it to produce the real Flight Deck Actions.
+
 > Production-first revision: [17](./17-managed-production-contract.md) now
 > requires continuous, capacity-aware execution under an Active/Inactive policy.
 > It replaces the original per-Session-only scope and scheduling deferrals.

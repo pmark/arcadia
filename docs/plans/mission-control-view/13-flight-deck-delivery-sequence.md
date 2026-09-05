@@ -1,145 +1,99 @@
-# Flight Deck: delivery sequence and continuation guide
+# Managed Production first; Flight Deck as its real workload
 
-This is the readable companion to the current exact Agent Ask in 14, revised for the production contract in 17. It proposes 27
-session-sized Actions: four amendments preserving existing ids and twenty-three new
-Actions. It is not a second managed plan and does not change the current pointer.
+The operator requires two sequential Plans. This supporting guide and the strict
+Asks propose the records; neither changes the current Project pointer by itself.
+Read [18](./18-bootstrap-then-dogfood.md) for the cross-Plan handoff and runtime
+safety contract. Do not apply the earlier single-plan proposal versions.
 
-## Milestone and order
+## Plan A: bootstrap Managed Production (14 Actions)
 
-Current governed Milestone: Flight Deck board carries the whole portfolio on one
-surface. Completion of this expanded feature additionally requires the full loop
-in 12 and acceptance matrix in 15; a board alone does not satisfy the proposal.
-
-Build the minimum operational shell, then prove the continuously managed
-production loop in 17 before broader presentation and default-home migration. The existing current Action remains
-first and independently executable. Dependencies below are required prerequisites,
-not permission to start parallel sessions. At each stopping point the governed
-pointer selects the next accepted Action, not this table or document order.
+Proposed slug: `bootstrap-managed-production-to-build-flight-deck`. The first
+Action is `define-managed-production-policy`. Milestone: a proven persistent
+controller can build approved Actions from the existing Work Queue, then take
+Flight Deck as its first real workload. Existing CLI/Work Queue remain usable
+without any Flight Deck code. Exact proposal: [19](./19-managed-production-bootstrap-ask.yaml).
 
 | Order | Action | Prerequisites |
 | --- | --- | --- |
-| 1 | `project-plan-lanes-and-pipeline-columns` | Current pointer; none |
-| 2 | `define-managed-production-policy` | `project-plan-lanes-and-pipeline-columns` |
-| 3 | `prove-provider-capacity-admission` | `define-managed-production-policy` |
-| 4 | `carry-the-dispatch-command` | `define-managed-production-policy` |
-| 5 | `connect-action-to-launch-packet` | `carry-the-dispatch-command` |
-| 6 | `support-selected-codex-and-claude-sessions` | `connect-action-to-launch-packet` |
-| 7 | `expose-guarded-host-session-launch` | `support-selected-codex-and-claude-sessions` |
-| 8 | `observe-portfolio-agent-sessions` | `expose-guarded-host-session-launch` |
-| 9 | `reconcile-session-exits-to-next-move` | `observe-portfolio-agent-sessions` |
-| 10 | `advance-approved-production-work` | `reconcile-session-exits-to-next-move`, `define-managed-production-policy` |
-| 11 | `feed-and-supervise-managed-production` | `advance-approved-production-work`, `prove-provider-capacity-admission`, `expose-guarded-host-session-launch` |
-| 12 | `focus-the-board-on-active-work` | `project-plan-lanes-and-pipeline-columns` |
-| 13 | `reuse-queue-steering-controls` | `project-plan-lanes-and-pipeline-columns` |
-| 14 | `reuse-contextual-decision-controls` | `project-plan-lanes-and-pipeline-columns` |
-| 15 | `control-plan-production-from-flight-deck` | `feed-and-supervise-managed-production`, `reuse-queue-steering-controls`, `reuse-contextual-decision-controls`, `focus-the-board-on-active-work` |
-| 16 | `prove-two-action-unattended-production` | `control-plan-production-from-flight-deck` |
-| 17 | `prove-multi-provider-production-recovery` | `prove-two-action-unattended-production` |
-| 18 | `open-the-object-detail-rail` | `prove-two-action-unattended-production` |
-| 19 | `expose-planned-portfolio-work` | `open-the-object-detail-rail` |
-| 20 | `launch-selected-agent-from-flight-deck` | `expose-guarded-host-session-launch`, `reuse-queue-steering-controls`, `reuse-contextual-decision-controls` |
-| 21 | `reuse-proof-and-delivery-controls` | `open-the-object-detail-rail`, `reconcile-session-exits-to-next-move` |
-| 22 | `capture-and-correct-work-in-context` | `open-the-object-detail-rail` |
-| 23 | `surface-operational-exceptions-and-changes` | `observe-portfolio-agent-sessions`, `expose-planned-portfolio-work` |
-| 24 | `complete-flight-deck-mobile-and-navigation-parity` | `focus-the-board-on-active-work`, `expose-planned-portfolio-work`, `launch-selected-agent-from-flight-deck`, `reuse-proof-and-delivery-controls`, `capture-and-correct-work-in-context`, `surface-operational-exceptions-and-changes` |
-| 25 | `verify-flight-deck-operational-loop` | `complete-flight-deck-mobile-and-navigation-parity`, `reconcile-session-exits-to-next-move`, `prove-multi-provider-production-recovery` |
-| 26 | `dogfood-flight-deck-as-operations-home` | `verify-flight-deck-operational-loop` |
-| 27 | `make-flight-deck-the-default-entrance` | `dogfood-flight-deck-as-operations-home` |
+| 1 | `define-managed-production-policy` | None within this Plan |
+| 2 | `prove-provider-capacity-admission` | `define-managed-production-policy` |
+| 3 | `resolve-production-agent-and-launch-preview` | `define-managed-production-policy` |
+| 4 | `connect-action-to-launch-packet` | `resolve-production-agent-and-launch-preview` |
+| 5 | `support-selected-codex-and-claude-sessions` | `connect-action-to-launch-packet` |
+| 6 | `expose-guarded-host-session-launch` | `support-selected-codex-and-claude-sessions` |
+| 7 | `observe-portfolio-agent-sessions` | `expose-guarded-host-session-launch` |
+| 8 | `reconcile-session-exits-to-next-move` | `observe-portfolio-agent-sessions` |
+| 9 | `advance-approved-production-work` | `reconcile-session-exits-to-next-move`, `define-managed-production-policy` |
+| 10 | `feed-and-supervise-managed-production` | `advance-approved-production-work`, `prove-provider-capacity-admission`, `expose-guarded-host-session-launch` |
+| 11 | `expose-bootstrap-production-controls` | `feed-and-supervise-managed-production` |
+| 12 | `prove-two-action-unattended-production` | `expose-bootstrap-production-controls` |
+| 13 | `prove-multi-provider-production-recovery` | `prove-two-action-unattended-production` |
+| 14 | `freeze-production-runtime-and-handoff-flight-deck` | `prove-multi-provider-production-recovery` |
 
-## Recommended agent, effort and budget
+## Plan B: Flight Deck (17 Actions)
 
-The active plan currently pins `claude-sonnet-5`; retain that configured coding
-agent as the routine handoff rather than invent a new provider choice. Use medium
-effort for ordinary UI integration and high for the Session/authorization slices
-and end-to-end failure verification. These are execution-sizing recommendations,
-not claims about measured provider quota. Resolve actual installed support before
-launch; an unsupported effort or model is a visible preparation refusal.
+Preserve the existing Plan slug and four Action identifiers. Only after Plan A
+acceptance and the explicit pointer/production-scope transition does its first
+Action become the controller's real input. Exact amendment: [14](./14-flight-deck-plan-amendment.yaml).
 
-The portable profile names above describe the smallest suitable work: ordinary
-UI work is `routine_implementation`; cross-system execution/lifecycle work is
-`systems_change`. Flight Deck runtime selection must use the existing portable
-profile and adapter mapping. A plan's legacy recommended_model is not a universal
-provider-selection algorithm and must not override immutable packet provenance.
+| Order | Action | Prerequisites |
+| --- | --- | --- |
+| 1 | `project-plan-lanes-and-pipeline-columns` | None within this Plan |
+| 2 | `focus-the-board-on-active-work` | `project-plan-lanes-and-pipeline-columns` |
+| 3 | `dogfood-production-building-flight-deck` | `focus-the-board-on-active-work` |
+| 4 | `reuse-queue-steering-controls` | `project-plan-lanes-and-pipeline-columns` |
+| 5 | `reuse-contextual-decision-controls` | `project-plan-lanes-and-pipeline-columns` |
+| 6 | `control-plan-production-from-flight-deck` | `focus-the-board-on-active-work`, `reuse-queue-steering-controls`, `reuse-contextual-decision-controls` |
+| 7 | `open-the-object-detail-rail` | `dogfood-production-building-flight-deck` |
+| 8 | `expose-planned-portfolio-work` | `open-the-object-detail-rail` |
+| 9 | `carry-the-dispatch-command` | `open-the-object-detail-rail` |
+| 10 | `launch-selected-agent-from-flight-deck` | `reuse-queue-steering-controls`, `reuse-contextual-decision-controls`, `carry-the-dispatch-command` |
+| 11 | `reuse-proof-and-delivery-controls` | `open-the-object-detail-rail` |
+| 12 | `capture-and-correct-work-in-context` | `open-the-object-detail-rail` |
+| 13 | `surface-operational-exceptions-and-changes` | `expose-planned-portfolio-work` |
+| 14 | `complete-flight-deck-mobile-and-navigation-parity` | `focus-the-board-on-active-work`, `expose-planned-portfolio-work`, `launch-selected-agent-from-flight-deck`, `reuse-proof-and-delivery-controls`, `capture-and-correct-work-in-context`, `surface-operational-exceptions-and-changes` |
+| 15 | `verify-flight-deck-operational-loop` | `complete-flight-deck-mobile-and-navigation-parity` |
+| 16 | `dogfood-flight-deck-as-operations-home` | `verify-flight-deck-operational-loop` |
+| 17 | `make-flight-deck-the-default-entrance` | `dogfood-flight-deck-as-operations-home` |
 
-Budget one bounded coding session per Action, deterministic checks before model
-review, and one independent review where the authority boundary warrants it.
-No speculative token totals, new weekly planning model or narration on browsing.
-The continuous production loop and real capacity admission are now required. The active plan's existing one-pass token_budget text
-predates this expanded scope; the estimate here is twenty-seven bounded sessions,
-subject to splitting a leaf if actual evidence makes it too large.
+## Execution sizing and continuation
 
-The Agent Ask v1 child schema cannot set execution, effort, expected_artifact,
-model or plan token_budget fields. It creates session-sized agent Actions and a
-generic expected_artifact; each Action's acceptance explicitly names its real
-proof and references this guide. Do not hand-edit governed metadata to work
-around that schema. Preserve the existing model pin and use a supported explicit
-session effort override when launching. A separate capability proposal records
-the metadata amendment gap; it does not block these supported Action amendments.
+Use the current configured Claude Sonnet 5 handoff, high effort for the bootstrap
+policy, capacity, admission, canonical completion and supervision boundaries;
+medium for focused UI integration. Runtime routing uses the existing portable
+execution profiles and supported provider bindings, not this prose as a provider
+configuration. Verify installed model/effort support rather than silently guessing.
 
-## Each arcadia go session
+Each Action is a bounded session with an observable proof Artifact. Reuse the
+named source mechanisms; deterministic checks precede model review. A missing
+telemetry field is unknown, not free quota. The Ask schema cannot set all model,
+execution and token-budget metadata; see the existing metadata capability
+proposal. At activation, explicitly supply the supported model pin and accurate
+Plan budget through governed tooling. Do not hand-edit the pointer or claim the
+default one-pass generated budget describes the whole bootstrap.
 
-1. Read current main and the repository's `PROJECT.md`/active plan through the
-   normal continuation skill and dispatch command. Name the exact scope.
-2. Read only the current Action's references, the relevant audit rows, contract
-   clauses and acceptance scenarios. Verify the named reusable mechanism still
-   exists before changing it. Do not rebuild an adjacent specialist.
-3. Work in one isolated worktree/branch. Bridge dependencies and distinguish
-   source tests from package imports resolving another checkout's built output.
-4. Deliver one usable increment and its named proof. For shared extractions,
-   exercise the old surface as well as Flight Deck. For execution, prove refusal
-   and replay cases deterministically before requesting a real model run.
-5. Open/update the PR with the exact target, reachability, start/recovery command,
-   change description and numbered QA steps. Update START_HERE for actual changed
-   flows; do not advertise an unimplemented or unreachable route.
-6. Record completion/evidence and advance through the established approved
-   governance mechanism. If judgment or external input is needed, preserve one
-   precise question and stop; never infer acceptance from elapsed time or exit.
-7. End the session at a merge, ratification or completed Milestone. The next
-   session opens with `arcadia go`; its pointer, not a conversational task list,
-   supplies the next scope. Recommend the effort appropriate to that next Action.
+Initially, normal `arcadia go` sessions build and prove the bootstrap. Thereafter
+the production controller performs repeated Action admission/Session launch and
+canonical advancement; the operator does not start a new coding session per
+Flight Deck Action. Human product/merge authority remains explicit and answerable.
 
-## Settlement and preservation
+At each implementation stop, preserve code in a pushed PR, include the exact
+Candidate URL/revision/recovery command and operator procedure, record proof
+through canonical governance and advance only within the approved scope. No
+document table or Git commit order substitutes for the Project pointer. If the
+controller is repairing itself, use the controlled runtime upgrade procedure in
+18 rather than executing its own unverified checkout.
 
-Run `arcadia agent-ask preview --file docs/plans/mission-control-view/14-flight-deck-plan-amendment.yaml --json`.
-Inspect every refusal and the exact amendment references. Obtain a settlement
-preview with Responsibility agent and an explicit queue placement. Recommend
-placing the dependency-safe Flight Deck bundle at the top because the operator
-has made it the active operational priority; this is a proposed portfolio move,
-not authority inferred from plan activation. Other Projects' pointers stay intact.
+## Settlement order
 
-The operator settles the exact preview. Settlement resolves the configured
-Project repository, not necessarily the invoking worktree: verify its absolute
-path, clean branch and current revision before apply. Do not assume running the
-command in a documentation worktree redirects canonical writes. Settlement commits
-locally and does not push. Preserve/push the actual settlement branch under the
-repository's explicit approval rules and inspect resulting queue/pointer readiness.
+Publish/merge the supporting documentation under its separate authority. Preview
+and settle the new inactive bootstrap Plan and Flight Deck amendment, inspect
+the allocated bootstrap slug, then explicitly activate bootstrap and place its
+Action segment first. The Project has one active pointer throughout. The current
+Flight Deck pointer must not be mistaken for bootstrap authority before this
+transition. Plan creation alone does not activate it.
 
-Do not claim these Actions are canonical or ready for iterative dispatch until
-settlement succeeds and the expanded plan is in the source used by continuation.
-The documentation PR itself does not settle the Ask, approve implementation,
-launch a provider, or authorize merge/deployment.
-
-## Historical initial preview result and prerequisite
-
-The live proposal was accepted by the schema with twenty effects and zero
-Project writes. The first settlement preview refused because the four existing
-Flight Deck Actions are unpositioned. Omitting placement also refuses because
-new active-plan Actions must be explicitly positioned. A separate queue arrange
-preview at revision 17 succeeds: place the existing four at the top in order
-projection, focus, detail, dispatch; preserve the relative order of the other
-47 keys. It reports the projection Action as next and applies nothing.
-
-The exact current handoff is in [16](./16-flight-deck-settlement-handoff.md).
-Approve/apply the queue prerequisite before generating a fresh full settlement
-fingerprint; a proposal fingerprint is not a settlement fingerprint. Neither
-preview has been applied, and no canonical plan Actions were changed here.
-
-## Production-first revision
-
-The current request is `flight-deck-managed-production-2026-09-05`, with 27
-Actions. The earlier twenty-Action version was approved; this materially expanded
-production scope awaits its own review and replaces that version for the intended
-settlement. It is not permission to apply both bundles. No new daemon is planned.
-Use the current configured agent with high effort for policy, capacity, admission,
-completion and supervision; ordinary UI integration remains medium. The first real
-production proof is prioritized before the broad object rail and other polish.
+When bootstrap is proven, activate Flight Deck as the next authorized Plan and
+start its admitted production scope once. The first two Flight Deck Actions are
+the real dogfood; the third verifies their actual controller receipts. The old
+queue repair remains valid historical preservation, not final Plan A priority.

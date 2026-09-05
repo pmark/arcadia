@@ -1,5 +1,19 @@
 # Flight Deck: reviewable settlement handoff
 
+## Latest two-Plan direction
+
+The operator explicitly chose to bootstrap managed production first and then
+dogfood it on Flight Deck itself. Use `managed-production-bootstrap-plan-2026-09-05`
+(19) and `flight-deck-built-by-managed-production-2026-09-05` (14). Do not apply
+the earlier combined 27-Action request. Plan A creation is inactive; explicit
+activation must change the sole Project pointer before implementation. After
+Plan A proof, the approved transition makes Flight Deck the real production
+workload. See 18 for the stable-runtime and independent-shutoff requirements.
+
+The queue repair already applied and publication approval remain preserved.
+No new Plan creation, activation, provider launch or merge is claimed here.
+The sections below are earlier handoff history where superseded by this scope.
+
 ## Current pending production revision
 
 The operator paused merge approval and requested continuously managed production
@@ -139,3 +153,16 @@ the same queue-repair prerequisite and publication boundaries.
 For the present proposal the operator may approve in the agent conversation and
 the agent performs the bounded mechanics. This temporary handoff is the precise
 workflow Flight Deck must eliminate as a requirement for normal operation.
+
+## Two-Plan preview evidence
+
+Both revised strict Asks passed the live Agent Ask preview on 2026-09-05 with
+no conflicts or refusals and zero Project writes. Local dependency graphs are
+acyclic and referenced source/doc paths exist. Neither proposal is settled.
+
+- `agentask_6e1b0fa51c97de926b`: 14 Actions; fingerprint `6e1b0fa51c97de926b74e79503f0cd334449a580875d148b1c5e3a716fbe7be2`.
+- `agentask_4c063f721f79ea77fe`: 17 Actions; fingerprint `4c063f721f79ea77fef394486e848840d3410d6cf8a7ade16cac39ee73204a47`.
+
+Preview validation proves proposal shape, not a working production controller.
+The canonical pointer still requires the explicit bootstrap activation described
+in [18](./18-bootstrap-then-dogfood.md).

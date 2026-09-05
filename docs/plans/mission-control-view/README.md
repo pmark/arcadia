@@ -69,3 +69,12 @@ admission, worker-supervised Sessions and automatic next-Action advancement.
 The revised Ask contains 27 Actions, with a real two-Action production proof
 before broad UI polish. The earlier manual-launch-only proposal is no longer
 the intended feature for settlement; this expanded version awaits review.
+
+## Latest sequence: bootstrap, then build Flight Deck with it
+
+[18 — Bootstrap then dogfood](./18-bootstrap-then-dogfood.md) separates the two
+Plans and protects the stable controller during its own repository's development.
+[19 — Bootstrap Plan Ask](./19-managed-production-bootstrap-ask.yaml) proposes
+14 Actions with no Flight Deck dependency; [14](./14-flight-deck-plan-amendment.yaml)
+now proposes 17 Flight Deck Actions executed by that controller. This replaces
+the pending combined Plan. Plan creation alone does not activate it.

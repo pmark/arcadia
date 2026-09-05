@@ -1,5 +1,9 @@
 # Flight Deck: continuously managed production
 
+> Latest sequencing: [18](./18-bootstrap-then-dogfood.md) separates Managed
+> Production bootstrap from Flight Deck. Build and prove the controller through
+> the existing Work Queue first; use it to produce the real Flight Deck Actions.
+
 Operator direction, 2026-09-05. Proposed expansion of the Flight Deck delivery
 contract, pending review of this revised scope. This takes precedence over the
 prior manual-only Session launch and continuous-scheduling deferral in 11–16.

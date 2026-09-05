@@ -121,3 +121,15 @@ The first real two-Action proof J22–J24 is the urgent vertical milestone. Full
 acceptance requires J25–J28 plus the prior orientation/review/proof/phone
 scenarios. Implementation work is not complete merely because a switch renders
 or a worker process exists. A screenshot is not a continuous-production proof.
+
+## Bootstrap and real Flight Deck dogfood
+
+| ID | Procedure | Required result |
+| --- | --- | --- |
+| J29 | Start the proven production runtime with no Flight Deck route/component installed; use existing Work Queue controls. | Activate/observe/Off and two-Action rehearsal work without any Flight Deck dependency. |
+| J30 | Activate Flight Deck scope after bootstrap acceptance; observe its first two real Actions and all human interventions. | Controller launches board then orientation after canonical gates; exact Session/runtime/policy/output receipts prove real work, with no manual session relay. |
+| J31 | Edit/build Flight Deck in its Candidate worktree while the production worker is active; use independent Off/status, restart and controlled upgrade procedure. | The known-good worker stays on its pinned runtime, Candidate changes cannot replace it, and recovery preserves authority/leases/work. |
+
+J29 is a bootstrap release gate. J30/J31 are mandatory early real dogfood, not
+a final-week substitute. The Flight Deck dogfood Action records evidence against
+actual board/orientation work, not a separately invented demo.
