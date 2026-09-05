@@ -7,7 +7,7 @@ status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Every adopting project receives Way changes and can ask for Way capabilities without anyone writing Arcadia twice
-active_plan: way-delivery
+active_plan: agent-ask-execution-queue
 updated: 2026-09-05
 ---
 

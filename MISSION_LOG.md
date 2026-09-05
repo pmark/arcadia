@@ -32,14 +32,24 @@ updated: 2026-09-05
   this change. This was the last `open` Action in `way-delivery`, so the
   plan is marked `complete` and its milestone — every adopting project can
   receive Way changes and ask for Way capabilities without anyone writing
-  Arcadia twice — is reached. `current_action` is removed from both the plan
-  and `PROJECT.md` rather than pointed at a new plan: which plan becomes
-  `active_plan` next (the `flight-deck-board-carries-the-whole-portfolio-on-
-  one-surface` plan behind Arcadia's own next milestone is the evident
-  candidate) is the operator's call, not this session's.
-- **Next:** Operator selects the next `active_plan`; `flight-deck-board-
-  carries-the-whole-portfolio-on-one-surface` (status `draft`, four clarified
-  Actions) is the one Arcadia's own recorded milestone already points at.
+  Arcadia twice — is reached. `way-delivery` no longer designates a
+  `current_action` (its `checked-in Arcadia control documents` contract test
+  requires every active plan to resolve one, so leaving the pointer on a
+  complete plan with none is a real defect, not a stylistic gap — CI caught
+  it). `PROJECT.md`'s `active_plan` moves to `agent-ask-execution-queue`,
+  which was already `status: active` with its own `current_action:
+  dogfood-agent-managed-queue` declared — a competing pointer `resolveDispatch`
+  already refused to allow alongside an active `way-delivery`. That Action is
+  `blocked` behind open Decision 0041 and resolves as the operator question
+  it already was, which is the sanctioned outcome here: the choice of the
+  *next milestone* (`flight-deck-board-carries-the-whole-portfolio-on-one-
+  surface`, still `draft`, is the evident candidate behind Arcadia's own
+  recorded milestone) is a materially different decision than this session
+  was dispatched to make, so it falls to the operator rather than being
+  picked unilaterally to satisfy CI.
+- **Next:** Operator answers Decision 0041 (reactivates
+  `agent-ask-execution-queue`'s dogfood tail), or explicitly activates
+  `flight-deck-board-carries-the-whole-portfolio-on-one-surface` instead.
 - **Blockers:** None. Real propagation was implemented and tested against
   local fixtures only; it was not run against any real adopting repository
   in this session (that would push branches and, for a mechanical-only
