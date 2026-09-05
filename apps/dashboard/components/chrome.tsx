@@ -29,6 +29,7 @@ interface DashboardChromeProps {
 
 const navItems = [
   { href: "/", label: "Today", icon: Activity },
+  { href: "/flight-deck", label: "Flight Deck", icon: Gauge },
   { href: "/path", label: "Path", icon: Route },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/review", label: "Needs you", icon: Eye },

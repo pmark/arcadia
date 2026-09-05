@@ -26,6 +26,7 @@ import type { MissionControlOverview } from "../lib/mission-control-types";
 
 const PRIMARY_NAV = [
   { href: "/now", label: "Now", icon: Target },
+  { href: "/flight-deck", label: "Flight Deck", icon: LayoutGrid },
   { href: "/path", label: "Path", icon: Route },
   { href: "/mission-control", label: "Mission Control", icon: Radar },
   { href: "/work-queue", label: "Work Queue", icon: ListOrdered },
