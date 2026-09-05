@@ -84,3 +84,18 @@ Private runtime queue payloads and raw receipt files were left outside Git in
 from the live CLI if absent or stale. This handoff intentionally contains only
 the scope/count/consequence needed to review the prerequisite, not the rest of
 the operator's portfolio content.
+
+## Review-discoverability correction
+
+The current intended Ask is now `flight-deck-operations-reviewable-2026-09-05`
+in the same YAML file. It retains twenty Actions and explicitly adds pending
+Agent Ask inventory, direct review links and contextual settlement, after the
+operator found that the old UI cannot expose this proposal. The earlier request
+and fingerprint above remain historical preview evidence, not an approval of
+this revision; do not apply the earlier request. Neither request has been settled.
+Use a fresh preview and settlement fingerprint for the revised request, keeping
+the same queue-repair prerequisite and publication boundaries.
+
+For the present proposal the operator may approve in the agent conversation and
+the agent performs the bounded mechanics. This temporary handoff is the precise
+workflow Flight Deck must eliminate as a requirement for normal operation.

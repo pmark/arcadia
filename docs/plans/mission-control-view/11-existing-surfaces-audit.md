@@ -177,3 +177,14 @@ and explicit retirement approval. None gates automatic selection and launch.
   not evidence that checked-in managed Action completion or pointer advancement
   has occurred. Session reconciliation must verify canonical records and expose
   any missing completion path as an explicit review, never fabricate completion.
+
+## Confirmed missing review surface
+
+The operator could not locate this very Flight Deck proposal in the web UI.
+A targeted search found no Agent Ask proposal/settlement integration in
+`apps/dashboard` or `src/dashboard`. `agent-ask preview` stores a capture and
+a row in `agent_ask_proposals`; it does not create an ordinary dashboard
+Decision. The existing `/review` interaction is therefore insufficient. Add
+a canonical pending-proposal projection and reuse `settleAgentAsk` behind a
+contextual review interaction. Never suggest `review approve` for a proposal
+id or assume every operator obligation is already in snapshot attention.

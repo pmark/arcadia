@@ -92,3 +92,15 @@ time passing is not acceptance. Open a PR per completed slice with its QA plan.
 Do not wait for all twenty Actions before preserving/reviewing code. Final
 cutover follows recorded acceptance and carries a simple root/nav rollback;
 specialist route retirement and public deployment remain separately governed.
+
+## J21 — Find and answer an agent-created proposal
+
+Create an Agent Ask Plan proposal, close the coding-agent conversation and open
+Flight Deck. Expected: Needs operator includes it with Project context and a
+direct link. Open it, inspect exact effects and approval scope, and accept or
+reject. Expected: the canonical settlement receipt, resulting work and next
+move appear without YAML, CLI or chat archaeology. Repeat with a queue-repair
+prerequisite, stale proposal evidence, failed settlement and phone deep link.
+The obligation must remain visible on failure; zero pending is never inferred
+from an unavailable proposal source. This extends the projection and contextual
+Decision-control Actions and is mandatory before home-page cutover.

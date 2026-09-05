@@ -191,3 +191,27 @@ Session, inspect/test its output and identify the next safe move, from the same
 entry point. Prove this with deterministic failure scenarios and a real-week
 rehearsal before switching the default entrance. Keep specialist URLs and a
 reversible root-route change; retiring them requires separate approval.
+
+## Every request for judgment has an answerable destination
+
+Needs operator includes pending Agent Ask proposals as well as Decisions,
+operator-task obligations, approval gates and QA judgments. These are projections
+of their existing records; do not create duplicate Decisions merely to get a
+proposal onto the screen. Every capture/preview requesting judgment returns a
+stable direct review link. The operator never needs a YAML path, proposal id,
+terminal command or remembered agent conversation to find or answer it.
+
+Proposal detail shows a short question, why it matters, affected work, exact
+before/after effects, recommended option and alternatives with consequences,
+authority scope and any prerequisite such as queue placement. Accept/reject
+uses the Agent Ask settlement contract, not generic review approval. A correction
+creates a new explicit proposal version; stale evidence requires a fresh preview.
+A pending obligation remains visible until its authoritative disposition is
+recorded. Failed/unknown settlement shows recovery, never silent disappearance.
+The confirmed receipt links the resulting work and names the next safe move.
+
+Required regression: create a proposal in a coding-agent session, close that
+conversation, open Flight Deck, find it under Needs operator, inspect effects
+and answer it from that page. Repeat from its direct link on a phone. No CLI or
+conversation lookup is permitted. A zero count must mean all configured review
+sources were checked; otherwise display partial/unknown coverage.
