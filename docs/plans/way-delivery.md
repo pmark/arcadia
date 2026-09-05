@@ -9,7 +9,7 @@ token_impact: medium
 token_budget: "Regeneration, drift comparison, and pull-request mechanics are deterministic and belong in code, not a model. Reserve model use for one implementation session per Action and a single review pass. A propagation run that calls a model per repository is the failure mode this budget exists to prevent."
 recommended_model: claude-sonnet-5
 updated: 2026-09-05
-current_action: go-fetches-and-fast-forwards-base-from-remote
+current_action: open-way-sync-pull-requests
 actions:
   - id: seed-the-work-pointer-when-a-repository-is-adopted
     title: Write PROJECT.md and a first plan when a repository is adopted
@@ -280,7 +280,7 @@ actions:
     references: []
   - id: go-fetches-and-fast-forwards-base-from-remote
     title: Before preparing the next worktree, arcadia go fetches the base branch's remote and fast-forwards local base onto it when it is a clean ancestor, failing closed on divergence.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Before preparing the next worktree, arcadia go fetches the base branch's remote and fast-forwards local base onto it when it is a clean ancestor, failing closed on divergence.
@@ -296,6 +296,24 @@ actions:
     depends_on: []
     decisions: []
     references: []
+    result: >-
+      `arcadia go --apply` now calls `syncBaseBranchWithRemote` before
+      computing integration: it resolves the base branch's upstream, fetches
+      that remote, and either fast-forwards local base onto the fetched ref,
+      reports it is already current, skips cleanly when no remote is tracked,
+      or throws when local base has diverged — all reported in the new
+      `baseRemoteSync` JSON field (`attempted`, `remote`, `fastForwarded`,
+      `reason`). Preview performs no fetch and changes no Git state, matching
+      its existing contract. `docs/COMMANDS.md` documents the new behavior.
+      This closes the exact gap this session hit firsthand: a worktree
+      prepared from stale local `main` pointed at an Action another session
+      had already completed and merged upstream. Verified by four new cases
+      in `tests/go.test.ts` (no tracked remote, preview does not fetch, clean
+      fast-forward applied, divergence refused) plus all 16 existing cases in
+      that file, `tsc --noEmit` clean, and the full suite (1200 passed, 8
+      skipped; the 4 failing files are pre-existing worktree
+      environment/build gaps in discord-bot and the dashboard's Intelligence
+      client, unrelated to this change).
 questions: []
 decisions: ["0024", "0025", "0028"]
 ---
