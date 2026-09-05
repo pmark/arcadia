@@ -1,5 +1,13 @@
 # Flight Deck Board — Build Specification
 
+> Scope update proposed 2026-09-05: read [the reuse audit](./11-existing-surfaces-audit.md),
+> [operations contract](./12-flight-deck-operations-contract.md), and
+> [delivery sequence](./13-flight-deck-delivery-sequence.md) before implementation.
+> The operator now requires direct launch with automatic agent selection and a
+> complete operational home. The [Agent Ask](./14-flight-deck-plan-amendment.yaml)
+> proposes replacing the copy-only launch boundary and incomplete coverage
+> assumptions below; its expanded Actions require operator settlement.
+
 The buildable slice of this series. Docs 00–08 settled the recursive node
 shape, the urgency model, the camera, and the eventual spatial view. This one
 specifies the surface that has to exist before any of that pays off: **one

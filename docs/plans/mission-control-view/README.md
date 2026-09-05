@@ -44,3 +44,19 @@ lanes instead of angles. Altitude re-expresses the same tree hierarchy
 spatially instead of introducing a second concept. And the list view isn't
 a fallback for any of this — it's the same data and the same camera state,
 just rendered as rows instead of distance.
+
+## Flight Deck operational expansion (2026-09-05)
+
+The operator requires Flight Deck as the first operational destination, including
+automatically selected coding-agent launch. Start with these supplemental records:
+
+- [11 — Existing surfaces and reuse audit](./11-existing-surfaces-audit.md): source evidence, live inspection limits, reuse boundaries and gaps.
+- [12 — Operations contract](./12-flight-deck-operations-contract.md): complete interaction, selection, launch, observation and truth requirements.
+- [13 — Delivery sequence](./13-flight-deck-delivery-sequence.md): twenty bounded Actions, dependencies, recommended execution sizing and continuation protocol.
+- [14 — Exact plan amendment Ask](./14-flight-deck-plan-amendment.yaml): four existing Action amendments and sixteen additions, pending operator settlement.
+- [15 — Acceptance matrix](./15-flight-deck-acceptance-matrix.md): deterministic and real-week proof, operator procedure and cutover gate.
+
+These are supporting design/proposal Artifacts. They do not independently change
+the Project pointer, mark work complete, or settle the proposed amendments.
+
+- [16 — Settlement handoff](./16-flight-deck-settlement-handoff.md): validated proposal, queue prerequisite, exact operator question and safe application sequence.
