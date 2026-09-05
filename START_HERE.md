@@ -560,6 +560,34 @@ unreconciled Project Session refuses activation. Activation starts no process
 and grants no merge, deployment, spending or unattended-production authority.
 Select a model supported by the agent that will launch the next session.
 
+To mark a governed Action done, preview a `complete` Ask targeting
+`action/<id>` with `candidate_revision` (the Candidate's exact git sha) and
+`evidence`: one entry per declared acceptance criterion, verbatim and in the
+plan's own order, each `met`, `failed`, or `skipped`. Settlement refuses any
+criterion not `met`, an Action with an unresolved required review Decision, a
+`candidate_revision` that no longer matches the repository's HEAD, or an
+already-done Action. Apply additionally requires `--operator` — this
+transition is operator-only, the same way `operator-task close` is:
+
+```sh
+pnpm arcadia agent-ask settle \
+  --proposal complete-example-001 --request-id settle-complete-example-001 \
+  --disposition accepted --workspace "$WORKSPACE"
+pnpm arcadia agent-ask settle \
+  --proposal complete-example-001 --request-id settle-complete-example-001 \
+  --disposition accepted --preview <sha256-from-preview> --apply --operator \
+  --workspace "$WORKSPACE"
+```
+
+Applying marks the Action done, appends one Log entry naming the accepted
+evidence and Candidate revision, and advances `current_action` to the next
+eligible Action in the same Plan — or, if a nearer Action is blocked or still
+carries an open question, to that Action instead, so dispatch reports exactly
+what it needs. When nothing remains open in the Plan, it reports the Plan
+complete rather than inferring a different Plan from queue order. Completion
+grants no merge, deployment, spending, Session launch, or unattended-production
+authority; it only records evidence the operator already accepted.
+
 Every applied accepted or rejected settlement creates one durable Discord
 outbox item. The configured Arcadia Discord bot posts a brief effect summary,
 queue position, and resulting next Action, then records the Discord message id.
@@ -582,6 +610,9 @@ use the same receipt path and smallest canonical effect:
 - `project_update` currently accepts explicit `target_ref: outcome` (or `goal`)
   and `target_ref: milestone`; other targets become the focused open Decision
   above.
+- `complete` marks one Action done from bound Candidate evidence and advances
+  the pointer; its apply requires `--operator` in addition to the exact
+  preview fingerprint every other intent already requires.
 
 Rejection is supported for every proposal and never creates executable work.
 

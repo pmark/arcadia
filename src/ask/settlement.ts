@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
-import type { AgentAskProposal, NormalizedAgentAsk, NormalizedAgentAskAction, NormalizedAgentAskOption } from "./agentAsk.js";
+import type { AgentAskProposal, NormalizedAgentAsk, NormalizedAgentAskAction, NormalizedAgentAskEvidence, NormalizedAgentAskOption } from "./agentAsk.js";
 import { validationError } from "../cli/errors.js";
 import { writeTransaction } from "../db/connection.js";
 import { createArtifactRecord, getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
@@ -69,6 +69,14 @@ export function settleAgentAsk(db: Database.Database, input: {
   action?: string;
   model?: string;
   effort?: string;
+  /**
+   * The loud escape hatch for operator-only settlement, mirroring
+   * `operator-task close`/`decline`: this CLI holds no credentials that could
+   * enforce authority harder, so a `complete` settlement's apply requires the
+   * caller to say so explicitly rather than inferring it from having run the
+   * command at all.
+   */
+  operator?: boolean;
 }): AgentAskSettlementReceipt {
   const operation = {
     proposalRef: input.proposalRef,
@@ -96,6 +104,9 @@ export function settleAgentAsk(db: Database.Database, input: {
   if ((input.activate || input.action || input.model || input.effort) &&
       (input.disposition !== "accepted" || proposal.normalized.intent !== "plan" || !proposal.normalized.targetRef || !input.activate)) {
     throw validationError("Activation options require an accepted Plan target and --activate.");
+  }
+  if (input.apply && input.disposition === "accepted" && proposal.normalized.intent === "complete" && !input.operator) {
+    throw validationError('Completing a managed Action is operator-only. Pass --operator to accept it.');
   }
   const existingSettlement = db.prepare("SELECT receipt_json FROM agent_ask_settlements WHERE proposal_id = ?").get(proposal.id) as { receipt_json: string } | undefined;
   if (existingSettlement) {
@@ -125,6 +136,8 @@ export function settleAgentAsk(db: Database.Database, input: {
   const actionIdsToValidate: string[] = [];
   let arrangeQueue = false;
   let artifactInput: { title: string; path?: string } | null = null;
+  let completionActionId: string | null = null;
+  let completionPlanSlug: string | null = null;
   const effects: string[] = [];
 
   if (input.disposition === "rejected") {
@@ -463,6 +476,80 @@ export function settleAgentAsk(db: Database.Database, input: {
         }
         break;
       }
+      case "complete": {
+        requireNoQueueOptions(input);
+        if (!targetRef) throw validationError("Agent Ask complete requires target_ref naming the Action.");
+        const planBefore = readFileSync(activePlanPath, "utf8");
+        const projectBefore = readFileSync(projectPath, "utf8");
+        const actionId = resolveManagedTargetRef(targetRef, "action", project.slug);
+        const action = plan.actions.find((candidate) => candidate.id === actionId);
+        if (!action) throw validationError("Agent Ask complete target Action was not found.", { targetRef });
+        if (action.status === "done") throw validationError("Action is already done.", { actionId });
+        if (action.responsibility !== "agent" && action.responsibility !== "autonomous") {
+          throw validationError("Only an agent or autonomous Action can be completed through this routine.", {
+            actionId, responsibility: action.responsibility
+          });
+        }
+        const head = git(repoRoot, ["rev-parse", "HEAD"]).trim();
+        const candidateRevision = proposal.normalized.candidateRevision!;
+        if (head !== candidateRevision && !head.startsWith(candidateRevision)) {
+          throw validationError("Completion Candidate revision does not match the repository's current HEAD; refresh evidence against the current revision.", {
+            expectedHead: head, receivedRevision: candidateRevision
+          });
+        }
+        const declared = action.acceptanceCriteria;
+        if (declared.length === 0) throw validationError("Action declares no acceptance criteria to bind completion evidence to.", { actionId });
+        const evidence = proposal.normalized.evidence;
+        if (evidence.length !== declared.length || evidence.some((entry, index) => entry.criterion !== declared[index])) {
+          throw validationError("Completion evidence must cover every declared acceptance criterion, verbatim and in the plan's own order.", {
+            declared, provided: evidence.map((entry) => entry.criterion)
+          });
+        }
+        const unmet = evidence.filter((entry) => entry.status !== "met");
+        if (unmet.length > 0) {
+          throw validationError("Completion refused: not every acceptance criterion is met.", {
+            unmet: unmet.map((entry) => ({ criterion: entry.criterion, status: entry.status, note: entry.note }))
+          });
+        }
+        const readiness = resolveActionReadiness(repoRoot, project.slug, actionId);
+        const unresolvedDecisions = readiness.requiredDecisions.filter((decision) => !decision.resolved);
+        if (unresolvedDecisions.length > 0) {
+          throw validationError("Completion refused: Action has unresolved required review Decisions.", {
+            unresolvedDecisions: unresolvedDecisions.map((decision) => decision.id)
+          });
+        }
+
+        const decisionDocsForPlan = discovered.docs.filter((doc): doc is DecisionDoc => doc.type === "decision" && doc.project === project.slug);
+        const nextResolution = selectNextAfterCompletion(plan, actionId, decisionDocsForPlan);
+        const updated = today();
+        let planAfter = markActionDone(planBefore, actionId);
+        let projectAfter: string;
+        if (nextResolution.kind === "planComplete") {
+          planAfter = setTopLevelFields(planAfter, { status: "complete", current_action: null, updated });
+          projectAfter = setTopLevelFields(projectBefore, { current_action: null, updated });
+          effects.push(`Marked Action ${project.slug}/${actionId} done with accepted evidence for all ${declared.length} criteria.`);
+          effects.push(`Plan ${plan.slug} is complete; every Action is done. Select a new active Plan when ready.`);
+        } else {
+          planAfter = setTopLevelFields(planAfter, { current_action: nextResolution.actionId, updated });
+          projectAfter = setTopLevelFields(projectBefore, { current_action: nextResolution.actionId, updated });
+          effects.push(`Marked Action ${project.slug}/${actionId} done with accepted evidence for all ${declared.length} criteria.`);
+          effects.push(`${nextResolution.note} Pointer: ${project.slug}/${nextResolution.actionId}.`);
+        }
+        fileMutations.push(
+          { path: activePlanPath, before: planBefore, after: planAfter },
+          { path: projectPath, before: projectBefore, after: projectAfter }
+        );
+        const completionLog = discovered.docs.find((doc): doc is LogDoc => doc.type === "log" && doc.project === project.slug);
+        const completionLogPath = path.join(repoRoot, completionLog?.relativePath ?? "MISSION_LOG.md");
+        const completionLogBefore = existsSync(completionLogPath) ? readFileSync(completionLogPath, "utf8") : null;
+        fileMutations.push({ path: completionLogPath, before: completionLogBefore, after: appendCompletionLog(completionLogBefore, project.slug, {
+          actionId, candidateRevision: head, evidence, requestId: proposal.normalized.requestId,
+          note: nextResolution.kind === "planComplete" ? "Plan complete; every Action is done." : nextResolution.note
+        }) });
+        completionActionId = actionId;
+        completionPlanSlug = plan.slug;
+        break;
+      }
       case "decision": {
         requireNoQueueOptions(input);
         addDecisionMutation(fileMutations, discovered.docs.filter((doc): doc is DecisionDoc => doc.type === "decision"), repoRoot,
@@ -550,6 +637,14 @@ export function settleAgentAsk(db: Database.Database, input: {
         const dispatch = resolveDispatch(repoRoot, project.slug);
         if (!isDispatchable(dispatch) || dispatch.context?.action.id !== input.action) {
           throw validationError("Plan activation did not produce dispatchable canonical truth.", { blockers: dispatch.blockers, question: dispatch.operatorQuestion });
+        }
+      }
+      if (completionActionId) {
+        const verified = discoverDocs(repoRoot);
+        const verifiedPlan = verified.docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug && doc.slug === completionPlanSlug);
+        const verifiedAction = verifiedPlan?.actions.find((candidate) => candidate.id === completionActionId);
+        if (!verifiedAction || verifiedAction.status !== "done") {
+          throw validationError("Completion did not produce a done canonical Action.", { actionId: completionActionId });
         }
       }
       for (const actionId of actionIdsToValidate) {
@@ -1031,6 +1126,84 @@ function amendAction(
     ? block.replace(/^    source:.*$/m, `    source: ${yamlScalar(`Agent Ask ${requestId}`)}`)
     : block.replace(/^    clarification:.*$/m, `$&\n    source: ${yamlScalar(`Agent Ask ${requestId}`)}`);
   return content.replace(pattern, block);
+}
+
+function markActionDone(content: string, actionId: string): string {
+  const pattern = new RegExp(`(^  - id: ${escapeRegex(actionId)}\\r?$[\\s\\S]*?)(?=^  - id: |^---\\r?$)`, "m");
+  const match = content.match(pattern);
+  if (!match) throw validationError("Managed Plan Action block was not found.", { actionId });
+  let block = match[1];
+  if (!/^    status:/m.test(block)) throw validationError("Managed Plan Action has no status field to amend.", { actionId });
+  block = block.replace(/^    status:.*$/m, "    status: done");
+  return content.replace(pattern, block);
+}
+
+interface NextAfterCompletion {
+  kind: "next" | "planComplete";
+  actionId: string | null;
+  note: string;
+}
+
+/**
+ * Resolve the pointer's next value from documents already loaded in memory,
+ * as though `completedActionId` were already marked done — never by reading
+ * disk mid-mutation, and never by choosing a different Plan: Decision 0042's
+ * "no inactive Plan is inferred from queue order" applies here exactly as it
+ * does to the rest of dispatch. When nothing in this Plan is fully eligible,
+ * the pointer still moves to the nearest Action so dispatch can report
+ * exactly what it needs, rather than leaving a done Action as current_action.
+ */
+function selectNextAfterCompletion(
+  plan: PlanDoc,
+  completedActionId: string,
+  decisionDocs: DecisionDoc[]
+): NextAfterCompletion {
+  const statusOf = new Map(plan.actions.map((action) => [action.id, action.id === completedActionId ? "done" : action.status]));
+  const remaining = plan.actions.filter((action) => action.id !== completedActionId && statusOf.get(action.id) !== "done");
+  if (remaining.length === 0) {
+    return { kind: "planComplete", actionId: null, note: "Every Action in this Plan is now done." };
+  }
+  const evaluated = remaining.map((action) => {
+    const unmetDependencies = action.dependsOn.filter((dependency) => statusOf.has(dependency) && statusOf.get(dependency) !== "done");
+    const unresolvedDecisions = action.decisions.filter((id) => {
+      const found = decisionDocs.find((decision) => decision.id === id || decision.slug === id);
+      return !found || (found.status !== "approved" && found.status !== "rejected");
+    });
+    const hasQuestion = action.clarification === "question_open";
+    const authorized = action.responsibility === "agent" || action.responsibility === "autonomous";
+    const blockerCount = unmetDependencies.length + unresolvedDecisions.length + (hasQuestion ? 1 : 0) + (authorized ? 0 : 1);
+    return { action, blockerCount };
+  });
+  const eligible = evaluated.find((entry) => entry.blockerCount === 0);
+  if (eligible) {
+    return { kind: "next", actionId: eligible.action.id, note: "Advanced to the next eligible Action in document order." };
+  }
+  const nearest = evaluated.reduce((closest, entry) => (entry.blockerCount < closest.blockerCount ? entry : closest));
+  return {
+    kind: "next",
+    actionId: nearest.action.id,
+    note: "No fully eligible Action remains in this Plan; pointer moved to the nearest Action, which needs attention before it can dispatch."
+  };
+}
+
+function appendCompletionLog(before: string | null, projectSlug: string, input: {
+  actionId: string;
+  candidateRevision: string;
+  evidence: NormalizedAgentAskEvidence[];
+  requestId: string;
+  note: string;
+}): string {
+  const base = before ?? [
+    "---", "arcadia: v1", "type: log", `slug: ${projectSlug}-mission-log`, `project: ${projectSlug}`,
+    `updated: ${today()}`, "---", "", `# Mission Log: ${projectSlug}`, ""
+  ].join("\n");
+  const updated = replaceTopLevelField(base, "updated", today()).trimEnd();
+  return `${updated}\n\n## ${today()} — Completed ${projectSlug}/${input.actionId}\n\n` + [
+    `- **Did:** Completed Action ${projectSlug}/${input.actionId} from accepted evidence (Candidate ${input.candidateRevision}).`,
+    `- **Result:** Every declared acceptance criterion was accepted as met: ${input.evidence.map((entry) => `"${entry.criterion}"`).join("; ")}.`,
+    `- **Next:** ${input.note}`,
+    `- **Blockers:** None recorded by this settlement (Agent Ask ${input.requestId}).`
+  ].join("\n") + "\n";
 }
 
 function appendLog(before: string | null, projectSlug: string, normalized: NormalizedAgentAsk): string {

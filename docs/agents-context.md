@@ -160,9 +160,14 @@ required everywhere.
 | `log` | Appends one Project Log entry | No |
 | `proposal` | Preserves evidence only — no executable Action | No |
 | `project_update` | `target_ref: outcome` or `milestone` updates that field | Only when `target_ref` is absent or unrecognized |
+| `complete` | With `target_ref` naming an Action, `candidate_revision` (the Candidate's git sha) and `evidence` (one `met`/`failed`/`skipped` entry per declared acceptance criterion, verbatim and in order): marks the Action done and resolves the next governed Action, question, blocker, or completed Plan. Refuses any criterion not `met`, an unresolved required review Decision, a stale `candidate_revision`, or an apply without `--operator` | No |
 
 `requested_authority` is `propose` or `apply_if_approved`, and neither lets an
 agent apply anything by itself.
+
+A `complete` settlement never infers a different Plan from queue order: when
+nothing remains open in the current Plan it reports the Plan complete instead,
+per Decision 0042's queue-order rule.
 
 Give each child Action an explicit `id` — a lowercase hyphenated slug, at most
 64 characters. It becomes the handle typed into `advance queue reorder` and
