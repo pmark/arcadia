@@ -83,6 +83,7 @@ export function runAgentAskSettleCommand(options: {
   action?: string;
   model?: string;
   effort?: string;
+  operator?: boolean;
 }): CommandSuccess<AgentAskSettleData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   if (options.disposition !== "accepted" && options.disposition !== "rejected") {
@@ -109,7 +110,8 @@ export function runAgentAskSettleCommand(options: {
     activate: options.activate,
     action: options.action,
     model: options.model,
-    effort: options.effort
+    effort: options.effort,
+    operator: options.operator
   }));
   return createSuccess({ command: "agent-ask.settle", workspace: workspacePath, data: { receipt } });
 }
