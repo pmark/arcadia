@@ -8,6 +8,33 @@ updated: 2026-09-05
 
 # Mission Log: Arcadia
 
+## 2026-09-05 — Flight Deck board plan activated on operator direction
+
+- **Action:** Pointer change only; no Action implemented.
+- **Did:** The operator chose the Flight Deck / Mission Control plan as the
+  next `active_plan` directly (not inferred). `PROJECT.md` now points at
+  `flight-deck-board-carries-the-whole-portfolio-on-one-surface` with
+  `current_action: project-plan-lanes-and-pipeline-columns` — the plan's only
+  Action with no unmet dependency. The plan document's `status` moves
+  `draft` -> `active`, and `milestone` in `PROJECT.md` updates to match.
+  Flipping it to active surfaced a real, separate defect: the plan was
+  missing the `recommended_model` field the plan schema requires, which
+  fails silently while a plan is `draft` (never dispatched, so never
+  validated) but breaks parsing entirely once active — added
+  `recommended_model: claude-sonnet-5`, matching every other plan.
+- **Result:** `resolveDispatch` now resolves `project-plan-lanes-and-
+  pipeline-columns` cleanly with zero blockers;
+  `tests/managed-documents-contract.test.ts` passes. `agent-ask-execution-
+  queue` keeps its own `current_action: dogfood-agent-managed-queue`
+  untouched and un-competing, since `PROJECT.md` declaring its own
+  `current_action` is what silences the "competing pointer" check for every
+  other plan.
+- **Next:** `flight-deck-board#project-plan-lanes-and-pipeline-columns` —
+  render every governed object as one swimlane board (Plan lanes, dispatch-
+  gate columns). Not started in this session; the operator asked only for
+  activation.
+- **Blockers:** None.
+
 ## 2026-09-05 — Way propagation delivers, and `way-delivery` reaches its milestone
 
 - **Action:** `way-delivery#open-way-sync-pull-requests`

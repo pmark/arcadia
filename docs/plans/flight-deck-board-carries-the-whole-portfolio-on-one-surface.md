@@ -3,11 +3,12 @@ arcadia: v1
 type: plan
 slug: flight-deck-board-carries-the-whole-portfolio-on-one-surface
 project: arcadia
-status: draft
+status: active
 milestone: Flight Deck board carries the whole portfolio on one surface
 token_impact: medium
 token_budget: Deterministic management; one bounded coding-agent implementation pass after activation.
-updated: 2026-09-04
+recommended_model: claude-sonnet-5
+updated: 2026-09-05
 actions:
   - id: project-plan-lanes-and-pipeline-columns
     title: Project every object from `advance queue` and `dashboard snapshot` into one swimlane board whose lanes are Plans within a Project and whose columns are Arcadia's dispatch gates — Needs You, Ready to dispatch, Running, Proving, Landed — with objects that name no Plan placed in an explicit unattached lane rather than hidden or invented into one.
@@ -88,4 +89,10 @@ decisions: []
 
 # Flight Deck board carries the whole portfolio on one surface
 
-Created from accepted Agent Ask flight-deck-board-2026-09-04b. This draft is not active and changes no pointer.
+Created from accepted Agent Ask flight-deck-board-2026-09-04b. Activated
+2026-09-05 on operator direction: `way-delivery` reached its milestone, and
+this plan is the one Arcadia's own recorded milestone already pointed at
+next. `PROJECT.md`'s `active_plan` and `current_action` now point here, at
+`project-plan-lanes-and-pipeline-columns` — the only Action in this plan
+with no unmet dependency. Activation only; no Action has been implemented
+yet.
