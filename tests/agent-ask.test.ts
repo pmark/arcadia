@@ -37,6 +37,37 @@ describe("Agent Ask v1", () => {
     expect(result.data.proposal.nonActions).toContain("Agent input grants no approval or execution authority.");
   });
 
+  it("accepts a decision Ask filed without options — this must never become a reason a finding cannot be reported", () => {
+    const workspace = initializedWorkspace();
+    const result = runAgentAskPreviewCommand({ workspace, request: strictAsk("decision-no-options", "decision") });
+    expect(result.data.proposal.normalized.options).toEqual([]);
+    expect(result.data.proposal.effects[0]?.fields.options).toEqual([]);
+  });
+
+  it("carries a decision Ask's options through to the proposed effect, with the recommendation flagged", () => {
+    const workspace = initializedWorkspace();
+    const request = `${strictAsk("decision-with-options", "decision")}options:\n  - label: Merge now\n    consequence: Ships immediately; no further review.\n    recommended: true\n  - label: Hold for review\n    consequence: Delays the fix by a day.\n`;
+    const result = runAgentAskPreviewCommand({ workspace, request });
+    expect(result.data.proposal.normalized.options).toEqual([
+      { label: "Merge now", consequence: "Ships immediately; no further review.", recommended: true },
+      { label: "Hold for review", consequence: "Delays the fix by a day.", recommended: false }
+    ]);
+    expect(result.data.proposal.effects[0]?.fields.options).toEqual(result.data.proposal.normalized.options);
+  });
+
+  it("refuses options on a non-decision intent, and more than one option marked recommended", () => {
+    const workspace = initializedWorkspace();
+    const withOptions = (intent: string) =>
+      `${strictAsk(`kind-${intent}`, intent)}options:\n  - label: A\n    consequence: A happens.\n`;
+    expect(() => runAgentAskPreviewCommand({ workspace, request: withOptions("action") })).toThrow(
+      "Agent Ask options are only supported for decision intent."
+    );
+    const twoRecommended = `${strictAsk("decision-two-recommended", "decision")}options:\n  - label: A\n    consequence: A happens.\n    recommended: true\n  - label: B\n    consequence: B happens.\n    recommended: true\n`;
+    expect(() => runAgentAskPreviewCommand({ workspace, request: twoRecommended })).toThrow(
+      "At most one Agent Ask option may be marked recommended."
+    );
+  });
+
   it("previews a Plan amendment, dependencies, and checked-in transition without applying it", () => {
     const workspace = initializedWorkspace();
     const request = `${strictAsk("plan-amendment", "plan").replace("dependencies: []", "dependencies:\n  - work/first")}target_ref: plan/existing\n`;

@@ -3,7 +3,8 @@ import {
   ACTION_ID_MAX_LENGTH,
   AGENT_ASK_INTENTS,
   STRICT_ACTION_FIELDS,
-  STRICT_FIELDS
+  STRICT_FIELDS,
+  STRICT_OPTION_FIELDS
 } from "../src/ask/agentAsk.js";
 import { renderAgentAskContractSuccess, runAgentAskContractCommand } from "../src/commands/agentAsk.js";
 
@@ -16,6 +17,8 @@ describe("agent-ask contract", () => {
     expect(response.data.intents).toEqual(AGENT_ASK_INTENTS);
     expect(response.data.fields.envelope).toEqual([...STRICT_FIELDS].sort());
     expect(response.data.fields.action).toEqual([...STRICT_ACTION_FIELDS].sort());
+    expect(response.data.fields.option).toEqual([...STRICT_OPTION_FIELDS].sort());
+    expect(response.data.fields.envelope).toContain("options");
     expect(response.data.actionId.maxLength).toBe(ACTION_ID_MAX_LENGTH);
     expect(response.data.fields.required).toEqual(["request_id", "desired_result"]);
   });

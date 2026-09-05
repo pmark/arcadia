@@ -25,6 +25,12 @@ const DECISION_FILENAME = /^(\d{4})-(.+)\.md$/;
  * document that fails validation later. No model call, no full-repository
  * crawl — one file in, one file out.
  */
+export interface DecisionNewOptionInput {
+  label: string;
+  consequence: string;
+  recommended?: boolean;
+}
+
 export interface DecisionNewOptions {
   workspace: string;
   project: string;
@@ -35,6 +41,8 @@ export interface DecisionNewOptions {
   confidence?: ClarificationConfidence;
   plan?: string;
   action?: string;
+  /** Ordered choices the Decision is between. A Decision filed without any is still valid. */
+  options?: DecisionNewOptionInput[];
 }
 
 export interface DecisionNewData {
@@ -74,6 +82,7 @@ export function runDecisionNewCommand(options: DecisionNewOptions): CommandSucce
     `question: ${yamlScalar(options.question)}`,
     `gap_type: ${gapType}`,
     ...(options.recommendation ? [`recommendation: ${yamlScalar(options.recommendation)}`] : []),
+    ...renderOptionsFrontmatter(options.options),
     `confidence: ${confidence}`,
     ...(options.plan ? [`plan: ${options.plan}`] : []),
     ...(options.action ? [`action: ${options.action}`] : []),
@@ -85,6 +94,7 @@ export function runDecisionNewCommand(options: DecisionNewOptions): CommandSucce
     "",
     `# Decision ${id}: ${titleFromSlug(options.slug)}`,
     "",
+    ...renderOptionsBody(options.options),
     "## Context",
     "",
     options.question,
@@ -138,14 +148,34 @@ export function runDecisionApproveCommand(options: DecisionApproveOptions): Comm
   }
 
   const raw = readFileSync(absolutePath, "utf8");
+  const relativePath = path.relative(repoRoot, absolutePath);
+  const { doc: existingDoc } = parseDoc(relativePath, absolutePath, raw);
+
+  // A Decision that offered specific options records one of them, verbatim —
+  // not a paraphrase that happens to mean the same thing. This is what makes
+  // "which option was chosen" a fact the file states rather than a guess a
+  // future reader makes from free text.
+  let answer = options.answer;
+  if (existingDoc && existingDoc.type === "decision" && existingDoc.options.length > 0) {
+    const chosen = existingDoc.options.find(
+      (option) => option.label.trim().toLowerCase() === options.answer.trim().toLowerCase()
+    );
+    if (!chosen) {
+      throw validationError("This Decision offers specific options; answer with one of their labels.", {
+        answer: options.answer,
+        labels: existingDoc.options.map((option) => option.label)
+      });
+    }
+    answer = chosen.label;
+  }
+
   const updatedContent = setFrontmatterFields(raw, {
     status,
-    answer: options.answer,
+    answer,
     decided: options.decided ?? localDateStamp(),
     updated: localDateStamp()
   });
 
-  const relativePath = path.relative(repoRoot, absolutePath);
   failOnValidationErrors(parseDoc(relativePath, absolutePath, updatedContent).errors, "updated");
 
   writeFileSync(absolutePath, updatedContent, "utf8");
@@ -266,6 +296,36 @@ export function renderDecisionValidateSuccess(response: CommandSuccess<DecisionV
     `Invalid: ${response.data.relativePath}`,
     ...response.data.errors.map((error) => `  ! [${error.field}]: ${error.message}`)
   ];
+}
+
+function renderOptionsFrontmatter(options: DecisionNewOptionInput[] | undefined): string[] {
+  if (!options || options.length === 0) {
+    return [];
+  }
+  const lines = ["options:"];
+  for (const option of options) {
+    lines.push(`  - label: ${yamlScalar(option.label)}`);
+    lines.push(`    consequence: ${yamlScalar(option.consequence)}`);
+    lines.push(`    recommended: ${option.recommended === true ? "true" : "false"}`);
+  }
+  return lines;
+}
+
+/**
+ * An operator answering a Decision should be able to pick from this list
+ * before ever reading the rationale in "## Context" below it.
+ */
+function renderOptionsBody(options: DecisionNewOptionInput[] | undefined): string[] {
+  if (!options || options.length === 0) {
+    return [];
+  }
+  const lines = ["## Options", ""];
+  for (const option of options) {
+    const suffix = option.recommended ? " (recommended)" : "";
+    lines.push(`- **${option.label}**${suffix}: ${option.consequence}`);
+  }
+  lines.push("");
+  return lines;
 }
 
 function titleFromSlug(slug: string): string {

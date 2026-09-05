@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
-import type { AgentAskProposal, NormalizedAgentAsk, NormalizedAgentAskAction } from "./agentAsk.js";
+import type { AgentAskProposal, NormalizedAgentAsk, NormalizedAgentAskAction, NormalizedAgentAskOption } from "./agentAsk.js";
 import { validationError } from "../cli/errors.js";
 import { writeTransaction } from "../db/connection.js";
 import { createArtifactRecord, getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
@@ -394,7 +394,8 @@ export function settleAgentAsk(db: Database.Database, input: {
       case "decision": {
         requireNoQueueOptions(input);
         addDecisionMutation(fileMutations, discovered.docs.filter((doc): doc is DecisionDoc => doc.type === "decision"), repoRoot,
-          project.slug, plan.slug, null, proposal.normalized.desiredResult, proposal.normalized.rationale, proposal.normalized.requestId);
+          project.slug, plan.slug, null, proposal.normalized.desiredResult, proposal.normalized.rationale, proposal.normalized.requestId,
+          proposal.normalized.options);
         effects.push("Created one open Decision; agent input did not answer it.");
         break;
       }
@@ -812,18 +813,43 @@ function addDecisionMutation(
   actionId: string | null,
   question: string,
   recommendation: string | null,
-  requestId: string
+  requestId: string,
+  options: NormalizedAgentAskOption[] = []
 ): void {
   const nextNumber = decisions.reduce((highest, decision) => Math.max(highest, Number.parseInt(decision.id, 10) || 0), 0) + 1;
   const id = String(nextNumber).padStart(4, "0");
   const slug = uniqueDecisionSlug(decisions, slugify(question) || `agent-ask-${id}`);
   const targetPath = path.join(repoRoot, "docs", "decisions", `${id}-${slug}.md`);
+  const optionsFrontmatter =
+    options.length === 0
+      ? []
+      : [
+          "options:",
+          ...options.flatMap((option) => [
+            `  - label: ${yamlScalar(option.label)}`,
+            `    consequence: ${yamlScalar(option.consequence)}`,
+            `    recommended: ${option.recommended ? "true" : "false"}`
+          ])
+        ];
+  // An operator answering this Decision should see its choices before its
+  // rationale, so the options list opens the body rather than trailing it.
+  const optionsBody =
+    options.length === 0
+      ? []
+      : [
+          "## Options",
+          "",
+          ...options.map((option) => `- **${option.label}**${option.recommended ? " (recommended)" : ""}: ${option.consequence}`),
+          ""
+        ];
   const frontmatter = [
     "---", "arcadia: v1", "type: decision", `id: ${JSON.stringify(id)}`, `slug: ${slug}`,
     `project: ${projectSlug}`, "status: open", `question: ${yamlScalar(question)}`, "gap_type: missing-decision",
     ...(recommendation ? [`recommendation: ${yamlScalar(recommendation)}`] : []),
+    ...optionsFrontmatter,
     "confidence: high", `plan: ${planSlug}`, ...(actionId ? [`action: ${actionId}`] : []),
     `updated: ${today()}`, "---", "", `# Decision ${id}: ${question}`, "",
+    ...optionsBody,
     `Proposed by Agent Ask ${requestId}. This Decision remains open until the operator answers it.`, ""
   ].join("\n");
   mutations.push({ path: targetPath, before: null, after: frontmatter });

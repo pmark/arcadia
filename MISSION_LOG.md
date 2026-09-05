@@ -8,6 +8,35 @@ updated: 2026-09-05
 
 # Mission Log: Arcadia
 
+## 2026-09-05 — Decisions can carry options with consequences
+
+- **Action:** `way-delivery#carry-decision-options`
+- **Did:** Added an ordered `options` list to the Decision document type
+  (`src/docs/types.ts`, `src/docs/parse.ts`), each entry a `label`, a
+  `consequence`, and at most one `recommended: true`. `arcadia decision new`
+  and Agent Ask's `decision` intent (`src/ask/agentAsk.ts`,
+  `src/ask/settlement.ts`) both accept the same shape and render it as an
+  "## Options" section ahead of "## Context", so an operator can pick a
+  choice without reading the rationale first. `arcadia decision approve`
+  now requires the `answer` to name one of the declared labels when options
+  exist (case-insensitive match, recorded verbatim), and is unchanged for a
+  Decision with none. `agent-ask contract` reports the new `options`
+  envelope field and its per-option shape.
+- **Result:** All five acceptance criteria covered by new tests in
+  `tests/decision-command.test.ts`, `tests/agent-ask.test.ts`,
+  `tests/agent-ask-settlement.test.ts`, and `tests/agent-ask-contract.test.ts`.
+  Full suite: 1195 passed (up from 1186), the same 4 pre-existing failures
+  unrelated to this change (missing `discord.js`/dashboard build artifacts
+  in this environment). Marked the Action `done` and repointed
+  `current_action` (in both `PROJECT.md` and the plan) to
+  `stop-dumping-rationale-into-recommendation`, the next `agent`-
+  responsibility Action with no unmet dependencies — `open-way-sync-pull-
+  requests` sits earlier in the plan but is `requires_review`, not
+  agent-dispatchable.
+- **Next:** `way-delivery#stop-dumping-rationale-into-recommendation`, now
+  the current Action.
+- **Blockers:** None.
+
 ## 2026-09-05 — Closed out the codex→agent responsibility rename and repaired the stale pointer
 
 - **Action:** `way-delivery#rename-codex-responsibility-to-agent`

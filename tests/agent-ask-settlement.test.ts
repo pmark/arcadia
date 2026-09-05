@@ -182,6 +182,48 @@ describe("Agent Ask settlement", () => {
     }
   });
 
+  it("writes a settled decision Ask's options into the Decision document, recommendation flagged", () => {
+    const { workspace, repo } = fixture();
+    const request = [
+      "agent_ask: v1", "request_id: decision-with-options", "project: demo", "intent: decision",
+      "desired_result: Should we merge now or hold for review?", "rationale: Both are viable; the operator should choose.",
+      "options:",
+      "  - label: Merge now",
+      "    consequence: Ships immediately; no further review.",
+      "    recommended: true",
+      "  - label: Hold for review",
+      "    consequence: Delays the fix by a day.",
+      "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace,
+      proposal: proposal.data.proposal.id,
+      requestId: "settle-decision-with-options",
+      disposition: "accepted",
+      revision: 1
+    });
+    runAgentAskSettleCommand({
+      workspace,
+      proposal: proposal.data.proposal.id,
+      requestId: "settle-decision-with-options",
+      disposition: "accepted",
+      revision: 1,
+      preview: preview.data.receipt.previewFingerprint,
+      apply: true
+    });
+
+    const content = readFileSync(path.join(repo, "docs/decisions/0001-should-we-merge-now-or-hold-for-review.md"), "utf8");
+    expect(content).toContain("options:");
+    expect(content).toContain("  - label: Merge now");
+    expect(content).toContain("    consequence: Ships immediately; no further review.");
+    expect(content).toContain("    recommended: true");
+    expect(content).toContain("  - label: Hold for review");
+    expect(content).toContain("    recommended: false");
+    expect(content).toContain("- **Merge now** (recommended): Ships immediately; no further review.");
+    expect(content).toContain("- **Hold for review**: Delays the fix by a day.");
+  });
+
   it("amends an existing Action without changing its Responsibility or queue position", () => {
     const { workspace, repo } = fixture();
     const proposal = runAgentAskPreviewCommand({

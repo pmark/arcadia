@@ -147,7 +147,7 @@ required everywhere.
 | `milestone` | The Project and active Plan Milestone | No |
 | `plan` | With `target_ref`, amends that Plan's Actions; without one, creates a complete **inactive draft** Plan | No |
 | `action` | Creates or amends Actions in the active Plan and places them in the queue | No |
-| `decision` | Creates one open Decision | Always |
+| `decision` | Creates one open Decision, optionally with `options` (each a `label`, a `consequence`, and at most one `recommended: true`) | Always |
 | `artifact` | Creates one planned Artifact reference | No |
 | `log` | Appends one Project Log entry | No |
 | `proposal` | Preserves evidence only — no executable Action | No |
