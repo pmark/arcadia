@@ -15,11 +15,11 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Render every governed object as one swimlane board whose lanes are Plans within a Project and whose columns are Arcadia's dispatch gates, placing objects that name no Plan in an explicit unattached lane.
+    next_action: Render the read-only Flight Deck route from the existing work-queue and snapshot endpoints, grouping cards by Project and Plan and exposing unattached Decisions.
     expected_artifact: Evidence satisfying Agent Ask project-plan-lanes-and-pipeline-columns
     clarification: clarified
     confidence: high
-    source: Agent Ask flight-deck-board-verb-first-2026-09-04
+    source: Agent Ask record-flight-deck-lanes-2026-09-05
     acceptance_criteria:
       - A route renders lanes grouped by Project then Plan, each lane band naming the Plan and its Milestone.
       - The columns are Needs You, Ready to dispatch, Running, Proving and Landed, in that order.
@@ -28,7 +28,7 @@ actions:
       - The column a card lands in is derived from its own state, and the derivation is covered by tests over fixtures.
     depends_on: []
     decisions: []
-    references: [apps/dashboard/app/api/work-queue/route.ts, apps/dashboard/app/api/snapshot/route.ts, apps/dashboard/lib/work-queue-types.ts, apps/dashboard/lib/types.ts, apps/dashboard/lib/needs-you.ts, docs/plans/mission-control-view/09-flight-deck-board-build-spec.md]
+    references: [apps/dashboard/app/flight-deck/page.tsx, apps/dashboard/lib/flight-deck.ts, apps/dashboard/lib/flight-deck.test.ts]
   - id: open-the-object-detail-rail
     title: Selecting a card opens a rail carrying that object's full record and its relationship chain — Project, Plan, Action, Decision, Artifact — with every edge named, so an operator never reads a Decision without the work it belongs to.
     status: open
