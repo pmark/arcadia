@@ -40,7 +40,7 @@ describe("experiment brief command", () => {
       baseline: "42% completion over the last four setups",
       evidenceNeeded: "Completion counts for the next five new projects and notes on skipped steps.",
       decisionCriteria: "Proceed if completion improves to at least 60% without increasing setup time.",
-      recommendedNextAction: "Draft the checklist and ask Mark to approve the experiment."
+      recommendedNextAction: "Draft the checklist and ask the operator to approve the experiment."
     });
 
     expect(response.command).toBe("experiment.brief");
@@ -105,11 +105,11 @@ describe("experiment brief command", () => {
       "",
       "Recommended Next Action",
       "",
-      "Draft the checklist and ask Mark to approve the experiment.",
+      "Draft the checklist and ask the operator to approve the experiment.",
       "",
       "Review",
       "",
-      "This experiment should not proceed until Mark approves, revises, defers, or rejects it.",
+      "This experiment should not proceed until the operator approves, revises, defers, or rejects it.",
       ""
     ].join("\n"));
 

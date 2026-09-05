@@ -5,7 +5,7 @@ Arcadia accommodates Rebuster Studio as a bridge. Rebuster owns durable creative
 ## Ownership Boundary
 
 - Rebuster owns Rebus records, overlap analysis, specs, generated artifacts, creative status, and production workflow transitions.
-- Arcadia stores only bridge configuration, external event snapshots, and Decisions that route Mark back to Rebuster.
+- Arcadia stores only bridge configuration, external event snapshots, and Decisions that route the operator back to Rebuster.
 - Arcadia must not create `Rebus`, `RebusArtifact`, `RebusRelationship`, or `RebusReview` tables.
 
 ## Bridge Configuration

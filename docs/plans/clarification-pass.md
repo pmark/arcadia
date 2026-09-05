@@ -318,7 +318,7 @@ Total ~1.5–2 focused weeks, shippable incrementally.
 ## Future: PR-driven memory (not scoped, not scheduled)
 
 The Obsidian Vault memory this program feeds is currently empty in practice,
-because vault-writing is coupled to Mark using Arcadia for decisions, and
+because vault-writing is coupled to the operator using Arcadia for decisions, and
 that habit is infrequent. Merged PRs are not infrequent — they're the actual
 unit of work already happening. Idea for a later phase: make a merged PR the
 memory-writing trigger, not a decision resolution.
@@ -337,7 +337,7 @@ and the clarify loop has real usage data to react to — not before.
 
 ## Future: continuous agent operation (not scoped, not scheduled)
 
-The end-state Mark described: tell Arcadia a desired outcome; Arcadia
+The end-state the operator described: tell Arcadia a desired outcome; Arcadia
 extracts intent, routes it to the right Project(s), works with coding agents
 to design and plan the work, asks for clarification or review when
 appropriate, then drives the agents and reports back over Discord.

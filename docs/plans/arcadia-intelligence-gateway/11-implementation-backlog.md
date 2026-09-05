@@ -109,7 +109,7 @@ Mission 1 is the exact first implementation mission: add disabled-by-default Int
 - Objective: Decide the first companion-app ingress shape after the local slice works.
 - Scope: adapter contract documentation only.
 - Likely files: `docs/ADAPTER_CONTRACT.md`, possibly this plan package.
-- Acceptance criteria: Mark approves whether CLI JSON is enough or a local HTTP adapter is needed.
+- Acceptance criteria: the operator approves whether CLI JSON is enough or a local HTTP adapter is needed.
 - Tests: none until implementation.
 - Risks: premature Rebuster coupling.
 - Non-goals: Rebuster implementation.

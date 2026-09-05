@@ -226,7 +226,7 @@ Acceptance criteria:
 
 - A captured Back Burner Idea or explicit CLI request can create one Action with expected Artifact "Experiment brief".
 - The command writes the experiment brief Markdown and records it in `artifacts`.
-- The command creates one open Decision asking Mark to approve, revise, defer, or reject the experiment.
+- The command creates one open Decision asking the operator to approve, revise, defer, or reject the experiment.
 - The Decision links to Project, Action, and Artifact.
 - Dashboard snapshot shows the Decision and Artifact without new dashboard primitives.
 - Existing status/weekly reports include the Action/Artifact through current report sections.
@@ -263,7 +263,7 @@ What not to build yet:
 - No new agent execution platform.
 - No dashboard-heavy custom experiment UI until the CLI/artifact/Decision loop proves useful.
 
-## Open Questions for Mark
+## Open Questions for the operator
 
 - Should "Opportunity" become a user-facing canonical subterm, or should the first slice phrase it as an Artifact section under Project/Outcome/Action?
 - Is the first experiment source primarily Back Burner Ideas, explicit project requests, Rebuster signals, or manual CLI entry?

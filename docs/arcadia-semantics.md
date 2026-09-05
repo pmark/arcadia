@@ -6,6 +6,11 @@ Arcadia exists to maintain momentum across creative projects with minimal cognit
 
 ## Core Rule
 
+Arcadia is a public, open-source project. Refer to the person using it as
+"the operator" and use "Needs operator" for personal-attention labels. Never
+name a specific person in product copy, generated instructions, or generic
+examples. Preserve legacy identifiers only where compatibility requires them.
+
 Use canonical terms for user-facing concepts.
 
 Do not introduce a new primary term when one of these terms already fits:
@@ -62,7 +67,7 @@ The enduring reason a Project exists.
 
 Mission answers why the Project matters. It should remain more stable than a Milestone or Action.
 
-Example: "Help Mark maintain momentum across creative projects with minimal cognitive overhead."
+Example: "Help the operator maintain momentum across creative projects with minimal cognitive overhead."
 
 ### Outcome
 

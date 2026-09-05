@@ -300,7 +300,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
 
         {detail?.needsOperator.length ? (
           <section>
-            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">Requires Mark</h2>
+            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">Needs operator</h2>
             <ul className="grid gap-2">
               {detail.needsOperator.map((item, i) => (
                 <li key={i} className="rounded-md border border-clay/30 bg-clay/10 p-3 text-sm text-clay">

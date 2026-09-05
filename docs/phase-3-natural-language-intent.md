@@ -14,7 +14,7 @@ Natural language request
   -> safe deterministic execution or explicit Codex/Requires Review handoff
 ```
 
-SQLite remains authoritative. Markdown and prompt packets are inspectable artifacts. Codex means the `@openai/codex` CLI, invoked through configurable coding-agent profiles when Mark explicitly approves execution.
+SQLite remains authoritative. Markdown and prompt packets are inspectable artifacts. Codex means the `@openai/codex` CLI, invoked through configurable coding-agent profiles when the operator explicitly approves execution.
 
 ## Current System Assumptions
 
@@ -50,7 +50,7 @@ arcadia ask --workspace <path> "<request>" [--project <id>] [--milestone <id>] [
 
 Default behavior creates an audit record, work item, execution plan, approval gates, and any required Codex packet. It does not run unsafe steps.
 
-`--run-safe` immediately runs the generated plan through the existing deterministic runner. Codex, Mark, and unsafe steps still pause.
+`--run-safe` immediately runs the generated plan through the existing deterministic runner. Codex, the operator, and unsafe steps still pause.
 
 Codex execution flags are explicit:
 

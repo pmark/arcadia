@@ -18,7 +18,7 @@ CLI commands are implemented with Commander in `src/cli.ts`, with command logic 
 
 Workspace configuration is local. `src/workspace/initWorkspace.ts` creates `config/arcadia.json`, registries under `config/`, `database/arcadia.sqlite3`, `artifacts/`, `prompts/`, `reports/`, and related folders. User-level default workspace config lives outside the workspace in the platform config directory.
 
-Execution is plan/run based. `src/execution/skills.ts` defines deterministic, Codex planning/build, and Mark executor types. `src/execution/runner.ts` runs only deterministic safe steps by default. Codex steps require explicit allow flags and have packet/provenance records.
+Execution is plan/run based. `src/execution/skills.ts` defines deterministic, Codex planning/build, and operator executor types. `src/execution/runner.ts` runs only deterministic safe steps by default. Codex steps require explicit allow flags and have packet/provenance records.
 
 Dashboard data is a read-only snapshot from `src/dashboard/snapshot.ts`. The Next.js dashboard calls CLI JSON through `apps/dashboard/lib/arcadia-cli.ts`; it does not own an independent write path.
 

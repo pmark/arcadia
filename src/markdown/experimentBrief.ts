@@ -72,7 +72,7 @@ export function renderExperimentBriefMarkdown(input: ExperimentBriefMarkdownInpu
     "",
     "Review",
     "",
-    "This experiment should not proceed until Mark approves, revises, defers, or rejects it.",
+    "This experiment should not proceed until the operator approves, revises, defers, or rejects it.",
     ""
   ].join("\n");
 }
