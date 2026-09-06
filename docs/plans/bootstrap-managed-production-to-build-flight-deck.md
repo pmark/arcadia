@@ -115,17 +115,18 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Launch the selected Codex or Claude adapter through the canonical Session subsystem.
+    next_action: Launch the selected Codex adapter through the canonical Session subsystem, with a provider interface that does not have to be reworked when Claude session launch is added in prove-multi-provider-production-recovery.
     expected_artifact: Evidence satisfying Agent Ask support-selected-codex-and-claude-sessions
     clarification: clarified
     confidence: high
-    source: Agent Ask managed-production-completion-first-handoff-2026-09-05
+    source: Agent Ask apply-8020-yagni-to-bootstrap-plan-2026-09-06-v2
     acceptance_criteria:
-      - Support both configured Codex and Claude selection results with provider-specific executable arguments and native Session identity in the existing Session model.
-      - Reuse Claude packet/model/binding validation and add equivalent Codex validation, reattach/resume semantics and honest unsupported-operation messages.
+      - Support the Codex selection result with provider-specific executable arguments and native Session identity in the existing Session model.
+      - Reuse existing packet/model/binding validation and add Codex reattach/resume semantics and honest unsupported-operation messages.
       - Enforce repository lease admission across prepared/live Sessions and competing managed Runs, including canonical path aliases.
       - Use additive migration only if existing operational records require it; preserve older Session records and both existing execution paths.
       - Prove argument construction and spawn failure without live model invocation in deterministic tests.
+      - Claude session launch is explicitly deferred to prove-multi-provider-production-recovery, which already requires demonstrating both configured providers; this Action does not claim Claude launch support.
       - "Preserve the proof Artifact: Provider adapter, lease conflict and backward-compatibility tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
     depends_on: [connect-action-to-launch-packet]
     decisions: []
@@ -135,20 +136,20 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Expose a bounded server launch operation with replay-safe receipts and fresh authority checks.
+    next_action: Expose a bounded server launch operation with replay-safe receipts, fresh authority checks, and one proven correctness run against concurrent/crashed launch attempts; the statistical soak across many interleavings is proven later in prove-multi-provider-production-recovery.
     expected_artifact: Evidence satisfying Agent Ask expose-guarded-host-session-launch
     clarification: clarified
     confidence: high
-    source: Agent Ask managed-production-completion-first-handoff-2026-09-05
+    source: Agent Ask apply-8020-yagni-to-bootstrap-plan-2026-09-06-v2
     acceptance_criteria:
       - Accept an explicit operator launch request for the previewed canonical Action; resolve repository, executable and arguments on the server.
       - Reject cross-origin, malformed, altered, stale and unauthorized requests; document/test the operator-action request guard for the existing local/tailnet deployment.
       - Revalidate pointer, documents, packet hash, Decisions, binding availability and repository lease immediately before preparation/spawn.
       - Two tabs or retried requests start at most one Session; lost-response recovery returns the durable result across restart.
       - Launch grants no implicit merge, integration, cleanup, deployment, spending, credential expansion or messaging; failures preserve recoverable work.
-      - "Preserve the proof Artifact: Launch boundary, replay, crash-window and conflict integration tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+      - Inject at least one pre-spawn crash, one post-spawn crash and one lost response, and reconcile ambiguous launch identity without blind retry, proving at most one live conflicting execution across that bounded set of injected faults.
       - Support either a current explicit one-Session launch grant or a valid standing managed-production policy with an epoch-bound admission receipt; recheck Off immediately before launch commitment. Do not require a new human launch click for every authorized Action.
-      - Inject pre/post-spawn crashes and lost responses; reconcile ambiguous launch identity without blind retry and prove at most one live conflicting execution.
+      - "Preserve the proof Artifact: Launch boundary, replay, bounded crash-window and conflict integration tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
     depends_on: [support-selected-codex-and-claude-sessions]
     decisions: []
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "apps/dashboard/lib/arcadia-cli.ts", "src/sessions/index.ts", "src/docs/dispatch.ts", "src/execution/planningAuthorization.ts"]
@@ -177,11 +178,11 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Reconcile Session exit into durable evidence and the next governed Action or Decision.
+    next_action: Reconcile Session exit into durable evidence and the next governed Action or Decision, reading Session/Run state directly rather than through the portfolio dashboard view.
     expected_artifact: Evidence satisfying Agent Ask reconcile-session-exits-to-next-move
     clarification: clarified
     confidence: high
-    source: Agent Ask managed-production-completion-first-handoff-2026-09-05
+    source: Agent Ask apply-8020-yagni-to-bootstrap-plan-2026-09-06-v2
     acceptance_criteria:
       - Persist a thin exit observation/receipt through the existing operational model and link available Run, Artifact and Decision proof.
       - Distinguish successful exit, failed execution, missing evidence, needs input and accepted Action completion; zero exit never marks done by itself.
@@ -191,7 +192,7 @@ actions:
       - "Preserve the proof Artifact: Exit-to-evidence-to-next-move lifecycle integration tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
       - Require criterion-level evidence bound to the exact Candidate revision and a separate review pass for nontrivial code and safety boundaries; unresolved blocking findings, missing/skipped checks and stale evidence prevent acceptance.
       - Prove the quality gate rejects deliberately failed tests, absent artifacts and false agent completion claims as specified in contract 20.
-    depends_on: [observe-portfolio-agent-sessions]
+    depends_on: [expose-guarded-host-session-launch]
     decisions: []
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/sessions/index.ts", "src/commands/advance.ts", "src/stewardship/artifactValidator.ts", "src/docs/dispatch.ts"]
   - id: advance-approved-production-work
@@ -241,11 +242,11 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Expose the production switch, priority, capacity and review stops on the existing Work Queue.
+    next_action: Expose the production switch, priority, capacity and review stops on the existing Work Queue, informed by operating the CLI control through the two-Action unattended proof.
     expected_artifact: Evidence satisfying Agent Ask expose-bootstrap-production-controls
     clarification: clarified
     confidence: high
-    source: Agent Ask managed-production-completion-first-handoff-2026-09-05
+    source: Agent Ask apply-8020-yagni-to-bootstrap-plan-2026-09-06-v2
     acceptance_criteria:
       - Add a minimal Active/Inactive control and desired-versus-observed status to /work-queue using the production service; no /flight-deck route or component is required.
       - Reuse existing Plan segment/Action priority previews, review destinations and Session links; show included scope, selected/next Action, capacity age and exact operator stops.
@@ -254,7 +255,7 @@ actions:
       - Extract the concrete production control for reuse by Flight Deck rather than building a second controller or state store.
       - Preserve a runnable QA Artifact naming exact URL, host, revision and recovery command.
       - Measure durable Off acknowledgment within two seconds on the recorded healthy local host under stalled execution/provider reads; persistence failure is visible within five seconds without false confirmation.
-    depends_on: [feed-and-supervise-managed-production]
+    depends_on: [prove-two-action-unattended-production]
     decisions: []
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "apps/dashboard/app/work-queue/page.tsx", "apps/dashboard/app/api/work-queue/route.ts"]
   - id: prove-two-action-unattended-production
@@ -262,19 +263,19 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Prove two dependent Actions run from one activation using the existing Work Queue production control.
+    next_action: Prove two dependent Actions run from one activation using any reachable existing production control (the CLI production commands satisfy this; a dashboard control is not required for this proof).
     expected_artifact: Evidence satisfying Agent Ask prove-two-action-unattended-production
     clarification: clarified
     confidence: high
-    source: Agent Ask managed-production-completion-first-handoff-2026-09-05
+    source: Agent Ask apply-8020-yagni-to-bootstrap-plan-2026-09-06-v2
     acceptance_criteria:
-      - Provide a disposable or explicitly approved real Project with two small dependent Actions and a reachable existing Work Queue production control before requesting live execution.
+      - Provide a disposable or explicitly approved real Project with two small dependent Actions and a reachable existing production control (CLI or dashboard) before requesting live execution.
       - "Under bounded rehearsal authority activate once: Action A launches, validates, records canonical completion/pointer, and B launches without manual session setup or launch confirmation in between."
       - Turn Off during work; prove no later launch, preserved current output and visible terminal reconciliation. Close browser/restart worker and prove no duplicate or reactivation after Off.
       - Record exact revision, host, provider, Action/Session identities, receipts and every operator intervention; missing real authorization/input remains one precise review, never fixture-as-live success.
       - Complete this vertical proof before broad rail, capture, navigation polish or default-home cutover; reuse existing review/proof specialists as needed.
       - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
-    depends_on: [expose-bootstrap-production-controls]
+    depends_on: [feed-and-supervise-managed-production]
     decisions: []
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/operator-demo-and-release-contract.md", "docs/plans/idea-to-managed-build.md"]
   - id: prove-multi-provider-production-recovery
@@ -282,19 +283,20 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Prove continuous production across configured providers, independent Plans and capacity recovery.
+    next_action: Prove continuous production across configured providers, independent Plans and capacity recovery, including adding Claude session launch support (adapter, packet/model/binding validation, reattach/resume) as part of demonstrating the second configured provider - this is the first Action where Claude session launch is required.
     expected_artifact: Evidence satisfying Agent Ask prove-multi-provider-production-recovery
     clarification: clarified
     confidence: high
-    source: Agent Ask managed-production-completion-first-handoff-2026-09-05
+    source: Agent Ask apply-8020-yagni-to-bootstrap-plan-2026-09-06-v2
     acceptance_criteria:
+      - Add Claude session launch support (provider-specific executable arguments, native Session identity, packet/model/binding validation, reattach/resume, honest unsupported-operation messages) as this proof's first step, since Codex-only launch was proven in support-selected-codex-and-claude-sessions.
       - Demonstrate automatic selection/launch with both configured Codex and Claude, preserving per-account capacity and repository isolation; one-provider proof alone is not full acceptance.
       - Prove higher-priority provider-ineligible work remains visible while independent eligible work proceeds, and Plan order edits change subsequent admission without preempting running work.
       - Prove depletion/reset/re-observation resumes automatically while Active, with no paid/reset effect; distinguish simulated limit tests from observed live capacity evidence.
       - Exercise failed validation, bounded repair, mid-Session exhaustion/checkpoint recovery, stale policy, duplicate worker and approval boundaries; partial work must not be rerun blindly.
       - Publish live/fixture evidence for each boundary and exact outstanding gap; final acceptance requires supported automatic telemetry and no manual refresh/Session relay disguised as unattended operation.
       - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
-      - Pass the contract 20 deterministic fault matrix, at least 100 reproducible interleavings per race scenario, and bounded live soak of ten accepted Actions across two Projects/both providers with restart, Off and recoverable failure; retain all interventions and failures.
+      - Pass the contract 20 deterministic fault matrix, at least 100 reproducible interleavings per race scenario (this is the sole statistical soak requirement; expose-guarded-host-session-launch proves only one bounded correctness run), and bounded live soak of ten accepted Actions across two Projects/both providers with restart, Off and recoverable failure; retain all interventions and failures.
     depends_on: [prove-two-action-unattended-production]
     decisions: []
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/codingAgents/availability.ts", "src/commands/worker.ts", "docs/plans/provider-capacity-harvesting.md"]
@@ -307,7 +309,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask freeze-production-runtime-and-handoff-flight-deck
     clarification: clarified
     confidence: high
-    source: Agent Ask managed-production-completion-first-handoff-2026-09-05
+    source: Agent Ask apply-8020-yagni-to-bootstrap-plan-2026-09-06-v2
     acceptance_criteria:
       - Identify and preserve the exact proven worker/runtime revision, service command, workspace/schema compatibility and rollback/recovery procedure independently of coding worktrees.
       - Prove that editing/building Flight Deck in an isolated Arcadia worktree does not replace, hot-reload or restart the controller; runtime upgrades require a separate controlled handoff.
@@ -315,7 +317,7 @@ actions:
       - After bootstrap acceptance and approved Plan transition, the canonical pointer selects Flight Deck and production admits its first Action; no repeated human Session setup is required.
       - If Flight Deck cannot advance without a merge or subjective acceptance, show that exact approval in the existing review surface. Never weaken a gate to manufacture uninterrupted progress.
       - Publish the contract 20 release evidence index; every required proof is passed at the accepted revision, blocking findings are resolved, and independent status/Off plus recovery are exercised before unattended Flight Deck handoff.
-    depends_on: [prove-multi-provider-production-recovery]
+    depends_on: [prove-multi-provider-production-recovery, expose-bootstrap-production-controls]
     decisions: []
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/working-copy-safety.md", "docs/plans/mission-control-view/14-flight-deck-plan-amendment.yaml"]
 questions: []
