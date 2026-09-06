@@ -19,6 +19,8 @@ import { packetSha256 } from "../src/execution/planningAuthorization.js";
 import type { CodingAgentProfile } from "../src/intent/registries.js";
 import { prepareSession } from "../src/sessions/index.js";
 import { buildLaunchPreview, LAUNCH_ADAPTER_SUPPORT } from "../src/sessions/launchPreview.js";
+import { resolvePacketLifecycle } from "../src/sessions/packetLifecycle.js";
+import { runWorkPlanCommand } from "../src/commands/work.js";
 import { resolveDispatch } from "../src/docs/dispatch.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -94,7 +96,25 @@ describe("buildLaunchPreview", () => {
     );
     expect(preview.ready).toBe(false);
     expect(preview.packet).toBeNull();
-    expect(preview.prerequisites.some((entry) => entry.startsWith("missing packet"))).toBe(true);
+    expect(preview.packetLifecycle?.kind).toBe("planning_required");
+    expect(preview.prerequisites.some((entry) => entry.startsWith("planning required"))).toBe(true);
+    expect(preview.prerequisites[0]).toContain("arcadia work plan");
+  });
+
+  it("keeps a planning Decision distinct from build authority", () => {
+    const fixture = preparedFixture({ skipInvocation: true });
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!);
+    const prepared = runWorkPlanCommand({ workspace: fixture.workspace, workId: workItem.id });
+    expect(prepared.data.planningDecision).toBeTruthy();
+
+    const lifecycle = withReadOnlyDatabase(fixture.workspace, (db) =>
+      resolvePacketLifecycle(db, getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!)
+    );
+    expect(lifecycle).toMatchObject({
+      kind: "planning_approval_pending",
+      decisionId: prepared.data.planningDecision!.id
+    });
+    expect(lifecycle.remedy).toContain("planning only, not implementation");
   });
 
   it("names a changed packet's stale authority as a prerequisite instead of throwing", () => {
@@ -112,6 +132,7 @@ describe("buildLaunchPreview", () => {
       })
     );
     expect(preview.ready).toBe(false);
+    expect(preview.packetLifecycle?.kind).toBe("stale_packet");
     expect(preview.prerequisites.some((entry) => entry.includes("stale") && entry.includes("authority"))).toBe(true);
   });
 
