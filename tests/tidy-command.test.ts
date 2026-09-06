@@ -1,19 +1,25 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { evaluateMerge, runTidyCommand, type TidyCommandData } from "../src/commands/tidy.js";
+import { deleteBranchRefIfUnchanged, evaluateMerge, getWorktreeProtectionReason, runTidyCommand, type TidyCommandData } from "../src/commands/tidy.js";
+import { runGoCommand } from "../src/commands/go.js";
+import { withDatabase } from "../src/db/connection.js";
+import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { parseGithubSlug, summarizeClutter } from "../src/git/worktrees.js";
 import type { CommandSuccess } from "../src/cli/response.js";
 
 const temporary: string[] = [];
+const originalPath = process.env.PATH;
 
 afterEach(() => {
   for (const directory of temporary.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
   delete process.env.ARCADIA_INVOKED_FROM;
+  delete process.env.ARCADIA_WORKSPACE;
+  process.env.PATH = originalPath;
 });
 
 function run(cwd: string, args: string[]): string {
@@ -38,7 +44,45 @@ function repo(): string {
   writeFileSync(path.join(root, "README.md"), "# base\n", "utf8");
   run(root, ["add", "-A"]);
   run(root, ["commit", "-q", "-m", "base"]);
+  const workspace = workspaceFor(root);
+  temporary.push(workspace);
+  initWorkspace(workspace);
+  process.env.ARCADIA_WORKSPACE = workspace;
   return root;
+}
+
+function workspaceFor(root: string): string {
+  return path.join(path.dirname(root), `${path.basename(root)}-workspace`);
+}
+
+function recordLiveSession(root: string, worktree: string, branch: string, status: "prepared" | "running" = "prepared"): void {
+  withDatabase(workspaceFor(root), (db) => {
+    db.pragma("foreign_keys = OFF");
+    const timestamp = "2026-09-06T12:00:00.000Z";
+    db.prepare(`INSERT INTO agent_sessions (
+      id, project_id, project_slug, repository_path, plan_path, plan_slug, action_id,
+      work_item_id, packet_id, packet_path, packet_sha256, authorizing_decisions_json,
+      execution_profile_json, provider_profile, provider, model, effort,
+      provider_mapping_id, provider_binding_id, base_revision, branch, worktree_path,
+      provider_session_id, display_name, terminal_transport, tmux_session_name, status,
+      prepared_at, started_at, ended_at, exit_status, created_at, updated_at
+    ) VALUES (
+      @id, 'project-test', 'test', @repositoryPath, 'docs/plans/test.md', 'test', 'test-action',
+      'work-test', 'packet-test', 'prompt.md', 'sha', '[]', NULL, 'test', 'claude-code-cli',
+      'sonnet', 'high', NULL, NULL, @base, @branch, @worktree, @providerSession,
+      'Test session', 'tmux', @tmux, @status, @timestamp, NULL, NULL, NULL, @timestamp, @timestamp
+    )`).run({
+      id: `session-${branch.replaceAll("/", "-")}`,
+      repositoryPath: root,
+      base: run(root, ["rev-parse", "main"]).trim(),
+      branch,
+      worktree,
+      providerSession: `provider-${branch.replaceAll("/", "-")}`,
+      tmux: `tmux-${branch.replaceAll("/", "-")}`,
+      status,
+      timestamp
+    });
+  });
 }
 
 /** Advance the base branch, so a later cherry-pick lands on a different parent. */
@@ -149,6 +193,83 @@ describe("arcadia tidy — safety invariants", () => {
     expect(result.worktrees.find((w) => w.path === tree)?.retired).toBe(true);
     expect(run(root, ["worktree", "list"])).not.toContain(tree);
     expect(run(root, ["for-each-ref", "--format=%(refname:short)", "refs/heads"])).not.toContain("claude/spent");
+  });
+
+  it("protects a clean zero-commit worktree with a prepared Session lease", () => {
+    const root = repo();
+    run(root, ["branch", "claude/planning"]);
+    const tree = worktreeOn(root, "claude/planning", "planning");
+    recordLiveSession(root, tree, "claude/planning");
+
+    const result = data(runTidyCommand({ repo: root, workspace: workspaceFor(root), apply: true }));
+    const entry = result.worktrees.find((candidate) => candidate.path === tree);
+
+    expect(entry?.verdict).toBe("protected");
+    expect(entry?.reason).toContain("live prepared Session lease");
+    expect(entry?.retired).toBe(false);
+    expect(run(root, ["worktree", "list"])).toContain(tree);
+  });
+
+  it("finds the primary-repository lease when tidy is invoked through a linked worktree", () => {
+    const root = repo();
+    const branch = "claude/invoked-through-linked-tree";
+    run(root, ["branch", branch]);
+    const tree = worktreeOn(root, branch, "invoked-through-linked-tree");
+    recordLiveSession(root, tree, branch);
+
+    const result = data(runTidyCommand({ repo: tree, workspace: workspaceFor(root), apply: true, noFetch: true, noGithub: true }));
+
+    expect(result.worktrees.find((candidate) => candidate.path === tree)?.verdict).toBe("protected");
+    expect(run(root, ["worktree", "list"])).toContain(tree);
+  });
+
+  it("rechecks the Session lease under the apply interlock before retiring", () => {
+    const root = repo();
+    const branch = "claude/racing-session";
+    run(root, ["branch", branch]);
+    const tree = worktreeOn(root, branch, "racing-session");
+    let injected = false;
+
+    const result = data(runTidyCommand({
+      repo: root,
+      workspace: workspaceFor(root),
+      apply: true,
+      noFetch: true,
+      noGithub: true,
+      testHooks: {
+        afterAssessment() {
+          injected = true;
+          recordLiveSession(root, tree, branch, "running");
+        }
+      }
+    }));
+
+    expect(injected).toBe(true);
+    expect(result.worktrees.find((candidate) => candidate.path === tree)?.verdict).toBe("protected");
+    expect(run(root, ["worktree", "list"])).toContain(tree);
+  });
+
+  it("screens 100 reproducible stale-lease interleavings against the apply-time protection read", () => {
+    const root = repo();
+    const branch = "claude/lease-screen";
+    run(root, ["branch", branch]);
+    const tree = worktreeOn(root, branch, "lease-screen");
+    recordLiveSession(root, tree, branch, "running");
+    const sessionId = `session-${branch.replaceAll("/", "-")}`;
+
+    withDatabase(workspaceFor(root), (db) => {
+      const firstSeed = 0x5eed;
+      for (let offset = 0; offset < 100; offset += 1) {
+        const seed = firstSeed + offset;
+        db.prepare("UPDATE agent_sessions SET status = 'completed' WHERE id = ?").run(sessionId);
+        const stalePreviewRead = getWorktreeProtectionReason(db, root, tree);
+        db.prepare("UPDATE agent_sessions SET status = 'running' WHERE id = ?").run(sessionId);
+        const applyTimeRead = getWorktreeProtectionReason(db, root, tree);
+
+        expect(stalePreviewRead, `seed ${seed}`).toBeNull();
+        expect(applyTimeRead, `seed ${seed}`).toContain("live running Session lease");
+      }
+    });
   });
 
   it("keeps a clean worktree whose branch still holds unmerged work", () => {
@@ -395,6 +516,24 @@ describe("evaluateMerge — patch equivalence, without GitHub", () => {
     if (!result.merged) expect(result.ahead).toBe(1);
   });
 
+  it("does not call a reverted upstream patch merged merely because git cherry finds its patch-id", () => {
+    const root = repo();
+    commitOn(root, "claude/reverted-upstream", "wanted.txt");
+    const wanted = run(root, ["rev-parse", "claude/reverted-upstream"]).trim();
+    commitOnMain(root, "unrelated-before-pick.txt");
+    run(root, ["cherry-pick", wanted]);
+    run(root, ["revert", "--no-edit", "HEAD"]);
+
+    const result = evaluateMerge({
+      cwd: root,
+      branch: "claude/reverted-upstream",
+      compareRef: "main",
+      prMergeCommits: new Map()
+    });
+
+    expect(result.merged).toBe(false);
+  });
+
   it("prefers plain ancestry when it applies, so the cheapest proof wins", () => {
     const root = repo();
     commitOn(root, "claude/ff", "a.txt");
@@ -409,6 +548,126 @@ describe("evaluateMerge — patch equivalence, without GitHub", () => {
 
     expect(result.merged).toBe(true);
     if (result.merged) expect(result.proof).toBe("ancestry");
+  });
+});
+
+describe("arcadia tidy — archive identity and concurrent branch movement", () => {
+  it("refuses 100 reproducible branch-movement interleavings at compare-and-swap deletion", () => {
+    const root = repo();
+    const expected = run(root, ["commit-tree", "main^{tree}", "-p", "main", "-m", "expected race tip"]).trim();
+    const advanced = run(root, ["commit-tree", "main^{tree}", "-p", expected, "-m", "advanced race tip"]).trim();
+    const firstSeed = 0xcafe;
+    for (let offset = 0; offset < 100; offset += 1) {
+      const seed = firstSeed + offset;
+      const branch = `claude/cas-${seed}`;
+      run(root, ["update-ref", `refs/heads/${branch}`, expected]);
+      run(root, ["update-ref", `refs/heads/${branch}`, advanced, expected]);
+
+      expect(deleteBranchRefIfUnchanged(root, branch, expected), `seed ${seed}`).toBe(false);
+      expect(run(root, ["rev-parse", branch]).trim(), `seed ${seed}`).toBe(advanced);
+      run(root, ["update-ref", "-d", `refs/heads/${branch}`, advanced]);
+    }
+  }, 60_000);
+
+  it("keeps distinct archive tags for slash/dash branch-name collisions", () => {
+    const root = repo();
+    commitOn(root, "claude/a-b", "first.txt");
+    const first = run(root, ["rev-parse", "claude/a-b"]).trim();
+    commitOnMain(root, "advance-first.txt");
+    run(root, ["cherry-pick", first]);
+    commitOn(root, "claude/a/b", "second.txt");
+    const second = run(root, ["rev-parse", "claude/a/b"]).trim();
+    commitOnMain(root, "advance-second.txt");
+    run(root, ["cherry-pick", second]);
+
+    const result = data(runTidyCommand({ repo: root, apply: true }));
+    const archived = result.branches.filter((entry) => entry.archivedAs).map((entry) => entry.archivedAs!);
+
+    expect(new Set(archived).size).toBe(2);
+    expect(archived.map((tag) => run(root, ["rev-parse", tag]).trim()).sort()).toEqual([first, second].sort());
+  });
+
+  it("never overwrites the archive from an earlier incarnation of the same branch name", () => {
+    const root = repo();
+    const archiveOneGeneration = (file: string) => {
+      commitOn(root, "claude/reused", file);
+      const branchTip = run(root, ["rev-parse", "claude/reused"]).trim();
+      commitOnMain(root, `advance-${file}`);
+      run(root, ["cherry-pick", branchTip]);
+      const result = data(runTidyCommand({ repo: root, apply: true }));
+      return { branchTip, tag: result.branches.find((entry) => entry.branch === "claude/reused")?.archivedAs };
+    };
+
+    const first = archiveOneGeneration("one.txt");
+    const second = archiveOneGeneration("two.txt");
+
+    expect(first.tag).toBeTruthy();
+    expect(second.tag).toBeTruthy();
+    expect(first.tag).not.toBe(second.tag);
+    expect(run(root, ["rev-parse", first.tag!]).trim()).toBe(first.branchTip);
+    expect(run(root, ["rev-parse", second.tag!]).trim()).toBe(second.branchTip);
+  });
+
+  it("refuses retirement when the content-addressed archive name already points elsewhere", () => {
+    const root = repo();
+    commitOn(root, "claude/archive-conflict", "conflict.txt");
+    const branchTip = run(root, ["rev-parse", "claude/archive-conflict"]).trim();
+    commitOnMain(root, "advance-conflict.txt");
+    run(root, ["cherry-pick", branchTip]);
+    run(root, ["tag", `archive/tidy/${branchTip}`, "main"]);
+
+    const result = data(runTidyCommand({ repo: root, apply: true }));
+
+    expect(result.branches.find((entry) => entry.branch === "claude/archive-conflict")?.retired).toBe(false);
+    expect(run(root, ["show-ref", "--verify", "refs/heads/claude/archive-conflict"])).toContain("refs/heads/claude/archive-conflict");
+    expect(run(root, ["rev-parse", `archive/tidy/${branchTip}`]).trim()).toBe(run(root, ["rev-parse", "main"]).trim());
+  });
+
+  it("does not delete a branch that advances after its archive tag is written", () => {
+    const root = repo();
+    commitOn(root, "claude/moved-during-retire", "move.txt");
+    const original = run(root, ["rev-parse", "claude/moved-during-retire"]).trim();
+    commitOnMain(root, "advance-move.txt");
+    run(root, ["cherry-pick", original]);
+    let injected = false;
+
+    const result = data(runTidyCommand({
+      repo: root,
+      workspace: workspaceFor(root),
+      apply: true,
+      testHooks: {
+        beforeForcedBranchDelete(branch: string, expectedTip: string) {
+          if (branch !== "claude/moved-during-retire") return;
+          injected = true;
+          const late = run(root, ["commit-tree", "main^{tree}", "-p", expectedTip, "-m", "late concurrent commit"]).trim();
+          run(root, ["update-ref", `refs/heads/${branch}`, late, expectedTip]);
+        }
+      }
+    }));
+
+    expect(injected).toBe(true);
+    expect(result.branches.find((entry) => entry.branch === "claude/moved-during-retire")?.retired).toBe(false);
+    expect(run(root, ["show-ref", "--verify", "refs/heads/claude/moved-during-retire"])).toContain("refs/heads/claude/moved-during-retire");
+  });
+});
+
+describe("arcadia tidy — GitHub verification degradation", () => {
+  it("fails closed and reports verification unavailable when gh exits nonzero", () => {
+    const root = repo();
+    const bin = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-tidy-bin-")));
+    temporary.push(bin);
+    const gh = path.join(bin, "gh");
+    writeFileSync(gh, "#!/bin/sh\nexit 1\n", "utf8");
+    chmodSync(gh, 0o755);
+    process.env.PATH = `${bin}:${originalPath ?? ""}`;
+    run(root, ["remote", "add", "origin", "https://github.com/example/fixture.git"]);
+    commitOn(root, "claude/no-gh-proof", "only-here.txt");
+
+    const result = data(runTidyCommand({ repo: root, noFetch: true, apply: true }));
+
+    expect(result.githubVerificationAvailable).toBe(false);
+    expect(result.branches.find((entry) => entry.branch === "claude/no-gh-proof")?.verdict).toBe("unmerged");
+    expect(run(root, ["show-ref", "--verify", "refs/heads/claude/no-gh-proof"])).toContain("refs/heads/claude/no-gh-proof");
   });
 });
 

@@ -1,8 +1,12 @@
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
+import path from "node:path";
+import type Database from "better-sqlite3";
 
+import { validationError } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { invocationRoot } from "../cli/invocation.js";
+import { withDatabase, withReadOnlyDatabase, writeTransaction } from "../db/connection.js";
 import {
   SAFE_TASK_BRANCH,
   countCommits,
@@ -21,6 +25,9 @@ import {
   uncommittedChanges,
   type ComparisonBase
 } from "../git/worktrees.js";
+import { getActiveWorktreeReservation, getRepositoryLease, hasWorktreeReservationTable } from "../sessions/index.js";
+import { getWorkspacePaths } from "../workspace/paths.js";
+import { resolveWorkspace } from "../workspace/resolve.js";
 
 /**
  * What tidy decided about one worktree or branch, and why.
@@ -35,7 +42,7 @@ export type TidyVerdict =
   | "protected"
   /** Uncommitted changes present. Never touched, reported first. */
   | "dirty"
-  /** Clean, and every commit is already on the base branch. Safe to retire. */
+  /** Clean, and every branch change is proven present on the base branch. Safe to retire. */
   | "merged"
   /** Clean, but carries commits the base branch does not have. Never touched. */
   | "unmerged"
@@ -104,6 +111,8 @@ export interface TidyCommandData {
   fetchNote: string | null;
   /** Whether pull-request-based verification ran at all, so a squash-merged branch reported `unmerged` can be told apart from one that was actually checked and found unmerged. */
   githubVerificationAvailable: boolean;
+  /** Whether live Session leases and go handoff reservations were checked. Required for --apply. */
+  workspaceProtectionAvailable: boolean;
   applied: boolean;
   worktrees: TidyWorktree[];
   branches: TidyBranch[];
@@ -113,6 +122,7 @@ export interface TidyCommandData {
 
 export interface TidyCommandOptions {
   repo?: string;
+  workspace?: string;
   /** Without this nothing is changed, whatever the verdicts say. */
   apply?: boolean;
   /** Also retire merged branches the operator named themselves, not just agent-owned ones. */
@@ -127,18 +137,21 @@ export interface TidyCommandOptions {
   noFetch?: boolean;
   /** Skip GitHub pull-request verification even when `gh` is available. */
   noGithub?: boolean;
+  /** Deterministic fault injection for race regression tests. Not exposed by the CLI. */
+  testHooks?: {
+    afterAssessment?: () => void;
+    beforeForcedBranchDelete?: (branch: string, expectedTip: string) => void;
+  };
 }
 
 /**
  * Retire the worktrees and branches whose work is provably already on the base
  * branch, and report everything else without touching it.
  *
- * The safety rule is one sentence: **nothing is removed unless every commit it
- * carries is already reachable from the base branch, and its working tree is
- * clean.** That makes removal information-preserving by construction rather
- * than by careful reasoning — there is no state in which this command can lose
- * a commit, because a branch whose commits are all ancestors of base has no
- * commits of its own to lose.
+ * The safety rule is one sentence: **nothing is removed unless its working
+ * tree is clean, its branch changes are proven present on the base, and no
+ * live Session or prepared handoff claims it.** Apply rechecks that rule under
+ * the workspace write interlock immediately before removal.
  *
  * Everything else is reported. An unmerged branch is never deleted even when it
  * looks abandoned, a dirty worktree is never touched even when its branch is
@@ -150,6 +163,15 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
   const worktrees = listWorktrees(repoRoot);
   const controlWorktree = worktrees[0]?.path ?? repoRoot;
   const here = invocationRoot();
+  const workspaceResolution = resolveWorkspace({ workspace: options.workspace, cwd: repoRoot });
+  const workspacePath = workspaceResolution.workspacePath && existsSync(getWorkspacePaths(workspaceResolution.workspacePath).databaseFile)
+    ? workspaceResolution.workspacePath
+    : null;
+  if (options.apply && !workspacePath) {
+    throw validationError("Arcadia tidy --apply requires an initialized workspace so live Sessions and prepared handoffs cannot be retired.", {
+      remedy: "Pass --workspace, set ARCADIA_WORKSPACE, run inside an initialized workspace, or configure defaultWorkspace."
+    });
+  }
 
   // Fetched once, against the shared repository object database — every
   // worktree sees the result, so there is no reason to repeat it per worktree.
@@ -162,9 +184,17 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
     (prMerges ?? []).map((entry) => [entry.headBranch, { sha: entry.mergeCommitSha, number: entry.number }])
   );
 
-  const assessed: TidyWorktree[] = worktrees.map((record) =>
-    assessWorktree({ record, repoRoot, comparisonBase, controlWorktree, here, prMergeCommits })
-  );
+  const protectionSchemaAvailable = workspacePath
+    ? withReadOnlyDatabase(workspacePath, (db) => hasWorktreeReservationTable(db))
+    : false;
+  const protectionReasons = workspacePath
+    ? (options.apply
+        ? withDatabase(workspacePath, (db) => worktreeProtectionReasons(db, controlWorktree, worktrees))
+        : withReadOnlyDatabase(workspacePath, (db) => worktreeProtectionReasons(db, controlWorktree, worktrees)))
+    : new Map<string, string>();
+  const assessed: TidyWorktree[] = worktrees.map((record) => assessWorktree({
+    record, repoRoot, comparisonBase, controlWorktree, here, prMergeCommits, protectionReasons
+  }));
 
   const claimedByWorktree = new Set(
     assessed.map((entry) => entry.branch).filter((branch): branch is string => branch !== null)
@@ -179,18 +209,39 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
   });
 
   if (options.apply) {
-    for (const entry of assessed) {
-      if (entry.verdict === "merged" || entry.verdict === "missing" || entry.verdict === "detached") {
-        entry.retired = retireWorktree(repoRoot, entry, baseBranch);
+    options.testHooks?.afterAssessment?.();
+    withDatabase(workspacePath!, (db) => writeTransaction(db, () => {
+      // The IMMEDIATE transaction is the shared interlock with `go`'s
+      // reservation write. Re-read protection and Git state after acquiring
+      // it so a preview-era verdict can never authorize a stale removal.
+      const currentWorktrees = listWorktrees(repoRoot);
+      const currentByPath = new Map(currentWorktrees.map((record) => [pathKey(record.path), record]));
+      const currentProtections = worktreeProtectionReasons(db, controlWorktree, currentWorktrees);
+      for (const entry of assessed) {
+        if (entry.verdict !== "merged" && entry.verdict !== "missing" && entry.verdict !== "detached") continue;
+        const record = currentByPath.get(pathKey(entry.path)) ?? { path: entry.path, head: "", branch: entry.branch ? `refs/heads/${entry.branch}` : null };
+        const current = assessWorktree({
+          record,
+          repoRoot,
+          comparisonBase,
+          controlWorktree,
+          here,
+          prMergeCommits,
+          protectionReasons: currentProtections
+        });
+        Object.assign(entry, current);
+        if (entry.verdict === "merged" || entry.verdict === "missing" || entry.verdict === "detached") {
+          entry.retired = retireWorktree(repoRoot, entry, baseBranch);
+        }
       }
-    }
-    for (const entry of branches) {
-      if (entry.verdict === "merged") {
-        const outcome = retireBranch(repoRoot, entry.branch);
-        entry.retired = outcome.retired;
-        entry.archivedAs = outcome.archivedAs;
+      for (const entry of branches) {
+        if (entry.verdict === "merged") {
+          const outcome = retireBranch(repoRoot, entry.branch, options.testHooks);
+          entry.retired = outcome.retired;
+          entry.archivedAs = outcome.archivedAs;
+        }
       }
-    }
+    }));
   }
 
   return createSuccess({
@@ -202,6 +253,7 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
       fetched: comparisonBase.fetched,
       fetchNote: comparisonBase.fetchError,
       githubVerificationAvailable: prMerges !== null,
+      workspaceProtectionAvailable: workspacePath !== null && (options.apply === true || protectionSchemaAvailable),
       applied: options.apply === true,
       worktrees: assessed,
       branches,
@@ -217,8 +269,9 @@ function assessWorktree(input: {
   controlWorktree: string;
   here: string;
   prMergeCommits: Map<string, { sha: string; number: number }>;
+  protectionReasons: Map<string, string>;
 }): TidyWorktree {
-  const { record, comparisonBase, controlWorktree, here, prMergeCommits } = input;
+  const { record, comparisonBase, controlWorktree, here, prMergeCommits, protectionReasons } = input;
   const compareRef = comparisonBase.ref;
   const branch = shortBranch(record.branch);
   const base: Omit<TidyWorktree, "verdict" | "reason"> = {
@@ -243,6 +296,10 @@ function assessWorktree(input: {
   }
   if (branch === comparisonBase.ref.replace(/^origin\//, "")) {
     return { ...base, verdict: "protected", reason: `Holds the base branch.` };
+  }
+  const protectedReason = protectionReasons.get(pathKey(record.path));
+  if (protectedReason) {
+    return { ...base, verdict: "protected", reason: protectedReason };
   }
 
   const uncommitted = uncommittedChanges(record.path);
@@ -410,19 +467,72 @@ function assessBranches(input: {
  * reachable by name forever, so even a wrong verdict costs nothing but a tag
  * to recover from.
  */
-function retireBranch(repoRoot: string, branch: string): { retired: boolean; archivedAs: string | null } {
+function retireBranch(
+  repoRoot: string,
+  branch: string,
+  testHooks?: TidyCommandOptions["testHooks"]
+): { retired: boolean; archivedAs: string | null } {
   if (tryGit(repoRoot, ["branch", "-d", branch]) !== null) {
     return { retired: true, archivedAs: null };
   }
 
-  const tag = `archive/${branch.replace(/\//g, "-")}`;
-  // `-f` so a re-run after a partial failure is not blocked by its own tag.
-  if (tryGit(repoRoot, ["tag", "-f", tag, branch]) === null) {
+  const expectedTip = tryGit(repoRoot, ["rev-parse", `refs/heads/${branch}^{commit}`])?.trim();
+  if (!expectedTip) return { retired: false, archivedAs: null };
+  const tag = `archive/tidy/${expectedTip}`;
+  const existing = tryGit(repoRoot, ["rev-parse", `refs/tags/${tag}^{commit}`])?.trim() ?? null;
+  if (existing !== null && existing !== expectedTip) {
     return { retired: false, archivedAs: null };
   }
+  if (existing === null && tryGit(repoRoot, ["tag", tag, expectedTip]) === null) return { retired: false, archivedAs: null };
 
-  const forced = tryGit(repoRoot, ["branch", "-D", branch]) !== null;
+  testHooks?.beforeForcedBranchDelete?.(branch, expectedTip);
+  // Compare-and-swap deletion: if another process advances the branch after
+  // the proof/tag, update-ref refuses instead of deleting the new tip.
+  const forced = deleteBranchRefIfUnchanged(repoRoot, branch, expectedTip);
   return { retired: forced, archivedAs: forced ? tag : null };
+}
+
+export function deleteBranchRefIfUnchanged(repoRoot: string, branch: string, expectedTip: string): boolean {
+  const ref = `refs/heads/${branch}`;
+  const observed = tryGit(repoRoot, ["rev-parse", `${ref}^{commit}`])?.trim();
+  if (observed !== expectedTip) return false;
+  if (tryGit(repoRoot, ["update-ref", "-d", ref, expectedTip]) === null) return false;
+  return tryGit(repoRoot, ["show-ref", "--verify", ref]) === null;
+}
+
+function pathKey(value: string): string {
+  const resolved = path.resolve(value);
+  return existsSync(resolved) ? realpathSync(resolved) : resolved;
+}
+
+function worktreeProtectionReasons(
+  db: Database.Database,
+  repoRoot: string,
+  worktrees: Array<{ path: string }>,
+  now: Date = new Date()
+): Map<string, string> {
+  const reasons = new Map<string, string>();
+  for (const worktree of worktrees) {
+    const reason = getWorktreeProtectionReason(db, repoRoot, worktree.path, now);
+    if (reason) reasons.set(pathKey(worktree.path), reason);
+  }
+  return reasons;
+}
+
+export function getWorktreeProtectionReason(
+  db: Database.Database,
+  repoRoot: string,
+  worktreePath: string,
+  now: Date = new Date()
+): string | null {
+  const lease = getRepositoryLease(db, repoRoot);
+  if (lease && pathKey(lease.worktree_path) === pathKey(worktreePath)) {
+    return `Protected by live ${lease.status} Session lease ${lease.id}.`;
+  }
+  const reservation = getActiveWorktreeReservation(db, repoRoot, worktreePath, now);
+  return reservation
+    ? `Protected by go handoff reservation ${reservation.id} until ${reservation.expires_at}.`
+    : null;
 }
 
 function retireWorktree(repoRoot: string, entry: TidyWorktree, baseBranch: string): boolean {
@@ -479,6 +589,7 @@ export function renderTidySuccess(response: CommandSuccess<TidyCommandData>): st
     fetched,
     fetchNote,
     githubVerificationAvailable,
+    workspaceProtectionAvailable,
     applied,
     worktrees,
     branches,
@@ -495,9 +606,14 @@ export function renderTidySuccess(response: CommandSuccess<TidyCommandData>): st
       : `Base branch: ${baseBranch} (comparing against the LOCAL branch — ${fetchNote ?? "not fetched"})`
   );
   lines.push(
+    workspaceProtectionAvailable
+      ? "Workspace protection: on — live Session leases and unexpired go handoffs are protected."
+      : "Workspace protection: unavailable — preview only; --apply is refused until a workspace can be checked."
+  );
+  lines.push(
     githubVerificationAvailable
       ? "GitHub verification: on — a branch whose own commits are not on the base branch is still checked against merged pull requests, so a squash- or rebase-merged branch is not reported as unmerged."
-      : "GitHub verification: unavailable (gh CLI missing, unauthenticated, or no GitHub remote) — a squash- or rebase-merged branch may be reported unmerged even though it landed."
+      : "GitHub verification: unavailable (gh CLI missing, unauthenticated, failed, or no usable origin GitHub remote) — a squash- or rebase-merged branch may be reported unmerged even though it landed."
   );
   lines.push("");
 
@@ -513,6 +629,18 @@ export function renderTidySuccess(response: CommandSuccess<TidyCommandData>): st
   if (live.length > 0) {
     lines.push("Where the live work is:");
     for (const entry of live) {
+      lines.push(`  ${entry.branch ?? "(detached)"} — ${entry.path}`);
+      lines.push(`      ${entry.reason}`);
+    }
+    lines.push("");
+  }
+
+  const activelyProtected = worktrees.filter((entry) =>
+    entry.verdict === "protected" && (entry.reason.includes("Session lease") || entry.reason.includes("handoff reservation"))
+  );
+  if (activelyProtected.length > 0) {
+    lines.push("Protected active work:");
+    for (const entry of activelyProtected) {
       lines.push(`  ${entry.branch ?? "(detached)"} — ${entry.path}`);
       lines.push(`      ${entry.reason}`);
     }

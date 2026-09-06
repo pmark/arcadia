@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { validationError } from "../cli/errors.js";
@@ -112,7 +113,35 @@ export function isPatchEquivalent(cwd: string, base: string, branch: string): bo
   // failed comparison stand in for proof.
   if (lines.length === 0) return false;
 
-  return lines.every((line) => line.startsWith("-"));
+  if (!lines.every((line) => line.startsWith("-"))) return false;
+
+  // Patch-id alone remembers that an equivalent diff occurred somewhere in
+  // base history. It does not prove that the diff is still present: apply,
+  // then revert is the canonical false positive. Reversing the branch's
+  // cumulative diff against a temporary index loaded from the current base
+  // proves the net effect still exists without touching either worktree.
+  const mergeBase = tryGit(cwd, ["merge-base", base, branch]);
+  if (!mergeBase) return false;
+  const patch = spawnSync("git", ["diff", "--binary", `${mergeBase.trim()}..${branch}`], {
+    cwd,
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  if (patch.status !== 0 || !patch.stdout || patch.stdout.length === 0) return false;
+
+  const scratch = mkdtempSync(path.join(tmpdir(), "arcadia-patch-proof-"));
+  try {
+    const env = { ...process.env, GIT_INDEX_FILE: path.join(scratch, "index") };
+    const loaded = spawnSync("git", ["read-tree", base], { cwd, env, stdio: "ignore" });
+    if (loaded.status !== 0) return false;
+    return spawnSync("git", ["apply", "--cached", "--reverse", "--check", "--whitespace=nowarn", "-"], {
+      cwd,
+      env,
+      input: patch.stdout,
+      stdio: ["pipe", "ignore", "ignore"]
+    }).status === 0;
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 /** Whether a ref exists at all, so a missing branch is never mistaken for an unmerged one. */

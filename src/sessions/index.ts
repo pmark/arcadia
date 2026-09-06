@@ -55,6 +55,17 @@ export interface AgentSession {
   updated_at: string;
 }
 
+export interface AgentWorktreeReservation {
+  id: string;
+  repository_path: string;
+  worktree_path: string;
+  branch: string;
+  created_at: string;
+  expires_at: string;
+}
+
+export const AGENT_WORKTREE_RESERVATION_MS = 24 * 60 * 60 * 1000;
+
 export interface TmuxAdapter {
   available(): boolean;
   hasSession(name: string): boolean;
@@ -197,13 +208,13 @@ export function prepareSession(input: {
   const displayName = `${context.projectName}: ${context.action.title}`.slice(0, 120);
   const timestamp = input.now.toISOString();
   const row = {
-    id, project_id: project.id, project_slug: context.projectSlug, repository_path: path.resolve(input.repoRoot),
+    id, project_id: project.id, project_slug: context.projectSlug, repository_path: canonicalPath(input.repoRoot),
     plan_path: context.planPath, plan_slug: context.activePlan, action_id: context.action.id, work_item_id: workItem.id,
     packet_id: invocation.id, packet_path: invocation.prompt_path, packet_sha256: packetHash,
     authorizing_decisions_json: JSON.stringify(decisions), execution_profile_json: invocation.execution_profile_json,
     provider_profile: invocation.agent_profile, provider: selected.provider, model: selected.model, effort: input.effort,
     provider_mapping_id: invocation.provider_mapping_id, provider_binding_id: invocation.provider_binding_id,
-    base_revision: input.baseRevision, branch: input.branch, worktree_path: input.worktreePath,
+    base_revision: input.baseRevision, branch: input.branch, worktree_path: canonicalPath(input.worktreePath),
     provider_session_id: providerSessionId, display_name: displayName, terminal_transport: "tmux", tmux_session_name: tmuxName,
     status: "prepared", prepared_at: timestamp, started_at: null, ended_at: null, exit_status: null,
     created_at: timestamp, updated_at: timestamp
@@ -258,7 +269,16 @@ function findPromotionDecision(
 
 function canonicalPath(value: string): string {
   const resolved = path.resolve(value);
-  return existsSync(resolved) ? realpathSync(resolved) : resolved;
+  if (existsSync(resolved)) return realpathSync(resolved);
+  const suffix: string[] = [];
+  let existing = resolved;
+  while (!existsSync(existing)) {
+    const parent = path.dirname(existing);
+    if (parent === existing) return resolved;
+    suffix.unshift(path.basename(existing));
+    existing = parent;
+  }
+  return path.join(realpathSync(existing), ...suffix);
 }
 
 export function launchPreparedSession(db: Database.Database, session: AgentSession, tmux: TmuxAdapter = systemTmux): AgentSession {
@@ -315,7 +335,49 @@ export function getLatestSession(db: Database.Database): AgentSession | null {
 
 export function getRepositoryLease(db: Database.Database, repositoryPath: string): AgentSession | null {
   if (!hasSessionTable(db)) return null;
-  return (db.prepare("SELECT * FROM agent_sessions WHERE repository_path = ? AND status IN ('prepared', 'running') ORDER BY prepared_at DESC LIMIT 1").get(path.resolve(repositoryPath)) as AgentSession | undefined) ?? null;
+  return (db.prepare("SELECT * FROM agent_sessions WHERE repository_path = ? AND status IN ('prepared', 'running') ORDER BY prepared_at DESC LIMIT 1").get(canonicalPath(repositoryPath)) as AgentSession | undefined) ?? null;
+}
+
+export function reserveAgentWorktree(db: Database.Database, input: {
+  repositoryPath: string;
+  worktreePath: string;
+  branch: string;
+  now: Date;
+}): AgentWorktreeReservation {
+  const createdAt = input.now.toISOString();
+  db.prepare("DELETE FROM agent_worktree_reservations WHERE expires_at <= ?").run(createdAt);
+  const reservation = {
+    id: createId("worktreeReservation"),
+    repository_path: canonicalPath(input.repositoryPath),
+    worktree_path: canonicalPath(input.worktreePath),
+    branch: input.branch,
+    created_at: createdAt,
+    expires_at: new Date(input.now.getTime() + AGENT_WORKTREE_RESERVATION_MS).toISOString()
+  } satisfies AgentWorktreeReservation;
+  db.prepare(`INSERT INTO agent_worktree_reservations (
+    id, repository_path, worktree_path, branch, created_at, expires_at
+  ) VALUES (@id, @repository_path, @worktree_path, @branch, @created_at, @expires_at)`).run(reservation);
+  return reservation;
+}
+
+export function getActiveWorktreeReservation(
+  db: Database.Database,
+  repositoryPath: string,
+  worktreePath: string,
+  now: Date = new Date()
+): AgentWorktreeReservation | null {
+  if (!hasWorktreeReservationTable(db)) return null;
+  return (db.prepare(`SELECT * FROM agent_worktree_reservations
+    WHERE repository_path = ? AND worktree_path = ? AND expires_at > ?
+    ORDER BY created_at DESC LIMIT 1`).get(
+      canonicalPath(repositoryPath),
+      canonicalPath(worktreePath),
+      now.toISOString()
+    ) as AgentWorktreeReservation | undefined) ?? null;
+}
+
+export function hasWorktreeReservationTable(db: Database.Database): boolean {
+  return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'agent_worktree_reservations'").get());
 }
 
 function hasSessionTable(db: Database.Database): boolean {

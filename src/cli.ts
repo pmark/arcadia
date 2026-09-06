@@ -2932,11 +2932,12 @@ export function buildProgram(): Command {
       .command("tidy")
       .description("Retire worktrees and branches whose work is already on the base branch; report everything else")
       .option("--repo <path>", "Repository to tidy", resolveInvocationPath, invocationRoot())
+      .option("--workspace <path>", "Workspace path used to protect live Sessions and prepared handoffs", defaultWorkspace())
       .option("--apply", "Actually retire what is listed; without it nothing is changed")
       .option("--include-own-branches", "Also retire fully merged branches you named yourself, not just agent-owned ones")
       .option("--no-fetch", "Compare against the local base branch only; skip fetching origin first")
       .option("--no-github", "Skip pull-request verification even when the GitHub CLI is available")
-  ).action((options: { repo?: string; apply?: boolean; includeOwnBranches?: boolean; fetch?: boolean; github?: boolean; json?: boolean }) =>
+  ).action((options: { repo?: string; workspace?: string; apply?: boolean; includeOwnBranches?: boolean; fetch?: boolean; github?: boolean; json?: boolean }) =>
     runCliAction(
       "tidy",
       options,

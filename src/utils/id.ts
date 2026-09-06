@@ -37,6 +37,7 @@ const PREFIXES = {
   narrativeDigest: "digest",
   proofTargetCheck: "ptc",
   session: "session",
+  worktreeReservation: "wtres",
   productionPolicyReceipt: "pprec",
   productionAdmission: "padm"
 } as const;
