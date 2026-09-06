@@ -68,6 +68,13 @@ export interface CodingAgentSelectionInput {
   availability: CodingAgentAvailabilitySnapshot;
   requestedProfile?: string;
   excludeProvider?: string;
+  /**
+   * Provider id to visible refusal reason, from capacity admission. Selection
+   * filters these out *before* ranking, so a limited provider yields a different
+   * eligible configured provider rather than a weaker substitution — the
+   * capability floors below still apply to whatever remains.
+   */
+  capacityRefusals?: Record<string, string>;
 }
 
 export class ExecutionProfileUnsatisfiedError extends Error {
@@ -98,6 +105,11 @@ export function selectCompliantCodingAgent(
     const provider = providerStates.get(binding.provider);
     if (!binding.enabled || !provider?.enabled) {
       rejected.push({ binding: binding.id, reason: provider?.unavailableReason ?? "disabled" });
+      continue;
+    }
+    const capacityRefusal = input.capacityRefusals?.[binding.provider];
+    if (capacityRefusal) {
+      rejected.push({ binding: binding.id, reason: capacityRefusal });
       continue;
     }
     if (input.excludeProvider && binding.provider === input.excludeProvider) {
@@ -178,6 +190,7 @@ export function selectCompliantCodingAgent(
       contextScope: requirement.context.scope,
       dataLocality: requirement.dataLocality,
       requestedProfile: input.requestedProfile ?? null,
+      capacityRefusals: input.capacityRefusals ?? {},
       rejected
     }
   );

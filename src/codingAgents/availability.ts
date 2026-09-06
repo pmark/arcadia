@@ -16,10 +16,37 @@ const CLAUDE_KEYCHAIN_SERVICES = ["Claude Code-credentials"];
 
 export type CodingAgentAvailability = "available" | "unknown" | "usage_limited" | "budget_limited";
 
+/**
+ * Why the last Claude usage refresh did or did not update the snapshot. Without
+ * this a failed refresh is invisible: the snapshot keeps its old numbers, and a
+ * caller cannot tell a quiet account from a missing credential.
+ */
+export type ClaudeUsageRefreshState =
+  | "ok"
+  | "no_credentials"
+  | "unauthorized"
+  | "unreachable"
+  | "not_reported";
+
 export interface CodingAgentRateLimit {
   label: string;
   usedPercentage: number;
   resetsAt: string | null;
+}
+
+/** Purchased credit state, kept separate from included plan allowance. */
+export interface CodingAgentCreditState {
+  hasCredits: boolean;
+  unlimited: boolean;
+  balance: string | null;
+}
+
+/** A banked reset the provider is holding. Reported, never redeemed. */
+export interface CodingAgentBankedReset {
+  id: string;
+  status: string;
+  title: string | null;
+  expiresAt: string | null;
 }
 
 export interface CodingAgentContextUsage {
@@ -31,7 +58,10 @@ export interface CodingAgentContextUsage {
 }
 
 export interface CodingAgentAvailabilityRecord {
+  /** Display label, e.g. "Claude Code". Not a stable identifier. */
   provider: string;
+  /** Registry provider id, e.g. "claude-code-cli". Stable across labels. */
+  providerId: string;
   profiles: string[];
   availability: CodingAgentAvailability;
   observedTasks: number;
@@ -41,6 +71,12 @@ export interface CodingAgentAvailabilityRecord {
   resetAt: string | null;
   context: CodingAgentContextUsage | null;
   rateLimits: CodingAgentRateLimit[];
+  /** Purchased credits, when the provider reports them. Never plan allowance. */
+  credits: CodingAgentCreditState | null;
+  /** Banked resets the provider is holding, for visibility only. */
+  bankedResets: CodingAgentBankedReset[];
+  /** The account's plan or tier, when the provider names one. */
+  planScope: string | null;
   capturedAt: string | null;
   telemetry: string;
 }
@@ -69,6 +105,9 @@ interface ProviderTelemetry {
   availability: CodingAgentAvailability;
   context: CodingAgentContextUsage | null;
   rateLimits: CodingAgentRateLimit[];
+  credits: CodingAgentCreditState | null;
+  bankedResets: CodingAgentBankedReset[];
+  planScope: string | null;
   capturedAt: string | null;
   telemetry: string;
 }
@@ -120,6 +159,7 @@ export function observeCodingAgentAvailability(
 
       return {
         provider: codingAgentLabel(representative),
+        providerId: representative.provider,
         profiles: profilesForProvider.map((profile) => profile.name),
         availability: providerTelemetry?.availability ?? fallbackAvailability,
         observedTasks: statuses.length,
@@ -129,6 +169,9 @@ export function observeCodingAgentAvailability(
         resetAt: providerTelemetry?.rateLimits.find((limit) => limit.resetsAt)?.resetsAt ?? null,
         context: providerTelemetry?.context ?? null,
         rateLimits: providerTelemetry?.rateLimits ?? [],
+        credits: providerTelemetry?.credits ?? null,
+        bankedResets: providerTelemetry?.bankedResets ?? [],
+        planScope: providerTelemetry?.planScope ?? null,
         capturedAt: providerTelemetry?.capturedAt ?? null,
         telemetry: liveTelemetry
           ? liveTelemetry.telemetry
@@ -170,7 +213,10 @@ export async function refreshClaudeCodeUsageTelemetry(
   });
 
   const credentials = await loadClaudeOAuthCredentials();
-  if (!credentials) return;
+  if (!credentials) {
+    recordClaudeRefreshState(snapshotPath, "no_credentials", now);
+    return;
+  }
 
   let response = await requestClaudeUsage(credentials.accessToken);
   if (response.status === 401 && credentials.refreshToken) {
@@ -178,7 +224,14 @@ export async function refreshClaudeCodeUsageTelemetry(
     if (refreshed) response = await requestClaudeUsage(refreshed.accessToken);
   }
 
-  if (!response.body || (!response.body.five_hour && !response.body.seven_day)) return;
+  if (!response.body || (!response.body.five_hour && !response.body.seven_day)) {
+    recordClaudeRefreshState(
+      snapshotPath,
+      response.status === 0 ? "unreachable" : response.status === 401 ? "unauthorized" : "not_reported",
+      now,
+    );
+    return;
+  }
 
   const current = readJsonRecord(snapshotPath) ?? existing ?? {};
   const currentRateLimits = objectValue(current.rate_limits);
@@ -186,6 +239,7 @@ export async function refreshClaudeCodeUsageTelemetry(
     ...current,
     arcadia_captured_at: now.toISOString(),
     arcadia_usage_checked_at: now.toISOString(),
+    arcadia_usage_refresh_state: "ok" satisfies ClaudeUsageRefreshState,
     rate_limits: {
       ...(currentRateLimits ?? {}),
       five_hour: mergeClaudeUsageWindow(
@@ -314,6 +368,23 @@ function telemetryCachePath(): string {
     ?? path.join(os.homedir(), ".arcadia", "telemetry", "coding-agent-usage.json");
 }
 
+/**
+ * Leave the stale numbers alone — they are still the last thing actually
+ * observed — but say next to them why they were not replaced.
+ */
+function recordClaudeRefreshState(
+  snapshotPath: string,
+  state: ClaudeUsageRefreshState,
+  now: Date,
+): void {
+  const current = readJsonRecord(snapshotPath) ?? {};
+  writeClaudeSnapshot(snapshotPath, {
+    ...current,
+    arcadia_usage_checked_at: now.toISOString(),
+    arcadia_usage_refresh_state: state,
+  });
+}
+
 function claudeStatusLinePath(): string {
   return process.env.ARCADIA_CLAUDE_USAGE_PATH
     ?? path.join(os.homedir(), ".arcadia", "telemetry", "claude-code.json");
@@ -396,14 +467,23 @@ function readClaudeStatusLineTelemetry(now: Date): ProviderTelemetry | null {
       remainingPercentage: numberValue(context.remaining_percentage),
     } : null;
 
+    const refreshState = stringValue(raw.arcadia_usage_refresh_state) as ClaudeUsageRefreshState | null;
+    const refreshNote = refreshState && refreshState !== "ok"
+      ? ` The last refresh did not update it: ${describeClaudeRefreshState(refreshState)}`
+      : "";
+
     return {
       availability: availabilityFromRateLimits(rateLimits),
       context: contextUsage,
       rateLimits,
+      credits: null,
+      bankedResets: [],
+      planScope: null,
       capturedAt,
-      telemetry: rateLimits.length > 0
+      telemetry: (rateLimits.length > 0
         ? `Claude Code status-line telemetry captured ${relativeAge(capturedAt, now)}.`
-        : `Claude Code context telemetry captured ${relativeAge(capturedAt, now)}; subscription rate limits were not reported.`,
+        : `Claude Code context telemetry captured ${relativeAge(capturedAt, now)}; subscription rate limits were not reported.`)
+        + refreshNote,
     };
   } catch {
     return null;
@@ -417,7 +497,7 @@ function readCodexRateLimitTelemetry(now: Date): ProviderTelemetry | null {
   try {
     const output = fixture ?? execFileSync("sh", ["-c", CODEX_RATE_LIMIT_QUERY], {
       encoding: "utf8",
-      timeout: 3_000,
+      timeout: CODEX_RATE_LIMIT_DEADLINE_MS,
       maxBuffer: 1024 * 1024,
     });
     const response = output.split(/\r?\n/)
@@ -438,11 +518,59 @@ function readCodexRateLimitTelemetry(now: Date): ProviderTelemetry | null {
       availability: reached ? "usage_limited" : availabilityFromRateLimits(rateLimits),
       context: null,
       rateLimits,
+      credits: codexCredits(objectValue(snapshot.credits)),
+      bankedResets: codexBankedResets(objectValue(result?.rateLimitResetCredits)),
+      planScope: stringValue(snapshot.planType),
       capturedAt: now.toISOString(),
       telemetry: "Codex account rate limits reported by the local app server.",
     };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Purchased credits are reported separately from plan allowance and stay
+ * separate here: a credit balance is not remaining included capacity, and
+ * nothing in Arcadia may spend it without an explicit Decision.
+ */
+function codexCredits(value: Record<string, unknown> | null): CodingAgentCreditState | null {
+  if (!value) return null;
+  return {
+    hasCredits: value.hasCredits === true,
+    unlimited: value.unlimited === true,
+    balance: stringValue(value.balance) ?? (typeof value.balance === "number" ? String(value.balance) : null),
+  };
+}
+
+/**
+ * Banked resets are surfaced so a person can see one exists, and for no other
+ * reason. Contract 17 forbids redeeming one to keep busy, so nothing downstream
+ * treats an available reset as capacity.
+ */
+function codexBankedResets(value: Record<string, unknown> | null): CodingAgentBankedReset[] {
+  const credits = Array.isArray(value?.credits) ? value.credits : [];
+  return credits
+    .map((entry) => objectValue(entry))
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry))
+    .map((entry) => ({
+      id: stringValue(entry.id) ?? "unknown",
+      status: stringValue(entry.status) ?? "unknown",
+      title: stringValue(entry.title),
+      expiresAt: epochToIso(entry.expiresAt),
+    }));
+}
+
+function describeClaudeRefreshState(state: ClaudeUsageRefreshState): string {
+  switch (state) {
+    case "no_credentials":
+      return "no Claude Code OAuth credential was readable on this host, so subscription usage cannot be refreshed automatically.";
+    case "unauthorized":
+      return "Claude's usage service rejected the stored credential; signing in again would restore automatic refresh.";
+    case "unreachable":
+      return "Claude's usage service could not be reached.";
+    default:
+      return "Claude's usage service reported no allowance window.";
   }
 }
 
@@ -507,9 +635,18 @@ function relativeAge(capturedAt: string, now: Date): string {
   return `${Math.floor(seconds / 3_600)}h ago`;
 }
 
+/**
+ * The app server answers `account/rateLimits/read` a moment after the request,
+ * and closing the pipe early makes it exit before replying — which looked
+ * exactly like "this host reports nothing" and silently pinned Codex capacity to
+ * a week-old cache. The trailing sleep is that response window; the deadline
+ * below bounds the whole read.
+ */
+const CODEX_RATE_LIMIT_DEADLINE_MS = 8_000;
+
 const CODEX_RATE_LIMIT_QUERY = `
 (printf '%s\\n' '{"id":1,"method":"initialize","params":{"clientInfo":{"name":"arcadia","version":"0.1.0"},"capabilities":{"experimentalApi":true}}}';
 sleep 0.2;
 printf '%s\\n%s\\n' '{"method":"initialized"}' '{"id":2,"method":"account/rateLimits/read"}';
-sleep 0.5) | codex app-server --listen stdio:// 2>/dev/null
+sleep 2) | codex app-server --listen stdio:// 2>/dev/null
 `;

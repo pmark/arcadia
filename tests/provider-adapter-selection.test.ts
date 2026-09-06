@@ -20,6 +20,7 @@ const availability: CodingAgentAvailabilitySnapshot = {
   generatedAt: "2026-07-25T00:00:00.000Z",
   agents: profiles.map((profile) => ({
     provider: profile.provider,
+    providerId: profile.provider,
     profiles: [profile.name],
     availability: "available",
     observedTasks: 0,

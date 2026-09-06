@@ -42,6 +42,12 @@ import {
   runBackBurnerShowCommand
 } from "./commands/backBurner.js";
 import {
+  renderCapacityAttestSuccess,
+  renderCapacityStatusSuccess,
+  runCapacityAttestCommand,
+  runCapacityStatusCommand
+} from "./commands/capacity.js";
+import {
   renderProductionPreviewSuccess,
   renderProductionStatusSuccess,
   renderProductionTransitionSuccess,
@@ -827,6 +833,40 @@ export function buildProgram(): Command {
       .option("--reason <text>", "Why production was switched Off")
   ).action((options: { workspace: string; requestId: string; reason?: string; json?: boolean }) =>
     runCliAction("production.deactivate", options, () => runProductionDeactivateCommand(options), renderProductionTransitionSuccess)
+  );
+
+  const capacity = addJsonOption(
+    production
+      .command("capacity", { isDefault: false })
+      .description("Show observed provider capacity and the unattended admission decision it supports")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--refresh", "Refresh provider observations first (network reads only; no model calls)")
+  );
+  capacity.action((options: { workspace: string; refresh?: boolean; json?: boolean }) =>
+    runCliAction("production.capacity", options, () => runCapacityStatusCommand(options), renderCapacityStatusSuccess)
+  );
+  addJsonOption(
+    capacity
+      .command("attest")
+      .description("Record a bounded, attended operator capacity receipt; never unattended proof")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .requiredOption("--provider <id>", "Coding-agent provider id, e.g. codex-cli")
+      .requiredOption("--granted-by <who>", "Operator confirming the observed capacity")
+      .option("--usage-policy <mode>", "included or paid", "included")
+      .option("--window <label:usedPercent[:resetsAtIso]>", "A window the provider actually reports (repeatable)", collectRepeatable, [])
+      .option("--hours <n>", "How long the attestation stands, capped by the receipt limit", "1")
+      .option("--note <text>", "What the operator actually looked at")
+  ).action((options: {
+    workspace: string;
+    provider: string;
+    grantedBy: string;
+    usagePolicy?: string;
+    window?: string[];
+    hours?: string;
+    note?: string;
+    json?: boolean;
+  }) =>
+    runCliAction("production.capacity.attest", options, () => runCapacityAttestCommand(options), renderCapacityAttestSuccess)
   );
 
   const backBurner = program.command("back-burner").description("List and manage Back Burner items");
