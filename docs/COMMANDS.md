@@ -1404,8 +1404,9 @@ pnpm arcadia go-broker install
 Installation is refused unless Arcadia is at a clean, committed repository
 root. The command builds the CLI, creates a production dependency snapshot at
 `~/.local/share/arcadia/go-broker/releases/<git-sha>/`, atomically updates
-provider-specific launchers under `~/.local/bin/`, installs the shared managed
-skill, and converges both providers' permission and sandbox configuration. It
+provider-specific launchers under `~/.local/bin/` for `go`, prepared-worktree
+`advance`, and read-only `work monitor`, installs the shared managed skill, and
+converges both providers' permission and sandbox configuration. It
 preserves unrelated settings, removes recognized legacy broad Arcadia-go
 allowances, and backs up changed user-owned files. Installation is an operator
 setup/update action; the broker itself exposes only this runtime contract:
@@ -1413,15 +1414,21 @@ setup/update action; the broker itself exposes only this runtime contract:
 ```sh
 ~/.local/bin/arcadia-go-broker-codex
 # Claude Code uses: ~/.local/bin/arcadia-go-broker-claude
+~/.local/bin/arcadia-advance-broker-codex
+# Claude Code uses: ~/.local/bin/arcadia-advance-broker-claude
+~/.local/bin/arcadia-work-monitor-broker-codex
+# Claude Code uses: ~/.local/bin/arcadia-work-monitor-broker-claude
 ```
 
-Run the matching executable with no arguments from the completed worktree. It
-calls the same `runGoCommand` implementation first in preview mode and then
-with the identical fixed inputs plus apply. Apply repeats all validation, so a
-race or state change fails closed. Every public argument is refused. No broker
-invocation can request `--launch`, choose a model or effort, override the
-workspace, or redirect the repository. Its success output is the final apply
-JSON; a refusal is JSON on stderr.
+Run the matching `go` executable with no arguments from the completed
+worktree. It calls the same `runGoCommand` implementation first in preview mode
+and then with the identical fixed inputs plus apply. In the prepared worktree,
+the shared skill calls its fixed `advance` and read-only `work-monitor`
+launchers, then performs ordinary local read-only inspection without an
+approval question. Apply repeats all validation, so a race or state change
+fails closed. Every public argument is refused. No launcher can request
+`--launch`, choose a model or effort, override the workspace, or redirect the
+repository. Its success output is canonical JSON; a refusal is JSON on stderr.
 
 Verify the complete installed chain without changing it:
 
@@ -1430,7 +1437,7 @@ pnpm arcadia go-broker status
 pnpm arcadia go-broker status --json
 ```
 
-`status` verifies that both launchers resolve to one valid protected release,
+`status` verifies that all six launchers resolve to one valid protected release,
 the Codex approval and sandbox modes are safe, only the dedicated Codex rule
 grants the broker, the installed skill matches Arcadia's current template,
 Claude resolves that same skill, its exact provider permission exists, no

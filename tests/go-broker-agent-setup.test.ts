@@ -79,14 +79,18 @@ describe("go broker agent setup", () => {
     const defaultRules = readFileSync(path.join(paths.codexRulesDirectory, "default.rules"), "utf8");
     expect(defaultRules).toContain('["git", "status"]');
     expect(defaultRules).not.toContain("arcadia");
-    expect(readFileSync(paths.codexManagedRules, "utf8")).toContain(fixture.executables.codex);
-    expect(readFileSync(paths.codexSkill, "utf8")).toContain(fixture.executables.codex);
+    expect(readFileSync(paths.codexManagedRules, "utf8")).toContain(fixture.executables.go.codex);
+    expect(readFileSync(paths.codexSkill, "utf8")).toContain(fixture.executables.go.codex);
+    expect(readFileSync(paths.codexSkill, "utf8")).toContain(fixture.executables.advance.codex);
+    expect(readFileSync(paths.codexSkill, "utf8")).toContain(fixture.executables.workMonitor.codex);
     expect(lstatSync(paths.claudeSkill).isSymbolicLink()).toBe(true);
     expect(path.resolve(path.dirname(paths.claudeSkill), readlinkSync(paths.claudeSkill))).toBe(paths.codexSkillDirectory);
     const claude = JSON.parse(readFileSync(paths.claudeSettings, "utf8"));
     expect(claude.permissions.allow).toEqual([
       "Bash(git status)",
-      `Bash(${fixture.executables.claude})`
+      `Bash(${fixture.executables.go.claude})`,
+      `Bash(${fixture.executables.advance.claude})`,
+      `Bash(${fixture.executables.workMonitor.claude})`
     ]);
     expect(claude.permissions.additionalDirectories).toEqual([
       "/keep/me",
@@ -173,16 +177,28 @@ describe("go broker agent setup", () => {
   });
 });
 
-function createFixture(withExecutables = true): { home: string; executables: { codex: string; claude: string } } {
+function createFixture(withExecutables = true): { home: string; executables: { go: { codex: string; claude: string }; advance: { codex: string; claude: string }; workMonitor: { codex: string; claude: string } } } {
   const home = mkdtempSync(path.join(tmpdir(), "arcadia-agent-setup-"));
   roots.push(home);
   const executables = {
-    codex: path.join(home, ".local", "bin", "arcadia-go-broker-codex"),
-    claude: path.join(home, ".local", "bin", "arcadia-go-broker-claude")
+    go: {
+      codex: path.join(home, ".local", "bin", "arcadia-go-broker-codex"),
+      claude: path.join(home, ".local", "bin", "arcadia-go-broker-claude")
+    },
+    advance: {
+      codex: path.join(home, ".local", "bin", "arcadia-advance-broker-codex"),
+      claude: path.join(home, ".local", "bin", "arcadia-advance-broker-claude")
+    },
+    workMonitor: {
+      codex: path.join(home, ".local", "bin", "arcadia-work-monitor-broker-codex"),
+      claude: path.join(home, ".local", "bin", "arcadia-work-monitor-broker-claude")
+    }
   };
   if (withExecutables) {
-    write(executables.codex, "broker\n");
-    write(executables.claude, "broker\n");
+    for (const providers of Object.values(executables)) {
+      write(providers.codex, "broker\n");
+      write(providers.claude, "broker\n");
+    }
   }
   return { home, executables };
 }

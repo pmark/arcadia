@@ -167,11 +167,13 @@ operator to translate manually. It:
 
 - installs a revision-addressed Arcadia broker snapshot outside project
   worktrees;
-- creates separate zero-argument Codex and Claude Code launchers;
+- creates fixed zero-argument Codex and Claude Code launchers for governed
+  handoff, prepared-worktree advance, and read-only work monitoring;
 - installs one Arcadia-managed `arcadia-go` skill under `~/.codex/skills` and
   links Claude Code to that exact directory;
-- writes one dedicated Codex broker rule while removing recognized legacy
-  `arcadia go` and broker rules from other Codex rule files;
+- writes dedicated Codex rules for only those fixed launchers while removing
+  recognized legacy `arcadia go`, `arcadia advance`, and broker rules from
+  other Codex rule files;
 - sets Codex to `approval_policy = "on-request"` and
   `sandbox_mode = "workspace-write"` without changing unrelated settings;
 - preserves unrelated Claude permissions and settings, adds only its exact

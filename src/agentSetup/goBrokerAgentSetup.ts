@@ -17,9 +17,15 @@ import { validationError } from "../cli/errors.js";
 
 const MANAGED_SKILL_MARKER = "<!-- ARCADIA_MANAGED_SKILL -->";
 
-export interface BrokerExecutables {
+export interface ProviderExecutables {
   codex: string;
   claude: string;
+}
+
+export interface BrokerExecutables {
+  go: ProviderExecutables;
+  advance: ProviderExecutables;
+  workMonitor: ProviderExecutables;
 }
 
 export interface AgentSetupPaths {
@@ -79,12 +85,24 @@ export function resolveAgentSetupPaths(home: string): AgentSetupPaths {
 }
 
 export function renderManagedSkill(template: string, executables: BrokerExecutables): string {
-  if (!template.includes("__ARCADIA_CODEX_BROKER__") || !template.includes("__ARCADIA_CLAUDE_BROKER__")) {
+  const placeholders = [
+    "__ARCADIA_CODEX_BROKER__",
+    "__ARCADIA_CLAUDE_BROKER__",
+    "__ARCADIA_CODEX_ADVANCE_BROKER__",
+    "__ARCADIA_CLAUDE_ADVANCE_BROKER__",
+    "__ARCADIA_CODEX_WORK_MONITOR_BROKER__",
+    "__ARCADIA_CLAUDE_WORK_MONITOR_BROKER__"
+  ];
+  if (placeholders.some((placeholder) => !template.includes(placeholder))) {
     throw validationError("The bundled arcadia-go skill template is missing broker placeholders.");
   }
   return template
-    .replaceAll("__ARCADIA_CODEX_BROKER__", executables.codex)
-    .replaceAll("__ARCADIA_CLAUDE_BROKER__", executables.claude);
+    .replaceAll("__ARCADIA_CODEX_BROKER__", executables.go.codex)
+    .replaceAll("__ARCADIA_CLAUDE_BROKER__", executables.go.claude)
+    .replaceAll("__ARCADIA_CODEX_ADVANCE_BROKER__", executables.advance.codex)
+    .replaceAll("__ARCADIA_CLAUDE_ADVANCE_BROKER__", executables.advance.claude)
+    .replaceAll("__ARCADIA_CODEX_WORK_MONITOR_BROKER__", executables.workMonitor.codex)
+    .replaceAll("__ARCADIA_CLAUDE_WORK_MONITOR_BROKER__", executables.workMonitor.claude);
 }
 
 export function configureGoBrokerAgents(options: ConfigureAgentSetupOptions): ConfigureAgentSetupResult {
@@ -96,7 +114,7 @@ export function configureGoBrokerAgents(options: ConfigureAgentSetupOptions): Co
   validateGoBrokerAgentSetupInputs(options);
 
   updateCodexConfig(paths.codexConfig, changed, backups, timestamp);
-  updateCodexRules(paths, options.executables.codex, changed, backups, timestamp);
+  updateCodexRules(paths, options.executables, changed, backups, timestamp);
   updateManagedSkill(paths, skill, changed, backups, timestamp);
   updateClaudeSettings(paths.claudeSettings, options, changed, backups, timestamp);
   updateClaudeSkillLink(paths, changed, backups, timestamp);
@@ -139,16 +157,22 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
   ];
 
   const checks = {
-    brokerExecutables: existsSync(options.executables.codex) && existsSync(options.executables.claude),
+    brokerExecutables: Object.values(options.executables).every((providers) =>
+      existsSync(providers.codex) && existsSync(providers.claude)
+    ),
     codexGuardrails:
       topLevelTomlValue(codexConfig, "approval_policy") === "on-request" &&
       topLevelTomlValue(codexConfig, "sandbox_mode") === "workspace-write",
-    codexRule: codexRule === managedCodexRule(options.executables.codex),
+    codexRule: codexRule === managedCodexRule(options.executables),
     noLegacyCodexRules: legacyCodexRules.length === 0,
     managedSkill: readOptional(paths.codexSkill) === expectedSkill,
     sharedClaudeSkill: symlinkResolvesTo(paths.claudeSkill, paths.codexSkillDirectory),
-    claudePermission: allow.includes(`Bash(${options.executables.claude})`),
-    noLegacyClaudePermissions: allow.every((entry) => !isLegacyClaudePermission(entry)),
+    claudePermission: Object.values(options.executables).every((providers) => allow.includes(`Bash(${providers.claude})`)),
+    noLegacyClaudePermissions: allow.every((entry) =>
+      !isLegacyClaudePermission(entry) &&
+      (!/arcadia-(?:go|advance|work-monitor)-broker-/.test(entry) ||
+        Object.values(options.executables).some((providers) => entry === `Bash(${providers.claude})`))
+    ),
     claudeSandbox: claude?.sandbox?.enabled === true && claude?.sandbox?.failIfUnavailable === true,
     claudeBypassDisabled: claude?.permissions?.disableBypassPermissionsMode === "disable",
     claudeWorktreeDirectories: expectedDirectories.every((directory) => additionalDirectories.includes(directory))
@@ -183,7 +207,7 @@ function updateCodexConfig(file: string, changed: string[], backups: string[], t
 
 function updateCodexRules(
   paths: AgentSetupPaths,
-  executable: string,
+  executables: BrokerExecutables,
   changed: string[],
   backups: string[],
   timestamp: string
@@ -196,7 +220,7 @@ function updateCodexRules(
     const updated = removeArcadiaGoRules(current);
     writeManagedFile(file, updated, changed, backups, timestamp, true);
   }
-  writeManagedFile(paths.codexManagedRules, managedCodexRule(executable), changed, backups, timestamp, false);
+  writeManagedFile(paths.codexManagedRules, managedCodexRule(executables), changed, backups, timestamp, false);
 }
 
 function updateManagedSkill(
@@ -224,9 +248,11 @@ function updateClaudeSettings(
   const settings = readClaudeSettings(file, true) ?? {};
   const permissions = settings.permissions ?? {};
   const allow = (permissions.allow ?? []).filter(
-    (entry) => !isLegacyClaudePermission(entry) && !entry.includes("arcadia-go-broker-")
+    (entry) => !isLegacyClaudePermission(entry) && !/arcadia-(?:go|advance|work-monitor)-broker-/.test(entry)
   );
-  allow.push(`Bash(${options.executables.claude})`);
+  for (const providers of Object.values(options.executables)) {
+    allow.push(`Bash(${providers.claude})`);
+  }
   const additionalDirectories = [...(permissions.additionalDirectories ?? [])];
   for (const directory of [
     path.join(path.resolve(options.home), ".codex", "worktrees"),
@@ -264,13 +290,15 @@ function updateClaudeSkillLink(
   changed.push(paths.claudeSkill);
 }
 
-function managedCodexRule(executable: string): string {
+function managedCodexRule(executables: BrokerExecutables): string {
   return [
     "# Managed by `arcadia go-broker install`. Do not add broader Arcadia go allowances.",
-    "prefix_rule(",
-    `    pattern = [${JSON.stringify(executable)}],`,
-    "    decision = \"allow\",",
-    ")",
+    ...Object.values(executables).flatMap((providers) => [
+      "prefix_rule(",
+      `    pattern = [${JSON.stringify(providers.codex)}],`,
+      "    decision = \"allow\",",
+      ")"
+    ]),
     ""
   ].join("\n");
 }
@@ -324,7 +352,7 @@ function findLegacyCodexRules(directory: string, managedFile: string): string[] 
 function isArcadiaGoPrefixRule(rule: string): boolean {
   const pattern = rule.match(/pattern\s*=\s*\[([\s\S]*?)\]/)?.[1] ?? "";
   return (
-    /arcadia-go-broker-(?:codex|claude)/.test(pattern) ||
+    /arcadia-(?:go|advance|work-monitor)-broker-(?:codex|claude)/.test(pattern) ||
     /"[^"]*arcadia"\s*,\s*"go"/.test(pattern)
   );
 }
@@ -369,7 +397,7 @@ function prefixRuleRanges(content: string): Array<{ start: number; end: number }
 }
 
 function isLegacyClaudePermission(entry: string): boolean {
-  return entry.startsWith("Bash(") && /(?:^|[(\s/])arcadia\s+go(?:\s|\))/.test(entry);
+  return entry.startsWith("Bash(") && /(?:^|[(\s/])arcadia\s+(?:go|advance|work\s+monitor)(?:\s|\))/.test(entry);
 }
 
 interface ClaudeSettings {

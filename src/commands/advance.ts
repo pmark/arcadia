@@ -16,7 +16,7 @@ export interface AdvanceQueueCommandData extends AgentQueue {}
 export interface AdvanceQueueReorderData { receipt: ActionOrderReceipt; nextActionKey: string | null; }
 export interface AdvanceQueueMakeNextData { receipt: PointerTransitionReceipt; nextActionKey: string | null; }
 
-interface AdvanceCommandData {
+export interface AdvanceCommandData {
   session: ReturnType<typeof sessionView> | null;
   transition: ProjectTransition | null;
 }
