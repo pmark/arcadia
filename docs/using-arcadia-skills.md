@@ -1,6 +1,9 @@
 # Using Arcadia Codex Skills
 
-These examples show how to use the local Codex skills for real Arcadia work. The skills are personal Codex configuration stored under `/Users/pmark/.codex/skills/`, not repository source.
+These examples show how to use the local Codex skills for real Arcadia work.
+Installed skills are personal agent configuration under `~/.codex/skills/`;
+Arcadia keeps the `arcadia-go` source template in the repository and installs a
+rendered, machine-specific copy.
 
 ## Skills
 
@@ -9,23 +12,27 @@ These examples show how to use the local Codex skills for real Arcadia work. The
 - `arcadia-development-loop`: use when explicitly asked to change Arcadia code while keeping the work tracked through an Arcadia workspace.
 - `arcadia-go`: reconcile a completed agent worktree and prepare the next one;
   Codex and Claude Code share this personal skill through
-  `~/.claude/skills -> ~/.codex/skills`.
+  `~/.claude/skills/arcadia-go -> ~/.codex/skills/arcadia-go`.
 
 Codex should still prefer deterministic Arcadia CLI commands over inference.
 
 ## Protected unattended worktree handoff
 
-After reviewing an Arcadia commit, install its broker once as the operator:
+After reviewing an Arcadia commit, install its broker and agent configuration
+once as the operator:
 
 ```sh
 pnpm arcadia go-broker install
+pnpm arcadia go-broker status
 ```
 
-Copy the installer output's exact Codex rule into
-`~/.codex/rules/default.rules` and its exact Claude Code entry into
-`permissions.allow` in `~/.claude/settings.json`. Remove older allowances for
-`arcadia go`, `pnpm arcadia go`, or a mutable repository launcher. Keep the
-normal Codex and Claude Code sandboxes enabled and do not enable bypass mode.
+The installer performs those edits atomically and preserves unrelated settings;
+do not copy its output back into configuration by hand. It owns
+`~/.codex/rules/arcadia.rules` and the installed `arcadia-go` skill, removes
+recognized older broad Arcadia-go allowances, creates recovery backups for
+other files it changes, keeps both sandboxes enabled, and keeps bypass mode
+disabled. `status` must report `READY` before unattended handoff is considered
+installed.
 
 The `arcadia-go` skill then invokes only:
 

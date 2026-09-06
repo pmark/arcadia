@@ -19,6 +19,12 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
+import {
+  configureGoBrokerAgents,
+  inspectGoBrokerAgentSetup,
+  validateGoBrokerAgentSetupInputs,
+  type AgentSetupStatus
+} from "../agentSetup/goBrokerAgentSetup.js";
 
 const INSTALL_SCHEMA = "arcadia-go-broker-install-v1";
 
@@ -29,6 +35,19 @@ export interface GoBrokerInstallData {
   manifest: string;
   codexRules: string[];
   claudePermissions: string[];
+  agentSetup: {
+    changed: string[];
+    backups: string[];
+    status: AgentSetupStatus;
+  };
+}
+
+export interface GoBrokerStatusData {
+  ready: boolean;
+  revision: string | null;
+  releaseDirectory: string | null;
+  brokerIssues: string[];
+  agentSetup: AgentSetupStatus;
 }
 
 export interface GoBrokerInstallOptions {
@@ -63,6 +82,9 @@ export function runGoBrokerInstallCommand(
     codex: path.join(binDirectory, "arcadia-go-broker-codex"),
     claude: path.join(binDirectory, "arcadia-go-broker-claude")
   };
+  const skillTemplate = readSkillTemplate(repository);
+
+  validateGoBrokerAgentSetupInputs({ home: installHome, executables, skillTemplate });
 
   mkdirSync(releasesRoot, { recursive: true, mode: 0o755 });
   mkdirSync(binDirectory, { recursive: true, mode: 0o755 });
@@ -120,6 +142,18 @@ export function runGoBrokerInstallCommand(
       brokerRoot
     );
   }
+  const agentSetup = configureGoBrokerAgents({
+    home: installHome,
+    executables,
+    skillTemplate
+  });
+  const installedBroker = inspectInstalledBroker(executables);
+  if (installedBroker.issues.length > 0) {
+    throw validationError("The protected broker did not pass its post-install verification.", {
+      issues: installedBroker.issues,
+      agentConfigurationReady: agentSetup.status.ready
+    });
+  }
 
   return createSuccess({
     command: "go-broker.install",
@@ -128,7 +162,8 @@ export function runGoBrokerInstallCommand(
       releaseDirectory,
       executables,
       manifest: path.join(releaseDirectory, "broker-manifest.json"),
-      ...permissionSnippets(executables)
+      ...permissionSnippets(executables),
+      agentSetup
     },
     artifacts: [releaseDirectory, ...Object.values(executables)]
   });
@@ -140,6 +175,9 @@ export function renderGoBrokerInstallSuccess(response: CommandSuccess<GoBrokerIn
     `Codex executable: ${response.data.executables.codex}`,
     `Claude executable: ${response.data.executables.claude}`,
     `Manifest: ${response.data.manifest}`,
+    `Agent configuration: ${response.data.agentSetup.status.ready ? "ready" : "incomplete"}`,
+    `Configuration files changed: ${response.data.agentSetup.changed.length}`,
+    `Recovery backups created: ${response.data.agentSetup.backups.length}`,
     "",
     "Codex rule:",
     ...response.data.codexRules,
@@ -147,7 +185,59 @@ export function renderGoBrokerInstallSuccess(response: CommandSuccess<GoBrokerIn
     "Claude Code permissions.allow entry:",
     ...response.data.claudePermissions,
     "",
+    "Run `arcadia go-broker status` at any time to verify the complete setup.",
     "Run the matching provider executable with no arguments from the completed worktree."
+  ];
+}
+
+export function runGoBrokerStatusCommand(
+  options: GoBrokerInstallOptions = {}
+): CommandSuccess<GoBrokerStatusData> {
+  const installHome = path.resolve(options.home ?? homedir());
+  const binDirectory = path.join(installHome, ".local", "bin");
+  const executables = {
+    codex: path.join(binDirectory, "arcadia-go-broker-codex"),
+    claude: path.join(binDirectory, "arcadia-go-broker-claude")
+  };
+  const requestedRepository = options.repository ?? git(process.cwd(), ["rev-parse", "--show-toplevel"]).trim();
+  const repository = realpathSync(requestedRepository);
+  const broker = inspectInstalledBroker(executables);
+  const agentSetup = inspectGoBrokerAgentSetup({
+    home: installHome,
+    executables,
+    skillTemplate: readSkillTemplate(repository)
+  });
+  if (broker.issues.length > 0 || !agentSetup.ready) {
+    throw validationError("Protected broker setup is not ready.", {
+      revision: broker.revision,
+      releaseDirectory: broker.releaseDirectory,
+      brokerIssues: broker.issues,
+      agentSetupIssues: agentSetup.issues,
+      checks: agentSetup.checks
+    });
+  }
+  return createSuccess({
+    command: "go-broker.status",
+    data: {
+      ready: true,
+      revision: broker.revision,
+      releaseDirectory: broker.releaseDirectory,
+      brokerIssues: broker.issues,
+      agentSetup
+    }
+  });
+}
+
+export function renderGoBrokerStatusSuccess(response: CommandSuccess<GoBrokerStatusData>): string[] {
+  const data = response.data;
+  return [
+    `Protected broker setup: ${data.ready ? "READY" : "NOT READY"}`,
+    `Revision: ${data.revision ?? "not installed"}`,
+    `Release: ${data.releaseDirectory ?? "not installed"}`,
+    ...(data.brokerIssues.length > 0 ? ["Broker issues:", ...data.brokerIssues.map((issue) => `- ${issue}`)] : []),
+    ...(data.agentSetup.issues.length > 0
+      ? ["Agent configuration issues:", ...data.agentSetup.issues.map((issue) => `- ${issue}`)]
+      : [])
   ];
 }
 
@@ -216,4 +306,60 @@ function git(repository: string, args: string[]): string {
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+function readSkillTemplate(repository: string): string {
+  return readFileSync(path.join(repository, "src", "agentSetup", "arcadia-go.SKILL.md"), "utf8");
+}
+
+function inspectInstalledBroker(executables: Record<"codex" | "claude", string>): {
+  revision: string | null;
+  releaseDirectory: string | null;
+  issues: string[];
+} {
+  const issues: string[] = [];
+  const targets = Object.entries(executables).map(([agent, executable]) => {
+    try {
+      const stat = lstatSync(executable);
+      if (!stat.isSymbolicLink()) {
+        issues.push(`${agent} executable is not a symlink to a protected release`);
+        return null;
+      }
+      const target = path.resolve(path.dirname(executable), readlinkSync(executable));
+      if (!existsSync(target)) issues.push(`${agent} executable target is missing`);
+      if (path.basename(target) !== `arcadia-go-broker-${agent}`) {
+        issues.push(`${agent} executable points to the wrong provider launcher`);
+      }
+      return target;
+    } catch {
+      issues.push(`${agent} executable is missing`);
+      return null;
+    }
+  });
+  if (targets.some((target) => target === null)) return { revision: null, releaseDirectory: null, issues };
+  const releaseDirectories = targets.map((target) => path.dirname(target!));
+  if (new Set(releaseDirectories).size !== 1) {
+    issues.push("provider executables point to different releases");
+    return { revision: null, releaseDirectory: null, issues };
+  }
+  const releaseDirectory = releaseDirectories[0];
+  const revision = path.basename(releaseDirectory);
+  try {
+    const manifest = JSON.parse(readFileSync(path.join(releaseDirectory, "broker-manifest.json"), "utf8")) as {
+      schema?: string;
+      revision?: string;
+      brokerEntrypoint?: string;
+    };
+    if (manifest.schema !== INSTALL_SCHEMA) issues.push("broker manifest schema is invalid");
+    if (manifest.revision !== revision) issues.push("broker manifest revision does not match its release directory");
+    if (!manifest.brokerEntrypoint || !existsSync(manifest.brokerEntrypoint)) {
+      issues.push("broker entrypoint is missing");
+    } else {
+      const relative = path.relative(releaseDirectory, manifest.brokerEntrypoint);
+      if (relative.startsWith("..") || path.isAbsolute(relative)) issues.push("broker entrypoint escapes its release directory");
+    }
+  } catch {
+    issues.push("broker manifest is missing or invalid");
+  }
+  return { revision, releaseDirectory, issues };
 }
