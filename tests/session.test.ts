@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -103,6 +103,32 @@ describe("tmux-backed Sessions", () => {
     expect(view.resumeCommand).toContain(`claude --resume ${result.data.session!.provider_session_id}`);
   });
 
+  it("launches the packet-selected Codex adapter and never invents an exact resume command", () => {
+    const fixture = preparedFixture({ provider: "codex-cli" });
+    const tmux = new FakeTmux();
+    const result = launch(fixture, tmux);
+
+    expect(result.data.session).toMatchObject({
+      status: "running",
+      provider_profile: "codex_build",
+      provider: "codex-cli",
+      model: "gpt-5.6-terra"
+    });
+    expect(result.data.session?.provider_session_id).toBe(result.data.session?.id);
+    expect(tmux.launches).toHaveLength(1);
+    expect(tmux.launches[0].command).toBe("codex");
+    expect(tmux.launches[0].args).toEqual(expect.arrayContaining([
+      "--model", "gpt-5.6-terra", "--config", 'model_reasoning_effort="high"', "--cd", result.data.session!.worktree_path
+    ]));
+    expect(tmux.launches[0].args).not.toContain("--session-id");
+    expect(tmux.launches[0].args.at(-1)).toBe(`arcadia advance --session ${result.data.session!.id}`);
+
+    const view = sessionView(result.data.session!, tmux);
+    expect(view.reattachCommand).toBe(`tmux attach-session -t ${result.data.session!.tmux_session_name}`);
+    expect(view.resumeCommand).toBeNull();
+    expect(view.resumeNotice).toContain("Exact Codex resume is unavailable");
+  });
+
   it("refuses missing tmux and name collisions before claiming running", () => {
     const missing = preparedFixture();
     const missingTmux = new FakeTmux();
@@ -140,10 +166,29 @@ describe("tmux-backed Sessions", () => {
     expectArcadiaError(() => launch(fixture, tmux, "second"), "does not authorize a new Session");
   });
 
+  it("refuses a competing managed Run through a canonical repository alias", () => {
+    const fixture = preparedFixture();
+    const alias = path.join(fixture.root, "repo-alias");
+    symlinkSync(fixture.repo, alias, "dir");
+    withDatabase(fixture.workspace, (db) => {
+      const project = db.prepare("SELECT id FROM projects WHERE name = 'Test Project'").get() as { id: string };
+      const action = getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!;
+      upsertProjectMetadata(db, { projectId: project.id, repoPath: alias });
+      db.prepare(`INSERT INTO execution_runs (id, work_item_id, plan_id, status, summary, created_at, updated_at)
+        VALUES ('run_alias_conflict', ?, NULL, 'running', 'fixture conflict', '2026-08-30T12:34:56.000Z', '2026-08-30T12:34:56.000Z')`).run(action.id);
+    });
+
+    expectArcadiaError(() => launch(fixture, new FakeTmux()), "does not authorize a new Session");
+    const transition = withReadOnlyDatabase(fixture.workspace, (db) =>
+      resolveProjectTransition({ repoRoot: fixture.repo, projectSlug: "test-project", db })
+    );
+    expect(transition.reason).toContain("Managed Run run_alias_conflict");
+  });
+
   it("requires the explicit launch authority shape", () => {
     const fixture = preparedFixture();
     expectArcadiaError(() => runGoCommand({ repo: fixture.repo, launch: true, agent: "claude" }), "requires --apply");
-    expectArcadiaError(() => runGoCommand({ repo: fixture.repo, launch: true, apply: true, agent: "codex" }), "requires --apply --agent claude");
+    expectArcadiaError(() => runGoCommand({ repo: fixture.repo, launch: true, agent: "codex" }), "requires --apply");
   });
 
   it("refuses a packet changed after its authorizing Decision", () => {
@@ -201,8 +246,9 @@ function launch(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux, suf
     repo: fixture.repo,
     source: fixture.repo,
     apply: true,
-    agent: "claude",
+    agent: fixture.provider === "codex-cli" ? "codex" : "claude",
     launch: true,
+    model: fixture.model,
     workspace: fixture.workspace,
     agentWorktreeRoot: path.join(fixture.root, suffix),
     now: fixture.now,
@@ -210,7 +256,7 @@ function launch(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux, suf
   });
 }
 
-function preparedFixture() {
+function preparedFixture(options: { provider?: "claude-code-cli" | "codex-cli" } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-session-"));
   roots.push(root);
   const repo = path.join(root, "repo");
@@ -227,6 +273,9 @@ function preparedFixture() {
   git(repo, ["commit", "-m", "initial"]);
   initWorkspace(workspace);
   const packetId = "codex_session_fixture";
+  const provider = options.provider ?? "claude-code-cli";
+  const model = provider === "codex-cli" ? "gpt-5.6-terra" : "sonnet";
+  const profile = provider === "codex-cli" ? "codex_build" : "claude_build";
   withDatabase(workspace, (db) => {
     const project = upsertProject(db, { name: "Test Project", mission: "Prove Sessions.", goal: "Prove Sessions.", status: "active" });
     upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
@@ -243,8 +292,8 @@ function preparedFixture() {
       promptPath,
       baseRevision,
       providerSelection: {
-        provider: "claude-code-cli",
-        model: "sonnet",
+        provider,
+        model,
         mappingId: "fixture-map",
         bindingId: "fixture-binding"
       }
@@ -252,9 +301,9 @@ function preparedFixture() {
     createCodexInvocation(db, {
       id: packetId,
       purpose: "build",
-      agentProfile: "claude_build",
+      agentProfile: profile,
       workspaceScope: repo,
-      command: "claude",
+      command: provider === "codex-cli" ? "codex" : "claude",
       promptPath,
       jsonlOutputPath: `prompts/codex/${packetId}/output.jsonl`,
       finalMessagePath: `prompts/codex/${packetId}/final.md`,
@@ -280,7 +329,7 @@ function preparedFixture() {
           actionId: "define-contract",
           actionDocRef: "plan/copy-proof#define-contract",
           repoPath: repo,
-          buildProfile: "claude_build",
+          buildProfile: profile,
           buildInvocationId: packetId,
           buildPacketPath: promptPath,
           buildPacketSha256: packetSha256(path.join(workspace, promptPath))
@@ -289,7 +338,7 @@ function preparedFixture() {
     });
     updateReviewItemStatus(db, approval.id, { status: "approved", decisionNote: "Fixture authority approved." });
   });
-  return { root, repo, workspace, packetId, now: new Date("2026-08-30T12:34:56.000Z") };
+  return { root, repo, workspace, packetId, provider, model, now: new Date("2026-08-30T12:34:56.000Z") };
 }
 
 function git(cwd: string, args: string[]): string {

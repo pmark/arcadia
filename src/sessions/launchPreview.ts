@@ -28,6 +28,7 @@ import { resolvePacketLifecycle, type PacketLifecycleState } from "./packetLifec
  * apart from being the same fact stated twice with different wording.
  */
 export const LAUNCH_ADAPTER_SUPPORT: Record<string, boolean> = {
+  "codex-cli": true,
   "claude-code-cli": true
 };
 

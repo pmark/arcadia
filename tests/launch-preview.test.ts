@@ -170,8 +170,8 @@ describe("buildLaunchPreview", () => {
     expect(preview.prerequisites.some((entry) => entry.startsWith("conflicting execution"))).toBe(true);
   });
 
-  it("names a provider with no supported launch adapter as a prerequisite, never silently substituting the packet's provider", () => {
-    expect(LAUNCH_ADAPTER_SUPPORT["codex-cli"]).toBeFalsy();
+  it("accepts a packet-selected Codex adapter without silently substituting another provider", () => {
+    expect(LAUNCH_ADAPTER_SUPPORT["codex-cli"]).toBe(true);
     const fixture = preparedFixture({ provider: "codex-cli", model: "gpt-5.6-terra", mappingId: "bundled-2026-07-25.1", bindingId: "codex-terra" });
     const preview = withReadOnlyDatabase(fixture.workspace, (db) =>
       buildLaunchPreview({
@@ -184,9 +184,9 @@ describe("buildLaunchPreview", () => {
         adapters: defaultAdapters as ProviderAdapterRegistry
       })
     );
-    expect(preview.ready).toBe(false);
-    expect(preview.prerequisites.some((entry) => entry.startsWith("unavailable provider"))).toBe(true);
-    expect(preview.selection?.provider).not.toBe("claude-code-cli");
+    expect(preview.ready).toBe(true);
+    expect(preview.prerequisites).toEqual([]);
+    expect(preview.selection?.provider).toBe("codex-cli");
   });
 });
 
