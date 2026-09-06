@@ -73,7 +73,7 @@ actions:
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/codingAgents/availability.ts", "src/codingAgents/providerAdapters.ts", "docs/plans/provider-capacity-harvesting.md", "docs/plans/agent-advance-queue.md"]
   - id: resolve-production-agent-and-launch-preview
     title: Preview execution with automatic coding-agent selection and an exact bounded launch contract.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Preview execution with automatic coding-agent selection and an exact bounded launch contract.
@@ -322,7 +322,7 @@ actions:
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/working-copy-safety.md", "docs/plans/mission-control-view/14-flight-deck-plan-amendment.yaml"]
 questions: []
 decisions: []
-current_action: resolve-production-agent-and-launch-preview
+current_action: connect-action-to-launch-packet
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---
