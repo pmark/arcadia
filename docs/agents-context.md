@@ -61,11 +61,13 @@ being asked, and without waiting for the plan to close out. Then say whether to
 continue in this session or start a new one and why, and which model and effort
 level the next batch actually needs.
 
-**End every stopping point with the choices, not with prose.** The operator
-should never have to read a report and work out what happens next from it.
-Present the real options — the next Action, a Decision waiting on an answer, a
-pull request to review or merge, the draft ask a blocker needs, ending the
-session — as a picker they can select from.
+**A stopping point has exactly two valid terminals: a pull request or an
+actionable picker.** Do not stop with a narrative report, a bare status update,
+or an `OK to go` line. If completed work is ready to hand over, open or update
+its pull request and link it. Otherwise present the live next moves as an
+actionable picker the operator can select without reconstructing the state. Use
+the host's native picker when it exists; where it does not, use a plainly
+labelled, numbered selection prompt. A one-option picker is still a picker.
 
 - **Every option states its consequence**, not just its name. "Merge #159" is a
   label; "Merge #159 — proposals go live for every adopting repo, and the
@@ -80,22 +82,10 @@ session — as a picker they can select from.
 - **Size the next batch.** Which model and effort level that work actually
   needs, not whatever is already running.
 
-The picker and the `OK to go` line below are the same commitment made at
-different widths: never leave the operator to derive the next move. Use the
-picker whenever more than one thing could reasonably happen next, and the line
-when exactly one can.
-
-When a message ends with exactly one concrete, immediately actionable next
-step — nothing blocking, no open question, no choice pending — end it with a
-fixed line, last in the message, preceded by a blank line:
-
-```
-OK to go: <verb-first, one-sentence description of exactly what will happen>
-```
-
-That prefix verbatim, never a paraphrase. Present if and only if the state is
-dispatchable. **Absence is the signal** — when nothing is ready, omit the line
-rather than writing "not ready yet" in its place.
+This rule applies even when there is exactly one immediate action: show that
+one action as a single-option picker unless a pull request is the completed
+work's handoff. The absence of both a pull request and a picker is a defect in
+the handoff, not a neutral ending.
 
 `docs/agent-continuation-protocol.md` carries these rules with the reasoning
 behind each. It is a reference, not a prerequisite: everything you must do is
