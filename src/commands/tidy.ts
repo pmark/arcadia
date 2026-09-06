@@ -189,8 +189,8 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
     : false;
   const protectionReasons = workspacePath
     ? (options.apply
-        ? withDatabase(workspacePath, (db) => worktreeProtectionReasons(db, repoRoot, worktrees))
-        : withReadOnlyDatabase(workspacePath, (db) => worktreeProtectionReasons(db, repoRoot, worktrees)))
+        ? withDatabase(workspacePath, (db) => worktreeProtectionReasons(db, controlWorktree, worktrees))
+        : withReadOnlyDatabase(workspacePath, (db) => worktreeProtectionReasons(db, controlWorktree, worktrees)))
     : new Map<string, string>();
   const assessed: TidyWorktree[] = worktrees.map((record) => assessWorktree({
     record, repoRoot, comparisonBase, controlWorktree, here, prMergeCommits, protectionReasons
@@ -216,7 +216,7 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
       // it so a preview-era verdict can never authorize a stale removal.
       const currentWorktrees = listWorktrees(repoRoot);
       const currentByPath = new Map(currentWorktrees.map((record) => [pathKey(record.path), record]));
-      const currentProtections = worktreeProtectionReasons(db, repoRoot, currentWorktrees);
+      const currentProtections = worktreeProtectionReasons(db, controlWorktree, currentWorktrees);
       for (const entry of assessed) {
         if (entry.verdict !== "merged" && entry.verdict !== "missing" && entry.verdict !== "detached") continue;
         const record = currentByPath.get(pathKey(entry.path)) ?? { path: entry.path, head: "", branch: entry.branch ? `refs/heads/${entry.branch}` : null };

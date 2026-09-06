@@ -210,6 +210,19 @@ describe("arcadia tidy — safety invariants", () => {
     expect(run(root, ["worktree", "list"])).toContain(tree);
   });
 
+  it("finds the primary-repository lease when tidy is invoked through a linked worktree", () => {
+    const root = repo();
+    const branch = "claude/invoked-through-linked-tree";
+    run(root, ["branch", branch]);
+    const tree = worktreeOn(root, branch, "invoked-through-linked-tree");
+    recordLiveSession(root, tree, branch);
+
+    const result = data(runTidyCommand({ repo: tree, workspace: workspaceFor(root), apply: true, noFetch: true, noGithub: true }));
+
+    expect(result.worktrees.find((candidate) => candidate.path === tree)?.verdict).toBe("protected");
+    expect(run(root, ["worktree", "list"])).toContain(tree);
+  });
+
   it("rechecks the Session lease under the apply interlock before retiring", () => {
     const root = repo();
     const branch = "claude/racing-session";
