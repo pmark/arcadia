@@ -5,24 +5,25 @@ import { permissionSnippets } from "../src/commands/goBrokerInstall.js";
 import { parseGoBrokerArguments, runGoBroker } from "../src/goBroker.js";
 
 describe("protected Arcadia go broker", () => {
-  it("derives the source from cwd and accepts only its fixed launcher agent", () => {
-    expect(parseGoBrokerArguments(["codex"], "./finished")).toEqual({
+  it("derives the source from cwd and accepts only fixed launcher inputs", () => {
+    expect(parseGoBrokerArguments(["codex", "go"], "./finished")).toEqual({
       source: path.resolve("./finished"),
-      agent: "codex"
+      agent: "codex",
+      operation: "go"
     });
-    expect(parseGoBrokerArguments(["claude"], "/tmp/finished").agent).toBe("claude");
+    expect(parseGoBrokerArguments(["claude", "advance"], "/tmp/finished").agent).toBe("claude");
   });
 
   it.each([
     { argv: [] },
-    { argv: ["codex", "--launch"] },
-    { argv: ["claude", "anything"] }
+    { argv: ["codex", "go", "--launch"] },
+    { argv: ["claude"] }
   ])("rejects any arity that could carry extra authority: $argv", ({ argv }) => {
     expectValidation(() => parseGoBrokerArguments(argv), "accepts no public arguments");
   });
 
   it("rejects an invalid fixed launcher agent", () => {
-    expectValidation(() => parseGoBrokerArguments(["other"]), "invalid fixed agent");
+    expectValidation(() => parseGoBrokerArguments(["other", "go"]), "invalid fixed agent");
   });
 
   it("previews and then applies the same fixed options without launch authority", () => {
@@ -35,7 +36,7 @@ describe("protected Arcadia go broker", () => {
     };
     const runner = vi.fn().mockReturnValue(response);
 
-    const result = runGoBroker({ source: "/tmp/finished", agent: "codex" }, runner as never);
+    const result = runGoBroker({ source: "/tmp/finished", agent: "codex", operation: "go" }, runner as never);
 
     expect(runner).toHaveBeenNthCalledWith(1, {
       repo: "/tmp/finished",
@@ -57,21 +58,67 @@ describe("protected Arcadia go broker", () => {
       throw new ArcadiaError("VALIDATION_ERROR", "unsafe source", 2);
     });
 
-    expect(() => runGoBroker({ source: "/tmp/finished", agent: "claude" }, runner as never)).toThrow("unsafe source");
+    expect(() => runGoBroker({ source: "/tmp/finished", agent: "claude", operation: "go" }, runner as never)).toThrow("unsafe source");
     expect(runner).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs advance only with the launcher's source repository and resolved workspace", () => {
+    const response = { ok: true as const, command: "advance", data: { transition: null, session: null }, artifacts: [], warnings: [] };
+    const advanceRunner = vi.fn().mockReturnValue(response);
+
+    const result = runGoBroker(
+      { source: "/tmp/prepared", agent: "codex", operation: "advance" },
+      vi.fn() as never,
+      advanceRunner as never,
+      vi.fn() as never,
+      () => "/tmp/arcadia-workspace"
+    );
+
+    expect(advanceRunner).toHaveBeenCalledWith({ workspace: "/tmp/arcadia-workspace", repo: "/tmp/prepared" });
+    expect(result.command).toBe("advance-broker");
+  });
+
+  it("runs work monitor locally without pull-request network access", () => {
+    const response = { ok: true as const, command: "work.monitor", data: { snapshot: {}, attentionLines: [] }, artifacts: [], warnings: [] };
+    const workMonitorRunner = vi.fn().mockReturnValue(response);
+
+    const result = runGoBroker(
+      { source: "/tmp/prepared", agent: "claude", operation: "work-monitor" },
+      vi.fn() as never,
+      vi.fn() as never,
+      workMonitorRunner as never,
+      () => "/tmp/arcadia-workspace"
+    );
+
+    expect(workMonitorRunner).toHaveBeenCalledWith({ workspace: "/tmp/arcadia-workspace", includePullRequests: false });
+    expect(result.command).toBe("work-monitor-broker");
   });
 
   it("generates rules for only the protected executable", () => {
     const executables = {
-      codex: "/Users/operator/.local/bin/arcadia-go-broker-codex",
-      claude: "/Users/operator/.local/bin/arcadia-go-broker-claude"
+      go: {
+        codex: "/Users/operator/.local/bin/arcadia-go-broker-codex",
+        claude: "/Users/operator/.local/bin/arcadia-go-broker-claude"
+      },
+      advance: {
+        codex: "/Users/operator/.local/bin/arcadia-advance-broker-codex",
+        claude: "/Users/operator/.local/bin/arcadia-advance-broker-claude"
+      },
+      workMonitor: {
+        codex: "/Users/operator/.local/bin/arcadia-work-monitor-broker-codex",
+        claude: "/Users/operator/.local/bin/arcadia-work-monitor-broker-claude"
+      }
     };
     expect(permissionSnippets(executables)).toEqual({
       codexRules: [
-        'prefix_rule(pattern=["/Users/operator/.local/bin/arcadia-go-broker-codex"], decision="allow")'
+        'prefix_rule(pattern=["/Users/operator/.local/bin/arcadia-go-broker-codex"], decision="allow")',
+        'prefix_rule(pattern=["/Users/operator/.local/bin/arcadia-advance-broker-codex"], decision="allow")',
+        'prefix_rule(pattern=["/Users/operator/.local/bin/arcadia-work-monitor-broker-codex"], decision="allow")'
       ],
       claudePermissions: [
-        "Bash(/Users/operator/.local/bin/arcadia-go-broker-claude)"
+        "Bash(/Users/operator/.local/bin/arcadia-go-broker-claude)",
+        "Bash(/Users/operator/.local/bin/arcadia-advance-broker-claude)",
+        "Bash(/Users/operator/.local/bin/arcadia-work-monitor-broker-claude)"
       ]
     });
   });
