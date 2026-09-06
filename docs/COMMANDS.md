@@ -1363,21 +1363,29 @@ The first command is a deterministic preview. `--apply` is accepted only when:
 - the source and any checked-out base worktree are clean;
 - the source has a named agent-owned branch (`codex/`, `claude/`, `agent/`, or
   Claude Code's `worktree-` prefix);
-- the local base branch is an ancestor of the source, so integration is a
-  strict fast-forward;
+- either the local base branch is an ancestor of the source, so integration is
+  a strict fast-forward, or the source is already integrated: it is an
+  ancestor of the base, or `git cherry <base> <source>` finds no source-only
+  patches and Arcadia's local net-diff proof confirms those patches remain on
+  the base;
 - the repository resolves exactly one dispatchable Arcadia Action with no open
   Decision or document blocker; and
-- the source is neither detached nor historically divergent.
+- the source is not detached and has no source-only patch; a genuinely
+  divergent source remains a manual reconciliation refusal.
 
 On `--apply`, Arcadia first fetches the base branch's tracked remote and
 fast-forwards local base onto it when that is a clean ancestor merge —
 skipping cleanly (reported in `baseRemoteSync`) when no remote is tracked, and
 refusing outright when local base has diverged from the fetched remote rather
-than silently dispatching from stale state. It then fast-forwards the local
-base branch with the source, removes a linked source worktree or switches a
-primary task checkout back to the base branch, deletes only the now-merged
-source branch, prunes worktree metadata, rechecks dispatch, and reports the
-base ref plus the `arcadia advance` handoff. With
+than silently dispatching from stale state. It fast-forwards the local base
+branch only when needed. An already-integrated source leaves the base
+unchanged, then follows the same retirement and dispatch path. Arcadia removes
+a linked source worktree or switches a primary task checkout back to the base
+branch, deletes only the verified-safe local source branch, prunes worktree
+metadata, rechecks dispatch, and reports the base ref plus the `arcadia
+advance` handoff. Cleanup never pushes, deletes, or otherwise mutates a remote
+ref; a stale source tracking ref cannot veto local retirement after the local
+proof succeeds. With
 `--agent codex` or `--agent claude`, it also creates a uniquely named isolated
 worktree from that updated local base and prints an exact launch command,
 pinned to a model: `--model` on the command line, else the plan's
