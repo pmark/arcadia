@@ -8,7 +8,9 @@ import { buildAgentQueue, type AgentQueue, type AgentQueueEntry } from "../dispa
 import { arrangeActionOrder, moveActionOrder, undoActionOrder, type ActionOrderReceipt } from "../dispatch/order.js";
 import { transitionActionPointer, type PointerTransitionReceipt } from "../dispatch/pointer.js";
 import { discoverDocs } from "../docs/discover.js";
+import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import { getLatestSession, getSession, resolveProjectTransition, sessionView, type ProjectTransition } from "../sessions/index.js";
+import { buildLaunchPreview, type LaunchPreview } from "../sessions/launchPreview.js";
 
 export interface AdvanceQueueCommandData extends AgentQueue {}
 export interface AdvanceQueueReorderData { receipt: ActionOrderReceipt; nextActionKey: string | null; }
@@ -72,6 +74,58 @@ export function renderSessionShowSuccess(response: ReturnType<typeof runSessionS
     `Reattach: ${data.reattachCommand}`,
     `Resume after exit: ${data.resumeCommand}`
   ];
+}
+
+export function runSessionPreviewLaunchCommand(options: {
+  workspace: string;
+  repo: string;
+  requestId: string;
+}): CommandSuccess<LaunchPreview> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const repoRoot = existingDirectory(options.repo, "repository");
+  const project = discoverDocs(repoRoot).docs.find((doc) => doc.type === "project");
+  if (!project || project.type !== "project") throw new Error("Arcadia launch preview requires one managed Project document.");
+  const registries = loadPhase3Registries(workspacePath);
+  validatePhase3Registries(registries);
+  if (!registries.providerAdapters) throw new Error("Arcadia launch preview requires a configured provider-adapters registry.");
+  const preview = withReadOnlyDatabase(workspacePath, (db) =>
+    buildLaunchPreview({
+      db,
+      workspace: workspacePath,
+      repoRoot,
+      projectSlug: project.slug,
+      requestId: options.requestId,
+      profiles: registries.codingAgents.profiles,
+      adapters: registries.providerAdapters!
+    })
+  );
+  return createSuccess({ command: "session.previewLaunch", workspace: workspacePath, data: preview });
+}
+
+export function renderSessionPreviewLaunchSuccess(response: CommandSuccess<LaunchPreview>): string[] {
+  const data = response.data;
+  const lines = [
+    `Request: ${data.requestId}`,
+    `Preview fingerprint: ${data.previewFingerprint}`,
+    `Action: ${data.actionDocRef ?? "(none dispatchable)"}`,
+    `Queue revision: ${data.queueRevision}`,
+    `Base revision: ${data.baseRevision ?? "(unknown)"}`
+  ];
+  if (data.selection) {
+    lines.push(`Selection: ${data.selection.provider}/${data.selection.model} · effort ${data.selection.effort} · binding ${data.selection.mappingId}/${data.selection.bindingId}`);
+    if (data.selectionRationale) lines.push(`Rationale: ${data.selectionRationale}`);
+  } else {
+    lines.push("Selection: none resolved");
+  }
+  if (data.packet) lines.push(`Packet: ${data.packet.invocationId} · sha256 ${data.packet.sha256}`);
+  if (data.authorizingDecisions.length > 0) lines.push(`Authorizing Decisions: ${data.authorizingDecisions.join(", ")}`);
+  if (data.ready) {
+    lines.push("Ready: this Action may be launched with no further preparation.");
+  } else {
+    lines.push("Not ready — prerequisites:");
+    for (const prerequisite of data.prerequisites) lines.push(`  - ${prerequisite}`);
+  }
+  return lines;
 }
 
 export function runAdvanceQueueCommand(options: { workspace: string }): CommandSuccess<AdvanceQueueCommandData> {
