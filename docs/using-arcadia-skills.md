@@ -13,6 +13,10 @@ rendered, machine-specific copy.
 - `arcadia-go`: reconcile a completed agent worktree and prepare the next one;
   Codex and Claude Code share this personal skill through
   `~/.claude/skills/arcadia-go -> ~/.codex/skills/arcadia-go`.
+- `arcadia-agent-ask`: draft, edit, and preview repository-local
+  `agent-ask.yaml` inputs without an approval pause; Codex and Claude Code
+  share it through `~/.claude/skills/arcadia-agent-ask ->
+  ~/.codex/skills/arcadia-agent-ask`.
 
 Codex should still prefer deterministic Arcadia CLI commands over inference.
 
@@ -34,18 +38,23 @@ other files it changes, keeps both sandboxes enabled, and keeps bypass mode
 disabled. `status` must report `READY` before unattended handoff is considered
 installed.
 
-The `arcadia-go` skill then invokes only:
+The `arcadia-go` skill invokes only fixed, no-argument launchers:
 
 ```sh
 ~/.local/bin/arcadia-go-broker-codex
 # Claude Code uses: ~/.local/bin/arcadia-go-broker-claude
+~/.local/bin/arcadia-advance-broker-codex
+# Claude Code uses: ~/.local/bin/arcadia-advance-broker-claude
+~/.local/bin/arcadia-work-monitor-broker-codex
+# Claude Code uses: ~/.local/bin/arcadia-work-monitor-broker-claude
 ```
 
 Run the matching provider executable with no arguments from the completed
-worktree; no `--apply` or `--agent` flag belongs in the skill. The installed
-broker performs the preview/apply sequence internally and rejects every public
-argument. Re-run the installer only after reviewing a
-new Arcadia commit.
+worktree; no `--apply` or `--agent` flag belongs in the skill. In the prepared
+worktree it uses the fixed `advance` and read-only `work-monitor` launchers,
+then proceeds with ordinary local read-only discovery without asking for
+approval. The launchers reject every public argument. Re-run the installer
+only after reviewing a new Arcadia commit.
 
 ## Daily Arcadia Workspace Startup
 

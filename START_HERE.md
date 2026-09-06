@@ -794,19 +794,26 @@ receive timestamped backups. Verify the entire chain with:
 pnpm arcadia go-broker status
 ```
 
-The installed shared skill invokes only:
+The installed shared skill invokes only fixed, no-argument launchers:
 
 ```sh
 ~/.local/bin/arcadia-go-broker-codex
 # Claude Code uses: ~/.local/bin/arcadia-go-broker-claude
+~/.local/bin/arcadia-advance-broker-codex
+# Claude Code uses: ~/.local/bin/arcadia-advance-broker-claude
+~/.local/bin/arcadia-work-monitor-broker-codex
+# Claude Code uses: ~/.local/bin/arcadia-work-monitor-broker-claude
 ```
 
-Run the matching executable with no arguments from the completed worktree. It
-runs Arcadia's canonical preview and then the identical apply itself, emits
-only the final JSON result, and rejects every argument—including `--launch`,
-model, effort, workspace, and repository overrides. The installed snapshot
-lives outside agent worktrees, so normal sandbox guards protect the executable
-while the narrow command rule removes only the repeated approval prompt.
+Run the `go` executable with no arguments from the completed worktree. It runs
+Arcadia's canonical preview and then the identical apply itself. In the newly
+prepared worktree, the installed skill runs the fixed `advance` launcher and
+the read-only `work-monitor` launcher before code changes, then performs its
+ordinary local read-only inspection without an approval question. Every
+launcher rejects public arguments—including `--launch`, model, effort,
+workspace, and repository overrides. The installed snapshot lives outside
+agent worktrees, so normal sandbox guards protect the executables while the
+narrow command rules remove only these repeated workflow prompts.
 Reinstall after a reviewed Arcadia update to move the broker and managed skill
 to the new commit. A healthy repeat install changes nothing.
 
