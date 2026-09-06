@@ -773,6 +773,33 @@ local base branch and prints the exact Codex or Claude Code launch command with
 `arcadia advance`. The personal `arcadia-go` skill performs the preview/apply
 sequence and uses the current agent's native session handoff when available.
 
+For unattended `arcadia-go` skill runs, do not allowlist the general Arcadia
+launcher or an `arcadia go` prefix. Install the protected broker from a clean,
+reviewed Arcadia commit as an explicit operator action:
+
+```sh
+pnpm arcadia go-broker install
+```
+
+The installer copies that exact commit and its production dependencies to a
+revision-addressed directory under `~/.local/share/arcadia/go-broker/`, then
+atomically points provider-specific launchers under `~/.local/bin/` at it. Its
+output includes the exact Codex rule and Claude Code `permissions.allow`
+entry. The shared personal skill must invoke only:
+
+```sh
+~/.local/bin/arcadia-go-broker-codex
+# Claude Code uses: ~/.local/bin/arcadia-go-broker-claude
+```
+
+Run the matching executable with no arguments from the completed worktree. It
+runs Arcadia's canonical preview and then the identical apply itself, emits
+only the final JSON result, and rejects every argument—including `--launch`,
+model, effort, workspace, and repository overrides. The installed snapshot
+lives outside agent worktrees, so normal sandbox guards protect the executable
+while the narrow command rule removes only the repeated approval prompt.
+Reinstall after a reviewed Arcadia update to move the broker to a new commit.
+
 To opt into Arcadia launching the next Claude Code process, add `--launch`.
 This is the only `go` option that authorizes process creation; preview and the
 manual command above remain non-launching:

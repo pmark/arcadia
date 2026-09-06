@@ -7,8 +7,38 @@ These examples show how to use the local Codex skills for real Arcadia work. The
 - `arcadia-dogfood-workflow`: use only when explicitly managing the repo-local `.arcadia-workspace/` compatibility workflow.
 - `arcadia-workspace-operator`: use when inspecting or operating any Arcadia workspace.
 - `arcadia-development-loop`: use when explicitly asked to change Arcadia code while keeping the work tracked through an Arcadia workspace.
+- `arcadia-go`: reconcile a completed agent worktree and prepare the next one;
+  Codex and Claude Code share this personal skill through
+  `~/.claude/skills -> ~/.codex/skills`.
 
 Codex should still prefer deterministic Arcadia CLI commands over inference.
+
+## Protected unattended worktree handoff
+
+After reviewing an Arcadia commit, install its broker once as the operator:
+
+```sh
+pnpm arcadia go-broker install
+```
+
+Copy the installer output's exact Codex rule into
+`~/.codex/rules/default.rules` and its exact Claude Code entry into
+`permissions.allow` in `~/.claude/settings.json`. Remove older allowances for
+`arcadia go`, `pnpm arcadia go`, or a mutable repository launcher. Keep the
+normal Codex and Claude Code sandboxes enabled and do not enable bypass mode.
+
+The `arcadia-go` skill then invokes only:
+
+```sh
+~/.local/bin/arcadia-go-broker-codex
+# Claude Code uses: ~/.local/bin/arcadia-go-broker-claude
+```
+
+Run the matching provider executable with no arguments from the completed
+worktree; no `--apply` or `--agent` flag belongs in the skill. The installed
+broker performs the preview/apply sequence internally and rejects every public
+argument. Re-run the installer only after reviewing a
+new Arcadia commit.
 
 ## Daily Arcadia Workspace Startup
 

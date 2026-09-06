@@ -1394,6 +1394,33 @@ This command intentionally evaluates only the named source worktree. Other
 worktrees remain untouched. Unsafe source state is a refusal with an exact
 remedy, not permission to clean it automatically.
 
+Install the protected broker used by unattended Codex and Claude Code
+`arcadia-go` skills:
+
+```sh
+pnpm arcadia go-broker install
+```
+
+Installation is refused unless Arcadia is at a clean, committed repository
+root. The command builds the CLI, creates a production dependency snapshot at
+`~/.local/share/arcadia/go-broker/releases/<git-sha>/`, and atomically updates
+provider-specific launchers under `~/.local/bin/`. It prints the exact narrow
+permission entries for both agents. Installation is an operator setup/update
+action; the broker itself exposes only this runtime contract:
+
+```sh
+~/.local/bin/arcadia-go-broker-codex
+# Claude Code uses: ~/.local/bin/arcadia-go-broker-claude
+```
+
+Run the matching executable with no arguments from the completed worktree. It
+calls the same `runGoCommand` implementation first in preview mode and then
+with the identical fixed inputs plus apply. Apply repeats all validation, so a
+race or state change fails closed. Every public argument is refused. No broker
+invocation can request `--launch`, choose a model or effort, override the
+workspace, or redirect the repository. Its success output is the final apply
+JSON; a refusal is JSON on stderr.
+
 List every open GitHub pull request across Project repositories with
 plain-English readiness ratings. This is read-only and reports repository
 configuration or GitHub lookup errors explicitly:
