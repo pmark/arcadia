@@ -5,7 +5,7 @@ import { validationError } from "../cli/errors.js";
 import { invocationRoot } from "../cli/invocation.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { withDatabase } from "../db/connection.js";
+import { withDatabase, writeTransaction } from "../db/connection.js";
 import { discoverDocs } from "../docs/discover.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import {
@@ -28,6 +28,7 @@ import {
 import {
   launchPreparedSession,
   prepareSession,
+  reserveAgentWorktree,
   resolveProjectTransition,
   systemTmux,
   type AgentSession,
@@ -53,6 +54,8 @@ export interface GoCommandOptions {
   now?: Date;
   /** Test-only process boundary. */
   tmux?: TmuxAdapter;
+  /** Deterministic fault injection after Git creation but before reservation commit. */
+  testHooks?: { afterWorktreeCreatedBeforeReservationCommit?: () => void };
 }
 
 export interface BaseRemoteSync {
@@ -249,9 +252,8 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     }
     const effort = options.effort ?? dispatch.context?.planRecommendedReasoningEffort ?? null;
 
-    let workspacePath: string | null = null;
-    if (options.launch) {
-      workspacePath = resolveReadyWorkspace(options.workspace).workspacePath;
+    const workspacePath = resolveReadyWorkspace(options.workspace).workspacePath;
+    if (options.launch && workspacePath) {
       const transition = withDatabase(workspacePath, (db) => resolveProjectTransition({
         repoRoot: controlWorktree,
         projectSlug,
@@ -267,7 +269,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       }
     }
 
-    nextWorktree = createAgentWorktree({
+    const worktreeInput = {
       agent: options.agent,
       actionId,
       baseBranch,
@@ -276,7 +278,36 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       now: options.now ?? new Date(),
       model,
       effort
-    });
+    };
+    const reservationCommitCleanup: { candidate: GoCommandData["nextWorktree"] } = { candidate: null };
+    try {
+      nextWorktree = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
+        const created = createAgentWorktree({
+          ...worktreeInput,
+          beforeCreate(candidate) {
+            reserveAgentWorktree(db, {
+              repositoryPath: controlWorktree,
+              worktreePath: candidate.path,
+              branch: candidate.branch,
+              now: worktreeInput.now
+            });
+          }
+        });
+        reservationCommitCleanup.candidate = created;
+        options.testHooks?.afterWorktreeCreatedBeforeReservationCommit?.();
+        return created;
+      }));
+    } catch (error) {
+      // If SQLite cannot commit after Git created the worktree, do not leave a
+      // clean, unreserved handoff that unattended tidy could immediately
+      // retire. This worktree was created by this failed call and cannot yet
+      // contain agent changes, so compensating removal is lossless.
+      if (reservationCommitCleanup.candidate) {
+        tryGit(controlWorktree, ["worktree", "remove", reservationCommitCleanup.candidate.path]);
+        tryGit(controlWorktree, ["branch", "-D", reservationCommitCleanup.candidate.branch]);
+      }
+      throw error;
+    }
 
     if (options.launch && workspacePath) {
       const prepared = withDatabase(workspacePath, (db) => prepareSession({
@@ -432,6 +463,7 @@ function createAgentWorktree(input: {
   now: Date;
   model: string;
   effort: string | null;
+  beforeCreate?: (candidate: NonNullable<GoCommandData["nextWorktree"]>) => void;
 }): NonNullable<GoCommandData["nextWorktree"]> {
   const stamp = input.now.toISOString().replaceAll(/[-:.]/g, "").replace(/Z$/, "Z");
   const safeAction = input.actionId.replaceAll(/[^a-z0-9-]/gi, "-").toLowerCase().slice(0, 72);
@@ -444,10 +476,18 @@ function createAgentWorktree(input: {
   if (existsSync(worktreePath)) {
     throw validationError("The prepared agent worktree path already exists.", { worktreePath });
   }
+  const candidate = {
+    agent: input.agent,
+    path: worktreePath,
+    branch,
+    model: input.model,
+    effort: input.effort,
+    command: buildLaunchCommand(input.agent, worktreePath, input.model, input.effort)
+  };
+  input.beforeCreate?.(candidate);
   mkdirSync(path.dirname(worktreePath), { recursive: true });
   git(input.repositoryPath, ["worktree", "add", "-b", branch, worktreePath, input.baseBranch]);
-  const command = buildLaunchCommand(input.agent, worktreePath, input.model, input.effort);
-  return { agent: input.agent, path: worktreePath, branch, model: input.model, effort: input.effort, command };
+  return candidate;
 }
 
 /**

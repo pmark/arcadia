@@ -1084,11 +1084,20 @@ arcadia tidy              # dry run — nothing is changed
 arcadia tidy --apply      # retires what the dry run listed
 ```
 
-The safety rule is one sentence, true by construction: **nothing is removed
-unless every commit it carries is already reachable from the base branch, and
-its working tree is clean.** A branch whose commits are all ancestors of the
-base branch has no commits of its own to lose, so this cannot destroy work —
-there is no state in which it does.
+`--apply` also requires the Arcadia workspace (resolved normally, or supplied
+with `--workspace`). Before removing anything, `tidy` checks live `prepared`
+and `running` Session leases and the 24-hour reservation written by `arcadia
+go --apply` for a newly prepared handoff. The check and removal share the same
+database interlock, so a concurrent `go` or `tidy` cannot turn a stale preview
+into permission to remove live work. A dry run without workspace protection is
+labelled preview-only; apply is refused.
+
+The Git safety rule is: **nothing is removed unless its working tree is clean
+and every branch change is proven present on the base branch.** Proof may be
+literal ancestry, patch equivalence whose net effect is still present, or a
+verified merged pull-request commit. Git rechecks dirty state at removal time,
+and forced branch retirement uses a content-addressed archive tag plus an
+atomic compare-and-swap delete, so a concurrently advanced branch survives.
 
 It fetches `origin` first by default. Every worktree in a repository shares one
 set of refs, so a `main` nobody has pulled in recently makes every worktree's
@@ -1102,6 +1111,9 @@ becomes an ancestor of the base branch — only the commit GitHub actually
 produced does. `tidy` verifies that commit's ancestry rather than trusting
 GitHub's "merged" label alone, so a squash-merged branch is correctly retired
 instead of sitting forever in "unmerged." Pass `--no-github` to skip this.
+Authentication, rate-limit, malformed-response, and remote-resolution failures
+disable this proof for the run and are reported as unavailable; they never
+produce a merged verdict.
 
 Merged branches you named yourself are reported but not retired, since
 deleting your own ref is your call — pass `--include-own-branches` to include

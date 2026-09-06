@@ -70,6 +70,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureNarrativeDigestScopeColumns(db);
   ensureProofTargetChecksTable(db);
   ensureAgentSessionsTable(db);
+  ensureAgentWorktreeReservationsTable(db);
   ensureAgentResponsibilityValue(db);
   ensureProductionPolicyTables(db);
   applyCapabilityMigrations(db);
@@ -203,6 +204,21 @@ function ensureAgentSessionsTable(db: Database.Database): void {
       ON agent_sessions(repository_path)
       WHERE status IN ('prepared', 'running');
     CREATE INDEX IF NOT EXISTS idx_agent_sessions_project ON agent_sessions(project_id, prepared_at DESC);
+  `);
+}
+
+function ensureAgentWorktreeReservationsTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_worktree_reservations (
+      id TEXT PRIMARY KEY,
+      repository_path TEXT NOT NULL,
+      worktree_path TEXT NOT NULL UNIQUE,
+      branch TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_worktree_reservations_repository
+      ON agent_worktree_reservations(repository_path, expires_at);
   `);
 }
 

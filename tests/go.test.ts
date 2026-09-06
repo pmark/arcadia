@@ -1,10 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { runGoCommand } from "../src/commands/go.js";
+import { runTidyCommand } from "../src/commands/tidy.js";
+import { withReadOnlyDatabase } from "../src/db/connection.js";
+import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
 
@@ -70,6 +73,7 @@ describe("arcadia go", () => {
       source: fixture.feature,
       apply: true,
       agent: "claude",
+      workspace: fixture.workspace,
       model: "claude-sonnet-5",
       agentWorktreeRoot: agentRoot,
       now: new Date("2026-08-05T12:34:56.000Z")
@@ -83,6 +87,56 @@ describe("arcadia go", () => {
     expect(existsSync(result.data.nextWorktree!.path)).toBe(true);
     expect(git(result.data.nextWorktree!.path, ["branch", "--show-current"]).trim()).toBe(result.data.nextWorktree!.branch);
     expect(git(result.data.nextWorktree!.path, ["merge-base", "--is-ancestor", "main", "HEAD"])).toBe("");
+  });
+
+  it("keeps the zero-commit handoff when tidy --apply runs immediately after go --apply", () => {
+    const fixture = createFixture("codex/prepare-then-tidy");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    const handoff = runGoCommand({
+      repo: fixture.main,
+      source: fixture.feature,
+      apply: true,
+      agent: "codex",
+      model: "gpt-5.6-terra",
+      workspace: fixture.workspace,
+      agentWorktreeRoot: path.join(fixture.root, "agent-worktrees"),
+      now: new Date("2026-09-06T12:34:56.000Z")
+    }).data.nextWorktree!;
+
+    const tidy = runTidyCommand({ repo: fixture.main, workspace: fixture.workspace, apply: true }).data;
+
+    expect(tidy.worktrees.find((candidate: { path: string }) => candidate.path === realpathSync(handoff.path))?.verdict).toBe("protected");
+    expect(existsSync(handoff.path)).toBe(true);
+    expect(git(fixture.main, ["worktree", "list"])).toContain(handoff.path);
+  });
+
+  it("removes the just-created worktree if its reservation transaction cannot commit", () => {
+    const fixture = createFixture("codex/reservation-failure");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    const agentRoot = path.join(fixture.root, "agent-worktrees");
+    const expectedPath = path.join(agentRoot, "define-contract-20260906T123456000Z", "repo");
+
+    expect(() => runGoCommand({
+      repo: fixture.main,
+      source: fixture.feature,
+      apply: true,
+      agent: "codex",
+      model: "gpt-5.6-terra",
+      workspace: fixture.workspace,
+      agentWorktreeRoot: agentRoot,
+      now: new Date("2026-09-06T12:34:56.000Z"),
+      testHooks: {
+        afterWorktreeCreatedBeforeReservationCommit() {
+          throw new Error("synthetic reservation commit failure");
+        }
+      }
+    })).toThrow("synthetic reservation commit failure");
+
+    expect(existsSync(expectedPath)).toBe(false);
+    expect(() => git(fixture.main, ["show-ref", "--verify", "refs/heads/codex/define-contract-20260906T123456000Z"])).toThrow();
+    expect(withReadOnlyDatabase(fixture.workspace, (db) =>
+      (db.prepare("SELECT COUNT(*) AS count FROM agent_worktree_reservations").get() as { count: number }).count
+    )).toBe(0);
   });
 
   it("fails closed when the source worktree is dirty", () => {
@@ -178,7 +232,7 @@ describe("arcadia go — next-session model resolution", () => {
     commitFeature(fixture.feature, "proof.txt", "proof\n");
 
     expectValidation(
-      () => runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "claude" }),
+      () => runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "claude", workspace: fixture.workspace }),
       "does not resolve exactly one dispatchable"
     );
     expect(existsSync(fixture.feature)).toBe(true);
@@ -189,7 +243,7 @@ describe("arcadia go — next-session model resolution", () => {
     const fixture = createFixture("codex/plan-model", planDocumentWithModel);
     commitFeature(fixture.feature, "proof.txt", "proof\n");
 
-    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "claude" });
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "claude", workspace: fixture.workspace });
 
     expect(result.data.nextWorktree?.model).toBe("opus");
     expect(result.data.nextWorktree?.effort).toBe("high");
@@ -205,6 +259,7 @@ describe("arcadia go — next-session model resolution", () => {
       source: fixture.feature,
       apply: true,
       agent: "claude",
+      workspace: fixture.workspace,
       model: "claude-haiku-4-5",
       effort: "low"
     });
@@ -217,7 +272,7 @@ describe("arcadia go — next-session model resolution", () => {
     const fixture = createFixture("codex/codex-shape", planDocumentWithModel);
     commitFeature(fixture.feature, "proof.txt", "proof\n");
 
-    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "codex" });
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "codex", workspace: fixture.workspace });
 
     expect(result.data.nextWorktree?.command).toContain('-m "opus"');
     expect(result.data.nextWorktree?.command).toContain('-c model_reasoning_effort="high"');
@@ -228,18 +283,19 @@ describe("arcadia go — next-session model resolution", () => {
     const fixture = createFixture("codex/model-only", planDocument);
     commitFeature(fixture.feature, "proof.txt", "proof\n");
 
-    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "claude", model: "claude-sonnet-5" });
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "claude", model: "claude-sonnet-5", workspace: fixture.workspace });
 
     expect(result.data.nextWorktree?.effort).toBeNull();
     expect(result.data.nextWorktree?.command).not.toContain("--effort");
   });
 });
 
-function createFixture(branch: string, plan: string = planDocument): { root: string; main: string; feature: string } {
+function createFixture(branch: string, plan: string = planDocument): { root: string; main: string; feature: string; workspace: string } {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-go-"));
   roots.push(root);
   const main = path.join(root, "repo");
   const feature = path.join(root, "feature");
+  const workspace = path.join(root, "workspace");
   mkdirSync(main);
   git(main, ["init", "-q", "-b", "main"]);
   git(main, ["config", "user.email", "arcadia@example.test"]);
@@ -253,7 +309,8 @@ function createFixture(branch: string, plan: string = planDocument): { root: str
   git(main, ["commit", "-m", "initial"]);
   git(main, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
   git(main, ["worktree", "add", "-q", "-b", branch, feature, "main"]);
-  return { root, main, feature };
+  initWorkspace(workspace);
+  return { root, main, feature, workspace };
 }
 
 /** Like createFixture, but `main` is a real clone of a separate remote repo, so `git fetch` has something distinct to pull. */

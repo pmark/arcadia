@@ -52,11 +52,18 @@ arcadia tidy              # dry run; nothing is changed
 arcadia tidy --apply      # retires exactly what the dry run listed
 ```
 
-Its removal rule is one sentence, true by construction rather than by careful
-checking: **nothing is removed unless every commit it carries is already
-reachable from the base branch, and its working tree is clean.** A branch
-whose commits are all ancestors of base has no commits of its own to lose, so
-this cannot destroy work — there is no state in which it does.
+Apply requires a resolved Arcadia workspace. `tidy` protects every worktree
+named by a live `prepared` or `running` Session lease and every unexpired
+24-hour handoff reservation written by `arcadia go --apply`. It rechecks those
+records and Git state while holding the same immediate database interlock used
+to create reservations, so two applies serialize and a stale pre-lock read
+cannot authorize removal. A preview that cannot inspect the workspace says so;
+`--apply` refuses in that state.
+
+Its Git removal rule is: **nothing is removed unless every branch change is
+still present on the base branch and its working tree is clean.** A branch
+whose commits are all ancestors of base has no commits of its own to lose;
+rewritten-history proofs receive the extra checks below.
 
 Proving "already reachable" takes three checks, run in order, each catching
 what the others miss:
@@ -64,8 +71,10 @@ what the others miss:
 1. **Ancestry** — the ordinary case: the branch's commits are literal
    ancestors of the base branch.
 2. **Patch equivalence** (`git cherry`) — catches cherry-picks, rebases, and
-   amended commits, which rewrite history so the branch is never a literal
-   ancestor even though its content landed. Local, offline, no credentials.
+   amended commits, then reverse-checks the branch's cumulative diff against a
+   temporary index loaded from the current base. This prevents an old
+   apply-then-revert from being mistaken for content that is still present.
+   Local, offline, no credentials.
 3. **Verified pull-request merge** — checks GitHub for a merged pull request on
    the branch and verifies *that commit's* ancestry, not merely GitHub's
    "merged" label. This is what catches a squash or rebase merge, which
@@ -81,9 +90,13 @@ place.
 When git's own `branch -d` refuses a branch this process has already proven
 safe — which happens for squash/rebase merges and for any branch whose remote
 counterpart still exists, since git compares against the upstream rather than
-the base — `tidy` writes an `archive/<branch>` tag before forcing the delete,
-and prints the restore command. Push those tags and the commit is recoverable
-by name, forever, from any clone, independent of the branch that pointed to it.
+the base — `tidy` writes a non-overwriting
+`archive/tidy/<full-commit-sha>` tag, then deletes the branch only if its ref
+still equals that exact SHA. Branch-name collisions and branch reuse therefore
+cannot overwrite an earlier archive, and a concurrent new commit prevents the
+delete. The restore command is printed. Push those tags and the commit is
+recoverable by name from any clone, independent of the branch that pointed to
+it.
 
 `arcadia go` reports a local-only count of extra worktrees and already-merged
 branches at the end of every run, pointing at `tidy` when there is anything to
