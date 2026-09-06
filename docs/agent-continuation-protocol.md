@@ -123,7 +123,15 @@ what could happen next, and decide which of those to ask for. That job is the
 agent's, and doing it badly is how momentum dies at exactly the moment there is
 the most to show for the work.
 
-So every stopping point ends with the actual choices, presented as a picker.
+So every stopping point ends with one of two explicit handoffs: an opened or
+updated pull request for completed work, or the actual live choices presented
+as an actionable picker. A narrative report, a bare status update, and an
+`OK to go` line alone are invalid terminals.
+
+Use the host's native picker when it is available. Otherwise, present a
+plainly labelled numbered selection prompt. A single live next action still
+requires a one-option picker; never make the operator infer that they should
+reply "continue".
 
 - **Each option states its consequence.** Selecting is only cheap when the cost
   of each option is already on screen; otherwise the operator has to reconstruct
@@ -143,44 +151,11 @@ So every stopping point ends with the actual choices, presented as a picker.
 - **Size the next batch** — model and effort for the work being chosen, not for
   the work just finished.
 
-This is the same principle as the `OK to go` line below, at a different width.
-That line is what a picker collapses to when exactly one thing can happen next;
-the picker is what it expands to when several can. Neither is optional, and
-between them there is no stopping point where the operator is left to derive
-the next move unaided.
+The pull request and picker cover every stopping point. The former is the
+actionable handoff for delivered code; the latter makes the next required
+operator or agent move explicit. Between them there is no stopping point where
+the operator is left to derive what to do unaided.
 
-### The "OK to go" line
-
-A coding agent is not the final authority on whether to execute; the operator
-is, and eventually Arcadia's dispatch loop will be. That only works if "this is
-ready to run" is signaled identically every time, so it can be acted on without
-re-reading the whole message to decide whether acting is safe.
-
-When a message ends with exactly one concrete, immediately actionable next step
-— no open question, no blocker, no choice still pending — end it with:
-
-```
-OK to go: <verb-first, one-sentence description of exactly what will happen>
-```
-
-- **Fixed prefix, verbatim.** Always `OK to go:`, never a paraphrase. A human
-  skimming, or a future dispatcher, must be able to match `^OK to go:` and trust
-  what it finds.
-- **Last line of the message**, preceded by a blank line. The unambiguous
-  terminal element, not one option folded among several.
-- **Verb-first clause** — the same discipline required of a valid Action's
-  `next_action`. "Push the migration to staging," not "The migration is ready."
-- **Present if and only if** dispatch would call the state dispatchable: one
-  clear action, nothing blocking, no operator decision required first. This is
-  the agent's half of the same three-way split `arcadia next` resolves to.
-- **Never appears** when a question is open, options are still on the table, the
-  next step would cross an authority boundary without approval already given, or
-  the message is purely informational.
-- **Absence is the signal.** When nothing is ready, omit the line entirely — do
-  not write "not ready yet" in its place. One fixed positive signal, reliably
-  present or reliably absent, is worth more than prose that must be read to be
-  trusted.
-
-This applies in every message, in every repository on the Arcadia Way — not only
-after a milestone.
+This applies in every message, in every repository on the Arcadia Way — not
+only after a milestone.
 <!-- ARCADIA_CONTEXT_END -->

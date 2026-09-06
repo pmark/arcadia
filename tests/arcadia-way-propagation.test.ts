@@ -82,8 +82,9 @@ describe("adopted AGENTS.md block", () => {
 
     // The whole point: this block is loaded automatically, a linked document is
     // not. An agent that reads only this must still know what it owes.
-    expect(rendered).toContain("OK to go:");
-    expect(rendered).toContain("Absence is the signal");
+    expect(rendered).toContain("exactly two valid terminals: a pull request or an");
+    expect(rendered).toContain("actionable picker");
+    expect(rendered).toContain("A one-option picker is still a picker");
     expect(rendered).toContain("record one precise operator question");
     expect(rendered).toContain("is itself a stopping condition");
     expect(rendered).toContain("docs/agent-continuation-protocol.md");
