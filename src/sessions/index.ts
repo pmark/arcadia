@@ -55,6 +55,13 @@ export interface AgentSession {
   updated_at: string;
 }
 
+type SessionAgent = "codex" | "claude";
+
+const SESSION_PROVIDER: Record<SessionAgent, string> = {
+  codex: "codex-cli",
+  claude: "claude-code-cli"
+};
+
 export interface AgentWorktreeReservation {
   id: string;
   repository_path: string;
@@ -105,6 +112,16 @@ export function resolveProjectTransition(input: {
         dispatch
       };
     }
+    const run = getCompetingManagedRun(input.db, path.resolve(input.repoRoot));
+    if (run) {
+      return {
+        kind: "wait",
+        reason: `Managed Run ${run.id} is still ${run.status} for this repository.`,
+        nextAction: `Wait for or reconcile managed Run ${run.id} before launching another Session.`,
+        sessionId: null,
+        dispatch
+      };
+    }
   }
   if (isDispatchable(dispatch)) {
     return { kind: "launch", reason: "The selected Action is dispatchable.", nextAction: dispatch.context!.action.nextAction!, sessionId: null, dispatch };
@@ -133,7 +150,7 @@ export function prepareSession(input: {
   workspace: string;
   repoRoot: string;
   dispatch: DispatchResolution;
-  agent: "claude";
+  agent: SessionAgent;
   model: string;
   effort: string | null;
   baseRevision: string;
@@ -162,10 +179,11 @@ export function prepareSession(input: {
     throw validationError("The prepared build packet metadata is stale or belongs to another Action.");
   }
   const selected = metadata.providerSelection;
-  if (!selected || selected.provider !== "claude-code-cli") {
-    throw validationError("The selected provider does not match the requested Claude Code Session.", {
+  const expectedProvider = SESSION_PROVIDER[input.agent];
+  if (!selected || selected.provider !== expectedProvider) {
+    throw validationError("The selected provider does not match the requested Session adapter.", {
       selectedProvider: selected?.provider ?? null,
-      requestedProvider: "claude-code-cli"
+      requestedProvider: expectedProvider
     });
   }
   if (selected.model !== input.model) {
@@ -197,6 +215,13 @@ export function prepareSession(input: {
     .sort();
   const lease = getRepositoryLease(input.db, path.resolve(input.repoRoot));
   if (lease) throw validationError("The repository already has a prepared or running Session lease.", { sessionId: lease.id });
+  const competingRun = getCompetingManagedRun(input.db, path.resolve(input.repoRoot));
+  if (competingRun) {
+    throw validationError("The repository already has a pending or running managed Run.", {
+      runId: competingRun.id,
+      status: competingRun.status
+    });
+  }
   const tmux = input.tmux ?? systemTmux;
   if (!tmux.available()) throw validationError("tmux is required for explicit Session launch but is not available.");
   const stamp = input.now.toISOString().replaceAll(/[-:.]/g, "").replace(/Z$/, "Z").toLowerCase();
@@ -204,7 +229,11 @@ export function prepareSession(input: {
   const tmuxName = `arcadia-${context.projectSlug}-${shortAction}-${stamp}`.slice(0, 100);
   if (tmux.hasSession(tmuxName)) throw validationError("The tmux Session name already exists.", { tmuxSessionName: tmuxName });
   const id = createId("session");
-  const providerSessionId = randomUUID();
+  // Claude lets Arcadia supply a native session id. Codex creates its native
+  // id internally and does not expose it to a detached interactive launch.
+  // Keep the immutable Arcadia receipt as the correlation identity instead of
+  // fabricating a Codex id that `codex resume` could not actually resume.
+  const providerSessionId = input.agent === "claude" ? randomUUID() : id;
   const displayName = `${context.projectName}: ${context.action.title}`.slice(0, 120);
   const timestamp = input.now.toISOString();
   const row = {
@@ -304,14 +333,15 @@ export function launchPreparedSession(db: Database.Database, session: AgentSessi
       observed: observedRevision
     });
   }
-  const args = ["--model", session.model];
-  if (session.effort) args.push("--effort", session.effort);
-  args.push("--session-id", session.provider_session_id, "--name", session.display_name, `arcadia advance --session ${session.id}`);
+  const launch = buildSessionLaunch(session);
   try {
-    tmux.launch({ name: session.tmux_session_name, cwd: session.worktree_path, command: "claude", args });
+    tmux.launch({ name: session.tmux_session_name, cwd: session.worktree_path, ...launch });
   } catch (error) {
     failPreparedSession(db, session.id);
-    throw validationError("tmux could not start the Claude Code Session.", { sessionId: session.id, cause: error instanceof Error ? error.message : String(error) });
+    throw validationError(`tmux could not start the ${session.provider === "codex-cli" ? "Codex" : "Claude Code"} Session.`, {
+      sessionId: session.id,
+      cause: error instanceof Error ? error.message : String(error)
+    });
   }
   const started = new Date().toISOString();
   db.prepare("UPDATE agent_sessions SET status = 'running', started_at = ?, updated_at = ? WHERE id = ?").run(started, started, session.id);
@@ -336,6 +366,23 @@ export function getLatestSession(db: Database.Database): AgentSession | null {
 export function getRepositoryLease(db: Database.Database, repositoryPath: string): AgentSession | null {
   if (!hasSessionTable(db)) return null;
   return (db.prepare("SELECT * FROM agent_sessions WHERE repository_path = ? AND status IN ('prepared', 'running') ORDER BY prepared_at DESC LIMIT 1").get(canonicalPath(repositoryPath)) as AgentSession | undefined) ?? null;
+}
+
+export function getCompetingManagedRun(
+  db: Database.Database,
+  repositoryPath: string
+): { id: string; status: "pending_execution" | "running" } | null {
+  const target = canonicalPath(repositoryPath);
+  const rows = db.prepare(`SELECT er.id, er.status, pm.repo_path
+    FROM execution_runs er
+    JOIN work_items wi ON wi.id = er.work_item_id
+    JOIN project_metadata pm ON pm.project_id = wi.project_id
+    WHERE er.status IN ('pending_execution', 'running') AND pm.repo_path IS NOT NULL`).all() as Array<{
+      id: string;
+      status: "pending_execution" | "running";
+      repo_path: string;
+    }>;
+  return rows.find((run) => canonicalPath(run.repo_path) === target) ?? null;
 }
 
 export function reserveAgentWorktree(db: Database.Database, input: {
@@ -386,11 +433,30 @@ function hasSessionTable(db: Database.Database): boolean {
 
 export function sessionView(session: AgentSession, tmux: Pick<TmuxAdapter, "hasSession"> = systemTmux) {
   const live = tmux.hasSession(session.tmux_session_name);
+  const codex = session.provider === "codex-cli";
   return {
     ...session,
     observedStatus: live ? "running" : session.status === "prepared" ? "prepared" : "exited",
     live,
     reattachCommand: `tmux attach-session -t ${session.tmux_session_name}`,
-    resumeCommand: `cd ${JSON.stringify(session.worktree_path)} && claude --resume ${session.provider_session_id}`
+    resumeCommand: codex ? null : `cd ${JSON.stringify(session.worktree_path)} && claude --resume ${session.provider_session_id}`,
+    resumeNotice: codex
+      ? "Exact Codex resume is unavailable after this terminal exits: Codex creates its native session id internally and does not expose it to detached launch. Reattach the live tmux Session; after exit, launch a new governed Session rather than guessing `codex resume --last`."
+      : null
   };
+}
+
+function buildSessionLaunch(session: AgentSession): { command: string; args: string[] } {
+  const prompt = `arcadia advance --session ${session.id}`;
+  if (session.provider === "codex-cli") {
+    const args = ["--model", session.model];
+    if (session.effort) args.push("--config", `model_reasoning_effort=${JSON.stringify(session.effort)}`);
+    args.push("--cd", session.worktree_path, prompt);
+    return { command: "codex", args };
+  }
+
+  const args = ["--model", session.model];
+  if (session.effort) args.push("--effort", session.effort);
+  args.push("--session-id", session.provider_session_id, "--name", session.display_name, prompt);
+  return { command: "claude", args };
 }

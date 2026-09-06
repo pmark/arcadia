@@ -104,8 +104,8 @@ export interface GoCommandData {
 }
 
 export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoCommandData> {
-  if (options.launch && (!options.apply || options.agent !== "claude")) {
-    throw validationError("--launch requires --apply --agent claude; it is the only authority to start a process.");
+  if (options.launch && (!options.apply || !options.agent)) {
+    throw validationError("--launch requires --apply and an explicit Session adapter; it is the only authority to start a process.");
   }
   const requestedRepo = options.repo ?? invocationRoot();
   const requestedSource = options.source ?? requestedRepo;
@@ -318,7 +318,8 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
         workspace: workspacePath,
         repoRoot: controlWorktree,
         dispatch,
-        agent: "claude",
+        // The launch guard above requires an explicit adapter before this path.
+        agent: options.agent!,
         model,
         effort,
         baseRevision: git(controlWorktree, ["rev-parse", baseBranch]).trim(),

@@ -46,7 +46,9 @@ export function renderAdvanceSuccess(response: ReturnType<typeof runAdvanceComma
       `Packet: ${data.session.packet_id} · sha256 ${data.session.packet_sha256}`,
       `Worktree: ${data.session.worktree_path}`,
       `Reattach: ${data.session.reattachCommand}`,
-      `Resume after exit: ${data.session.resumeCommand}`
+      data.session.resumeCommand
+        ? `Resume after exit: ${data.session.resumeCommand}`
+        : `Resume after exit: ${data.session.resumeNotice}`
     ];
   }
   return [
@@ -72,7 +74,9 @@ export function renderSessionShowSuccess(response: ReturnType<typeof runSessionS
     `Provider: ${data.provider} · ${data.model}${data.effort ? ` · ${data.effort}` : ""}`,
     `Packet: ${data.packet_id} · sha256 ${data.packet_sha256}`,
     `Reattach: ${data.reattachCommand}`,
-    `Resume after exit: ${data.resumeCommand}`
+    data.resumeCommand
+      ? `Resume after exit: ${data.resumeCommand}`
+      : `Resume after exit: ${data.resumeNotice}`
   ];
 }
 
