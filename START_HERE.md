@@ -679,6 +679,52 @@ deleting, spending, credentials, production access, and messaging each still
 need their own Decision, and a Plan that is not listed is never activated just
 because it is next on screen.
 
+### Provider capacity gates every admission
+
+Being Active is not enough on its own. Before any Action is admitted, Arcadia
+has to be able to *prove* the provider has included allowance left. Read what
+each configured provider currently reports:
+
+```sh
+pnpm arcadia production capacity
+```
+
+Add `--refresh` to re-observe first. Refreshing reads the local Codex app
+server and Claude's own usage service under a deadline and a bounded backoff;
+it never invokes a model, because paying a frontier model to check a quota is
+exactly backwards.
+
+Each provider gets one receipt showing the windows that provider actually
+reports (no invented daily or weekly number), how old the observation is, the
+account scope, whether the usage is **included**, **paid** or **unknown**,
+purchased credits and banked resets kept separate from plan allowance, and the
+fields this host simply cannot report. Every receipt is stamped `REAL` or
+`SIMULATED`, so a fixture can never be mistaken for evidence about your account.
+
+**Unknown capacity is inadmissible.** Unattended admission refuses — with the
+reason printed — when capacity is unknown, when the observation is stale, when
+included-versus-paid mode cannot be established, when a window is spent, or
+when it is inside the reserve margin that keeps an already-admitted Run able to
+finish. An elapsed reset time is not renewed allowance: work is readmitted only
+after a fresh observation shows the new window. Arcadia never redeems a banked
+reset, buys credits, or enables paid fallback to keep busy — if a banked reset
+exists, it says so and leaves it alone.
+
+When one provider is limited and another configured provider is eligible,
+selection moves to it under the same capability floors — never to something
+weaker, and never by replaying work the first provider already applied.
+
+If a provider cannot be observed automatically on your host, you can record a
+bounded attestation. It admits work and it expires; it is labeled attended
+everywhere it appears and is never proof of unattended operation:
+
+```sh
+pnpm arcadia production capacity attest \
+  --provider codex-cli --granted-by "$USER" \
+  --window "7d:21:2026-09-12T04:27:37Z" --hours 2 \
+  --note "Read from the Codex status line."
+```
+
 ## Protect active coding work
 
 The Morning Packet puts **Coding work safety** first whenever an active

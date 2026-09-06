@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { CapacityAdmissionDecision } from "../src/codingAgents/capacity.js";
 import { openDatabase, withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -74,18 +75,59 @@ function activate(workspacePath: string, requestId = "grant-1", overrides: Parti
   });
 }
 
+/**
+ * These tests are about the policy, not about capacity, so they carry a proven
+ * capacity decision explicitly. Admission refuses without one — see
+ * tests/provider-capacity-admission.test.ts for that half.
+ */
+function provenCapacity(providerId = "claude"): CapacityAdmissionDecision {
+  return {
+    providerId,
+    admitted: true,
+    code: null,
+    reason: `${providerId} reported included allowance.`,
+    unattendedProof: true,
+    retryAfter: null,
+    refreshRequired: false,
+    receipt: {
+      version: 1,
+      providerId,
+      providerLabel: providerId,
+      profiles: [],
+      accountScope: "test",
+      source: "codex_app_server",
+      evidence: "simulated",
+      unattended: true,
+      observedAt: "2026-09-05T00:00:00.000Z",
+      observedAgeMs: 0,
+      expiresAt: null,
+      confidence: "observed",
+      freshness: "fresh",
+      usagePolicy: "included",
+      usagePolicyReason: "test fixture",
+      windows: [{ label: "5h", usedPercentage: 10, remainingPercentage: 90, resetsAt: null }],
+      nextResetAt: null,
+      unsupported: [],
+      availability: "available",
+      telemetry: "test fixture"
+    }
+  };
+}
+
 function admit(
   workspacePath: string,
   requestId: string,
   overrides: Partial<Parameters<typeof issueAdmission>[1]> = {}
 ) {
+  const provider = overrides.provider ?? "claude";
   return withDatabase(workspacePath, (db) =>
     issueAdmission(db, {
       requestId,
       actionKey: "demo/migrate",
       projectSlug: "demo",
       planSlug: "queue-plan",
-      provider: "claude",
+      provider,
+      capacity: provenCapacity(provider),
       ...overrides
     })
   );
@@ -347,7 +389,8 @@ describe("Off races an in-flight launch commitment", () => {
           actionKey: "demo/migrate",
           projectSlug: "demo",
           planSlug: "queue-plan",
-          provider: "claude"
+          provider: "claude",
+          capacity: provenCapacity()
         });
         expect(issued.admitted).toBe(true);
 
@@ -401,7 +444,8 @@ describe("policy-store failure is never a confirmed Off", () => {
         actionKey: "demo/migrate",
         projectSlug: "demo",
         planSlug: "queue-plan",
-        provider: "claude"
+        provider: "claude",
+        capacity: provenCapacity()
       });
       expect(outcome).toMatchObject({ admitted: false, code: "policy_unavailable" });
     } finally {

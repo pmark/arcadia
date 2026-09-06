@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import { writeTransaction } from "../db/connection.js";
 import { validationError } from "../cli/errors.js";
+import type { CapacityAdmissionDecision } from "../codingAgents/capacity.js";
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
 
@@ -103,7 +104,9 @@ export type AdmissionRefusalCode =
   | "provider_not_permitted"
   | "concurrency_limit"
   | "admission_expired"
-  | "admission_already_settled";
+  | "admission_already_settled"
+  | "capacity_unproven"
+  | "capacity_refused";
 
 export interface AdmissionRequest {
   requestId: string;
@@ -116,6 +119,13 @@ export interface AdmissionRequest {
    * before an Off/reactivate cycle carries the old epoch and is fenced here.
    */
   expectedEpoch?: number;
+  /**
+   * Proven capacity for `provider`, from `observeProviderCapacity`. Required:
+   * unattended admission without a capacity decision is unknown capacity, and
+   * unknown capacity is inadmissible. This is the field that makes admission
+   * refuse work it used to accept.
+   */
+  capacity: CapacityAdmissionDecision;
   now?: Date;
 }
 
@@ -513,6 +523,9 @@ export function issueAdmission(db: Database.Database, request: AdmissionRequest)
           };
     }
 
+    const capacityRefusal = refuseOnCapacity(request);
+    if (capacityRefusal) return capacityRefusal;
+
     const read = readProductionPolicySafely(db);
     if (read.status !== "ok") {
       return {
@@ -589,6 +602,47 @@ export function issueAdmission(db: Database.Database, request: AdmissionRequest)
 
     return { admitted: true as const, receipt: toReceipt(findAdmissionRow(db, request.requestId)!) };
   });
+}
+
+/**
+ * Capacity is checked before the policy is even read, because an unprovable
+ * provider is a refusal regardless of what the operator authorized. Both
+ * refusals carry the visible reason from the capacity receipt itself rather than
+ * a generic message, so the person reading the queue learns what to fix.
+ */
+function refuseOnCapacity(
+  request: AdmissionRequest
+): { admitted: false; code: AdmissionRefusalCode; reason: string; receipt: null } | null {
+  const capacity = request.capacity;
+  if (!capacity) {
+    return {
+      admitted: false,
+      code: "capacity_unproven",
+      reason:
+        `No provider capacity decision accompanied this admission, so ${request.provider} capacity is ` +
+        `unknown. Unattended admission treats unknown capacity as inadmissible.`,
+      receipt: null
+    };
+  }
+  if (capacity.providerId !== request.provider) {
+    return {
+      admitted: false,
+      code: "capacity_unproven",
+      reason:
+        `The capacity decision describes ${capacity.providerId} but this admission would run on ` +
+        `${request.provider}. Capacity proven for one provider never admits another.`,
+      receipt: null
+    };
+  }
+  if (!capacity.admitted) {
+    return {
+      admitted: false,
+      code: "capacity_refused",
+      reason: capacity.reason,
+      receipt: null
+    };
+  }
+  return null;
 }
 
 /**
