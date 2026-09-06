@@ -68,6 +68,10 @@ routes are optional and should not be installed during this first pass.
 At the end of this procedure:
 
 - the Arcadia CLI builds and runs from a local clone;
+- Codex and Claude Code share Arcadia's protected `arcadia-go` skill and each
+  has only its provider-specific broker permission;
+- both agents retain fail-closed sandbox and approval guardrails while brokered
+  worktree handoffs run without repeated approval prompts;
 - the operator has one private workspace outside the Arcadia source tree;
 - the target repository is registered in that workspace;
 - the target repository contains Arcadia's agent policy and governed control
@@ -149,7 +153,46 @@ The minimum installation is successful when the build exits zero and the last
 command prints `Local-first project operating system CLI`. No external database
 server is needed; Arcadia embeds SQLite.
 
-### 3. Create the private workspace
+### 3. Configure protected coding-agent handoffs
+
+Run the idempotent agent setup from the clean, committed Arcadia checkout:
+
+```sh
+mise exec -- pnpm arcadia go-broker install
+mise exec -- pnpm arcadia go-broker status
+```
+
+`install` performs the entire host setup rather than printing a list for the
+operator to translate manually. It:
+
+- installs a revision-addressed Arcadia broker snapshot outside project
+  worktrees;
+- creates separate zero-argument Codex and Claude Code launchers;
+- installs one Arcadia-managed `arcadia-go` skill under `~/.codex/skills` and
+  links Claude Code to that exact directory;
+- writes one dedicated Codex broker rule while removing recognized legacy
+  `arcadia go` and broker rules from other Codex rule files;
+- sets Codex to `approval_policy = "on-request"` and
+  `sandbox_mode = "workspace-write"` without changing unrelated settings;
+- preserves unrelated Claude permissions and settings, adds only its exact
+  provider launcher, admits the two standard agent worktree roots, enables the
+  sandbox with `failIfUnavailable`, and disables bypass-permissions mode; and
+- creates timestamped recovery backups before changing existing user-owned
+  configuration or replacing a non-managed skill.
+
+The command validates both configuration formats before its first write and
+then runs the same checks exposed by `status`. It is safe to rerun: a healthy
+installation reports zero changed files and creates no new backups. `status`
+exits nonzero with structured issue names unless every check is ready, so an
+automated installer must stop on any refusal. Do not proceed on the assumption
+that a partially installed broker is usable.
+
+This narrow exception does not authorize general shell commands, raw Git
+worktree mutation, process launch, push, merge, deployment, or bypass mode. The
+broker accepts no public arguments and revalidates Arcadia's canonical preview
+before applying a strict handoff.
+
+### 4. Create the private workspace
 
 Before changing user-level Arcadia configuration, check whether this machine
 already has a configured workspace:

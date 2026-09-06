@@ -1403,10 +1403,12 @@ pnpm arcadia go-broker install
 
 Installation is refused unless Arcadia is at a clean, committed repository
 root. The command builds the CLI, creates a production dependency snapshot at
-`~/.local/share/arcadia/go-broker/releases/<git-sha>/`, and atomically updates
-provider-specific launchers under `~/.local/bin/`. It prints the exact narrow
-permission entries for both agents. Installation is an operator setup/update
-action; the broker itself exposes only this runtime contract:
+`~/.local/share/arcadia/go-broker/releases/<git-sha>/`, atomically updates
+provider-specific launchers under `~/.local/bin/`, installs the shared managed
+skill, and converges both providers' permission and sandbox configuration. It
+preserves unrelated settings, removes recognized legacy broad Arcadia-go
+allowances, and backs up changed user-owned files. Installation is an operator
+setup/update action; the broker itself exposes only this runtime contract:
 
 ```sh
 ~/.local/bin/arcadia-go-broker-codex
@@ -1420,6 +1422,22 @@ race or state change fails closed. Every public argument is refused. No broker
 invocation can request `--launch`, choose a model or effort, override the
 workspace, or redirect the repository. Its success output is the final apply
 JSON; a refusal is JSON on stderr.
+
+Verify the complete installed chain without changing it:
+
+```sh
+pnpm arcadia go-broker status
+pnpm arcadia go-broker status --json
+```
+
+`status` verifies that both launchers resolve to one valid protected release,
+the Codex approval and sandbox modes are safe, only the dedicated Codex rule
+grants the broker, the installed skill matches Arcadia's current template,
+Claude resolves that same skill, its exact provider permission exists, no
+legacy broad permission remains, both standard worktree roots are admitted,
+and Claude's sandbox is enabled fail-closed with bypass mode disabled. It exits
+nonzero with structured issues unless every check passes; success reports
+`READY`. Re-running `install` on a READY host is a no-op.
 
 List every open GitHub pull request across Project repositories with
 plain-English readiness ratings. This is read-only and reports repository

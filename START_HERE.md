@@ -783,9 +783,18 @@ pnpm arcadia go-broker install
 
 The installer copies that exact commit and its production dependencies to a
 revision-addressed directory under `~/.local/share/arcadia/go-broker/`, then
-atomically points provider-specific launchers under `~/.local/bin/` at it. Its
-output includes the exact Codex rule and Claude Code `permissions.allow`
-entry. The shared personal skill must invoke only:
+atomically points provider-specific launchers under `~/.local/bin/` at it. In
+the same idempotent operation it installs the shared skill, writes the narrow
+Codex rule, updates Claude's exact permission and worktree directories, removes
+recognized legacy broad allowances, and enforces the normal sandbox and bypass
+guards. Existing unrelated settings are preserved and changed user-owned files
+receive timestamped backups. Verify the entire chain with:
+
+```sh
+pnpm arcadia go-broker status
+```
+
+The installed shared skill invokes only:
 
 ```sh
 ~/.local/bin/arcadia-go-broker-codex
@@ -798,7 +807,8 @@ only the final JSON result, and rejects every argument—including `--launch`,
 model, effort, workspace, and repository overrides. The installed snapshot
 lives outside agent worktrees, so normal sandbox guards protect the executable
 while the narrow command rule removes only the repeated approval prompt.
-Reinstall after a reviewed Arcadia update to move the broker to a new commit.
+Reinstall after a reviewed Arcadia update to move the broker and managed skill
+to the new commit. A healthy repeat install changes nothing.
 
 To opt into Arcadia launching the next Claude Code process, add `--launch`.
 This is the only `go` option that authorizes process creation; preview and the

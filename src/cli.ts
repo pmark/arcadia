@@ -149,7 +149,12 @@ import {
 } from "./commands/experiment.js";
 import { runLogCreateCommand } from "./commands/log.js";
 import { renderGoSuccess, runGoCommand } from "./commands/go.js";
-import { renderGoBrokerInstallSuccess, runGoBrokerInstallCommand } from "./commands/goBrokerInstall.js";
+import {
+  renderGoBrokerInstallSuccess,
+  renderGoBrokerStatusSuccess,
+  runGoBrokerInstallCommand,
+  runGoBrokerStatusCommand
+} from "./commands/goBrokerInstall.js";
 import {
   renderMilestoneCompleteSuccess,
   renderMilestoneCreateSuccess,
@@ -510,7 +515,6 @@ export function buildProgram(): Command {
       renderConfigDefaultWorkspaceSuccess
     )
   );
-
   const workspace = program.command("workspace").description("Workspace utilities");
   addJsonOption(
     workspace
@@ -3140,17 +3144,29 @@ export function buildProgram(): Command {
 
   const goBroker = program
     .command("go-broker")
-    .description("Install the protected, narrowly allowlistable Arcadia go broker");
+    .description("Install and verify protected Arcadia go handoffs for coding agents");
   addJsonOption(
     goBroker
       .command("install")
-      .description("Install a revision-addressed broker snapshot under ~/.local")
+      .description("Idempotently install the broker, shared skill, permissions, and guardrails")
   ).action((options: { json?: boolean }) =>
     runCliAction(
       "go-broker.install",
       options,
       () => runGoBrokerInstallCommand(),
       renderGoBrokerInstallSuccess
+    )
+  );
+  addJsonOption(
+    goBroker
+      .command("status")
+      .description("Verify the broker, shared skill, permissions, and sandbox guards")
+  ).action((options: { json?: boolean }) =>
+    runCliAction(
+      "go-broker.status",
+      options,
+      () => runGoBrokerStatusCommand(),
+      renderGoBrokerStatusSuccess
     )
   );
 
