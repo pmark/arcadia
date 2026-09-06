@@ -13,6 +13,10 @@ rendered, machine-specific copy.
 - `arcadia-go`: reconcile a completed agent worktree and prepare the next one;
   Codex and Claude Code share this personal skill through
   `~/.claude/skills/arcadia-go -> ~/.codex/skills/arcadia-go`.
+- `arcadia-agent-ask`: draft, edit, and preview repository-local
+  `agent-ask.yaml` inputs without an approval pause; Codex and Claude Code
+  share it through `~/.claude/skills/arcadia-agent-ask ->
+  ~/.codex/skills/arcadia-agent-ask`.
 
 Codex should still prefer deterministic Arcadia CLI commands over inference.
 

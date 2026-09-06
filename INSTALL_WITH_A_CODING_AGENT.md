@@ -169,8 +169,10 @@ operator to translate manually. It:
   worktrees;
 - creates fixed zero-argument Codex and Claude Code launchers for governed
   handoff, prepared-worktree advance, and read-only work monitoring;
-- installs one Arcadia-managed `arcadia-go` skill under `~/.codex/skills` and
-  links Claude Code to that exact directory;
+- installs Arcadia-managed `arcadia-go` and `arcadia-agent-ask` skills under
+  `~/.codex/skills` and links Claude Code to those exact directories; the Ask
+  skill lets agents draft, edit, and preview repository-local `agent-ask.yaml`
+  without an approval prompt while preserving settlement gates;
 - writes dedicated Codex rules for only those fixed launchers while removing
   recognized legacy `arcadia go`, `arcadia advance`, and broker rules from
   other Codex rule files;

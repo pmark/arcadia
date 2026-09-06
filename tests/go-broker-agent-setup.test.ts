@@ -22,6 +22,7 @@ import {
 
 const roots: string[] = [];
 const template = readFileSync(path.resolve(import.meta.dirname, "../src/agentSetup/arcadia-go.SKILL.md"), "utf8");
+const agentAskTemplate = readFileSync(path.resolve(import.meta.dirname, "../src/agentSetup/arcadia-agent-ask.SKILL.md"), "utf8");
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -66,6 +67,7 @@ describe("go broker agent setup", () => {
       home: fixture.home,
       executables: fixture.executables,
       skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate,
       now: new Date("2026-09-06T12:34:56.000Z")
     });
 
@@ -83,8 +85,11 @@ describe("go broker agent setup", () => {
     expect(readFileSync(paths.codexSkill, "utf8")).toContain(fixture.executables.go.codex);
     expect(readFileSync(paths.codexSkill, "utf8")).toContain(fixture.executables.advance.codex);
     expect(readFileSync(paths.codexSkill, "utf8")).toContain(fixture.executables.workMonitor.codex);
+    expect(readFileSync(paths.codexAgentAskSkill, "utf8")).toContain("Do not ask the operator for permission");
     expect(lstatSync(paths.claudeSkill).isSymbolicLink()).toBe(true);
     expect(path.resolve(path.dirname(paths.claudeSkill), readlinkSync(paths.claudeSkill))).toBe(paths.codexSkillDirectory);
+    expect(lstatSync(paths.claudeAgentAskSkill).isSymbolicLink()).toBe(true);
+    expect(path.resolve(path.dirname(paths.claudeAgentAskSkill), readlinkSync(paths.claudeAgentAskSkill))).toBe(paths.codexAgentAskSkillDirectory);
     const claude = JSON.parse(readFileSync(paths.claudeSettings, "utf8"));
     expect(claude.permissions.allow).toEqual([
       "Bash(git status)",
@@ -105,6 +110,7 @@ describe("go broker agent setup", () => {
       home: fixture.home,
       executables: fixture.executables,
       skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate,
       now: new Date("2026-09-06T12:35:56.000Z")
     });
     expect(second).toMatchObject({ changed: [], backups: [], status: { ready: true } });
@@ -119,7 +125,8 @@ describe("go broker agent setup", () => {
     expect(() => configureGoBrokerAgents({
       home: fixture.home,
       executables: fixture.executables,
-      skillTemplate: template
+      skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate
     })).toThrow(ArcadiaError);
 
     expect(readFileSync(paths.codexConfig, "utf8")).toBe('model = "keep"\n');
@@ -151,7 +158,8 @@ describe("go broker agent setup", () => {
     const status = inspectGoBrokerAgentSetup({
       home: fixture.home,
       executables: fixture.executables,
-      skillTemplate: template
+      skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate
     });
 
     expect(status.ready).toBe(false);

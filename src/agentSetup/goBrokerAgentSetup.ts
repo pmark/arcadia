@@ -16,6 +16,7 @@ import path from "node:path";
 import { validationError } from "../cli/errors.js";
 
 const MANAGED_SKILL_MARKER = "<!-- ARCADIA_MANAGED_SKILL -->";
+const MANAGED_AGENT_ASK_SKILL_MARKER = "<!-- ARCADIA_MANAGED_AGENT_ASK_SKILL -->";
 
 export interface ProviderExecutables {
   codex: string;
@@ -34,8 +35,11 @@ export interface AgentSetupPaths {
   codexRulesDirectory: string;
   codexSkillDirectory: string;
   codexSkill: string;
+  codexAgentAskSkillDirectory: string;
+  codexAgentAskSkill: string;
   claudeSettings: string;
   claudeSkill: string;
+  claudeAgentAskSkill: string;
 }
 
 export interface AgentSetupStatus {
@@ -49,6 +53,8 @@ export interface AgentSetupStatus {
     noLegacyCodexRules: boolean;
     managedSkill: boolean;
     sharedClaudeSkill: boolean;
+    managedAgentAskSkill: boolean;
+    sharedClaudeAgentAskSkill: boolean;
     claudePermission: boolean;
     noLegacyClaudePermissions: boolean;
     claudeSandbox: boolean;
@@ -61,6 +67,7 @@ export interface ConfigureAgentSetupOptions {
   home: string;
   executables: BrokerExecutables;
   skillTemplate: string;
+  agentAskSkillTemplate: string;
   now?: Date;
 }
 
@@ -73,14 +80,18 @@ export interface ConfigureAgentSetupResult {
 export function resolveAgentSetupPaths(home: string): AgentSetupPaths {
   const resolvedHome = path.resolve(home);
   const codexSkillDirectory = path.join(resolvedHome, ".codex", "skills", "arcadia-go");
+  const codexAgentAskSkillDirectory = path.join(resolvedHome, ".codex", "skills", "arcadia-agent-ask");
   return {
     codexConfig: path.join(resolvedHome, ".codex", "config.toml"),
     codexManagedRules: path.join(resolvedHome, ".codex", "rules", "arcadia.rules"),
     codexRulesDirectory: path.join(resolvedHome, ".codex", "rules"),
     codexSkillDirectory,
     codexSkill: path.join(codexSkillDirectory, "SKILL.md"),
+    codexAgentAskSkillDirectory,
+    codexAgentAskSkill: path.join(codexAgentAskSkillDirectory, "SKILL.md"),
     claudeSettings: path.join(resolvedHome, ".claude", "settings.json"),
-    claudeSkill: path.join(resolvedHome, ".claude", "skills", "arcadia-go")
+    claudeSkill: path.join(resolvedHome, ".claude", "skills", "arcadia-go"),
+    claudeAgentAskSkill: path.join(resolvedHome, ".claude", "skills", "arcadia-agent-ask")
   };
 }
 
@@ -105,19 +116,29 @@ export function renderManagedSkill(template: string, executables: BrokerExecutab
     .replaceAll("__ARCADIA_CLAUDE_WORK_MONITOR_BROKER__", executables.workMonitor.claude);
 }
 
+export function renderAgentAskManagedSkill(template: string): string {
+  if (!template.includes(MANAGED_AGENT_ASK_SKILL_MARKER)) {
+    throw validationError("The bundled arcadia-agent-ask skill template is missing its managed marker.");
+  }
+  return template;
+}
+
 export function configureGoBrokerAgents(options: ConfigureAgentSetupOptions): ConfigureAgentSetupResult {
   const paths = resolveAgentSetupPaths(options.home);
   const changed: string[] = [];
   const backups: string[] = [];
   const timestamp = (options.now ?? new Date()).toISOString().replace(/[-:.]/g, "");
   const skill = renderManagedSkill(options.skillTemplate, options.executables);
+  const agentAskSkill = renderAgentAskManagedSkill(options.agentAskSkillTemplate);
   validateGoBrokerAgentSetupInputs(options);
 
   updateCodexConfig(paths.codexConfig, changed, backups, timestamp);
   updateCodexRules(paths, options.executables, changed, backups, timestamp);
-  updateManagedSkill(paths, skill, changed, backups, timestamp);
+  updateManagedSkill(paths.codexSkill, skill, MANAGED_SKILL_MARKER, changed, backups, timestamp);
+  updateManagedSkill(paths.codexAgentAskSkill, agentAskSkill, MANAGED_AGENT_ASK_SKILL_MARKER, changed, backups, timestamp);
   updateClaudeSettings(paths.claudeSettings, options, changed, backups, timestamp);
-  updateClaudeSkillLink(paths, changed, backups, timestamp);
+  updateClaudeSkillLink(paths.claudeSkill, paths.codexSkillDirectory, changed, backups, timestamp);
+  updateClaudeSkillLink(paths.claudeAgentAskSkill, paths.codexAgentAskSkillDirectory, changed, backups, timestamp);
 
   const status = inspectGoBrokerAgentSetup(options);
   if (!status.ready) {
@@ -134,17 +155,20 @@ export function configureGoBrokerAgents(options: ConfigureAgentSetupOptions): Co
 export function validateGoBrokerAgentSetupInputs(options: ConfigureAgentSetupOptions): void {
   const paths = resolveAgentSetupPaths(options.home);
   renderManagedSkill(options.skillTemplate, options.executables);
+  renderAgentAskManagedSkill(options.agentAskSkillTemplate);
   setTopLevelTomlValues(readOptional(paths.codexConfig), {
     approval_policy: "on-request",
     sandbox_mode: "workspace-write"
   });
   readClaudeSettings(paths.claudeSettings, true);
   assertManagedSkillDirectoryIsSafe(paths.codexSkillDirectory);
+  assertManagedSkillDirectoryIsSafe(paths.codexAgentAskSkillDirectory);
 }
 
 export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): AgentSetupStatus {
   const paths = resolveAgentSetupPaths(options.home);
   const expectedSkill = renderManagedSkill(options.skillTemplate, options.executables);
+  const expectedAgentAskSkill = renderAgentAskManagedSkill(options.agentAskSkillTemplate);
   const codexConfig = readOptional(paths.codexConfig);
   const codexRule = readOptional(paths.codexManagedRules);
   const legacyCodexRules = findLegacyCodexRules(paths.codexRulesDirectory, paths.codexManagedRules);
@@ -167,6 +191,8 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
     noLegacyCodexRules: legacyCodexRules.length === 0,
     managedSkill: readOptional(paths.codexSkill) === expectedSkill,
     sharedClaudeSkill: symlinkResolvesTo(paths.claudeSkill, paths.codexSkillDirectory),
+    managedAgentAskSkill: readOptional(paths.codexAgentAskSkill) === expectedAgentAskSkill,
+    sharedClaudeAgentAskSkill: symlinkResolvesTo(paths.claudeAgentAskSkill, paths.codexAgentAskSkillDirectory),
     claudePermission: Object.values(options.executables).every((providers) => allow.includes(`Bash(${providers.claude})`)),
     noLegacyClaudePermissions: allow.every((entry) =>
       !isLegacyClaudePermission(entry) &&
@@ -224,18 +250,19 @@ function updateCodexRules(
 }
 
 function updateManagedSkill(
-  paths: AgentSetupPaths,
+  skillFile: string,
   skill: string,
+  marker: string,
   changed: string[],
   backups: string[],
   timestamp: string
 ): void {
-  if (existsSync(paths.codexSkill) && !readFileSync(paths.codexSkill, "utf8").includes(MANAGED_SKILL_MARKER)) {
-    const backup = `${paths.codexSkill}.arcadia-backup-${timestamp}`;
-    copyFileSync(paths.codexSkill, backup);
+  if (existsSync(skillFile) && !readFileSync(skillFile, "utf8").includes(marker)) {
+    const backup = `${skillFile}.arcadia-backup-${timestamp}`;
+    copyFileSync(skillFile, backup);
     backups.push(backup);
   }
-  writeManagedFile(paths.codexSkill, skill, changed, backups, timestamp, false);
+  writeManagedFile(skillFile, skill, changed, backups, timestamp, false);
 }
 
 function updateClaudeSettings(
@@ -271,23 +298,24 @@ function updateClaudeSettings(
 }
 
 function updateClaudeSkillLink(
-  paths: AgentSetupPaths,
+  claudeSkill: string,
+  codexSkillDirectory: string,
   changed: string[],
   backups: string[],
   timestamp: string
 ): void {
-  mkdirSync(path.dirname(paths.claudeSkill), { recursive: true });
-  if (pathExistsIncludingDanglingLink(paths.claudeSkill)) {
-    if (symlinkResolvesTo(paths.claudeSkill, paths.codexSkillDirectory)) return;
-    const backup = `${paths.claudeSkill}.arcadia-backup-${timestamp}`;
-    renameSync(paths.claudeSkill, backup);
+  mkdirSync(path.dirname(claudeSkill), { recursive: true });
+  if (pathExistsIncludingDanglingLink(claudeSkill)) {
+    if (symlinkResolvesTo(claudeSkill, codexSkillDirectory)) return;
+    const backup = `${claudeSkill}.arcadia-backup-${timestamp}`;
+    renameSync(claudeSkill, backup);
     backups.push(backup);
   }
-  const temporary = `${paths.claudeSkill}.arcadia-${process.pid}`;
+  const temporary = `${claudeSkill}.arcadia-${process.pid}`;
   rmSync(temporary, { force: true, recursive: true });
-  symlinkSync(paths.codexSkillDirectory, temporary);
-  renameSync(temporary, paths.claudeSkill);
-  changed.push(paths.claudeSkill);
+  symlinkSync(codexSkillDirectory, temporary);
+  renameSync(temporary, claudeSkill);
+  changed.push(claudeSkill);
 }
 
 function managedCodexRule(executables: BrokerExecutables): string {

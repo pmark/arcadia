@@ -87,8 +87,9 @@ export function runGoBrokerInstallCommand(
     workMonitor: providerExecutables(binDirectory, "arcadia-work-monitor-broker")
   };
   const skillTemplate = readSkillTemplate(repository);
+  const agentAskSkillTemplate = readAgentAskSkillTemplate(repository);
 
-  validateGoBrokerAgentSetupInputs({ home: installHome, executables, skillTemplate });
+  validateGoBrokerAgentSetupInputs({ home: installHome, executables, skillTemplate, agentAskSkillTemplate });
 
   mkdirSync(releasesRoot, { recursive: true, mode: 0o755 });
   mkdirSync(binDirectory, { recursive: true, mode: 0o755 });
@@ -154,7 +155,8 @@ export function runGoBrokerInstallCommand(
   const agentSetup = configureGoBrokerAgents({
     home: installHome,
     executables,
-    skillTemplate
+    skillTemplate,
+    agentAskSkillTemplate
   });
   const installedBroker = inspectInstalledBroker(executables);
   if (installedBroker.issues.length > 0) {
@@ -217,7 +219,8 @@ export function runGoBrokerStatusCommand(
   const agentSetup = inspectGoBrokerAgentSetup({
     home: installHome,
     executables,
-    skillTemplate: readSkillTemplate(repository)
+    skillTemplate: readSkillTemplate(repository),
+    agentAskSkillTemplate: readAgentAskSkillTemplate(repository)
   });
   if (broker.issues.length > 0 || !agentSetup.ready) {
     throw validationError("Protected broker setup is not ready.", {
@@ -324,6 +327,10 @@ function shellQuote(value: string): string {
 
 function readSkillTemplate(repository: string): string {
   return readFileSync(path.join(repository, "src", "agentSetup", "arcadia-go.SKILL.md"), "utf8");
+}
+
+function readAgentAskSkillTemplate(repository: string): string {
+  return readFileSync(path.join(repository, "src", "agentSetup", "arcadia-agent-ask.SKILL.md"), "utf8");
 }
 
 function inspectInstalledBroker(executables: BrokerExecutables): {
