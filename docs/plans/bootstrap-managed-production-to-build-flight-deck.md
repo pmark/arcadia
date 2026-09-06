@@ -112,7 +112,7 @@ actions:
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/execution/planningPreparation.ts", "src/execution/planningAuthorization.ts", "src/sessions/index.ts", "src/commands/go.ts", "apps/dashboard/app/api/projects/[id]/continuation/route.ts"]
   - id: support-selected-codex-and-claude-sessions
     title: Launch the selected Codex or Claude adapter through the canonical Session subsystem.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Launch the selected Codex adapter through the canonical Session subsystem, with a provider interface that does not have to be reworked when Claude session launch is added in prove-multi-provider-production-recovery.
@@ -322,7 +322,7 @@ actions:
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/working-copy-safety.md", "docs/plans/mission-control-view/14-flight-deck-plan-amendment.yaml"]
 questions: []
 decisions: []
-current_action: support-selected-codex-and-claude-sessions
+current_action: expose-guarded-host-session-launch
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---
