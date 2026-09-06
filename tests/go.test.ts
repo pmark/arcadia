@@ -47,6 +47,58 @@ describe("arcadia go", () => {
     expect(() => git(fixture.main, ["show-ref", "--verify", "refs/heads/claude/copy-contract"])).toThrow();
   });
 
+  it("retires a base-ahead source without changing main and dispatches from the settled base", () => {
+    const fixture = createFixture("codex/completed-settlement");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    git(fixture.main, ["merge", "--ff-only", "codex/completed-settlement"]);
+    settleNextAction(fixture.main);
+    const settledMain = git(fixture.main, ["rev-parse", "main"]).trim();
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true });
+
+    expect(result.data.integration).toBe("already-integrated");
+    expect(result.data.dispatch.context?.action.id).toBe("dispatch-next");
+    expect(result.data.sourceWorktreeRemoved).toBe(true);
+    expect(result.data.sourceBranchDeleted).toBe(true);
+    expect(git(fixture.main, ["rev-parse", "main"]).trim()).toBe(settledMain);
+    expect(existsSync(fixture.feature)).toBe(false);
+  });
+
+  it("retires a squash-merged source by patch equivalence without changing main", () => {
+    const fixture = createFixture("claude/squash-completed");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    git(fixture.main, ["merge", "--squash", "claude/squash-completed"]);
+    git(fixture.main, ["commit", "-m", "settle completed action"]);
+    const settledMain = git(fixture.main, ["rev-parse", "main"]).trim();
+
+    expect(git(fixture.main, ["cherry", "main", "claude/squash-completed"])).not.toContain("+");
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true });
+
+    expect(result.data.integration).toBe("already-integrated");
+    expect(result.data.dispatch.context?.action.id).toBe("define-contract");
+    expect(git(fixture.main, ["rev-parse", "main"]).trim()).toBe(settledMain);
+    expect(existsSync(fixture.feature)).toBe(false);
+    expect(() => git(fixture.main, ["show-ref", "--verify", "refs/heads/claude/squash-completed"])).toThrow();
+  });
+
+  it("deletes a verified-safe local source despite a stale remote tracking ref", () => {
+    const fixture = createFixture("codex/stale-upstream");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    const staleHead = git(fixture.feature, ["rev-parse", "HEAD"]).trim();
+    git(fixture.main, ["merge", "--squash", "codex/stale-upstream"]);
+    git(fixture.main, ["commit", "-m", "settle completed action"]);
+    const settledMain = git(fixture.main, ["rev-parse", "main"]).trim();
+    git(fixture.main, ["update-ref", "refs/remotes/origin/codex/stale-upstream", staleHead]);
+    git(fixture.feature, ["branch", "--set-upstream-to=origin/codex/stale-upstream"]);
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true });
+
+    expect(result.data.sourceBranchDeleted).toBe(true);
+    expect(git(fixture.main, ["rev-parse", "main"]).trim()).toBe(settledMain);
+    expect(git(fixture.main, ["rev-parse", "refs/remotes/origin/codex/stale-upstream"]).trim()).toBe(staleHead);
+    expect(() => git(fixture.main, ["show-ref", "--verify", "refs/heads/codex/stale-upstream"])).toThrow();
+  });
+
   it("returns a primary task checkout to main when main is not checked out elsewhere", () => {
     const fixture = createFixture("codex/unused-linked-copy");
     git(fixture.main, ["worktree", "remove", fixture.feature]);
@@ -340,6 +392,29 @@ function commitFeature(cwd: string, file: string, content: string): void {
   writeFileSync(path.join(cwd, file), content);
   git(cwd, ["add", file]);
   git(cwd, ["commit", "-m", "feature proof"]);
+}
+
+/** Model the completion settlement that moves the governed pointer after code landed. */
+function settleNextAction(cwd: string): void {
+  writeFileSync(path.join(cwd, "PROJECT.md"), projectDocument.replace("current_action: define-contract", "current_action: dispatch-next"));
+  writeFileSync(path.join(cwd, "docs", "plans", "copy-proof.md"), planDocument.replace(
+    "---\n\n# Copy proof",
+    `  - id: dispatch-next
+    title: Dispatch the next Action
+    status: open
+    responsibility: agent
+    effort: session
+    clarification: clarified
+    next_action: Dispatch the next governed Action.
+    expected_artifact: docs/next.md
+    acceptance_criteria:
+      - The next Action is dispatchable.
+---
+
+# Copy proof`
+  ));
+  git(cwd, ["add", "PROJECT.md", "docs/plans/copy-proof.md"]);
+  git(cwd, ["commit", "-m", "settle completion and advance pointer"]);
 }
 
 function git(cwd: string, args: string[]): string {

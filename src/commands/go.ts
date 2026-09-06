@@ -14,6 +14,7 @@ import {
   git,
   isAncestor,
   isInside,
+  isPatchEquivalent,
   parseWorktrees,
   refExists,
   resolveBaseBranch,
@@ -76,7 +77,7 @@ export interface GoCommandData {
   baseBranch: string;
   baseWorktree: string | null;
   baseRemoteSync: BaseRemoteSync;
-  integration: "not-needed" | "fast-forward";
+  integration: "not-needed" | "fast-forward" | "already-integrated";
   commitsToIntegrate: number;
   sourceWorktreeRemoved: boolean;
   sourceBranchDeleted: boolean;
@@ -147,10 +148,10 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     : { attempted: false, remote: null, fastForwarded: false, reason: "Preview does not fetch or modify the base branch." };
 
   const sourceBranch = sourceRecord.branch.replace(/^refs\/heads\//, "");
-  const integration = sourceBranch === baseBranch ? "not-needed" : "fast-forward";
+  const integration = reconciliationKind(sourceRecord.path, baseBranch, sourceBranch);
   const commitsToIntegrate = countCommits(sourceRecord.path, baseBranch, sourceBranch);
 
-  if (integration === "fast-forward") {
+  if (integration !== "not-needed") {
     if (!SAFE_TASK_BRANCH.test(sourceBranch)) {
       throw validationError("Arcadia go only removes clearly agent-owned task branches.", {
         sourceBranch,
@@ -158,7 +159,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
         remedy: "Integrate and retire this branch manually, or rename it to an agent-owned task branch after review."
       });
     }
-    if (!isAncestor(sourceRecord.path, baseBranch, sourceBranch)) {
+    if (integration === null) {
       throw validationError("The source branch cannot fast-forward the local base branch.", {
         sourceBranch,
         baseBranch,
@@ -167,8 +168,9 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     }
   }
 
-  const projectSlug = resolveProjectSlug(sourceRecord.path);
-  const sourceDispatch = resolveDispatch(sourceRecord.path, projectSlug);
+  const projectRoot = integration === "already-integrated" ? (baseRecord?.path ?? sourceRecord.path) : sourceRecord.path;
+  const projectSlug = resolveProjectSlug(projectRoot);
+  const sourceDispatch = resolveDispatch(projectRoot, projectSlug);
   if (!isDispatchable(sourceDispatch)) {
     throw validationError("The repository does not resolve exactly one dispatchable Arcadia action.", {
       projectSlug,
@@ -184,26 +186,28 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
   let nextWorktree: GoCommandData["nextWorktree"] = null;
   let session: AgentSession | null = null;
   let dispatch = sourceDispatch;
-  if (options.apply && integration === "fast-forward") {
-    if (baseRecord) {
-      git(baseRecord.path, ["merge", "--ff-only", sourceBranch]);
-    } else {
-      // The base branch may be unattached because an agent switched the
-      // primary checkout onto its task branch. Updating it is safe only after
-      // the ancestry check above proves this is a strict fast-forward.
-      git(sourceRecord.path, ["branch", "-f", baseBranch, sourceBranch]);
-    }
+  if (options.apply && integration !== "not-needed" && integration !== null) {
+    if (integration === "fast-forward") {
+      if (baseRecord) {
+        git(baseRecord.path, ["merge", "--ff-only", sourceBranch]);
+      } else {
+        // The base branch may be unattached because an agent switched the
+        // primary checkout onto its task branch. Updating it is safe only after
+        // the ancestry check above proves this is a strict fast-forward.
+        git(sourceRecord.path, ["branch", "-f", baseBranch, sourceBranch]);
+      }
 
-    const baseDispatch = resolveDispatch(baseRecord?.path ?? sourceRecord.path, projectSlug);
-    if (!isDispatchable(baseDispatch)) {
-      throw validationError("The fast-forward completed, but dispatch validation failed from the base worktree.", {
-        projectSlug,
-        blockers: baseDispatch.blockers,
-        operatorQuestion: baseDispatch.operatorQuestion,
-        remedy: "Keep the source worktree and repair the governed pointer from the base worktree."
-      });
+      const baseDispatch = resolveDispatch(baseRecord?.path ?? sourceRecord.path, projectSlug);
+      if (!isDispatchable(baseDispatch)) {
+        throw validationError("The fast-forward completed, but dispatch validation failed from the base worktree.", {
+          projectSlug,
+          blockers: baseDispatch.blockers,
+          operatorQuestion: baseDispatch.operatorQuestion,
+          remedy: "Keep the source worktree and repair the governed pointer from the base worktree."
+        });
+      }
+      dispatch = baseDispatch;
     }
-    dispatch = baseDispatch;
 
     if (!baseRecord && samePath(worktrees[0].path, sourceRecord.path)) {
       // A primary checkout cannot be removed as a linked worktree. Return it
@@ -218,7 +222,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       git(controlWorktree, ["worktree", "remove", sourceRecord.path]);
       sourceWorktreeRemoved = true;
     }
-    git(controlWorktree, ["branch", "-d", sourceBranch]);
+    deleteVerifiedSafeSourceBranch(controlWorktree, baseBranch, sourceBranch, sourceRecord.head);
     sourceBranchDeleted = true;
     git(controlWorktree, ["worktree", "prune"]);
   }
@@ -235,10 +239,10 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
         "No model is resolved for the next agent session, and Arcadia go will not launch one unpinned.",
         {
           planPath: dispatch.context?.planPath ?? null,
-          gitReconciliationAlreadyApplied: integration === "fast-forward",
+          gitReconciliationAlreadyApplied: integration === "fast-forward" || integration === "already-integrated",
           note:
-            integration === "fast-forward"
-              ? "The source was already fast-forwarded into the base branch and its worktree/branch retired " +
+            integration === "fast-forward" || integration === "already-integrated"
+              ? "The source was already integrated into the base branch and its worktree/branch retired " +
                 "before this check runs, because the model recommendation must be read from the plan as it " +
                 "exists after that merge, not before it. Only preparing the next agent worktree failed; nothing " +
                 "needs to be undone."
@@ -397,6 +401,12 @@ export function renderGoSuccess(response: CommandSuccess<GoCommandData>): string
       `Fast-forwarded ${data.sourceBranch} into ${data.baseBranch}.`,
       `Removed the clean source worktree and deleted the merged task branch.`
     );
+  } else if (data.integration === "already-integrated") {
+    lines.push(
+      "",
+      `${data.sourceBranch} was already integrated into ${data.baseBranch}; the base branch was left unchanged.`,
+      "Removed the clean source worktree and deleted the verified-safe local task branch."
+    );
   } else {
     lines.push("", "The source is already the clean base worktree; no Git reconciliation was needed.");
   }
@@ -453,6 +463,41 @@ function renderClutter(clutter: NonNullable<GoCommandData["clutter"]>): string[]
   ];
 }
 
+
+type ReconciliationKind = GoCommandData["integration"] | null;
+
+/**
+ * Classify a completed task branch without changing either branch. A source
+ * already reachable from the base, or whose every patch is already on the
+ * base, has nothing left to integrate and may only be retired after the same
+ * proof is repeated immediately before local-ref deletion.
+ */
+function reconciliationKind(cwd: string, baseBranch: string, sourceBranch: string): ReconciliationKind {
+  if (sourceBranch === baseBranch) return "not-needed";
+  if (isAncestor(cwd, sourceBranch, baseBranch) || isPatchEquivalent(cwd, baseBranch, sourceBranch)) {
+    return "already-integrated";
+  }
+  if (isAncestor(cwd, baseBranch, sourceBranch)) return "fast-forward";
+  return null;
+}
+
+/**
+ * `git branch -d` compares a branch with its configured upstream when one
+ * exists. That makes a stale `origin/<task>` ref veto deletion even after the
+ * branch was locally proven integrated into the base. Delete the local ref
+ * directly instead, but only when its exact head is still the verified head
+ * and the proof still holds. This never reads or writes a remote ref.
+ */
+function deleteVerifiedSafeSourceBranch(cwd: string, baseBranch: string, sourceBranch: string, expectedHead: string): void {
+  if (reconciliationKind(cwd, baseBranch, sourceBranch) !== "already-integrated") {
+    throw validationError("The source branch changed before cleanup; Arcadia go will not delete it.", {
+      sourceBranch,
+      baseBranch,
+      remedy: "Inspect and reconcile the changed branch manually before retrying cleanup."
+    });
+  }
+  git(cwd, ["update-ref", "-d", `refs/heads/${sourceBranch}`, expectedHead]);
+}
 
 /**
  * Fetch the base branch's tracked remote and fast-forward the local base onto
