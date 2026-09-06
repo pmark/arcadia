@@ -32,7 +32,7 @@ actions:
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/proposals/complete-managed-action-from-evidence.md", "src/ask/settlement.ts", "src/docs/dispatch.ts", "src/dispatch/pointer.ts"]
   - id: define-managed-production-policy
     title: Persist a bounded Active/Inactive production policy and admission authority in the existing workspace.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Persist a bounded Active/Inactive production policy and admission authority in the existing workspace.
@@ -320,7 +320,7 @@ actions:
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/working-copy-safety.md", "docs/plans/mission-control-view/14-flight-deck-plan-amendment.yaml"]
 questions: []
 decisions: []
-current_action: define-managed-production-policy
+current_action: prove-provider-capacity-admission
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---
