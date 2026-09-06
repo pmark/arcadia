@@ -616,6 +616,69 @@ use the same receipt path and smallest canonical effect:
 
 Rejection is supported for every proposal and never creates executable work.
 
+## Managed production: the standing authorization
+
+Managed production is the switch that lets Arcadia admit and advance approved
+work without a new chat or a manual Session launch between Actions. It is a
+*permission*, not an activity: **Active** means Arcadia may admit work,
+**Building** is an observation about what happens to be running.
+
+It defaults to Inactive, and the switch by itself launches nothing — this
+slice persists the authorization and gates admission. Read the current state
+with the noun:
+
+```sh
+pnpm arcadia production status
+```
+
+Preview exactly what activation would authorize before granting it. The
+preview writes nothing and shows the included Projects and Plans, the resulting
+ordered Action scope, the permitted providers, the concurrency ceiling, which
+mechanical transitions are delegated, and — just as importantly — what
+activation does *not* buy:
+
+```sh
+pnpm arcadia production preview \
+  --project arcadia \
+  --provider claude --provider codex \
+  --intent "Finish the bootstrap Plan without a per-Action relay." \
+  --concurrency 2
+```
+
+Grant it with the same options plus an idempotency key, the authorizing
+operator, and the revision the preview showed. A moved policy refuses rather
+than overwrites, and replaying a `--request-id` returns the original receipt:
+
+```sh
+pnpm arcadia production activate \
+  --project arcadia --provider claude \
+  --intent "Finish the bootstrap Plan without a per-Action relay." \
+  --request-id bootstrap-grant-1 --granted-by "$USER" --expect-revision 0
+```
+
+Switch it Off at any time:
+
+```sh
+pnpm arcadia production deactivate --request-id bootstrap-off-1 --reason "Stopping for the day."
+```
+
+**Off stops new admissions immediately and fences every reserved-but-unlaunched
+Action. Work already committed to a launch keeps running and is reconciled;
+nothing is killed and nothing is deleted.** The command prints both lists, so
+work that survives the cutoff is named rather than concealed. Off also bumps a
+monotonic revision, so a stale worker holding an old view cannot resurrect the
+grant it lost.
+
+Two states are deliberately distinct from Inactive. `Active · No admitted work`
+means the authorization stands but nothing is eligible. `Observation
+unavailable` means the policy store could not be read — Arcadia will admit
+nothing, and it will not claim a confirmed Off it cannot prove.
+
+Activation delegates mechanics, never judgment. Merging, deploying, publishing,
+deleting, spending, credentials, production access, and messaging each still
+need their own Decision, and a Plan that is not listed is never activated just
+because it is next on screen.
+
 ## Protect active coding work
 
 The Morning Packet puts **Coding work safety** first whenever an active

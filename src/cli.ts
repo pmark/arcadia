@@ -42,6 +42,15 @@ import {
   runBackBurnerShowCommand
 } from "./commands/backBurner.js";
 import {
+  renderProductionPreviewSuccess,
+  renderProductionStatusSuccess,
+  renderProductionTransitionSuccess,
+  runProductionActivateCommand,
+  runProductionDeactivateCommand,
+  runProductionPreviewCommand,
+  runProductionStatusCommand
+} from "./commands/production.js";
+import {
   renderFeedbackListSuccess,
   renderFeedbackRecordSuccess,
   runFeedbackListCommand,
@@ -767,6 +776,58 @@ export function buildProgram(): Command {
     expectedArtifact?: string;
     json?: boolean;
   }) => runCliAction("capture", options, () => runCaptureCommand(options), renderCaptureSuccess));
+
+  const production = program.command("production").description("Managed production policy: the standing authorization for unattended admission");
+  addJsonOption(
+    production
+      .command("status")
+      .description("Show desired production state, authorized scope and live admissions")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("production.status", options, () => runProductionStatusCommand(options), renderProductionStatusSuccess)
+  );
+  addJsonOption(
+    production
+      .command("preview")
+      .description("Preview exactly what activation would authorize; writes nothing")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--project <slug>", "Project to include (repeatable)", collectRepeatable, [])
+      .option("--plan <project/plan>", "Plan to include (repeatable; default every Plan of the named Projects)", collectRepeatable, [])
+      .option("--provider <name>", "Permitted coding-agent provider (repeatable)", collectRepeatable, [])
+      .option("--intent <text>", "The operator's whole-Plan intent, carried in the policy scope")
+      .option("--concurrency <n>", "Maximum concurrent admitted Sessions", "1")
+      .option("--transitions <list>", "Delegated mechanics: validation,acceptance,pointer or none")
+  ).action((options: ProductionCliOptions) =>
+    runCliAction("production.preview", options, () => runProductionPreviewCommand(options), renderProductionPreviewSuccess)
+  );
+  addJsonOption(
+    production
+      .command("activate")
+      .description("Grant the standing authorization shown by preview")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--project <slug>", "Project to include (repeatable)", collectRepeatable, [])
+      .option("--plan <project/plan>", "Plan to include (repeatable)", collectRepeatable, [])
+      .option("--provider <name>", "Permitted coding-agent provider (repeatable)", collectRepeatable, [])
+      .option("--intent <text>", "The operator's whole-Plan intent, carried in the policy scope")
+      .option("--concurrency <n>", "Maximum concurrent admitted Sessions", "1")
+      .option("--transitions <list>", "Delegated mechanics: validation,acceptance,pointer or none")
+      .requiredOption("--request-id <id>", "Idempotency key for this grant")
+      .requiredOption("--granted-by <who>", "Operator granting the authorization")
+      .option("--decision <ref>", "Authorizing Decision reference")
+      .option("--expect-revision <n>", "Policy revision the preview showed")
+  ).action((options: ProductionCliOptions & { requestId: string; grantedBy: string; decision?: string; expectRevision?: string }) =>
+    runCliAction("production.activate", options, () => runProductionActivateCommand(options), renderProductionTransitionSuccess)
+  );
+  addJsonOption(
+    production
+      .command("deactivate")
+      .description("Switch managed production Off: stop new admissions, let committed work finish")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .requiredOption("--request-id <id>", "Idempotency key for this revocation")
+      .option("--reason <text>", "Why production was switched Off")
+  ).action((options: { workspace: string; requestId: string; reason?: string; json?: boolean }) =>
+    runCliAction("production.deactivate", options, () => runProductionDeactivateCommand(options), renderProductionTransitionSuccess)
+  );
 
   const backBurner = program.command("back-burner").description("List and manage Back Burner items");
   addJsonOption(
@@ -3804,6 +3865,21 @@ function isMainModule(): boolean {
   }
 }
 
+interface ProductionCliOptions {
+  workspace: string;
+  project: string[];
+  plan: string[];
+  provider: string[];
+  intent?: string;
+  concurrency?: string;
+  transitions?: string;
+  json?: boolean;
+}
+
+function collectRepeatable(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
 function addJsonOption(command: Command): Command {
   return command.option("--json", "Emit machine-readable JSON output");
 }
@@ -4056,6 +4132,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "ask") {
     return "ask";
+  }
+
+  if (first === "production" && ["status", "preview", "activate", "deactivate"].includes(second ?? "")) {
+    return `production.${second}`;
   }
 
   if (first === "back-burner" && ["list", "show", "promote", "archive"].includes(second ?? "")) {
