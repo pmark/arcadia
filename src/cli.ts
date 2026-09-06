@@ -149,6 +149,7 @@ import {
 } from "./commands/experiment.js";
 import { runLogCreateCommand } from "./commands/log.js";
 import { renderGoSuccess, runGoCommand } from "./commands/go.js";
+import { renderGoBrokerInstallSuccess, runGoBrokerInstallCommand } from "./commands/goBrokerInstall.js";
 import {
   renderMilestoneCompleteSuccess,
   renderMilestoneCreateSuccess,
@@ -3135,6 +3136,22 @@ export function buildProgram(): Command {
       }
       return runGoCommand({ ...options, agent: options.agent });
     }, renderGoSuccess)
+  );
+
+  const goBroker = program
+    .command("go-broker")
+    .description("Install the protected, narrowly allowlistable Arcadia go broker");
+  addJsonOption(
+    goBroker
+      .command("install")
+      .description("Install a revision-addressed broker snapshot under ~/.local")
+  ).action((options: { json?: boolean }) =>
+    runCliAction(
+      "go-broker.install",
+      options,
+      () => runGoBrokerInstallCommand(),
+      renderGoBrokerInstallSuccess
+    )
   );
 
   const docs = program.command("docs").description("Managed documentation across every Project repository");
