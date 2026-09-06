@@ -53,7 +53,7 @@ actions:
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/commands/worker.ts", "src/sessions/index.ts", "src/db/schema.ts"]
   - id: prove-provider-capacity-admission
     title: Prove and reuse existing Codex and Claude telemetry for unattended included-capacity admission.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Prove and reuse existing Codex and Claude telemetry for unattended included-capacity admission.
@@ -320,7 +320,7 @@ actions:
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/working-copy-safety.md", "docs/plans/mission-control-view/14-flight-deck-plan-amendment.yaml"]
 questions: []
 decisions: []
-current_action: prove-provider-capacity-admission
+current_action: resolve-production-agent-and-launch-preview
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---
