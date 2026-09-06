@@ -118,6 +118,10 @@ export function renderSessionPreviewLaunchSuccess(response: CommandSuccess<Launc
     lines.push("Selection: none resolved");
   }
   if (data.packet) lines.push(`Packet: ${data.packet.invocationId} · sha256 ${data.packet.sha256}`);
+  if (data.packetLifecycle && data.packetLifecycle.kind !== "build_packet_ready") {
+    lines.push(`Packet lifecycle: ${data.packetLifecycle.kind.replaceAll("_", " ")}`);
+    lines.push(`Remedy: ${data.packetLifecycle.remedy}`);
+  }
   if (data.authorizingDecisions.length > 0) lines.push(`Authorizing Decisions: ${data.authorizingDecisions.join(", ")}`);
   if (data.ready) {
     lines.push("Ready: this Action may be launched with no further preparation.");

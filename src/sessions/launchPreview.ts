@@ -18,6 +18,7 @@ import { parseExecutionRequirement } from "../execution/profiles.js";
 import { packetSha256 } from "../execution/planningAuthorization.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { resolveProjectTransition, type TmuxAdapter } from "./index.js";
+import { resolvePacketLifecycle, type PacketLifecycleState } from "./packetLifecycle.js";
 
 /**
  * Providers the canonical Session subsystem can actually spawn today. Mirrors
@@ -50,6 +51,7 @@ export interface LaunchPreview {
   repoRoot: string;
   baseRevision: string | null;
   packet: LaunchPreviewPacket | null;
+  packetLifecycle: PacketLifecycleState | null;
   authorizingDecisions: string[];
   selection: SelectedCodingAgentConfiguration | null;
   selectionRationale: string | null;
@@ -88,6 +90,7 @@ export function buildLaunchPreview(input: {
   const documentRevisions = resolveDocumentRevisions(repoRoot, input.projectSlug, context?.activePlan ?? null);
 
   let packet: LaunchPreviewPacket | null = null;
+  let packetLifecycle: PacketLifecycleState | null = null;
   let selection: SelectedCodingAgentConfiguration | null = null;
   let selectionRationale: string | null = null;
   let authorizingDecisions: string[] = [];
@@ -98,6 +101,7 @@ export function buildLaunchPreview(input: {
     if (!project || !workItem || workItem.project_id !== project.id) {
       prerequisites.push("stale pointer: the workspace is stale relative to the authoritative Action; run arcadia docs sync --apply.");
     } else {
+      packetLifecycle = resolvePacketLifecycle(input.db, workItem);
       const launchRefusals = launchAdapterRefusals(input.adapters);
 
       if (workItem.execution_requirement_json) {
@@ -137,7 +141,7 @@ export function buildLaunchPreview(input: {
         .filter((candidate) => candidate.purpose === "build" && candidate.status === "packet_created")
         .at(-1);
       if (!invocation) {
-        prerequisites.push("missing packet: the Action has no prepared immutable build packet.");
+        prerequisites.push(`${packetLifecycle.kind.replaceAll("_", " ")}: ${packetLifecycle.remedy}`);
       } else {
         const absolutePacket = path.join(input.workspace, invocation.prompt_path);
         if (!existsSync(absolutePacket)) {
@@ -210,6 +214,18 @@ export function buildLaunchPreview(input: {
     }
   }
 
+  // A packet starts as ready only because it exists. Its immutable authority is
+  // checked above, alongside the current pointer and provider binding. Report
+  // a stale packet as its own lifecycle state so an operator is never sent
+  // back to planning when the safe remedy is to rebuild/re-authorize it.
+  if (packetLifecycle?.kind === "build_packet_ready" && prerequisites.some((entry) => entry.startsWith("stale pointer"))) {
+    packetLifecycle = {
+      kind: "stale_packet",
+      invocationId: packetLifecycle.invocationId,
+      remedy: "Prepare a new immutable build packet through the existing accepted-plan promotion path; do not edit or reuse its stale authority."
+    };
+  }
+
   const previewFingerprint = sha256(
     JSON.stringify({
       requestId: input.requestId,
@@ -238,6 +254,7 @@ export function buildLaunchPreview(input: {
     repoRoot,
     baseRevision,
     packet,
+    packetLifecycle,
     authorizingDecisions,
     selection,
     selectionRationale,
