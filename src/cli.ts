@@ -6,6 +6,7 @@ dotenv.config();
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 import { Command, CommanderError } from "commander";
 import {
   renderArtifactCreateSuccess,
@@ -96,13 +97,15 @@ import {
   renderAdvanceQueueMakeNextSuccess,
   renderAdvanceSuccess,
   renderSessionShowSuccess,
+  renderSessionPreviewLaunchSuccess,
   runAdvanceCommand,
   runAdvanceQueueCommand,
   runAdvanceQueueArrangeCommand,
   runAdvanceQueueMakeNextCommand,
   runAdvanceQueueReorderCommand,
   runAdvanceQueueUndoCommand,
-  runSessionShowCommand
+  runSessionShowCommand,
+  runSessionPreviewLaunchCommand
 } from "./commands/advance.js";
 import {
   renderDogfoodAskSuccess,
@@ -1453,6 +1456,20 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((id: string | undefined, options: { workspace: string; json?: boolean }) =>
     runCliAction("session.show", options, () => runSessionShowCommand({ workspace: options.workspace, id }), renderSessionShowSuccess)
+  );
+  addJsonOption(
+    session.command("preview-launch")
+      .description("Preview the next Session launch's automatic agent selection and bound identity; starts no process and mutates nothing")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--repo <path>", "Project repository", resolveInvocationPath, invocationRoot())
+      .option("--request-id <id>", "Idempotent request id for this preview", randomUUID())
+  ).action((options: { workspace: string; repo: string; requestId: string; json?: boolean }) =>
+    runCliAction(
+      "session.previewLaunch",
+      options,
+      () => runSessionPreviewLaunchCommand({ workspace: options.workspace, repo: options.repo, requestId: options.requestId }),
+      renderSessionPreviewLaunchSuccess
+    )
   );
 
   const decision = program.command("decision").description("Create and update checked-in Decision documents");
