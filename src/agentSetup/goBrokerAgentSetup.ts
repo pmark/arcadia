@@ -185,12 +185,8 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
   const claude = readClaudeSettings(paths.claudeSettings, false);
   const allow = claude?.permissions?.allow ?? [];
   const additionalDirectories = claude?.permissions?.additionalDirectories ?? [];
-  const expectedDirectories = [
-    ...expectedCodexWorktreeRoots(options.home),
-    path.join(path.resolve(options.home), ".claude", "worktrees")
-  ];
-  const expectedCodexProfiles = codexProfiles.filter(({ content }) => content.length > 0);
-  const profileIssues = expectedCodexProfiles.flatMap(({ file, name, content }) => {
+  const expectedDirectories = expectedCodexWorktreeRoots(options.home);
+  const profileIssues = codexProfiles.flatMap(({ file, name, content }) => {
     const issues: string[] = [];
     if (topLevelTomlValue(content, "approval_policy") !== expectedCodexApprovalPolicy(file, paths)) {
       issues.push(`codexProfile:${name}.approval_policy`);
@@ -446,18 +442,16 @@ function topLevelTomlValue(content: string, key: string): string | null {
 function hasExpectedCodexWorktreeRoots(content: string, expectedRoots: string[]): boolean {
   const table = tomlTableBody(content, "sandbox_workspace_write");
   if (table === null) return false;
-  const match = table.match(/^\s*writable_roots\s*=\s*\[([^\]]*)\]/m);
+  const match = table.match(/^\s*writable_roots\s*=\s*\[([\s\S]*?)\]/m);
   if (!match) return false;
-  const roots = [...match[1].matchAll(/"((?:\\.|[^"\\])*)"/g)].map((entry) => JSON.parse(`"${entry[1]}"`) as string);
+  const roots = tomlArrayValues(match[1]);
   return expectedRoots.every((root) => roots.includes(root));
 }
 
 function tomlArrayValues(line: string): string[] {
-  const open = line.indexOf("[");
-  const close = line.lastIndexOf("]");
-  if (open < 0 || close < open) return [];
-  const array = line.slice(open + 1, close);
-  return [...array.matchAll(/"((?:\\.|[^"\\])*)"/g)].map((entry) => JSON.parse(`"${entry[1]}"`) as string);
+  return [...line.matchAll(/"((?:\\.|[^"\\])*)"|'([^']*)'/g)].map((entry) =>
+    entry[1] !== undefined ? (JSON.parse(`"${entry[1]}"`) as string) : entry[2]
+  );
 }
 
 function tomlArrayEnd(lines: string[], start: number, limit: number, file: string): number {
