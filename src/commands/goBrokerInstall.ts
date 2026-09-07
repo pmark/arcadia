@@ -26,6 +26,7 @@ import {
   type AgentSetupStatus
 } from "../agentSetup/goBrokerAgentSetup.js";
 import type { BrokerExecutables, ProviderExecutables } from "../agentSetup/goBrokerAgentSetup.js";
+import { runWorktreeRuntimeProbe, type WorktreeRuntimeProbeResult } from "../sessions/worktreeRuntimeProbe.js";
 
 const INSTALL_SCHEMA = "arcadia-go-broker-install-v1";
 
@@ -41,6 +42,7 @@ export interface GoBrokerInstallData {
     backups: string[];
     status: AgentSetupStatus;
   };
+  hostProbe: WorktreeRuntimeProbeResult;
 }
 
 export interface GoBrokerStatusData {
@@ -166,6 +168,11 @@ export function runGoBrokerInstallCommand(
       agentConfigurationReady: agentSetup.status.ready
     });
   }
+  const hostProbe = runWorktreeRuntimeProbe({
+    repository,
+    brokerEntrypoint: path.join(releaseDirectory, "dist", "scripts", "arcadia-go-broker.js"),
+    home: installHome
+  });
 
   return createSuccess({
     command: "go-broker.install",
@@ -175,7 +182,8 @@ export function runGoBrokerInstallCommand(
       executables,
       manifest: path.join(releaseDirectory, "broker-manifest.json"),
       ...permissionSnippets(executables),
-      agentSetup
+      agentSetup,
+      hostProbe
     },
     artifacts: [releaseDirectory, ...Object.values(executables)]
   });
@@ -190,6 +198,7 @@ export function renderGoBrokerInstallSuccess(response: CommandSuccess<GoBrokerIn
     `Codex work-monitor executable: ${response.data.executables.workMonitor.codex}`,
     `Manifest: ${response.data.manifest}`,
     `Agent configuration: ${response.data.agentSetup.status.ready ? "ready" : "incomplete"}`,
+    `Disposable host probe: ${response.data.hostProbe.checked.join(", ")}`,
     `Configuration files changed: ${response.data.agentSetup.changed.length}`,
     `Recovery backups created: ${response.data.agentSetup.backups.length}`,
     "",

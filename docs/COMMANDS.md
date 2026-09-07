@@ -1417,7 +1417,13 @@ provider-specific launchers under `~/.local/bin/` for `go`, prepared-worktree
 converges both providers' permission and sandbox configuration. It
 preserves unrelated settings, removes recognized legacy broad Arcadia-go
 allowances, and backs up changed user-owned files. Installation is an operator
-setup/update action; the broker itself exposes only this runtime contract:
+setup/update action. Before success it creates and retires a disposable
+candidate beneath `~/.codex/worktrees`, verifying candidate/source writes,
+dependency bridging, a temporary SQLite database, candidate and Dashboard
+builds, Vitest, and syntax-checking the revision-pinned compiled broker. A
+failure reports the blocked operation and one recovery command without
+loosening Codex's sandbox. The broker itself exposes only this runtime
+contract:
 
 ```sh
 ~/.local/bin/arcadia-go-broker-codex

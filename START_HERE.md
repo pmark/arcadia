@@ -801,6 +801,14 @@ receive timestamped backups. Verify the entire chain with:
 pnpm arcadia go-broker status
 ```
 
+Before it reports success, installation also creates and retires one
+disposable candidate beneath `~/.codex/worktrees`. The local probe verifies
+candidate and source writes, dependency bridging, a temporary SQLite database,
+candidate TypeScript and Dashboard builds, Vitest, and syntax-checking the
+revision-pinned compiled broker. A refusal identifies the denied operation and
+one recovery command; it never asks an agent to loosen sandboxing or enable
+network access.
+
 `status` reports a named Codex profile issue when a present profile is missing
 either required worktree root; absent optional profile files are not created.
 
