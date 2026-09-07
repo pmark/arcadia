@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
-import { permissionSnippets, stageGoBrokerDatabaseSchema } from "../src/commands/goBrokerInstall.js";
+import { permissionSnippets, stageGoBrokerDatabaseSchema, stageGoBrokerDependencies } from "../src/commands/goBrokerInstall.js";
 import { assertGoBrokerHostController, parseGoBrokerArguments, runGoBroker } from "../src/goBroker.js";
 
 describe("protected Arcadia go broker", () => {
@@ -151,6 +151,29 @@ describe("protected Arcadia go broker", () => {
 
       expect(stagedPath).toBe(path.join(release, "dist", "database", "schema.sql"));
       expect(readFileSync(stagedPath, "utf8")).toBe(schema);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("copies bridged local dependencies into a release without a registry deploy", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "arcadia-go-broker-dependencies-"));
+    const repository = path.join(root, "repository");
+    const sharedNodeModules = path.join(root, "shared-node-modules");
+    const release = path.join(root, "release");
+
+    try {
+      mkdirSync(path.join(sharedNodeModules, ".pnpm", "runtime"), { recursive: true });
+      writeFileSync(path.join(sharedNodeModules, ".pnpm", "runtime", "index.js"), "export default 'ready';\n");
+      symlinkSync(".pnpm/runtime", path.join(sharedNodeModules, "runtime"));
+      mkdirSync(repository, { recursive: true });
+      symlinkSync(sharedNodeModules, path.join(repository, "node_modules"));
+
+      const destination = stageGoBrokerDependencies(repository, release);
+
+      expect(destination).toBe(path.join(release, "node_modules"));
+      expect(lstatSync(destination).isSymbolicLink()).toBe(false);
+      expect(readFileSync(path.join(destination, "runtime", "index.js"), "utf8")).toBe("export default 'ready';\n");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

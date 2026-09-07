@@ -1410,13 +1410,15 @@ pnpm arcadia go-broker install
 ```
 
 Installation is refused unless Arcadia is at a clean, committed repository
-root. The command builds the CLI, creates a production dependency snapshot at
+root. The command builds the CLI, copies the resolved local dependency tree into a self-contained runtime at
 `~/.local/share/arcadia/go-broker/releases/<git-sha>/`, atomically updates
 provider-specific launchers under `~/.local/bin/` for `go`, prepared-worktree
 `advance`, and read-only `work monitor`, installs the shared managed skill, and
 converges both providers' permission and sandbox configuration. It
 preserves unrelated settings, removes recognized legacy broad Arcadia-go
-allowances, and backs up changed user-owned files. Installation is an operator
+allowances, and backs up changed user-owned files. It makes no registry request:
+missing local dependencies refuse with the `pnpm bridge:worktree` recovery command.
+Installation is an operator
 setup/update action. Before success it creates and retires a disposable
 candidate beneath `~/.codex/worktrees`, verifying candidate/source writes,
 dependency bridging, a temporary SQLite database, candidate and Dashboard

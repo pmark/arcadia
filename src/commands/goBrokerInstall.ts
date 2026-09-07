@@ -108,11 +108,7 @@ export function runGoBrokerInstallCommand(
     const stagingRoot = mkdtempSync(path.join(releasesRoot, ".install-"));
     const stagedRelease = path.join(stagingRoot, revision);
     try {
-      execFileSync(
-        "pnpm",
-        ["--filter", "@pmark/arcadia", "deploy", "--prod", "--legacy", stagedRelease],
-        { cwd: repository, stdio: "inherit" }
-      );
+      stageGoBrokerDependencies(repository, stagedRelease);
       cpSync(path.join(repository, "dist", "src"), path.join(stagedRelease, "dist", "src"), {
         recursive: true,
         force: true
@@ -310,6 +306,29 @@ export function stageGoBrokerDatabaseSchema(repository: string, stagedRelease: s
   const destination = path.join(destinationDirectory, "schema.sql");
   mkdirSync(destinationDirectory, { recursive: true });
   copyFileSync(path.join(repository, "database", "schema.sql"), destination);
+  return destination;
+}
+
+/**
+ * A protected broker must not need a registry request after installation.
+ *
+ * Worktrees commonly bridge `node_modules` from a retained checkout. Resolve
+ * that bridge once, then copy the real package tree as a release-local tree.
+ * Its pnpm package links remain relative to that copied tree, so the runtime
+ * neither reaches back into the candidate nor depends on a package store that
+ * may be unavailable from the sandboxed session.
+ */
+export function stageGoBrokerDependencies(repository: string, stagedRelease: string): string {
+  const nodeModules = path.join(repository, "node_modules");
+  if (!existsSync(nodeModules)) {
+    throw validationError("The protected broker installer needs prepared local dependencies.", {
+      repository,
+      remedy: "Run pnpm bridge:worktree from this repository, then rerun arcadia go-broker install."
+    });
+  }
+  const source = realpathSync(nodeModules);
+  const destination = path.join(stagedRelease, "node_modules");
+  cpSync(source, destination, { recursive: true, force: true });
   return destination;
 }
 
