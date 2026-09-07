@@ -29,4 +29,16 @@ describe("POST /api/projects/[id]/session-launch", () => {
     const body = await response.json();
     expect(body.error).toContain("required");
   });
+
+  it("returns a client error for malformed JSON instead of attempting a launch", async () => {
+    const request = new Request("http://127.0.0.1:3000/api/projects/proj-1/session-launch", {
+      method: "POST",
+      headers: { "sec-fetch-site": "same-origin", "content-type": "application/json" },
+      body: "{not-json"
+    });
+    const response = await POST(request, { params: Promise.resolve({ id: "proj-1" }) });
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toContain("valid JSON");
+  });
 });
