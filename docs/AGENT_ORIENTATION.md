@@ -217,9 +217,11 @@ true-but-wrong number that teaches someone to stop trusting their reports.
   checkout has. Bridging only the *root* one is the trap: most of the suite goes
   green while each `apps/*` workspace still has nothing, so `discord.js` and
   `@pmark/arcadia/...` fail to resolve and read exactly like a broken change.
-  Note `@pmark/arcadia` then resolves to the main checkout's `dist/`, so a test
-  importing it exercises that build, not the worktree's source — check the
-  import graph before trusting a green run there.
+  The bridge script also retargets the `@pmark/arcadia` workspace
+  self-reference (`apps/dashboard/node_modules/@pmark/arcadia`) at the
+  worktree instead of inheriting pnpm's relative symlink back to the main
+  checkout's root, so a test importing it exercises this worktree's own
+  source or build, not the main checkout's.
 
 ## When extending any of this
 
