@@ -12,10 +12,22 @@
 // they were reported as one. So this discovers every tree the main checkout
 // actually has rather than naming them, which is the part that went stale.
 //
+// A second trap once the first is fixed: pnpm points a workspace dependency
+// (`"@pmark/arcadia": "workspace:*"` in apps/dashboard/package.json) straight
+// at the sibling package directory with a *relative* symlink, e.g.
+// `apps/dashboard/node_modules/@pmark/arcadia -> ../../../..`. Bridging that
+// tree with one top-level symlink preserves the relative target as-is, so it
+// still resolves four levels up from its *physical* location in the main
+// checkout, landing back on the main checkout's root and its stale dist --
+// silently, since the import succeeds. Any tree containing such a self
+// reference is bridged one level deeper instead, so that one entry can be
+// retargeted at the worktree while everything else keeps the fast top-level
+// symlink.
+//
 // Idempotent, and refuses to run anywhere but a worktree. Uses no dependencies,
 // because in a fresh worktree there are none to use.
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readdirSync, symlinkSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, symlinkSync } from "node:fs";
 import path from "node:path";
 
 const MAX_DEPTH = 3;
@@ -78,8 +90,102 @@ if (trees.length === 0) {
   );
 }
 
+/** Every workspace member's absolute directory in the main checkout: the root plus every `packages:` glob target in pnpm-workspace.yaml, read without a YAML parser since only plain `- path` entries are used here. */
+function workspaceMemberPaths(root) {
+  const members = [root];
+  const workspaceFile = path.join(root, "pnpm-workspace.yaml");
+  let text;
+  try {
+    text = readFileSync(workspaceFile, "utf8");
+  } catch {
+    return members;
+  }
+  const section = text.match(/^packages:\n((?:[ \t]+-.*\n?)*)/m);
+  if (!section) return members;
+  for (const line of section[1].split("\n")) {
+    const match = line.match(/^\s*-\s*(\S+)/);
+    if (match) members.push(path.resolve(root, match[1]));
+  }
+  return members;
+}
+
+/**
+ * The workspace member `absoluteEntry` points straight at, or null if it
+ * resolves anywhere else. A pnpm workspace self-reference symlink resolves to
+ * exactly a member's root directory; an ordinary dependency always resolves
+ * one or more levels deeper, into `.pnpm/<name>@<version>/node_modules/<name>`
+ * -- which the main checkout's own node_modules physically contains, so
+ * anything looser than exact equality here would also match every ordinary
+ * dependency and defeat the point of the check.
+ */
+function workspaceSelfReferenceTarget(absoluteEntry, memberPaths) {
+  let resolved;
+  try {
+    resolved = realpathSync(absoluteEntry);
+  } catch {
+    return null;
+  }
+  return memberPaths.find((member) => resolved === member) ?? null;
+}
+
+/** Whether any entry in `tree` (checking one level into `@scope` directories) is a workspace self-reference. */
+function treeHasSelfReference(tree, memberPaths) {
+  let entries;
+  try {
+    entries = readdirSync(tree, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  for (const entry of entries) {
+    const absolute = path.join(tree, entry.name);
+    if (entry.name.startsWith("@")) {
+      let scoped;
+      try {
+        scoped = readdirSync(absolute, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      if (scoped.some((inner) => workspaceSelfReferenceTarget(path.join(absolute, inner.name), memberPaths))) return true;
+    } else if (workspaceSelfReferenceTarget(absolute, memberPaths)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Symlink `mainEntry` into the worktree, retargeting it at the worktree's own copy of whichever workspace member it resolves to instead of the main checkout's. */
+function linkOrRetarget(mainEntry, worktreeEntry, memberPaths, mainCheckout, worktree, retargeted) {
+  const member = workspaceSelfReferenceTarget(mainEntry, memberPaths);
+  if (member) {
+    const relativeToRoot = path.relative(mainCheckout, member);
+    symlinkSync(relativeToRoot === "" ? worktree : path.join(worktree, relativeToRoot), worktreeEntry);
+    retargeted.push(path.relative(worktree, worktreeEntry));
+  } else {
+    symlinkSync(mainEntry, worktreeEntry);
+  }
+}
+
+/** Bridge one tree one level deeper (and one level into each `@scope` directory) so a workspace self-reference inside it can be retargeted at the worktree instead of inherited from the main checkout. */
+function bridgeTreeWorkspaceAware(tree, target, memberPaths, mainCheckout, worktree, retargeted) {
+  mkdirSync(target, { recursive: true });
+  for (const entry of readdirSync(tree, { withFileTypes: true })) {
+    const mainEntry = path.join(tree, entry.name);
+    const worktreeEntry = path.join(target, entry.name);
+    if (entry.name.startsWith("@")) {
+      mkdirSync(worktreeEntry, { recursive: true });
+      for (const scoped of readdirSync(mainEntry, { withFileTypes: true })) {
+        linkOrRetarget(path.join(mainEntry, scoped.name), path.join(worktreeEntry, scoped.name), memberPaths, mainCheckout, worktree, retargeted);
+      }
+    } else {
+      linkOrRetarget(mainEntry, worktreeEntry, memberPaths, mainCheckout, worktree, retargeted);
+    }
+  }
+}
+
+const memberPaths = workspaceMemberPaths(mainCheckout);
 const linked = [];
 const skipped = [];
+const retargeted = [];
 for (const tree of trees) {
   const relative = path.relative(mainCheckout, tree);
   const target = path.join(worktree, relative);
@@ -88,7 +194,11 @@ for (const tree of trees) {
     continue;
   }
   mkdirSync(path.dirname(target), { recursive: true });
-  symlinkSync(tree, target);
+  if (treeHasSelfReference(tree, memberPaths)) {
+    bridgeTreeWorkspaceAware(tree, target, memberPaths, mainCheckout, worktree, retargeted);
+  } else {
+    symlinkSync(tree, target);
+  }
   linked.push(relative);
 }
 
@@ -96,12 +206,9 @@ console.log(`Worktree:      ${worktree}`);
 console.log(`Main checkout: ${mainCheckout}`);
 for (const relative of linked) console.log(`  linked  ${relative}`);
 for (const relative of skipped) console.log(`  present ${relative}`);
+for (const relative of retargeted) console.log(`  retargeted at worktree  ${relative}`);
 console.log(
   linked.length === 0
     ? "Already bridged; nothing to do."
     : `Bridged ${linked.length} dependency tree${linked.length === 1 ? "" : "s"}.`
-);
-console.log(
-  "\nNote: `@pmark/arcadia` resolves to the MAIN checkout's dist/, so a test\n" +
-    "importing it exercises that build rather than this worktree's source."
 );

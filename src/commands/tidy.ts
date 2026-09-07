@@ -137,6 +137,8 @@ export interface TidyCommandOptions {
   noFetch?: boolean;
   /** Skip GitHub pull-request verification even when `gh` is available. */
   noGithub?: boolean;
+  /** Reservation-expiry reference point. Not exposed by the CLI; defaults to the real clock. */
+  now?: Date;
   /** Deterministic fault injection for race regression tests. Not exposed by the CLI. */
   testHooks?: {
     afterAssessment?: () => void;
@@ -159,6 +161,7 @@ export interface TidyCommandOptions {
  */
 export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess<TidyCommandData> {
   const repoRoot = existingDirectory(options.repo ?? invocationRoot(), "repository");
+  const now = options.now ?? new Date();
   const baseBranch = resolveBaseBranch(repoRoot);
   const worktrees = listWorktrees(repoRoot);
   const controlWorktree = worktrees[0]?.path ?? repoRoot;
@@ -189,8 +192,8 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
     : false;
   const protectionReasons = workspacePath
     ? (options.apply
-        ? withDatabase(workspacePath, (db) => worktreeProtectionReasons(db, controlWorktree, worktrees))
-        : withReadOnlyDatabase(workspacePath, (db) => worktreeProtectionReasons(db, controlWorktree, worktrees)))
+        ? withDatabase(workspacePath, (db) => worktreeProtectionReasons(db, controlWorktree, worktrees, now))
+        : withReadOnlyDatabase(workspacePath, (db) => worktreeProtectionReasons(db, controlWorktree, worktrees, now)))
     : new Map<string, string>();
   const assessed: TidyWorktree[] = worktrees.map((record) => assessWorktree({
     record, repoRoot, comparisonBase, controlWorktree, here, prMergeCommits, protectionReasons
@@ -216,7 +219,7 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
       // it so a preview-era verdict can never authorize a stale removal.
       const currentWorktrees = listWorktrees(repoRoot);
       const currentByPath = new Map(currentWorktrees.map((record) => [pathKey(record.path), record]));
-      const currentProtections = worktreeProtectionReasons(db, controlWorktree, currentWorktrees);
+      const currentProtections = worktreeProtectionReasons(db, controlWorktree, currentWorktrees, now);
       for (const entry of assessed) {
         if (entry.verdict !== "merged" && entry.verdict !== "missing" && entry.verdict !== "detached") continue;
         const record = currentByPath.get(pathKey(entry.path)) ?? { path: entry.path, head: "", branch: entry.branch ? `refs/heads/${entry.branch}` : null };
