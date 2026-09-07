@@ -155,7 +155,16 @@ describe("arcadia go", () => {
       now: new Date("2026-09-06T12:34:56.000Z")
     }).data.nextWorktree!;
 
-    const tidy = runTidyCommand({ repo: fixture.main, workspace: fixture.workspace, apply: true }).data;
+    // Same instant as the go handoff above: the reservation's 24h expiry is
+    // computed from go's `now`, so evaluating it against the real clock here
+    // instead would make this test's outcome depend on how much real time has
+    // passed since 2026-09-06T12:34:56.000Z rather than on tidy's actual logic.
+    const tidy = runTidyCommand({
+      repo: fixture.main,
+      workspace: fixture.workspace,
+      apply: true,
+      now: new Date("2026-09-06T12:34:56.000Z")
+    }).data;
 
     expect(tidy.worktrees.find((candidate: { path: string }) => candidate.path === realpathSync(handoff.path))?.verdict).toBe("protected");
     expect(existsSync(handoff.path)).toBe(true);
