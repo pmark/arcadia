@@ -41,7 +41,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   try {
     const { id } = await context.params;
-    const body = (await request.json()) as { requestId?: unknown; previewFingerprint?: unknown };
+    let body: { requestId?: unknown; previewFingerprint?: unknown };
+    try {
+      const parsed = await request.json();
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("request body must be an object");
+      body = parsed as { requestId?: unknown; previewFingerprint?: unknown };
+    } catch {
+      return NextResponse.json({ error: "A valid JSON request body is required.", details: null }, { status: 400 });
+    }
     const requestId = typeof body.requestId === "string" ? body.requestId.trim() : "";
     const previewFingerprint = typeof body.previewFingerprint === "string" ? body.previewFingerprint.trim() : "";
     if (!requestId || !previewFingerprint) {
