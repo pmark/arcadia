@@ -206,7 +206,7 @@ describe("go broker agent setup", () => {
     ]));
   });
 
-  it("does not create the optional unattended profile when it is absent", () => {
+  it("creates the required unattended profile when it is absent", () => {
     const fixture = createFixture();
     const profile = path.join(fixture.home, ".codex", "arcadia-unattended.config.toml");
 
@@ -218,8 +218,9 @@ describe("go broker agent setup", () => {
     });
 
     expect(result.status.ready).toBe(true);
-    expect(existsSync(profile)).toBe(false);
-    expect(result.changed).not.toContain(profile);
+    expect(readFileSync(profile, "utf8")).toContain('approval_policy = "never"');
+    expect(readFileSync(profile, "utf8")).toContain('sandbox_mode = "workspace-write"');
+    expect(result.changed).toContain(profile);
   });
 
   it("preserves roots from a multiline profile array while adding both required roots", () => {

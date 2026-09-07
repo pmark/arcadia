@@ -791,8 +791,9 @@ another Project's repository. In the same idempotent operation it installs the
 shared skill, writes the narrow Codex rule, updates the default Codex config and
 every existing named `~/.codex/*.config.toml` profile with the two exact
 standard worktree roots, preserves any other existing roots, keeps interactive
-approval on-request and the `arcadia-unattended` profile's approval policy
-never, updates Claude's exact permission and worktree directories, removes
+approval on-request, creates the `arcadia-unattended` profile with approval
+policy never, and selects that restricted profile for governed Codex launches,
+updates Claude's exact permission and worktree directories, removes
 recognized legacy broad allowances, and enforces the normal sandbox and bypass
 guards. Existing unrelated settings are preserved and changed user-owned files
 receive timestamped backups. Verify the entire chain with:
@@ -800,6 +801,14 @@ receive timestamped backups. Verify the entire chain with:
 ```sh
 pnpm arcadia go-broker status
 ```
+
+Before it reports success, installation also creates and retires one
+disposable candidate beneath `~/.codex/worktrees`. The local probe verifies
+candidate and source writes, dependency bridging, a temporary SQLite database,
+candidate TypeScript and Dashboard builds, Vitest, and syntax-checking the
+revision-pinned compiled broker. A refusal identifies the denied operation and
+one recovery command; it never asks an agent to loosen sandboxing or enable
+network access.
 
 `status` reports a named Codex profile issue when a present profile is missing
 either required worktree root; absent optional profile files are not created.

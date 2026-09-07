@@ -165,6 +165,11 @@ mise exec -- pnpm arcadia go-broker status
 `install` performs the entire host setup rather than printing a list for the
 operator to translate manually. It:
 
+- creates, verifies, and retires a disposable candidate under
+  `~/.codex/worktrees` before success. The probe covers candidate/source
+  writes, dependency bridging, temporary SQLite, candidate and Dashboard
+  builds, Vitest, and the revision-pinned compiled broker. A failed probe names
+  the denied operation and one recovery command without loosening the sandbox;
 - installs a revision-addressed Arcadia broker snapshot outside project
   worktrees;
 - creates fixed zero-argument Codex and Claude Code launchers for governed
