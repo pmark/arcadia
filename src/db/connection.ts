@@ -1,21 +1,23 @@
 import Database from "better-sqlite3";
-import { withSqliteNativeAddonPreflight } from "./nativeAddon.js";
+import { withSqliteNativeAddonPreflight, withSqliteWorkspaceWriteDiagnostics } from "./nativeAddon.js";
 import { applyInitialSchema } from "./schema.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 
 export function openDatabase(workspace: string): Database.Database {
   const paths = getWorkspacePaths(workspace);
-  const db = withSqliteNativeAddonPreflight(() => new Database(paths.databaseFile));
-  db.pragma("foreign_keys = ON");
-  db.pragma("journal_mode = WAL");
-  // Long-running services (`intelligence serve`, the worker, the control
-  // panel) hold this database open and commit continuously, so a competing
-  // writer routinely waits. Five seconds was short enough that ordinary
-  // settlement writes lost the race; `busy_timeout` only costs time when
-  // there is genuine contention, so a longer wait is strictly better here.
-  db.pragma("busy_timeout = 15000");
-  applyInitialSchema(db);
-  return db;
+  return withSqliteWorkspaceWriteDiagnostics(paths.databaseFile, () => {
+    const db = withSqliteNativeAddonPreflight(() => new Database(paths.databaseFile));
+    db.pragma("foreign_keys = ON");
+    db.pragma("journal_mode = WAL");
+    // Long-running services (`intelligence serve`, the worker, the control
+    // panel) hold this database open and commit continuously, so a competing
+    // writer routinely waits. Five seconds was short enough that ordinary
+    // settlement writes lost the race; `busy_timeout` only costs time when
+    // there is genuine contention, so a longer wait is strictly better here.
+    db.pragma("busy_timeout = 15000");
+    applyInitialSchema(db);
+    return db;
+  });
 }
 
 export function openReadOnlyDatabase(workspace: string): Database.Database {

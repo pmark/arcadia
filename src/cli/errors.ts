@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { CommanderError } from "commander";
-import { isSqliteNativeAddonAbiError } from "../db/nativeAddon.js";
+import { isSqliteNativeAddonAbiError, isSqliteWorkspaceWriteDeniedError } from "../db/nativeAddon.js";
 
 export type ArcadiaErrorCode =
   | "USAGE_ERROR"
@@ -15,6 +15,7 @@ export type ArcadiaErrorCode =
   | "EXECUTION_RUN_NOT_FOUND"
   | "SQLITE_ERROR"
   | "SQLITE_NATIVE_ABI_MISMATCH"
+  | "SQLITE_WORKSPACE_WRITE_DENIED"
   | "ORIENTATION_ENTRY_NOT_FOUND"
   | "ORIENTATION_PACKET_ALREADY_SENT"
   | "ORIENTATION_REPLY_AMBIGUOUS"
@@ -168,6 +169,12 @@ export function normalizeError(error: unknown): ArcadiaError {
         addonAbi: error.addonAbi,
         remediation: error.remediation,
         runtimeExecutable: error.runtimeExecutable
+      });
+    }
+
+    if (isSqliteWorkspaceWriteDeniedError(error)) {
+      return new ArcadiaError("SQLITE_WORKSPACE_WRITE_DENIED", error.message, 1, {
+        databaseFile: error.databaseFile
       });
     }
 

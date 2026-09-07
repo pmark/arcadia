@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { openDatabase } from "../db/connection.js";
+import { openReadOnlyDatabase } from "../db/connection.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { formatWorkingCopySafetyLines, scanProjectWorkingCopies } from "../workMonitoring/scanner.js";
 import type { WorkMonitorProject, WorkMonitorSnapshot } from "../workMonitoring/types.js";
@@ -30,7 +30,7 @@ export function runWorkMonitorCommand(options: {
   includePullRequests?: boolean;
 }): CommandSuccess<WorkMonitorCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const db = openDatabase(workspacePath);
+  const db = openReadOnlyDatabase(workspacePath);
   try {
     const snapshot = scanProjectWorkingCopies(listMonitoredProjects(db), {
       includePullRequests: options.includePullRequests !== false
