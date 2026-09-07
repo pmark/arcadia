@@ -404,7 +404,7 @@ actions:
     references: ["docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/working-copy-safety.md", "src/commands/worker.ts", "src/sessions/index.ts", "src/agentSetup/goBrokerAgentSetup.ts"]
 questions: []
 decisions: []
-current_action: expose-guarded-host-session-launch
+current_action: repair-codex-worktree-configuration
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---
