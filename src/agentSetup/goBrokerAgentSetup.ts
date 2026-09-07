@@ -387,7 +387,10 @@ function setCodexPermissionProfile(content: string, home: string): string {
     "permissions.arcadia-unattended.network",
     "permissions.arcadia-unattended"
   ]) withoutManagedProfile = removeTomlTable(withoutManagedProfile, table);
-  const withTopLevel = setTopLevelTomlValues(withoutManagedProfile, { approval_policy: "on-request" });
+  const withTopLevel = setTopLevelTomlValues(withoutManagedProfile, {
+    approval_policy: "on-request",
+    default_permissions: "arcadia-unattended"
+  });
   const roots = expectedCodexWorktreeRoots(home);
   return `${withTopLevel.replace(/\n+$/, "")}\n\n${[
     "# Managed by `arcadia go-broker install`. Select this named profile in Codex Desktop for an Arcadia-governed task.",
@@ -477,6 +480,7 @@ function hasExpectedCodexWorktreeRoots(content: string, expectedRoots: string[])
 
 function hasNativeUnattendedProfile(content: string, expectedRoots: string[]): boolean {
   if (hasLegacyCodexSandbox(content)) return false;
+  if (topLevelTomlValue(content, "default_permissions") !== "arcadia-unattended") return false;
   const roots = expectedRoots.every((root) => new RegExp(`^\\s*${escapeRegExp(JSON.stringify(root))}\\s*=\\s*true\\s*$`, "m").test(content));
   return roots &&
     /\[permissions\.arcadia-unattended\][\s\S]*?extends\s*=\s*":workspace"/.test(content) &&

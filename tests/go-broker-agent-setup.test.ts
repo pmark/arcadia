@@ -75,6 +75,7 @@ describe("go broker agent setup", () => {
     expect(first.backups.length).toBeGreaterThanOrEqual(4);
     const codexConfig = readFileSync(paths.codexConfig, "utf8");
     expect(codexConfig).toContain('approval_policy = "on-request"');
+    expect(codexConfig).toContain('default_permissions = "arcadia-unattended"');
     expect(codexConfig).not.toContain('sandbox_mode = "workspace-write"');
     expect(codexConfig).toContain("[permissions.arcadia-unattended]");
     expect(codexConfig).toContain('".env" = "deny"');
@@ -159,6 +160,7 @@ describe("go broker agent setup", () => {
     expect(result.status.ready).toBe(true);
     const config = readFileSync(resolveAgentSetupPaths(fixture.home).codexConfig, "utf8");
     expect(config).toContain('approval_policy = "on-request"');
+    expect(config).toContain('default_permissions = "arcadia-unattended"');
     expect(config).toContain("[permissions.arcadia-unattended]");
     expect(readFileSync(profile, "utf8")).toContain("Retired by `arcadia go-broker install`");
   });
