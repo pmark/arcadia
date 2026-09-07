@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { permissionSnippets, stageGoBrokerDatabaseSchema } from "../src/commands/goBrokerInstall.js";
-import { parseGoBrokerArguments, runGoBroker } from "../src/goBroker.js";
+import { assertGoBrokerHostController, parseGoBrokerArguments, runGoBroker } from "../src/goBroker.js";
 
 describe("protected Arcadia go broker", () => {
   it("derives the source from cwd and accepts only fixed launcher inputs", () => {
@@ -26,6 +26,20 @@ describe("protected Arcadia go broker", () => {
 
   it("rejects an invalid fixed launcher agent", () => {
     expectValidation(() => parseGoBrokerArguments(["other", "go"]), "invalid fixed agent");
+  });
+
+  it("refuses Git-mutating reconciliation before entering a Codex sandbox", () => {
+    expectValidation(
+      () => assertGoBrokerHostController(
+        { source: "/tmp/finished", agent: "codex", operation: "go" },
+        { CODEX_SANDBOX: "seatbelt" }
+      ),
+      "host controller"
+    );
+    expect(() => assertGoBrokerHostController(
+      { source: "/tmp/prepared", agent: "codex", operation: "advance" },
+      { CODEX_SANDBOX: "seatbelt" }
+    )).not.toThrow();
   });
 
   it("previews and then applies the same fixed options without launch authority", () => {
@@ -96,7 +110,7 @@ describe("protected Arcadia go broker", () => {
     expect(result.command).toBe("work-monitor-broker");
   });
 
-  it("generates rules for only the protected executable", () => {
+  it("allows agents to call only the read-only prepared-worktree brokers", () => {
     const executables = {
       go: {
         codex: "/Users/operator/.local/bin/arcadia-go-broker-codex",
@@ -113,12 +127,10 @@ describe("protected Arcadia go broker", () => {
     };
     expect(permissionSnippets(executables)).toEqual({
       codexRules: [
-        'prefix_rule(pattern=["/Users/operator/.local/bin/arcadia-go-broker-codex"], decision="allow")',
         'prefix_rule(pattern=["/Users/operator/.local/bin/arcadia-advance-broker-codex"], decision="allow")',
         'prefix_rule(pattern=["/Users/operator/.local/bin/arcadia-work-monitor-broker-codex"], decision="allow")'
       ],
       claudePermissions: [
-        "Bash(/Users/operator/.local/bin/arcadia-go-broker-claude)",
         "Bash(/Users/operator/.local/bin/arcadia-advance-broker-claude)",
         "Bash(/Users/operator/.local/bin/arcadia-work-monitor-broker-claude)"
       ]

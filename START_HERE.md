@@ -820,20 +820,21 @@ network access.
 configuration is missing a required worktree root, retains a legacy sandbox, or
 does not deny command network access.
 
-The installed shared skill invokes only fixed, no-argument launchers:
+The installed `go` launcher is a host controller; it is intentionally absent
+from agent allowlists because it mutates shared Git metadata. The shared agent
+skill invokes only these fixed, no-argument prepared-worktree brokers:
 
 ```sh
-~/.local/bin/arcadia-go-broker-codex
-# Claude Code uses: ~/.local/bin/arcadia-go-broker-claude
 ~/.local/bin/arcadia-advance-broker-codex
 # Claude Code uses: ~/.local/bin/arcadia-advance-broker-claude
 ~/.local/bin/arcadia-work-monitor-broker-codex
 # Claude Code uses: ~/.local/bin/arcadia-work-monitor-broker-claude
 ```
 
-Run the `go` executable with no arguments from the completed worktree. It runs
-Arcadia's canonical preview and then the identical apply itself. In the newly
-prepared worktree, the installed skill runs the fixed `advance` launcher and
+From the host (not a coding-agent sandbox), run the matching `go` executable
+with no arguments from the completed worktree. It runs Arcadia's canonical
+preview and then the identical apply itself. In the newly prepared worktree,
+the installed skill runs the fixed `advance` launcher and
 the read-only `work-monitor` launcher before code changes, then performs its
 ordinary local read-only inspection without an approval question. Every
 launcher rejects public arguments—including `--launch`, model, effort,

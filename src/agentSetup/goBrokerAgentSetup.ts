@@ -108,8 +108,6 @@ export function resolveAgentSetupPaths(home: string): AgentSetupPaths {
 
 export function renderManagedSkill(template: string, executables: BrokerExecutables): string {
   const placeholders = [
-    "__ARCADIA_CODEX_BROKER__",
-    "__ARCADIA_CLAUDE_BROKER__",
     "__ARCADIA_CODEX_ADVANCE_BROKER__",
     "__ARCADIA_CLAUDE_ADVANCE_BROKER__",
     "__ARCADIA_CODEX_WORK_MONITOR_BROKER__",
@@ -119,8 +117,6 @@ export function renderManagedSkill(template: string, executables: BrokerExecutab
     throw validationError("The bundled arcadia-go skill template is missing broker placeholders.");
   }
   return template
-    .replaceAll("__ARCADIA_CODEX_BROKER__", executables.go.codex)
-    .replaceAll("__ARCADIA_CLAUDE_BROKER__", executables.go.claude)
     .replaceAll("__ARCADIA_CODEX_ADVANCE_BROKER__", executables.advance.codex)
     .replaceAll("__ARCADIA_CLAUDE_ADVANCE_BROKER__", executables.advance.claude)
     .replaceAll("__ARCADIA_CODEX_WORK_MONITOR_BROKER__", executables.workMonitor.codex)
@@ -202,11 +198,13 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
     sharedClaudeSkill: symlinkResolvesTo(paths.claudeSkill, paths.codexSkillDirectory),
     managedAgentAskSkill: readOptional(paths.codexAgentAskSkill) === expectedAgentAskSkill,
     sharedClaudeAgentAskSkill: symlinkResolvesTo(paths.claudeAgentAskSkill, paths.codexAgentAskSkillDirectory),
-    claudePermission: Object.values(options.executables).every((providers) => allow.includes(`Bash(${providers.claude})`)),
+    // Reconciliation (`go`) mutates the shared Git common directory. It is a
+    // host-controller operation, not a sandboxed coding-agent capability.
+    claudePermission: agentCallableExecutables(options.executables).every((providers) => allow.includes(`Bash(${providers.claude})`)),
     noLegacyClaudePermissions: allow.every((entry) =>
       !isLegacyClaudePermission(entry) &&
       (!/arcadia-(?:go|advance|work-monitor)-broker-/.test(entry) ||
-        Object.values(options.executables).some((providers) => entry === `Bash(${providers.claude})`))
+        agentCallableExecutables(options.executables).some((providers) => entry === `Bash(${providers.claude})`))
     ),
     claudeSandbox: claude?.sandbox?.enabled === true && claude?.sandbox?.failIfUnavailable === true,
     claudeBypassDisabled: claude?.permissions?.disableBypassPermissionsMode === "disable",
@@ -299,7 +297,7 @@ function updateClaudeSettings(
   const allow = (permissions.allow ?? []).filter(
     (entry) => !isLegacyClaudePermission(entry) && !/arcadia-(?:go|advance|work-monitor)-broker-/.test(entry)
   );
-  for (const providers of Object.values(options.executables)) {
+  for (const providers of agentCallableExecutables(options.executables)) {
     allow.push(`Bash(${providers.claude})`);
   }
   const additionalDirectories = [...(permissions.additionalDirectories ?? [])];
@@ -342,8 +340,8 @@ function updateClaudeSkillLink(
 
 function managedCodexRule(executables: BrokerExecutables): string {
   return [
-    "# Managed by `arcadia go-broker install`. Do not add broader Arcadia go allowances.",
-    ...Object.values(executables).flatMap((providers) => [
+    "# Managed by `arcadia go-broker install`. Git-mutating `go` stays host-only.",
+    ...agentCallableExecutables(executables).flatMap((providers) => [
       "prefix_rule(",
       `    pattern = [${JSON.stringify(providers.codex)}],`,
       "    decision = \"allow\",",
@@ -351,6 +349,10 @@ function managedCodexRule(executables: BrokerExecutables): string {
     ]),
     ""
   ].join("\n");
+}
+
+function agentCallableExecutables(executables: BrokerExecutables): ProviderExecutables[] {
+  return [executables.advance, executables.workMonitor];
 }
 
 function setTopLevelTomlValues(content: string, values: Record<string, string>): string {

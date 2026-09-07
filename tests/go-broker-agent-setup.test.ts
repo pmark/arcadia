@@ -83,8 +83,8 @@ describe("go broker agent setup", () => {
     const defaultRules = readFileSync(path.join(paths.codexRulesDirectory, "default.rules"), "utf8");
     expect(defaultRules).toContain('["git", "status"]');
     expect(defaultRules).not.toContain("arcadia");
-    expect(readFileSync(paths.codexManagedRules, "utf8")).toContain(fixture.executables.go.codex);
-    expect(readFileSync(paths.codexSkill, "utf8")).toContain(fixture.executables.go.codex);
+    expect(readFileSync(paths.codexManagedRules, "utf8")).not.toContain(fixture.executables.go.codex);
+    expect(readFileSync(paths.codexSkill, "utf8")).not.toContain(fixture.executables.go.codex);
     expect(readFileSync(paths.codexSkill, "utf8")).toContain(fixture.executables.advance.codex);
     expect(readFileSync(paths.codexSkill, "utf8")).toContain(fixture.executables.workMonitor.codex);
     expect(readFileSync(paths.codexAgentAskSkill, "utf8")).toContain("Do not ask the operator for permission");
@@ -95,7 +95,6 @@ describe("go broker agent setup", () => {
     const claude = JSON.parse(readFileSync(paths.claudeSettings, "utf8"));
     expect(claude.permissions.allow).toEqual([
       "Bash(git status)",
-      `Bash(${fixture.executables.go.claude})`,
       `Bash(${fixture.executables.advance.claude})`,
       `Bash(${fixture.executables.workMonitor.claude})`
     ]);
@@ -343,6 +342,48 @@ describe("go broker agent setup", () => {
     expect(output).toContain('# prefix_rule(pattern=["arcadia", "go"], decision="allow")');
     expect(output).toContain('prefix_rule(pattern=["git", "status"], decision="allow")');
     expect(output).not.toContain('"mise", "exec"');
+  });
+
+  it("does not allow sandboxed agents to invoke the Git-mutating go controller", () => {
+    const fixture = createFixture();
+
+    configureGoBrokerAgents({
+      home: fixture.home,
+      executables: fixture.executables,
+      skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate
+    });
+
+    const rules = readFileSync(resolveAgentSetupPaths(fixture.home).codexManagedRules, "utf8");
+    const claude = JSON.parse(readFileSync(resolveAgentSetupPaths(fixture.home).claudeSettings, "utf8")) as {
+      permissions: { allow: string[] };
+    };
+    expect(rules).not.toContain(fixture.executables.go.codex);
+    expect(claude.permissions.allow).not.toContain(`Bash(${fixture.executables.go.claude})`);
+    expect(rules).toContain(fixture.executables.advance.codex);
+    expect(rules).toContain(fixture.executables.workMonitor.codex);
+  });
+
+  it("reports a stale Claude go-controller permission as unsafe", () => {
+    const fixture = createFixture();
+    configureGoBrokerAgents({
+      home: fixture.home,
+      executables: fixture.executables,
+      skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate
+    });
+    const settingsPath = resolveAgentSetupPaths(fixture.home).claudeSettings;
+    const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as { permissions: { allow: string[] } };
+    settings.permissions.allow.push(`Bash(${fixture.executables.go.claude})`);
+    write(settingsPath, `${JSON.stringify(settings)}\n`);
+
+    const status = inspectGoBrokerAgentSetup({
+      home: fixture.home,
+      executables: fixture.executables,
+      skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate
+    });
+    expect(status.issues).toContain("noLegacyClaudePermissions");
   });
 
   it("reports every missing new-device component without mutating it", () => {
