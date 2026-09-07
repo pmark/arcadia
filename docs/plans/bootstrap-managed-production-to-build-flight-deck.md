@@ -342,7 +342,7 @@ actions:
     references: ["src/agentSetup/goBrokerAgentSetup.ts", "src/commands/goBrokerInstall.ts", "tests/go-broker-agent-setup.test.ts", "src/sessions/worktreePreparation.ts", "https://developers.openai.com/codex/config-reference", "https://learn.chatgpt.com/codex/agent-approvals-security"]
   - id: make-worktree-runtime-self-contained
     title: Make every mandatory Arcadia Go lifecycle, dependency, build, and test path run from the prepared candidate without sandbox-blocked IPC or accidental execution of the main checkout's built code.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make every mandatory Arcadia Go lifecycle, dependency, build, and test path run from the prepared candidate without sandbox-blocked IPC or accidental execution of the main checkout's built code.
@@ -404,7 +404,7 @@ actions:
     references: ["docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/working-copy-safety.md", "src/commands/worker.ts", "src/sessions/index.ts", "src/agentSetup/goBrokerAgentSetup.ts"]
 questions: []
 decisions: []
-current_action: make-worktree-runtime-self-contained
+current_action: broker-candidate-preservation
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---
