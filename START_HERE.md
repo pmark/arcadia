@@ -781,7 +781,7 @@ reviewed Arcadia commit as an explicit operator action:
 pnpm arcadia go-broker install
 ```
 
-The installer copies that exact commit, its production dependencies, and the
+The installer copies that exact commit and its resolved local dependency tree,
 required `database/schema.sql` baseline into the compiled runtime under a
 revision-addressed directory at `~/.local/share/arcadia/go-broker/`, then
 atomically points provider-specific
@@ -808,7 +808,8 @@ receive timestamped backups. Verify the entire chain with:
 pnpm arcadia go-broker status
 ```
 
-Before it reports success, installation also creates and retires one
+No registry request is part of installation: if local dependencies are absent,
+it fails with the `pnpm bridge:worktree` recovery command. Before it reports success, installation also creates and retires one
 disposable candidate beneath `~/.codex/worktrees`. The local probe verifies
 candidate and source writes, dependency bridging, a temporary SQLite database,
 candidate TypeScript and Dashboard builds, Vitest, and syntax-checking the
