@@ -75,7 +75,9 @@ describe("go broker agent setup", () => {
     expect(first.backups.length).toBeGreaterThanOrEqual(4);
     const codexConfig = readFileSync(paths.codexConfig, "utf8");
     expect(codexConfig).toContain('approval_policy = "on-request"');
-    expect(codexConfig).toContain('sandbox_mode = "workspace-write"');
+    expect(codexConfig).not.toContain('sandbox_mode = "workspace-write"');
+    expect(codexConfig).toContain("[permissions.arcadia-unattended]");
+    expect(codexConfig).toContain('".env" = "deny"');
     expect(codexConfig).toContain('model = "gpt-test"');
     expect(codexConfig).toContain("[features]\nvoice = true");
     const defaultRules = readFileSync(path.join(paths.codexRulesDirectory, "default.rules"), "utf8");
@@ -130,10 +132,8 @@ describe("go broker agent setup", () => {
     });
     expect(withProfile.status.ready).toBe(true);
     const unattended = readFileSync(path.join(fixture.home, ".codex", "arcadia-unattended.config.toml"), "utf8");
-    expect(unattended).toContain('approval_policy = "never"');
-    expect(unattended).toContain(
-      `writable_roots = ["/keep/codex-root", "${path.join(fixture.home, ".codex", "worktrees")}", "${path.join(fixture.home, ".claude", "worktrees")}"]`
-    );
+    expect(unattended).toContain("Retired by `arcadia go-broker install`");
+    expect(readFileSync(paths.codexConfig, "utf8")).toContain(`[permissions.arcadia-unattended.workspace_roots]`);
 
     const second = configureGoBrokerAgents({
       home: fixture.home,
@@ -145,7 +145,7 @@ describe("go broker agent setup", () => {
     expect(second).toMatchObject({ changed: [], backups: [], status: { ready: true } });
   });
 
-  it("keeps interactive approval and unattended approval independent of sandbox roots", () => {
+  it("migrates the legacy unattended layer to the native Desktop permission profile", () => {
     const fixture = createFixture();
     const profile = path.join(fixture.home, ".codex", "arcadia-unattended.config.toml");
     write(profile, 'approval_policy = "never"\nsandbox_mode = "workspace-write"\n');
@@ -158,9 +158,10 @@ describe("go broker agent setup", () => {
     });
 
     expect(result.status.ready).toBe(true);
-    expect(readFileSync(resolveAgentSetupPaths(fixture.home).codexConfig, "utf8")).toContain('approval_policy = "on-request"');
-    expect(readFileSync(profile, "utf8")).toContain('approval_policy = "never"');
-    expect(readFileSync(profile, "utf8")).toContain('sandbox_mode = "workspace-write"');
+    const config = readFileSync(resolveAgentSetupPaths(fixture.home).codexConfig, "utf8");
+    expect(config).toContain('approval_policy = "on-request"');
+    expect(config).toContain("[permissions.arcadia-unattended]");
+    expect(readFileSync(profile, "utf8")).toContain("Retired by `arcadia go-broker install`");
   });
 
   it("reports the named profile when its required roots are missing", () => {
@@ -173,7 +174,8 @@ describe("go broker agent setup", () => {
       skillTemplate: template,
       agentAskSkillTemplate: agentAskTemplate
     });
-    write(profile, 'approval_policy = "never"\nsandbox_mode = "workspace-write"\n\n[sandbox_workspace_write]\nwritable_roots = []\n');
+    const config = resolveAgentSetupPaths(fixture.home).codexConfig;
+    write(config, readFileSync(config, "utf8").replace(/^.*\.codex\/worktrees.*\n/m, "").replace(/^.*\.claude\/worktrees.*\n/m, ""));
 
     const status = inspectGoBrokerAgentSetup({
       home: fixture.home,
@@ -183,10 +185,10 @@ describe("go broker agent setup", () => {
     });
 
     expect(status.ready).toBe(false);
-    expect(status.issues).toContain("codexProfile:arcadia-unattended.sandbox_workspace_write.writable_roots");
+    expect(status.issues).toContain("codexNativeProfile");
   });
 
-  it("reports a present empty profile instead of treating it as absent", () => {
+  it("does not mistake unrelated CLI profile layers for the native Desktop permission profile", () => {
     const fixture = createFixture();
     const profile = path.join(fixture.home, ".codex", "codex_build.config.toml");
     write(profile, "");
@@ -198,15 +200,10 @@ describe("go broker agent setup", () => {
       agentAskSkillTemplate: agentAskTemplate
     });
 
-    expect(status.ready).toBe(false);
-    expect(status.issues).toEqual(expect.arrayContaining([
-      "codexProfile:codex_build.approval_policy",
-      "codexProfile:codex_build.sandbox_mode",
-      "codexProfile:codex_build.sandbox_workspace_write.writable_roots"
-    ]));
+    expect(status.issues).not.toEqual(expect.arrayContaining(["codexProfile:codex_build.approval_policy"]));
   });
 
-  it("creates the required unattended profile when it is absent", () => {
+  it("creates the required native unattended profile in the shared Codex configuration", () => {
     const fixture = createFixture();
     const profile = path.join(fixture.home, ".codex", "arcadia-unattended.config.toml");
 
@@ -218,9 +215,8 @@ describe("go broker agent setup", () => {
     });
 
     expect(result.status.ready).toBe(true);
-    expect(readFileSync(profile, "utf8")).toContain('approval_policy = "never"');
-    expect(readFileSync(profile, "utf8")).toContain('sandbox_mode = "workspace-write"');
-    expect(result.changed).toContain(profile);
+    expect(readFileSync(resolveAgentSetupPaths(fixture.home).codexConfig, "utf8")).toContain("[permissions.arcadia-unattended]");
+    expect(result.changed).toContain(resolveAgentSetupPaths(fixture.home).codexConfig);
   });
 
   it("preserves roots from a multiline profile array while adding both required roots", () => {
@@ -249,10 +245,9 @@ describe("go broker agent setup", () => {
 
     expect(result.status.ready).toBe(true);
     const configured = readFileSync(profile, "utf8");
-    expect(configured).toContain(
-      `writable_roots = ["/keep/codex-root", "${path.join(fixture.home, ".codex", "worktrees")}", "${path.join(fixture.home, ".claude", "worktrees")}"]`
-    );
+    expect(configured).toContain('writable_roots = [');
     expect(configured).toContain("[features]\nmulti_agent = true");
+    expect(readFileSync(resolveAgentSetupPaths(fixture.home).codexConfig, "utf8")).toContain(`[permissions.arcadia-unattended.workspace_roots]`);
   });
 
   it("accepts multiline and literal-string roots in status", () => {
@@ -289,7 +284,7 @@ describe("go broker agent setup", () => {
     expect(status.paths.codexConfig).toBe(paths.codexConfig);
   });
 
-  it("refuses duplicate sandbox tables before changing any other setup", () => {
+  it("retires duplicate legacy sandbox tables before changing other setup", () => {
     const fixture = createFixture();
     const paths = resolveAgentSetupPaths(fixture.home);
     write(
@@ -309,8 +304,8 @@ describe("go broker agent setup", () => {
       executables: fixture.executables,
       skillTemplate: template,
       agentAskSkillTemplate: agentAskTemplate
-    })).toThrow("duplicate [sandbox_workspace_write] tables");
-    expect(existsSync(paths.codexManagedRules)).toBe(false);
+    })).not.toThrow();
+    expect(readFileSync(paths.codexConfig, "utf8")).not.toContain("[sandbox_workspace_write]");
   });
 
   it("validates every user-owned format before writing anything", () => {

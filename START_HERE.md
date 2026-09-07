@@ -788,11 +788,17 @@ atomically points provider-specific
 launchers under `~/.local/bin/` at it. Broker status and reinstall validation
 refuse any release missing that schema instead of allowing a failure later from
 another Project's repository. In the same idempotent operation it installs the
-shared skill, writes the narrow Codex rule, updates the default Codex config and
-every existing named `~/.codex/*.config.toml` profile with the two exact
-standard worktree roots, preserves any other existing roots, keeps interactive
-approval on-request, creates the `arcadia-unattended` profile with approval
-policy never, and selects that restricted profile for governed Codex launches,
+shared skill, writes the narrow Codex rule, migrates the default Codex config
+from legacy sandbox settings to the supported named `arcadia-unattended`
+permission profile. It grants only the two exact standard worktree roots,
+denies `.env` files and command network access, and keeps interactive approval
+on-request. Governed CLI launches explicitly select that profile with approvals
+disabled. For a Desktop or iPhone-connected task, choose
+**arcadia-unattended** in the permissions control beneath the composer and wait
+for the environment to refresh before starting `arcadia advance`. Arcadia does
+not silently launch a native task under the interactive profile: if the named
+profile is missing, run `pnpm arcadia go-broker install`, fully restart Codex
+Desktop, and select it. The installer then
 updates Claude's exact permission and worktree directories, removes
 recognized legacy broad allowances, and enforces the normal sandbox and bypass
 guards. Existing unrelated settings are preserved and changed user-owned files
@@ -810,8 +816,9 @@ revision-pinned compiled broker. A refusal identifies the denied operation and
 one recovery command; it never asks an agent to loosen sandboxing or enable
 network access.
 
-`status` reports a named Codex profile issue when a present profile is missing
-either required worktree root; absent optional profile files are not created.
+`status` reports a named native Codex permission-profile issue when the shared
+configuration is missing a required worktree root, retains a legacy sandbox, or
+does not deny command network access.
 
 The installed shared skill invokes only fixed, no-argument launchers:
 
