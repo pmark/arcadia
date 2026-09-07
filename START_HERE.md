@@ -781,10 +781,14 @@ reviewed Arcadia commit as an explicit operator action:
 pnpm arcadia go-broker install
 ```
 
-The installer copies that exact commit and its production dependencies to a
-revision-addressed directory under `~/.local/share/arcadia/go-broker/`, then
-atomically points provider-specific launchers under `~/.local/bin/` at it. In
-the same idempotent operation it installs the shared skill, writes the narrow
+The installer copies that exact commit, its production dependencies, and the
+required `database/schema.sql` baseline into the compiled runtime under a
+revision-addressed directory at `~/.local/share/arcadia/go-broker/`, then
+atomically points provider-specific
+launchers under `~/.local/bin/` at it. Broker status and reinstall validation
+refuse any release missing that schema instead of allowing a failure later from
+another Project's repository. In the same idempotent operation it installs the
+shared skill, writes the narrow
 Codex rule, updates Claude's exact permission and worktree directories, removes
 recognized legacy broad allowances, and enforces the normal sandbox and bypass
 guards. Existing unrelated settings are preserved and changed user-owned files

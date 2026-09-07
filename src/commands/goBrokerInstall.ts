@@ -108,6 +108,7 @@ export function runGoBrokerInstallCommand(
         recursive: true,
         force: true
       });
+      stageGoBrokerDatabaseSchema(repository, stagedRelease);
       mkdirSync(path.join(stagedRelease, "dist", "scripts"), { recursive: true });
       copyFileSync(
         path.join(repository, "dist", "scripts", "arcadia-go-broker.js"),
@@ -272,10 +273,11 @@ function assertReviewedSnapshot(repository: string): void {
 
 function validateExistingRelease(releaseDirectory: string, revision: string): void {
   const manifestPath = path.join(releaseDirectory, "broker-manifest.json");
+  const schemaPath = path.join(releaseDirectory, "dist", "database", "schema.sql");
   const executablePaths = ["arcadia-go-broker", "arcadia-advance-broker", "arcadia-work-monitor-broker"].flatMap((launcherBase) =>
     ["codex", "claude"].map((agent) => path.join(releaseDirectory, `${launcherBase}-${agent}`))
   );
-  if (!existsSync(manifestPath) || executablePaths.some((candidate) => !existsSync(candidate))) {
+  if (!existsSync(manifestPath) || !existsSync(schemaPath) || executablePaths.some((candidate) => !existsSync(candidate))) {
     throw validationError("The existing protected broker release is incomplete.", { releaseDirectory });
   }
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { schema?: string; revision?: string };
@@ -285,6 +287,14 @@ function validateExistingRelease(releaseDirectory: string, revision: string): vo
       expectedRevision: revision
     });
   }
+}
+
+export function stageGoBrokerDatabaseSchema(repository: string, stagedRelease: string): string {
+  const destinationDirectory = path.join(stagedRelease, "dist", "database");
+  const destination = path.join(destinationDirectory, "schema.sql");
+  mkdirSync(destinationDirectory, { recursive: true });
+  copyFileSync(path.join(repository, "database", "schema.sql"), destination);
+  return destination;
 }
 
 function safelyUpdateLink(executable: string, target: string, brokerRoot: string): void {
@@ -367,6 +377,9 @@ function inspectInstalledBroker(executables: BrokerExecutables): {
   }
   const releaseDirectory = releaseDirectories[0];
   const revision = path.basename(releaseDirectory);
+  if (!existsSync(path.join(releaseDirectory, "dist", "database", "schema.sql"))) {
+    issues.push("broker database schema is missing");
+  }
   try {
     const manifest = JSON.parse(readFileSync(path.join(releaseDirectory, "broker-manifest.json"), "utf8")) as {
       schema?: string;

@@ -1,7 +1,9 @@
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
-import { permissionSnippets } from "../src/commands/goBrokerInstall.js";
+import { permissionSnippets, stageGoBrokerDatabaseSchema } from "../src/commands/goBrokerInstall.js";
 import { parseGoBrokerArguments, runGoBroker } from "../src/goBroker.js";
 
 describe("protected Arcadia go broker", () => {
@@ -121,6 +123,25 @@ describe("protected Arcadia go broker", () => {
         "Bash(/Users/operator/.local/bin/arcadia-work-monitor-broker-claude)"
       ]
     });
+  });
+
+  it("stages the database schema needed when the broker runs outside Arcadia", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "arcadia-go-broker-schema-"));
+    const repository = path.join(root, "repository");
+    const release = path.join(root, "release");
+    const schema = "CREATE TABLE projects (id TEXT PRIMARY KEY);\n";
+
+    try {
+      mkdirSync(path.join(repository, "database"), { recursive: true });
+      writeFileSync(path.join(repository, "database", "schema.sql"), schema);
+
+      const stagedPath = stageGoBrokerDatabaseSchema(repository, release);
+
+      expect(stagedPath).toBe(path.join(release, "dist", "database", "schema.sql"));
+      expect(readFileSync(stagedPath, "utf8")).toBe(schema);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
