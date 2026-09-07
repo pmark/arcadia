@@ -1446,13 +1446,15 @@ pnpm arcadia go-broker status --json
 ```
 
 `status` verifies that all six launchers resolve to one valid protected release,
-the Codex approval and sandbox modes are safe, only the dedicated Codex rule
-grants the broker, the installed skill matches Arcadia's current template,
-Claude resolves that same skill, its exact provider permission exists, no
-legacy broad permission remains, both standard worktree roots are admitted,
-and Claude's sandbox is enabled fail-closed with bypass mode disabled. It exits
-nonzero with structured issues unless every check passes; success reports
-`READY`. Re-running `install` on a READY host is a no-op.
+the default Codex config and every present named `*.config.toml` profile have
+safe approval/sandbox settings and both standard worktree roots, only the
+dedicated Codex rule grants the broker, the installed skill matches Arcadia's
+current template, Claude resolves that same skill, its exact provider
+permission exists, no legacy broad permission remains, and Claude's sandbox is
+enabled fail-closed with bypass mode disabled. It exits nonzero with
+structured issues unless every check passes; a missing present profile root is
+reported with that profile's name. Success reports `READY`. Re-running
+`install` on a READY host is a no-op.
 
 List every open GitHub pull request across Project repositories with
 plain-English readiness ratings. This is read-only and reports repository

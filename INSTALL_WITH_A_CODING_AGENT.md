@@ -176,8 +176,12 @@ operator to translate manually. It:
 - writes dedicated Codex rules for only those fixed launchers while removing
   recognized legacy `arcadia go`, `arcadia advance`, and broker rules from
   other Codex rule files;
-- sets Codex to `approval_policy = "on-request"` and
-  `sandbox_mode = "workspace-write"` without changing unrelated settings;
+- sets the default Codex config and every existing named profile config under
+  `~/.codex/*.config.toml` to `sandbox_mode = "workspace-write"` with the exact
+  `~/.codex/worktrees` and `~/.claude/worktrees` writable roots, preserving any
+  other existing roots and settings; interactive profiles retain
+  `approval_policy = "on-request"`, while `arcadia-unattended` retains
+  `approval_policy = "never"`;
 - preserves unrelated Claude permissions and settings, adds only its exact
   provider launcher, admits the two standard agent worktree roots, enables the
   sandbox with `failIfUnavailable`, and disables bypass-permissions mode; and
@@ -189,7 +193,9 @@ then runs the same checks exposed by `status`. It is safe to rerun: a healthy
 installation reports zero changed files and creates no new backups. `status`
 exits nonzero with structured issue names unless every check is ready, so an
 automated installer must stop on any refusal. Do not proceed on the assumption
-that a partially installed broker is usable.
+that a partially installed broker is usable. Profile files are discovered by
+their `*.config.toml` names; an absent optional profile is not created, while a
+present profile with missing roots is named explicitly by `status`.
 
 This narrow exception does not authorize general shell commands, raw Git
 worktree mutation, process launch, push, merge, deployment, or bypass mode. The

@@ -76,6 +76,12 @@ prompt, not permission to invoke the mutable CLI command directly.
 - After entering a prepared worktree, check whether `node_modules` exists. If
   missing, use that repository's dependency-bridge command or documented
   symlink rather than improvising a per-worktree dependency install.
+- The protected broker installer configures the default `~/.codex/config.toml`
+  and every present named `~/.codex/*.config.toml` profile with the exact
+  `~/.codex/worktrees` and `~/.claude/worktrees` roots. It preserves other
+  roots, keeps interactive profiles on-request, and keeps
+  `arcadia-unattended` explicitly unattended; `go-broker status` names any
+  present profile whose roots or guardrails are missing.
 - Never start from remote `origin/main` when the broker reports a newer local
   base. The prepared worktree deliberately starts from the updated local base.
 

@@ -788,8 +788,11 @@ atomically points provider-specific
 launchers under `~/.local/bin/` at it. Broker status and reinstall validation
 refuse any release missing that schema instead of allowing a failure later from
 another Project's repository. In the same idempotent operation it installs the
-shared skill, writes the narrow
-Codex rule, updates Claude's exact permission and worktree directories, removes
+shared skill, writes the narrow Codex rule, updates the default Codex config and
+every existing named `~/.codex/*.config.toml` profile with the two exact
+standard worktree roots, preserves any other existing roots, keeps interactive
+approval on-request and the `arcadia-unattended` profile's approval policy
+never, updates Claude's exact permission and worktree directories, removes
 recognized legacy broad allowances, and enforces the normal sandbox and bypass
 guards. Existing unrelated settings are preserved and changed user-owned files
 receive timestamped backups. Verify the entire chain with:
@@ -797,6 +800,9 @@ receive timestamped backups. Verify the entire chain with:
 ```sh
 pnpm arcadia go-broker status
 ```
+
+`status` reports a named Codex profile issue when a present profile is missing
+either required worktree root; absent optional profile files are not created.
 
 The installed shared skill invokes only fixed, no-argument launchers:
 
