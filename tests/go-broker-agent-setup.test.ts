@@ -106,6 +106,35 @@ describe("go broker agent setup", () => {
     expect(claude.sandbox).toEqual({ enabled: true, failIfUnavailable: true });
     expect(claude.statusLine.command).toBe("keep-this");
 
+    write(
+      path.join(fixture.home, ".codex", "arcadia-unattended.config.toml"),
+      [
+        'approval_policy = "never"',
+        'sandbox_mode = "workspace-write"',
+        "",
+        "[sandbox_workspace_write]",
+        'writable_roots = ["/keep/codex-root"]',
+        "",
+        "[features]",
+        "multi_agent = true",
+        ""
+      ].join("\n")
+    );
+
+    const withProfile = configureGoBrokerAgents({
+      home: fixture.home,
+      executables: fixture.executables,
+      skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate,
+      now: new Date("2026-09-06T12:36:56.000Z")
+    });
+    expect(withProfile.status.ready).toBe(true);
+    const unattended = readFileSync(path.join(fixture.home, ".codex", "arcadia-unattended.config.toml"), "utf8");
+    expect(unattended).toContain('approval_policy = "never"');
+    expect(unattended).toContain(
+      `writable_roots = ["/keep/codex-root", "${path.join(fixture.home, ".codex", "worktrees")}", "${path.join(fixture.home, ".claude", "worktrees")}"]`
+    );
+
     const second = configureGoBrokerAgents({
       home: fixture.home,
       executables: fixture.executables,
@@ -114,6 +143,71 @@ describe("go broker agent setup", () => {
       now: new Date("2026-09-06T12:35:56.000Z")
     });
     expect(second).toMatchObject({ changed: [], backups: [], status: { ready: true } });
+  });
+
+  it("keeps interactive approval and unattended approval independent of sandbox roots", () => {
+    const fixture = createFixture();
+    const profile = path.join(fixture.home, ".codex", "arcadia-unattended.config.toml");
+    write(profile, 'approval_policy = "never"\nsandbox_mode = "workspace-write"\n');
+
+    const result = configureGoBrokerAgents({
+      home: fixture.home,
+      executables: fixture.executables,
+      skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate
+    });
+
+    expect(result.status.ready).toBe(true);
+    expect(readFileSync(resolveAgentSetupPaths(fixture.home).codexConfig, "utf8")).toContain('approval_policy = "on-request"');
+    expect(readFileSync(profile, "utf8")).toContain('approval_policy = "never"');
+    expect(readFileSync(profile, "utf8")).toContain('sandbox_mode = "workspace-write"');
+  });
+
+  it("reports the named profile when its required roots are missing", () => {
+    const fixture = createFixture();
+    const profile = path.join(fixture.home, ".codex", "arcadia-unattended.config.toml");
+    write(profile, 'approval_policy = "never"\nsandbox_mode = "workspace-write"\n');
+    configureGoBrokerAgents({
+      home: fixture.home,
+      executables: fixture.executables,
+      skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate
+    });
+    write(profile, 'approval_policy = "never"\nsandbox_mode = "workspace-write"\n\n[sandbox_workspace_write]\nwritable_roots = []\n');
+
+    const status = inspectGoBrokerAgentSetup({
+      home: fixture.home,
+      executables: fixture.executables,
+      skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate
+    });
+
+    expect(status.ready).toBe(false);
+    expect(status.issues).toContain("codexProfile:arcadia-unattended.sandbox_workspace_write.writable_roots");
+  });
+
+  it("refuses duplicate sandbox tables before changing any other setup", () => {
+    const fixture = createFixture();
+    const paths = resolveAgentSetupPaths(fixture.home);
+    write(
+      paths.codexConfig,
+      [
+        "[sandbox_workspace_write]",
+        'writable_roots = ["/one"]',
+        "",
+        "[sandbox_workspace_write]",
+        'writable_roots = ["/two"]',
+        ""
+      ].join("\n")
+    );
+
+    expect(() => configureGoBrokerAgents({
+      home: fixture.home,
+      executables: fixture.executables,
+      skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate
+    })).toThrow("duplicate [sandbox_workspace_write] tables");
+    expect(existsSync(paths.codexManagedRules)).toBe(false);
   });
 
   it("validates every user-owned format before writing anything", () => {

@@ -17,6 +17,7 @@ import { validationError } from "../cli/errors.js";
 
 const MANAGED_SKILL_MARKER = "<!-- ARCADIA_MANAGED_SKILL -->";
 const MANAGED_AGENT_ASK_SKILL_MARKER = "<!-- ARCADIA_MANAGED_AGENT_ASK_SKILL -->";
+const CODEX_PROFILE_SUFFIX = ".config.toml";
 
 export interface ProviderExecutables {
   codex: string;
@@ -31,6 +32,7 @@ export interface BrokerExecutables {
 
 export interface AgentSetupPaths {
   codexConfig: string;
+  codexProfileConfigs: string[];
   codexManagedRules: string;
   codexRulesDirectory: string;
   codexSkillDirectory: string;
@@ -49,6 +51,8 @@ export interface AgentSetupStatus {
   checks: {
     brokerExecutables: boolean;
     codexGuardrails: boolean;
+    codexWorktreeDirectories: boolean;
+    codexProfileGuardrails: boolean;
     codexRule: boolean;
     noLegacyCodexRules: boolean;
     managedSkill: boolean;
@@ -79,10 +83,12 @@ export interface ConfigureAgentSetupResult {
 
 export function resolveAgentSetupPaths(home: string): AgentSetupPaths {
   const resolvedHome = path.resolve(home);
+  const codexDirectory = path.join(resolvedHome, ".codex");
   const codexSkillDirectory = path.join(resolvedHome, ".codex", "skills", "arcadia-go");
   const codexAgentAskSkillDirectory = path.join(resolvedHome, ".codex", "skills", "arcadia-agent-ask");
   return {
     codexConfig: path.join(resolvedHome, ".codex", "config.toml"),
+    codexProfileConfigs: listCodexProfileConfigs(codexDirectory),
     codexManagedRules: path.join(resolvedHome, ".codex", "rules", "arcadia.rules"),
     codexRulesDirectory: path.join(resolvedHome, ".codex", "rules"),
     codexSkillDirectory,
@@ -132,7 +138,7 @@ export function configureGoBrokerAgents(options: ConfigureAgentSetupOptions): Co
   const agentAskSkill = renderAgentAskManagedSkill(options.agentAskSkillTemplate);
   validateGoBrokerAgentSetupInputs(options);
 
-  updateCodexConfig(paths.codexConfig, changed, backups, timestamp);
+  updateCodexConfigs(paths, changed, backups, timestamp);
   updateCodexRules(paths, options.executables, changed, backups, timestamp);
   updateManagedSkill(paths.codexSkill, skill, MANAGED_SKILL_MARKER, changed, backups, timestamp);
   updateManagedSkill(paths.codexAgentAskSkill, agentAskSkill, MANAGED_AGENT_ASK_SKILL_MARKER, changed, backups, timestamp);
@@ -156,10 +162,9 @@ export function validateGoBrokerAgentSetupInputs(options: ConfigureAgentSetupOpt
   const paths = resolveAgentSetupPaths(options.home);
   renderManagedSkill(options.skillTemplate, options.executables);
   renderAgentAskManagedSkill(options.agentAskSkillTemplate);
-  setTopLevelTomlValues(readOptional(paths.codexConfig), {
-    approval_policy: "on-request",
-    sandbox_mode: "workspace-write"
-  });
+  for (const file of [paths.codexConfig, ...paths.codexProfileConfigs]) {
+    setCodexSandboxValues(file, expectedCodexApprovalPolicy(file, paths), expectedCodexWorktreeRoots(options.home));
+  }
   readClaudeSettings(paths.claudeSettings, true);
   assertManagedSkillDirectoryIsSafe(paths.codexSkillDirectory);
   assertManagedSkillDirectoryIsSafe(paths.codexAgentAskSkillDirectory);
@@ -170,15 +175,34 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
   const expectedSkill = renderManagedSkill(options.skillTemplate, options.executables);
   const expectedAgentAskSkill = renderAgentAskManagedSkill(options.agentAskSkillTemplate);
   const codexConfig = readOptional(paths.codexConfig);
+  const codexProfiles = paths.codexProfileConfigs.map((file) => ({
+    file,
+    name: codexProfileName(file),
+    content: readOptional(file)
+  }));
   const codexRule = readOptional(paths.codexManagedRules);
   const legacyCodexRules = findLegacyCodexRules(paths.codexRulesDirectory, paths.codexManagedRules);
   const claude = readClaudeSettings(paths.claudeSettings, false);
   const allow = claude?.permissions?.allow ?? [];
   const additionalDirectories = claude?.permissions?.additionalDirectories ?? [];
   const expectedDirectories = [
-    path.join(path.resolve(options.home), ".codex", "worktrees"),
+    ...expectedCodexWorktreeRoots(options.home),
     path.join(path.resolve(options.home), ".claude", "worktrees")
   ];
+  const expectedCodexProfiles = codexProfiles.filter(({ content }) => content.length > 0);
+  const profileIssues = expectedCodexProfiles.flatMap(({ file, name, content }) => {
+    const issues: string[] = [];
+    if (topLevelTomlValue(content, "approval_policy") !== expectedCodexApprovalPolicy(file, paths)) {
+      issues.push(`codexProfile:${name}.approval_policy`);
+    }
+    if (topLevelTomlValue(content, "sandbox_mode") !== "workspace-write") {
+      issues.push(`codexProfile:${name}.sandbox_mode`);
+    }
+    if (!hasExpectedCodexWorktreeRoots(content, expectedCodexWorktreeRoots(options.home))) {
+      issues.push(`codexProfile:${name}.sandbox_workspace_write.writable_roots`);
+    }
+    return issues;
+  });
 
   const checks = {
     brokerExecutables: Object.values(options.executables).every((providers) =>
@@ -187,6 +211,8 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
     codexGuardrails:
       topLevelTomlValue(codexConfig, "approval_policy") === "on-request" &&
       topLevelTomlValue(codexConfig, "sandbox_mode") === "workspace-write",
+    codexWorktreeDirectories: hasExpectedCodexWorktreeRoots(codexConfig, expectedCodexWorktreeRoots(options.home)),
+    codexProfileGuardrails: profileIssues.length === 0,
     codexRule: codexRule === managedCodexRule(options.executables),
     noLegacyCodexRules: legacyCodexRules.length === 0,
     managedSkill: readOptional(paths.codexSkill) === expectedSkill,
@@ -203,7 +229,10 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
     claudeBypassDisabled: claude?.permissions?.disableBypassPermissionsMode === "disable",
     claudeWorktreeDirectories: expectedDirectories.every((directory) => additionalDirectories.includes(directory))
   };
-  const issues = Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name);
+  const issues = [
+    ...Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name),
+    ...profileIssues
+  ];
   return { ready: issues.length === 0, issues, paths, checks };
 }
 
@@ -222,13 +251,21 @@ export function removeArcadiaGoRules(content: string): string {
   return output.replace(/\n{3,}/g, "\n\n");
 }
 
-function updateCodexConfig(file: string, changed: string[], backups: string[], timestamp: string): void {
-  const current = readOptional(file);
-  const updated = setTopLevelTomlValues(current, {
-    approval_policy: "on-request",
-    sandbox_mode: "workspace-write"
-  });
-  writeManagedFile(file, updated, changed, backups, timestamp, true);
+function updateCodexConfigs(
+  paths: AgentSetupPaths,
+  changed: string[],
+  backups: string[],
+  timestamp: string
+): void {
+  const files = [paths.codexConfig, ...paths.codexProfileConfigs];
+  for (const file of files) {
+    const updated = setCodexSandboxValues(
+      file,
+      expectedCodexApprovalPolicy(file, paths),
+      expectedCodexWorktreeRoots(path.dirname(path.dirname(file)))
+    );
+    writeManagedFile(file, updated, changed, backups, timestamp, true);
+  }
 }
 
 function updateCodexRules(
@@ -352,6 +389,49 @@ function setTopLevelTomlValues(content: string, values: Record<string, string>):
   return `${lines.join("\n").replace(/^\n+|\n+$/g, "")}\n`;
 }
 
+function setCodexSandboxValues(file: string, approvalPolicy: string, writableRoots: string[]): string {
+  const current = readOptional(file);
+  const normalized = current.replace(/\r\n/g, "\n");
+  const withTopLevel = setTopLevelTomlValues(normalized, {
+    approval_policy: approvalPolicy,
+    sandbox_mode: "workspace-write"
+  });
+  return setTomlTableArray(withTopLevel, file, "sandbox_workspace_write", "writable_roots", writableRoots);
+}
+
+function setTomlTableArray(content: string, file: string, tableName: string, key: string, values: string[]): string {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const tablePattern = new RegExp(`^\\s*\\[${escapeRegExp(tableName)}\\]\\s*(?:#.*)?$`);
+  const tableIndexes = lines.flatMap((line, index) => tablePattern.test(line) ? [index] : []);
+  if (tableIndexes.length > 1) {
+    throw validationError(`Codex config contains duplicate [${tableName}] tables.`, { file, table: tableName });
+  }
+  if (tableIndexes.length === 0) {
+    const rendered = `${key} = [${values.map((value) => JSON.stringify(value)).join(", ")}]`;
+    const trimmed = lines.join("\n").replace(/\n+$/g, "");
+    return `${trimmed}${trimmed ? "\n\n" : ""}[${tableName}]\n${rendered}\n`;
+  }
+
+  const tableStart = tableIndexes[0];
+  const tableEnd = lines.findIndex((line, index) => index > tableStart && /^\s*\[{1,2}[^\]]+\]{1,2}/.test(line));
+  const end = tableEnd < 0 ? lines.length : tableEnd;
+  const keyPattern = new RegExp(`^\\s*${escapeRegExp(key)}\\s*=`);
+  const keyIndexes = lines.flatMap((line, index) => index > tableStart && index < end && keyPattern.test(line) ? [index] : []);
+  if (keyIndexes.length > 1) {
+    throw validationError(`Codex config contains duplicate ${tableName}.${key} entries.`, { file, table: tableName, key });
+  }
+  const keyEnd = keyIndexes.length === 1 ? tomlArrayEnd(lines, keyIndexes[0], end, file) : null;
+  const existing = keyIndexes.length === 1 ? tomlArrayValues(lines.slice(keyIndexes[0], keyEnd! + 1).join(" ")) : [];
+  const merged = [...existing, ...values.filter((value) => !existing.includes(value))];
+  const rendered = `${key} = [${merged.map((value) => JSON.stringify(value)).join(", ")}]`;
+  if (keyIndexes.length === 1) {
+    lines.splice(keyIndexes[0], keyEnd! - keyIndexes[0] + 1, rendered);
+  } else {
+    lines.splice(end, 0, rendered);
+  }
+  return `${lines.join("\n").replace(/^\n+|\n+$/g, "")}\n`;
+}
+
 function topLevelTomlValue(content: string, key: string): string | null {
   const lines = content.replace(/\r\n/g, "\n").split("\n");
   const firstTable = lines.findIndex((line) => /^\s*\[/.test(line));
@@ -361,6 +441,75 @@ function topLevelTomlValue(content: string, key: string): string | null {
     if (match) return match[1];
   }
   return null;
+}
+
+function hasExpectedCodexWorktreeRoots(content: string, expectedRoots: string[]): boolean {
+  const table = tomlTableBody(content, "sandbox_workspace_write");
+  if (table === null) return false;
+  const match = table.match(/^\s*writable_roots\s*=\s*\[([^\]]*)\]/m);
+  if (!match) return false;
+  const roots = [...match[1].matchAll(/"((?:\\.|[^"\\])*)"/g)].map((entry) => JSON.parse(`"${entry[1]}"`) as string);
+  return expectedRoots.every((root) => roots.includes(root));
+}
+
+function tomlArrayValues(line: string): string[] {
+  const open = line.indexOf("[");
+  const close = line.lastIndexOf("]");
+  if (open < 0 || close < open) return [];
+  const array = line.slice(open + 1, close);
+  return [...array.matchAll(/"((?:\\.|[^"\\])*)"/g)].map((entry) => JSON.parse(`"${entry[1]}"`) as string);
+}
+
+function tomlArrayEnd(lines: string[], start: number, limit: number, file: string): number {
+  for (let index = start; index < limit; index += 1) {
+    if (lines[index].includes("]")) return index;
+  }
+  throw validationError("Codex config contains an unterminated sandbox_workspace_write.writable_roots array.", {
+    file,
+    key: "sandbox_workspace_write.writable_roots"
+  });
+}
+
+function tomlTableBody(content: string, tableName: string): string | null {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const tablePattern = new RegExp(`^\\s*\\[${escapeRegExp(tableName)}\\]\\s*(?:#.*)?$`);
+  const tableIndexes = lines.flatMap((line, index) => tablePattern.test(line) ? [index] : []);
+  if (tableIndexes.length !== 1) return null;
+  const start = tableIndexes[0] + 1;
+  const end = lines.findIndex((line, index) => index >= start && /^\s*\[{1,2}[^\]]+\]{1,2}/.test(line));
+  return lines.slice(start, end < 0 ? lines.length : end).join("\n");
+}
+
+function listCodexProfileConfigs(codexDirectory: string): string[] {
+  if (!existsSync(codexDirectory)) return [];
+  return readdirSync(codexDirectory)
+    .filter((name) => name.endsWith(CODEX_PROFILE_SUFFIX))
+    .map((name) => path.join(codexDirectory, name))
+    .filter((file) => {
+      try {
+        return statSync(file).isFile();
+      } catch {
+        return false;
+      }
+    })
+    .sort();
+}
+
+function codexProfileName(file: string): string {
+  return path.basename(file, CODEX_PROFILE_SUFFIX);
+}
+
+function expectedCodexApprovalPolicy(file: string, paths: AgentSetupPaths): string {
+  return file === paths.codexConfig || codexProfileName(file) !== "arcadia-unattended" ? "on-request" : "never";
+}
+
+function expectedCodexWorktreeRoots(home: string): string[] {
+  const resolvedHome = path.resolve(home);
+  return [path.join(resolvedHome, ".codex", "worktrees"), path.join(resolvedHome, ".claude", "worktrees")];
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function findLegacyCodexRules(directory: string, managedFile: string): string[] {
