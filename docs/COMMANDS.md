@@ -1422,21 +1422,20 @@ candidate beneath `~/.codex/worktrees`, verifying candidate/source writes,
 dependency bridging, a temporary SQLite database, candidate and Dashboard
 builds, Vitest, and syntax-checking the revision-pinned compiled broker. A
 failure reports the blocked operation and one recovery command without
-loosening Codex's sandbox. The broker itself exposes only this runtime
-contract:
+loosening Codex's sandbox. The installed `go` executable is a host controller
+and is intentionally absent from coding-agent allowlists because it mutates
+shared Git metadata. The agent runtime exposes only this contract:
 
 ```sh
-~/.local/bin/arcadia-go-broker-codex
-# Claude Code uses: ~/.local/bin/arcadia-go-broker-claude
 ~/.local/bin/arcadia-advance-broker-codex
 # Claude Code uses: ~/.local/bin/arcadia-advance-broker-claude
 ~/.local/bin/arcadia-work-monitor-broker-codex
 # Claude Code uses: ~/.local/bin/arcadia-work-monitor-broker-claude
 ```
 
-Run the matching `go` executable with no arguments from the completed
-worktree. It calls the same `runGoCommand` implementation first in preview mode
-and then with the identical fixed inputs plus apply. In the prepared worktree,
+From the host, run the matching `go` executable with no arguments from the
+completed worktree. It calls the same `runGoCommand` implementation first in
+preview mode and then with the identical fixed inputs plus apply. In the prepared worktree,
 the shared skill calls its fixed `advance` and read-only `work-monitor`
 launchers, then performs ordinary local read-only inspection without an
 approval question. Apply repeats all validation, so a race or state change
@@ -1454,7 +1453,7 @@ pnpm arcadia go-broker status --json
 `status` verifies that all six launchers resolve to one valid protected release,
 the default Codex config and every present named `*.config.toml` profile have
 safe approval/sandbox settings and both standard worktree roots, only the
-dedicated Codex rule grants the broker, the installed skill matches Arcadia's
+dedicated Codex rule grants only the prepared-worktree brokers, the installed skill matches Arcadia's
 current template, Claude resolves that same skill, its exact provider
 permission exists, no legacy broad permission remains, and Claude's sandbox is
 enabled fail-closed with bypass mode disabled. It exits nonzero with

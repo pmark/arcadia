@@ -64,11 +64,18 @@ export function permissionSnippets(
   executables: GoBrokerInstallData["executables"]
 ): Pick<GoBrokerInstallData, "codexRules" | "claudePermissions"> {
   return {
-    codexRules: Object.values(executables).map(
+    // `go` is a host controller: it fetches, updates refs, and creates or
+    // retires worktrees. A coding-agent sandbox must never be able to invoke
+    // it, even through an otherwise narrow executable allowlist.
+    codexRules: agentCallableExecutables(executables).map(
       (providers) => `prefix_rule(pattern=[${JSON.stringify(providers.codex)}], decision="allow")`
     ),
-    claudePermissions: Object.values(executables).map((providers) => `Bash(${providers.claude})`)
+    claudePermissions: agentCallableExecutables(executables).map((providers) => `Bash(${providers.claude})`)
   };
+}
+
+function agentCallableExecutables(executables: BrokerExecutables): ProviderExecutables[] {
+  return [executables.advance, executables.workMonitor];
 }
 
 export function runGoBrokerInstallCommand(

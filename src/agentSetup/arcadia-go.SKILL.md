@@ -7,36 +7,23 @@ description: Safely finish a completed coding-agent worktree, fast-forward it in
 
 <!-- ARCADIA_MANAGED_SKILL -->
 
-Use Arcadia's installed protected `go` broker. Do not reproduce its Git logic
-by hand and do not invoke the mutable `arcadia go` launcher for this workflow.
+Arcadia Go reconciliation is a **host-controller** operation. It fetches,
+updates shared Git metadata, and creates or retires worktrees, so it must never
+run inside a Codex or Claude Code sandbox. Do not reproduce its Git logic by
+hand, invoke the mutable `arcadia go` launcher, or run the installed `go`
+controller from this task.
 
-If the request is exactly `arcadia advance` in a prepared worktree, skip the
-handoff steps below and begin at step 7. That phrase is the continuation
+If the request is exactly `arcadia advance` in a prepared worktree, begin at
+step 2. That phrase is the continuation
 prompt, not permission to invoke the mutable CLI command directly.
 
 ## Workflow
 
-1. Resolve and preserve the current Git worktree root before any cleanup.
-2. Identify the active coding agent as `codex` or `claude`.
-3. Set the command tool's working directory to that exact completed worktree
-   root. Do not express the directory change as a compound shell command.
-4. Run the matching provider executable with no arguments:
-
-   ```sh
-   __ARCADIA_CODEX_BROKER__
-   # Claude Code uses: __ARCADIA_CLAUDE_BROKER__
-   ```
-
-5. The broker performs the canonical read-only preview and identical apply
-   internally, revalidating state before mutation. Never pass `--apply`,
-   `--agent`, `--repo`, `--source`, `--launch`, or any other argument.
-6. If the broker refuses, report its exact blocker and remedy. Do not commit,
-   stash, reset, force, switch, merge, delete, or reinterpret the refusal.
-7. Use the returned `nextWorktree.path`, `nextWorktree.branch`, and launch
-   command when this session performed the handoff. If handing off to a
-   genuinely new session/process, that session's opening prompt is `arcadia
-   advance`; its installed skill begins here. In either case, set the command
-   tool's working directory to the prepared worktree and run:
+1. If this task is complete, report the candidate evidence and the exact
+   completed worktree root. Stop there: the host controller owns the next Git
+   mutation and will prepare the next worktree outside the sandbox.
+2. If the request is `arcadia advance` in an already prepared worktree, set
+   the command tool's working directory to that worktree and run:
 
    ```sh
    __ARCADIA_CODEX_ADVANCE_BROKER__
@@ -45,7 +32,7 @@ prompt, not permission to invoke the mutable CLI command directly.
 
    Never run mutable `arcadia advance` directly and never pass an argument to
    either protected launcher.
-8. Before changing code, run the matching fixed read-only work-monitor launcher
+3. Before changing code, run the matching fixed read-only work-monitor launcher
    from that prepared worktree:
 
    ```sh
@@ -56,7 +43,7 @@ prompt, not permission to invoke the mutable CLI command directly.
    It runs only `arcadia work monitor --no-pull-requests` against the resolved
    local workspace. Report any preservation blocker it finds; do not ask for
    approval to run this read-only preflight.
-9. Inspect the selected Action and its local implementation boundaries using
+4. Inspect the selected Action and its local implementation boundaries using
    ordinary read-only commands (`git status`, `rg`, and targeted file reads)
    without asking for approval. Read-only discovery is already authorized by a
    request to continue Arcadia work. Ask only when a later action needs an
@@ -73,10 +60,11 @@ prompt, not permission to invoke the mutable CLI command directly.
   `pnpm arcadia go-broker install`, then fully restart Codex Desktop and select
   **arcadia-unattended**. The CLI launch command selects the same profile and
   uses `--ask-for-approval never`; it is the only unattended fallback.
-- In Claude Code, exit a Claude-managed source worktree before invoking the
-  broker if its isolation policy blocks access to the retained checkout. Then
-  either enter the returned worktree and continue this session with `arcadia
-  advance`, or start the returned separate process. Do not do both.
+- The operator-facing host controller invokes the revision-pinned `go`
+  executable from the completed worktree. It performs the canonical preview
+  and identical apply outside the coding-agent sandbox, then starts the next
+  task from its returned prepared-worktree path. The controller is deliberately
+  absent from Codex and Claude Code allowlists.
 - After entering a prepared worktree, check whether `node_modules` exists. If
   missing, use that repository's dependency-bridge command or documented
   symlink rather than improvising a per-worktree dependency install.
@@ -91,11 +79,11 @@ prompt, not permission to invoke the mutable CLI command directly.
 
 ## Safety contract
 
-The protected launchers and their canonical Arcadia implementations fail closed for
-dirty, detached, divergent, non-agent-owned, or non-dispatchable state. They
-may fast-forward only and may remove only the named clean source worktree and
-its merged agent branch. They never stage, commit, force-merge, reset, push,
-open a pull request, deploy, launch a coding-agent process, or discard work.
-Each protected launcher accepts no public arguments. The `go` launcher emits
-only the final apply result or refusal as JSON; `advance` and `work-monitor`
-emit their canonical read-only results or refusal as JSON.
+The host controller and prepared-worktree brokers fail closed for dirty,
+detached, divergent, non-agent-owned, or non-dispatchable state. Only the host
+controller may fast-forward, fetch, or create/remove a worktree; it may remove
+only the named clean source worktree and its merged agent branch. It never
+stages, commits, force-merges, resets, pushes, opens a pull request, deploys,
+launches a coding-agent process, or discards work. Every launcher accepts no
+public arguments. `advance` and `work-monitor` emit only canonical read-only
+results or refusals from inside the agent sandbox.

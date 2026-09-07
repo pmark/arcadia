@@ -38,19 +38,18 @@ other files it changes, keeps both sandboxes enabled, and keeps bypass mode
 disabled. `status` must report `READY` before unattended handoff is considered
 installed.
 
-The `arcadia-go` skill invokes only fixed, no-argument launchers:
+The `go` launcher is host-only because it mutates shared Git metadata. The
+`arcadia-go` skill invokes only fixed, no-argument prepared-worktree brokers:
 
 ```sh
-~/.local/bin/arcadia-go-broker-codex
-# Claude Code uses: ~/.local/bin/arcadia-go-broker-claude
 ~/.local/bin/arcadia-advance-broker-codex
 # Claude Code uses: ~/.local/bin/arcadia-advance-broker-claude
 ~/.local/bin/arcadia-work-monitor-broker-codex
 # Claude Code uses: ~/.local/bin/arcadia-work-monitor-broker-claude
 ```
 
-Run the matching provider executable with no arguments from the completed
-worktree; no `--apply` or `--agent` flag belongs in the skill. In the prepared
+The host runs the matching `go` executable with no arguments from the completed
+worktree; no `--apply` or `--agent` flag belongs in the agent skill. In the prepared
 worktree it uses the fixed `advance` and read-only `work-monitor` launchers,
 then proceeds with ordinary local read-only discovery without asking for
 approval. The launchers reject every public argument. Re-run the installer

@@ -15,6 +15,20 @@ export interface GoBrokerRequest {
   operation: ProtectedBrokerOperation;
 }
 
+/**
+ * A `go` handoff mutates the Git common directory shared by every linked
+ * worktree. Codex intentionally protects that directory even when the source
+ * tree itself is writable, so refuse before the first Git command rather than
+ * leaking a misleading FETCH_HEAD or index.lock failure.
+ */
+export function assertGoBrokerHostController(request: GoBrokerRequest, environment: NodeJS.ProcessEnv = process.env): void {
+  if (request.operation !== "go" || !environment.CODEX_SANDBOX) return;
+  throw validationError("Arcadia Go reconciliation must run through the host controller, outside the coding-agent sandbox.", {
+    sandbox: environment.CODEX_SANDBOX,
+    remedy: "Finish the candidate in this task, then have the host run the revision-pinned arcadia-go-broker executable from the completed worktree. Codex may run only the advance and work-monitor brokers."
+  });
+}
+
 export type GoBrokerRunner = (options: GoCommandOptions) => CommandSuccess<GoCommandData>;
 export type AdvanceBrokerRunner = (options: { workspace: string; repo: string }) => CommandSuccess<AdvanceCommandData>;
 export type WorkMonitorBrokerRunner = (options: { workspace: string; includePullRequests: false }) => CommandSuccess<WorkMonitorCommandData>;

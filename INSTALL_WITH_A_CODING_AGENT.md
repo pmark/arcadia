@@ -172,13 +172,15 @@ operator to translate manually. It:
   the denied operation and one recovery command without loosening the sandbox;
 - installs a revision-addressed Arcadia broker snapshot outside project
   worktrees;
-- creates fixed zero-argument Codex and Claude Code launchers for governed
-  handoff, prepared-worktree advance, and read-only work monitoring;
+- creates a host-only zero-argument controller for governed Git handoff plus
+  fixed Codex and Claude Code launchers for prepared-worktree advance and
+  read-only work monitoring; the controller is deliberately not allowlisted
+  for either sandbox;
 - installs Arcadia-managed `arcadia-go` and `arcadia-agent-ask` skills under
   `~/.codex/skills` and links Claude Code to those exact directories; the Ask
   skill lets agents draft, edit, and preview repository-local `agent-ask.yaml`
   without an approval prompt while preserving settlement gates;
-- writes dedicated Codex rules for only those fixed launchers while removing
+- writes dedicated Codex rules for only the prepared-worktree brokers while removing
   recognized legacy `arcadia go`, `arcadia advance`, and broker rules from
   other Codex rule files;
 - sets the default Codex config and every existing named profile config under
@@ -203,9 +205,9 @@ their `*.config.toml` names; an absent optional profile is not created, while a
 present profile with missing roots is named explicitly by `status`.
 
 This narrow exception does not authorize general shell commands, raw Git
-worktree mutation, process launch, push, merge, deployment, or bypass mode. The
-broker accepts no public arguments and revalidates Arcadia's canonical preview
-before applying a strict handoff.
+worktree mutation, process launch, push, merge, deployment, or bypass mode.
+The host controller accepts no public arguments and revalidates Arcadia's
+canonical preview before applying a strict handoff; coding agents cannot invoke it.
 
 ### 4. Create the private workspace
 
