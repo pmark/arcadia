@@ -860,6 +860,29 @@ exit does not complete the Action or approve, merge, deploy, publish, message,
 spend, or use credentials; repository reconciliation is a separate governed
 transition.
 
+The dashboard exposes the same guarded operation for an explicitly approved
+operator request. The route is reachable only where the dashboard is reachable;
+the launch request itself must be same-origin, and the server resolves the
+repository, executable, arguments, pointer, packet, Decisions, provider binding,
+and repository lease. It never accepts a browser-supplied command or path:
+
+```text
+GET  http://127.0.0.1:3020/api/projects/<project-id>/session-launch?requestId=<request-id>
+POST http://127.0.0.1:3020/api/projects/<project-id>/session-launch
+```
+
+The tailnet equivalent is
+`http://arcadia-1.alpine-rattlesnake.ts.net:3020/api/projects/<project-id>/session-launch`.
+The GET returns a no-process preview and fingerprint. POST it with the same
+`requestId` and `previewFingerprint` JSON fields. A cross-origin, malformed,
+altered, or stale request is refused; retrying the same request returns the
+durable Session receipt instead of starting a second process. The dashboard
+service is local/tailnet-reachable, not a public or identity-authenticated API.
+Operator QA: start the dashboard with `pnpm dashboard`, fetch the preview URL,
+then POST its fingerprint from the dashboard origin and confirm one Session;
+repeat the POST and confirm the same Session id. End-user procedure: none—the
+route is an operator-only control surface, not an end-user feature.
+
 Bare `arcadia advance` and `arcadia advance --session <id>` resolve the same
 deterministic Project transition used by `go` and the Agent Queue. Its result
 is exactly one of launch, plan, Decision, repair, reconcile, wait, or Milestone
