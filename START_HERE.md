@@ -791,8 +791,9 @@ another Project's repository. In the same idempotent operation it installs the
 shared skill, writes the narrow Codex rule, updates the default Codex config and
 every existing named `~/.codex/*.config.toml` profile with the two exact
 standard worktree roots, preserves any other existing roots, keeps interactive
-approval on-request and the `arcadia-unattended` profile's approval policy
-never, updates Claude's exact permission and worktree directories, removes
+approval on-request, creates the `arcadia-unattended` profile with approval
+policy never, and selects that restricted profile for governed Codex launches,
+updates Claude's exact permission and worktree directories, removes
 recognized legacy broad allowances, and enforces the normal sandbox and bypass
 guards. Existing unrelated settings are preserved and changed user-owned files
 receive timestamped backups. Verify the entire chain with:

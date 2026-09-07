@@ -32,6 +32,7 @@ export interface BrokerExecutables {
 
 export interface AgentSetupPaths {
   codexConfig: string;
+  codexUnattendedProfile: string;
   codexProfileConfigs: string[];
   codexManagedRules: string;
   codexRulesDirectory: string;
@@ -86,9 +87,11 @@ export function resolveAgentSetupPaths(home: string): AgentSetupPaths {
   const codexDirectory = path.join(resolvedHome, ".codex");
   const codexSkillDirectory = path.join(resolvedHome, ".codex", "skills", "arcadia-go");
   const codexAgentAskSkillDirectory = path.join(resolvedHome, ".codex", "skills", "arcadia-agent-ask");
+  const codexUnattendedProfile = path.join(codexDirectory, "arcadia-unattended.config.toml");
   return {
     codexConfig: path.join(resolvedHome, ".codex", "config.toml"),
-    codexProfileConfigs: listCodexProfileConfigs(codexDirectory),
+    codexUnattendedProfile,
+    codexProfileConfigs: [...new Set([...listCodexProfileConfigs(codexDirectory), codexUnattendedProfile])],
     codexManagedRules: path.join(resolvedHome, ".codex", "rules", "arcadia.rules"),
     codexRulesDirectory: path.join(resolvedHome, ".codex", "rules"),
     codexSkillDirectory,
