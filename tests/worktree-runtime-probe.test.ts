@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -51,6 +51,50 @@ describe("worktree runtime host probe", () => {
       [process.execPath, ["--check", fixture.entrypoint], result.candidatePath],
       ["git", ["worktree", "remove", "--force", result.candidatePath], fixture.repository]
     ]));
+  });
+
+  it("removes the timestamped wrapper directory it created for the candidate", () => {
+    const fixture = createFixture();
+    const run = vi.fn((command: string, args: string[]) => {
+      if (command !== "git" || args[0] !== "worktree") return;
+      if (args[1] === "add") mkdirSync(args[3]!, { recursive: true });
+      if (args[1] === "remove") rmSync(args[3]!, { recursive: true, force: true });
+    });
+
+    const result = runWorktreeRuntimeProbe({
+      repository: fixture.repository,
+      home: fixture.home,
+      brokerEntrypoint: fixture.entrypoint,
+      run
+    });
+
+    const wrapper = path.dirname(result.candidatePath);
+    expect(path.basename(wrapper)).toMatch(/^\.arcadia-host-probe-/);
+    expect(existsSync(wrapper)).toBe(false);
+    expect(existsSync(path.join(fixture.home, ".codex", "worktrees"))).toBe(true);
+  });
+
+  it("leaves the wrapper directory in place when the candidate could not be retired", () => {
+    const fixture = createFixture();
+    const run = vi.fn((command: string, args: string[]) => {
+      if (command === "git" && args[1] === "add") mkdirSync(args[3]!, { recursive: true });
+      if (command === "git" && args[1] === "remove") throw new Error("worktree is locked");
+    });
+
+    let candidatePath = "";
+    try {
+      runWorktreeRuntimeProbe({ repository: fixture.repository, home: fixture.home, brokerEntrypoint: fixture.entrypoint, run });
+      throw new Error("expected probe failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ArcadiaError);
+      const details = (error as ArcadiaError).details as Record<string, unknown>;
+      expect(details.step).toBe("candidate-worktree");
+      expect(String(details.remedy)).toContain("git worktree remove --force");
+      candidatePath = String(details.candidatePath);
+    }
+
+    expect(existsSync(candidatePath)).toBe(true);
+    expect(existsSync(path.dirname(candidatePath))).toBe(true);
   });
 
   it("turns an IPC EPERM into a denial-focused error with one remedy", () => {

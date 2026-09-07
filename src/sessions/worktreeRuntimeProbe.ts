@@ -1,8 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
+
+const PROBE_WRAPPER_PREFIX = ".arcadia-host-probe-";
 
 export type WorktreeRuntimeProbeStep =
   | "candidate-worktree"
@@ -38,6 +40,10 @@ export interface WorktreeRuntimeProbeOptions {
  * forcibly retired only after it has been identified as this probe's own
  * timestamped directory.  A failed cleanup leaves that directory in place and
  * reports the one command that can recover it.
+ *
+ * Retiring the worktree leaves behind the timestamped wrapper directory this
+ * probe created to hold it, so cleanup removes that too -- but only when it is
+ * empty and named with this probe's own prefix, never as a broader sweep.
  */
 export function runWorktreeRuntimeProbe(options: WorktreeRuntimeProbeOptions): WorktreeRuntimeProbeResult {
   const repository = path.resolve(options.repository);
@@ -45,7 +51,8 @@ export function runWorktreeRuntimeProbe(options: WorktreeRuntimeProbeOptions): W
   const run = options.run ?? runCommand;
   const stamp = (options.now ?? new Date()).toISOString().replaceAll(/[-:.]/g, "").replace("Z", "Z");
   const root = path.join(home, ".codex", "worktrees");
-  const candidatePath = path.join(root, `.arcadia-host-probe-${stamp}-${process.pid}`, path.basename(repository));
+  const wrapperPath = path.join(root, `${PROBE_WRAPPER_PREFIX}${stamp}-${process.pid}`);
+  const candidatePath = path.join(wrapperPath, path.basename(repository));
   const checked: WorktreeRuntimeProbeStep[] = [];
   let created = false;
 
@@ -92,6 +99,26 @@ export function runWorktreeRuntimeProbe(options: WorktreeRuntimeProbeOptions): W
         });
       }
     }
+    removeProbeWrapper(wrapperPath, root);
+  }
+}
+
+/**
+ * Remove the timestamped directory this probe created to wrap its candidate
+ * worktree.  `rmdirSync` refuses a non-empty directory, so anything the probe
+ * failed to retire stays exactly where the reported remedy expects it; the
+ * prefix and parent checks keep this from ever touching a directory the probe
+ * did not create.
+ */
+function removeProbeWrapper(wrapperPath: string, root: string): void {
+  if (path.dirname(wrapperPath) !== root) return;
+  if (!path.basename(wrapperPath).startsWith(PROBE_WRAPPER_PREFIX)) return;
+  if (!existsSync(wrapperPath)) return;
+  try {
+    rmdirSync(wrapperPath);
+  } catch {
+    // A wrapper that still holds evidence is recoverable state, not a failure:
+    // the candidate-worktree remedy already names the one command that clears it.
   }
 }
 
