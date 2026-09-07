@@ -203,6 +203,48 @@ export async function loadProjectContinuation(projectId: string): Promise<Arcadi
   return runArcadiaCliJson<ProjectContinuationResponse>(["next", "--project", projectId]);
 }
 
+export interface SessionLaunchPreviewResponse {
+  requestId: string;
+  previewFingerprint: string;
+  actionDocRef: string | null;
+  ready: boolean;
+  prerequisites: string[];
+  selection: { provider: string; model: string; effort: string } | null;
+}
+
+/** Starts no process and mutates nothing — the operator-visible preview a launch request must reference. */
+export async function previewGuardedSessionLaunch(repoPath: string, requestId: string): Promise<ArcadiaJsonSuccess<SessionLaunchPreviewResponse>> {
+  return runArcadiaCliJson<SessionLaunchPreviewResponse>(["session", "preview-launch", "--repo", repoPath, "--request-id", requestId]);
+}
+
+export interface GuardedSessionLaunchResponse {
+  reused: boolean;
+  session: { id: string; observedStatus: string; reattachCommand: string; worktree_path: string };
+}
+
+/**
+ * The only dashboard-reachable operation that starts a coding-agent process
+ * on this host. `--repo`, the executable and its arguments are all resolved
+ * on the CLI side from the freshly re-previewed Action — this function only
+ * carries the operator's already-approved request id and fingerprint.
+ */
+export async function launchGuardedSession(
+  repoPath: string,
+  requestId: string,
+  previewFingerprint: string
+): Promise<ArcadiaJsonSuccess<GuardedSessionLaunchResponse>> {
+  return runArcadiaCliJson<GuardedSessionLaunchResponse>([
+    "session",
+    "launch",
+    "--repo",
+    repoPath,
+    "--request-id",
+    requestId,
+    "--preview-fingerprint",
+    previewFingerprint
+  ]);
+}
+
 /**
  * Every plan this Project's repository holds, governed or not — the CLI's
  * `arcadia plans`, given the repository path directly rather than a
