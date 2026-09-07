@@ -136,11 +136,11 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Expose a bounded server launch operation with replay-safe receipts, fresh authority checks, and one proven correctness run against concurrent/crashed launch attempts; the statistical soak across many interleavings is proven later in prove-multi-provider-production-recovery.
+    next_action: Expose a bounded server launch operation with replay-safe receipts and fresh authority checks only after the approval-free Arcadia Go production loop has been proven on the real host.
     expected_artifact: Evidence satisfying Agent Ask expose-guarded-host-session-launch
     clarification: clarified
     confidence: high
-    source: Agent Ask apply-8020-yagni-to-bootstrap-plan-2026-09-06-v2
+    source: Agent Ask repair-arcadia-go-codex-dx-2026-09-06-v2
     acceptance_criteria:
       - Accept an explicit operator launch request for the previewed canonical Action; resolve repository, executable and arguments on the server.
       - Reject cross-origin, malformed, altered, stale and unauthorized requests; document/test the operator-action request guard for the existing local/tailnet deployment.
@@ -150,7 +150,7 @@ actions:
       - Inject at least one pre-spawn crash, one post-spawn crash and one lost response, and reconcile ambiguous launch identity without blind retry, proving at most one live conflicting execution across that bounded set of injected faults.
       - Support either a current explicit one-Session launch grant or a valid standing managed-production policy with an epoch-bound admission receipt; recheck Off immediately before launch commitment. Do not require a new human launch click for every authorized Action.
       - "Preserve the proof Artifact: Launch boundary, replay, bounded crash-window and conflict integration tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
-    depends_on: [support-selected-codex-and-claude-sessions]
+    depends_on: [support-selected-codex-and-claude-sessions, prove-zero-prompt-production-loop]
     decisions: []
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "apps/dashboard/lib/arcadia-cli.ts", "src/sessions/index.ts", "src/docs/dispatch.ts", "src/execution/planningAuthorization.ts"]
   - id: observe-portfolio-agent-sessions
@@ -320,6 +320,88 @@ actions:
     depends_on: [prove-multi-provider-production-recovery, expose-bootstrap-production-controls]
     decisions: []
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/working-copy-safety.md", "docs/plans/mission-control-view/14-flight-deck-plan-amendment.yaml"]
+  - id: repair-codex-worktree-configuration
+    title: Repair the existing protected-broker installer and status contract so every Codex profile Arcadia actually launches can use the exact standard agent worktree roots without broad filesystem or network access.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Repair the existing protected-broker installer and status contract so every Codex profile Arcadia actually launches can use the exact standard agent worktree roots without broad filesystem or network access.
+    expected_artifact: Evidence satisfying Agent Ask repair-codex-worktree-configuration
+    clarification: clarified
+    confidence: high
+    source: Agent Ask repair-arcadia-go-codex-dx-2026-09-06-v2
+    acceptance_criteria:
+      - Extend the existing configureGoBrokerAgents path instead of introducing a second installer or manual setup instructions; preserve unrelated user configuration, existing writable roots, comments where the current writer preserves them, and timestamped recovery backups.
+      - Configure and verify sandbox_workspace_write.writable_roots for the exact ~/.codex/worktrees and ~/.claude/worktrees roots in the default Codex configuration and in every named Codex profile Arcadia selects for managed production, including arcadia-unattended when that profile is used.
+      - Keep sandbox_mode workspace-write; do not grant danger-full-access, a whole-home writable root, unrestricted command execution, or command network access as a workaround.
+      - Make go-broker status fail with a named Codex worktree/profile issue when any selected profile is missing the required roots; it must not report READY from the currently observed configuration that lacks them.
+      - Preserve approval_policy on-request for interactive sessions and never for explicitly unattended sessions, and prove that changing approval policy does not masquerade as changing sandbox access.
+      - Cover new, mixed, duplicate-table, pre-existing-root, absent-profile, idempotent reinstall, backup, and refusal cases with deterministic tests; update START_HERE.md, INSTALL_WITH_A_CODING_AGENT.md, docs/COMMANDS.md, and the installed skill wherever their current claims change.
+    depends_on: [support-selected-codex-and-claude-sessions]
+    decisions: []
+    references: ["src/agentSetup/goBrokerAgentSetup.ts", "src/commands/goBrokerInstall.ts", "tests/go-broker-agent-setup.test.ts", "src/sessions/worktreePreparation.ts", "https://developers.openai.com/codex/config-reference", "https://learn.chatgpt.com/codex/agent-approvals-security"]
+  - id: make-worktree-runtime-self-contained
+    title: Make every mandatory Arcadia Go lifecycle, dependency, build, and test path run from the prepared candidate without sandbox-blocked IPC or accidental execution of the main checkout's built code.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make every mandatory Arcadia Go lifecycle, dependency, build, and test path run from the prepared candidate without sandbox-blocked IPC or accidental execution of the main checkout's built code.
+    expected_artifact: Evidence satisfying Agent Ask make-worktree-runtime-self-contained
+    clarification: clarified
+    confidence: high
+    source: Agent Ask repair-arcadia-go-codex-dx-2026-09-06-v2
+    acceptance_criteria:
+      - Run governed advance and work monitoring through the installed revision-pinned compiled broker; no required Arcadia Go lifecycle step depends on the tsx CLI IPC server.
+      - Resolve or avoid the observed macOS listen EPERM failure for required TypeScript-backed development commands without enabling unrestricted network access or danger-full-access, and retain a denial-focused diagnostic that names the blocked path or operation.
+      - Make dependency preparation idempotent and prove workspace package imports exercise the candidate worktree's source or candidate build, never the main checkout's stale dist; add a sentinel regression fixture that fails if resolution crosses back to the main checkout.
+      - From a prepared worktree under the intended Codex sandbox, prove ordinary source edits, node_modules preparation, dist and .next output, temporary SQLite databases, Vitest, build, and cleanup all work without an operator approval prompt.
+      - The installer performs a disposable post-install host probe covering candidate-root writes, dependency preparation, temporary files, and the compiled preflight; any failure leaves recoverable state and reports one exact remedy before Arcadia launches production work.
+      - Keep the common path deterministic and local; diagnose a failed probe with one bounded model-bearing repair pass only after preserving the denial evidence.
+    depends_on: [repair-codex-worktree-configuration]
+    decisions: []
+    references: ["scripts/bridge-worktree-deps.mjs", "package.json", "src/goBroker.ts", "src/commands/workMonitor.ts", "docs/AGENT_ORIENTATION.md", "https://learn.chatgpt.com/codex/agent-approvals-security"]
+  - id: broker-candidate-preservation
+    title: Preserve a completed candidate through Arcadia's protected controller boundary so sandboxed agents never need direct write access to shared Git metadata or ad hoc approval escalation.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Preserve a completed candidate through Arcadia's protected controller boundary so sandboxed agents never need direct write access to shared Git metadata or ad hoc approval escalation.
+    expected_artifact: Evidence satisfying Agent Ask broker-candidate-preservation
+    clarification: clarified
+    confidence: high
+    source: Agent Ask repair-arcadia-go-codex-dx-2026-09-06-v2
+    acceptance_criteria:
+      - Reuse the existing protected broker, Session lease, governed Action, and managed-production policy boundaries; do not allowlist raw general Git mutation or make .git writable to the coding agent.
+      - Bind preservation to one exact registered prepared worktree, agent-owned branch, base revision, Action, packet, policy epoch, candidate diff fingerprint, validation evidence, and request id; changed inputs invalidate the operation.
+      - Outside the agent sandbox, stage only the validated candidate worktree, create one recoverable branch commit, and make retries or lost responses return the same receipt without duplicate commits or staged leakage from another worktree.
+      - When the standing policy explicitly includes remote preservation, push only that exact agent branch and create or update its draft pull request with the required operator QA plan; merge, deployment, publication, spending, credential expansion, and messaging remain separate gates.
+      - If remote preservation is not authorized or reachable, retain the local commit, report LOCAL ONLY with the exact retry action, and never claim that the work is recoverable from another machine.
+      - Refuse dirty base state, detached or unexpected branches, symlink/path escapes, stale reservations, conflicting Sessions, changed base history, missing validation, and unapproved network effects while preserving all candidate files.
+      - Add fault injection before and after stage, commit, push, and pull-request receipt persistence; prove one recoverable outcome and no cross-worktree mutation across retries and restart.
+    depends_on: [make-worktree-runtime-self-contained]
+    decisions: []
+    references: ["src/goBroker.ts", "src/commands/go.ts", "src/sessions/index.ts", "src/git/worktrees.ts", "docs/working-copy-safety.md", "docs/operator-demo-and-release-contract.md", "https://learn.chatgpt.com/codex/agent-approvals-security"]
+  - id: prove-zero-prompt-production-loop
+    title: Prove on the real host that Arcadia can hand off, execute, validate, preserve, and advance bounded coding work without operator permission relay while retaining every consequential approval boundary.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Prove on the real host that Arcadia can hand off, execute, validate, preserve, and advance bounded coding work without operator permission relay while retaining every consequential approval boundary.
+    expected_artifact: Evidence satisfying Agent Ask prove-zero-prompt-production-loop
+    clarification: clarified
+    confidence: high
+    source: Agent Ask repair-arcadia-go-codex-dx-2026-09-06-v2
+    acceptance_criteria:
+      - Use a disposable or explicitly authorized Project with two dependent small Actions and the same Codex profile, protected launchers, workspace root, dependency bridge, build, test, SQLite, Git, network, and pull-request path that managed production will use.
+      - From one activation, prove Arcadia prepares Action A's worktree, advances and monitors it, edits, builds, tests, preserves its exact branch and draft pull request, reconciles evidence, advances the governed pointer, and starts Action B without a sandbox approval prompt or manual Session relay.
+      - Run the local lifecycle once with approval_policy on-request and once with the selected unattended profile; the first produces zero sandbox prompts on the common path and the second produces zero permission failures rather than merely suppressing prompts.
+      - Record every command, profile, writable root, sandbox denial, approval event, worktree, branch, revision, Session, Action, validation result, commit, push, pull request, and operator intervention in one proof Artifact; zero observed prompts and zero hidden interventions are acceptance conditions.
+      - Demonstrate that merge, deployment, publication, paid-capacity use, reset redemption, credential expansion, destructive cleanup, and unrelated network access still stop at their existing explicit gates.
+      - Turn production Off during Action B and prove no later admission, no lost candidate work, bounded reconciliation, and no duplicate commit or pull request after worker restart.
+      - Repeat the deterministic host probe after reinstall and from a fresh generated worktree; any regression makes go-broker status or production admission fail closed before a coding-agent model is launched.
+    depends_on: [broker-candidate-preservation]
+    decisions: []
+    references: ["docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/working-copy-safety.md", "src/commands/worker.ts", "src/sessions/index.ts", "src/agentSetup/goBrokerAgentSetup.ts"]
 questions: []
 decisions: []
 current_action: expose-guarded-host-session-launch
