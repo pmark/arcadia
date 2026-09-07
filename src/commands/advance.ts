@@ -10,6 +10,7 @@ import { transitionActionPointer, type PointerTransitionReceipt } from "../dispa
 import { discoverDocs } from "../docs/discover.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import { getLatestSession, getSession, resolveProjectTransition, sessionView, type ProjectTransition } from "../sessions/index.js";
+import { launchGuardedHostSession, type GuardedLaunchResult } from "../sessions/launch.js";
 import { buildLaunchPreview, type LaunchPreview } from "../sessions/launchPreview.js";
 
 export interface AdvanceQueueCommandData extends AgentQueue {}
@@ -134,6 +135,63 @@ export function renderSessionPreviewLaunchSuccess(response: CommandSuccess<Launc
     for (const prerequisite of data.prerequisites) lines.push(`  - ${prerequisite}`);
   }
   return lines;
+}
+
+export interface SessionLaunchCommandData {
+  reused: boolean;
+  session: ReturnType<typeof sessionView>;
+}
+
+/**
+ * The only operation that starts a coding-agent process on this host from a
+ * previewed request. Everything it needs (repository, executable, arguments,
+ * pointer, packet, decisions, lease) is resolved fresh here rather than
+ * trusted from the caller — the caller supplies only the request id and the
+ * fingerprint it saw when previewing, so the server can detect if the
+ * previewed state has since changed.
+ */
+export function runSessionLaunchCommand(options: {
+  workspace: string;
+  repo: string;
+  requestId: string;
+  previewFingerprint: string;
+}): CommandSuccess<SessionLaunchCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const repoRoot = existingDirectory(options.repo, "repository");
+  const project = discoverDocs(repoRoot).docs.find((doc) => doc.type === "project");
+  if (!project || project.type !== "project") throw new Error("Arcadia session launch requires one managed Project document.");
+  const registries = loadPhase3Registries(workspacePath);
+  validatePhase3Registries(registries);
+  if (!registries.providerAdapters) throw new Error("Arcadia session launch requires a configured provider-adapters registry.");
+  const result: GuardedLaunchResult = withDatabase(workspacePath, (db) =>
+    launchGuardedHostSession({
+      db,
+      workspace: workspacePath,
+      repoRoot,
+      projectSlug: project.slug,
+      requestId: options.requestId,
+      previewFingerprint: options.previewFingerprint,
+      profiles: registries.codingAgents.profiles,
+      adapters: registries.providerAdapters!
+    })
+  );
+  return createSuccess({
+    command: "session.launch",
+    workspace: workspacePath,
+    data: { reused: result.reused, session: sessionView(result.session) }
+  });
+}
+
+export function renderSessionLaunchSuccess(response: CommandSuccess<SessionLaunchCommandData>): string[] {
+  const data = response.data;
+  return [
+    data.reused ? "Reused an already-durable Session for this exact request." : "Session launched.",
+    `Session: ${data.session.id}`,
+    `Status: ${data.session.observedStatus}`,
+    `Project: ${data.session.project_slug} · ${data.session.plan_slug}#${data.session.action_id}`,
+    `Worktree: ${data.session.worktree_path}`,
+    `Reattach: ${data.session.reattachCommand}`
+  ];
 }
 
 export function runAdvanceQueueCommand(options: { workspace: string }): CommandSuccess<AdvanceQueueCommandData> {

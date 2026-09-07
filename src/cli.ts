@@ -98,6 +98,7 @@ import {
   renderAdvanceSuccess,
   renderSessionShowSuccess,
   renderSessionPreviewLaunchSuccess,
+  renderSessionLaunchSuccess,
   runAdvanceCommand,
   runAdvanceQueueCommand,
   runAdvanceQueueArrangeCommand,
@@ -105,7 +106,8 @@ import {
   runAdvanceQueueReorderCommand,
   runAdvanceQueueUndoCommand,
   runSessionShowCommand,
-  runSessionPreviewLaunchCommand
+  runSessionPreviewLaunchCommand,
+  runSessionLaunchCommand
 } from "./commands/advance.js";
 import {
   renderDogfoodAskSuccess,
@@ -1474,6 +1476,26 @@ export function buildProgram(): Command {
       options,
       () => runSessionPreviewLaunchCommand({ workspace: options.workspace, repo: options.repo, requestId: options.requestId }),
       renderSessionPreviewLaunchSuccess
+    )
+  );
+  addJsonOption(
+    session.command("launch")
+      .description("Launch the previewed Session on this host; the only operation that starts a coding-agent process from a preview")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--repo <path>", "Project repository", resolveInvocationPath, invocationRoot())
+      .requiredOption("--request-id <id>", "The request id used to build the approved preview")
+      .requiredOption("--preview-fingerprint <hash>", "The previewFingerprint from session preview-launch")
+  ).action((options: { workspace: string; repo: string; requestId: string; previewFingerprint: string; json?: boolean }) =>
+    runCliAction(
+      "session.launch",
+      options,
+      () => runSessionLaunchCommand({
+        workspace: options.workspace,
+        repo: options.repo,
+        requestId: options.requestId,
+        previewFingerprint: options.previewFingerprint
+      }),
+      renderSessionLaunchSuccess
     )
   );
 

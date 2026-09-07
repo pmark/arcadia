@@ -153,6 +153,7 @@ describe("path options are wired to the invocation-aware resolver", () => {
       "evidence --repo",
       "go --repo",
       "go --source",
+      "launch --repo",
       "list --repo",
       "metadata --repo-path",
       "plans --repo",
