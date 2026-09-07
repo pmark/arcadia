@@ -186,6 +186,108 @@ describe("go broker agent setup", () => {
     expect(status.issues).toContain("codexProfile:arcadia-unattended.sandbox_workspace_write.writable_roots");
   });
 
+  it("reports a present empty profile instead of treating it as absent", () => {
+    const fixture = createFixture();
+    const profile = path.join(fixture.home, ".codex", "codex_build.config.toml");
+    write(profile, "");
+
+    const status = inspectGoBrokerAgentSetup({
+      home: fixture.home,
+      executables: fixture.executables,
+      skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate
+    });
+
+    expect(status.ready).toBe(false);
+    expect(status.issues).toEqual(expect.arrayContaining([
+      "codexProfile:codex_build.approval_policy",
+      "codexProfile:codex_build.sandbox_mode",
+      "codexProfile:codex_build.sandbox_workspace_write.writable_roots"
+    ]));
+  });
+
+  it("does not create the optional unattended profile when it is absent", () => {
+    const fixture = createFixture();
+    const profile = path.join(fixture.home, ".codex", "arcadia-unattended.config.toml");
+
+    const result = configureGoBrokerAgents({
+      home: fixture.home,
+      executables: fixture.executables,
+      skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate
+    });
+
+    expect(result.status.ready).toBe(true);
+    expect(existsSync(profile)).toBe(false);
+    expect(result.changed).not.toContain(profile);
+  });
+
+  it("preserves roots from a multiline profile array while adding both required roots", () => {
+    const fixture = createFixture();
+    const profile = path.join(fixture.home, ".codex", "codex_build.config.toml");
+    write(profile, [
+      'approval_policy = "on-request"',
+      'sandbox_mode = "workspace-write"',
+      "",
+      "[sandbox_workspace_write]",
+      "writable_roots = [",
+      '  "/keep/codex-root",',
+      "]",
+      "",
+      "[features]",
+      "multi_agent = true",
+      ""
+    ].join("\n"));
+
+    const result = configureGoBrokerAgents({
+      home: fixture.home,
+      executables: fixture.executables,
+      skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate
+    });
+
+    expect(result.status.ready).toBe(true);
+    const configured = readFileSync(profile, "utf8");
+    expect(configured).toContain(
+      `writable_roots = ["/keep/codex-root", "${path.join(fixture.home, ".codex", "worktrees")}", "${path.join(fixture.home, ".claude", "worktrees")}"]`
+    );
+    expect(configured).toContain("[features]\nmulti_agent = true");
+  });
+
+  it("accepts multiline and literal-string roots in status", () => {
+    const fixture = createFixture();
+    const profile = path.join(fixture.home, ".codex", "codex_build.config.toml");
+    write(profile, 'approval_policy = "on-request"\nsandbox_mode = "workspace-write"\n');
+    configureGoBrokerAgents({
+      home: fixture.home,
+      executables: fixture.executables,
+      skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate
+    });
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const configured = readFileSync(profile, "utf8");
+    write(profile, configured.replace(
+      /writable_roots = \[[^\]]*\]/,
+      [
+        "writable_roots = [",
+        "  '/keep/codex-root',",
+        `  '${path.join(fixture.home, ".codex", "worktrees")}',`,
+        `  '${path.join(fixture.home, ".claude", "worktrees")}'`,
+        "]"
+      ].join("\n")
+    ));
+
+    const status = inspectGoBrokerAgentSetup({
+      home: fixture.home,
+      executables: fixture.executables,
+      skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate
+    });
+
+    expect(status.ready).toBe(true);
+    expect(status.paths.codexConfig).toBe(paths.codexConfig);
+  });
+
   it("refuses duplicate sandbox tables before changing any other setup", () => {
     const fixture = createFixture();
     const paths = resolveAgentSetupPaths(fixture.home);
