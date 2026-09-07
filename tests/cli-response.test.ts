@@ -15,6 +15,7 @@ import {
 import { executeApprovedReview } from "../src/execution/reviewExecutor.js";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
+const tsxLoader = path.join(repoRoot, "node_modules", "tsx", "dist", "loader.mjs");
 const workspaces: string[] = [];
 
 afterEach(() => {
@@ -2116,7 +2117,7 @@ function runCli(
   // The `tsx` bin starts an IPC service on macOS. Exercise the same Node
   // loader used by `pnpm arcadia` instead, so this contract suite works under
   // the ordinary network-denied Codex worktree sandbox.
-  return spawnSync(process.execPath, ["--import", "tsx", path.join(repoRoot, "src", "cli.ts"), ...args], {
+  return spawnSync(process.execPath, ["--import", tsxLoader, path.join(repoRoot, "src", "cli.ts"), ...args], {
     cwd: options.cwd ?? repoRoot,
     env: { ...baseEnv, ARCADIA_CONFIG_PATH: options.configPath ?? createTempConfigPath(), ...env },
     encoding: "utf8"
