@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to build Flight Deck
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-09-06
+updated: 2026-09-07
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -322,7 +322,7 @@ actions:
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/working-copy-safety.md", "docs/plans/mission-control-view/14-flight-deck-plan-amendment.yaml"]
   - id: repair-codex-worktree-configuration
     title: Repair the existing protected-broker installer and status contract so every Codex profile Arcadia actually launches can use the exact standard agent worktree roots without broad filesystem or network access.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Repair the existing protected-broker installer and status contract so every Codex profile Arcadia actually launches can use the exact standard agent worktree roots without broad filesystem or network access.
@@ -404,7 +404,7 @@ actions:
     references: ["docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/working-copy-safety.md", "src/commands/worker.ts", "src/sessions/index.ts", "src/agentSetup/goBrokerAgentSetup.ts"]
 questions: []
 decisions: []
-current_action: repair-codex-worktree-configuration
+current_action: make-worktree-runtime-self-contained
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---

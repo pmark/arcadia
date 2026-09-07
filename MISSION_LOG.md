@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-06
+updated: 2026-09-07
 ---
 
 # Mission Log: Arcadia
@@ -2602,3 +2602,10 @@ STILL OPEN. Nineteen other write transactions across src/ still use the deferred
 - **Result:** Every declared acceptance criterion was accepted as met: "Support the Codex selection result with provider-specific executable arguments and native Session identity in the existing Session model."; "Reuse existing packet/model/binding validation and add Codex reattach/resume semantics and honest unsupported-operation messages."; "Enforce repository lease admission across prepared/live Sessions and competing managed Runs, including canonical path aliases."; "Use additive migration only if existing operational records require it; preserve older Session records and both existing execution paths."; "Prove argument construction and spawn failure without live model invocation in deterministic tests."; "Claude session launch is explicitly deferred to prove-multi-provider-production-recovery, which already requires demonstrating both configured providers; this Action does not claim Claude launch support."; "Preserve the proof Artifact: Provider adapter, lease conflict and backward-compatibility tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists.".
 - **Next:** Advanced to the next eligible Action in document order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-support-selected-codex-and-claude-sessions-2026-09-06-v4).
+
+## 2026-09-07 — Completed arcadia/repair-codex-worktree-configuration
+
+- **Did:** Completed Action arcadia/repair-codex-worktree-configuration from accepted evidence (Candidate 43cd0729db698b9fc6ba1c071d8147829c2e2b71).
+- **Result:** Every declared acceptance criterion was accepted as met: "Extend the existing configureGoBrokerAgents path instead of introducing a second installer or manual setup instructions; preserve unrelated user configuration, existing writable roots, comments where the current writer preserves them, and timestamped recovery backups."; "Configure and verify sandbox_workspace_write.writable_roots for the exact ~/.codex/worktrees and ~/.claude/worktrees roots in the default Codex configuration and in every named Codex profile Arcadia selects for managed production, including arcadia-unattended when that profile is used."; "Keep sandbox_mode workspace-write; do not grant danger-full-access, a whole-home writable root, unrestricted command execution, or command network access as a workaround."; "Make go-broker status fail with a named Codex worktree/profile issue when any selected profile is missing the required roots; it must not report READY from the currently observed configuration that lacks them."; "Preserve approval_policy on-request for interactive sessions and never for explicitly unattended sessions, and prove that changing approval policy does not masquerade as changing sandbox access."; "Cover new, mixed, duplicate-table, pre-existing-root, absent-profile, idempotent reinstall, backup, and refusal cases with deterministic tests; update START_HERE.md, INSTALL_WITH_A_CODING_AGENT.md, docs/COMMANDS.md, and the installed skill wherever their current claims change.".
+- **Next:** Advanced to the next eligible Action in document order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-repair-codex-worktree-configuration-2026-09-07).
