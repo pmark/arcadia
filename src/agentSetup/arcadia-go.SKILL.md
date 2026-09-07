@@ -64,11 +64,15 @@ prompt, not permission to invoke the mutable CLI command directly.
 
 ## Agent handoff
 
-- In Codex Desktop, prefer the native task-creation tool when available and
-  explicitly requested by this invocation. Point it at the prepared worktree
-  and use `arcadia advance`. Otherwise run the returned Codex command or open
-  that path with `codex app` and report the prompt. The new session uses the
-  protected advance and work-monitor launchers above before code changes.
+- Codex Desktop cannot receive a CLI profile selection from a native task
+  creation call. Before creating or continuing a governed Desktop/iPhone-connected
+  task, the operator must choose **arcadia-unattended** in the permissions control
+  beneath the composer, wait for the environment to refresh, then start the task
+  in the prepared worktree with `arcadia advance`. If that exact named profile is
+  unavailable, fail closed: do not create the task and give this one remedy:
+  `pnpm arcadia go-broker install`, then fully restart Codex Desktop and select
+  **arcadia-unattended**. The CLI launch command selects the same profile and
+  uses `--ask-for-approval never`; it is the only unattended fallback.
 - In Claude Code, exit a Claude-managed source worktree before invoking the
   broker if its isolation policy blocks access to the retained checkout. Then
   either enter the returned worktree and continue this session with `arcadia

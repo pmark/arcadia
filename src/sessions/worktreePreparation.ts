@@ -62,5 +62,5 @@ export function buildAgentLaunchCommand(agent: "codex" | "claude", worktreePath:
     return `cd ${quotedPath} && claude --model ${quotedModel}${effortFlag} "arcadia advance"`;
   }
   const effortFlag = effort ? ` -c model_reasoning_effort=${JSON.stringify(effort)}` : "";
-  return `codex --profile arcadia-unattended -C ${quotedPath} -m ${quotedModel}${effortFlag} "arcadia advance"`;
+  return `codex -c default_permissions=\"arcadia-unattended\" --ask-for-approval never -C ${quotedPath} -m ${quotedModel}${effortFlag} "arcadia advance"`;
 }

@@ -53,6 +53,8 @@ export interface AgentSetupStatus {
     brokerExecutables: boolean;
     codexGuardrails: boolean;
     codexWorktreeDirectories: boolean;
+    codexNativeProfile: boolean;
+    noLegacyCodexSandbox: boolean;
     codexProfileGuardrails: boolean;
     codexRule: boolean;
     noLegacyCodexRules: boolean;
@@ -165,9 +167,7 @@ export function validateGoBrokerAgentSetupInputs(options: ConfigureAgentSetupOpt
   const paths = resolveAgentSetupPaths(options.home);
   renderManagedSkill(options.skillTemplate, options.executables);
   renderAgentAskManagedSkill(options.agentAskSkillTemplate);
-  for (const file of [paths.codexConfig, ...paths.codexProfileConfigs]) {
-    setCodexSandboxValues(file, expectedCodexApprovalPolicy(file, paths), expectedCodexWorktreeRoots(options.home));
-  }
+  setCodexPermissionProfile(readOptional(paths.codexConfig), options.home);
   readClaudeSettings(paths.claudeSettings, true);
   assertManagedSkillDirectoryIsSafe(paths.codexSkillDirectory);
   assertManagedSkillDirectoryIsSafe(paths.codexAgentAskSkillDirectory);
@@ -178,40 +178,24 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
   const expectedSkill = renderManagedSkill(options.skillTemplate, options.executables);
   const expectedAgentAskSkill = renderAgentAskManagedSkill(options.agentAskSkillTemplate);
   const codexConfig = readOptional(paths.codexConfig);
-  const codexProfiles = paths.codexProfileConfigs.map((file) => ({
-    file,
-    name: codexProfileName(file),
-    content: readOptional(file)
-  }));
   const codexRule = readOptional(paths.codexManagedRules);
   const legacyCodexRules = findLegacyCodexRules(paths.codexRulesDirectory, paths.codexManagedRules);
   const claude = readClaudeSettings(paths.claudeSettings, false);
   const allow = claude?.permissions?.allow ?? [];
   const additionalDirectories = claude?.permissions?.additionalDirectories ?? [];
   const expectedDirectories = expectedCodexWorktreeRoots(options.home);
-  const profileIssues = codexProfiles.flatMap(({ file, name, content }) => {
-    const issues: string[] = [];
-    if (topLevelTomlValue(content, "approval_policy") !== expectedCodexApprovalPolicy(file, paths)) {
-      issues.push(`codexProfile:${name}.approval_policy`);
-    }
-    if (topLevelTomlValue(content, "sandbox_mode") !== "workspace-write") {
-      issues.push(`codexProfile:${name}.sandbox_mode`);
-    }
-    if (!hasExpectedCodexWorktreeRoots(content, expectedCodexWorktreeRoots(options.home))) {
-      issues.push(`codexProfile:${name}.sandbox_workspace_write.writable_roots`);
-    }
-    return issues;
-  });
-
   const checks = {
     brokerExecutables: Object.values(options.executables).every((providers) =>
       existsSync(providers.codex) && existsSync(providers.claude)
     ),
     codexGuardrails:
-      topLevelTomlValue(codexConfig, "approval_policy") === "on-request" &&
-      topLevelTomlValue(codexConfig, "sandbox_mode") === "workspace-write",
+      topLevelTomlValue(codexConfig, "approval_policy") === "on-request",
     codexWorktreeDirectories: hasExpectedCodexWorktreeRoots(codexConfig, expectedCodexWorktreeRoots(options.home)),
-    codexProfileGuardrails: profileIssues.length === 0,
+    codexNativeProfile: hasNativeUnattendedProfile(codexConfig, expectedCodexWorktreeRoots(options.home)),
+    noLegacyCodexSandbox: !hasLegacyCodexSandbox(codexConfig),
+    codexProfileGuardrails: !paths.codexProfileConfigs.some((file) =>
+      codexProfileName(file) === "arcadia-unattended" && hasLegacyCodexSandbox(readOptional(file))
+    ),
     codexRule: codexRule === managedCodexRule(options.executables),
     noLegacyCodexRules: legacyCodexRules.length === 0,
     managedSkill: readOptional(paths.codexSkill) === expectedSkill,
@@ -230,7 +214,6 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
   };
   const issues = [
     ...Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name),
-    ...profileIssues
   ];
   return { ready: issues.length === 0, issues, paths, checks };
 }
@@ -256,14 +239,17 @@ function updateCodexConfigs(
   backups: string[],
   timestamp: string
 ): void {
-  const files = [paths.codexConfig, ...paths.codexProfileConfigs];
-  for (const file of files) {
-    const updated = setCodexSandboxValues(
-      file,
-      expectedCodexApprovalPolicy(file, paths),
-      expectedCodexWorktreeRoots(path.dirname(path.dirname(file)))
+  const updated = setCodexPermissionProfile(readOptional(paths.codexConfig), path.dirname(path.dirname(paths.codexConfig)));
+  writeManagedFile(paths.codexConfig, updated, changed, backups, timestamp, true);
+  if (existsSync(paths.codexUnattendedProfile)) {
+    writeManagedFile(
+      paths.codexUnattendedProfile,
+      "# Retired by `arcadia go-broker install`: use the named permissions.arcadia-unattended profile in config.toml.\n",
+      changed,
+      backups,
+      timestamp,
+      true
     );
-    writeManagedFile(file, updated, changed, backups, timestamp, true);
   }
 }
 
@@ -388,14 +374,53 @@ function setTopLevelTomlValues(content: string, values: Record<string, string>):
   return `${lines.join("\n").replace(/^\n+|\n+$/g, "")}\n`;
 }
 
-function setCodexSandboxValues(file: string, approvalPolicy: string, writableRoots: string[]): string {
-  const current = readOptional(file);
-  const normalized = current.replace(/\r\n/g, "\n");
-  const withTopLevel = setTopLevelTomlValues(normalized, {
-    approval_policy: approvalPolicy,
-    sandbox_mode: "workspace-write"
-  });
-  return setTomlTableArray(withTopLevel, file, "sandbox_workspace_write", "writable_roots", writableRoots);
+function setCodexPermissionProfile(content: string, home: string): string {
+  let withoutManagedProfile = removeTomlTable(removeTopLevelTomlKeys(content, ["sandbox_mode"]), "sandbox_workspace_write")
+    .split("\n")
+    .filter((line) => line !== "# Managed by `arcadia go-broker install`. Select this named profile in Codex Desktop for an Arcadia-governed task.")
+    .join("\n");
+  for (const table of [
+    "permissions.arcadia-unattended.workspace_roots",
+    'permissions.arcadia-unattended.filesystem.":workspace_roots"',
+    "permissions.arcadia-unattended.network",
+    "permissions.arcadia-unattended"
+  ]) withoutManagedProfile = removeTomlTable(withoutManagedProfile, table);
+  const withTopLevel = setTopLevelTomlValues(withoutManagedProfile, { approval_policy: "on-request" });
+  const roots = expectedCodexWorktreeRoots(home);
+  return `${withTopLevel.replace(/\n+$/, "")}\n\n${[
+    "# Managed by `arcadia go-broker install`. Select this named profile in Codex Desktop for an Arcadia-governed task.",
+    "[permissions.arcadia-unattended]",
+    'description = "Arcadia local worktrees: edit and run locally; network and credential files remain denied."',
+    'extends = ":workspace"',
+    "",
+    "[permissions.arcadia-unattended.workspace_roots]",
+    ...roots.map((root) => `${JSON.stringify(root)} = true`),
+    "",
+    '[permissions.arcadia-unattended.filesystem.":workspace_roots"]',
+    '"**/*.env" = "deny"',
+    '"**/.env" = "deny"',
+    "",
+    "[permissions.arcadia-unattended.network]",
+    "enabled = false",
+    ""
+  ].join("\n")}`;
+}
+
+function removeTopLevelTomlKeys(content: string, keys: string[]): string {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const firstTable = lines.findIndex((line) => /^\s*\[/.test(line));
+  const boundary = firstTable < 0 ? lines.length : firstTable;
+  return lines.filter((line, index) => index >= boundary || !keys.some((key) => new RegExp(`^\\s*${escapeRegExp(key)}\\s*=`).test(line))).join("\n");
+}
+
+function removeTomlTable(content: string, tableName: string): string {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const pattern = new RegExp(`^\\s*\\[${escapeRegExp(tableName)}\\]\\s*(?:#.*)?$`);
+  for (let start = lines.findIndex((line) => pattern.test(line)); start >= 0; start = lines.findIndex((line) => pattern.test(line))) {
+    const end = lines.findIndex((line, index) => index > start && /^\s*\[{1,2}[^\]]+\]{1,2}/.test(line));
+    lines.splice(start, (end < 0 ? lines.length : end) - start);
+  }
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
 function setTomlTableArray(content: string, file: string, tableName: string, key: string, values: string[]): string {
@@ -443,6 +468,22 @@ function topLevelTomlValue(content: string, key: string): string | null {
 }
 
 function hasExpectedCodexWorktreeRoots(content: string, expectedRoots: string[]): boolean {
+  return hasNativeUnattendedProfile(content, expectedRoots);
+}
+
+function hasNativeUnattendedProfile(content: string, expectedRoots: string[]): boolean {
+  if (hasLegacyCodexSandbox(content)) return false;
+  const roots = expectedRoots.every((root) => new RegExp(`^\\s*${escapeRegExp(JSON.stringify(root))}\\s*=\\s*true\\s*$`, "m").test(content));
+  return roots &&
+    /\[permissions\.arcadia-unattended\][\s\S]*?extends\s*=\s*":workspace"/.test(content) &&
+    /\[permissions\.arcadia-unattended\.network\][\s\S]*?enabled\s*=\s*false/.test(content);
+}
+
+function hasLegacyCodexSandbox(content: string): boolean {
+  return /^\s*sandbox_mode\s*=/m.test(content) || /^\s*\[sandbox_workspace_write\]\s*$/m.test(content);
+}
+
+function hasLegacyCodexWorktreeRoots(content: string, expectedRoots: string[]): boolean {
   const table = tomlTableBody(content, "sandbox_workspace_write");
   if (table === null) return false;
   const match = table.match(/^\s*writable_roots\s*=\s*\[([\s\S]*?)\]/m);
