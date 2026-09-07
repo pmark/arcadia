@@ -77,6 +77,7 @@ describe("go broker agent setup", () => {
     expect(codexConfig).toContain('approval_policy = "on-request"');
     expect(codexConfig).not.toContain('sandbox_mode = "workspace-write"');
     expect(codexConfig).toContain("[permissions.arcadia-unattended]");
+    expect(codexConfig).toContain('".env" = "deny"');
     expect(codexConfig).toContain('model = "gpt-test"');
     expect(codexConfig).toContain("[features]\nvoice = true");
     const defaultRules = readFileSync(path.join(paths.codexRulesDirectory, "default.rules"), "utf8");

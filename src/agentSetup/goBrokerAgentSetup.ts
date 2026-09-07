@@ -397,6 +397,8 @@ function setCodexPermissionProfile(content: string, home: string): string {
     ...roots.map((root) => `${JSON.stringify(root)} = true`),
     "",
     '[permissions.arcadia-unattended.filesystem.":workspace_roots"]',
+    '".env" = "deny"',
+    '".env.*" = "deny"',
     '"**/*.env" = "deny"',
     '"**/.env" = "deny"',
     "",
