@@ -19,10 +19,28 @@
 // tree with one top-level symlink preserves the relative target as-is, so it
 // still resolves four levels up from its *physical* location in the main
 // checkout, landing back on the main checkout's root and its stale dist --
-// silently, since the import succeeds. Any tree containing such a self
-// reference is bridged one level deeper instead, so that one entry can be
-// retargeted at the worktree while everything else keeps the fast top-level
-// symlink.
+// silently, since the import succeeds. Every tree is therefore bridged one
+// level deeper, so that kind of entry can be retargeted at the worktree.
+//
+// A third trap: a bare top-level symlink for `node_modules` also means the
+// directory a build tool thinks it owns is physically the main checkout's --
+// so anything that writes a cache or temp file straight under `node_modules/`
+// (Vite bundles `vitest.config.ts` into `node_modules/.vite-temp/` on every
+// run) is writing outside the worktree, which a worktree-scoped sandbox
+// denies with EPERM. That is why every tree is bridged one level deep rather
+// than most trees taking the cheap single-symlink path: `node_modules` itself
+// must be a real directory inside the worktree, even though everything in it
+// is a symlink, so tools can create real subdirectories under it.
+//
+// A fourth trap, hiding inside the third: bridging one level deep still walks
+// every entry the main checkout's node_modules happens to have, including
+// tool-owned cache directories the main checkout accumulated from its own
+// runs -- `.vite`, `.vite-temp`. Symlinking one of those back in reproduces
+// exactly the trap the one-level bridge exists to fix, just one dotfile at a
+// time: Vite finds `.vite-temp` "already there" and writes through the
+// symlink into the main checkout again. Only the entries pnpm itself needs for
+// module resolution are bridged; every other dotfile is left for the
+// worktree's own tools to create fresh.
 //
 // Idempotent, and refuses to run anywhere but a worktree. Uses no dependencies,
 // because in a fresh worktree there are none to use.
@@ -128,31 +146,6 @@ function workspaceSelfReferenceTarget(absoluteEntry, memberPaths) {
   return memberPaths.find((member) => resolved === member) ?? null;
 }
 
-/** Whether any entry in `tree` (checking one level into `@scope` directories) is a workspace self-reference. */
-function treeHasSelfReference(tree, memberPaths) {
-  let entries;
-  try {
-    entries = readdirSync(tree, { withFileTypes: true });
-  } catch {
-    return false;
-  }
-  for (const entry of entries) {
-    const absolute = path.join(tree, entry.name);
-    if (entry.name.startsWith("@")) {
-      let scoped;
-      try {
-        scoped = readdirSync(absolute, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-      if (scoped.some((inner) => workspaceSelfReferenceTarget(path.join(absolute, inner.name), memberPaths))) return true;
-    } else if (workspaceSelfReferenceTarget(absolute, memberPaths)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /** Symlink `mainEntry` into the worktree, retargeting it at the worktree's own copy of whichever workspace member it resolves to instead of the main checkout's. */
 function linkOrRetarget(mainEntry, worktreeEntry, memberPaths, mainCheckout, worktree, retargeted) {
   const member = workspaceSelfReferenceTarget(mainEntry, memberPaths);
@@ -165,10 +158,14 @@ function linkOrRetarget(mainEntry, worktreeEntry, memberPaths, mainCheckout, wor
   }
 }
 
+/** pnpm's own module-resolution metadata inside a `node_modules` tree -- the only dotfiles safe to bridge. Anything else starting with `.` is a tool-owned cache (`.vite`, `.vite-temp`, ...) that must be left for the worktree's own tools to create fresh, never inherited from the main checkout. */
+const PNPM_METADATA_ENTRIES = new Set([".bin", ".pnpm", ".modules.yaml", ".pnpm-workspace-state-v1.json"]);
+
 /** Bridge one tree one level deeper (and one level into each `@scope` directory) so a workspace self-reference inside it can be retargeted at the worktree instead of inherited from the main checkout. */
 function bridgeTreeWorkspaceAware(tree, target, memberPaths, mainCheckout, worktree, retargeted) {
   mkdirSync(target, { recursive: true });
   for (const entry of readdirSync(tree, { withFileTypes: true })) {
+    if (entry.name.startsWith(".") && !PNPM_METADATA_ENTRIES.has(entry.name)) continue;
     const mainEntry = path.join(tree, entry.name);
     const worktreeEntry = path.join(target, entry.name);
     if (entry.name.startsWith("@")) {
@@ -194,11 +191,7 @@ for (const tree of trees) {
     continue;
   }
   mkdirSync(path.dirname(target), { recursive: true });
-  if (treeHasSelfReference(tree, memberPaths)) {
-    bridgeTreeWorkspaceAware(tree, target, memberPaths, mainCheckout, worktree, retargeted);
-  } else {
-    symlinkSync(tree, target);
-  }
+  bridgeTreeWorkspaceAware(tree, target, memberPaths, mainCheckout, worktree, retargeted);
   linked.push(relative);
 }
 

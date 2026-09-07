@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import {
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readlinkSync,
@@ -49,14 +50,19 @@ describe("bridge-worktree-deps", () => {
     expect(realpathSync(path.join(worktree, "apps/dashboard/node_modules/@pmark/arcadia"))).toBe(path.resolve(worktree));
   });
 
-  it("bridges a tree with no workspace self-reference as a single fast symlink", () => {
+  it("bridges every tree one level deep, even with no workspace self-reference, so node_modules is a real directory", () => {
     const { mainCheckout, worktree } = createFixture();
 
     run(worktree);
 
-    // The root tree in this fixture has no self-reference to retarget, so it
-    // keeps the cheap top-level symlink rather than being split apart.
-    expect(readlinkSync(path.join(worktree, "node_modules"))).toBe(path.join(mainCheckout, "node_modules"));
+    // node_modules itself must be a real directory in the worktree -- not a
+    // symlink straight into the main checkout -- so a tool that writes a
+    // cache or temp file directly under it (Vite's `.vite-temp`, for example)
+    // writes inside the worktree instead of outside a worktree-scoped sandbox.
+    expect(lstatSync(path.join(worktree, "node_modules")).isSymbolicLink()).toBe(false);
+    expect(readlinkSync(path.join(worktree, "node_modules", "left-pad"))).toBe(
+      path.join(mainCheckout, "node_modules", "left-pad")
+    );
   });
 });
 
