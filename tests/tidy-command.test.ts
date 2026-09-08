@@ -3,9 +3,10 @@ import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { deleteBranchRefIfUnchanged, evaluateMerge, getWorktreeProtectionReason, runTidyCommand, type TidyCommandData } from "../src/commands/tidy.js";
+import { deleteBranchRefIfUnchanged, evaluateMerge, getWorktreeProtection, runTidyCommand, type TidyCommandData } from "../src/commands/tidy.js";
 import { runGoCommand } from "../src/commands/go.js";
-import { withDatabase } from "../src/db/connection.js";
+import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
+import { reserveAgentWorktree } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { parseGithubSlug, summarizeClutter } from "../src/git/worktrees.js";
 import type { CommandSuccess } from "../src/cli/response.js";
@@ -106,6 +107,34 @@ function worktreeOn(root: string, branch: string, name: string): string {
   run(root, ["worktree", "add", "-q", target, branch]);
   temporary.push(target);
   return realpathSync(target);
+}
+
+/** Record a `go` handoff reservation as production writes one. */
+function reserveHandoff(root: string, worktree: string, branch: string): void {
+  withDatabase(workspaceFor(root), (db) => {
+    reserveAgentWorktree(db, { repositoryPath: root, worktreePath: worktree, branch, now: new Date() });
+  });
+}
+
+/**
+ * A worktree on a branch created by the same `git worktree add -b` production
+ * uses, so the branch reflog holds exactly the one creation entry a real
+ * unlaunched handoff has.
+ */
+function handoffWorktree(root: string, branch: string, name: string): string {
+  const target = path.join(root, "..", `${path.basename(root)}-${name}`);
+  run(root, ["worktree", "add", "-q", "-b", branch, target, "main"]);
+  temporary.push(target);
+  return realpathSync(target);
+}
+
+function reservationCount(root: string, worktree: string): number {
+  return withReadOnlyDatabase(workspaceFor(root), (db) => {
+    const row = db.prepare(
+      "SELECT COUNT(*) AS total FROM agent_worktree_reservations WHERE worktree_path = ?"
+    ).get(worktree) as { total: number };
+    return row.total;
+  });
 }
 
 function data(result: CommandSuccess<TidyCommandData>): TidyCommandData {
@@ -262,12 +291,12 @@ describe("arcadia tidy — safety invariants", () => {
       for (let offset = 0; offset < 100; offset += 1) {
         const seed = firstSeed + offset;
         db.prepare("UPDATE agent_sessions SET status = 'completed' WHERE id = ?").run(sessionId);
-        const stalePreviewRead = getWorktreeProtectionReason(db, root, tree);
+        const stalePreviewRead = getWorktreeProtection(db, root, tree);
         db.prepare("UPDATE agent_sessions SET status = 'running' WHERE id = ?").run(sessionId);
-        const applyTimeRead = getWorktreeProtectionReason(db, root, tree);
+        const applyTimeRead = getWorktreeProtection(db, root, tree);
 
         expect(stalePreviewRead, `seed ${seed}`).toBeNull();
-        expect(applyTimeRead, `seed ${seed}`).toContain("live running Session lease");
+        expect(applyTimeRead?.reason, `seed ${seed}`).toContain("live running Session lease");
       }
     });
   });
@@ -671,6 +700,95 @@ describe("arcadia tidy — GitHub verification degradation", () => {
   });
 });
 
+describe("arcadia tidy — handoff reservations end with the work", () => {
+  it("retires a reserved worktree whose agent committed and whose work landed", () => {
+    const root = repo();
+    const branch = "claude/served";
+    // Reserved before the branch's own commit: the ordering `go` produces when
+    // it prepares a worktree and an agent then works in it.
+    commitOn(root, branch, "a.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", branch]);
+    const tree = worktreeOn(root, branch, "served");
+    reserveHandoff(root, tree, branch);
+
+    const result = data(runTidyCommand({ repo: root, apply: true }));
+    const entry = result.worktrees.find((candidate) => candidate.path === tree);
+
+    expect(entry?.verdict).toBe("merged");
+    expect(entry?.retired).toBe(true);
+    expect(run(root, ["worktree", "list"])).not.toContain(tree);
+    expect(reservationCount(root, tree)).toBe(0);
+  });
+
+  it("keeps a prepared handoff nobody has launched yet", () => {
+    const root = repo();
+    const branch = "claude/unlaunched";
+    // No commit of its own: the branch still sits exactly where `go` created
+    // it, which is clean and merged and must survive anyway.
+    const tree = handoffWorktree(root, branch, "unlaunched");
+    reserveHandoff(root, tree, branch);
+
+    const result = data(runTidyCommand({ repo: root, apply: true }));
+    const entry = result.worktrees.find((candidate) => candidate.path === tree);
+
+    expect(entry?.verdict).toBe("protected");
+    expect(entry?.reason).toContain("go handoff reservation");
+    expect(entry?.retired).toBe(false);
+    expect(run(root, ["worktree", "list"])).toContain(tree);
+    expect(reservationCount(root, tree)).toBe(1);
+  });
+
+  it("keeps a reserved worktree whose agent left uncommitted changes", () => {
+    const root = repo();
+    const branch = "claude/mid-flight";
+    commitOn(root, branch, "a.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", branch]);
+    const tree = worktreeOn(root, branch, "mid-flight");
+    reserveHandoff(root, tree, branch);
+    writeFileSync(path.join(tree, "wip.txt"), "in flight\n", "utf8");
+
+    const result = data(runTidyCommand({ repo: root, apply: true }));
+    const entry = result.worktrees.find((candidate) => candidate.path === tree);
+
+    expect(entry?.verdict).toBe("protected");
+    expect(entry?.retired).toBe(false);
+    expect(run(root, ["worktree", "list"])).toContain(tree);
+  });
+
+  it("keeps a reserved worktree whose branch has not landed", () => {
+    const root = repo();
+    const branch = "claude/unlanded";
+    commitOn(root, branch, "a.txt");
+    const tree = worktreeOn(root, branch, "unlanded");
+    reserveHandoff(root, tree, branch);
+
+    const result = data(runTidyCommand({ repo: root, apply: true }));
+    const entry = result.worktrees.find((candidate) => candidate.path === tree);
+
+    expect(entry?.verdict).toBe("protected");
+    expect(entry?.retired).toBe(false);
+    expect(run(root, ["worktree", "list"])).toContain(tree);
+  });
+
+  it("lets a live Session lease outrank a served handoff", () => {
+    const root = repo();
+    const branch = "claude/leased";
+    commitOn(root, branch, "a.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", branch]);
+    const tree = worktreeOn(root, branch, "leased");
+    reserveHandoff(root, tree, branch);
+    recordLiveSession(root, tree, branch, "running");
+
+    const result = data(runTidyCommand({ repo: root, apply: true }));
+    const entry = result.worktrees.find((candidate) => candidate.path === tree);
+
+    expect(entry?.verdict).toBe("protected");
+    expect(entry?.reason).toContain("Session lease");
+    expect(entry?.retired).toBe(false);
+    expect(run(root, ["worktree", "list"])).toContain(tree);
+  });
+});
+
 describe("summarizeClutter — the session-boundary nudge", () => {
   it("reports nothing to do for a clean repository", () => {
     const root = repo();
@@ -693,6 +811,18 @@ describe("summarizeClutter — the session-boundary nudge", () => {
 
     expect(summary?.extraWorktrees).toBe(1);
     expect(summary?.obviouslyMerged).toBe(1);
+  });
+
+  it("leaves protected worktrees and their branches out of both counts", () => {
+    const root = repo();
+    commitOn(root, "claude/done", "a.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", "claude/done"]);
+    const tree = worktreeOn(root, "claude/done", "spare");
+
+    expect(summarizeClutter(root, "main")).toMatchObject({ extraWorktrees: 1, obviouslyMerged: 1 });
+    // The same state, once tidy would decline to retire it: a nudge pointing at
+    // a remedy that will correctly refuse is the noise this exemption removes.
+    expect(summarizeClutter(root, "main", [tree])).toMatchObject({ extraWorktrees: 0, obviouslyMerged: 0 });
   });
 
   it("does not count unmerged work as clutter", () => {

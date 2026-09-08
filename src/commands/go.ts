@@ -1,9 +1,10 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
 import { invocationRoot } from "../cli/invocation.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { withDatabase, writeTransaction } from "../db/connection.js";
+import { withDatabase, withReadOnlyDatabase, writeTransaction } from "../db/connection.js";
 import { discoverDocs } from "../docs/discover.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import {
@@ -15,6 +16,7 @@ import {
   isAncestor,
   isInside,
   isPatchEquivalent,
+  listWorktrees,
   parseWorktrees,
   refExists,
   resolveBaseBranch,
@@ -35,6 +37,9 @@ import {
   type TmuxAdapter
 } from "../sessions/index.js";
 import { prepareAgentWorktree } from "../sessions/worktreePreparation.js";
+import { getWorkspacePaths } from "../workspace/paths.js";
+import { resolveWorkspace } from "../workspace/resolve.js";
+import { getWorktreeProtection } from "./tidy.js";
 
 export interface GoCommandOptions {
   repo?: string;
@@ -365,9 +370,32 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
         baseRef: baseBranch,
         prompt: "arcadia advance"
       },
-      clutter: summarizeClutter(repo, baseBranch)
+      clutter: summarizeClutter(repo, baseBranch, protectedWorktreePaths(controlWorktree, options.workspace))
     }
   });
+}
+
+/**
+ * The worktrees `tidy` would refuse to retire, so the clutter nudge can leave
+ * them out of its counts.
+ *
+ * Best-effort on purpose. This feeds a nudge, not a decision: a missing
+ * workspace, an uninitialized database, or a schema without the reservation
+ * table must never fail `go`. Returning nothing only costs the nudge some
+ * precision, which is the same precision it had before this existed.
+ */
+function protectedWorktreePaths(repo: string, workspace: string | undefined): string[] {
+  try {
+    const workspacePath = resolveWorkspace({ workspace, cwd: repo }).workspacePath;
+    if (!workspacePath || !existsSync(getWorkspacePaths(workspacePath).databaseFile)) return [];
+    return withReadOnlyDatabase(workspacePath, (db) =>
+      listWorktrees(repo)
+        .filter((record) => getWorktreeProtection(db, repo, record.path) !== null)
+        .map((record) => record.path)
+    );
+  } catch {
+    return [];
+  }
 }
 
 export function renderGoSuccess(response: CommandSuccess<GoCommandData>): string[] {

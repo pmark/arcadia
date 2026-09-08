@@ -201,8 +201,7 @@ export function listWorktrees(repo: string): WorktreeRecord[] {
 }
 
 export function samePath(left: string, right: string): boolean {
-  const resolve = (value: string) => (existsSync(value) ? realpathSync(value) : path.resolve(value));
-  return resolve(left) === resolve(right);
+  return resolvePath(left) === resolvePath(right);
 }
 
 export function isInside(candidate: string, parent: string): boolean {
@@ -242,21 +241,43 @@ export interface ClutterSummary {
   obviouslyMerged: number;
 }
 
-export function summarizeClutter(repo: string, baseBranch: string): ClutterSummary | null {
+export function summarizeClutter(
+  repo: string,
+  baseBranch: string,
+  /**
+   * Worktrees `tidy` would refuse to retire. Excluded from both counts, because
+   * a nudge that points at a remedy which will correctly decline is noise --
+   * and `go` prepares a handoff worktree on its way to printing this, so
+   * without the exemption every run reports its own fresh handoff as clutter.
+   */
+  protectedWorktrees: Iterable<string> = []
+): ClutterSummary | null {
   const worktrees = tryGit(repo, ["worktree", "list", "--porcelain"]);
   const refs = tryGit(repo, ["for-each-ref", "--format=%(refname:short)", "refs/heads"]);
   if (worktrees === null || refs === null) return null;
 
+  const records = parseWorktrees(worktrees);
+  const shielded = new Set(Array.from(protectedWorktrees, resolvePath));
+  const shieldedBranches = new Set(
+    records
+      .filter((record) => shielded.has(resolvePath(record.path)))
+      .map((record) => shortBranch(record.branch))
+      .filter((branch): branch is string => branch !== null)
+  );
+
   const branches = refs.split("\n").map((line) => line.trim()).filter(Boolean);
   const obviouslyMerged = branches.filter(
-    (branch) => branch !== baseBranch && isAncestor(repo, branch, baseBranch)
+    (branch) => branch !== baseBranch && !shieldedBranches.has(branch) && isAncestor(repo, branch, baseBranch)
   ).length;
 
-  return {
-    extraWorktrees: Math.max(0, parseWorktrees(worktrees).length - 1),
-    branches: branches.length,
-    obviouslyMerged
-  };
+  // The first record is the primary worktree, which is never clutter.
+  const extraWorktrees = records.slice(1).filter((record) => !shielded.has(resolvePath(record.path))).length;
+
+  return { extraWorktrees, branches: branches.length, obviouslyMerged };
+}
+
+function resolvePath(value: string): string {
+  return existsSync(value) ? realpathSync(value) : path.resolve(value);
 }
 
 export interface ComparisonBase {
