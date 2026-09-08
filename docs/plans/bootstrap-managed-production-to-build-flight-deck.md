@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to build Flight Deck
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-09-07
+updated: 2026-09-08
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -362,7 +362,7 @@ actions:
     references: ["scripts/bridge-worktree-deps.mjs", "package.json", "src/goBroker.ts", "src/commands/workMonitor.ts", "docs/AGENT_ORIENTATION.md", "https://learn.chatgpt.com/codex/agent-approvals-security"]
   - id: broker-candidate-preservation
     title: Preserve a completed candidate through Arcadia's protected controller boundary so sandboxed agents never need direct write access to shared Git metadata or ad hoc approval escalation.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Preserve a completed candidate through Arcadia's protected controller boundary so sandboxed agents never need direct write access to shared Git metadata or ad hoc approval escalation.
@@ -404,7 +404,7 @@ actions:
     references: ["docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/working-copy-safety.md", "src/commands/worker.ts", "src/sessions/index.ts", "src/agentSetup/goBrokerAgentSetup.ts"]
 questions: []
 decisions: []
-current_action: broker-candidate-preservation
+current_action: prove-zero-prompt-production-loop
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---

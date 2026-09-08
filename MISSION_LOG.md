@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-07
+updated: 2026-09-08
 ---
 
 # Mission Log: Arcadia
@@ -2616,3 +2616,10 @@ STILL OPEN. Nineteen other write transactions across src/ still use the deferred
 - **Result:** Every declared acceptance criterion was accepted as met: "Run governed advance and work monitoring through the installed revision-pinned compiled broker; no required Arcadia Go lifecycle step depends on the tsx CLI IPC server."; "Resolve or avoid the observed macOS listen EPERM failure for required TypeScript-backed development commands without enabling unrestricted network access or danger-full-access, and retain a denial-focused diagnostic that names the blocked path or operation."; "Make dependency preparation idempotent and prove workspace package imports exercise the candidate worktree's source or candidate build, never the main checkout's stale dist; add a sentinel regression fixture that fails if resolution crosses back to the main checkout."; "From a prepared worktree under the intended Codex sandbox, prove ordinary source edits, node_modules preparation, dist and .next output, temporary SQLite databases, Vitest, build, and cleanup all work without an operator approval prompt."; "The installer performs a disposable post-install host probe covering candidate-root writes, dependency preparation, temporary files, and the compiled preflight; any failure leaves recoverable state and reports one exact remedy before Arcadia launches production work."; "Keep the common path deterministic and local; diagnose a failed probe with one bounded model-bearing repair pass only after preserving the denial evidence.".
 - **Next:** Advanced to the next eligible Action in document order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-make-worktree-runtime-self-contained-repinned-2026-09-07).
+
+## 2026-09-08 — Completed arcadia/broker-candidate-preservation
+
+- **Did:** Completed Action arcadia/broker-candidate-preservation from accepted evidence (Candidate 7540252121d0541ac4efb36a48a000d620d1ef98).
+- **Result:** Every declared acceptance criterion was accepted as met: "Reuse the existing protected broker, Session lease, governed Action, and managed-production policy boundaries; do not allowlist raw general Git mutation or make .git writable to the coding agent."; "Bind preservation to one exact registered prepared worktree, agent-owned branch, base revision, Action, packet, policy epoch, candidate diff fingerprint, validation evidence, and request id; changed inputs invalidate the operation."; "Outside the agent sandbox, stage only the validated candidate worktree, create one recoverable branch commit, and make retries or lost responses return the same receipt without duplicate commits or staged leakage from another worktree."; "When the standing policy explicitly includes remote preservation, push only that exact agent branch and create or update its draft pull request with the required operator QA plan; merge, deployment, publication, spending, credential expansion, and messaging remain separate gates."; "If remote preservation is not authorized or reachable, retain the local commit, report LOCAL ONLY with the exact retry action, and never claim that the work is recoverable from another machine."; "Refuse dirty base state, detached or unexpected branches, symlink/path escapes, stale reservations, conflicting Sessions, changed base history, missing validation, and unapproved network effects while preserving all candidate files."; "Add fault injection before and after stage, commit, push, and pull-request receipt persistence; prove one recoverable outcome and no cross-worktree mutation across retries and restart.".
+- **Next:** Advanced to the next eligible Action in document order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-arcadia-broker-candidate-preservation-f8d8bfd9e031).
