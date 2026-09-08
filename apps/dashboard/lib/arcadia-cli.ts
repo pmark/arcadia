@@ -148,6 +148,46 @@ export async function recordQaDecision(input: { candidateId: string; decision: "
   return runArcadiaCliJson(args);
 }
 
+export interface ActionSettlementCriterion {
+  criterion: string;
+  status: string;
+  note: string;
+}
+
+export interface ActionSettlementPlan {
+  projectSlug: string;
+  actionId: string;
+  actionTitle: string;
+  repoRoot: string;
+  candidateRevision: string;
+  criteria: ActionSettlementCriterion[];
+  proposalRequestId: string;
+  previewFingerprint: string;
+  effects: string[];
+}
+
+export interface ActionSettlementResponse {
+  applied: boolean;
+  plan: ActionSettlementPlan;
+  nextActionKey: string | null;
+  receiptId: string | null;
+}
+
+/** Dry-run: resolve the current Action's criteria and candidate revision without settling. */
+export async function previewActionSettlement(project: string): Promise<ArcadiaJsonSuccess<ActionSettlementResponse>> {
+  return runArcadiaCliJson<ActionSettlementResponse>(["action", "settle", "--project", project, "--dry-run"]);
+}
+
+/** Settle (complete) the current Action with operator authority. */
+export async function settleActionComplete(input: {
+  project: string;
+  note?: string;
+}): Promise<ArcadiaJsonSuccess<ActionSettlementResponse>> {
+  const args = ["action", "settle", "--project", input.project];
+  if (input.note?.trim()) args.push("--note", input.note.trim());
+  return runArcadiaCliJson<ActionSettlementResponse>(args, { timeoutMs: 120_000 });
+}
+
 export interface OutstandingPullRequestsResponse {
   snapshot: DashboardOutstandingPullRequests;
 }
