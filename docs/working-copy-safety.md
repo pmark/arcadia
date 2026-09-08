@@ -107,6 +107,28 @@ invisible again.
 See `START_HERE.md`'s "Working across many projects without losing the
 thread" for the operator-facing walkthrough, including every flag.
 
+## Preserving a candidate through the host controller
+
+A coding agent runs inside a sandbox that protects the Git common directory, so
+it cannot commit, push, or open a pull request itself. Rather than make `.git`
+writable or escalate approvals per session, the host controller's
+`arcadia-preserve-broker` executable preserves the completed candidate from
+outside the sandbox. It stages exactly the one registered candidate worktree
+into a single recoverable commit on its agent-owned branch, binding the exact
+worktree, branch, base revision, Action, packet, policy epoch, staged-tree
+fingerprint, and validation into a receipt keyed by request id. A lost response
+or a rerun returns that same receipt — the commit carries the request id as a
+trailer, so a crash between committing and recording the receipt is recovered by
+finding the existing commit instead of creating a second one.
+
+Remote preservation is gated. Only when the standing production policy's scope
+explicitly sets `remotePreservation` does the controller push the branch and
+create or update its draft pull request (with the required operator QA plan).
+Otherwise, and whenever no remote is reachable, the commit is retained locally
+and reported as `LOCAL ONLY` with the exact push-and-open-a-draft-PR retry
+action — never as work recoverable from another machine. Merge, deployment,
+publication, credential expansion, and messaging remain separate gates.
+
 ## Start-session rule
 
 One coding session gets one branch and one worktree. Do not start agent code

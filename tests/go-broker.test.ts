@@ -42,6 +42,37 @@ describe("protected Arcadia go broker", () => {
     )).not.toThrow();
   });
 
+  it("accepts preserve as a fixed launcher operation", () => {
+    expect(parseGoBrokerArguments(["codex", "preserve"], "/tmp/finished").operation).toBe("preserve");
+  });
+
+  it("refuses candidate preservation inside a Codex sandbox", () => {
+    expectValidation(
+      () => assertGoBrokerHostController(
+        { source: "/tmp/finished", agent: "codex", operation: "preserve" },
+        { CODEX_SANDBOX: "seatbelt" }
+      ),
+      "host controller"
+    );
+  });
+
+  it("runs preserve with the launcher's source and resolved workspace", () => {
+    const response = { ok: true as const, command: "preserve", data: { receipt: {} }, artifacts: [], warnings: [] };
+    const preserveRunner = vi.fn().mockReturnValue(response);
+
+    const result = runGoBroker(
+      { source: "/tmp/finished", agent: "codex", operation: "preserve" },
+      vi.fn() as never,
+      vi.fn() as never,
+      vi.fn() as never,
+      () => "/tmp/arcadia-workspace",
+      preserveRunner as never
+    );
+
+    expect(preserveRunner).toHaveBeenCalledWith({ workspace: "/tmp/arcadia-workspace", source: "/tmp/finished" });
+    expect(result.command).toBe("preserve-broker");
+  });
+
   it("previews and then applies the same fixed options without launch authority", () => {
     const response = {
       ok: true as const,

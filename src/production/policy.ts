@@ -71,6 +71,13 @@ export interface ProductionScope {
   providers: string[];
   maxConcurrentSessions: number;
   mechanicalTransitions: MechanicalTransition[];
+  /**
+   * Whether this standing authorization includes pushing preserved candidates
+   * and opening their draft pull requests. Absent/false keeps preservation
+   * local-only; merge, deployment, and publication remain separate gates
+   * regardless. See `preserveCandidate`.
+   */
+  remotePreservation?: boolean;
 }
 
 export interface ProductionAuthorityReceipt {
@@ -272,7 +279,9 @@ export function normalizeProductionScope(input: Partial<ProductionScope>): Produ
     }
   }
 
-  return { intent, projects, plans, actions, providers, maxConcurrentSessions, mechanicalTransitions };
+  const normalized: ProductionScope = { intent, projects, plans, actions, providers, maxConcurrentSessions, mechanicalTransitions };
+  if (input.remotePreservation) normalized.remotePreservation = true;
+  return normalized;
 }
 
 /** Stable fingerprint of exactly what the operator was shown before granting. */
@@ -284,7 +293,10 @@ export function fingerprintProductionScope(scope: ProductionScope): string {
     actions: scope.actions,
     providers: scope.providers,
     maxConcurrentSessions: scope.maxConcurrentSessions,
-    mechanicalTransitions: scope.mechanicalTransitions
+    mechanicalTransitions: scope.mechanicalTransitions,
+    // Omitted from the canonical form unless enabled, so scopes that predate
+    // remote preservation keep their exact fingerprint.
+    ...(scope.remotePreservation ? { remotePreservation: true } : {})
   });
   return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
 }

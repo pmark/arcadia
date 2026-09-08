@@ -92,6 +92,7 @@ export function runGoBrokerInstallCommand(
   const binDirectory = path.join(installHome, ".local", "bin");
   const executables: BrokerExecutables = {
     go: providerExecutables(binDirectory, "arcadia-go-broker"),
+    preserve: providerExecutables(binDirectory, "arcadia-preserve-broker"),
     advance: providerExecutables(binDirectory, "arcadia-advance-broker"),
     workMonitor: providerExecutables(binDirectory, "arcadia-work-monitor-broker")
   };
@@ -123,6 +124,7 @@ export function runGoBrokerInstallCommand(
       const brokerEntrypoint = path.join(releaseDirectory, "dist", "scripts", "arcadia-go-broker.js");
       for (const [operation, launcherBase] of [
         ["go", "arcadia-go-broker"],
+        ["preserve", "arcadia-preserve-broker"],
         ["advance", "arcadia-advance-broker"],
         ["work-monitor", "arcadia-work-monitor-broker"]
       ] as const) {
@@ -223,6 +225,7 @@ export function runGoBrokerStatusCommand(
   const binDirectory = path.join(installHome, ".local", "bin");
   const executables: BrokerExecutables = {
     go: providerExecutables(binDirectory, "arcadia-go-broker"),
+    preserve: providerExecutables(binDirectory, "arcadia-preserve-broker"),
     advance: providerExecutables(binDirectory, "arcadia-advance-broker"),
     workMonitor: providerExecutables(binDirectory, "arcadia-work-monitor-broker")
   };
@@ -286,7 +289,7 @@ function assertReviewedSnapshot(repository: string): void {
 function validateExistingRelease(releaseDirectory: string, revision: string): void {
   const manifestPath = path.join(releaseDirectory, "broker-manifest.json");
   const schemaPath = path.join(releaseDirectory, "dist", "database", "schema.sql");
-  const executablePaths = ["arcadia-go-broker", "arcadia-advance-broker", "arcadia-work-monitor-broker"].flatMap((launcherBase) =>
+  const executablePaths = ["arcadia-go-broker", "arcadia-preserve-broker", "arcadia-advance-broker", "arcadia-work-monitor-broker"].flatMap((launcherBase) =>
     ["codex", "claude"].map((agent) => path.join(releaseDirectory, `${launcherBase}-${agent}`))
   );
   if (!existsSync(manifestPath) || !existsSync(schemaPath) || executablePaths.some((candidate) => !existsSync(candidate))) {
@@ -445,6 +448,7 @@ function providerExecutables(binDirectory: string, launcherBase: string): Provid
 function launcherBaseForOperation(operation: keyof BrokerExecutables): string {
   switch (operation) {
     case "go": return "arcadia-go-broker";
+    case "preserve": return "arcadia-preserve-broker";
     case "advance": return "arcadia-advance-broker";
     case "workMonitor": return "arcadia-work-monitor-broker";
   }

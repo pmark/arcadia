@@ -26,6 +26,7 @@ export interface ProviderExecutables {
 
 export interface BrokerExecutables {
   go: ProviderExecutables;
+  preserve: ProviderExecutables;
   advance: ProviderExecutables;
   workMonitor: ProviderExecutables;
 }
