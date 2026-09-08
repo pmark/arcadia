@@ -25,7 +25,12 @@ import {
   uncommittedChanges,
   type ComparisonBase
 } from "../git/worktrees.js";
-import { getActiveWorktreeReservation, getRepositoryLease, hasWorktreeReservationTable } from "../sessions/index.js";
+import {
+  getActiveWorktreeReservation,
+  getRepositoryLease,
+  hasWorktreeReservationTable,
+  releaseWorktreeReservation
+} from "../sessions/index.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { resolveWorkspace } from "../workspace/resolve.js";
 
@@ -71,6 +76,20 @@ export type TidyVerdict =
  * unmerged once all three decline it.
  */
 export type MergeProof = "ancestry" | "patch-equivalent" | "pull-request";
+
+/**
+ * Why a worktree may not be retired, and whether that reason can end on
+ * evidence rather than only on the clock.
+ *
+ * A live Session lease is absolute. A `go` handoff reservation is not: it
+ * exists to stop tidy retiring a worktree `go` prepared that nobody has
+ * launched yet, and once that handoff has visibly been used and its work has
+ * landed on the base branch, it guards nothing.
+ */
+export interface WorktreeProtection {
+  kind: "session-lease" | "handoff-reservation";
+  reason: string;
+}
 
 export interface TidyWorktree {
   path: string;
@@ -190,13 +209,13 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
   const protectionSchemaAvailable = workspacePath
     ? withReadOnlyDatabase(workspacePath, (db) => hasWorktreeReservationTable(db))
     : false;
-  const protectionReasons = workspacePath
+  const protections = workspacePath
     ? (options.apply
-        ? withDatabase(workspacePath, (db) => worktreeProtectionReasons(db, controlWorktree, worktrees, now))
-        : withReadOnlyDatabase(workspacePath, (db) => worktreeProtectionReasons(db, controlWorktree, worktrees, now)))
-    : new Map<string, string>();
+        ? withDatabase(workspacePath, (db) => worktreeProtections(db, controlWorktree, worktrees, now))
+        : withReadOnlyDatabase(workspacePath, (db) => worktreeProtections(db, controlWorktree, worktrees, now)))
+    : new Map<string, WorktreeProtection>();
   const assessed: TidyWorktree[] = worktrees.map((record) => assessWorktree({
-    record, repoRoot, comparisonBase, controlWorktree, here, prMergeCommits, protectionReasons
+    record, repoRoot, comparisonBase, controlWorktree, here, prMergeCommits, protections
   }));
 
   const claimedByWorktree = new Set(
@@ -219,7 +238,7 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
       // it so a preview-era verdict can never authorize a stale removal.
       const currentWorktrees = listWorktrees(repoRoot);
       const currentByPath = new Map(currentWorktrees.map((record) => [pathKey(record.path), record]));
-      const currentProtections = worktreeProtectionReasons(db, controlWorktree, currentWorktrees, now);
+      const currentProtections = worktreeProtections(db, controlWorktree, currentWorktrees, now);
       for (const entry of assessed) {
         if (entry.verdict !== "merged" && entry.verdict !== "missing" && entry.verdict !== "detached") continue;
         const record = currentByPath.get(pathKey(entry.path)) ?? { path: entry.path, head: "", branch: entry.branch ? `refs/heads/${entry.branch}` : null };
@@ -230,11 +249,14 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
           controlWorktree,
           here,
           prMergeCommits,
-          protectionReasons: currentProtections
+          protections: currentProtections
         });
         Object.assign(entry, current);
         if (entry.verdict === "merged" || entry.verdict === "missing" || entry.verdict === "detached") {
           entry.retired = retireWorktree(repoRoot, entry, baseBranch);
+          // The row outlived its worktree. Deleting it here is what turns the
+          // reservation from a fixed timer into a claim that ends with the work.
+          if (entry.retired) releaseWorktreeReservation(db, controlWorktree, entry.path);
         }
       }
       for (const entry of branches) {
@@ -272,9 +294,9 @@ function assessWorktree(input: {
   controlWorktree: string;
   here: string;
   prMergeCommits: Map<string, { sha: string; number: number }>;
-  protectionReasons: Map<string, string>;
+  protections: Map<string, WorktreeProtection>;
 }): TidyWorktree {
-  const { record, comparisonBase, controlWorktree, here, prMergeCommits, protectionReasons } = input;
+  const { record, comparisonBase, controlWorktree, here, prMergeCommits, protections } = input;
   const compareRef = comparisonBase.ref;
   const branch = shortBranch(record.branch);
   const base: Omit<TidyWorktree, "verdict" | "reason"> = {
@@ -300,9 +322,9 @@ function assessWorktree(input: {
   if (branch === comparisonBase.ref.replace(/^origin\//, "")) {
     return { ...base, verdict: "protected", reason: `Holds the base branch.` };
   }
-  const protectedReason = protectionReasons.get(pathKey(record.path));
-  if (protectedReason) {
-    return { ...base, verdict: "protected", reason: protectedReason };
+  const protection = protections.get(pathKey(record.path));
+  if (protection && !handoffServed(protection, { path: record.path, branch, compareRef, prMergeCommits })) {
+    return { ...base, verdict: "protected", reason: protection.reason };
   }
 
   const uncommitted = uncommittedChanges(record.path);
@@ -335,6 +357,52 @@ function assessWorktree(input: {
 
   const reason = `${merge.reason}${pushed ? "; a remote copy exists" : "; no remote copy exists"}.`;
   return { ...base, ahead: merge.ahead, pushed, verdict: "unmerged", reason };
+}
+
+/**
+ * Whether a `go` handoff reservation has already done its job.
+ *
+ * The reservation guards the window between `go` creating a worktree and an
+ * agent starting work in it. Inside that window the worktree is clean, its
+ * branch sits on the base tip, and no Session exists yet -- indistinguishable
+ * from a *finished* handoff on those three signals alone. That is why the
+ * reservation is time-based to begin with, and why simply letting tidy retire
+ * clean merged worktrees would delete prepared handoffs.
+ *
+ * The branch's own reflog does separate them, and separates them without
+ * consulting a clock. `go` creates the branch with `git worktree add -b`, which
+ * writes exactly one entry: `branch: Created from <base>`. A second entry means
+ * the ref moved, which only happens when somebody worked here.
+ *
+ * Reading a timestamp instead was the obvious first attempt and it is wrong: it
+ * compares `go`'s reservation clock against git's committer clock, so an
+ * injected or skewed clock makes an untouched handoff look finished -- failing
+ * in the one direction that destroys work. Every failure mode here goes the
+ * other way instead: a pruned, disabled, or unreadable reflog reads as unused
+ * and stays protected, as does a handoff whose agent committed nothing.
+ */
+function handoffServed(protection: WorktreeProtection, input: {
+  path: string;
+  branch: string | null;
+  compareRef: string;
+  prMergeCommits: Map<string, { sha: string; number: number }>;
+}): boolean {
+  if (protection.kind !== "handoff-reservation") return false;
+  if (input.branch === null) return false;
+  if (!branchMovedSinceCreation(input.path, input.branch)) return false;
+  if (uncommittedChanges(input.path).length > 0) return false;
+  return evaluateMerge({
+    cwd: input.path,
+    branch: input.branch,
+    compareRef: input.compareRef,
+    prMergeCommits: input.prMergeCommits
+  }).merged;
+}
+
+function branchMovedSinceCreation(cwd: string, branch: string): boolean {
+  const reflog = tryGit(cwd, ["reflog", "show", "--format=%gs", branch]);
+  if (reflog === null) return false;
+  return reflog.split("\n").filter((entry) => entry.trim() !== "").length > 1;
 }
 
 /**
@@ -508,33 +576,36 @@ function pathKey(value: string): string {
   return existsSync(resolved) ? realpathSync(resolved) : resolved;
 }
 
-function worktreeProtectionReasons(
+function worktreeProtections(
   db: Database.Database,
   repoRoot: string,
   worktrees: Array<{ path: string }>,
   now: Date = new Date()
-): Map<string, string> {
-  const reasons = new Map<string, string>();
+): Map<string, WorktreeProtection> {
+  const protections = new Map<string, WorktreeProtection>();
   for (const worktree of worktrees) {
-    const reason = getWorktreeProtectionReason(db, repoRoot, worktree.path, now);
-    if (reason) reasons.set(pathKey(worktree.path), reason);
+    const protection = getWorktreeProtection(db, repoRoot, worktree.path, now);
+    if (protection) protections.set(pathKey(worktree.path), protection);
   }
-  return reasons;
+  return protections;
 }
 
-export function getWorktreeProtectionReason(
+export function getWorktreeProtection(
   db: Database.Database,
   repoRoot: string,
   worktreePath: string,
   now: Date = new Date()
-): string | null {
+): WorktreeProtection | null {
   const lease = getRepositoryLease(db, repoRoot);
   if (lease && pathKey(lease.worktree_path) === pathKey(worktreePath)) {
-    return `Protected by live ${lease.status} Session lease ${lease.id}.`;
+    return { kind: "session-lease", reason: `Protected by live ${lease.status} Session lease ${lease.id}.` };
   }
   const reservation = getActiveWorktreeReservation(db, repoRoot, worktreePath, now);
   return reservation
-    ? `Protected by go handoff reservation ${reservation.id} until ${reservation.expires_at}.`
+    ? {
+        kind: "handoff-reservation",
+        reason: `Protected by go handoff reservation ${reservation.id} until ${reservation.expires_at}.`
+      }
     : null;
 }
 
@@ -610,7 +681,7 @@ export function renderTidySuccess(response: CommandSuccess<TidyCommandData>): st
   );
   lines.push(
     workspaceProtectionAvailable
-      ? "Workspace protection: on — live Session leases and unexpired go handoffs are protected."
+      ? "Workspace protection: on — live Session leases and go handoffs nobody has used yet are protected."
       : "Workspace protection: unavailable — preview only; --apply is refused until a workspace can be checked."
   );
   lines.push(

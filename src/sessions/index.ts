@@ -423,6 +423,26 @@ export function getActiveWorktreeReservation(
     ) as AgentWorktreeReservation | undefined) ?? null;
 }
 
+/**
+ * Drop the handoff reservation for a worktree that has been retired.
+ *
+ * Reservations used to be insert-only, cleared solely by a 24-hour expiry that
+ * measured how long ago `go` prepared a worktree rather than whether anyone was
+ * still using it. A merged, finished handoff therefore kept reporting as
+ * protected active work for the rest of the day -- which is how `go` came to
+ * report already-merged branches while `tidy`, pointed at by that same nudge,
+ * refused to retire a single one of them.
+ */
+export function releaseWorktreeReservation(
+  db: Database.Database,
+  repositoryPath: string,
+  worktreePath: string
+): void {
+  if (!hasWorktreeReservationTable(db)) return;
+  db.prepare("DELETE FROM agent_worktree_reservations WHERE repository_path = ? AND worktree_path = ?")
+    .run(canonicalPath(repositoryPath), canonicalPath(worktreePath));
+}
+
 export function hasWorktreeReservationTable(db: Database.Database): boolean {
   return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'agent_worktree_reservations'").get());
 }
