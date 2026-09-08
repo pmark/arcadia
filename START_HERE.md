@@ -821,9 +821,13 @@ network access.
 configuration is missing a required worktree root, retains a legacy sandbox, or
 does not deny command network access.
 
-The installed `go` launcher is a host controller; it is intentionally absent
-from agent allowlists because it mutates shared Git metadata. The shared agent
-skill invokes only these fixed, no-argument prepared-worktree brokers:
+The installed `go` and `preserve` launchers are host controllers; they are
+intentionally absent from agent allowlists because they mutate shared Git
+metadata — `preserve` stages the completed candidate worktree into one
+recoverable commit (and, only when the standing production policy explicitly
+authorizes it, pushes that branch and opens a draft pull request), so the
+sandboxed agent never needs write access to `.git`. The shared agent skill
+invokes only these fixed, no-argument prepared-worktree brokers:
 
 ```sh
 ~/.local/bin/arcadia-advance-broker-codex
@@ -834,7 +838,10 @@ skill invokes only these fixed, no-argument prepared-worktree brokers:
 
 From the host (not a coding-agent sandbox), run the matching `go` executable
 with no arguments from the completed worktree. It runs Arcadia's canonical
-preview and then the identical apply itself. In the newly prepared worktree,
+preview and then the identical apply itself. To preserve a completed candidate
+before reconciling it, run the matching `arcadia-preserve-broker` executable the
+same way; a lost response or a rerun returns the same receipt without a
+duplicate commit. In the newly prepared worktree,
 the installed skill runs the fixed `advance` launcher and
 the read-only `work-monitor` launcher before code changes, then performs its
 ordinary local read-only inspection without an approval question. Every
