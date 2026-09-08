@@ -84,6 +84,7 @@ export function ActionSettlementPanel({ projects, onSettled }: ActionSettlementP
           <label className="grid min-w-0 flex-1 gap-1 text-xs font-semibold text-muted">
             Project
             <select
+              aria-label="Settlement Project"
               value={projectId}
               onChange={(event) => {
                 setProjectId(event.target.value);
