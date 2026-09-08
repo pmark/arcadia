@@ -32,6 +32,7 @@ import {
   runAgentAskPreviewCommand,
   runAgentAskSettleCommand
 } from "./commands/agentAsk.js";
+import { renderActionSettleSuccess, runActionSettleCommand } from "./commands/actionSettle.js";
 import {
   renderBackBurnerArchiveSuccess,
   renderBackBurnerListSuccess,
@@ -759,6 +760,20 @@ export function buildProgram(): Command {
   ).action((options: { workspace: string; settlement: string; messageId: string; json?: boolean }) =>
     runCliAction("agent-ask.notification-sent", options, () => runAgentAskNotificationSentCommand(options), renderAgentAskNotificationSentSuccess)
   );
+
+  const action = program.command("action").description("Operate on governed Actions");
+  addJsonOption(action.command("settle")
+    .description("Complete the current governed Action from accepted operator evidence in one step")
+    .option("--project <slug>", "Project slug (optional when the workspace has one active Project)")
+    .option("--action <id>", "Explicit <slug/id> or <id>; defaults to the Project's current Action")
+    .option("--note <text>", "One note applied to every acceptance criterion")
+    .option("--notes-file <path>", "JSON array of per-criterion notes, aligned to the plan's order")
+    .option("--dry-run", "Resolve and preview the settlement without applying it")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: {
+    workspace: string; project?: string; action?: string; note?: string; notesFile?: string; dryRun?: boolean; json?: boolean;
+  }) => runCliAction("action.settle", options, () => runActionSettleCommand(options), renderActionSettleSuccess));
+
   addJsonOption(
     askRule
       .command("test")

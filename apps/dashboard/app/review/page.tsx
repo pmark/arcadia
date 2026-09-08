@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ActionSettlementPanel } from "../../components/action-settlement";
 import { DashboardChrome } from "../../components/chrome";
 import { AttentionCard, EmptyState, ErrorState, LoadingState, ReviewCard } from "../../components/dashboard-ui";
 import { useArcadiaSnapshot } from "../../hooks/use-arcadia-snapshot";
@@ -245,6 +246,9 @@ export default function ReviewPage() {
           <p className="mt-1 font-medium leading-5">{receipt.message}</p>
           {receipt.nextAction ? <p className="mt-1 text-xs leading-5 text-moss/80">Next: {receipt.nextAction}</p> : null}
         </div>
+      ) : null}
+      {snapshot ? (
+        <ActionSettlementPanel projects={snapshot.projects} onSettled={refresh} />
       ) : null}
       <label className="mb-4 grid gap-1 text-xs font-semibold text-muted">
         Search Decisions
