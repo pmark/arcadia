@@ -1,8 +1,10 @@
+import type Database from "better-sqlite3";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import { buildStatusReportData, listReviewItems } from "../db/repositories.js";
+import { buildAgentQueue } from "../dispatch/queue.js";
 import { WORK_CLASSIFICATION_LABELS, type WorkClassification } from "../domain/constants.js";
 import { writeStatusReport } from "../markdown/statusReport.js";
 
@@ -33,6 +35,7 @@ export function runStatusCommand(options: { workspace: string }): CommandSuccess
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const { data, reportPath, reviewItemCount } = withDatabase(workspacePath, (db) => {
     const reportData = buildStatusReportData(db, workspacePath);
+    applyDispatchNextActions(db, reportData.projects);
     const reviewItemCount = listReviewItems(db, "open").length + listReviewItems(db, "deferred").length;
     const writtenReportPath = writeStatusReport(workspacePath, reportData);
     return { data: reportData, reportPath: writtenReportPath, reviewItemCount };
@@ -92,6 +95,57 @@ export function renderStatusSuccess(response: CommandSuccess<StatusCommandData>)
   lines.push(`Recent mission logs: ${response.data.recentMissionLogCount}`);
   lines.push(`Report: ${response.data.reportPath}`);
   return lines;
+}
+
+/**
+ * Replace each Project's next Action with the one dispatch would actually pick.
+ *
+ * `listProjectSummaries` answers this with the most recently *touched* open
+ * Action (`ORDER BY wi.updated_at DESC`), which is a different question and
+ * routinely a wrong answer: a freshly created Action outranks the governed
+ * pointer, and an Action still waiting on its dependency outranks the one that
+ * would unblock it. The report then names work that cannot be started, which is
+ * worse than naming nothing — this is the report an operator orients from.
+ *
+ * The agent queue already computes the dependency-aware ready set that `next`
+ * and `advance queue` agree on, so reuse it rather than teaching the status
+ * report to resolve dependencies a second time. Where nothing is ready, say so
+ * and name the blocker instead of falling back to a startable-looking lie.
+ *
+ * A Project the queue says nothing about keeps its existing value; this
+ * corrects what the queue can answer and invents nothing where it cannot.
+ */
+function applyDispatchNextActions(
+  db: Database.Database,
+  projects: Array<{ id: string; next_action: string | null }>
+): void {
+  const queue = buildAgentQueue(db);
+  const resolved = new Map<string, string>();
+
+  for (const entry of queue.ready) {
+    if (!entry.projectId || resolved.has(entry.projectId)) {
+      continue;
+    }
+    resolved.set(entry.projectId, entry.nextAction || entry.actionTitle || "Ready to start.");
+  }
+
+  // Only after every ready Action is claimed, so a Project with real work
+  // available is never described by one of its blocked siblings.
+  for (const entry of queue.attention) {
+    if (!entry.projectId || resolved.has(entry.projectId)) {
+      continue;
+    }
+    const blocker = entry.blockers[0];
+    const detail = blocker?.remedy || blocker?.message || entry.reason;
+    resolved.set(entry.projectId, detail ? `Nothing ready — ${detail}` : "Nothing ready.");
+  }
+
+  for (const project of projects) {
+    const next = resolved.get(project.id);
+    if (next !== undefined) {
+      project.next_action = next;
+    }
+  }
 }
 
 function labelWorkClassification(value: string | null): string {
