@@ -1,7 +1,9 @@
 ---
 arcadia: v1
 type: reference
+slug: flight-plan-report-spec
 project: arcadia
+updated: 2026-09-09
 ---
 
 # Flight Plan — report specification
