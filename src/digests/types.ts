@@ -28,7 +28,7 @@ export interface DigestSubject {
   slug: string;
 }
 
-export type DigestFactKind = "mission_log" | "dispatch" | "decision";
+export type DigestFactKind = "mission_log" | "dispatch" | "decision" | "completed_action";
 
 export interface DigestFact {
   id: string;
