@@ -5,6 +5,7 @@
 .DS_Store
 Thumbs.db
 Desktop.ini
+.pnpm-store
 
 # Editor settings
 .vscode/
