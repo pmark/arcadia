@@ -63,6 +63,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureWorkItemDependencyTable(db);
   ensureExecutionRequirementColumn(db);
   ensureAcceptanceCriteriaColumn(db);
+  ensureWorkItemArchiveColumns(db);
   ensureExecutionProfileProvenanceColumns(db);
   ensureDailyCapacityTable(db);
   ensureActivityTables(db);
@@ -387,6 +388,37 @@ function ensureAcceptanceCriteriaColumn(db: Database.Database): void {
   );
   if (!columns.has("acceptance_criteria_json")) {
     db.prepare("ALTER TABLE work_items ADD COLUMN acceptance_criteria_json TEXT").run();
+  }
+}
+
+/**
+ * Archival for Actions that should stop occupying attention without claiming
+ * they were finished.
+ *
+ * Marking a duplicate `done` asserts work happened, and deleting the row
+ * destroys the only evidence that something created it — neither is honest for
+ * an inbox full of the same request restated eight ways. Archiving is the third
+ * answer: the Action stays on the record, stops appearing on every working
+ * surface, and can be brought back.
+ *
+ * Additive and nullable, so no status constraint moves and every existing row
+ * reads as unarchived without a backfill.
+ *
+ * These columns are ALSO declared in `database/schema.sql`, and both copies are
+ * load-bearing. `rebuildTableWithCurrentSchema` recreates work_items from the
+ * canonical DDL while copying the column list it reads live off the table, so a
+ * column present here but absent there makes every rebuild fail on a column the
+ * new table does not have. Add work_items columns in both places or neither.
+ */
+function ensureWorkItemArchiveColumns(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(work_items)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("archived_at")) {
+    db.prepare("ALTER TABLE work_items ADD COLUMN archived_at TEXT").run();
+  }
+  if (!columns.has("archive_reason")) {
+    db.prepare("ALTER TABLE work_items ADD COLUMN archive_reason TEXT").run();
   }
 }
 
