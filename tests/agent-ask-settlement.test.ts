@@ -1105,7 +1105,23 @@ describe("Agent Ask safety boundaries", () => {
           FOREIGN KEY (milestone_id) REFERENCES milestones(id) ON DELETE SET NULL,
           FOREIGN KEY (parent_work_item_id) REFERENCES work_items(id) ON DELETE SET NULL
         );
-        INSERT INTO work_items SELECT * FROM work_items__legacy_codex_check;
+        -- Named columns, not SELECT *: the snapshot above is taken from the
+        -- CURRENT table, so every column added since this legacy shape was
+        -- written (archived_at, archive_reason, and whatever comes next) would
+        -- otherwise be fed into a table that deliberately does not have them.
+        -- The legacy DDL is correct to omit them; the copy just has to say so.
+        INSERT INTO work_items (
+          id, project_id, milestone_id, title, raw_input, queue, work_classification,
+          next_action, expected_artifact, status, effort, clarification_status, gap_type,
+          open_question, clarification_source, confidence, parent_work_item_id, doc_ref,
+          execution_requirement_json, acceptance_criteria_json, created_at, updated_at
+        )
+        SELECT
+          id, project_id, milestone_id, title, raw_input, queue, work_classification,
+          next_action, expected_artifact, status, effort, clarification_status, gap_type,
+          open_question, clarification_source, confidence, parent_work_item_id, doc_ref,
+          execution_requirement_json, acceptance_criteria_json, created_at, updated_at
+        FROM work_items__legacy_codex_check;
         DROP TABLE work_items__legacy_codex_check;
         CREATE INDEX idx_work_items_project_id ON work_items(project_id);
         CREATE INDEX idx_work_items_queue ON work_items(queue);

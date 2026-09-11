@@ -386,22 +386,36 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Prove on the real host that Arcadia can hand off, execute, validate, preserve, and advance bounded coding work without operator permission relay while retaining every consequential approval boundary.
+    next_action: Prove on the real host that Arcadia hands off, executes, validates, preserves and advances two dependent bounded Actions from one activation without operator permission relay.
     expected_artifact: Evidence satisfying Agent Ask prove-zero-prompt-production-loop
     clarification: clarified
     confidence: high
-    source: Agent Ask repair-arcadia-go-codex-dx-2026-09-06-v2
+    source: Agent Ask split-zero-prompt-loop-happy-path-2026-09-10-v3
     acceptance_criteria:
-      - Use a disposable or explicitly authorized Project with two dependent small Actions and the same Codex profile, protected launchers, workspace root, dependency bridge, build, test, SQLite, Git, network, and pull-request path that managed production will use.
-      - From one activation, prove Arcadia prepares Action A's worktree, advances and monitors it, edits, builds, tests, preserves its exact branch and draft pull request, reconciles evidence, advances the governed pointer, and starts Action B without a sandbox approval prompt or manual Session relay.
-      - Run the local lifecycle once with approval_policy on-request and once with the selected unattended profile; the first produces zero sandbox prompts on the common path and the second produces zero permission failures rather than merely suppressing prompts.
-      - Record every command, profile, writable root, sandbox denial, approval event, worktree, branch, revision, Session, Action, validation result, commit, push, pull request, and operator intervention in one proof Artifact; zero observed prompts and zero hidden interventions are acceptance conditions.
-      - Demonstrate that merge, deployment, publication, paid-capacity use, reset redemption, credential expansion, destructive cleanup, and unrelated network access still stop at their existing explicit gates.
-      - Turn production Off during Action B and prove no later admission, no lost candidate work, bounded reconciliation, and no duplicate commit or pull request after worker restart.
-      - Repeat the deterministic host probe after reinstall and from a fresh generated worktree; any regression makes go-broker status or production admission fail closed before a coding-agent model is launched.
+      - Use the Zero Prompt Rehearsal fixture Project with two dependent small Actions and the same Codex profile, protected launchers, workspace root, dependency bridge, build, test, SQLite, Git, network and pull-request path that managed production will use.
+      - From one activation, Arcadia prepares Action A's worktree, advances and monitors it, edits, builds, tests, preserves its exact branch and draft pull request, reconciles evidence, advances the governed pointer, and starts Action B without a sandbox approval prompt or manual Session relay.
+      - One proof Artifact records every command, profile, writable root, sandbox denial, approval event, worktree, branch, revision, Session, Action, validation result, commit, push, pull request and operator intervention for this single run; zero observed prompts and zero hidden interventions are acceptance conditions.
     depends_on: [broker-candidate-preservation]
     decisions: []
-    references: ["docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/working-copy-safety.md", "src/commands/worker.ts", "src/sessions/index.ts", "src/agentSetup/goBrokerAgentSetup.ts"]
+    references: ["docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "docs/working-copy-safety.md", "src/commands/worker.ts", "src/sessions/index.ts", "src/agentSetup/goBrokerAgentSetup.ts"]
+  - id: harden-zero-prompt-production-loop
+    title: Harden the proven zero-prompt loop across profiles, approval gates, mid-flight shutdown and reinstall, once the happy path has run clean twice in a row.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Harden the proven zero-prompt loop across profiles, approval gates, mid-flight shutdown and reinstall, once the happy path has run clean twice in a row.
+    expected_artifact: Evidence satisfying Agent Ask harden-zero-prompt-production-loop
+    clarification: clarified
+    confidence: high
+    source: Agent Ask split-zero-prompt-loop-happy-path-2026-09-10-v3
+    acceptance_criteria:
+      - Run the local lifecycle once with approval_policy on-request and once with the selected unattended profile; the first produces zero sandbox prompts on the common path and the second produces zero permission failures rather than merely suppressing prompts.
+      - Demonstrate that merge, deployment, publication, paid-capacity use, reset redemption, credential expansion, destructive cleanup and unrelated network access still stop at their existing explicit gates.
+      - Turn production Off during Action B and prove no later admission, no lost candidate work, bounded reconciliation, and no duplicate commit or pull request after worker restart.
+      - Repeat the deterministic host probe after reinstall and from a fresh generated worktree; any regression makes go-broker status or production admission fail closed before a coding-agent model is launched.
+    depends_on: [prove-zero-prompt-production-loop]
+    decisions: []
+    references: ["docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/operator-demo-and-release-contract.md"]
 questions: []
 decisions: []
 current_action: prove-zero-prompt-production-loop

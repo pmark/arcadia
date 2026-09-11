@@ -374,13 +374,17 @@ import { renderGateSuccess, runGateStatusCommand } from "./commands/gate.js";
 import { renderWayPropagateSuccess, renderWayStatusSuccess, runWayPropagateCommand, runWayStatusCommand } from "./commands/way.js";
 import {
   renderWorkAddSubtaskSuccess,
+  renderWorkArchiveSuccess,
   renderWorkDoneSuccess,
+  renderWorkUnarchiveSuccess,
   renderWorkListSuccess,
   renderWorkPlanSuccess,
   renderWorkRunSuccess,
   renderWorkUpdateSuccess,
   runWorkAddSubtaskCommand,
+  runWorkArchiveCommand,
   runWorkDoneCommand,
+  runWorkUnarchiveCommand,
   runWorkListCommand,
   runWorkPlanCommand,
   runWorkRunCommand,
@@ -2329,6 +2333,7 @@ export function buildProgram(): Command {
     work
       .command("list")
       .description("List Actions")
+      .option("--archived", "List archived Actions instead of live ones")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("work.list", options, () => runWorkListCommand(options), renderWorkListSuccess)
@@ -2465,6 +2470,35 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((workId: string, options: { workspace: string; json?: boolean }) =>
     runCliAction("work.done", options, () => runWorkDoneCommand({ ...options, workId }), renderWorkDoneSuccess)
+  );
+  addJsonOption(
+    work
+      .command("archive")
+      .description("Take an Action off every working surface without claiming it was finished")
+      .argument("<work-id>", "Action id")
+      .requiredOption("--reason <text>", "Why it is being archived")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((workId: string, options: { workspace: string; reason: string; json?: boolean }) =>
+    runCliAction(
+      "work.archive",
+      options,
+      () => runWorkArchiveCommand({ ...options, workId }),
+      renderWorkArchiveSuccess
+    )
+  );
+  addJsonOption(
+    work
+      .command("unarchive")
+      .description("Return an archived Action to its queue")
+      .argument("<work-id>", "Action id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((workId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "work.unarchive",
+      options,
+      () => runWorkUnarchiveCommand({ ...options, workId }),
+      renderWorkUnarchiveSuccess
+    )
   );
   addJsonOption(
     work

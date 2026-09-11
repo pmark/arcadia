@@ -85,6 +85,14 @@ export interface WorkItem {
   /** Optional coarse time cost (quick|short|session|project). See src/orientation/effort.ts. */
   effort: string | null;
   /**
+   * When this Action was taken off every working surface without claiming it
+   * was finished. `null` for a live Action. Archiving is distinct from `done`
+   * on purpose: `done` asserts the work happened.
+   */
+  archived_at?: string | null;
+  /** Why it was archived. Required at archive time so a later reader can judge restoring it. */
+  archive_reason?: string | null;
+  /**
    * Source of truth for GTD's "clarify" step; `null` means never evaluated.
    * `next_action` is NOT NULL and may hold only a placeholder, so this — not the
    * text — says whether the Action has a real next action.

@@ -1,0 +1,74 @@
+agent_ask: v1
+request_id: plan-stale-action-triage-2026-09-09
+project: arcadia
+intent: plan
+desired_result: >-
+  Give Arcadia a governed way to decide whether a stale open Action should still
+  exist and what it costs, so a queue stops silently accumulating work nobody
+  intends to do. A portfolio read on 2026-09-09 found 9 open Actions stranded on
+  complete or superseded plans, 79 open Actions with no effort size, 9 sized
+  project (unbounded by definition), and 44 captured Actions with no plan
+  document at all. None of these can be resolved honestly today because
+  work_items.status offers no terminal state meaning "decided not to do" —
+  only done, which would be a lie, or blocked, which never ends.
+rationale: >-
+  Filed after a Flight Plan report prototype measured the portfolio and found
+  that most open work cannot be estimated or dispatched. The operator asked that
+  the cleanup become a durable capability rather than a one-off sweep, using
+  local AI for classification where judgment is needed. Sequenced so the missing
+  terminal status lands first, because nothing else can settle without it.
+actions:
+  - id: add-dropped-action-status
+    desired_result: >-
+      Add a terminal Action status meaning the work was deliberately abandoned,
+      distinct from done, carrying the reason it was dropped and when.
+    acceptance:
+      - work_items accepts a terminal status meaning deliberately-not-doing, added by migration rather than a direct edit to the schema file.
+      - A dropped Action records a reason string and the date it was dropped.
+      - A dropped Action is excluded from open-work counts, dispatch resolution, and readiness checks wherever done is already excluded.
+      - docs/arcadia-semantics.md documents the new value as a supporting Status, and no existing status changes meaning.
+    dependencies: []
+  - id: detect-stale-actions-deterministically
+    desired_result: >-
+      Report every stale open Action in one deterministic pass with no model
+      call, classified by the condition that makes it stale.
+    acceptance:
+      - One command reports open Actions that are adrift (their plan document is complete or superseded), unsized (no effort), unbounded (effort project), unplanned (no plan doc_ref), and malformed (empty or non-prose title or next_action).
+      - Each reported Action names its Project, its plan when it has one, and the specific condition that selected it.
+      - The pass makes no model call and no write, and completes in under two seconds against the current portfolio.
+      - Counts reconcile with the totals the same command reports, so no Action is silently omitted from a category.
+    dependencies: []
+  - id: classify-stale-actions-with-local-ai
+    desired_result: >-
+      Propose a disposition for each stale Action using the local model, cached
+      so an unchanged Action is never re-judged.
+    acceptance:
+      - Each candidate receives exactly one proposed disposition from still-wanted, obsolete, duplicate, needs-decomposition, or unclear, with a one-line rationale.
+      - An unsized Action that is still wanted also receives a proposed effort size drawn from the existing quick, short, session, project values.
+      - Every model call routes through the existing local LiteLLM path; no frontier model is invoked.
+      - A classification is cached against a content hash of the Action and its plan status, and a second run over unchanged Actions makes zero model calls.
+      - The pass is dry-run by default and writes no disposition without an explicit apply flag, matching the clarify contract.
+    dependencies:
+      - detect-stale-actions-deterministically
+  - id: settle-triage-dispositions-through-governance
+    desired_result: >-
+      Let the operator accept or reject proposed dispositions in one pass, with
+      retirement routed through governance rather than written directly.
+    acceptance:
+      - Accepting a still-wanted disposition writes only the effort size, which is a supporting property, without operator confirmation per Action.
+      - Accepting an obsolete or duplicate disposition marks the Action dropped with its recorded reason, and does so only through an operator-settled path, never a silent write.
+      - Rejecting a disposition leaves the Action untouched and records that it was reviewed, so the same Action is not proposed again unchanged.
+      - A needs-decomposition disposition produces a concrete proposed split rather than only a label.
+      - The settlement reports what changed, what was refused, and which Actions still await judgment.
+    dependencies:
+      - add-dropped-action-status
+      - classify-stale-actions-with-local-ai
+  - id: refuse-completing-a-plan-with-open-actions
+    desired_result: >-
+      Stop the adrift condition at its source by refusing to mark a plan complete
+      while it still holds open Actions.
+    acceptance:
+      - Marking a plan complete or superseded while any of its Actions is neither done nor dropped is reported as a validation error naming each offending Action.
+      - The error states the two honest remedies, finishing the Action or dropping it, and names the command for each.
+      - Existing plans already in this state are reported by the detection pass rather than retroactively rejected, so the rule does not block dispatch on historical data.
+    dependencies: []
