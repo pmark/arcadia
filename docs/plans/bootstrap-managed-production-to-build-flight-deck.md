@@ -136,11 +136,11 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Expose a bounded server launch operation with replay-safe receipts and fresh authority checks only after the approval-free Arcadia Go production loop has been proven on the real host.
+    next_action: Expose a bounded server launch operation with replay-safe receipts and fresh authority checks.
     expected_artifact: Evidence satisfying Agent Ask expose-guarded-host-session-launch
     clarification: clarified
     confidence: high
-    source: Agent Ask repair-arcadia-go-codex-dx-2026-09-06-v2
+    source: Agent Ask break-launch-dependency-loop-2026-09-11
     acceptance_criteria:
       - Accept an explicit operator launch request for the previewed canonical Action; resolve repository, executable and arguments on the server.
       - Reject cross-origin, malformed, altered, stale and unauthorized requests; document/test the operator-action request guard for the existing local/tailnet deployment.
@@ -150,9 +150,9 @@ actions:
       - Inject at least one pre-spawn crash, one post-spawn crash and one lost response, and reconcile ambiguous launch identity without blind retry, proving at most one live conflicting execution across that bounded set of injected faults.
       - Support either a current explicit one-Session launch grant or a valid standing managed-production policy with an epoch-bound admission receipt; recheck Off immediately before launch commitment. Do not require a new human launch click for every authorized Action.
       - "Preserve the proof Artifact: Launch boundary, replay, bounded crash-window and conflict integration tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
-    depends_on: [support-selected-codex-and-claude-sessions, prove-zero-prompt-production-loop]
+    depends_on: [support-selected-codex-and-claude-sessions]
     decisions: []
-    references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "apps/dashboard/lib/arcadia-cli.ts", "src/sessions/index.ts", "src/docs/dispatch.ts", "src/execution/planningAuthorization.ts"]
+    references: []
   - id: observe-portfolio-agent-sessions
     title: Show all active Sessions and Runs with fresh observation and native recovery access.
     status: open
@@ -386,18 +386,18 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Prove on the real host that Arcadia hands off, executes, validates, preserves and advances two dependent bounded Actions from one activation without operator permission relay.
+    next_action: Prove on the real host that Arcadia hands off, executes, validates, preserves and advances bounded coding work with zero sandbox approval prompts, advancing the governed pointer and preparing the next Action's worktree, while retaining every consequential approval boundary.
     expected_artifact: Evidence satisfying Agent Ask prove-zero-prompt-production-loop
     clarification: clarified
     confidence: high
-    source: Agent Ask split-zero-prompt-loop-happy-path-2026-09-10-v3
+    source: Agent Ask break-launch-dependency-loop-2026-09-11
     acceptance_criteria:
       - Use the Zero Prompt Rehearsal fixture Project with two dependent small Actions and the same Codex profile, protected launchers, workspace root, dependency bridge, build, test, SQLite, Git, network and pull-request path that managed production will use.
-      - From one activation, Arcadia prepares Action A's worktree, advances and monitors it, edits, builds, tests, preserves its exact branch and draft pull request, reconciles evidence, advances the governed pointer, and starts Action B without a sandbox approval prompt or manual Session relay.
+      - From one activation, Arcadia prepares Action A's worktree, advances and monitors it, edits, builds, tests, preserves its exact branch and draft pull request, reconciles evidence, advances the governed pointer to Action B, and prepares Action B's worktree, with zero observed sandbox approval prompts. Starting Action B's Session unattended is out of scope for this Action and is proven by prove-two-action-unattended-production, which depends on the launch and worker machinery this Action precedes.
       - One proof Artifact records every command, profile, writable root, sandbox denial, approval event, worktree, branch, revision, Session, Action, validation result, commit, push, pull request and operator intervention for this single run; zero observed prompts and zero hidden interventions are acceptance conditions.
     depends_on: [broker-candidate-preservation]
     decisions: []
-    references: ["docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "docs/working-copy-safety.md", "src/commands/worker.ts", "src/sessions/index.ts", "src/agentSetup/goBrokerAgentSetup.ts"]
+    references: []
   - id: harden-zero-prompt-production-loop
     title: Harden the proven zero-prompt loop across profiles, approval gates, mid-flight shutdown and reinstall, once the happy path has run clean twice in a row.
     status: open
