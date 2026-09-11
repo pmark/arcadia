@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-08
+updated: 2026-09-11
 ---
 
 # Mission Log: Arcadia
@@ -2623,3 +2623,38 @@ STILL OPEN. Nineteen other write transactions across src/ still use the deferred
 - **Result:** Every declared acceptance criterion was accepted as met: "Reuse the existing protected broker, Session lease, governed Action, and managed-production policy boundaries; do not allowlist raw general Git mutation or make .git writable to the coding agent."; "Bind preservation to one exact registered prepared worktree, agent-owned branch, base revision, Action, packet, policy epoch, candidate diff fingerprint, validation evidence, and request id; changed inputs invalidate the operation."; "Outside the agent sandbox, stage only the validated candidate worktree, create one recoverable branch commit, and make retries or lost responses return the same receipt without duplicate commits or staged leakage from another worktree."; "When the standing policy explicitly includes remote preservation, push only that exact agent branch and create or update its draft pull request with the required operator QA plan; merge, deployment, publication, spending, credential expansion, and messaging remain separate gates."; "If remote preservation is not authorized or reachable, retain the local commit, report LOCAL ONLY with the exact retry action, and never claim that the work is recoverable from another machine."; "Refuse dirty base state, detached or unexpected branches, symlink/path escapes, stale reservations, conflicting Sessions, changed base history, missing validation, and unapproved network effects while preserving all candidate files."; "Add fault injection before and after stage, commit, push, and pull-request receipt persistence; prove one recoverable outcome and no cross-worktree mutation across retries and restart.".
 - **Next:** Advanced to the next eligible Action in document order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-arcadia-broker-candidate-preservation-f8d8bfd9e031).
+
+## 2026-09-11 — Agent Ask record-zero-prompt-runbook-retarget-2026-09-11
+
+- **Did:** Record that prove-zero-prompt-production-loop's staged runbook was retargeted
+on its split acceptance criteria, and the two prerequisites that verification
+surfaced.
+
+The 2026-09-08 runbook predated Agent Ask
+split-zero-prompt-loop-happy-path-2026-09-10-v3. It told the operator to build
+a fixture that now exists and is pushed (Project zero-prompt-rehearsal, repo
+~/tmp/arcadia-zero-prompt-rehearsal, both dependent Actions, GitHub remote,
+REHEARSAL.md not yet written), and it carried four hardening steps that moved
+to harden-zero-prompt-production-loop. Running it would have forked the
+Project and spent the rehearsal on the wrong acceptance. Rewritten against the
+three criteria actually in force, in PR
+https://github.com/pmark/arcadia/pull/213.
+
+Finding 1: the installed go-broker is pinned at f2a377e, five merges behind
+main at 4a49b8c. The broker runs a frozen Arcadia taken at install time, so
+rehearsing without `go-broker install` first would prove a controller main
+does not ship. Now Step 0 of the runbook.
+
+Finding 2: criterion 2 ("starts Action B without ... manual Session relay")
+may not be satisfiable yet. arcadia-go-broker-codex prepares the next worktree
+but does not launch the agent, because runGoBroker calls runGoCommand without
+--launch. The guarded server-side launch is expose-guarded-host-session-launch,
+still open and itself depending on this Action. The runbook instructs the
+operator to record a hand-run launch as criterion 2 failed rather than met.
+
+The Action remains open: its acceptance requires the real host controller with
+zero hidden interventions, and go-broker install withholds that executable
+from both coding-agent allowlists by design, so no agent session can run it.
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
