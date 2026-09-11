@@ -37,6 +37,21 @@ reinstall idempotence, and deliberate fail-closed breakage all moved to
 run clean twice. Do not run them here; they are no longer this Action's
 acceptance.
 
+Agent Ask `break-launch-dependency-loop-2026-09-11` then narrowed criterion 2.
+The earlier wording required Arcadia to *start* Action B with no manual Session
+relay — a capability no built code path has, and one whose own Actions were
+sequenced downstream of this rehearsal, so this Action could never pass. That
+requirement already existed, correctly placed, on
+`prove-two-action-unattended-production`. It now lives only there.
+
+**What that changes for you at Step 4:** if Action B's Session has to be started
+by hand, that is no longer a failure. Zero sandbox prompts is still absolute.
+The decision rule:
+
+- A sandbox approval prompt **anywhere in Steps 3–4** → criterion 2 `failed`.
+- Action B needing a hand-run `codex` line to start → expected; record how, and
+  it does not affect the verdict.
+
 The three criteria this run must satisfy, verbatim from
 `docs/plans/bootstrap-managed-production-to-build-flight-deck.md`:
 
@@ -46,8 +61,11 @@ The three criteria this run must satisfy, verbatim from
    that managed production will use.
 2. From one activation, Arcadia prepares Action A's worktree, advances and
    monitors it, edits, builds, tests, preserves its exact branch and draft pull
-   request, reconciles evidence, advances the governed pointer, and starts
-   Action B without a sandbox approval prompt or manual Session relay.
+   request, reconciles evidence, advances the governed pointer to Action B, and
+   prepares Action B's worktree, with zero observed sandbox approval prompts.
+   Starting Action B's Session unattended is out of scope for this Action and is
+   proven by `prove-two-action-unattended-production`, which depends on the
+   launch and worker machinery this Action precedes.
 3. One proof Artifact records every command, profile, writable root, sandbox
    denial, approval event, worktree, branch, revision, Session, Action,
    validation result, commit, push, pull request and operator intervention for
@@ -71,10 +89,14 @@ done and pushed; re-running it would fork the Project. Confirmed on this host:
 | Fixture progress | `REHEARSAL.md` does not exist yet; neither Action has run |
 | Production policy | **Inactive**, revision 0, epoch 0 |
 | Broker | `READY`, pinned at `f2a377e` |
-| Arcadia `main` | `4a49b8c` |
+| Arcadia `main` | ahead of the broker; re-check with `git rev-parse --short main` |
 
 The last two rows are the one prerequisite defect: the installed broker is
-pinned five merges behind `main`. Step 0 repins it.
+frozen at `f2a377e` while `main` has moved on, and it keeps drifting further
+with every merge — including the merge of this runbook. Do not trust a
+remembered sha here; the only thing that matters is that after Step 0 the
+broker's revision **equals `main`'s HEAD at the moment you rehearse**. Step 0
+repins it and asserts exactly that.
 
 ## Step 0 — repin the broker, then confirm READY
 
@@ -200,10 +222,12 @@ the exact count of approval prompts — acceptance requires zero; exit code and
 any permission-denied or sandbox-EPERM line — acceptance requires none;
 `REHEARSAL.md` contents; commit sha; pushed branch; draft PR URL)_
 
-## Step 4 — continuation: does Action B start without a relay?
+## Step 4 — continuation: does the pointer advance and B's worktree get prepared?
 
 With Action A preserved, the loop must reconcile its evidence, advance the
-governed pointer to `confirm-rehearsal-marker`, and start Action B.
+governed pointer to `confirm-rehearsal-marker`, and prepare Action B's
+worktree. **Those three things are criterion 2's finish line** — not Action B's
+Session starting by itself.
 
 ```sh
 pnpm arcadia work monitor --no-pull-requests
@@ -211,25 +235,29 @@ pnpm arcadia next --project zero-prompt-rehearsal
 pnpm arcadia production status --json
 ```
 
-**Record honestly how Action B started.** This is the one place where the
-criterion's wording and the current code may disagree, and the answer decides
-whether criterion 2 is `met` or `failed`:
+**Record honestly how Action B started**, but understand what it does and does
+not decide:
 
-- The pointer advance and worktree preparation are the controller's work.
-- But `arcadia-go-broker-codex` does not launch the agent — `runGoBroker`
-  calls `runGoCommand` without `--launch` (`src/goBroker.ts:100-108`). The
-  guarded server-side launch lives in `expose-guarded-host-session-launch`,
-  which is still `open` and depends on this Action.
+- The pointer advance and worktree preparation are the controller's work, and
+  they **are** criterion 2's acceptance. Confirm both happened.
+- `arcadia-go-broker-codex` does not launch the agent — `runGoBroker` calls
+  `runGoCommand` without `--launch` (`src/goBroker.ts:100-108`). The guarded
+  server-side launch lives in `expose-guarded-host-session-launch`, which is
+  `open` and, since `break-launch-dependency-loop-2026-09-11`, no longer waits
+  on this rehearsal.
 
-So if starting Action B required you to run the `codex …` line again by hand,
-**say so plainly in the evidence and mark criterion 2 `failed`**, naming the
-manual step. That is a real finding, not a failed run: it says this Action's
-happy path is proven except for automatic launch, and that
-`expose-guarded-host-session-launch` is the work that closes it. Recording it
-as `met` because everything "basically worked" is the exact false-completion
-the Constitution's Truth section forbids.
+So expect to run the `codex …` line by hand to start Action B. **That is not a
+failure and does not make criterion 2 `failed`.** Record the exact command you
+ran and note that automatic launch is `prove-two-action-unattended-production`'s
+acceptance, not this one.
 
-Whatever the answer, let Action B run to completion the same way Action A did.
+What *would* fail criterion 2: any sandbox approval prompt, any
+permission-denied or EPERM line, a pointer that does not advance to
+`confirm-rehearsal-marker`, or a worktree the controller did not prepare.
+Recording those as `met` because everything "basically worked" is the exact
+false-completion the Constitution's Truth section forbids.
+
+Let Action B run to completion the same way Action A did.
 
 Evidence: _(monitor + next + status output; how Action B was started, verbatim;
 its worktree, branch, commit sha, `node --test` result for
@@ -278,13 +306,21 @@ rather than reconstructing it afterwards.
 | Sessions created (native ids) | |
 | **Approval prompts observed** | *(acceptance: 0)* |
 | **Sandbox denials observed** | *(acceptance: 0)* |
-| **Operator interventions after Step 3** | *(acceptance: 0; list every one)* |
+| Pointer advanced to `confirm-rehearsal-marker` | *(acceptance: yes)* |
+| Action B worktree prepared by the controller | *(acceptance: yes)* |
+| How Action B's Session was started | *(hand-run `codex` line expected; paste it verbatim)* |
+| **Other operator interventions after Step 3** | *(acceptance: 0; list every one)* |
 
 ## Step 6 — settle
 
 When every `Evidence:` blank and every ledger row carries real output, this
 document is the proof Artifact `expected_artifact` names. Bind it with an
 Agent Ask:
+
+Each `evidence` entry is a mapping with exactly `criterion`, `status`, and
+`note`. `criterion` must repeat the plan's text **verbatim and in the plan's own
+order** — copy the three criteria from the "Scope" section above, not from
+memory. `status` is `met`, `failed`, or `skipped`.
 
 ```yaml
 agent_ask: v1
@@ -295,15 +331,35 @@ target_ref: action/prove-zero-prompt-production-loop
 candidate_revision: <sha of the commit carrying the filled-in runbook>
 desired_result: Record the real-host zero-prompt rehearsal result.
 evidence:
-  - met|failed|skipped   # criterion 1, citing the step that proves it
-  - met|failed|skipped   # criterion 2
-  - met|failed|skipped   # criterion 3
+  - criterion: "Use the Zero Prompt Rehearsal fixture Project with two dependent small Actions and the same Codex profile, protected launchers, workspace root, dependency bridge, build, test, SQLite, Git, network and pull-request path that managed production will use."
+    status: met
+    note: "Step 1 — fixture confirmed, not rebuilt; profile arcadia-unattended."
+  - criterion: "From one activation, Arcadia prepares Action A's worktree, advances and monitors it, edits, builds, tests, preserves its exact branch and draft pull request, reconciles evidence, advances the governed pointer to Action B, and prepares Action B's worktree, with zero observed sandbox approval prompts. Starting Action B's Session unattended is out of scope for this Action and is proven by prove-two-action-unattended-production, which depends on the launch and worker machinery this Action precedes."
+    status: met
+    note: "Steps 3-4 — 0 prompts, 0 denials; pointer advanced; B's worktree prepared."
+  - criterion: "One proof Artifact records every command, profile, writable root, sandbox denial, approval event, worktree, branch, revision, Session, Action, validation result, commit, push, pull request and operator intervention for this single run; zero observed prompts and zero hidden interventions are acceptance conditions."
+    status: met
+    note: "This runbook, filled in, at <sha>."
 ```
 
-`complete` refuses any criterion that is not `met`. If criterion 2 came back
-`failed` at Step 4, do not force it — file the finding instead and let
-`expose-guarded-host-session-launch` close the gap, then re-run this runbook.
-A refused settlement here is the machinery working.
+Preview it, then apply with `--operator` — a `complete` settlement refuses to
+apply without it:
+
+```sh
+arcadia agent-ask preview --file agent-ask.yaml
+arcadia agent-ask settle --proposal <id> --request-id <rid> \
+  --disposition accepted --operator
+arcadia agent-ask settle --proposal <id> --request-id <rid> \
+  --disposition accepted --operator --apply --preview <fingerprint from the line above>
+```
+
+The settle dry run prints its **own** fingerprint, which is not the preview's —
+pass that one to `--apply`, with identical flags between the two calls.
+
+`complete` refuses any criterion that is not `met`, and refuses a stale
+`candidate_revision`. If a sandbox prompt or denial appeared, criterion 2 is
+genuinely `failed`: do not force it — record the finding and stop. A refused
+settlement there is the machinery working.
 
 Keep `~/tmp/arcadia-zero-prompt-rehearsal`, its branches, and its draft pull
 requests until settlement lands: they are the primary evidence. Delete the
