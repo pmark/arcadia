@@ -123,8 +123,9 @@ cd ~/tmp/arcadia-zero-prompt-rehearsal
 git status --short          # expect: empty
 git log --oneline -1
 ls REHEARSAL.md             # expect: No such file or directory
-cd -
-pnpm arcadia next --project zero-prompt-rehearsal
+
+cd ~/Dev/MR/Arcadia/arcadia
+arcadia next --project zero-prompt-rehearsal
 ```
 
 `next` must resolve `write-rehearsal-marker` as dispatchable with no blockers.
@@ -140,22 +141,41 @@ and `write-rehearsal-marker` dispatchable)_
 
 ## Step 2 — scope the standing production policy to this Project only
 
+Run Arcadia's CLI **from the Arcadia checkout, not the fixture repository**.
+`pnpm arcadia` resolves through Arcadia's own `package.json`, so it fails with
+`ERR_PNPM_NO_PKG_MANIFEST` anywhere else — including the fixture root you were
+standing in at the end of Step 1. The bare `arcadia` command works from any
+directory; the `cd` below removes the question entirely.
+
 ```sh
-pnpm arcadia production preview \
+cd ~/Dev/MR/Arcadia/arcadia
+
+arcadia production preview \
   --project zero-prompt-rehearsal \
+  --plan zero-prompt-rehearsal/zero-prompt-rehearsal-bootstrap \
+  --provider codex-cli \
   --concurrency 1 \
   --transitions validation,acceptance,pointer \
   --intent "Prove the zero-prompt production loop on a disposable fixture." \
   --json
 ```
 
+`--provider` is **required** — omitting it fails with "Production scope needs at
+least one permitted provider." The value is `codex-cli`, not `codex`:
+`SESSION_PROVIDER` maps the `codex` session agent to that string
+(`src/sessions/index.ts:60`), and admission compares the policy scope against it
+directly (`src/production/policy.ts:585`), so `codex` would be accepted at grant
+time and then refuse every launch with `provider_not_permitted`.
+
 Read the preview. `scope.projects` must name `zero-prompt-rehearsal` and
 nothing else — this grant must not be able to admit Arcadia's own work or any
 other Project. Then activate with the exact revision the preview returned:
 
 ```sh
-pnpm arcadia production activate \
+arcadia production activate \
   --project zero-prompt-rehearsal \
+  --plan zero-prompt-rehearsal/zero-prompt-rehearsal-bootstrap \
+  --provider codex-cli \
   --concurrency 1 \
   --transitions validation,acceptance,pointer \
   --intent "Prove the zero-prompt production loop on a disposable fixture." \
@@ -167,7 +187,9 @@ pnpm arcadia production activate \
 
 `--request-id` and `--granted-by` are required; `--expect-revision` is what
 makes the grant refuse to apply if the policy moved between preview and
-activate.
+activate. Pass `--plan` explicitly here: `preview` defaults it to every Plan of
+the named Projects, but `activate` does not, and an omitted `--plan` fails with
+"Production scope needs at least one Plan."
 
 Evidence: _(paste preview + activate JSON; quote `scope.projects` and the new
 revision/epoch)_
@@ -230,9 +252,11 @@ worktree. **Those three things are criterion 2's finish line** — not Action B'
 Session starting by itself.
 
 ```sh
-pnpm arcadia work monitor --no-pull-requests
-pnpm arcadia next --project zero-prompt-rehearsal
-pnpm arcadia production status --json
+cd ~/Dev/MR/Arcadia/arcadia
+
+arcadia work monitor --no-pull-requests
+arcadia next --project zero-prompt-rehearsal
+arcadia production status --json
 ```
 
 **Record honestly how Action B started**, but understand what it does and does
