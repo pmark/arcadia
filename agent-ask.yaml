@@ -1,19 +1,65 @@
 agent_ask: v1
-request_id: zero-prompt-rehearsal-two-actions-2026-09-08
-project: zero-prompt-rehearsal
+request_id: break-launch-dependency-loop-2026-09-11
+project: arcadia
 intent: plan
-target_ref: plan/zero-prompt-rehearsal-bootstrap
-desired_result: Replace the drafted planning Action with two small dependent Actions that exercise the real host controller loop end to end.
+target_ref: plan/bootstrap-managed-production-to-build-flight-deck
+desired_result: >-
+  Break the semantic dependency loop that freezes the managed-production build
+  chain, so the launch, reconcile, advance and worker Actions become startable
+  immediately.
+rationale: >-
+  prove-zero-prompt-production-loop criterion 2 required Arcadia to start
+  Action B "without a sandbox approval prompt or manual Session relay". No
+  built code path does that: runGoBroker prepares the next worktree but never
+  launches the agent (src/goBroker.ts:100-108), and the two Actions that would
+  supply the launch - expose-guarded-host-session-launch and
+  feed-and-supervise-managed-production - are both open and both sequenced
+  downstream of this very Action. expose-guarded-host-session-launch further
+  carries a hard depends_on prove-zero-prompt-production-loop edge plus an
+  "only after the approval-free Arcadia Go production loop has been proven"
+  clause in its next_action.
+
+  The declared graph is acyclic, so nothing ever errored and `arcadia next`
+  resolved clean - which is why this sat as current_action for days while being
+  unpassable. The cycle is semantic.
+
+  The unattended-start proof already exists downstream and correctly placed:
+  prove-two-action-unattended-production criterion 2 reads "Action A launches,
+  validates, records canonical completion/pointer, and B launches without
+  manual session setup or launch confirmation in between", and it depends on
+  feed-and-supervise-managed-production. The requirement is therefore duplicated,
+  once where it can be proven and once where it cannot.
+
+  This amendment narrows prove-zero-prompt-production-loop to the broker half
+  that is actually built and operator-runnable today, leaving the unattended
+  start to the downstream Action that already owns it, and releases
+  expose-guarded-host-session-launch from waiting on it. Eight Actions unfreeze;
+  no proof is lost and none is duplicated.
 actions:
-  - id: write-rehearsal-marker
-    desired_result: Add REHEARSAL.md to the repository root containing exactly one line, "zero-prompt rehearsal action A", plus a trailing newline.
+  - target_ref: action/prove-zero-prompt-production-loop
+    desired_result: >-
+      Prove on the real host that Arcadia hands off, executes, validates,
+      preserves and advances bounded coding work with zero sandbox approval
+      prompts, advancing the governed pointer and preparing the next Action's
+      worktree, while retaining every consequential approval boundary.
     acceptance:
-      - REHEARSAL.md exists at the repository root and its only content is "zero-prompt rehearsal action A\n".
-    dependencies: []
-  - id: confirm-rehearsal-marker
-    desired_result: Append a second line to REHEARSAL.md reading "zero-prompt rehearsal action B", and add tests/rehearsal.test.mjs asserting the file contains both exact lines in order.
-    acceptance:
-      - REHEARSAL.md contains "zero-prompt rehearsal action A" on the first line and "zero-prompt rehearsal action B" on the second line, in that order.
-      - tests/rehearsal.test.mjs exists, runs under `node --test`, and fails if either line is missing, reordered, or altered.
+      - Use the Zero Prompt Rehearsal fixture Project with two dependent small Actions and the same Codex profile, protected launchers, workspace root, dependency bridge, build, test, SQLite, Git, network and pull-request path that managed production will use.
+      - From one activation, Arcadia prepares Action A's worktree, advances and monitors it, edits, builds, tests, preserves its exact branch and draft pull request, reconciles evidence, advances the governed pointer to Action B, and prepares Action B's worktree, with zero observed sandbox approval prompts. Starting Action B's Session unattended is out of scope for this Action and is proven by prove-two-action-unattended-production, which depends on the launch and worker machinery this Action precedes.
+      - One proof Artifact records every command, profile, writable root, sandbox denial, approval event, worktree, branch, revision, Session, Action, validation result, commit, push, pull request and operator intervention for this single run; zero observed prompts and zero hidden interventions are acceptance conditions.
     dependencies:
-      - write-rehearsal-marker
+      - broker-candidate-preservation
+  - target_ref: action/expose-guarded-host-session-launch
+    desired_result: >-
+      Expose a bounded server launch operation with replay-safe receipts and
+      fresh authority checks.
+    acceptance:
+      - Accept an explicit operator launch request for the previewed canonical Action; resolve repository, executable and arguments on the server.
+      - Reject cross-origin, malformed, altered, stale and unauthorized requests; document/test the operator-action request guard for the existing local/tailnet deployment.
+      - Revalidate pointer, documents, packet hash, Decisions, binding availability and repository lease immediately before preparation/spawn.
+      - Two tabs or retried requests start at most one Session; lost-response recovery returns the durable result across restart.
+      - Launch grants no implicit merge, integration, cleanup, deployment, spending, credential expansion or messaging; failures preserve recoverable work.
+      - Inject at least one pre-spawn crash, one post-spawn crash and one lost response, and reconcile ambiguous launch identity without blind retry, proving at most one live conflicting execution across that bounded set of injected faults.
+      - Support either a current explicit one-Session launch grant or a valid standing managed-production policy with an epoch-bound admission receipt; recheck Off immediately before launch commitment. Do not require a new human launch click for every authorized Action.
+      - "Preserve the proof Artifact: Launch boundary, replay, bounded crash-window and conflict integration tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
+    dependencies:
+      - support-selected-codex-and-claude-sessions
