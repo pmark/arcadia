@@ -802,11 +802,15 @@ Desktop, and select it. The installer then
 updates Claude's exact permission and worktree directories, removes
 recognized legacy broad allowances, and enforces the normal sandbox and bypass
 guards. Existing unrelated settings are preserved and changed user-owned files
-receive timestamped backups. Verify the entire chain with:
+receive timestamped backups. Verify installation with:
 
 ```sh
 pnpm arcadia go-broker status
 ```
+
+Installation readiness is separate from runtime readiness: `status` succeeds for
+a correct install even before the worker starts. Its named `preservationTransport`
+field reports whether the host worker has a fresh heartbeat.
 
 No registry request is part of installation: if local dependencies are absent,
 it fails with the `pnpm bridge:worktree` recovery command. Before it reports success, installation also creates and retires one
@@ -821,34 +825,54 @@ network access.
 configuration is missing a required worktree root, retains a legacy sandbox, or
 does not deny command network access.
 
-The installed `go` and `preserve` launchers are host controllers; they are
-intentionally absent from agent allowlists because they mutate shared Git
-metadata — `preserve` stages the completed candidate worktree into one
-recoverable commit (and, only when the standing production policy explicitly
-authorizes it, pushes that branch and opens a draft pull request), so the
-sandboxed agent never needs write access to `.git`. The shared agent skill
-invokes only these fixed, no-argument prepared-worktree brokers:
+The installed `go` launcher remains host-only. The agent-callable `preserve`
+launcher submits a bounded request to the **existing host worker**; it never
+writes shared Git metadata or submits validation assertions. Before a session
+needs preservation, run the updated worker on the host:
+
+```sh
+arcadia worker start --workspace /absolute/path/to/workspace
+arcadia go-broker status
+```
+
+`status` refuses an incomplete installation, including a missing
+`preservationLauncher`. An absent heartbeat reports `preservationTransport.ready: false` without failing the install check. Actual preservation requests refuse
+until the transport is available. The worker needs current scoped
+validation authority. Missing authority or absent checks is a refusal, not an
+invitation to enable broader permissions.
+
+From the registered candidate worktree, the agent uses fixed launchers:
 
 ```sh
 ~/.local/bin/arcadia-advance-broker-codex
-# Claude Code uses: ~/.local/bin/arcadia-advance-broker-claude
 ~/.local/bin/arcadia-work-monitor-broker-codex
-# Claude Code uses: ~/.local/bin/arcadia-work-monitor-broker-claude
+~/.local/bin/arcadia-preserve-broker-codex
+# Claude uses the corresponding -claude executables.
 ```
 
-From the host (not a coding-agent sandbox), run the matching `go` executable
-with no arguments from the completed worktree. It runs Arcadia's canonical
-preview and then the identical apply itself. To preserve a completed candidate
-before reconciling it, run the matching `arcadia-preserve-broker` executable the
-same way; a lost response or a rerun returns the same receipt without a
-duplicate commit. In the newly prepared worktree,
-the installed skill runs the fixed `advance` launcher and
-the read-only `work-monitor` launcher before code changes, then performs its
-ordinary local read-only inspection without an approval question. Every
-launcher rejects public arguments—including `--launch`, model, effort,
-workspace, and repository overrides. The installed snapshot lives outside
-agent worktrees, so normal sandbox guards protect the executables while the
-narrow command rules remove only these repeated workflow prompts.
+Preservation checks come from host-managed Project `validation_commands`,
+frozen in the approved immutable packet. The host executes those checks against
+an immutable Git snapshot using macOS Seatbelt, retains the actual results, and
+commits that exact tested tree. Candidate changes or changed authority refuse.
+The bounded initial path requires `/usr/bin/python3` and `/usr/bin/sandbox-exec`,
+regular files totaling at most 64 MiB, and self-contained checks using available
+local tools. Source writes, network access, symlinks/submodules and undeclared
+checks fail closed. Checks may write temporary output only beneath `$TMPDIR`;
+a check that needs dependency installation or in-tree build output needs an
+explicitly configured compatible command before requesting preservation.
+
+Passing checks prove those checks passed. Preservation does not accept,
+integrate, complete, or advance the Action. Remote preservation still requires
+its existing separate grant; otherwise the receipt names the local commit and
+its exact LOCAL ONLY recovery step. Retries return the preserved commit.
+
+From the host, the matching `go` executable performs canonical preview/apply
+under its separate authority. Every agent launcher rejects public arguments,
+including workspace, repository, command and evidence overrides. The managed
+skill requests preservation and keeps mutable `go`, `advance` and Git operations
+outside the coding-agent sandbox. The runnable disposable proof and exact QA
+steps are in `docs/reports/protected-preservation-qa.md`.
+
 Reinstall after a reviewed Arcadia update to move the broker and managed skill
 to the new commit. A healthy repeat install changes nothing.
 

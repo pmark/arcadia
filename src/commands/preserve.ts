@@ -1,3 +1,4 @@
+import type Database from "better-sqlite3";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { validationError } from "../cli/errors.js";
 import { withDatabase } from "../db/connection.js";
@@ -8,6 +9,7 @@ import {
   resolveBaseBranch,
   samePath
 } from "../git/worktrees.js";
+import { preservationAuthority, validatePreservationCandidate } from "../sessions/preservationValidation.js";
 import { readProductionPolicy } from "../production/policy.js";
 import { getRepositoryLease } from "../sessions/index.js";
 import {
@@ -26,14 +28,7 @@ export interface PreserveCommandOptions {
   /** The completed candidate worktree the launcher was run from. */
   source: string;
   workspace: string;
-  /**
-   * Proven validation of the candidate. Preservation refuses without it. The
-   * live wiring of Session-exit validation arrives in
-   * reconcile-session-exits-to-next-move; until then the host controller
-   * supplies it explicitly, and its absence fails closed here rather than
-   * preserving unvalidated work.
-   */
-  validation?: { passed: boolean; evidenceRef: string };
+  db?: Database.Database;
   deps?: CandidatePreservationDeps;
   now?: Date;
 }
@@ -59,7 +54,7 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
   const branch = record.branch.replace(/^refs\/heads\//, "");
   const baseBranch = resolveBaseBranch(controlWorktree);
 
-  const receipt = withDatabase(options.workspace, (db) => {
+  const preserve = (db: Database.Database) => {
     const lease = getRepositoryLease(db, controlWorktree);
     if (!lease) {
       throw validationError("No prepared or running Session lease names this repository; nothing to preserve.", {
@@ -94,11 +89,11 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
                   : "the Active policy does not include remote preservation"
           };
 
-    // Validation is required and has no automatic source yet (see options.validation).
-    const validation = options.validation ?? {
-      passed: false,
-      evidenceRef: "Session-exit validation is not yet wired (reconcile-session-exits-to-next-move)."
-    };
+    const validation = validatePreservationCandidate(db, options.workspace, lease);
+    const current = preservationAuthority(db, options.workspace, lease);
+    if (JSON.stringify(current) !== JSON.stringify(validation.binding) || JSON.stringify(policy) !== JSON.stringify(current.policy)) {
+      throw validationError("Preservation authority changed after validation.");
+    }
 
     return preserveCandidate(
       db,
@@ -117,9 +112,18 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
         remotePreservation,
         now: options.now
       },
-      options.deps ?? { remote: systemPreservationRemote }
+      { ...options.deps, remote: options.deps?.remote ?? systemPreservationRemote, hooks: {
+        ...options.deps?.hooks,
+        beforeCommit: () => {
+          options.deps?.hooks?.beforeCommit?.();
+          if (JSON.stringify(preservationAuthority(db, options.workspace, lease)) !== JSON.stringify(validation.binding)) {
+            throw validationError("Preservation authority changed before commit.");
+          }
+        }
+      } }
     );
-  });
+  };
+  const receipt = options.db ? preserve(options.db) : withDatabase(options.workspace, preserve);
 
   return createSuccess({ command: "preserve", data: { receipt } });
 }

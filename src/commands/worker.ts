@@ -30,6 +30,8 @@ import { renderRunSummary } from "../markdown/executionArtifacts.js";
 import { deployApprovedProjectProposal } from "../projects/stagingDeployment.js";
 import { createId } from "../utils/id.js";
 
+import { processPreservationRequests } from "../sessions/preservationTransport.js";
+
 const POLL_INTERVAL_MS = 2_000;
 
 export interface WorkerOptions {
@@ -146,6 +148,7 @@ export function runWorkerIteration(
   pid = process.pid,
   logfile = logPath(workspacePath)
 ): ReturnType<typeof getExecutionRun> {
+  if (!process.env.CODEX_SANDBOX) processPreservationRequests(db, workspacePath);
   recoverOrphanedRuns(db, logfile);
   const run = claimNextPendingRun(db, pid);
   if (!run?.review_item_id) {

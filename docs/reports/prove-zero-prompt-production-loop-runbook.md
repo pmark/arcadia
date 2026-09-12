@@ -2,9 +2,30 @@
 
 Milestone: Bootstrap managed production to build Flight Deck.
 Action: `prove-zero-prompt-production-loop`.
-Work classification: operator-run rehearsal. No Arcadia code changes — every
-command below already exists on `main`. This document sequences them and is
-also the fill-in proof Artifact the Action's third acceptance criterion names.
+
+## Required preflight before a counted run
+
+The authoritative Plan now requires `advance-approved-production-work` in
+addition to protected preservation. Guarded launch, reconciliation and canonical
+completion must be implemented before this rehearsal is runnable. The older
+steps below are historical preparation notes, not evidence that those missing
+capabilities already work.
+
+Before starting the counted run, record and verify every launch,
+remote-preservation, integration and mechanical-completion grant, its fixture
+scope, policy epoch and receipt. Missing or stale authority stops preflight.
+Record the exact supported reconciliation/completion entry point shipped by
+those prerequisite Actions and the revision-pinned host `arcadia-go-broker-codex`
+invocation that prepares B, or the supported combined operation. No supported
+reconciliation entry point exists yet; `go` alone does not supply it.
+
+Any explicit host invocation must be a predeclared, visible operator step.
+Verify actual Action and pointer document effects. This rehearsal proves **zero
+sandbox approval prompts** and **zero hidden interventions**. It does not claim
+fully unattended execution; `prove-two-action-unattended-production` owns that
+proof after the continuous worker exists.
+
+## Historical preparation notes
 
 ## Why this is a runbook and not a completed rehearsal
 

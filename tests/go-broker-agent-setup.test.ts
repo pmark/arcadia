@@ -6,13 +6,14 @@ import {
   readFileSync,
   readlinkSync,
   rmSync,
+  symlinkSync,
   writeFileSync
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
-import { runGoBrokerStatusCommand } from "../src/commands/goBrokerInstall.js";
+import { renderGoBrokerStatusSuccess, runGoBrokerStatusCommand } from "../src/commands/goBrokerInstall.js";
 import {
   configureGoBrokerAgents,
   inspectGoBrokerAgentSetup,
@@ -20,11 +21,14 @@ import {
   resolveAgentSetupPaths
 } from "../src/agentSetup/goBrokerAgentSetup.js";
 
+import { requestCandidatePreservation } from "../src/sessions/preservationTransport.js";
+
 const roots: string[] = [];
 const template = readFileSync(path.resolve(import.meta.dirname, "../src/agentSetup/arcadia-go.SKILL.md"), "utf8");
 const agentAskTemplate = readFileSync(path.resolve(import.meta.dirname, "../src/agentSetup/arcadia-agent-ask.SKILL.md"), "utf8");
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -97,6 +101,7 @@ describe("go broker agent setup", () => {
     expect(claude.permissions.allow).toEqual([
       "Bash(git status)",
       `Bash(${fixture.executables.advance.claude})`,
+      `Bash(${fixture.executables.preserve.claude})`,
       `Bash(${fixture.executables.workMonitor.claude})`
     ]);
     expect(claude.permissions.additionalDirectories).toEqual([
@@ -362,6 +367,7 @@ describe("go broker agent setup", () => {
     };
     expect(rules).not.toContain(fixture.executables.go.codex);
     expect(claude.permissions.allow).not.toContain(`Bash(${fixture.executables.go.claude})`);
+    expect(rules).toContain(fixture.executables.preserve.codex);
     expect(rules).toContain(fixture.executables.advance.codex);
     expect(rules).toContain(fixture.executables.workMonitor.codex);
   });
@@ -411,6 +417,35 @@ describe("go broker agent setup", () => {
     ]));
   });
 
+  it("reports worker downtime separately from a correct install and refuses actual requests", async () => {
+    const fixture = createInstalledFixture();
+    vi.stubEnv("ARCADIA_WORKSPACE", fixture.home);
+    const result = runGoBrokerStatusCommand({ home: fixture.home, repository: path.resolve(import.meta.dirname, "..") });
+    expect(result.data).toMatchObject({
+      ready: true,
+      brokerIssues: [],
+      agentSetup: { ready: true, checks: { preservationLauncher: true } },
+      preservationTransport: { ready: false, detail: expect.stringContaining("start the updated host worker") }
+    });
+    expect(renderGoBrokerStatusSuccess(result)).toEqual(expect.arrayContaining([
+      "Protected broker setup: READY",
+      expect.stringContaining("Preservation transport: NOT READY")
+    ]));
+    await expect(requestCandidatePreservation(fixture.home)).rejects.toThrow("Protected preservation request path is unavailable");
+    expect(existsSync(path.join(fixture.home, ".arcadia-preserve-request"))).toBe(false);
+  });
+
+  it("still refuses a missing preserve launcher on an otherwise correct install", () => {
+    const fixture = createInstalledFixture();
+    vi.stubEnv("ARCADIA_WORKSPACE", fixture.home);
+    rmSync(fixture.executables.preserve.codex);
+    expect(() => runGoBrokerStatusCommand({ home: fixture.home, repository: path.resolve(import.meta.dirname, "..") }))
+      .toThrow(expect.objectContaining({
+        message: "Protected broker setup is not ready.",
+        details: expect.objectContaining({ ready: false, checks: expect.objectContaining({ preservationLauncher: false }) })
+      }));
+  });
+
   it("makes an incomplete status check fail automation", () => {
     const fixture = createFixture(false);
     expect(() => runGoBrokerStatusCommand({
@@ -420,10 +455,11 @@ describe("go broker agent setup", () => {
   });
 });
 
-function createFixture(withExecutables = true): { home: string; executables: { go: { codex: string; claude: string }; advance: { codex: string; claude: string }; workMonitor: { codex: string; claude: string } } } {
+function createFixture(withExecutables = true) {
   const home = mkdtempSync(path.join(tmpdir(), "arcadia-agent-setup-"));
   roots.push(home);
   const executables = {
+    preserve: { codex: path.join(home, ".local", "bin", "arcadia-preserve-broker-codex"), claude: path.join(home, ".local", "bin", "arcadia-preserve-broker-claude") },
     go: {
       codex: path.join(home, ".local", "bin", "arcadia-go-broker-codex"),
       claude: path.join(home, ".local", "bin", "arcadia-go-broker-claude")
@@ -449,4 +485,27 @@ function createFixture(withExecutables = true): { home: string; executables: { g
 function write(file: string, content: string): void {
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, content);
+}
+
+function createInstalledFixture() {
+  const fixture = createFixture(false);
+  const release = path.join(fixture.home, ".local", "share", "arcadia", "test-revision");
+  const brokerEntrypoint = path.join(release, "dist", "scripts", "arcadia-go-broker.js");
+  write(brokerEntrypoint, "// fixture runtime\n");
+  write(path.join(release, "dist", "database", "schema.sql"), "-- fixture schema\n");
+  write(path.join(release, "broker-manifest.json"), JSON.stringify({
+    schema: "arcadia-go-broker-install-v1", revision: "test-revision", brokerEntrypoint
+  }));
+  for (const providers of Object.values(fixture.executables)) {
+    for (const executable of Object.values(providers)) {
+      const target = path.join(release, path.basename(executable));
+      write(target, "#!/bin/sh\n");
+      mkdirSync(path.dirname(executable), { recursive: true });
+      symlinkSync(target, executable);
+    }
+  }
+  configureGoBrokerAgents({
+    ...fixture, skillTemplate: template, agentAskSkillTemplate: agentAskTemplate
+  });
+  return fixture;
 }
