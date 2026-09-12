@@ -97,14 +97,25 @@ the worker's host guard remains. Snapshot behavior is unchanged: Git ignore
 rules exclude untracked ignored files, including rules in the candidate's
 `.gitignore`. The misleading comment was corrected only.
 
-The existing `protected-preservation-fixture.json` is retained unchanged as
-historical evidence for source `c0fb7893858869adf621aaeab00eec6f281d6fda`.
-These fixes do not change the transport, validation producer, snapshot capture
-behavior or host consumer exercised by that proof. They do change the launcher
-script's guard dispatch, covered by the new launcher regression. The fixture's
-runtime digest is therefore **not a claim about this PR's revised head**.
-The real-host proof was not rerun during this review correction; step 4 is the
-operator's procedure for evidence of the current head.
+The `protected-preservation-fixture.json` Artifact now records a fresh host run
+against PR #224's exact merged source revision,
+`f73a04c31089f99f2eb4db4505ea1ba17be61a34`, including its revised launcher guard
+dispatch. On 2026-09-12, after the operator reported the missed pre-merge check,
+the host-authorized command `mise exec -- node --import tsx scripts/prove-protected-preservation.ts`
+passed from a clean isolated worktree after TypeScript compilation. Its compiled
+runtime SHA-256 is `240ee876794f8709b733565f58799ec79ef96c2b7c820c6005e548396f01eec4`.
+
+The real `arcadia-unattended` sandbox permitted candidate edits and refused
+shared-Git, protected-evidence and launcher writes. Extra arguments and forged
+passing evidence were refused. Successful validation and the committed tree
+both identify `6d408558371d25308aa300d65d75618399ced35c`; replay returned the same
+fixture commit, `012499e044bf3d7f5872f342a25f3811033d8ee4`, with exactly one commit
+beyond the fixture base. The fixture Action and pointer remained unchanged.
+All seven sandbox command results are recorded, including the two expected
+refusals. Zero sandbox approval prompts and zero hidden interventions were
+observed; host authorization was explicit and this is not unattended production.
+The script retired its disposable worker, repositories and runtime, and both
+temporary roots were verified absent. No installed production service was changed.
 
 ## Recorded validation
 
@@ -114,6 +125,12 @@ Review correction verification (2026-09-12):
 - `mise exec -- pnpm exec vitest run tests/candidate-preservation.test.ts tests/go-broker.test.ts tests/go-broker-agent-setup.test.ts tests/preservation-validation.test.ts`:
   **4 test files passed; 50 tests passed, 5 skipped** (26.17 seconds).
   The five native host tests were explicitly skipped; no new real-host run is claimed.
+
+Post-merge verification (2026-09-12):
+
+- TypeScript compilation at merged source `f73a04c`: exit 0.
+- Real Codex host-boundary fixture: exit 0; revised launcher dispatch verified.
+- The evidence-only follow-up changes no implementation or governance state.
 
 Original implementation evidence:
 
@@ -125,7 +142,8 @@ Original implementation evidence:
   not treated as an implementation pass.
 - The actual Codex `arcadia-unattended` boundary fixture passed. Its exact
   source revision, compiled-runtime digest, commands, validation results and
-  preserved tree/commit are in `protected-preservation-fixture.json`.
+  preserved tree/commit were recorded. The Artifact now contains the fresh
+  merged-revision run described above.
 
 The installed production worker and global broker were not upgraded by this
 work. Integration, acceptance, completion and pointer advancement remain
