@@ -495,6 +495,29 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/commands/review.ts", "src/ask/settlement.ts", "docs/decisions/0046-how-should-this-project-update-be-applied-set-the-work-pointer-to-let-agent-pres.md", "docs/proposals/validate-governed-documents.md"]
+  - id: isolate-agent-asks-from-production-handoff
+    title: Make Agent Ask authoring, preview, correction, settlement, and preservation use uniquely named files on Arcadia-owned isolated branches and worktrees so concurrent Asks cannot collide and no Ask dirties the shared base or blocks Arcadia Go.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make Agent Ask authoring, preview, correction, settlement, and preservation use uniquely named files on Arcadia-owned isolated branches and worktrees so concurrent Asks cannot collide and no Ask dirties the shared base or blocks Arcadia Go.
+    expected_artifact: Evidence satisfying Agent Ask isolate-agent-asks-from-production-handoff
+    clarification: clarified
+    confidence: high
+    source: Agent Ask isolate-concurrent-agent-asks-from-production-handoff-2026-09-12
+    acceptance_criteria:
+      - Every newly authored or edited Agent Ask is stored as `.arcadia/asks/agent-ask-<unique-stub>.yaml` in a uniquely identified, recoverable Arcadia-owned Ask branch and worktree rather than the repository's shared base checkout; the stub is stable for one request and collision-resistant across concurrent agents.
+      - Multiple Ask files may coexist. Preview, correction, settlement, status, and cleanup require an exact file path or request id and never select an arbitrary glob match; two concurrent Ask drafts cannot overwrite, settle, or retire each other.
+      - Preview and correction resolve the Ask by request id from that isolated location, and settlement commits only the exact previewed Ask effects on its Ask branch before the existing authorized integration and push boundaries apply.
+      - When Arcadia Go finds a legacy root `agent-ask.yaml` change as the only dirty base path, it atomically preserves that exact content and diff under a uniquely named Ask file in an isolated Ask branch and worktree, reports the recovery location, restores no unrelated path, and continues preparing the governed production worktree in the same operator invocation.
+      - If any dirty base path is not recognized as isolated Ask input, or Ask preservation cannot be proven complete, Arcadia Go retains the existing fail-closed refusal and names every preserved blocker; no work is discarded, staged, or silently included.
+      - The protected broker and Agent Ask skill use the isolated path without giving a sandboxed agent general shared-Git mutation, and retries return the same branch, worktree, request id, and receipt without duplicate commits or orphaned drafts.
+      - A fixture reproduces the 2026-09-12 failure from a base containing only a modified agent-ask.yaml, then proves one Arcadia Go activation preserves the Ask and prepares the governed Action worktree with zero operator Git steps; fault tests cover interruption before and after Ask preservation.
+      - A concurrency fixture creates, previews, corrects, and settles at least two Ask files in parallel and proves their paths, request ids, receipts, branches, effects, and cleanup remain disjoint.
+      - The operator-facing QA plan identifies the exact local command and paths, demonstrates the preserved Ask can still be previewed or settled, and demonstrates the prepared production worktree starts from the unchanged clean base.
+    depends_on: []
+    decisions: []
+    references: ["docs/proposals/validate-governed-documents.md", "docs/proposals/gate-judgment-not-mechanics.md", "docs/decisions/0009-agent-neutral-go-handoff.md", "docs/decisions/0023-work-pointer-under-concurrency.md", "docs/working-copy-safety.md", "src/commands/go.ts", "src/goBroker.ts", "src/ask/settlement.ts", "src/agentSetup/goBrokerAgentSetup.ts"]
 questions: []
 decisions: []
 current_action: prove-zero-prompt-production-loop
