@@ -1424,24 +1424,31 @@ candidate beneath `~/.codex/worktrees`, verifying candidate/source writes,
 dependency bridging, a temporary SQLite database, candidate and Dashboard
 builds, Vitest, and syntax-checking the revision-pinned compiled broker. A
 failure reports the blocked operation and one recovery command without
-loosening Codex's sandbox. The installed `go` executable is a host controller
-and is intentionally absent from coding-agent allowlists because it mutates
-shared Git metadata. The agent runtime exposes only this contract:
+loosening Codex's sandbox. Both installed provider `go` executables always
+submit a bounded host-worker request, even from a host terminal, and never
+mutate shared Git metadata in the calling process. The agent runtime
+exposes only this contract:
 
 ```sh
+~/.local/bin/arcadia-go-broker-codex
+# Claude Code uses: ~/.local/bin/arcadia-go-broker-claude
 ~/.local/bin/arcadia-advance-broker-codex
 # Claude Code uses: ~/.local/bin/arcadia-advance-broker-claude
 ~/.local/bin/arcadia-work-monitor-broker-codex
 # Claude Code uses: ~/.local/bin/arcadia-work-monitor-broker-claude
+~/.local/bin/arcadia-preserve-broker-codex
+# Claude Code uses: ~/.local/bin/arcadia-preserve-broker-claude
 ```
 
-From the host, run the matching `go` executable with no arguments from the
-completed worktree. It calls the same `runGoCommand` implementation first in
-preview mode and then with the identical fixed inputs plus apply. In the prepared worktree,
-the shared skill calls its fixed `advance` and read-only `work-monitor`
-launchers, then performs ordinary local read-only inspection without an
-approval question. Apply repeats all validation, so a race or state change
-fails closed. Every public argument is refused. No launcher can request
+Run the matching `go` executable with no arguments from the completed worktree.
+The worker runs `runGoCommand` in a child process, first in preview mode and
+then with identical fixed inputs plus apply. The shared skill waits for the
+host worker's protected response while the worker continues heartbeat and Run
+admission ticks. In the prepared worktree, the skill calls its
+fixed `advance`, `preserve`, and read-only `work-monitor` launchers, then
+performs ordinary local read-only inspection without an approval question.
+Apply repeats all validation, so a race or state change fails closed. Every
+public argument is refused. No launcher can request
 `--launch`, choose a model or effort, override the workspace, or redirect the
 repository. Its success output is canonical JSON; a refusal is JSON on stderr.
 
@@ -1451,6 +1458,10 @@ Verify the complete installed chain without changing it:
 pnpm arcadia go-broker status
 pnpm arcadia go-broker status --json
 ```
+
+Check `data.agentGoTransport.ready` before an agent `go` request. It requires
+a fresh heartbeat from a worker that supports `go`; an older preservation-only
+worker is unavailable for this operation even when its heartbeat is fresh.
 
 `status` verifies that all six launchers resolve to one valid protected release,
 the default Codex config and every present named `*.config.toml` profile have

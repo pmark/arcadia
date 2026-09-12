@@ -28,7 +28,7 @@ import {
 import type { BrokerExecutables, ProviderExecutables } from "../agentSetup/goBrokerAgentSetup.js";
 import { runWorktreeRuntimeProbe, type WorktreeRuntimeProbeResult } from "../sessions/worktreeRuntimeProbe.js";
 
-import { preservationTransportReady } from "../sessions/preservationTransport.js";
+import { agentGoTransportReady, preservationTransportReady } from "../sessions/preservationTransport.js";
 import { requireResolvedWorkspace } from "../workspace/resolve.js";
 
 const INSTALL_SCHEMA = "arcadia-go-broker-install-v1";
@@ -55,6 +55,7 @@ export interface GoBrokerStatusData {
   brokerIssues: string[];
   agentSetup: AgentSetupStatus;
   preservationTransport: { ready: boolean; detail: string };
+  agentGoTransport: { ready: boolean; detail: string };
 }
 
 export interface GoBrokerInstallOptions {
@@ -68,9 +69,8 @@ export function permissionSnippets(
   executables: GoBrokerInstallData["executables"]
 ): Pick<GoBrokerInstallData, "codexRules" | "claudePermissions"> {
   return {
-    // `go` is a host controller: it fetches, updates refs, and creates or
-    // retires worktrees. A coding-agent sandbox must never be able to invoke
-    // it, even through an otherwise narrow executable allowlist.
+    // Both fixed provider go launchers submit bounded host-worker requests.
+    // Neither executable grants direct reconciliation to its caller.
     codexRules: agentCallableExecutables(executables).map(
       (providers) => `prefix_rule(pattern=[${JSON.stringify(providers.codex)}], decision="allow")`
     ),
@@ -79,7 +79,7 @@ export function permissionSnippets(
 }
 
 function agentCallableExecutables(executables: BrokerExecutables): ProviderExecutables[] {
-  return [executables.advance, executables.preserve, executables.workMonitor];
+  return [executables.go, executables.advance, executables.preserve, executables.workMonitor];
 }
 
 export function runGoBrokerInstallCommand(
@@ -244,14 +244,22 @@ export function runGoBrokerStatusCommand(
     agentAskSkillTemplate: readAgentAskSkillTemplate(repository)
   });
   let preservationTransport: GoBrokerStatusData["preservationTransport"];
+  let agentGoTransport: GoBrokerStatusData["agentGoTransport"];
   try {
-    const ready = preservationTransportReady(requireResolvedWorkspace({ cwd: repository }));
+    const workspace = requireResolvedWorkspace({ cwd: repository });
+    const ready = preservationTransportReady(workspace);
     preservationTransport = {
       ready,
       detail: ready ? "Fresh host worker heartbeat." : "No fresh preservation heartbeat; start the updated host worker before requesting preservation."
     };
+    const goReady = agentGoTransportReady(workspace);
+    agentGoTransport = {
+      ready: goReady,
+      detail: goReady ? "Fresh host worker supports agent go requests." : "Start the updated host worker; agent go request support is unavailable."
+    };
   } catch {
     preservationTransport = { ready: false, detail: "Configured workspace is unavailable; configure it before requesting preservation." };
+    agentGoTransport = { ready: false, detail: "Configured workspace is unavailable; configure it before requesting go." };
   }
   if (broker.issues.length > 0 || !agentSetup.ready) {
     throw validationError("Protected broker setup is not ready.", {
@@ -261,7 +269,8 @@ export function runGoBrokerStatusCommand(
       brokerIssues: broker.issues,
       agentSetupIssues: agentSetup.issues,
       checks: agentSetup.checks,
-      preservationTransport
+      preservationTransport,
+      agentGoTransport
     });
   }
   return createSuccess({
@@ -272,7 +281,8 @@ export function runGoBrokerStatusCommand(
       releaseDirectory: broker.releaseDirectory,
       brokerIssues: broker.issues,
       agentSetup,
-      preservationTransport
+      preservationTransport,
+      agentGoTransport
     }
   });
 }
@@ -282,6 +292,7 @@ export function renderGoBrokerStatusSuccess(response: CommandSuccess<GoBrokerSta
   return [
     `Protected broker setup: ${data.ready ? "READY" : "NOT READY"}`,
     `Preservation transport: ${data.preservationTransport.ready ? "READY" : "NOT READY"} — ${data.preservationTransport.detail}`,
+    `Agent go transport: ${data.agentGoTransport.ready ? "READY" : "NOT READY"} — ${data.agentGoTransport.detail}`,
     `Revision: ${data.revision ?? "not installed"}`,
     `Release: ${data.releaseDirectory ?? "not installed"}`,
     ...(data.brokerIssues.length > 0 ? ["Broker issues:", ...data.brokerIssues.map((issue) => `- ${issue}`)] : []),

@@ -809,8 +809,11 @@ pnpm arcadia go-broker status
 ```
 
 Installation readiness is separate from runtime readiness: `status` succeeds for
-a correct install even before the worker starts. Its named `preservationTransport`
-field reports whether the host worker has a fresh heartbeat.
+a correct install even before the worker starts. Its named
+`preservationTransport` field reports whether the host worker has a fresh
+heartbeat for preservation requests. `agentGoTransport.ready` separately
+confirms that the running worker supports agent `go` requests; an older worker
+cannot pass this check merely by sending a fresh heartbeat.
 
 No registry request is part of installation: if local dependencies are absent,
 it fails with the `pnpm bridge:worktree` recovery command. Before it reports success, installation also creates and retires one
@@ -825,25 +828,37 @@ network access.
 configuration is missing a required worktree root, retains a legacy sandbox, or
 does not deny command network access.
 
-The installed `go` launcher remains host-only. The agent-callable `preserve`
-launcher submits a bounded request to the **existing host worker**; it never
-writes shared Git metadata or submits validation assertions. Before a session
-needs preservation, run the updated worker on the host:
+The installed Codex and Claude `go` launchers always submit a bounded request
+to the **existing host worker**, including when invoked from a host terminal.
+They never reconcile Git in the calling process. The host runs reconciliation
+in a child process so heartbeats and Run admission continue during a slow fetch.
+The agent-callable `preserve` launcher uses the same request path and never submits validation
+assertions. Before a session needs `go` or preservation from a coding-agent
+prompt, run the updated worker on the host:
 
 ```sh
 arcadia worker start --workspace /absolute/path/to/workspace
 arcadia go-broker status
 ```
 
+Go has a five-minute child execution budget and a 30-second response margin.
+Timeouts remove the caller's pending request and report where to inspect the
+result before retrying. The reserved untracked `.arcadia-go-request` does not
+count as candidate work; a tracked file with that name is always refused.
+
 `status` refuses an incomplete installation, including a missing
-`preservationLauncher`. An absent heartbeat reports `preservationTransport.ready: false` without failing the install check. Actual preservation requests refuse
-until the transport is available. The worker needs current scoped
+`preservationLauncher`. An absent heartbeat reports
+`preservationTransport.ready: false` without failing the install check. Actual
+agent `go` and preservation requests refuse until the transport is available.
+The worker needs current scoped
 validation authority. Missing authority or absent checks is a refusal, not an
 invitation to enable broader permissions.
 
-From the registered candidate worktree, the agent uses fixed launchers:
+From the Project repository or registered candidate worktree, the agent uses
+fixed launchers:
 
 ```sh
+~/.local/bin/arcadia-go-broker-codex
 ~/.local/bin/arcadia-advance-broker-codex
 ~/.local/bin/arcadia-work-monitor-broker-codex
 ~/.local/bin/arcadia-preserve-broker-codex
