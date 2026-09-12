@@ -3,7 +3,6 @@ import { constants, closeSync, existsSync, fstatSync, mkdirSync, openSync, readF
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
-import { withReadOnlyDatabase } from "../db/connection.js";
 import { runPreserveCommand } from "../commands/preserve.js";
 import { requireResolvedWorkspace } from "../workspace/resolve.js";
 import { PRESERVATION_REQUEST_FILE } from "./candidateSnapshot.js";
@@ -27,11 +26,12 @@ export function preservationTransportReady(workspace: string): boolean {
 export async function requestCandidatePreservation(source: string) {
   const workspace = requireResolvedWorkspace({ cwd: source });
   const candidate = realpathSync(source);
-  const lease = withReadOnlyDatabase(workspace, db => db.prepare(
-    "SELECT * FROM agent_sessions WHERE worktree_path = ? AND status IN ('prepared','running')"
-  ).get(candidate) as AgentSession | undefined);
-  if (!lease) throw validationError("No prepared or running Session registers this preservation worktree.");
   if (!preservationTransportReady(workspace)) throw validationError("Protected preservation request path is unavailable. Start the updated Arcadia worker on the host before requesting preservation.");
+  // Read a host-owned projection, not SQLite: readonly WAL opens can still
+  // require shared-memory coordination writes that the sandbox rightly denies.
+  const routes = JSON.parse(readFileSync(path.join(workspace, HEARTBEAT), "utf8"));
+  const lease = (routes.sessions as Array<{ id: string; worktree: string }>).find(s => s.worktree === candidate);
+  if (!lease) throw validationError("No prepared or running Session registers this preservation worktree.");
   const nonce = randomUUID();
   const request = path.join(candidate, PRESERVATION_REQUEST_FILE);
   const fd = openSync(request, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o600);
@@ -54,8 +54,10 @@ export async function requestCandidatePreservation(source: string) {
 export function processPreservationRequests(db: Database.Database, workspace: string): void {
   if (process.env.CODEX_SANDBOX) throw validationError("The preservation consumer must run on the host.");
   mkdirSync(path.join(workspace, ".arcadia"), { recursive: true });
-  writeFileSync(path.join(workspace, HEARTBEAT), JSON.stringify({ schema: "arcadia-preservation-transport-v1", at: Date.now() }));
   const leases = db.prepare("SELECT * FROM agent_sessions WHERE status IN ('prepared','running')").all() as AgentSession[];
+  const heartbeat = path.join(workspace, HEARTBEAT);
+  writeFileSync(`${heartbeat}.${process.pid}.tmp`, JSON.stringify({ schema: "arcadia-preservation-transport-v1", at: Date.now(), sessions: leases.map(s => ({ id: s.id, worktree: s.worktree_path })) }));
+  renameSync(`${heartbeat}.${process.pid}.tmp`, heartbeat);
   for (const lease of leases) {
     const request = path.join(lease.worktree_path, PRESERVATION_REQUEST_FILE);
     if (!existsSync(request)) continue;
