@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { constants, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { constants, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
@@ -67,7 +67,10 @@ export function processPreservationRequests(db: Database.Database, workspace: st
       try {
         const stat = fstatSync(fd);
         if (!stat.isFile() || stat.size > 128) continue;
-        const value = JSON.parse(readFileSync(fd, "utf8"));
+        const bytes = Buffer.alloc(129);
+        const length = readSync(fd, bytes, 0, bytes.length, 0);
+        if (length > 128) continue;
+        const value = JSON.parse(bytes.subarray(0, length).toString("utf8"));
         if (Object.keys(value).join() !== "nonce" || !NONCE.test(value.nonce)) continue;
         nonce = value.nonce;
       } finally { closeSync(fd); }

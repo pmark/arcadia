@@ -409,10 +409,10 @@ export function preserveCandidate(
     // Preserve the existing commit rather than creating an empty one.
     commitSha = git(candidateWorktreePath, ["rev-parse", "HEAD"]).trim();
   } else {
-    hooks.beforeCommit?.();
     if (snapshotCandidate(candidateWorktreePath) !== candidateFingerprint) {
       throw validationError("Candidate changed between validation and preservation.");
     }
+    hooks.beforeCommit?.();
     commitSha = commitCandidate({
       candidateWorktreePath,
       actionId: request.actionId,

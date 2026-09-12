@@ -25,9 +25,14 @@ export function snapshotCandidate(candidate: string): string {
     // Node has no openat API. The system Python helper uses only stdlib and
     // anchored O_NOFOLLOW descriptors, so racing a parent symlink cannot make
     // the privileged reader follow it outside the selected candidate.
-    const captured = JSON.parse(execFileSync("/usr/bin/python3", ["-I", "-c", CAPTURE_FILES, root], {
-      input: JSON.stringify(selected), encoding: "utf8", maxBuffer: 96 * 1024 * 1024
-    })) as Array<{ path: string; mode: number; bytes: string }>;
+    let captured: Array<{ path: string; mode: number; bytes: string }>;
+    try {
+      captured = JSON.parse(execFileSync("/usr/bin/python3", ["-I", "-c", CAPTURE_FILES, root], {
+        input: JSON.stringify(selected), encoding: "utf8", maxBuffer: 96 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"]
+      }));
+    } catch {
+      throw validationError("Candidate capture refused: regular candidate files only, no symlink/path escapes, at most 64 MiB total; verify /usr/bin/python3 is available.");
+    }
     const entries: string[] = [];
     for (const file of captured) {
       const hash = git(["hash-object", "-w", "--stdin"], Buffer.from(file.bytes, "base64")).toString().trim();
