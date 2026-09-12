@@ -4,7 +4,7 @@ type: decision
 id: "0047"
 slug: record-whether-fixed-codex-and-claude-go-launchers-may-submit-bounded-requests-f
 project: arcadia
-status: open
+status: approved
 question: Record whether fixed Codex and Claude go launchers may submit bounded requests for the existing host worker to perform canonical go preview and identical apply, under the operator's existing continuation authority. Git mutation remains host-only; launchers carry only a nonce and fixed provider, and cannot supply commands, repository paths, validation assertions, or authority flags.
 gap_type: missing-decision
 recommendation: Ratify bounded host requests
@@ -18,6 +18,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-09-12
+answer: Ratify bounded host requests
+decided: 2026-09-12
 ---
 
 # Decision 0047: Record whether fixed Codex and Claude go launchers may submit bounded requests for the existing host worker to perform canonical go preview and identical apply, under the operator's existing continuation authority. Git mutation remains host-only; launchers carry only a nonce and fixed provider, and cannot supply commands, repository paths, validation assertions, or authority flags.
