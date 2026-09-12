@@ -50,7 +50,7 @@ describe("protected Arcadia go broker", () => {
   it("routes the actual sandboxed launcher through preservation transport", async () => {
     const response = { ok: true, command: "preserve", data: { receipt: { commit: "candidate" } } };
     const requestCandidatePreservation = vi.fn().mockResolvedValue(response);
-    vi.doMock("../src/sessions/preservationTransport.js", () => ({ requestCandidatePreservation }));
+    vi.doMock("../src/sessions/preservationTransport.js", () => ({ requestAgentGo: vi.fn(), requestCandidatePreservation }));
     const directBroker = vi.spyOn(broker, "runGoBroker");
     const output = vi.spyOn(process.stdout, "write").mockReturnValue(true);
     const errors = vi.spyOn(process.stderr, "write").mockReturnValue(true);
@@ -61,6 +61,33 @@ describe("protected Arcadia go broker", () => {
     try {
       await import("../scripts/arcadia-go-broker.js");
       expect(requestCandidatePreservation).toHaveBeenCalledExactlyOnceWith(process.cwd());
+      expect(directBroker).not.toHaveBeenCalled();
+      expect(output).toHaveBeenCalledWith(`${JSON.stringify(response, null, 2)}\n`);
+      expect(errors).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(exitCode);
+    } finally {
+      process.argv = argv;
+      process.exitCode = exitCode;
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+      vi.doUnmock("../src/sessions/preservationTransport.js");
+    }
+  });
+
+  it("routes the actual sandboxed go launcher through the host-worker request transport", async () => {
+    const response = { ok: true, command: "go-broker", data: { nextWorktree: { path: "/tmp/next" } } };
+    const requestAgentGo = vi.fn().mockResolvedValue(response);
+    vi.doMock("../src/sessions/preservationTransport.js", () => ({ requestAgentGo, requestCandidatePreservation: vi.fn() }));
+    const directBroker = vi.spyOn(broker, "runGoBroker");
+    const output = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+    const errors = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const argv = process.argv;
+    const exitCode = process.exitCode;
+    vi.stubEnv("CODEX_SANDBOX", "seatbelt");
+    process.argv = ["node", "arcadia-go-broker", "codex", "go"];
+    try {
+      await import("../scripts/arcadia-go-broker.js?go-request");
+      expect(requestAgentGo).toHaveBeenCalledExactlyOnceWith(process.cwd(), "codex");
       expect(directBroker).not.toHaveBeenCalled();
       expect(output).toHaveBeenCalledWith(`${JSON.stringify(response, null, 2)}\n`);
       expect(errors).not.toHaveBeenCalled();
@@ -142,7 +169,7 @@ describe("protected Arcadia go broker", () => {
     expect(result.command).toBe("work-monitor-broker");
   });
 
-  it("allows read-only brokers and the preservation request launcher, never host go", () => {
+  it("allows fixed request and prepared-worktree brokers", () => {
     const executables = {
       preserve: { codex: "/Users/operator/.local/bin/arcadia-preserve-broker-codex", claude: "/Users/operator/.local/bin/arcadia-preserve-broker-claude" },
       go: {
@@ -160,11 +187,13 @@ describe("protected Arcadia go broker", () => {
     };
     expect(permissionSnippets(executables)).toEqual({
       codexRules: [
+        'prefix_rule(pattern=["/Users/operator/.local/bin/arcadia-go-broker-codex"], decision="allow")',
         'prefix_rule(pattern=["/Users/operator/.local/bin/arcadia-advance-broker-codex"], decision="allow")',
         'prefix_rule(pattern=["/Users/operator/.local/bin/arcadia-preserve-broker-codex"], decision="allow")',
         'prefix_rule(pattern=["/Users/operator/.local/bin/arcadia-work-monitor-broker-codex"], decision="allow")'
       ],
       claudePermissions: [
+        "Bash(/Users/operator/.local/bin/arcadia-go-broker-claude)",
         "Bash(/Users/operator/.local/bin/arcadia-advance-broker-claude)",
         "Bash(/Users/operator/.local/bin/arcadia-preserve-broker-claude)",
         "Bash(/Users/operator/.local/bin/arcadia-work-monitor-broker-claude)"

@@ -110,6 +110,8 @@ export function resolveAgentSetupPaths(home: string): AgentSetupPaths {
 
 export function renderManagedSkill(template: string, executables: BrokerExecutables): string {
   const placeholders = [
+    "__ARCADIA_CODEX_GO_BROKER__",
+    "__ARCADIA_CLAUDE_GO_BROKER__",
     "__ARCADIA_CODEX_PRESERVE_BROKER__",
     "__ARCADIA_CLAUDE_PRESERVE_BROKER__",
     "__ARCADIA_CODEX_ADVANCE_BROKER__",
@@ -121,6 +123,8 @@ export function renderManagedSkill(template: string, executables: BrokerExecutab
     throw validationError("The bundled arcadia-go skill template is missing broker placeholders.");
   }
   return template
+    .replaceAll("__ARCADIA_CODEX_GO_BROKER__", executables.go.codex)
+    .replaceAll("__ARCADIA_CLAUDE_GO_BROKER__", executables.go.claude)
     .replaceAll("__ARCADIA_CODEX_PRESERVE_BROKER__", executables.preserve.codex)
     .replaceAll("__ARCADIA_CLAUDE_PRESERVE_BROKER__", executables.preserve.claude)
     .replaceAll("__ARCADIA_CODEX_ADVANCE_BROKER__", executables.advance.codex)
@@ -205,8 +209,8 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
     sharedClaudeSkill: symlinkResolvesTo(paths.claudeSkill, paths.codexSkillDirectory),
     managedAgentAskSkill: readOptional(paths.codexAgentAskSkill) === expectedAgentAskSkill,
     sharedClaudeAgentAskSkill: symlinkResolvesTo(paths.claudeAgentAskSkill, paths.codexAgentAskSkillDirectory),
-    // Reconciliation (`go`) mutates the shared Git common directory. It is a
-    // host-controller operation, not a sandboxed coding-agent capability.
+    // The sandboxed `go` launcher submits a bounded host-worker request; the
+    // same protected release performs direct reconciliation only on the host.
     claudePermission: agentCallableExecutables(options.executables).every((providers) => allow.includes(`Bash(${providers.claude})`)),
     noLegacyClaudePermissions: allow.every((entry) =>
       !isLegacyClaudePermission(entry) &&
@@ -347,7 +351,7 @@ function updateClaudeSkillLink(
 
 function managedCodexRule(executables: BrokerExecutables): string {
   return [
-    "# Managed by `arcadia go-broker install`. Git-mutating `go` stays host-only.",
+    "# Managed by `arcadia go-broker install`. Agent `go` submits a bounded host-worker request.",
     ...agentCallableExecutables(executables).flatMap((providers) => [
       "prefix_rule(",
       `    pattern = [${JSON.stringify(providers.codex)}],`,
@@ -359,7 +363,7 @@ function managedCodexRule(executables: BrokerExecutables): string {
 }
 
 function agentCallableExecutables(executables: BrokerExecutables): ProviderExecutables[] {
-  return [executables.advance, executables.preserve, executables.workMonitor];
+  return [executables.go, executables.advance, executables.preserve, executables.workMonitor];
 }
 
 function setTopLevelTomlValues(content: string, values: Record<string, string>): string {

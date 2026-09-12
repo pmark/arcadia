@@ -1425,23 +1425,30 @@ dependency bridging, a temporary SQLite database, candidate and Dashboard
 builds, Vitest, and syntax-checking the revision-pinned compiled broker. A
 failure reports the blocked operation and one recovery command without
 loosening Codex's sandbox. The installed `go` executable is a host controller
-and is intentionally absent from coding-agent allowlists because it mutates
-shared Git metadata. The agent runtime exposes only this contract:
+outside the sandbox; from Codex it submits a bounded host-worker request and
+does not mutate shared Git metadata in the agent process. The agent runtime
+exposes only this contract:
 
 ```sh
+~/.local/bin/arcadia-go-broker-codex
+# Claude Code uses: ~/.local/bin/arcadia-go-broker-claude
 ~/.local/bin/arcadia-advance-broker-codex
 # Claude Code uses: ~/.local/bin/arcadia-advance-broker-claude
 ~/.local/bin/arcadia-work-monitor-broker-codex
 # Claude Code uses: ~/.local/bin/arcadia-work-monitor-broker-claude
+~/.local/bin/arcadia-preserve-broker-codex
+# Claude Code uses: ~/.local/bin/arcadia-preserve-broker-claude
 ```
 
 From the host, run the matching `go` executable with no arguments from the
 completed worktree. It calls the same `runGoCommand` implementation first in
-preview mode and then with the identical fixed inputs plus apply. In the prepared worktree,
-the shared skill calls its fixed `advance` and read-only `work-monitor`
-launchers, then performs ordinary local read-only inspection without an
-approval question. Apply repeats all validation, so a race or state change
-fails closed. Every public argument is refused. No launcher can request
+preview mode and then with the identical fixed inputs plus apply. From Codex,
+the shared skill calls the same fixed `go` launcher and waits for the host
+worker's protected response. In the prepared worktree, the skill calls its
+fixed `advance`, `preserve`, and read-only `work-monitor` launchers, then
+performs ordinary local read-only inspection without an approval question.
+Apply repeats all validation, so a race or state change fails closed. Every
+public argument is refused. No launcher can request
 `--launch`, choose a model or effort, override the workspace, or redirect the
 repository. Its success output is canonical JSON; a refusal is JSON on stderr.
 

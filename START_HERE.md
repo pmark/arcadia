@@ -809,8 +809,9 @@ pnpm arcadia go-broker status
 ```
 
 Installation readiness is separate from runtime readiness: `status` succeeds for
-a correct install even before the worker starts. Its named `preservationTransport`
-field reports whether the host worker has a fresh heartbeat.
+a correct install even before the worker starts. Its named
+`preservationTransport` field reports whether the host worker has a fresh
+heartbeat for agent `go` and preservation requests.
 
 No registry request is part of installation: if local dependencies are absent,
 it fails with the `pnpm bridge:worktree` recovery command. Before it reports success, installation also creates and retires one
@@ -825,10 +826,12 @@ network access.
 configuration is missing a required worktree root, retains a legacy sandbox, or
 does not deny command network access.
 
-The installed `go` launcher remains host-only. The agent-callable `preserve`
-launcher submits a bounded request to the **existing host worker**; it never
-writes shared Git metadata or submits validation assertions. Before a session
-needs preservation, run the updated worker on the host:
+The installed `go` launcher remains the host controller outside the sandbox.
+Inside Codex it submits a bounded request to the **existing host worker**; it
+does not write shared Git metadata from the agent process. The agent-callable
+`preserve` launcher uses the same request path and never submits validation
+assertions. Before a session needs `go` or preservation from a coding-agent
+prompt, run the updated worker on the host:
 
 ```sh
 arcadia worker start --workspace /absolute/path/to/workspace
@@ -836,14 +839,18 @@ arcadia go-broker status
 ```
 
 `status` refuses an incomplete installation, including a missing
-`preservationLauncher`. An absent heartbeat reports `preservationTransport.ready: false` without failing the install check. Actual preservation requests refuse
-until the transport is available. The worker needs current scoped
+`preservationLauncher`. An absent heartbeat reports
+`preservationTransport.ready: false` without failing the install check. Actual
+agent `go` and preservation requests refuse until the transport is available.
+The worker needs current scoped
 validation authority. Missing authority or absent checks is a refusal, not an
 invitation to enable broader permissions.
 
-From the registered candidate worktree, the agent uses fixed launchers:
+From the Project repository or registered candidate worktree, the agent uses
+fixed launchers:
 
 ```sh
+~/.local/bin/arcadia-go-broker-codex
 ~/.local/bin/arcadia-advance-broker-codex
 ~/.local/bin/arcadia-work-monitor-broker-codex
 ~/.local/bin/arcadia-preserve-broker-codex
