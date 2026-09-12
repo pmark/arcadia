@@ -455,6 +455,27 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/commands/go.ts", "src/goBroker.ts", "docs/working-copy-safety.md"]
+  - id: register-agent-workspace-trust
+    title: "`go-broker install` establishes and verifies agent workspace trust for each configured Arcadia Project repository, and `go-broker status` reports it as a first-class readiness condition."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "`go-broker install` establishes and verifies agent workspace trust for each configured Arcadia Project repository, and `go-broker status` reports it as a first-class readiness condition."
+    expected_artifact: Evidence satisfying Agent Ask register-agent-workspace-trust
+    clarification: clarified
+    confidence: high
+    source: Agent Ask register-agent-workspace-trust-2026-09-11-v2
+    acceptance_criteria:
+      - "`go-broker install` records workspace trust for each configured Project repository at its repository root, using the agent's own trust mechanism (for Codex, a `[projects.\"<repo root>\"] trust_level = \"trusted\"` entry in the operator's config)."
+      - Trust is granted only to repositories already configured as Arcadia Projects. A parent directory, a shared worktree root such as `~/.codex/worktrees`, and the home directory are never trusted, and a test proves each of those three is refused.
+      - "`go-broker status` reports trust as a named check alongside the existing profile, executable and allowlist checks, and reports `ready: false` with the exact missing repository when trust is absent."
+      - "Re-running `install` is idempotent: an existing trusted entry is neither duplicated nor downgraded, and unrelated entries in the operator's config are preserved byte-for-byte."
+      - A repository the agent has never seen dispatches a prepared worktree with zero trust prompts and zero approval prompts, proven on a disposable fixture rather than asserted.
+      - State explicitly whether Claude Code's equivalent workspace-trust gate needs the same treatment; if it does, cover it, and if it does not, record why in the Artifact.
+      - "Preserve the proof Artifact: trust-scoping refusal tests, idempotence tests, and the zero-prompt fixture evidence; include the exact runnable target and operator QA steps in the pull request, or state why no runnable surface exists."
+    depends_on: []
+    decisions: []
+    references: ["src/agentSetup/goBrokerAgentSetup.ts", "src/goBroker.ts", "docs/reports/prove-zero-prompt-production-loop-runbook.md", "docs/working-copy-safety.md"]
 questions: []
 decisions: []
 current_action: prove-zero-prompt-production-loop
