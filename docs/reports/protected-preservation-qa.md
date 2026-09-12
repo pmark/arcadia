@@ -67,3 +67,19 @@ completion. Guarded launch and the reconciliation/completion chain remain the
 next governed work. The real-host rehearsal still waits for those prerequisites
 and all explicit preflight grants. Remote-preservation behavior is covered by
 the existing injected-remote tests; this fixture claims local preservation only.
+
+## Recorded validation
+
+- TypeScript compilation passed (`pnpm exec tsc -p tsconfig.json`).
+- Preservation, broker and agent-setup regression tests: **47 passed**.
+- Native Seatbelt validation/authority/content tests: **7 passed**.
+- Existing planning-worker compatibility tests: **16 passed on the host**.
+  The standalone tsx CLI case requires host IPC; its agent-sandbox failure was
+  not treated as an implementation pass.
+- The actual Codex `arcadia-unattended` boundary fixture passed. Its exact
+  source revision, compiled-runtime digest, commands, validation results and
+  preserved tree/commit are in `protected-preservation-fixture.json`.
+
+The installed production worker and global broker were not upgraded by this
+work. Integration, acceptance, completion and pointer advancement remain
+separate governed operations. The implementation Action remains open for review.
