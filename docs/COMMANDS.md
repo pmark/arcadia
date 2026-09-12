@@ -1459,6 +1459,10 @@ pnpm arcadia go-broker status
 pnpm arcadia go-broker status --json
 ```
 
+Check `data.agentGoTransport.ready` before an agent `go` request. It requires
+a fresh heartbeat from a worker that supports `go`; an older preservation-only
+worker is unavailable for this operation even when its heartbeat is fresh.
+
 `status` verifies that all six launchers resolve to one valid protected release,
 the default Codex config and every present named `*.config.toml` profile have
 safe approval/sandbox settings and both standard worktree roots, only the

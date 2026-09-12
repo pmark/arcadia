@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { constants, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { constants, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
@@ -23,6 +23,7 @@ interface TransportHeartbeat {
   at: number;
   sessions: Array<{ id: string; worktree: string; repository: string }>;
   repositories?: Array<{ path: string; projectSlug: string }>;
+  goRequests?: boolean;
 }
 
 export function preservationTransportReady(workspace: string): boolean {
@@ -34,6 +35,11 @@ export function preservationTransportReady(workspace: string): boolean {
 
 function readHeartbeat(workspace: string): TransportHeartbeat {
   return JSON.parse(readFileSync(path.join(workspace, HEARTBEAT), "utf8")) as TransportHeartbeat;
+}
+
+export function agentGoTransportReady(workspace: string): boolean {
+  try { return preservationTransportReady(workspace) && readHeartbeat(workspace).goRequests === true; }
+  catch { return false; }
 }
 
 /** The sandbox can request only preservation of its registered cwd. No commands,
@@ -72,7 +78,7 @@ export async function requestCandidatePreservation(source: string) {
 export async function requestAgentGo(source: string, agent: GoBrokerAgent) {
   const workspace = requireResolvedWorkspace({ cwd: source });
   const current = realpathSync(source);
-  if (!preservationTransportReady(workspace)) throw validationError("Protected Arcadia go request path is unavailable. Start the updated Arcadia worker on the host before requesting go.");
+  if (!agentGoTransportReady(workspace)) throw validationError("Protected Arcadia go request path is unavailable. Start the updated Arcadia worker on the host before requesting go.");
   const routes = readHeartbeat(workspace);
   const route = routes.sessions.find(s => s.worktree === current)
     ?? routes.repositories?.find(repository => repository.path === current);
@@ -114,12 +120,13 @@ export function processPreservationRequests(db: Database.Database, workspace: st
     schema: "arcadia-preservation-transport-v1",
     at: Date.now(),
     sessions: leases.map(s => ({ id: s.id, worktree: s.worktree_path, repository: s.repository_path })),
-    repositories
+    repositories,
+    goRequests: true
   }));
   renameSync(`${heartbeat}.${process.pid}.tmp`, heartbeat);
-  for (const repository of repositories) processGoRequest({ workspace, source: repository.path, repository: repository.path });
+  for (const repository of repositories) processGoRequest({ workspace, source: repository.path });
   for (const lease of leases) {
-    processGoRequest({ workspace, source: lease.worktree_path, repository: lease.repository_path });
+    processGoRequest({ workspace, source: lease.worktree_path });
     const request = path.join(lease.worktree_path, PRESERVATION_REQUEST_FILE);
     if (!existsSync(request)) continue;
     let nonce: string;
@@ -164,7 +171,7 @@ export function processPreservationRequests(db: Database.Database, workspace: st
   }
 }
 
-function processGoRequest(input: { workspace: string; source: string; repository: string }): void {
+function processGoRequest(input: { workspace: string; source: string }): void {
   const request = path.join(input.source, GO_REQUEST_FILE);
   if (!existsSync(request)) return;
   let nonce: string;
@@ -184,6 +191,10 @@ function processGoRequest(input: { workspace: string; source: string; repository
       agent = value.agent;
     } finally { closeSync(fd); }
   } catch { return; }
+  // Consume the transport file before canonical Git cleanliness checks. Keeping
+  // it in the source would make every otherwise-clean request refuse itself.
+  // Only the worker that removes the request may run the controller.
+  try { unlinkSync(request); } catch { return; }
   const response = goResponsePath(input.workspace, nonce);
   if (existsSync(response)) return;
   let result;

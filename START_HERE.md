@@ -811,7 +811,9 @@ pnpm arcadia go-broker status
 Installation readiness is separate from runtime readiness: `status` succeeds for
 a correct install even before the worker starts. Its named
 `preservationTransport` field reports whether the host worker has a fresh
-heartbeat for agent `go` and preservation requests.
+heartbeat for preservation requests. `agentGoTransport.ready` separately
+confirms that the running worker supports agent `go` requests; an older worker
+cannot pass this check merely by sending a fresh heartbeat.
 
 No registry request is part of installation: if local dependencies are absent,
 it fails with the `pnpm bridge:worktree` recovery command. Before it reports success, installation also creates and retires one

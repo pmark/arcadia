@@ -15,7 +15,7 @@ installed fixed `go` launcher submits a bounded request to the host worker; it
 does not run Git mutation in the sandbox.
 
 If the request is exactly `arcadia advance` in a prepared worktree, begin at
-step 2. That phrase is the continuation
+step 3. That phrase is the continuation
 prompt, not permission to invoke the mutable CLI command directly.
 
 ## Workflow
@@ -33,6 +33,11 @@ prompt, not permission to invoke the mutable CLI command directly.
    the sandbox. Never pass arguments, run mutable `arcadia go` directly, or
    recreate the Git logic by hand. If the worker is unavailable, the refusal is
    the repair action: start the updated worker and rerun the same launcher.
+   On success, continue from `data.nextWorktree.path`: use that directory for
+   subsequent commands and run the fixed `advance` launcher there (step 3).
+   Do not stop at printing the broker JSON. If the active environment cannot
+   write the returned worktree, report that exact environment mismatch once;
+   do not request repeated Git or filesystem escalations.
 2. After the declared objective checks are ready, request protected preservation:
 
    ```sh
