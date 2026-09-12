@@ -4,6 +4,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { git, listWorktrees, tryGit } from "../git/worktrees.js";
+import { snapshotCandidate } from "./candidateSnapshot.js";
 import { createId } from "../utils/id.js";
 import { getActiveWorktreeReservation, getRepositoryLease } from "./index.js";
 
@@ -47,7 +48,7 @@ export interface CandidatePreservationRequest {
   policyEpoch: number;
   policyRevision: number;
   /** Proven validation of the candidate. Absent or failed validation refuses. */
-  validation: { passed: boolean; evidenceRef: string };
+  validation: { passed: boolean; evidenceRef: string; candidateFingerprint: string };
   remotePreservation: RemotePreservationAuthorization;
   now?: Date;
 }
@@ -100,6 +101,7 @@ export interface CandidatePreservationReceipt {
   policyEpoch: number;
   policyRevision: number;
   candidateFingerprint: string;
+  validationEvidenceRef: string;
   commitSha: string;
   preservationState: PreservationState;
   pushedRemote: string | null;
@@ -138,6 +140,9 @@ export function ensureCandidatePreservationTable(db: Database.Database): void {
       receipt_json TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS candidate_preservation_claims (
+      session_id TEXT PRIMARY KEY, pid INTEGER NOT NULL, token TEXT NOT NULL
+    );
     CREATE INDEX IF NOT EXISTS idx_candidate_preservation_branch
       ON candidate_preservation_receipts(repository_path, branch);
   `);
@@ -148,17 +153,12 @@ function canonical(value: string): string {
   return existsSync(resolved) ? realpathSync(resolved) : resolved;
 }
 
-/**
- * The staged tree hash of the candidate worktree. `git add -A` followed by
- * `write-tree` is content-addressed and deterministic: identical file content
- * yields an identical fingerprint regardless of timestamps, and it captures
- * untracked files a plain `git diff` would miss. Staging the candidate is also
- * step one of preservation itself, so this both fingerprints and stages exactly
- * the one worktree — a sibling worktree keeps its own separate index untouched.
- */
+/** Capture raw candidate bytes with Git's object store, then set only this
+ * worktree's index to the captured tree. Filters/hooks never run as host code. */
 function stageAndFingerprint(candidateWorktreePath: string): string {
-  git(candidateWorktreePath, ["add", "-A"]);
-  return git(candidateWorktreePath, ["write-tree"]).trim();
+  const tree = snapshotCandidate(candidateWorktreePath);
+  git(candidateWorktreePath, ["read-tree", tree]);
+  return tree;
 }
 
 function headTree(candidateWorktreePath: string): string | null {
@@ -187,6 +187,7 @@ function commitCandidate(input: {
   actionId: string;
   requestId: string;
   fingerprint: string;
+  branch: string;
   now: Date;
 }): string {
   const message =
@@ -194,9 +195,13 @@ function commitCandidate(input: {
     `${PRESERVATION_TRAILER}: ${input.requestId}\n` +
     `${FINGERPRINT_TRAILER}: ${input.fingerprint}\n`;
   const stamp = input.now.toISOString();
-  execFileSync("git", ["commit", "--no-verify", "-m", message], {
+  const parent = git(input.candidateWorktreePath, ["rev-parse", "HEAD"]).trim();
+  const branch = `refs/heads/${input.branch}`;
+  if (git(input.candidateWorktreePath, ["symbolic-ref", "HEAD"]).trim() !== branch) throw validationError("Candidate branch changed before commit.");
+  const commit = execFileSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "commit.gpgSign=false", "commit-tree", input.fingerprint, "-p", parent, "-m", message], {
     cwd: input.candidateWorktreePath,
-    stdio: ["ignore", "ignore", "pipe"],
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
     env: {
       ...process.env,
       GIT_AUTHOR_NAME: "Arcadia Controller",
@@ -206,8 +211,9 @@ function commitCandidate(input: {
       GIT_AUTHOR_DATE: stamp,
       GIT_COMMITTER_DATE: stamp
     }
-  });
-  return git(input.candidateWorktreePath, ["rev-parse", "HEAD"]).trim();
+  }).trim();
+  git(input.candidateWorktreePath, ["-c", "core.hooksPath=/dev/null", "update-ref", branch, commit, parent]);
+  return commit;
 }
 
 function loadReceipt(db: Database.Database, requestId: string): CandidatePreservationReceipt | null {
@@ -307,10 +313,10 @@ export function preserveCandidate(
   const candidateWorktreePath = canonical(request.candidateWorktreePath);
 
   // --- Refusals that need no staging (AC6) ---------------------------------
-  if (!request.validation.passed) {
+  if (!request.validation?.passed || !request.validation.candidateFingerprint) {
     throw validationError("The candidate has no passing validation evidence; it will not be preserved.", {
       actionId: request.actionId,
-      evidenceRef: request.validation.evidenceRef
+      evidenceRef: request.validation?.evidenceRef ?? null
     });
   }
 
@@ -374,6 +380,9 @@ export function preserveCandidate(
   hooks.beforeStage?.();
   const candidateFingerprint = stageAndFingerprint(candidateWorktreePath);
   hooks.afterStage?.();
+  if (candidateFingerprint !== request.validation.candidateFingerprint) {
+    throw validationError("Candidate content differs from the validated snapshot.", { evidenceRef: request.validation.evidenceRef });
+  }
 
   // --- Idempotent replay by request id (AC3) -------------------------------
   const priorReceipt = loadReceipt(db, request.requestId);
@@ -400,12 +409,16 @@ export function preserveCandidate(
     // Preserve the existing commit rather than creating an empty one.
     commitSha = git(candidateWorktreePath, ["rev-parse", "HEAD"]).trim();
   } else {
+    if (snapshotCandidate(candidateWorktreePath) !== candidateFingerprint) {
+      throw validationError("Candidate changed between validation and preservation.");
+    }
     hooks.beforeCommit?.();
     commitSha = commitCandidate({
       candidateWorktreePath,
       actionId: request.actionId,
       requestId: request.requestId,
       fingerprint: candidateFingerprint,
+      branch: request.branch,
       now
     });
     hooks.afterCommit?.();
@@ -424,6 +437,7 @@ export function preserveCandidate(
     policyEpoch: request.policyEpoch,
     policyRevision: request.policyRevision,
     candidateFingerprint,
+    validationEvidenceRef: request.validation.evidenceRef,
     commitSha,
     createdAt: now.toISOString(),
     replayed: false

@@ -386,18 +386,22 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Prove on the real host that Arcadia hands off, executes, validates, preserves and advances bounded coding work with zero sandbox approval prompts, advancing the governed pointer and preparing the next Action's worktree, while retaining every consequential approval boundary.
+    next_action: Prove the real-host zero-prompt preservation, separately authorized integration, evidence reconciliation and governed pointer transition after guarded launch and canonical completion machinery exist.
     expected_artifact: Evidence satisfying Agent Ask prove-zero-prompt-production-loop
     clarification: clarified
     confidence: high
-    source: Agent Ask let-agent-preserve-its-candidate-2026-09-11
+    source: Agent Ask trusted-protected-preservation-scope-2026-09-12-v2
     acceptance_criteria:
       - Use the Zero Prompt Rehearsal fixture Project with two dependent small Actions and the same Codex profile, protected launchers, workspace root, dependency bridge, build, test, SQLite, Git, network and pull-request path that managed production will use.
-      - From one activation, Arcadia prepares Action A's worktree, advances and monitors it, edits, builds, tests, preserves its exact branch and draft pull request, reconciles evidence, advances the governed pointer to Action B, and prepares Action B's worktree, with zero observed sandbox approval prompts. Starting Action B's Session unattended is out of scope for this Action and is proven by prove-two-action-unattended-production, which depends on the launch and worker machinery this Action precedes.
-      - One proof Artifact records every command, profile, writable root, sandbox denial, approval event, worktree, branch, revision, Session, Action, validation result, commit, push, pull request and operator intervention for this single run; zero observed prompts and zero hidden interventions are acceptance conditions.
-    depends_on: [broker-candidate-preservation, let-agent-preserve-its-candidate]
+      - Before the counted run, record and verify every required launch, remote-preservation, integration and mechanical-completion grant, with its exact fixture scope, policy/receipt identity, freshness and limits. A missing, stale or insufficient grant stops preflight before the run begins; no new approval halfway through the proof is part of a successful run.
+      - Before the counted run, identify and verify the exact supported host entry point delivered by reconcile-session-exits-to-next-move and advance-approved-production-work that drives reconciliation and canonical completion without the continuous worker. Record its command and the revision-pinned arcadia-go-broker-codex host-controller invocation that prepares Action B, or the supported combined entry point if the prerequisite implementation provides one. Current go prepares work but does not supply the missing reconciliation bridge; until a supported bridge is shipped and verified, preflight refuses. Any explicit host-controller invocation is a visible, predeclared operator step, not autonomous execution.
+      - From one bounded activation and the predeclared visible host steps, Arcadia prepares Action A's worktree, advances and monitors it, edits, builds, tests, preserves its exact branch and authorized draft pull request, reconciles evidence through the implemented canonical completion bridge, advances the governed pointer to Action B and prepares Action B's worktree. Record and verify the actual authoritative Action completion and both pointer document effects; a successful command response alone is insufficient.
+      - After protected preservation, prove the host controller reports commitsToIntegrate greater than zero and integrates the exact candidate branch under the separately explicit integration grant recorded in preflight. Prove acceptance/completion and pointer advancement use their existing governed writers and applicable authority, never preservation alone.
+      - Keep zero sandbox approval prompts, zero hidden interventions and fully unattended execution distinct. This rehearsal requires the first two, permits only the predeclared visible operator steps, and makes no fully unattended execution claim. prove-two-action-unattended-production owns unattended Action B launch and execution after the continuous worker exists.
+      - One proof Artifact records preflight grants, exact supported entry points, all predeclared manual steps, and every command, profile, writable root, sandbox denial, approval event, worktree, branch, revision, Session, Action, validation result, commit, push, pull request, actual document transition and operator intervention. Zero sandbox approval prompts and zero hidden interventions are acceptance conditions; record visible manual invocation explicitly and never label it autonomous execution.
+    depends_on: [broker-candidate-preservation, let-agent-preserve-its-candidate, advance-approved-production-work]
     decisions: []
-    references: ["docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "docs/working-copy-safety.md", "src/commands/worker.ts", "src/sessions/index.ts", "src/agentSetup/goBrokerAgentSetup.ts"]
+    references: ["docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "docs/working-copy-safety.md", "src/commands/worker.ts", "src/sessions/index.ts", "src/agentSetup/goBrokerAgentSetup.ts", "src/commands/go.ts", "src/ask/settlement.ts", "src/dispatch/pointer.ts"]
   - id: harden-zero-prompt-production-loop
     title: Harden the proven zero-prompt loop across profiles, approval gates, mid-flight shutdown and reinstall, once the happy path has run clean twice in a row.
     status: open
@@ -421,22 +425,23 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: A sandboxed coding-agent session can preserve its completed candidate through the protected controller boundary, without direct write access to shared Git metadata and without ad hoc approval escalation.
+    next_action: Connect trusted candidate-bound validation to the existing protected preservation request and prove it from the intended agent sandbox on a disposable fixture.
     expected_artifact: Evidence satisfying Agent Ask let-agent-preserve-its-candidate
     clarification: clarified
     confidence: high
-    source: Agent Ask let-agent-preserve-its-candidate-2026-09-11
+    source: Agent Ask trusted-protected-preservation-scope-2026-09-12-v2
     acceptance_criteria:
-      - A sandboxed agent session preserves a completed candidate by invoking a protected launcher only, never `git commit` and never any direct write to the shared Git directory; proven on a disposable fixture rather than asserted.
-      - "The preserve launcher is agent-callable for both Codex and Claude: it appears in `agentCallableExecutables`, in the Codex rule, and in the Claude allowlist, and `go-broker install` grants it alongside `advance` and `work-monitor`."
-      - The `arcadia-go` skill instructs the agent to invoke that launcher when its task is complete, and continues to forbid running mutable `arcadia advance` or `git commit` directly.
-      - "`go-broker status` reports the preserve launcher as a named readiness check and returns `ready: false` naming it when absent."
-      - After an agent preserves, a host-controller `go` reports `commitsToIntegrate` greater than zero, integrates the candidate branch, and advances the governed pointer - demonstrated end to end on the fixture.
-      - An agent that has NOT completed its work cannot use the launcher to fabricate a preserved candidate; preservation refuses when the declared acceptance evidence is absent.
-      - "Preserve the proof Artifact: fixture evidence of an agent-preserved candidate with no shared-Git write by the agent, allowlist and skill tests, and the refusal test above; include the exact runnable target and operator QA steps in the pull request."
+      - Reuse the existing protected host controller, registered prepared worktree, Session lease and candidate-preservation machinery. Permit the minimal protected request transport needed for the intended sandbox to reach the existing host-side preservation operation; this is not a second controller or a general host command-execution service. Do not introduce another pointer writer, allow raw Git mutation, make shared Git metadata writable to the agent, or weaken the sandbox.
+      - "Validate only the declared objective checks required for preservation, sourced from the existing host-managed Project metadata validation_commands and frozen into the immutable authorized Action packet. Verify their definitions against that packet and its authorizing receipt; the request cannot select or replace checks. Use a host-owned validation runner as the trusted result producer: it runs those checks with candidate code sandboxed, observes their actual process outcomes and captures evidence in host-protected storage. An agent-writable evidence file, caller-supplied passed=true, or agent completion assertion is not trusted evidence. Passing a check proves only that check passed; do not build a general acceptance evaluator or require subjective acceptance criteria to become executable."
+      - Bind results to the exact candidate snapshot actually tested, repository/worktree/branch/base, Project and Action, immutable packet hash, check definitions and applicable authority including policy revision/epoch. Require that the validated candidate snapshot and the committed tree are identical. Cover mutation during validation as well as mutation between validation and preservation; hashing only the content found after testing is insufficient. Use the smallest sound existing snapshot or content-binding mechanism without requiring a new snapshot framework. Refuse absent, failed, skipped, stale or caller-fabricated evidence and changed bindings, preserve candidate files on refusal, and prove that altered content cannot inherit a passing receipt.
+      - Make the protected preservation request agent-callable for Codex and Claude through the existing launcher setup, Codex rule and Claude allowlist. From the intended Codex sandbox, prove the actual request reaches the protected host and creates one candidate commit on a disposable objective-criteria fixture, with no direct shared-Git write by the agent or ad hoc approval escalation; allowlist presence and unsandboxed direct invocation alone are insufficient proof.
+      - Update the arcadia-go skill to request protected preservation after required validation, while continuing to forbid direct mutable advance and git commit. Make go-broker status report named preservation readiness and fail closed when the launcher or required protected request path is unavailable.
+      - Preservation records a recoverable candidate and trusted validation only; it does not accept the Action, integrate or merge it, mark it done, or advance its pointer. Subjective acceptance and required independent review remain separate gates. Remote preservation requires its existing explicit authority; unauthorized or unreachable remote preservation remains honestly LOCAL ONLY with an exact recovery action.
+      - Reuse the existing request-id and recovery receipts; prove retries and a lost response yield one preserved commit without cross-worktree mutation or duplicate preservation.
+      - Preserve passing targeted tests and a reproducible protected-boundary fixture Artifact recording exact host/runtime revision, profile, writable roots, authoritative check definitions, trusted producer, check results, tested snapshot and committed-tree identities, Action, packet, authority, request/receipt, commit and every denial, approval or operator intervention. Include fixtures for content mutation during validation and between validation and preservation, showing altered content cannot inherit passing evidence. Include exact runnable operator QA steps and the end-user procedure in the PR; distinguish fixture proof from live production acceptance.
     depends_on: []
     decisions: []
-    references: ["src/agentSetup/goBrokerAgentSetup.ts", "src/goBroker.ts", "src/sessions/worktreePreparation.ts", "src/commands/go.ts", "docs/reports/prove-zero-prompt-production-loop-runbook.md"]
+    references: ["src/agentSetup/goBrokerAgentSetup.ts", "src/goBroker.ts", "src/sessions/worktreePreparation.ts", "src/commands/go.ts", "docs/reports/prove-zero-prompt-production-loop-runbook.md", "src/commands/preserve.ts", "src/sessions/candidatePreservation.ts", "docs/working-copy-safety.md"]
   - id: refuse-to-orphan-an-uncommitted-candidate
     title: The host controller reports a prepared worktree that holds uncommitted work instead of silently preparing a duplicate for the same Action.
     status: open
@@ -497,7 +502,7 @@ actions:
     references: ["src/commands/review.ts", "src/ask/settlement.ts", "docs/decisions/0046-how-should-this-project-update-be-applied-set-the-work-pointer-to-let-agent-pres.md", "docs/proposals/validate-governed-documents.md"]
 questions: []
 decisions: []
-current_action: prove-zero-prompt-production-loop
+current_action: let-agent-preserve-its-candidate
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---

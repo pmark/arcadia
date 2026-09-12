@@ -252,7 +252,7 @@ export function prepareSession(input: {
   return row;
 }
 
-function findPromotionDecision(
+export function findPromotionDecision(
   db: Database.Database,
   expected: {
     projectId: string;
