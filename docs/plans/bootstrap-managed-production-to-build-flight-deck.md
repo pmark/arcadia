@@ -476,6 +476,25 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/agentSetup/goBrokerAgentSetup.ts", "src/goBroker.ts", "docs/reports/prove-zero-prompt-production-loop-runbook.md", "docs/working-copy-safety.md"]
+  - id: approval-must-apply-or-refuse
+    title: Review approval applies its effect to the authoritative document or refuses with a named reason, and never consumes an item it cannot apply.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Review approval applies its effect to the authoritative document or refuses with a named reason, and never consumes an item it cannot apply.
+    expected_artifact: Evidence satisfying Agent Ask approval-must-apply-or-refuse
+    clarification: clarified
+    confidence: high
+    source: Agent Ask approval-must-apply-or-refuse-2026-09-12
+    acceptance_criteria:
+      - Approving a review item writes the resulting state to the authoritative checked-in document, or refuses; the workspace database and that document never disagree about whether a Decision is answered.
+      - An approval whose effect cannot be applied is refused with a reason naming what is missing, and the item remains in the attention queue rather than leaving it.
+      - A `project_update` Ask whose `target_ref` names a field with no apply path is refused at preview time, rather than opening a clarification Decision that approval cannot act on.
+      - "A regression test reproduces R183: approve a project-field clarification and assert either the field moved and the document was updated, or the approval was refused and the item is still queued."
+      - "Preserve the proof Artifact: the regression test plus a before/after of the database and document state; include the exact runnable target and operator QA steps in the pull request."
+    depends_on: []
+    decisions: []
+    references: ["src/commands/review.ts", "src/ask/settlement.ts", "docs/decisions/0046-how-should-this-project-update-be-applied-set-the-work-pointer-to-let-agent-pres.md", "docs/proposals/validate-governed-documents.md"]
 questions: []
 decisions: []
 current_action: prove-zero-prompt-production-loop
