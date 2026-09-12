@@ -19,9 +19,19 @@ prompt, not permission to invoke the mutable CLI command directly.
 
 ## Workflow
 
-1. If this task is complete, report the candidate evidence and the exact
-   completed worktree root. Stop there: the host controller owns the next Git
-   mutation and will prepare the next worktree outside the sandbox.
+1. After the declared objective checks are ready, request protected preservation:
+
+   ```sh
+   __ARCADIA_CODEX_PRESERVE_BROKER__
+   # Claude Code uses: __ARCADIA_CLAUDE_PRESERVE_BROKER__
+   ```
+
+   The launcher submits a request only. The existing host worker validates an
+   immutable candidate snapshot in a restricted sandbox and preserves that exact
+   tree. Never supply a passing assertion or write an evidence file as authority.
+   An unavailable host worker is a named stop; never run Git mutation or weaken
+   the sandbox to bypass it. Preservation does not accept, integrate, complete,
+   or advance the Action. Retain the receipt and any LOCAL ONLY recovery action.
 2. If the request is `arcadia advance` in an already prepared worktree, set
    the command tool's working directory to that worktree and run:
 
@@ -85,5 +95,5 @@ controller may fast-forward, fetch, or create/remove a worktree; it may remove
 only the named clean source worktree and its merged agent branch. It never
 stages, commits, force-merges, resets, pushes, opens a pull request, deploys,
 launches a coding-agent process, or discards work. Every launcher accepts no
-public arguments. `advance` and `work-monitor` emit only canonical read-only
-results or refusals from inside the agent sandbox.
+public arguments. `advance` and `work-monitor` emit read-only results. `preserve` submits only a
+fixed preservation request and reads its host-protected response.

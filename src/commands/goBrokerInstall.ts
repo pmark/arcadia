@@ -28,6 +28,9 @@ import {
 import type { BrokerExecutables, ProviderExecutables } from "../agentSetup/goBrokerAgentSetup.js";
 import { runWorktreeRuntimeProbe, type WorktreeRuntimeProbeResult } from "../sessions/worktreeRuntimeProbe.js";
 
+import { preservationTransportReady } from "../sessions/preservationTransport.js";
+import { requireResolvedWorkspace } from "../workspace/resolve.js";
+
 const INSTALL_SCHEMA = "arcadia-go-broker-install-v1";
 
 export interface GoBrokerInstallData {
@@ -75,7 +78,7 @@ export function permissionSnippets(
 }
 
 function agentCallableExecutables(executables: BrokerExecutables): ProviderExecutables[] {
-  return [executables.advance, executables.workMonitor];
+  return [executables.advance, executables.preserve, executables.workMonitor];
 }
 
 export function runGoBrokerInstallCommand(
@@ -132,7 +135,7 @@ export function runGoBrokerInstallCommand(
           const launcher = path.join(stagedRelease, `${launcherBase}-${agent}`);
         writeFileSync(
           launcher,
-          `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(brokerEntrypoint)} ${agent} ${operation} "$@"\n`,
+          renderGoBrokerLauncher(brokerEntrypoint, agent, operation),
           { mode: 0o555 }
         );
         }
@@ -199,6 +202,7 @@ export function renderGoBrokerInstallSuccess(response: CommandSuccess<GoBrokerIn
     `Installed protected broker revision ${response.data.revision}.`,
     `Codex go executable: ${response.data.executables.go.codex}`,
     `Claude Code go executable: ${response.data.executables.go.claude}`,
+    `Codex preserve executable: ${response.data.executables.preserve.codex}`,
     `Codex advance executable: ${response.data.executables.advance.codex}`,
     `Codex work-monitor executable: ${response.data.executables.workMonitor.codex}`,
     `Manifest: ${response.data.manifest}`,
@@ -238,8 +242,12 @@ export function runGoBrokerStatusCommand(
     skillTemplate: readSkillTemplate(repository),
     agentAskSkillTemplate: readAgentAskSkillTemplate(repository)
   });
+  try {
+    if (!preservationTransportReady(requireResolvedWorkspace({ cwd: repository }))) broker.issues.push("preservationTransport: start the updated host worker; no fresh preservation heartbeat");
+  } catch { broker.issues.push("preservationTransport: configured workspace is unavailable"); }
   if (broker.issues.length > 0 || !agentSetup.ready) {
     throw validationError("Protected broker setup is not ready.", {
+      ready: false,
       revision: broker.revision,
       releaseDirectory: broker.releaseDirectory,
       brokerIssues: broker.issues,
@@ -452,4 +460,9 @@ function launcherBaseForOperation(operation: keyof BrokerExecutables): string {
     case "advance": return "arcadia-advance-broker";
     case "workMonitor": return "arcadia-work-monitor-broker";
   }
+}
+
+/** The exact no-argument launcher, also exercised by the disposable boundary proof. */
+export function renderGoBrokerLauncher(entrypoint: string, agent: "codex" | "claude", operation: "go" | "preserve" | "advance" | "work-monitor"): string {
+  return `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(entrypoint)} ${agent} ${operation} "$@"\n`;
 }

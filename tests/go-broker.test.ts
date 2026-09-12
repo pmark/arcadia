@@ -141,8 +141,9 @@ describe("protected Arcadia go broker", () => {
     expect(result.command).toBe("work-monitor-broker");
   });
 
-  it("allows agents to call only the read-only prepared-worktree brokers", () => {
+  it("allows read-only brokers and the preservation request launcher, never host go", () => {
     const executables = {
+      preserve: { codex: "/Users/operator/.local/bin/arcadia-preserve-broker-codex", claude: "/Users/operator/.local/bin/arcadia-preserve-broker-claude" },
       go: {
         codex: "/Users/operator/.local/bin/arcadia-go-broker-codex",
         claude: "/Users/operator/.local/bin/arcadia-go-broker-claude"
@@ -159,10 +160,12 @@ describe("protected Arcadia go broker", () => {
     expect(permissionSnippets(executables)).toEqual({
       codexRules: [
         'prefix_rule(pattern=["/Users/operator/.local/bin/arcadia-advance-broker-codex"], decision="allow")',
+        'prefix_rule(pattern=["/Users/operator/.local/bin/arcadia-preserve-broker-codex"], decision="allow")',
         'prefix_rule(pattern=["/Users/operator/.local/bin/arcadia-work-monitor-broker-codex"], decision="allow")'
       ],
       claudePermissions: [
         "Bash(/Users/operator/.local/bin/arcadia-advance-broker-claude)",
+        "Bash(/Users/operator/.local/bin/arcadia-preserve-broker-claude)",
         "Bash(/Users/operator/.local/bin/arcadia-work-monitor-broker-claude)"
       ]
     });

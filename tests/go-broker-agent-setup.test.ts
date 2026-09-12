@@ -97,6 +97,7 @@ describe("go broker agent setup", () => {
     expect(claude.permissions.allow).toEqual([
       "Bash(git status)",
       `Bash(${fixture.executables.advance.claude})`,
+      `Bash(${fixture.executables.preserve.claude})`,
       `Bash(${fixture.executables.workMonitor.claude})`
     ]);
     expect(claude.permissions.additionalDirectories).toEqual([
@@ -362,6 +363,7 @@ describe("go broker agent setup", () => {
     };
     expect(rules).not.toContain(fixture.executables.go.codex);
     expect(claude.permissions.allow).not.toContain(`Bash(${fixture.executables.go.claude})`);
+    expect(rules).toContain(fixture.executables.preserve.codex);
     expect(rules).toContain(fixture.executables.advance.codex);
     expect(rules).toContain(fixture.executables.workMonitor.codex);
   });
@@ -420,10 +422,11 @@ describe("go broker agent setup", () => {
   });
 });
 
-function createFixture(withExecutables = true): { home: string; executables: { go: { codex: string; claude: string }; advance: { codex: string; claude: string }; workMonitor: { codex: string; claude: string } } } {
+function createFixture(withExecutables = true) {
   const home = mkdtempSync(path.join(tmpdir(), "arcadia-agent-setup-"));
   roots.push(home);
   const executables = {
+    preserve: { codex: path.join(home, ".local", "bin", "arcadia-preserve-broker-codex"), claude: path.join(home, ".local", "bin", "arcadia-preserve-broker-claude") },
     go: {
       codex: path.join(home, ".local", "bin", "arcadia-go-broker-codex"),
       claude: path.join(home, ".local", "bin", "arcadia-go-broker-claude")
