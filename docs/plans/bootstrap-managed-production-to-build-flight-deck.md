@@ -390,14 +390,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask prove-zero-prompt-production-loop
     clarification: clarified
     confidence: high
-    source: Agent Ask break-launch-dependency-loop-2026-09-11
+    source: Agent Ask let-agent-preserve-its-candidate-2026-09-11
     acceptance_criteria:
       - Use the Zero Prompt Rehearsal fixture Project with two dependent small Actions and the same Codex profile, protected launchers, workspace root, dependency bridge, build, test, SQLite, Git, network and pull-request path that managed production will use.
       - From one activation, Arcadia prepares Action A's worktree, advances and monitors it, edits, builds, tests, preserves its exact branch and draft pull request, reconciles evidence, advances the governed pointer to Action B, and prepares Action B's worktree, with zero observed sandbox approval prompts. Starting Action B's Session unattended is out of scope for this Action and is proven by prove-two-action-unattended-production, which depends on the launch and worker machinery this Action precedes.
       - One proof Artifact records every command, profile, writable root, sandbox denial, approval event, worktree, branch, revision, Session, Action, validation result, commit, push, pull request and operator intervention for this single run; zero observed prompts and zero hidden interventions are acceptance conditions.
-    depends_on: [broker-candidate-preservation]
+    depends_on: [broker-candidate-preservation, let-agent-preserve-its-candidate]
     decisions: []
-    references: []
+    references: ["docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "docs/working-copy-safety.md", "src/commands/worker.ts", "src/sessions/index.ts", "src/agentSetup/goBrokerAgentSetup.ts"]
   - id: harden-zero-prompt-production-loop
     title: Harden the proven zero-prompt loop across profiles, approval gates, mid-flight shutdown and reinstall, once the happy path has run clean twice in a row.
     status: open
@@ -416,6 +416,45 @@ actions:
     depends_on: [prove-zero-prompt-production-loop]
     decisions: []
     references: ["docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/operator-demo-and-release-contract.md"]
+  - id: let-agent-preserve-its-candidate
+    title: A sandboxed coding-agent session can preserve its completed candidate through the protected controller boundary, without direct write access to shared Git metadata and without ad hoc approval escalation.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: A sandboxed coding-agent session can preserve its completed candidate through the protected controller boundary, without direct write access to shared Git metadata and without ad hoc approval escalation.
+    expected_artifact: Evidence satisfying Agent Ask let-agent-preserve-its-candidate
+    clarification: clarified
+    confidence: high
+    source: Agent Ask let-agent-preserve-its-candidate-2026-09-11
+    acceptance_criteria:
+      - A sandboxed agent session preserves a completed candidate by invoking a protected launcher only, never `git commit` and never any direct write to the shared Git directory; proven on a disposable fixture rather than asserted.
+      - "The preserve launcher is agent-callable for both Codex and Claude: it appears in `agentCallableExecutables`, in the Codex rule, and in the Claude allowlist, and `go-broker install` grants it alongside `advance` and `work-monitor`."
+      - The `arcadia-go` skill instructs the agent to invoke that launcher when its task is complete, and continues to forbid running mutable `arcadia advance` or `git commit` directly.
+      - "`go-broker status` reports the preserve launcher as a named readiness check and returns `ready: false` naming it when absent."
+      - After an agent preserves, a host-controller `go` reports `commitsToIntegrate` greater than zero, integrates the candidate branch, and advances the governed pointer - demonstrated end to end on the fixture.
+      - An agent that has NOT completed its work cannot use the launcher to fabricate a preserved candidate; preservation refuses when the declared acceptance evidence is absent.
+      - "Preserve the proof Artifact: fixture evidence of an agent-preserved candidate with no shared-Git write by the agent, allowlist and skill tests, and the refusal test above; include the exact runnable target and operator QA steps in the pull request."
+    depends_on: []
+    decisions: []
+    references: ["src/agentSetup/goBrokerAgentSetup.ts", "src/goBroker.ts", "src/sessions/worktreePreparation.ts", "src/commands/go.ts", "docs/reports/prove-zero-prompt-production-loop-runbook.md"]
+  - id: refuse-to-orphan-an-uncommitted-candidate
+    title: The host controller reports a prepared worktree that holds uncommitted work instead of silently preparing a duplicate for the same Action.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: The host controller reports a prepared worktree that holds uncommitted work instead of silently preparing a duplicate for the same Action.
+    expected_artifact: Evidence satisfying Agent Ask refuse-to-orphan-an-uncommitted-candidate
+    clarification: clarified
+    confidence: high
+    source: Agent Ask let-agent-preserve-its-candidate-2026-09-11
+    acceptance_criteria:
+      - "`go` detects a prepared worktree for the current Action that holds uncommitted changes, and reports it with its exact path rather than preparing a second worktree for that Action."
+      - The reported state names the operator's choices explicitly - preserve the existing candidate, or discard it - and `go` takes neither action implicitly.
+      - "The `clutter` summary counts existing agent worktrees accurately; a run with two agent worktrees never reports `extraWorktrees: 0`."
+      - "Preserve the proof Artifact: a fixture test reproducing an uncommitted prepared worktree and asserting `go` refuses to duplicate it; include the exact runnable target and operator QA steps in the pull request."
+    depends_on: []
+    decisions: []
+    references: ["src/commands/go.ts", "src/goBroker.ts", "docs/working-copy-safety.md"]
 questions: []
 decisions: []
 current_action: prove-zero-prompt-production-loop
