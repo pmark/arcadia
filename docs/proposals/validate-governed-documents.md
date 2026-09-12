@@ -130,3 +130,52 @@ Judgments for the operator, not the agent:
 2. Should it be wired into `arcadia work monitor`'s preflight, so working-copy
    safety and document validity are one check?
 3. Does #2 fold into R177's consistency work rather than standing alone?
+4. Should filing cost one command — an `arcadia propose` that writes
+   `docs/proposals/<slug>.md`, commits it on a **dedicated branch**, and pushes?
+
+## On the cost of filing (question 4)
+
+This proposal is the third document filed today, and each one cost a branch, a
+commit, a pull request and a review. That ceremony is not what
+[`AGENTS.md`](../../AGENTS.md) asks for — it says to write the file and "commit
+it like any other document," and says nothing about a pull request. The overhead
+is self-imposed, and it is a real disincentive: a capability gap noticed in
+passing is worth filing only if filing is cheap.
+
+Committing straight to the default branch is the obvious way to make it cheap,
+and it is the wrong one. **Many repositories disallow direct commits to `main`**
+— branch protection, required reviews, required checks — so a filing path that
+depends on writing to `main` works in this repository and fails in exactly the
+adopting projects the proposal mechanism exists to serve. It is also unsafe in
+the ordinary case: a settlement or a rehearsal in flight makes an unexpected
+commit on `main` an ambiguity in someone's evidence, which is why this document
+was filed on a branch today rather than committed directly.
+
+So the cheap path should still be a branch — just one the operator never has to
+think about. `arcadia propose <question>` would write the document, create a
+dedicated branch, commit, push, and print the URL to open a pull request, in one
+command. Whether it opens the pull request itself is a separate judgment: doing
+so needs credentials and network, which the current file-based mechanism
+deliberately does not, so it should degrade to "branch pushed, here is the link"
+when those are absent.
+
+Worth answering alongside this proposal because the same argument applies to
+every future filing, including the ones this validator will produce.
+
+## Why not GitHub issues
+
+Considered and rejected as the primary mechanism, for the record.
+
+An issue tracker is a second inbox that `arcadia portfolio` cannot see. Arcadia's
+Outcome is explicitly "without the operator holding the whole portfolio in their
+head," and the portfolio already carries 20 Decisions and 11 Way-change requests
+awaiting an answer; splitting that across two surfaces makes the problem it
+exists to solve worse. Issues also need network and credentials, which the
+committed-file mechanism deliberately does not — that is what lets a cloud
+container with no Arcadia installed still file one. And an issue has no
+ratification path: a proposal is answered by ratifying a Decision, and an issue
+cannot become one.
+
+Where issues would genuinely help is threaded discussion on an open proposal and
+filing from a phone. Neither is the pain that prompted question 4, and neither
+requires moving the mechanism.
