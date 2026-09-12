@@ -525,7 +525,7 @@ actions:
     references: ["docs/proposals/validate-governed-documents.md", "docs/proposals/gate-judgment-not-mechanics.md", "docs/decisions/0009-agent-neutral-go-handoff.md", "docs/decisions/0023-work-pointer-under-concurrency.md", "docs/working-copy-safety.md", "src/commands/go.ts", "src/goBroker.ts", "src/ask/settlement.ts", "src/agentSetup/goBrokerAgentSetup.ts"]
 questions: []
 decisions: []
-current_action: let-agent-preserve-its-candidate
+current_action: isolate-agent-asks-from-production-handoff
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---
