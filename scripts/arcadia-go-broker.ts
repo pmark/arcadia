@@ -7,10 +7,10 @@ import { requestCandidatePreservation } from "../src/sessions/preservationTransp
 
 try {
   const request = parseGoBrokerArguments(process.argv.slice(2));
-  if (request.operation !== "preserve") assertGoBrokerHostController(request);
+  assertGoBrokerHostController(request);
   const response = request.operation === "preserve"
     ? await requestCandidatePreservation(request.source)
-    : runGoBroker(request);
+    : runGoBroker({ ...request, operation: request.operation });
   process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
 } catch (error) {
   const normalized = normalizeError(error);

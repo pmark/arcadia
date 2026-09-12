@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { permissionSnippets, stageGoBrokerDatabaseSchema, stageGoBrokerDependencies } from "../src/commands/goBrokerInstall.js";
 import { assertGoBrokerHostController, parseGoBrokerArguments, runGoBroker } from "../src/goBroker.js";
+import * as broker from "../src/goBroker.js";
 
 describe("protected Arcadia go broker", () => {
   it("derives the source from cwd and accepts only fixed launcher inputs", () => {
@@ -46,31 +47,31 @@ describe("protected Arcadia go broker", () => {
     expect(parseGoBrokerArguments(["codex", "preserve"], "/tmp/finished").operation).toBe("preserve");
   });
 
-  it("refuses candidate preservation inside a Codex sandbox", () => {
-    expectValidation(
-      () => assertGoBrokerHostController(
-        { source: "/tmp/finished", agent: "codex", operation: "preserve" },
-        { CODEX_SANDBOX: "seatbelt" }
-      ),
-      "host controller"
-    );
-  });
-
-  it("runs preserve with the launcher's source and resolved workspace", () => {
-    const response = { ok: true as const, command: "preserve", data: { receipt: {} }, artifacts: [], warnings: [] };
-    const preserveRunner = vi.fn().mockReturnValue(response);
-
-    const result = runGoBroker(
-      { source: "/tmp/finished", agent: "codex", operation: "preserve" },
-      vi.fn() as never,
-      vi.fn() as never,
-      vi.fn() as never,
-      () => "/tmp/arcadia-workspace",
-      preserveRunner as never
-    );
-
-    expect(preserveRunner).toHaveBeenCalledWith({ workspace: "/tmp/arcadia-workspace", source: "/tmp/finished" });
-    expect(result.command).toBe("preserve-broker");
+  it("routes the actual sandboxed launcher through preservation transport", async () => {
+    const response = { ok: true, command: "preserve", data: { receipt: { commit: "candidate" } } };
+    const requestCandidatePreservation = vi.fn().mockResolvedValue(response);
+    vi.doMock("../src/sessions/preservationTransport.js", () => ({ requestCandidatePreservation }));
+    const directBroker = vi.spyOn(broker, "runGoBroker");
+    const output = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+    const errors = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const argv = process.argv;
+    const exitCode = process.exitCode;
+    vi.stubEnv("CODEX_SANDBOX", "seatbelt");
+    process.argv = ["node", "arcadia-go-broker", "codex", "preserve"];
+    try {
+      await import("../scripts/arcadia-go-broker.js");
+      expect(requestCandidatePreservation).toHaveBeenCalledExactlyOnceWith(process.cwd());
+      expect(directBroker).not.toHaveBeenCalled();
+      expect(output).toHaveBeenCalledWith(`${JSON.stringify(response, null, 2)}\n`);
+      expect(errors).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(exitCode);
+    } finally {
+      process.argv = argv;
+      process.exitCode = exitCode;
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+      vi.doUnmock("../src/sessions/preservationTransport.js");
+    }
   });
 
   it("previews and then applies the same fixed options without launch authority", () => {

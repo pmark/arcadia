@@ -802,11 +802,15 @@ Desktop, and select it. The installer then
 updates Claude's exact permission and worktree directories, removes
 recognized legacy broad allowances, and enforces the normal sandbox and bypass
 guards. Existing unrelated settings are preserved and changed user-owned files
-receive timestamped backups. Verify the entire chain with:
+receive timestamped backups. Verify installation with:
 
 ```sh
 pnpm arcadia go-broker status
 ```
+
+Installation readiness is separate from runtime readiness: `status` succeeds for
+a correct install even before the worker starts. Its named `preservationTransport`
+field reports whether the host worker has a fresh heartbeat.
 
 No registry request is part of installation: if local dependencies are absent,
 it fails with the `pnpm bridge:worktree` recovery command. Before it reports success, installation also creates and retires one
@@ -831,8 +835,9 @@ arcadia worker start --workspace /absolute/path/to/workspace
 arcadia go-broker status
 ```
 
-`status` names `preservationLauncher` and `preservationTransport` failures and
-reports `ready: false` in the refusal details. The worker needs current scoped
+`status` refuses an incomplete installation, including a missing
+`preservationLauncher`. An absent heartbeat reports `preservationTransport.ready: false` without failing the install check. Actual preservation requests refuse
+until the transport is available. The worker needs current scoped
 validation authority. Missing authority or absent checks is a refusal, not an
 invitation to enable broader permissions.
 

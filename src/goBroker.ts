@@ -3,7 +3,6 @@ import { validationError } from "./cli/errors.js";
 import type { CommandSuccess } from "./cli/response.js";
 import { runAdvanceCommand, type AdvanceCommandData } from "./commands/advance.js";
 import { runGoCommand, type GoCommandData, type GoCommandOptions } from "./commands/go.js";
-import { runPreserveCommand, type PreserveCommandData } from "./commands/preserve.js";
 import { runWorkMonitorCommand, type WorkMonitorCommandData } from "./commands/workMonitor.js";
 import { requireResolvedWorkspace } from "./workspace/resolve.js";
 
@@ -11,7 +10,7 @@ export type GoBrokerAgent = "codex" | "claude";
 export type ProtectedBrokerOperation = "go" | "preserve" | "advance" | "work-monitor";
 
 /** Operations that write shared Git metadata and must never run in the agent sandbox. */
-const HOST_CONTROLLER_OPERATIONS: ReadonlySet<ProtectedBrokerOperation> = new Set(["go", "preserve"]);
+const HOST_CONTROLLER_OPERATIONS: ReadonlySet<ProtectedBrokerOperation> = new Set(["go"]);
 
 export interface GoBrokerRequest {
   source: string;
@@ -20,25 +19,22 @@ export interface GoBrokerRequest {
 }
 
 /**
- * A `go` handoff and a `preserve` both mutate the Git common directory shared by
- * every linked worktree — `preserve` stages and commits, `go` fetches and
- * updates refs. Codex intentionally protects that directory even when the source
- * tree itself is writable, so refuse before the first Git command rather than
- * leaking a misleading FETCH_HEAD or index.lock failure.
+ * A `go` handoff mutates the Git common directory shared by linked worktrees.
+ * Refuse before its first Git command in the agent sandbox. Preservation uses
+ * the sandbox-callable request transport; its consumer enforces the host boundary.
  */
 export function assertGoBrokerHostController(request: GoBrokerRequest, environment: NodeJS.ProcessEnv = process.env): void {
   if (!HOST_CONTROLLER_OPERATIONS.has(request.operation) || !environment.CODEX_SANDBOX) return;
   throw validationError("This Arcadia broker operation must run through the host controller, outside the coding-agent sandbox.", {
     operation: request.operation,
     sandbox: environment.CODEX_SANDBOX,
-    remedy: "Finish the candidate in this task, then have the host run the revision-pinned host-controller executable from the completed worktree. Codex may run only the advance and work-monitor brokers."
+    remedy: "Finish the candidate in this task, then have the host run the revision-pinned host-controller executable from the completed worktree. Codex may run only the preserve request, advance and work-monitor brokers."
   });
 }
 
 export type GoBrokerRunner = (options: GoCommandOptions) => CommandSuccess<GoCommandData>;
 export type AdvanceBrokerRunner = (options: { workspace: string; repo: string }) => CommandSuccess<AdvanceCommandData>;
 export type WorkMonitorBrokerRunner = (options: { workspace: string; includePullRequests: false }) => CommandSuccess<WorkMonitorCommandData>;
-export type PreserveBrokerRunner = (options: { workspace: string; source: string }) => CommandSuccess<PreserveCommandData>;
 export type BrokerWorkspaceResolver = (source: string) => string;
 
 /**
@@ -72,19 +68,12 @@ export function parseGoBrokerArguments(argv: string[], source = process.cwd()): 
  * and resolved workspace fixed by the launcher.
  */
 export function runGoBroker(
-  request: GoBrokerRequest,
+  request: GoBrokerRequest & { operation: Exclude<ProtectedBrokerOperation, "preserve"> },
   runner: GoBrokerRunner = runGoCommand,
   advanceRunner: AdvanceBrokerRunner = runAdvanceCommand,
   workMonitorRunner: WorkMonitorBrokerRunner = runWorkMonitorCommand,
-  resolveWorkspace: BrokerWorkspaceResolver = (source) => requireResolvedWorkspace({ cwd: source }),
-  preserveRunner: PreserveBrokerRunner = runPreserveCommand
-): CommandSuccess<GoCommandData | AdvanceCommandData | WorkMonitorCommandData | PreserveCommandData> {
-  if (request.operation === "preserve") {
-    return {
-      ...preserveRunner({ workspace: resolveWorkspace(request.source), source: request.source }),
-      command: "preserve-broker"
-    };
-  }
+  resolveWorkspace: BrokerWorkspaceResolver = (source) => requireResolvedWorkspace({ cwd: source })
+): CommandSuccess<GoCommandData | AdvanceCommandData | WorkMonitorCommandData> {
   if (request.operation === "advance") {
     return {
       ...advanceRunner({ workspace: resolveWorkspace(request.source), repo: request.source }),

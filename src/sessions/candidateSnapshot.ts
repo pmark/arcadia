@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
 
-// This one transport file is never candidate content. No caller-selected exclusions.
+// This transport file is never candidate content. Capture also honors Git ignore
+// rules for untracked files, including the candidate's .gitignore.
 export const PRESERVATION_REQUEST_FILE = ".arcadia-preserve-request";
 
 /** Capture raw bytes into Git's existing immutable object store, without running

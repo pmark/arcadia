@@ -54,6 +54,7 @@ export interface GoBrokerStatusData {
   releaseDirectory: string | null;
   brokerIssues: string[];
   agentSetup: AgentSetupStatus;
+  preservationTransport: { ready: boolean; detail: string };
 }
 
 export interface GoBrokerInstallOptions {
@@ -242,9 +243,16 @@ export function runGoBrokerStatusCommand(
     skillTemplate: readSkillTemplate(repository),
     agentAskSkillTemplate: readAgentAskSkillTemplate(repository)
   });
+  let preservationTransport: GoBrokerStatusData["preservationTransport"];
   try {
-    if (!preservationTransportReady(requireResolvedWorkspace({ cwd: repository }))) broker.issues.push("preservationTransport: start the updated host worker; no fresh preservation heartbeat");
-  } catch { broker.issues.push("preservationTransport: configured workspace is unavailable"); }
+    const ready = preservationTransportReady(requireResolvedWorkspace({ cwd: repository }));
+    preservationTransport = {
+      ready,
+      detail: ready ? "Fresh host worker heartbeat." : "No fresh preservation heartbeat; start the updated host worker before requesting preservation."
+    };
+  } catch {
+    preservationTransport = { ready: false, detail: "Configured workspace is unavailable; configure it before requesting preservation." };
+  }
   if (broker.issues.length > 0 || !agentSetup.ready) {
     throw validationError("Protected broker setup is not ready.", {
       ready: false,
@@ -252,7 +260,8 @@ export function runGoBrokerStatusCommand(
       releaseDirectory: broker.releaseDirectory,
       brokerIssues: broker.issues,
       agentSetupIssues: agentSetup.issues,
-      checks: agentSetup.checks
+      checks: agentSetup.checks,
+      preservationTransport
     });
   }
   return createSuccess({
@@ -262,7 +271,8 @@ export function runGoBrokerStatusCommand(
       revision: broker.revision,
       releaseDirectory: broker.releaseDirectory,
       brokerIssues: broker.issues,
-      agentSetup
+      agentSetup,
+      preservationTransport
     }
   });
 }
@@ -271,6 +281,7 @@ export function renderGoBrokerStatusSuccess(response: CommandSuccess<GoBrokerSta
   const data = response.data;
   return [
     `Protected broker setup: ${data.ready ? "READY" : "NOT READY"}`,
+    `Preservation transport: ${data.preservationTransport.ready ? "READY" : "NOT READY"} — ${data.preservationTransport.detail}`,
     `Revision: ${data.revision ?? "not installed"}`,
     `Release: ${data.releaseDirectory ?? "not installed"}`,
     ...(data.brokerIssues.length > 0 ? ["Broker issues:", ...data.brokerIssues.map((issue) => `- ${issue}`)] : []),
