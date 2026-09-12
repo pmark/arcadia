@@ -1424,9 +1424,9 @@ candidate beneath `~/.codex/worktrees`, verifying candidate/source writes,
 dependency bridging, a temporary SQLite database, candidate and Dashboard
 builds, Vitest, and syntax-checking the revision-pinned compiled broker. A
 failure reports the blocked operation and one recovery command without
-loosening Codex's sandbox. The installed `go` executable is a host controller
-outside the sandbox; from Codex it submits a bounded host-worker request and
-does not mutate shared Git metadata in the agent process. The agent runtime
+loosening Codex's sandbox. Both installed provider `go` executables always
+submit a bounded host-worker request, even from a host terminal, and never
+mutate shared Git metadata in the calling process. The agent runtime
 exposes only this contract:
 
 ```sh
@@ -1440,11 +1440,11 @@ exposes only this contract:
 # Claude Code uses: ~/.local/bin/arcadia-preserve-broker-claude
 ```
 
-From the host, run the matching `go` executable with no arguments from the
-completed worktree. It calls the same `runGoCommand` implementation first in
-preview mode and then with the identical fixed inputs plus apply. From Codex,
-the shared skill calls the same fixed `go` launcher and waits for the host
-worker's protected response. In the prepared worktree, the skill calls its
+Run the matching `go` executable with no arguments from the completed worktree.
+The worker runs `runGoCommand` in a child process, first in preview mode and
+then with identical fixed inputs plus apply. The shared skill waits for the
+host worker's protected response while the worker continues heartbeat and Run
+admission ticks. In the prepared worktree, the skill calls its
 fixed `advance`, `preserve`, and read-only `work-monitor` launchers, then
 performs ordinary local read-only inspection without an approval question.
 Apply repeats all validation, so a race or state change fails closed. Every

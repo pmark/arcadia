@@ -33,9 +33,16 @@ describe("preservation authority and content", () => {
     const tree = snapshotCandidate(f.candidate); materializeCandidateTree(f.repo, tree, destination);
     expect(readFileSync(path.join(destination, "marker.txt"), "utf8")).toBe("ready\n");
     writeFileSync(path.join(f.candidate, ".arcadia-preserve-request"), '{"nonce":"not-content"}');
+    writeFileSync(path.join(f.candidate, ".arcadia-go-request"), '{"nonce":"not-content"}');
     expect(snapshotCandidate(f.candidate)).toBe(tree);
     symlinkSync(path.join(f.root, "workspace"), path.join(f.candidate, "escape"));
     expect(() => snapshotCandidate(f.candidate)).toThrow(/regular candidate files/);
+  });
+  it("refuses a tracked go request instead of preserving transport as candidate content", () => {
+    const f = fixture();
+    writeFileSync(path.join(f.candidate, ".arcadia-go-request"), '{"nonce":"not-content"}');
+    fixtureGit(f.candidate, ["add", ".arcadia-go-request"]);
+    expect(() => snapshotCandidate(f.candidate)).toThrow("go transport file must not be tracked");
   });
 });
 

@@ -69,9 +69,8 @@ export function permissionSnippets(
   executables: GoBrokerInstallData["executables"]
 ): Pick<GoBrokerInstallData, "codexRules" | "claudePermissions"> {
   return {
-    // In the coding-agent sandbox the fixed `go` launcher submits a bounded
-    // host-worker request. Outside the sandbox, the same protected release
-    // remains the host controller for direct reconciliation.
+    // Both fixed provider go launchers submit bounded host-worker requests.
+    // Neither executable grants direct reconciliation to its caller.
     codexRules: agentCallableExecutables(executables).map(
       (providers) => `prefix_rule(pattern=[${JSON.stringify(providers.codex)}], decision="allow")`
     ),

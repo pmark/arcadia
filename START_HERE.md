@@ -828,10 +828,11 @@ network access.
 configuration is missing a required worktree root, retains a legacy sandbox, or
 does not deny command network access.
 
-The installed `go` launcher remains the host controller outside the sandbox.
-Inside Codex it submits a bounded request to the **existing host worker**; it
-does not write shared Git metadata from the agent process. The agent-callable
-`preserve` launcher uses the same request path and never submits validation
+The installed Codex and Claude `go` launchers always submit a bounded request
+to the **existing host worker**, including when invoked from a host terminal.
+They never reconcile Git in the calling process. The host runs reconciliation
+in a child process so heartbeats and Run admission continue during a slow fetch.
+The agent-callable `preserve` launcher uses the same request path and never submits validation
 assertions. Before a session needs `go` or preservation from a coding-agent
 prompt, run the updated worker on the host:
 
@@ -839,6 +840,11 @@ prompt, run the updated worker on the host:
 arcadia worker start --workspace /absolute/path/to/workspace
 arcadia go-broker status
 ```
+
+Go has a five-minute child execution budget and a 30-second response margin.
+Timeouts remove the caller's pending request and report where to inspect the
+result before retrying. The reserved untracked `.arcadia-go-request` does not
+count as candidate work; a tracked file with that name is always refused.
 
 `status` refuses an incomplete installation, including a missing
 `preservationLauncher`. An absent heartbeat reports

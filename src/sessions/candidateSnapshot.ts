@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
+import { GO_REQUEST_FILE } from "./goRequestProtocol.js";
 
 // This transport file is never candidate content. Capture also honors Git ignore
 // rules for untracked files, including the candidate's .gitignore.
@@ -20,9 +21,10 @@ export function snapshotCandidate(candidate: string): string {
   try {
     const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: root }).toString().split("\0");
     if (tracked.includes(PRESERVATION_REQUEST_FILE)) throw validationError("The preservation transport file must not be tracked.");
+    if (tracked.includes(GO_REQUEST_FILE)) throw validationError("The go transport file must not be tracked.");
     const files = [...new Set(execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: root })
       .toString().split("\0").filter(Boolean))].sort();
-    const selected = files.filter(file => file !== PRESERVATION_REQUEST_FILE);
+    const selected = files.filter(file => file !== PRESERVATION_REQUEST_FILE && file !== GO_REQUEST_FILE);
     // Node has no openat API. The system Python helper uses only stdlib and
     // anchored O_NOFOLLOW descriptors, so racing a parent symlink cannot make
     // the privileged reader follow it outside the selected candidate.

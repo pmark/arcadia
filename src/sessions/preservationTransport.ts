@@ -2,8 +2,11 @@ import { randomUUID } from "node:crypto";
 import { constants, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
-import { validationError } from "../cli/errors.js";
-import { runGoBroker, type GoBrokerAgent } from "../goBroker.js";
+import { ArcadiaError, validationError } from "../cli/errors.js";
+import type { GoBrokerAgent } from "../goBroker.js";
+import { git } from "../git/worktrees.js";
+import { executeHostGo, goTransportFailure } from "./goRequestExecutor.js";
+import { GO_REQUEST_FILE, GO_RESPONSE_TIMEOUT_MS, type GoTransportResult } from "./goRequestProtocol.js";
 import { runPreserveCommand } from "../commands/preserve.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { requireResolvedWorkspace } from "../workspace/resolve.js";
@@ -11,7 +14,7 @@ import { PRESERVATION_REQUEST_FILE } from "./candidateSnapshot.js";
 import type { AgentSession } from "./index.js";
 
 const HEARTBEAT = ".arcadia/preservation.heartbeat";
-const GO_REQUEST_FILE = ".arcadia-go-request";
+const runningGoSources = new Set<string>();
 const NONCE = /^[a-f0-9-]{36}$/;
 const responsePath = (workspace: string, session: string, nonce: string) =>
   path.join(workspace, "artifacts", "preservation", session, `${nonce}.json`);
@@ -21,7 +24,7 @@ const goResponsePath = (workspace: string, nonce: string) =>
 interface TransportHeartbeat {
   schema: "arcadia-preservation-transport-v1";
   at: number;
-  sessions: Array<{ id: string; worktree: string; repository: string }>;
+  sessions: Array<{ id: string; worktree: string }>;
   repositories?: Array<{ path: string; projectSlug: string }>;
   goRequests?: boolean;
 }
@@ -88,19 +91,38 @@ export async function requestAgentGo(source: string, agent: GoBrokerAgent) {
   });
   const nonce = randomUUID();
   const request = path.join(current, GO_REQUEST_FILE);
-  const fd = openSync(request, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o600);
+  assertUntrackedGoRequest(current);
+  const fd = openSync(request, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
   try { writeFileSync(fd, JSON.stringify({ nonce, agent })); } finally { closeSync(fd); }
   const response = goResponsePath(workspace, nonce);
-  const deadline = Date.now() + 1_230_000;
-  while (Date.now() < deadline) {
-    if (existsSync(response)) {
-      const result = JSON.parse(readFileSync(response, "utf8"));
-      if (!result.ok) throw validationError(result.error);
-      return result.response;
+  const deadline = Date.now() + GO_RESPONSE_TIMEOUT_MS;
+  try {
+    while (Date.now() < deadline) {
+      if (existsSync(response)) {
+        const result = JSON.parse(readFileSync(response, "utf8")) as GoTransportResult;
+        if (!result.ok) throw new ArcadiaError(result.error.code, result.error.message, result.error.exitCode, result.error.details);
+        return result.response;
+      }
+      await new Promise(resolve => setTimeout(resolve, 250));
     }
-    await new Promise(resolve => setTimeout(resolve, 250));
+    throw validationError("Protected Arcadia go response timed out; inspect source state and the host worker before retrying.", {
+      source: current, response, remedy: "The request wait ended; go may already have started. Inspect the host result and worktrees before retrying."
+    });
+  } finally {
+    // Remove only this caller's untracked request, never another caller's or a
+    // tracked file. A process crash may leave it behind; cleanliness and capture
+    // also exclude this reserved untracked name.
+    try {
+      assertUntrackedGoRequest(current);
+      if (readGoRequest(request)?.nonce === nonce) unlinkSync(request);
+    } catch { /* Worker may already have consumed it or retired the source. */ }
   }
-  throw validationError("Protected Arcadia go response timed out; retain source state and inspect the host worker. Retry is safe.");
+}
+
+function assertUntrackedGoRequest(source: string): void {
+  if (git(source, ["ls-files", "--", GO_REQUEST_FILE])) {
+    throw validationError("The go transport file must not be tracked.", { source, remedy: "Remove the reserved transport filename from version control before requesting go." });
+  }
 }
 
 /** Called by the existing worker, on its host, before ordinary Run admission.
@@ -110,16 +132,18 @@ export function processPreservationRequests(db: Database.Database, workspace: st
   mkdirSync(path.join(workspace, ".arcadia"), { recursive: true });
   const leases = db.prepare("SELECT * FROM agent_sessions WHERE status IN ('prepared','running')").all() as AgentSession[];
   const repositories = listProjects(db)
+    .filter(project => project.status === "active")
     .flatMap(project => {
-      const repo = getProjectMetadata(db, project.id)?.repo_path?.trim();
-      if (!repo || !existsSync(repo)) return [];
-      return [{ path: realpathSync(repo), projectSlug: project.slug }];
+      try {
+        const repo = getProjectMetadata(db, project.id)?.repo_path?.trim();
+        return repo ? [{ path: realpathSync(repo), projectSlug: project.slug }] : [];
+      } catch { return []; } // One missing/inaccessible Project cannot stop all Sessions.
     });
   const heartbeat = path.join(workspace, HEARTBEAT);
   writeFileSync(`${heartbeat}.${process.pid}.tmp`, JSON.stringify({
     schema: "arcadia-preservation-transport-v1",
     at: Date.now(),
-    sessions: leases.map(s => ({ id: s.id, worktree: s.worktree_path, repository: s.repository_path })),
+    sessions: leases.map(s => ({ id: s.id, worktree: s.worktree_path })),
     repositories,
     goRequests: true
   }));
@@ -171,13 +195,9 @@ export function processPreservationRequests(db: Database.Database, workspace: st
   }
 }
 
-function processGoRequest(input: { workspace: string; source: string }): void {
-  const request = path.join(input.source, GO_REQUEST_FILE);
-  if (!existsSync(request)) return;
-  let nonce: string;
-  let agent: GoBrokerAgent;
+function readGoRequest(request: string): { nonce: string; agent: GoBrokerAgent } | undefined {
   try {
-    const fd = openSync(request, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const fd = openSync(request, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
       const stat = fstatSync(fd);
       if (!stat.isFile() || stat.size > 160) return;
@@ -187,20 +207,35 @@ function processGoRequest(input: { workspace: string; source: string }): void {
       const value = JSON.parse(bytes.subarray(0, length).toString("utf8"));
       if (Object.keys(value).sort().join() !== "agent,nonce" || !NONCE.test(value.nonce)) return;
       if (value.agent !== "codex" && value.agent !== "claude") return;
-      nonce = value.nonce;
-      agent = value.agent;
+      return { nonce: value.nonce, agent: value.agent };
     } finally { closeSync(fd); }
   } catch { return; }
+}
+
+function writeGoResponse(response: string, result: GoTransportResult): void {
+  mkdirSync(path.dirname(response), { recursive: true });
+  writeFileSync(`${response}.tmp`, JSON.stringify(result), { mode: 0o600 });
+  renameSync(`${response}.tmp`, response);
+}
+
+function processGoRequest(input: { workspace: string; source: string }): void {
+  if (runningGoSources.has(input.source)) return;
+  const request = path.join(input.source, GO_REQUEST_FILE);
+  const value = readGoRequest(request);
+  if (!value) return;
+  const { nonce, agent } = value;
+  const response = goResponsePath(input.workspace, nonce);
+  try { assertUntrackedGoRequest(input.source); }
+  catch (error) { writeGoResponse(response, goTransportFailure(error)); return; }
   // Consume the transport file before canonical Git cleanliness checks. Keeping
   // it in the source would make every otherwise-clean request refuse itself.
   // Only the worker that removes the request may run the controller.
   try { unlinkSync(request); } catch { return; }
-  const response = goResponsePath(input.workspace, nonce);
   if (existsSync(response)) return;
-  let result;
-  try { result = { ok: true, response: runGoBroker({ source: input.source, agent, operation: "go" }) }; }
-  catch (error) { result = { ok: false, error: error instanceof Error ? error.message : String(error) }; }
-  mkdirSync(path.dirname(response), { recursive: true });
-  writeFileSync(`${response}.tmp`, JSON.stringify(result), { mode: 0o600 });
-  renameSync(`${response}.tmp`, response);
+  runningGoSources.add(input.source);
+  void Promise.resolve().then(() => executeHostGo(input.source, agent))
+    .catch(goTransportFailure)
+    .then(result => writeGoResponse(response, result))
+    .catch(error => { process.stderr.write(`Could not write host go response: ${String(error)}\n`); })
+    .finally(() => runningGoSources.delete(input.source));
 }

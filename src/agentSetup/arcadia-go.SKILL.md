@@ -10,8 +10,8 @@ description: Safely finish a completed coding-agent worktree, fast-forward it in
 Arcadia Go reconciliation is a **host-controller** operation. It fetches,
 updates shared Git metadata, and creates or retires worktrees, so it must never
 run inside a Codex or Claude Code sandbox. Do not reproduce its Git logic by
-hand or invoke the mutable `arcadia go` launcher from this task. In Codex, the
-installed fixed `go` launcher submits a bounded request to the host worker; it
+hand or invoke the mutable `arcadia go` launcher from this task. For both
+providers, the fixed `go` launcher always submits a request to the host worker; it
 does not run Git mutation in the sandbox.
 
 If the request is exactly `arcadia advance` in a prepared worktree, begin at
@@ -28,7 +28,7 @@ prompt, not permission to invoke the mutable CLI command directly.
    # Claude Code uses: __ARCADIA_CLAUDE_GO_BROKER__
    ```
 
-   In Codex this submits only a host-worker request. The host worker derives
+   This submits only a host-worker request for either provider. The host worker derives
    the source from its heartbeat and runs the canonical preview/apply outside
    the sandbox. Never pass arguments, run mutable `arcadia go` directly, or
    recreate the Git logic by hand. If the worker is unavailable, the refusal is
@@ -89,12 +89,11 @@ prompt, not permission to invoke the mutable CLI command directly.
   `pnpm arcadia go-broker install`, then fully restart Codex Desktop and select
   **arcadia-unattended**. The CLI launch command selects the same profile and
   uses `--ask-for-approval never`; it is the only unattended fallback.
-- The operator-facing host controller invokes the revision-pinned `go`
-  executable from the completed worktree. It performs the canonical preview
-  and identical apply outside the coding-agent sandbox, then starts the next
-  task from its returned prepared-worktree path. The same exact executable is
-  agent-callable only because the sandboxed path submits a host-worker request
-  instead of mutating Git directly.
+- The fixed provider executables are request-only, including in a host terminal.
+  The worker owns the Git-mutating child process and performs canonical preview
+  and identical apply outside the coding-agent sandbox. Continue in the returned
+  prepared worktree. A request does not authorize merge, deployment, completion,
+  or acceptance beyond the existing canonical command's authority checks.
 - After entering a prepared worktree, check whether `node_modules` exists. If
   missing, use that repository's dependency-bridge command or documented
   symlink rather than improvising a per-worktree dependency install.
@@ -116,5 +115,5 @@ only the named clean source worktree and its merged agent branch. It never
 stages, commits, force-merges, resets, pushes, opens a pull request, deploys,
 launches a coding-agent process, or discards work. Every launcher accepts no
 public arguments. `advance` and `work-monitor` emit read-only results. `go`
-and `preserve` submit fixed requests from inside Codex and read only
+and `preserve` submit fixed requests for either provider and read only
 host-protected responses.

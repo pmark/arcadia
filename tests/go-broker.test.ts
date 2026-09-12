@@ -74,7 +74,11 @@ describe("protected Arcadia go broker", () => {
     }
   });
 
-  it("routes the actual sandboxed go launcher through the host-worker request transport", async () => {
+  it.each([
+    { agent: "codex", sandbox: "seatbelt" },
+    { agent: "claude", sandbox: "" },
+    { agent: "codex", sandbox: "" }
+  ])("routes $agent go through transport with sandbox signal '$sandbox'", async ({ agent, sandbox }) => {
     const response = { ok: true, command: "go-broker", data: { nextWorktree: { path: "/tmp/next" } } };
     const requestAgentGo = vi.fn().mockResolvedValue(response);
     vi.doMock("../src/sessions/preservationTransport.js", () => ({ requestAgentGo, requestCandidatePreservation: vi.fn() }));
@@ -83,11 +87,13 @@ describe("protected Arcadia go broker", () => {
     const errors = vi.spyOn(process.stderr, "write").mockReturnValue(true);
     const argv = process.argv;
     const exitCode = process.exitCode;
-    vi.stubEnv("CODEX_SANDBOX", "seatbelt");
-    process.argv = ["node", "arcadia-go-broker", "codex", "go"];
+    vi.stubEnv("CODEX_SANDBOX", sandbox);
+    process.argv = ["node", "arcadia-go-broker", agent, "go"];
     try {
-      await import("../scripts/arcadia-go-broker.js?go-request");
-      expect(requestAgentGo).toHaveBeenCalledExactlyOnceWith(process.cwd(), "codex");
+      if (agent === "claude") await import("../scripts/arcadia-go-broker.js?claude-go-request");
+      else if (sandbox) await import("../scripts/arcadia-go-broker.js?go-request");
+      else await import("../scripts/arcadia-go-broker.js?host-go-request");
+      expect(requestAgentGo).toHaveBeenCalledExactlyOnceWith(process.cwd(), agent);
       expect(directBroker).not.toHaveBeenCalled();
       expect(output).toHaveBeenCalledWith(`${JSON.stringify(response, null, 2)}\n`);
       expect(errors).not.toHaveBeenCalled();

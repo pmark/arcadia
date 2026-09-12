@@ -209,8 +209,7 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
     sharedClaudeSkill: symlinkResolvesTo(paths.claudeSkill, paths.codexSkillDirectory),
     managedAgentAskSkill: readOptional(paths.codexAgentAskSkill) === expectedAgentAskSkill,
     sharedClaudeAgentAskSkill: symlinkResolvesTo(paths.claudeAgentAskSkill, paths.codexAgentAskSkillDirectory),
-    // The sandboxed `go` launcher submits a bounded host-worker request; the
-    // same protected release performs direct reconciliation only on the host.
+    // Both provider launchers are request-only; the worker owns reconciliation.
     claudePermission: agentCallableExecutables(options.executables).every((providers) => allow.includes(`Bash(${providers.claude})`)),
     noLegacyClaudePermissions: allow.every((entry) =>
       !isLegacyClaudePermission(entry) &&

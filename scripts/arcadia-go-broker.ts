@@ -5,13 +5,9 @@ import { assertGoBrokerHostController, parseGoBrokerArguments, runGoBroker } fro
 
 import { requestAgentGo, requestCandidatePreservation } from "../src/sessions/preservationTransport.js";
 
-function shouldUseAgentRequestTransport(): boolean {
-  return Boolean(process.env.CODEX_SANDBOX);
-}
-
 try {
   const request = parseGoBrokerArguments(process.argv.slice(2));
-  if (shouldUseAgentRequestTransport() && request.operation === "go") {
+  if (request.operation === "go") {
     const response = await requestAgentGo(request.source, request.agent);
     process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
   } else {
