@@ -502,7 +502,7 @@ actions:
     references: ["src/commands/review.ts", "src/ask/settlement.ts", "docs/decisions/0046-how-should-this-project-update-be-applied-set-the-work-pointer-to-let-agent-pres.md", "docs/proposals/validate-governed-documents.md"]
 questions: []
 decisions: []
-current_action: prove-zero-prompt-production-loop
+current_action: let-agent-preserve-its-candidate
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---
