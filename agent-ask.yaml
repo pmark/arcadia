@@ -1,65 +1,141 @@
 agent_ask: v1
-request_id: break-launch-dependency-loop-2026-09-11
+request_id: trusted-protected-preservation-scope-2026-09-12-v2
 project: arcadia
 intent: plan
 target_ref: plan/bootstrap-managed-production-to-build-flight-deck
-desired_result: >-
-  Break the semantic dependency loop that freezes the managed-production build
-  chain, so the launch, reconcile, advance and worker Actions become startable
-  immediately.
-rationale: >-
-  prove-zero-prompt-production-loop criterion 2 required Arcadia to start
-  Action B "without a sandbox approval prompt or manual Session relay". No
-  built code path does that: runGoBroker prepares the next worktree but never
-  launches the agent (src/goBroker.ts:100-108), and the two Actions that would
-  supply the launch - expose-guarded-host-session-launch and
-  feed-and-supervise-managed-production - are both open and both sequenced
-  downstream of this very Action. expose-guarded-host-session-launch further
-  carries a hard depends_on prove-zero-prompt-production-loop edge plus an
-  "only after the approval-free Arcadia Go production loop has been proven"
-  clause in its next_action.
-
-  The declared graph is acyclic, so nothing ever errored and `arcadia next`
-  resolved clean - which is why this sat as current_action for days while being
-  unpassable. The cycle is semantic.
-
-  The unattended-start proof already exists downstream and correctly placed:
-  prove-two-action-unattended-production criterion 2 reads "Action A launches,
-  validates, records canonical completion/pointer, and B launches without
-  manual session setup or launch confirmation in between", and it depends on
-  feed-and-supervise-managed-production. The requirement is therefore duplicated,
-  once where it can be proven and once where it cannot.
-
-  This amendment narrows prove-zero-prompt-production-loop to the broker half
-  that is actually built and operator-runnable today, leaving the unattended
-  start to the downstream Action that already owns it, and releases
-  expose-guarded-host-session-launch from waiting on it. Eight Actions unfreeze;
-  no proof is lost and none is duplicated.
+requested_authority: apply_if_approved
+desired_result: Make protected candidate preservation usable with trusted candidate-bound
+  validation, and sequence the real-host reconciliation proof after its implementation
+  prerequisites.
+rationale: Narrow verification of docs/reports/arcadia-process-review-2026-09-12.md confirms that
+  agentCallableExecutables excludes preservation, the broker rejects sandboxed preservation, and
+  runPreserveCommand has no trusted validation producer. Pull only the necessary
+  validation-production seam forward from reconciliation, reusing the protected host controller and
+  preservation machinery. Move the integration/pointer proof to the existing real-host rehearsal and
+  require the completion/reconciliation chain first. Keep guarded launch, reconciliation, completion
+  and worker implementation as the next critical path; address approval-must-apply-or-refuse only if
+  the supported settlement or pointer transition fails to apply its intended authoritative effect,
+  including a reported success that leaves the documents unchanged. After an approved settlement and
+  pointer movement, verify the actual checked-in document effects against each intended change; a
+  successful command response alone is insufficient. Request the existing advance queue make-next
+  transition to let-agent-preserve-its-candidate after approved settlement; this Ask itself does not
+  write the pointer or grant unseen approval.
 actions:
-  - target_ref: action/prove-zero-prompt-production-loop
-    desired_result: >-
-      Prove on the real host that Arcadia hands off, executes, validates,
-      preserves and advances bounded coding work with zero sandbox approval
-      prompts, advancing the governed pointer and preparing the next Action's
-      worktree, while retaining every consequential approval boundary.
+  - target_ref: action/let-agent-preserve-its-candidate
+    desired_result: Connect trusted candidate-bound validation to the existing protected preservation
+      request and prove it from the intended agent sandbox on a disposable fixture.
     acceptance:
-      - Use the Zero Prompt Rehearsal fixture Project with two dependent small Actions and the same Codex profile, protected launchers, workspace root, dependency bridge, build, test, SQLite, Git, network and pull-request path that managed production will use.
-      - From one activation, Arcadia prepares Action A's worktree, advances and monitors it, edits, builds, tests, preserves its exact branch and draft pull request, reconciles evidence, advances the governed pointer to Action B, and prepares Action B's worktree, with zero observed sandbox approval prompts. Starting Action B's Session unattended is out of scope for this Action and is proven by prove-two-action-unattended-production, which depends on the launch and worker machinery this Action precedes.
-      - One proof Artifact records every command, profile, writable root, sandbox denial, approval event, worktree, branch, revision, Session, Action, validation result, commit, push, pull request and operator intervention for this single run; zero observed prompts and zero hidden interventions are acceptance conditions.
+      - Reuse the existing protected host controller, registered prepared worktree, Session lease
+        and candidate-preservation machinery. Permit the minimal protected request transport needed
+        for the intended sandbox to reach the existing host-side preservation operation; this is not
+        a second controller or a general host command-execution service. Do not introduce another
+        pointer writer, allow raw Git mutation, make shared Git metadata writable to the agent, or
+        weaken the sandbox.
+      - "Validate only the declared objective checks required for preservation, sourced from the
+        existing host-managed Project metadata validation_commands and frozen into the immutable
+        authorized Action packet. Verify their definitions against that packet and its authorizing
+        receipt; the request cannot select or replace checks. Use a host-owned validation runner as
+        the trusted result producer: it runs those checks with candidate code sandboxed, observes
+        their actual process outcomes and captures evidence in host-protected storage. An
+        agent-writable evidence file, caller-supplied passed=true, or agent completion assertion is
+        not trusted evidence. Passing a check proves only that check passed; do not build a general
+        acceptance evaluator or require subjective acceptance criteria to become executable."
+      - Bind results to the exact candidate snapshot actually tested,
+        repository/worktree/branch/base, Project and Action, immutable packet hash, check
+        definitions and applicable authority including policy revision/epoch. Require that the
+        validated candidate snapshot and the committed tree are identical. Cover mutation during
+        validation as well as mutation between validation and preservation; hashing only the content
+        found after testing is insufficient. Use the smallest sound existing snapshot or
+        content-binding mechanism without requiring a new snapshot framework. Refuse absent, failed,
+        skipped, stale or caller-fabricated evidence and changed bindings, preserve candidate files
+        on refusal, and prove that altered content cannot inherit a passing receipt.
+      - Make the protected preservation request agent-callable for Codex and Claude through the
+        existing launcher setup, Codex rule and Claude allowlist. From the intended Codex sandbox,
+        prove the actual request reaches the protected host and creates one candidate commit on a
+        disposable objective-criteria fixture, with no direct shared-Git write by the agent or ad
+        hoc approval escalation; allowlist presence and unsandboxed direct invocation alone are
+        insufficient proof.
+      - Update the arcadia-go skill to request protected preservation after required validation,
+        while continuing to forbid direct mutable advance and git commit. Make go-broker status
+        report named preservation readiness and fail closed when the launcher or required protected
+        request path is unavailable.
+      - Preservation records a recoverable candidate and trusted validation only; it does not accept
+        the Action, integrate or merge it, mark it done, or advance its pointer. Subjective
+        acceptance and required independent review remain separate gates. Remote preservation
+        requires its existing explicit authority; unauthorized or unreachable remote preservation
+        remains honestly LOCAL ONLY with an exact recovery action.
+      - Reuse the existing request-id and recovery receipts; prove retries and a lost response yield
+        one preserved commit without cross-worktree mutation or duplicate preservation.
+      - Preserve passing targeted tests and a reproducible protected-boundary fixture Artifact
+        recording exact host/runtime revision, profile, writable roots, authoritative check
+        definitions, trusted producer, check results, tested snapshot and committed-tree identities,
+        Action, packet, authority, request/receipt, commit and every denial, approval or operator
+        intervention. Include fixtures for content mutation during validation and between validation
+        and preservation, showing altered content cannot inherit passing evidence. Include exact
+        runnable operator QA steps and the end-user procedure in the PR; distinguish fixture proof
+        from live production acceptance.
+    dependencies: []
+    references:
+      - src/agentSetup/goBrokerAgentSetup.ts
+      - src/goBroker.ts
+      - src/sessions/worktreePreparation.ts
+      - src/commands/go.ts
+      - docs/reports/prove-zero-prompt-production-loop-runbook.md
+      - src/commands/preserve.ts
+      - src/sessions/candidatePreservation.ts
+      - docs/working-copy-safety.md
+  - target_ref: action/prove-zero-prompt-production-loop
+    desired_result: Prove the real-host zero-prompt preservation, separately authorized integration,
+      evidence reconciliation and governed pointer transition after guarded launch and canonical
+      completion machinery exist.
+    acceptance:
+      - Use the Zero Prompt Rehearsal fixture Project with two dependent small Actions and the same
+        Codex profile, protected launchers, workspace root, dependency bridge, build, test, SQLite,
+        Git, network and pull-request path that managed production will use.
+      - Before the counted run, record and verify every required launch, remote-preservation,
+        integration and mechanical-completion grant, with its exact fixture scope, policy/receipt
+        identity, freshness and limits. A missing, stale or insufficient grant stops preflight
+        before the run begins; no new approval halfway through the proof is part of a successful
+        run.
+      - Before the counted run, identify and verify the exact supported host entry point delivered
+        by reconcile-session-exits-to-next-move and advance-approved-production-work that drives
+        reconciliation and canonical completion without the continuous worker. Record its command
+        and the revision-pinned arcadia-go-broker-codex host-controller invocation that prepares
+        Action B, or the supported combined entry point if the prerequisite implementation provides
+        one. Current go prepares work but does not supply the missing reconciliation bridge; until a
+        supported bridge is shipped and verified, preflight refuses. Any explicit host-controller
+        invocation is a visible, predeclared operator step, not autonomous execution.
+      - From one bounded activation and the predeclared visible host steps, Arcadia prepares Action
+        A's worktree, advances and monitors it, edits, builds, tests, preserves its exact branch and
+        authorized draft pull request, reconciles evidence through the implemented canonical
+        completion bridge, advances the governed pointer to Action B and prepares Action B's
+        worktree. Record and verify the actual authoritative Action completion and both pointer
+        document effects; a successful command response alone is insufficient.
+      - After protected preservation, prove the host controller reports commitsToIntegrate greater
+        than zero and integrates the exact candidate branch under the separately explicit
+        integration grant recorded in preflight. Prove acceptance/completion and pointer advancement
+        use their existing governed writers and applicable authority, never preservation alone.
+      - Keep zero sandbox approval prompts, zero hidden interventions and fully unattended execution
+        distinct. This rehearsal requires the first two, permits only the predeclared visible
+        operator steps, and makes no fully unattended execution claim.
+        prove-two-action-unattended-production owns unattended Action B launch and execution after
+        the continuous worker exists.
+      - One proof Artifact records preflight grants, exact supported entry points, all predeclared
+        manual steps, and every command, profile, writable root, sandbox denial, approval event,
+        worktree, branch, revision, Session, Action, validation result, commit, push, pull request,
+        actual document transition and operator intervention. Zero sandbox approval prompts and zero
+        hidden interventions are acceptance conditions; record visible manual invocation explicitly
+        and never label it autonomous execution.
     dependencies:
       - broker-candidate-preservation
-  - target_ref: action/expose-guarded-host-session-launch
-    desired_result: >-
-      Expose a bounded server launch operation with replay-safe receipts and
-      fresh authority checks.
-    acceptance:
-      - Accept an explicit operator launch request for the previewed canonical Action; resolve repository, executable and arguments on the server.
-      - Reject cross-origin, malformed, altered, stale and unauthorized requests; document/test the operator-action request guard for the existing local/tailnet deployment.
-      - Revalidate pointer, documents, packet hash, Decisions, binding availability and repository lease immediately before preparation/spawn.
-      - Two tabs or retried requests start at most one Session; lost-response recovery returns the durable result across restart.
-      - Launch grants no implicit merge, integration, cleanup, deployment, spending, credential expansion or messaging; failures preserve recoverable work.
-      - Inject at least one pre-spawn crash, one post-spawn crash and one lost response, and reconcile ambiguous launch identity without blind retry, proving at most one live conflicting execution across that bounded set of injected faults.
-      - Support either a current explicit one-Session launch grant or a valid standing managed-production policy with an epoch-bound admission receipt; recheck Off immediately before launch commitment. Do not require a new human launch click for every authorized Action.
-      - "Preserve the proof Artifact: Launch boundary, replay, bounded crash-window and conflict integration tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
-    dependencies:
-      - support-selected-codex-and-claude-sessions
+      - let-agent-preserve-its-candidate
+      - advance-approved-production-work
+    references:
+      - docs/plans/bootstrap-managed-production-to-build-flight-deck.md
+      - docs/working-copy-safety.md
+      - src/commands/worker.ts
+      - src/sessions/index.ts
+      - src/agentSetup/goBrokerAgentSetup.ts
+      - src/commands/go.ts
+      - src/ask/settlement.ts
+      - src/dispatch/pointer.ts
