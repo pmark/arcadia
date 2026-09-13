@@ -1,3 +1,4 @@
+# Preserved from the legacy singleton Ask path while reconciling upstream.
 agent_ask: v1
 request_id: trusted-protected-preservation-scope-2026-09-12-v2
 project: arcadia

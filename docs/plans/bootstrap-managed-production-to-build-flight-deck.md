@@ -500,9 +500,99 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/commands/review.ts", "src/ask/settlement.ts", "docs/decisions/0046-how-should-this-project-update-be-applied-set-the-work-pointer-to-let-agent-pres.md", "docs/proposals/validate-governed-documents.md"]
+  - id: isolate-agent-asks-from-production-handoff
+    title: Make Agent Ask authoring, preview, correction, settlement, and preservation use uniquely named files on Arcadia-owned isolated branches and worktrees so concurrent Asks cannot collide and no Ask dirties the shared base or blocks Arcadia Go.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make Agent Ask authoring, preview, correction, settlement, and preservation use uniquely named files on Arcadia-owned isolated branches and worktrees so concurrent Asks cannot collide and no Ask dirties the shared base or blocks Arcadia Go.
+    expected_artifact: Evidence satisfying Agent Ask isolate-agent-asks-from-production-handoff
+    clarification: clarified
+    confidence: high
+    source: Agent Ask isolate-concurrent-agent-asks-from-production-handoff-2026-09-12
+    acceptance_criteria:
+      - Every newly authored or edited Agent Ask is stored as `.arcadia/asks/agent-ask-<unique-stub>.yaml` in a uniquely identified, recoverable Arcadia-owned Ask branch and worktree rather than the repository's shared base checkout; the stub is stable for one request and collision-resistant across concurrent agents.
+      - Multiple Ask files may coexist. Preview, correction, settlement, status, and cleanup require an exact file path or request id and never select an arbitrary glob match; two concurrent Ask drafts cannot overwrite, settle, or retire each other.
+      - Preview and correction resolve the Ask by request id from that isolated location, and settlement commits only the exact previewed Ask effects on its Ask branch before the existing authorized integration and push boundaries apply.
+      - When Arcadia Go finds a legacy root `agent-ask.yaml` change as the only dirty base path, it atomically preserves that exact content and diff under a uniquely named Ask file in an isolated Ask branch and worktree, reports the recovery location, restores no unrelated path, and continues preparing the governed production worktree in the same operator invocation.
+      - If any dirty base path is not recognized as isolated Ask input, or Ask preservation cannot be proven complete, Arcadia Go retains the existing fail-closed refusal and names every preserved blocker; no work is discarded, staged, or silently included.
+      - The protected broker and Agent Ask skill use the isolated path without giving a sandboxed agent general shared-Git mutation, and retries return the same branch, worktree, request id, and receipt without duplicate commits or orphaned drafts.
+      - A fixture reproduces the 2026-09-12 failure from a base containing only a modified agent-ask.yaml, then proves one Arcadia Go activation preserves the Ask and prepares the governed Action worktree with zero operator Git steps; fault tests cover interruption before and after Ask preservation.
+      - A concurrency fixture creates, previews, corrects, and settles at least two Ask files in parallel and proves their paths, request ids, receipts, branches, effects, and cleanup remain disjoint.
+      - The operator-facing QA plan identifies the exact local command and paths, demonstrates the preserved Ask can still be previewed or settled, and demonstrates the prepared production worktree starts from the unchanged clean base.
+    depends_on: []
+    decisions: []
+    references: ["docs/proposals/validate-governed-documents.md", "docs/proposals/gate-judgment-not-mechanics.md", "docs/decisions/0009-agent-neutral-go-handoff.md", "docs/decisions/0023-work-pointer-under-concurrency.md", "docs/working-copy-safety.md", "src/commands/go.ts", "src/goBroker.ts", "src/ask/settlement.ts", "src/agentSetup/goBrokerAgentSetup.ts"]
+  - id: make-go-total-across-plans
+    title: Make the shared transition resolver and Arcadia Go activate the Plan whose earliest eligible Action is highest in the explicit queue whenever the active Plan is absent or complete.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make the shared transition resolver and Arcadia Go activate the Plan whose earliest eligible Action is highest in the explicit queue whenever the active Plan is absent or complete.
+    expected_artifact: Evidence satisfying Agent Ask make-go-total-across-plans
+    clarification: clarified
+    confidence: high
+    source: Agent Ask implement-total-go-plan-selection-2026-09-12
+    acceptance_criteria:
+      - Arcadia Go, Action completion, and managed-production continuation use one shared total transition resolver for active work, completed Plans, absent active-Plan pointers, stale missing-Plan pointers, Decisions, external blockers, reconciliation, waiting, and Project milestone completion.
+      - When no active Plan can continue, Arcadia activates the Plan whose earliest eligible Action is highest in the existing explicit operator-owned queue and makes that Action current without another operator round trip; dependencies, Decisions, responsibility, and approval gates filter eligibility without changing queue priority.
+      - A stale or missing active-Plan pointer is repaired automatically only when checked-in documents and explicit queue order determine one eligible replacement without ambiguity; otherwise Arcadia emits one actionable Decision or named truth blocker and preserves all work.
+      - Approved legacy Actions lacking explicit order receive a previewed, reversible FIFO seed before automatic Plan selection; timestamps never silently reorder work after that seed and existing explicitly ordered work is unchanged.
+      - No separate urgency or priority field is introduced. Reordering the explicit queue remains the single way to change priority until a concrete accepted requirement cannot be represented there.
+      - "Repeated, concurrent, interrupted, and lost-response transitions are idempotent: one Plan is activated, one Action becomes current, and retries return the same durable receipt without duplicate pointer or queue effects."
+      - Fixtures cover a completed active Plan, no active Plan, a dangling missing-Plan pointer, one eligible candidate, several candidates with explicit order, blocked higher candidates, unordered legacy candidates, a genuine ambiguity requiring one Decision, and a Project with no remaining work.
+      - The operator-facing QA plan gives the exact local Arcadia Go commands and observable pointer, queue, receipt, and refusal results; the end-user procedure is stated separately if it differs.
+    depends_on: [isolate-agent-asks-from-production-handoff]
+    decisions: []
+    references: ["docs/decisions/0048-make-arcadia-go-a-total-governed-transition-that-keeps-advancing-whenever-the-ne.md", "docs/decisions/0012-the-session-primitive.md", "docs/decisions/0039-prioritize-agent-ask-and-work-queue.md", "docs/plans/agent-ask-execution-queue.md", "src/commands/advance.ts", "src/commands/go.ts", "src/docs/dispatch.ts"]
+  - id: build-autonomous-defect-loop
+    title: Add the one-line defect intake and automatic bounded triage loop approved by Decision 0049.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Add the one-line defect intake and automatic bounded triage loop approved by Decision 0049.
+    expected_artifact: Evidence satisfying Agent Ask build-autonomous-defect-loop
+    clarification: clarified
+    confidence: high
+    source: Agent Ask implement-autonomous-defect-triage-2026-09-12
+    acceptance_criteria:
+      - "`arcadia defect <summary>` records a durable Back Burner defect signal with a stable id and automatically captured Project, source, time, repository revision when available, and optional evidence; successful intake makes zero model calls."
+      - "Repeated intake is lossless and replay-safe: exact retries are idempotent, deterministic matching identifies likely duplicates without silently discarding distinct reports, and the reporter receives the durable record id."
+      - The existing persistent worker periodically admits defect triage under one explicit token and attempt budget, performs deterministic reproduction and deduplication before any model call, and reuses fresh included-capacity receipts when available; unknown capacity, purchased credits, and reset redemption never count as free.
+      - "Each triage run leaves a durable disposition and evidence: close noise, enrich or link a duplicate, preserve a waiting item with a concrete trigger, promote a formal governed Action into the explicit queue, or perform a validated low-risk reversible repair within standing authority."
+      - A stop-the-line defect bypasses periodic cadence when it blocks unrelated work, requires a remembered human workaround, or blocks its own reporting or repair; promotion changes the queue and current pointer rather than merely adding an urgent label.
+      - Merge, deployment, publication, spending, credentials, messaging, production access, destructive changes, operator judgment, and any authority not already granted remain gated; automation reports the exact gate instead of treating urgency as permission.
+      - Deterministic tests cover zero-model intake, retry, duplicate candidates, periodic budget exhaustion, worker restart, stale or unknown capacity, Action promotion, safe repair, a refused consequential repair, and immediate stop-the-line escalation.
+      - The operator-facing QA plan includes exact CLI intake, worker/recovery command, Back Burner and queue inspection steps, observable expected results, and whether the procedure is also the end-user procedure.
+    depends_on: [make-go-total-across-plans]
+    decisions: []
+    references: ["docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md", "docs/decisions/0037-project-to-arcadia-signal-channel.md", "docs/plans/provider-capacity-harvesting.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "src/commands/worker.ts"]
+  - id: build-agent-agnostic-learning-loop
+    title: Let Arcadia and every Project capture concise lessons cheaply and automatically turn supported lessons into durable reusable capability.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Let Arcadia and every Project capture concise lessons cheaply and automatically turn supported lessons into durable reusable capability.
+    expected_artifact: Evidence satisfying Agent Ask build-agent-agnostic-learning-loop
+    clarification: clarified
+    confidence: high
+    source: Agent Ask implement-agent-agnostic-learning-loop-2026-09-12
+    acceptance_criteria:
+      - "`arcadia learn <summary>` records a durable lesson signal with a stable id, explicit Project or Arcadia scope, and automatically captured source, time, repository revision when available, confidence/freshness, and statement kind; successful intake makes zero model calls and requires no coding-agent session."
+      - The record distinguishes direct operator statements, observed outcomes, agent inferences, and imported evidence; an inference never silently becomes an operator preference, Project truth, approved Decision, or authority grant.
+      - Lesson intake reuses the defect signal's replay, likely-duplicate, Back Burner, worker, budget, recovery, and receipt machinery while keeping defect repair and lesson incorporation as distinct dispositions; no second daemon, scheduler, backlog, or generic memory store is introduced.
+      - The periodic worker performs deterministic normalization, exact matching, source/freshness checks, and support counting before any model call, then uses only the bounded admitted allowance to dismiss noise, merge or link evidence, retain a trigger, or propose and safely apply the smallest durable incorporation.
+      - "A supported lesson lands in one existing authoritative home appropriate to its claim: regression test or guard, Project reference or Log, Arcadia Way guidance, Decision, governed Action, or reusable skill; the original signal remains linked as provenance and the outcome is inspectable, correctable, and retractable."
+      - Project-scoped or sensitive material cannot cross into another Project or Arcadia-wide guidance by similarity alone. Cross-scope promotion requires evidence from more than one Project or one high-severity trust/safety incident, preserves source links, and excludes credentials, raw transcripts, unrelated repository content, and private data not authorized for that scope.
+      - A lesson meeting the existing stop-the-line test bypasses periodic cadence. All other learning is subordinate to current governed work; merge, deployment, publication, spending, credentials, messaging, production access, destructive changes, constitutional changes, and unresolved operator judgment retain their existing gates.
+      - Deterministic tests cover Arcadia and Project scope, zero-model intake, retry, likely duplicates, direct-statement versus inference provenance, stale evidence, correction/retraction, bounded reflection, safe test or reference promotion, refused cross-scope disclosure, worker restart, and stop-the-line escalation.
+      - The operator-facing QA plan includes exact CLI intake, scope selection, worker/recovery command, signal and promoted-record inspection, correction/retraction, and observable expected results; state whether this is also the end-user procedure.
+    depends_on: [build-autonomous-defect-loop]
+    decisions: []
+    references: ["docs/decisions/0050-add-a-nearly-free-automatic-learning-loop-that-lets-any-arcadia-surface-or-proje.md", "docs/decisions/0020-compounding-agent-production-principles.md", "docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md", "docs/plans/provider-capacity-harvesting.md", "OPERATOR_CONTEXT.md"]
 questions: []
 decisions: []
-current_action: let-agent-preserve-its-candidate
+current_action: isolate-agent-asks-from-production-handoff
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---
