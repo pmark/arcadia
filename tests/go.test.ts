@@ -210,6 +210,28 @@ describe("arcadia go", () => {
     expect(git(fixture.main, ["rev-parse", "main"]).trim()).not.toBe(git(fixture.feature, ["rev-parse", "HEAD"]).trim());
   });
 
+  it("recovers a drifted legacy agent-ask.yaml on the base worktree instead of blocking the handoff", () => {
+    const fixture = createFixture("codex/recover-legacy-ask");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    writeFileSync(
+      path.join(fixture.main, "agent-ask.yaml"),
+      "agent_ask: v1\nrequest_id: legacy-drift-2026-09-12\nproject: unknown\nintent: log\ndesired_result: test drift\n"
+    );
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true });
+
+    expect(result.data.applied).toBe(true);
+    expect(result.data.askRecoveries).toHaveLength(1);
+    const recovery = result.data.askRecoveries[0]!;
+    expect(recovery.askFile).toMatch(/^\.arcadia\/asks\/agent-ask-legacy-drift-2026-09-12-.+\.yaml$/);
+    expect(recovery.requestId).toBe("legacy-drift-2026-09-12");
+    expect(existsSync(path.join(fixture.main, "agent-ask.yaml"))).toBe(false);
+    expect(git(fixture.main, ["status", "--porcelain"]).trim()).toBe("");
+
+    const recoveredContent = git(fixture.main, ["show", `${recovery.branch}:${recovery.askFile}`]);
+    expect(recoveredContent).toContain("request_id: legacy-drift-2026-09-12");
+  });
+
   it("fails closed on divergent history", () => {
     const fixture = createFixture("agent/diverged-copy");
     commitFeature(fixture.feature, "feature.txt", "feature\n");

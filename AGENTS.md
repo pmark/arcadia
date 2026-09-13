@@ -148,10 +148,13 @@ hand claim that work happened, or that someone decided something?* If yes, it
 is governance state — file an Ask. If no, fix it and move on.
 
 Run it from your own repository. You do not need to know where Arcadia's
-workspace lives:
+workspace lives. Write the Ask under `.arcadia/asks/agent-ask-<request_id>.yaml`
+rather than a root `agent-ask.yaml` — that keeps concurrent Asks from
+colliding on one filename and keeps this disposable draft input from dirtying
+the shared base checkout, which can otherwise block Arcadia Go's clean check:
 
 ```sh
-arcadia agent-ask preview --file agent-ask.yaml --json
+arcadia agent-ask preview --file .arcadia/asks/agent-ask-<request_id>.yaml --json
 ```
 
 Preview writes nothing to the Project. It returns a proposal with a
