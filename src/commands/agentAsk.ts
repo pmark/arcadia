@@ -1,9 +1,9 @@
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { ACTION_ID_MAX_LENGTH, ACTION_ID_PATTERN, AGENT_ASK_AUTHORITIES, AGENT_ASK_INTENTS, STRICT_ACTION_FIELDS, STRICT_FIELDS, STRICT_OPTION_FIELDS, agentAskFingerprint, buildAgentAskEffects, normalizeAgentAsk, requiresManagedDocumentTransition, stableProposalId, type AgentAskProposal } from "../ask/agentAsk.js";
 import { captureAskEnvelope } from "../ask/captureEnvelope.js";
 import { resolveProjectReference } from "../ask/rules.js";
-import { validationError } from "../cli/errors.js";
+import { normalizeError, validationError } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
@@ -63,6 +63,89 @@ function renderAgentAskPreview(proposal: AgentAskProposal): string[] {
     "Queue: no entry until accepted",
     "Project writes: 0"
   ];
+}
+
+export interface AgentAskDraftOptions { request?: string; file?: string; requestId?: string; project?: string; workspace?: string; dir?: string; }
+export interface AgentAskDraftData {
+  path: string;
+  requestId: string;
+  intent: string;
+  format: "strict" | "natural";
+  written: "created" | "unchanged";
+  preview: { proposal: AgentAskProposal; fingerprint: string } | null;
+  workspaceStatus: "previewed" | "not_available";
+}
+
+/**
+ * Validate an Agent Ask and place it at its canonical `.arcadia/asks/` path in
+ * one call, with zero Project-database dependency for the validation itself —
+ * `normalizeAgentAsk` is a pure function, so this succeeds in an environment
+ * with no Arcadia workspace bootstrapped at all (a bare cloud container that
+ * only has the `arcadia` binary and git). When a workspace *is* ready, it also
+ * runs the same preview a separate `agent-ask preview` call would, collapsing
+ * "write the file, then preview it" into one round trip for the common case.
+ */
+export function runAgentAskDraftCommand(options: AgentAskDraftOptions): CommandSuccess<AgentAskDraftData> {
+  if (options.request && options.file) throw validationError("Pass either an Agent Ask argument or --file, not both.");
+  const request = options.file ? readFileSync(path.resolve(options.file), "utf8") : options.request ?? "";
+  const normalized = normalizeAgentAsk({ request, requestId: options.requestId, project: options.project });
+  const content = request.trim().endsWith("\n") ? request.trim() + "\n" : `${request.trim()}\n`;
+  const askDir = path.join(path.resolve(options.dir ?? process.cwd()), ".arcadia", "asks");
+  const filePath = path.join(askDir, `agent-ask-${normalized.requestId}.yaml`);
+  const existing = existsSync(filePath) ? readFileSync(filePath, "utf8") : null;
+  let written: "created" | "unchanged";
+  if (existing !== null) {
+    if (existing.trim() !== content.trim()) {
+      throw validationError("An Agent Ask file already exists for this request id with different content.", { path: filePath, requestId: normalized.requestId });
+    }
+    written = "unchanged";
+  } else {
+    mkdirSync(askDir, { recursive: true });
+    writeFileSync(filePath, content, "utf8");
+    written = "created";
+  }
+  let preview: { proposal: AgentAskProposal; fingerprint: string } | null = null;
+  let workspaceStatus: "previewed" | "not_available" = "not_available";
+  try {
+    const previewResult = runAgentAskPreviewCommand({ workspace: options.workspace ?? "", request: content, requestId: options.requestId, project: options.project });
+    preview = { proposal: previewResult.data.proposal, fingerprint: previewResult.data.proposal.fingerprint };
+    workspaceStatus = "previewed";
+  } catch (error) {
+    // Anything about *reaching* a usable workspace from here — missing,
+    // uninitialized, wrong native ABI, or a sandboxed/read-only filesystem
+    // denying the SQLite write — degrades to "not available" rather than
+    // failing the whole draft: the file is already validated and placed, and
+    // that's the part this environment can guarantee. normalizeError is the
+    // same classifier the CLI boundary uses, so this matches exactly what a
+    // bare `preview` call would have reported for the same failure. A real
+    // content problem (e.g. PROJECT_NOT_FOUND, an unexpected VALIDATION_ERROR)
+    // still throws, since that's feedback about the Ask itself, not the
+    // environment.
+    const workspaceUnreachable = [
+      "WORKSPACE_NOT_FOUND", "DATABASE_NOT_INITIALIZED", "USAGE_ERROR",
+      "SQLITE_WORKSPACE_WRITE_DENIED", "SQLITE_NATIVE_ABI_MISMATCH", "SQLITE_ERROR"
+    ].includes(normalizeError(error).code);
+    if (!workspaceUnreachable) throw error;
+  }
+  return createSuccess({
+    command: "agent-ask.draft",
+    data: { path: filePath, requestId: normalized.requestId, intent: normalized.intent, format: normalized.format, written, preview, workspaceStatus }
+  });
+}
+
+export function renderAgentAskDraftSuccess(response: CommandSuccess<AgentAskDraftData>): string[] {
+  const d = response.data;
+  const lines = [
+    `Agent Ask ${d.written === "created" ? "drafted" : "already drafted (unchanged)"}: ${d.path}`,
+    `Request: ${d.requestId}`,
+    `Intent: ${d.intent}${d.format === "natural" ? " (natural fallback)" : ""}`
+  ];
+  if (d.preview) {
+    lines.push(`Previewed: fingerprint ${d.preview.fingerprint}`, `Decisions required: ${d.preview.proposal.requiredDecisions.length}`, "Next: arcadia agent-ask settle --proposal " + d.requestId + " ...");
+  } else {
+    lines.push("Previewed: not yet — no Arcadia workspace resolved here.", `Next: run \`arcadia agent-ask preview --file ${d.path}\` wherever a workspace is available.`);
+  }
+  return lines;
 }
 
 export interface AgentAskSettleData { receipt: AgentAskSettlementReceipt; }
