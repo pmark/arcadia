@@ -3,6 +3,7 @@ import path from "node:path";
 import { ACTION_ID_MAX_LENGTH, ACTION_ID_PATTERN, AGENT_ASK_AUTHORITIES, AGENT_ASK_INTENTS, STRICT_ACTION_FIELDS, STRICT_FIELDS, STRICT_OPTION_FIELDS, agentAskFingerprint, buildAgentAskEffects, normalizeAgentAsk, requiresManagedDocumentTransition, stableProposalId, type AgentAskProposal } from "../ask/agentAsk.js";
 import { captureAskEnvelope } from "../ask/captureEnvelope.js";
 import { resolveProjectReference } from "../ask/rules.js";
+import { findRecoveredAsk } from "../sessions/legacyAskRecovery.js";
 import { normalizeError, validationError } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
@@ -19,13 +20,23 @@ import {
   type PendingAgentAskNotification
 } from "../ask/settlement.js";
 
-export interface AgentAskPreviewOptions { workspace: string; request?: string; file?: string; requestId?: string; project?: string; }
+export interface AgentAskPreviewOptions { workspace: string; request?: string; file?: string; requestId?: string; project?: string; dir?: string; }
 export interface AgentAskPreviewData { proposal: AgentAskProposal; preview: string[]; projectWritesPerformed: 0; replayed: boolean; }
 
 export function runAgentAskPreviewCommand(options: AgentAskPreviewOptions): CommandSuccess<AgentAskPreviewData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   if (options.request && options.file) throw validationError("Pass either an Agent Ask argument or --file, not both.");
-  const request = options.file ? readFileSync(path.resolve(options.file), "utf8") : options.request ?? "";
+  // Neither an inline Ask nor --file: before falling through to natural-text
+  // validation (which would reject an empty string), check whether this
+  // request id already has content preserved on an isolated recovery branch
+  // — the isolate-agent-asks-from-production-handoff recovery flow moves a
+  // drifted draft there instead of leaving it as a live file `--file` could
+  // point at. This lets `preview --request-id <id>` resolve a recovered Ask
+  // directly, with no manual `git show` step in between.
+  const recovered = !options.request && !options.file && options.requestId
+    ? findRecoveredAsk(path.resolve(options.dir ?? process.cwd()), options.requestId)
+    : null;
+  const request = options.file ? readFileSync(path.resolve(options.file), "utf8") : recovered ? recovered.content : options.request ?? "";
   const parsed = normalizeAgentAsk({ request, requestId: options.requestId, project: options.project });
   const normalized = withDatabase(workspacePath, (db) => {
     if (parsed.project === "unknown") return parsed;
