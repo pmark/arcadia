@@ -4,7 +4,7 @@ type: decision
 id: "0050"
 slug: add-a-nearly-free-automatic-learning-loop-that-lets-any-arcadia-surface-or-proje
 project: arcadia
-status: open
+status: approved
 question: Add a nearly-free automatic learning loop that lets any Arcadia surface or Project record a concise lesson independently of a coding-agent provider, then periodically turns supported lessons into durable improvements.
 gap_type: missing-decision
 recommendation: Bounded automatic learning loop
@@ -20,6 +20,15 @@ options:
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
+answer: >-
+  Approved by the operator: implement the bounded automatic learning loop.
+  Provide zero-model one-line lesson intake with explicit Project or Arcadia
+  scope and provenance; use the existing periodically budgeted worker to
+  deduplicate, verify, dismiss, or promote supported lessons into their
+  authoritative homes; and permit only low-risk reversible improvements within
+  standing authority. Preserve scope, privacy, correctability, and every
+  consequential approval gate.
+decided: 2026-09-12
 updated: 2026-09-13
 ---
 
@@ -59,4 +68,18 @@ sensitive content, raw transcripts, and unrelated repository contents are not
 copied into the learning store. Stop-the-line safety lessons bypass cadence;
 consequential operations retain their existing approval gates.
 
-Proposed by Agent Ask agent-agnostic-learning-loop-2026-09-12. This Decision remains open until the operator answers it.
+Proposed by Agent Ask agent-agnostic-learning-loop-2026-09-12.
+
+## Resolution
+
+Approved directly by the operator on 2026-09-12. Learning intake is automatic,
+agent-provider agnostic, and nearly free: capture invokes no model, deterministic
+deduplication and evidence checks happen first, and later reflection consumes a
+fixed periodic allowance through the existing worker and capacity policy.
+
+A lesson signal is evidence, not remembered truth. It keeps its scope and
+provenance and can be corrected or dismissed. Supported lessons compound into
+an existing authoritative form such as a test, guard, Project reference,
+Arcadia Way rule, Decision, Action, or reusable skill. Project-private material
+does not silently become global context, and consequential effects remain
+gated. Safety lessons meeting the stop-the-line test bypass periodic cadence.
