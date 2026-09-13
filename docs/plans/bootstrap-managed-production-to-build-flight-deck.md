@@ -591,6 +591,24 @@ actions:
     depends_on: [build-autonomous-defect-loop]
     decisions: []
     references: ["docs/decisions/0050-add-a-nearly-free-automatic-learning-loop-that-lets-any-arcadia-surface-or-proje.md", "docs/decisions/0020-compounding-agent-production-principles.md", "docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md", "docs/plans/provider-capacity-harvesting.md", "OPERATOR_CONTEXT.md"]
+  - id: design-and-build-the-mechanism-that
+    title: Design and build the mechanism that discovers unprocessed .arcadia/asks/ files whenever a real Arcadia workspace becomes available, regardless of which command or environment triggered that availability.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Design and build the mechanism that discovers unprocessed .arcadia/asks/ files whenever a real Arcadia workspace becomes available, regardless of which command or environment triggered that availability.
+    expected_artifact: Evidence satisfying Agent Ask design-and-build-the-mechanism-that
+    clarification: clarified
+    confidence: high
+    source: Agent Ask design-agent-ask-discovery-2026-09-13
+    acceptance_criteria:
+      - A design is written down (in the Action, a Decision, or a short doc) naming exactly where discovery hooks in and why, given that arcadia go is not a reliable trigger.
+      - Every .arcadia/asks/*.yaml file whose request_id the database does not yet know is previewed automatically the next time any agent-ask command successfully resolves a real workspace in that repository, with no separate command required.
+      - A file that fails validation during automatic discovery is reported clearly (e.g. in that commands own output) rather than silently swallowed or left to repeatedly fail on every future command.
+      - Test coverage proves discovery fires from more than one entry point (e.g. both draft and preview), not only from a single hardcoded command.
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
 current_action: isolate-agent-asks-from-production-handoff
