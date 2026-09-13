@@ -1,0 +1,45 @@
+agent_ask: v1
+request_id: resolve-ask-authoring-isolation-scope-2026-09-13
+project: arcadia
+intent: decision
+desired_result: >-
+  Decide whether acceptance criterion 1 of
+  isolate-agent-asks-from-production-handoff is satisfied by the shipped design
+  — `agent-ask draft` writes the collision-checked canonical
+  `.arcadia/asks/agent-ask-<request_id>.yaml` in the current checkout, and
+  Arcadia Go recovers any such file left dirty in the shared base onto a
+  uniquely named `ask/recover-<stub>` branch — or whether authoring itself must
+  additionally happen on a dedicated Arcadia-owned Ask branch and worktree.
+rationale: >-
+  Eight of the Action's nine acceptance criteria are delivered and covered by
+  passing tests. Criterion 1 as literally written requires a newly authored Ask
+  to be stored in an Arcadia-owned Ask branch and worktree rather than the
+  shared base checkout. What shipped across PRs 229, 231 and 232 instead
+  authors at the canonical committed path and recovers drift onto an isolated
+  branch at handoff time, which serves the criterion's stated goal (no Ask
+  dirties the base or blocks Arcadia Go) without a per-draft worktree.
+  AGENTS.md already documents the committed file as the handoff, exactly like a
+  `docs/proposals/` file. An agent cannot settle this by itself: reading
+  criterion 1 literally means building per-draft worktrees that YAGNI argues
+  against, and reading it by intent means declaring a stated criterion met by a
+  substitute mechanism. Filing a `complete` Ask under either reading would be
+  an agent answering an operator question.
+options:
+  - label: Accept the shipped design as satisfying criterion 1
+    consequence: >-
+      Criterion 1 is amended to describe the canonical-path-plus-recovery
+      design; the Action can then be completed on its existing evidence and the
+      pointer advances to make-go-total-across-plans. No per-draft worktree is
+      ever built.
+    recommended: true
+  - label: Require per-draft isolated Ask branches and worktrees
+    consequence: >-
+      The Action stays open for a further session that makes `agent-ask draft`
+      create and commit into a dedicated worktree. Drafting gains a hard git
+      dependency and stops working where only the binary and a checkout exist,
+      which is exactly the cloud-container case `draft` was built for.
+  - label: Split the remainder into its own Action
+    consequence: >-
+      The eight delivered criteria complete now, and per-draft worktree
+      isolation becomes a separate queued Action with its own trigger — keeping
+      this Action's evidence honest without holding up the plan.

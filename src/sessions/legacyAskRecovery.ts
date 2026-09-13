@@ -4,15 +4,22 @@ import path from "node:path";
 import { git, tryGit } from "../git/worktrees.js";
 
 /**
- * The path an agent used to be told to author Agent Asks at — directly in the
- * shared base checkout. Editing it there dirties the base and blocks Arcadia
- * Go's fail-closed clean check, which has no way to know the change is a safe,
- * disposable Ask draft rather than in-progress operator work. Authoring now
- * belongs under `ASK_ISOLATION_DIR`; this constant only identifies drift left
- * behind by the old convention (or a docs regression) so it can be recovered
- * instead of blocking the handoff.
+ * The shape an agent used to be told to author Agent Asks at — directly in the
+ * repository root of the shared base checkout. Editing one there dirties the
+ * base and blocks Arcadia Go's fail-closed clean check, which has no way to
+ * know the change is a safe, disposable Ask draft rather than in-progress
+ * operator work. Authoring now belongs under `ASK_ISOLATION_DIR`; this pattern
+ * only identifies drift left behind by the old convention (or a docs
+ * regression) so it can be recovered instead of blocking the handoff.
+ *
+ * It matches a suffixed name (`agent-ask-triage.yaml`) as well as the bare
+ * `agent-ask.yaml`, because the old convention produced both: this repository
+ * root still carried `agent-ask-go-authority.yaml` and `agent-ask-triage.yaml`
+ * from it. Matching only the bare name left the exact 2026-09-12 handoff
+ * failure unfixed for the filenames the convention actually produced most
+ * often — an agent re-authoring one of those would still fail Go closed.
  */
-export const LEGACY_AGENT_ASK_FILE = "agent-ask.yaml";
+export const LEGACY_AGENT_ASK_PATTERN = /^agent-ask(?:-[^/]*)?\.ya?ml$/;
 
 /** Where isolated Agent Ask drafts live, uniquely named per request. */
 export const ASK_ISOLATION_DIR = ".arcadia/asks";
@@ -49,8 +56,8 @@ export interface AskRecoveryTestHooks {
 }
 
 /**
- * If the only dirty path in `worktreePath` is an Agent Ask draft — the legacy
- * root `agent-ask.yaml`, or any file already under `ASK_ISOLATION_DIR` that
+ * If the only dirty path in `worktreePath` is an Agent Ask draft — a legacy
+ * root `agent-ask*.yaml`, or any file already under `ASK_ISOLATION_DIR` that
  * was nonetheless authored or edited directly in the shared base checkout —
  * move its exact content onto a uniquely named isolated Ask branch and
  * restore the working tree to clean. Returns `{ recovered: false }` untouched
@@ -66,7 +73,7 @@ export function recoverLegacyAgentAskDrift(repo: string, worktreePath: string, t
 
   const line = status[0]!;
   const filePath = line.slice(3).trim();
-  const isLegacy = filePath === LEGACY_AGENT_ASK_FILE;
+  const isLegacy = LEGACY_AGENT_ASK_PATTERN.test(filePath);
   const isIsolatedDraftInBaseCheckout = ISOLATED_ASK_FILE_PATTERN.test(filePath);
   if (!isLegacy && !isIsolatedDraftInBaseCheckout) return NOT_RECOVERED;
 
