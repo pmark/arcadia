@@ -60,7 +60,7 @@ Before launch, Arcadia resolves and binds:
 - exact governed base revision;
 - provider/model/effort selection;
 - candidate branch and worktree path;
-- repository/candidate lease.
+- the existing repository lease.
 
 Arcadia creates the branch and linked worktree from the host before the agent is
 started. Preparation is deterministic and idempotent for the admitted candidate.
@@ -100,25 +100,49 @@ and governance, so they remain host-controller operations.
 
 ### 4. Candidate continuation across sessions
 
-The existing safety rule should be refined from “one coding session gets one
-branch and one worktree” to the actual isolation invariant:
+The existing safety rule — “one coding session gets one branch and one
+worktree”, stated in both `docs/working-copy-safety.md` and `AGENTS.md` — should
+be refined to the actual isolation invariant:
 
-> One candidate worktree may have at most one live conflicting coding-agent
-> execution. Sequential sessions may reuse that candidate after the previous
-> session is proven terminal and the candidate lease is transferred or renewed.
+> One candidate worktree may have at most one live coding-agent execution.
+> Sequential sessions for the same governed Action may reuse that candidate
+> after the previous session is proven terminal and the repository lease is
+> handed to the next session.
 
-If an Action is incomplete but its candidate is valid and preserved enough for
-continuation, Arcadia launches the next bounded session in the same worktree and
-branch. The new session receives the same Action/candidate identity plus fresh
-instructions describing the remaining acceptance gap.
+Changing a Way rule needs a ratified Decision, not only this proposal.
+
+No new lease is needed. Today's lease is per repository
+(`getRepositoryLease(db, repositoryPath)` in `src/sessions/index.ts` and
+`src/sessions/candidatePreservation.ts`), which is already stricter than
+one-live-execution-per-candidate. Continuation only needs the lease handed
+over on proven terminal exit instead of released and re-acquired by a
+competing preparation.
+
+If an Action is incomplete but its candidate is valid, Arcadia launches the next
+bounded session in the same worktree and branch. The new session receives the
+same Action/candidate identity plus fresh instructions describing the remaining
+acceptance gap.
+
+This changes one open Action. `refuse-to-orphan-an-uncommitted-candidate`
+currently requires `go` to report an uncommitted prepared candidate and take
+neither action implicitly. Under this contract, resuming is the implicit
+default when the same Action still owns the candidate and its prior Session is
+proven terminal; the report-and-choose refusal remains for every other case
+(different Action, unproven exit, or conflicting live Session).
 
 The agent conversation is disposable. The candidate workspace and Arcadia Run
 state are durable.
 
 ### 5. Host validation and preservation
 
-After each terminal session, Arcadia observes the exact candidate state and runs
-trusted validation bound to:
+Keep the trigger already scoped by `let-agent-preserve-its-candidate`: the
+agent may *request* preservation through the protected host request after
+required validation, and the host may also preserve on terminal-exit
+reconciliation. Either way the host runs validation and writes Git; the request
+cannot select checks or supply results.
+
+Arcadia observes the exact candidate state and runs trusted validation bound
+to:
 
 - candidate content/revision or tree fingerprint;
 - Action and immutable packet;
@@ -145,18 +169,12 @@ long-running Plan workspace from quietly accumulating unrelated state.
 ### 7. Mechanical failure states
 
 Worktree problems should become ordinary Arcadia state, not reasons for operator
-Git surgery. At minimum distinguish:
+Git surgery. `reconcile-session-exits-to-next-move` already requires
+distinguishing successful exit, failed execution, missing evidence, needs input
+and accepted completion. Add only one outcome to that set: **incomplete with a
+resumable candidate**. Do not introduce a separate failure-state taxonomy.
 
-- `candidate_preparation_failed`
-- `candidate_conflict`
-- `session_incomplete`
-- `validation_failed`
-- `preservation_failed`
-- `candidate_preserved`
-- `candidate_ready_for_continuation`
-- `requires_human_decision`
-
-Each non-human state should have one deterministic retry, recovery, or refusal
+Each non-human outcome should have one deterministic retry, recovery, or refusal
 path. Escalate only when judgment, authority, credentials, destructive recovery,
 or contradictory evidence is required.
 
@@ -177,7 +195,8 @@ Add only the missing continuation seam:
 2. allow a terminal Session to leave that candidate in a resumable state;
 3. launch a subsequent bounded Session against the same candidate when the same
    Action still owns it;
-4. keep the one-live-execution lease invariant;
+4. hand the existing repository lease to the next Session on proven terminal
+   exit, keeping the one-live-execution invariant;
 5. preserve/checkpoint through the host, never through broadened sandbox Git
    permissions;
 6. retire the candidate only after accepted integration or explicit abandonment
@@ -188,10 +207,17 @@ provider-specific orchestration layer is required.
 
 ## Acceptance criteria
 
-The first proof should use a disposable repository and one objective governed
-Action deliberately split across at least two coding-agent sessions.
+These are not a separate proof. They are distributed as amendments to existing
+Actions: continuation resume into `refuse-to-orphan-an-uncommitted-candidate`,
+lease handoff and the resumable-incomplete outcome into
+`reconcile-session-exits-to-next-move`, and the split-session run into
+`prove-two-action-unattended-production`. Criteria already owned elsewhere
+(protected preservation, stale-validation refusal, integration, cleanup safety)
+stay with their current Actions.
 
-It is accepted when:
+The split-session run uses a disposable repository and one objective governed
+Action deliberately split across at least two coding-agent sessions. Together
+the amended Actions are accepted when:
 
 1. Arcadia creates the candidate branch/worktree from the exact admitted base
    without agent involvement.
