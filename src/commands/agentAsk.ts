@@ -43,7 +43,7 @@ export function runAgentAskPreviewCommand(options: AgentAskPreviewOptions): Comm
     return db.transaction(() => {
       const capture = captureAskEnvelope(db, { requestId: normalized.requestId, originalText: request, ingressSource: "agent.ask" });
       const built = buildAgentAskEffects(normalized);
-      const proposal: AgentAskProposal = { id: stableProposalId(fingerprint), captureId: capture.id, normalized, effects: built.effects, requiredDecisions: built.requiredDecisions, unchanged: [], conflicts: [], refused: [], managedDocumentTransition: { required: requiresManagedDocumentTransition(normalized.intent), status: "withheld_until_acceptance", authority: "checked_in_documents" }, queueConsequence: "none_until_accepted", writes: { captureReceipt: true, proposalReceipt: true, projectChanges: false }, nonActions: ["No Project record is created or changed by preview.", "Agent input grants no approval or execution authority."], fingerprint, createdAt: new Date().toISOString() };
+      const proposal: AgentAskProposal = { id: stableProposalId(fingerprint), captureId: capture.id, normalized, effects: built.effects, requiredDecisions: built.requiredDecisions, unchanged: [], conflicts: [], refused: [], managedDocumentTransition: { required: requiresManagedDocumentTransition(normalized.intent), status: "withheld_until_acceptance", authority: "checked_in_documents" }, queueConsequence: "none_until_accepted", writes: { captureReceipt: true, proposalReceipt: true, projectChanges: false }, nonActions: ["No Project record is created or changed by preview.", "Agent input grants no approval or execution authority."], fingerprint, createdAt: new Date().toISOString(), sourcePath: options.file ? path.resolve(options.file) : null };
       db.prepare(`INSERT INTO agent_ask_proposals (id, request_id, capture_id, fingerprint, format, intent_kind, project_ref, proposal_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(proposal.id, normalized.requestId, capture.id, fingerprint, normalized.format, normalized.intent, normalized.project, JSON.stringify(proposal), proposal.createdAt);
       return { proposal, replayed: false };
@@ -107,7 +107,10 @@ export function runAgentAskDraftCommand(options: AgentAskDraftOptions): CommandS
   let preview: { proposal: AgentAskProposal; fingerprint: string } | null = null;
   let workspaceStatus: "previewed" | "not_available" = "not_available";
   try {
-    const previewResult = runAgentAskPreviewCommand({ workspace: options.workspace ?? "", request: content, requestId: options.requestId, project: options.project });
+    // Re-read the file draft just wrote (rather than passing `content`
+    // directly) so preview records `sourcePath`, letting a later terminal
+    // `settle --apply` archive this exact file automatically.
+    const previewResult = runAgentAskPreviewCommand({ workspace: options.workspace ?? "", file: filePath, requestId: options.requestId, project: options.project });
     preview = { proposal: previewResult.data.proposal, fingerprint: previewResult.data.proposal.fingerprint };
     workspaceStatus = "previewed";
   } catch (error) {

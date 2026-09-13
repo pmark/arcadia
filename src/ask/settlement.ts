@@ -20,7 +20,8 @@ export type AgentAskDisposition = "accepted" | "rejected";
 export type AgentAskResponsibility = "autonomous" | "agent";
 export type AgentAskPlacement = "top" | "before" | "after";
 
-interface FileMutation { path: string; before: string | null; after: string; }
+/** `after: null` means this mutation deletes `path` (used to archive a settled Ask's source file). */
+interface FileMutation { path: string; before: string | null; after: string | null; }
 
 export interface AgentAskSettlementReceipt {
   id: string;
@@ -588,11 +589,13 @@ export function settleAgentAsk(db: Database.Database, input: {
     }
   }
 
+  archiveSettledAskFile(fileMutations, effects, repoRoot, proposal.sourcePath ?? null);
+
   const previewFingerprint = sha256(JSON.stringify({
     proposalFingerprint: proposal.fingerprint,
     operation,
     queueRevision: queue.revision,
-    fileMutations: fileMutations.map((mutation) => ({ path: mutation.path, before: mutation.before ? sha256(mutation.before) : null, after: sha256(mutation.after) })),
+    fileMutations: fileMutations.map((mutation) => ({ path: mutation.path, before: mutation.before ? sha256(mutation.before) : null, after: mutation.after ? sha256(mutation.after) : null })),
     queueAfter
   }));
   if (input.apply && input.previewFingerprint !== previewFingerprint) {
@@ -632,7 +635,10 @@ export function settleAgentAsk(db: Database.Database, input: {
   let settled: AgentAskSettlementReceipt;
   try {
     settled = writeTransaction(db, () => {
-      for (const mutation of fileMutations) writeAtomically(mutation.path, mutation.after);
+      for (const mutation of fileMutations) {
+        if (mutation.after === null) { try { unlinkSync(mutation.path); } catch {} }
+        else writeAtomically(mutation.path, mutation.after);
+      }
       if (input.activate) {
         const dispatch = resolveDispatch(repoRoot, project.slug);
         if (!isDispatchable(dispatch) || dispatch.context?.action.id !== input.action) {
@@ -1218,6 +1224,33 @@ function appendLog(before: string | null, projectSlug: string, normalized: Norma
     "- **Next:** Continue from the governed Project pointer and execution queue.",
     "- **Blockers:** None recorded by this settlement."
   ].join("\n") + "\n";
+}
+
+/**
+ * Archive a terminally settled Ask's source `.arcadia/asks/` file into
+ * `.arcadia/asks/archive/`, in the same commit as the settlement effects
+ * themselves. Filing is disposable input, not governance state — the
+ * decision this file requested is already fully recorded by the mutations
+ * above (or, for a rejection, by the settlement receipt alone) — so nothing
+ * here is a judgment call, and it fires for both `accepted` and `rejected`.
+ *
+ * Only acts when `sourcePath` resolves to a direct child of this Project
+ * repository's own `.arcadia/asks/` directory, so an Ask previewed from
+ * somewhere else entirely (e.g. a recovered file inspected from `/tmp`, per
+ * the isolate-agent-asks recovery flow) is never touched. A missing or
+ * already-archived source file is a silent no-op, not an error, so retried
+ * or manually-cleaned-up settlements stay idempotent.
+ */
+function archiveSettledAskFile(fileMutations: FileMutation[], effects: string[], repoRoot: string, sourcePath: string | null): void {
+  if (!sourcePath) return;
+  const asksDir = path.join(repoRoot, ".arcadia", "asks");
+  const resolved = path.resolve(sourcePath);
+  if (path.dirname(resolved) !== asksDir || !existsSync(resolved)) return;
+  const content = readFileSync(resolved, "utf8");
+  const archivePath = path.join(asksDir, "archive", path.basename(resolved));
+  fileMutations.push({ path: resolved, before: content, after: null });
+  fileMutations.push({ path: archivePath, before: existsSync(archivePath) ? readFileSync(archivePath, "utf8") : null, after: content });
+  effects.push(`Archived the settled Ask file to ${path.relative(repoRoot, archivePath)}.`);
 }
 
 function restoreMutation(mutation: FileMutation): void {
