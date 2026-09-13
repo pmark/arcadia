@@ -4,7 +4,7 @@ type: decision
 id: "0051"
 slug: decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may
 project: arcadia
-status: open
+status: approved
 question: Decide whether sequential coding-agent Sessions for the same governed Action may continue in one host-owned candidate worktree, refining the one-session-one-branch-one-worktree rule in docs/working-copy-safety.md and AGENTS.md.
 gap_type: missing-decision
 recommendation: Adopt candidate continuation
@@ -21,6 +21,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-09-13
+answer: Adopt candidate continuation
+decided: 2026-09-13
 ---
 
 # Decision 0051: Decide whether sequential coding-agent Sessions for the same governed Action may continue in one host-owned candidate worktree, refining the one-session-one-branch-one-worktree rule in docs/working-copy-safety.md and AGENTS.md.
