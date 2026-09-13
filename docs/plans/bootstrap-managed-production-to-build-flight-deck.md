@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to build Flight Deck
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-09-08
+updated: 2026-09-13
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -503,7 +503,7 @@ actions:
     references: ["src/commands/review.ts", "src/ask/settlement.ts", "docs/decisions/0046-how-should-this-project-update-be-applied-set-the-work-pointer-to-let-agent-pres.md", "docs/proposals/validate-governed-documents.md"]
   - id: isolate-agent-asks-from-production-handoff
     title: Make Agent Ask authoring, preview, correction, settlement, and preservation use uniquely named files on Arcadia-owned isolated branches and worktrees so concurrent Asks cannot collide and no Ask dirties the shared base or blocks Arcadia Go.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make Agent Ask authoring, preview, correction, settlement, and preservation use uniquely named files on Arcadia-owned isolated branches and worktrees so concurrent Asks cannot collide and no Ask dirties the shared base or blocks Arcadia Go.
@@ -611,7 +611,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: isolate-agent-asks-from-production-handoff
+current_action: expose-guarded-host-session-launch
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---
