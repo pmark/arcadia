@@ -570,9 +570,11 @@ test possible. The PR template and
 ## Working-Copy Safety
 
 Before code changes, run `pnpm arcadia work monitor --no-pull-requests` and
-inspect the intended working directory. One coding session must use one branch
-and one worktree; do not begin agent code changes on `main` or in a checkout
-another session is using.
+inspect the intended working directory. A candidate worktree has at most one
+live coding session; do not begin agent code changes on `main` or in a checkout
+another live session is using. Sequential sessions for the same governed Action
+may continue in its candidate after the prior session is proven terminal
+(Decision 0051).
 
 Before stopping, leave changed code merged or on a pushed branch with a draft
 or ready PR. If commit, push, or PR creation is not authorized, report the exact
