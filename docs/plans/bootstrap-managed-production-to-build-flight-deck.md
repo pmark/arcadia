@@ -567,6 +567,29 @@ actions:
     depends_on: [make-go-total-across-plans]
     decisions: []
     references: ["docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md", "docs/decisions/0037-project-to-arcadia-signal-channel.md", "docs/plans/provider-capacity-harvesting.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "src/commands/worker.ts"]
+  - id: build-agent-agnostic-learning-loop
+    title: Let Arcadia and every Project capture concise lessons cheaply and automatically turn supported lessons into durable reusable capability.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Let Arcadia and every Project capture concise lessons cheaply and automatically turn supported lessons into durable reusable capability.
+    expected_artifact: Evidence satisfying Agent Ask build-agent-agnostic-learning-loop
+    clarification: clarified
+    confidence: high
+    source: Agent Ask implement-agent-agnostic-learning-loop-2026-09-12
+    acceptance_criteria:
+      - "`arcadia learn <summary>` records a durable lesson signal with a stable id, explicit Project or Arcadia scope, and automatically captured source, time, repository revision when available, confidence/freshness, and statement kind; successful intake makes zero model calls and requires no coding-agent session."
+      - The record distinguishes direct operator statements, observed outcomes, agent inferences, and imported evidence; an inference never silently becomes an operator preference, Project truth, approved Decision, or authority grant.
+      - Lesson intake reuses the defect signal's replay, likely-duplicate, Back Burner, worker, budget, recovery, and receipt machinery while keeping defect repair and lesson incorporation as distinct dispositions; no second daemon, scheduler, backlog, or generic memory store is introduced.
+      - The periodic worker performs deterministic normalization, exact matching, source/freshness checks, and support counting before any model call, then uses only the bounded admitted allowance to dismiss noise, merge or link evidence, retain a trigger, or propose and safely apply the smallest durable incorporation.
+      - "A supported lesson lands in one existing authoritative home appropriate to its claim: regression test or guard, Project reference or Log, Arcadia Way guidance, Decision, governed Action, or reusable skill; the original signal remains linked as provenance and the outcome is inspectable, correctable, and retractable."
+      - Project-scoped or sensitive material cannot cross into another Project or Arcadia-wide guidance by similarity alone. Cross-scope promotion requires evidence from more than one Project or one high-severity trust/safety incident, preserves source links, and excludes credentials, raw transcripts, unrelated repository content, and private data not authorized for that scope.
+      - A lesson meeting the existing stop-the-line test bypasses periodic cadence. All other learning is subordinate to current governed work; merge, deployment, publication, spending, credentials, messaging, production access, destructive changes, constitutional changes, and unresolved operator judgment retain their existing gates.
+      - Deterministic tests cover Arcadia and Project scope, zero-model intake, retry, likely duplicates, direct-statement versus inference provenance, stale evidence, correction/retraction, bounded reflection, safe test or reference promotion, refused cross-scope disclosure, worker restart, and stop-the-line escalation.
+      - The operator-facing QA plan includes exact CLI intake, scope selection, worker/recovery command, signal and promoted-record inspection, correction/retraction, and observable expected results; state whether this is also the end-user procedure.
+    depends_on: [build-autonomous-defect-loop]
+    decisions: []
+    references: ["docs/decisions/0050-add-a-nearly-free-automatic-learning-loop-that-lets-any-arcadia-surface-or-proje.md", "docs/decisions/0020-compounding-agent-production-principles.md", "docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md", "docs/plans/provider-capacity-harvesting.md", "OPERATOR_CONTEXT.md"]
 questions: []
 decisions: []
 current_action: isolate-agent-asks-from-production-handoff
