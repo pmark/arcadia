@@ -182,11 +182,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask reconcile-session-exits-to-next-move
     clarification: clarified
     confidence: high
-    source: Agent Ask apply-8020-yagni-to-bootstrap-plan-2026-09-06-v2
+    source: Agent Ask amend-for-candidate-continuation-2026-09-13
     acceptance_criteria:
       - Persist a thin exit observation/receipt through the existing operational model and link available Run, Artifact and Decision proof.
-      - Distinguish successful exit, failed execution, missing evidence, needs input and accepted Action completion; zero exit never marks done by itself.
-      - Release repository leases only on proven terminal state and preserve recoverable reconciliation errors.
+      - Distinguish successful exit, failed execution, missing evidence, needs input, incomplete with a resumable candidate, and accepted Action completion; zero exit never marks done by itself.
+      - Release repository leases only on proven terminal state and preserve recoverable reconciliation errors. Per Decision 0051, an incomplete exit whose candidate is resumable hands the existing repository lease to the next Session for the same Action rather than releasing it to a competing preparation; no new lease type is introduced.
       - Display the resulting canonical next Action or exact judgment/blocker with a usable link; automatic next admission only under the current Active production policy; no hand-edited governance state.
       - Retry/reconcile/reload is idempotent and does not duplicate completion, Decisions or execution.
       - "Preserve the proof Artifact: Exit-to-evidence-to-next-move lifecycle integration tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
@@ -194,7 +194,7 @@ actions:
       - Prove the quality gate rejects deliberately failed tests, absent artifacts and false agent completion claims as specified in contract 20.
     depends_on: [expose-guarded-host-session-launch]
     decisions: []
-    references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/sessions/index.ts", "src/commands/advance.ts", "src/stewardship/artifactValidator.ts", "src/docs/dispatch.ts"]
+    references: ["docs/decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md", "docs/proposals/host-owned-agent-workspace-contract.md", "docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/sessions/index.ts", "src/commands/advance.ts", "src/stewardship/artifactValidator.ts", "src/docs/dispatch.ts"]
   - id: advance-approved-production-work
     title: Advance accepted production work through canonical completion, Log and pointer transitions.
     status: open
@@ -263,21 +263,22 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Prove two dependent Actions run from one activation using any reachable existing production control (the CLI production commands satisfy this; a dashboard control is not required for this proof).
+    next_action: Prove two dependent Actions run from one activation using any reachable existing production control (the CLI production commands satisfy this; a dashboard control is not required for this proof), with one Action continued across two Sessions in the same candidate.
     expected_artifact: Evidence satisfying Agent Ask prove-two-action-unattended-production
     clarification: clarified
     confidence: high
-    source: Agent Ask apply-8020-yagni-to-bootstrap-plan-2026-09-06-v2
+    source: Agent Ask amend-for-candidate-continuation-2026-09-13
     acceptance_criteria:
       - Provide a disposable or explicitly approved real Project with two small dependent Actions and a reachable existing production control (CLI or dashboard) before requesting live execution.
       - "Under bounded rehearsal authority activate once: Action A launches, validates, records canonical completion/pointer, and B launches without manual session setup or launch confirmation in between."
+      - "Per Decision 0051, deliberately split one Action across Sessions: Session A edits the candidate and exits incomplete without Git common-directory writes; Session B launches in the same worktree and branch, sees Session A's changes and finishes; a concurrent second live execution against that candidate is refused; the next Action receives a fresh candidate from the new governed base; no operator branch, worktree, commit, stash, rebase or cleanup step occurs."
       - Turn Off during work; prove no later launch, preserved current output and visible terminal reconciliation. Close browser/restart worker and prove no duplicate or reactivation after Off.
       - Record exact revision, host, provider, Action/Session identities, receipts and every operator intervention; missing real authorization/input remains one precise review, never fixture-as-live success.
       - Complete this vertical proof before broad rail, capture, navigation polish or default-home cutover; reuse existing review/proof specialists as needed.
       - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
     depends_on: [feed-and-supervise-managed-production]
     decisions: []
-    references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/operator-demo-and-release-contract.md", "docs/plans/idea-to-managed-build.md"]
+    references: ["docs/decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md", "docs/proposals/host-owned-agent-workspace-contract.md", "docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/operator-demo-and-release-contract.md", "docs/plans/idea-to-managed-build.md"]
   - id: prove-multi-provider-production-recovery
     title: Prove continuous production across configured providers, independent Plans and capacity recovery.
     status: open
@@ -447,19 +448,19 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: The host controller reports a prepared worktree that holds uncommitted work instead of silently preparing a duplicate for the same Action.
+    next_action: The host controller resumes the existing prepared candidate for the same Action after its prior Session is proven terminal, and otherwise reports a prepared worktree holding uncommitted work instead of silently preparing a duplicate.
     expected_artifact: Evidence satisfying Agent Ask refuse-to-orphan-an-uncommitted-candidate
     clarification: clarified
     confidence: high
-    source: Agent Ask let-agent-preserve-its-candidate-2026-09-11
+    source: Agent Ask amend-for-candidate-continuation-2026-09-13
     acceptance_criteria:
       - "`go` detects a prepared worktree for the current Action that holds uncommitted changes, and reports it with its exact path rather than preparing a second worktree for that Action."
-      - The reported state names the operator's choices explicitly - preserve the existing candidate, or discard it - and `go` takes neither action implicitly.
+      - Per Decision 0051, when the same governed Action still owns the candidate and its prior Session is proven terminal, `go` resumes that candidate (same worktree and branch, repository lease handed over) without operator Git steps. In every other case - different Action, unproven exit, or a conflicting live Session - the reported state names the operator's choices explicitly (preserve the existing candidate, or discard it) and `go` takes neither action implicitly.
       - "The `clutter` summary counts existing agent worktrees accurately; a run with two agent worktrees never reports `extraWorktrees: 0`."
-      - "Preserve the proof Artifact: a fixture test reproducing an uncommitted prepared worktree and asserting `go` refuses to duplicate it; include the exact runnable target and operator QA steps in the pull request."
+      - "Preserve the proof Artifact: fixture tests reproducing an uncommitted prepared worktree, asserting `go` resumes it for the same Action after a proven terminal Session and refuses to duplicate or resume it otherwise; include the exact runnable target and operator QA steps in the pull request."
     depends_on: []
     decisions: []
-    references: ["src/commands/go.ts", "src/goBroker.ts", "docs/working-copy-safety.md"]
+    references: ["docs/decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md", "docs/proposals/host-owned-agent-workspace-contract.md", "src/commands/go.ts", "src/goBroker.ts", "docs/working-copy-safety.md"]
   - id: register-agent-workspace-trust
     title: "`go-broker install` establishes and verifies agent workspace trust for each configured Arcadia Project repository, and `go-broker status` reports it as a first-class readiness condition."
     status: open
