@@ -2,6 +2,7 @@
 arcadia: v1
 type: proposal
 project: arcadia
+decision: "0051"
 question: Can Arcadia make managed multi-session coding reliable by owning Git and worktree lifecycle on the host while coding agents only edit and validate inside a prepared candidate workspace?
 ---
 
