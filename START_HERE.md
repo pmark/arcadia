@@ -865,7 +865,19 @@ fixed launchers:
 # Claude uses the corresponding -claude executables.
 ```
 
-Preservation checks come from host-managed Project `validation_commands`,
+A normal manual `go` handoff has `session: null`. It does not need a managed
+planning packet or production activation. The host records a binding from its
+active worktree reservation to the current Action, base revision, branch and
+Project validation commands. `go` and `advance` report preservation readiness
+and name missing configuration. The worker includes these handoffs in its
+protected request routes, and the same preservation launcher validates and
+commits them locally. Retrying preserves the same candidate commit. A legacy
+reservation can acquire its missing binding while its branch HEAD still matches
+the base. Changed authority, expired reservations and changed history refuse.
+Manual preservation never pushes, opens a PR, completes an Action, or grants
+managed-production authority. Those gates remain separate.
+
+For managed Sessions, preservation checks come from host-managed Project `validation_commands`,
 frozen in the approved immutable packet. The host executes those checks against
 an immutable Git snapshot using macOS Seatbelt, retains the actual results, and
 commits that exact tested tree. Candidate changes or changed authority refuse.

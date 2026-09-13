@@ -121,6 +121,15 @@ or a rerun returns that same receipt — the commit carries the request id as a
 trailer, so a crash between committing and recording the receipt is recovered by
 finding the existing commit instead of creating a second one.
 
+Manual Go handoffs use the same protected capture, validation and commit path.
+Their authority identity is an immutable host-owned reservation binding, not a
+fabricated managed Session or planning approval. The binding freezes the current
+Action, configured objective checks and exact Git identities; every preservation
+rechecks them. Manual receipts say `authorityKind: manual_handoff`; their legacy
+`packetSha256` field contains the binding fingerprint and their policy epoch and
+revision are zero, meaning no production policy is claimed. Manual preservation
+is always LOCAL ONLY. No managed-production grant is inferred from ordinary Go.
+
 Remote preservation is gated. Only when the standing production policy's scope
 explicitly sets `remotePreservation` does the controller push the branch and
 create or update its draft pull request (with the required operator QA plan).

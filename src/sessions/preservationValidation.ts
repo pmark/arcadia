@@ -51,9 +51,16 @@ export function preservationAuthority(db: Database.Database, workspace: string, 
  * Unsupported hosts fail closed; this is not a general command execution API. */
 export function validatePreservationCandidate(db: Database.Database, workspace: string, lease: AgentSession) {
   const binding = preservationAuthority(db, workspace, lease);
-  const tree = snapshotCandidate(lease.worktree_path);
+  return validateBoundCandidate(workspace, { id: lease.id, repository: lease.repository_path, worktree: lease.worktree_path, commands: binding.commands }, binding, () => {
+    if (JSON.stringify(preservationAuthority(db, workspace, lease)) !== JSON.stringify(binding)) throw validationError("Preservation authority changed.");
+  });
+}
+
+export function validateBoundCandidate<T>(workspace: string, candidate: { id: string; repository: string; worktree: string; commands: string[] }, binding: T, assertBinding: () => void) {
+  assertBinding();
+  const tree = snapshotCandidate(candidate.worktree);
   if (process.platform !== "darwin") throw validationError("Protected preservation validation currently requires the macOS Seatbelt host.");
-  const evidenceRoot = path.join(workspace, "artifacts", "preservation", lease.id);
+  const evidenceRoot = path.join(workspace, "artifacts", "preservation", candidate.id);
   mkdirSync(evidenceRoot, { recursive: true });
   const root = realpathSync(mkdtempSync(path.join(evidenceRoot, "check-")));
   const source = path.join(root, "source");
@@ -61,12 +68,12 @@ export function validatePreservationCandidate(db: Database.Database, workspace: 
   mkdirSync(source); mkdirSync(scratch);
   const evidenceRef = path.join(root, "validation.json");
   try {
-    materializeCandidateTree(lease.worktree_path, tree, source);
+    materializeCandidateTree(candidate.worktree, tree, source);
     const quote = (s: string) => JSON.stringify(s);
     // Default read visibility matches the coding sandbox; write/process/network
     // capabilities are restricted separately. Secrets are not passed in env.
-    const profile = `(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath ${quote(source)}) (subpath ${quote(scratch)}) (require-all (require-not (subpath ${quote(realpathSync(workspace))})) (require-not (subpath ${quote(realpathSync(lease.repository_path))})) (require-not (subpath ${quote(realpathSync(lease.worktree_path))})))) (allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target self)) (allow file-write* (subpath ${quote(scratch)}) (literal "/dev/null"))`;
-    const results = binding.commands.map(command => {
+    const profile = `(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath ${quote(source)}) (subpath ${quote(scratch)}) (require-all (require-not (subpath ${quote(realpathSync(workspace))})) (require-not (subpath ${quote(realpathSync(candidate.repository))})) (require-not (subpath ${quote(realpathSync(candidate.worktree))})))) (allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target self)) (allow file-write* (subpath ${quote(scratch)}) (literal "/dev/null"))`;
+    const results = candidate.commands.map(command => {
       const run = spawnSync("/usr/bin/sandbox-exec", ["-p", profile, "/bin/sh", "-c", command], {
         cwd: source, env: { PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`, HOME: scratch, TMPDIR: scratch },
         encoding: "utf8", timeout: 120_000, killSignal: "SIGKILL", maxBuffer: 1024 * 1024
@@ -77,8 +84,8 @@ export function validatePreservationCandidate(db: Database.Database, workspace: 
     const evidence = { producer: "arcadia-host-seatbelt-v1", binding, tree, results, sandboxProfile: profile, runtime: process.execPath, node: process.version, createdAt: new Date().toISOString() };
     writeFileSync(evidenceRef, JSON.stringify(evidence, null, 2), { mode: 0o600 });
     if (results.some(r => r.exitStatus !== 0 || r.error || r.signal)) throw validationError("Declared preservation validation failed or was skipped.", { evidenceRef });
-    if (JSON.stringify(preservationAuthority(db, workspace, lease)) !== JSON.stringify(binding)) throw validationError("Preservation authority changed during validation.", { evidenceRef });
-    if (snapshotCandidate(lease.worktree_path) !== tree) throw validationError("Candidate changed during validation; passing evidence cannot authorize altered content.", { evidenceRef });
+    assertBinding();
+    if (snapshotCandidate(candidate.worktree) !== tree) throw validationError("Candidate changed during validation; passing evidence cannot authorize altered content.", { evidenceRef });
     return { passed: true, evidenceRef, candidateFingerprint: tree, binding };
   } finally {
     // Retain proof, remove only the producer's own disposable execution paths.
