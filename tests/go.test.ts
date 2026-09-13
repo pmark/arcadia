@@ -232,6 +232,37 @@ describe("arcadia go", () => {
     expect(recoveredContent).toContain("request_id: legacy-drift-2026-09-12");
   });
 
+  it("recovers a suffixed legacy root Ask (agent-ask-<topic>.yaml), the name the old convention produced most often", () => {
+    const fixture = createFixture("codex/recover-suffixed-legacy-ask");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    writeFileSync(
+      path.join(fixture.main, "agent-ask-triage.yaml"),
+      "agent_ask: v1\nrequest_id: suffixed-drift-2026-09-13\nproject: unknown\nintent: log\ndesired_result: test suffixed drift\n"
+    );
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true });
+
+    expect(result.data.applied).toBe(true);
+    expect(result.data.askRecoveries).toHaveLength(1);
+    const recovery = result.data.askRecoveries[0]!;
+    // Renamed into the isolated directory under its own request id, exactly
+    // like the bare legacy name — the topic suffix carries no identity.
+    expect(recovery.askFile).toMatch(/^\.arcadia\/asks\/agent-ask-suffixed-drift-2026-09-13-.+\.yaml$/);
+    expect(recovery.requestId).toBe("suffixed-drift-2026-09-13");
+    expect(existsSync(path.join(fixture.main, "agent-ask-triage.yaml"))).toBe(false);
+    expect(git(fixture.main, ["status", "--porcelain"]).trim()).toBe("");
+    expect(git(fixture.main, ["show", `${recovery.branch}:${recovery.askFile}`])).toContain("request_id: suffixed-drift-2026-09-13");
+  });
+
+  it("still fails closed on an unrelated root YAML file that only looks adjacent to the Ask convention", () => {
+    const fixture = createFixture("codex/unrelated-root-yaml");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    writeFileSync(path.join(fixture.main, "agent-config.yaml"), "unrelated: true\n");
+
+    expectValidation(() => runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true }), "not clean");
+    expect(existsSync(path.join(fixture.main, "agent-config.yaml"))).toBe(true);
+  });
+
   it("recovers a correctly named isolated Ask draft left dirty on the base worktree, without renaming it", () => {
     const fixture = createFixture("codex/recover-isolated-draft");
     commitFeature(fixture.feature, "proof.txt", "proof\n");
