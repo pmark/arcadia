@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { validationError } from "../cli/errors.js";
+import { GO_REQUEST_FILE } from "../sessions/goRequestProtocol.js";
 
 /**
  * Git primitives shared by every command that reasons about worktrees.
@@ -44,11 +45,12 @@ export function existingDirectory(input: string, label: string): string {
   return realpathSync(resolved);
 }
 
-/** Every uncommitted change, untracked files included. Empty means clean. */
+/** Uncommitted work, excluding only the untracked reserved go request. A tracked
+ * request remains dirty and is separately refused by the transport. */
 export function uncommittedChanges(cwd: string): string[] {
   return git(cwd, ["status", "--porcelain=v1", "--untracked-files=all"])
     .split("\n")
-    .filter(Boolean);
+    .filter(line => Boolean(line) && line !== `?? ${GO_REQUEST_FILE}`);
 }
 
 export function assertClean(cwd: string, label: string): void {

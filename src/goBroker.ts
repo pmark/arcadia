@@ -28,7 +28,7 @@ export function assertGoBrokerHostController(request: GoBrokerRequest, environme
   throw validationError("This Arcadia broker operation must run through the host controller, outside the coding-agent sandbox.", {
     operation: request.operation,
     sandbox: environment.CODEX_SANDBOX,
-    remedy: "Finish the candidate in this task, then have the host run the revision-pinned host-controller executable from the completed worktree. Codex may run only the preserve request, advance and work-monitor brokers."
+    remedy: "Run the installed fixed go request launcher from the configured Project repository or prepared Session worktree. The host worker owns reconciliation; do not retry direct Git mutation with elevated permissions."
   });
 }
 

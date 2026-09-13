@@ -10,16 +10,35 @@ description: Safely finish a completed coding-agent worktree, fast-forward it in
 Arcadia Go reconciliation is a **host-controller** operation. It fetches,
 updates shared Git metadata, and creates or retires worktrees, so it must never
 run inside a Codex or Claude Code sandbox. Do not reproduce its Git logic by
-hand, invoke the mutable `arcadia go` launcher, or run the installed `go`
-controller from this task.
+hand or invoke the mutable `arcadia go` launcher from this task. For both
+providers, the fixed `go` launcher always submits a request to the host worker; it
+does not run Git mutation in the sandbox.
 
 If the request is exactly `arcadia advance` in a prepared worktree, begin at
-step 2. That phrase is the continuation
+step 3. That phrase is the continuation
 prompt, not permission to invoke the mutable CLI command directly.
 
 ## Workflow
 
-1. After the declared objective checks are ready, request protected preservation:
+1. If the operator says `arcadia go`, run the fixed provider launcher from the
+   current Project repository or prepared Session worktree:
+
+   ```sh
+   __ARCADIA_CODEX_GO_BROKER__
+   # Claude Code uses: __ARCADIA_CLAUDE_GO_BROKER__
+   ```
+
+   This submits only a host-worker request for either provider. The host worker derives
+   the source from its heartbeat and runs the canonical preview/apply outside
+   the sandbox. Never pass arguments, run mutable `arcadia go` directly, or
+   recreate the Git logic by hand. If the worker is unavailable, the refusal is
+   the repair action: start the updated worker and rerun the same launcher.
+   On success, continue from `data.nextWorktree.path`: use that directory for
+   subsequent commands and run the fixed `advance` launcher there (step 3).
+   Do not stop at printing the broker JSON. If the active environment cannot
+   write the returned worktree, report that exact environment mismatch once;
+   do not request repeated Git or filesystem escalations.
+2. After the declared objective checks are ready, request protected preservation:
 
    ```sh
    __ARCADIA_CODEX_PRESERVE_BROKER__
@@ -32,7 +51,7 @@ prompt, not permission to invoke the mutable CLI command directly.
    An unavailable host worker is a named stop; never run Git mutation or weaken
    the sandbox to bypass it. Preservation does not accept, integrate, complete,
    or advance the Action. Retain the receipt and any LOCAL ONLY recovery action.
-2. If the request is `arcadia advance` in an already prepared worktree, set
+3. If the request is `arcadia advance` in an already prepared worktree, set
    the command tool's working directory to that worktree and run:
 
    ```sh
@@ -42,7 +61,7 @@ prompt, not permission to invoke the mutable CLI command directly.
 
    Never run mutable `arcadia advance` directly and never pass an argument to
    either protected launcher.
-3. Before changing code, run the matching fixed read-only work-monitor launcher
+4. Before changing code, run the matching fixed read-only work-monitor launcher
    from that prepared worktree:
 
    ```sh
@@ -53,7 +72,7 @@ prompt, not permission to invoke the mutable CLI command directly.
    It runs only `arcadia work monitor --no-pull-requests` against the resolved
    local workspace. Report any preservation blocker it finds; do not ask for
    approval to run this read-only preflight.
-4. Inspect the selected Action and its local implementation boundaries using
+5. Inspect the selected Action and its local implementation boundaries using
    ordinary read-only commands (`git status`, `rg`, and targeted file reads)
    without asking for approval. Read-only discovery is already authorized by a
    request to continue Arcadia work. Ask only when a later action needs an
@@ -70,11 +89,11 @@ prompt, not permission to invoke the mutable CLI command directly.
   `pnpm arcadia go-broker install`, then fully restart Codex Desktop and select
   **arcadia-unattended**. The CLI launch command selects the same profile and
   uses `--ask-for-approval never`; it is the only unattended fallback.
-- The operator-facing host controller invokes the revision-pinned `go`
-  executable from the completed worktree. It performs the canonical preview
-  and identical apply outside the coding-agent sandbox, then starts the next
-  task from its returned prepared-worktree path. The controller is deliberately
-  absent from Codex and Claude Code allowlists.
+- The fixed provider executables are request-only, including in a host terminal.
+  The worker owns the Git-mutating child process and performs canonical preview
+  and identical apply outside the coding-agent sandbox. Continue in the returned
+  prepared worktree. A request does not authorize merge, deployment, completion,
+  or acceptance beyond the existing canonical command's authority checks.
 - After entering a prepared worktree, check whether `node_modules` exists. If
   missing, use that repository's dependency-bridge command or documented
   symlink rather than improvising a per-worktree dependency install.
@@ -95,5 +114,6 @@ controller may fast-forward, fetch, or create/remove a worktree; it may remove
 only the named clean source worktree and its merged agent branch. It never
 stages, commits, force-merges, resets, pushes, opens a pull request, deploys,
 launches a coding-agent process, or discards work. Every launcher accepts no
-public arguments. `advance` and `work-monitor` emit read-only results. `preserve` submits only a
-fixed preservation request and reads its host-protected response.
+public arguments. `advance` and `work-monitor` emit read-only results. `go`
+and `preserve` submit fixed requests for either provider and read only
+host-protected responses.
