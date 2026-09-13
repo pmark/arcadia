@@ -1,5 +1,4 @@
 import {
-  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -28,10 +27,14 @@ import {
   getWorkItem,
   upsertProjectMetadata
 } from "../src/db/repositories.js";
+import { slugify } from "../src/utils/slug.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
 
 const roots: string[] = [];
+
+/** The fixture Project's name, shared so a test can derive its records directory. */
+const FIXTURE_PROJECT_NAME = "Martian Rover";
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -139,17 +142,24 @@ describe("Obsidian accepted planning Artifact memory", () => {
 
   it("leaves acceptance open when an atomic vault write fails", () => {
     const fixture = planningFixture({ memory: true });
-    const managedRoot = path.join(fixture.vault, "Arcadia");
-    mkdirSync(managedRoot, { recursive: true });
-    chmodSync(managedRoot, 0o500);
-    try {
-      expect(() => runReviewApproveCommand({ workspace: fixture.workspace, id: fixture.decisionId }))
-        .toThrow(/memory export failed/);
-      expect(getDecisionStatus(fixture)).toBe("open");
-      expect(getWorkItemStatus(fixture)).toBe("in_progress");
-    } finally {
-      chmodSync(managedRoot, 0o700);
-    }
+    // The record lands at Arcadia/Records/<project>/<year>/<file>.md, so
+    // occupying the <project> path component with a regular file makes
+    // atomicWrite's own `mkdirSync(path.dirname(destination))` fail with
+    // ENOTDIR. This used to deny the write by chmod-ing the managed root to
+    // 0o500, which silently does nothing when the suite runs as uid 0 — the
+    // write then succeeded, the expected throw never came, and the test
+    // failed. Every cloud agent container runs as root, so the one
+    // environment that most needed this coverage was the only one where it
+    // reported a phantom failure instead. A path collision is enforced by
+    // the filesystem for every user, root included.
+    const recordsRoot = path.join(fixture.vault, "Arcadia", "Records");
+    mkdirSync(recordsRoot, { recursive: true });
+    writeFileSync(path.join(recordsRoot, slugify(FIXTURE_PROJECT_NAME)), "not a directory\n", "utf8");
+
+    expect(() => runReviewApproveCommand({ workspace: fixture.workspace, id: fixture.decisionId }))
+      .toThrow(/memory export failed/);
+    expect(getDecisionStatus(fixture)).toBe("open");
+    expect(getWorkItemStatus(fixture)).toBe("in_progress");
   });
 });
 
@@ -175,7 +185,7 @@ function planningFixture(options: { memory: boolean; validationStatus?: "passed"
 
   return withDatabase(workspace, (db) => {
     const created = createProjectWithInitialWork(db, {
-      name: "Martian Rover",
+      name: FIXTURE_PROJECT_NAME,
       mission: "Ship durable creative tools.",
       goal: "Preserve reviewed project knowledge.",
       status: "active",
