@@ -36,7 +36,7 @@ import {
   type ProjectTransition,
   type TmuxAdapter
 } from "../sessions/index.js";
-import { recoverLegacyAgentAskDrift, type LegacyAskRecovery } from "../sessions/legacyAskRecovery.js";
+import { recoverLegacyAgentAskDrift, type AskRecoveryTestHooks, type LegacyAskRecovery } from "../sessions/legacyAskRecovery.js";
 import { prepareAgentWorktree } from "../sessions/worktreePreparation.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { resolveWorkspace } from "../workspace/resolve.js";
@@ -61,7 +61,11 @@ export interface GoCommandOptions {
   /** Test-only process boundary. */
   tmux?: TmuxAdapter;
   /** Deterministic fault injection after Git creation but before reservation commit. */
-  testHooks?: { afterWorktreeCreatedBeforeReservationCommit?: () => void };
+  testHooks?: {
+    afterWorktreeCreatedBeforeReservationCommit?: () => void;
+    /** Deterministic fault injection inside the Agent Ask drift recovery it runs before the clean check. */
+    askRecovery?: AskRecoveryTestHooks;
+  };
 }
 
 export interface BaseRemoteSync {
@@ -141,11 +145,11 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
   const baseRecord = worktrees.find((candidate) => candidate.branch === baseRef);
 
   const askRecoveries: LegacyAskRecovery[] = [];
-  const sourceAskRecovery = recoverLegacyAgentAskDrift(repo, sourceRecord.path);
+  const sourceAskRecovery = recoverLegacyAgentAskDrift(repo, sourceRecord.path, options.testHooks?.askRecovery);
   if (sourceAskRecovery.recovered) askRecoveries.push(sourceAskRecovery);
   assertClean(sourceRecord.path, "source worktree");
   if (baseRecord && !samePath(baseRecord.path, sourceRecord.path)) {
-    const baseAskRecovery = recoverLegacyAgentAskDrift(repo, baseRecord.path);
+    const baseAskRecovery = recoverLegacyAgentAskDrift(repo, baseRecord.path, options.testHooks?.askRecovery);
     if (baseAskRecovery.recovered) askRecoveries.push(baseAskRecovery);
     assertClean(baseRecord.path, "base worktree");
   }

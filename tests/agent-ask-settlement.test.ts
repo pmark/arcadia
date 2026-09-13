@@ -872,6 +872,74 @@ describe("Agent Ask settlement", () => {
     })).toThrow("cannot mutate another Project");
     expect(readFileSync(planPath, "utf8")).not.toContain("Cross Project edit");
   });
+
+  it("keeps two concurrent Agent Asks' paths, request ids, receipts, effects, and repositories fully disjoint", () => {
+    const { workspace, repo } = fixture();
+    addOtherProject(workspace, repo);
+
+    // Two agents draft Asks against two different Projects at effectively the
+    // same time, interleaved rather than run one after the other, so nothing
+    // about the first can leak into or block the second.
+    const first = runAgentAskPreviewCommand({
+      workspace, request: askForIntent("concurrent-first", "log", "Record concurrent proof A")
+    });
+    const second = runAgentAskPreviewCommand({
+      workspace, request: askForIntent("concurrent-second", "log", "Record concurrent proof B").replace("project: demo", "project: other")
+    });
+    expect(first.data.proposal.id).not.toBe(second.data.proposal.id);
+    expect(first.data.proposal.normalized.project).toBe("demo");
+    expect(second.data.proposal.normalized.project).toBe("other");
+
+    // A correction: the agent behind the first Ask notices a typo and
+    // re-drafts under a new request id (the only way to change content, since
+    // a used request id is fixed to its original fingerprint) while the
+    // second Ask's lifecycle is still mid-flight.
+    const corrected = runAgentAskPreviewCommand({
+      workspace, request: askForIntent("concurrent-first-corrected", "log", "Record concurrent proof A, corrected")
+    });
+    expect(() => runAgentAskPreviewCommand({
+      workspace, request: askForIntent("concurrent-first", "log", "A different desired result")
+    })).toThrow("already used with different content");
+
+    const secondPreview = runAgentAskSettleCommand({
+      workspace, proposal: second.data.proposal.id, requestId: "settle-concurrent-second", disposition: "accepted"
+    });
+    const correctedPreview = runAgentAskSettleCommand({
+      workspace, proposal: corrected.data.proposal.id, requestId: "settle-concurrent-first-corrected", disposition: "accepted"
+    });
+
+    // Settling out of authoring order: second lands first, then the
+    // correction — proving order of arrival, not order of drafting, is what
+    // determines disjoint outcomes.
+    const secondReceipt = runAgentAskSettleCommand({
+      workspace, proposal: second.data.proposal.id, requestId: "settle-concurrent-second",
+      disposition: "accepted", apply: true, preview: secondPreview.data.receipt.previewFingerprint
+    });
+    const correctedReceipt = runAgentAskSettleCommand({
+      workspace, proposal: corrected.data.proposal.id, requestId: "settle-concurrent-first-corrected",
+      disposition: "accepted", apply: true, preview: correctedPreview.data.receipt.previewFingerprint
+    });
+
+    expect(secondReceipt.data.receipt.id).not.toBe(correctedReceipt.data.receipt.id);
+    expect(secondReceipt.data.receipt.projectSlug).toBe("other");
+    expect(correctedReceipt.data.receipt.projectSlug).toBe("demo");
+
+    const demoLog = readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8");
+    expect(demoLog).toContain("Record concurrent proof A, corrected");
+    expect(demoLog).not.toContain("Record concurrent proof B");
+    const otherRepo = path.join(path.dirname(repo), "other-repo");
+    const otherLog = readFileSync(path.join(otherRepo, "MISSION_LOG.md"), "utf8");
+    expect(otherLog).toContain("Record concurrent proof B");
+    expect(otherLog).not.toContain("Record concurrent proof A");
+
+    // The abandoned, never-settled original first Ask left no trace anywhere.
+    withDatabase(workspace, (db) => {
+      const settled = db.prepare("SELECT request_id FROM agent_ask_settlements").all() as { request_id: string }[];
+      expect(settled.map((row) => row.request_id).sort()).toEqual(["settle-concurrent-first-corrected", "settle-concurrent-second"]);
+      const proposals = db.prepare("SELECT request_id FROM agent_ask_proposals").all() as { request_id: string }[];
+      expect(proposals.map((row) => row.request_id).sort()).toEqual(["concurrent-first", "concurrent-first-corrected", "concurrent-second"]);
+    });
+  });
 });
 
 // Agent Ask is how coding agents reach governed Project state, so its refusals

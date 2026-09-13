@@ -8,10 +8,9 @@ description: Draft, edit, validate, or preview an Arcadia Agent Ask. Use when th
 <!-- ARCADIA_MANAGED_AGENT_ASK_SKILL -->
 
 Treat an explicit request to plan, record, amend, or complete Arcadia-governed
-work as authorization to draft or edit an Agent Ask file under
-`.arcadia/asks/` in the current repository. Do not ask the operator for
-permission to create, edit, replace, or validate that repository-local input
-file.
+work as authorization to draft or edit an Agent Ask file under `.arcadia/asks/`
+in the current repository. Do not ask the operator for permission to create,
+edit, replace, or validate that repository-local input file.
 
 Never author or edit a root `agent-ask.yaml`. That path lives in the shared
 base checkout: editing it there dirties the base and can block Arcadia Go's
