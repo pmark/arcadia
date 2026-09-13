@@ -22,11 +22,13 @@ import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
 import { renderAskRuleTestSuccess, runAskRuleTestCommand } from "./commands/askRule.js";
 import {
   renderAgentAskContractSuccess,
+  renderAgentAskDraftSuccess,
   renderAgentAskNotificationSentSuccess,
   renderAgentAskNotificationsSuccess,
   renderAgentAskPreviewSuccess,
   renderAgentAskSettleSuccess,
   runAgentAskContractCommand,
+  runAgentAskDraftCommand,
   runAgentAskNotificationSentCommand,
   runAgentAskNotificationsCommand,
   runAgentAskPreviewCommand,
@@ -716,6 +718,17 @@ export function buildProgram(): Command {
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((request: string | undefined, options: { workspace: string; file?: string; requestId?: string; project?: string; json?: boolean }) =>
     runCliAction("agent-ask.preview", options, () => runAgentAskPreviewCommand({ ...options, request }), renderAgentAskPreviewSuccess)
+  );
+  addJsonOption(agentAsk.command("draft")
+    .description("Validate an Agent Ask and place it at .arcadia/asks/agent-ask-<request_id>.yaml, previewing it too if a workspace is ready")
+    .argument("[request]", "Strict Agent Ask v1 YAML/JSON or natural fallback text")
+    .option("--file <path>", "Read the Agent Ask from a file")
+    .option("--request-id <id>", "Required idempotency key for natural fallback")
+    .option("--project <project>", "Destination Project for natural fallback")
+    .option("--dir <path>", "Repository root containing .arcadia/asks/", process.cwd())
+    .option("--workspace <path>", "Workspace path for the optional preview step", defaultWorkspace())
+  ).action((request: string | undefined, options: { dir: string; workspace: string; file?: string; requestId?: string; project?: string; json?: boolean }) =>
+    runCliAction("agent-ask.draft", options, () => runAgentAskDraftCommand({ ...options, request }), renderAgentAskDraftSuccess)
   );
   addJsonOption(agentAsk.command("settle")
     .description("Preview or apply the terminal disposition and effects of one Agent Ask proposal")

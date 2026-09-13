@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { agentAskSettlementMessage } from "../apps/discord-bot/src/notifications/poller.js";
 import {
+  runAgentAskDraftCommand,
   runAgentAskNotificationSentCommand,
   runAgentAskNotificationsCommand,
   runAgentAskPreviewCommand,
@@ -939,6 +940,83 @@ describe("Agent Ask settlement", () => {
       const proposals = db.prepare("SELECT request_id FROM agent_ask_proposals").all() as { request_id: string }[];
       expect(proposals.map((row) => row.request_id).sort()).toEqual(["concurrent-first", "concurrent-first-corrected", "concurrent-second"]);
     });
+  });
+
+  it("archives an accepted Ask's own .arcadia/asks/ source file into the same settlement commit", () => {
+    const { workspace, repo } = fixture();
+    const draft = runAgentAskDraftCommand({
+      dir: repo, workspace,
+      request: JSON.stringify({ agent_ask: "v1", request_id: "archive-on-accept", project: "demo", intent: "log", desired_result: "Record something archivable" })
+    });
+    expect(draft.data.workspaceStatus).toBe("previewed");
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "File Ask archive-on-accept"], { cwd: repo });
+
+    const preview = runAgentAskSettleCommand({ workspace, proposal: "archive-on-accept", requestId: "settle-archive-on-accept", disposition: "accepted" });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: "archive-on-accept", requestId: "settle-archive-on-accept", disposition: "accepted",
+      apply: true, preview: preview.data.receipt.previewFingerprint
+    });
+    expect(applied.data.receipt.effects).toContain("Archived the settled Ask file to .arcadia/asks/archive/agent-ask-archive-on-accept.yaml.");
+    expect(existsSync(draft.data.path)).toBe(false);
+    const archivedPath = path.join(repo, ".arcadia/asks/archive/agent-ask-archive-on-accept.yaml");
+    expect(existsSync(archivedPath)).toBe(true);
+    expect(JSON.parse(readFileSync(archivedPath, "utf8"))).toMatchObject({ request_id: "archive-on-accept" });
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+    const committedPaths = execFileSync("git", ["show", "--name-status", "--format=", "HEAD"], { cwd: repo, encoding: "utf8" });
+    expect(committedPaths).toContain("agent-ask-archive-on-accept.yaml");
+    expect(committedPaths).toContain("archive/agent-ask-archive-on-accept.yaml");
+  });
+
+  it("archives a rejected Ask's source file too, since nothing further will ever act on it", () => {
+    const { workspace, repo } = fixture();
+    const draft = runAgentAskDraftCommand({
+      dir: repo, workspace,
+      request: JSON.stringify({ agent_ask: "v1", request_id: "archive-on-reject", project: "demo", intent: "log", desired_result: "Record something that gets rejected" })
+    });
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "File Ask archive-on-reject"], { cwd: repo });
+
+    const preview = runAgentAskSettleCommand({ workspace, proposal: "archive-on-reject", requestId: "settle-archive-on-reject", disposition: "rejected" });
+    runAgentAskSettleCommand({
+      workspace, proposal: "archive-on-reject", requestId: "settle-archive-on-reject", disposition: "rejected",
+      apply: true, preview: preview.data.receipt.previewFingerprint
+    });
+    expect(existsSync(draft.data.path)).toBe(false);
+    expect(existsSync(path.join(repo, ".arcadia/asks/archive/agent-ask-archive-on-reject.yaml"))).toBe(true);
+  });
+
+  it("never archives a source file outside the settling repository's own .arcadia/asks/ directory", () => {
+    const { workspace, repo } = fixture();
+    const outsidePath = path.join(path.dirname(repo), "recovered-ask.yaml");
+    writeFileSync(outsidePath, JSON.stringify({ agent_ask: "v1", request_id: "outside-asks-dir", project: "demo", intent: "log", desired_result: "Recovered from elsewhere" }), "utf8");
+    runAgentAskPreviewCommand({ workspace, file: outsidePath });
+
+    const preview = runAgentAskSettleCommand({ workspace, proposal: "outside-asks-dir", requestId: "settle-outside-asks-dir", disposition: "accepted" });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: "outside-asks-dir", requestId: "settle-outside-asks-dir", disposition: "accepted",
+      apply: true, preview: preview.data.receipt.previewFingerprint
+    });
+    expect(applied.data.receipt.effects.some((effect) => effect.includes("Archived"))).toBe(false);
+    expect(existsSync(outsidePath)).toBe(true);
+    expect(existsSync(path.join(repo, ".arcadia/asks/archive"))).toBe(false);
+  });
+
+  it("leaves an already-settled Ask file untouched (a no-op, not an error) if it was already archived or removed by hand", () => {
+    const { workspace, repo } = fixture();
+    const draft = runAgentAskDraftCommand({
+      dir: repo, workspace,
+      request: JSON.stringify({ agent_ask: "v1", request_id: "archive-already-gone", project: "demo", intent: "log", desired_result: "Record something, then remove it by hand" })
+    });
+    rmSync(draft.data.path); // never committed, so removing it leaves nothing to stage — the working tree is clean either way
+
+    const preview = runAgentAskSettleCommand({ workspace, proposal: "archive-already-gone", requestId: "settle-archive-already-gone", disposition: "accepted" });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: "archive-already-gone", requestId: "settle-archive-already-gone", disposition: "accepted",
+      apply: true, preview: preview.data.receipt.previewFingerprint
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+    expect(applied.data.receipt.effects.some((effect) => effect.includes("Archived"))).toBe(false);
   });
 });
 

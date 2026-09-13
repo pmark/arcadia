@@ -148,10 +148,29 @@ hand claim that work happened, or that someone decided something?* If yes, it
 is governance state — file an Ask. If no, fix it and move on.
 
 Run it from your own repository. You do not need to know where Arcadia's
-workspace lives. Write the Ask under `.arcadia/asks/agent-ask-<request_id>.yaml`
-rather than a root `agent-ask.yaml` — that keeps concurrent Asks from
-colliding on one filename and keeps this disposable draft input from dirtying
-the shared base checkout, which can otherwise block Arcadia Go's clean check:
+workspace lives, and you do not need one to exist yet. Compose the Ask as
+compact **JSON** rather than hand-indented YAML — JSON is valid YAML 1.2, so
+the parser accepts it unchanged, and a model produces syntactically valid JSON
+far more reliably than whitespace-sensitive YAML block syntax. Then run:
+
+```sh
+arcadia agent-ask draft '<json>'
+```
+
+`draft` validates the Ask with no Project-database dependency at all, writes
+it to its canonical `.arcadia/asks/agent-ask-<request_id>.yaml` path —
+collision-checked, so concurrent Asks from different agents can never clobber
+each other or dirty the shared base checkout in a way that could block Arcadia
+Go's clean check — and, if a workspace is already resolvable here, previews it
+in the same call. A validation failure reports the exact fix needed before
+anything touches disk, so the whole ceremony is one round trip on the common
+path instead of write-then-preview-then-retry.
+
+If `draft` reports no workspace was available, stop there: the committed file
+is itself the handoff, exactly like a `docs/proposals/` file, and needs no
+Arcadia install or network access to exist. Whatever environment next has a
+workspace — including a different agent, in a different session, possibly
+after `git pull` — runs the same validation by hand instead:
 
 ```sh
 arcadia agent-ask preview --file .arcadia/asks/agent-ask-<request_id>.yaml --json
