@@ -1,4 +1,4 @@
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -243,7 +243,12 @@ describe("protected Arcadia go broker", () => {
 
       expect(destination).toBe(path.join(release, "node_modules"));
       expect(lstatSync(destination).isSymbolicLink()).toBe(false);
-      expect(readFileSync(path.join(destination, "runtime", "index.js"), "utf8")).toBe("export default 'ready';\n");
+      // Installation renames staging; neither staging nor the source checkout
+      // may be needed to load the installed runtime.
+      const installed = path.join(root, "installed");
+      renameSync(release, installed);
+      rmSync(sharedNodeModules, { recursive: true });
+      expect(readFileSync(path.join(installed, "node_modules", "runtime", "index.js"), "utf8")).toBe("export default 'ready';\n");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

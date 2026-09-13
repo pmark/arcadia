@@ -1,5 +1,23 @@
 # Manual Go preservation repair candidate
 
+## Bootstrap update, 2026-09-13
+
+The operator ran the host bootstrap: 136 focused tests passed, build and the
+disposable host probe passed, and commit `b91fe660ce98bffb5ba3fe5ab9cc7040059c810b`
+was installed. It remains local only. The original governed Action is unfinished.
+The earlier candidate-state statements below describe the pre-bootstrap attempt.
+
+Worker activation then stopped before configuration or service changes. Its
+real preservation check failed because the dependency installer used Node's
+default symlink-copy behavior: release-local TypeScript and Vitest links became
+absolute references into the original checkout. Seatbelt correctly refused
+that access. The current correction preserves relative links with
+`verbatimSymlinks: true`. The regression test removes the original dependencies
+and renames the staged release before reading through the installed link; it
+fails before the correction and passes afterward. All 34 broker/setup tests
+pass. This correction still requires host installation and activation; no
+end-to-end live success is claimed.
+
 ## Problem and scope
 
 On 2026-09-13, the fixed Go broker prepared a clean worktree for

@@ -361,7 +361,10 @@ export function stageGoBrokerDependencies(repository: string, stagedRelease: str
   }
   const source = realpathSync(nodeModules);
   const destination = path.join(stagedRelease, "node_modules");
-  cpSync(source, destination, { recursive: true, force: true });
+  // Node's default rewrites relative symlinks into absolute source paths.
+  // Preserve pnpm's relative links so the release survives staging renames
+  // and remains usable when the original checkout is inaccessible.
+  cpSync(source, destination, { recursive: true, force: true, verbatimSymlinks: true });
   return destination;
 }
 
