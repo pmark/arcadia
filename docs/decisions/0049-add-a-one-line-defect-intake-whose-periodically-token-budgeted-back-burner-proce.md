@@ -4,7 +4,7 @@ type: decision
 id: "0049"
 slug: add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce
 project: arcadia
-status: open
+status: approved
 question: Add a one-line defect intake whose periodically token-budgeted Back Burner process investigates, deduplicates, prioritizes, promotes, and when safely authorized repairs defects without requiring the reporter to author a formal Action first.
 gap_type: missing-decision
 recommendation: Bounded autonomous defect triage
@@ -20,6 +20,15 @@ options:
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
+answer: >-
+  Approved by the operator: implement bounded autonomous defect triage. Add a
+  one-line Back Burner defect intake; allocate a fixed periodic token budget to
+  deterministic-first investigation, deduplication, prioritization, and formal
+  Action promotion; and allow low-risk reversible repairs under standing
+  authority. Stop-the-line defects bypass cadence. Merge, deployment,
+  publication, spending, credentials, messaging, and other consequential
+  effects retain their existing explicit approval gates.
+decided: 2026-09-12
 updated: 2026-09-13
 ---
 
@@ -35,4 +44,16 @@ updated: 2026-09-13
 
 Decision 0037 explicitly used an open Decision as the defect-record stopgap until recurrence justified a dedicated path; repeated Arcadia Go, Agent Ask, pointer, and review-application defects have now fired that trigger. Back Burner already preserves deferred items and evaluates conditions, while the provider-capacity plan already proposes bounded use of otherwise-expiring included agent capacity. Reuse both rather than create another backlog or scheduler. A simple defect report is evidence, not proof of severity or authority. Deterministic deduplication and reproduction come before model triage; automatic fixes stay limited to reversible, validated, explicitly policy-authorized repository work.
 
-Proposed by Agent Ask back-burner-defect-intake-2026-09-12. This Decision remains open until the operator answers it.
+Proposed by Agent Ask back-burner-defect-intake-2026-09-12.
+
+## Resolution
+
+Approved directly by the operator on 2026-09-12. Defect capture is deliberately
+cheap; later investigation is automatic and bounded. Deterministic evidence and
+deduplication precede model work, the periodic allowance is explicit, and the
+process reuses Back Burner, the governed Action queue, and existing provider
+capacity receipts rather than creating another backlog or scheduler.
+
+The worker may enrich or close noise, promote a formal Action, and repair
+low-risk reversible work within standing authority. A stop-the-line defect does
+not wait for the periodic cadence. Consequential operations remain gated.
