@@ -8,6 +8,7 @@ import {
   mkdtempSync,
   lstatSync,
   readFileSync,
+  readdirSync,
   readlinkSync,
   realpathSync,
   renameSync,
@@ -317,6 +318,7 @@ function assertReviewedSnapshot(repository: string): void {
 }
 
 function validateExistingRelease(releaseDirectory: string, revision: string): void {
+  assertReleaseDependencies(path.join(releaseDirectory, "node_modules"));
   const manifestPath = path.join(releaseDirectory, "broker-manifest.json");
   const schemaPath = path.join(releaseDirectory, "dist", "database", "schema.sql");
   const executablePaths = ["arcadia-go-broker", "arcadia-preserve-broker", "arcadia-advance-broker", "arcadia-work-monitor-broker"].flatMap((launcherBase) =>
@@ -359,13 +361,46 @@ export function stageGoBrokerDependencies(repository: string, stagedRelease: str
       remedy: "Run pnpm bridge:worktree from this repository, then rerun arcadia go-broker install."
     });
   }
-  const source = realpathSync(nodeModules);
+  let source = realpathSync(nodeModules);
+  // The current bridge keeps node_modules writable and links each entry (and
+  // .pnpm) individually. Copy its owning installation, not those bridge links.
+  const store = path.join(source, ".pnpm");
+  if (existsSync(store) && lstatSync(store).isSymbolicLink()) {
+    const owner = path.dirname(realpathSync(store));
+    for (const entry of readdirSync(source)) {
+      if (entry.startsWith(".") && ![".pnpm", ".bin", ".modules.yaml", ".pnpm-workspace-state-v1.json"].includes(entry)) continue;
+      const names = entry.startsWith("@")
+        ? readdirSync(path.join(source, entry)).map(name => path.join(entry, name)) : [entry];
+      for (const name of names) {
+        if (realpathSync(path.join(source, name)) !== realpathSync(path.join(owner, name))) {
+          throw validationError("Dependency bridge differs from its owning installation.", { entry: name });
+        }
+      }
+    }
+    source = owner;
+  }
   const destination = path.join(stagedRelease, "node_modules");
   // Node's default rewrites relative symlinks into absolute source paths.
   // Preserve pnpm's relative links so the release survives staging renames
   // and remains usable when the original checkout is inaccessible.
   cpSync(source, destination, { recursive: true, force: true, verbatimSymlinks: true });
+  assertReleaseDependencies(destination);
   return destination;
+}
+
+function assertReleaseDependencies(nodeModules: string): void {
+  const root = realpathSync(nodeModules);
+  for (const entry of readdirSync(root)) {
+    if (entry.startsWith(".")) continue;
+    const names = entry.startsWith("@")
+      ? readdirSync(path.join(root, entry)).map(name => path.join(entry, name)) : [entry];
+    for (const name of names) {
+      const resolved = realpathSync(path.join(root, name));
+      if (!resolved.startsWith(`${root}${path.sep}`)) {
+        throw validationError("Installed dependency escapes the protected release.", { entry: name, resolved });
+      }
+    }
+  }
 }
 
 function safelyUpdateLink(executable: string, target: string, brokerRoot: string): void {

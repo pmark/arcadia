@@ -2,6 +2,19 @@
 
 ## Bootstrap update, 2026-09-13
 
+Follow-up: installation of `41e68633ac17429845bdeb3b367cd562ce8247f9`
+exposed a second copy case: the actual dependency bridge is a writable directory
+containing individual absolute links, including `.pnpm`, rather than a single
+directory symlink. The installer now resolves that bridge to its owning
+installation, verifies that each bridged package agrees with the owner, and
+copies the owner with relative links preserved. A release independence guard
+runs before publication and when reusing a release. Both bridge layouts are
+covered by the remove-source/rename-release regression. A real dependency copy
+from this worktree was staged and renamed under `/private/tmp`; TypeScript
+5.9.3 and Vitest 4.1.8 both resolved inside that copy and executed successfully.
+Host activation remains outstanding; the failed independence check did not
+change validation configuration or restart the worker.
+
 The operator ran the host bootstrap: 136 focused tests passed, build and the
 disposable host probe passed, and commit `b91fe660ce98bffb5ba3fe5ab9cc7040059c810b`
 was installed. It remains local only. The original governed Action is unfinished.

@@ -226,7 +226,7 @@ describe("protected Arcadia go broker", () => {
     }
   });
 
-  it("copies bridged local dependencies into a release without a registry deploy", () => {
+  it.each(["directory", "entries"])("copies %s-bridged dependencies into an independent release", (bridge) => {
     const root = mkdtempSync(path.join(os.tmpdir(), "arcadia-go-broker-dependencies-"));
     const repository = path.join(root, "repository");
     const sharedNodeModules = path.join(root, "shared-node-modules");
@@ -237,7 +237,13 @@ describe("protected Arcadia go broker", () => {
       writeFileSync(path.join(sharedNodeModules, ".pnpm", "runtime", "index.js"), "export default 'ready';\n");
       symlinkSync(".pnpm/runtime", path.join(sharedNodeModules, "runtime"));
       mkdirSync(repository, { recursive: true });
-      symlinkSync(sharedNodeModules, path.join(repository, "node_modules"));
+      if (bridge === "directory") {
+        symlinkSync(sharedNodeModules, path.join(repository, "node_modules"));
+      } else {
+        mkdirSync(path.join(repository, "node_modules"));
+        symlinkSync(path.join(sharedNodeModules, ".pnpm"), path.join(repository, "node_modules", ".pnpm"));
+        symlinkSync(path.join(sharedNodeModules, "runtime"), path.join(repository, "node_modules", "runtime"));
+      }
 
       const destination = stageGoBrokerDependencies(repository, release);
 
