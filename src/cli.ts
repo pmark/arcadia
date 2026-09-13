@@ -713,10 +713,11 @@ export function buildProgram(): Command {
     .description("Normalize Agent Ask v1 and preview canonical effects without Project writes")
     .argument("[request]", "Strict Agent Ask v1 YAML or natural fallback text")
     .option("--file <path>", "Read the Agent Ask from a file")
-    .option("--request-id <id>", "Required idempotency key for natural fallback")
+    .option("--request-id <id>", "Required idempotency key for natural fallback; also resolves a drift-recovered Ask by id when no request or --file is given")
     .option("--project <project>", "Destination Project for natural fallback")
+    .option("--dir <path>", "Repository to resolve a drift-recovered Ask's isolated branch from", process.cwd())
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((request: string | undefined, options: { workspace: string; file?: string; requestId?: string; project?: string; json?: boolean }) =>
+  ).action((request: string | undefined, options: { workspace: string; file?: string; requestId?: string; project?: string; dir: string; json?: boolean }) =>
     runCliAction("agent-ask.preview", options, () => runAgentAskPreviewCommand({ ...options, request }), renderAgentAskPreviewSuccess)
   );
   addJsonOption(agentAsk.command("draft")

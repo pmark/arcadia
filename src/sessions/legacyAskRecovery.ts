@@ -127,6 +127,35 @@ export function recoverLegacyAgentAskDrift(repo: string, worktreePath: string, t
   return { recovered: true, askFile: askRelativePath, branch, requestId };
 }
 
+/**
+ * Resolve a request id straight to the isolated recovery branch and file
+ * `recoverLegacyAgentAskDrift` moved it to, so a later `preview` or `settle`
+ * can address a recovered Ask by the same request id it was originally
+ * drafted under instead of an operator manually running `git show` into a
+ * scratch file first. Returns `null` when no recovery branch exists for this
+ * request id — the caller falls back to its normal `request`/`--file` path.
+ *
+ * The branch name carries a content-hash suffix (for retry-safety, see
+ * `recoverLegacyAgentAskDrift`), so this looks it up by the request-id prefix
+ * rather than reconstructing the exact name. Content-based dedup means a
+ * given request id can only ever have one live recovered branch: a second
+ * recovery under the same request id but different content is a distinct,
+ * separately validated Ask (rejected elsewhere, at preview/settle time, as
+ * "already used with different content"), never a second branch here.
+ */
+export function findRecoveredAsk(repo: string, requestId: string): { branch: string; askFile: string; content: string } | null {
+  const sanitized = sanitizeStubComponent(requestId);
+  const listed = tryGit(repo, ["branch", "--list", `ask/recover-${sanitized}-*`]) ?? "";
+  const branches = listed.split("\n").map((line) => line.trim()).filter(Boolean);
+  if (branches.length === 0) return null;
+  const branch = branches[0]!;
+  const files = (tryGit(repo, ["ls-tree", "-r", "--name-only", branch, ASK_ISOLATION_DIR]) ?? "")
+    .split("\n").filter(Boolean);
+  const askFile = files.find((file) => path.basename(file).includes(sanitized)) ?? files[0];
+  if (!askFile) return null;
+  return { branch, askFile, content: git(repo, ["show", `${branch}:${askFile}`]) };
+}
+
 function extractRequestId(content: string): string | null {
   const match = content.match(/^request_id:\s*(.+)$/m);
   return match ? match[1]!.trim().replace(/^["']|["']$/g, "") : null;

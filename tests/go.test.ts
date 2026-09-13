@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
+import { runAgentAskPreviewCommand } from "../src/commands/agentAsk.js";
 import { runGoCommand } from "../src/commands/go.js";
 import { runTidyCommand } from "../src/commands/tidy.js";
 import { withReadOnlyDatabase } from "../src/db/connection.js";
@@ -230,6 +231,56 @@ describe("arcadia go", () => {
 
     const recoveredContent = git(fixture.main, ["show", `${recovery.branch}:${recovery.askFile}`]);
     expect(recoveredContent).toContain("request_id: legacy-drift-2026-09-12");
+
+    // The preserved Ask can be previewed straight from its isolated branch by
+    // request id alone — no manual `git show` into a scratch file needed.
+    const previewed = runAgentAskPreviewCommand({
+      workspace: fixture.workspace, requestId: "legacy-drift-2026-09-12", dir: fixture.main
+    });
+    expect(previewed.data.proposal.normalized.requestId).toBe("legacy-drift-2026-09-12");
+    expect(previewed.data.proposal.normalized.desiredResult).toBe("test drift");
+  });
+
+  it("recovers two simultaneously drifting Asks (source and base worktree) onto fully disjoint branches within the same shared repository", () => {
+    const fixture = createFixture("codex/recover-concurrent-source-and-base");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    // Both the source worktree (an agent's in-progress branch) and the base
+    // worktree (the shared checkout `arcadia go` is reconciling into) have
+    // drifted at once — the realistic case this Action's concurrency
+    // criterion is about, since both recoveries below run against the same
+    // `repo` (shared .git, shared refs namespace) in a single `go` call.
+    writeFileSync(
+      path.join(fixture.feature, "agent-ask.yaml"),
+      "agent_ask: v1\nrequest_id: concurrent-drift-source\nproject: unknown\nintent: log\ndesired_result: concurrent drift on source\n"
+    );
+    writeFileSync(
+      path.join(fixture.main, "agent-ask.yaml"),
+      "agent_ask: v1\nrequest_id: concurrent-drift-base\nproject: unknown\nintent: log\ndesired_result: concurrent drift on base\n"
+    );
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true });
+
+    expect(result.data.askRecoveries).toHaveLength(2);
+    const [recoverySource, recoveryBase] = result.data.askRecoveries;
+    expect(recoverySource!.requestId).toBe("concurrent-drift-source");
+    expect(recoveryBase!.requestId).toBe("concurrent-drift-base");
+    expect(recoverySource!.branch).not.toBe(recoveryBase!.branch);
+    expect(recoverySource!.askFile).not.toBe(recoveryBase!.askFile);
+    expect(existsSync(path.join(fixture.feature, "agent-ask.yaml"))).toBe(false);
+    expect(existsSync(path.join(fixture.main, "agent-ask.yaml"))).toBe(false);
+    expect(git(fixture.main, ["status", "--porcelain"]).trim()).toBe("");
+
+    // Both branches genuinely exist, side by side, in the one shared repo —
+    // neither recovery's worktree-add/commit/worktree-remove sequence
+    // clobbered the other's branch or left it half-written.
+    expect(git(fixture.main, ["branch", "--list", "ask/recover-*"]).trim().split("\n")).toHaveLength(2);
+    expect(git(fixture.main, ["show", `${recoverySource!.branch}:${recoverySource!.askFile}`])).toContain("concurrent drift on source");
+    expect(git(fixture.main, ["show", `${recoveryBase!.branch}:${recoveryBase!.askFile}`])).toContain("concurrent drift on base");
+
+    const previewedSource = runAgentAskPreviewCommand({ workspace: fixture.workspace, requestId: "concurrent-drift-source", dir: fixture.main });
+    const previewedBase = runAgentAskPreviewCommand({ workspace: fixture.workspace, requestId: "concurrent-drift-base", dir: fixture.main });
+    expect(previewedSource.data.proposal.normalized.desiredResult).toBe("concurrent drift on source");
+    expect(previewedBase.data.proposal.normalized.desiredResult).toBe("concurrent drift on base");
   });
 
   it("recovers a suffixed legacy root Ask (agent-ask-<topic>.yaml), the name the old convention produced most often", () => {
