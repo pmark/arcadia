@@ -55,6 +55,7 @@ export function renderDashboardSnapshotSuccess(response: CommandSuccess<Dashboar
     `Requires Review: ${snapshot.counts.requiresReview}`,
     `Back Burner: ${snapshot.counts.backBurner} (${snapshot.counts.backBurnerFired} fired, ${snapshot.counts.backBurnerIncubating} incubating)`,
     `Active runs: ${snapshot.counts.activeRuns}`,
+    `Active agent Sessions: ${snapshot.activeAgentSessions.length}`,
     `Recent runs: ${snapshot.counts.recentRuns}`,
     `Recent artifacts: ${snapshot.counts.recentArtifacts}`,
     `Activity events: ${snapshot.counts.activityEvents}`,

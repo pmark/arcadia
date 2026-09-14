@@ -48,6 +48,22 @@ not infer that first portfolio priority. The same read and mutation contract is
 available through `arcadia advance queue`, `reorder`, `arrange`, `make-next`,
 and `undo`.
 
+Open **Recent Runs** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/runs> (on
+this Mac: <http://127.0.0.1:3020/runs>) for **Active now**, above the history
+list: every prepared or running agent Session and every pending or running
+execution Run across the whole portfolio, independent of any recent-history
+limit — a Session that has been running far longer than everything else never
+falls off the page just because newer work finished. Each Session card shows
+its Action, packet, agent/model, host, worktree, native session id, lifecycle
+status, and when it was last observed, plus **Copy Reattach** (and **Copy
+Resume** for Claude Code Sessions) so you can act from a terminal; a phone-only
+visit gets an explicit notice that reattach and resume need a terminal on the
+Session's own host instead of a broken button. The page refreshes on its own
+cadence, immediately when the tab regains focus or the device reconnects, and
+backs off — never faster than once every two minutes — while the snapshot
+source is unreachable, always labeling the view as showing the last known
+state rather than silently going quiet.
+
 Open **Path** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/path> (on this Mac:
 <http://127.0.0.1:3020/path>) for the other question Now deliberately refuses: not
 "what do I do in the next hour?" but "what is actually left between here and the

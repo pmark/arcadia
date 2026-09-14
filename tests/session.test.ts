@@ -20,6 +20,7 @@ import { packetSha256 } from "../src/execution/planningAuthorization.js";
 import {
   getSession,
   launchPreparedSession,
+  listActiveAgentSessions,
   prepareSession,
   resolveProjectTransition,
   sessionView,
@@ -228,6 +229,30 @@ describe("tmux-backed Sessions", () => {
     );
     expect(withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, prepared.id))?.status).toBe("failed");
     expect(tmux.launches).toHaveLength(0);
+  });
+
+  it("lists a Session as active only for the prepared/running lifecycle states, across every terminal state", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const result = launch(fixture, tmux);
+    const sessionId = result.data.session!.id;
+
+    const activeWhileRunning = withReadOnlyDatabase(fixture.workspace, (db) => listActiveAgentSessions(db));
+    expect(activeWhileRunning.map((session) => session.id)).toContain(sessionId);
+
+    for (const terminal of ["completed", "failed", "needs_input"] as const) {
+      withDatabase(fixture.workspace, (db) => {
+        db.prepare("UPDATE agent_sessions SET status = ? WHERE id = ?").run(terminal, sessionId);
+      });
+      const active = withReadOnlyDatabase(fixture.workspace, (db) => listActiveAgentSessions(db));
+      expect(active.map((session) => session.id)).not.toContain(sessionId);
+    }
+
+    withDatabase(fixture.workspace, (db) => {
+      db.prepare("UPDATE agent_sessions SET status = 'prepared' WHERE id = ?").run(sessionId);
+    });
+    const activeAgainWhilePrepared = withReadOnlyDatabase(fixture.workspace, (db) => listActiveAgentSessions(db));
+    expect(activeAgainWhilePrepared.map((session) => session.id)).toContain(sessionId);
   });
 
   it("resolves cross-repository launch, operator Decision, and planning outcomes without improvising", () => {

@@ -19,6 +19,7 @@ import { ActionAdvice } from "./action-advice";
 import { useEnrichment } from "../hooks/use-enrichment";
 import type { EnrichmentKind } from "../lib/enrichment/registry";
 import type {
+  DashboardAgentSession,
   DashboardArtifact,
   DashboardAttentionItem,
   DashboardActivityEvent,
@@ -1137,6 +1138,61 @@ export function RunCard({ run }: { run: DashboardRun }) {
         {run.reviewReason ? <Field label="Decision Reason" value={run.reviewReason} /> : null}
       </dl>
     </article>
+  );
+}
+
+export function SessionCard({ session }: { session: DashboardAgentSession }) {
+  const isNarrowViewport = typeof window !== "undefined" && window.matchMedia?.("(max-width: 640px)").matches;
+  return (
+    <article className="min-w-0 rounded-md border border-line bg-panel p-4 shadow-soft">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-base font-semibold leading-6">
+            {session.actionTitle ?? session.actionId}
+          </h3>
+          <p className="mt-1 font-mono text-xs text-muted">{session.id}</p>
+        </div>
+        <StatusBadge status={session.observedStatus} label={session.live ? "Live" : session.statusLabel} />
+      </div>
+      <dl className="mt-4 grid gap-3 text-sm">
+        <Field label="Project" value={session.projectName ?? "Unassigned"} />
+        <Field label="Packet" value={session.packetPath} />
+        <Field label="Agent / Model" value={`${session.provider}${session.effort ? ` · ${session.effort}` : ""} · ${session.model}`} />
+        <Field label="Host" value={session.host || "Unrecorded"} />
+        <Field label="Worktree" value={session.worktreePath} />
+        <Field label="Native Session Id" value={session.nativeSessionId} />
+        <Field label="Lifecycle" value={session.observedStatus} />
+        <Field label="Observed" value={formatDateTime(session.observedAt)} />
+      </dl>
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+        <CopyCommandButton label="Reattach" command={session.reattachCommand} />
+        {session.resumeCommand ? <CopyCommandButton label="Resume" command={session.resumeCommand} /> : null}
+      </div>
+      {session.resumeNotice ? <p className="mt-2 text-xs text-muted">{session.resumeNotice}</p> : null}
+      {isNarrowViewport ? (
+        <p className="mt-2 rounded-md bg-amber-50 p-2 text-xs text-amber-950">{session.phoneLimitationNotice}</p>
+      ) : (
+        <p className="mt-2 text-xs text-muted">{session.phoneLimitationNotice}</p>
+      )}
+    </article>
+  );
+}
+
+function CopyCommandButton({ label, command }: { label: string; command: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigator.clipboard.writeText(command);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+      className="rounded-md border border-line px-2 py-1 text-xs font-medium text-ink transition hover:border-steel"
+      title={command}
+    >
+      {copied ? "Copied" : `Copy ${label}`}
+    </button>
   );
 }
 

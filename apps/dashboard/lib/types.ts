@@ -366,6 +366,37 @@ export interface DashboardSnapshot {
   recentRuns: DashboardRun[];
   recentArtifacts: DashboardArtifact[];
   managedActions?: Array<{ workItemId: string; projectId: string; planSlug: string; actionId: string }>;
+  activeAgentSessions?: DashboardAgentSession[];
+  activeExecutionRuns?: DashboardRun[];
+}
+
+export interface DashboardAgentSession {
+  id: string;
+  projectId: string;
+  projectName: string | null;
+  actionId: string;
+  actionTitle: string | null;
+  planSlug: string;
+  packetPath: string;
+  provider: string;
+  model: string;
+  effort: string | null;
+  host: string;
+  worktreePath: string;
+  branch: string;
+  nativeSessionId: string;
+  tmuxSessionName: string;
+  status: "prepared" | "running" | "completed" | "failed" | "needs_input";
+  statusLabel: string;
+  live: boolean;
+  observedStatus: string;
+  preparedAt: string;
+  startedAt: string | null;
+  observedAt: string;
+  reattachCommand: string;
+  resumeCommand: string | null;
+  resumeNotice: string | null;
+  phoneLimitationNotice: string;
 }
 
 export interface DashboardReviewFocus {

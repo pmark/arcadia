@@ -5,6 +5,7 @@ import {
   getProjectMetadata,
   listAgentReviewFlaggedItems,
   listActionableReviewItems,
+  listActiveExecutionRuns,
   listExecutionRuns,
   listProjects
 } from "../db/repositories.js";
@@ -13,7 +14,7 @@ import { discoverDocs } from "../docs/discover.js";
 import type { PlanActionDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import type { ExecutionRunSummary, Project } from "../domain/types.js";
 import { nowIso } from "../utils/time.js";
-import { getSession, resolveProjectTransition } from "../sessions/index.js";
+import { getSession, listActiveAgentSessions, resolveProjectTransition, type AgentSession } from "../sessions/index.js";
 import { loadActionOrder, loadLatestApplicableActionOrderReceipt, type ActionOrderReceipt } from "./order.js";
 
 export type AgentQueueEntryState = "ready" | "running" | "flagged" | "attention";
@@ -130,13 +131,28 @@ export function buildAgentQueue(
     inspectProject(db, project, ready, running, attention);
   }
 
-  const runs = listExecutionRuns(db, options.runLimit ?? 100);
-  for (const run of runs) {
-    if (run.status === "pending_execution" || run.status === "running") {
-      running.push(runEntry(run));
-    } else if (run.status === "failed" || run.status === "requires_review") {
+  // Active Runs are never truncated by history limits: an old Run still
+  // running must stay visible however many newer terminal Runs exist.
+  for (const run of listActiveExecutionRuns(db)) {
+    running.push(runEntry(run));
+  }
+
+  const recentRuns = listExecutionRuns(db, options.runLimit ?? 100);
+  for (const run of recentRuns) {
+    if (run.status === "failed" || run.status === "requires_review") {
       attention.push(runAttentionEntry(run));
     }
+  }
+
+  // Every repository lease across the portfolio, including one whose owning
+  // project is not currently active or whose per-project scan above didn't
+  // surface it for another reason: a live Session must never disappear.
+  const representedSessionIds = new Set(
+    running.filter((entry) => entry.id.startsWith("session:")).map((entry) => entry.id.slice("session:".length))
+  );
+  for (const session of listActiveAgentSessions(db)) {
+    if (representedSessionIds.has(session.id)) continue;
+    running.push(sessionEntry(session));
   }
 
   for (const decision of listActionableReviewItems(db)) {
@@ -626,6 +642,34 @@ function runEntry(run: ExecutionRunSummary): AgentQueueEntry {
     runId: run.id,
     decisionId: run.review_item_id,
     updatedAt: run.updated_at
+  };
+}
+
+function sessionEntry(session: AgentSession): AgentQueueEntry {
+  return {
+    id: `session:${session.id}`,
+    state: "running",
+    attentionKind: "session",
+    selected: false,
+    projectId: session.project_id,
+    projectName: null,
+    projectSlug: session.project_slug,
+    repositoryRoot: session.repository_path,
+    planSlug: session.plan_slug,
+    planPath: session.plan_path,
+    actionId: session.action_id,
+    actionTitle: null,
+    responsibility: "agent",
+    expectedArtifact: null,
+    tokenImpact: null,
+    tokenBudget: null,
+    status: session.status,
+    reason: `Session ${session.id} is ${session.status} on ${session.host || "an unrecorded host"}.`,
+    nextAction: `Reattach with: tmux attach-session -t ${session.tmux_session_name}`,
+    blockers: [],
+    runId: null,
+    decisionId: null,
+    updatedAt: session.updated_at
   };
 }
 
