@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -378,6 +378,138 @@ describe("reconcileSessionExit automatic production completion", () => {
     expect(attempt.reason).toContain("candidate revision changed");
     const plan = discoverDocs(worktreePath).docs.find((doc) => doc.type === "plan" && doc.slug === "copy-proof");
     expect(plan).toMatchObject({ status: "active" });
+  });
+});
+
+describe("arcadia go — candidate continuation (Decision 0051)", () => {
+  it("resumes the same worktree and branch for the same Action once its prior Session is proven terminal", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const launched = launch(fixture, tmux);
+    const sessionId = launched.data.session!.id;
+    const worktreePath = launched.data.session!.worktree_path;
+    const branch = launched.data.session!.branch;
+    tmux.live = false;
+    writeFileSync(path.join(worktreePath, "contract.md"), "draft\n");
+    git(worktreePath, ["add", "contract.md"]);
+    git(worktreePath, ["commit", "-m", "wip"]);
+    withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId, requestId: "resume-1", repoRoot: fixture.repo })
+    );
+
+    const worktreesBefore = git(fixture.repo, ["worktree", "list", "--porcelain"])
+      .split("\n").filter((line) => line.startsWith("worktree ")).length;
+
+    const resumed = runGoCommand({
+      repo: fixture.repo,
+      source: fixture.repo,
+      apply: true,
+      agent: "claude",
+      model: fixture.model,
+      workspace: fixture.workspace,
+      agentWorktreeRoot: path.join(fixture.root, "resume-attempt"),
+      now: new Date(fixture.now.getTime() + 1000),
+      tmux: new FakeTmux()
+    });
+
+    expect(resumed.data.nextWorktree?.path).toBe(worktreePath);
+    expect(resumed.data.nextWorktree?.branch).toBe(branch);
+    // No second worktree was created; the candidate was reused in place.
+    const worktreesAfter = git(fixture.repo, ["worktree", "list", "--porcelain"])
+      .split("\n").filter((line) => line.startsWith("worktree ")).length;
+    expect(worktreesAfter).toBe(worktreesBefore);
+    expect(existsSync(path.join(worktreePath, "contract.md"))).toBe(true);
+  });
+
+  it("refuses a new worktree when the repository holds an unresolved resumable candidate for a different Action", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const launched = launch(fixture, tmux);
+    const sessionId = launched.data.session!.id;
+    const worktreePath = launched.data.session!.worktree_path;
+    tmux.live = false;
+    writeFileSync(path.join(worktreePath, "contract.md"), "draft\n");
+    git(worktreePath, ["add", "contract.md"]);
+    git(worktreePath, ["commit", "-m", "wip"]);
+    withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId, requestId: "resume-2", repoRoot: fixture.repo })
+    );
+
+    // The governed pointer moves on to a different Action while the first
+    // candidate's resumable handoff is still unresolved.
+    writeFileSync(path.join(fixture.repo, "PROJECT.md"), projectDocument.replace("current_action: define-contract", "current_action: second-contract"));
+    writeFileSync(path.join(fixture.repo, "docs", "plans", "copy-proof.md"), planDocument
+      .replace("current_action: define-contract", "current_action: second-contract")
+      .replace(
+        "    decisions: [\"0001\"]\n---",
+        `    decisions: ["0001"]
+  - id: second-contract
+    title: Define a second contract
+    status: open
+    responsibility: codex
+    effort: session
+    clarification: clarified
+    next_action: Define the second bounded contract.
+    expected_artifact: docs/second-contract.md
+    acceptance_criteria:
+      - The second contract exists.
+    decisions: ["0001"]
+---`
+      ));
+    git(fixture.repo, ["add", "."]);
+    git(fixture.repo, ["commit", "-m", "advance pointer to second-contract"]);
+
+    expect(() => runGoCommand({
+      repo: fixture.repo,
+      source: fixture.repo,
+      apply: true,
+      agent: "claude",
+      model: fixture.model,
+      workspace: fixture.workspace,
+      agentWorktreeRoot: path.join(fixture.root, "second-attempt"),
+      now: new Date(fixture.now.getTime() + 1000),
+      tmux: new FakeTmux()
+    })).toThrow(/different Action/);
+  });
+
+  it("refuses a new worktree while a Session is still live", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const launched = launch(fixture, tmux);
+    // The Session's tmux pane is still running; it was never reconciled.
+
+    expect(() => runGoCommand({
+      repo: fixture.repo,
+      source: fixture.repo,
+      apply: true,
+      agent: "claude",
+      model: fixture.model,
+      workspace: fixture.workspace,
+      agentWorktreeRoot: path.join(fixture.root, "live-attempt"),
+      now: new Date(fixture.now.getTime() + 1000),
+      tmux
+    })).toThrow(/already live/);
+    expect(existsSync(launched.data.session!.worktree_path)).toBe(true);
+  });
+
+  it("refuses a new worktree over a dead-but-unreconciled Session instead of guessing it is terminal", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const launched = launch(fixture, tmux);
+    tmux.live = false; // the process exited, but nobody has reconciled it yet
+
+    expect(() => runGoCommand({
+      repo: fixture.repo,
+      source: fixture.repo,
+      apply: true,
+      agent: "claude",
+      model: fixture.model,
+      workspace: fixture.workspace,
+      agentWorktreeRoot: path.join(fixture.root, "unproven-attempt"),
+      now: new Date(fixture.now.getTime() + 1000),
+      tmux: new FakeTmux()
+    })).toThrow(/never reconciled/);
+    expect(existsSync(launched.data.session!.worktree_path)).toBe(true);
   });
 });
 
