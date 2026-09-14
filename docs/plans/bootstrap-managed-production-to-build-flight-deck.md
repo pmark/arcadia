@@ -677,7 +677,7 @@ actions:
     references: []
   - id: settle-complete-from-drafted-ask
     title: Settling a complete Ask whose drafted file sits in the candidate worktree succeeds without manual relocation.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Settling a complete Ask whose drafted file sits in the candidate worktree succeeds without manual relocation.
@@ -693,7 +693,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: settle-complete-from-drafted-ask
+current_action: expose-guarded-host-session-launch
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---

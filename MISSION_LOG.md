@@ -2672,3 +2672,10 @@ from both coding-agent allowlists by design, so no agent session can run it.
 - **Result:** Every declared acceptance criterion was accepted as met: "Running agent-ask settle --apply inside a candidate worktree commits to that candidate branch."; "A test proves a session that settles and opens a PR leaves main with no new local-only commits.".
 - **Next:** Advanced to the next eligible Action in document order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-settle-onto-candidate-branch-2026-09-13).
+
+## 2026-09-14 — Completed arcadia/settle-complete-from-drafted-ask
+
+- **Did:** Completed Action arcadia/settle-complete-from-drafted-ask from accepted evidence (Candidate c41814a10431266d88a33162835188e75e7221df).
+- **Result:** Every declared acceptance criterion was accepted as met: "A test drafts a complete Ask in a candidate worktree and settles it with --apply, with no file moved or commit rewritten."; "The candidate_revision check still refuses evidence recorded against a revision whose code differs from HEAD.".
+- **Next:** Advanced to the next eligible Action in document order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-settle-complete-from-drafted-ask-2026-09-14).
