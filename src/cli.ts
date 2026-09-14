@@ -1517,8 +1517,12 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--repo <path>", "Project repository", resolveInvocationPath, invocationRoot())
       .requiredOption("--request-id <id>", "The request id used to build the approved preview")
-      .requiredOption("--preview-fingerprint <hash>", "The previewFingerprint from session preview-launch")
-  ).action((options: { workspace: string; repo: string; requestId: string; previewFingerprint: string; json?: boolean }) =>
+      .option("--preview-fingerprint <hash>", "The previewFingerprint from session preview-launch (the explicit operator grant)")
+      .option(
+        "--standing-policy",
+        "Launch under the standing managed-production policy grant instead of an operator-approved fingerprint"
+      )
+  ).action((options: { workspace: string; repo: string; requestId: string; previewFingerprint?: string; standingPolicy?: boolean; json?: boolean }) =>
     runCliAction(
       "session.launch",
       options,
@@ -1526,7 +1530,8 @@ export function buildProgram(): Command {
         workspace: options.workspace,
         repo: options.repo,
         requestId: options.requestId,
-        previewFingerprint: options.previewFingerprint
+        previewFingerprint: options.previewFingerprint,
+        standingPolicy: options.standingPolicy
       }),
       renderSessionLaunchSuccess
     )

@@ -965,6 +965,18 @@ then POST its fingerprint from the dashboard origin and confirm one Session;
 repeat the POST and confirm the same Session id. End-user procedure: none—the
 route is an operator-only control surface, not an end-user feature.
 
+The CLI beneath this route also accepts `arcadia session launch --standing-policy`
+in place of `--preview-fingerprint`: it launches under an Active managed-production
+policy's current epoch instead of a fresh operator click, admitting and
+committing an epoch-bound receipt and rechecking Off immediately before launch
+commitment. Nothing in this repository calls that flag autonomously yet—it
+exists for the not-yet-built production worker (`feed-and-supervise-managed-production`)
+to use once it exists. Operator QA: with production Active
+(`arcadia production activate ...`), run
+`pnpm arcadia session launch --repo /path/to/project --request-id <id> --standing-policy --workspace "$WORKSPACE"`
+and confirm the printed Admission line; deactivate production
+(`arcadia production deactivate ...`) and confirm a fresh request is refused.
+
 Bare `arcadia advance` and `arcadia advance --session <id>` resolve the same
 deterministic Project transition used by `go` and the Agent Queue. Its result
 is exactly one of launch, plan, Decision, repair, reconcile, wait, or Milestone

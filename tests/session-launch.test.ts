@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import defaultAdapters from "../config/defaults/provider-adapters.json" with { type: "json" };
+import type { CapacityAdmissionDecision, ProviderCapacityObservation } from "../src/codingAgents/capacity.js";
 import type { ProviderAdapterRegistry } from "../src/codingAgents/providerAdapters.js";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
@@ -18,6 +19,14 @@ import {
 import { syncProjectDocs } from "../src/docs/sync.js";
 import { packetSha256 } from "../src/execution/planningAuthorization.js";
 import type { CodingAgentProfile } from "../src/intent/registries.js";
+import {
+  activateProduction,
+  deactivateProduction,
+  fingerprintProductionScope,
+  listAdmissions,
+  normalizeProductionScope,
+  type ProductionScope
+} from "../src/production/policy.js";
 import { getRepositoryLease, type TmuxAdapter } from "../src/sessions/index.js";
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
@@ -233,7 +242,192 @@ describe("launchGuardedHostSession", () => {
     expect(result.session.id).toBe(racer.session.id);
     expect(tmux.launches).toHaveLength(1);
   });
+
+  it("rejects a launch that carries both an operator fingerprint and a standing-policy grant", () => {
+    const fixture = preparedFixture();
+    const preview = preview1(fixture);
+
+    expect(() =>
+      withDatabase(fixture.workspace, (db) =>
+        launchGuardedHostSession({
+          db,
+          workspace: fixture.workspace,
+          repoRoot: fixture.repo,
+          projectSlug: "test-project",
+          requestId: "both-req",
+          previewFingerprint: preview.previewFingerprint,
+          standingPolicy: true,
+          profiles,
+          adapters,
+          now: fixture.now,
+          tmux: new FakeTmux()
+        })
+      )
+    ).toThrow(/may not carry both/);
+  });
+
+  it("rejects a launch that carries neither grant", () => {
+    const fixture = preparedFixture();
+
+    expect(() =>
+      withDatabase(fixture.workspace, (db) =>
+        launchGuardedHostSession({
+          db,
+          workspace: fixture.workspace,
+          repoRoot: fixture.repo,
+          projectSlug: "test-project",
+          requestId: "neither-req",
+          profiles,
+          adapters,
+          now: fixture.now,
+          tmux: new FakeTmux()
+        })
+      )
+    ).toThrow(/must carry either/);
+  });
 });
+
+describe("launchGuardedHostSession under a standing managed-production policy grant", () => {
+  it("launches with no operator-approved fingerprint, committing an epoch-bound admission receipt", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    const result = doStandingLaunch(fixture, tmux);
+
+    expect(result.reused).toBe(false);
+    expect(result.session.status).toBe("running");
+    expect(tmux.launches).toHaveLength(1);
+    expect(result.admission).not.toBeNull();
+    expect(result.admission?.status).toBe("committed");
+    expect(result.admission?.actionKey).toBe("test-project/define-contract");
+
+    const settled = withReadOnlyDatabase(fixture.workspace, (db) => listAdmissions(db)).find(
+      (row) => row.id === result.admission?.id
+    );
+    expect(settled?.status).toBe("committed");
+  });
+
+  it("refuses a standing-policy launch while production is Inactive", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    // Production is never activated for this fixture.
+
+    expectArcadiaError(() => doStandingLaunch(fixture, tmux), "refused this launch");
+    expect(tmux.launches).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
+  });
+
+  it("rechecks Off immediately before launch commitment: a deactivation between admission and commit starts no process", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    expectArcadiaError(
+      () =>
+        doStandingLaunch(fixture, tmux, "policy-off-race", undefined, {
+          afterAdmissionIssuedBeforeCommit: () => {
+            withDatabase(fixture.workspace, (db) => deactivateProduction(db, { requestId: "off-mid-launch" }));
+          }
+        }),
+      "withdrew authorization"
+    );
+
+    expect(tmux.launches).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
+
+    const admission = withReadOnlyDatabase(fixture.workspace, (db) => listAdmissions(db)).find(
+      (row) => row.requestId === "policy-off-race:admission"
+    );
+    expect(admission?.status).toBe("fenced");
+    expect(admission?.fencedReason).toBe("production_off");
+  });
+});
+
+const productionScope: ProductionScope = normalizeProductionScope({
+  intent: "Prove the standing-policy launch path.",
+  projects: ["test-project"],
+  plans: ["test-project/copy-proof"],
+  actions: ["test-project/define-contract"],
+  providers: ["claude-code-cli"],
+  maxConcurrentSessions: 1,
+  mechanicalTransitions: []
+});
+
+function activatePolicy(fixture: ReturnType<typeof preparedFixture>, requestId = "policy-grant-1") {
+  return withDatabase(fixture.workspace, (db) =>
+    activateProduction(db, {
+      requestId,
+      scope: productionScope,
+      scopeFingerprint: fingerprintProductionScope(productionScope),
+      grantedBy: "operator"
+    })
+  );
+}
+
+function provenCapacity(providerId = "claude-code-cli"): CapacityAdmissionDecision {
+  return {
+    providerId,
+    admitted: true,
+    code: null,
+    reason: `${providerId} reported included allowance.`,
+    unattendedProof: true,
+    retryAfter: null,
+    refreshRequired: false,
+    receipt: {
+      version: 1,
+      providerId,
+      providerLabel: providerId,
+      profiles: [],
+      accountScope: "test",
+      source: "codex_app_server",
+      evidence: "simulated",
+      unattended: true,
+      observedAt: "2026-08-30T12:00:00.000Z",
+      observedAgeMs: 0,
+      expiresAt: null,
+      confidence: "observed",
+      freshness: "fresh",
+      usagePolicy: "included",
+      usagePolicyReason: "test fixture",
+      windows: [{ label: "5h", usedPercentage: 10, remainingPercentage: 90, resetsAt: null }],
+      nextResetAt: null,
+      unsupported: [],
+      availability: "available",
+      telemetry: "test fixture"
+    }
+  };
+}
+
+function fixtureCapacityObservation(): ProviderCapacityObservation {
+  return { generatedAt: "2026-08-30T12:34:56.000Z", providers: [provenCapacity()] };
+}
+
+function doStandingLaunch(
+  fixture: ReturnType<typeof preparedFixture>,
+  tmux: FakeTmux,
+  requestId = "policy-req-1",
+  worktreeSuffix?: string,
+  testHooks?: Parameters<typeof launchGuardedHostSession>[0]["testHooks"]
+): GuardedLaunchResult {
+  return withDatabase(fixture.workspace, (db) =>
+    launchGuardedHostSession({
+      db,
+      workspace: fixture.workspace,
+      repoRoot: fixture.repo,
+      projectSlug: "test-project",
+      requestId,
+      standingPolicy: true,
+      profiles,
+      adapters,
+      now: fixture.now,
+      tmux,
+      agentWorktreeRoot: path.join(fixture.root, worktreeSuffix ?? requestId),
+      capacityObservation: fixtureCapacityObservation(),
+      testHooks
+    })
+  );
+}
 
 function doLaunch(
   fixture: ReturnType<typeof preparedFixture>,

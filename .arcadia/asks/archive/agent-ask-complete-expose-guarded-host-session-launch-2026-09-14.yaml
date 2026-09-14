@@ -1,0 +1,20 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-expose-guarded-host-session-launch-2026-09-14",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/expose-guarded-host-session-launch",
+  "desired_result": "Mark expose-guarded-host-session-launch done: the standing managed-production policy is wired into the guarded launch path.",
+  "candidate_revision": "9e7237f9dbd3a191be163b5628a2f9e5eefb0a88",
+  "evidence": [
+    {"criterion": "Accept an explicit operator launch request for the previewed canonical Action; resolve repository, executable and arguments on the server.", "status": "met"},
+    {"criterion": "Reject cross-origin, malformed, altered, stale and unauthorized requests; document/test the operator-action request guard for the existing local/tailnet deployment.", "status": "met"},
+    {"criterion": "Revalidate pointer, documents, packet hash, Decisions, binding availability and repository lease immediately before preparation/spawn.", "status": "met"},
+    {"criterion": "Two tabs or retried requests start at most one Session; lost-response recovery returns the durable result across restart.", "status": "met"},
+    {"criterion": "Launch grants no implicit merge, integration, cleanup, deployment, spending, credential expansion or messaging; failures preserve recoverable work.", "status": "met"},
+    {"criterion": "Inject at least one pre-spawn crash, one post-spawn crash and one lost response, and reconcile ambiguous launch identity without blind retry, proving at most one live conflicting execution across that bounded set of injected faults.", "status": "met"},
+    {"criterion": "Support either a current explicit one-Session launch grant or a valid standing managed-production policy with an epoch-bound admission receipt; recheck Off immediately before launch commitment. Do not require a new human launch click for every authorized Action.", "status": "met"},
+    {"criterion": "Preserve the proof Artifact: Launch boundary, replay, bounded crash-window and conflict integration tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists.", "status": "met"}
+  ],
+  "rationale": "The standing-policy branch of criterion 7 was the last unimplemented piece; everything else was already built and tested in a prior session's merged commits (3d7ce8b/16c95c2). This session wired issueAdmission/commitAdmission from src/production/policy.ts into launchGuardedHostSession, added the --standing-policy CLI flag, five new tests, and opened PR #245."
+}

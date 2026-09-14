@@ -1,12 +1,15 @@
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
+import { observeProviderCapacity, type ProviderCapacityObservation } from "../codingAgents/capacity.js";
 import type { ProviderAdapterRegistry } from "../codingAgents/providerAdapters.js";
 import { writeTransaction } from "../db/connection.js";
 import { isDispatchable, resolveDispatch } from "../docs/dispatch.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
+import { commitAdmission, issueAdmission, releaseAdmission, type AdmissionReceipt } from "../production/policy.js";
 import {
+  failPreparedSession,
   getRepositoryLease,
   getSession,
   launchPreparedSession,
@@ -26,16 +29,33 @@ export interface GuardedLaunchInput {
   repoRoot: string;
   projectSlug: string;
   requestId: string;
-  /** The fingerprint of the preview the operator (or standing policy) approved. */
-  previewFingerprint: string;
+  /**
+   * The current explicit one-Session launch grant: the fingerprint of the
+   * preview the operator approved. Exactly one of `previewFingerprint` or
+   * `standingPolicy` must be given.
+   */
+  previewFingerprint?: string;
+  /**
+   * Launch under a standing managed-production policy grant instead of a
+   * fresh human click: admits against the Active policy's current epoch and
+   * rechecks Off immediately before launch commitment. Exactly one of
+   * `previewFingerprint` or `standingPolicy` must be given.
+   */
+  standingPolicy?: boolean;
   profiles: CodingAgentProfile[];
   adapters: ProviderAdapterRegistry;
   /** Test-only override for where the new agent worktree is created. */
   agentWorktreeRoot?: string;
+  /** Test-only override for the standing-policy provider capacity observation. */
+  capacityObservation?: ProviderCapacityObservation;
   now?: Date;
   tmux?: TmuxAdapter;
-  /** Deterministic fault injection between worktree creation and reservation commit. */
-  testHooks?: { afterWorktreeCreatedBeforeReservationCommit?: () => void };
+  testHooks?: {
+    /** Deterministic fault injection between worktree creation and reservation commit. */
+    afterWorktreeCreatedBeforeReservationCommit?: () => void;
+    /** Deterministic fault injection between admission issuance and its launch-time commit recheck. */
+    afterAdmissionIssuedBeforeCommit?: () => void;
+  };
 }
 
 export interface GuardedLaunchResult {
@@ -43,6 +63,8 @@ export interface GuardedLaunchResult {
   reused: boolean;
   session: AgentSession;
   preview: LaunchPreview;
+  /** The epoch-bound admission this launch committed against, when launched under a standing policy grant. */
+  admission: AdmissionReceipt | null;
 }
 
 /**
@@ -57,6 +79,17 @@ export interface GuardedLaunchResult {
  * Action while this repository already holds a lease is refused.
  */
 export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaunchResult {
+  if (input.standingPolicy && input.previewFingerprint) {
+    throw validationError(
+      "A launch may not carry both an operator-approved preview fingerprint and a standing production policy grant."
+    );
+  }
+  if (!input.standingPolicy && !input.previewFingerprint) {
+    throw validationError(
+      "A launch must carry either an operator-approved preview fingerprint or the standing production policy grant."
+    );
+  }
+
   const repoRoot = path.resolve(input.repoRoot);
   const now = input.now ?? new Date();
   const tmux = input.tmux ?? systemTmux;
@@ -84,10 +117,10 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // already caused.
   const existingLease = getRepositoryLease(input.db, repoRoot);
   if (existingLease && matchesPreview(existingLease, preview)) {
-    return { reused: true, session: resumeOrReturn(input.db, existingLease, tmux), preview };
+    return { reused: true, session: resumeOrReturn(input.db, existingLease, tmux), preview, admission: null };
   }
 
-  if (preview.previewFingerprint !== input.previewFingerprint) {
+  if (!input.standingPolicy && preview.previewFingerprint !== input.previewFingerprint) {
     throw validationError("The launch preview is stale or was altered since it was approved; re-preview before launching.", {
       expectedFingerprint: input.previewFingerprint,
       currentFingerprint: preview.previewFingerprint,
@@ -109,6 +142,33 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   const dispatch = resolveDispatch(repoRoot, input.projectSlug);
   if (!isDispatchable(dispatch) || dispatch.context?.action.id !== preview.actionId) {
     throw validationError("The governed pointer changed since the preview was built; re-preview before launching.", { conflict: true });
+  }
+
+  let admission: AdmissionReceipt | null = null;
+  if (input.standingPolicy) {
+    const provider = preview.selection.provider;
+    const observation = input.capacityObservation ?? observeProviderCapacity(input.profiles, { now });
+    const capacity = observation.providers.find((decision) => decision.providerId === provider);
+    if (!capacity) {
+      throw validationError(`No capacity observation is available for provider "${provider}".`, { conflict: true });
+    }
+    const issued = issueAdmission(input.db, {
+      requestId: `${input.requestId}:admission`,
+      actionKey: `${preview.projectSlug}/${preview.actionId}`,
+      projectSlug: preview.projectSlug,
+      planSlug: preview.planSlug ?? "",
+      provider,
+      capacity,
+      now
+    });
+    if (!issued.admitted) {
+      throw validationError(`The standing managed-production policy refused this launch: ${issued.reason}`, {
+        code: issued.code,
+        conflict: true
+      });
+    }
+    admission = issued.receipt;
+    input.testHooks?.afterAdmissionIssuedBeforeCommit?.();
   }
 
   const agent = preview.selection.provider === "codex-cli" ? "codex" : "claude";
@@ -177,12 +237,37 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     tryGit(repoRoot, ["branch", "-D", nextWorktree.branch]);
     const raced = getRepositoryLease(input.db, repoRoot);
     if (raced && matchesPreview(raced, preview)) {
-      return { reused: true, session: resumeOrReturn(input.db, raced, tmux), preview };
+      // The winner's Session satisfies this request; this call's own reserved
+      // admission (if any) never committed to a launch and would otherwise
+      // hold a concurrency slot until it expires. Release it immediately
+      // rather than waiting out the TTL.
+      if (admission) releaseAdmission(input.db, admission.requestId, now);
+      return { reused: true, session: resumeOrReturn(input.db, raced, tmux), preview, admission: null };
     }
     throw error;
   }
 
-  return { reused: false, session: launchPreparedSession(input.db, prepared, tmux), preview };
+  // The standing-policy cutoff: recheck Off (and the admitted epoch) as close
+  // to process start as this call gets, inside the same admission's own
+  // transactional commit. A refusal here means production went Inactive or
+  // reactivated between issuing this admission and this exact moment — the
+  // prepared Session and its worktree are abandoned unlaunched rather than
+  // spawning a process no policy currently authorizes.
+  if (admission) {
+    const committed = commitAdmission(input.db, admission.requestId, now);
+    if (!committed.admitted) {
+      failPreparedSession(input.db, prepared.id);
+      tryGit(repoRoot, ["worktree", "remove", nextWorktree.path]);
+      tryGit(repoRoot, ["branch", "-D", nextWorktree.branch]);
+      throw validationError(`The standing managed-production policy withdrew authorization before launch commitment: ${committed.reason}`, {
+        code: committed.code,
+        conflict: true
+      });
+    }
+    admission = committed.receipt;
+  }
+
+  return { reused: false, session: launchPreparedSession(input.db, prepared, tmux), preview, admission };
 }
 
 /** A "prepared" lease whose tmux Session was never actually started (a crash between insert and spawn) is resumed rather than left stuck. */

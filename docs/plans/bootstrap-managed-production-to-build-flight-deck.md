@@ -133,7 +133,7 @@ actions:
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/sessions/index.ts", "src/commands/go.ts", "src/execution/runner.ts", "src/db/schema.ts"]
   - id: expose-guarded-host-session-launch
     title: Expose a bounded server launch operation with replay-safe receipts and fresh authority checks.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Expose a bounded server launch operation with replay-safe receipts and fresh authority checks.
@@ -694,7 +694,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: expose-guarded-host-session-launch
+current_action: observe-portfolio-agent-sessions
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
