@@ -675,6 +675,22 @@ actions:
     depends_on: [merge-completes-the-action]
     decisions: []
     references: []
+  - id: settle-complete-from-drafted-ask
+    title: Settling a complete Ask whose drafted file sits in the candidate worktree succeeds without manual relocation.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Settling a complete Ask whose drafted file sits in the candidate worktree succeeds without manual relocation.
+    expected_artifact: Evidence satisfying Agent Ask settle-complete-from-drafted-ask
+    clarification: clarified
+    confidence: high
+    source: Agent Ask settle-complete-from-drafted-ask-2026-09-14
+    acceptance_criteria:
+      - A test drafts a complete Ask in a candidate worktree and settles it with --apply, with no file moved or commit rewritten.
+      - The candidate_revision check still refuses evidence recorded against a revision whose code differs from HEAD.
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
 current_action: merge-completes-the-action
