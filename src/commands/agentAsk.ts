@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { ACTION_ID_MAX_LENGTH, ACTION_ID_PATTERN, AGENT_ASK_AUTHORITIES, AGENT_ASK_INTENTS, STRICT_ACTION_FIELDS, STRICT_FIELDS, STRICT_OPTION_FIELDS, agentAskFingerprint, buildAgentAskEffects, normalizeAgentAsk, requiresManagedDocumentTransition, stableProposalId, type AgentAskProposal } from "../ask/agentAsk.js";
-import { captureAskEnvelope } from "../ask/captureEnvelope.js";
-import { resolveProjectReference } from "../ask/rules.js";
+import { ACTION_ID_MAX_LENGTH, ACTION_ID_PATTERN, AGENT_ASK_AUTHORITIES, AGENT_ASK_INTENTS, normalizeAgentAsk, STRICT_ACTION_FIELDS, STRICT_FIELDS, STRICT_OPTION_FIELDS, type AgentAskProposal } from "../ask/agentAsk.js";
+import { discoverUnprocessedAgentAsks, EMPTY_AGENT_ASK_DISCOVERY, type AgentAskDiscoveryResult } from "../ask/discovery.js";
+import { previewAgentAskRequest } from "../ask/preview.js";
 import { findRecoveredAsk } from "../sessions/legacyAskRecovery.js";
 import { normalizeError, validationError } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
@@ -21,7 +21,7 @@ import {
 } from "../ask/settlement.js";
 
 export interface AgentAskPreviewOptions { workspace: string; request?: string; file?: string; requestId?: string; project?: string; dir?: string; }
-export interface AgentAskPreviewData { proposal: AgentAskProposal; preview: string[]; projectWritesPerformed: 0; replayed: boolean; }
+export interface AgentAskPreviewData { proposal: AgentAskProposal; preview: string[]; projectWritesPerformed: 0; replayed: boolean; discovery: AgentAskDiscoveryResult; }
 
 export function runAgentAskPreviewCommand(options: AgentAskPreviewOptions): CommandSuccess<AgentAskPreviewData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
@@ -37,33 +37,36 @@ export function runAgentAskPreviewCommand(options: AgentAskPreviewOptions): Comm
     ? findRecoveredAsk(path.resolve(options.dir ?? process.cwd()), options.requestId)
     : null;
   const request = options.file ? readFileSync(path.resolve(options.file), "utf8") : recovered ? recovered.content : options.request ?? "";
-  const parsed = normalizeAgentAsk({ request, requestId: options.requestId, project: options.project });
-  const normalized = withDatabase(workspacePath, (db) => {
-    if (parsed.project === "unknown") return parsed;
-    const project = resolveProjectReference(db, parsed.project);
-    if (!project) throw validationError("Agent Ask destination Project was not found.", { project: parsed.project, remedy: "Use a configured Project reference or `project: unknown`." });
-    return { ...parsed, project: project.slug };
-  });
-  const fingerprint = agentAskFingerprint(request, normalized);
-  const result = withDatabase(workspacePath, (db) => {
-    const existing = db.prepare("SELECT fingerprint, proposal_json FROM agent_ask_proposals WHERE request_id = ?").get(normalized.requestId) as { fingerprint: string; proposal_json: string } | undefined;
-    if (existing) {
-      if (existing.fingerprint !== fingerprint) throw validationError("Agent Ask request id was already used with different content.", { requestId: normalized.requestId });
-      return { proposal: JSON.parse(existing.proposal_json) as AgentAskProposal, replayed: true };
-    }
-    return db.transaction(() => {
-      const capture = captureAskEnvelope(db, { requestId: normalized.requestId, originalText: request, ingressSource: "agent.ask" });
-      const built = buildAgentAskEffects(normalized);
-      const proposal: AgentAskProposal = { id: stableProposalId(fingerprint), captureId: capture.id, normalized, effects: built.effects, requiredDecisions: built.requiredDecisions, unchanged: [], conflicts: [], refused: [], managedDocumentTransition: { required: requiresManagedDocumentTransition(normalized.intent), status: "withheld_until_acceptance", authority: "checked_in_documents" }, queueConsequence: "none_until_accepted", writes: { captureReceipt: true, proposalReceipt: true, projectChanges: false }, nonActions: ["No Project record is created or changed by preview.", "Agent input grants no approval or execution authority."], fingerprint, createdAt: new Date().toISOString(), sourcePath: options.file ? path.resolve(options.file) : null };
-      db.prepare(`INSERT INTO agent_ask_proposals (id, request_id, capture_id, fingerprint, format, intent_kind, project_ref, proposal_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(proposal.id, normalized.requestId, capture.id, fingerprint, normalized.format, normalized.intent, normalized.project, JSON.stringify(proposal), proposal.createdAt);
-      return { proposal, replayed: false };
-    })();
-  });
-  const preview = renderAgentAskPreview(result.proposal);
-  return createSuccess({ command: "agent-ask.preview", workspace: workspacePath, data: { proposal: result.proposal, preview, projectWritesPerformed: 0, replayed: result.replayed } });
+  const result = withDatabase(workspacePath, (db) => previewAgentAskRequest(db, {
+    request, requestId: options.requestId, project: options.project, sourcePath: options.file ? path.resolve(options.file) : null
+  }));
+  // Discovery runs only after the request this call was actually asked
+  // about has already been recorded above — so a file that is itself under
+  // `.arcadia/asks/` is judged "replayed" by discovery, not double-counted
+  // as newly "discovered". `options.dir` is only unset when a caller
+  // resolves a workspace without saying which repository it lives in (e.g.
+  // a unit test exercising proposal logic directly); the CLI itself always
+  // supplies it, defaulted to `process.cwd()`, so real invocations always
+  // run discovery with no extra flag required.
+  const discovery = options.dir
+    ? withDatabase(workspacePath, (db) => discoverUnprocessedAgentAsks(db, path.resolve(options.dir!)))
+    : EMPTY_AGENT_ASK_DISCOVERY;
+  const preview = [...renderAgentAskPreview(result.proposal), ...renderAgentAskDiscovery(discovery)];
+  return createSuccess({ command: "agent-ask.preview", workspace: workspacePath, data: { proposal: result.proposal, preview, projectWritesPerformed: 0, replayed: result.replayed, discovery } });
 }
 export function renderAgentAskPreviewSuccess(response: CommandSuccess<AgentAskPreviewData>): string[] { return ["Agent Ask v1 preview", ...response.data.preview]; }
+function renderAgentAskDiscovery(discovery: AgentAskDiscoveryResult): string[] {
+  const lines: string[] = [];
+  if (discovery.discovered.length > 0) {
+    lines.push(`Auto-discovered ${discovery.discovered.length} unprocessed .arcadia/asks/ file(s):`);
+    lines.push(...discovery.discovered.map((finding) => `  ${finding.path} -> request ${finding.requestId}`));
+  }
+  if (discovery.failed.length > 0) {
+    lines.push(`Failed to auto-discover ${discovery.failed.length} .arcadia/asks/ file(s):`);
+    lines.push(...discovery.failed.map((failure) => `  ${failure.path}: ${failure.error}`));
+  }
+  return lines;
+}
 function renderAgentAskPreview(proposal: AgentAskProposal): string[] {
   return [
     `Request: ${proposal.normalized.requestId}${proposal.normalized.format === "natural" ? " (natural fallback)" : ""}`,
@@ -85,6 +88,7 @@ export interface AgentAskDraftData {
   written: "created" | "unchanged";
   preview: { proposal: AgentAskProposal; fingerprint: string } | null;
   workspaceStatus: "previewed" | "not_available";
+  discovery: AgentAskDiscoveryResult;
 }
 
 /**
@@ -117,12 +121,17 @@ export function runAgentAskDraftCommand(options: AgentAskDraftOptions): CommandS
   }
   let preview: { proposal: AgentAskProposal; fingerprint: string } | null = null;
   let workspaceStatus: "previewed" | "not_available" = "not_available";
+  let discovery: AgentAskDiscoveryResult = EMPTY_AGENT_ASK_DISCOVERY;
   try {
     // Re-read the file draft just wrote (rather than passing `content`
     // directly) so preview records `sourcePath`, letting a later terminal
-    // `settle --apply` archive this exact file automatically.
-    const previewResult = runAgentAskPreviewCommand({ workspace: options.workspace ?? "", file: filePath, requestId: options.requestId, project: options.project });
+    // `settle --apply` archive this exact file automatically. Passing `dir`
+    // through (rather than letting preview default it separately) makes
+    // discovery scan the same `.arcadia/asks/` directory this draft was
+    // just placed into, not whatever `process.cwd()` happens to be.
+    const previewResult = runAgentAskPreviewCommand({ workspace: options.workspace ?? "", file: filePath, requestId: options.requestId, project: options.project, dir: options.dir });
     preview = { proposal: previewResult.data.proposal, fingerprint: previewResult.data.proposal.fingerprint };
+    discovery = previewResult.data.discovery;
     workspaceStatus = "previewed";
   } catch (error) {
     // Anything about *reaching* a usable workspace from here — missing,
@@ -143,7 +152,7 @@ export function runAgentAskDraftCommand(options: AgentAskDraftOptions): CommandS
   }
   return createSuccess({
     command: "agent-ask.draft",
-    data: { path: filePath, requestId: normalized.requestId, intent: normalized.intent, format: normalized.format, written, preview, workspaceStatus }
+    data: { path: filePath, requestId: normalized.requestId, intent: normalized.intent, format: normalized.format, written, preview, workspaceStatus, discovery }
   });
 }
 
@@ -159,6 +168,7 @@ export function renderAgentAskDraftSuccess(response: CommandSuccess<AgentAskDraf
   } else {
     lines.push("Previewed: not yet — no Arcadia workspace resolved here.", `Next: run \`arcadia agent-ask preview --file ${d.path}\` wherever a workspace is available.`);
   }
+  lines.push(...renderAgentAskDiscovery(d.discovery));
   return lines;
 }
 
