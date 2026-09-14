@@ -677,7 +677,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: expose-guarded-host-session-launch
+current_action: merge-completes-the-action
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---
