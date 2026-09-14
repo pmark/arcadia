@@ -36,7 +36,7 @@ import {
   type ProjectTransition,
   type TmuxAdapter
 } from "../sessions/index.js";
-import { prepareAgentWorktree } from "../sessions/worktreePreparation.js";
+import { isPlausibleClaudeModel, prepareAgentWorktree } from "../sessions/worktreePreparation.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { resolveWorkspace } from "../workspace/resolve.js";
 import { getWorktreeProtection } from "./tidy.js";
@@ -238,7 +238,8 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       throw validationError("Arcadia go cannot name the next agent worktree without a resolved Action.");
     }
 
-    const model = options.model ?? dispatch.context?.planRecommendedModel ?? null;
+    const planModel = dispatch.context?.planRecommendedModel ?? null;
+    const model = options.model ?? planModel;
     if (!model) {
       throw validationError(
         "No model is resolved for the next agent session, and Arcadia go will not launch one unpinned.",
@@ -255,6 +256,25 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
           remedy:
             "Add `recommended_model` (and optionally `recommended_reasoning_effort`) to the plan's frontmatter, " +
             "or pass --model explicitly on this command."
+        }
+      );
+    }
+    // `recommended_model` is free-form, provider-agnostic text (a plan may
+    // have been written with Codex in mind), so when Arcadia picks it
+    // automatically for a Claude handoff — no explicit --model given — make
+    // sure it at least looks like a Claude model before it reaches
+    // `claude --model` unvalidated. An explicit --model is trusted as-is.
+    if (!options.model && options.agent === "claude" && !isPlausibleClaudeModel(model)) {
+      throw validationError(
+        "The plan's recommended_model does not look like a Claude Code model, and Arcadia will not hand it to " +
+          "`claude --model` unvalidated.",
+        {
+          planPath: dispatch.context?.planPath ?? null,
+          planRecommendedModel: model,
+          remedy:
+            "Pass --model explicitly with a Claude Code model (e.g. claude-sonnet-5, or the sonnet/opus/haiku/fable " +
+            "aliases), or fix the plan's recommended_model for a Claude handoff — it currently names a model built " +
+            "for a different agent."
         }
       );
     }

@@ -54,6 +54,23 @@ export function prepareAgentWorktree(input: {
   return candidate;
 }
 
+const CLAUDE_MODEL_ALIASES = new Set(["sonnet", "opus", "haiku", "fable"]);
+
+/**
+ * A plan's `recommended_model` is free-form, provider-agnostic text (see
+ * `PlanDoc.recommendedModel`), so a plan written with a Codex model in mind
+ * (e.g. `gpt-6-astra`) can end up as the automatic recommendation for a
+ * Claude handoff too, with nothing downstream to catch the mismatch before it
+ * reaches `claude --model`. This is a coarse sanity check, not a real Claude
+ * model registry — it only rules out an obvious wrong-provider value when
+ * Arcadia is choosing the model on the operator's behalf. An explicit
+ * `--model` is trusted as-is, same as everywhere else this field is used.
+ */
+export function isPlausibleClaudeModel(model: string): boolean {
+  const normalized = model.trim().toLowerCase();
+  return normalized.startsWith("claude-") || CLAUDE_MODEL_ALIASES.has(normalized);
+}
+
 export function buildAgentLaunchCommand(agent: "codex" | "claude", worktreePath: string, model: string, effort: string | null): string {
   const quotedPath = JSON.stringify(worktreePath);
   const quotedModel = JSON.stringify(model);
