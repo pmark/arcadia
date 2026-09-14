@@ -1346,6 +1346,21 @@ evidence of success either, even if the process itself exited zero.
 pnpm arcadia session reconcile <session-id> --workspace "$WORKSPACE" --repo "$REPO" --json
 ```
 
+When a Session's candidate has a clean, passing Run, reconciliation also
+checks whether the standing production policy explicitly names this exact
+`<project>/<action>` and delegates both its "acceptance" and "pointer"
+mechanical transitions. If so, it settles a `complete` Agent Ask on the
+Session's own candidate branch — the same canonical writer a manual `agent-ask
+settle --operator` call would use — marking the Action done, appending its
+Log entry and advancing the pointer, without a separate operator step. The
+operator's own act of naming the Action in policy scope is the review this
+relies on; it never marks a criterion "met" from the criterion's own text.
+Outside that declared scope, or when the policy has lapsed, the Session is
+left `successful_exit`/`incomplete_resumable` exactly as before, awaiting a
+manual `agent-ask` settlement. Settlement still only commits locally on the
+candidate's own branch — pushing and opening its pull request remain a
+separate Working-Copy Safety step.
+
 Operator QA steps:
 
 1. Find a Session id to test with: `pnpm arcadia session show --workspace "$WORKSPACE" --json` shows the latest Session (pass a specific id as `session show <id>` once you have one), and the dashboard's Sessions view lists all of them, including ones left `prepared`/`running` after their process died.

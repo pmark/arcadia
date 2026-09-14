@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
@@ -6,7 +6,9 @@ import { isRequiresReviewValue } from "../domain/constants.js";
 import { discoverDocs } from "../docs/discover.js";
 import { resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import type { PlanDoc } from "../docs/types.js";
-import { readProductionPolicySafely } from "../production/policy.js";
+import { readProductionPolicySafely, type ProductionPolicyRecord } from "../production/policy.js";
+import { previewAgentAskRequest } from "../ask/preview.js";
+import { settleAgentAsk, type AgentAskSettlementReceipt } from "../ask/settlement.js";
 import { git } from "../git/worktrees.js";
 import { createId } from "../utils/id.js";
 import { canonicalPath, getSession, type AgentSession } from "./index.js";
@@ -215,6 +217,127 @@ export function classifyExitOutcome(session: AgentSession, evidence: ExitEvidenc
   return { outcome: "successful_exit", reason: "The Session exited cleanly with recorded Run evidence, awaiting acceptance." };
 }
 
+export interface AutomaticCompletionAttempt {
+  attempted: boolean;
+  completed: boolean;
+  reason: string;
+  settlement: AgentAskSettlementReceipt | null;
+}
+
+function actionKeyFor(session: AgentSession): string {
+  return `${session.project_slug}/${session.action_id}`;
+}
+
+function scopeAuthorizesAutomaticCompletion(policy: ProductionPolicyRecord, session: AgentSession): boolean {
+  const scope = policy.scope;
+  if (policy.desiredState !== "active" || !policy.authority || !scope) return false;
+  return scope.projects.includes(session.project_slug)
+    && scope.plans.includes(`${session.project_slug}/${session.plan_slug}`)
+    && scope.actions.includes(actionKeyFor(session))
+    && scope.mechanicalTransitions.includes("acceptance")
+    && scope.mechanicalTransitions.includes("pointer");
+}
+
+/**
+ * The missing core bridge: when a Session's candidate has a clean, passing
+ * Run and the standing production policy explicitly names this exact
+ * `<project>/<action>` and delegates both the "acceptance" and "pointer"
+ * mechanical transitions to it, settle a `complete` Agent Ask on the
+ * Session's own candidate rather than leaving the work committed but
+ * unaccepted. The operator's own act of naming this Action in policy scope
+ * is the review this function relies on -- it never derives "met" from the
+ * criteria's own text (acceptanceCriteria.ts deliberately never does that),
+ * so an Action outside the declared scope, or whose policy has lapsed, is
+ * left for manual `agent-ask` settlement exactly as before.
+ *
+ * Idempotent by construction: the Agent Ask request id is derived from the
+ * Session id alone, so a crash between settlement and this function's return,
+ * or a second concurrent reconciliation, replays the identical settlement
+ * receipt (`settleAgentAsk` dedupes by request id) instead of duplicating a
+ * Log entry, Decision or pointer change. A candidate revision that changed
+ * since evidence was probed, or a policy revision that changed between
+ * attempts, refuses rather than binding stale evidence.
+ */
+export function attemptAutomaticCompletion(
+  db: Database.Database,
+  session: AgentSession,
+  evidence: ExitEvidenceProbe
+): AutomaticCompletionAttempt {
+  const policyRead = readProductionPolicySafely(db);
+  if (policyRead.status !== "ok") {
+    return { attempted: false, completed: false, reason: "Production policy is unavailable; automatic completion requires a readable policy.", settlement: null };
+  }
+  const policy = policyRead.policy;
+  if (!scopeAuthorizesAutomaticCompletion(policy, session)) {
+    return { attempted: false, completed: false, reason: "Standing production policy does not delegate mechanical acceptance and pointer transitions to this Action.", settlement: null };
+  }
+  if (!evidence.candidateRevision || !evidence.runId || evidence.runFailed) {
+    return { attempted: false, completed: false, reason: "No passing Run evidence to bind automatic completion to.", settlement: null };
+  }
+
+  const worktree = session.worktree_path;
+  let currentHead: string;
+  try {
+    currentHead = git(worktree, ["rev-parse", "HEAD"]).trim();
+  } catch {
+    return { attempted: true, completed: false, reason: "The Session's worktree could not be read to verify the candidate revision.", settlement: null };
+  }
+  if (currentHead !== evidence.candidateRevision) {
+    return { attempted: true, completed: false, reason: "The candidate revision changed since evidence was probed; refusing to bind stale evidence.", settlement: null };
+  }
+
+  const discovered = discoverDocs(worktree);
+  const plan = discovered.docs.find(
+    (doc): doc is PlanDoc => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug
+  );
+  const action = plan?.actions.find((candidate) => candidate.id === session.action_id);
+  if (!action) {
+    return { attempted: true, completed: false, reason: "The Action was not found in the candidate's own Plan document.", settlement: null };
+  }
+  if (action.status === "done") {
+    return { attempted: true, completed: false, reason: "The Action is already done; nothing to complete.", settlement: null };
+  }
+  if (action.acceptanceCriteria.length === 0) {
+    return { attempted: true, completed: false, reason: "The Action declares no acceptance criteria to bind automatic evidence to.", settlement: null };
+  }
+
+  const requestId = `auto-complete-${session.id}`;
+  const note = `Mechanically accepted: Session ${session.id} exited cleanly with a passing Run (${evidence.runId}) on candidate ${evidence.candidateRevision}, and standing production policy revision ${policy.revision} explicitly delegates mechanical acceptance and pointer transitions for ${actionKeyFor(session)}.`;
+  const requestBody = {
+    agent_ask: "v1",
+    request_id: requestId,
+    project: session.project_slug,
+    intent: "complete",
+    target_ref: `action/${session.action_id}`,
+    desired_result: `Automatically accept mechanical completion for ${actionKeyFor(session)} under standing production policy.`,
+    rationale: note,
+    candidate_revision: evidence.candidateRevision,
+    evidence: action.acceptanceCriteria.map((criterion) => ({ criterion, status: "met", note })),
+    requested_authority: "apply_if_approved"
+  };
+  const request = JSON.stringify(requestBody);
+
+  const askDir = path.join(worktree, ".arcadia", "asks");
+  const askPath = path.join(askDir, `agent-ask-${requestId}.yaml`);
+  try {
+    if (!existsSync(askPath)) {
+      mkdirSync(askDir, { recursive: true });
+      writeFileSync(askPath, `${request}\n`, "utf8");
+    }
+    const proposal = previewAgentAskRequest(db, { request, requestId, project: session.project_slug, sourcePath: askPath });
+    const preview = settleAgentAsk(db, {
+      proposalRef: proposal.proposal.id, settlementRequestId: requestId, disposition: "accepted", cwd: worktree
+    });
+    const settlement = settleAgentAsk(db, {
+      proposalRef: proposal.proposal.id, settlementRequestId: requestId, disposition: "accepted",
+      previewFingerprint: preview.previewFingerprint, apply: true, operator: true, cwd: worktree
+    });
+    return { attempted: true, completed: true, reason: `Automatically completed under standing production policy revision ${policy.revision}.`, settlement };
+  } catch (error) {
+    return { attempted: true, completed: false, reason: `Automatic completion was refused: ${error instanceof Error ? error.message : String(error)}`, settlement: null };
+  }
+}
+
 function terminalStatusFor(outcome: SessionExitOutcome): AgentSession["status"] {
   switch (outcome) {
     case "accepted_completion":
@@ -304,8 +427,23 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
 
   const repoRoot = path.resolve(input.repoRoot);
   const evidence = probeExitEvidence(db, session, repoRoot);
-  const { outcome, reason } = classifyExitOutcome(session, evidence);
-  const nextMove = resolveNextMove(db, repoRoot, session, outcome);
+  let { outcome, reason } = classifyExitOutcome(session, evidence);
+  // Automatic completion settles onto the Session's own candidate worktree
+  // (see attemptAutomaticCompletion), so once it succeeds the fresh Plan and
+  // Project documents live there -- not necessarily at whatever `--repo` this
+  // reconciliation was called against -- until that candidate is pushed and
+  // merged. Resolve the next move against the worktree in that one case; every
+  // other outcome keeps reading `repoRoot` exactly as before.
+  let nextMoveRepoRoot = repoRoot;
+  if (outcome === "successful_exit" || outcome === "incomplete_resumable") {
+    const attempt = attemptAutomaticCompletion(db, session, evidence);
+    if (attempt.completed) {
+      outcome = "accepted_completion";
+      reason = attempt.reason;
+      nextMoveRepoRoot = session.worktree_path;
+    }
+  }
+  const nextMove = resolveNextMove(db, nextMoveRepoRoot, session, outcome);
   const now = new Date().toISOString();
   const row: SessionExitReceipt = {
     id: createId("sessionExitReceipt"),

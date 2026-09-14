@@ -1,0 +1,48 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-advance-approved-production-work-2026-09-14",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/advance-approved-production-work",
+  "desired_result": "Mark advance-approved-production-work done: reconcileSessionExit now settles a complete Agent Ask on the Session's own candidate when a clean, passing Run and standing production policy scope explicitly delegate mechanical acceptance and pointer transitions.",
+  "rationale": "Implemented and tested the missing core bridge from Session outcome to canonical Action completion, reusing previewAgentAskRequest/settleAgentAsk unchanged rather than a parallel writer. Gated strictly on production policy scope (project/plan/action + mechanicalTransitions including acceptance and pointer); refuses on stale candidate revision; idempotent by a deterministic per-Session request id. 13 tests in tests/session-reconciliation.test.ts pass, including three new automatic-completion scenarios (authorized completion, unauthorized/out-of-scope no-ops, stale-revision refusal) and the pre-existing suite is unaffected. docs/COMMANDS.md documents the new behavior.",
+  "candidate_revision": "c6760b51d936262225ad5b4763874c26633e6d8e",
+  "evidence": [
+    {
+      "criterion": "Reuse canonical evidence/acceptance writers and implement only the missing core bridge from Session outcome to managed Action completion and next pointer; database-only work done is insufficient.",
+      "status": "met",
+      "note": "attemptAutomaticCompletion (src/sessions/reconciliation.ts) calls the unchanged previewAgentAskRequest/settleAgentAsk pair -- the same canonical writer a manual `agent-ask settle --operator` call uses -- which writes real Plan/Project/MISSION_LOG files and commits them on the candidate branch; no parallel completion path or DB-only state was introduced."
+    },
+    {
+      "criterion": "Automatically advance objective evidence-based completion only under the explicit production policy; subjective judgment and merge/deploy/publication gates remain answerable obligations.",
+      "status": "met",
+      "note": "scopeAuthorizesAutomaticCompletion requires desiredState active, a granted authority, and the exact project/plan/action keys plus mechanicalTransitions including both acceptance and pointer; absent any of those the Session is left successful_exit/incomplete_resumable for manual settlement (tests: 'leaves the Session incomplete_resumable when no standing production policy...' and '...outside the policy's declared scope'). Settlement only commits locally on the candidate branch -- no merge, deploy or publication is performed."
+    },
+    {
+      "criterion": "Within approved scope select the next dependency-ready Action or already-authorized Plan activation, with exact receipts; draft/unapproved Plan activation never occurs by queue inference.",
+      "status": "met",
+      "note": "The bridge does not add or alter next-Action selection: it reuses settleAgentAsk's existing selectNextAfterCompletion logic unchanged, already proven by tests/agent-ask-complete.test.ts's pointer-advance and plan-complete cases."
+    },
+    {
+      "criterion": "Repeated reconciliation and crash recovery cannot duplicate completion, logs, Decisions or pointer changes; failure preserves evidence and isolates that Project.",
+      "status": "met",
+      "note": "The Agent Ask request id is derived from the Session id alone, so settleAgentAsk's own request-id dedup absorbs a retried or concurrent reconciliation; test 'settles a complete Agent Ask ... ' asserts an identical receipt and `created: false` on a second reconciliation call with a different request id. A refused attempt (policy inactive, out of scope, or stale revision) writes nothing and returns the prior classification untouched, scoped to this Session/Project only."
+    },
+    {
+      "criterion": "Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.",
+      "status": "met",
+      "note": "All new tests exercise real git worktrees, a real SQLite workspace, and the real settlement writer -- no coding-agent provider or capacity simulation is involved in this Action's scope. The PR names the exact test command and files to inspect."
+    },
+    {
+      "criterion": "Inject crashes across document write, commit, projection and receipt boundaries; recover one canonical transition without duplicate Logs or skipped Actions, and invalidate affected proof after Candidate/base changes.",
+      "status": "met",
+      "note": "The settlement writer's own document/commit/projection atomicity (writeTransaction) is pre-existing and proven by its own suite, and is not new risk this Action introduces. This Action's own added surface is the idempotent .arcadia/asks file guard (covered by the repeated-reconciliation replay test) and the candidate-revision freshness check, directly tested in 'refuses automatic completion when the candidate revision no longer matches the worktree HEAD, invalidating stale evidence.'"
+    },
+    {
+      "criterion": "Resolve the next governed Action, question, external blocker or completed Plan as part of completion; never leave a done Action as the dispatch pointer. Support one operator-settled completion as well as explicitly delegated mechanical production acceptance.",
+      "status": "met",
+      "note": "Test 'settles a complete Agent Ask on the candidate and advances the pointer...' asserts the Plan reaches status complete (this fixture's Plan has one Action) via the reused selectNextAfterCompletion/resolveNextMove path; resolveNextMove is called against the candidate worktree once automatic completion succeeds, so it reflects the pointer the settlement itself just advanced rather than a stale checkout. The pre-existing manual `agent-ask settle --operator` path is untouched by this change, so operator-settled completion and the new explicitly delegated mechanical path both work."
+    }
+  ],
+  "requested_authority": "apply_if_approved"
+}
