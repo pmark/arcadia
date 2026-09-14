@@ -72,6 +72,10 @@ prompt, not permission to invoke the mutable CLI command directly.
 
    Never run mutable `arcadia advance` directly and never pass an argument to
    either protected launcher.
+
+   Once the broker succeeds, run `pnpm arcadia next` from that worktree — a
+   read-only noun command, not a protected launcher — and show its output
+   verbatim as the session's opening brief before doing anything else.
 4. Before changing code, run the matching fixed read-only work-monitor launcher
    from that prepared worktree:
 
