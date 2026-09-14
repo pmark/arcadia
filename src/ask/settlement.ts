@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import type { AgentAskProposal, NormalizedAgentAsk, NormalizedAgentAskAction, NormalizedAgentAskEvidence, NormalizedAgentAskOption } from "./agentAsk.js";
@@ -601,7 +601,7 @@ export function settleAgentAsk(db: Database.Database, input: {
     });
   }
 
-  archiveSettledAskFile(fileMutations, effects, repoRoot, proposal.sourcePath ?? null);
+  const archivedAskPath = archiveSettledAskFile(fileMutations, effects, repoRoot, proposal.sourcePath ?? null);
 
   const previewFingerprint = sha256(JSON.stringify({
     proposalFingerprint: proposal.fingerprint,
@@ -643,7 +643,15 @@ export function settleAgentAsk(db: Database.Database, input: {
   };
   if (!input.apply) return baseReceipt;
 
-  if (fileMutations.length > 0) assertClean(repoRoot, "Agent Ask Project repository");
+  if (fileMutations.length > 0) {
+    // The drafted Ask file itself sits untracked in the repository this
+    // settlement is about to write into. It is not incidental dirt: this
+    // same transaction consumes it (archiveSettledAskFile queued a mutation
+    // deleting it and writing its content under `.arcadia/asks/archive/`), so
+    // it must not also make the repository look unclean. Nothing else in the
+    // working tree is exempted.
+    assertClean(repoRoot, "Agent Ask Project repository", archivedAskPath ? [archivedAskPath] : []);
+  }
   let settled: AgentAskSettlementReceipt;
   try {
     settled = writeTransaction(db, () => {
@@ -759,7 +767,21 @@ function commitSettlementOutput(
   fileMutations: FileMutation[],
   receipt: AgentAskSettlementReceipt
 ): void {
-  const paths = fileMutations.map((mutation) => path.relative(repoRoot, mutation.path));
+  const allPaths = fileMutations.map((mutation) => ({ relative: path.relative(repoRoot, mutation.path), deleted: mutation.after === null }));
+  // A deletion mutation whose file was never tracked — the drafted Ask file
+  // this settlement consumed and archived, when the operator never committed
+  // the draft first — has nothing for `git add`/`git commit` to stage: the
+  // file is already gone from disk, and it was never in the index either.
+  // Naming it in either pathspec fails the whole command with "did not match
+  // any files", which used to be swallowed here and left the entire
+  // settlement (every other file it wrote) sitting uncommitted. `git ls-files`
+  // reports what the index has regardless of the working tree, so it still
+  // finds a genuinely tracked-then-deleted path even after the unlink above.
+  const deletionPaths = allPaths.filter((entry) => entry.deleted).map((entry) => entry.relative);
+  const tracked = deletionPaths.length > 0
+    ? new Set(git(repoRoot, ["ls-files", "-z", "--", ...deletionPaths]).split("\0").filter(Boolean))
+    : new Set<string>();
+  const paths = allPaths.filter((entry) => !entry.deleted || tracked.has(entry.relative)).map((entry) => entry.relative);
   const message = [
     `chore(arcadia): settle ${receipt.proposalRequestId}`,
     "",
@@ -769,6 +791,7 @@ function commitSettlementOutput(
     "Arcadia writes and lands its own managed documents; it did not author the",
     "decision they record."
   ].join("\n");
+  if (paths.length === 0) return;
   try {
     git(repoRoot, ["add", "--", ...paths]);
     git(repoRoot, ["commit", "-m", message, "--", ...paths]);
@@ -1254,16 +1277,33 @@ function appendLog(before: string | null, projectSlug: string, normalized: Norma
  * already-archived source file is a silent no-op, not an error, so retried
  * or manually-cleaned-up settlements stay idempotent.
  */
-function archiveSettledAskFile(fileMutations: FileMutation[], effects: string[], repoRoot: string, sourcePath: string | null): void {
-  if (!sourcePath) return;
+/** Returns the archived source file's path relative to `repoRoot`, or null when
+ * nothing was archived (no source, outside `.arcadia/asks/`, or already gone). */
+function archiveSettledAskFile(fileMutations: FileMutation[], effects: string[], repoRoot: string, sourcePath: string | null): string | null {
+  if (!sourcePath) return null;
+  const requested = path.resolve(sourcePath);
+  if (!existsSync(requested)) return null;
   const asksDir = path.join(repoRoot, ".arcadia", "asks");
-  const resolved = path.resolve(sourcePath);
-  if (path.dirname(resolved) !== asksDir || !existsSync(resolved)) return;
+  if (!existsSync(asksDir)) return null;
+  // Compare directories through realpath — `repoRoot` for a candidate
+  // worktree comes from `projectCheckoutFor`'s realpath'd `--show-toplevel`,
+  // while `sourcePath` (e.g. from a freshly drafted file) is typically a
+  // plain `path.resolve`. A symlinked path segment (common for a system's
+  // temp directory) would otherwise make an identical directory compare
+  // unequal and silently skip archiving. Once matched, rebuild the path from
+  // `repoRoot`'s own (possibly non-realpath) spelling rather than keeping the
+  // realpath'd one: every other path this settlement writes, commits, and
+  // relativizes is expressed in terms of `repoRoot` as given, and mixing the
+  // two spellings turns `path.relative` into a `../../..` traversal that
+  // neither `git add` nor `git status` recognizes.
+  if (realpathSync(path.dirname(requested)) !== realpathSync(asksDir)) return null;
+  const resolved = path.join(asksDir, path.basename(requested));
   const content = readFileSync(resolved, "utf8");
   const archivePath = path.join(asksDir, "archive", path.basename(resolved));
   fileMutations.push({ path: resolved, before: content, after: null });
   fileMutations.push({ path: archivePath, before: existsSync(archivePath) ? readFileSync(archivePath, "utf8") : null, after: content });
   effects.push(`Archived the settled Ask file to ${path.relative(repoRoot, archivePath)}.`);
+  return path.relative(repoRoot, resolved);
 }
 
 function restoreMutation(mutation: FileMutation): void {

@@ -45,16 +45,19 @@ export function existingDirectory(input: string, label: string): string {
   return realpathSync(resolved);
 }
 
-/** Uncommitted work, excluding only the untracked reserved go request. A tracked
- * request remains dirty and is separately refused by the transport. */
-export function uncommittedChanges(cwd: string): string[] {
+/** Uncommitted work, excluding only the untracked reserved go request and any
+ * caller-named untracked paths (repo-relative, e.g. an Agent Ask file a
+ * settlement is about to consume and archive in the same transaction). A
+ * tracked file at one of those paths remains dirty and is still refused. */
+export function uncommittedChanges(cwd: string, ignoreUntracked: string[] = []): string[] {
+  const ignored = new Set([GO_REQUEST_FILE, ...ignoreUntracked]);
   return git(cwd, ["status", "--porcelain=v1", "--untracked-files=all"])
     .split("\n")
-    .filter(line => Boolean(line) && line !== `?? ${GO_REQUEST_FILE}`);
+    .filter(line => Boolean(line) && !(line.startsWith("?? ") && ignored.has(line.slice(3))));
 }
 
-export function assertClean(cwd: string, label: string): void {
-  const changes = uncommittedChanges(cwd);
+export function assertClean(cwd: string, label: string, ignoreUntracked: string[] = []): void {
+  const changes = uncommittedChanges(cwd, ignoreUntracked);
   if (changes.length > 0) {
     throw validationError(`The ${label} is not clean; Arcadia will not preserve or discard changes implicitly.`, {
       path: cwd,

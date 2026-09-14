@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runAgentAskContractCommand, runAgentAskPreviewCommand, runAgentAskSettleCommand } from "../src/commands/agentAsk.js";
+import { runAgentAskContractCommand, runAgentAskDraftCommand, runAgentAskPreviewCommand, runAgentAskSettleCommand } from "../src/commands/agentAsk.js";
 import { withDatabase } from "../src/db/connection.js";
 import { discoverDocs } from "../src/docs/discover.js";
 import { arrangeActionOrder, loadActionOrder } from "../src/dispatch/order.js";
@@ -130,6 +130,68 @@ describe("Agent Ask complete", () => {
     })).toThrow(/does not match the repository's current HEAD/);
   });
 
+  it("settles a complete Ask from its own drafted file inside a candidate worktree, with no manual relocation and no commit rewrite", () => {
+    const { workspace, repo, head } = fixture();
+    const candidate = path.join(path.dirname(repo), "candidate-complete");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate-complete", candidate], { cwd: repo });
+
+    // Mirrors the real flow: `arcadia agent-ask draft` writes the Ask file
+    // straight into the candidate worktree's own `.arcadia/asks/`, untracked.
+    const draft = runAgentAskDraftCommand({
+      workspace, dir: candidate, request: completeAsk("complete-from-candidate", "first", head)
+    });
+    expect(draft.data.written).toBe("created");
+    expect(draft.data.path).toBe(path.join(candidate, ".arcadia", "asks", "agent-ask-complete-from-candidate.yaml"));
+    expect(draft.data.preview).not.toBeNull();
+    // The drafted file itself is the only untracked change; settling it later
+    // must not require moving it out of the repo or committing it first.
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: candidate, encoding: "utf8" }).trim())
+      .toBe("?? .arcadia/asks/agent-ask-complete-from-candidate.yaml");
+
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: draft.data.preview!.proposal.id, requestId: "settle-complete-from-candidate",
+      disposition: "accepted", cwd: candidate
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: draft.data.preview!.proposal.id, requestId: "settle-complete-from-candidate",
+      disposition: "accepted", preview: preview.data.receipt.previewFingerprint, apply: true, operator: true, cwd: candidate
+    });
+
+    expect(applied.data.receipt.applied).toBe(true);
+    expect(applied.data.receipt.effects.join(" ")).toContain("Marked Action demo/first done");
+    expect(applied.data.receipt.effects.join(" ")).toContain("Archived the settled Ask file");
+
+    // The candidate branch carries exactly one new commit; the base checkout
+    // this settlement never touched is untouched and still at the original head.
+    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim()).toBe(head);
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: candidate, encoding: "utf8" })).toBe("");
+    expect(execFileSync("git", ["rev-list", "--count", `${head}..HEAD`], { cwd: candidate, encoding: "utf8" }).trim()).toBe("1");
+    expect(execFileSync("git", ["log", "-1", "--format=%s"], { cwd: candidate, encoding: "utf8" }))
+      .toContain("settle complete-from-candidate");
+    expect(existsSync(draft.data.path)).toBe(false);
+    expect(existsSync(path.join(candidate, ".arcadia/asks/archive/agent-ask-complete-from-candidate.yaml"))).toBe(true);
+  });
+
+  it("still refuses a stale Candidate revision when the drafted Ask file sits in the candidate worktree", () => {
+    const { workspace, repo, head } = fixture();
+    const candidate = path.join(path.dirname(repo), "candidate-complete-stale");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate-complete-stale", candidate], { cwd: repo });
+    writeFileSync(path.join(candidate, "README.md"), "advance the candidate past the recorded revision\n", "utf8");
+    execFileSync("git", ["add", "README.md"], { cwd: candidate });
+    execFileSync("git", ["commit", "-qm", "Advance candidate"], { cwd: candidate });
+
+    const draft = runAgentAskDraftCommand({
+      workspace, dir: candidate, request: completeAsk("complete-from-candidate-stale", "first", head)
+    });
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: draft.data.preview!.proposal.id, requestId: "settle-complete-from-candidate-stale",
+      disposition: "accepted", cwd: candidate
+    })).toThrow(/does not match the repository's current HEAD/);
+    // Refused before any write: the drafted file is still exactly where draft left it.
+    expect(existsSync(draft.data.path)).toBe(true);
+  });
+
   it("refuses completing an Action that is already done", () => {
     const { workspace, head } = fixture({ firstDone: true });
     const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-done", "first", head) });
@@ -165,6 +227,11 @@ function fixture(options: {
   const repo = path.join(root, "repo");
   const workspace = path.join(root, "workspace");
   mkdirSync(path.join(repo, "docs/plans"), { recursive: true });
+  // A real Arcadia repository already tracks `.arcadia/asks/archive/`, so a
+  // freshly drafted Ask file is the only new thing under `.arcadia/` and git
+  // reports it by its own path rather than collapsing the whole directory.
+  mkdirSync(path.join(repo, ".arcadia/asks/archive"), { recursive: true });
+  writeFileSync(path.join(repo, ".arcadia/asks/archive/.gitkeep"), "", "utf8");
   if (options.withOpenDecision) mkdirSync(path.join(repo, "docs/decisions"), { recursive: true });
   writeFileSync(path.join(repo, "PROJECT.md"), projectDoc(), "utf8");
   writeFileSync(path.join(repo, "docs/plans/demo-plan.md"), planDoc(options), "utf8");
