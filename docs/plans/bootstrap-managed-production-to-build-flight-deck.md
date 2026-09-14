@@ -221,21 +221,20 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Extend the existing worker to continuously admit, supervise and advance approved Sessions while Active.
+    next_action: Extend the existing worker to continuously admit, supervise and advance approved Sessions while Active, and independently detect a dead-Session exit and a base-branch advance.
     expected_artifact: Evidence satisfying Agent Ask feed-and-supervise-managed-production
     clarification: clarified
     confidence: high
-    source: Agent Ask promote-refuse-to-orphan-before-supervise-2026-09-14
+    source: Agent Ask split-hung-detection-and-fault-soak-from-feed-and-supervise-2026-09-14
     acceptance_criteria:
       - Reuse the existing persistent worker ownership, recovery, queue and Session paths; no second daemon, queue or browser-owned scheduling loop.
       - After a terminal accepted Action, re-evaluate current priority/capacity and launch the next eligible Action without a new human session, chat or Launch click.
       - Detects when the base branch has advanced because an Action's PR merged, not only from an internal completion signal, and records that observation as an events-table row and a MISSION_LOG line naming the previous and new SHA, so a merge is never silent even if the worker was off or between ticks when it landed.
       - Use atomic leases and capacity reservations across competing ticks/workers; independent Projects may run concurrently within configured provider/host limits, but conflicting repositories cannot.
       - Off remains responsive during running work and stops future launch commitments; worker restart reconciles existing work and policy epoch before admission.
-      - Blocked approval, unavailable provider or failed Project permits independent eligible work to progress. Exhausted capacity schedules bounded rechecks; repeated failures have finite repair/retry limits and one actionable stop.
-      - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
-      - Enforce finite repair/model-attempt budgets and deadlines; hung processes and disk/write failure remain visible and preserve work; do not release uncertain leases or loop across providers to bypass a failure.
-    depends_on: [advance-approved-production-work, prove-provider-capacity-admission, expose-guarded-host-session-launch, refuse-to-orphan-an-uncommitted-candidate]
+      - Blocked approval, unavailable provider or failed Project permits independent eligible work to progress. Exhausted capacity schedules bounded rechecks; a per-Action launch failure has a finite repair/retry limit and one actionable stop.
+      - Enforce the existing finite repair-attempt budget and provider-call deadline constants; do not release uncertain leases or loop across providers to bypass a failure.
+    depends_on: [advance-approved-production-work, prove-provider-capacity-admission, expose-guarded-host-session-launch]
     decisions: []
     references: []
   - id: expose-bootstrap-production-controls
@@ -730,6 +729,43 @@ actions:
     depends_on: [advance-approved-production-work]
     decisions: []
     references: ["docs/arcadia-development-orchestration-vision.md", "docs/decisions/0019-streamline-pr-qa-before-expansion.md", "docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/sessions/reconciliation.ts", "src/stewardship/critic.ts", "src/stewardship/artifactValidator.ts", "src/ask/settlement.ts"]
+  - id: detect-hung-managed-production-sessions
+    title: The worker notices a managed-production Session whose tmux stays alive but has stopped making real progress, not only one whose tmux has died.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: The worker notices a managed-production Session whose tmux stays alive but has stopped making real progress, not only one whose tmux has died.
+    expected_artifact: Evidence satisfying Agent Ask detect-hung-managed-production-sessions
+    clarification: clarified
+    confidence: high
+    source: Agent Ask split-hung-detection-and-fault-soak-from-feed-and-supervise-2026-09-14
+    acceptance_criteria:
+      - Define an observable, deterministic signal for 'stalled' (e.g. no new tmux pane output, no new Run/receipt activity) and a bounded deadline before a live-but-stalled Session is flagged.
+      - A flagged stalled Session is surfaced as an explicit uncertain/needs-attention state, never silently reconciled as successful or silently relaunched.
+      - The existing repository lease and admission are preserved (not released) while a Session is only suspected stalled, pending operator or bounded automatic repair.
+      - "False positives are bounded: a Session doing real long-running work is not flagged merely for being slow."
+    depends_on: [feed-and-supervise-managed-production]
+    decisions: []
+    references: []
+  - id: prove-managed-production-fault-matrix
+    title: Prove the contract-20 fault-injection matrix and staged evidence bundle before unattended Flight Deck handoff.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Prove the contract-20 fault-injection matrix and staged evidence bundle before unattended Flight Deck handoff.
+    expected_artifact: Evidence satisfying Agent Ask prove-managed-production-fault-matrix
+    clarification: clarified
+    confidence: high
+    source: Agent Ask split-hung-detection-and-fault-soak-from-feed-and-supervise-2026-09-14
+    acceptance_criteria:
+      - Each deterministic race scenario in the contract-20 boundary table (admission/launch, completion/pointer, Off, process health, capacity, priority/authority, runtime) is repeated at least 100 times with reproducible seeds/interleavings, with zero invariant violations and retained failing-seed/timeline evidence for any violation found and fixed.
+      - The two-dependent-Action live rehearsal passes from one activation with no manual Session relay, with every human intervention recorded.
+      - Both configured providers complete real bounded Actions, with capacity failure/reset tests naming which evidence is real and which is simulated.
+      - "A bounded real soak completes: at least ten accepted small Actions across at least two Projects and both providers, across two worker restarts, an Off/reactivation, and one injected recoverable failure, with zero duplicate launches, lost outputs, unauthorized transitions, falsely accepted results, or manual Session relays."
+      - A single release evidence index maps every required invariant and quality gate to pass/fail/unproven, revision, artifact, and reproduction procedure.
+    depends_on: [feed-and-supervise-managed-production]
+    decisions: []
+    references: []
 questions: []
 decisions: []
 current_action: feed-and-supervise-managed-production
