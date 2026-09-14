@@ -225,7 +225,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask feed-and-supervise-managed-production
     clarification: clarified
     confidence: high
-    source: Agent Ask fold-merge-detection-into-supervise-2026-09-14
+    source: Agent Ask promote-refuse-to-orphan-before-supervise-2026-09-14
     acceptance_criteria:
       - Reuse the existing persistent worker ownership, recovery, queue and Session paths; no second daemon, queue or browser-owned scheduling loop.
       - After a terminal accepted Action, re-evaluate current priority/capacity and launch the next eligible Action without a new human session, chat or Launch click.
@@ -235,9 +235,9 @@ actions:
       - Blocked approval, unavailable provider or failed Project permits independent eligible work to progress. Exhausted capacity schedules bounded rechecks; repeated failures have finite repair/retry limits and one actionable stop.
       - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
       - Enforce finite repair/model-attempt budgets and deadlines; hung processes and disk/write failure remain visible and preserve work; do not release uncertain leases or loop across providers to bypass a failure.
-    depends_on: [advance-approved-production-work, prove-provider-capacity-admission, expose-guarded-host-session-launch]
+    depends_on: [advance-approved-production-work, prove-provider-capacity-admission, expose-guarded-host-session-launch, refuse-to-orphan-an-uncommitted-candidate]
     decisions: []
-    references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/commands/worker.ts", "src/dispatch/queue.ts", "src/dispatch/order.ts", "src/sessions/index.ts", "src/commands/go.ts", "src/workMonitoring/pullRequests.ts"]
+    references: []
   - id: expose-bootstrap-production-controls
     title: Expose the production switch, priority, capacity and review stops on the existing Work Queue.
     status: open

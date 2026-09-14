@@ -1,0 +1,32 @@
+{
+  "agent_ask": "v1",
+  "request_id": "promote-refuse-to-orphan-before-supervise-2026-09-14",
+  "project": "arcadia",
+  "intent": "plan",
+  "target_ref": "plan/bootstrap-managed-production-to-build-flight-deck",
+  "requested_authority": "propose",
+  "desired_result": "Record that feed-and-supervise-managed-production genuinely depends on refuse-to-orphan-an-uncommitted-candidate, since the continuous worker will relaunch sessions against an Action that did not finish in one pass -- exactly the path where go currently risks silently duplicating a worktree instead of resuming the existing candidate.",
+  "rationale": "The operator judged this defect is already causing harm and should be fixed before continuous supervision proceeds further, per the Stop-the-line rule in AGENTS.md (a defect whose only workaround is a human remembering to check for duplicate worktrees). refuse-to-orphan-an-uncommitted-candidate is open, has zero existing dependencies, and is session-sized. Adding the dependency edge expresses the real prerequisite relationship rather than hand-editing the current_action pointer.",
+  "actions": [
+    {
+      "target_ref": "action/feed-and-supervise-managed-production",
+      "desired_result": "Extend the existing worker to continuously admit, supervise and advance approved Sessions while Active.",
+      "acceptance": [
+        "Reuse the existing persistent worker ownership, recovery, queue and Session paths; no second daemon, queue or browser-owned scheduling loop.",
+        "After a terminal accepted Action, re-evaluate current priority/capacity and launch the next eligible Action without a new human session, chat or Launch click.",
+        "Detects when the base branch has advanced because an Action's PR merged, not only from an internal completion signal, and records that observation as an events-table row and a MISSION_LOG line naming the previous and new SHA, so a merge is never silent even if the worker was off or between ticks when it landed.",
+        "Use atomic leases and capacity reservations across competing ticks/workers; independent Projects may run concurrently within configured provider/host limits, but conflicting repositories cannot.",
+        "Off remains responsive during running work and stops future launch commitments; worker restart reconciles existing work and policy epoch before admission.",
+        "Blocked approval, unavailable provider or failed Project permits independent eligible work to progress. Exhausted capacity schedules bounded rechecks; repeated failures have finite repair/retry limits and one actionable stop.",
+        "Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.",
+        "Enforce finite repair/model-attempt budgets and deadlines; hung processes and disk/write failure remain visible and preserve work; do not release uncertain leases or loop across providers to bypass a failure."
+      ],
+      "dependencies": [
+        "advance-approved-production-work",
+        "prove-provider-capacity-admission",
+        "expose-guarded-host-session-launch",
+        "refuse-to-orphan-an-uncommitted-candidate"
+      ]
+    }
+  ]
+}
