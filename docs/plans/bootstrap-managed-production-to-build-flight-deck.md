@@ -197,7 +197,7 @@ actions:
     references: ["docs/decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md", "docs/proposals/host-owned-agent-workspace-contract.md", "docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/sessions/index.ts", "src/commands/advance.ts", "src/stewardship/artifactValidator.ts", "src/docs/dispatch.ts"]
   - id: advance-approved-production-work
     title: Advance accepted production work through canonical completion, Log and pointer transitions.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Advance accepted production work through canonical completion, Log and pointer transitions.
@@ -713,7 +713,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: advance-approved-production-work
+current_action: feed-and-supervise-managed-production
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
