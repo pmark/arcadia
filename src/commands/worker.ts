@@ -28,6 +28,7 @@ import { loadPhase3Registries, validatePhase3Registries } from "../intent/regist
 import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../markdown/missionLog.js";
 import { renderRunSummary } from "../markdown/executionArtifacts.js";
 import { deployApprovedProjectProposal } from "../projects/stagingDeployment.js";
+import { runManagedProductionTick } from "../production/tick.js";
 import { createId } from "../utils/id.js";
 
 import { processPreservationRequests } from "../sessions/preservationTransport.js";
@@ -150,6 +151,7 @@ export function runWorkerIteration(
 ): ReturnType<typeof getExecutionRun> {
   if (!process.env.CODEX_SANDBOX) processPreservationRequests(db, workspacePath);
   recoverOrphanedRuns(db, logfile);
+  runManagedProductionIteration(db, workspacePath, logfile);
   const run = claimNextPendingRun(db, pid);
   if (!run?.review_item_id) {
     return run;
@@ -233,6 +235,40 @@ export function runWorkerIteration(
     finalizeWorkerFailure(db, workspacePath, run.id, error instanceof Error ? error.message : String(error));
   }
   return getExecutionRun(db, run.id);
+}
+
+/**
+ * The continuous half of managed production: reconcile dead Sessions, notice
+ * independent base-branch advances, and admit/launch the next eligible Action
+ * for every active Project, on every tick this worker already runs. Never
+ * throws -- an unconfigured provider-adapters registry or an unreadable
+ * production policy just means there is nothing to admit this tick, not a
+ * reason to stop babysitting the legacy `execution_runs` path below it.
+ */
+export function runManagedProductionIteration(
+  db: ReturnType<typeof openDatabase>,
+  workspacePath: string,
+  logfile: string
+): void {
+  try {
+    const registries = loadPhase3Registries(workspacePath);
+    if (!registries.providerAdapters) {
+      return;
+    }
+    const result = runManagedProductionTick(db, workspacePath, {
+      profiles: registries.codingAgents.profiles,
+      adapters: registries.providerAdapters,
+      log: (message) => log(logfile, `[managed-production] ${message}`)
+    });
+    if (!result.policyActive) return;
+    for (const project of result.projects) {
+      if (project.launch && project.launch.outcome === "repair_budget_exhausted") {
+        log(logfile, `[managed-production] ${project.projectSlug}: ${project.launch.reason}`);
+      }
+    }
+  } catch (error) {
+    log(logfile, `[managed-production] Tick error: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function finalizeGenericRun(
