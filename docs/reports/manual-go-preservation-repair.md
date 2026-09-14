@@ -2,6 +2,23 @@
 
 ## Bootstrap update, 2026-09-13
 
+The operator installed dependency correction
+`2baa47bdec7400a2f06a2efc705f8bac54c60d1d`. Actual preservation validation then
+passed TypeScript and ran the suite: 112 tests passed, 19 capture-dependent tests
+failed, and 6 native tests were skipped. Fork-pool shutdown also reported
+`kill EPERM`. Activation stopped before metadata or worker changes.
+
+The next candidate puts disposable execution outside the denied workspace while
+retaining evidence inside it. The capture helper opens each ancestor directory,
+so the old nested scratch layout is incompatible with workspace denial. A native
+regression exercises that traversal and independently retains workspace denial;
+it must pass on the host before installation. Capture failures now retain bounded
+stderr diagnostics, never captured file bytes. The configured suite uses Vitest
+threads, avoiding fork-pool shutdown signals; 131 ordinary tests pass with that
+pool, with 7 native checks explicitly skipped in the agent environment. The
+bootstrap now gates commit/install on the exact sandbox validation as well as
+host tests. Native execution of this correction remains unverified here.
+
 Follow-up: installation of `41e68633ac17429845bdeb3b367cd562ce8247f9`
 exposed a second copy case: the actual dependency bridge is a writable directory
 containing individual absolute links, including `.pnpm`, rather than a single

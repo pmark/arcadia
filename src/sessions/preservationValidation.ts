@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { getProjectMetadata } from "../db/repositories.js";
@@ -62,11 +63,16 @@ export function validateBoundCandidate<T>(workspace: string, candidate: { id: st
   if (process.platform !== "darwin") throw validationError("Protected preservation validation currently requires the macOS Seatbelt host.");
   const evidenceRoot = path.join(workspace, "artifacts", "preservation", candidate.id);
   mkdirSync(evidenceRoot, { recursive: true });
-  const root = realpathSync(mkdtempSync(path.join(evidenceRoot, "check-")));
+  const evidenceDirectory = mkdtempSync(path.join(evidenceRoot, "check-"));
+  // Checks such as the anchored Python capture helper open every ancestor of
+  // their fixture path. Nesting scratch in the denied workspace prevents that
+  // traversal even though scratch itself is allowed. Keep execution disposable
+  // and outside the workspace; only the host writes durable evidence there.
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-preservation-")));
   const source = path.join(root, "source");
   const scratch = path.join(root, "scratch");
   mkdirSync(source); mkdirSync(scratch);
-  const evidenceRef = path.join(root, "validation.json");
+  const evidenceRef = path.join(evidenceDirectory, "validation.json");
   try {
     materializeCandidateTree(candidate.worktree, tree, source);
     const quote = (s: string) => JSON.stringify(s);
@@ -89,6 +95,6 @@ export function validateBoundCandidate<T>(workspace: string, candidate: { id: st
     return { passed: true, evidenceRef, candidateFingerprint: tree, binding };
   } finally {
     // Retain proof, remove only the producer's own disposable execution paths.
-    rmSync(source, { recursive: true, force: true }); rmSync(scratch, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   }
 }
