@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-13
+updated: 2026-09-14
 ---
 
 # Mission Log: Arcadia
@@ -2665,3 +2665,10 @@ from both coding-agent allowlists by design, so no agent session can run it.
 - **Result:** Every declared acceptance criterion was accepted as met: "Every newly authored or edited Agent Ask is stored as `.arcadia/asks/agent-ask-<unique-stub>.yaml` in a uniquely identified, recoverable Arcadia-owned Ask branch and worktree rather than the repository's shared base checkout; the stub is stable for one request and collision-resistant across concurrent agents."; "Multiple Ask files may coexist. Preview, correction, settlement, status, and cleanup require an exact file path or request id and never select an arbitrary glob match; two concurrent Ask drafts cannot overwrite, settle, or retire each other."; "Preview and correction resolve the Ask by request id from that isolated location, and settlement commits only the exact previewed Ask effects on its Ask branch before the existing authorized integration and push boundaries apply."; "When Arcadia Go finds a legacy root `agent-ask.yaml` change as the only dirty base path, it atomically preserves that exact content and diff under a uniquely named Ask file in an isolated Ask branch and worktree, reports the recovery location, restores no unrelated path, and continues preparing the governed production worktree in the same operator invocation."; "If any dirty base path is not recognized as isolated Ask input, or Ask preservation cannot be proven complete, Arcadia Go retains the existing fail-closed refusal and names every preserved blocker; no work is discarded, staged, or silently included."; "The protected broker and Agent Ask skill use the isolated path without giving a sandboxed agent general shared-Git mutation, and retries return the same branch, worktree, request id, and receipt without duplicate commits or orphaned drafts."; "A fixture reproduces the 2026-09-12 failure from a base containing only a modified agent-ask.yaml, then proves one Arcadia Go activation preserves the Ask and prepares the governed Action worktree with zero operator Git steps; fault tests cover interruption before and after Ask preservation."; "A concurrency fixture creates, previews, corrects, and settles at least two Ask files in parallel and proves their paths, request ids, receipts, branches, effects, and cleanup remain disjoint."; "The operator-facing QA plan identifies the exact local command and paths, demonstrates the preserved Ask can still be previewed or settled, and demonstrates the prepared production worktree starts from the unchanged clean base.".
 - **Next:** Advanced to the next eligible Action in document order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-isolate-agent-asks-from-production-handoff-2026-09-13).
+
+## 2026-09-14 — Completed arcadia/settle-onto-candidate-branch
+
+- **Did:** Completed Action arcadia/settle-onto-candidate-branch from accepted evidence (Candidate dafc6930b5f3f90fee0a67cdc2ebadf1f13b8342).
+- **Result:** Every declared acceptance criterion was accepted as met: "Running agent-ask settle --apply inside a candidate worktree commits to that candidate branch."; "A test proves a session that settles and opens a PR leaves main with no new local-only commits.".
+- **Next:** Advanced to the next eligible Action in document order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-settle-onto-candidate-branch-2026-09-13).
