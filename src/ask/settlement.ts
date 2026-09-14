@@ -13,7 +13,7 @@ import { syncProjectDocs } from "../docs/sync.js";
 import type { DecisionDoc, LogDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import { buildAgentQueue, unpositionedCountForProject } from "../dispatch/queue.js";
 import { arrangeActionOrder } from "../dispatch/order.js";
-import { assertClean, git } from "../git/worktrees.js";
+import { assertClean, git, projectCheckoutFor } from "../git/worktrees.js";
 import { slugify } from "../utils/slug.js";
 
 export type AgentAskDisposition = "accepted" | "rejected";
@@ -78,6 +78,9 @@ export function settleAgentAsk(db: Database.Database, input: {
    * command at all.
    */
   operator?: boolean;
+  /** Where the command ran. Inside a worktree of the Project's repository,
+   * settlement writes and commits there, on that worktree's branch. */
+  cwd?: string;
 }): AgentAskSettlementReceipt {
   const operation = {
     proposalRef: input.proposalRef,
@@ -121,7 +124,7 @@ export function settleAgentAsk(db: Database.Database, input: {
   const project = getProjectBySlug(db, proposal.normalized.project);
   const metadata = project ? getProjectMetadata(db, project.id) : null;
   if (!project || !metadata?.repo_path) throw validationError("Agent Ask Project repository is not configured.");
-  const repoRoot = path.resolve(metadata.repo_path);
+  const repoRoot = projectCheckoutFor(path.resolve(metadata.repo_path), input.cwd ?? process.cwd());
   const queue = buildAgentQueue(db);
   if (input.expectedQueueRevision !== undefined && queue.revision !== input.expectedQueueRevision) {
     throw validationError("Action queue revision changed; refresh the Agent Ask settlement preview.", {
@@ -589,6 +592,15 @@ export function settleAgentAsk(db: Database.Database, input: {
     }
   }
 
+  // The queue reads Actions from the configured checkout, so it cannot yet
+  // position Actions that exist only on an unmerged candidate branch.
+  if (arrangeQueue && repoRoot !== path.resolve(metadata.repo_path)) {
+    throw validationError("This settlement places Actions in the queue, which needs them on the base branch.", {
+      candidate: repoRoot,
+      remedy: "Settle it from the Project's main checkout, or after the candidate merges."
+    });
+  }
+
   archiveSettledAskFile(fileMutations, effects, repoRoot, proposal.sourcePath ?? null);
 
   const previewFingerprint = sha256(JSON.stringify({
@@ -665,7 +677,7 @@ export function settleAgentAsk(db: Database.Database, input: {
         }
       }
       if (fileMutations.length > 0) {
-        const sync = syncProjectDocs(db, project, { apply: true });
+        const sync = syncProjectDocs(db, project, { apply: true, repoRoot });
         // A settlement answers for the documents it wrote, and for nothing
         // else. Decision 0044: this check used to refuse on any error anywhere
         // in the corpus, so one stale document from weeks ago permanently
@@ -734,7 +746,8 @@ export function settleAgentAsk(db: Database.Database, input: {
 
 /**
  * Commit the managed documents one settlement wrote, on whatever branch the
- * repository is currently on. Never pushes: landing a record locally is
+ * settling checkout is on — the candidate branch when settlement ran from a
+ * candidate worktree, so the record ships in that pull request. Never pushes: landing a record locally is
  * Arcadia's job, publishing it is the operator's.
  *
  * Paths are passed explicitly to `add` and `commit` so that nothing outside

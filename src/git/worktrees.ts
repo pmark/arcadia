@@ -177,6 +177,25 @@ export function tryGit(cwd: string, args: string[]): string | null {
   return result.status === 0 ? result.stdout.trim() : null;
 }
 
+/**
+ * The checkout a command run from `cwd` should write a Project's documents to.
+ *
+ * A Project records one `repo_path`, normally the main checkout. When the
+ * command runs inside another worktree of that same repository — a candidate
+ * worktree an `arcadia go` session is working in — that worktree is the answer,
+ * so its writes land on the candidate branch and ship in its pull request
+ * instead of as loose commits on the base branch. Anything else, including a
+ * `cwd` in an unrelated repository, resolves to `repoPath` unchanged.
+ */
+export function projectCheckoutFor(repoPath: string, cwd: string): string {
+  const projectCommon = tryGit(repoPath, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  const cwdCommon = tryGit(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  const cwdTop = tryGit(cwd, ["rev-parse", "--show-toplevel"]);
+  if (!projectCommon || !cwdCommon || !cwdTop) return repoPath;
+  if (realpathSync(projectCommon) !== realpathSync(cwdCommon)) return repoPath;
+  return realpathSync(cwdTop) === realpathSync(repoPath) ? repoPath : cwdTop;
+}
+
 export function parseWorktrees(output: string): WorktreeRecord[] {
   return output
     .trim()

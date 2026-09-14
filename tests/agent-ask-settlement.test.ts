@@ -224,6 +224,34 @@ describe("Agent Ask settlement", () => {
     expect(runAgentAskNotificationsCommand({ workspace }).data.notifications).toEqual([]);
   });
 
+  it("lands a settlement run from a candidate worktree on its branch, leaving the base branch untouched", () => {
+    const { workspace, repo } = fixture();
+    const candidate = path.join(path.dirname(repo), "candidate");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate", candidate], { cwd: repo });
+    const baseHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" });
+    const proposal = runAgentAskPreviewCommand({ workspace, request: [
+      "agent_ask: v1", "request_id: log-from-candidate", "project: demo", "intent: log",
+      "desired_result: Record the candidate rehearsal ran clean."
+    ].join("\n") });
+    const options = { workspace, proposal: proposal.data.proposal.id, requestId: "settle-from-candidate",
+      disposition: "accepted" as const, cwd: path.join(candidate, "docs") };
+    const preview = runAgentAskSettleCommand(options);
+    runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
+
+    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" })).toBe(baseHead);
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: candidate, encoding: "utf8" })).toBe("");
+    expect(execFileSync("git", ["log", "-1", "--format=%s"], { cwd: candidate, encoding: "utf8" }))
+      .toContain("settle log-from-candidate");
+    expect(execFileSync("git", ["show", "HEAD:MISSION_LOG.md"], { cwd: candidate, encoding: "utf8" }))
+      .toContain("candidate rehearsal ran clean");
+
+    const placed = runAgentAskPreviewCommand({ workspace, request: actionAsk("ask-from-candidate") });
+    expect(() => runAgentAskSettleCommand({ workspace, proposal: placed.data.proposal.id, requestId: "place-from-candidate",
+      disposition: "accepted", responsibility: "agent", top: true, cwd: candidate })).toThrow(/needs them on the base branch/);
+    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" })).toBe(baseHead);
+  });
+
   it("settles rejection without Project or queue effects and queues a brief ping", () => {
     const { workspace, repo } = fixture();
     const proposal = runAgentAskPreviewCommand({ workspace, request: actionAsk("ask-reject-1") });

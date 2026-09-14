@@ -116,10 +116,12 @@ export interface ProjectSyncResult {
 export function syncProjectDocs(
   db: Database.Database,
   project: Project,
-  options: { apply: boolean }
+  options: { apply: boolean; repoRoot?: string }
 ): ProjectSyncResult {
   const metadata = getProjectMetadata(db, project.id);
-  const repoRoot = metadata?.repo_path?.trim() || null;
+  // A settlement run from a candidate worktree syncs the documents it just
+  // wrote there, not the main checkout's copies that do not have them yet.
+  const repoRoot = options.repoRoot ?? (metadata?.repo_path?.trim() || null);
 
   const result: ProjectSyncResult = {
     projectId: project.id,

@@ -283,6 +283,15 @@ Arcadia's job, publishing it is the operator's, and an agent pushing straight to
 a shared branch on its own initiative is exactly the boundary
 `docs/working-copy-safety.md` exists to hold.
 
+**Run from a candidate worktree, it commits to the candidate branch.** When the
+command runs inside another worktree of the Project's repository, settlement
+writes and commits there instead of the configured main checkout, so the record
+ships in that Action's pull request and the base branch gains no loose
+`chore(arcadia): settle …` commits. A settlement that places Actions in the
+queue is the exception and is refused there: the queue reads Actions from the
+main checkout, so settle those from the main checkout until the queue can see
+candidate Actions.
+
 The gap this leaves is real, not theoretical: a settlement against a repository
 already checked out locally produces exactly one commit that only exists there
 until something pushes it. Nothing currently reminds anyone to, which is how it
