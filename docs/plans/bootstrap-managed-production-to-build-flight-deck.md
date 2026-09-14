@@ -711,6 +711,28 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: assess-pr-blast-radius-before-merge
+    title: Independently assess a candidate PR's blast radius against its base revision and either record a clean recommendation to proceed, or escalate by opening exactly one Decision naming the concern, before the PR is merged.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Independently assess a candidate PR's blast radius against its base revision and either record a clean recommendation to proceed, or escalate by opening exactly one Decision naming the concern, before the PR is merged.
+    expected_artifact: Evidence satisfying Agent Ask assess-pr-blast-radius-before-merge
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-assess-pr-blast-radius-before-merge-2026-09-14
+    acceptance_criteria:
+      - Reuse existing review/QA and Decision infrastructure (review_items, Decision documents, the existing code-review pass) rather than a new bespoke risk model or a second review system.
+      - "Compute the assessment from the real diff against the base revision: files touched, lines changed, and whether touched paths fall in named safety/authority/concurrency/canonical-state-transition areas (e.g. src/production/, src/ask/settlement.ts, src/sessions/, src/dispatch/, database migrations, CI/workflow config); diff size alone never decides the outcome."
+      - Default to escalate whenever a code-review finding is confirmed/high-severity, a safety/authority/canonical-write path is touched, the review pass could not run, or evidence is stale or missing; only an unambiguous, narrow, low-blast-radius change with no unresolved findings may proceed without escalation.
+      - Escalating opens exactly one Decision naming the specific concern, the touched paths, and the review findings verbatim, with a clear recommendation; it never merges, deploys, or blocks unrelated eligible work.
+      - Proceeding writes a durable record of the assessment (touched paths, findings considered, why no escalation) linked to the exact candidate revision, and grants no merge, deploy, or publication authority of its own -- this Action produces a recommendation only.
+      - "Idempotent: reassessing the same candidate revision returns the same recommendation and never opens a duplicate Decision."
+      - The proof harness demonstrates escalation on a deliberately dangerous fixture (a change touching safety/authority code such as src/production/policy.ts, or one that removes a safety check) and a clean pass-through on a deliberately narrow, safe fixture (a comment-only or test-only change), per contract 20's mandatory negative-case requirement.
+      - Preserve deterministic integration evidence and an exact operator procedure/target in the PR.
+    depends_on: [advance-approved-production-work]
+    decisions: []
+    references: ["docs/arcadia-development-orchestration-vision.md", "docs/decisions/0019-streamline-pr-qa-before-expansion.md", "docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/sessions/reconciliation.ts", "src/stewardship/critic.ts", "src/stewardship/artifactValidator.ts", "src/ask/settlement.ts"]
 questions: []
 decisions: []
 current_action: feed-and-supervise-managed-production

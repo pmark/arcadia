@@ -1,0 +1,35 @@
+{
+  "agent_ask": "v1",
+  "request_id": "add-assess-pr-blast-radius-before-merge-2026-09-14",
+  "project": "arcadia",
+  "intent": "action",
+  "desired_result": "Add an Action that instantiates the 'Independent Arcadia QA (one bounded judgment)' step docs/arcadia-development-orchestration-vision.md already names in the target development loop: assess each candidate PR's blast radius and escalate to the operator via a Decision before merge when warranted. This fills the 'separate review pass for controller safety, authority, concurrency, canonical state transitions, and nontrivial generated code before automatic acceptance' contract 20 already requires but nothing yet implements.",
+  "rationale": "The operator asked for this now, and it reactivates a trigger the vision document already names as fired: 'Automatic QA invocation ... reactivate[s] when a QA-ready Candidate waits unnoticed, or a real review requires the operator to relay the CLI result manually' -- true of every PR this Plan has produced so far, including today's. This Action builds only the assessment/escalation half of that step; it never merges, deploys, or grants itself authority to. The vision document's own trigger table is explicit that 'Merge, deployment, release, or outbound messaging' reactivates only when 'a separately approved Action defines the exact authority, preview, rollback, and post-transition verification contract' -- a distinct, later Action this one does not attempt, and that later Action will itself need an explicit operator Decision once this assessor's real output shape and track record exist to decide against. Deciding merge authority abstractly now, before the assessor exists, would be premature.",
+  "actions": [
+    {
+      "id": "assess-pr-blast-radius-before-merge",
+      "desired_result": "Independently assess a candidate PR's blast radius against its base revision and either record a clean recommendation to proceed, or escalate by opening exactly one Decision naming the concern, before the PR is merged.",
+      "acceptance": [
+        "Reuse existing review/QA and Decision infrastructure (review_items, Decision documents, the existing code-review pass) rather than a new bespoke risk model or a second review system.",
+        "Compute the assessment from the real diff against the base revision: files touched, lines changed, and whether touched paths fall in named safety/authority/concurrency/canonical-state-transition areas (e.g. src/production/, src/ask/settlement.ts, src/sessions/, src/dispatch/, database migrations, CI/workflow config); diff size alone never decides the outcome.",
+        "Default to escalate whenever a code-review finding is confirmed/high-severity, a safety/authority/canonical-write path is touched, the review pass could not run, or evidence is stale or missing; only an unambiguous, narrow, low-blast-radius change with no unresolved findings may proceed without escalation.",
+        "Escalating opens exactly one Decision naming the specific concern, the touched paths, and the review findings verbatim, with a clear recommendation; it never merges, deploys, or blocks unrelated eligible work.",
+        "Proceeding writes a durable record of the assessment (touched paths, findings considered, why no escalation) linked to the exact candidate revision, and grants no merge, deploy, or publication authority of its own -- this Action produces a recommendation only.",
+        "Idempotent: reassessing the same candidate revision returns the same recommendation and never opens a duplicate Decision.",
+        "The proof harness demonstrates escalation on a deliberately dangerous fixture (a change touching safety/authority code such as src/production/policy.ts, or one that removes a safety check) and a clean pass-through on a deliberately narrow, safe fixture (a comment-only or test-only change), per contract 20's mandatory negative-case requirement.",
+        "Preserve deterministic integration evidence and an exact operator procedure/target in the PR."
+      ],
+      "dependencies": ["advance-approved-production-work"],
+      "references": [
+        "docs/arcadia-development-orchestration-vision.md",
+        "docs/decisions/0019-streamline-pr-qa-before-expansion.md",
+        "docs/plans/mission-control-view/17-managed-production-contract.md",
+        "docs/plans/mission-control-view/20-production-quality-and-reliability.md",
+        "src/sessions/reconciliation.ts",
+        "src/stewardship/critic.ts",
+        "src/stewardship/artifactValidator.ts",
+        "src/ask/settlement.ts"
+      ]
+    }
+  ]
+}
