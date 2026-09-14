@@ -1,6 +1,10 @@
 # Preserved from the legacy singleton Ask path during the isolation bootstrap.
+# Bumped to -v2: the original request_id was already previewed on 2026-09-12
+# under byte-different content (no leading comment), so auto-discovery refused
+# this file as "already used with different content." Only this header and the
+# id changed; the request itself is unchanged.
 agent_ask: v1
-request_id: operator-adaptation-product-boundary-2026-09-12
+request_id: operator-adaptation-product-boundary-2026-09-12-v2
 project: arcadia
 intent: decision
 requested_authority: propose
