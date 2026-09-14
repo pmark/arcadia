@@ -349,6 +349,47 @@ describe("arcadia go — next-session model resolution", () => {
     expect(result.data.nextWorktree?.effort).toBeNull();
     expect(result.data.nextWorktree?.command).not.toContain("--effort");
   });
+
+  it("refuses a plan's recommended_model for a Claude handoff when it names a different agent's model", () => {
+    const fixture = createFixture("codex/wrong-provider-model", planDocument);
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+
+    expectValidation(
+      () => runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "claude", workspace: fixture.workspace }),
+      "does not look like a Claude Code model"
+    );
+    // The Git reconciliation (fast-forward and source retirement) already ran
+    // before this check: the model recommendation must be read from the plan
+    // as it exists after that merge, so the refusal only stops the next agent
+    // worktree from being prepared, not the integration itself.
+    expect(existsSync(path.join(fixture.main, "proof.txt"))).toBe(true);
+    expect(() => git(fixture.main, ["show-ref", "--verify", "refs/heads/codex/wrong-provider-model"])).toThrow();
+  });
+
+  it("trusts an explicit --model even when it does not look like a Claude Code model", () => {
+    const fixture = createFixture("codex/override-implausible-model", planDocument);
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+
+    const result = runGoCommand({
+      repo: fixture.main,
+      source: fixture.feature,
+      apply: true,
+      agent: "claude",
+      workspace: fixture.workspace,
+      model: "gpt-5.6-terra"
+    });
+
+    expect(result.data.nextWorktree?.model).toBe("gpt-5.6-terra");
+  });
+
+  it("does not apply the Claude-model check for a Codex handoff", () => {
+    const fixture = createFixture("codex/codex-handoff-unaffected", planDocument);
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "codex", workspace: fixture.workspace });
+
+    expect(result.data.nextWorktree?.model).toBe("gpt-5.6-terra");
+  });
 });
 
 function createFixture(branch: string, plan: string = planDocument): { root: string; main: string; feature: string; workspace: string } {
