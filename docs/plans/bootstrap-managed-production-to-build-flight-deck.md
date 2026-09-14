@@ -693,7 +693,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: merge-completes-the-action
+current_action: settle-complete-from-drafted-ask
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---
