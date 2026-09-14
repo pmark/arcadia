@@ -695,7 +695,7 @@ actions:
 questions: []
 decisions: []
 current_action: expose-guarded-host-session-launch
-recommended_model: gpt-6-astra
+recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
 
