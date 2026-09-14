@@ -692,6 +692,25 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: auto-settle-pending-completions-before-dispatch
+    title: Before dispatching a coding-agent Session for an Action, the host-side go/advance path detects a drafted complete Agent Ask for the current pointer whose declared acceptance criteria are all covered verbatim, refreshes a stale candidate_revision against current HEAD when the Action's own commit is already on the branch, previews it, and settles it deterministically with no LLM session -- only falling through to a normal agent dispatch when settlement isn't clean or doesn't apply.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Before dispatching a coding-agent Session for an Action, the host-side go/advance path detects a drafted complete Agent Ask for the current pointer whose declared acceptance criteria are all covered verbatim, refreshes a stale candidate_revision against current HEAD when the Action's own commit is already on the branch, previews it, and settles it deterministically with no LLM session -- only falling through to a normal agent dispatch when settlement isn't clean or doesn't apply.
+    expected_artifact: Evidence satisfying Agent Ask auto-settle-pending-completions-before-dispatch
+    clarification: clarified
+    confidence: high
+    source: Agent Ask auto-settle-pending-completions-before-dispatch-2026-09-14
+    acceptance_criteria:
+      - Given a repository whose current pointer Action already has a drafted complete Ask in .arcadia/asks/, and whose evidence criteria match the Action's declared acceptance criteria verbatim, and whose candidate_revision differs from HEAD only because later commits landed after the draft, go/advance settles it deterministically and re-resolves the pointer without launching any coding-agent process.
+      - The same path refuses to auto-settle (and falls through to normal dispatch) when the preview reports any conflict, any required Decision, or evidence that does not verbatim-cover every declared acceptance criterion.
+      - A repository with no drafted complete Ask for the current pointer, or no locally resolvable Arcadia workspace, dispatches exactly as it does today with no behavior change.
+      - "A test proves the auto-settle path end-to-end against a fixture repo: stale candidate_revision, clean re-preview, settled commit, pointer advanced -- and a second test proves the fallthrough when evidence is incomplete or a conflict exists."
+      - docs/agent-continuation-protocol.md and AGENTS.md's 'One session completes one Action' section are updated to describe when a session's settlement instead happens automatically before that session is ever launched.
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
 current_action: observe-portfolio-agent-sessions
