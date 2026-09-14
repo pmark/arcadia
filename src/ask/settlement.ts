@@ -989,7 +989,7 @@ function requireNoQueueOptions(input: { responsibility?: AgentAskResponsibility;
   }
 }
 
-function replaceTopLevelField(content: string, field: string, value: string): string {
+export function replaceTopLevelField(content: string, field: string, value: string): string {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!match) throw validationError("Managed document has no YAML frontmatter block to update.");
   const lines = match[1].split(/\r?\n/);
