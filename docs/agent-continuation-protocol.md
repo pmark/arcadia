@@ -3,7 +3,7 @@ arcadia: v1
 type: reference
 slug: agent-continuation-protocol
 project: arcadia
-updated: 2026-08-16
+updated: 2026-09-14
 ---
 <!-- ARCADIA_CONTEXT_START -->
 # Agent Continuation Protocol
@@ -99,6 +99,16 @@ Leave changed code merged or on a pushed branch with a draft or ready pull
 request. If commit, push, or PR creation is not authorized, report the exact
 repository, worktree, branch, dirty paths, and recovery action. Never silently
 leave uncommitted work on a default branch or a detached HEAD.
+
+**When acceptance criteria are met, record the completion in that same
+worktree before pushing.** Governance writes belong in the worktree that
+produced them — this one is no exception. Recording it there means the
+pull request that carries the code also carries the evidence and the pointer
+advance, so the operator's merge is the only remaining touch: no separate
+completion record, no later session just to file one. Recording it only after
+the PR merges — against an already-moved-on main branch, in a session that
+did none of the work — costs a full extra round trip for evidence that was
+already knowable before the PR opened.
 
 ### When a milestone completes
 

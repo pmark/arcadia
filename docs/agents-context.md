@@ -274,6 +274,29 @@ same as any other `LOCAL ONLY` state under Working-Copy Safety: check
 An Agent Ask you only previewed needs nothing further — this applies to
 `settle --apply`, not `preview`.
 
+### One session completes one Action
+
+When a session finishes an Action's acceptance criteria, settle the `complete`
+Ask into that same candidate worktree, before pushing — the same place every
+other settlement in this Action's session lands, per the rule above. This is
+not a special case; it is the ordinary rule applied to the last write a
+finished Action needs.
+
+File it with the same `draft` → `settle --preview` → `settle --apply` sequence
+as anything else, run from inside the candidate: `candidate_revision` is that
+worktree's own `HEAD`, and `evidence` covers every declared acceptance
+criterion, verbatim and in order, each `met`. A criterion that is not met
+refuses completion exactly as it does anywhere else — this settles nothing
+early and grants nothing early.
+
+The commit this produces carries the completion evidence and the pointer
+advance in the Action's own pull request, alongside its code. **The operator's
+merge is then the only remaining touch** — no separate Ask, no new session,
+and nothing to remember to do afterward. The older pattern — push a PR, end
+the session, and have a later session file a `complete` Ask against the merged
+main branch — cost an extra session and an extra round trip for no reason: the
+same evidence was knowable before the PR ever opened.
+
 ## Asking for a capability the Way does not have
 
 Arcadia will not have every capability you need. When it does not, **file a
