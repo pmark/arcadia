@@ -114,6 +114,7 @@ import {
   runSessionPreviewLaunchCommand,
   runSessionLaunchCommand
 } from "./commands/advance.js";
+import { runAssessPrBlastRadiusCommand, renderAssessPrBlastRadiusSuccess } from "./commands/prBlastRadius.js";
 import {
   renderDogfoodAskSuccess,
   renderDogfoodInitSuccess,
@@ -1550,6 +1551,33 @@ export function buildProgram(): Command {
       options,
       () => runSessionReconcileCommand({ workspace: options.workspace, repo: options.repo, session: id, requestId: options.requestId }),
       renderSessionReconcileSuccess
+    )
+  );
+
+  const pr = program.command("pr").description("Independent pre-merge assessment of a candidate PR");
+  addJsonOption(
+    pr
+      .command("assess-blast-radius")
+      .description("Assess a candidate PR's blast radius against its base revision; escalate via a Decision or record a clean recommendation to proceed. Never merges.")
+      .requiredOption("--project <slug>", "Project slug")
+      .requiredOption("--plan <slug>", "Plan slug")
+      .requiredOption("--action <id>", "Action id this candidate completes")
+      .requiredOption("--base <ref>", "Base revision")
+      .requiredOption("--candidate <sha>", "Candidate revision to assess")
+      .option("--pull-request-url <url>", "The candidate's pull request URL, if one exists")
+      .option("--repo <path>", "Project repository", resolveInvocationPath, invocationRoot())
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: {
+    workspace: string; repo: string; project: string; plan: string; action: string; base: string; candidate: string; pullRequestUrl?: string; json?: boolean;
+  }) =>
+    runCliAction(
+      "pr.assessBlastRadius",
+      options,
+      () => runAssessPrBlastRadiusCommand({
+        workspace: options.workspace, repo: options.repo, project: options.project, plan: options.plan,
+        action: options.action, base: options.base, candidate: options.candidate, pullRequestUrl: options.pullRequestUrl
+      }),
+      renderAssessPrBlastRadiusSuccess
     )
   );
 
