@@ -348,7 +348,7 @@ export function launchPreparedSession(db: Database.Database, session: AgentSessi
   return getSession(db, session.id)!;
 }
 
-function failPreparedSession(db: Database.Database, id: string): void {
+export function failPreparedSession(db: Database.Database, id: string): void {
   const ended = new Date().toISOString();
   db.prepare("UPDATE agent_sessions SET status = 'failed', ended_at = ?, updated_at = ? WHERE id = ?").run(ended, ended, id);
 }

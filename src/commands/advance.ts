@@ -151,21 +151,25 @@ export function renderSessionPreviewLaunchSuccess(response: CommandSuccess<Launc
 export interface SessionLaunchCommandData {
   reused: boolean;
   session: ReturnType<typeof sessionView>;
+  admission: GuardedLaunchResult["admission"];
 }
 
 /**
  * The only operation that starts a coding-agent process on this host from a
  * previewed request. Everything it needs (repository, executable, arguments,
  * pointer, packet, decisions, lease) is resolved fresh here rather than
- * trusted from the caller — the caller supplies only the request id and the
- * fingerprint it saw when previewing, so the server can detect if the
- * previewed state has since changed.
+ * trusted from the caller. The caller supplies either the request id and
+ * fingerprint it saw when previewing (the current explicit one-Session launch
+ * grant), so the server can detect if the previewed state has since changed,
+ * or `standingPolicy` to launch under a standing managed-production policy
+ * grant with no operator click for this specific Action.
  */
 export function runSessionLaunchCommand(options: {
   workspace: string;
   repo: string;
   requestId: string;
-  previewFingerprint: string;
+  previewFingerprint?: string;
+  standingPolicy?: boolean;
 }): CommandSuccess<SessionLaunchCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const repoRoot = existingDirectory(options.repo, "repository");
@@ -182,6 +186,7 @@ export function runSessionLaunchCommand(options: {
       projectSlug: project.slug,
       requestId: options.requestId,
       previewFingerprint: options.previewFingerprint,
+      standingPolicy: options.standingPolicy,
       profiles: registries.codingAgents.profiles,
       adapters: registries.providerAdapters!
     })
@@ -189,7 +194,7 @@ export function runSessionLaunchCommand(options: {
   return createSuccess({
     command: "session.launch",
     workspace: workspacePath,
-    data: { reused: result.reused, session: sessionView(result.session) }
+    data: { reused: result.reused, session: sessionView(result.session), admission: result.admission }
   });
 }
 
@@ -201,7 +206,10 @@ export function renderSessionLaunchSuccess(response: CommandSuccess<SessionLaunc
     `Status: ${data.session.observedStatus}`,
     `Project: ${data.session.project_slug} · ${data.session.plan_slug}#${data.session.action_id}`,
     `Worktree: ${data.session.worktree_path}`,
-    `Reattach: ${data.session.reattachCommand}`
+    `Reattach: ${data.session.reattachCommand}`,
+    ...(data.admission
+      ? [`Admission: ${data.admission.id} · epoch ${data.admission.epoch} · ${data.admission.status}`]
+      : [])
   ];
 }
 
