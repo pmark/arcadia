@@ -1331,6 +1331,30 @@ pnpm arcadia orientation reply "I spent about an hour on the car mirror this mor
 pnpm arcadia orientation reply "I have 20 minutes, what fits?" --workspace "$WORKSPACE"
 ```
 
+## Reconcile A Dead Session
+
+A coding-agent Session sometimes exits (crashes, is killed, or the host
+restarts) without ever calling back to report what happened. `session
+reconcile` reads that Session's actual state directly — its worktree, its most
+recent Run, the checked-in Plan — and writes one durable exit receipt plus the
+resulting canonical next move. It never trusts a bare exit code: a clean exit
+with no recorded Run is `missing_evidence`, not success, and a Run that
+finished with `status: failed` or `requires_review` is never treated as
+evidence of success either, even if the process itself exited zero.
+
+```sh
+pnpm arcadia session reconcile <session-id> --workspace "$WORKSPACE" --repo "$REPO" --json
+```
+
+Operator QA steps:
+
+1. Find a Session id to test with: `pnpm arcadia session show --workspace "$WORKSPACE" --json` shows the latest Session (pass a specific id as `session show <id>` once you have one), and the dashboard's Sessions view lists all of them, including ones left `prepared`/`running` after their process died.
+2. Run the command above against that id.
+3. Confirm the printed `Outcome:` line matches what actually happened to that Session (its worktree contents and last recorded Run), and that `Admitted for automatic next admission:` is `yes` only when the Action is genuinely done and the production policy is active.
+4. Run the exact same command again with the same session id. Expect an identical result annotated `(already reconciled)` — reconciliation is idempotent and never re-transitions a Session or duplicates a receipt.
+
+This command is normally invoked automatically as part of Session-exit handling; running it by hand is for diagnosing a specific stuck or ambiguous Session, or for the QA steps above.
+
 ## Working-Copy Safety
 
 Scan every active Project's configured repository and all of its Git worktrees

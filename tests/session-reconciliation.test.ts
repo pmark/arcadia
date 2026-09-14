@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runGoCommand } from "../src/commands/go.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
-import { createCodexInvocation, createReviewItem, getWorkItemByDocRef, upsertProject, upsertProjectMetadata, updateReviewItemStatus } from "../src/db/repositories.js";
+import { createCodexInvocation, createReviewExecutionRun, createReviewItem, getWorkItemByDocRef, updateExecutionRunStatus, upsertProject, upsertProjectMetadata, updateReviewItemStatus } from "../src/db/repositories.js";
 import { syncProjectDocs } from "../src/docs/sync.js";
 import { packetSha256 } from "../src/execution/planningAuthorization.js";
 import { getSession, prepareSession, resolveProjectTransition, type TmuxAdapter } from "../src/sessions/index.js";
@@ -163,6 +163,46 @@ describe("reconcileSessionExit", () => {
       reconcileSessionExit({ db, sessionId, requestId: "reconcile-6", repoRoot: fixture.repo })
     );
     expect(result.receipt.outcome).toBe("needs_input");
+  });
+
+  it("treats a deliberately failed or unreviewed Run as failed execution, never as evidence of success (contract 20)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const launched = launch(fixture, tmux);
+    const sessionId = launched.data.session!.id;
+    tmux.live = false;
+
+    withDatabase(fixture.workspace, (db) => {
+      const session = getSession(db, sessionId)!;
+      const reviewItem = createReviewItem(db, {
+        workItemId: session.work_item_id,
+        projectId: session.project_id,
+        decisionNeeded: "Review the deliberately failed test run.",
+        sourceInput: "fixture",
+        proposedAction: "Review failing test evidence.",
+        resolvedIntent: "CodexPlanningArtifactAcceptance",
+        confidenceLabel: "high",
+        confidence: 1,
+        missingFields: [],
+        context: {}
+      });
+      const run = createReviewExecutionRun(db, {
+        reviewItemId: reviewItem.id,
+        executorName: "test",
+        workItemId: session.work_item_id,
+        summary: "Deliberately failing test suite."
+      });
+      updateExecutionRunStatus(db, run.id, "failed", { summary: "1 test failed." });
+    });
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId, requestId: "reconcile-fail-run", repoRoot: fixture.repo })
+    );
+
+    expect(result.receipt.outcome).toBe("failed_execution");
+    // The failed Run is still linked for audit purposes -- only its status,
+    // not its existence, disqualifies it as evidence of successful work.
+    expect(result.receipt.run_id).not.toBeNull();
   });
 
   it("classifies a nonzero exit with no candidate changes as failed execution", () => {

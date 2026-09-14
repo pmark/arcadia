@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
+import { isRequiresReviewValue } from "../domain/constants.js";
 import { discoverDocs } from "../docs/discover.js";
 import { resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import type { PlanDoc } from "../docs/types.js";
@@ -125,6 +126,7 @@ interface ExitEvidenceProbe {
   candidateHasChanges: boolean;
   candidateRevision: string | null;
   runId: string | null;
+  runFailed: boolean;
   artifactId: string | null;
   decisionId: string | null;
 }
@@ -152,8 +154,13 @@ function probeExitEvidence(db: Database.Database, session: AgentSession, repoRoo
   }
 
   const run = db.prepare(
-    "SELECT id FROM execution_runs WHERE work_item_id = ? ORDER BY updated_at DESC LIMIT 1"
-  ).get(session.work_item_id) as { id: string } | undefined;
+    "SELECT id, status FROM execution_runs WHERE work_item_id = ? ORDER BY updated_at DESC LIMIT 1"
+  ).get(session.work_item_id) as { id: string; status: string } | undefined;
+  // The most recent Run is always linked for audit purposes, whatever its
+  // status -- but a deliberately failed or unreviewed Run must not count as
+  // evidence of successful work, so `runFailed` gates classification
+  // separately from `runId`, which callers use for the receipt's link.
+  const runFailed = run?.status === "failed" || isRequiresReviewValue(run?.status);
   let artifactId: string | null = null;
   if (run) {
     const artifact = db.prepare(
@@ -172,6 +179,7 @@ function probeExitEvidence(db: Database.Database, session: AgentSession, repoRoo
     candidateHasChanges,
     candidateRevision,
     runId: run?.id ?? null,
+    runFailed,
     artifactId,
     decisionId: decision?.id ?? null
   };
@@ -197,6 +205,9 @@ export function classifyExitOutcome(session: AgentSession, evidence: ExitEvidenc
   }
   if (session.exit_status !== null && session.exit_status !== 0) {
     return { outcome: "failed_execution", reason: `The Session exited with a nonzero status (${session.exit_status}).` };
+  }
+  if (evidence.runFailed) {
+    return { outcome: "failed_execution", reason: "The most recently recorded Run did not pass; a failed or unreviewed Run is not evidence of successful work." };
   }
   if (!evidence.runId) {
     return { outcome: "missing_evidence", reason: "A zero exit status alone is not evidence of completed work; no Run was recorded." };
