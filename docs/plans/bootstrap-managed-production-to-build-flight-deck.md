@@ -225,10 +225,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask feed-and-supervise-managed-production
     clarification: clarified
     confidence: high
-    source: Agent Ask managed-production-completion-first-handoff-2026-09-05
+    source: Agent Ask fold-merge-detection-into-supervise-2026-09-14
     acceptance_criteria:
       - Reuse the existing persistent worker ownership, recovery, queue and Session paths; no second daemon, queue or browser-owned scheduling loop.
       - After a terminal accepted Action, re-evaluate current priority/capacity and launch the next eligible Action without a new human session, chat or Launch click.
+      - Detects when the base branch has advanced because an Action's PR merged, not only from an internal completion signal, and records that observation as an events-table row and a MISSION_LOG line naming the previous and new SHA, so a merge is never silent even if the worker was off or between ticks when it landed.
       - Use atomic leases and capacity reservations across competing ticks/workers; independent Projects may run concurrently within configured provider/host limits, but conflicting repositories cannot.
       - Off remains responsive during running work and stops future launch commitments; worker restart reconciles existing work and policy epoch before admission.
       - Blocked approval, unavailable provider or failed Project permits independent eligible work to progress. Exhausted capacity schedules bounded rechecks; repeated failures have finite repair/retry limits and one actionable stop.
@@ -236,7 +237,7 @@ actions:
       - Enforce finite repair/model-attempt budgets and deadlines; hung processes and disk/write failure remain visible and preserve work; do not release uncertain leases or loop across providers to bypass a failure.
     depends_on: [advance-approved-production-work, prove-provider-capacity-admission, expose-guarded-host-session-launch]
     decisions: []
-    references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/commands/worker.ts", "src/dispatch/queue.ts", "src/dispatch/order.ts", "src/sessions/index.ts"]
+    references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/commands/worker.ts", "src/dispatch/queue.ts", "src/dispatch/order.ts", "src/sessions/index.ts", "src/commands/go.ts", "src/workMonitoring/pullRequests.ts"]
   - id: expose-bootstrap-production-controls
     title: Expose the production switch, priority, capacity and review stops on the existing Work Queue.
     status: open
