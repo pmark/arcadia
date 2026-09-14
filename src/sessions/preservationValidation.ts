@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { getProjectMetadata } from "../db/repositories.js";
@@ -51,22 +52,34 @@ export function preservationAuthority(db: Database.Database, workspace: string, 
  * Unsupported hosts fail closed; this is not a general command execution API. */
 export function validatePreservationCandidate(db: Database.Database, workspace: string, lease: AgentSession) {
   const binding = preservationAuthority(db, workspace, lease);
-  const tree = snapshotCandidate(lease.worktree_path);
+  return validateBoundCandidate(workspace, { id: lease.id, repository: lease.repository_path, worktree: lease.worktree_path, commands: binding.commands }, binding, () => {
+    if (JSON.stringify(preservationAuthority(db, workspace, lease)) !== JSON.stringify(binding)) throw validationError("Preservation authority changed.");
+  });
+}
+
+export function validateBoundCandidate<T>(workspace: string, candidate: { id: string; repository: string; worktree: string; commands: string[] }, binding: T, assertBinding: () => void) {
+  assertBinding();
+  const tree = snapshotCandidate(candidate.worktree);
   if (process.platform !== "darwin") throw validationError("Protected preservation validation currently requires the macOS Seatbelt host.");
-  const evidenceRoot = path.join(workspace, "artifacts", "preservation", lease.id);
+  const evidenceRoot = path.join(workspace, "artifacts", "preservation", candidate.id);
   mkdirSync(evidenceRoot, { recursive: true });
-  const root = realpathSync(mkdtempSync(path.join(evidenceRoot, "check-")));
+  const evidenceDirectory = mkdtempSync(path.join(evidenceRoot, "check-"));
+  // Checks such as the anchored Python capture helper open every ancestor of
+  // their fixture path. Nesting scratch in the denied workspace prevents that
+  // traversal even though scratch itself is allowed. Keep execution disposable
+  // and outside the workspace; only the host writes durable evidence there.
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-preservation-")));
   const source = path.join(root, "source");
   const scratch = path.join(root, "scratch");
   mkdirSync(source); mkdirSync(scratch);
-  const evidenceRef = path.join(root, "validation.json");
+  const evidenceRef = path.join(evidenceDirectory, "validation.json");
   try {
-    materializeCandidateTree(lease.worktree_path, tree, source);
+    materializeCandidateTree(candidate.worktree, tree, source);
     const quote = (s: string) => JSON.stringify(s);
     // Default read visibility matches the coding sandbox; write/process/network
     // capabilities are restricted separately. Secrets are not passed in env.
-    const profile = `(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath ${quote(source)}) (subpath ${quote(scratch)}) (require-all (require-not (subpath ${quote(realpathSync(workspace))})) (require-not (subpath ${quote(realpathSync(lease.repository_path))})) (require-not (subpath ${quote(realpathSync(lease.worktree_path))})))) (allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target self)) (allow file-write* (subpath ${quote(scratch)}) (literal "/dev/null"))`;
-    const results = binding.commands.map(command => {
+    const profile = `(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath ${quote(source)}) (subpath ${quote(scratch)}) (require-all (require-not (subpath ${quote(realpathSync(workspace))})) (require-not (subpath ${quote(realpathSync(candidate.repository))})) (require-not (subpath ${quote(realpathSync(candidate.worktree))})))) (allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target self)) (allow file-write* (subpath ${quote(scratch)}) (literal "/dev/null"))`;
+    const results = candidate.commands.map(command => {
       const run = spawnSync("/usr/bin/sandbox-exec", ["-p", profile, "/bin/sh", "-c", command], {
         cwd: source, env: { PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`, HOME: scratch, TMPDIR: scratch },
         encoding: "utf8", timeout: 120_000, killSignal: "SIGKILL", maxBuffer: 1024 * 1024
@@ -77,11 +90,11 @@ export function validatePreservationCandidate(db: Database.Database, workspace: 
     const evidence = { producer: "arcadia-host-seatbelt-v1", binding, tree, results, sandboxProfile: profile, runtime: process.execPath, node: process.version, createdAt: new Date().toISOString() };
     writeFileSync(evidenceRef, JSON.stringify(evidence, null, 2), { mode: 0o600 });
     if (results.some(r => r.exitStatus !== 0 || r.error || r.signal)) throw validationError("Declared preservation validation failed or was skipped.", { evidenceRef });
-    if (JSON.stringify(preservationAuthority(db, workspace, lease)) !== JSON.stringify(binding)) throw validationError("Preservation authority changed during validation.", { evidenceRef });
-    if (snapshotCandidate(lease.worktree_path) !== tree) throw validationError("Candidate changed during validation; passing evidence cannot authorize altered content.", { evidenceRef });
+    assertBinding();
+    if (snapshotCandidate(candidate.worktree) !== tree) throw validationError("Candidate changed during validation; passing evidence cannot authorize altered content.", { evidenceRef });
     return { passed: true, evidenceRef, candidateFingerprint: tree, binding };
   } finally {
     // Retain proof, remove only the producer's own disposable execution paths.
-    rmSync(source, { recursive: true, force: true }); rmSync(scratch, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   }
 }

@@ -26,6 +26,7 @@ interface TransportHeartbeat {
   at: number;
   sessions: Array<{ id: string; worktree: string }>;
   repositories?: Array<{ path: string; projectSlug: string }>;
+  handoffs?: Array<{ id: string; worktree: string }>;
   goRequests?: boolean;
 }
 
@@ -55,8 +56,9 @@ export async function requestCandidatePreservation(source: string) {
   // Read a host-owned projection, not SQLite: readonly WAL opens can still
   // require shared-memory coordination writes that the sandbox rightly denies.
   const routes = readHeartbeat(workspace);
-  const lease = routes.sessions.find(s => s.worktree === candidate);
-  if (!lease) throw validationError("No prepared or running Session registers this preservation worktree.");
+  const lease = routes.sessions.find(s => s.worktree === candidate)
+    ?? routes.handoffs?.find(s => s.worktree === candidate);
+  if (!lease) throw validationError("No active Arcadia Session or manual handoff registers this preservation worktree.");
   const nonce = randomUUID();
   const request = path.join(candidate, PRESERVATION_REQUEST_FILE);
   const fd = openSync(request, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o600);
@@ -84,6 +86,7 @@ export async function requestAgentGo(source: string, agent: GoBrokerAgent) {
   if (!agentGoTransportReady(workspace)) throw validationError("Protected Arcadia go request path is unavailable. Start the updated Arcadia worker on the host before requesting go.");
   const routes = readHeartbeat(workspace);
   const route = routes.sessions.find(s => s.worktree === current)
+    ?? routes.handoffs?.find(s => s.worktree === current)
     ?? routes.repositories?.find(repository => repository.path === current);
   if (!route) throw validationError("No host-worker route registers this Arcadia go source.", {
     source: current,
@@ -139,17 +142,21 @@ export function processPreservationRequests(db: Database.Database, workspace: st
         return repo ? [{ path: realpathSync(repo), projectSlug: project.slug }] : [];
       } catch { return []; } // One missing/inaccessible Project cannot stop all Sessions.
     });
+  const handoffs = (db.prepare("SELECT id, repository_path, worktree_path FROM agent_worktree_reservations WHERE expires_at > ?")
+    .all(new Date().toISOString()) as Array<{ id: string; repository_path: string; worktree_path: string }>)
+    .filter(h => repositories.some(r => r.path === h.repository_path) && !leases.some(s => s.worktree_path === h.worktree_path));
   const heartbeat = path.join(workspace, HEARTBEAT);
   writeFileSync(`${heartbeat}.${process.pid}.tmp`, JSON.stringify({
     schema: "arcadia-preservation-transport-v1",
     at: Date.now(),
     sessions: leases.map(s => ({ id: s.id, worktree: s.worktree_path })),
     repositories,
+    handoffs: handoffs.map(h => ({ id: h.id, worktree: h.worktree_path })),
     goRequests: true
   }));
   renameSync(`${heartbeat}.${process.pid}.tmp`, heartbeat);
   for (const repository of repositories) processGoRequest({ workspace, source: repository.path });
-  for (const lease of leases) {
+  for (const lease of [...leases, ...handoffs]) {
     processGoRequest({ workspace, source: lease.worktree_path });
     const request = path.join(lease.worktree_path, PRESERVATION_REQUEST_FILE);
     if (!existsSync(request)) continue;

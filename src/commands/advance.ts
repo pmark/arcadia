@@ -3,7 +3,8 @@ import { createSuccess } from "../cli/response.js";
 import { validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
-import { existingDirectory } from "../git/worktrees.js";
+import { readPreservationReadiness, type PreservationReadiness } from "../sessions/preservationReadiness.js";
+import { existingDirectory, parseWorktrees, tryGit } from "../git/worktrees.js";
 import { buildAgentQueue, type AgentQueue, type AgentQueueEntry } from "../dispatch/queue.js";
 import { arrangeActionOrder, moveActionOrder, undoActionOrder, type ActionOrderReceipt } from "../dispatch/order.js";
 import { transitionActionPointer, type PointerTransitionReceipt } from "../dispatch/pointer.js";
@@ -20,6 +21,7 @@ export interface AdvanceQueueMakeNextData { receipt: PointerTransitionReceipt; n
 export interface AdvanceCommandData {
   session: ReturnType<typeof sessionView> | null;
   transition: ProjectTransition | null;
+  preservation?: PreservationReadiness;
 }
 
 export function runAdvanceCommand(options: { workspace: string; repo: string; session?: string }): CommandSuccess<AdvanceCommandData> {
@@ -34,7 +36,12 @@ export function runAdvanceCommand(options: { workspace: string; repo: string; se
   const project = discoverDocs(repoRoot).docs.find((doc) => doc.type === "project");
   if (!project || project.type !== "project") throw new Error("Arcadia advance requires one managed Project document.");
   const transition = withReadOnlyDatabase(workspacePath, (db) => resolveProjectTransition({ repoRoot, projectSlug: project.slug, db }));
-  return createSuccess({ command: "advance", workspace: workspacePath, data: { session: null, transition } });
+  const worktrees = tryGit(repoRoot, ["worktree", "list", "--porcelain"]);
+  const repository = worktrees ? parseWorktrees(worktrees)[0]?.path : undefined;
+  const preservation = repository ? withReadOnlyDatabase(workspacePath, db => readPreservationReadiness(db, {
+    workspace: workspacePath, repository, worktree: repoRoot, projectSlug: project.slug
+  })) : undefined;
+  return createSuccess({ command: "advance", workspace: workspacePath, data: { session: null, transition, ...(preservation ? { preservation } : {}) } });
 }
 
 export function renderAdvanceSuccess(response: ReturnType<typeof runAdvanceCommand>): string[] {
@@ -55,7 +62,11 @@ export function renderAdvanceSuccess(response: ReturnType<typeof runAdvanceComma
   return [
     `Transition: ${data.transition.kind}`,
     data.transition.reason,
-    `Next: ${data.transition.nextAction}`
+    `Next: ${data.transition.nextAction}`,
+    ...(data.preservation ? [
+      `Preservation: ${data.preservation.ready ? "ready" : "needs configuration or repair"}`,
+      ...data.preservation.blockers.map((b: { code: string; reason: string }) => `${b.code}: ${b.reason}`)
+    ] : [])
   ];
 }
 

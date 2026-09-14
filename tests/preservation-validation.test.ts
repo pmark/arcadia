@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { fixtureGit, preservationFixture } from "../scripts/preservation-fixture.js";
 import { withDatabase } from "../src/db/connection.js";
-import { preservationAuthority, validatePreservationCandidate } from "../src/sessions/preservationValidation.js";
+import { preservationAuthority, validateBoundCandidate, validatePreservationCandidate } from "../src/sessions/preservationValidation.js";
 import { materializeCandidateTree, snapshotCandidate } from "../src/sessions/candidateSnapshot.js";
 import { runPreserveCommand } from "../src/commands/preserve.js";
 
@@ -49,6 +49,22 @@ describe("preservation authority and content", () => {
 // Native sandboxing cannot be nested in an agent sandbox. Run explicitly on
 // the host; never substitute a mock producer for this evidence.
 describe.skipIf(process.env.ARCADIA_PRESERVATION_HOST_TEST !== "1")("real host validation sandbox", () => {
+  it("allows anchored traversal into scratch while retaining workspace denial", () => {
+    const code = "import os; root=os.open('/',os.O_RDONLY|os.O_DIRECTORY); " +
+      "parts=os.path.realpath(os.environ['TMPDIR']).split('/'); " +
+      "exec('for part in parts:\\n if part:\\n  child=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=root)\\n  os.close(root)\\n  root=child'); os.close(root)";
+    const f = fixture(`/usr/bin/python3 -I -c '${code.replaceAll("'", "'\\''")}'`);
+    const result = withDatabase(f.workspace, db => validatePreservationCandidate(db, f.workspace, f.lease));
+    expect(result.passed).toBe(true);
+    const proof = JSON.parse(readFileSync(result.evidenceRef, "utf8"));
+    expect(proof.results[0].exitStatus).toBe(0);
+    expect(result.evidenceRef.startsWith(f.workspace + path.sep)).toBe(true);
+    const denied = fixture();
+    // Use the generic validator here so a workspace read can be tested without
+    // altering a managed packet or weakening its frozen-command binding.
+    expect(() => validateBoundCandidate(denied.workspace, { id: "workspace-denial", repository: denied.repo,
+      worktree: denied.candidate, commands: [`node -e 'require("node:fs").readdirSync(${JSON.stringify(denied.workspace)})'`] }, {}, () => {})).toThrow(/validation failed/);
+  });
   it("preserves the tested tree, then refuses altered content on replay", () => {
     const f = fixture(); const before = readFileSync(path.join(f.repo, "PROJECT.md"));
     const r = runPreserveCommand({ source: f.candidate, workspace: f.workspace }).data.receipt;

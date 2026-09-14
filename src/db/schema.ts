@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
 import { applyCapabilityMigrations } from "../capabilities/migrations.js";
 import { ensureProductionPolicyTables } from "../production/policy.js";
+import { ensureManualPreservationTable } from "../sessions/manualPreservation.js";
 import { ensureCandidatePreservationTable } from "../sessions/candidatePreservation.js";
 
 export function getSchemaPath(): string {
@@ -73,6 +74,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureProofTargetChecksTable(db);
   ensureAgentSessionsTable(db);
   ensureAgentWorktreeReservationsTable(db);
+  ensureManualPreservationTable(db);
   ensureCandidatePreservationTable(db);
   ensureAgentResponsibilityValue(db);
   ensureProductionPolicyTables(db);

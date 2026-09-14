@@ -1,4 +1,4 @@
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -226,7 +226,7 @@ describe("protected Arcadia go broker", () => {
     }
   });
 
-  it("copies bridged local dependencies into a release without a registry deploy", () => {
+  it.each(["directory", "entries"])("copies %s-bridged dependencies into an independent release", (bridge) => {
     const root = mkdtempSync(path.join(os.tmpdir(), "arcadia-go-broker-dependencies-"));
     const repository = path.join(root, "repository");
     const sharedNodeModules = path.join(root, "shared-node-modules");
@@ -237,13 +237,24 @@ describe("protected Arcadia go broker", () => {
       writeFileSync(path.join(sharedNodeModules, ".pnpm", "runtime", "index.js"), "export default 'ready';\n");
       symlinkSync(".pnpm/runtime", path.join(sharedNodeModules, "runtime"));
       mkdirSync(repository, { recursive: true });
-      symlinkSync(sharedNodeModules, path.join(repository, "node_modules"));
+      if (bridge === "directory") {
+        symlinkSync(sharedNodeModules, path.join(repository, "node_modules"));
+      } else {
+        mkdirSync(path.join(repository, "node_modules"));
+        symlinkSync(path.join(sharedNodeModules, ".pnpm"), path.join(repository, "node_modules", ".pnpm"));
+        symlinkSync(path.join(sharedNodeModules, "runtime"), path.join(repository, "node_modules", "runtime"));
+      }
 
       const destination = stageGoBrokerDependencies(repository, release);
 
       expect(destination).toBe(path.join(release, "node_modules"));
       expect(lstatSync(destination).isSymbolicLink()).toBe(false);
-      expect(readFileSync(path.join(destination, "runtime", "index.js"), "utf8")).toBe("export default 'ready';\n");
+      // Installation renames staging; neither staging nor the source checkout
+      // may be needed to load the installed runtime.
+      const installed = path.join(root, "installed");
+      renameSync(release, installed);
+      rmSync(sharedNodeModules, { recursive: true });
+      expect(readFileSync(path.join(installed, "node_modules", "runtime", "index.js"), "utf8")).toBe("export default 'ready';\n");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

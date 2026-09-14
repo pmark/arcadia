@@ -44,7 +44,9 @@ export interface CandidatePreservationRequest {
   /** Base revision this candidate was launched from; changed base history refuses. */
   baseRevision: string;
   actionId: string;
+  /** Immutable managed packet hash, or manual handoff binding hash. */
   packetSha256: string;
+  authorityKind?: "manual_handoff";
   policyEpoch: number;
   policyRevision: number;
   /** Proven validation of the candidate. Absent or failed validation refuses. */
@@ -97,7 +99,9 @@ export interface CandidatePreservationReceipt {
   baseBranch: string;
   baseRevision: string;
   actionId: string;
+  /** Immutable managed packet hash, or manual handoff binding hash. */
   packetSha256: string;
+  authorityKind?: "manual_handoff";
   policyEpoch: number;
   policyRevision: number;
   candidateFingerprint: string;
@@ -290,6 +294,7 @@ function assertReplayBindingsMatch(
   check("baseRevision", receipt.baseRevision, request.baseRevision);
   check("actionId", receipt.actionId, request.actionId);
   check("packetSha256", receipt.packetSha256, request.packetSha256);
+  check("authorityKind", receipt.authorityKind, request.authorityKind);
   check("policyEpoch", receipt.policyEpoch, request.policyEpoch);
   check("policyRevision", receipt.policyRevision, request.policyRevision);
   check("candidateFingerprint", receipt.candidateFingerprint, candidateFingerprint);
@@ -434,6 +439,7 @@ export function preserveCandidate(
     baseRevision: request.baseRevision,
     actionId: request.actionId,
     packetSha256: request.packetSha256,
+    ...(request.authorityKind ? { authorityKind: request.authorityKind } : {}),
     policyEpoch: request.policyEpoch,
     policyRevision: request.policyRevision,
     candidateFingerprint,
