@@ -36,6 +36,8 @@ import {
   type ProjectTransition,
   type TmuxAdapter
 } from "../sessions/index.js";
+
+import { recoverLegacyAgentAskDrift, type AskRecoveryTestHooks, type LegacyAskRecovery } from "../sessions/legacyAskRecovery.js";
 import { isPlausibleClaudeModel, prepareAgentWorktree } from "../sessions/worktreePreparation.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { resolveWorkspace } from "../workspace/resolve.js";
@@ -60,7 +62,11 @@ export interface GoCommandOptions {
   /** Test-only process boundary. */
   tmux?: TmuxAdapter;
   /** Deterministic fault injection after Git creation but before reservation commit. */
-  testHooks?: { afterWorktreeCreatedBeforeReservationCommit?: () => void };
+  testHooks?: {
+    afterWorktreeCreatedBeforeReservationCommit?: () => void;
+    /** Deterministic fault injection inside the Agent Ask drift recovery it runs before the clean check. */
+    askRecovery?: AskRecoveryTestHooks;
+  };
 }
 
 export interface BaseRemoteSync {
@@ -106,6 +112,8 @@ export interface GoCommandData {
   };
   /** Local-only accumulation counts, so session boundaries surface clutter instead of hiding it. Null when git could not be read. */
   clutter: ClutterSummary | null;
+  /** Legacy root `agent-ask.yaml` drift recovered into an isolated Ask branch before the clean check, if any. */
+  askRecoveries: LegacyAskRecovery[];
 }
 
 export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoCommandData> {
@@ -137,8 +145,13 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
   const baseRef = `refs/heads/${baseBranch}`;
   const baseRecord = worktrees.find((candidate) => candidate.branch === baseRef);
 
+  const askRecoveries: LegacyAskRecovery[] = [];
+  const sourceAskRecovery = recoverLegacyAgentAskDrift(repo, sourceRecord.path, options.testHooks?.askRecovery);
+  if (sourceAskRecovery.recovered) askRecoveries.push(sourceAskRecovery);
   assertClean(sourceRecord.path, "source worktree");
   if (baseRecord && !samePath(baseRecord.path, sourceRecord.path)) {
+    const baseAskRecovery = recoverLegacyAgentAskDrift(repo, baseRecord.path, options.testHooks?.askRecovery);
+    if (baseAskRecovery.recovered) askRecoveries.push(baseAskRecovery);
     assertClean(baseRecord.path, "base worktree");
   }
 
@@ -390,7 +403,8 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
         baseRef: baseBranch,
         prompt: "arcadia advance"
       },
-      clutter: summarizeClutter(repo, baseBranch, protectedWorktreePaths(controlWorktree, options.workspace))
+      clutter: summarizeClutter(repo, baseBranch, protectedWorktreePaths(controlWorktree, options.workspace)),
+      askRecoveries
     }
   });
 }
@@ -483,6 +497,13 @@ export function renderGoSuccess(response: CommandSuccess<GoCommandData>): string
 
   if (data.clutter) {
     lines.push("", ...renderClutter(data.clutter));
+  }
+
+  if (data.askRecoveries.length > 0) {
+    lines.push("", "Recovered drifted Agent Ask input:");
+    for (const recovery of data.askRecoveries) {
+      lines.push(`  ${recovery.askFile} on ${recovery.branch}${recovery.requestId ? ` (request_id: ${recovery.requestId})` : ""}`);
+    }
   }
 
   return lines;

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import type { AgentAskProposal, NormalizedAgentAsk, NormalizedAgentAskAction, NormalizedAgentAskEvidence, NormalizedAgentAskOption } from "./agentAsk.js";
@@ -13,14 +13,15 @@ import { syncProjectDocs } from "../docs/sync.js";
 import type { DecisionDoc, LogDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import { buildAgentQueue, unpositionedCountForProject } from "../dispatch/queue.js";
 import { arrangeActionOrder } from "../dispatch/order.js";
-import { assertClean, git } from "../git/worktrees.js";
+import { assertClean, git, projectCheckoutFor } from "../git/worktrees.js";
 import { slugify } from "../utils/slug.js";
 
 export type AgentAskDisposition = "accepted" | "rejected";
 export type AgentAskResponsibility = "autonomous" | "agent";
 export type AgentAskPlacement = "top" | "before" | "after";
 
-interface FileMutation { path: string; before: string | null; after: string; }
+/** `after: null` means this mutation deletes `path` (used to archive a settled Ask's source file). */
+interface FileMutation { path: string; before: string | null; after: string | null; }
 
 export interface AgentAskSettlementReceipt {
   id: string;
@@ -77,6 +78,9 @@ export function settleAgentAsk(db: Database.Database, input: {
    * command at all.
    */
   operator?: boolean;
+  /** Where the command ran. Inside a worktree of the Project's repository,
+   * settlement writes and commits there, on that worktree's branch. */
+  cwd?: string;
 }): AgentAskSettlementReceipt {
   const operation = {
     proposalRef: input.proposalRef,
@@ -120,7 +124,7 @@ export function settleAgentAsk(db: Database.Database, input: {
   const project = getProjectBySlug(db, proposal.normalized.project);
   const metadata = project ? getProjectMetadata(db, project.id) : null;
   if (!project || !metadata?.repo_path) throw validationError("Agent Ask Project repository is not configured.");
-  const repoRoot = path.resolve(metadata.repo_path);
+  const repoRoot = projectCheckoutFor(path.resolve(metadata.repo_path), input.cwd ?? process.cwd());
   const queue = buildAgentQueue(db);
   if (input.expectedQueueRevision !== undefined && queue.revision !== input.expectedQueueRevision) {
     throw validationError("Action queue revision changed; refresh the Agent Ask settlement preview.", {
@@ -588,11 +592,22 @@ export function settleAgentAsk(db: Database.Database, input: {
     }
   }
 
+  // The queue reads Actions from the configured checkout, so it cannot yet
+  // position Actions that exist only on an unmerged candidate branch.
+  if (arrangeQueue && repoRoot !== path.resolve(metadata.repo_path)) {
+    throw validationError("This settlement places Actions in the queue, which needs them on the base branch.", {
+      candidate: repoRoot,
+      remedy: "Settle it from the Project's main checkout, or after the candidate merges."
+    });
+  }
+
+  const archivedAskPath = archiveSettledAskFile(fileMutations, effects, repoRoot, proposal.sourcePath ?? null);
+
   const previewFingerprint = sha256(JSON.stringify({
     proposalFingerprint: proposal.fingerprint,
     operation,
     queueRevision: queue.revision,
-    fileMutations: fileMutations.map((mutation) => ({ path: mutation.path, before: mutation.before ? sha256(mutation.before) : null, after: sha256(mutation.after) })),
+    fileMutations: fileMutations.map((mutation) => ({ path: mutation.path, before: mutation.before ? sha256(mutation.before) : null, after: mutation.after ? sha256(mutation.after) : null })),
     queueAfter
   }));
   if (input.apply && input.previewFingerprint !== previewFingerprint) {
@@ -628,11 +643,22 @@ export function settleAgentAsk(db: Database.Database, input: {
   };
   if (!input.apply) return baseReceipt;
 
-  if (fileMutations.length > 0) assertClean(repoRoot, "Agent Ask Project repository");
+  if (fileMutations.length > 0) {
+    // The drafted Ask file itself sits untracked in the repository this
+    // settlement is about to write into. It is not incidental dirt: this
+    // same transaction consumes it (archiveSettledAskFile queued a mutation
+    // deleting it and writing its content under `.arcadia/asks/archive/`), so
+    // it must not also make the repository look unclean. Nothing else in the
+    // working tree is exempted.
+    assertClean(repoRoot, "Agent Ask Project repository", archivedAskPath ? [archivedAskPath] : []);
+  }
   let settled: AgentAskSettlementReceipt;
   try {
     settled = writeTransaction(db, () => {
-      for (const mutation of fileMutations) writeAtomically(mutation.path, mutation.after);
+      for (const mutation of fileMutations) {
+        if (mutation.after === null) { try { unlinkSync(mutation.path); } catch {} }
+        else writeAtomically(mutation.path, mutation.after);
+      }
       if (input.activate) {
         const dispatch = resolveDispatch(repoRoot, project.slug);
         if (!isDispatchable(dispatch) || dispatch.context?.action.id !== input.action) {
@@ -659,7 +685,7 @@ export function settleAgentAsk(db: Database.Database, input: {
         }
       }
       if (fileMutations.length > 0) {
-        const sync = syncProjectDocs(db, project, { apply: true });
+        const sync = syncProjectDocs(db, project, { apply: true, repoRoot });
         // A settlement answers for the documents it wrote, and for nothing
         // else. Decision 0044: this check used to refuse on any error anywhere
         // in the corpus, so one stale document from weeks ago permanently
@@ -728,7 +754,8 @@ export function settleAgentAsk(db: Database.Database, input: {
 
 /**
  * Commit the managed documents one settlement wrote, on whatever branch the
- * repository is currently on. Never pushes: landing a record locally is
+ * settling checkout is on — the candidate branch when settlement ran from a
+ * candidate worktree, so the record ships in that pull request. Never pushes: landing a record locally is
  * Arcadia's job, publishing it is the operator's.
  *
  * Paths are passed explicitly to `add` and `commit` so that nothing outside
@@ -740,7 +767,21 @@ function commitSettlementOutput(
   fileMutations: FileMutation[],
   receipt: AgentAskSettlementReceipt
 ): void {
-  const paths = fileMutations.map((mutation) => path.relative(repoRoot, mutation.path));
+  const allPaths = fileMutations.map((mutation) => ({ relative: path.relative(repoRoot, mutation.path), deleted: mutation.after === null }));
+  // A deletion mutation whose file was never tracked — the drafted Ask file
+  // this settlement consumed and archived, when the operator never committed
+  // the draft first — has nothing for `git add`/`git commit` to stage: the
+  // file is already gone from disk, and it was never in the index either.
+  // Naming it in either pathspec fails the whole command with "did not match
+  // any files", which used to be swallowed here and left the entire
+  // settlement (every other file it wrote) sitting uncommitted. `git ls-files`
+  // reports what the index has regardless of the working tree, so it still
+  // finds a genuinely tracked-then-deleted path even after the unlink above.
+  const deletionPaths = allPaths.filter((entry) => entry.deleted).map((entry) => entry.relative);
+  const tracked = deletionPaths.length > 0
+    ? new Set(git(repoRoot, ["ls-files", "-z", "--", ...deletionPaths]).split("\0").filter(Boolean))
+    : new Set<string>();
+  const paths = allPaths.filter((entry) => !entry.deleted || tracked.has(entry.relative)).map((entry) => entry.relative);
   const message = [
     `chore(arcadia): settle ${receipt.proposalRequestId}`,
     "",
@@ -750,6 +791,7 @@ function commitSettlementOutput(
     "Arcadia writes and lands its own managed documents; it did not author the",
     "decision they record."
   ].join("\n");
+  if (paths.length === 0) return;
   try {
     git(repoRoot, ["add", "--", ...paths]);
     git(repoRoot, ["commit", "-m", message, "--", ...paths]);
@@ -1218,6 +1260,50 @@ function appendLog(before: string | null, projectSlug: string, normalized: Norma
     "- **Next:** Continue from the governed Project pointer and execution queue.",
     "- **Blockers:** None recorded by this settlement."
   ].join("\n") + "\n";
+}
+
+/**
+ * Archive a terminally settled Ask's source `.arcadia/asks/` file into
+ * `.arcadia/asks/archive/`, in the same commit as the settlement effects
+ * themselves. Filing is disposable input, not governance state — the
+ * decision this file requested is already fully recorded by the mutations
+ * above (or, for a rejection, by the settlement receipt alone) — so nothing
+ * here is a judgment call, and it fires for both `accepted` and `rejected`.
+ *
+ * Only acts when `sourcePath` resolves to a direct child of this Project
+ * repository's own `.arcadia/asks/` directory, so an Ask previewed from
+ * somewhere else entirely (e.g. a recovered file inspected from `/tmp`, per
+ * the isolate-agent-asks recovery flow) is never touched. A missing or
+ * already-archived source file is a silent no-op, not an error, so retried
+ * or manually-cleaned-up settlements stay idempotent.
+ */
+/** Returns the archived source file's path relative to `repoRoot`, or null when
+ * nothing was archived (no source, outside `.arcadia/asks/`, or already gone). */
+function archiveSettledAskFile(fileMutations: FileMutation[], effects: string[], repoRoot: string, sourcePath: string | null): string | null {
+  if (!sourcePath) return null;
+  const requested = path.resolve(sourcePath);
+  if (!existsSync(requested)) return null;
+  const asksDir = path.join(repoRoot, ".arcadia", "asks");
+  if (!existsSync(asksDir)) return null;
+  // Compare directories through realpath — `repoRoot` for a candidate
+  // worktree comes from `projectCheckoutFor`'s realpath'd `--show-toplevel`,
+  // while `sourcePath` (e.g. from a freshly drafted file) is typically a
+  // plain `path.resolve`. A symlinked path segment (common for a system's
+  // temp directory) would otherwise make an identical directory compare
+  // unequal and silently skip archiving. Once matched, rebuild the path from
+  // `repoRoot`'s own (possibly non-realpath) spelling rather than keeping the
+  // realpath'd one: every other path this settlement writes, commits, and
+  // relativizes is expressed in terms of `repoRoot` as given, and mixing the
+  // two spellings turns `path.relative` into a `../../..` traversal that
+  // neither `git add` nor `git status` recognizes.
+  if (realpathSync(path.dirname(requested)) !== realpathSync(asksDir)) return null;
+  const resolved = path.join(asksDir, path.basename(requested));
+  const content = readFileSync(resolved, "utf8");
+  const archivePath = path.join(asksDir, "archive", path.basename(resolved));
+  fileMutations.push({ path: resolved, before: content, after: null });
+  fileMutations.push({ path: archivePath, before: existsSync(archivePath) ? readFileSync(archivePath, "utf8") : null, after: content });
+  effects.push(`Archived the settled Ask file to ${path.relative(repoRoot, archivePath)}.`);
+  return path.relative(repoRoot, resolved);
 }
 
 function restoreMutation(mutation: FileMutation): void {

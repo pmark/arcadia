@@ -9,6 +9,7 @@ import {
   type CandidatePreservationRemote,
   type CandidatePreservationRequest
 } from "../src/sessions/candidatePreservation.js";
+import { snapshotCandidate } from "../src/sessions/candidateSnapshot.js";
 import { reserveAgentWorktree } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -83,7 +84,7 @@ function request(fixture: Fixture, overrides: Partial<CandidatePreservationReque
     packetSha256: "packet-sha",
     policyEpoch: 1,
     policyRevision: 1,
-    validation: { passed: true, evidenceRef: "tests green" },
+    validation: { passed: true, evidenceRef: "tests green", candidateFingerprint: snapshotCandidate(fixture.candidate) },
     remotePreservation: { authorized: false, reason: "test default" },
     now: NOW,
     ...overrides
@@ -238,7 +239,7 @@ describe("candidate preservation (refusals)", () => {
     const fixture = makeFixture();
     expect(() =>
       withDatabase(fixture.workspace, (db) =>
-        preserveCandidate(db, request(fixture, { validation: { passed: false, evidenceRef: "none" } }))
+        preserveCandidate(db, request(fixture, { validation: { candidateFingerprint: "", passed: false, evidenceRef: "none" } }))
       )
     ).toThrow(/no passing validation/);
     expect(commitsAhead(fixture.repo, fixture.branch)).toHaveLength(0);

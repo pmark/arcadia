@@ -76,6 +76,30 @@ export function gatherProjectDigestFacts(
     blocker_fields: string; operator_question: number;
   }>;
 
+  /*
+   * Actions finished in the window.
+   *
+   * Without these a digest can only narrate telemetry — which commands ran and
+   * which Decisions opened — so a day of real delivery reads as a handful of
+   * dispatch events and nothing else. What the operator did is the story; the
+   * commands they typed to do it are not.
+   *
+   * `work_items` records no completion instant, only `updated_at`, so that is
+   * the completion proxy: an Action counts for the window it was last touched
+   * in while already done. A later edit therefore moves a completed Action into
+   * a newer window, and re-narrates it there. That is the honest limit of the
+   * present schema; a real `completed_at` column would need a migration.
+   */
+  const completedActions = db.prepare(
+    `SELECT wi.id, wi.updated_at AS occurred_at, wi.title, wi.next_action, wi.expected_artifact,
+       wi.work_classification, m.title AS milestone_title
+     FROM work_items wi
+     LEFT JOIN milestones m ON m.id = wi.milestone_id
+     WHERE wi.project_id = @projectId
+       AND wi.status = 'done'
+       AND wi.updated_at >= @start AND wi.updated_at < @end`
+  ).all({ projectId: project.id, start: normalized.start, end: normalized.end }) as Array<Record<string, string | null>>;
+
   const decisions = db.prepare(
     `SELECT ri.id, COALESCE(ri.decided_at, ri.created_at) AS occurred_at,
        ri.status, ri.decision_needed, ri.recommendation, ri.decision_note
@@ -87,6 +111,18 @@ export function gatherProjectDigestFacts(
   ).all({ projectId: project.id, start: normalized.start, end: normalized.end }) as Array<Record<string, string | null>>;
 
   return [
+    ...completedActions.map((row): DigestFact => ({
+      id: `completed-action:${row.id}`,
+      kind: "completed_action",
+      occurredAt: row.occurred_at!,
+      summary: `Completed: ${row.title}`,
+      detail: {
+        milestone: row.milestone_title,
+        responsibility: row.work_classification,
+        expectedArtifact: row.expected_artifact,
+        nextAction: row.next_action
+      }
+    })),
     ...missionLogs.map((row): DigestFact => ({
       id: `mission-log:${row.id}`,
       kind: "mission_log",

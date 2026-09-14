@@ -843,28 +843,28 @@ export function listProjectSummaries(db: Database.Database): ProjectSummary[] {
         (
           SELECT wi.next_action
           FROM work_items wi
-          WHERE wi.project_id = p.id AND wi.status != 'done'
+          WHERE wi.project_id = p.id AND wi.status != 'done' AND wi.archived_at IS NULL
           ORDER BY wi.updated_at DESC, wi.created_at DESC
           LIMIT 1
         ) AS next_action,
         (
           SELECT wi.work_classification
           FROM work_items wi
-          WHERE wi.project_id = p.id AND wi.status != 'done'
+          WHERE wi.project_id = p.id AND wi.status != 'done' AND wi.archived_at IS NULL
           ORDER BY wi.updated_at DESC, wi.created_at DESC
           LIMIT 1
         ) AS work_classification,
         (
           SELECT wi.work_classification
           FROM work_items wi
-          WHERE wi.project_id = p.id AND wi.status != 'done'
+          WHERE wi.project_id = p.id AND wi.status != 'done' AND wi.archived_at IS NULL
           ORDER BY wi.updated_at DESC, wi.created_at DESC
           LIMIT 1
         ) AS responsibility,
         (
           SELECT wi.expected_artifact
           FROM work_items wi
-          WHERE wi.project_id = p.id AND wi.status != 'done'
+          WHERE wi.project_id = p.id AND wi.status != 'done' AND wi.archived_at IS NULL
           ORDER BY wi.updated_at DESC, wi.created_at DESC
           LIMIT 1
         ) AS expected_artifact
@@ -895,7 +895,7 @@ function listOpenWorkItems(
       FROM work_items wi
       LEFT JOIN projects p ON p.id = wi.project_id
       LEFT JOIN milestones m ON m.id = wi.milestone_id
-      WHERE wi.status != 'done' AND (${whereSql})
+      WHERE wi.status != 'done' AND wi.archived_at IS NULL AND (${whereSql})
       ORDER BY wi.created_at DESC`
   );
   return (
@@ -931,7 +931,10 @@ export function listRecentlyCompletedWorkItems(db: Database.Database, limit = 10
     .all(limit) as WorkItemSummary[];
 }
 
-export function listWorkItems(db: Database.Database): WorkItemSummary[] {
+export function listWorkItems(
+  db: Database.Database,
+  options: { includeArchived?: boolean } = {}
+): WorkItemSummary[] {
   return db
     .prepare(
       `SELECT
@@ -942,9 +945,65 @@ export function listWorkItems(db: Database.Database): WorkItemSummary[] {
       FROM work_items wi
       LEFT JOIN projects p ON p.id = wi.project_id
       LEFT JOIN milestones m ON m.id = wi.milestone_id
+      ${options.includeArchived ? "" : "WHERE wi.archived_at IS NULL"}
       ORDER BY wi.status = 'done' ASC, wi.updated_at DESC, wi.created_at DESC`
     )
     .all() as WorkItemSummary[];
+}
+
+/** Every archived Action, newest first, so nothing archived becomes unfindable. */
+export function listArchivedWorkItems(db: Database.Database): WorkItemSummary[] {
+  return db
+    .prepare(
+      `SELECT
+        wi.*,
+        wi.work_classification AS responsibility,
+        p.name AS project_name,
+        m.title AS milestone_title
+      FROM work_items wi
+      LEFT JOIN projects p ON p.id = wi.project_id
+      LEFT JOIN milestones m ON m.id = wi.milestone_id
+      WHERE wi.archived_at IS NOT NULL
+      ORDER BY wi.archived_at DESC, wi.id ASC`
+    )
+    .all() as WorkItemSummary[];
+}
+
+/**
+ * Take one Action off every working surface without asserting it was finished.
+ *
+ * The reason is required because an archived Action with no stated reason is
+ * indistinguishable from one that was lost, and whoever finds it later has no
+ * way to judge whether bringing it back is correct.
+ *
+ * Idempotent: archiving an already-archived Action keeps the original instant
+ * and reason, so a repeated call cannot quietly rewrite why it left.
+ */
+export function archiveWorkItem(
+  db: Database.Database,
+  id: string,
+  reason: string
+): WorkItemSummary | null {
+  const trimmed = reason.trim();
+  if (!trimmed) {
+    throw new Error("An archive reason is required.");
+  }
+  db.prepare(
+    `UPDATE work_items
+     SET archived_at = COALESCE(archived_at, @now),
+         archive_reason = COALESCE(archive_reason, @reason),
+         updated_at = @now
+     WHERE id = @id`
+  ).run({ id, now: nowIso(), reason: trimmed });
+  return getWorkItem(db, id);
+}
+
+/** Return an archived Action to its queue, clearing why it left. */
+export function unarchiveWorkItem(db: Database.Database, id: string): WorkItemSummary | null {
+  db.prepare(
+    "UPDATE work_items SET archived_at = NULL, archive_reason = NULL, updated_at = ? WHERE id = ?"
+  ).run(nowIso(), id);
+  return getWorkItem(db, id);
 }
 
 export function getWorkItem(db: Database.Database, id: string): WorkItemSummary | null {
@@ -2781,7 +2840,7 @@ function listProjectsWithoutOpenNextActions(db: Database.Database): ProjectSumma
         AND NOT EXISTS (
           SELECT 1
           FROM work_items wi
-          WHERE wi.project_id = p.id AND wi.status != 'done'
+          WHERE wi.project_id = p.id AND wi.status != 'done' AND wi.archived_at IS NULL
         )
       ORDER BY p.created_at DESC, p.id ASC`
     )
@@ -3232,7 +3291,7 @@ export function listPortfolioProjects(db: Database.Database): PortfolioProjectRo
           WHERE ri.project_id = p.id AND ri.status IN ('open', 'deferred')
         ) AS open_decisions
       FROM projects p
-      LEFT JOIN work_items wi ON wi.project_id = p.id
+      LEFT JOIN work_items wi ON wi.project_id = p.id AND wi.archived_at IS NULL
       GROUP BY p.id
       ORDER BY
         CASE p.status WHEN 'active' THEN 0 WHEN 'incubating' THEN 1 WHEN 'paused' THEN 2 ELSE 3 END,

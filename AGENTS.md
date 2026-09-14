@@ -148,10 +148,32 @@ hand claim that work happened, or that someone decided something?* If yes, it
 is governance state — file an Ask. If no, fix it and move on.
 
 Run it from your own repository. You do not need to know where Arcadia's
-workspace lives:
+workspace lives, and you do not need one to exist yet. Compose the Ask as
+compact **JSON** rather than hand-indented YAML — JSON is valid YAML 1.2, so
+the parser accepts it unchanged, and a model produces syntactically valid JSON
+far more reliably than whitespace-sensitive YAML block syntax. Then run:
 
 ```sh
-arcadia agent-ask preview --file agent-ask.yaml --json
+arcadia agent-ask draft '<json>'
+```
+
+`draft` validates the Ask with no Project-database dependency at all, writes
+it to its canonical `.arcadia/asks/agent-ask-<request_id>.yaml` path —
+collision-checked, so concurrent Asks from different agents can never clobber
+each other or dirty the shared base checkout in a way that could block Arcadia
+Go's clean check — and, if a workspace is already resolvable here, previews it
+in the same call. A validation failure reports the exact fix needed before
+anything touches disk, so the whole ceremony is one round trip on the common
+path instead of write-then-preview-then-retry.
+
+If `draft` reports no workspace was available, stop there: the committed file
+is itself the handoff, exactly like a `docs/proposals/` file, and needs no
+Arcadia install or network access to exist. Whatever environment next has a
+workspace — including a different agent, in a different session, possibly
+after `git pull` — runs the same validation by hand instead:
+
+```sh
+arcadia agent-ask preview --file .arcadia/asks/agent-ask-<request_id>.yaml --json
 ```
 
 Preview writes nothing to the Project. It returns a proposal with a
@@ -261,6 +283,15 @@ Arcadia's job, publishing it is the operator's, and an agent pushing straight to
 a shared branch on its own initiative is exactly the boundary
 `docs/working-copy-safety.md` exists to hold.
 
+**Run from a candidate worktree, it commits to the candidate branch.** When the
+command runs inside another worktree of the Project's repository, settlement
+writes and commits there instead of the configured main checkout, so the record
+ships in that Action's pull request and the base branch gains no loose
+`chore(arcadia): settle …` commits. A settlement that places Actions in the
+queue is the exception and is refused there: the queue reads Actions from the
+main checkout, so settle those from the main checkout until the queue can see
+candidate Actions.
+
 The gap this leaves is real, not theoretical: a settlement against a repository
 already checked out locally produces exactly one commit that only exists there
 until something pushes it. Nothing currently reminds anyone to, which is how it
@@ -272,6 +303,29 @@ same as any other `LOCAL ONLY` state under Working-Copy Safety: check
 `arcadia work monitor`, or simply push the branch settlement just committed to.
 An Agent Ask you only previewed needs nothing further — this applies to
 `settle --apply`, not `preview`.
+
+### One session completes one Action
+
+When a session finishes an Action's acceptance criteria, settle the `complete`
+Ask into that same candidate worktree, before pushing — the same place every
+other settlement in this Action's session lands, per the rule above. This is
+not a special case; it is the ordinary rule applied to the last write a
+finished Action needs.
+
+File it with the same `draft` → `settle --preview` → `settle --apply` sequence
+as anything else, run from inside the candidate: `candidate_revision` is that
+worktree's own `HEAD`, and `evidence` covers every declared acceptance
+criterion, verbatim and in order, each `met`. A criterion that is not met
+refuses completion exactly as it does anywhere else — this settles nothing
+early and grants nothing early.
+
+The commit this produces carries the completion evidence and the pointer
+advance in the Action's own pull request, alongside its code. **The operator's
+merge is then the only remaining touch** — no separate Ask, no new session,
+and nothing to remember to do afterward. The older pattern — push a PR, end
+the session, and have a later session file a `complete` Ask against the merged
+main branch — cost an extra session and an extra round trip for no reason: the
+same evidence was knowable before the PR ever opened.
 
 ## Asking for a capability the Way does not have
 
@@ -567,9 +621,11 @@ test possible. The PR template and
 ## Working-Copy Safety
 
 Before code changes, run `pnpm arcadia work monitor --no-pull-requests` and
-inspect the intended working directory. One coding session must use one branch
-and one worktree; do not begin agent code changes on `main` or in a checkout
-another session is using.
+inspect the intended working directory. A candidate worktree has at most one
+live coding session; do not begin agent code changes on `main` or in a checkout
+another live session is using. Sequential sessions for the same governed Action
+may continue in its candidate after the prior session is proven terminal
+(Decision 0051).
 
 Before stopping, leave changed code merged or on a pushed branch with a draft
 or ready PR. If commit, push, or PR creation is not authorized, report the exact

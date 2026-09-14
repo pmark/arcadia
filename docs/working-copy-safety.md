@@ -131,9 +131,17 @@ publication, credential expansion, and messaging remain separate gates.
 
 ## Start-session rule
 
-One coding session gets one branch and one worktree. Do not start agent code
-changes on `main`, and do not point two coding sessions at the same working
-directory. A session title is not an isolation boundary; a worktree is.
+A candidate worktree has at most one live coding-agent execution. Do not start
+agent code changes on `main`, and never point two live coding sessions at the
+same working directory. A session title is not an isolation boundary; a
+worktree is.
+
+Sequential sessions for the same governed Action may continue in that Action's
+candidate worktree and branch once the previous session is proven terminal and
+the repository lease is handed over (Decision 0051). Arcadia prepares, resumes,
+preserves and retires candidates on the host; the agent never creates, moves or
+repairs worktrees itself. An accepted Action's successor gets a fresh candidate
+from the governed base.
 
 Before editing:
 

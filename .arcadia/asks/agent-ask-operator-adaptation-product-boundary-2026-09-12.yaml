@@ -1,0 +1,117 @@
+# Preserved from the legacy singleton Ask path during the isolation bootstrap.
+agent_ask: v1
+request_id: operator-adaptation-product-boundary-2026-09-12
+project: arcadia
+intent: decision
+requested_authority: propose
+desired_result: >-
+  Adopt an operator-centered product boundary: Arcadia understands the operator's
+  life, contexts, commitments, vocabulary, preferences and desired Outcomes;
+  turns expressed intent into sustained, authorized production; and presents
+  clear, trustworthy information and choices that fit how that operator thinks
+  and works. Arcadia adapts improving external AI systems to the operator rather
+  than building a competing general-purpose AI or agent-management platform.
+rationale: |
+  The operator explicitly wants a system that understands them and their various
+  life contexts, keeps production happening, and gets better as dependent AI
+  systems improve. They want to use, benefit from and manage those capabilities,
+  not rebuild what major AI companies provide. This includes creative and
+  non-software work; a repository or coding agent cannot be a prerequisite for
+  receiving Arcadia's core value.
+
+  Proposed standing boundary:
+  1. Arcadia owns the operator-specific context and its application to Outcomes,
+     priorities, commitments, authority, evidence and presentation. Understanding
+     remains inspectable and correctable: distinguish operator statements from
+     inferred preferences, preserve provenance, and make outdated or uncertain
+     context visible. Apply relevant context to each Action without indiscriminate
+     cross-context disclosure. Reuse existing context storage and provider
+     capabilities before adding memory infrastructure.
+  2. External systems supply general reasoning, coding, search, generation and
+     native agent/session capabilities. Arcadia integrates them through the
+     smallest working interface needed for approved work. Do not build foundation
+     models, a general agent SDK, transcript platform, universal workflow engine,
+     generic memory platform or provider feature replicas as Arcadia products.
+     A capability being built elsewhere is a reason to integrate or wait when
+     feasible, not a reason to race it.
+  3. Keep operator context, Project truth and acceptance evidence portable across
+     providers. Adopt improved capabilities through existing integrations and
+     bounded evaluations on representative operator tasks. Capability upgrades
+     never expand authority, data access or spending automatically. Add an
+     abstraction only for a second concrete integration need. Retire local glue
+     when an external capability demonstrably replaces it while preserving the
+     required authority, evidence and recovery behavior.
+  4. Continuous production remains required: approved work should proceed and
+     recover within bounded policy until real judgment or authority is needed.
+     Thin dispatch, status, evidence, stop and recovery integration is in scope
+     when required to deliver that promise; agent management is subordinate to
+     operator Outcomes. Do not turn the operator back into a manual session relay.
+  5. Present what matters now, why it matters in this context, what progressed,
+     what can happen next and what needs the operator, using their vocabulary
+     and preferred level of detail. Keep truthful evidence available underneath.
+     Judge presentation with the operator rather than claiming perfect fit from
+     an inferred profile. Agent telemetry is supporting detail.
+  6. Admit new infrastructure only when it names a real Project/Action blocked,
+     the observed friction, existing capability considered, smallest missing
+     integration, observable exit condition and a condition for retiring it.
+     Measure accepted useful Artifacts, operator interventions, correction burden
+     and blocked time; capacity utilization and token consumption are diagnostics,
+     not goals. Idle capacity does not create priority or permission.
+
+  Bootstrap scope assessment (document-based, not runtime verification):
+  - The current Milestone is Bootstrap managed production to build Flight Deck;
+    the current Action is prove-zero-prompt-production-loop. Preserve that pointer
+    pending a separately previewed and settled amendment.
+  - Necessary for the declared unattended scope: protect candidate preservation,
+    resolve orphaned work and narrowly scoped workspace readiness, prove the
+    current loop, guard launch, reconcile exits, advance from evidence, supervise
+    bounded production and prove two dependent Actions from one activation with
+    stop/restart recovery. Reuse the implemented policy, packet, selection and
+    capacity paths. Repair approval-must-apply-or-refuse as a work-blocking truth
+    defect, not as optional orchestration polish.
+  - Preserve a reachable independent production control, stable controller/runtime
+    handoff, and the safety/recovery evidence required for the enabled scope.
+    A phone-operable control is important for this operator; assess the smallest
+    existing surface that satisfies it before adding UI.
+  - Review prove-multi-provider-production-recovery as a prerequisite to the
+    first useful Flight Deck slice. Recommend a bounded single-provider first
+    slice if its actual production policy can be proven safe. Defer second-provider
+    launch, cross-provider recovery and multi-Project throughput proof until a
+    real approved workload needs the second provider or concurrent Project and
+    the operator activates that broader scope. Keep deterministic safety checks
+    required by the enabled scope; do not waive the existing ten-Action/two-provider
+    acceptance contract without an explicit amended contract and settlement.
+  - The first useful consumer proof is the existing Flight Deck portfolio route
+    and active-work orientation: show Outcome/Milestone, verified progress,
+    Needs operator and the next eligible Action with reasons. Prove that real
+    production builds those two slices and that the operator can understand the
+    state without interpreting agent mechanics. Do not call that the whole
+    personalized-life-context experience; it is one concrete increment toward it.
+
+  If the boundary is selected, prepare one exact follow-up amendment aligning
+  PROJECT.md/vision and the bootstrap-to-Flight-Deck handoff with it, preserving
+  current authority until settlement. This Ask opens the boundary Decision only;
+  it does not rewrite the Outcome, change the pointer, defer Actions, ratify its
+  own answer or authorize any execution/external effect.
+options:
+  - label: Adopt the operator-adaptation boundary
+    recommended: true
+    consequence: >-
+      Make operator context, sustained Outcome delivery and personally intelligible
+      information the product focus; use improving external AI through minimal
+      integrations. Prepare a separately reviewable bootstrap amendment for the
+      smallest safe Flight Deck delivery, including explicit deferral triggers.
+      Existing Plan authority and acceptance criteria remain until amended.
+  - label: Revise the boundary before adoption
+    consequence: >-
+      Preserve the current governed Plan and scope while the operator identifies
+      the specific boundary or production requirement to change; incorporate that
+      correction into a new exact proposal before applying any scope amendment.
+references:
+  - CONSTITUTION.md
+  - PROJECT.md
+  - docs/arcadia-semantics.md
+  - docs/arcadia-development-orchestration-vision.md
+  - docs/plans/bootstrap-managed-production-to-build-flight-deck.md
+  - docs/plans/mission-control-view/14-flight-deck-plan-amendment.yaml
+  - docs/plans/mission-control-view/20-production-quality-and-reliability.md

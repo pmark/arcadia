@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { agentAskSettlementMessage } from "../apps/discord-bot/src/notifications/poller.js";
 import {
+  runAgentAskDraftCommand,
   runAgentAskNotificationSentCommand,
   runAgentAskNotificationsCommand,
   runAgentAskPreviewCommand,
@@ -221,6 +222,34 @@ describe("Agent Ask settlement", () => {
     expect(agentAskSettlementMessage(pending.data.notifications[0]!)).toContain("Queue: demo/add-settlement-proof starting at position 1");
     runAgentAskNotificationSentCommand({ workspace, settlement: applied.data.receipt.id, messageId: "discord-ask-1" });
     expect(runAgentAskNotificationsCommand({ workspace }).data.notifications).toEqual([]);
+  });
+
+  it("lands a settlement run from a candidate worktree on its branch, leaving the base branch untouched", () => {
+    const { workspace, repo } = fixture();
+    const candidate = path.join(path.dirname(repo), "candidate");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate", candidate], { cwd: repo });
+    const baseHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" });
+    const proposal = runAgentAskPreviewCommand({ workspace, request: [
+      "agent_ask: v1", "request_id: log-from-candidate", "project: demo", "intent: log",
+      "desired_result: Record the candidate rehearsal ran clean."
+    ].join("\n") });
+    const options = { workspace, proposal: proposal.data.proposal.id, requestId: "settle-from-candidate",
+      disposition: "accepted" as const, cwd: path.join(candidate, "docs") };
+    const preview = runAgentAskSettleCommand(options);
+    runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
+
+    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" })).toBe(baseHead);
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: candidate, encoding: "utf8" })).toBe("");
+    expect(execFileSync("git", ["log", "-1", "--format=%s"], { cwd: candidate, encoding: "utf8" }))
+      .toContain("settle log-from-candidate");
+    expect(execFileSync("git", ["show", "HEAD:MISSION_LOG.md"], { cwd: candidate, encoding: "utf8" }))
+      .toContain("candidate rehearsal ran clean");
+
+    const placed = runAgentAskPreviewCommand({ workspace, request: actionAsk("ask-from-candidate") });
+    expect(() => runAgentAskSettleCommand({ workspace, proposal: placed.data.proposal.id, requestId: "place-from-candidate",
+      disposition: "accepted", responsibility: "agent", top: true, cwd: candidate })).toThrow(/needs them on the base branch/);
+    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" })).toBe(baseHead);
   });
 
   it("settles rejection without Project or queue effects and queues a brief ping", () => {
@@ -872,6 +901,151 @@ describe("Agent Ask settlement", () => {
     })).toThrow("cannot mutate another Project");
     expect(readFileSync(planPath, "utf8")).not.toContain("Cross Project edit");
   });
+
+  it("keeps two concurrent Agent Asks' paths, request ids, receipts, effects, and repositories fully disjoint", () => {
+    const { workspace, repo } = fixture();
+    addOtherProject(workspace, repo);
+
+    // Two agents draft Asks against two different Projects at effectively the
+    // same time, interleaved rather than run one after the other, so nothing
+    // about the first can leak into or block the second.
+    const first = runAgentAskPreviewCommand({
+      workspace, request: askForIntent("concurrent-first", "log", "Record concurrent proof A")
+    });
+    const second = runAgentAskPreviewCommand({
+      workspace, request: askForIntent("concurrent-second", "log", "Record concurrent proof B").replace("project: demo", "project: other")
+    });
+    expect(first.data.proposal.id).not.toBe(second.data.proposal.id);
+    expect(first.data.proposal.normalized.project).toBe("demo");
+    expect(second.data.proposal.normalized.project).toBe("other");
+
+    // A correction: the agent behind the first Ask notices a typo and
+    // re-drafts under a new request id (the only way to change content, since
+    // a used request id is fixed to its original fingerprint) while the
+    // second Ask's lifecycle is still mid-flight.
+    const corrected = runAgentAskPreviewCommand({
+      workspace, request: askForIntent("concurrent-first-corrected", "log", "Record concurrent proof A, corrected")
+    });
+    expect(() => runAgentAskPreviewCommand({
+      workspace, request: askForIntent("concurrent-first", "log", "A different desired result")
+    })).toThrow("already used with different content");
+
+    const secondPreview = runAgentAskSettleCommand({
+      workspace, proposal: second.data.proposal.id, requestId: "settle-concurrent-second", disposition: "accepted"
+    });
+    const correctedPreview = runAgentAskSettleCommand({
+      workspace, proposal: corrected.data.proposal.id, requestId: "settle-concurrent-first-corrected", disposition: "accepted"
+    });
+
+    // Settling out of authoring order: second lands first, then the
+    // correction — proving order of arrival, not order of drafting, is what
+    // determines disjoint outcomes.
+    const secondReceipt = runAgentAskSettleCommand({
+      workspace, proposal: second.data.proposal.id, requestId: "settle-concurrent-second",
+      disposition: "accepted", apply: true, preview: secondPreview.data.receipt.previewFingerprint
+    });
+    const correctedReceipt = runAgentAskSettleCommand({
+      workspace, proposal: corrected.data.proposal.id, requestId: "settle-concurrent-first-corrected",
+      disposition: "accepted", apply: true, preview: correctedPreview.data.receipt.previewFingerprint
+    });
+
+    expect(secondReceipt.data.receipt.id).not.toBe(correctedReceipt.data.receipt.id);
+    expect(secondReceipt.data.receipt.projectSlug).toBe("other");
+    expect(correctedReceipt.data.receipt.projectSlug).toBe("demo");
+
+    const demoLog = readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8");
+    expect(demoLog).toContain("Record concurrent proof A, corrected");
+    expect(demoLog).not.toContain("Record concurrent proof B");
+    const otherRepo = path.join(path.dirname(repo), "other-repo");
+    const otherLog = readFileSync(path.join(otherRepo, "MISSION_LOG.md"), "utf8");
+    expect(otherLog).toContain("Record concurrent proof B");
+    expect(otherLog).not.toContain("Record concurrent proof A");
+
+    // The abandoned, never-settled original first Ask left no trace anywhere.
+    withDatabase(workspace, (db) => {
+      const settled = db.prepare("SELECT request_id FROM agent_ask_settlements").all() as { request_id: string }[];
+      expect(settled.map((row) => row.request_id).sort()).toEqual(["settle-concurrent-first-corrected", "settle-concurrent-second"]);
+      const proposals = db.prepare("SELECT request_id FROM agent_ask_proposals").all() as { request_id: string }[];
+      expect(proposals.map((row) => row.request_id).sort()).toEqual(["concurrent-first", "concurrent-first-corrected", "concurrent-second"]);
+    });
+  });
+
+  it("archives an accepted Ask's own .arcadia/asks/ source file into the same settlement commit", () => {
+    const { workspace, repo } = fixture();
+    const draft = runAgentAskDraftCommand({
+      dir: repo, workspace,
+      request: JSON.stringify({ agent_ask: "v1", request_id: "archive-on-accept", project: "demo", intent: "log", desired_result: "Record something archivable" })
+    });
+    expect(draft.data.workspaceStatus).toBe("previewed");
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "File Ask archive-on-accept"], { cwd: repo });
+
+    const preview = runAgentAskSettleCommand({ workspace, proposal: "archive-on-accept", requestId: "settle-archive-on-accept", disposition: "accepted" });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: "archive-on-accept", requestId: "settle-archive-on-accept", disposition: "accepted",
+      apply: true, preview: preview.data.receipt.previewFingerprint
+    });
+    expect(applied.data.receipt.effects).toContain("Archived the settled Ask file to .arcadia/asks/archive/agent-ask-archive-on-accept.yaml.");
+    expect(existsSync(draft.data.path)).toBe(false);
+    const archivedPath = path.join(repo, ".arcadia/asks/archive/agent-ask-archive-on-accept.yaml");
+    expect(existsSync(archivedPath)).toBe(true);
+    expect(JSON.parse(readFileSync(archivedPath, "utf8"))).toMatchObject({ request_id: "archive-on-accept" });
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+    const committedPaths = execFileSync("git", ["show", "--name-status", "--format=", "HEAD"], { cwd: repo, encoding: "utf8" });
+    expect(committedPaths).toContain("agent-ask-archive-on-accept.yaml");
+    expect(committedPaths).toContain("archive/agent-ask-archive-on-accept.yaml");
+  });
+
+  it("archives a rejected Ask's source file too, since nothing further will ever act on it", () => {
+    const { workspace, repo } = fixture();
+    const draft = runAgentAskDraftCommand({
+      dir: repo, workspace,
+      request: JSON.stringify({ agent_ask: "v1", request_id: "archive-on-reject", project: "demo", intent: "log", desired_result: "Record something that gets rejected" })
+    });
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "File Ask archive-on-reject"], { cwd: repo });
+
+    const preview = runAgentAskSettleCommand({ workspace, proposal: "archive-on-reject", requestId: "settle-archive-on-reject", disposition: "rejected" });
+    runAgentAskSettleCommand({
+      workspace, proposal: "archive-on-reject", requestId: "settle-archive-on-reject", disposition: "rejected",
+      apply: true, preview: preview.data.receipt.previewFingerprint
+    });
+    expect(existsSync(draft.data.path)).toBe(false);
+    expect(existsSync(path.join(repo, ".arcadia/asks/archive/agent-ask-archive-on-reject.yaml"))).toBe(true);
+  });
+
+  it("never archives a source file outside the settling repository's own .arcadia/asks/ directory", () => {
+    const { workspace, repo } = fixture();
+    const outsidePath = path.join(path.dirname(repo), "recovered-ask.yaml");
+    writeFileSync(outsidePath, JSON.stringify({ agent_ask: "v1", request_id: "outside-asks-dir", project: "demo", intent: "log", desired_result: "Recovered from elsewhere" }), "utf8");
+    runAgentAskPreviewCommand({ workspace, file: outsidePath });
+
+    const preview = runAgentAskSettleCommand({ workspace, proposal: "outside-asks-dir", requestId: "settle-outside-asks-dir", disposition: "accepted" });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: "outside-asks-dir", requestId: "settle-outside-asks-dir", disposition: "accepted",
+      apply: true, preview: preview.data.receipt.previewFingerprint
+    });
+    expect(applied.data.receipt.effects.some((effect) => effect.includes("Archived"))).toBe(false);
+    expect(existsSync(outsidePath)).toBe(true);
+    expect(existsSync(path.join(repo, ".arcadia/asks/archive"))).toBe(false);
+  });
+
+  it("leaves an already-settled Ask file untouched (a no-op, not an error) if it was already archived or removed by hand", () => {
+    const { workspace, repo } = fixture();
+    const draft = runAgentAskDraftCommand({
+      dir: repo, workspace,
+      request: JSON.stringify({ agent_ask: "v1", request_id: "archive-already-gone", project: "demo", intent: "log", desired_result: "Record something, then remove it by hand" })
+    });
+    rmSync(draft.data.path); // never committed, so removing it leaves nothing to stage — the working tree is clean either way
+
+    const preview = runAgentAskSettleCommand({ workspace, proposal: "archive-already-gone", requestId: "settle-archive-already-gone", disposition: "accepted" });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: "archive-already-gone", requestId: "settle-archive-already-gone", disposition: "accepted",
+      apply: true, preview: preview.data.receipt.previewFingerprint
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+    expect(applied.data.receipt.effects.some((effect) => effect.includes("Archived"))).toBe(false);
+  });
 });
 
 // Agent Ask is how coding agents reach governed Project state, so its refusals
@@ -1105,7 +1279,23 @@ describe("Agent Ask safety boundaries", () => {
           FOREIGN KEY (milestone_id) REFERENCES milestones(id) ON DELETE SET NULL,
           FOREIGN KEY (parent_work_item_id) REFERENCES work_items(id) ON DELETE SET NULL
         );
-        INSERT INTO work_items SELECT * FROM work_items__legacy_codex_check;
+        -- Named columns, not SELECT *: the snapshot above is taken from the
+        -- CURRENT table, so every column added since this legacy shape was
+        -- written (archived_at, archive_reason, and whatever comes next) would
+        -- otherwise be fed into a table that deliberately does not have them.
+        -- The legacy DDL is correct to omit them; the copy just has to say so.
+        INSERT INTO work_items (
+          id, project_id, milestone_id, title, raw_input, queue, work_classification,
+          next_action, expected_artifact, status, effort, clarification_status, gap_type,
+          open_question, clarification_source, confidence, parent_work_item_id, doc_ref,
+          execution_requirement_json, acceptance_criteria_json, created_at, updated_at
+        )
+        SELECT
+          id, project_id, milestone_id, title, raw_input, queue, work_classification,
+          next_action, expected_artifact, status, effort, clarification_status, gap_type,
+          open_question, clarification_source, confidence, parent_work_item_id, doc_ref,
+          execution_requirement_json, acceptance_criteria_json, created_at, updated_at
+        FROM work_items__legacy_codex_check;
         DROP TABLE work_items__legacy_codex_check;
         CREATE INDEX idx_work_items_project_id ON work_items(project_id);
         CREATE INDEX idx_work_items_queue ON work_items(queue);

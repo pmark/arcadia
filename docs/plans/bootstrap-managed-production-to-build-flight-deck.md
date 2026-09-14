@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to build Flight Deck
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-09-08
+updated: 2026-09-14
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -136,11 +136,11 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Expose a bounded server launch operation with replay-safe receipts and fresh authority checks only after the approval-free Arcadia Go production loop has been proven on the real host.
+    next_action: Expose a bounded server launch operation with replay-safe receipts and fresh authority checks.
     expected_artifact: Evidence satisfying Agent Ask expose-guarded-host-session-launch
     clarification: clarified
     confidence: high
-    source: Agent Ask repair-arcadia-go-codex-dx-2026-09-06-v2
+    source: Agent Ask break-launch-dependency-loop-2026-09-11
     acceptance_criteria:
       - Accept an explicit operator launch request for the previewed canonical Action; resolve repository, executable and arguments on the server.
       - Reject cross-origin, malformed, altered, stale and unauthorized requests; document/test the operator-action request guard for the existing local/tailnet deployment.
@@ -150,9 +150,9 @@ actions:
       - Inject at least one pre-spawn crash, one post-spawn crash and one lost response, and reconcile ambiguous launch identity without blind retry, proving at most one live conflicting execution across that bounded set of injected faults.
       - Support either a current explicit one-Session launch grant or a valid standing managed-production policy with an epoch-bound admission receipt; recheck Off immediately before launch commitment. Do not require a new human launch click for every authorized Action.
       - "Preserve the proof Artifact: Launch boundary, replay, bounded crash-window and conflict integration tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
-    depends_on: [support-selected-codex-and-claude-sessions, prove-zero-prompt-production-loop]
+    depends_on: [support-selected-codex-and-claude-sessions]
     decisions: []
-    references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "apps/dashboard/lib/arcadia-cli.ts", "src/sessions/index.ts", "src/docs/dispatch.ts", "src/execution/planningAuthorization.ts"]
+    references: []
   - id: observe-portfolio-agent-sessions
     title: Show all active Sessions and Runs with fresh observation and native recovery access.
     status: open
@@ -182,11 +182,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask reconcile-session-exits-to-next-move
     clarification: clarified
     confidence: high
-    source: Agent Ask apply-8020-yagni-to-bootstrap-plan-2026-09-06-v2
+    source: Agent Ask amend-for-candidate-continuation-2026-09-13
     acceptance_criteria:
       - Persist a thin exit observation/receipt through the existing operational model and link available Run, Artifact and Decision proof.
-      - Distinguish successful exit, failed execution, missing evidence, needs input and accepted Action completion; zero exit never marks done by itself.
-      - Release repository leases only on proven terminal state and preserve recoverable reconciliation errors.
+      - Distinguish successful exit, failed execution, missing evidence, needs input, incomplete with a resumable candidate, and accepted Action completion; zero exit never marks done by itself.
+      - Release repository leases only on proven terminal state and preserve recoverable reconciliation errors. Per Decision 0051, an incomplete exit whose candidate is resumable hands the existing repository lease to the next Session for the same Action rather than releasing it to a competing preparation; no new lease type is introduced.
       - Display the resulting canonical next Action or exact judgment/blocker with a usable link; automatic next admission only under the current Active production policy; no hand-edited governance state.
       - Retry/reconcile/reload is idempotent and does not duplicate completion, Decisions or execution.
       - "Preserve the proof Artifact: Exit-to-evidence-to-next-move lifecycle integration tests; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists."
@@ -194,7 +194,7 @@ actions:
       - Prove the quality gate rejects deliberately failed tests, absent artifacts and false agent completion claims as specified in contract 20.
     depends_on: [expose-guarded-host-session-launch]
     decisions: []
-    references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/sessions/index.ts", "src/commands/advance.ts", "src/stewardship/artifactValidator.ts", "src/docs/dispatch.ts"]
+    references: ["docs/decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md", "docs/proposals/host-owned-agent-workspace-contract.md", "docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/sessions/index.ts", "src/commands/advance.ts", "src/stewardship/artifactValidator.ts", "src/docs/dispatch.ts"]
   - id: advance-approved-production-work
     title: Advance accepted production work through canonical completion, Log and pointer transitions.
     status: open
@@ -225,10 +225,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask feed-and-supervise-managed-production
     clarification: clarified
     confidence: high
-    source: Agent Ask managed-production-completion-first-handoff-2026-09-05
+    source: Agent Ask fold-merge-detection-into-supervise-2026-09-14
     acceptance_criteria:
       - Reuse the existing persistent worker ownership, recovery, queue and Session paths; no second daemon, queue or browser-owned scheduling loop.
       - After a terminal accepted Action, re-evaluate current priority/capacity and launch the next eligible Action without a new human session, chat or Launch click.
+      - Detects when the base branch has advanced because an Action's PR merged, not only from an internal completion signal, and records that observation as an events-table row and a MISSION_LOG line naming the previous and new SHA, so a merge is never silent even if the worker was off or between ticks when it landed.
       - Use atomic leases and capacity reservations across competing ticks/workers; independent Projects may run concurrently within configured provider/host limits, but conflicting repositories cannot.
       - Off remains responsive during running work and stops future launch commitments; worker restart reconciles existing work and policy epoch before admission.
       - Blocked approval, unavailable provider or failed Project permits independent eligible work to progress. Exhausted capacity schedules bounded rechecks; repeated failures have finite repair/retry limits and one actionable stop.
@@ -236,7 +237,7 @@ actions:
       - Enforce finite repair/model-attempt budgets and deadlines; hung processes and disk/write failure remain visible and preserve work; do not release uncertain leases or loop across providers to bypass a failure.
     depends_on: [advance-approved-production-work, prove-provider-capacity-admission, expose-guarded-host-session-launch]
     decisions: []
-    references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/commands/worker.ts", "src/dispatch/queue.ts", "src/dispatch/order.ts", "src/sessions/index.ts"]
+    references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/commands/worker.ts", "src/dispatch/queue.ts", "src/dispatch/order.ts", "src/sessions/index.ts", "src/commands/go.ts", "src/workMonitoring/pullRequests.ts"]
   - id: expose-bootstrap-production-controls
     title: Expose the production switch, priority, capacity and review stops on the existing Work Queue.
     status: open
@@ -263,21 +264,22 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Prove two dependent Actions run from one activation using any reachable existing production control (the CLI production commands satisfy this; a dashboard control is not required for this proof).
+    next_action: Prove two dependent Actions run from one activation using any reachable existing production control (the CLI production commands satisfy this; a dashboard control is not required for this proof), with one Action continued across two Sessions in the same candidate.
     expected_artifact: Evidence satisfying Agent Ask prove-two-action-unattended-production
     clarification: clarified
     confidence: high
-    source: Agent Ask apply-8020-yagni-to-bootstrap-plan-2026-09-06-v2
+    source: Agent Ask amend-for-candidate-continuation-2026-09-13
     acceptance_criteria:
       - Provide a disposable or explicitly approved real Project with two small dependent Actions and a reachable existing production control (CLI or dashboard) before requesting live execution.
       - "Under bounded rehearsal authority activate once: Action A launches, validates, records canonical completion/pointer, and B launches without manual session setup or launch confirmation in between."
+      - "Per Decision 0051, deliberately split one Action across Sessions: Session A edits the candidate and exits incomplete without Git common-directory writes; Session B launches in the same worktree and branch, sees Session A's changes and finishes; a concurrent second live execution against that candidate is refused; the next Action receives a fresh candidate from the new governed base; no operator branch, worktree, commit, stash, rebase or cleanup step occurs."
       - Turn Off during work; prove no later launch, preserved current output and visible terminal reconciliation. Close browser/restart worker and prove no duplicate or reactivation after Off.
       - Record exact revision, host, provider, Action/Session identities, receipts and every operator intervention; missing real authorization/input remains one precise review, never fixture-as-live success.
       - Complete this vertical proof before broad rail, capture, navigation polish or default-home cutover; reuse existing review/proof specialists as needed.
       - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
     depends_on: [feed-and-supervise-managed-production]
     decisions: []
-    references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/operator-demo-and-release-contract.md", "docs/plans/idea-to-managed-build.md"]
+    references: ["docs/decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md", "docs/proposals/host-owned-agent-workspace-contract.md", "docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/operator-demo-and-release-contract.md", "docs/plans/idea-to-managed-build.md"]
   - id: prove-multi-provider-production-recovery
     title: Prove continuous production across configured providers, independent Plans and capacity recovery.
     status: open
@@ -386,25 +388,313 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Prove on the real host that Arcadia can hand off, execute, validate, preserve, and advance bounded coding work without operator permission relay while retaining every consequential approval boundary.
+    next_action: Prove the real-host zero-prompt preservation, separately authorized integration, evidence reconciliation and governed pointer transition after guarded launch and canonical completion machinery exist.
     expected_artifact: Evidence satisfying Agent Ask prove-zero-prompt-production-loop
     clarification: clarified
     confidence: high
-    source: Agent Ask repair-arcadia-go-codex-dx-2026-09-06-v2
+    source: Agent Ask trusted-protected-preservation-scope-2026-09-12-v2
     acceptance_criteria:
-      - Use a disposable or explicitly authorized Project with two dependent small Actions and the same Codex profile, protected launchers, workspace root, dependency bridge, build, test, SQLite, Git, network, and pull-request path that managed production will use.
-      - From one activation, prove Arcadia prepares Action A's worktree, advances and monitors it, edits, builds, tests, preserves its exact branch and draft pull request, reconciles evidence, advances the governed pointer, and starts Action B without a sandbox approval prompt or manual Session relay.
+      - Use the Zero Prompt Rehearsal fixture Project with two dependent small Actions and the same Codex profile, protected launchers, workspace root, dependency bridge, build, test, SQLite, Git, network and pull-request path that managed production will use.
+      - Before the counted run, record and verify every required launch, remote-preservation, integration and mechanical-completion grant, with its exact fixture scope, policy/receipt identity, freshness and limits. A missing, stale or insufficient grant stops preflight before the run begins; no new approval halfway through the proof is part of a successful run.
+      - Before the counted run, identify and verify the exact supported host entry point delivered by reconcile-session-exits-to-next-move and advance-approved-production-work that drives reconciliation and canonical completion without the continuous worker. Record its command and the revision-pinned arcadia-go-broker-codex host-controller invocation that prepares Action B, or the supported combined entry point if the prerequisite implementation provides one. Current go prepares work but does not supply the missing reconciliation bridge; until a supported bridge is shipped and verified, preflight refuses. Any explicit host-controller invocation is a visible, predeclared operator step, not autonomous execution.
+      - From one bounded activation and the predeclared visible host steps, Arcadia prepares Action A's worktree, advances and monitors it, edits, builds, tests, preserves its exact branch and authorized draft pull request, reconciles evidence through the implemented canonical completion bridge, advances the governed pointer to Action B and prepares Action B's worktree. Record and verify the actual authoritative Action completion and both pointer document effects; a successful command response alone is insufficient.
+      - After protected preservation, prove the host controller reports commitsToIntegrate greater than zero and integrates the exact candidate branch under the separately explicit integration grant recorded in preflight. Prove acceptance/completion and pointer advancement use their existing governed writers and applicable authority, never preservation alone.
+      - Keep zero sandbox approval prompts, zero hidden interventions and fully unattended execution distinct. This rehearsal requires the first two, permits only the predeclared visible operator steps, and makes no fully unattended execution claim. prove-two-action-unattended-production owns unattended Action B launch and execution after the continuous worker exists.
+      - One proof Artifact records preflight grants, exact supported entry points, all predeclared manual steps, and every command, profile, writable root, sandbox denial, approval event, worktree, branch, revision, Session, Action, validation result, commit, push, pull request, actual document transition and operator intervention. Zero sandbox approval prompts and zero hidden interventions are acceptance conditions; record visible manual invocation explicitly and never label it autonomous execution.
+    depends_on: [broker-candidate-preservation, let-agent-preserve-its-candidate, advance-approved-production-work]
+    decisions: []
+    references: ["docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "docs/working-copy-safety.md", "src/commands/worker.ts", "src/sessions/index.ts", "src/agentSetup/goBrokerAgentSetup.ts", "src/commands/go.ts", "src/ask/settlement.ts", "src/dispatch/pointer.ts"]
+  - id: harden-zero-prompt-production-loop
+    title: Harden the proven zero-prompt loop across profiles, approval gates, mid-flight shutdown and reinstall, once the happy path has run clean twice in a row.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Harden the proven zero-prompt loop across profiles, approval gates, mid-flight shutdown and reinstall, once the happy path has run clean twice in a row.
+    expected_artifact: Evidence satisfying Agent Ask harden-zero-prompt-production-loop
+    clarification: clarified
+    confidence: high
+    source: Agent Ask split-zero-prompt-loop-happy-path-2026-09-10-v3
+    acceptance_criteria:
       - Run the local lifecycle once with approval_policy on-request and once with the selected unattended profile; the first produces zero sandbox prompts on the common path and the second produces zero permission failures rather than merely suppressing prompts.
-      - Record every command, profile, writable root, sandbox denial, approval event, worktree, branch, revision, Session, Action, validation result, commit, push, pull request, and operator intervention in one proof Artifact; zero observed prompts and zero hidden interventions are acceptance conditions.
-      - Demonstrate that merge, deployment, publication, paid-capacity use, reset redemption, credential expansion, destructive cleanup, and unrelated network access still stop at their existing explicit gates.
+      - Demonstrate that merge, deployment, publication, paid-capacity use, reset redemption, credential expansion, destructive cleanup and unrelated network access still stop at their existing explicit gates.
       - Turn production Off during Action B and prove no later admission, no lost candidate work, bounded reconciliation, and no duplicate commit or pull request after worker restart.
       - Repeat the deterministic host probe after reinstall and from a fresh generated worktree; any regression makes go-broker status or production admission fail closed before a coding-agent model is launched.
-    depends_on: [broker-candidate-preservation]
+    depends_on: [prove-zero-prompt-production-loop]
     decisions: []
-    references: ["docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/working-copy-safety.md", "src/commands/worker.ts", "src/sessions/index.ts", "src/agentSetup/goBrokerAgentSetup.ts"]
+    references: ["docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/operator-demo-and-release-contract.md"]
+  - id: let-agent-preserve-its-candidate
+    title: A sandboxed coding-agent session can preserve its completed candidate through the protected controller boundary, without direct write access to shared Git metadata and without ad hoc approval escalation.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Connect trusted candidate-bound validation to the existing protected preservation request and prove it from the intended agent sandbox on a disposable fixture.
+    expected_artifact: Evidence satisfying Agent Ask let-agent-preserve-its-candidate
+    clarification: clarified
+    confidence: high
+    source: Agent Ask trusted-protected-preservation-scope-2026-09-12-v2
+    acceptance_criteria:
+      - Reuse the existing protected host controller, registered prepared worktree, Session lease and candidate-preservation machinery. Permit the minimal protected request transport needed for the intended sandbox to reach the existing host-side preservation operation; this is not a second controller or a general host command-execution service. Do not introduce another pointer writer, allow raw Git mutation, make shared Git metadata writable to the agent, or weaken the sandbox.
+      - "Validate only the declared objective checks required for preservation, sourced from the existing host-managed Project metadata validation_commands and frozen into the immutable authorized Action packet. Verify their definitions against that packet and its authorizing receipt; the request cannot select or replace checks. Use a host-owned validation runner as the trusted result producer: it runs those checks with candidate code sandboxed, observes their actual process outcomes and captures evidence in host-protected storage. An agent-writable evidence file, caller-supplied passed=true, or agent completion assertion is not trusted evidence. Passing a check proves only that check passed; do not build a general acceptance evaluator or require subjective acceptance criteria to become executable."
+      - Bind results to the exact candidate snapshot actually tested, repository/worktree/branch/base, Project and Action, immutable packet hash, check definitions and applicable authority including policy revision/epoch. Require that the validated candidate snapshot and the committed tree are identical. Cover mutation during validation as well as mutation between validation and preservation; hashing only the content found after testing is insufficient. Use the smallest sound existing snapshot or content-binding mechanism without requiring a new snapshot framework. Refuse absent, failed, skipped, stale or caller-fabricated evidence and changed bindings, preserve candidate files on refusal, and prove that altered content cannot inherit a passing receipt.
+      - Make the protected preservation request agent-callable for Codex and Claude through the existing launcher setup, Codex rule and Claude allowlist. From the intended Codex sandbox, prove the actual request reaches the protected host and creates one candidate commit on a disposable objective-criteria fixture, with no direct shared-Git write by the agent or ad hoc approval escalation; allowlist presence and unsandboxed direct invocation alone are insufficient proof.
+      - Update the arcadia-go skill to request protected preservation after required validation, while continuing to forbid direct mutable advance and git commit. Make go-broker status report named preservation readiness and fail closed when the launcher or required protected request path is unavailable.
+      - Preservation records a recoverable candidate and trusted validation only; it does not accept the Action, integrate or merge it, mark it done, or advance its pointer. Subjective acceptance and required independent review remain separate gates. Remote preservation requires its existing explicit authority; unauthorized or unreachable remote preservation remains honestly LOCAL ONLY with an exact recovery action.
+      - Reuse the existing request-id and recovery receipts; prove retries and a lost response yield one preserved commit without cross-worktree mutation or duplicate preservation.
+      - Preserve passing targeted tests and a reproducible protected-boundary fixture Artifact recording exact host/runtime revision, profile, writable roots, authoritative check definitions, trusted producer, check results, tested snapshot and committed-tree identities, Action, packet, authority, request/receipt, commit and every denial, approval or operator intervention. Include fixtures for content mutation during validation and between validation and preservation, showing altered content cannot inherit passing evidence. Include exact runnable operator QA steps and the end-user procedure in the PR; distinguish fixture proof from live production acceptance.
+    depends_on: []
+    decisions: []
+    references: ["src/agentSetup/goBrokerAgentSetup.ts", "src/goBroker.ts", "src/sessions/worktreePreparation.ts", "src/commands/go.ts", "docs/reports/prove-zero-prompt-production-loop-runbook.md", "src/commands/preserve.ts", "src/sessions/candidatePreservation.ts", "docs/working-copy-safety.md"]
+  - id: refuse-to-orphan-an-uncommitted-candidate
+    title: The host controller reports a prepared worktree that holds uncommitted work instead of silently preparing a duplicate for the same Action.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: The host controller resumes the existing prepared candidate for the same Action after its prior Session is proven terminal, and otherwise reports a prepared worktree holding uncommitted work instead of silently preparing a duplicate.
+    expected_artifact: Evidence satisfying Agent Ask refuse-to-orphan-an-uncommitted-candidate
+    clarification: clarified
+    confidence: high
+    source: Agent Ask amend-for-candidate-continuation-2026-09-13
+    acceptance_criteria:
+      - "`go` detects a prepared worktree for the current Action that holds uncommitted changes, and reports it with its exact path rather than preparing a second worktree for that Action."
+      - Per Decision 0051, when the same governed Action still owns the candidate and its prior Session is proven terminal, `go` resumes that candidate (same worktree and branch, repository lease handed over) without operator Git steps. In every other case - different Action, unproven exit, or a conflicting live Session - the reported state names the operator's choices explicitly (preserve the existing candidate, or discard it) and `go` takes neither action implicitly.
+      - "The `clutter` summary counts existing agent worktrees accurately; a run with two agent worktrees never reports `extraWorktrees: 0`."
+      - "Preserve the proof Artifact: fixture tests reproducing an uncommitted prepared worktree, asserting `go` resumes it for the same Action after a proven terminal Session and refuses to duplicate or resume it otherwise; include the exact runnable target and operator QA steps in the pull request."
+    depends_on: []
+    decisions: []
+    references: ["docs/decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md", "docs/proposals/host-owned-agent-workspace-contract.md", "src/commands/go.ts", "src/goBroker.ts", "docs/working-copy-safety.md"]
+  - id: register-agent-workspace-trust
+    title: "`go-broker install` establishes and verifies agent workspace trust for each configured Arcadia Project repository, and `go-broker status` reports it as a first-class readiness condition."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "`go-broker install` establishes and verifies agent workspace trust for each configured Arcadia Project repository, and `go-broker status` reports it as a first-class readiness condition."
+    expected_artifact: Evidence satisfying Agent Ask register-agent-workspace-trust
+    clarification: clarified
+    confidence: high
+    source: Agent Ask register-agent-workspace-trust-2026-09-11-v3
+    acceptance_criteria:
+      - "`go-broker install` records workspace trust for each configured Project repository at its repository root, using the agent's own trust mechanism (for Codex, a `[projects.\"<repo root>\"] trust_level = \"trusted\"` entry in the operator's config)."
+      - Trust is granted only to repositories already configured as Arcadia Projects. A parent directory, a shared worktree root such as `~/.codex/worktrees`, and the home directory are never trusted, and a test proves each of those three is refused.
+      - "`go-broker status` reports trust as a named check alongside the existing profile, executable and allowlist checks, and reports `ready: false` with the exact missing repository when trust is absent."
+      - "Re-running `install` is idempotent: an existing trusted entry is neither duplicated nor downgraded, and unrelated entries in the operator's config are preserved byte-for-byte."
+      - A repository the agent has never seen dispatches a prepared worktree with zero trust prompts and zero approval prompts, proven on a disposable fixture rather than asserted.
+      - State explicitly whether Claude Code's equivalent workspace-trust gate needs the same treatment; if it does, cover it, and if it does not, record why in the Artifact.
+      - "Preserve the proof Artifact: trust-scoping refusal tests, idempotence tests, and the zero-prompt fixture evidence; include the exact runnable target and operator QA steps in the pull request, or state why no runnable surface exists."
+    depends_on: []
+    decisions: []
+    references: ["src/agentSetup/goBrokerAgentSetup.ts", "src/goBroker.ts", "docs/reports/prove-zero-prompt-production-loop-runbook.md", "docs/working-copy-safety.md"]
+  - id: approval-must-apply-or-refuse
+    title: Review approval applies its effect to the authoritative document or refuses with a named reason, and never consumes an item it cannot apply.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Review approval applies its effect to the authoritative document or refuses with a named reason, and never consumes an item it cannot apply.
+    expected_artifact: Evidence satisfying Agent Ask approval-must-apply-or-refuse
+    clarification: clarified
+    confidence: high
+    source: Agent Ask approval-must-apply-or-refuse-2026-09-12
+    acceptance_criteria:
+      - Approving a review item writes the resulting state to the authoritative checked-in document, or refuses; the workspace database and that document never disagree about whether a Decision is answered.
+      - An approval whose effect cannot be applied is refused with a reason naming what is missing, and the item remains in the attention queue rather than leaving it.
+      - A `project_update` Ask whose `target_ref` names a field with no apply path is refused at preview time, rather than opening a clarification Decision that approval cannot act on.
+      - "A regression test reproduces R183: approve a project-field clarification and assert either the field moved and the document was updated, or the approval was refused and the item is still queued."
+      - "Preserve the proof Artifact: the regression test plus a before/after of the database and document state; include the exact runnable target and operator QA steps in the pull request."
+    depends_on: []
+    decisions: []
+    references: ["src/commands/review.ts", "src/ask/settlement.ts", "docs/decisions/0046-how-should-this-project-update-be-applied-set-the-work-pointer-to-let-agent-pres.md", "docs/proposals/validate-governed-documents.md"]
+  - id: isolate-agent-asks-from-production-handoff
+    title: Make Agent Ask authoring, preview, correction, settlement, and preservation use uniquely named files on Arcadia-owned isolated branches and worktrees so concurrent Asks cannot collide and no Ask dirties the shared base or blocks Arcadia Go.
+    status: done
+    responsibility: agent
+    effort: session
+    next_action: Make Agent Ask authoring, preview, correction, settlement, and preservation use uniquely named files on Arcadia-owned isolated branches and worktrees so concurrent Asks cannot collide and no Ask dirties the shared base or blocks Arcadia Go.
+    expected_artifact: Evidence satisfying Agent Ask isolate-agent-asks-from-production-handoff
+    clarification: clarified
+    confidence: high
+    source: Agent Ask isolate-concurrent-agent-asks-from-production-handoff-2026-09-12
+    acceptance_criteria:
+      - Every newly authored or edited Agent Ask is stored as `.arcadia/asks/agent-ask-<unique-stub>.yaml` in a uniquely identified, recoverable Arcadia-owned Ask branch and worktree rather than the repository's shared base checkout; the stub is stable for one request and collision-resistant across concurrent agents.
+      - Multiple Ask files may coexist. Preview, correction, settlement, status, and cleanup require an exact file path or request id and never select an arbitrary glob match; two concurrent Ask drafts cannot overwrite, settle, or retire each other.
+      - Preview and correction resolve the Ask by request id from that isolated location, and settlement commits only the exact previewed Ask effects on its Ask branch before the existing authorized integration and push boundaries apply.
+      - When Arcadia Go finds a legacy root `agent-ask.yaml` change as the only dirty base path, it atomically preserves that exact content and diff under a uniquely named Ask file in an isolated Ask branch and worktree, reports the recovery location, restores no unrelated path, and continues preparing the governed production worktree in the same operator invocation.
+      - If any dirty base path is not recognized as isolated Ask input, or Ask preservation cannot be proven complete, Arcadia Go retains the existing fail-closed refusal and names every preserved blocker; no work is discarded, staged, or silently included.
+      - The protected broker and Agent Ask skill use the isolated path without giving a sandboxed agent general shared-Git mutation, and retries return the same branch, worktree, request id, and receipt without duplicate commits or orphaned drafts.
+      - A fixture reproduces the 2026-09-12 failure from a base containing only a modified agent-ask.yaml, then proves one Arcadia Go activation preserves the Ask and prepares the governed Action worktree with zero operator Git steps; fault tests cover interruption before and after Ask preservation.
+      - A concurrency fixture creates, previews, corrects, and settles at least two Ask files in parallel and proves their paths, request ids, receipts, branches, effects, and cleanup remain disjoint.
+      - The operator-facing QA plan identifies the exact local command and paths, demonstrates the preserved Ask can still be previewed or settled, and demonstrates the prepared production worktree starts from the unchanged clean base.
+    depends_on: []
+    decisions: []
+    references: ["docs/proposals/validate-governed-documents.md", "docs/proposals/gate-judgment-not-mechanics.md", "docs/decisions/0009-agent-neutral-go-handoff.md", "docs/decisions/0023-work-pointer-under-concurrency.md", "docs/working-copy-safety.md", "src/commands/go.ts", "src/goBroker.ts", "src/ask/settlement.ts", "src/agentSetup/goBrokerAgentSetup.ts"]
+  - id: make-go-total-across-plans
+    title: Make the shared transition resolver and Arcadia Go activate the Plan whose earliest eligible Action is highest in the explicit queue whenever the active Plan is absent or complete.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make the shared transition resolver and Arcadia Go activate the Plan whose earliest eligible Action is highest in the explicit queue whenever the active Plan is absent or complete.
+    expected_artifact: Evidence satisfying Agent Ask make-go-total-across-plans
+    clarification: clarified
+    confidence: high
+    source: Agent Ask implement-total-go-plan-selection-2026-09-12
+    acceptance_criteria:
+      - Arcadia Go, Action completion, and managed-production continuation use one shared total transition resolver for active work, completed Plans, absent active-Plan pointers, stale missing-Plan pointers, Decisions, external blockers, reconciliation, waiting, and Project milestone completion.
+      - When no active Plan can continue, Arcadia activates the Plan whose earliest eligible Action is highest in the existing explicit operator-owned queue and makes that Action current without another operator round trip; dependencies, Decisions, responsibility, and approval gates filter eligibility without changing queue priority.
+      - A stale or missing active-Plan pointer is repaired automatically only when checked-in documents and explicit queue order determine one eligible replacement without ambiguity; otherwise Arcadia emits one actionable Decision or named truth blocker and preserves all work.
+      - Approved legacy Actions lacking explicit order receive a previewed, reversible FIFO seed before automatic Plan selection; timestamps never silently reorder work after that seed and existing explicitly ordered work is unchanged.
+      - No separate urgency or priority field is introduced. Reordering the explicit queue remains the single way to change priority until a concrete accepted requirement cannot be represented there.
+      - "Repeated, concurrent, interrupted, and lost-response transitions are idempotent: one Plan is activated, one Action becomes current, and retries return the same durable receipt without duplicate pointer or queue effects."
+      - Fixtures cover a completed active Plan, no active Plan, a dangling missing-Plan pointer, one eligible candidate, several candidates with explicit order, blocked higher candidates, unordered legacy candidates, a genuine ambiguity requiring one Decision, and a Project with no remaining work.
+      - The operator-facing QA plan gives the exact local Arcadia Go commands and observable pointer, queue, receipt, and refusal results; the end-user procedure is stated separately if it differs.
+    depends_on: [isolate-agent-asks-from-production-handoff]
+    decisions: []
+    references: ["docs/decisions/0048-make-arcadia-go-a-total-governed-transition-that-keeps-advancing-whenever-the-ne.md", "docs/decisions/0012-the-session-primitive.md", "docs/decisions/0039-prioritize-agent-ask-and-work-queue.md", "docs/plans/agent-ask-execution-queue.md", "src/commands/advance.ts", "src/commands/go.ts", "src/docs/dispatch.ts"]
+  - id: build-autonomous-defect-loop
+    title: Add the one-line defect intake and automatic bounded triage loop approved by Decision 0049.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Add the one-line defect intake and automatic bounded triage loop approved by Decision 0049.
+    expected_artifact: Evidence satisfying Agent Ask build-autonomous-defect-loop
+    clarification: clarified
+    confidence: high
+    source: Agent Ask implement-autonomous-defect-triage-2026-09-12
+    acceptance_criteria:
+      - "`arcadia defect <summary>` records a durable Back Burner defect signal with a stable id and automatically captured Project, source, time, repository revision when available, and optional evidence; successful intake makes zero model calls."
+      - "Repeated intake is lossless and replay-safe: exact retries are idempotent, deterministic matching identifies likely duplicates without silently discarding distinct reports, and the reporter receives the durable record id."
+      - The existing persistent worker periodically admits defect triage under one explicit token and attempt budget, performs deterministic reproduction and deduplication before any model call, and reuses fresh included-capacity receipts when available; unknown capacity, purchased credits, and reset redemption never count as free.
+      - "Each triage run leaves a durable disposition and evidence: close noise, enrich or link a duplicate, preserve a waiting item with a concrete trigger, promote a formal governed Action into the explicit queue, or perform a validated low-risk reversible repair within standing authority."
+      - A stop-the-line defect bypasses periodic cadence when it blocks unrelated work, requires a remembered human workaround, or blocks its own reporting or repair; promotion changes the queue and current pointer rather than merely adding an urgent label.
+      - Merge, deployment, publication, spending, credentials, messaging, production access, destructive changes, operator judgment, and any authority not already granted remain gated; automation reports the exact gate instead of treating urgency as permission.
+      - Deterministic tests cover zero-model intake, retry, duplicate candidates, periodic budget exhaustion, worker restart, stale or unknown capacity, Action promotion, safe repair, a refused consequential repair, and immediate stop-the-line escalation.
+      - The operator-facing QA plan includes exact CLI intake, worker/recovery command, Back Burner and queue inspection steps, observable expected results, and whether the procedure is also the end-user procedure.
+    depends_on: [make-go-total-across-plans]
+    decisions: []
+    references: ["docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md", "docs/decisions/0037-project-to-arcadia-signal-channel.md", "docs/plans/provider-capacity-harvesting.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "src/commands/worker.ts"]
+  - id: build-agent-agnostic-learning-loop
+    title: Let Arcadia and every Project capture concise lessons cheaply and automatically turn supported lessons into durable reusable capability.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Let Arcadia and every Project capture concise lessons cheaply and automatically turn supported lessons into durable reusable capability.
+    expected_artifact: Evidence satisfying Agent Ask build-agent-agnostic-learning-loop
+    clarification: clarified
+    confidence: high
+    source: Agent Ask implement-agent-agnostic-learning-loop-2026-09-12
+    acceptance_criteria:
+      - "`arcadia learn <summary>` records a durable lesson signal with a stable id, explicit Project or Arcadia scope, and automatically captured source, time, repository revision when available, confidence/freshness, and statement kind; successful intake makes zero model calls and requires no coding-agent session."
+      - The record distinguishes direct operator statements, observed outcomes, agent inferences, and imported evidence; an inference never silently becomes an operator preference, Project truth, approved Decision, or authority grant.
+      - Lesson intake reuses the defect signal's replay, likely-duplicate, Back Burner, worker, budget, recovery, and receipt machinery while keeping defect repair and lesson incorporation as distinct dispositions; no second daemon, scheduler, backlog, or generic memory store is introduced.
+      - The periodic worker performs deterministic normalization, exact matching, source/freshness checks, and support counting before any model call, then uses only the bounded admitted allowance to dismiss noise, merge or link evidence, retain a trigger, or propose and safely apply the smallest durable incorporation.
+      - "A supported lesson lands in one existing authoritative home appropriate to its claim: regression test or guard, Project reference or Log, Arcadia Way guidance, Decision, governed Action, or reusable skill; the original signal remains linked as provenance and the outcome is inspectable, correctable, and retractable."
+      - Project-scoped or sensitive material cannot cross into another Project or Arcadia-wide guidance by similarity alone. Cross-scope promotion requires evidence from more than one Project or one high-severity trust/safety incident, preserves source links, and excludes credentials, raw transcripts, unrelated repository content, and private data not authorized for that scope.
+      - A lesson meeting the existing stop-the-line test bypasses periodic cadence. All other learning is subordinate to current governed work; merge, deployment, publication, spending, credentials, messaging, production access, destructive changes, constitutional changes, and unresolved operator judgment retain their existing gates.
+      - Deterministic tests cover Arcadia and Project scope, zero-model intake, retry, likely duplicates, direct-statement versus inference provenance, stale evidence, correction/retraction, bounded reflection, safe test or reference promotion, refused cross-scope disclosure, worker restart, and stop-the-line escalation.
+      - The operator-facing QA plan includes exact CLI intake, scope selection, worker/recovery command, signal and promoted-record inspection, correction/retraction, and observable expected results; state whether this is also the end-user procedure.
+    depends_on: [build-autonomous-defect-loop]
+    decisions: []
+    references: ["docs/decisions/0050-add-a-nearly-free-automatic-learning-loop-that-lets-any-arcadia-surface-or-proje.md", "docs/decisions/0020-compounding-agent-production-principles.md", "docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md", "docs/plans/provider-capacity-harvesting.md", "OPERATOR_CONTEXT.md"]
+  - id: design-and-build-the-mechanism-that
+    title: Design and build the mechanism that discovers unprocessed .arcadia/asks/ files whenever a real Arcadia workspace becomes available, regardless of which command or environment triggered that availability.
+    status: done
+    responsibility: agent
+    effort: session
+    next_action: Design and build the mechanism that discovers unprocessed .arcadia/asks/ files whenever a real Arcadia workspace becomes available, regardless of which command or environment triggered that availability.
+    expected_artifact: Evidence satisfying Agent Ask design-and-build-the-mechanism-that
+    clarification: clarified
+    confidence: high
+    source: Agent Ask design-agent-ask-discovery-2026-09-13
+    acceptance_criteria:
+      - A design is written down (in the Action, a Decision, or a short doc) naming exactly where discovery hooks in and why, given that arcadia go is not a reliable trigger.
+      - Every .arcadia/asks/*.yaml file whose request_id the database does not yet know is previewed automatically the next time any agent-ask command successfully resolves a real workspace in that repository, with no separate command required.
+      - A file that fails validation during automatic discovery is reported clearly (e.g. in that commands own output) rather than silently swallowed or left to repeatedly fail on every future command.
+      - Test coverage proves discovery fires from more than one entry point (e.g. both draft and preview), not only from a single hardcoded command.
+    depends_on: []
+    decisions: []
+    references: []
+  - id: settle-onto-candidate-branch
+    title: Settlement commits produced during an arcadia go session land on the Action candidate branch and ship in its PR, never as loose commits on main.
+    status: done
+    responsibility: agent
+    effort: session
+    next_action: Settlement commits produced during an arcadia go session land on the Action candidate branch and ship in its PR, never as loose commits on main.
+    expected_artifact: Evidence satisfying Agent Ask settle-onto-candidate-branch
+    clarification: clarified
+    confidence: high
+    source: Agent Ask one-session-completes-one-action-2026-09-13
+    acceptance_criteria:
+      - Running agent-ask settle --apply inside a candidate worktree commits to that candidate branch.
+      - A test proves a session that settles and opens a PR leaves main with no new local-only commits.
+    depends_on: []
+    decisions: []
+    references: []
+  - id: merge-completes-the-action
+    title: The Action PR carries its completion evidence and pointer advance, so merging it marks the Action done without a separate complete Ask or session.
+    status: done
+    responsibility: agent
+    effort: session
+    next_action: The Action PR carries its completion evidence and pointer advance, so merging it marks the Action done without a separate complete Ask or session.
+    expected_artifact: Evidence satisfying Agent Ask merge-completes-the-action
+    clarification: clarified
+    confidence: high
+    source: Agent Ask one-session-completes-one-action-2026-09-13
+    acceptance_criteria:
+      - arcadia go can stage a complete settlement (evidence per acceptance criterion, pointer advance) into the candidate PR before merge.
+      - After the PR merges, PROJECT.md current_action names the next governed Action with no further command run.
+      - A stale or failed criterion still refuses completion, as the complete intent does today.
+    depends_on: [settle-onto-candidate-branch]
+    decisions: []
+    references: []
+  - id: triage-decisions-before-opening
+    title: A Decision opens only when the Constitution gate test holds (a reasonable person could choose differently, or the move resists reversal or reaches outside the work); otherwise the agent applies its recommendation and reports it in the PR.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: A Decision opens only when the Constitution gate test holds (a reasonable person could choose differently, or the move resists reversal or reaches outside the work); otherwise the agent applies its recommendation and reports it in the PR.
+    expected_artifact: Evidence satisfying Agent Ask triage-decisions-before-opening
+    clarification: clarified
+    confidence: high
+    source: Agent Ask one-session-completes-one-action-2026-09-13
+    acceptance_criteria:
+      - Decision-intent settlement records which gate question fired, and refuses to open a Decision when neither fires and the move is reversible, converting it into a PR-reported assumption.
+      - Approval boundaries (merge, deploy, publish, spend, credentials, production, messaging) always open a Decision regardless of triage.
+      - A fixture shaped like Decision 0052 is reported, not opened.
+    depends_on: []
+    decisions: []
+    references: []
+  - id: divide-instead-of-stall
+    title: A session that cannot finish its Action ends by completing the finishable slice and queueing the remainder as new Actions in the same PR, so the pointer always advances.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: A session that cannot finish its Action ends by completing the finishable slice and queueing the remainder as new Actions in the same PR, so the pointer always advances.
+    expected_artifact: Evidence satisfying Agent Ask divide-instead-of-stall
+    clarification: clarified
+    confidence: high
+    source: Agent Ask one-session-completes-one-action-2026-09-13
+    acceptance_criteria:
+      - arcadia go refuses to end a session with the current Action unchanged unless it records an operator question or external blocker.
+      - A split settlement marks the finished slice done and places remainder Actions immediately after it in the queue.
+    depends_on: [merge-completes-the-action]
+    decisions: []
+    references: []
+  - id: settle-complete-from-drafted-ask
+    title: Settling a complete Ask whose drafted file sits in the candidate worktree succeeds without manual relocation.
+    status: done
+    responsibility: agent
+    effort: session
+    next_action: Settling a complete Ask whose drafted file sits in the candidate worktree succeeds without manual relocation.
+    expected_artifact: Evidence satisfying Agent Ask settle-complete-from-drafted-ask
+    clarification: clarified
+    confidence: high
+    source: Agent Ask settle-complete-from-drafted-ask-2026-09-14
+    acceptance_criteria:
+      - A test drafts a complete Ask in a candidate worktree and settles it with --apply, with no file moved or commit rewritten.
+      - The candidate_revision check still refuses evidence recorded against a revision whose code differs from HEAD.
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
-current_action: prove-zero-prompt-production-loop
+current_action: expose-guarded-host-session-launch
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---

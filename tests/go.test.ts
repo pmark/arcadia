@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
+import { runAgentAskPreviewCommand } from "../src/commands/agentAsk.js";
 import { runGoCommand } from "../src/commands/go.js";
 import { runTidyCommand } from "../src/commands/tidy.js";
 import { withReadOnlyDatabase } from "../src/db/connection.js";
@@ -208,6 +209,188 @@ describe("arcadia go", () => {
     expectValidation(() => runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true }), "not clean");
     expect(existsSync(fixture.feature)).toBe(true);
     expect(git(fixture.main, ["rev-parse", "main"]).trim()).not.toBe(git(fixture.feature, ["rev-parse", "HEAD"]).trim());
+  });
+
+  it("recovers a drifted legacy agent-ask.yaml on the base worktree instead of blocking the handoff", () => {
+    const fixture = createFixture("codex/recover-legacy-ask");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    writeFileSync(
+      path.join(fixture.main, "agent-ask.yaml"),
+      "agent_ask: v1\nrequest_id: legacy-drift-2026-09-12\nproject: unknown\nintent: log\ndesired_result: test drift\n"
+    );
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true });
+
+    expect(result.data.applied).toBe(true);
+    expect(result.data.askRecoveries).toHaveLength(1);
+    const recovery = result.data.askRecoveries[0]!;
+    expect(recovery.askFile).toMatch(/^\.arcadia\/asks\/agent-ask-legacy-drift-2026-09-12-.+\.yaml$/);
+    expect(recovery.requestId).toBe("legacy-drift-2026-09-12");
+    expect(existsSync(path.join(fixture.main, "agent-ask.yaml"))).toBe(false);
+    expect(git(fixture.main, ["status", "--porcelain"]).trim()).toBe("");
+
+    const recoveredContent = git(fixture.main, ["show", `${recovery.branch}:${recovery.askFile}`]);
+    expect(recoveredContent).toContain("request_id: legacy-drift-2026-09-12");
+
+    // The preserved Ask can be previewed straight from its isolated branch by
+    // request id alone — no manual `git show` into a scratch file needed.
+    const previewed = runAgentAskPreviewCommand({
+      workspace: fixture.workspace, requestId: "legacy-drift-2026-09-12", dir: fixture.main
+    });
+    expect(previewed.data.proposal.normalized.requestId).toBe("legacy-drift-2026-09-12");
+    expect(previewed.data.proposal.normalized.desiredResult).toBe("test drift");
+  });
+
+  it("recovers two simultaneously drifting Asks (source and base worktree) onto fully disjoint branches within the same shared repository", () => {
+    const fixture = createFixture("codex/recover-concurrent-source-and-base");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    // Both the source worktree (an agent's in-progress branch) and the base
+    // worktree (the shared checkout `arcadia go` is reconciling into) have
+    // drifted at once — the realistic case this Action's concurrency
+    // criterion is about, since both recoveries below run against the same
+    // `repo` (shared .git, shared refs namespace) in a single `go` call.
+    writeFileSync(
+      path.join(fixture.feature, "agent-ask.yaml"),
+      "agent_ask: v1\nrequest_id: concurrent-drift-source\nproject: unknown\nintent: log\ndesired_result: concurrent drift on source\n"
+    );
+    writeFileSync(
+      path.join(fixture.main, "agent-ask.yaml"),
+      "agent_ask: v1\nrequest_id: concurrent-drift-base\nproject: unknown\nintent: log\ndesired_result: concurrent drift on base\n"
+    );
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true });
+
+    expect(result.data.askRecoveries).toHaveLength(2);
+    const [recoverySource, recoveryBase] = result.data.askRecoveries;
+    expect(recoverySource!.requestId).toBe("concurrent-drift-source");
+    expect(recoveryBase!.requestId).toBe("concurrent-drift-base");
+    expect(recoverySource!.branch).not.toBe(recoveryBase!.branch);
+    expect(recoverySource!.askFile).not.toBe(recoveryBase!.askFile);
+    expect(existsSync(path.join(fixture.feature, "agent-ask.yaml"))).toBe(false);
+    expect(existsSync(path.join(fixture.main, "agent-ask.yaml"))).toBe(false);
+    expect(git(fixture.main, ["status", "--porcelain"]).trim()).toBe("");
+
+    // Both branches genuinely exist, side by side, in the one shared repo —
+    // neither recovery's worktree-add/commit/worktree-remove sequence
+    // clobbered the other's branch or left it half-written.
+    expect(git(fixture.main, ["branch", "--list", "ask/recover-*"]).trim().split("\n")).toHaveLength(2);
+    expect(git(fixture.main, ["show", `${recoverySource!.branch}:${recoverySource!.askFile}`])).toContain("concurrent drift on source");
+    expect(git(fixture.main, ["show", `${recoveryBase!.branch}:${recoveryBase!.askFile}`])).toContain("concurrent drift on base");
+
+    const previewedSource = runAgentAskPreviewCommand({ workspace: fixture.workspace, requestId: "concurrent-drift-source", dir: fixture.main });
+    const previewedBase = runAgentAskPreviewCommand({ workspace: fixture.workspace, requestId: "concurrent-drift-base", dir: fixture.main });
+    expect(previewedSource.data.proposal.normalized.desiredResult).toBe("concurrent drift on source");
+    expect(previewedBase.data.proposal.normalized.desiredResult).toBe("concurrent drift on base");
+  });
+
+  it("recovers a suffixed legacy root Ask (agent-ask-<topic>.yaml), the name the old convention produced most often", () => {
+    const fixture = createFixture("codex/recover-suffixed-legacy-ask");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    writeFileSync(
+      path.join(fixture.main, "agent-ask-triage.yaml"),
+      "agent_ask: v1\nrequest_id: suffixed-drift-2026-09-13\nproject: unknown\nintent: log\ndesired_result: test suffixed drift\n"
+    );
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true });
+
+    expect(result.data.applied).toBe(true);
+    expect(result.data.askRecoveries).toHaveLength(1);
+    const recovery = result.data.askRecoveries[0]!;
+    // Renamed into the isolated directory under its own request id, exactly
+    // like the bare legacy name — the topic suffix carries no identity.
+    expect(recovery.askFile).toMatch(/^\.arcadia\/asks\/agent-ask-suffixed-drift-2026-09-13-.+\.yaml$/);
+    expect(recovery.requestId).toBe("suffixed-drift-2026-09-13");
+    expect(existsSync(path.join(fixture.main, "agent-ask-triage.yaml"))).toBe(false);
+    expect(git(fixture.main, ["status", "--porcelain"]).trim()).toBe("");
+    expect(git(fixture.main, ["show", `${recovery.branch}:${recovery.askFile}`])).toContain("request_id: suffixed-drift-2026-09-13");
+  });
+
+  it("still fails closed on an unrelated root YAML file that only looks adjacent to the Ask convention", () => {
+    const fixture = createFixture("codex/unrelated-root-yaml");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    writeFileSync(path.join(fixture.main, "agent-config.yaml"), "unrelated: true\n");
+
+    expectValidation(() => runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true }), "not clean");
+    expect(existsSync(path.join(fixture.main, "agent-config.yaml"))).toBe(true);
+  });
+
+  it("recovers a correctly named isolated Ask draft left dirty on the base worktree, without renaming it", () => {
+    const fixture = createFixture("codex/recover-isolated-draft");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    mkdirSync(path.join(fixture.main, ".arcadia", "asks"), { recursive: true });
+    writeFileSync(
+      path.join(fixture.main, ".arcadia", "asks", "agent-ask-isolated-draft-2026-09-13.yaml"),
+      "agent_ask: v1\nrequest_id: isolated-draft-2026-09-13\nproject: unknown\nintent: log\ndesired_result: test isolated draft drift\n"
+    );
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true });
+
+    expect(result.data.applied).toBe(true);
+    expect(result.data.askRecoveries).toHaveLength(1);
+    const recovery = result.data.askRecoveries[0]!;
+    expect(recovery.askFile).toBe(".arcadia/asks/agent-ask-isolated-draft-2026-09-13.yaml");
+    expect(recovery.requestId).toBe("isolated-draft-2026-09-13");
+    expect(existsSync(path.join(fixture.main, ".arcadia", "asks", "agent-ask-isolated-draft-2026-09-13.yaml"))).toBe(false);
+    expect(git(fixture.main, ["status", "--porcelain"]).trim()).toBe("");
+    expect(git(fixture.main, ["show", `${recovery.branch}:${recovery.askFile}`])).toContain("request_id: isolated-draft-2026-09-13");
+  });
+
+  it("fails closed and preserves the original drifted file when recovery is interrupted before the commit", () => {
+    const fixture = createFixture("codex/recovery-interrupted-early");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    writeFileSync(
+      path.join(fixture.main, "agent-ask.yaml"),
+      "agent_ask: v1\nrequest_id: interrupted-early-2026-09-13\nproject: unknown\nintent: log\ndesired_result: test\n"
+    );
+
+    expect(() => runGoCommand({
+      repo: fixture.main,
+      source: fixture.feature,
+      apply: true,
+      testHooks: { askRecovery: { afterWorktreeCreatedBeforeWrite() { throw new Error("synthetic recovery write failure"); } } }
+    })).toThrow("synthetic recovery write failure");
+
+    expect(existsSync(path.join(fixture.main, "agent-ask.yaml"))).toBe(true);
+    expect(git(fixture.main, ["status", "--porcelain"]).trim()).toBe("?? agent-ask.yaml");
+    // No orphaned isolated worktree is left registered against the repository.
+    expect(git(fixture.main, ["worktree", "list", "--porcelain"])).not.toContain(".arcadia-ask-recovery-");
+
+    const retried = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true });
+    expect(retried.data.applied).toBe(true);
+    expect(retried.data.askRecoveries).toHaveLength(1);
+    expect(existsSync(path.join(fixture.main, "agent-ask.yaml"))).toBe(false);
+  });
+
+  it("retries idempotently, without a duplicate commit or an orphaned draft, when recovery is interrupted after the commit", () => {
+    const fixture = createFixture("codex/recovery-interrupted-late");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    writeFileSync(
+      path.join(fixture.main, "agent-ask.yaml"),
+      "agent_ask: v1\nrequest_id: interrupted-late-2026-09-13\nproject: unknown\nintent: log\ndesired_result: test\n"
+    );
+
+    expect(() => runGoCommand({
+      repo: fixture.main,
+      source: fixture.feature,
+      apply: true,
+      testHooks: { askRecovery: { afterCommitBeforeCleanup() { throw new Error("synthetic cleanup failure"); } } }
+    })).toThrow("synthetic cleanup failure");
+
+    // The commit already landed on the isolated branch before the injected failure.
+    const branches = git(fixture.main, ["branch", "--list", "ask/recover-*"]).trim();
+    expect(branches.split("\n")).toHaveLength(1);
+    expect(existsSync(path.join(fixture.main, "agent-ask.yaml"))).toBe(true);
+
+    const retried = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true });
+    expect(retried.data.applied).toBe(true);
+    expect(retried.data.askRecoveries).toHaveLength(1);
+    expect(existsSync(path.join(fixture.main, "agent-ask.yaml"))).toBe(false);
+    expect(git(fixture.main, ["status", "--porcelain"]).trim()).toBe("");
+    // Retrying produced no second branch and no second commit under this same drift.
+    const branchesAfterRetry = git(fixture.main, ["branch", "--list", "ask/recover-*"]).trim();
+    expect(branchesAfterRetry).toBe(branches);
+    const recoveredBranch = retried.data.askRecoveries[0]!.branch!;
+    expect(git(fixture.main, ["log", recoveredBranch, "--oneline", "--grep=Recover drifted Agent Ask"]).trim().split("\n")).toHaveLength(1);
   });
 
   it("fails closed on divergent history", () => {

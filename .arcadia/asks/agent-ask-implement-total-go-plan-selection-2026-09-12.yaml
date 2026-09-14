@@ -1,0 +1,42 @@
+agent_ask: v1
+request_id: implement-total-go-plan-selection-2026-09-12
+project: arcadia
+intent: action
+requested_authority: apply_if_approved
+desired_result: >-
+  Implement Decision 0048 so Arcadia Go crosses missing or completed active-Plan
+  boundaries automatically from the explicit Action queue and stops only when
+  the next governed transition genuinely needs operator judgment or authority.
+actions:
+  - id: make-go-total-across-plans
+    desired_result: >-
+      Make the shared transition resolver and Arcadia Go activate the Plan whose
+      earliest eligible Action is highest in the explicit queue whenever the
+      active Plan is absent or complete.
+    acceptance:
+      - >-
+        Arcadia Go, Action completion, and managed-production continuation use one shared total transition resolver for active work, completed Plans, absent active-Plan pointers, stale missing-Plan pointers, Decisions, external blockers, reconciliation, waiting, and Project milestone completion.
+      - >-
+        When no active Plan can continue, Arcadia activates the Plan whose earliest eligible Action is highest in the existing explicit operator-owned queue and makes that Action current without another operator round trip; dependencies, Decisions, responsibility, and approval gates filter eligibility without changing queue priority.
+      - >-
+        A stale or missing active-Plan pointer is repaired automatically only when checked-in documents and explicit queue order determine one eligible replacement without ambiguity; otherwise Arcadia emits one actionable Decision or named truth blocker and preserves all work.
+      - >-
+        Approved legacy Actions lacking explicit order receive a previewed, reversible FIFO seed before automatic Plan selection; timestamps never silently reorder work after that seed and existing explicitly ordered work is unchanged.
+      - >-
+        No separate urgency or priority field is introduced. Reordering the explicit queue remains the single way to change priority until a concrete accepted requirement cannot be represented there.
+      - >-
+        Repeated, concurrent, interrupted, and lost-response transitions are idempotent: one Plan is activated, one Action becomes current, and retries return the same durable receipt without duplicate pointer or queue effects.
+      - >-
+        Fixtures cover a completed active Plan, no active Plan, a dangling missing-Plan pointer, one eligible candidate, several candidates with explicit order, blocked higher candidates, unordered legacy candidates, a genuine ambiguity requiring one Decision, and a Project with no remaining work.
+      - >-
+        The operator-facing QA plan gives the exact local Arcadia Go commands and observable pointer, queue, receipt, and refusal results; the end-user procedure is stated separately if it differs.
+    dependencies:
+      - isolate-agent-asks-from-production-handoff
+    references:
+      - docs/decisions/0048-make-arcadia-go-a-total-governed-transition-that-keeps-advancing-whenever-the-ne.md
+      - docs/decisions/0012-the-session-primitive.md
+      - docs/decisions/0039-prioritize-agent-ask-and-work-queue.md
+      - docs/plans/agent-ask-execution-queue.md
+      - src/commands/advance.ts
+      - src/commands/go.ts
+      - src/docs/dispatch.ts

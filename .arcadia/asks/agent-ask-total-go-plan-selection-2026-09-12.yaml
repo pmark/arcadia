@@ -1,0 +1,51 @@
+agent_ask: v1
+request_id: total-go-plan-selection-2026-09-12
+project: arcadia
+intent: decision
+requested_authority: propose
+desired_result: >-
+  Make Arcadia Go a total governed transition that keeps advancing whenever the
+  next move is mechanically derivable, including when the active Plan is absent
+  or complete, and stops only for genuine operator judgment, authority, or an
+  unrecoverable truth/safety defect.
+rationale: >-
+  The operator wants Arcadia Go to run unless it truly needs them and proposed
+  oldest-first Plan selection with dependencies plus an optional urgency or
+  priority signal. Decision 0012 already requires a total transition result,
+  but Decision 0042 forbids selecting an inactive Plan from queue order alone.
+  Decision 0039 and the accepted execution-queue contract already provide one
+  explicit operator-owned priority order and prohibit timestamps or backlog age
+  from silently changing priority. Reuse that order: eligible dependencies are
+  readiness constraints, not hidden priority. Use FIFO only as a visible,
+  reversible one-time seed for legacy approved work that lacks explicit order;
+  do not add a second urgency field until a concrete need cannot be represented
+  by queue order.
+options:
+  - label: Use explicit queue across Plans
+    recommended: true
+    consequence: >-
+      Arcadia Go automatically activates the Plan whose earliest eligible Action
+      is highest in the existing explicit queue when the current Plan is absent
+      or complete. Dependencies and approvals filter eligibility; an actual tie,
+      missing authority, or conflicting explicit order asks the operator. FIFO
+      only seeds unordered legacy work once, with a preview and undo receipt.
+  - label: Use strict FIFO Plans
+    consequence: >-
+      Arcadia Go activates the oldest eligible approved Plan whenever the current
+      Plan ends or is absent. This is simple and deterministic, but creation time
+      becomes implicit priority and may run stale low-value work before newer
+      urgent Outcomes.
+  - label: Keep explicit Plan choice
+    consequence: >-
+      Arcadia Go continues to stop whenever no active Plan is selected or a Plan
+      completes, preserving Decision 0042 but requiring operator intervention at
+      every cross-Plan handoff.
+references:
+  - docs/decisions/0012-the-session-primitive.md
+  - docs/decisions/0023-work-pointer-under-concurrency.md
+  - docs/decisions/0039-prioritize-agent-ask-and-work-queue.md
+  - docs/decisions/0042-how-should-arcadia-structure-this-request-reactivate-the-arcadia-ask-active-sess.md
+  - docs/plans/agent-ask-execution-queue.md
+  - docs/proposals/complete-managed-action-from-evidence.md
+  - src/commands/advance.ts
+  - src/commands/go.ts

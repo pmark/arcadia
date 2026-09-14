@@ -6,6 +6,7 @@ import { openDatabase, withDatabase } from "../src/db/connection.js";
 import {
   createMissionLog,
   createReviewItem,
+  createWorkItemWithOptionalArtifact,
   setMissionLogDocRef,
   upsertProject
 } from "../src/db/repositories.js";
@@ -250,5 +251,60 @@ describe("project digest composition", () => {
     }
 
     expect(runDigestExportCommand({ workspace, digestId: result!.digest.id }).data.memory).toBeNull();
+  });
+});
+
+describe("completed Actions as digest facts", () => {
+  /**
+   * Without these a digest narrates only telemetry, so a day of real delivery
+   * reads as a few dispatch events. What was finished is the story.
+   */
+  it("gathers Actions completed inside the window and ignores those outside it", () => {
+    const { workspace, projectId } = workspaceWithProject();
+
+    withDatabase(workspace, (db) => {
+      const project = db.prepare("SELECT *, goal AS outcome FROM projects WHERE id = ?").get(projectId) as any;
+
+      const inside = createWorkItemWithOptionalArtifact(db, {
+        projectId,
+        title: "Finished inside the window",
+        rawInput: "Finished inside the window",
+        queue: "work_queue",
+        workClassification: "agent",
+        nextAction: "Nothing further."
+      }).workItem;
+      const outside = createWorkItemWithOptionalArtifact(db, {
+        projectId,
+        title: "Finished before the window",
+        rawInput: "Finished before the window",
+        queue: "work_queue",
+        workClassification: "agent",
+        nextAction: "Nothing further."
+      }).workItem;
+      const open = createWorkItemWithOptionalArtifact(db, {
+        projectId,
+        title: "Still open inside the window",
+        rawInput: "Still open inside the window",
+        queue: "work_queue",
+        workClassification: "agent",
+        nextAction: "Keep going."
+      }).workItem;
+
+      // `work_items` has no completion instant, so `updated_at` on a done row is
+      // the proxy the gatherer reads. Set it directly to place each Action.
+      db.prepare("UPDATE work_items SET status = 'done', updated_at = ? WHERE id = ?")
+        .run("2026-07-01T09:00:00.000Z", inside.id);
+      db.prepare("UPDATE work_items SET status = 'done', updated_at = ? WHERE id = ?")
+        .run("2026-06-30T09:00:00.000Z", outside.id);
+      db.prepare("UPDATE work_items SET updated_at = ? WHERE id = ?")
+        .run("2026-07-01T09:30:00.000Z", open.id);
+
+      const completed = gatherProjectDigestFacts(db, project, WINDOW)
+        .filter((fact) => fact.kind === "completed_action");
+
+      expect(completed).toHaveLength(1);
+      expect(completed[0]?.id).toBe(`completed-action:${inside.id}`);
+      expect(completed[0]?.summary).toBe("Completed: Finished inside the window");
+    });
   });
 });

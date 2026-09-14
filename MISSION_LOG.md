@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-08
+updated: 2026-09-14
 ---
 
 # Mission Log: Arcadia
@@ -2623,3 +2623,73 @@ STILL OPEN. Nineteen other write transactions across src/ still use the deferred
 - **Result:** Every declared acceptance criterion was accepted as met: "Reuse the existing protected broker, Session lease, governed Action, and managed-production policy boundaries; do not allowlist raw general Git mutation or make .git writable to the coding agent."; "Bind preservation to one exact registered prepared worktree, agent-owned branch, base revision, Action, packet, policy epoch, candidate diff fingerprint, validation evidence, and request id; changed inputs invalidate the operation."; "Outside the agent sandbox, stage only the validated candidate worktree, create one recoverable branch commit, and make retries or lost responses return the same receipt without duplicate commits or staged leakage from another worktree."; "When the standing policy explicitly includes remote preservation, push only that exact agent branch and create or update its draft pull request with the required operator QA plan; merge, deployment, publication, spending, credential expansion, and messaging remain separate gates."; "If remote preservation is not authorized or reachable, retain the local commit, report LOCAL ONLY with the exact retry action, and never claim that the work is recoverable from another machine."; "Refuse dirty base state, detached or unexpected branches, symlink/path escapes, stale reservations, conflicting Sessions, changed base history, missing validation, and unapproved network effects while preserving all candidate files."; "Add fault injection before and after stage, commit, push, and pull-request receipt persistence; prove one recoverable outcome and no cross-worktree mutation across retries and restart.".
 - **Next:** Advanced to the next eligible Action in document order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-arcadia-broker-candidate-preservation-f8d8bfd9e031).
+
+## 2026-09-11 — Agent Ask record-zero-prompt-runbook-retarget-2026-09-11
+
+- **Did:** Record that prove-zero-prompt-production-loop's staged runbook was retargeted
+on its split acceptance criteria, and the two prerequisites that verification
+surfaced.
+
+The 2026-09-08 runbook predated Agent Ask
+split-zero-prompt-loop-happy-path-2026-09-10-v3. It told the operator to build
+a fixture that now exists and is pushed (Project zero-prompt-rehearsal, repo
+~/tmp/arcadia-zero-prompt-rehearsal, both dependent Actions, GitHub remote,
+REHEARSAL.md not yet written), and it carried four hardening steps that moved
+to harden-zero-prompt-production-loop. Running it would have forked the
+Project and spent the rehearsal on the wrong acceptance. Rewritten against the
+three criteria actually in force, in PR
+https://github.com/pmark/arcadia/pull/213.
+
+Finding 1: the installed go-broker is pinned at f2a377e, five merges behind
+main at 4a49b8c. The broker runs a frozen Arcadia taken at install time, so
+rehearsing without `go-broker install` first would prove a controller main
+does not ship. Now Step 0 of the runbook.
+
+Finding 2: criterion 2 ("starts Action B without ... manual Session relay")
+may not be satisfiable yet. arcadia-go-broker-codex prepares the next worktree
+but does not launch the agent, because runGoBroker calls runGoCommand without
+--launch. The guarded server-side launch is expose-guarded-host-session-launch,
+still open and itself depending on this Action. The runbook instructs the
+operator to record a hand-run launch as criterion 2 failed rather than met.
+
+The Action remains open: its acceptance requires the real host controller with
+zero hidden interventions, and go-broker install withholds that executable
+from both coding-agent allowlists by design, so no agent session can run it.
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-09-13 — Completed arcadia/isolate-agent-asks-from-production-handoff
+
+- **Did:** Completed Action arcadia/isolate-agent-asks-from-production-handoff from accepted evidence (Candidate 935772af0d4ebd60602d958a5c30604b37d5fd21).
+- **Result:** Every declared acceptance criterion was accepted as met: "Every newly authored or edited Agent Ask is stored as `.arcadia/asks/agent-ask-<unique-stub>.yaml` in a uniquely identified, recoverable Arcadia-owned Ask branch and worktree rather than the repository's shared base checkout; the stub is stable for one request and collision-resistant across concurrent agents."; "Multiple Ask files may coexist. Preview, correction, settlement, status, and cleanup require an exact file path or request id and never select an arbitrary glob match; two concurrent Ask drafts cannot overwrite, settle, or retire each other."; "Preview and correction resolve the Ask by request id from that isolated location, and settlement commits only the exact previewed Ask effects on its Ask branch before the existing authorized integration and push boundaries apply."; "When Arcadia Go finds a legacy root `agent-ask.yaml` change as the only dirty base path, it atomically preserves that exact content and diff under a uniquely named Ask file in an isolated Ask branch and worktree, reports the recovery location, restores no unrelated path, and continues preparing the governed production worktree in the same operator invocation."; "If any dirty base path is not recognized as isolated Ask input, or Ask preservation cannot be proven complete, Arcadia Go retains the existing fail-closed refusal and names every preserved blocker; no work is discarded, staged, or silently included."; "The protected broker and Agent Ask skill use the isolated path without giving a sandboxed agent general shared-Git mutation, and retries return the same branch, worktree, request id, and receipt without duplicate commits or orphaned drafts."; "A fixture reproduces the 2026-09-12 failure from a base containing only a modified agent-ask.yaml, then proves one Arcadia Go activation preserves the Ask and prepares the governed Action worktree with zero operator Git steps; fault tests cover interruption before and after Ask preservation."; "A concurrency fixture creates, previews, corrects, and settles at least two Ask files in parallel and proves their paths, request ids, receipts, branches, effects, and cleanup remain disjoint."; "The operator-facing QA plan identifies the exact local command and paths, demonstrates the preserved Ask can still be previewed or settled, and demonstrates the prepared production worktree starts from the unchanged clean base.".
+- **Next:** Advanced to the next eligible Action in document order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-isolate-agent-asks-from-production-handoff-2026-09-13).
+
+## 2026-09-14 — Completed arcadia/settle-onto-candidate-branch
+
+- **Did:** Completed Action arcadia/settle-onto-candidate-branch from accepted evidence (Candidate dafc6930b5f3f90fee0a67cdc2ebadf1f13b8342).
+- **Result:** Every declared acceptance criterion was accepted as met: "Running agent-ask settle --apply inside a candidate worktree commits to that candidate branch."; "A test proves a session that settles and opens a PR leaves main with no new local-only commits.".
+- **Next:** Advanced to the next eligible Action in document order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-settle-onto-candidate-branch-2026-09-13).
+
+## 2026-09-14 — Completed arcadia/settle-complete-from-drafted-ask
+
+- **Did:** Completed Action arcadia/settle-complete-from-drafted-ask from accepted evidence (Candidate c41814a10431266d88a33162835188e75e7221df).
+- **Result:** Every declared acceptance criterion was accepted as met: "A test drafts a complete Ask in a candidate worktree and settles it with --apply, with no file moved or commit rewritten."; "The candidate_revision check still refuses evidence recorded against a revision whose code differs from HEAD.".
+- **Next:** Advanced to the next eligible Action in document order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-settle-complete-from-drafted-ask-2026-09-14).
+
+## 2026-09-14 — Completed arcadia/merge-completes-the-action
+
+- **Did:** Completed Action arcadia/merge-completes-the-action from accepted evidence (Candidate 4c4bc75900359b4ca6a14928054a8438794b278e).
+- **Result:** Every declared acceptance criterion was accepted as met: "arcadia go can stage a complete settlement (evidence per acceptance criterion, pointer advance) into the candidate PR before merge."; "After the PR merges, PROJECT.md current_action names the next governed Action with no further command run."; "A stale or failed criterion still refuses completion, as the complete intent does today.".
+- **Next:** Advanced to the next eligible Action in document order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-merge-completes-the-action-2026-09-14).
+
+## 2026-09-14 — Completed arcadia/design-and-build-the-mechanism-that
+
+- **Did:** Completed Action arcadia/design-and-build-the-mechanism-that from accepted evidence (Candidate f593d491a79083e4580ecb62cc9a6b09ae4c13ee).
+- **Result:** Every declared acceptance criterion was accepted as met: "A design is written down (in the Action, a Decision, or a short doc) naming exactly where discovery hooks in and why, given that arcadia go is not a reliable trigger."; "Every .arcadia/asks/*.yaml file whose request_id the database does not yet know is previewed automatically the next time any agent-ask command successfully resolves a real workspace in that repository, with no separate command required."; "A file that fails validation during automatic discovery is reported clearly (e.g. in that commands own output) rather than silently swallowed or left to repeatedly fail on every future command."; "Test coverage proves discovery fires from more than one entry point (e.g. both draft and preview), not only from a single hardcoded command.".
+- **Next:** Advanced to the next eligible Action in document order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-design-and-build-the-mechanism-that-2026-09-14-b).

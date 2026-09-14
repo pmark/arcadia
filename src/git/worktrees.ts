@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { validationError } from "../cli/errors.js";
+import { GO_REQUEST_FILE } from "../sessions/goRequestProtocol.js";
 
 /**
  * Git primitives shared by every command that reasons about worktrees.
@@ -44,15 +45,19 @@ export function existingDirectory(input: string, label: string): string {
   return realpathSync(resolved);
 }
 
-/** Every uncommitted change, untracked files included. Empty means clean. */
-export function uncommittedChanges(cwd: string): string[] {
+/** Uncommitted work, excluding only the untracked reserved go request and any
+ * caller-named untracked paths (repo-relative, e.g. an Agent Ask file a
+ * settlement is about to consume and archive in the same transaction). A
+ * tracked file at one of those paths remains dirty and is still refused. */
+export function uncommittedChanges(cwd: string, ignoreUntracked: string[] = []): string[] {
+  const ignored = new Set([GO_REQUEST_FILE, ...ignoreUntracked]);
   return git(cwd, ["status", "--porcelain=v1", "--untracked-files=all"])
     .split("\n")
-    .filter(Boolean);
+    .filter(line => Boolean(line) && !(line.startsWith("?? ") && ignored.has(line.slice(3))));
 }
 
-export function assertClean(cwd: string, label: string): void {
-  const changes = uncommittedChanges(cwd);
+export function assertClean(cwd: string, label: string, ignoreUntracked: string[] = []): void {
+  const changes = uncommittedChanges(cwd, ignoreUntracked);
   if (changes.length > 0) {
     throw validationError(`The ${label} is not clean; Arcadia will not preserve or discard changes implicitly.`, {
       path: cwd,
@@ -173,6 +178,25 @@ export function git(cwd: string, args: string[]): string {
 export function tryGit(cwd: string, args: string[]): string | null {
   const result = spawnSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   return result.status === 0 ? result.stdout.trim() : null;
+}
+
+/**
+ * The checkout a command run from `cwd` should write a Project's documents to.
+ *
+ * A Project records one `repo_path`, normally the main checkout. When the
+ * command runs inside another worktree of that same repository — a candidate
+ * worktree an `arcadia go` session is working in — that worktree is the answer,
+ * so its writes land on the candidate branch and ship in its pull request
+ * instead of as loose commits on the base branch. Anything else, including a
+ * `cwd` in an unrelated repository, resolves to `repoPath` unchanged.
+ */
+export function projectCheckoutFor(repoPath: string, cwd: string): string {
+  const projectCommon = tryGit(repoPath, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  const cwdCommon = tryGit(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  const cwdTop = tryGit(cwd, ["rev-parse", "--show-toplevel"]);
+  if (!projectCommon || !cwdCommon || !cwdTop) return repoPath;
+  if (realpathSync(projectCommon) !== realpathSync(cwdCommon)) return repoPath;
+  return realpathSync(cwdTop) === realpathSync(repoPath) ? repoPath : cwdTop;
 }
 
 export function parseWorktrees(output: string): WorktreeRecord[] {

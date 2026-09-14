@@ -1,0 +1,26 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-merge-completes-the-action-2026-09-14",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/merge-completes-the-action",
+  "candidate_revision": "4c4bc75",
+  "desired_result": "Mark merge-completes-the-action done.",
+  "evidence": [
+    {
+      "criterion": "arcadia go can stage a complete settlement (evidence per acceptance criterion, pointer advance) into the candidate PR before merge.",
+      "status": "met",
+      "note": "tests/agent-ask-complete.test.ts new case drafts+settles a complete Ask in a candidate worktree via the existing draft/settle CLI (built by settle-onto-candidate-branch and settle-complete-from-drafted-ask), landing the settlement commit on the candidate branch. This PR settles its own completion the same way, as dogfood proof."
+    },
+    {
+      "criterion": "After the PR merges, PROJECT.md current_action names the next governed Action with no further command run.",
+      "status": "met",
+      "note": "Same test: after git merge --ff-only of the candidate branch (standing in for a PR merge) into the base checkout, PROJECT.md, the plan, and MISSION_LOG.md already show the Action done and current_action advanced, with zero commands run beyond the merge. PR 240 demonstrated this for real on GitHub."
+    },
+    {
+      "criterion": "A stale or failed criterion still refuses completion, as the complete intent does today.",
+      "status": "met",
+      "note": "Already covered generally by tests/agent-ask-complete.test.ts (unmet, skipped, and partial evidence, stale candidate_revision) and specifically for the candidate-worktree case by the stale-revision test added in PR 240. No behavior change was needed for this criterion; it was proven, not newly built."
+    }
+  ]
+}

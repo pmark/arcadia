@@ -1,0 +1,31 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-design-and-build-the-mechanism-that-2026-09-14-b",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/design-and-build-the-mechanism-that",
+  "candidate_revision": "f593d49",
+  "desired_result": "Mark design-and-build-the-mechanism-that done; delivered by PR 237.",
+  "evidence": [
+    {
+      "criterion": "A design is written down (in the Action, a Decision, or a short doc) naming exactly where discovery hooks in and why, given that arcadia go is not a reliable trigger.",
+      "status": "met",
+      "note": "docs/agent-ask-discovery.md: names the two hook points (runAgentAskPreviewCommand, runAgentAskDraftCommand's internal preview call), explains why the universal resolveReadyWorkspace choke point was deliberately not used (would give read-only noun commands a database-write side effect), and why arcadia go is not the trigger (a manual handoff or differently-triggered environment can leave a drafted file unprocessed indefinitely)."
+    },
+    {
+      "criterion": "Every .arcadia/asks/*.yaml file whose request_id the database does not yet know is previewed automatically the next time any agent-ask command successfully resolves a real workspace in that repository, with no separate command required.",
+      "status": "met",
+      "note": "src/ask/discovery.ts's discoverUnprocessedAgentAsks scans <repoRoot>/.arcadia/asks/ and previews any file whose request_id is not yet in agent_ask_proposals, using the same dedup rule (previewAgentAskRequest, src/ask/preview.ts) an explicit --file preview uses. tests/agent-ask-discovery.test.ts \"previews an unprocessed .arcadia/asks/ file nobody explicitly asked about...\" and \"does not re-report a file already discovered with identical content on a later call\" cover this."
+    },
+    {
+      "criterion": "A file that fails validation during automatic discovery is reported clearly (e.g. in that commands own output) rather than silently swallowed or left to repeatedly fail on every future command.",
+      "status": "met",
+      "note": "tests/agent-ask-discovery.test.ts \"reports a file that fails validation clearly instead of throwing or silently dropping it\" and \"reports a request id already used with different content as a discovery failure rather than throwing\" assert failures surface in data.discovery.failed rather than being thrown or dropped."
+    },
+    {
+      "criterion": "Test coverage proves discovery fires from more than one entry point (e.g. both draft and preview), not only from a single hardcoded command.",
+      "status": "met",
+      "note": "tests/agent-ask-discovery.test.ts \"fires from the draft entry point too, not only from a single hardcoded command\" plus the preview-entry-point test above. 115/115 across the PR's full stated test plan (agent-ask-discovery, agent-ask, agent-ask-draft, agent-ask-settlement, agent-ask-complete, agent-ask-contract, go)."
+    }
+  ]
+}

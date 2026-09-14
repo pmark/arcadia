@@ -22,9 +22,12 @@ import {
   getProject,
   getProjectContext,
   getReviewItemForInvocation,
+  archiveWorkItem,
   getWorkItem,
+  listArchivedWorkItems,
   listReviewItems,
   listWorkItems,
+  unarchiveWorkItem,
   updateWorkItem
 } from "../db/repositories.js";
 import { refreshLivingSystemAfterTransition } from "../livingSystem/sync.js";
@@ -110,6 +113,10 @@ export interface WorkDoneCommandData {
   workItem: WorkItemSummary;
 }
 
+export interface WorkArchiveCommandData {
+  workItem: WorkItemSummary;
+}
+
 export interface WorkPlanCommandData {
   plan: ExecutionPlanSummary;
   planningDecision: ReviewItemSummary | null;
@@ -123,9 +130,13 @@ export interface WorkRunCommandData {
   missionLogPath: string | null;
 }
 
-export function runWorkListCommand(options: { workspace: string }): CommandSuccess<WorkListCommandData> {
+export function runWorkListCommand(
+  options: { workspace: string; archived?: boolean }
+): CommandSuccess<WorkListCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const workItems = withDatabase(workspacePath, listWorkItems);
+  const workItems = withDatabase(workspacePath, (db) =>
+    options.archived ? listArchivedWorkItems(db) : listWorkItems(db)
+  );
 
   return createSuccess({
     command: "work.list",
@@ -260,6 +271,64 @@ export function runWorkDoneCommand(options: { workspace: string; workId: string 
     warnings: completed.project
       ? optionalLivingSystemWarning(refreshLivingSystemAfterTransition(workspacePath, completed.project.slug))
       : []
+  });
+}
+
+/**
+ * Archive one Action: off every working surface, still on the record.
+ *
+ * This is the third answer between `done` and deletion. Marking a duplicate
+ * done asserts work happened; deleting the row destroys the evidence that
+ * something created it. Neither is honest about an inbox holding the same
+ * request restated eight ways, which is what this exists for.
+ */
+export function runWorkArchiveCommand(
+  options: { workspace: string; workId: string; reason: string }
+): CommandSuccess<WorkArchiveCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const reason = options.reason?.trim() ?? "";
+  if (!reason) {
+    throw validationError("Archiving an Action requires --reason, so a later reader can judge whether to restore it.");
+  }
+
+  const workItem = withDatabase(workspacePath, (db) => {
+    if (!getWorkItem(db, options.workId)) {
+      return null;
+    }
+    return archiveWorkItem(db, options.workId, reason);
+  });
+
+  if (!workItem) {
+    throw workItemNotFound(options.workId);
+  }
+
+  return createSuccess({
+    command: "work.archive",
+    workspace: workspacePath,
+    data: { workItem }
+  });
+}
+
+/** Return an archived Action to its queue. */
+export function runWorkUnarchiveCommand(
+  options: { workspace: string; workId: string }
+): CommandSuccess<WorkArchiveCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const workItem = withDatabase(workspacePath, (db) => {
+    if (!getWorkItem(db, options.workId)) {
+      return null;
+    }
+    return unarchiveWorkItem(db, options.workId);
+  });
+
+  if (!workItem) {
+    throw workItemNotFound(options.workId);
+  }
+
+  return createSuccess({
+    command: "work.unarchive",
+    workspace: workspacePath,
+    data: { workItem }
   });
 }
 
@@ -828,6 +897,23 @@ export function renderWorkDoneSuccess(response: CommandSuccess<WorkDoneCommandDa
     `Completed Action: ${response.data.workItem.title}`,
     `ID: ${response.data.workItem.id}`,
     `Status: ${response.data.workItem.status}`
+  ];
+}
+
+export function renderWorkArchiveSuccess(response: CommandSuccess<WorkArchiveCommandData>): string[] {
+  return [
+    `Archived Action: ${response.data.workItem.title}`,
+    `ID: ${response.data.workItem.id}`,
+    `Reason: ${response.data.workItem.archive_reason ?? "None"}`,
+    "Restore it with: arcadia work unarchive " + response.data.workItem.id
+  ];
+}
+
+export function renderWorkUnarchiveSuccess(response: CommandSuccess<WorkArchiveCommandData>): string[] {
+  return [
+    `Restored Action: ${response.data.workItem.title}`,
+    `ID: ${response.data.workItem.id}`,
+    `Queue: ${response.data.workItem.queue}`
   ];
 }
 

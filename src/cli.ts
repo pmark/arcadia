@@ -22,11 +22,13 @@ import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
 import { renderAskRuleTestSuccess, runAskRuleTestCommand } from "./commands/askRule.js";
 import {
   renderAgentAskContractSuccess,
+  renderAgentAskDraftSuccess,
   renderAgentAskNotificationSentSuccess,
   renderAgentAskNotificationsSuccess,
   renderAgentAskPreviewSuccess,
   renderAgentAskSettleSuccess,
   runAgentAskContractCommand,
+  runAgentAskDraftCommand,
   runAgentAskNotificationSentCommand,
   runAgentAskNotificationsCommand,
   runAgentAskPreviewCommand,
@@ -374,13 +376,17 @@ import { renderGateSuccess, runGateStatusCommand } from "./commands/gate.js";
 import { renderWayPropagateSuccess, renderWayStatusSuccess, runWayPropagateCommand, runWayStatusCommand } from "./commands/way.js";
 import {
   renderWorkAddSubtaskSuccess,
+  renderWorkArchiveSuccess,
   renderWorkDoneSuccess,
+  renderWorkUnarchiveSuccess,
   renderWorkListSuccess,
   renderWorkPlanSuccess,
   renderWorkRunSuccess,
   renderWorkUpdateSuccess,
   runWorkAddSubtaskCommand,
+  runWorkArchiveCommand,
   runWorkDoneCommand,
+  runWorkUnarchiveCommand,
   runWorkListCommand,
   runWorkPlanCommand,
   runWorkRunCommand,
@@ -707,11 +713,23 @@ export function buildProgram(): Command {
     .description("Normalize Agent Ask v1 and preview canonical effects without Project writes")
     .argument("[request]", "Strict Agent Ask v1 YAML or natural fallback text")
     .option("--file <path>", "Read the Agent Ask from a file")
+    .option("--request-id <id>", "Required idempotency key for natural fallback; also resolves a drift-recovered Ask by id when no request or --file is given")
+    .option("--project <project>", "Destination Project for natural fallback")
+    .option("--dir <path>", "Repository root: resolves a drift-recovered Ask's isolated branch, and where other unprocessed .arcadia/asks/ files are auto-discovered from", process.cwd())
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((request: string | undefined, options: { workspace: string; file?: string; requestId?: string; project?: string; dir: string; json?: boolean }) =>
+    runCliAction("agent-ask.preview", options, () => runAgentAskPreviewCommand({ ...options, request }), renderAgentAskPreviewSuccess)
+  );
+  addJsonOption(agentAsk.command("draft")
+    .description("Validate an Agent Ask and place it at .arcadia/asks/agent-ask-<request_id>.yaml, previewing it too if a workspace is ready")
+    .argument("[request]", "Strict Agent Ask v1 YAML/JSON or natural fallback text")
+    .option("--file <path>", "Read the Agent Ask from a file")
     .option("--request-id <id>", "Required idempotency key for natural fallback")
     .option("--project <project>", "Destination Project for natural fallback")
-    .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((request: string | undefined, options: { workspace: string; file?: string; requestId?: string; project?: string; json?: boolean }) =>
-    runCliAction("agent-ask.preview", options, () => runAgentAskPreviewCommand({ ...options, request }), renderAgentAskPreviewSuccess)
+    .option("--dir <path>", "Repository root containing .arcadia/asks/; also where other unprocessed files there are auto-discovered from", process.cwd())
+    .option("--workspace <path>", "Workspace path for the optional preview step", defaultWorkspace())
+  ).action((request: string | undefined, options: { dir: string; workspace: string; file?: string; requestId?: string; project?: string; json?: boolean }) =>
+    runCliAction("agent-ask.draft", options, () => runAgentAskDraftCommand({ ...options, request }), renderAgentAskDraftSuccess)
   );
   addJsonOption(agentAsk.command("settle")
     .description("Preview or apply the terminal disposition and effects of one Agent Ask proposal")
@@ -2329,6 +2347,7 @@ export function buildProgram(): Command {
     work
       .command("list")
       .description("List Actions")
+      .option("--archived", "List archived Actions instead of live ones")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("work.list", options, () => runWorkListCommand(options), renderWorkListSuccess)
@@ -2465,6 +2484,35 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((workId: string, options: { workspace: string; json?: boolean }) =>
     runCliAction("work.done", options, () => runWorkDoneCommand({ ...options, workId }), renderWorkDoneSuccess)
+  );
+  addJsonOption(
+    work
+      .command("archive")
+      .description("Take an Action off every working surface without claiming it was finished")
+      .argument("<work-id>", "Action id")
+      .requiredOption("--reason <text>", "Why it is being archived")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((workId: string, options: { workspace: string; reason: string; json?: boolean }) =>
+    runCliAction(
+      "work.archive",
+      options,
+      () => runWorkArchiveCommand({ ...options, workId }),
+      renderWorkArchiveSuccess
+    )
+  );
+  addJsonOption(
+    work
+      .command("unarchive")
+      .description("Return an archived Action to its queue")
+      .argument("<work-id>", "Action id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((workId: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "work.unarchive",
+      options,
+      () => runWorkUnarchiveCommand({ ...options, workId }),
+      renderWorkUnarchiveSuccess
+    )
   );
   addJsonOption(
     work
