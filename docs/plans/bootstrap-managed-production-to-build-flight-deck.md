@@ -218,7 +218,7 @@ actions:
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/sessions/index.ts", "src/stewardship/artifactValidator.ts", "src/docs/dispatch.ts", "src/dispatch/pointer.ts", "src/ask/settlement.ts", "docs/proposals/complete-managed-action-from-evidence.md"]
   - id: feed-and-supervise-managed-production
     title: Extend the existing worker to continuously admit, supervise and advance approved Sessions while Active.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Extend the existing worker to continuously admit, supervise and advance approved Sessions while Active, and independently detect a dead-Session exit and a base-branch advance.
@@ -768,7 +768,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: feed-and-supervise-managed-production
+current_action: prove-two-action-unattended-production
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
