@@ -677,7 +677,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: design-and-build-the-mechanism-that
+current_action: settle-onto-candidate-branch
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---
