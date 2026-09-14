@@ -192,6 +192,55 @@ describe("Agent Ask complete", () => {
     expect(existsSync(draft.data.path)).toBe(true);
   });
 
+  it("carries the Action's completion in its own PR branch, so merging it alone advances the pointer with no further command", () => {
+    // The end-to-end shape merge-completes-the-action exists to prove: a
+    // session finishing an Action's acceptance criteria settles the complete
+    // Ask into its own candidate worktree, same as any other governance
+    // write (AGENTS.md "Settling commits locally and never pushes"). The
+    // operator's merge — a plain fast-forward here, standing in for GitHub's
+    // squash-merge of a PR branch with one commit — is then the only
+    // remaining touch; nothing reads PROJECT.md's advanced pointer from
+    // anywhere but the merged commit itself.
+    const { workspace, repo, head } = fixture();
+    const candidate = path.join(path.dirname(repo), "candidate-merge-completes");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate-merge-completes", candidate], { cwd: repo });
+
+    const draft = runAgentAskDraftCommand({
+      workspace, dir: candidate, request: completeAsk("complete-merge-completes", "first", head)
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: draft.data.preview!.proposal.id, requestId: "settle-merge-completes",
+      disposition: "accepted", cwd: candidate
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: draft.data.preview!.proposal.id, requestId: "settle-merge-completes",
+      disposition: "accepted", preview: preview.data.receipt.previewFingerprint, apply: true, operator: true, cwd: candidate
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+
+    // Before merge: the base checkout still shows the Action open and the
+    // old pointer — the candidate's completion has not reached it yet.
+    const beforePlan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan") as { currentAction: string; actions: { id: string; status: string }[] };
+    expect(beforePlan.currentAction).toBe("first");
+    expect(beforePlan.actions.find((action) => action.id === "first")?.status).toBe("open");
+
+    // The only "command" from here on is the merge itself.
+    execFileSync("git", ["merge", "--ff-only", "claude/candidate-merge-completes"], { cwd: repo });
+
+    const plan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
+    expect(plan).toMatchObject({
+      currentAction: "second",
+      actions: [
+        expect.objectContaining({ id: "first", status: "done" }),
+        expect.objectContaining({ id: "second", status: "open" })
+      ]
+    });
+    const project = discoverDocs(repo).docs.find((doc) => doc.type === "project");
+    expect(project).toMatchObject({ currentAction: "second" });
+    expect(readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8")).toContain("Completed demo/first");
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+  });
+
   it("refuses completing an Action that is already done", () => {
     const { workspace, head } = fixture({ firstDone: true });
     const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-done", "first", head) });
