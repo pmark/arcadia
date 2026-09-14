@@ -6,6 +6,7 @@ import { applyCapabilityMigrations } from "../capabilities/migrations.js";
 import { ensureProductionPolicyTables } from "../production/policy.js";
 import { ensureManualPreservationTable } from "../sessions/manualPreservation.js";
 import { ensureCandidatePreservationTable } from "../sessions/candidatePreservation.js";
+import { ensureSessionExitReceiptsTable } from "../sessions/reconciliation.js";
 
 export function getSchemaPath(): string {
   const fromCwd = path.resolve("database", "schema.sql");
@@ -76,6 +77,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureAgentWorktreeReservationsTable(db);
   ensureManualPreservationTable(db);
   ensureCandidatePreservationTable(db);
+  ensureSessionExitReceiptsTable(db);
   ensureAgentResponsibilityValue(db);
   ensureProductionPolicyTables(db);
   applyCapabilityMigrations(db);

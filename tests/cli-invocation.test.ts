@@ -159,6 +159,7 @@ describe("path options are wired to the invocation-aware resolver", () => {
       "plans --repo",
       "preview-launch --repo",
       "raise --repo",
+      "reconcile --repo",
       "setup-context --repo",
       "show --repo",
       "tidy --repo",

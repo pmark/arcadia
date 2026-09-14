@@ -109,6 +109,8 @@ import {
   runAdvanceQueueReorderCommand,
   runAdvanceQueueUndoCommand,
   runSessionShowCommand,
+  runSessionReconcileCommand,
+  renderSessionReconcileSuccess,
   runSessionPreviewLaunchCommand,
   runSessionLaunchCommand
 } from "./commands/advance.js";
@@ -1534,6 +1536,20 @@ export function buildProgram(): Command {
         standingPolicy: options.standingPolicy
       }),
       renderSessionLaunchSuccess
+    )
+  );
+  addJsonOption(
+    session.command("reconcile <id>")
+      .description("Reconcile a dead-but-unreconciled Session into a durable exit receipt and the resulting canonical next move")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--repo <path>", "Project repository", resolveInvocationPath, invocationRoot())
+      .option("--request-id <id>", "Idempotent request id for this reconciliation", randomUUID())
+  ).action((id: string, options: { workspace: string; repo: string; requestId: string; json?: boolean }) =>
+    runCliAction(
+      "session.reconcile",
+      options,
+      () => runSessionReconcileCommand({ workspace: options.workspace, repo: options.repo, session: id, requestId: options.requestId }),
+      renderSessionReconcileSuccess
     )
   );
 
