@@ -627,7 +627,7 @@ actions:
     references: []
   - id: merge-completes-the-action
     title: The Action PR carries its completion evidence and pointer advance, so merging it marks the Action done without a separate complete Ask or session.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: The Action PR carries its completion evidence and pointer advance, so merging it marks the Action done without a separate complete Ask or session.
@@ -693,7 +693,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: merge-completes-the-action
+current_action: expose-guarded-host-session-launch
 recommended_model: gpt-6-astra
 recommended_reasoning_effort: high
 ---

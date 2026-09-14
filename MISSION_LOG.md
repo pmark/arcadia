@@ -2679,3 +2679,10 @@ from both coding-agent allowlists by design, so no agent session can run it.
 - **Result:** Every declared acceptance criterion was accepted as met: "A test drafts a complete Ask in a candidate worktree and settles it with --apply, with no file moved or commit rewritten."; "The candidate_revision check still refuses evidence recorded against a revision whose code differs from HEAD.".
 - **Next:** Advanced to the next eligible Action in document order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-settle-complete-from-drafted-ask-2026-09-14).
+
+## 2026-09-14 — Completed arcadia/merge-completes-the-action
+
+- **Did:** Completed Action arcadia/merge-completes-the-action from accepted evidence (Candidate 4c4bc75900359b4ca6a14928054a8438794b278e).
+- **Result:** Every declared acceptance criterion was accepted as met: "arcadia go can stage a complete settlement (evidence per acceptance criterion, pointer advance) into the candidate PR before merge."; "After the PR merges, PROJECT.md current_action names the next governed Action with no further command run."; "A stale or failed criterion still refuses completion, as the complete intent does today.".
+- **Next:** Advanced to the next eligible Action in document order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-merge-completes-the-action-2026-09-14).
