@@ -768,7 +768,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: prove-two-action-unattended-production
+current_action: refuse-to-orphan-an-uncommitted-candidate
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
