@@ -1370,6 +1370,46 @@ Operator QA steps:
 
 This command is normally invoked automatically as part of Session-exit handling; running it by hand is for diagnosing a specific stuck or ambiguous Session, or for the QA steps above.
 
+## Assess A Candidate PR's Blast Radius Before Merge
+
+Before a candidate merges, independently assess its blast radius against the
+base revision it branched from: which paths it touches, how large the diff is,
+and whether it touches controller safety, authority, concurrency, or canonical
+state-transition code (`src/production/`, `src/ask/`, `src/sessions/`,
+`src/dispatch/`, `src/db/`, `src/git/`, `.github/`, or a dependency
+manifest). This is the "Independent Arcadia QA" step named in
+[`docs/arcadia-development-orchestration-vision.md`](arcadia-development-orchestration-vision.md)'s
+target development loop — it produces a recommendation only and never merges,
+deploys, or grants itself authority to.
+
+```sh
+pnpm arcadia pr assess-blast-radius --workspace "$WORKSPACE" --repo "$REPO" \
+  --project my-project --plan my-plan --action my-action \
+  --base main --candidate <candidate-sha> --json
+```
+
+An unambiguous, narrow change with no matched safety path and a diff under the
+configured size threshold proceeds automatically: a durable, pre-approved
+review record is written, and nothing further happens. Any other case —
+a matched safety path, a large diff, a review pass that could not run, or no
+diff at all — escalates by opening exactly one Decision naming the concern,
+the touched paths, and a recommendation; the PR must not merge until that
+Decision is answered. Reassessing the same candidate revision always replays
+the original recommendation rather than computing again or opening a
+duplicate Decision.
+
+Operator QA steps:
+
+1. Pick a real merged or open PR's base and candidate SHAs (`git merge-base main <branch>` and the branch's tip).
+2. Run the command above against that repository, Project, Plan, and Action.
+3. For a narrow, non-safety change: confirm `Outcome: proceed` and that a new `review_items` row was written (`arcadia review` — filtered locally, or inspect the workspace database directly).
+4. For a change touching one of the named safety paths, or a large diff: confirm `Outcome: escalated`, that exactly one Decision opened (visible via `arcadia review` or the dashboard), and that the PR is not merged.
+5. Run the exact same command again with the same `--candidate`. Expect an identical result annotated `(already assessed)` — assessment is idempotent and never re-computes or opens a duplicate Decision for the same revision.
+
+Automating the actual merge on top of this assessment is a separate, explicit
+approval boundary (see the orchestration vision document's trigger table) and
+is not part of this command.
+
 ## Working-Copy Safety
 
 Scan every active Project's configured repository and all of its Git worktrees

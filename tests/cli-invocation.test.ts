@@ -146,6 +146,7 @@ describe("path options are wired to the invocation-aware resolver", () => {
     // which is the decision that got skipped the first time.
     expect(found.sort()).toEqual([
       "advance --repo",
+      "assess-blast-radius --repo",
       "close --repo",
       "configure --repo-path",
       "decline --repo",

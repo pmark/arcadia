@@ -713,7 +713,7 @@ actions:
     references: []
   - id: assess-pr-blast-radius-before-merge
     title: Independently assess a candidate PR's blast radius against its base revision and either record a clean recommendation to proceed, or escalate by opening exactly one Decision naming the concern, before the PR is merged.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Independently assess a candidate PR's blast radius against its base revision and either record a clean recommendation to proceed, or escalate by opening exactly one Decision naming the concern, before the PR is merged.
@@ -735,7 +735,7 @@ actions:
     references: ["docs/arcadia-development-orchestration-vision.md", "docs/decisions/0019-streamline-pr-qa-before-expansion.md", "docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/sessions/reconciliation.ts", "src/stewardship/critic.ts", "src/stewardship/artifactValidator.ts", "src/ask/settlement.ts"]
 questions: []
 decisions: []
-current_action: assess-pr-blast-radius-before-merge
+current_action: feed-and-supervise-managed-production
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
