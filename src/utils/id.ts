@@ -40,7 +40,8 @@ const PREFIXES = {
   worktreeReservation: "wtres",
   productionPolicyReceipt: "pprec",
   productionAdmission: "padm",
-  preservationReceipt: "presv"
+  preservationReceipt: "presv",
+  sessionExitReceipt: "exit"
 } as const;
 
 export type IdKind = keyof typeof PREFIXES;

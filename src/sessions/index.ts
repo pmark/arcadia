@@ -9,6 +9,7 @@ import { getProjectBySlug, getWorkItemByDocRef, listCodexInvocationsForWorkItem 
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import { packetSha256 } from "../execution/planningAuthorization.js";
 import { createId } from "../utils/id.js";
+import { getResumableLeaseHandoff, supersedeLeaseHandoff } from "./reconciliation.js";
 
 export type ProjectTransitionKind = "launch" | "plan" | "decision" | "repair" | "reconcile" | "wait" | "complete_milestone";
 
@@ -218,6 +219,12 @@ export function prepareSession(input: {
     .sort();
   const lease = getRepositoryLease(input.db, path.resolve(input.repoRoot));
   if (lease) throw validationError("The repository already has a prepared or running Session lease.", { sessionId: lease.id });
+  const handoff = getResumableLeaseHandoff(input.db, path.resolve(input.repoRoot));
+  if (handoff && handoff.session.action_id !== context.action.id) {
+    throw validationError("The repository holds an incomplete resumable candidate for a different Action; resolve or discard it before preparing a new one.", {
+      sessionId: handoff.session.id, actionId: handoff.session.action_id, worktreePath: handoff.session.worktree_path
+    });
+  }
   const competingRun = getCompetingManagedRun(input.db, path.resolve(input.repoRoot));
   if (competingRun) {
     throw validationError("The repository already has a pending or running managed Run.", {
@@ -253,6 +260,9 @@ export function prepareSession(input: {
     created_at: timestamp, updated_at: timestamp
   } satisfies AgentSession;
   input.db.prepare(`INSERT INTO agent_sessions (${Object.keys(row).join(", ")}) VALUES (${Object.keys(row).map((key) => `@${key}`).join(", ")})`).run(row);
+  if (handoff) {
+    supersedeLeaseHandoff(input.db, handoff.receipt.id, id);
+  }
   return row;
 }
 
@@ -300,7 +310,7 @@ export function findPromotionDecision(
   throw validationError("The build packet has no approved planning-promotion Decision.", { invocationId: expected.invocationId });
 }
 
-function canonicalPath(value: string): string {
+export function canonicalPath(value: string): string {
   const resolved = path.resolve(value);
   if (existsSync(resolved)) return realpathSync(resolved);
   const suffix: string[] = [];

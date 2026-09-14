@@ -13,6 +13,7 @@ import { loadPhase3Registries, validatePhase3Registries } from "../intent/regist
 import { getLatestSession, getSession, resolveProjectTransition, sessionView, type ProjectTransition } from "../sessions/index.js";
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../sessions/launch.js";
 import { buildLaunchPreview, type LaunchPreview } from "../sessions/launchPreview.js";
+import { reconcileSessionExit, type ReconcileSessionExitResult } from "../sessions/reconciliation.js";
 
 export interface AdvanceQueueCommandData extends AgentQueue {}
 export interface AdvanceQueueReorderData { receipt: ActionOrderReceipt; nextActionKey: string | null; }
@@ -67,6 +68,35 @@ export function renderAdvanceSuccess(response: ReturnType<typeof runAdvanceComma
       `Preservation: ${data.preservation.ready ? "ready" : "needs configuration or repair"}`,
       ...data.preservation.blockers.map((b: { code: string; reason: string }) => `${b.code}: ${b.reason}`)
     ] : [])
+  ];
+}
+
+/**
+ * Reconcile a dead-but-unreconciled Session (the `resolveProjectTransition`
+ * `kind: "reconcile"` case) into a durable exit receipt and the resulting
+ * canonical next move. Idempotent: reconciling an already-reconciled Session
+ * returns its existing receipt rather than re-deriving or duplicating it.
+ */
+export function runSessionReconcileCommand(options: {
+  workspace: string; repo: string; session: string; requestId: string;
+}): CommandSuccess<ReconcileSessionExitResult> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const repoRoot = existingDirectory(options.repo, "repository");
+  const result = withDatabase(workspacePath, (db) =>
+    reconcileSessionExit({ db, sessionId: options.session, requestId: options.requestId, repoRoot })
+  );
+  return createSuccess({ command: "session.reconcile", workspace: workspacePath, data: result });
+}
+
+export function renderSessionReconcileSuccess(response: ReturnType<typeof runSessionReconcileCommand>): string[] {
+  const data = response.data as ReconcileSessionExitResult;
+  return [
+    `Session: ${data.receipt.session_id}`,
+    `Outcome: ${data.receipt.outcome}${data.created ? "" : " (already reconciled)"}`,
+    data.receipt.reason,
+    `Next: ${data.nextMove.description}`,
+    ...(data.nextMove.link ? [`Link: ${data.nextMove.link}`] : []),
+    `Admitted for automatic next admission: ${data.nextMove.admitted ? "yes" : "no"}`
   ];
 }
 
