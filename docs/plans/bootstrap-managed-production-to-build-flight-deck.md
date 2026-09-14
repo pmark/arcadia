@@ -285,33 +285,30 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Prove continuous production across configured providers, independent Plans and capacity recovery, including adding Claude session launch support (adapter, packet/model/binding validation, reattach/resume) as part of demonstrating the second configured provider - this is the first Action where Claude session launch is required.
+    next_action: Add minimal Claude session launch support so Arcadia can substitute providers, reusing the Codex adapter interface from support-selected-codex-and-claude-sessions; defer the full dual-provider concurrent soak/interleaving proof until single-provider single-repository production has run cleanly in real use or a real workload needs concurrent multi-provider execution.
     expected_artifact: Evidence satisfying Agent Ask prove-multi-provider-production-recovery
     clarification: clarified
     confidence: high
-    source: Agent Ask apply-8020-yagni-to-bootstrap-plan-2026-09-06-v2
+    source: Agent Ask defer-multi-provider-soak-until-single-provider-hardened-2026-09-14-v2
     acceptance_criteria:
-      - Add Claude session launch support (provider-specific executable arguments, native Session identity, packet/model/binding validation, reattach/resume, honest unsupported-operation messages) as this proof's first step, since Codex-only launch was proven in support-selected-codex-and-claude-sessions.
-      - Demonstrate automatic selection/launch with both configured Codex and Claude, preserving per-account capacity and repository isolation; one-provider proof alone is not full acceptance.
-      - Prove higher-priority provider-ineligible work remains visible while independent eligible work proceeds, and Plan order edits change subsequent admission without preempting running work.
-      - Prove depletion/reset/re-observation resumes automatically while Active, with no paid/reset effect; distinguish simulated limit tests from observed live capacity evidence.
-      - Exercise failed validation, bounded repair, mid-Session exhaustion/checkpoint recovery, stale policy, duplicate worker and approval boundaries; partial work must not be rerun blindly.
-      - Publish live/fixture evidence for each boundary and exact outstanding gap; final acceptance requires supported automatic telemetry and no manual refresh/Session relay disguised as unattended operation.
-      - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
-      - Pass the contract 20 deterministic fault matrix, at least 100 reproducible interleavings per race scenario (this is the sole statistical soak requirement; expose-guarded-host-session-launch proves only one bounded correctness run), and bounded live soak of ten accepted Actions across two Projects/both providers with restart, Off and recoverable failure; retain all interventions and failures.
+      - Add Claude session launch support (provider-specific executable arguments, native Session identity, packet/model/binding validation, reattach/resume, honest unsupported-operation messages), reusing the existing provider-adapter interface without reworking it.
+      - Prove automatic selection can launch either configured provider for a given Action, preserving per-account capacity and repository isolation, on at least one real or fixture Action per provider.
+      - "Defer the dual-provider concurrent soak proof (100 reproducible interleavings per race scenario; ten-Action live soak across two Projects and both providers) with an explicit trigger: reactivate when single-provider single-repository production (prove-two-action-unattended-production and its hardening) has run cleanly in real operator use, or when a real workload actually requires concurrent multi-provider execution."
+      - Publish live/fixture evidence for each proven boundary and name the exact deferred gap so it is not mistaken for completed proof; distinguish simulated provider or capacity behavior from real proof.
+      - Preserve deterministic integration evidence and an exact operator procedure/target in the PR.
     depends_on: [prove-two-action-unattended-production]
     decisions: []
-    references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/codingAgents/availability.ts", "src/commands/worker.ts", "docs/plans/provider-capacity-harvesting.md"]
+    references: []
   - id: freeze-production-runtime-and-handoff-flight-deck
     title: Freeze the proven production runtime and prepare Flight Deck as its first real production workload.
     status: open
     responsibility: agent
     effort: session
-    next_action: Freeze the proven production runtime and prepare Flight Deck as its first real production workload.
+    next_action: Freeze the proven single-provider production runtime and hand off Flight Deck as its first workload without waiting on the deferred dual-provider soak proof.
     expected_artifact: Evidence satisfying Agent Ask freeze-production-runtime-and-handoff-flight-deck
     clarification: clarified
     confidence: high
-    source: Agent Ask apply-8020-yagni-to-bootstrap-plan-2026-09-06-v2
+    source: Agent Ask defer-multi-provider-soak-until-single-provider-hardened-2026-09-14-v2
     acceptance_criteria:
       - Identify and preserve the exact proven worker/runtime revision, service command, workspace/schema compatibility and rollback/recovery procedure independently of coding worktrees.
       - Prove that editing/building Flight Deck in an isolated Arcadia worktree does not replace, hot-reload or restart the controller; runtime upgrades require a separate controlled handoff.
@@ -319,9 +316,9 @@ actions:
       - After bootstrap acceptance and approved Plan transition, the canonical pointer selects Flight Deck and production admits its first Action; no repeated human Session setup is required.
       - If Flight Deck cannot advance without a merge or subjective acceptance, show that exact approval in the existing review surface. Never weaken a gate to manufacture uninterrupted progress.
       - Publish the contract 20 release evidence index; every required proof is passed at the accepted revision, blocking findings are resolved, and independent status/Off plus recovery are exercised before unattended Flight Deck handoff.
-    depends_on: [prove-multi-provider-production-recovery, expose-bootstrap-production-controls]
+    depends_on: [prove-two-action-unattended-production, expose-bootstrap-production-controls]
     decisions: []
-    references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/working-copy-safety.md", "docs/plans/mission-control-view/14-flight-deck-plan-amendment.yaml"]
+    references: []
   - id: repair-codex-worktree-configuration
     title: Repair the existing protected-broker installer and status contract so every Codex profile Arcadia actually launches can use the exact standard agent worktree roots without broad filesystem or network access.
     status: done

@@ -1,0 +1,37 @@
+{
+  "agent_ask": "v1",
+  "request_id": "defer-multi-provider-soak-until-single-provider-hardened-2026-09-14-v2",
+  "project": "arcadia",
+  "intent": "plan",
+  "target_ref": "plan/bootstrap-managed-production-to-build-flight-deck",
+  "requested_authority": "propose",
+  "desired_result": "Defer the heavy dual-provider concurrency/soak proof until single-provider, single-candidate-per-repository production has run cleanly, per docs/proposals/operator-scale-managed-production-boundary.md's sequential-by-default boundary; unblock Flight Deck handoff from that deferred proof.",
+  "rationale": "docs/proposals/operator-scale-managed-production-boundary.md argues Arcadia should be sequential-by-default, treating concurrency as a bounded capacity decision rather than a product identity, and explicitly defers multiple concurrent candidates and provider-specific swarm optimization until a real workload demonstrates the need. The operator confirmed: prove single concurrency (one provider, one candidate per repository) works perfectly before expanding to multi-provider proof, applying 80/20 and YAGNI. prove-multi-provider-production-recovery's current acceptance criteria (100 reproducible interleavings per race scenario; a ten-Action soak across two Projects and both providers) exceed what the proposal's Definition of Done requires and currently block Flight Deck handoff, which is the plan's actual milestone.",
+  "actions": [
+    {
+      "target_ref": "action/prove-multi-provider-production-recovery",
+      "desired_result": "Add minimal Claude session launch support so Arcadia can substitute providers, reusing the Codex adapter interface from support-selected-codex-and-claude-sessions; defer the full dual-provider concurrent soak/interleaving proof until single-provider single-repository production has run cleanly in real use or a real workload needs concurrent multi-provider execution.",
+      "acceptance": [
+        "Add Claude session launch support (provider-specific executable arguments, native Session identity, packet/model/binding validation, reattach/resume, honest unsupported-operation messages), reusing the existing provider-adapter interface without reworking it.",
+        "Prove automatic selection can launch either configured provider for a given Action, preserving per-account capacity and repository isolation, on at least one real or fixture Action per provider.",
+        "Defer the dual-provider concurrent soak proof (100 reproducible interleavings per race scenario; ten-Action live soak across two Projects and both providers) with an explicit trigger: reactivate when single-provider single-repository production (prove-two-action-unattended-production and its hardening) has run cleanly in real operator use, or when a real workload actually requires concurrent multi-provider execution.",
+        "Publish live/fixture evidence for each proven boundary and name the exact deferred gap so it is not mistaken for completed proof; distinguish simulated provider or capacity behavior from real proof.",
+        "Preserve deterministic integration evidence and an exact operator procedure/target in the PR."
+      ],
+      "dependencies": ["prove-two-action-unattended-production"]
+    },
+    {
+      "target_ref": "action/freeze-production-runtime-and-handoff-flight-deck",
+      "desired_result": "Freeze the proven single-provider production runtime and hand off Flight Deck as its first workload without waiting on the deferred dual-provider soak proof.",
+      "acceptance": [
+        "Identify and preserve the exact proven worker/runtime revision, service command, workspace/schema compatibility and rollback/recovery procedure independently of coding worktrees.",
+        "Prove that editing/building Flight Deck in an isolated Arcadia worktree does not replace, hot-reload or restart the controller; runtime upgrades require a separate controlled handoff.",
+        "Present the Flight Deck Plan scope and first two dependent Actions, current queue segment, automatic completion policy and external merge/publication boundaries as one handoff Artifact.",
+        "After bootstrap acceptance and approved Plan transition, the canonical pointer selects Flight Deck and production admits its first Action; no repeated human Session setup is required.",
+        "If Flight Deck cannot advance without a merge or subjective acceptance, show that exact approval in the existing review surface. Never weaken a gate to manufacture uninterrupted progress.",
+        "Publish the contract 20 release evidence index; every required proof is passed at the accepted revision, blocking findings are resolved, and independent status/Off plus recovery are exercised before unattended Flight Deck handoff."
+      ],
+      "dependencies": ["prove-two-action-unattended-production", "expose-bootstrap-production-controls"]
+    }
+  ]
+}
