@@ -175,7 +175,7 @@ actions:
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/sessions/index.ts", "src/commands/advance.ts", "src/dashboard/snapshot.ts", "apps/dashboard/hooks/use-arcadia-snapshot.ts"]
   - id: reconcile-session-exits-to-next-move
     title: Reconcile Session exit into durable evidence and the next governed Action or Decision.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Reconcile Session exit into durable evidence and the next governed Action or Decision, reading Session/Run state directly rather than through the portfolio dashboard view.
@@ -713,7 +713,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: reconcile-session-exits-to-next-move
+current_action: advance-approved-production-work
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
