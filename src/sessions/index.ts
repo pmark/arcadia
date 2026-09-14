@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { hostname } from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
@@ -46,6 +47,7 @@ export interface AgentSession {
   display_name: string;
   terminal_transport: "tmux";
   tmux_session_name: string;
+  host: string;
   status: "prepared" | "running" | "completed" | "failed" | "needs_input";
   prepared_at: string;
   started_at: string | null;
@@ -158,6 +160,7 @@ export function prepareSession(input: {
   worktreePath: string;
   now: Date;
   tmux?: TmuxAdapter;
+  host?: string;
 }): AgentSession {
   const context = input.dispatch.context;
   if (!context || !isDispatchable(input.dispatch)) throw validationError("Session launch requires one dispatchable Action.");
@@ -245,6 +248,7 @@ export function prepareSession(input: {
     provider_mapping_id: invocation.provider_mapping_id, provider_binding_id: invocation.provider_binding_id,
     base_revision: input.baseRevision, branch: input.branch, worktree_path: canonicalPath(input.worktreePath),
     provider_session_id: providerSessionId, display_name: displayName, terminal_transport: "tmux", tmux_session_name: tmuxName,
+    host: input.host ?? hostname(),
     status: "prepared", prepared_at: timestamp, started_at: null, ended_at: null, exit_status: null,
     created_at: timestamp, updated_at: timestamp
   } satisfies AgentSession;
@@ -368,6 +372,20 @@ export function getRepositoryLease(db: Database.Database, repositoryPath: string
   return (db.prepare("SELECT * FROM agent_sessions WHERE repository_path = ? AND status IN ('prepared', 'running') ORDER BY prepared_at DESC LIMIT 1").get(canonicalPath(repositoryPath)) as AgentSession | undefined) ?? null;
 }
 
+/**
+ * Every repository lease across the whole portfolio, independent of any
+ * recent-history limit. `getRepositoryLease` scopes to one repository for the
+ * dispatch path; the portfolio observation surface needs every live or
+ * prepared Session regardless of which project's transition happened to
+ * surface it, including one whose owning project is not currently active.
+ */
+export function listActiveAgentSessions(db: Database.Database): AgentSession[] {
+  if (!hasSessionTable(db)) return [];
+  return db
+    .prepare("SELECT * FROM agent_sessions WHERE status IN ('prepared', 'running') ORDER BY prepared_at DESC")
+    .all() as AgentSession[];
+}
+
 export function getCompetingManagedRun(
   db: Database.Database,
   repositoryPath: string
@@ -451,6 +469,9 @@ function hasSessionTable(db: Database.Database): boolean {
   return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'agent_sessions'").get());
 }
 
+export const SESSION_PHONE_LIMITATION_NOTICE =
+  "Reattach and resume run a terminal command against this host; a phone-only client cannot execute it. Use the existing Run evidence links, or open this Session from a machine with a terminal.";
+
 export function sessionView(session: AgentSession, tmux: Pick<TmuxAdapter, "hasSession"> = systemTmux) {
   const live = tmux.hasSession(session.tmux_session_name);
   const codex = session.provider === "codex-cli";
@@ -462,7 +483,8 @@ export function sessionView(session: AgentSession, tmux: Pick<TmuxAdapter, "hasS
     resumeCommand: codex ? null : `cd ${JSON.stringify(session.worktree_path)} && claude --resume ${session.provider_session_id}`,
     resumeNotice: codex
       ? "Exact Codex resume is unavailable after this terminal exits: Codex creates its native session id internally and does not expose it to detached launch. Reattach the live tmux Session; after exit, launch a new governed Session rather than guessing `codex resume --last`."
-      : null
+      : null,
+    phoneLimitationNotice: SESSION_PHONE_LIMITATION_NOTICE
   };
 }
 

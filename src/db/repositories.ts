@@ -2575,6 +2575,25 @@ export function listExecutionRuns(db: Database.Database, limit = 10): ExecutionR
   });
 }
 
+/**
+ * Every Run still pending or running, independent of any recent-history
+ * limit. `listExecutionRuns(limit)` truncates by recency for history display;
+ * an old Run that is still active must never fall out of that truncation just
+ * because newer terminal Runs pushed it past the cutoff.
+ */
+export function listActiveExecutionRuns(db: Database.Database): ExecutionRunSummary[] {
+  const rows = db
+    .prepare(
+      "SELECT id FROM execution_runs WHERE status IN ('pending_execution', 'running') ORDER BY updated_at DESC, created_at DESC"
+    )
+    .all() as Array<{ id: string }>;
+
+  return rows.flatMap((row) => {
+    const run = getExecutionRun(db, row.id);
+    return run ? [run] : [];
+  });
+}
+
 export function listUpcomingArtifacts(db: Database.Database, limit = 20): ArtifactSummary[] {
   return db
     .prepare(

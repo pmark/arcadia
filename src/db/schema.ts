@@ -195,6 +195,7 @@ function ensureAgentSessionsTable(db: Database.Database): void {
       display_name TEXT NOT NULL,
       terminal_transport TEXT NOT NULL CHECK (terminal_transport IN ('tmux')),
       tmux_session_name TEXT NOT NULL UNIQUE,
+      host TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL CHECK (status IN ('prepared', 'running', 'completed', 'failed', 'needs_input')),
       prepared_at TEXT NOT NULL,
       started_at TEXT,
@@ -209,7 +210,14 @@ function ensureAgentSessionsTable(db: Database.Database): void {
       ON agent_sessions(repository_path)
       WHERE status IN ('prepared', 'running');
     CREATE INDEX IF NOT EXISTS idx_agent_sessions_project ON agent_sessions(project_id, prepared_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_agent_sessions_status ON agent_sessions(status, prepared_at DESC);
   `);
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(agent_sessions)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("host")) {
+    db.prepare("ALTER TABLE agent_sessions ADD COLUMN host TEXT NOT NULL DEFAULT ''").run();
+  }
 }
 
 function ensureAgentWorktreeReservationsTable(db: Database.Database): void {

@@ -56,6 +56,96 @@ describe("dashboard snapshot", () => {
     expect(snapshot.managedActions).toContainEqual(expect.objectContaining({ workItemId: workId, planSlug: "old-plan", actionId: "still-running" }));
   });
 
+  it("keeps an old still-active Run visible past more than ten newer terminal Runs", () => {
+    const workspace = initializedWorkspace();
+    const runIds = withDatabase(workspace, (db) => {
+      ensureBuiltInSkills(db);
+      const created = createProjectWithInitialWork(db, {
+        name: "Long-running work", mission: "Never truncate an active Run.", status: "active",
+        currentMilestone: "Proof", nextAction: "Build proof", workClassification: "agent"
+      });
+      const work = getWorkItem(db, created.workItem.id)!;
+      const plan = createExecutionPlan(db, { workItemId: work.id, summary: "Old work", steps: planStepsForWorkItem(work) })!;
+      const oldRun = createExecutionRun(db, { workItemId: work.id, planId: plan.id, status: "running", summary: "Still running after a long time", steps: [] })!;
+      db.prepare("UPDATE execution_runs SET updated_at = ?, created_at = ? WHERE id = ?")
+        .run("2020-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z", oldRun.id);
+
+      for (let index = 0; index < 11; index += 1) {
+        createExecutionRun(db, { workItemId: work.id, planId: plan.id, status: "completed", summary: `Newer terminal Run ${index}`, steps: [] });
+      }
+
+      return { old: oldRun.id };
+    });
+
+    const snapshot = buildDashboardSnapshot({ workspace, runLimit: 10 });
+    expect(snapshot.recentRuns.map((run) => run.id)).not.toContain(runIds.old);
+    expect(snapshot.activeExecutionRuns.map((run) => run.id)).toContain(runIds.old);
+    expect(snapshot.counts.activeRuns).toBe(1);
+    expect(snapshot.agentQueue.running.some((entry) => entry.runId === runIds.old)).toBe(true);
+  });
+
+  it("shows every agent Session lease across the portfolio, including one a Project's repository scan cannot reach", () => {
+    const workspace = initializedWorkspace();
+    const ids = withDatabase(workspace, (db) => {
+      ensureBuiltInSkills(db);
+      const created = createProjectWithInitialWork(db, {
+        name: "No repository path yet", mission: "Prove Sessions never disappear.", status: "active",
+        currentMilestone: "Proof", nextAction: "Build proof", workClassification: "agent"
+      });
+      const work = getWorkItem(db, created.workItem.id)!;
+      // Deliberately no upsertProjectMetadata repo_path: buildAgentQueue's
+      // per-Project scan bails out before it ever looks at Sessions, so a
+      // lease here is only visible through the portfolio-wide Session query.
+      createCodexInvocation(db, {
+        id: "packet_lease_proof", purpose: "build", agentProfile: "claude_build", workspaceScope: "/tmp/lease-proof",
+        command: "claude", promptPath: "prompts/lease-proof/prompt.md", jsonlOutputPath: "prompts/lease-proof/output.jsonl",
+        finalMessagePath: "prompts/lease-proof/final.md", status: "packet_created", workItemId: work.id
+      });
+      db.prepare(
+        `INSERT INTO agent_sessions (
+          id, project_id, project_slug, repository_path, plan_path, plan_slug, action_id, work_item_id,
+          packet_id, packet_path, packet_sha256, authorizing_decisions_json, execution_profile_json,
+          provider_profile, provider, model, effort, provider_mapping_id, provider_binding_id,
+          base_revision, branch, worktree_path, provider_session_id, display_name, terminal_transport,
+          tmux_session_name, host, status, prepared_at, started_at, ended_at, exit_status, created_at, updated_at
+        ) VALUES (
+          @id, @project_id, @project_slug, @repository_path, @plan_path, @plan_slug, @action_id, @work_item_id,
+          @packet_id, @packet_path, @packet_sha256, @authorizing_decisions_json, @execution_profile_json,
+          @provider_profile, @provider, @model, @effort, @provider_mapping_id, @provider_binding_id,
+          @base_revision, @branch, @worktree_path, @provider_session_id, @display_name, @terminal_transport,
+          @tmux_session_name, @host, @status, @prepared_at, @started_at, @ended_at, @exit_status, @created_at, @updated_at
+        )`
+      ).run({
+        id: "session_lease_proof", project_id: created.project.id, project_slug: created.project.slug,
+        repository_path: "/tmp/lease-proof-repo", plan_path: "docs/plans/lease-proof.md", plan_slug: "lease-proof",
+        action_id: "build-proof", work_item_id: work.id, packet_id: "packet_lease_proof",
+        packet_path: "prompts/lease-proof/prompt.md", packet_sha256: "sha", authorizing_decisions_json: "[]",
+        execution_profile_json: null, provider_profile: "claude_build", provider: "claude-code-cli", model: "sonnet",
+        effort: "high", provider_mapping_id: null, provider_binding_id: null, base_revision: "0000000",
+        branch: "claude/lease-proof", worktree_path: "/tmp/lease-proof-worktree", provider_session_id: "native-session-id",
+        display_name: "Lease proof", terminal_transport: "tmux", tmux_session_name: "arcadia-lease-proof",
+        host: "proof-host.local", status: "running", prepared_at: "2026-01-01T00:00:00.000Z", started_at: "2026-01-01T00:00:01.000Z",
+        ended_at: null, exit_status: null, created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:01.000Z"
+      });
+      return { project: created.project.id, work: work.id };
+    });
+
+    const snapshot = buildDashboardSnapshot({ workspace });
+    const session = snapshot.activeAgentSessions.find((entry) => entry.id === "session_lease_proof");
+    expect(session).toMatchObject({
+      projectId: ids.project,
+      actionId: "build-proof",
+      host: "proof-host.local",
+      provider: "claude-code-cli",
+      model: "sonnet",
+      status: "running",
+      live: false,
+      reattachCommand: "tmux attach-session -t arcadia-lease-proof",
+      phoneLimitationNotice: expect.stringContaining("phone-only client cannot execute it")
+    });
+    expect(snapshot.agentQueue.running.some((entry) => entry.id === "session:session_lease_proof")).toBe(true);
+  });
+
   it("carries database-to-managed identities for Decisions, Runs, and Artifacts", () => {
     const workspace = initializedWorkspace();
     const ids = withDatabase(workspace, (db) => {

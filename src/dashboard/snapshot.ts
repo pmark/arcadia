@@ -26,6 +26,7 @@ import {
   getExecutionRun,
   listBackBurnerItems,
   listActionableReviewItems,
+  listActiveExecutionRuns,
   listArtifacts,
   listExecutionRuns,
   listMilestones
@@ -34,6 +35,7 @@ import { CODEX_REPO_PATH_REQUIRED_MESSAGE } from "../projects/setup.js";
 import { packetSha256 } from "../execution/planningAuthorization.js";
 import { extractPlanningReviewFields } from "../stewardship/artifactValidator.js";
 import { buildAgentQueue, type AgentQueue } from "../dispatch/queue.js";
+import { listActiveAgentSessions, sessionView, type AgentSession } from "../sessions/index.js";
 import { selectDailyAdvantage, type DashboardDailyAdvantage } from "./dailyAdvantage.js";
 import { readReviewFocus, type DashboardReviewFocus } from "./reviewFocus.js";
 
@@ -81,6 +83,43 @@ export interface DashboardSnapshot {
   /** Database identities translated through authoritative managed document references. */
   managedActions: DashboardManagedAction[];
   dispatchJournal: DashboardDispatchJournal;
+  /**
+   * Every prepared or running agent Session across the whole portfolio,
+   * independent of any recent-history limit — a Session that has been running
+   * far longer than everything else must stay visible.
+   */
+  activeAgentSessions: DashboardAgentSession[];
+  /** Every pending or running execution Run, independent of any recent-history limit. */
+  activeExecutionRuns: DashboardRun[];
+}
+
+export interface DashboardAgentSession {
+  id: string;
+  projectId: string;
+  projectName: string | null;
+  actionId: string;
+  actionTitle: string | null;
+  planSlug: string;
+  packetPath: string;
+  provider: string;
+  model: string;
+  effort: string | null;
+  host: string;
+  worktreePath: string;
+  branch: string;
+  nativeSessionId: string;
+  tmuxSessionName: string;
+  status: AgentSession["status"];
+  statusLabel: string;
+  live: boolean;
+  observedStatus: string;
+  preparedAt: string;
+  startedAt: string | null;
+  observedAt: string;
+  reattachCommand: string;
+  resumeCommand: string | null;
+  resumeNotice: string | null;
+  phoneLimitationNotice: string;
 }
 
 export interface DashboardManagedAction {
@@ -411,6 +450,8 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
     const statusData = buildStatusReportData(db, options.workspace);
     const artifacts = listArtifacts(db);
     const runs = listExecutionRuns(db, runLimit);
+    const activeExecutionRuns = listActiveExecutionRuns(db);
+    const activeAgentSessions = listActiveAgentSessions(db).map((session) => toDashboardAgentSession(db, session));
     const currentMilestones = listMilestones(db, { status: "active", limit: milestoneLimit });
     const reviewItems = listActionableReviewItems(db);
     const bloggingSites = listBlogDashboardSites(db).map(toDashboardBlogSite);
@@ -506,7 +547,7 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
         backBurner: backBurnerItems.length,
         backBurnerFired: firedBackBurnerItems.length,
         backBurnerIncubating: backBurnerItems.length - firedBackBurnerItems.length,
-        activeRuns: runs.filter((run) => run.status === "running" || isRequiresReviewStatus(run.status)).length,
+        activeRuns: activeExecutionRuns.length,
         recentRuns: runs.length,
         recentArtifacts: Math.min(artifacts.length, artifactLimit),
         activityEvents: activityEvents.length
@@ -535,7 +576,9 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
       recentRuns: runs.map(toDashboardRun),
       recentArtifacts: artifacts.slice(0, artifactLimit).map(toDashboardArtifact),
       managedActions,
-      dispatchJournal
+      dispatchJournal,
+      activeAgentSessions,
+      activeExecutionRuns: activeExecutionRuns.map(toDashboardRun)
     };
   });
 }
@@ -667,6 +710,39 @@ function toDashboardRun(run: ExecutionRunSummary): DashboardRun {
     failureReason: failedStep ? stepReason(failedStep) : null,
     reviewReason: reviewStep ? stepReason(reviewStep) : null,
     missionLogPath: run.mission_log_path
+  };
+}
+
+function toDashboardAgentSession(db: Database.Database, session: AgentSession): DashboardAgentSession {
+  const view = sessionView(session);
+  const project = db.prepare("SELECT name FROM projects WHERE id = ?").get(session.project_id) as { name: string } | undefined;
+  return {
+    id: session.id,
+    projectId: session.project_id,
+    projectName: project?.name ?? null,
+    actionId: session.action_id,
+    actionTitle: getWorkItemTitle(db, session.work_item_id),
+    planSlug: session.plan_slug,
+    packetPath: session.packet_path,
+    provider: session.provider,
+    model: session.model,
+    effort: session.effort,
+    host: session.host,
+    worktreePath: session.worktree_path,
+    branch: session.branch,
+    nativeSessionId: session.provider_session_id,
+    tmuxSessionName: session.tmux_session_name,
+    status: session.status,
+    statusLabel: labelStatus(session.status),
+    live: view.live,
+    observedStatus: view.observedStatus,
+    preparedAt: session.prepared_at,
+    startedAt: session.started_at,
+    observedAt: session.updated_at,
+    reattachCommand: view.reattachCommand,
+    resumeCommand: view.resumeCommand,
+    resumeNotice: view.resumeNotice,
+    phoneLimitationNotice: view.phoneLimitationNotice
   };
 }
 
