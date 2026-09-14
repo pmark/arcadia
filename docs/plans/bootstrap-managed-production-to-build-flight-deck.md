@@ -735,7 +735,7 @@ actions:
     references: ["docs/arcadia-development-orchestration-vision.md", "docs/decisions/0019-streamline-pr-qa-before-expansion.md", "docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/sessions/reconciliation.ts", "src/stewardship/critic.ts", "src/stewardship/artifactValidator.ts", "src/ask/settlement.ts"]
 questions: []
 decisions: []
-current_action: feed-and-supervise-managed-production
+current_action: assess-pr-blast-radius-before-merge
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
