@@ -7,7 +7,7 @@ import defaultAdapters from "../config/defaults/provider-adapters.json" with { t
 import type { CapacityAdmissionDecision, ProviderCapacityObservation } from "../src/codingAgents/capacity.js";
 import type { ProviderAdapterRegistry } from "../src/codingAgents/providerAdapters.js";
 import { ArcadiaError } from "../src/cli/errors.js";
-import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
+import { openDatabase, withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import {
   createCodexInvocation,
   createReviewItem,
@@ -16,6 +16,7 @@ import {
   upsertProjectMetadata,
   updateReviewItemStatus
 } from "../src/db/repositories.js";
+import { resolveDispatch } from "../src/docs/dispatch.js";
 import { syncProjectDocs } from "../src/docs/sync.js";
 import { packetSha256 } from "../src/execution/planningAuthorization.js";
 import type { CodingAgentProfile } from "../src/intent/registries.js";
@@ -27,7 +28,7 @@ import {
   normalizeProductionScope,
   type ProductionScope
 } from "../src/production/policy.js";
-import { getRepositoryLease, type TmuxAdapter } from "../src/sessions/index.js";
+import { getRepositoryLease, prepareSession, type TmuxAdapter } from "../src/sessions/index.js";
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -241,6 +242,81 @@ describe("launchGuardedHostSession", () => {
     expect(result.reused).toBe(true);
     expect(result.session.id).toBe(racer.session.id);
     expect(tmux.launches).toHaveLength(1);
+  });
+
+  it("serializes prepareSession's own lease check against its insert so two truly concurrent callers grant only one lease", () => {
+    const fixture = preparedFixture();
+    const dispatch = resolveDispatch(fixture.repo, "test-project");
+    const baseRevision = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+
+    // Two independent connections to the same underlying database file, the
+    // way two separate `arcadia go` processes would each open their own
+    // connection. `db2` gets a short busy_timeout so an attempt that cannot
+    // acquire the write lock fails fast instead of hanging the test.
+    const db1 = openDatabase(fixture.workspace);
+    const db2 = openDatabase(fixture.workspace);
+    db2.pragma("busy_timeout = 50");
+
+    const sharedSessionInput = (overrides: { db: typeof db1; branch: string; worktreeDir: string; tmux: TmuxAdapter }) => ({
+      db: overrides.db,
+      workspace: fixture.workspace,
+      repoRoot: fixture.repo,
+      dispatch,
+      agent: "claude" as const,
+      model: "sonnet",
+      effort: "high",
+      baseRevision,
+      branch: overrides.branch,
+      worktreePath: path.join(fixture.root, overrides.worktreeDir),
+      now: fixture.now,
+      tmux: overrides.tmux
+    });
+
+    try {
+      let racerAttemptError: unknown = null;
+      const first = prepareSession({
+        ...sharedSessionInput({ db: db1, branch: "claude/racer", worktreeDir: "racer-worktree", tmux: new FakeTmux() }),
+        testHooks: {
+          afterChecksBeforeInsert: () => {
+            // While `first`'s IMMEDIATE transaction still holds the write
+            // lock (and has not yet inserted its row), a second connection
+            // running the exact same check-then-write sequence must not be
+            // able to observe the lease-free state this call already passed
+            // through: it can only fail to even acquire the lock.
+            try {
+              prepareSession(
+                sharedSessionInput({ db: db2, branch: "claude/loser", worktreeDir: "loser-worktree", tmux: new FakeTmux() })
+              );
+            } catch (error) {
+              racerAttemptError = error;
+            }
+          }
+        }
+      });
+
+      expect(racerAttemptError).not.toBeNull();
+      expect(String((racerAttemptError as Error).message)).toMatch(/SQLITE_BUSY|database is locked/i);
+
+      // Once `first` has committed, a fresh attempt on the same connection
+      // now correctly observes the lease it raced against and is refused
+      // rather than granted a second, competing one.
+      expectArcadiaError(
+        () =>
+          prepareSession(
+            sharedSessionInput({ db: db2, branch: "claude/loser-retry", worktreeDir: "loser-worktree-2", tmux: new FakeTmux() })
+          ),
+        "already has a prepared or running Session lease"
+      );
+
+      const sessions = db1
+        .prepare("SELECT id FROM agent_sessions WHERE repository_path = ?")
+        .all(realpathSync(fixture.repo)) as Array<{ id: string }>;
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0].id).toBe(first.id);
+    } finally {
+      db1.close();
+      db2.close();
+    }
   });
 
   it("rejects a launch that carries both an operator fingerprint and a standing-policy grant", () => {

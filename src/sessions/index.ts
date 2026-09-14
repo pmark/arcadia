@@ -5,6 +5,7 @@ import { hostname } from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
+import { writeTransaction } from "../db/connection.js";
 import { getProjectBySlug, getWorkItemByDocRef, listCodexInvocationsForWorkItem } from "../db/repositories.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import { packetSha256 } from "../execution/planningAuthorization.js";
@@ -162,6 +163,10 @@ export function prepareSession(input: {
   now: Date;
   tmux?: TmuxAdapter;
   host?: string;
+  testHooks?: {
+    /** Deterministic fault injection between the lease/handoff/competing-run checks and the insert, inside the same transaction. */
+    afterChecksBeforeInsert?: () => void;
+  };
 }): AgentSession {
   const context = input.dispatch.context;
   if (!context || !isDispatchable(input.dispatch)) throw validationError("Session launch requires one dispatchable Action.");
@@ -217,53 +222,65 @@ export function prepareSession(input: {
     .map((decision) => decision.id)
     .concat(promotionDecision)
     .sort();
-  const lease = getRepositoryLease(input.db, path.resolve(input.repoRoot));
-  if (lease) throw validationError("The repository already has a prepared or running Session lease.", { sessionId: lease.id });
-  const handoff = getResumableLeaseHandoff(input.db, path.resolve(input.repoRoot));
-  if (handoff && handoff.session.action_id !== context.action.id) {
-    throw validationError("The repository holds an incomplete resumable candidate for a different Action; resolve or discard it before preparing a new one.", {
-      sessionId: handoff.session.id, actionId: handoff.session.action_id, worktreePath: handoff.session.worktree_path
-    });
-  }
-  const competingRun = getCompetingManagedRun(input.db, path.resolve(input.repoRoot));
-  if (competingRun) {
-    throw validationError("The repository already has a pending or running managed Run.", {
-      runId: competingRun.id,
-      status: competingRun.status
-    });
-  }
   const tmux = input.tmux ?? systemTmux;
   if (!tmux.available()) throw validationError("tmux is required for explicit Session launch but is not available.");
-  const stamp = input.now.toISOString().replaceAll(/[-:.]/g, "").replace(/Z$/, "Z").toLowerCase();
-  const shortAction = context.action.id.replaceAll(/[^a-z0-9-]/gi, "-").toLowerCase().slice(0, 42);
-  const tmuxName = `arcadia-${context.projectSlug}-${shortAction}-${stamp}`.slice(0, 100);
-  if (tmux.hasSession(tmuxName)) throw validationError("The tmux Session name already exists.", { tmuxSessionName: tmuxName });
-  const id = createId("session");
-  // Claude lets Arcadia supply a native session id. Codex creates its native
-  // id internally and does not expose it to a detached interactive launch.
-  // Keep the immutable Arcadia receipt as the correlation identity instead of
-  // fabricating a Codex id that `codex resume` could not actually resume.
-  const providerSessionId = input.agent === "claude" ? randomUUID() : id;
-  const displayName = `${context.projectName}: ${context.action.title}`.slice(0, 120);
-  const timestamp = input.now.toISOString();
-  const row = {
-    id, project_id: project.id, project_slug: context.projectSlug, repository_path: canonicalPath(input.repoRoot),
-    plan_path: context.planPath, plan_slug: context.activePlan, action_id: context.action.id, work_item_id: workItem.id,
-    packet_id: invocation.id, packet_path: invocation.prompt_path, packet_sha256: packetHash,
-    authorizing_decisions_json: JSON.stringify(decisions), execution_profile_json: invocation.execution_profile_json,
-    provider_profile: invocation.agent_profile, provider: selected.provider, model: selected.model, effort: input.effort,
-    provider_mapping_id: invocation.provider_mapping_id, provider_binding_id: invocation.provider_binding_id,
-    base_revision: input.baseRevision, branch: input.branch, worktree_path: canonicalPath(input.worktreePath),
-    provider_session_id: providerSessionId, display_name: displayName, terminal_transport: "tmux", tmux_session_name: tmuxName,
-    host: input.host ?? hostname(),
-    status: "prepared", prepared_at: timestamp, started_at: null, ended_at: null, exit_status: null,
-    created_at: timestamp, updated_at: timestamp
-  } satisfies AgentSession;
-  input.db.prepare(`INSERT INTO agent_sessions (${Object.keys(row).join(", ")}) VALUES (${Object.keys(row).map((key) => `@${key}`).join(", ")})`).run(row);
-  if (handoff) {
-    supersedeLeaseHandoff(input.db, handoff.receipt.id, id);
-  }
-  return row;
+
+  // The lease/handoff/competing-run checks below and the agent_sessions insert
+  // that follows must be atomic: two concurrent `prepareSession` calls for the
+  // same repository could otherwise both observe no lease before either
+  // inserts, both proceed, and both call `supersedeLeaseHandoff` on the same
+  // receipt, violating the single-lease-per-repository invariant these checks
+  // exist to enforce. `writeTransaction` takes the write lock at `BEGIN
+  // IMMEDIATE`, so a second caller's check phase blocks until the first
+  // caller's insert has committed and then correctly observes the lease.
+  return writeTransaction(input.db, () => {
+    const lease = getRepositoryLease(input.db, path.resolve(input.repoRoot));
+    if (lease) throw validationError("The repository already has a prepared or running Session lease.", { sessionId: lease.id });
+    const handoff = getResumableLeaseHandoff(input.db, path.resolve(input.repoRoot));
+    if (handoff && handoff.session.action_id !== context.action.id) {
+      throw validationError("The repository holds an incomplete resumable candidate for a different Action; resolve or discard it before preparing a new one.", {
+        sessionId: handoff.session.id, actionId: handoff.session.action_id, worktreePath: handoff.session.worktree_path
+      });
+    }
+    const competingRun = getCompetingManagedRun(input.db, path.resolve(input.repoRoot));
+    if (competingRun) {
+      throw validationError("The repository already has a pending or running managed Run.", {
+        runId: competingRun.id,
+        status: competingRun.status
+      });
+    }
+    input.testHooks?.afterChecksBeforeInsert?.();
+    const stamp = input.now.toISOString().replaceAll(/[-:.]/g, "").replace(/Z$/, "Z").toLowerCase();
+    const shortAction = context.action.id.replaceAll(/[^a-z0-9-]/gi, "-").toLowerCase().slice(0, 42);
+    const tmuxName = `arcadia-${context.projectSlug}-${shortAction}-${stamp}`.slice(0, 100);
+    if (tmux.hasSession(tmuxName)) throw validationError("The tmux Session name already exists.", { tmuxSessionName: tmuxName });
+    const id = createId("session");
+    // Claude lets Arcadia supply a native session id. Codex creates its native
+    // id internally and does not expose it to a detached interactive launch.
+    // Keep the immutable Arcadia receipt as the correlation identity instead of
+    // fabricating a Codex id that `codex resume` could not actually resume.
+    const providerSessionId = input.agent === "claude" ? randomUUID() : id;
+    const displayName = `${context.projectName}: ${context.action.title}`.slice(0, 120);
+    const timestamp = input.now.toISOString();
+    const row = {
+      id, project_id: project.id, project_slug: context.projectSlug, repository_path: canonicalPath(input.repoRoot),
+      plan_path: context.planPath, plan_slug: context.activePlan, action_id: context.action.id, work_item_id: workItem.id,
+      packet_id: invocation.id, packet_path: invocation.prompt_path, packet_sha256: packetHash,
+      authorizing_decisions_json: JSON.stringify(decisions), execution_profile_json: invocation.execution_profile_json,
+      provider_profile: invocation.agent_profile, provider: selected.provider, model: selected.model, effort: input.effort,
+      provider_mapping_id: invocation.provider_mapping_id, provider_binding_id: invocation.provider_binding_id,
+      base_revision: input.baseRevision, branch: input.branch, worktree_path: canonicalPath(input.worktreePath),
+      provider_session_id: providerSessionId, display_name: displayName, terminal_transport: "tmux", tmux_session_name: tmuxName,
+      host: input.host ?? hostname(),
+      status: "prepared", prepared_at: timestamp, started_at: null, ended_at: null, exit_status: null,
+      created_at: timestamp, updated_at: timestamp
+    } satisfies AgentSession;
+    input.db.prepare(`INSERT INTO agent_sessions (${Object.keys(row).join(", ")}) VALUES (${Object.keys(row).map((key) => `@${key}`).join(", ")})`).run(row);
+    if (handoff) {
+      supersedeLeaseHandoff(input.db, handoff.receipt.id, id);
+    }
+    return row;
+  });
 }
 
 export function findPromotionDecision(
