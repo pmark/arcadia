@@ -155,7 +155,7 @@ actions:
     references: []
   - id: observe-portfolio-agent-sessions
     title: Show all active Sessions and Runs with fresh observation and native recovery access.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Show all active Sessions and Runs with fresh observation and native recovery access.
@@ -694,7 +694,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: observe-portfolio-agent-sessions
+current_action: reconcile-session-exits-to-next-move
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
