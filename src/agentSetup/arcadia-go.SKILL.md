@@ -74,8 +74,13 @@ prompt, not permission to invoke the mutable CLI command directly.
    either protected launcher.
 
    Once the broker succeeds, run `pnpm arcadia next` from that worktree — a
-   read-only noun command, not a protected launcher — and show its output
-   verbatim as the session's opening brief before doing anything else.
+   read-only noun command, not a protected launcher. Then, in your own next
+   chat reply, paste that command's full stdout verbatim (a fenced code
+   block is fine) as the session's opening brief, before doing anything
+   else. Running the command is not enough by itself: the operator reads
+   the chat, not the raw tool-call transcript, so a summary like "dispatch
+   brief confirmed" does not satisfy this step — the literal brief text
+   must appear in a message the operator sees.
 
    That brief names the resolved `active_plan` and `current_action`. If the
    environment exposes a session-title tool (Claude Code Remote's
