@@ -442,7 +442,7 @@ actions:
     references: ["src/agentSetup/goBrokerAgentSetup.ts", "src/goBroker.ts", "src/sessions/worktreePreparation.ts", "src/commands/go.ts", "docs/reports/prove-zero-prompt-production-loop-runbook.md", "src/commands/preserve.ts", "src/sessions/candidatePreservation.ts", "docs/working-copy-safety.md"]
   - id: refuse-to-orphan-an-uncommitted-candidate
     title: The host controller reports a prepared worktree that holds uncommitted work instead of silently preparing a duplicate for the same Action.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: The host controller resumes the existing prepared candidate for the same Action after its prior Session is proven terminal, and otherwise reports a prepared worktree holding uncommitted work instead of silently preparing a duplicate.
@@ -768,7 +768,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: refuse-to-orphan-an-uncommitted-candidate
+current_action: prove-two-action-unattended-production
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
