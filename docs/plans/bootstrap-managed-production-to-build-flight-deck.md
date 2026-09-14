@@ -593,7 +593,7 @@ actions:
     references: ["docs/decisions/0050-add-a-nearly-free-automatic-learning-loop-that-lets-any-arcadia-surface-or-proje.md", "docs/decisions/0020-compounding-agent-production-principles.md", "docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md", "docs/plans/provider-capacity-harvesting.md", "OPERATOR_CONTEXT.md"]
   - id: design-and-build-the-mechanism-that
     title: Design and build the mechanism that discovers unprocessed .arcadia/asks/ files whenever a real Arcadia workspace becomes available, regardless of which command or environment triggered that availability.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Design and build the mechanism that discovers unprocessed .arcadia/asks/ files whenever a real Arcadia workspace becomes available, regardless of which command or environment triggered that availability.

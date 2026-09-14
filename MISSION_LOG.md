@@ -2686,3 +2686,10 @@ from both coding-agent allowlists by design, so no agent session can run it.
 - **Result:** Every declared acceptance criterion was accepted as met: "arcadia go can stage a complete settlement (evidence per acceptance criterion, pointer advance) into the candidate PR before merge."; "After the PR merges, PROJECT.md current_action names the next governed Action with no further command run."; "A stale or failed criterion still refuses completion, as the complete intent does today.".
 - **Next:** Advanced to the next eligible Action in document order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-merge-completes-the-action-2026-09-14).
+
+## 2026-09-14 — Completed arcadia/design-and-build-the-mechanism-that
+
+- **Did:** Completed Action arcadia/design-and-build-the-mechanism-that from accepted evidence (Candidate f593d491a79083e4580ecb62cc9a6b09ae4c13ee).
+- **Result:** Every declared acceptance criterion was accepted as met: "A design is written down (in the Action, a Decision, or a short doc) naming exactly where discovery hooks in and why, given that arcadia go is not a reliable trigger."; "Every .arcadia/asks/*.yaml file whose request_id the database does not yet know is previewed automatically the next time any agent-ask command successfully resolves a real workspace in that repository, with no separate command required."; "A file that fails validation during automatic discovery is reported clearly (e.g. in that commands own output) rather than silently swallowed or left to repeatedly fail on every future command."; "Test coverage proves discovery fires from more than one entry point (e.g. both draft and preview), not only from a single hardcoded command.".
+- **Next:** Advanced to the next eligible Action in document order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-design-and-build-the-mechanism-that-2026-09-14-b).
