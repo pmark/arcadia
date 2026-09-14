@@ -38,6 +38,8 @@ import {
 } from "../sessions/index.js";
 import { recoverLegacyAgentAskDrift, type AskRecoveryTestHooks, type LegacyAskRecovery } from "../sessions/legacyAskRecovery.js";
 import { prepareAgentWorktree } from "../sessions/worktreePreparation.js";
+import { bindManualPreservation } from "../sessions/manualPreservation.js";
+import { readPreservationReadiness, type PreservationReadiness } from "../sessions/preservationReadiness.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { resolveWorkspace } from "../workspace/resolve.js";
 import { getWorktreeProtection } from "./tidy.js";
@@ -80,6 +82,7 @@ export interface BaseRemoteSync {
 
 export interface GoCommandData {
   applied: boolean;
+  preservation?: PreservationReadiness;
   projectSlug: string;
   repositoryPath: string;
   sourceWorktree: string;
@@ -349,6 +352,21 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     }
   }
 
+  let preservation: PreservationReadiness | undefined;
+  if (nextWorktree && !options.launch) {
+    const workspacePath = resolveReadyWorkspace(options.workspace).workspacePath;
+    preservation = withDatabase(workspacePath, db => {
+      try {
+        bindManualPreservation(db, { repository: controlWorktree, worktree: nextWorktree!.path, baseBranch, projectSlug });
+      } catch (error) {
+        const readiness = readPreservationReadiness(db, { workspace: workspacePath, repository: controlWorktree, worktree: nextWorktree!.path, projectSlug });
+        readiness.blockers.unshift({ code: "manual_binding_failed", reason: error instanceof Error ? error.message : String(error) });
+        return { ...readiness, ready: false };
+      }
+      return readPreservationReadiness(db, { workspace: workspacePath, repository: controlWorktree, worktree: nextWorktree!.path, projectSlug });
+    });
+  }
+
   const transition = session && options.workspace
     ? withDatabase(resolveReadyWorkspace(options.workspace).workspacePath, (db) => resolveProjectTransition({
         repoRoot: controlWorktree,
@@ -362,6 +380,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     command: "go",
     data: {
       applied: options.apply === true,
+      ...(preservation ? { preservation } : {}),
       projectSlug,
       repositoryPath: controlWorktree,
       sourceWorktree: sourceRecord.path,
@@ -466,6 +485,10 @@ export function renderGoSuccess(response: CommandSuccess<GoCommandData>): string
   if (data.nextWorktree) {
     lines.push(`Model: ${data.nextWorktree.model}${data.nextWorktree.effort ? ` (${data.nextWorktree.effort} effort)` : ""}`);
     lines.push(`Launch: ${data.nextWorktree.command}`);
+  }
+  if (data.preservation) {
+    lines.push(`Preservation: ${data.preservation.ready ? "ready (local manual candidate)" : "needs configuration or repair"}`);
+    lines.push(...data.preservation.blockers.map(b => `  ${b.code}: ${b.reason}`));
   }
   if (data.session) {
     lines.push(

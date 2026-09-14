@@ -9,7 +9,9 @@ import {
   resolveBaseBranch,
   samePath
 } from "../git/worktrees.js";
-import { preservationAuthority, validatePreservationCandidate } from "../sessions/preservationValidation.js";
+import { assertManualPreservationBinding, bindManualPreservation, manualBindingFingerprint } from "../sessions/manualPreservation.js";
+import { resolveDispatch } from "../docs/dispatch.js";
+import { preservationAuthority, validateBoundCandidate, validatePreservationCandidate } from "../sessions/preservationValidation.js";
 import { readProductionPolicy } from "../production/policy.js";
 import { getRepositoryLease } from "../sessions/index.js";
 import {
@@ -57,10 +59,23 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
   const preserve = (db: Database.Database) => {
     const lease = getRepositoryLease(db, controlWorktree);
     if (!lease) {
-      throw validationError("No prepared or running Session lease names this repository; nothing to preserve.", {
-        repository: controlWorktree,
-        remedy: "Preserve within the Session that produced this candidate."
-      });
+      const projectSlug = resolveDispatch(controlWorktree).context?.projectSlug;
+      if (!projectSlug) throw validationError("Manual preservation cannot resolve its Project.");
+      const binding = bindManualPreservation(db, { repository: controlWorktree, worktree: source, baseBranch, projectSlug });
+      const assertBinding = () => assertManualPreservationBinding(db, binding);
+      const validation = validateBoundCandidate(options.workspace, {
+        id: binding.reservationId, repository: controlWorktree, worktree: source, commands: binding.commands
+      }, binding, assertBinding);
+      return preserveCandidate(db, {
+        requestId: `preserve:${binding.reservationId}`, repositoryPath: controlWorktree,
+        candidateWorktreePath: source, branch, baseBranch, baseRevision: binding.baseRevision,
+        actionId: binding.actionId, packetSha256: manualBindingFingerprint(binding),
+        authorityKind: "manual_handoff", policyEpoch: 0, policyRevision: 0, validation,
+        remotePreservation: { authorized: false, reason: "Manual Go authorizes local candidate preservation only; remote preservation requires separate authority." },
+        now: options.now
+      }, { ...options.deps, hooks: { ...options.deps?.hooks, beforeCommit: () => {
+        options.deps?.hooks?.beforeCommit?.(); assertBinding();
+      } } });
     }
     if (!samePath(lease.worktree_path, source)) {
       throw validationError("The repository's Session lease is for a different worktree.", {

@@ -38,7 +38,17 @@ prompt, not permission to invoke the mutable CLI command directly.
    Do not stop at printing the broker JSON. If the active environment cannot
    write the returned worktree, report that exact environment mismatch once;
    do not request repeated Git or filesystem escalations.
-2. After the declared objective checks are ready, request protected preservation:
+2. Read the returned `preservation` readiness. A manual `go` handoff normally
+   has `session: null`: this is not stale state and does not require a planning
+   packet, a managed Session, or production activation. The host binds its
+   existing worktree reservation to the current Action and configured checks;
+   the same protected preservation launcher handles the manual candidate.
+   Never ask the operator to prepare a planning packet merely because the
+   Session is null. Missing validation commands or an old worker are concrete
+   configuration/runtime defects: diagnose and repair within existing authority,
+   and report the exact remaining defect instead of inventing an approval.
+
+   After the declared objective checks are ready, request protected preservation:
 
    ```sh
    __ARCADIA_CODEX_PRESERVE_BROKER__
@@ -47,7 +57,8 @@ prompt, not permission to invoke the mutable CLI command directly.
 
    The launcher submits a request only. The existing host worker validates an
    immutable candidate snapshot in a restricted sandbox and preserves that exact
-   tree. Never supply a passing assertion or write an evidence file as authority.
+   tree. Manual handoffs are preserved locally only; this does not authorize
+   remote publication, a managed Run, or Action completion. Never supply a passing assertion or write an evidence file as authority.
    An unavailable host worker is a named stop; never run Git mutation or weaken
    the sandbox to bypass it. Preservation does not accept, integrate, complete,
    or advance the Action. Retain the receipt and any LOCAL ONLY recovery action.

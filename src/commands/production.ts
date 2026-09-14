@@ -2,7 +2,7 @@ import { validationError } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { withDatabase } from "../db/connection.js";
+import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
 import {
   PRODUCTION_OFF_CONSEQUENCE,
   buildProductionActivationPreview,
@@ -73,7 +73,7 @@ export function runProductionStatusCommand(
   options: ProductionStatusOptions
 ): CommandSuccess<ProductionStatusData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const data = withDatabase(workspacePath, (db) => {
+  const data = withReadOnlyDatabase(workspacePath, (db) => {
     const read = readProductionPolicySafely(db);
     const admissions = read.status === "ok" ? listAdmissions(db) : [];
     const live = read.status === "ok"

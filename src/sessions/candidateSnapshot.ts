@@ -33,8 +33,13 @@ export function snapshotCandidate(candidate: string): string {
       captured = JSON.parse(execFileSync("/usr/bin/python3", ["-I", "-c", CAPTURE_FILES, root], {
         input: JSON.stringify(selected), encoding: "utf8", maxBuffer: 96 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"]
       }));
-    } catch {
-      throw validationError("Candidate capture refused: regular candidate files only, no symlink/path escapes, at most 64 MiB total; verify /usr/bin/python3 is available.");
+    } catch (error) {
+      // Never include stdout: successful capture output contains file bytes.
+      // Python's diagnostic names the refused operation instead of hiding every
+      // environmental failure behind the same regular-files message.
+      const stderr = (error as { stderr?: Buffer | string }).stderr;
+      throw validationError("Candidate capture refused: regular candidate files only, no symlink/path escapes, at most 64 MiB total; verify /usr/bin/python3 is available.",
+        { captureDiagnostic: stderr ? String(stderr).slice(-4000) : "Capture returned invalid output." });
     }
     const entries: string[] = [];
     for (const file of captured) {

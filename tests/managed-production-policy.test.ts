@@ -470,6 +470,15 @@ describe("policy-store failure is never a confirmed Off", () => {
 });
 
 describe("the control surface stays reachable when other sources are broken", () => {
+  it("reads status while another connection holds the workspace write lock", () => {
+    const target = workspace();
+    const writer = openDatabase(target);
+    writer.exec("BEGIN IMMEDIATE");
+    try {
+      expect(runProductionStatusCommand({ workspace: target }).data.read.status).toBe("ok");
+    } finally { writer.exec("ROLLBACK"); writer.close(); }
+  });
+
   it("reads status and switches Off without touching the queue or a repository", () => {
     const target = workspace();
     activate(target);
