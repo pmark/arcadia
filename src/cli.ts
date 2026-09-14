@@ -715,7 +715,7 @@ export function buildProgram(): Command {
     .option("--file <path>", "Read the Agent Ask from a file")
     .option("--request-id <id>", "Required idempotency key for natural fallback; also resolves a drift-recovered Ask by id when no request or --file is given")
     .option("--project <project>", "Destination Project for natural fallback")
-    .option("--dir <path>", "Repository to resolve a drift-recovered Ask's isolated branch from", process.cwd())
+    .option("--dir <path>", "Repository root: resolves a drift-recovered Ask's isolated branch, and where other unprocessed .arcadia/asks/ files are auto-discovered from", process.cwd())
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((request: string | undefined, options: { workspace: string; file?: string; requestId?: string; project?: string; dir: string; json?: boolean }) =>
     runCliAction("agent-ask.preview", options, () => runAgentAskPreviewCommand({ ...options, request }), renderAgentAskPreviewSuccess)
@@ -726,7 +726,7 @@ export function buildProgram(): Command {
     .option("--file <path>", "Read the Agent Ask from a file")
     .option("--request-id <id>", "Required idempotency key for natural fallback")
     .option("--project <project>", "Destination Project for natural fallback")
-    .option("--dir <path>", "Repository root containing .arcadia/asks/", process.cwd())
+    .option("--dir <path>", "Repository root containing .arcadia/asks/; also where other unprocessed files there are auto-discovered from", process.cwd())
     .option("--workspace <path>", "Workspace path for the optional preview step", defaultWorkspace())
   ).action((request: string | undefined, options: { dir: string; workspace: string; file?: string; requestId?: string; project?: string; json?: boolean }) =>
     runCliAction("agent-ask.draft", options, () => runAgentAskDraftCommand({ ...options, request }), renderAgentAskDraftSuccess)
