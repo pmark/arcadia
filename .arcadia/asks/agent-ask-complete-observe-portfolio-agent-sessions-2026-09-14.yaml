@@ -1,0 +1,17 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-observe-portfolio-agent-sessions-2026-09-14",
+  "project": "arcadia",
+  "intent": "complete",
+  "desired_result": "Mark observe-portfolio-agent-sessions done: portfolio-wide active Session/Run observation with native reattach is implemented, tested, and its PR opened.",
+  "target_ref": "action/observe-portfolio-agent-sessions",
+  "candidate_revision": "38b4faf1d3a7ab33d369aae0eee10737b4f7cea5",
+  "evidence": [
+    {"criterion": "Query active Sessions and active Runs independently of recent-history limits, keeping every repository lease visible.", "status": "met", "note": "listActiveAgentSessions/listActiveExecutionRuns query with no LIMIT; buildAgentQueue falls back to the unbounded Session list for any lease its per-Project scan misses. See src/sessions/index.ts, src/db/repositories.ts, src/dispatch/queue.ts."},
+    {"criterion": "Show Action, packet, agent/model, host, worktree, native session id, lifecycle status and observed time; live process never implies semantic progress.", "status": "met", "note": "DashboardAgentSession carries all named fields (host added via new agent_sessions column); SessionCard shows a separate live/liveness badge from the lifecycle status text. src/dashboard/snapshot.ts, apps/dashboard/components/dashboard-ui.tsx."},
+    {"criterion": "Provide supported host-specific native reattach/resume and existing Run evidence links; phone-only limitations are explicit.", "status": "met", "note": "sessionView exposes reattachCommand/resumeCommand/resumeNotice plus a phoneLimitationNotice always rendered, escalated in narrow viewports. src/sessions/index.ts, apps/dashboard/components/dashboard-ui.tsx."},
+    {"criterion": "Coalesce polling with visibility/reconnect refresh and bounded failure/backoff; source errors preserve labeled last-known state.", "status": "met", "note": "useArcadiaSnapshot coalesces in-flight fetches, refreshes on visibilitychange/online, and backs off via computeNextPollDelayMs (bounded 2 minutes), exposing stale without discarding the last snapshot. apps/dashboard/hooks/use-arcadia-snapshot.ts, apps/dashboard/lib/snapshot-polling.ts."},
+    {"criterion": "Prove an old still-active Session/Run remains visible after more than ten newer terminal records.", "status": "met", "note": "tests/dashboard-snapshot.test.ts: an old running Run survives past 11 newer completed Runs and is excluded from the still-bounded recentRuns; a Session lease for a Project with no repository path is still surfaced via the portfolio-wide query."},
+    {"criterion": "Preserve the proof Artifact: Active-history truncation, reconnect and lifecycle fixtures; include exact runnable target and operator QA steps in the PR, or state why no runnable surface exists.", "status": "met", "note": "PR https://github.com/pmark/arcadia/pull/248 includes the operator QA plan (exact start command, URL, and observed steps against the real workspace) plus the truncation/lifecycle test evidence."}
+  ]
+}
