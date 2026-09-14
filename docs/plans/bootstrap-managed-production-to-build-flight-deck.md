@@ -609,6 +609,72 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: settle-onto-candidate-branch
+    title: Settlement commits produced during an arcadia go session land on the Action candidate branch and ship in its PR, never as loose commits on main.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Settlement commits produced during an arcadia go session land on the Action candidate branch and ship in its PR, never as loose commits on main.
+    expected_artifact: Evidence satisfying Agent Ask settle-onto-candidate-branch
+    clarification: clarified
+    confidence: high
+    source: Agent Ask one-session-completes-one-action-2026-09-13
+    acceptance_criteria:
+      - Running agent-ask settle --apply inside a candidate worktree commits to that candidate branch.
+      - A test proves a session that settles and opens a PR leaves main with no new local-only commits.
+    depends_on: []
+    decisions: []
+    references: []
+  - id: merge-completes-the-action
+    title: The Action PR carries its completion evidence and pointer advance, so merging it marks the Action done without a separate complete Ask or session.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: The Action PR carries its completion evidence and pointer advance, so merging it marks the Action done without a separate complete Ask or session.
+    expected_artifact: Evidence satisfying Agent Ask merge-completes-the-action
+    clarification: clarified
+    confidence: high
+    source: Agent Ask one-session-completes-one-action-2026-09-13
+    acceptance_criteria:
+      - arcadia go can stage a complete settlement (evidence per acceptance criterion, pointer advance) into the candidate PR before merge.
+      - After the PR merges, PROJECT.md current_action names the next governed Action with no further command run.
+      - A stale or failed criterion still refuses completion, as the complete intent does today.
+    depends_on: [settle-onto-candidate-branch]
+    decisions: []
+    references: []
+  - id: triage-decisions-before-opening
+    title: A Decision opens only when the Constitution gate test holds (a reasonable person could choose differently, or the move resists reversal or reaches outside the work); otherwise the agent applies its recommendation and reports it in the PR.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: A Decision opens only when the Constitution gate test holds (a reasonable person could choose differently, or the move resists reversal or reaches outside the work); otherwise the agent applies its recommendation and reports it in the PR.
+    expected_artifact: Evidence satisfying Agent Ask triage-decisions-before-opening
+    clarification: clarified
+    confidence: high
+    source: Agent Ask one-session-completes-one-action-2026-09-13
+    acceptance_criteria:
+      - Decision-intent settlement records which gate question fired, and refuses to open a Decision when neither fires and the move is reversible, converting it into a PR-reported assumption.
+      - Approval boundaries (merge, deploy, publish, spend, credentials, production, messaging) always open a Decision regardless of triage.
+      - A fixture shaped like Decision 0052 is reported, not opened.
+    depends_on: []
+    decisions: []
+    references: []
+  - id: divide-instead-of-stall
+    title: A session that cannot finish its Action ends by completing the finishable slice and queueing the remainder as new Actions in the same PR, so the pointer always advances.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: A session that cannot finish its Action ends by completing the finishable slice and queueing the remainder as new Actions in the same PR, so the pointer always advances.
+    expected_artifact: Evidence satisfying Agent Ask divide-instead-of-stall
+    clarification: clarified
+    confidence: high
+    source: Agent Ask one-session-completes-one-action-2026-09-13
+    acceptance_criteria:
+      - arcadia go refuses to end a session with the current Action unchanged unless it records an operator question or external blocker.
+      - A split settlement marks the finished slice done and places remainder Actions immediately after it in the queue.
+    depends_on: [merge-completes-the-action]
+    decisions: []
+    references: []
 questions: []
 decisions: []
 current_action: design-and-build-the-mechanism-that
