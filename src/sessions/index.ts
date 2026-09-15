@@ -438,6 +438,10 @@ export function reserveAgentWorktree(db: Database.Database, input: {
 }): AgentWorktreeReservation {
   const createdAt = input.now.toISOString();
   db.prepare("DELETE FROM agent_worktree_reservations WHERE expires_at <= ?").run(createdAt);
+  // A resumed candidate (Decision 0051) reserves the same path a second time
+  // to refresh its protection window; replace rather than collide with the
+  // still-active row `prepareAgentWorktree`'s first reservation already left.
+  db.prepare("DELETE FROM agent_worktree_reservations WHERE worktree_path = ?").run(canonicalPath(input.worktreePath));
   const reservation = {
     id: createId("worktreeReservation"),
     repository_path: canonicalPath(input.repositoryPath),

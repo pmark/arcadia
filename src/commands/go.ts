@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
+import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { invocationRoot } from "../cli/invocation.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
@@ -23,10 +24,12 @@ import {
   samePath,
   summarizeClutter,
   tryGit,
+  uncommittedChanges,
   upstreamRef,
   type ClutterSummary
 } from "../git/worktrees.js";
 import {
+  getRepositoryLease,
   launchPreparedSession,
   prepareSession,
   reserveAgentWorktree,
@@ -38,12 +41,12 @@ import {
 } from "../sessions/index.js";
 
 import { recoverLegacyAgentAskDrift, type AskRecoveryTestHooks, type LegacyAskRecovery } from "../sessions/legacyAskRecovery.js";
-import { isPlausibleClaudeModel, prepareAgentWorktree } from "../sessions/worktreePreparation.js";
+import { getResumableLeaseHandoff } from "../sessions/reconciliation.js";
+import { buildAgentLaunchCommand, isPlausibleClaudeModel, prepareAgentWorktree } from "../sessions/worktreePreparation.js";
 import { bindManualPreservation } from "../sessions/manualPreservation.js";
 import { readPreservationReadiness, type PreservationReadiness } from "../sessions/preservationReadiness.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { resolveWorkspace } from "../workspace/resolve.js";
-import { getWorktreeProtection } from "./tidy.js";
 
 export interface GoCommandOptions {
   repo?: string;
@@ -297,12 +300,13 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     const effort = options.effort ?? dispatch.context?.planRecommendedReasoningEffort ?? null;
 
     const workspacePath = resolveReadyWorkspace(options.workspace).workspacePath;
+    const tmux = options.tmux ?? systemTmux;
     if (options.launch && workspacePath) {
       const transition = withDatabase(workspacePath, (db) => resolveProjectTransition({
         repoRoot: controlWorktree,
         projectSlug,
         db,
-        tmux: options.tmux ?? systemTmux
+        tmux
       }));
       if (transition.kind !== "launch") {
         throw validationError("The Project transition does not authorize a new Session launch.", {
@@ -313,27 +317,59 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       }
     }
 
-    const worktreeInput = {
-      agent: options.agent,
-      actionId,
-      baseBranch,
-      repositoryPath: controlWorktree,
-      rootOverride: options.agentWorktreeRoot,
-      now: options.now ?? new Date(),
-      model,
-      effort
-    };
+    const now = options.now ?? new Date();
+    // The conflict check and whatever it decides to do about it (resume's
+    // reservation refresh, or a fresh worktree's creation+reservation) must
+    // run inside one atomic transaction, not two separate `withDatabase`
+    // calls -- otherwise two concurrent `go --apply --agent` invocations for
+    // the same repository could both read "clear" before either commits, and
+    // both prepare their own worktree, reproducing the exact duplicate this
+    // Action exists to prevent (the same race `prepareSession` guards against
+    // for its own lease/handoff checks; see its comment). `writeTransaction`
+    // takes the write lock at `BEGIN IMMEDIATE`, so a second caller's
+    // evaluation blocks until the first caller's write has committed.
     const reservationCommitCleanup: { candidate: GoCommandData["nextWorktree"] } = { candidate: null };
     try {
       nextWorktree = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
+        const candidate = evaluateExistingCandidate(db, { controlWorktree, actionId, agent: options.agent!, tmux });
+        if (candidate.kind === "refuse") {
+          throw validationError(candidate.reason!, candidate.details);
+        }
+
+        if (candidate.kind === "resume") {
+          // Per Decision 0051: the same governed Action still owns this
+          // candidate and its prior Session is proven terminal (reconciled,
+          // not merely exited), so resume it in place -- same worktree and
+          // branch, repository lease handed over -- rather than preparing a
+          // second one. No Git write happens here beyond refreshing the
+          // handoff reservation so `tidy` does not retire it out from under
+          // the resumed Session before it is used.
+          reserveAgentWorktree(db, { repositoryPath: controlWorktree, worktreePath: candidate.path!, branch: candidate.branch!, now });
+          return {
+            agent: options.agent!,
+            path: candidate.path!,
+            branch: candidate.branch!,
+            model,
+            effort,
+            command: buildAgentLaunchCommand(options.agent!, candidate.path!, model, effort)
+          };
+        }
+
         const created = prepareAgentWorktree({
-          ...worktreeInput,
-          beforeCreate(candidate) {
+          agent: options.agent!,
+          actionId,
+          baseBranch,
+          repositoryPath: controlWorktree,
+          rootOverride: options.agentWorktreeRoot,
+          now,
+          model,
+          effort,
+          beforeCreate(prepared) {
             reserveAgentWorktree(db, {
               repositoryPath: controlWorktree,
-              worktreePath: candidate.path,
-              branch: candidate.branch,
-              now: worktreeInput.now
+              worktreePath: prepared.path,
+              branch: prepared.branch,
+              now
             });
           }
         });
@@ -422,33 +458,177 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
         baseRef: baseBranch,
         prompt: "arcadia advance"
       },
-      clutter: summarizeClutter(repo, baseBranch, protectedWorktreePaths(controlWorktree, options.workspace)),
+      clutter: summarizeClutter(repo, baseBranch, [
+        ...protectedWorktreePaths(controlWorktree, options.workspace, options.tmux ?? systemTmux),
+        ...(nextWorktree ? [nextWorktree.path] : [])
+      ]),
       askRecoveries
     }
   });
 }
 
 /**
- * The worktrees `tidy` would refuse to retire, so the clutter nudge can leave
- * them out of its counts.
+ * Worktrees this nudge should not nag about: one this very call just prepared
+ * (added separately by the caller, since that path is not on disk yet when
+ * `git worktree list` would need to see it) and any worktree currently backing
+ * a genuinely *live* Session -- active work, not clutter.
+ *
+ * Deliberately narrower than `tidy`'s own `getWorktreeProtection`, which also
+ * shields anything with an unexpired 24h handoff reservation so it never
+ * destroys a manual handoff nobody has touched yet. Reusing that same
+ * blanket rule here hid real accumulation: two abandoned agent worktrees each
+ * carrying their own still-unexpired reservation shielded each other,
+ * reporting `extraWorktrees: 0` while both sat there uncounted. This nudge's
+ * job is to notice that, not to protect it -- `tidy` still refuses to retire
+ * a reservation-protected worktree even though this count no longer excludes
+ * it.
  *
  * Best-effort on purpose. This feeds a nudge, not a decision: a missing
- * workspace, an uninitialized database, or a schema without the reservation
+ * workspace, an uninitialized database, or a schema without the session
  * table must never fail `go`. Returning nothing only costs the nudge some
  * precision, which is the same precision it had before this existed.
  */
-function protectedWorktreePaths(repo: string, workspace: string | undefined): string[] {
+function protectedWorktreePaths(repo: string, workspace: string | undefined, tmux: Pick<TmuxAdapter, "hasSession">): string[] {
   try {
     const workspacePath = resolveWorkspace({ workspace, cwd: repo }).workspacePath;
     if (!workspacePath || !existsSync(getWorkspacePaths(workspacePath).databaseFile)) return [];
-    return withReadOnlyDatabase(workspacePath, (db) =>
-      listWorktrees(repo)
-        .filter((record) => getWorktreeProtection(db, repo, record.path) !== null)
-        .map((record) => record.path)
-    );
+    return withReadOnlyDatabase(workspacePath, (db) => {
+      const lease = getRepositoryLease(db, repo);
+      if (!lease || !tmux.hasSession(lease.tmux_session_name)) return [];
+      return listWorktrees(repo)
+        .filter((record) => samePath(record.path, lease.worktree_path))
+        .map((record) => record.path);
+    });
   } catch {
     return [];
   }
+}
+
+interface CandidateEvaluation {
+  kind: "clear" | "resume" | "refuse";
+  path?: string;
+  branch?: string;
+  reason?: string;
+  details?: Record<string, unknown>;
+}
+
+/**
+ * Decide whether `go` may prepare a brand new worktree for `actionId`, per
+ * Decision 0051: at most one live execution per candidate, and a sequential
+ * Session for the same Action reuses its predecessor's candidate once that
+ * predecessor's exit is *proven* terminal -- reconciled, not merely absent
+ * from `tmux`. Every other case (a different Action's unresolved candidate, a
+ * still-live Session, a dead-but-unreconciled Session, or an uncommitted
+ * worktree Arcadia never launched and so cannot prove terminal at all) refuses
+ * with the exact path and the operator's explicit choices, and creates
+ * nothing.
+ */
+function evaluateExistingCandidate(
+  db: Database.Database,
+  input: { controlWorktree: string; actionId: string; agent: "codex" | "claude"; tmux: Pick<TmuxAdapter, "hasSession"> }
+): CandidateEvaluation {
+  const handoff = getResumableLeaseHandoff(db, input.controlWorktree);
+  if (handoff) {
+    if (input.tmux.hasSession(handoff.session.tmux_session_name)) {
+      return {
+        kind: "refuse",
+        reason: "A prior Session for this repository is still live; Arcadia go will not prepare a second worktree while it runs.",
+        details: {
+          sessionId: handoff.session.id,
+          worktreePath: handoff.session.worktree_path,
+          tmuxSessionName: handoff.session.tmux_session_name,
+          remedy: `Wait for it, or attach it directly: tmux attach-session -t ${handoff.session.tmux_session_name}.`
+        }
+      };
+    }
+    if (!existsSync(handoff.session.worktree_path)) {
+      // The resumable candidate's worktree is gone -- removed outside
+      // Arcadia (per this function's own "discard it" remedy below), or
+      // never existed on this host. There is nothing left to resume or to
+      // refuse over, whichever Action it named: checked before the
+      // different-Action refusal so that discarding a stale candidate exactly
+      // as instructed actually clears the block, instead of leaving `go`
+      // refusing every Action forever over a worktree that no longer exists.
+      return { kind: "clear" };
+    }
+    if (handoff.session.action_id !== input.actionId) {
+      return {
+        kind: "refuse",
+        reason: "The repository holds an unresolved resumable candidate for a different Action; Arcadia go will not prepare a new worktree until it is resolved.",
+        details: {
+          existingActionId: handoff.session.action_id,
+          currentActionId: input.actionId,
+          worktreePath: handoff.session.worktree_path,
+          remedy: "Preserve the existing candidate (finish or hand it off) or discard it (remove its worktree and branch) before starting a different Action."
+        }
+      };
+    }
+    return { kind: "resume", path: handoff.session.worktree_path, branch: handoff.session.branch.replace(/^refs\/heads\//, "") };
+  }
+
+  const liveLease = getRepositoryLease(db, input.controlWorktree);
+  if (liveLease) {
+    const stillLive = input.tmux.hasSession(liveLease.tmux_session_name);
+    return {
+      kind: "refuse",
+      reason: stillLive
+        ? "A Session is already live for this repository; Arcadia go will not prepare a second worktree while it runs."
+        : "A Session's process has exited but was never reconciled; Arcadia go will not prepare a new worktree over an unproven exit.",
+      details: {
+        sessionId: liveLease.id,
+        worktreePath: liveLease.worktree_path,
+        actionId: liveLease.action_id,
+        remedy: stillLive
+          ? `Wait for it, or attach it directly: tmux attach-session -t ${liveLease.tmux_session_name}.`
+          : `Reconcile it first: arcadia session reconcile ${liveLease.id} --request-id <unique-id>.`
+      }
+    };
+  }
+
+  // No DB-tracked Session or handoff owns a matching worktree. A worktree
+  // prepared through a manual (never `--launch`ed) handoff leaves no tmux
+  // name or session row behind, so Arcadia has no way to prove whether a
+  // human terminal is still using it -- it is always reported, never
+  // silently duplicated or auto-resumed.
+  const orphan = findUncommittedManualCandidate(input.controlWorktree, input.actionId, input.agent);
+  if (orphan) {
+    return {
+      kind: "refuse",
+      reason: "A prepared worktree for this Action already holds uncommitted changes; Arcadia go will not prepare a second one.",
+      details: {
+        worktreePath: orphan.path,
+        branch: orphan.branch,
+        remedy: "This worktree was never launched through Arcadia, so its exit cannot be proven terminal. Preserve it (commit and push its work, or resume it by hand) or discard it (remove the worktree and branch) before retrying."
+      }
+    };
+  }
+
+  return { kind: "clear" };
+}
+
+/**
+ * A worktree `prepareAgentWorktree` made for this exact Action and agent, still
+ * on disk, still holding uncommitted changes, with no corresponding
+ * `agent_sessions` row at all -- the manual-handoff case `evaluateExistingCandidate`
+ * cannot otherwise see, matched the same way `prepareAgentWorktree` names one:
+ * `<agent>/<slugified-action-id>-<timestamp>`.
+ */
+function findUncommittedManualCandidate(
+  repositoryPath: string,
+  actionId: string,
+  agent: "codex" | "claude"
+): { path: string; branch: string } | null {
+  const listing = tryGit(repositoryPath, ["worktree", "list", "--porcelain"]);
+  if (listing === null) return null;
+  const safeAction = actionId.replaceAll(/[^a-z0-9-]/gi, "-").toLowerCase().slice(0, 72);
+  const prefix = `refs/heads/${agent}/${safeAction}-`;
+  for (const record of parseWorktrees(listing)) {
+    if (!record.branch?.startsWith(prefix)) continue;
+    if (!existsSync(record.path)) continue;
+    if (uncommittedChanges(record.path).length === 0) continue;
+    return { path: record.path, branch: record.branch.replace(/^refs\/heads\//, "") };
+  }
+  return null;
 }
 
 export function renderGoSuccess(response: CommandSuccess<GoCommandData>): string[] {

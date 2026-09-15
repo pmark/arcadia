@@ -414,6 +414,81 @@ describe("arcadia go", () => {
   });
 });
 
+describe("arcadia go — refuses to orphan an uncommitted candidate", () => {
+  it("reports the exact path of a manually-prepared candidate holding uncommitted changes instead of preparing a second worktree for the same Action", () => {
+    const fixture = createFixture("claude/manual-first", planDocument);
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    const first = runGoCommand({
+      repo: fixture.main,
+      source: fixture.feature,
+      apply: true,
+      agent: "claude",
+      model: "claude-sonnet-5",
+      workspace: fixture.workspace,
+      agentWorktreeRoot: path.join(fixture.root, "agent-worktrees")
+    });
+    const preparedPath = first.data.nextWorktree!.path;
+    // Nobody ever launched this candidate through Arcadia -- it is exactly the
+    // "operator ran the agent by hand" manual handoff -- but it already holds
+    // real, uncommitted work.
+    writeFileSync(path.join(preparedPath, "draft.md"), "in progress\n");
+
+    expectValidation(
+      () => runGoCommand({
+        repo: fixture.main,
+        source: fixture.main,
+        apply: true,
+        agent: "claude",
+        model: "claude-sonnet-5",
+        workspace: fixture.workspace,
+        agentWorktreeRoot: path.join(fixture.root, "agent-worktrees-2")
+      }),
+      "already holds uncommitted changes"
+    );
+    // Refused before any second worktree for this Action was created.
+    expect(
+      git(fixture.main, ["worktree", "list", "--porcelain"])
+        .split("\n")
+        .filter((line) => line.startsWith("worktree "))
+    ).toHaveLength(2); // fixture.main itself, plus the one manual candidate above.
+  });
+
+  it("counts an abandoned agent worktree as clutter instead of shielding it away by its own unexpired reservation", () => {
+    const fixture = createFixture("claude/clutter-first", planDocument);
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    runGoCommand({
+      repo: fixture.main,
+      source: fixture.feature,
+      apply: true,
+      agent: "claude",
+      model: "claude-sonnet-5",
+      workspace: fixture.workspace,
+      agentWorktreeRoot: path.join(fixture.root, "agent-worktrees")
+    });
+    // The first candidate above is now an abandoned, still-reserved (within
+    // its 24h window) worktree that nobody is using -- exactly the state that
+    // used to shield itself, and any sibling, out of the clutter count.
+    settleNextAction(fixture.main);
+
+    const second = runGoCommand({
+      repo: fixture.main,
+      source: fixture.main,
+      apply: true,
+      agent: "claude",
+      model: "claude-sonnet-5",
+      workspace: fixture.workspace,
+      agentWorktreeRoot: path.join(fixture.root, "agent-worktrees-2")
+    });
+
+    // Two agent worktrees now exist (the abandoned first one, and this run's
+    // own fresh one). This run's own handoff is exempted so `go` never nags
+    // about the worktree it just prepared, but the abandoned first one must
+    // still be counted.
+    expect(second.data.clutter?.extraWorktrees).not.toBe(0);
+    expect(second.data.clutter?.extraWorktrees).toBe(1);
+  });
+});
+
 describe("arcadia go — base branch remote sync", () => {
   it("skips cleanly when the base branch has no tracked remote", () => {
     const fixture = createFixture("claude/no-tracked-remote");
