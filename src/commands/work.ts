@@ -378,28 +378,46 @@ export function runWorkPlanCommand(options: { workspace: string; workId: string;
 
       const steps = planStepsForWorkItem(workItem);
       const isManagedPlanning = steps.length === 1 && steps[0]?.executorType === "codex_planning";
-      if (!isManagedPlanning) {
+      const isManagedBuild = steps.length === 1 && steps[0]?.executorType === "codex_build";
+      if (!isManagedPlanning && !isManagedBuild) {
         const plan = createExecutionPlan(db, {
           workItemId: workItem.id,
           summary: `Execution plan for "${workItem.title}".`,
           steps
         });
+        return plan
+          ? {
+              plan,
+              planningDecision: null,
+              codexInvocation: null,
+              packetArtifact: null,
+              buildApproval: null,
+              buildInvocation: null,
+              buildPacketArtifact: null,
+              reused: false
+            }
+          : null;
+      }
+
+      if (isManagedBuild) {
+        assertRequiredProjectRepoContext(db, workItem);
+        const existingPlan = getLatestExecutionPlanForWorkItem(db, workItem.id);
+        const plan = reusableUnpreparedBuildPlan(existingPlan)
+          ?? createExecutionPlan(db, {
+            workItemId: workItem.id,
+            summary: `Execution plan for "${workItem.title}".`,
+            steps
+          });
         if (!plan) {
           return null;
         }
 
         const buildStep = plan.steps.find((step) => step.executor_type === "codex_build");
         if (!buildStep) {
-          return {
-            plan,
-            planningDecision: null,
-            codexInvocation: null,
-            packetArtifact: null,
-            buildApproval: null,
-            buildInvocation: null,
-            buildPacketArtifact: null,
-            reused: false
-          };
+          throw validationError("Build plan is missing its codex_build step.", {
+            actionId: workItem.id,
+            planId: plan.id
+          });
         }
 
         const registries = loadPhase3Registries(workspacePath);
@@ -737,7 +755,14 @@ function assertPlanningPreparationEligibility(
   }
 }
 
-function assertRequiredPlanningContext(
+/**
+ * Both planning and build packet preparation need a real Project repository
+ * to work against; only planning also requires a named expected Artifact
+ * (the plan document itself). Kept as one shared check plus a planning-only
+ * addition so a build Action isn't held to a requirement that describes what
+ * a planning Action produces, not what it does.
+ */
+function assertRequiredProjectRepoContext(
   db: Parameters<typeof getWorkItem>[0],
   workItem: WorkItemSummary
 ): void {
@@ -759,6 +784,13 @@ function assertRequiredPlanningContext(
       projectId: workItem.project_id
     });
   }
+}
+
+function assertRequiredPlanningContext(
+  db: Parameters<typeof getWorkItem>[0],
+  workItem: WorkItemSummary
+): void {
+  assertRequiredProjectRepoContext(db, workItem);
   if (!workItem.expected_artifact?.trim()) {
     throw validationError("Action expected planning Artifact is required before planning preparation.", {
       actionId: workItem.id
@@ -791,6 +823,28 @@ function reusableUnpreparedPlanningPlan(
       actionId: workItem.id,
       planId: plan.id
     });
+  }
+  return plan;
+}
+
+/**
+ * Reuse the Action's existing single-step build plan instead of inserting a
+ * new execution_plans row on every `work plan` call. Without this, the
+ * packet/invocation/Decision idempotency checks in `ensureBuildPacketForPlan`
+ * (all keyed off `plan.id`) never see the same plan twice, and every repeat
+ * call mints a second immutable packet and a second open Decision.
+ *
+ * Unlike `reusableUnpreparedPlanningPlan`, an existing build invocation on
+ * this plan is not an anomaly here — it is the ordinary case of replanning
+ * before the build approval Decision has been resolved, and
+ * `ensureCodexPacketsForPlan` already reuses that invocation in place.
+ */
+function reusableUnpreparedBuildPlan(plan: ExecutionPlanSummary | null): ExecutionPlanSummary | null {
+  if (!plan || plan.status !== "planned") {
+    return null;
+  }
+  if (plan.steps.length !== 1 || plan.steps[0]?.executor_type !== "codex_build") {
+    return null;
   }
   return plan;
 }
@@ -1106,7 +1160,8 @@ function ensureBuildPacketForPlan(
   const existingApproval = listReviewItems(db, "all").find((item) =>
     item.work_item_id === workItem.id &&
     item.codex_invocation_id === invocation.id &&
-    item.context_json.includes('"buildPacketPath"')
+    item.resolved_intent === "CodexBuildPacketApproval" &&
+    (item.status === "open" || item.status === "deferred")
   );
   if (existingApproval) {
     return { approval: existingApproval, invocation, packetArtifact };
@@ -1119,6 +1174,7 @@ function ensureBuildPacketForPlan(
     workItemId: workItem.id,
     planId: plan.id,
     projectId: workItem.project_id,
+    artifactId: packetArtifact.id,
     codexInvocationId: invocation.id,
     decisionNeeded: `Approve the immutable build packet for "${workItem.title}".`,
     recommendation: "Approval authorizes one guarded implementation Session; it does not authorize publication, deployment, merge, or other prohibited external actions.",
