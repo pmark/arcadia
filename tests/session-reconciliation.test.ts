@@ -472,6 +472,65 @@ describe("arcadia go — candidate continuation (Decision 0051)", () => {
     })).toThrow(/different Action/);
   });
 
+  it("clears a stale different-Action candidate once its worktree is discarded exactly as the refusal instructs, instead of refusing forever", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const launched = launch(fixture, tmux);
+    const sessionId = launched.data.session!.id;
+    const worktreePath = launched.data.session!.worktree_path;
+    const branch = launched.data.session!.branch;
+    tmux.live = false;
+    writeFileSync(path.join(worktreePath, "contract.md"), "draft\n");
+    git(worktreePath, ["add", "contract.md"]);
+    git(worktreePath, ["commit", "-m", "wip"]);
+    withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId, requestId: "resume-2b", repoRoot: fixture.repo })
+    );
+
+    writeFileSync(path.join(fixture.repo, "PROJECT.md"), projectDocument.replace("current_action: define-contract", "current_action: second-contract"));
+    writeFileSync(path.join(fixture.repo, "docs", "plans", "copy-proof.md"), planDocument
+      .replace("current_action: define-contract", "current_action: second-contract")
+      .replace(
+        "    decisions: [\"0001\"]\n---",
+        `    decisions: ["0001"]
+  - id: second-contract
+    title: Define a second contract
+    status: open
+    responsibility: codex
+    effort: session
+    clarification: clarified
+    next_action: Define the second bounded contract.
+    expected_artifact: docs/second-contract.md
+    acceptance_criteria:
+      - The second contract exists.
+    decisions: ["0001"]
+---`
+      ));
+    git(fixture.repo, ["add", "."]);
+    git(fixture.repo, ["commit", "-m", "advance pointer to second-contract"]);
+
+    // Discard the stale candidate exactly as the refusal's own remedy says:
+    // "discard it (remove its worktree and branch)".
+    git(fixture.repo, ["worktree", "remove", "--force", worktreePath]);
+    git(fixture.repo, ["branch", "-D", branch]);
+    expect(existsSync(worktreePath)).toBe(false);
+
+    const result = runGoCommand({
+      repo: fixture.repo,
+      source: fixture.repo,
+      apply: true,
+      agent: "claude",
+      model: fixture.model,
+      workspace: fixture.workspace,
+      agentWorktreeRoot: path.join(fixture.root, "second-attempt-after-discard"),
+      now: new Date(fixture.now.getTime() + 1000),
+      tmux: new FakeTmux()
+    });
+
+    expect(result.data.nextWorktree?.path).not.toBe(worktreePath);
+    expect(existsSync(result.data.nextWorktree!.path)).toBe(true);
+  });
+
   it("refuses a new worktree while a Session is still live", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();

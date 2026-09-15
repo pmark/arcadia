@@ -318,71 +318,75 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     }
 
     const now = options.now ?? new Date();
-    const candidate = withDatabase(workspacePath, (db) =>
-      evaluateExistingCandidate(db, { controlWorktree, actionId, agent: options.agent!, tmux })
-    );
-    if (candidate.kind === "refuse") {
-      throw validationError(candidate.reason!, candidate.details);
-    }
-
-    if (candidate.kind === "resume") {
-      // Per Decision 0051: the same governed Action still owns this candidate
-      // and its prior Session is proven terminal (reconciled, not merely
-      // exited), so resume it in place -- same worktree and branch, repository
-      // lease handed over -- rather than preparing a second one. No Git write
-      // happens here beyond refreshing the handoff reservation so `tidy` does
-      // not retire it out from under the resumed Session before it is used.
-      withDatabase(workspacePath, (db) => writeTransaction(db, () => {
-        reserveAgentWorktree(db, { repositoryPath: controlWorktree, worktreePath: candidate.path!, branch: candidate.branch!, now });
-      }));
-      nextWorktree = {
-        agent: options.agent,
-        path: candidate.path!,
-        branch: candidate.branch!,
-        model,
-        effort,
-        command: buildAgentLaunchCommand(options.agent, candidate.path!, model, effort)
-      };
-    } else {
-      const worktreeInput = {
-        agent: options.agent,
-        actionId,
-        baseBranch,
-        repositoryPath: controlWorktree,
-        rootOverride: options.agentWorktreeRoot,
-        now,
-        model,
-        effort
-      };
-      const reservationCommitCleanup: { candidate: GoCommandData["nextWorktree"] } = { candidate: null };
-      try {
-        nextWorktree = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
-          const created = prepareAgentWorktree({
-            ...worktreeInput,
-            beforeCreate(prepared) {
-              reserveAgentWorktree(db, {
-                repositoryPath: controlWorktree,
-                worktreePath: prepared.path,
-                branch: prepared.branch,
-                now: worktreeInput.now
-              });
-            }
-          });
-          reservationCommitCleanup.candidate = created;
-          options.testHooks?.afterWorktreeCreatedBeforeReservationCommit?.();
-          return created;
-        }));
-      } catch (error) {
-        // If SQLite cannot commit after Git created the worktree, do not leave a
-        // clean, unreserved handoff that unattended tidy could immediately
-        // retire. This worktree was created by this failed call and cannot yet
-        // contain agent changes, so compensating removal is lossless.
-        if (reservationCommitCleanup.candidate) {
-          tryGit(controlWorktree, ["worktree", "remove", reservationCommitCleanup.candidate.path]);
-          tryGit(controlWorktree, ["branch", "-D", reservationCommitCleanup.candidate.branch]);
+    // The conflict check and whatever it decides to do about it (resume's
+    // reservation refresh, or a fresh worktree's creation+reservation) must
+    // run inside one atomic transaction, not two separate `withDatabase`
+    // calls -- otherwise two concurrent `go --apply --agent` invocations for
+    // the same repository could both read "clear" before either commits, and
+    // both prepare their own worktree, reproducing the exact duplicate this
+    // Action exists to prevent (the same race `prepareSession` guards against
+    // for its own lease/handoff checks; see its comment). `writeTransaction`
+    // takes the write lock at `BEGIN IMMEDIATE`, so a second caller's
+    // evaluation blocks until the first caller's write has committed.
+    const reservationCommitCleanup: { candidate: GoCommandData["nextWorktree"] } = { candidate: null };
+    try {
+      nextWorktree = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
+        const candidate = evaluateExistingCandidate(db, { controlWorktree, actionId, agent: options.agent!, tmux });
+        if (candidate.kind === "refuse") {
+          throw validationError(candidate.reason!, candidate.details);
         }
-        throw error;
+
+        if (candidate.kind === "resume") {
+          // Per Decision 0051: the same governed Action still owns this
+          // candidate and its prior Session is proven terminal (reconciled,
+          // not merely exited), so resume it in place -- same worktree and
+          // branch, repository lease handed over -- rather than preparing a
+          // second one. No Git write happens here beyond refreshing the
+          // handoff reservation so `tidy` does not retire it out from under
+          // the resumed Session before it is used.
+          reserveAgentWorktree(db, { repositoryPath: controlWorktree, worktreePath: candidate.path!, branch: candidate.branch!, now });
+          return {
+            agent: options.agent!,
+            path: candidate.path!,
+            branch: candidate.branch!,
+            model,
+            effort,
+            command: buildAgentLaunchCommand(options.agent!, candidate.path!, model, effort)
+          };
+        }
+
+        const created = prepareAgentWorktree({
+          agent: options.agent!,
+          actionId,
+          baseBranch,
+          repositoryPath: controlWorktree,
+          rootOverride: options.agentWorktreeRoot,
+          now,
+          model,
+          effort,
+          beforeCreate(prepared) {
+            reserveAgentWorktree(db, {
+              repositoryPath: controlWorktree,
+              worktreePath: prepared.path,
+              branch: prepared.branch,
+              now
+            });
+          }
+        });
+        reservationCommitCleanup.candidate = created;
+        options.testHooks?.afterWorktreeCreatedBeforeReservationCommit?.();
+        return created;
+      }));
+    } catch (error) {
+      // If SQLite cannot commit after Git created the worktree, do not leave a
+      // clean, unreserved handoff that unattended tidy could immediately
+      // retire. This worktree was created by this failed call and cannot yet
+      // contain agent changes, so compensating removal is lossless.
+      if (reservationCommitCleanup.candidate) {
+        tryGit(controlWorktree, ["worktree", "remove", reservationCommitCleanup.candidate.path]);
+        tryGit(controlWorktree, ["branch", "-D", reservationCommitCleanup.candidate.branch]);
       }
+      throw error;
     }
 
     if (options.launch && workspacePath) {
@@ -537,6 +541,16 @@ function evaluateExistingCandidate(
         }
       };
     }
+    if (!existsSync(handoff.session.worktree_path)) {
+      // The resumable candidate's worktree is gone -- removed outside
+      // Arcadia (per this function's own "discard it" remedy below), or
+      // never existed on this host. There is nothing left to resume or to
+      // refuse over, whichever Action it named: checked before the
+      // different-Action refusal so that discarding a stale candidate exactly
+      // as instructed actually clears the block, instead of leaving `go`
+      // refusing every Action forever over a worktree that no longer exists.
+      return { kind: "clear" };
+    }
     if (handoff.session.action_id !== input.actionId) {
       return {
         kind: "refuse",
@@ -548,11 +562,6 @@ function evaluateExistingCandidate(
           remedy: "Preserve the existing candidate (finish or hand it off) or discard it (remove its worktree and branch) before starting a different Action."
         }
       };
-    }
-    if (!existsSync(handoff.session.worktree_path)) {
-      // The resumable candidate's worktree was removed outside Arcadia (or
-      // never existed on this host); there is nothing left to resume.
-      return { kind: "clear" };
     }
     return { kind: "resume", path: handoff.session.worktree_path, branch: handoff.session.branch.replace(/^refs\/heads\//, "") };
   }
