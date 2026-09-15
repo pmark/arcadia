@@ -592,6 +592,19 @@ Before changing user-facing terminology, data models, CLI commands, dashboard la
 Use Arcadia’s canonical terms consistently:
 Domain, Project, Mission, Outcome, Milestone, Action, Artifact, Decision, Log.
 
+## Model Selection
+
+Before pinning `recommended_model`/`recommended_reasoning_effort` on a Plan
+Action, or adding/changing an Intelligence capability route's profile, read:
+
+[`docs/model-selection.md`](docs/model-selection.md)
+
+It names the two places a model gets chosen — the coding-agent Action
+handoff and the Intelligence route registry — with pinned model IDs, default
+effort, and the boundary each tier is for. Spend in ascending order per the
+Constitution's Economy section; this document is the reference that check
+resolves against instead of being re-decided per Action.
+
 ## Operator Guide
 
 `START_HERE.md` is the canonical brief guide for normal Arcadia use. Any change to a user-facing flow, CLI command named there, dashboard address, or managed service behavior must update that file in the same change.
