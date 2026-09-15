@@ -121,6 +121,34 @@ something to freelance:
   standing-policy admission)? Do not pick a direction unilaterally; this
   changes what "done" means for a milestone-gating Action.
 
+## Architecture repair — deterministic build-packet preparation
+
+This is option (a) from the diagnosis above, taken as this Action's own scope:
+a small, deterministic packet-seeding capability, filed and built as part of
+this Action rather than a separate Ask.
+
+The blocked rehearsal exposed a missing preparation boundary, not a provider
+or capacity failure. Concrete `codex_build` Actions had an execution plan, but
+`arcadia work plan` did not create the dormant build packet that guarded
+production requires. The only existing writer was reached from
+`arcadia work run --allow-codex-build`, which immediately invoked the legacy
+direct-build path against the Project repository and therefore could not prove
+host-owned Session launch.
+
+The repair makes `arcadia work plan <action-id>` create the immutable build
+packet and an open `CodexBuildPacketApproval` Decision for concrete build
+Actions. It does not invoke a coding agent, create a Run, or approve the
+Decision. After the operator approves that exact packet, the existing guarded
+launch path can consume its authority; the standing production grant still
+controls repeated mechanical admission. Planning Actions retain their
+read-only planning Decision flow, and `--allow-codex-build` remains legacy
+execution rather than proof of guarded production.
+
+Focused regression coverage verifies packet creation, the open approval, zero
+Runs at preparation time, and the existing build-failure behavior. This repair
+does not constitute the live rehearsal above; the fixture must be prepared and
+the approval must be settled on the host before Steps 2–6 are attempted.
+
 ## What this Action adds beyond the zero-prompt rehearsal
 
 The zero-prompt rehearsal proved the host controller loop with **zero sandbox
