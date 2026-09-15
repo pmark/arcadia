@@ -30,7 +30,102 @@ command and code path it references actually exists at the revision named
 below. It did not activate production, create the fixture Project, or launch
 anything live.
 
+## 2026-09-15 live rehearsal status — blocked on a real architecture gap
+
+The operator ran this runbook live, in their own terminal, with an agent
+session helping diagnose failures in real time (not driving the loop). Here is
+exactly where it stands and why the next session should not simply retry
+Steps 3-5 as written below without reading this first.
+
+**What actually happened, in order:**
+
+1. Fixture created: Project `two-action-rehearsal`, repo
+   `~/tmp/arcadia-two-action-rehearsal`, two Actions
+   (`write-marker-a`/`write-marker-b`, later `write-marker-a2` after the first
+   got stuck — see below).
+2. `arcadia docs sync --project two-action-rehearsal --apply` turned out to be
+   a **missing step** in the original runbook below — the hand-authored plan
+   file is never ingested into real work items without it. Added to Step 1.
+3. Production activated (`--provider claude-code-cli` — the fixture's default
+   agent profile is Claude, not Codex; a `--provider codex-cli` grant would
+   never admit anything). Confirmed the worker (already running continuously
+   for the workspace) picks up a newly-activated grant's scope with no
+   restart needed.
+4. **The packet-seeding problem — the actual finding.** `launchGuardedHostSession`
+   / `buildLaunchPreview` (`src/sessions/launch.ts`, `src/sessions/launchPreview.ts`)
+   refuses to launch anything until the Action's work item already has a
+   `codex_invocations` row with `purpose: build`, `status: packet_created`
+   (`src/sessions/packetLifecycle.ts`). There is **no working deterministic way
+   to produce that dormant state** for a plain, already-clarified Action:
+   - Routing to a `codex_planning` step (the default for any wording without
+     "implement"/"code"/"prototype" — see `src/execution/skills.ts:157-178`)
+     requires a real model-planning run whose output is validated against a
+     template built for genuine multi-phase feature planning: ordered phases,
+     risks, approval requirements, a repository impact assessment, a
+     validation strategy. A planning agent honestly told "add one line to a
+     file" cannot satisfy that template, and the validator correctly refuses
+     it (scored 0/9 in the live run). This is not a fixable wording issue; the
+     template is the wrong shape for a trivial Action.
+   - Routing to a `codex_build` step and running
+     `arcadia work run <id> --allow-codex-build` does **not** create a dormant
+     packet at all — `executeCodexStep`'s build branch (`src/execution/runner.ts`)
+     immediately `spawnSync`s a real coding-agent process **synchronously,
+     directly against the Project's checked-out repository root**, with no
+     worktree, no branch isolation, and no relationship to the guarded-launch/
+     tmux worker path at all. It is a separate legacy single-shot execution
+     mechanism, not a packet preparer. In the live run this actually completed
+     the fixture's Action A2 for real (a genuine commit on the fixture's
+     `main`, plus a correctly-filed and operator-settled `complete` Agent
+     Ask) — which is a legitimate result, just not evidence of the guarded
+     standing-policy launch this Action is supposed to prove.
+5. **A real, separate bug found and fixed along the way**: that same
+   `codex_build` failure path (e.g. an expired provider OAuth session) crashed
+   with `SQLITE_ERROR: UNIQUE constraint failed: run_artifacts.run_id,
+   run_artifacts.artifact_id` instead of recording a normal failed Run,
+   because `executeCodexStep` returned the same diagnostic Artifact both as
+   `artifact` and inside `additionalArtifacts`. Fixed in
+   `src/execution/runner.ts`, covered by
+   `tests/execution-runner-build-failure.test.ts`, on this candidate branch —
+   see this Action's PR. Worth keeping regardless of how this Action itself
+   resolves.
+
+**Bottom line:** every dependency this Action lists as `done` is real, but
+none of them were ever exercised against a **freshly created, non-genesis**
+Action — every real Session this repository has ever launched went through
+either the original `project prepare` idea→Decision→packet pipeline, or the
+human-run `arcadia go` broker (the mechanism governing coding-agent sessions
+themselves, entirely separate from the standing-policy guarded launch). This
+Action's own proof is very likely the first time anyone has asked the guarded
+launch path to admit something that isn't a project's genesis Action, and it
+surfaced that the path has no seed mechanism for that case.
+
+**What the next session should not do:** retry Steps 3-5 hoping for a
+different result, or force a "pass" by treating the legacy `--allow-codex-build`
+execution as if it were the guarded-launch proof. It is not — it never
+touches the worker, tmux, or the standing-policy admission path at all.
+
+**What the next session should do instead** — this is a scope decision, not
+something to freelance:
+
+- Read this section plus the diagnosis above in full before touching the
+  fixture again.
+- The fixture's current real state: `write-marker-a2` is `done` (via the
+  legacy path, evidence real); `write-marker-b` is `current_action`, `open`,
+  untouched.
+- The honest options are (a) scope a small new deterministic packet-seeding
+  capability as its own Action — likely needs an Agent Ask, since this is new
+  governed capability work, not a fix to existing behavior — or (b)  bring
+  this finding to the operator as a Decision: is a genuinely fresh non-genesis
+  guarded launch even the right thing to prove next, given what real usage so
+  far has actually looked like (project-genesis + human `arcadia go`, not
+  standing-policy admission)? Do not pick a direction unilaterally; this
+  changes what "done" means for a milestone-gating Action.
+
 ## Architecture repair — deterministic build-packet preparation
+
+This is option (a) from the diagnosis above, taken as this Action's own scope:
+a small, deterministic packet-seeding capability, filed and built as part of
+this Action rather than a separate Ask.
 
 The blocked rehearsal exposed a missing preparation boundary, not a provider
 or capacity failure. Concrete `codex_build` Actions had an execution plan, but
@@ -51,7 +146,7 @@ execution rather than proof of guarded production.
 
 Focused regression coverage verifies packet creation, the open approval, zero
 Runs at preparation time, and the existing build-failure behavior. This repair
-does not constitute the live rehearsal below; the fixture must be prepared and
+does not constitute the live rehearsal above; the fixture must be prepared and
 the approval must be settled on the host before Steps 2–6 are attempted.
 
 ## What this Action adds beyond the zero-prompt rehearsal
