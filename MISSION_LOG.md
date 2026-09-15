@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-14
+updated: 2026-09-15
 ---
 
 # Mission Log: Arcadia
@@ -2742,3 +2742,10 @@ from both coding-agent allowlists by design, so no agent session can run it.
 - **Result:** Every declared acceptance criterion was accepted as met: "`go` detects a prepared worktree for the current Action that holds uncommitted changes, and reports it with its exact path rather than preparing a second worktree for that Action."; "Per Decision 0051, when the same governed Action still owns the candidate and its prior Session is proven terminal, `go` resumes that candidate (same worktree and branch, repository lease handed over) without operator Git steps. In every other case - different Action, unproven exit, or a conflicting live Session - the reported state names the operator's choices explicitly (preserve the existing candidate, or discard it) and `go` takes neither action implicitly."; "The `clutter` summary counts existing agent worktrees accurately; a run with two agent worktrees never reports `extraWorktrees: 0`."; "Preserve the proof Artifact: fixture tests reproducing an uncommitted prepared worktree, asserting `go` resumes it for the same Action after a proven terminal Session and refuses to duplicate or resume it otherwise; include the exact runnable target and operator QA steps in the pull request.".
 - **Next:** Advanced to the next eligible Action in document order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-refuse-to-orphan-an-uncommitted-candidate-2026-09-14).
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `73855b427024` to `14f1bf57eef7`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
