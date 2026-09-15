@@ -69,6 +69,51 @@ describe("executeCodexStep build-purpose failure", () => {
     const planned = runWorkPlanCommand({ workspace, workId });
     expect(planned.data.plan.steps).toHaveLength(1);
     expect(planned.data.plan.steps[0].executor_type).toBe("codex_build");
+    expect(planned.data.buildInvocation).toMatchObject({
+      purpose: "build",
+      status: "packet_created",
+      work_item_id: workId,
+      plan_id: planned.data.plan.id
+    });
+    expect(planned.data.buildPacketArtifact).toMatchObject({
+      artifact_type: "codex_prompt_packet",
+      work_item_id: workId,
+      path: planned.data.buildInvocation?.prompt_path
+    });
+    expect(planned.data.buildApproval).toMatchObject({
+      status: "open",
+      resolved_intent: "CodexBuildPacketApproval",
+      codex_invocation_id: planned.data.buildInvocation?.id,
+      artifact_id: planned.data.buildPacketArtifact?.id
+    });
+    expect(planned.data.buildApproval?.context_json).toContain('"planningPromotion"');
+
+    const runCount = withDatabase(workspace, (db) =>
+      (db.prepare("SELECT COUNT(*) AS count FROM execution_runs").get() as { count: number }).count
+    );
+    expect(runCount).toBe(0);
+
+    // Before the fix, `work plan` created a brand-new execution plan (and
+    // therefore a brand-new packet, invocation, and open Decision) on every
+    // call, because the idempotency checks were keyed off a plan id that
+    // never stayed stable across repeat calls.
+    const replanned = runWorkPlanCommand({ workspace, workId });
+    expect(replanned.data.plan.id).toBe(planned.data.plan.id);
+    expect(replanned.data.buildInvocation?.id).toBe(planned.data.buildInvocation?.id);
+    expect(replanned.data.buildPacketArtifact?.id).toBe(planned.data.buildPacketArtifact?.id);
+    expect(replanned.data.buildApproval?.id).toBe(planned.data.buildApproval?.id);
+
+    const planCount = withDatabase(workspace, (db) =>
+      (db.prepare("SELECT COUNT(*) AS count FROM execution_plans WHERE work_item_id = ?").get(workId) as { count: number }).count
+    );
+    expect(planCount).toBe(1);
+
+    const approvalCount = withDatabase(workspace, (db) =>
+      (db.prepare(
+        "SELECT COUNT(*) AS count FROM review_items WHERE work_item_id = ? AND resolved_intent = 'CodexBuildPacketApproval'"
+      ).get(workId) as { count: number }).count
+    );
+    expect(approvalCount).toBe(1);
 
     // Before the fix, this threw SQLITE_ERROR (UNIQUE constraint failed:
     // run_artifacts.run_id, run_artifacts.artifact_id) instead of returning
