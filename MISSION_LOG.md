@@ -12150,3 +12150,10 @@ from both coding-agent allowlists by design, so no agent session can run it.
 - **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `27460dd9c53c` to `837cc762b0cd`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
