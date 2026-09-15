@@ -1019,3 +1019,1473 @@ updated: 2026-09-15
 - **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `93f19a0229e6` to `c42a7e80909c`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `c42a7e80909c` to `522669e03d67`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `522669e03d67` to `2d98661ba484`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `2d98661ba484` to `2a2336ad7f86`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `2a2336ad7f86` to `7aea42019f67`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `7aea42019f67` to `fb0038cd1c8d`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `fb0038cd1c8d` to `e5a033d9f593`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `e5a033d9f593` to `366b4649ce23`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `366b4649ce23` to `5e9e71efb397`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `5e9e71efb397` to `73e478f7f7db`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `73e478f7f7db` to `8d7b151c5478`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `8d7b151c5478` to `f610bfed15bf`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `f610bfed15bf` to `9465f31c981a`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `9465f31c981a` to `71ecbefcaafc`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `71ecbefcaafc` to `956d24d13c58`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `956d24d13c58` to `48d6b12101b2`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `48d6b12101b2` to `cd4e6f7fc1b6`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `cd4e6f7fc1b6` to `bf240f7b279b`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `bf240f7b279b` to `48b52b3e5962`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `48b52b3e5962` to `a02065a756d4`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `a02065a756d4` to `a1ea72a793d3`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `a1ea72a793d3` to `1d50f775ad4f`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `1d50f775ad4f` to `dd66f00c9212`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `dd66f00c9212` to `4230b0bf2d55`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `4230b0bf2d55` to `8313f7532804`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `8313f7532804` to `56e90c3d8117`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `56e90c3d8117` to `ddba99881065`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `ddba99881065` to `c3689273057a`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `c3689273057a` to `6dca0759e132`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `6dca0759e132` to `3cfbd56201a4`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `3cfbd56201a4` to `7d26bf20da43`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `7d26bf20da43` to `3de0e143fe35`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `3de0e143fe35` to `f948ccc674bb`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `f948ccc674bb` to `3403605f78ba`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `8d7b151c5478` to `4f6ef8034fff`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `3403605f78ba` to `c2fa570d428c`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `c2fa570d428c` to `892377bdfd04`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `892377bdfd04` to `069fee6447d4`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `069fee6447d4` to `81054a9810ac`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `81054a9810ac` to `b3924c24cbcf`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `b3924c24cbcf` to `43c3c2dc5609`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `43c3c2dc5609` to `0599eed74e63`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `0599eed74e63` to `b4d79bbf030f`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `b4d79bbf030f` to `a6d8e1616b3a`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `a6d8e1616b3a` to `8e0e7a66e9c2`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `8e0e7a66e9c2` to `f34c06ef089a`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `f34c06ef089a` to `dd0212486598`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `dd0212486598` to `500fcdc820e0`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `500fcdc820e0` to `9577b51da3dc`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `9577b51da3dc` to `00c7db39df23`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `00c7db39df23` to `54bc5d58cf66`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `54bc5d58cf66` to `b7f70f2349a0`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `b7f70f2349a0` to `f018b3f218a1`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `f018b3f218a1` to `a19450f1732b`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `a19450f1732b` to `aab393573d17`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `aab393573d17` to `ee1fe1f8ae81`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `ee1fe1f8ae81` to `5b31d3c8fbff`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `5b31d3c8fbff` to `f765457d0cbc`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `f765457d0cbc` to `0361c167a03b`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `0361c167a03b` to `566a6ad2a78d`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `566a6ad2a78d` to `513fdf2966fd`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `513fdf2966fd` to `1b1c8ec986ac`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `4f6ef8034fff` to `c26f33cfd3e5`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `1b1c8ec986ac` to `b0ede6efcf6b`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `b0ede6efcf6b` to `9fbcc034233d`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `9fbcc034233d` to `4aab867a8c1f`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `4aab867a8c1f` to `cdf0d54bda12`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `cdf0d54bda12` to `c068883996bb`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `c068883996bb` to `6dc741548fa2`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `6dc741548fa2` to `8e1547d19dd6`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `8e1547d19dd6` to `22425edbbbdd`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `22425edbbbdd` to `65699dbc6891`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `65699dbc6891` to `d0d05ea00ef3`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `d0d05ea00ef3` to `a35dc12c5df1`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `a35dc12c5df1` to `e31b7cfe9226`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `e31b7cfe9226` to `0cb8f0e11b04`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `0cb8f0e11b04` to `74c108f02443`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `74c108f02443` to `659d2a66407b`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `659d2a66407b` to `d6230c775982`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `d6230c775982` to `f80ba7290e51`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `f80ba7290e51` to `76020c2df522`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `76020c2df522` to `624287c8680f`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `624287c8680f` to `0b3e8d1df673`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `0b3e8d1df673` to `add72829612a`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `add72829612a` to `4652a9f0fe40`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `4652a9f0fe40` to `8ca2e9f650ad`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `8ca2e9f650ad` to `ae0b994c82d9`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `ae0b994c82d9` to `49c94c2e7176`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `49c94c2e7176` to `7bd149963155`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `7bd149963155` to `5c1e0afdd646`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `c26f33cfd3e5` to `f0bf8a0b2712`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `5c1e0afdd646` to `817f2241bbaf`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `817f2241bbaf` to `4f4c3ab0fab7`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `4f4c3ab0fab7` to `df47e106b7b2`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `df47e106b7b2` to `18041627cd4d`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `18041627cd4d` to `b5b06eb4342c`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `b5b06eb4342c` to `33daa4912595`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `33daa4912595` to `c39e917e8252`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `c39e917e8252` to `b490d653a4e1`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `b490d653a4e1` to `9ccb93a3f939`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `9ccb93a3f939` to `b42b569b2ee3`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `b42b569b2ee3` to `76ab052e2ea0`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `76ab052e2ea0` to `53554eb2484b`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `53554eb2484b` to `bedcdd8beb9d`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `bedcdd8beb9d` to `17e8bce790db`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `17e8bce790db` to `6951d6117dc4`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `6951d6117dc4` to `38d623ef2849`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `38d623ef2849` to `b64d1d99dfcf`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `b64d1d99dfcf` to `61f26cf44df7`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `61f26cf44df7` to `8dee7f09479f`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `8dee7f09479f` to `9a950dc92f65`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `9a950dc92f65` to `10b449323375`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `10b449323375` to `445268b31354`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `445268b31354` to `48a9f37722a0`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `48a9f37722a0` to `35b024238019`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `35b024238019` to `d3fa6074ce91`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `d3fa6074ce91` to `d789b7839648`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `f0bf8a0b2712` to `1ace511b4ec2`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `d789b7839648` to `04b5db0acfff`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `04b5db0acfff` to `c0188f43c587`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `c0188f43c587` to `9499ad16a963`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `9499ad16a963` to `7fe519785278`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `7fe519785278` to `09652262db07`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `09652262db07` to `e5e3e226be8b`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `e5e3e226be8b` to `fe88ea4389ee`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `fe88ea4389ee` to `fbdbad76eaf4`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `fbdbad76eaf4` to `21f98bf8c849`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `21f98bf8c849` to `70b90043a441`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `70b90043a441` to `c58698b372fa`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `c58698b372fa` to `8319c935ce05`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `8319c935ce05` to `8616bb970c97`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `8616bb970c97` to `2577b26ace3e`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `2577b26ace3e` to `a222de525009`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `a222de525009` to `049ff7225351`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `049ff7225351` to `eb84b7491c59`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `eb84b7491c59` to `3b50fe178cfb`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `3b50fe178cfb` to `9589813812bc`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `9589813812bc` to `fd1c32fd7f2d`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `fd1c32fd7f2d` to `559905194426`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `559905194426` to `32f366b1a24e`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `32f366b1a24e` to `a1980c46102a`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `a1980c46102a` to `9ac701401121`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `9ac701401121` to `cfbf5a8604eb`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `cfbf5a8604eb` to `048591149bc6`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `048591149bc6` to `bff67a2778b3`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `1ace511b4ec2` to `87b420cb348d`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `bff67a2778b3` to `299e69af40c1`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `299e69af40c1` to `45d08100fe83`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `45d08100fe83` to `325cb3815561`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `325cb3815561` to `522ba8f4bfe0`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `522ba8f4bfe0` to `19db1b2a68db`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `19db1b2a68db` to `eb6706453186`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `eb6706453186` to `ad727f0d480b`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `ad727f0d480b` to `4beaaabacf94`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `4beaaabacf94` to `cfe99b171d04`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `cfe99b171d04` to `9da320e12890`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `9da320e12890` to `1a1eaf36891c`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `1a1eaf36891c` to `b28a8b74e55e`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `b28a8b74e55e` to `ad4a6081e0ef`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `ad4a6081e0ef` to `7950509e823a`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `7950509e823a` to `f29200a29ac7`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `f29200a29ac7` to `0b2eb292e040`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `0b2eb292e040` to `c666fe60f212`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `87b420cb348d` to `c666fe60f212`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `c666fe60f212` to `27d99ec07382`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `27d99ec07382` to `379633c19d82`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `379633c19d82` to `0a565b971b6e`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `0a565b971b6e` to `7e64d98c53bb`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `7e64d98c53bb` to `7802bf01292e`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `7802bf01292e` to `63f2ed01092e`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `63f2ed01092e` to `ac108100a962`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `ac108100a962` to `12e2d36b0659`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `12e2d36b0659` to `96b88d62e194`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `96b88d62e194` to `f2a98642e261`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `f2a98642e261` to `2a2890aa7349`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `2a2890aa7349` to `f07c79b8e4ee`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `f07c79b8e4ee` to `2d5e46cc701b`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `2d5e46cc701b` to `e68db7d34912`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `e68db7d34912` to `24a7535a3e00`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `24a7535a3e00` to `3090d3408f8f`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `3090d3408f8f` to `67401b953ee5`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `67401b953ee5` to `13ab823db1e4`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `13ab823db1e4` to `ec2d724dc29c`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `ec2d724dc29c` to `6c5bdb126664`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `6c5bdb126664` to `b852c53adb39`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `b852c53adb39` to `19cecf636cbe`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `19cecf636cbe` to `a6b10cc3d695`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `a6b10cc3d695` to `5ed5b6b9b2c4`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `5ed5b6b9b2c4` to `04729dc2bf60`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `04729dc2bf60` to `e0ed6984f2e3`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `e0ed6984f2e3` to `7d2d80915a5d`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `7d2d80915a5d` to `82761016691a`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `82761016691a` to `2deab9f5c41e`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `2deab9f5c41e` to `e48ccfb49c42`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `e48ccfb49c42` to `4daa33f692c9`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `4daa33f692c9` to `12d54bb0546c`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `12d54bb0546c` to `8ec1752e18ac`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `8ec1752e18ac` to `9a4818704df4`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `9a4818704df4` to `241ed18de472`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `241ed18de472` to `6dbecd2dacc5`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `6dbecd2dacc5` to `54831fe761f2`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `54831fe761f2` to `9769b0118086`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `9769b0118086` to `4441edb7e860`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `4441edb7e860` to `b9a24d92830d`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `b9a24d92830d` to `47b2d3cef259`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `47b2d3cef259` to `463ea03be273`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `463ea03be273` to `a8040594632e`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `a8040594632e` to `e6ad0c0af8bb`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `e6ad0c0af8bb` to `70d245238669`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `c666fe60f212` to `70d245238669`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
