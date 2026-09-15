@@ -452,6 +452,7 @@ interface WorkspaceResolveData {
   source: WorkspaceResolution["source"];
   workspacePath: string | null;
   detail?: string;
+  warning?: string;
 }
 
 export function buildProgram(): Command {
@@ -545,7 +546,8 @@ export function buildProgram(): Command {
           data: {
             source: resolution.source,
             workspacePath: resolution.workspacePath,
-            detail: resolution.detail
+            detail: resolution.detail,
+            warning: resolution.warning
           }
         });
       },
@@ -4490,6 +4492,7 @@ function renderWorkspaceResolveSuccess(response: CommandSuccess<WorkspaceResolve
   return [
     `Source: ${response.data.source}`,
     `Workspace: ${response.data.workspacePath ?? "Not resolved"}`,
-    ...(response.data.detail ? [`Detail: ${response.data.detail}`] : [])
+    ...(response.data.detail ? [`Detail: ${response.data.detail}`] : []),
+    ...(response.data.warning ? [`Warning: ${response.data.warning}`] : [])
   ];
 }
