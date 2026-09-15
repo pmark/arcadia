@@ -482,7 +482,13 @@ function executeCodexStep(
       error: result.error?.message ?? result.stderr ?? `${codingAgentLabel(profile)} command failed with status ${result.status}`,
       artifactPath: partial?.path ?? diagnostic.path,
       artifact: validation?.artifact ?? diagnostic,
-      additionalArtifacts: [diagnostic, ...(partial ? [partial] : [])]
+      // `diagnostic` is already returned as `artifact` whenever there is no
+      // separate validation artifact (i.e. purpose is "build"); listing it
+      // again here duplicated its id in the caller's combined artifacts
+      // list, which fails run_artifacts' (run_id, artifact_id) unique
+      // constraint the moment a codex_build step's executor invocation
+      // fails (e.g. an expired provider auth session).
+      additionalArtifacts: [...(validation ? [diagnostic] : []), ...(partial ? [partial] : [])]
     };
   }
 
