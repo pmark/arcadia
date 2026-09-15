@@ -1,0 +1,25 @@
+{
+  "agent_ask": "v1",
+  "request_id": "cost-aware-dispatch-time-model-selection-2026-09-15",
+  "project": "arcadia",
+  "intent": "action",
+  "desired_result": "Make arcadia go's coding-agent provider/model choice for a Plan Action computed at dispatch time from the existing cost-ranked provider-adapter registry (providerAdapters.ts's selectCompliantCodingAgent) whenever the Action has not pinned an explicit recommended_model, instead of requiring a manually hand-picked literal model string for every Action.",
+  "rationale": "The operator has a live, personal need to cut Arcadia's real operating cost and wants continuous cost-minimizing model selection as a standing feature (docs/proposals/openrouter-coding-agent-backend.md, revised 2026-09-15). This is the narrowest slice that delivers real savings without a new provider: providerAdapters.ts already sorts eligible bindings by costRank and never substitutes a weaker capability tier, but arcadia go's launch path (src/commands/go.ts, src/sessions/worktreePreparation.ts) currently bypasses that selection entirely in favor of a static recommended_model pin per docs/model-selection.md. Wiring the existing selector into that launch path lets a cheaper already-configured binding win automatically whenever config/provider-adapters.json's costRank data changes, with no plan edit required.",
+  "acceptance": [
+    "A Plan Action can declare its required capability tier and reasoning effort (its existing arcadia.execution/v1 profile) without also pinning a literal recommended_model, and arcadia go resolves the actual provider/model to launch by cost rank among currently enabled, available bindings that satisfy that floor.",
+    "An Action that already pins an explicit recommended_model continues to launch exactly that model unchanged; dispatch-time auto-selection only activates when no explicit pin is present, so no existing plan's behavior changes.",
+    "Selection never substitutes a lower capability tier than required and never selects a provider excluded by availability or capacity refusal, matching selectCompliantCodingAgent's existing no-weaker-substitution guarantee.",
+    "The resolved provider, model, and costRank actually used are recorded on the launched Session so a later audit can see why that binding was chosen, not just that a launch happened.",
+    "Updating config/provider-adapters.json's costRank values, or adding a cheaper compliant binding, changes the next unpinned dispatch's chosen model with no plan document edit.",
+    "Deterministic tests prove: an explicit pin wins over auto-selection when both are present; the cheapest satisfying binding wins when unpinned; and an unsatisfiable requirement still refuses launch with the existing rejected-bindings explanation rather than a weaker fallback."
+  ],
+  "dependencies": [],
+  "references": [
+    "docs/proposals/openrouter-coding-agent-backend.md",
+    "docs/model-selection.md",
+    "src/codingAgents/providerAdapters.ts",
+    "src/commands/go.ts",
+    "src/sessions/worktreePreparation.ts"
+  ],
+  "requested_authority": "propose"
+}
