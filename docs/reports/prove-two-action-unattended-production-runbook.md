@@ -63,18 +63,6 @@ anything). Its Action A (`write-rehearsal-marker`) has not run yet. **Do not
 activate production against it, do not delete it, and do not fold this proof
 into it.** This Action needs its own disposable fixture.
 
-**"Workspace" vs. "fixture repository" — do not confuse the two.** Every
-command below that takes `--workspace` (or resolves one silently) means
-Arcadia's own operator workspace/database — the one your existing setup
-already defaults to, printed by `arcadia config get defaultWorkspace` or
-found in `~/.config/arcadia/config.json` (`defaultWorkspace`). It is the same
-workspace `arcadia production status` and every other command in this run
-already uses, and it is **not** the fixture repository path from Step 1
-(`~/tmp/arcadia-two-action-rehearsal`), which is a Project's checkout, not an
-Arcadia workspace. Omit `--workspace` throughout and let it resolve to your
-configured default; only pass it explicitly if you deliberately run against a
-non-default workspace.
-
 ## Step 0 — repin the broker, then confirm READY
 
 Identical to the zero-prompt rehearsal's Step 0. The broker runs a frozen copy
@@ -200,13 +188,12 @@ revision/epoch)_
 
 ```sh
 cd ~/Dev/MR/Arcadia/arcadia
-arcadia worker start
+arcadia worker start --workspace <workspace path from Step 0/1>
 ```
 
-(Omit `--workspace`; it resolves to your configured default, the same
-workspace Steps 1-2 already used. Or confirm an already-running worker for
-that workspace via `.arcadia/worker.pid` / `worker.heartbeat` in it — do not
-start a second one against the same workspace database.)
+(Or confirm an already-running worker for this workspace via
+`.arcadia/worker.pid` / `worker.heartbeat` — do not start a second one against
+the same workspace database.)
 
 Within a few ticks (`POLL_INTERVAL_MS` is 2s), the worker should admit
 `write-marker-a` and launch it under the standing grant with **no** operator
@@ -322,7 +309,7 @@ restarting the worker process itself:
 
 ```sh
 # stop the worker (SIGTERM/SIGINT to the PID in worker.pid, or however you started it)
-arcadia worker start   # restart; omit --workspace, same default as Step 3
+arcadia worker start --workspace <path>   # restart
 arcadia production status --json          # confirm still inactive, no re-admission
 ```
 
