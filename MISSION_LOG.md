@@ -256,3 +256,10 @@ updated: 2026-09-15
   the two unfinished Arcadia Plan Actions as one queue segment at the top.
   Settlement `asksettle_1c38b693b26b492999` recorded the exact Plan and queue
   effects, resulting next Action, and operator-accep
+
+## 2026-09-15 — Base branch advanced
+
+- **Did:** Observed `main` advance from `17687c6b414b` to `b4dcdff8b725`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
