@@ -766,6 +766,27 @@ actions:
     depends_on: [feed-and-supervise-managed-production]
     decisions: []
     references: []
+  - id: combine-advance-monitor-next-into-one-brief
+    title: One broker call from a prepared worktree returns the combined result of today's separate advance reconciliation, work-monitor preflight, and next dispatch-brief resolution, and arcadia-go.SKILL.md issues that one call instead of three.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: One broker call from a prepared worktree returns the combined result of today's separate advance reconciliation, work-monitor preflight, and next dispatch-brief resolution, and arcadia-go.SKILL.md issues that one call instead of three.
+    expected_artifact: Evidence satisfying Agent Ask combine-advance-monitor-next-into-one-brief
+    clarification: clarified
+    confidence: high
+    source: Agent Ask combine-advance-monitor-next-broker-2026-09-15
+    acceptance_criteria:
+      - A new broker operation (extending scripts/arcadia-go-broker.ts and src/goBroker.ts) runs the existing advance logic, the existing work-monitor preflight, and the existing next dispatch resolution in one process invocation from the prepared worktree, and returns one combined JSON response including the exact rendered dispatch-brief text the operator must see -- no separate `pnpm arcadia next` invocation is needed to produce that text.
+      - The existing standalone advance, work-monitor, and next commands are unchanged and keep working exactly as they do today for any other caller; this adds one new combined entry point rather than removing or altering the individual ones.
+      - "A failure at any one of the three stages (for example: dispatch not resolvable, or work-monitor finding a preservation blocker) is reported with the same field-level specificity the standalone command would give for that stage, not swallowed or genericized by the combination."
+      - No model or AI call is introduced anywhere in the combined path; it remains exactly as deterministic as the three calls it replaces.
+      - arcadia-go.SKILL.md's step 3 is rewritten to issue exactly one launcher call from the prepared worktree and paste its returned brief verbatim as the opening chat message, replacing the current three-call sequence (advance broker, work-monitor broker, pnpm arcadia next); step 4's standalone work-monitor guidance is removed or marked redundant accordingly.
+      - "Deterministic tests cover: the combined success path returns all three results including the rendered brief text; a failure injected at each of the three stages individually is reported with that stage's exact failure; and the standalone advance/work-monitor/next commands are proven unaffected by the change."
+      - Preserve a runnable operator QA artifact showing the exact before/after command and round-trip count from a prepared worktree.
+    depends_on: [make-worktree-runtime-self-contained]
+    decisions: []
+    references: ["scripts/arcadia-go-broker.ts", "src/goBroker.ts", "src/commands/go.ts", "src/commands/next.ts", "src/commands/workMonitor.ts", "src/agentSetup/arcadia-go.SKILL.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md"]
 questions: []
 decisions: []
 current_action: prove-two-action-unattended-production
