@@ -255,6 +255,25 @@ describe("runManagedProductionTick", () => {
     const missionLog = readFileSync(path.join(fixture.repo, "MISSION_LOG.md"), "utf8");
     expect(missionLog).toContain("Base branch advanced");
     expect(missionLog).toContain(newSha.slice(0, 12));
+
+    // The MISSION_LOG append above is itself a commit onto `baseBranch`,
+    // which moves it again. A tick that re-reads that self-made commit as
+    // yet another "advance" would record a second event and a second
+    // MISSION_LOG entry forever, with no external change required -- this is
+    // exactly the self-triggering loop that produced thousands of spurious
+    // `chore(arcadia): record base branch advance` commits in production.
+    const stillNoOp = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 120_000), agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+    expect(stillNoOp.projects[0]?.baseBranchAdvance?.changed).toBe(false);
+
+    const eventsAfter = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT event_type FROM events WHERE event_type = 'managed_production.base_branch_advanced'").all()
+    ) as Array<{ event_type: string }>;
+    expect(eventsAfter).toHaveLength(1);
+
+    const missionLogAfter = readFileSync(path.join(fixture.repo, "MISSION_LOG.md"), "utf8");
+    expect(missionLogAfter).toBe(missionLog);
   });
 
   it("stops retrying an Action after its repair budget is exhausted, then resumes once the budget is reset", () => {

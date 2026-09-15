@@ -326,6 +326,17 @@ function detectBaseBranchAdvance(
     at
   });
   appendBaseBranchAdvanceMissionLog(input.repoRoot, input.projectSlug, { previousSha, newSha, baseBranch });
+  // The Mission Log append above commits directly onto `baseBranch`, which
+  // moves it again -- re-observe the SHA after that commit and store it, or
+  // the next tick reads its own commit back as yet another "advance" and
+  // repeats forever (this is what produced thousands of spurious commits
+  // before this fix; see the history purge that accompanied it).
+  const shaAfterMissionLog = git(input.repoRoot, ["rev-parse", baseBranch]).trim();
+  if (shaAfterMissionLog !== newSha) {
+    db.prepare(
+      `UPDATE production_base_branch_observations SET observed_sha = @observed_sha, observed_at = @observed_at WHERE project_slug = @project_slug`
+    ).run({ project_slug: input.projectSlug, observed_sha: shaAfterMissionLog, observed_at: input.now.toISOString() });
+  }
   input.log(`Base branch ${baseBranch} advanced for ${input.projectSlug} (a merge landed independent of this worker's own admission pipeline): ${previousSha} -> ${newSha}`);
   return { changed: true, previousSha, newSha, baseBranch };
 }
