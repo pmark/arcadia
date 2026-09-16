@@ -1004,7 +1004,10 @@ describe("docs sync", () => {
     // Those sections are gone. This reads the actual checked-in log rather than
     // a fixture, so the trim cannot silently regress.
     const missionLog = readFileSync(path.resolve(import.meta.dirname, "../MISSION_LOG.md"), "utf8");
-    expect(missionLog).not.toContain("— Base branch advanced");
+    // A settlement Log entry may quote the criterion text, which itself names
+    // "Base branch advanced"; what must be absent is the heading the tick used
+    // to write, since that is the entry key that collided.
+    expect(missionLog).not.toMatch(/^## \d{4}-\d{2}-\d{2} — Base branch advanced$/m);
 
     const repo = scratch();
     writeDoc(repo, "MISSION_LOG.md", missionLog);
