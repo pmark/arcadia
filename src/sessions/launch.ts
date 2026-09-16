@@ -15,6 +15,7 @@ import {
   launchPreparedSession,
   prepareSession,
   reserveAgentWorktree,
+  sessionAgentForProvider,
   systemTmux,
   type AgentSession,
   type TmuxAdapter
@@ -171,7 +172,13 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     input.testHooks?.afterAdmissionIssuedBeforeCommit?.();
   }
 
-  const agent = preview.selection.provider === "codex-cli" ? "codex" : "claude";
+  const agent = sessionAgentForProvider(preview.selection.provider);
+  if (!agent) {
+    throw validationError(
+      `No Session launch adapter is registered for provider "${preview.selection.provider}".`,
+      { conflict: true }
+    );
+  }
   const model = preview.selection.model;
   const effort = preview.selection.effort ?? null;
   const baseBranch = resolveBaseBranch(repoRoot);

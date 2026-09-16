@@ -12,6 +12,8 @@ export function codingAgentLabel(profile: CodingAgentProfile): string {
       return "Codex";
     case "claude-code-cli":
       return "Claude Code";
+    case "opencode-cli":
+      return "opencode";
     default:
       return profile.name;
   }

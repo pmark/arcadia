@@ -28,7 +28,7 @@ import {
   normalizeProductionScope,
   type ProductionScope
 } from "../src/production/policy.js";
-import { getRepositoryLease, prepareSession, type TmuxAdapter } from "../src/sessions/index.js";
+import { getRepositoryLease, prepareSession, sessionView, type TmuxAdapter } from "../src/sessions/index.js";
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -72,6 +72,35 @@ describe("launchGuardedHostSession", () => {
     expect(result.session.project_slug).toBe("test-project");
     expect(result.session.action_id).toBe("define-contract");
     expect(tmux.launches).toHaveLength(1);
+  });
+
+  it("launches the packet-selected opencode adapter headlessly with its reasoning variant", () => {
+    const fixture = preparedFixture({
+      provider: "opencode-cli",
+      model: "opencode-go/deepseek-v4.1-flash",
+      profileName: "opencode_build",
+      command: "opencode",
+      effort: "e3_deep"
+    });
+    const tmux = new FakeTmux();
+    const preview = preview1(fixture);
+
+    const result = doLaunch(fixture, tmux, preview.previewFingerprint);
+    expect(result.session.provider).toBe("opencode-cli");
+    expect(result.reused).toBe(false);
+    expect(tmux.launches).toHaveLength(1);
+    expect(tmux.launches[0]!.command).toBe("opencode");
+    expect(tmux.launches[0]!.args).toEqual([
+      "run",
+      "--model",
+      "opencode-go/deepseek-v4.1-flash",
+      "--variant",
+      "high",
+      `arcadia advance --session ${result.session.id}`
+    ]);
+    // opencode owns its native session id, so Arcadia never invents a resume.
+    expect(result.session.provider_session_id).toBe(result.session.id);
+    expect(sessionView(result.session, tmux).resumeCommand).toBeNull();
   });
 
   it("rejects a stale or altered preview fingerprint for a brand-new launch", () => {
@@ -384,6 +413,50 @@ describe("launchGuardedHostSession under a standing managed-production policy gr
     expect(settled?.status).toBe("committed");
   });
 
+  it("launches an opencode Session under a policy scoped to opencode-cli, then holds the lease guard", () => {
+    const fixture = preparedFixture({
+      provider: "opencode-cli",
+      model: "opencode-go/deepseek-v4.1-flash",
+      profileName: "opencode_build",
+      command: "opencode",
+      effort: "e3_deep"
+    });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture, "policy-opencode-grant", opencodeScope);
+
+    const result = doStandingLaunch(fixture, tmux, "opencode-req-1", undefined, undefined, fixtureCapacityObservation("opencode-cli"));
+    expect(result.reused).toBe(false);
+    expect(result.session.provider).toBe("opencode-cli");
+    expect(result.admission?.status).toBe("committed");
+    expect(tmux.launches).toHaveLength(1);
+    expect(tmux.launches[0]!.command).toBe("opencode");
+
+    // The existing one-lease-per-repository guard is unchanged for opencode: a
+    // second preparation against the same repository is refused.
+    const dispatch = resolveDispatch(fixture.repo, "test-project");
+    const baseRevision = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+    expectArcadiaError(
+      () =>
+        withDatabase(fixture.workspace, (db) =>
+          prepareSession({
+            db,
+            workspace: fixture.workspace,
+            repoRoot: fixture.repo,
+            dispatch,
+            agent: "opencode",
+            model: "opencode-go/deepseek-v4.1-flash",
+            effort: "e3_deep",
+            baseRevision,
+            branch: "opencode/racer",
+            worktreePath: path.join(fixture.root, "racer-worktree"),
+            now: fixture.now,
+            tmux
+          })
+        ),
+      "already has a prepared or running Session lease"
+    );
+  });
+
   it("refuses a standing-policy launch while production is Inactive", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
@@ -430,12 +503,26 @@ const productionScope: ProductionScope = normalizeProductionScope({
   mechanicalTransitions: []
 });
 
-function activatePolicy(fixture: ReturnType<typeof preparedFixture>, requestId = "policy-grant-1") {
+const opencodeScope: ProductionScope = normalizeProductionScope({
+  intent: "Prove the standing-policy opencode launch path.",
+  projects: ["test-project"],
+  plans: ["test-project/copy-proof"],
+  actions: ["test-project/define-contract"],
+  providers: ["opencode-cli"],
+  maxConcurrentSessions: 1,
+  mechanicalTransitions: []
+});
+
+function activatePolicy(
+  fixture: ReturnType<typeof preparedFixture>,
+  requestId = "policy-grant-1",
+  scope: ProductionScope = productionScope
+) {
   return withDatabase(fixture.workspace, (db) =>
     activateProduction(db, {
       requestId,
-      scope: productionScope,
-      scopeFingerprint: fingerprintProductionScope(productionScope),
+      scope,
+      scopeFingerprint: fingerprintProductionScope(scope),
       grantedBy: "operator"
     })
   );
@@ -475,8 +562,8 @@ function provenCapacity(providerId = "claude-code-cli"): CapacityAdmissionDecisi
   };
 }
 
-function fixtureCapacityObservation(): ProviderCapacityObservation {
-  return { generatedAt: "2026-08-30T12:34:56.000Z", providers: [provenCapacity()] };
+function fixtureCapacityObservation(providerId = "claude-code-cli"): ProviderCapacityObservation {
+  return { generatedAt: "2026-08-30T12:34:56.000Z", providers: [provenCapacity(providerId)] };
 }
 
 function doStandingLaunch(
@@ -484,7 +571,8 @@ function doStandingLaunch(
   tmux: FakeTmux,
   requestId = "policy-req-1",
   worktreeSuffix?: string,
-  testHooks?: Parameters<typeof launchGuardedHostSession>[0]["testHooks"]
+  testHooks?: Parameters<typeof launchGuardedHostSession>[0]["testHooks"],
+  capacityObservation: ProviderCapacityObservation = fixtureCapacityObservation()
 ): GuardedLaunchResult {
   return withDatabase(fixture.workspace, (db) =>
     launchGuardedHostSession({
@@ -499,7 +587,7 @@ function doStandingLaunch(
       now: fixture.now,
       tmux,
       agentWorktreeRoot: path.join(fixture.root, worktreeSuffix ?? requestId),
-      capacityObservation: fixtureCapacityObservation(),
+      capacityObservation,
       testHooks
     })
   );
@@ -544,7 +632,22 @@ function preview1(fixture: ReturnType<typeof preparedFixture>, requestId = "req-
   );
 }
 
-function preparedFixture() {
+interface FixtureSelection {
+  provider: string;
+  model: string;
+  profileName: string;
+  command: string;
+  effort?: string;
+}
+
+const CLAUDE_SELECTION: FixtureSelection = {
+  provider: "claude-code-cli",
+  model: "sonnet",
+  profileName: "claude_build",
+  command: "claude"
+};
+
+function preparedFixture(selection: FixtureSelection = CLAUDE_SELECTION) {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-session-launch-"));
   roots.push(root);
   const repo = path.join(root, "repo");
@@ -561,9 +664,7 @@ function preparedFixture() {
   git(repo, ["commit", "-m", "initial"]);
   initWorkspace(workspace);
   const packetId = "codex_session_launch_fixture";
-  const provider = "claude-code-cli";
-  const model = "sonnet";
-  const profileName = "claude_build";
+  const { provider, model, profileName } = selection;
   withDatabase(workspace, (db) => {
     const project = upsertProject(db, { name: "Test Project", mission: "Prove guarded launch.", goal: "Prove guarded launch.", status: "active" });
     upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
@@ -579,14 +680,14 @@ function preparedFixture() {
       workItemId: workItem.id,
       promptPath,
       baseRevision,
-      providerSelection: { provider, model, mappingId: "fixture-map", bindingId: "fixture-binding" }
+      providerSelection: { provider, model, mappingId: "fixture-map", bindingId: "fixture-binding", ...(selection.effort ? { effort: selection.effort } : {}) }
     }));
     createCodexInvocation(db, {
       id: packetId,
       purpose: "build",
       agentProfile: profileName,
       workspaceScope: repo,
-      command: "claude",
+      command: selection.command,
       promptPath,
       jsonlOutputPath: `prompts/codex/${packetId}/output.jsonl`,
       finalMessagePath: `prompts/codex/${packetId}/final.md`,

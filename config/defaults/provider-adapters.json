@@ -12,6 +12,10 @@
       "enabled": true
     },
     {
+      "id": "opencode-cli",
+      "enabled": true
+    },
+    {
       "id": "gemini-cli",
       "enabled": false,
       "unavailableReason": "No Gemini CLI coding-agent profile is configured in this Arcadia installation."
@@ -92,6 +96,25 @@
       "contextScopes": ["local", "project", "cross_system"],
       "locality": "remote",
       "costRank": 4,
+      "enabled": true
+    },
+    {
+      "id": "opencode-zen",
+      "provider": "opencode-cli",
+      "agentProfiles": ["opencode_build"],
+      "capability": "c2_integrated",
+      "model": "opencode-go/deepseek-v4.1-flash",
+      "modelArgs": ["--model", "opencode-go/deepseek-v4.1-flash"],
+      "effortArgs": {
+        "e1_brief": ["--variant", "minimal"],
+        "e2_standard": ["--variant", "low"],
+        "e3_deep": ["--variant", "high"],
+        "e4_rigorous": ["--variant", "max"]
+      },
+      "tools": true,
+      "contextScopes": ["local", "project"],
+      "locality": "remote",
+      "costRank": 5,
       "enabled": true
     }
   ]

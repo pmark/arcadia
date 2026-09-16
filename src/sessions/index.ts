@@ -11,6 +11,7 @@ import { isDispatchable, resolveDispatch, type DispatchResolution } from "../doc
 import { packetSha256 } from "../execution/planningAuthorization.js";
 import { createId } from "../utils/id.js";
 import { getResumableLeaseHandoff, supersedeLeaseHandoff } from "./reconciliation.js";
+import { opencodeVariant } from "./worktreePreparation.js";
 
 export type ProjectTransitionKind = "launch" | "plan" | "decision" | "repair" | "reconcile" | "wait" | "complete_milestone";
 
@@ -59,12 +60,37 @@ export interface AgentSession {
   updated_at: string;
 }
 
-type SessionAgent = "codex" | "claude";
+export type SessionAgent = "codex" | "claude" | "opencode";
 
 const SESSION_PROVIDER: Record<SessionAgent, string> = {
   codex: "codex-cli",
-  claude: "claude-code-cli"
+  claude: "claude-code-cli",
+  opencode: "opencode-cli"
 };
+
+/**
+ * The single provider-to-agent map. `launchGuardedHostSession` and
+ * `prepareSession` both resolve through here, so a provider can never be
+ * launchable without a matching Session adapter (and vice versa).
+ */
+const SESSION_AGENT: Record<string, SessionAgent> = {
+  "codex-cli": "codex",
+  "claude-code-cli": "claude",
+  "opencode-cli": "opencode"
+};
+
+/** The Session agent that launches `provider`, or null when no adapter exists. */
+export function sessionAgentForProvider(provider: string): SessionAgent | null {
+  return SESSION_AGENT[provider] ?? null;
+}
+
+/** Human label for a Session's provider, used in refusals and receipts. */
+export function sessionProviderLabel(provider: string): string {
+  if (provider === "codex-cli") return "Codex";
+  if (provider === "claude-code-cli") return "Claude Code";
+  if (provider === "opencode-cli") return "opencode";
+  return provider;
+}
 
 export interface AgentWorktreeReservation {
   id: string;
@@ -369,7 +395,7 @@ export function launchPreparedSession(db: Database.Database, session: AgentSessi
     tmux.launch({ name: session.tmux_session_name, cwd: session.worktree_path, ...launch });
   } catch (error) {
     failPreparedSession(db, session.id);
-    throw validationError(`tmux could not start the ${session.provider === "codex-cli" ? "Codex" : "Claude Code"} Session.`, {
+    throw validationError(`tmux could not start the ${sessionProviderLabel(session.provider)} Session.`, {
       sessionId: session.id,
       cause: error instanceof Error ? error.message : String(error)
     });
@@ -505,16 +531,21 @@ export const SESSION_PHONE_LIMITATION_NOTICE =
 
 export function sessionView(session: AgentSession, tmux: Pick<TmuxAdapter, "hasSession"> = systemTmux) {
   const live = tmux.hasSession(session.tmux_session_name);
-  const codex = session.provider === "codex-cli";
+  // Claude is the only adapter Arcadia can hand a native session id to, so it
+  // is the only one with an exact `--resume`. Codex and opencode create their
+  // native ids internally and do not expose them to a detached launch.
+  const resumable = session.provider === "claude-code-cli";
   return {
     ...session,
     observedStatus: live ? "running" : session.status === "prepared" ? "prepared" : "exited",
     live,
     reattachCommand: `tmux attach-session -t ${session.tmux_session_name}`,
-    resumeCommand: codex ? null : `cd ${JSON.stringify(session.worktree_path)} && claude --resume ${session.provider_session_id}`,
-    resumeNotice: codex
-      ? "Exact Codex resume is unavailable after this terminal exits: Codex creates its native session id internally and does not expose it to detached launch. Reattach the live tmux Session; after exit, launch a new governed Session rather than guessing `codex resume --last`."
-      : null,
+    resumeCommand: resumable ? `cd ${JSON.stringify(session.worktree_path)} && claude --resume ${session.provider_session_id}` : null,
+    resumeNotice: resumable
+      ? null
+      : `Exact ${sessionProviderLabel(session.provider)} resume is unavailable after this terminal exits: ` +
+        `${sessionProviderLabel(session.provider)} creates its native session id internally and does not expose it to detached launch. ` +
+        "Reattach the live tmux Session; after exit, launch a new governed Session.",
     phoneLimitationNotice: SESSION_PHONE_LIMITATION_NOTICE
   };
 }
@@ -526,6 +557,18 @@ function buildSessionLaunch(session: AgentSession): { command: string; args: str
     if (session.effort) args.push("--config", `model_reasoning_effort=${JSON.stringify(session.effort)}`);
     args.push("--cd", session.worktree_path, prompt);
     return { command: "codex", args };
+  }
+
+  if (session.provider === "opencode-cli") {
+    // `opencode run` is the headless entry point: it executes the prompt
+    // non-interactively in the prepared worktree (tmux already sets cwd) and
+    // exits when the turn is done. Permission posture comes from the ambient
+    // opencode configuration, exactly as Codex's and Claude's do there.
+    const args = ["run", "--model", session.model];
+    const variant = opencodeVariant(session.effort);
+    if (variant) args.push("--variant", variant);
+    args.push(prompt);
+    return { command: "opencode", args };
   }
 
   const args = ["--model", session.model];

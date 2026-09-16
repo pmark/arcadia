@@ -42,7 +42,7 @@ import {
 
 import { recoverLegacyAgentAskDrift, type AskRecoveryTestHooks, type LegacyAskRecovery } from "../sessions/legacyAskRecovery.js";
 import { getResumableLeaseHandoff } from "../sessions/reconciliation.js";
-import { buildAgentLaunchCommand, isPlausibleClaudeModel, prepareAgentWorktree } from "../sessions/worktreePreparation.js";
+import { buildAgentLaunchCommand, isPlausibleClaudeModel, prepareAgentWorktree, type PreparedAgentWorktree } from "../sessions/worktreePreparation.js";
 import { bindManualPreservation } from "../sessions/manualPreservation.js";
 import { readPreservationReadiness, type PreservationReadiness } from "../sessions/preservationReadiness.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
@@ -98,16 +98,7 @@ export interface GoCommandData {
   commitsToIntegrate: number;
   sourceWorktreeRemoved: boolean;
   sourceBranchDeleted: boolean;
-  nextWorktree: {
-    agent: "codex" | "claude";
-    path: string;
-    branch: string;
-    /** Resolved from `--model`, else the plan's `recommended_model`. Never absent: unresolved refuses before a worktree is created. */
-    model: string;
-    /** Resolved from `--effort`, else the plan's `recommended_reasoning_effort`. Unlike model, absence is valid — the agent CLI's own default applies. */
-    effort: string | null;
-    command: string;
-  } | null;
+  nextWorktree: PreparedAgentWorktree | null;
   dispatch: DispatchResolution;
   dispatchable: boolean;
   transition: ProjectTransition;

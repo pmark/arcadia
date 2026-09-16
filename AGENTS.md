@@ -19,7 +19,7 @@ Arcadia exists to maintain momentum across creative projects with minimal cognit
 Prefer deterministic workflows.
 Prefer local scripts before AI.
 Prefer local AI before frontier models.
-Use Codex only when code changes are required.
+Use a coding agent only when code changes are required.
 
 Always identify:
 - Current milestone

@@ -1146,7 +1146,7 @@ pnpm arcadia work run work_example \
 
 `--allow-codex-build` is separate from `--allow-codex-planning`. Arcadia refuses `danger-full-access` profiles in managed runs.
 
-The built-in managed profiles are `codex_planning`, `codex_build`, `claude_planning`, and `claude_build`. The `codex` wording in the two allow flags is retained as a compatibility name for coding-agent work.
+The built-in managed profiles are `codex_planning`, `codex_build`, `claude_planning`, `claude_build`, and `opencode_build`. The `codex` wording in the two allow flags is retained as a compatibility name for coding-agent work.
 
 For a generic approved implementation Decision, choose a built-in review executor directly:
 

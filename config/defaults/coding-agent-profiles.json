@@ -40,6 +40,15 @@
       "purpose": "build",
       "sandbox": "workspace-write",
       "args": ["--print", "--output-format", "json", "--permission-mode", "acceptEdits", "--no-session-persistence"]
+    },
+    {
+      "name": "opencode_build",
+      "provider": "opencode-cli",
+      "package": "opencode-ai",
+      "command": "opencode",
+      "purpose": "build",
+      "sandbox": "workspace-write",
+      "args": ["run", "--format", "json"]
     }
   ]
 }
