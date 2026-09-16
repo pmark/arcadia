@@ -494,6 +494,31 @@ broken and the plan continued anyway, the document should say what the
 workaround was and when it expires. If it says nothing, the rule was skipped,
 not applied.
 
+## Log defects with GitHub Issues
+
+A defect found while doing other work must not be lost, and must not be
+repaired on the spot by the agent that found it. **Capture it as a GitHub Issue
+in the repository that owns the wrong code, then continue.** GitHub Issues is
+the Way's intake for code-level defects in Arcadia and every managed Project.
+
+- **One defect, one Issue, in its own repository.** The code that is wrong owns
+  the Issue. Give it a title that names the failure, a body with the observed
+  evidence and the exact `file:line`, and the `bug` label.
+- **Capture is not governance.** An Issue is a signal, never work state. Do not
+  read Issues as a queue, a pointer, or a Decision. When a defect becomes work,
+  promote it to a governed Action through an Agent Ask that references the
+  Issue, and close the Issue when that work merges. This is the same rule that
+  keeps telemetry out of the Mission Log: one authoritative home per fact, and
+  the tracker is not a second truth store.
+- **Report, don't detour.** Do not investigate past what the capture needs. A
+  filed Issue costs a minute; a repair mid-task costs the task.
+- **A blocking defect is different.** When the blast radius meets the "Stop the
+  line" test above, promote it instead — file it, top the queue, make it the
+  `current_action` — and let that be the work.
+- **No separate local defect script.** This is the Way's answer to "where do
+  bugs go": a tracker every repository already has, next to the pull requests,
+  that nobody has to maintain.
+
 ## Make it real
 
 Plans, analysis, and architecture are valuable when they turn into something a
