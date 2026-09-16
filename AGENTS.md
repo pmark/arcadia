@@ -534,6 +534,12 @@ the Way's intake for code-level defects in Arcadia and every managed Project.
 - **One defect, one Issue, in its own repository.** The code that is wrong owns
   the Issue. Give it a title that names the failure, a body with the observed
   evidence and the exact `file:line`, and the `bug` label.
+- **File it when you find it, and only once.** Capture the defect in the session
+  that encountered it, not in a later cleanup pass — a defect remembered but
+  unfiled is one the next session rediscovers. Search the owning repository's
+  Issues first, open and closed: an Issue that already names the failure gets a
+  reference or an update, never a duplicate. Two Issues for one defect costs the
+  same as a second truth store, split across two records.
 - **Capture is not governance.** An Issue is a signal, never work state. Do not
   read Issues as a queue, a pointer, or a Decision. When a defect becomes work,
   promote it to a governed Action through an Agent Ask that references the
