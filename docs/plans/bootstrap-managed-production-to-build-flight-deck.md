@@ -879,7 +879,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/273", "src/sessions/preservationValidation.ts", "src/sessions/candidateSnapshot.ts", "src/sessions/manualPreservation.ts", "docs/reports/protected-preservation-qa.md"]
 questions: []
 decisions: []
-current_action: let-agent-preserve-its-candidate
+current_action: add-opencode-production-provider
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
