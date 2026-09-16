@@ -809,7 +809,7 @@ actions:
     references: ["src/sessions/index.ts", "src/sessions/worktreePreparation.ts", "src/sessions/launch.ts", "src/sessions/launchPreview.ts", "src/codingAgents/providerAdapters.ts", "src/codingAgents/capacity.ts", "src/commands/capacity.ts", "config/provider-adapters.json", "config/coding-agent-profiles.json"]
 questions: []
 decisions: []
-current_action: prove-two-action-unattended-production
+current_action: add-opencode-production-provider
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
