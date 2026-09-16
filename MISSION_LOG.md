@@ -277,3 +277,10 @@ updated: 2026-09-16
 - **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None.
+
+## 2026-09-16 — Base branch advanced
+
+- **Did:** Observed `main` advance from `406913d961d2` to `91ade61ec05d`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
