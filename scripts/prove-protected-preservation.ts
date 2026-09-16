@@ -42,7 +42,19 @@ async function sandbox(args: string[]) {
 }
 let worker: ReturnType<typeof spawn> | undefined;
 let workerOutput = "";
+// A launched Session owns a live tmux session. The fixture registers a
+// `prepared` Session, so the proof must give it that live transport: without
+// it the worker's managed-production iteration reconciles the Session as an
+// exited candidate before preservation is ever requested (issue #275).
+let tmuxSessionName: string | undefined;
+// Exact-match probe: a bare `-t name` prefix-matches, which could target an
+// unrelated Session that merely starts with the fixture's name.
+const tmuxHas = (name: string) => {
+  try { execFileSync("tmux", ["has-session", "-t", `=${name}`], { stdio: "ignore" }); return true; } catch { return false; }
+};
 try {
+  tmuxSessionName = f.lease.tmux_session_name;
+  execFileSync("tmux", ["new-session", "-d", "-s", tmuxSessionName, "-c", f.candidate], { stdio: "ignore" });
   const check = await sandbox([process.execPath, "--input-type=module", "-e", `
 import fs from 'node:fs';
 fs.writeFileSync('marker.txt','ready\\n');
@@ -85,6 +97,7 @@ console.log('candidate edits allowed; common Git, host evidence and launcher wri
     worker.kill("SIGTERM");
     await new Promise(r => worker!.once("exit", r));
   }
+  if (tmuxSessionName && tmuxHas(tmuxSessionName)) { execFileSync("tmux", ["kill-session", "-t", `=${tmuxSessionName}`], { stdio: "ignore" }); }
   // Only the fixture's own temporary repositories and runtime are retired.
   rmSync(f.candidate, { recursive: true, force: true }); rmSync(protectedRoot, { recursive: true, force: true });
 }
