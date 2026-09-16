@@ -32,11 +32,13 @@ treat any Codex-side pin the same way before it reaches a launch command.
 **Managed-production provider pins.** The standing production path does not
 pick a model per Action from `recommended_model`; it launches the provider
 binding the immutable build packet recorded, and that binding's model is pinned
-in `config/provider-adapters.json`. A third provider, `opencode-cli`, is
+in the bundled `config/defaults/provider-adapters.json` (overridable by a
+workspace `config/provider-adapters.json`). A third provider, `opencode-cli`, is
 configured that way: binding `opencode-zen` pins
 `opencode-go/deepseek-v4.1-flash` behind the `opencode_build` profile, with
 opencode's `--model provider/model` argument and its provider-specific
-`--variant` reasoning dial mapped from the Action's effort. opencode carries the
+`--variant` reasoning dial mapped from the Action's effort and clamped to that
+model's `low`/`high`/`max` steps. opencode carries the
 highest `costRank`, so Codex and Claude remain the default choice and opencode
 is selected only when both are unavailable or excluded — the credit-exhausted
 case it exists for. No `opencode_planning` profile is configured: planning
