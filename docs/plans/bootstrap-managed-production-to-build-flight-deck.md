@@ -267,7 +267,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask prove-two-action-unattended-production
     clarification: clarified
     confidence: high
-    source: Agent Ask amend-for-candidate-continuation-2026-09-13
+    source: Agent Ask add-opencode-production-provider-2026-09-15-v2
     acceptance_criteria:
       - Provide a disposable or explicitly approved real Project with two small dependent Actions and a reachable existing production control (CLI or dashboard) before requesting live execution.
       - "Under bounded rehearsal authority activate once: Action A launches, validates, records canonical completion/pointer, and B launches without manual session setup or launch confirmation in between."
@@ -276,7 +276,7 @@ actions:
       - Record exact revision, host, provider, Action/Session identities, receipts and every operator intervention; missing real authorization/input remains one precise review, never fixture-as-live success.
       - Complete this vertical proof before broad rail, capture, navigation polish or default-home cutover; reuse existing review/proof specialists as needed.
       - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
-    depends_on: [feed-and-supervise-managed-production]
+    depends_on: [feed-and-supervise-managed-production, add-opencode-production-provider]
     decisions: []
     references: ["docs/decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md", "docs/proposals/host-owned-agent-workspace-contract.md", "docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/operator-demo-and-release-contract.md", "docs/plans/idea-to-managed-build.md"]
   - id: prove-multi-provider-production-recovery
@@ -787,6 +787,26 @@ actions:
     depends_on: [make-worktree-runtime-self-contained]
     decisions: []
     references: ["scripts/arcadia-go-broker.ts", "src/goBroker.ts", "src/commands/go.ts", "src/commands/next.ts", "src/commands/workMonitor.ts", "src/agentSetup/arcadia-go.SKILL.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md"]
+  - id: add-opencode-production-provider
+    title: Add a first-class opencode-cli coding-agent provider to the managed-production launch path so prove-two-action-unattended-production can run with opencode instead of the credit-exhausted Codex and Claude providers.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Add a first-class opencode-cli coding-agent provider to the managed-production launch path so prove-two-action-unattended-production can run with opencode instead of the credit-exhausted Codex and Claude providers.
+    expected_artifact: Evidence satisfying Agent Ask add-opencode-production-provider
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-opencode-production-provider-2026-09-15-v2
+    acceptance_criteria:
+      - An opencode build coding-agent profile and an opencode-cli provider binding are registered in the workspace config, and provider selection picks them without hardcoding a new opencode name outside the existing provider registry.
+      - "The guarded launch path launches opencode non-interactively in the prepared worktree: SessionAgent/SESSION_PROVIDER, buildSessionLaunch, the prepareAgentWorktree agent union plus its opencode worktree root, buildAgentLaunchCommand, the provider-to-agent map, and LAUNCH_ADAPTER_SUPPORT each handle opencode, reusing the existing Session, lease, packet, and promotion guards unchanged."
+      - A standing production policy scoped to --provider opencode-cli launches an opencode Session that runs arcadia advance with no per-launch operator click, and a concurrent launch against the same candidate is still refused with the existing lease conflict.
+      - opencode admission uses only the existing bounded operator capacity attestation (arcadia production capacity attest), labeled attended and never standing proof; no new capacity source, credit purchase, or paid fallback is introduced.
+      - Existing codex and claude selection, launch, refusal, and reconciliation behavior is unchanged, with deterministic tests covering opencode selection, launch-command construction, worktree root, and refusal cases; the full test suite and the core, Discord, and Dashboard builds pass.
+      - docs/model-selection.md, START_HERE.md, docs/COMMANDS.md, and the AGENTS.md Codex-only sentence are updated wherever their claims change; the legacy review-approve executor, an opencode planning profile, and go-broker sandbox config stay deferred against a named trigger.
+    depends_on: []
+    decisions: []
+    references: ["src/sessions/index.ts", "src/sessions/worktreePreparation.ts", "src/sessions/launch.ts", "src/sessions/launchPreview.ts", "src/codingAgents/providerAdapters.ts", "src/codingAgents/capacity.ts", "src/commands/capacity.ts", "config/provider-adapters.json", "config/coding-agent-profiles.json"]
 questions: []
 decisions: []
 current_action: prove-two-action-unattended-production
