@@ -263,3 +263,10 @@ updated: 2026-09-16
 - **Result:** Every declared acceptance criterion was accepted as met: "The 5s worker loop re-stamps the existing preservation heartbeat projection (schema arcadia-preservation-transport-v1) with an updated at timestamp and unchanged routes while a tick is in progress, so a concurrent arcadia go-broker status reports both transports READY continuously across a multi-minute runManagedProductionIteration."; "A deterministic test covers heartbeat freshness during a simulated long tick, and the existing go-request transport tests still pass.".
 - **Next:** Advanced to the next eligible Action in document order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-refresh-preservation-heartbeat-off-tick-2026-09-16-v2).
+
+## 2026-09-16 — Base branch advanced
+
+- **Did:** Observed `main` advance from `fb965cb4a1f3` to `e47a3d02b71a`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
