@@ -1,0 +1,69 @@
+{
+  "agent_ask": "v1",
+  "request_id": "plan-planning-agent-route-revision-2026-09-16",
+  "project": "arcadia",
+  "intent": "plan",
+  "requested_authority": "propose",
+  "desired_result": "Turn the two planning-agent-route reviews into a governed draft plan that repairs the provider-binding spawn defect, reconciles docs/model-selection.md with the provider-adapter registry, and revises the proposal to an acceptable, answerable form. Implementation of the planning route itself stays unplanned until the operator answers the revised proposal.",
+  "rationale": "Two independent reviews (docs/reports/planning-agent-route-review.md and docs/reports/planning-agent-route-review-2.md) both verdict the proposal 'revise' and converge on the same required changes. Two of those changes fix defects that exist independently of the proposal: executeCodexStep drops the provider binding's modelArgs/effortArgs at spawn (src/execution/runner.ts:369) while codex_invocations.command and packet metadata record them, and docs/model-selection.md says there are exactly two model-selection places while the provider-adapter registry is a third in code. The proposal revision itself is document-only and must cite the fixed code and amended doc, so it depends on both.",
+  "references": [
+    "docs/proposals/planning-agent-route-with-structural-templates.md",
+    "docs/reports/planning-agent-route-review.md",
+    "docs/reports/planning-agent-route-review-2.md",
+    "docs/reports/prove-two-action-unattended-production-runbook.md"
+  ],
+  "actions": [
+    {
+      "id": "thread-binding-args-into-codex-spawn",
+      "desired_result": "Make executeCodexStep spawn the coding-agent process with the provider binding's recorded modelArgs and effortArgs, so codex_invocations.command and packet metadata stop claiming a model the spawned process never receives.",
+      "acceptance": [
+        "A deterministic test exercises the executeCodexStep spawn for an Action with an execution requirement and asserts the spawned command line contains the binding's model and reasoning-effort flags, read from the spawn record rather than packet metadata.",
+        "The packet display command, the persisted codex_invocations.command, and the actually spawned process agree on the same provider binding model for a requirement-bearing Action.",
+        "Legacy Actions without an execution requirement spawn exactly as before, with no configuration args and no new failure.",
+        "The full test suite and the core build pass."
+      ],
+      "dependencies": [],
+      "references": [
+        "src/execution/runner.ts",
+        "src/codex/packets.ts",
+        "src/codingAgents/adapters.ts",
+        "docs/reports/planning-agent-route-review-2.md"
+      ]
+    },
+    {
+      "id": "reconcile-model-selection-doc-with-provider-bindings",
+      "desired_result": "Update docs/model-selection.md so it names the provider-adapter binding registry as a model-selection surface and states the precedence between a plan's recommended_model and a selected binding's modelArgs.",
+      "acceptance": [
+        "docs/model-selection.md names the provider-adapter binding registry as a place a model is chosen, replacing the 'exactly two places' claim that the code already contradicts.",
+        "The doc states which authority wins when a plan's recommended_model (Decision 0010) and a selected binding's modelArgs disagree for the same work, consistent with Decision 0010's plan-boundary authority.",
+        "START_HERE.md is unchanged unless a claim it names changed; no user-facing command behavior changes."
+      ],
+      "dependencies": [],
+      "references": [
+        "docs/model-selection.md",
+        "docs/decisions/0010-pin-the-agent-handoff-model.md",
+        "src/codingAgents/providerAdapters.ts"
+      ]
+    },
+    {
+      "id": "revise-planning-agent-route-proposal",
+      "desired_result": "Revise docs/proposals/planning-agent-route-with-structural-templates.md to resolve the blockers and majors both reviews converged on, so the operator can answer the proposal from a corrected document.",
+      "acceptance": [
+        "The proposal's handoff section names the channel a launched executor session actually consumes (plan Action fields and references per src/sessions/index.ts and src/commands/advance.ts), states which channel is canonical, and stops claiming the build packet prompt.md as the executor's input.",
+        "The executor-block validator additions are gated on a packet-derived contract flag so legacy planning artifacts keep passing, the fenced block is reconciled with the implementation-claim and validation-claim detectors, and depends_on integrity (dangling references and cycles) is among the new checks.",
+        "The model-selection claims are corrected against the amended doc, the gpt-5.6-luna model string is verified against the current Codex CLI model list per docs/model-selection.md, and the credit-exhausted codex-cli default is either re-pointed or carries an explicit re-pointing trigger.",
+        "The smallest-implementation slice includes the spawn-arg threading prerequisite by reference to the completed thread-binding-args-into-codex-spawn action.",
+        "Both review documents are cited from the proposal so the revision's provenance is legible."
+      ],
+      "dependencies": [
+        "thread-binding-args-into-codex-spawn",
+        "reconcile-model-selection-doc-with-provider-bindings"
+      ],
+      "references": [
+        "docs/proposals/planning-agent-route-with-structural-templates.md",
+        "docs/reports/planning-agent-route-review.md",
+        "docs/reports/planning-agent-route-review-2.md"
+      ]
+    }
+  ]
+}
