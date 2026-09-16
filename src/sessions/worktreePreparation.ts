@@ -100,21 +100,25 @@ export function buildAgentLaunchCommand(agent: "codex" | "claude" | "opencode", 
 }
 
 /**
- * A reasoning effort as opencode's provider-specific `--variant` value. Both
- * the Arcadia effort key and a stored provider-native value are accepted;
- * anything else omits the flag rather than passing an unsupported value.
+ * A reasoning effort as opencode's provider-specific `--variant` value for the
+ * pinned `opencode-go/deepseek-v4.1-flash` binding, whose reasoning options are
+ * `low`/`high`/`max`. Both the Arcadia effort key and a stored provider-native
+ * value are accepted; `e1_brief` clamps up to `low` because the provider has no
+ * lower step, and anything unrecognized omits the flag rather than passing an
+ * unsupported value.
  */
 export function opencodeVariant(effort: string | null): string | null {
   if (!effort) return null;
   return ({
-    e1_brief: "minimal",
+    e1_brief: "low",
     e2_standard: "low",
     e3_deep: "high",
     e4_rigorous: "max",
-    minimal: "minimal",
+    minimal: "low",
     low: "low",
     medium: "low",
     high: "high",
-    xhigh: "max"
+    xhigh: "max",
+    max: "max"
   } as Record<string, string>)[effort] ?? null;
 }

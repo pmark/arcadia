@@ -30,7 +30,7 @@ describe("opencode provider launch support", () => {
   });
 
   it("maps every reasoning effort to a variant and omits an unknown one", () => {
-    expect(opencodeVariant("e1_brief")).toBe("minimal");
+    expect(opencodeVariant("e1_brief")).toBe("low");
     expect(opencodeVariant("e2_standard")).toBe("low");
     expect(opencodeVariant("e3_deep")).toBe("high");
     expect(opencodeVariant("e4_rigorous")).toBe("max");
@@ -79,5 +79,17 @@ describe("opencode provider launch support", () => {
     // A provider the canonical map does not know is refused rather than launched.
     expect(sessionAgentForProvider("gemini-cli")).toBeNull();
     expect(LAUNCH_ADAPTER_SUPPORT["gemini-cli"]).not.toBe(true);
+  });
+
+  it("never emits an opencode variant the pinned model does not support", () => {
+    // opencode-go/deepseek-v4.1-flash declares low/high/max reasoning efforts.
+    const supported = new Set(["low", "high", "max"]);
+    for (const binding of (defaultAdapters as ProviderAdapterRegistry).bindings) {
+      if (binding.provider !== "opencode-cli") continue;
+      for (const args of Object.values(binding.effortArgs)) {
+        const variant = args?.[args.indexOf("--variant") + 1];
+        expect(supported.has(variant ?? "")).toBe(true);
+      }
+    }
   });
 });

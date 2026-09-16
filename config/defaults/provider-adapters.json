@@ -106,7 +106,7 @@
       "model": "opencode-go/deepseek-v4.1-flash",
       "modelArgs": ["--model", "opencode-go/deepseek-v4.1-flash"],
       "effortArgs": {
-        "e1_brief": ["--variant", "minimal"],
+        "e1_brief": ["--variant", "low"],
         "e2_standard": ["--variant", "low"],
         "e3_deep": ["--variant", "high"],
         "e4_rigorous": ["--variant", "max"]
