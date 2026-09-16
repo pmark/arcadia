@@ -4,7 +4,7 @@ type: decision
 id: "0056"
 slug: should-a-conclusion-create-its-candidate-action-automatically
 project: arcadia
-status: open
+status: approved
 question: Should a conclusion create its candidate Action automatically?
 gap_type: missing-decision
 recommendation: Conclusion creates the Action
@@ -18,6 +18,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-09-16
+answer: Conclusion creates the Action
+decided: 2026-09-16
 ---
 
 # Decision 0056: Should a conclusion create its candidate Action automatically?
