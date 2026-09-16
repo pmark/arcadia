@@ -842,7 +842,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: add-opencode-production-provider
+current_action: refresh-preservation-heartbeat-off-tick
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
