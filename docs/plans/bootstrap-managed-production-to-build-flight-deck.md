@@ -859,6 +859,24 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/production/tick.ts", "MISSION_LOG.md", "src/dashboard/snapshot.ts", "src/activity/report.ts", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md"]
+  - id: preserve-projects-with-dependencies
+    title: Preservation can validate a Project whose declared objective checks need installed dependencies, or Arcadia declares a genuine self-contained objective check, with the sandbox boundary and the operator remedy made explicit.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Preservation can validate a Project whose declared objective checks need installed dependencies, or Arcadia declares a genuine self-contained objective check, with the sandbox boundary and the operator remedy made explicit.
+    expected_artifact: Evidence satisfying Agent Ask preserve-projects-with-dependencies
+    clarification: clarified
+    confidence: high
+    source: Agent Ask promote-issue-273-preservation-dependencies-2026-09-16
+    acceptance_criteria:
+      - A Project whose declared objective validation check needs installed dependencies can complete protected preservation, or Arcadia's own Project declares a genuine self-contained objective check that runs inside the existing sandbox; the chosen mechanism and its security boundary are documented, and no check that cannot run is left configured as if it could.
+      - "The existing preservation invariants hold or any reviewed exception is narrower and bounded and named: no network, no source writes, regular files only, at most 64 MiB, temporary output only in the private scratch/TMPDIR."
+      - advance, go, and go-broker status report this as a named, actionable remedy instead of only validation_commands_missing when a declared check requires dependencies the sandbox refuses.
+      - Deterministic tests cover the chosen validation path including pass, fail, and refusal, and prove a check that cannot run reports refusal rather than readiness; existing codex and claude launch, refusal, and reconciliation behavior is unchanged; pnpm test and the core, Discord, and Dashboard builds pass.
+    depends_on: [let-agent-preserve-its-candidate]
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/273", "src/sessions/preservationValidation.ts", "src/sessions/candidateSnapshot.ts", "src/sessions/manualPreservation.ts", "docs/reports/protected-preservation-qa.md"]
 questions: []
 decisions: []
 current_action: let-agent-preserve-its-candidate
