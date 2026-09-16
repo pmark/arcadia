@@ -264,37 +264,9 @@ updated: 2026-09-16
 - **Next:** Advanced to the next eligible Action in document order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-refresh-preservation-heartbeat-off-tick-2026-09-16-v2).
 
-## 2026-09-16 — Base branch advanced
+## 2026-09-16 — Completed arcadia/stop-writing-base-advances-to-mission-log
 
-- **Did:** Observed `main` advance from `fb965cb4a1f3` to `e47a3d02b71a`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
-- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
-- **Next:** Continue from the governed Project pointer and execution queue.
-- **Blockers:** None.
-
-## 2026-09-16 — Base branch advanced
-
-- **Did:** Observed `main` advance from `84ad5975eae2` to `6bdc8281a556`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
-- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
-- **Next:** Continue from the governed Project pointer and execution queue.
-- **Blockers:** None.
-
-## 2026-09-16 — Base branch advanced
-
-- **Did:** Observed `main` advance from `a42260bbf78b` to `ae5f40d75849`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
-- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
-- **Next:** Continue from the governed Project pointer and execution queue.
-- **Blockers:** None.
-
-## 2026-09-16 — Base branch advanced
-
-- **Did:** Observed `main` advance from `53a13524aa51` to `c204d7224938`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
-- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
-- **Next:** Continue from the governed Project pointer and execution queue.
-- **Blockers:** None.
-
-## 2026-09-16 — Base branch advanced
-
-- **Did:** Observed `main` advance from `4ac4d591802a` to `06c07ef89e69`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
-- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
-- **Next:** Continue from the governed Project pointer and execution queue.
-- **Blockers:** None.
+- **Did:** Completed Action arcadia/stop-writing-base-advances-to-mission-log from accepted evidence (Candidate 654cf42a09ff822e9e051d8e15380e4b31f69819).
+- **Result:** Every declared acceptance criterion was accepted as met: "detectBaseBranchAdvance no longer appends a '— Base branch advanced' section to MISSION_LOG.md and no longer creates a 'chore(arcadia): record base branch advance' commit; the managed_production.base_branch_advanced event row and the production_base_branch_observations dedup row remain the durable record."; "Base advances stay visible without the Mission Log: a read-only surface (arcadia production status or the existing activity report) shows recent base-advance events with their previous and new SHA, and the existing worker log line is preserved."; "The accumulated '— Base branch advanced' sections are removed from MISSION_LOG.md once, and arcadia docs sync ingests the file cleanly afterward with no duplicate-heading validation error."; "Deterministic tests prove one advance writes exactly one events row, zero MISSION_LOG sections, and zero commits; that the visibility surface reports the previous and new SHA; and that docs sync accepts the trimmed log."; "Existing codex and claude behaviour, every other Mission Log writer, and the tick's other observations are unchanged; the full test suite and the core, Discord, and Dashboard builds pass.".
+- **Next:** Advanced to the next eligible Action in document order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-stop-writing-base-advances-to-mission-log-2026-09-16).

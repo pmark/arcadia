@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +7,7 @@ import type Database from "better-sqlite3";
 import defaultAdapters from "../config/defaults/provider-adapters.json" with { type: "json" };
 import type { CapacityAdmissionDecision, ProviderCapacityObservation } from "../src/codingAgents/capacity.js";
 import type { ProviderAdapterRegistry } from "../src/codingAgents/providerAdapters.js";
+import { renderProductionStatusSuccess } from "../src/commands/production.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import {
   createCodexInvocation,
@@ -27,7 +28,7 @@ import {
   PRODUCTION_CONTROL_DEADLINES,
   type ProductionScope
 } from "../src/production/policy.js";
-import { runManagedProductionTick, resetProductionRepairBudget } from "../src/production/tick.js";
+import { runManagedProductionTick, resetProductionRepairBudget, listRecentBaseBranchAdvances } from "../src/production/tick.js";
 import { getRepositoryLease, type TmuxAdapter } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -235,7 +236,7 @@ describe("runManagedProductionTick", () => {
     expect(tmux.launches).toHaveLength(2);
   });
 
-  it("detects a base branch advance independent of its own completion signal and records an event and a MISSION_LOG line", () => {
+  it("detects a base branch advance independent of its own completion signal and records one event with no Mission Log write or commit", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
 
@@ -250,6 +251,8 @@ describe("runManagedProductionTick", () => {
     git(fixture.repo, ["add", "EXTERNAL.md"]);
     git(fixture.repo, ["commit", "-m", "external merge"]);
     const newSha = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+    const headBefore = newSha;
+    const commitsBefore = git(fixture.repo, ["rev-list", "--count", "HEAD"]).trim();
 
     const after = withDatabase(fixture.workspace, (db) =>
       runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000), agentWorktreeRoot: fixture.agentWorktreeRoot })
@@ -258,6 +261,7 @@ describe("runManagedProductionTick", () => {
     expect(advance?.changed).toBe(true);
     expect(advance?.newSha).toBe(newSha);
 
+    // The event row is the durable record.
     const events = withReadOnlyDatabase(fixture.workspace, (db) =>
       db.prepare("SELECT event_type, payload_json FROM events WHERE event_type = 'managed_production.base_branch_advanced'").all()
     ) as Array<{ event_type: string; payload_json: string }>;
@@ -266,16 +270,21 @@ describe("runManagedProductionTick", () => {
     expect(payload.newSha).toBe(newSha);
     expect(payload.projectSlug).toBe("test-project");
 
-    const missionLog = readFileSync(path.join(fixture.repo, "MISSION_LOG.md"), "utf8");
-    expect(missionLog).toContain("Base branch advanced");
-    expect(missionLog).toContain(newSha.slice(0, 12));
+    // The dedup row stays authoritative too.
+    const observation = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT observed_sha FROM production_base_branch_observations WHERE project_slug = 'test-project'").get()
+    ) as { observed_sha: string } | undefined;
+    expect(observation?.observed_sha).toBe(newSha);
 
-    // The MISSION_LOG append above is itself a commit onto `baseBranch`,
-    // which moves it again. A tick that re-reads that self-made commit as
-    // yet another "advance" would record a second event and a second
-    // MISSION_LOG entry forever, with no external change required -- this is
-    // exactly the self-triggering loop that produced thousands of spurious
-    // `chore(arcadia): record base branch advance` commits in production.
+    // No Mission Log section and no commit: the advance is machine telemetry,
+    // not a human narrative entry, and the tick writes nothing to Git.
+    expect(existsSync(path.join(fixture.repo, "MISSION_LOG.md"))).toBe(false);
+    expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(headBefore);
+    expect(git(fixture.repo, ["rev-list", "--count", "HEAD"]).trim()).toBe(commitsBefore);
+
+    // A second tick over the unchanged base is a no-op: re-reading its own
+    // history as an advance (the self-trigger loop the Mission Log commit used
+    // to cause) can no longer happen, and no second event is recorded.
     const stillNoOp = withDatabase(fixture.workspace, (db) =>
       runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 120_000), agentWorktreeRoot: fixture.agentWorktreeRoot })
     );
@@ -285,9 +294,50 @@ describe("runManagedProductionTick", () => {
       db.prepare("SELECT event_type FROM events WHERE event_type = 'managed_production.base_branch_advanced'").all()
     ) as Array<{ event_type: string }>;
     expect(eventsAfter).toHaveLength(1);
+    expect(existsSync(path.join(fixture.repo, "MISSION_LOG.md"))).toBe(false);
+  });
 
-    const missionLogAfter = readFileSync(path.join(fixture.repo, "MISSION_LOG.md"), "utf8");
-    expect(missionLogAfter).toBe(missionLog);
+  it("reports a base advance's previous and new SHA through the read-only production surface", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: fixture.now, agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+    const previousSha = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+    writeFileSync(path.join(fixture.repo, "EXTERNAL.md"), "merged externally\n");
+    git(fixture.repo, ["add", "EXTERNAL.md"]);
+    git(fixture.repo, ["commit", "-m", "external merge"]);
+    const newSha = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000), agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+
+    const records = withReadOnlyDatabase(fixture.workspace, (db) => listRecentBaseBranchAdvances(db));
+    expect(records).toHaveLength(1);
+    expect(records[0]?.projectSlug).toBe("test-project");
+    expect(records[0]?.previousSha).toBe(previousSha);
+    expect(records[0]?.newSha).toBe(newSha);
+
+    const rendered = renderProductionStatusSuccess({
+      ok: true,
+      command: "production.status",
+      workspace: fixture.workspace,
+      data: {
+        read: { status: "unreadable", reason: "fixture" } as never,
+        display: { state: "off", label: "Off", observedAt: fixture.now.toISOString() },
+        liveAdmissions: 0,
+        admissions: [],
+        baseBranchAdvances: records,
+        offConsequence: "Off.",
+        controlDeadlines: PRODUCTION_CONTROL_DEADLINES
+      },
+      artifacts: [],
+      warnings: []
+    }).join("\n");
+    expect(rendered).toContain(previousSha.slice(0, 12));
+    expect(rendered).toContain(newSha.slice(0, 12));
   });
 
   it("stops retrying an Action after its repair budget is exhausted, then resumes once the budget is reset", () => {
