@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to build Flight Deck
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-09-14
+updated: 2026-09-16
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -809,7 +809,7 @@ actions:
     references: ["src/sessions/index.ts", "src/sessions/worktreePreparation.ts", "src/sessions/launch.ts", "src/sessions/launchPreview.ts", "src/codingAgents/providerAdapters.ts", "src/codingAgents/capacity.ts", "src/commands/capacity.ts", "config/provider-adapters.json", "config/coding-agent-profiles.json"]
   - id: refresh-preservation-heartbeat-off-tick
     title: Preservation transport heartbeat stays fresh during a long worker tick without lying about its routes.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Preservation transport heartbeat stays fresh during a long worker tick without lying about its routes.
@@ -861,7 +861,7 @@ actions:
     references: ["src/production/tick.ts", "MISSION_LOG.md", "src/dashboard/snapshot.ts", "src/activity/report.ts", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md"]
 questions: []
 decisions: []
-current_action: refresh-preservation-heartbeat-off-tick
+current_action: let-agent-preserve-its-candidate
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

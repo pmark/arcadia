@@ -256,3 +256,10 @@ updated: 2026-09-16
   the two unfinished Arcadia Plan Actions as one queue segment at the top.
   Settlement `asksettle_1c38b693b26b492999` recorded the exact Plan and queue
   effects, resulting next Action, and operator-accep
+
+## 2026-09-16 — Completed arcadia/refresh-preservation-heartbeat-off-tick
+
+- **Did:** Completed Action arcadia/refresh-preservation-heartbeat-off-tick from accepted evidence (Candidate 9a8a0261a51e4a654e23d546a6db73a03ba01241).
+- **Result:** Every declared acceptance criterion was accepted as met: "The 5s worker loop re-stamps the existing preservation heartbeat projection (schema arcadia-preservation-transport-v1) with an updated at timestamp and unchanged routes while a tick is in progress, so a concurrent arcadia go-broker status reports both transports READY continuously across a multi-minute runManagedProductionIteration."; "A deterministic test covers heartbeat freshness during a simulated long tick, and the existing go-request transport tests still pass.".
+- **Next:** Advanced to the next eligible Action in document order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-refresh-preservation-heartbeat-off-tick-2026-09-16-v2).
