@@ -1,0 +1,36 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-stop-writing-base-advances-to-mission-log-2026-09-16",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "stop-writing-base-advances-to-mission-log",
+  "candidate_revision": "654cf42a09ff822e9e051d8e15380e4b31f69819",
+  "desired_result": "Mark stop-writing-base-advances-to-mission-log complete and resolve the next governed Action.",
+  "evidence": [
+    {
+      "criterion": "detectBaseBranchAdvance no longer appends a '— Base branch advanced' section to MISSION_LOG.md and no longer creates a 'chore(arcadia): record base branch advance' commit; the managed_production.base_branch_advanced event row and the production_base_branch_observations dedup row remain the durable record.",
+      "status": "met",
+      "note": "src/production/tick.ts no longer calls appendBaseBranchAdvanceMissionLog (deleted) and no longer re-observes the SHA after a self-made commit; recordEvent still writes the managed_production.base_branch_advanced row and the observations upsert still maintains the dedup row. tests/production-tick.test.ts asserts one events row, the observed_sha dedup value, no MISSION_LOG.md file, and an unchanged HEAD and commit count after an advance."
+    },
+    {
+      "criterion": "Base advances stay visible without the Mission Log: a read-only surface (arcadia production status or the existing activity report) shows recent base-advance events with their previous and new SHA, and the existing worker log line is preserved.",
+      "status": "met",
+      "note": "listRecentBaseBranchAdvances (read-only) feeds baseBranchAdvances into arcadia production status, which renders project, branch, previous12 -> new12 and observation time; verified live with pnpm arcadia production status. The tick's existing worker log line is unchanged at src/production/tick.ts."
+    },
+    {
+      "criterion": "The accumulated '— Base branch advanced' sections are removed from MISSION_LOG.md once, and arcadia docs sync ingests the file cleanly afterward with no duplicate-heading validation error.",
+      "status": "met",
+      "note": "All six accumulated 2026-09-16 Base branch advanced sections were deleted from MISSION_LOG.md. tests/docs-sync.test.ts reads the checked-in MISSION_LOG.md and proves syncProjectDocs ingests it with zero errors."
+    },
+    {
+      "criterion": "Deterministic tests prove one advance writes exactly one events row, zero MISSION_LOG sections, and zero commits; that the visibility surface reports the previous and new SHA; and that docs sync accepts the trimmed log.",
+      "status": "met",
+      "note": "tests/production-tick.test.ts: one advance yields one events row, no MISSION_LOG.md, an unchanged HEAD and rev-list count, and a no-op second tick; and listRecentBaseBranchAdvances plus renderProductionStatusSuccess report previousSha and newSha. tests/docs-sync.test.ts proves docs sync accepts the trimmed log."
+    },
+    {
+      "criterion": "Existing codex and claude behaviour, every other Mission Log writer, and the tick's other observations are unchanged; the full test suite and the core, Discord, and Dashboard builds pass.",
+      "status": "met",
+      "note": "Only the base-advance Mission Log writer changed; no provider path and no other tick observation was touched. pnpm exec vitest run: 1604 passed / 15 skipped; the one cold-build packageBoundary hook passes on rerun once tsc writes dist. tsc -p tsconfig.json exit 0; pnpm --filter arcadia-discord-bot build exit 0; pnpm --filter arcadia-dashboard build exit 0."
+    }
+  ]
+}

@@ -842,7 +842,7 @@ actions:
     references: []
   - id: stop-writing-base-advances-to-mission-log
     title: Stop writing routine base-branch-advance telemetry into MISSION_LOG.md, keep the durable events record, and surface advances where a human actually looks.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Stop writing routine base-branch-advance telemetry into MISSION_LOG.md, keep the durable events record, and surface advances where a human actually looks.
@@ -879,7 +879,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/273", "src/sessions/preservationValidation.ts", "src/sessions/candidateSnapshot.ts", "src/sessions/manualPreservation.ts", "docs/reports/protected-preservation-qa.md"]
 questions: []
 decisions: []
-current_action: stop-writing-base-advances-to-mission-log
+current_action: let-agent-preserve-its-candidate
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
