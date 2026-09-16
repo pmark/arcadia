@@ -1,0 +1,33 @@
+{
+  "agent_ask": "v1",
+  "request_id": "add-opencode-go-broker-launcher-2026-09-16",
+  "project": "arcadia",
+  "intent": "action",
+  "desired_result": "The manual `arcadia go` protected broker can prepare, launch, and preserve opencode as a third coding agent alongside Codex and Claude Code, with its own sandbox/trust posture verified by `go-broker status`, and with no weakening of the existing boundary.",
+  "actions": [
+    {
+      "id": "add-opencode-go-broker-launcher",
+      "desired_result": "The manual `arcadia go` protected broker can prepare, launch, and preserve opencode as a third coding agent alongside Codex and Claude Code, with its own sandbox/trust posture verified by `go-broker status`, and with no weakening of the existing boundary.",
+      "acceptance": [
+        "`arcadia go --agent opencode` prepares a uniquely named isolated candidate under the standard `~/.opencode/worktrees` root and prints the exact `opencode run ... \"arcadia advance\"` launch command, reusing the existing preparation, reservation, handoff, and cleanup paths; `GoBrokerAgent`, the agent union, the worktree-root map, and the provider-to-agent map each handle opencode without special-casing it outside the existing provider registry.",
+        "`arcadia go-broker install` emits the opencode launcher set (`arcadia-go-broker-opencode`, `-preserve-`, `-advance-`, `-work-monitor-`), and the agent setup grants them through the same Codex rule and Claude allowlist mechanism used for the existing launchers. `arcadia-go.SKILL.md` matches the installed set exactly.",
+        "opencode's own sandbox/trust posture is established and verified by the installer rather than left to an ambient configuration: its per-tool allow/deny rules deny command network access and reach outside the prepared worktree, mirroring the Codex and Claude profiles, and never grant danger-full-access, a whole-home writable root, or unrestricted command execution. `go-broker status` fails closed with a named opencode issue when the launcher set or the trust configuration is missing or drifted.",
+        "Existing Codex and Claude install, status, launch, refusal, and reconciliation behavior is unchanged, and the protected request transport still accepts no public arguments; deterministic tests cover opencode selection, launch-command construction, worktree root, launcher rendering, and refusal cases, and the full test suite plus the core, Discord, and Dashboard builds pass.",
+        "docs/model-selection.md, START_HERE.md, docs/COMMANDS.md, the AGENTS.md region, and the installed skill are updated wherever their claims change; enabling opencode changes no approval authority, and any capability this Action does not reach (for example an opencode planning profile or a non-interactive permission bypass) stays deferred against a named trigger."
+      ],
+      "dependencies": [
+        "add-opencode-production-provider"
+      ],
+      "references": [
+        "src/goBroker.ts",
+        "src/commands/goBrokerInstall.ts",
+        "src/agentSetup/goBrokerAgentSetup.ts",
+        "src/sessions/worktreePreparation.ts",
+        "src/sessions/index.ts",
+        "src/agentSetup/arcadia-go.SKILL.md",
+        "docs/working-copy-safety.md",
+        "docs/proposals/openrouter-coding-agent-backend.md"
+      ]
+    }
+  ]
+}
