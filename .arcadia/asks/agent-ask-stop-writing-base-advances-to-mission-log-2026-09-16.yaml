@@ -1,0 +1,30 @@
+{
+  "agent_ask": "v1",
+  "request_id": "stop-writing-base-advances-to-mission-log-2026-09-16",
+  "project": "arcadia",
+  "intent": "action",
+  "requested_authority": "propose",
+  "desired_result": "Stop writing routine base-branch-advance telemetry into MISSION_LOG.md while keeping the durable events record.",
+  "rationale": "Each base-branch advance currently writes three records: a managed_production.base_branch_advanced event row, a chore commit, and a MISSION_LOG section. Only the event row is load-bearing. The MISSION_LOG line is routine machine telemetry in a human narrative document, it grows one section per advance per day (5 already on 2026-09-16), its date-only heading collides so docs sync rejects the whole file, and the per-advance commit has produced 11,770 history commits and previously caused a self-trigger loop. The conclusion is reversible, single-answer, and inside existing authority, so it is filed as a candidate Action rather than a proposal.",
+  "actions": [
+    {
+      "id": "stop-writing-base-advances-to-mission-log",
+      "desired_result": "Stop writing routine base-branch-advance telemetry into MISSION_LOG.md, keep the durable events record, and surface advances where a human actually looks.",
+      "acceptance": [
+        "detectBaseBranchAdvance no longer appends a '— Base branch advanced' section to MISSION_LOG.md and no longer creates a 'chore(arcadia): record base branch advance' commit; the managed_production.base_branch_advanced event row and the production_base_branch_observations dedup row remain the durable record.",
+        "Base advances stay visible without the Mission Log: a read-only surface (arcadia production status or the existing activity report) shows recent base-advance events with their previous and new SHA, and the existing worker log line is preserved.",
+        "The accumulated '— Base branch advanced' sections are removed from MISSION_LOG.md once, and arcadia docs sync ingests the file cleanly afterward with no duplicate-heading validation error.",
+        "Deterministic tests prove one advance writes exactly one events row, zero MISSION_LOG sections, and zero commits; that the visibility surface reports the previous and new SHA; and that docs sync accepts the trimmed log.",
+        "Existing codex and claude behaviour, every other Mission Log writer, and the tick's other observations are unchanged; the full test suite and the core, Discord, and Dashboard builds pass."
+      ],
+      "dependencies": [],
+      "references": [
+        "src/production/tick.ts",
+        "MISSION_LOG.md",
+        "src/dashboard/snapshot.ts",
+        "src/activity/report.ts",
+        "docs/plans/bootstrap-managed-production-to-build-flight-deck.md"
+      ]
+    }
+  ]
+}
