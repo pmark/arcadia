@@ -6,17 +6,20 @@ export interface CodingAgentInvocationCommand {
   displayCommand: string;
 }
 
+/** The single provider-id-to-label map, shared by profiles and Sessions. */
+export const PROVIDER_LABELS: Record<string, string> = {
+  "codex-cli": "Codex",
+  "claude-code-cli": "Claude Code",
+  "opencode-cli": "opencode"
+};
+
+/** Human label for a provider id, falling back to the id itself. */
+export function providerLabel(provider: string): string {
+  return PROVIDER_LABELS[provider] ?? provider;
+}
+
 export function codingAgentLabel(profile: CodingAgentProfile): string {
-  switch (profile.provider) {
-    case "codex-cli":
-      return "Codex";
-    case "claude-code-cli":
-      return "Claude Code";
-    case "opencode-cli":
-      return "opencode";
-    default:
-      return profile.name;
-  }
+  return PROVIDER_LABELS[profile.provider] ?? profile.name;
 }
 
 export function buildCodingAgentCommand(

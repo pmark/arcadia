@@ -5,6 +5,7 @@ import { hostname } from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
+import { providerLabel } from "../codingAgents/adapters.js";
 import { writeTransaction } from "../db/connection.js";
 import { getProjectBySlug, getWorkItemByDocRef, listCodexInvocationsForWorkItem } from "../db/repositories.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
@@ -69,27 +70,18 @@ const SESSION_PROVIDER: Record<SessionAgent, string> = {
 };
 
 /**
- * The single provider-to-agent map. `launchGuardedHostSession` and
- * `prepareSession` both resolve through here, so a provider can never be
- * launchable without a matching Session adapter (and vice versa).
+ * The single provider-to-agent map, derived from `SESSION_PROVIDER` so the two
+ * can never drift. `launchGuardedHostSession` and `prepareSession` both resolve
+ * through here, so a provider can never be launchable without a matching
+ * Session adapter (and vice versa).
  */
-const SESSION_AGENT: Record<string, SessionAgent> = {
-  "codex-cli": "codex",
-  "claude-code-cli": "claude",
-  "opencode-cli": "opencode"
-};
+const SESSION_AGENT: Record<string, SessionAgent> = Object.fromEntries(
+  (Object.entries(SESSION_PROVIDER) as Array<[SessionAgent, string]>).map(([agent, provider]) => [provider, agent])
+);
 
 /** The Session agent that launches `provider`, or null when no adapter exists. */
 export function sessionAgentForProvider(provider: string): SessionAgent | null {
   return SESSION_AGENT[provider] ?? null;
-}
-
-/** Human label for a Session's provider, used in refusals and receipts. */
-export function sessionProviderLabel(provider: string): string {
-  if (provider === "codex-cli") return "Codex";
-  if (provider === "claude-code-cli") return "Claude Code";
-  if (provider === "opencode-cli") return "opencode";
-  return provider;
 }
 
 export interface AgentWorktreeReservation {
@@ -395,7 +387,7 @@ export function launchPreparedSession(db: Database.Database, session: AgentSessi
     tmux.launch({ name: session.tmux_session_name, cwd: session.worktree_path, ...launch });
   } catch (error) {
     failPreparedSession(db, session.id);
-    throw validationError(`tmux could not start the ${sessionProviderLabel(session.provider)} Session.`, {
+    throw validationError(`tmux could not start the ${providerLabel(session.provider)} Session.`, {
       sessionId: session.id,
       cause: error instanceof Error ? error.message : String(error)
     });
@@ -543,8 +535,8 @@ export function sessionView(session: AgentSession, tmux: Pick<TmuxAdapter, "hasS
     resumeCommand: resumable ? `cd ${JSON.stringify(session.worktree_path)} && claude --resume ${session.provider_session_id}` : null,
     resumeNotice: resumable
       ? null
-      : `Exact ${sessionProviderLabel(session.provider)} resume is unavailable after this terminal exits: ` +
-        `${sessionProviderLabel(session.provider)} creates its native session id internally and does not expose it to detached launch. ` +
+      : `Exact ${providerLabel(session.provider)} resume is unavailable after this terminal exits: ` +
+        `${providerLabel(session.provider)} creates its native session id internally and does not expose it to detached launch. ` +
         "Reattach the live tmux Session; after exit, launch a new governed Session.",
     phoneLimitationNotice: SESSION_PHONE_LIMITATION_NOTICE
   };
