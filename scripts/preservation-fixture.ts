@@ -17,6 +17,19 @@ export const fixtureGit = (cwd: string, args: string[]) => execFileSync("git", a
 /** Synthetic, explicitly bounded fixture authority. No real Project or provider
  * Session is activated. Used both by deterministic tests and the OS-boundary proof. */
 export function preservationFixture(root?: string, command = "node check.mjs") {
+  const fixture = buildPreservationFixture(root, command, "session");
+  if (!fixture.lease) throw Error("The session fixture did not register a Session.");
+  return { ...fixture, lease: fixture.lease };
+}
+
+/** The same disposable fixture with only an active worktree reservation, so
+ * preservation binds through the manual `go` handoff path: no Session lease,
+ * no authorized packet and no production grant. */
+export function manualPreservationFixture(root?: string, command = "node check.mjs") {
+  return buildPreservationFixture(root, command, "manual");
+}
+
+function buildPreservationFixture(root: string | undefined, command: string, mode: "session" | "manual") {
   root = realpathSync(root ?? mkdtempSync(path.join(tmpdir(), "arcadia-preservation-fixture-")));
   const repo = path.join(root, "repo");
   const workspace = path.join(root, "workspace");
@@ -38,6 +51,10 @@ export function preservationFixture(root?: string, command = "node check.mjs") {
     upsertProjectMetadata(db, { projectId: project.id, repoPath: repo, validationCommands: [command] });
     const sync = syncProjectDocs(db, project, { apply: true });
     if (sync.errors.length) throw Error(JSON.stringify(sync.errors));
+    if (mode === "manual") {
+      reserveAgentWorktree(db, { repositoryPath: repo, worktreePath: candidate, branch: "codex/preservation-fixture", now: new Date() });
+      return null;
+    }
     const workItem = getWorkItemByDocRef(db, "plan/proof#write-marker")!;
     const promptPath = "prompts/codex/preservation-fixture/prompt.md";
     mkdirSync(path.dirname(path.join(workspace, promptPath)), { recursive: true });
