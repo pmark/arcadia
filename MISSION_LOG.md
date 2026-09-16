@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-15
+updated: 2026-09-16
 ---
 
 # Mission Log: Arcadia
@@ -260,6 +260,13 @@ updated: 2026-09-15
 ## 2026-09-15 — Base branch advanced
 
 - **Did:** Observed `main` advance from `17687c6b414b` to `b4dcdff8b725`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None.
+
+## 2026-09-16 — Base branch advanced
+
+- **Did:** Observed `main` advance from `b2e7c7b911e9` to `b01d39e6d36e`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
 - **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None.
