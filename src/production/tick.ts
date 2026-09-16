@@ -1,8 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { ArcadiaError } from "../cli/errors.js";
-import { replaceTopLevelField } from "../ask/settlement.js";
 import type { ProviderAdapterRegistry } from "../codingAgents/providerAdapters.js";
 import { observeProviderCapacity, type ProviderCapacityObservation } from "../codingAgents/capacity.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
@@ -328,26 +327,65 @@ function detectBaseBranchAdvance(
     return { changed: false, previousSha, newSha, baseBranch };
   }
 
+  // The durable record of an advance is the `events` row above plus the
+  // `production_base_branch_observations` dedup row. Nothing is written to
+  // MISSION_LOG.md and no commit is made: routine machine telemetry does not
+  // belong in the human narrative, its date-only heading collides with every
+  // advance on the same day so `docs sync` rejects the whole file, and the
+  // per-advance commit rewrote history without anyone asking. The observation
+  // itself is visible through `arcadia production status`.
   recordEvent(db, {
     eventType: "managed_production.base_branch_advanced",
     projectId: input.projectId,
     payload: { projectSlug: input.projectSlug, baseBranch, previousSha, newSha, repositoryPath: input.repoRoot },
     at
   });
-  appendBaseBranchAdvanceMissionLog(input.repoRoot, input.projectSlug, { previousSha, newSha, baseBranch });
-  // The Mission Log append above commits directly onto `baseBranch`, which
-  // moves it again -- re-observe the SHA after that commit and store it, or
-  // the next tick reads its own commit back as yet another "advance" and
-  // repeats forever (this is what produced thousands of spurious commits
-  // before this fix; see the history purge that accompanied it).
-  const shaAfterMissionLog = git(input.repoRoot, ["rev-parse", baseBranch]).trim();
-  if (shaAfterMissionLog !== newSha) {
-    db.prepare(
-      `UPDATE production_base_branch_observations SET observed_sha = @observed_sha, observed_at = @observed_at WHERE project_slug = @project_slug`
-    ).run({ project_slug: input.projectSlug, observed_sha: shaAfterMissionLog, observed_at: input.now.toISOString() });
-  }
   input.log(`Base branch ${baseBranch} advanced for ${input.projectSlug} (a merge landed independent of this worker's own admission pipeline): ${previousSha} -> ${newSha}`);
   return { changed: true, previousSha, newSha, baseBranch };
+}
+
+export interface BaseBranchAdvanceRecord {
+  projectSlug: string;
+  baseBranch: string;
+  previousSha: string | null;
+  newSha: string;
+  observedAt: string;
+}
+
+/**
+ * Read-only projection of the durable base-advance events, newest first, so a
+ * human can see a merge that landed without a Mission Log entry. This is the
+ * only surface `detectBaseBranchAdvance` records to besides the event row and
+ * its dedup row.
+ */
+export function listRecentBaseBranchAdvances(db: Database.Database, limit = 10): BaseBranchAdvanceRecord[] {
+  const rows = db
+    .prepare(
+      `SELECT payload_json, created_at
+         FROM events
+        WHERE event_type = 'managed_production.base_branch_advanced'
+        ORDER BY created_at DESC
+        LIMIT ?`
+    )
+    .all(limit) as Array<{ payload_json: string; created_at: string }>;
+
+  const records: BaseBranchAdvanceRecord[] = [];
+  for (const row of rows) {
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(row.payload_json) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    records.push({
+      projectSlug: typeof payload.projectSlug === "string" ? payload.projectSlug : "unknown",
+      baseBranch: typeof payload.baseBranch === "string" ? payload.baseBranch : "unknown",
+      previousSha: typeof payload.previousSha === "string" ? payload.previousSha : null,
+      newSha: typeof payload.newSha === "string" ? payload.newSha : "unknown",
+      observedAt: row.created_at
+    });
+  }
+  return records;
 }
 
 function recordEvent(db: Database.Database, input: { eventType: string; projectId: string | null; payload: unknown; at: string }): void {
@@ -361,62 +399,4 @@ function recordEvent(db: Database.Database, input: { eventType: string; projectI
     payload_json: JSON.stringify({ schemaVersion: 1, ...input.payload as object }),
     created_at: input.at
   });
-}
-
-/**
- * Append (and commit) a MISSION_LOG.md line naming the previous and new base
- * SHA, so a merge that lands while the worker was off or between ticks is
- * never silent. Written and committed directly on the base branch -- the same
- * repository the SHA comparison just read -- because this is a purely
- * mechanical observation of a transition that already happened, not a new
- * decision; a failure to write or commit is swallowed exactly like
- * `commitSettlementOutput` does, so a MISSION_LOG hiccup never breaks the
- * tick that observed the advance (the `events` row already recorded it).
- */
-function appendBaseBranchAdvanceMissionLog(
-  repoRoot: string,
-  projectSlug: string,
-  input: { previousSha: string; newSha: string; baseBranch: string }
-): void {
-  try {
-    const logPath = path.join(repoRoot, "MISSION_LOG.md");
-    const today = new Date().toISOString().slice(0, 10);
-    let before: string | null = null;
-    try {
-      before = readFileSync(logPath, "utf8");
-    } catch {
-      // No MISSION_LOG.md yet; start one below.
-    }
-    const base =
-      before ??
-      ["---", "arcadia: v1", "type: log", `slug: ${projectSlug}-mission-log`, `project: ${projectSlug}`, `updated: ${today}`, "---", "", `# Mission Log: ${projectSlug}`, ""].join(
-        "\n"
-      );
-    const updated = replaceTopLevelField(base, "updated", today).trimEnd();
-    const section =
-      `\n\n## ${today} — Base branch advanced\n\n` +
-      [
-        `- **Did:** Observed \`${input.baseBranch}\` advance from \`${input.previousSha.slice(0, 12)}\` to \`${input.newSha.slice(0, 12)}\`, independent of this worker's own completion signal (a PR merged, or another host advanced it).`,
-        "- **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.",
-        "- **Next:** Continue from the governed Project pointer and execution queue.",
-        "- **Blockers:** None."
-      ].join("\n") +
-      "\n";
-    const content = `${updated}${section}`;
-    mkdirSync(path.dirname(logPath), { recursive: true });
-    writeFileSync(logPath, content, "utf8");
-    git(repoRoot, ["add", "--", "MISSION_LOG.md"]);
-    git(repoRoot, [
-      "commit",
-      "-m",
-      `chore(arcadia): record base branch advance for ${projectSlug} (${input.previousSha.slice(0, 12)} -> ${input.newSha.slice(0, 12)})`,
-      "--",
-      "MISSION_LOG.md"
-    ]);
-  } catch {
-    // Intentionally swallowed: the `events` row is the durable record of this
-    // observation; the MISSION_LOG commit is a convenience on top of it, and
-    // the next command to touch this repository reports a dirty tree (if any)
-    // far more clearly than a rethrow here would.
-  }
 }

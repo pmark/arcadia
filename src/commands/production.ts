@@ -23,6 +23,10 @@ import {
   type ProductionPolicyRead,
   type ProductionTransitionResult
 } from "../production/policy.js";
+import {
+  listRecentBaseBranchAdvances,
+  type BaseBranchAdvanceRecord
+} from "../production/tick.js";
 
 export interface ProductionStatusOptions {
   workspace: string;
@@ -56,6 +60,8 @@ export interface ProductionStatusData {
   display: { state: ProductionDisplayState; label: string; observedAt: string };
   liveAdmissions: number;
   admissions: AdmissionReceipt[];
+  /** Recent base-branch advances observed by the tick, newest first. */
+  baseBranchAdvances: BaseBranchAdvanceRecord[];
   offConsequence: string;
   controlDeadlines: typeof PRODUCTION_CONTROL_DEADLINES;
 }
@@ -84,6 +90,7 @@ export function runProductionStatusCommand(
       display: describeProductionState(read, live),
       liveAdmissions: live,
       admissions,
+      baseBranchAdvances: listRecentBaseBranchAdvances(db),
       offConsequence: PRODUCTION_OFF_CONSEQUENCE,
       controlDeadlines: PRODUCTION_CONTROL_DEADLINES
     };
@@ -227,6 +234,20 @@ export function renderProductionStatusSuccess(
     for (const admission of notable) {
       const suffix = admission.fencedReason ? ` (${admission.fencedReason})` : "";
       lines.push(`    ${admission.status.padEnd(9)} ${admission.actionKey} via ${admission.provider}${suffix}`);
+    }
+  }
+
+  // A merge that lands outside this worker's own admission pipeline is worth
+  // seeing, and the Mission Log no longer carries it. Render the same previous
+  // and new SHA the tick recorded, newest first.
+  const advances = response.data.baseBranchAdvances;
+  if (advances.length > 0) {
+    lines.push(`  Recent base advances (${advances.length}):`);
+    for (const advance of advances) {
+      const from = advance.previousSha ? advance.previousSha.slice(0, 12) : "unknown";
+      lines.push(
+        `    ${advance.projectSlug} ${advance.baseBranch} ${from} → ${advance.newSha.slice(0, 12)} at ${advance.observedAt}`
+      );
     }
   }
 

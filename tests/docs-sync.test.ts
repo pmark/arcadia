@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -71,6 +71,27 @@ function writeDoc(repoRoot: string, relativePath: string, content: string): void
   const absolute = path.join(repoRoot, relativePath);
   mkdirSync(path.dirname(absolute), { recursive: true });
   writeFileSync(absolute, content, "utf8");
+}
+
+/** A minimal inactive plan whose only job is to own the named Action ids. */
+function fixturePlan(slug: string, actionIds: string[]): string {
+  const actions = actionIds.map((id) => `  - id: ${id}\n    title: ${id}\n    status: done`).join("\n");
+  return `---
+arcadia: v1
+type: plan
+slug: ${slug}
+project: arcadia
+status: draft
+milestone: Fixture milestone
+token_impact: small
+token_budget: "Fixture only."
+updated: 2026-09-01
+actions:
+${actions}
+---
+
+# ${slug}
+`;
 }
 
 const PLAN = `---
@@ -974,6 +995,45 @@ describe("docs sync", () => {
     expect(again.data.totals.create).toBe(0);
     expect(again.data.totals.update).toBe(0);
     expect(withDatabase(workspace, (db) => listRecentMissionLogs(db, 50))).toHaveLength(2);
+  });
+
+  it("ingests the repository's own trimmed Mission Log with no duplicate-heading error", () => {
+    // Base-branch-advance telemetry used to append a section with a date-only
+    // heading on every advance; several in one day shared a heading, and the
+    // heading is a Log entry's key, so `docs sync` rejected the whole file.
+    // Those sections are gone. This reads the actual checked-in log rather than
+    // a fixture, so the trim cannot silently regress.
+    const missionLog = readFileSync(path.resolve(import.meta.dirname, "../MISSION_LOG.md"), "utf8");
+    expect(missionLog).not.toContain("— Base branch advanced");
+
+    const repo = scratch();
+    writeDoc(repo, "MISSION_LOG.md", missionLog);
+    // The log's `**Action:**` references must resolve to real plans, so the
+    // fixture carries exactly the two plans those entries name.
+    writeDoc(
+      repo,
+      path.join("docs", "plans", "way-delivery.md"),
+      fixturePlan("way-delivery", [
+        "open-way-sync-pull-requests",
+        "carry-decision-options",
+        "rename-codex-responsibility-to-agent",
+        "evaluate-document-triggers",
+        "propagate-agent-ask-contract"
+      ])
+    );
+    writeDoc(
+      repo,
+      path.join("docs", "plans", "agent-ask-execution-queue.md"),
+      fixturePlan("agent-ask-execution-queue", [
+        "dogfood-agent-managed-queue",
+        "enable-coding-agents-to-naturally-create-amend-and-reprioritize-plan-shaped-work"
+      ])
+    );
+    const workspace = workspaceWithProject(repo, "arcadia");
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+    expect(result.data.projects[0].errors).toEqual([]);
+    expect(result.data.errorCount).toBe(0);
   });
 
   it("accepts a narrative Log entry, because the labelled bullets are what Arcadia writes and not what a person does", () => {
