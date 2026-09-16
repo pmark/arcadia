@@ -266,14 +266,14 @@ updated: 2026-09-16
 
 ## 2026-09-16 — Base branch advanced
 
-- **Did:** Observed `main` advance from `b2e7c7b911e9` to `b01d39e6d36e`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Did:** Observed `main` advance from `faa4c7e38b5a` to `bc7159e70579`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
 - **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None.
 
 ## 2026-09-16 — Base branch advanced
 
-- **Did:** Observed `main` advance from `faa4c7e38b5a` to `bc7159e70579`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
+- **Did:** Observed `main` advance from `b8c0dce0d4b1` to `1fffa7889055`, independent of this worker's own completion signal (a PR merged, or another host advanced it).
 - **Result:** Recorded as a `managed_production.base_branch_advanced` event and this Log entry so the merge is never silent.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None.
