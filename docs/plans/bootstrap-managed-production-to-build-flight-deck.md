@@ -807,6 +807,39 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/sessions/index.ts", "src/sessions/worktreePreparation.ts", "src/sessions/launch.ts", "src/sessions/launchPreview.ts", "src/codingAgents/providerAdapters.ts", "src/codingAgents/capacity.ts", "src/commands/capacity.ts", "config/provider-adapters.json", "config/coding-agent-profiles.json"]
+  - id: refresh-preservation-heartbeat-off-tick
+    title: Preservation transport heartbeat stays fresh during a long worker tick without lying about its routes.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Preservation transport heartbeat stays fresh during a long worker tick without lying about its routes.
+    expected_artifact: Evidence satisfying Agent Ask refresh-preservation-heartbeat-off-tick
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-worker-tick-heartbeat-starvation-2026-09-16
+    acceptance_criteria:
+      - The 5s worker loop re-stamps the existing preservation heartbeat projection (schema arcadia-preservation-transport-v1) with an updated at timestamp and unchanged routes while a tick is in progress, so a concurrent arcadia go-broker status reports both transports READY continuously across a multi-minute runManagedProductionIteration.
+      - A deterministic test covers heartbeat freshness during a simulated long tick, and the existing go-request transport tests still pass.
+    depends_on: []
+    decisions: []
+    references: []
+  - id: cut-managed-production-tick-cost
+    title: The managed-production tick stops repeating per-Project whole-tree document discovery, YAML parsing and spawnSync every iteration, and the living-songbook tick failure is not re-observed every tick.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: The managed-production tick stops repeating per-Project whole-tree document discovery, YAML parsing and spawnSync every iteration, and the living-songbook tick failure is not re-observed every tick.
+    expected_artifact: Evidence satisfying Agent Ask cut-managed-production-tick-cost
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-worker-tick-heartbeat-starvation-2026-09-16
+    acceptance_criteria:
+      - The per-tick managed-production iteration no longer re-walks and re-parses unchanged Project trees every tick (observed cost drops from ~85s to seconds in a profiled run, with a before/after measurement recorded as evidence), and per-Project detection semantics are unchanged.
+      - A determinism-failing base-branch observation such as the living-songbook one is logged once and retried only when its inputs could have changed, rather than every ~70s tick, with an existing named failure log line retained.
+      - pnpm test and the core, Discord, and Dashboard builds pass, and codex/claude launch, refusal, and reconciliation behavior is unchanged.
+    depends_on: [refresh-preservation-heartbeat-off-tick]
+    decisions: []
+    references: []
 questions: []
 decisions: []
 current_action: add-opencode-production-provider
