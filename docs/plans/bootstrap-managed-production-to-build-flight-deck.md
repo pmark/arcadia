@@ -840,6 +840,25 @@ actions:
     depends_on: [refresh-preservation-heartbeat-off-tick]
     decisions: []
     references: []
+  - id: stop-writing-base-advances-to-mission-log
+    title: Stop writing routine base-branch-advance telemetry into MISSION_LOG.md, keep the durable events record, and surface advances where a human actually looks.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Stop writing routine base-branch-advance telemetry into MISSION_LOG.md, keep the durable events record, and surface advances where a human actually looks.
+    expected_artifact: Evidence satisfying Agent Ask stop-writing-base-advances-to-mission-log
+    clarification: clarified
+    confidence: high
+    source: Agent Ask stop-writing-base-advances-to-mission-log-2026-09-16
+    acceptance_criteria:
+      - "detectBaseBranchAdvance no longer appends a '— Base branch advanced' section to MISSION_LOG.md and no longer creates a 'chore(arcadia): record base branch advance' commit; the managed_production.base_branch_advanced event row and the production_base_branch_observations dedup row remain the durable record."
+      - "Base advances stay visible without the Mission Log: a read-only surface (arcadia production status or the existing activity report) shows recent base-advance events with their previous and new SHA, and the existing worker log line is preserved."
+      - The accumulated '— Base branch advanced' sections are removed from MISSION_LOG.md once, and arcadia docs sync ingests the file cleanly afterward with no duplicate-heading validation error.
+      - Deterministic tests prove one advance writes exactly one events row, zero MISSION_LOG sections, and zero commits; that the visibility surface reports the previous and new SHA; and that docs sync accepts the trimmed log.
+      - Existing codex and claude behaviour, every other Mission Log writer, and the tick's other observations are unchanged; the full test suite and the core, Discord, and Dashboard builds pass.
+    depends_on: []
+    decisions: []
+    references: ["src/production/tick.ts", "MISSION_LOG.md", "src/dashboard/snapshot.ts", "src/activity/report.ts", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md"]
 questions: []
 decisions: []
 current_action: refresh-preservation-heartbeat-off-tick
