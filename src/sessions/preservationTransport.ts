@@ -30,6 +30,37 @@ interface TransportHeartbeat {
   goRequests?: boolean;
 }
 
+type PreservationHeartbeatRoutes = Omit<TransportHeartbeat, "schema" | "at">;
+
+/**
+ * The last projection `processPreservationRequests` published, per workspace.
+ * `refreshPreservationHeartbeat` re-stamps exactly these routes, so a long
+ * synchronous worker tick cannot let the 15s freshness window lapse and no
+ * route the worker did not itself compute is ever asserted.
+ */
+const latestPreservationRoutes = new Map<string, PreservationHeartbeatRoutes>();
+
+function writePreservationHeartbeat(workspace: string, routes: PreservationHeartbeatRoutes, at: number): void {
+  const heartbeat = path.join(workspace, HEARTBEAT);
+  mkdirSync(path.dirname(heartbeat), { recursive: true });
+  const payload: TransportHeartbeat = { schema: "arcadia-preservation-transport-v1", at, ...routes };
+  writeFileSync(`${heartbeat}.${process.pid}.tmp`, JSON.stringify(payload));
+  renameSync(`${heartbeat}.${process.pid}.tmp`, heartbeat);
+}
+
+/**
+ * Re-stamp the most recent projection with a fresh `at`, leaving its routes
+ * untouched. Called by the worker's 5s loop and between per-Project steps of a
+ * long tick, which cannot rely on timers firing while the event loop is
+ * blocked. A no-op until the first projection is published.
+ */
+export function refreshPreservationHeartbeat(workspace: string, at = Date.now()): boolean {
+  const routes = latestPreservationRoutes.get(workspace);
+  if (!routes) return false;
+  writePreservationHeartbeat(workspace, routes, at);
+  return true;
+}
+
 export function preservationTransportReady(workspace: string): boolean {
   try {
     const value = JSON.parse(readFileSync(path.join(workspace, HEARTBEAT), "utf8"));
@@ -145,16 +176,14 @@ export function processPreservationRequests(db: Database.Database, workspace: st
   const handoffs = (db.prepare("SELECT id, repository_path, worktree_path FROM agent_worktree_reservations WHERE expires_at > ?")
     .all(new Date().toISOString()) as Array<{ id: string; repository_path: string; worktree_path: string }>)
     .filter(h => repositories.some(r => r.path === h.repository_path) && !leases.some(s => s.worktree_path === h.worktree_path));
-  const heartbeat = path.join(workspace, HEARTBEAT);
-  writeFileSync(`${heartbeat}.${process.pid}.tmp`, JSON.stringify({
-    schema: "arcadia-preservation-transport-v1",
-    at: Date.now(),
+  const routes: PreservationHeartbeatRoutes = {
     sessions: leases.map(s => ({ id: s.id, worktree: s.worktree_path })),
     repositories,
     handoffs: handoffs.map(h => ({ id: h.id, worktree: h.worktree_path })),
     goRequests: true
-  }));
-  renameSync(`${heartbeat}.${process.pid}.tmp`, heartbeat);
+  };
+  latestPreservationRoutes.set(workspace, routes);
+  writePreservationHeartbeat(workspace, routes, Date.now());
   for (const repository of repositories) processGoRequest({ workspace, source: repository.path });
   for (const lease of [...leases, ...handoffs]) {
     processGoRequest({ workspace, source: lease.worktree_path });

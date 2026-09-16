@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type Database from "better-sqlite3";
 import defaultAdapters from "../config/defaults/provider-adapters.json" with { type: "json" };
 import type { CapacityAdmissionDecision, ProviderCapacityObservation } from "../src/codingAgents/capacity.js";
@@ -128,6 +128,20 @@ describe("runManagedProductionTick", () => {
 
     expect(result.policyActive).toBe(false);
     expect(result.projects[0]?.launch).toBeNull();
+    expect(tmux.launches).toHaveLength(0);
+  });
+
+  it("re-stamps the transport heartbeat between per-Project steps so a long blocking tick cannot starve it", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const heartbeat = vi.fn();
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: fixture.now, heartbeat, agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+
+    expect(result.projects).toHaveLength(1);
+    expect(heartbeat.mock.calls.length).toBeGreaterThanOrEqual(result.projects.length * 3);
     expect(tmux.launches).toHaveLength(0);
   });
 

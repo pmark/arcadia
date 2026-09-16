@@ -31,7 +31,7 @@ import { deployApprovedProjectProposal } from "../projects/stagingDeployment.js"
 import { runManagedProductionTick } from "../production/tick.js";
 import { createId } from "../utils/id.js";
 
-import { processPreservationRequests } from "../sessions/preservationTransport.js";
+import { processPreservationRequests, refreshPreservationHeartbeat } from "../sessions/preservationTransport.js";
 
 const POLL_INTERVAL_MS = 2_000;
 
@@ -96,6 +96,10 @@ export function runWorkerStartCommand(options: WorkerOptions): never {
   writeFileSync(heartbeatPath(workspacePath), new Date().toISOString(), "utf8");
   const heartbeatTimer = setInterval(() => {
     try { writeFileSync(heartbeatPath(workspacePath), new Date().toISOString(), "utf8"); } catch {}
+    // The preservation transport projection is only published on a tick. A tick
+    // can block the event loop for minutes, so this loop — and the per-Project
+    // re-stamps inside the tick — keep its freshness window from lapsing.
+    try { refreshPreservationHeartbeat(workspacePath); } catch {}
   }, 5_000);
   log(logfile, `Worker started (PID: ${process.pid}, workspace: ${workspacePath})`);
 
@@ -258,6 +262,7 @@ export function runManagedProductionIteration(
     const result = runManagedProductionTick(db, workspacePath, {
       profiles: registries.codingAgents.profiles,
       adapters: registries.providerAdapters,
+      heartbeat: () => refreshPreservationHeartbeat(workspacePath),
       log: (message) => log(logfile, `[managed-production] ${message}`)
     });
     if (!result.policyActive) return;

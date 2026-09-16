@@ -37,6 +37,12 @@ export interface ManagedProductionTickOptions {
   capacityObservation?: ProviderCapacityObservation;
   /** Test-only override for where a newly launched agent worktree is created. */
   agentWorktreeRoot?: string;
+  /**
+   * Re-stamp the preservation transport heartbeat between per-Project steps.
+   * The tick blocks the event loop for minutes, so the worker's own 5s timer
+   * cannot fire while it runs; this is how the 15s freshness window survives.
+   */
+  heartbeat?: () => void;
   log?: (message: string) => void;
 }
 
@@ -115,6 +121,7 @@ export function runManagedProductionTick(
 
   const projects: ManagedProductionTickProjectResult[] = [];
   for (const project of listProjects(db).filter((candidate) => candidate.status === "active")) {
+    options.heartbeat?.();
     const metadata = getProjectMetadata(db, project.id);
     const configuredPath = metadata?.repo_path?.trim() || null;
     if (!configuredPath || !existsSync(configuredPath)) {
@@ -130,6 +137,7 @@ export function runManagedProductionTick(
       log(`Base branch observation failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
       baseBranchAdvance = null;
     }
+    options.heartbeat?.();
 
     const reconciled: Array<{ sessionId: string; outcome: string }> = [];
     try {
@@ -158,6 +166,7 @@ export function runManagedProductionTick(
       launch = { attempted: false, outcome: "skipped", reason: "Repository was just reconciled this tick; deferring admission one tick for its merge to land.", actionKey: null };
     }
 
+    options.heartbeat?.();
     projects.push({ projectSlug: project.slug, repositoryRoot: repoRoot, baseBranchAdvance, reconciled, launch });
   }
 

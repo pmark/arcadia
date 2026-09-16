@@ -1,0 +1,21 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-refresh-preservation-heartbeat-off-tick-2026-09-16-v2",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "refresh-preservation-heartbeat-off-tick",
+  "candidate_revision": "9a8a0261a51e4a654e23d546a6db73a03ba01241",
+  "desired_result": "Mark refresh-preservation-heartbeat-off-tick complete and resolve the next governed Action.",
+  "evidence": [
+    {
+      "criterion": "The 5s worker loop re-stamps the existing preservation heartbeat projection (schema arcadia-preservation-transport-v1) with an updated at timestamp and unchanged routes while a tick is in progress, so a concurrent arcadia go-broker status reports both transports READY continuously across a multi-minute runManagedProductionIteration.",
+      "status": "met",
+      "note": "refreshPreservationHeartbeat re-stamps the cached projection with a fresh at and unchanged routes; the worker's 5s loop calls it, and runManagedProductionTick calls it between per-Project steps so a blocking tick cannot starve the 15s window. Tests: tests/production-tick.test.ts proves the per-Project wiring; tests/preservation-heartbeat-freshness.test.ts proves readiness stays true across a simulated 180s tick."
+    },
+    {
+      "criterion": "A deterministic test covers heartbeat freshness during a simulated long tick, and the existing go-request transport tests still pass.",
+      "status": "met",
+      "note": "tests/preservation-heartbeat-freshness.test.ts (4 tests) plus tests/go-request-transport.test.ts (11 tests) pass; full suite 1603 passed / 13 skipped; tsc and pnpm build exit 0."
+    }
+  ]
+}
