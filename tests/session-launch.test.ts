@@ -457,6 +457,31 @@ describe("launchGuardedHostSession under a standing managed-production policy gr
     );
   });
 
+  it("refuses a provider with no Session adapter before it reserves an admission slot", () => {
+    // This provider is in no adapter registry, so nothing refuses it during
+    // preview; the Session-adapter guard is the only defense. It must fire
+    // before `issueAdmission` reserves a slot it would never commit.
+    const fixture = preparedFixture({
+      provider: "mystery-cli",
+      model: "mystery-model",
+      profileName: "mystery_build",
+      command: "mystery"
+    });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture, "policy-mystery-grant", mysteryScope);
+
+    expectArcadiaError(
+      () => doStandingLaunch(fixture, tmux, "mystery-req-1", undefined, undefined, fixtureCapacityObservation("mystery-cli")),
+      'No Session launch adapter is registered for provider "mystery-cli"'
+    );
+
+    expect(tmux.launches).toHaveLength(0);
+    const liveAdmissions = withReadOnlyDatabase(fixture.workspace, (db) =>
+      listAdmissions(db).filter((row) => row.status === "issued" || row.status === "committed")
+    );
+    expect(liveAdmissions).toHaveLength(0);
+  });
+
   it("refuses a standing-policy launch while production is Inactive", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
@@ -509,6 +534,16 @@ const opencodeScope: ProductionScope = normalizeProductionScope({
   plans: ["test-project/copy-proof"],
   actions: ["test-project/define-contract"],
   providers: ["opencode-cli"],
+  maxConcurrentSessions: 1,
+  mechanicalTransitions: []
+});
+
+const mysteryScope: ProductionScope = normalizeProductionScope({
+  intent: "Prove an unlaunchable provider never reserves an admission slot.",
+  projects: ["test-project"],
+  plans: ["test-project/copy-proof"],
+  actions: ["test-project/define-contract"],
+  providers: ["mystery-cli"],
   maxConcurrentSessions: 1,
   mechanicalTransitions: []
 });
