@@ -4,7 +4,7 @@ type: decision
 id: "0054"
 slug: should-plan-and-action-priority-live-only-in-the-queue
 project: arcadia
-status: open
+status: approved
 question: Should plan and Action priority live only in the queue?
 gap_type: missing-decision
 recommendation: Priority lives in the queue
@@ -18,6 +18,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-09-16
+answer: Priority lives in the queue
+decided: 2026-09-16
 ---
 
 # Decision 0054: Should plan and Action priority live only in the queue?
