@@ -4,12 +4,14 @@ type: decision
 id: "0046"
 slug: how-should-this-project-update-be-applied-set-the-work-pointer-to-let-agent-pres
 project: arcadia
-status: open
+status: rejected
 question: "How should this Project update be applied: Set the work pointer to let-agent-preserve-its-candidate."
 gap_type: missing-decision
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
-updated: 2026-09-12
+updated: 2026-09-16
+answer: "Superseded: priority is a projection of the live queue and is re-derived at dispatch, so a past pointer-set cannot bind now. Priority belongs in advance queue order, not a Decision. See Decision 0053 and the priority guardrail."
+decided: 2026-09-16
 ---
 
 # Decision 0046: How should this Project update be applied: Set the work pointer to let-agent-preserve-its-candidate.
