@@ -39,12 +39,18 @@ the existing preservation machinery. Passing checks do not accept the Action.
    request reaches the existing worker, produces one commit with the tested
    tree hash, and a repeated request returns that commit. Action status and
    pointers stay unchanged. No model is invoked, no remote is used, and no
-   production policy is changed. The script removes only its disposable runtime
-   and fixtures, retaining `docs/reports/protected-preservation-fixture.json`.
+   production policy is changed. The script runs two scenarios: a registered
+   managed Session, and the real `arcadia go` **manual handoff** shape with an
+   active worktree reservation and no Session, packet or production grant
+   (`authorityKind: manual_handoff`, `policyEpoch: 0`). The script removes only
+   its disposable runtime and fixtures, retaining
+   `docs/reports/protected-preservation-fixture.json`.
 5. Inspect that JSON: compare `receipt.candidateFingerprint` to passing
    validation `tree`, check the runtime digest and exact commands, and confirm
    denied writes, zero sandbox approval prompts and zero hidden interventions.
-   The recorded host invocation is explicit; this is not unattended production.
+   The `scenarios.session` and `scenarios.handoff` entries record each boundary
+   side by side, including the host heartbeat routes. The recorded host
+   invocation is explicit; this is not unattended production.
 
 6. After the operator installs the reviewed revision, run `arcadia go-broker status`
    on the host before starting its worker. Expected for a correct install:
@@ -118,6 +124,33 @@ The script retired its disposable worker, repositories and runtime, and both
 temporary roots were verified absent. No installed production service was changed.
 
 ## Recorded validation
+
+Native host validation of the manual-handoff path (2026-09-16, source revision
+`ac6ee692`, from a prepared candidate worktree after the dependency bridge and
+TypeScript compilation):
+
+- `pnpm exec tsc -p tsconfig.json`: exit 0.
+- Deterministic suite (`candidate-preservation`, `preservation-validation`,
+  `manual-preservation`, `go-broker`, `go-broker-agent-setup`,
+  `go-request-transport`, `preservation-heartbeat-freshness`): **7 files passed;
+  79 passed, 7 skipped** (the seven native cases skip by design off the host).
+- Native host suite
+  (`ARCADIA_PRESERVATION_HOST_TEST=1 pnpm exec vitest run tests/preservation-validation.test.ts tests/manual-preservation.test.ts`):
+  **2 files passed; 19 passed, 0 skipped.** The manual `go` handoff validates
+  and preserves one local candidate with replay and no production activation,
+  and content mutation during validation and between validation and
+  preservation is refused.
+- Disposable protected-boundary proof
+  (`mise exec -- node --import tsx scripts/prove-protected-preservation.ts`):
+  exit 0. Both the managed Session and the manual handoff scenarios reached the
+  existing worker through the real installed Codex `arcadia-unattended` sandbox.
+  Each created exactly one LOCAL ONLY commit whose committed tree equals the
+  validated snapshot, replay returned that same commit, and the fixture Action
+  and pointer stayed unchanged. The handoff scenario recorded
+  `authorityKind: manual_handoff`, `policyEpoch: 0`, an empty `sessions`
+  heartbeat route and one advertised `handoffs` route; the session scenario
+  recorded a managed Session lease at policy epoch 1. Zero sandbox approval
+  prompts and zero hidden interventions were observed.
 
 Review correction verification (2026-09-12):
 

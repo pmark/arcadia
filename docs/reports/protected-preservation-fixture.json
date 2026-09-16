@@ -1,25 +1,34 @@
 {
   "kind": "disposable OS-boundary proof; no coding model or real production activation",
-  "sourceRevision": "4f9276fc20928aed27879a2d511f0142a39b7d78",
-  "runtimeSha256": "e06cca2520a00ffed9958f82d5453c0701a5c147bb29f0adb515197ba9903a21",
+  "sourceRevision": "ac6ee69270bc1bbf5069b491cb50ecd580ab30ab",
+  "runtimeSha256": "8e433f7161691c668d80bd123a8ece250681cc44d6a475efc5553201b718fa96",
   "host": "darwin",
   "profile": "arcadia-unattended",
-  "hostRoot": "/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE",
-  "candidate": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-rUWM01",
-  "workerCommand": [
-    "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
-    "/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/runtime/dist/src/cli.js",
-    "worker",
-    "start",
-    "--workspace",
-    "/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/workspace"
-  ],
-  "operatorSteps": [
-    "Run this proof once from the host; it starts the existing worker with synthetic fixture authority and invokes the installed Codex sandbox command."
-  ],
   "sandboxApprovalPrompts": 0,
   "hiddenInterventions": 0,
   "unattendedProductionClaim": false,
+  "operatorSteps": [
+    "Run this proof once from the host; it starts the existing worker with synthetic fixture authority and invokes the installed Codex sandbox command.",
+    "It runs two scenarios: a registered managed Session and a manual go handoff with no Session."
+  ],
+  "candidate": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
+  "workerCommand": [
+    "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
+    "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/runtime/dist/src/cli.js",
+    "worker",
+    "start",
+    "--workspace",
+    "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/workspace"
+  ],
+  "heartbeat": {
+    "sessions": [
+      {
+        "id": "session_25b9ba33f6034d0aa2",
+        "worktree": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV"
+      }
+    ],
+    "handoffs": []
+  },
   "commands": [
     {
       "argv": [
@@ -27,12 +36,12 @@
         "-P",
         "arcadia-unattended",
         "-C",
-        "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-rUWM01",
+        "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
         "--",
         "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
         "--input-type=module",
         "-e",
-        "\nimport fs from 'node:fs';\nfs.writeFileSync('marker.txt','ready\\n');\nconst paths=[\"/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/repo/.git/proof-write-must-fail\",\"/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/workspace/forged-evidence.json\",\"/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/arcadia-preserve-broker-codex\"];\nfor(const p of paths){ let denied=false;try{fs.appendFileSync(p,'forged')}catch{denied=true}if(!denied)throw Error('Protected path writable: '+p);}\nconsole.log('candidate edits allowed; common Git, host evidence and launcher writes denied');"
+        "\nimport fs from 'node:fs';\nfs.writeFileSync('marker.txt','ready\\n');\nconst paths=[\"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo/.git/proof-write-must-fail\",\"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/workspace/forged-evidence.json\",\"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/arcadia-preserve-broker-codex\"];\nfor(const p of paths){ let denied=false;try{fs.appendFileSync(p,'forged')}catch{denied=true}if(!denied)throw Error('Protected path writable: '+p);}\nconsole.log('candidate edits allowed; common Git, host evidence and launcher writes denied');"
       ],
       "status": 0,
       "stdout": "candidate edits allowed; common Git, host evidence and launcher writes denied\n",
@@ -44,9 +53,9 @@
         "-P",
         "arcadia-unattended",
         "-C",
-        "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-rUWM01",
+        "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
         "--",
-        "/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/arcadia-preserve-broker-codex",
+        "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/arcadia-preserve-broker-codex",
         "--passed=true"
       ],
       "status": 2,
@@ -59,7 +68,7 @@
         "-P",
         "arcadia-unattended",
         "-C",
-        "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-rUWM01",
+        "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
         "--",
         "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
         "--input-type=module",
@@ -76,9 +85,9 @@
         "-P",
         "arcadia-unattended",
         "-C",
-        "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-rUWM01",
+        "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
         "--",
-        "/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/arcadia-preserve-broker-codex"
+        "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/arcadia-preserve-broker-codex"
       ],
       "status": 2,
       "stdout": "",
@@ -90,7 +99,7 @@
         "-P",
         "arcadia-unattended",
         "-C",
-        "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-rUWM01",
+        "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
         "--",
         "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
         "--input-type=module",
@@ -107,12 +116,12 @@
         "-P",
         "arcadia-unattended",
         "-C",
-        "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-rUWM01",
+        "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
         "--",
-        "/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/arcadia-preserve-broker-codex"
+        "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/arcadia-preserve-broker-codex"
       ],
       "status": 0,
-      "stdout": "{\n  \"ok\": true,\n  \"command\": \"preserve\",\n  \"data\": {\n    \"receipt\": {\n      \"id\": \"presv_91491f94e5f14a2cb1\",\n      \"requestId\": \"preserve:session_7a8d1efc242c4205a0\",\n      \"repositoryPath\": \"/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/repo\",\n      \"candidateWorktreePath\": \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-rUWM01\",\n      \"branch\": \"codex/preservation-fixture\",\n      \"baseBranch\": \"main\",\n      \"baseRevision\": \"c9e379d6bd6e0cd9f7a56bd69143e624b649b66f\",\n      \"actionId\": \"write-marker\",\n      \"packetSha256\": \"76c23ab311eb2d41879c3e7cb1d2ecaec432bc89ddf73c569dce8ff0a39092c7\",\n      \"policyEpoch\": 1,\n      \"policyRevision\": 1,\n      \"candidateFingerprint\": \"6d408558371d25308aa300d65d75618399ced35c\",\n      \"validationEvidenceRef\": \"/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/workspace/artifacts/preservation/session_7a8d1efc242c4205a0/check-btNGWi/validation.json\",\n      \"commitSha\": \"cd9a026b607affa874e253519f19ca9fde9f544f\",\n      \"createdAt\": \"2026-09-16T21:49:35.494Z\",\n      \"replayed\": false,\n      \"preservationState\": \"LOCAL ONLY\",\n      \"pushedRemote\": null,\n      \"pullRequestNumber\": null,\n      \"pullRequestUrl\": null,\n      \"retryAction\": \"Commit cd9a026b607a is preserved only on this machine (remote preservation not authorized: the Active policy does not include remote preservation). Push branch codex/preservation-fixture and open a draft pull request to make it remote-recoverable.\"\n    }\n  },\n  \"artifacts\": [],\n  \"warnings\": []\n}\n",
+      "stdout": "{\n  \"ok\": true,\n  \"command\": \"preserve\",\n  \"data\": {\n    \"receipt\": {\n      \"id\": \"presv_e338533f9014477fac\",\n      \"requestId\": \"preserve:session_25b9ba33f6034d0aa2\",\n      \"repositoryPath\": \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo\",\n      \"candidateWorktreePath\": \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV\",\n      \"branch\": \"codex/preservation-fixture\",\n      \"baseBranch\": \"main\",\n      \"baseRevision\": \"8c3e3eb3725bc5c52cd8ec0cc021f5a77f7c33dc\",\n      \"actionId\": \"write-marker\",\n      \"packetSha256\": \"76c23ab311eb2d41879c3e7cb1d2ecaec432bc89ddf73c569dce8ff0a39092c7\",\n      \"policyEpoch\": 1,\n      \"policyRevision\": 1,\n      \"candidateFingerprint\": \"6d408558371d25308aa300d65d75618399ced35c\",\n      \"validationEvidenceRef\": \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/workspace/artifacts/preservation/session_25b9ba33f6034d0aa2/check-FDVbLp/validation.json\",\n      \"commitSha\": \"4aa81b412e1012e657d11d0be0d718f4e55f7bc2\",\n      \"createdAt\": \"2026-09-16T22:35:00.949Z\",\n      \"replayed\": false,\n      \"preservationState\": \"LOCAL ONLY\",\n      \"pushedRemote\": null,\n      \"pullRequestNumber\": null,\n      \"pullRequestUrl\": null,\n      \"retryAction\": \"Commit 4aa81b412e10 is preserved only on this machine (remote preservation not authorized: the Active policy does not include remote preservation). Push branch codex/preservation-fixture and open a draft pull request to make it remote-recoverable.\"\n    }\n  },\n  \"artifacts\": [],\n  \"warnings\": []\n}\n",
       "stderr": ""
     },
     {
@@ -121,51 +130,51 @@
         "-P",
         "arcadia-unattended",
         "-C",
-        "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-rUWM01",
+        "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
         "--",
-        "/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/arcadia-preserve-broker-codex"
+        "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/arcadia-preserve-broker-codex"
       ],
       "status": 0,
-      "stdout": "{\n  \"ok\": true,\n  \"command\": \"preserve\",\n  \"data\": {\n    \"receipt\": {\n      \"id\": \"presv_91491f94e5f14a2cb1\",\n      \"requestId\": \"preserve:session_7a8d1efc242c4205a0\",\n      \"repositoryPath\": \"/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/repo\",\n      \"candidateWorktreePath\": \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-rUWM01\",\n      \"branch\": \"codex/preservation-fixture\",\n      \"baseBranch\": \"main\",\n      \"baseRevision\": \"c9e379d6bd6e0cd9f7a56bd69143e624b649b66f\",\n      \"actionId\": \"write-marker\",\n      \"packetSha256\": \"76c23ab311eb2d41879c3e7cb1d2ecaec432bc89ddf73c569dce8ff0a39092c7\",\n      \"policyEpoch\": 1,\n      \"policyRevision\": 1,\n      \"candidateFingerprint\": \"6d408558371d25308aa300d65d75618399ced35c\",\n      \"validationEvidenceRef\": \"/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/workspace/artifacts/preservation/session_7a8d1efc242c4205a0/check-btNGWi/validation.json\",\n      \"commitSha\": \"cd9a026b607affa874e253519f19ca9fde9f544f\",\n      \"createdAt\": \"2026-09-16T21:49:35.494Z\",\n      \"replayed\": true,\n      \"preservationState\": \"LOCAL ONLY\",\n      \"pushedRemote\": null,\n      \"pullRequestNumber\": null,\n      \"pullRequestUrl\": null,\n      \"retryAction\": \"Commit cd9a026b607a is preserved only on this machine (remote preservation not authorized: the Active policy does not include remote preservation). Push branch codex/preservation-fixture and open a draft pull request to make it remote-recoverable.\"\n    }\n  },\n  \"artifacts\": [],\n  \"warnings\": []\n}\n",
+      "stdout": "{\n  \"ok\": true,\n  \"command\": \"preserve\",\n  \"data\": {\n    \"receipt\": {\n      \"id\": \"presv_e338533f9014477fac\",\n      \"requestId\": \"preserve:session_25b9ba33f6034d0aa2\",\n      \"repositoryPath\": \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo\",\n      \"candidateWorktreePath\": \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV\",\n      \"branch\": \"codex/preservation-fixture\",\n      \"baseBranch\": \"main\",\n      \"baseRevision\": \"8c3e3eb3725bc5c52cd8ec0cc021f5a77f7c33dc\",\n      \"actionId\": \"write-marker\",\n      \"packetSha256\": \"76c23ab311eb2d41879c3e7cb1d2ecaec432bc89ddf73c569dce8ff0a39092c7\",\n      \"policyEpoch\": 1,\n      \"policyRevision\": 1,\n      \"candidateFingerprint\": \"6d408558371d25308aa300d65d75618399ced35c\",\n      \"validationEvidenceRef\": \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/workspace/artifacts/preservation/session_25b9ba33f6034d0aa2/check-FDVbLp/validation.json\",\n      \"commitSha\": \"4aa81b412e1012e657d11d0be0d718f4e55f7bc2\",\n      \"createdAt\": \"2026-09-16T22:35:00.949Z\",\n      \"replayed\": true,\n      \"preservationState\": \"LOCAL ONLY\",\n      \"pushedRemote\": null,\n      \"pullRequestNumber\": null,\n      \"pullRequestUrl\": null,\n      \"retryAction\": \"Commit 4aa81b412e10 is preserved only on this machine (remote preservation not authorized: the Active policy does not include remote preservation). Push branch codex/preservation-fixture and open a draft pull request to make it remote-recoverable.\"\n    }\n  },\n  \"artifacts\": [],\n  \"warnings\": []\n}\n",
       "stderr": ""
     }
   ],
   "receipt": {
-    "id": "presv_91491f94e5f14a2cb1",
-    "requestId": "preserve:session_7a8d1efc242c4205a0",
-    "repositoryPath": "/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/repo",
-    "candidateWorktreePath": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-rUWM01",
+    "id": "presv_e338533f9014477fac",
+    "requestId": "preserve:session_25b9ba33f6034d0aa2",
+    "repositoryPath": "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo",
+    "candidateWorktreePath": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
     "branch": "codex/preservation-fixture",
     "baseBranch": "main",
-    "baseRevision": "c9e379d6bd6e0cd9f7a56bd69143e624b649b66f",
+    "baseRevision": "8c3e3eb3725bc5c52cd8ec0cc021f5a77f7c33dc",
     "actionId": "write-marker",
     "packetSha256": "76c23ab311eb2d41879c3e7cb1d2ecaec432bc89ddf73c569dce8ff0a39092c7",
     "policyEpoch": 1,
     "policyRevision": 1,
     "candidateFingerprint": "6d408558371d25308aa300d65d75618399ced35c",
-    "validationEvidenceRef": "/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/workspace/artifacts/preservation/session_7a8d1efc242c4205a0/check-btNGWi/validation.json",
-    "commitSha": "cd9a026b607affa874e253519f19ca9fde9f544f",
-    "createdAt": "2026-09-16T21:49:35.494Z",
+    "validationEvidenceRef": "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/workspace/artifacts/preservation/session_25b9ba33f6034d0aa2/check-FDVbLp/validation.json",
+    "commitSha": "4aa81b412e1012e657d11d0be0d718f4e55f7bc2",
+    "createdAt": "2026-09-16T22:35:00.949Z",
     "replayed": false,
     "preservationState": "LOCAL ONLY",
     "pushedRemote": null,
     "pullRequestNumber": null,
     "pullRequestUrl": null,
-    "retryAction": "Commit cd9a026b607a is preserved only on this machine (remote preservation not authorized: the Active policy does not include remote preservation). Push branch codex/preservation-fixture and open a draft pull request to make it remote-recoverable."
+    "retryAction": "Commit 4aa81b412e10 is preserved only on this machine (remote preservation not authorized: the Active policy does not include remote preservation). Push branch codex/preservation-fixture and open a draft pull request to make it remote-recoverable."
   },
   "validations": [
     {
       "producer": "arcadia-host-seatbelt-v1",
       "binding": {
-        "session": "session_7a8d1efc242c4205a0",
-        "repository": "/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/repo",
-        "worktree": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-rUWM01",
+        "session": "session_25b9ba33f6034d0aa2",
+        "repository": "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo",
+        "worktree": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
         "branch": "codex/preservation-fixture",
-        "base": "c9e379d6bd6e0cd9f7a56bd69143e624b649b66f",
+        "base": "8c3e3eb3725bc5c52cd8ec0cc021f5a77f7c33dc",
         "project": "preservation-fixture",
         "action": "write-marker",
         "packetHash": "76c23ab311eb2d41879c3e7cb1d2ecaec432bc89ddf73c569dce8ff0a39092c7",
-        "decision": "review_e99e2cfcfc2045a196",
+        "decision": "review_c8ea4e2dbfa24600a2",
         "commands": [
           "node check.mjs"
         ],
@@ -218,12 +227,12 @@
           "authority": {
             "requestId": "fixture-authority",
             "grantedBy": "fixture-operator",
-            "grantedAt": "2026-09-16T21:49:29.369Z",
+            "grantedAt": "2026-09-16T22:34:55.533Z",
             "decisionRef": null,
             "scopeFingerprint": "1f257c7b1603f8f9440784a61fbccd01"
           },
           "revokedAt": null,
-          "updatedAt": "2026-09-16T21:49:29.369Z"
+          "updatedAt": "2026-09-16T22:34:55.533Z"
         }
       },
       "tree": "6d408558371d25308aa300d65d75618399ced35c",
@@ -237,23 +246,23 @@
           "stderr": ""
         }
       ],
-      "sandboxProfile": "(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-liR685/source\") (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-liR685/scratch\") (require-all (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/workspace\")) (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/repo\")) (require-not (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-rUWM01\")))) (allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target self)) (allow file-write* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-liR685/scratch\") (literal \"/dev/null\"))",
+      "sandboxProfile": "(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-cMJaEZ/source\") (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-cMJaEZ/scratch\") (require-all (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/workspace\")) (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo\")) (require-not (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV\")))) (allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target self)) (allow file-write* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-cMJaEZ/scratch\") (literal \"/dev/null\"))",
       "runtime": "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
       "node": "v22.23.1",
-      "createdAt": "2026-09-16T21:49:38.646Z"
+      "createdAt": "2026-09-16T22:35:00.772Z"
     },
     {
       "producer": "arcadia-host-seatbelt-v1",
       "binding": {
-        "session": "session_7a8d1efc242c4205a0",
-        "repository": "/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/repo",
-        "worktree": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-rUWM01",
+        "session": "session_25b9ba33f6034d0aa2",
+        "repository": "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo",
+        "worktree": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
         "branch": "codex/preservation-fixture",
-        "base": "c9e379d6bd6e0cd9f7a56bd69143e624b649b66f",
+        "base": "8c3e3eb3725bc5c52cd8ec0cc021f5a77f7c33dc",
         "project": "preservation-fixture",
         "action": "write-marker",
         "packetHash": "76c23ab311eb2d41879c3e7cb1d2ecaec432bc89ddf73c569dce8ff0a39092c7",
-        "decision": "review_e99e2cfcfc2045a196",
+        "decision": "review_c8ea4e2dbfa24600a2",
         "commands": [
           "node check.mjs"
         ],
@@ -306,100 +315,12 @@
           "authority": {
             "requestId": "fixture-authority",
             "grantedBy": "fixture-operator",
-            "grantedAt": "2026-09-16T21:49:29.369Z",
+            "grantedAt": "2026-09-16T22:34:55.533Z",
             "decisionRef": null,
             "scopeFingerprint": "1f257c7b1603f8f9440784a61fbccd01"
           },
           "revokedAt": null,
-          "updatedAt": "2026-09-16T21:49:29.369Z"
-        }
-      },
-      "tree": "6d408558371d25308aa300d65d75618399ced35c",
-      "results": [
-        {
-          "command": "node check.mjs",
-          "exitStatus": 0,
-          "signal": null,
-          "error": null,
-          "stdout": "",
-          "stderr": ""
-        }
-      ],
-      "sandboxProfile": "(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-a11BTM/source\") (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-a11BTM/scratch\") (require-all (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/workspace\")) (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/repo\")) (require-not (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-rUWM01\")))) (allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target self)) (allow file-write* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-a11BTM/scratch\") (literal \"/dev/null\"))",
-      "runtime": "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
-      "node": "v22.23.1",
-      "createdAt": "2026-09-16T21:49:35.262Z"
-    },
-    {
-      "producer": "arcadia-host-seatbelt-v1",
-      "binding": {
-        "session": "session_7a8d1efc242c4205a0",
-        "repository": "/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/repo",
-        "worktree": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-rUWM01",
-        "branch": "codex/preservation-fixture",
-        "base": "c9e379d6bd6e0cd9f7a56bd69143e624b649b66f",
-        "project": "preservation-fixture",
-        "action": "write-marker",
-        "packetHash": "76c23ab311eb2d41879c3e7cb1d2ecaec432bc89ddf73c569dce8ff0a39092c7",
-        "decision": "review_e99e2cfcfc2045a196",
-        "commands": [
-          "node check.mjs"
-        ],
-        "actionDefinition": {
-          "id": "write-marker",
-          "title": "Write marker",
-          "status": "open",
-          "responsibility": "agent",
-          "effort": "session",
-          "nextAction": "Write the marker.",
-          "expectedArtifact": "marker.txt",
-          "clarification": "clarified",
-          "gapType": null,
-          "question": null,
-          "confidence": null,
-          "source": null,
-          "milestone": null,
-          "dependsOn": [],
-          "acceptanceCriteria": [
-            "Marker is ready."
-          ],
-          "decisions": [],
-          "references": [],
-          "execution": null,
-          "resolvedExecution": null
-        },
-        "policy": {
-          "desiredState": "active",
-          "revision": 1,
-          "epoch": 1,
-          "scope": {
-            "intent": "Prove local fixture preservation only",
-            "projects": [
-              "preservation-fixture"
-            ],
-            "plans": [
-              "preservation-fixture/proof"
-            ],
-            "actions": [
-              "preservation-fixture/write-marker"
-            ],
-            "providers": [
-              "codex-cli"
-            ],
-            "maxConcurrentSessions": 1,
-            "mechanicalTransitions": [
-              "validation"
-            ]
-          },
-          "authority": {
-            "requestId": "fixture-authority",
-            "grantedBy": "fixture-operator",
-            "grantedAt": "2026-09-16T21:49:29.369Z",
-            "decisionRef": null,
-            "scopeFingerprint": "1f257c7b1603f8f9440784a61fbccd01"
-          },
-          "revokedAt": null,
-          "updatedAt": "2026-09-16T21:49:29.369Z"
+          "updatedAt": "2026-09-16T22:34:55.533Z"
         }
       },
       "tree": "9022aef86f0fce080e7ecff6d1e2e1bd0d683a6f",
@@ -413,11 +334,780 @@
           "stderr": ""
         }
       ],
-      "sandboxProfile": "(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-y0paxf/source\") (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-y0paxf/scratch\") (require-all (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/workspace\")) (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/repo\")) (require-not (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-rUWM01\")))) (allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target self)) (allow file-write* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-y0paxf/scratch\") (literal \"/dev/null\"))",
+      "sandboxProfile": "(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-rDWyD8/source\") (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-rDWyD8/scratch\") (require-all (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/workspace\")) (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo\")) (require-not (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV\")))) (allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target self)) (allow file-write* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-rDWyD8/scratch\") (literal \"/dev/null\"))",
       "runtime": "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
       "node": "v22.23.1",
-      "createdAt": "2026-09-16T21:49:32.736Z"
+      "createdAt": "2026-09-16T22:34:58.418Z"
+    },
+    {
+      "producer": "arcadia-host-seatbelt-v1",
+      "binding": {
+        "session": "session_25b9ba33f6034d0aa2",
+        "repository": "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo",
+        "worktree": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
+        "branch": "codex/preservation-fixture",
+        "base": "8c3e3eb3725bc5c52cd8ec0cc021f5a77f7c33dc",
+        "project": "preservation-fixture",
+        "action": "write-marker",
+        "packetHash": "76c23ab311eb2d41879c3e7cb1d2ecaec432bc89ddf73c569dce8ff0a39092c7",
+        "decision": "review_c8ea4e2dbfa24600a2",
+        "commands": [
+          "node check.mjs"
+        ],
+        "actionDefinition": {
+          "id": "write-marker",
+          "title": "Write marker",
+          "status": "open",
+          "responsibility": "agent",
+          "effort": "session",
+          "nextAction": "Write the marker.",
+          "expectedArtifact": "marker.txt",
+          "clarification": "clarified",
+          "gapType": null,
+          "question": null,
+          "confidence": null,
+          "source": null,
+          "milestone": null,
+          "dependsOn": [],
+          "acceptanceCriteria": [
+            "Marker is ready."
+          ],
+          "decisions": [],
+          "references": [],
+          "execution": null,
+          "resolvedExecution": null
+        },
+        "policy": {
+          "desiredState": "active",
+          "revision": 1,
+          "epoch": 1,
+          "scope": {
+            "intent": "Prove local fixture preservation only",
+            "projects": [
+              "preservation-fixture"
+            ],
+            "plans": [
+              "preservation-fixture/proof"
+            ],
+            "actions": [
+              "preservation-fixture/write-marker"
+            ],
+            "providers": [
+              "codex-cli"
+            ],
+            "maxConcurrentSessions": 1,
+            "mechanicalTransitions": [
+              "validation"
+            ]
+          },
+          "authority": {
+            "requestId": "fixture-authority",
+            "grantedBy": "fixture-operator",
+            "grantedAt": "2026-09-16T22:34:55.533Z",
+            "decisionRef": null,
+            "scopeFingerprint": "1f257c7b1603f8f9440784a61fbccd01"
+          },
+          "revokedAt": null,
+          "updatedAt": "2026-09-16T22:34:55.533Z"
+        }
+      },
+      "tree": "6d408558371d25308aa300d65d75618399ced35c",
+      "results": [
+        {
+          "command": "node check.mjs",
+          "exitStatus": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "",
+          "stderr": ""
+        }
+      ],
+      "sandboxProfile": "(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-lxeyM0/source\") (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-lxeyM0/scratch\") (require-all (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/workspace\")) (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo\")) (require-not (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV\")))) (allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target self)) (allow file-write* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-lxeyM0/scratch\") (literal \"/dev/null\"))",
+      "runtime": "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
+      "node": "v22.23.1",
+      "createdAt": "2026-09-16T22:35:03.964Z"
     }
   ],
-  "workerOutput": "2026-09-16T21:49:29.973Z Worker started (PID: 48996, workspace: /Users/pmark/.local/share/arcadia/preservation-proof-bpjdEE/workspace)\n"
+  "workerOutput": "2026-09-16T22:34:56.012Z Worker started (PID: 17644, workspace: /Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/workspace)\n",
+  "scenarios": {
+    "session": {
+      "mode": "session preservation",
+      "kind": "managed Session",
+      "candidate": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
+      "workerCommand": [
+        "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
+        "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/runtime/dist/src/cli.js",
+        "worker",
+        "start",
+        "--workspace",
+        "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/workspace"
+      ],
+      "runtimeSha256": "8e433f7161691c668d80bd123a8ece250681cc44d6a475efc5553201b718fa96",
+      "heartbeat": {
+        "sessions": [
+          {
+            "id": "session_25b9ba33f6034d0aa2",
+            "worktree": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV"
+          }
+        ],
+        "handoffs": []
+      },
+      "commands": [
+        {
+          "argv": [
+            "sandbox",
+            "-P",
+            "arcadia-unattended",
+            "-C",
+            "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
+            "--",
+            "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
+            "--input-type=module",
+            "-e",
+            "\nimport fs from 'node:fs';\nfs.writeFileSync('marker.txt','ready\\n');\nconst paths=[\"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo/.git/proof-write-must-fail\",\"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/workspace/forged-evidence.json\",\"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/arcadia-preserve-broker-codex\"];\nfor(const p of paths){ let denied=false;try{fs.appendFileSync(p,'forged')}catch{denied=true}if(!denied)throw Error('Protected path writable: '+p);}\nconsole.log('candidate edits allowed; common Git, host evidence and launcher writes denied');"
+          ],
+          "status": 0,
+          "stdout": "candidate edits allowed; common Git, host evidence and launcher writes denied\n",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "sandbox",
+            "-P",
+            "arcadia-unattended",
+            "-C",
+            "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
+            "--",
+            "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/arcadia-preserve-broker-codex",
+            "--passed=true"
+          ],
+          "status": 2,
+          "stdout": "",
+          "stderr": "{\n  \"ok\": false,\n  \"command\": \"go-broker\",\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"The protected broker accepts no public arguments.\",\n    \"details\": {\n      \"receivedArgumentCount\": 3,\n      \"remedy\": \"Run the provider-specific protected executable with no arguments from its required worktree.\"\n    }\n  }\n}\n"
+        },
+        {
+          "argv": [
+            "sandbox",
+            "-P",
+            "arcadia-unattended",
+            "-C",
+            "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
+            "--",
+            "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
+            "--input-type=module",
+            "-e",
+            "import fs from 'node:fs';fs.writeFileSync('marker.txt','wrong\\n');fs.writeFileSync('evidence.json',JSON.stringify({passed:true}));"
+          ],
+          "status": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "sandbox",
+            "-P",
+            "arcadia-unattended",
+            "-C",
+            "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
+            "--",
+            "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/arcadia-preserve-broker-codex"
+          ],
+          "status": 2,
+          "stdout": "",
+          "stderr": "{\n  \"ok\": false,\n  \"command\": \"go-broker\",\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"Declared preservation validation failed or was skipped.\",\n    \"details\": {}\n  }\n}\n"
+        },
+        {
+          "argv": [
+            "sandbox",
+            "-P",
+            "arcadia-unattended",
+            "-C",
+            "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
+            "--",
+            "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
+            "--input-type=module",
+            "-e",
+            "import fs from 'node:fs';fs.writeFileSync('marker.txt','ready\\n');fs.unlinkSync('evidence.json');"
+          ],
+          "status": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "sandbox",
+            "-P",
+            "arcadia-unattended",
+            "-C",
+            "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
+            "--",
+            "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/arcadia-preserve-broker-codex"
+          ],
+          "status": 0,
+          "stdout": "{\n  \"ok\": true,\n  \"command\": \"preserve\",\n  \"data\": {\n    \"receipt\": {\n      \"id\": \"presv_e338533f9014477fac\",\n      \"requestId\": \"preserve:session_25b9ba33f6034d0aa2\",\n      \"repositoryPath\": \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo\",\n      \"candidateWorktreePath\": \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV\",\n      \"branch\": \"codex/preservation-fixture\",\n      \"baseBranch\": \"main\",\n      \"baseRevision\": \"8c3e3eb3725bc5c52cd8ec0cc021f5a77f7c33dc\",\n      \"actionId\": \"write-marker\",\n      \"packetSha256\": \"76c23ab311eb2d41879c3e7cb1d2ecaec432bc89ddf73c569dce8ff0a39092c7\",\n      \"policyEpoch\": 1,\n      \"policyRevision\": 1,\n      \"candidateFingerprint\": \"6d408558371d25308aa300d65d75618399ced35c\",\n      \"validationEvidenceRef\": \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/workspace/artifacts/preservation/session_25b9ba33f6034d0aa2/check-FDVbLp/validation.json\",\n      \"commitSha\": \"4aa81b412e1012e657d11d0be0d718f4e55f7bc2\",\n      \"createdAt\": \"2026-09-16T22:35:00.949Z\",\n      \"replayed\": false,\n      \"preservationState\": \"LOCAL ONLY\",\n      \"pushedRemote\": null,\n      \"pullRequestNumber\": null,\n      \"pullRequestUrl\": null,\n      \"retryAction\": \"Commit 4aa81b412e10 is preserved only on this machine (remote preservation not authorized: the Active policy does not include remote preservation). Push branch codex/preservation-fixture and open a draft pull request to make it remote-recoverable.\"\n    }\n  },\n  \"artifacts\": [],\n  \"warnings\": []\n}\n",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "sandbox",
+            "-P",
+            "arcadia-unattended",
+            "-C",
+            "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
+            "--",
+            "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/arcadia-preserve-broker-codex"
+          ],
+          "status": 0,
+          "stdout": "{\n  \"ok\": true,\n  \"command\": \"preserve\",\n  \"data\": {\n    \"receipt\": {\n      \"id\": \"presv_e338533f9014477fac\",\n      \"requestId\": \"preserve:session_25b9ba33f6034d0aa2\",\n      \"repositoryPath\": \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo\",\n      \"candidateWorktreePath\": \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV\",\n      \"branch\": \"codex/preservation-fixture\",\n      \"baseBranch\": \"main\",\n      \"baseRevision\": \"8c3e3eb3725bc5c52cd8ec0cc021f5a77f7c33dc\",\n      \"actionId\": \"write-marker\",\n      \"packetSha256\": \"76c23ab311eb2d41879c3e7cb1d2ecaec432bc89ddf73c569dce8ff0a39092c7\",\n      \"policyEpoch\": 1,\n      \"policyRevision\": 1,\n      \"candidateFingerprint\": \"6d408558371d25308aa300d65d75618399ced35c\",\n      \"validationEvidenceRef\": \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/workspace/artifacts/preservation/session_25b9ba33f6034d0aa2/check-FDVbLp/validation.json\",\n      \"commitSha\": \"4aa81b412e1012e657d11d0be0d718f4e55f7bc2\",\n      \"createdAt\": \"2026-09-16T22:35:00.949Z\",\n      \"replayed\": true,\n      \"preservationState\": \"LOCAL ONLY\",\n      \"pushedRemote\": null,\n      \"pullRequestNumber\": null,\n      \"pullRequestUrl\": null,\n      \"retryAction\": \"Commit 4aa81b412e10 is preserved only on this machine (remote preservation not authorized: the Active policy does not include remote preservation). Push branch codex/preservation-fixture and open a draft pull request to make it remote-recoverable.\"\n    }\n  },\n  \"artifacts\": [],\n  \"warnings\": []\n}\n",
+          "stderr": ""
+        }
+      ],
+      "receipt": {
+        "id": "presv_e338533f9014477fac",
+        "requestId": "preserve:session_25b9ba33f6034d0aa2",
+        "repositoryPath": "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo",
+        "candidateWorktreePath": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
+        "branch": "codex/preservation-fixture",
+        "baseBranch": "main",
+        "baseRevision": "8c3e3eb3725bc5c52cd8ec0cc021f5a77f7c33dc",
+        "actionId": "write-marker",
+        "packetSha256": "76c23ab311eb2d41879c3e7cb1d2ecaec432bc89ddf73c569dce8ff0a39092c7",
+        "policyEpoch": 1,
+        "policyRevision": 1,
+        "candidateFingerprint": "6d408558371d25308aa300d65d75618399ced35c",
+        "validationEvidenceRef": "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/workspace/artifacts/preservation/session_25b9ba33f6034d0aa2/check-FDVbLp/validation.json",
+        "commitSha": "4aa81b412e1012e657d11d0be0d718f4e55f7bc2",
+        "createdAt": "2026-09-16T22:35:00.949Z",
+        "replayed": false,
+        "preservationState": "LOCAL ONLY",
+        "pushedRemote": null,
+        "pullRequestNumber": null,
+        "pullRequestUrl": null,
+        "retryAction": "Commit 4aa81b412e10 is preserved only on this machine (remote preservation not authorized: the Active policy does not include remote preservation). Push branch codex/preservation-fixture and open a draft pull request to make it remote-recoverable."
+      },
+      "validations": [
+        {
+          "producer": "arcadia-host-seatbelt-v1",
+          "binding": {
+            "session": "session_25b9ba33f6034d0aa2",
+            "repository": "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo",
+            "worktree": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
+            "branch": "codex/preservation-fixture",
+            "base": "8c3e3eb3725bc5c52cd8ec0cc021f5a77f7c33dc",
+            "project": "preservation-fixture",
+            "action": "write-marker",
+            "packetHash": "76c23ab311eb2d41879c3e7cb1d2ecaec432bc89ddf73c569dce8ff0a39092c7",
+            "decision": "review_c8ea4e2dbfa24600a2",
+            "commands": [
+              "node check.mjs"
+            ],
+            "actionDefinition": {
+              "id": "write-marker",
+              "title": "Write marker",
+              "status": "open",
+              "responsibility": "agent",
+              "effort": "session",
+              "nextAction": "Write the marker.",
+              "expectedArtifact": "marker.txt",
+              "clarification": "clarified",
+              "gapType": null,
+              "question": null,
+              "confidence": null,
+              "source": null,
+              "milestone": null,
+              "dependsOn": [],
+              "acceptanceCriteria": [
+                "Marker is ready."
+              ],
+              "decisions": [],
+              "references": [],
+              "execution": null,
+              "resolvedExecution": null
+            },
+            "policy": {
+              "desiredState": "active",
+              "revision": 1,
+              "epoch": 1,
+              "scope": {
+                "intent": "Prove local fixture preservation only",
+                "projects": [
+                  "preservation-fixture"
+                ],
+                "plans": [
+                  "preservation-fixture/proof"
+                ],
+                "actions": [
+                  "preservation-fixture/write-marker"
+                ],
+                "providers": [
+                  "codex-cli"
+                ],
+                "maxConcurrentSessions": 1,
+                "mechanicalTransitions": [
+                  "validation"
+                ]
+              },
+              "authority": {
+                "requestId": "fixture-authority",
+                "grantedBy": "fixture-operator",
+                "grantedAt": "2026-09-16T22:34:55.533Z",
+                "decisionRef": null,
+                "scopeFingerprint": "1f257c7b1603f8f9440784a61fbccd01"
+              },
+              "revokedAt": null,
+              "updatedAt": "2026-09-16T22:34:55.533Z"
+            }
+          },
+          "tree": "6d408558371d25308aa300d65d75618399ced35c",
+          "results": [
+            {
+              "command": "node check.mjs",
+              "exitStatus": 0,
+              "signal": null,
+              "error": null,
+              "stdout": "",
+              "stderr": ""
+            }
+          ],
+          "sandboxProfile": "(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-cMJaEZ/source\") (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-cMJaEZ/scratch\") (require-all (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/workspace\")) (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo\")) (require-not (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV\")))) (allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target self)) (allow file-write* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-cMJaEZ/scratch\") (literal \"/dev/null\"))",
+          "runtime": "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
+          "node": "v22.23.1",
+          "createdAt": "2026-09-16T22:35:00.772Z"
+        },
+        {
+          "producer": "arcadia-host-seatbelt-v1",
+          "binding": {
+            "session": "session_25b9ba33f6034d0aa2",
+            "repository": "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo",
+            "worktree": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
+            "branch": "codex/preservation-fixture",
+            "base": "8c3e3eb3725bc5c52cd8ec0cc021f5a77f7c33dc",
+            "project": "preservation-fixture",
+            "action": "write-marker",
+            "packetHash": "76c23ab311eb2d41879c3e7cb1d2ecaec432bc89ddf73c569dce8ff0a39092c7",
+            "decision": "review_c8ea4e2dbfa24600a2",
+            "commands": [
+              "node check.mjs"
+            ],
+            "actionDefinition": {
+              "id": "write-marker",
+              "title": "Write marker",
+              "status": "open",
+              "responsibility": "agent",
+              "effort": "session",
+              "nextAction": "Write the marker.",
+              "expectedArtifact": "marker.txt",
+              "clarification": "clarified",
+              "gapType": null,
+              "question": null,
+              "confidence": null,
+              "source": null,
+              "milestone": null,
+              "dependsOn": [],
+              "acceptanceCriteria": [
+                "Marker is ready."
+              ],
+              "decisions": [],
+              "references": [],
+              "execution": null,
+              "resolvedExecution": null
+            },
+            "policy": {
+              "desiredState": "active",
+              "revision": 1,
+              "epoch": 1,
+              "scope": {
+                "intent": "Prove local fixture preservation only",
+                "projects": [
+                  "preservation-fixture"
+                ],
+                "plans": [
+                  "preservation-fixture/proof"
+                ],
+                "actions": [
+                  "preservation-fixture/write-marker"
+                ],
+                "providers": [
+                  "codex-cli"
+                ],
+                "maxConcurrentSessions": 1,
+                "mechanicalTransitions": [
+                  "validation"
+                ]
+              },
+              "authority": {
+                "requestId": "fixture-authority",
+                "grantedBy": "fixture-operator",
+                "grantedAt": "2026-09-16T22:34:55.533Z",
+                "decisionRef": null,
+                "scopeFingerprint": "1f257c7b1603f8f9440784a61fbccd01"
+              },
+              "revokedAt": null,
+              "updatedAt": "2026-09-16T22:34:55.533Z"
+            }
+          },
+          "tree": "9022aef86f0fce080e7ecff6d1e2e1bd0d683a6f",
+          "results": [
+            {
+              "command": "node check.mjs",
+              "exitStatus": 1,
+              "signal": null,
+              "error": null,
+              "stdout": "",
+              "stderr": ""
+            }
+          ],
+          "sandboxProfile": "(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-rDWyD8/source\") (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-rDWyD8/scratch\") (require-all (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/workspace\")) (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo\")) (require-not (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV\")))) (allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target self)) (allow file-write* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-rDWyD8/scratch\") (literal \"/dev/null\"))",
+          "runtime": "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
+          "node": "v22.23.1",
+          "createdAt": "2026-09-16T22:34:58.418Z"
+        },
+        {
+          "producer": "arcadia-host-seatbelt-v1",
+          "binding": {
+            "session": "session_25b9ba33f6034d0aa2",
+            "repository": "/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo",
+            "worktree": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV",
+            "branch": "codex/preservation-fixture",
+            "base": "8c3e3eb3725bc5c52cd8ec0cc021f5a77f7c33dc",
+            "project": "preservation-fixture",
+            "action": "write-marker",
+            "packetHash": "76c23ab311eb2d41879c3e7cb1d2ecaec432bc89ddf73c569dce8ff0a39092c7",
+            "decision": "review_c8ea4e2dbfa24600a2",
+            "commands": [
+              "node check.mjs"
+            ],
+            "actionDefinition": {
+              "id": "write-marker",
+              "title": "Write marker",
+              "status": "open",
+              "responsibility": "agent",
+              "effort": "session",
+              "nextAction": "Write the marker.",
+              "expectedArtifact": "marker.txt",
+              "clarification": "clarified",
+              "gapType": null,
+              "question": null,
+              "confidence": null,
+              "source": null,
+              "milestone": null,
+              "dependsOn": [],
+              "acceptanceCriteria": [
+                "Marker is ready."
+              ],
+              "decisions": [],
+              "references": [],
+              "execution": null,
+              "resolvedExecution": null
+            },
+            "policy": {
+              "desiredState": "active",
+              "revision": 1,
+              "epoch": 1,
+              "scope": {
+                "intent": "Prove local fixture preservation only",
+                "projects": [
+                  "preservation-fixture"
+                ],
+                "plans": [
+                  "preservation-fixture/proof"
+                ],
+                "actions": [
+                  "preservation-fixture/write-marker"
+                ],
+                "providers": [
+                  "codex-cli"
+                ],
+                "maxConcurrentSessions": 1,
+                "mechanicalTransitions": [
+                  "validation"
+                ]
+              },
+              "authority": {
+                "requestId": "fixture-authority",
+                "grantedBy": "fixture-operator",
+                "grantedAt": "2026-09-16T22:34:55.533Z",
+                "decisionRef": null,
+                "scopeFingerprint": "1f257c7b1603f8f9440784a61fbccd01"
+              },
+              "revokedAt": null,
+              "updatedAt": "2026-09-16T22:34:55.533Z"
+            }
+          },
+          "tree": "6d408558371d25308aa300d65d75618399ced35c",
+          "results": [
+            {
+              "command": "node check.mjs",
+              "exitStatus": 0,
+              "signal": null,
+              "error": null,
+              "stdout": "",
+              "stderr": ""
+            }
+          ],
+          "sandboxProfile": "(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-lxeyM0/source\") (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-lxeyM0/scratch\") (require-all (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/workspace\")) (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/repo\")) (require-not (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-Zs3pAV\")))) (allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target self)) (allow file-write* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-lxeyM0/scratch\") (literal \"/dev/null\"))",
+          "runtime": "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
+          "node": "v22.23.1",
+          "createdAt": "2026-09-16T22:35:03.964Z"
+        }
+      ],
+      "workerOutput": "2026-09-16T22:34:56.012Z Worker started (PID: 17644, workspace: /Users/pmark/.local/share/arcadia/preservation-proof-session-uJ5Swk/workspace)\n"
+    },
+    "handoff": {
+      "mode": "manual preservation",
+      "kind": "manual handoff",
+      "candidate": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-j6XRXh",
+      "workerCommand": [
+        "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
+        "/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/runtime/dist/src/cli.js",
+        "worker",
+        "start",
+        "--workspace",
+        "/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/workspace"
+      ],
+      "runtimeSha256": "8e433f7161691c668d80bd123a8ece250681cc44d6a475efc5553201b718fa96",
+      "heartbeat": {
+        "sessions": [],
+        "handoffs": [
+          {
+            "id": "wtres_fd1726f472d0405787",
+            "worktree": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-j6XRXh"
+          }
+        ]
+      },
+      "commands": [
+        {
+          "argv": [
+            "sandbox",
+            "-P",
+            "arcadia-unattended",
+            "-C",
+            "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-j6XRXh",
+            "--",
+            "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
+            "--input-type=module",
+            "-e",
+            "\nimport fs from 'node:fs';\nfs.writeFileSync('marker.txt','ready\\n');\nconst paths=[\"/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/repo/.git/proof-write-must-fail\",\"/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/workspace/forged-evidence.json\",\"/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/arcadia-preserve-broker-codex\"];\nfor(const p of paths){ let denied=false;try{fs.appendFileSync(p,'forged')}catch{denied=true}if(!denied)throw Error('Protected path writable: '+p);}\nconsole.log('candidate edits allowed; common Git, host evidence and launcher writes denied');"
+          ],
+          "status": 0,
+          "stdout": "candidate edits allowed; common Git, host evidence and launcher writes denied\n",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "sandbox",
+            "-P",
+            "arcadia-unattended",
+            "-C",
+            "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-j6XRXh",
+            "--",
+            "/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/arcadia-preserve-broker-codex",
+            "--passed=true"
+          ],
+          "status": 2,
+          "stdout": "",
+          "stderr": "{\n  \"ok\": false,\n  \"command\": \"go-broker\",\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"The protected broker accepts no public arguments.\",\n    \"details\": {\n      \"receivedArgumentCount\": 3,\n      \"remedy\": \"Run the provider-specific protected executable with no arguments from its required worktree.\"\n    }\n  }\n}\n"
+        },
+        {
+          "argv": [
+            "sandbox",
+            "-P",
+            "arcadia-unattended",
+            "-C",
+            "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-j6XRXh",
+            "--",
+            "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
+            "--input-type=module",
+            "-e",
+            "import fs from 'node:fs';fs.writeFileSync('marker.txt','wrong\\n');fs.writeFileSync('evidence.json',JSON.stringify({passed:true}));"
+          ],
+          "status": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "sandbox",
+            "-P",
+            "arcadia-unattended",
+            "-C",
+            "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-j6XRXh",
+            "--",
+            "/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/arcadia-preserve-broker-codex"
+          ],
+          "status": 2,
+          "stdout": "",
+          "stderr": "{\n  \"ok\": false,\n  \"command\": \"go-broker\",\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"Declared preservation validation failed or was skipped.\",\n    \"details\": {}\n  }\n}\n"
+        },
+        {
+          "argv": [
+            "sandbox",
+            "-P",
+            "arcadia-unattended",
+            "-C",
+            "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-j6XRXh",
+            "--",
+            "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
+            "--input-type=module",
+            "-e",
+            "import fs from 'node:fs';fs.writeFileSync('marker.txt','ready\\n');fs.unlinkSync('evidence.json');"
+          ],
+          "status": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "sandbox",
+            "-P",
+            "arcadia-unattended",
+            "-C",
+            "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-j6XRXh",
+            "--",
+            "/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/arcadia-preserve-broker-codex"
+          ],
+          "status": 0,
+          "stdout": "{\n  \"ok\": true,\n  \"command\": \"preserve\",\n  \"data\": {\n    \"receipt\": {\n      \"id\": \"presv_4cf4f3253b394ab099\",\n      \"requestId\": \"preserve:wtres_fd1726f472d0405787\",\n      \"repositoryPath\": \"/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/repo\",\n      \"candidateWorktreePath\": \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-j6XRXh\",\n      \"branch\": \"codex/preservation-fixture\",\n      \"baseBranch\": \"main\",\n      \"baseRevision\": \"8242b487fc59e54912dbe61f4f03d2cd6969841b\",\n      \"actionId\": \"write-marker\",\n      \"packetSha256\": \"eab1b55696c1e441a0ee88fb72e46c57bfb90d54b3fcf27cd32623714a2c51d0\",\n      \"authorityKind\": \"manual_handoff\",\n      \"policyEpoch\": 0,\n      \"policyRevision\": 0,\n      \"candidateFingerprint\": \"6d408558371d25308aa300d65d75618399ced35c\",\n      \"validationEvidenceRef\": \"/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/workspace/artifacts/preservation/wtres_fd1726f472d0405787/check-wg5yFE/validation.json\",\n      \"commitSha\": \"98d3706dcf0ad444189f4201adfe03a31f537d89\",\n      \"createdAt\": \"2026-09-16T22:35:11.368Z\",\n      \"replayed\": false,\n      \"preservationState\": \"LOCAL ONLY\",\n      \"pushedRemote\": null,\n      \"pullRequestNumber\": null,\n      \"pullRequestUrl\": null,\n      \"retryAction\": \"Commit 98d3706dcf0a is preserved only on this machine (remote preservation not authorized: Manual Go authorizes local candidate preservation only; remote preservation requires separate authority.). Push branch codex/preservation-fixture and open a draft pull request to make it remote-recoverable.\"\n    }\n  },\n  \"artifacts\": [],\n  \"warnings\": []\n}\n",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "sandbox",
+            "-P",
+            "arcadia-unattended",
+            "-C",
+            "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-j6XRXh",
+            "--",
+            "/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/arcadia-preserve-broker-codex"
+          ],
+          "status": 0,
+          "stdout": "{\n  \"ok\": true,\n  \"command\": \"preserve\",\n  \"data\": {\n    \"receipt\": {\n      \"id\": \"presv_4cf4f3253b394ab099\",\n      \"requestId\": \"preserve:wtres_fd1726f472d0405787\",\n      \"repositoryPath\": \"/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/repo\",\n      \"candidateWorktreePath\": \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-j6XRXh\",\n      \"branch\": \"codex/preservation-fixture\",\n      \"baseBranch\": \"main\",\n      \"baseRevision\": \"8242b487fc59e54912dbe61f4f03d2cd6969841b\",\n      \"actionId\": \"write-marker\",\n      \"packetSha256\": \"eab1b55696c1e441a0ee88fb72e46c57bfb90d54b3fcf27cd32623714a2c51d0\",\n      \"authorityKind\": \"manual_handoff\",\n      \"policyEpoch\": 0,\n      \"policyRevision\": 0,\n      \"candidateFingerprint\": \"6d408558371d25308aa300d65d75618399ced35c\",\n      \"validationEvidenceRef\": \"/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/workspace/artifacts/preservation/wtres_fd1726f472d0405787/check-wg5yFE/validation.json\",\n      \"commitSha\": \"98d3706dcf0ad444189f4201adfe03a31f537d89\",\n      \"createdAt\": \"2026-09-16T22:35:11.368Z\",\n      \"replayed\": true,\n      \"preservationState\": \"LOCAL ONLY\",\n      \"pushedRemote\": null,\n      \"pullRequestNumber\": null,\n      \"pullRequestUrl\": null,\n      \"retryAction\": \"Commit 98d3706dcf0a is preserved only on this machine (remote preservation not authorized: Manual Go authorizes local candidate preservation only; remote preservation requires separate authority.). Push branch codex/preservation-fixture and open a draft pull request to make it remote-recoverable.\"\n    }\n  },\n  \"artifacts\": [],\n  \"warnings\": []\n}\n",
+          "stderr": ""
+        }
+      ],
+      "receipt": {
+        "id": "presv_4cf4f3253b394ab099",
+        "requestId": "preserve:wtres_fd1726f472d0405787",
+        "repositoryPath": "/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/repo",
+        "candidateWorktreePath": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-j6XRXh",
+        "branch": "codex/preservation-fixture",
+        "baseBranch": "main",
+        "baseRevision": "8242b487fc59e54912dbe61f4f03d2cd6969841b",
+        "actionId": "write-marker",
+        "packetSha256": "eab1b55696c1e441a0ee88fb72e46c57bfb90d54b3fcf27cd32623714a2c51d0",
+        "authorityKind": "manual_handoff",
+        "policyEpoch": 0,
+        "policyRevision": 0,
+        "candidateFingerprint": "6d408558371d25308aa300d65d75618399ced35c",
+        "validationEvidenceRef": "/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/workspace/artifacts/preservation/wtres_fd1726f472d0405787/check-wg5yFE/validation.json",
+        "commitSha": "98d3706dcf0ad444189f4201adfe03a31f537d89",
+        "createdAt": "2026-09-16T22:35:11.368Z",
+        "replayed": false,
+        "preservationState": "LOCAL ONLY",
+        "pushedRemote": null,
+        "pullRequestNumber": null,
+        "pullRequestUrl": null,
+        "retryAction": "Commit 98d3706dcf0a is preserved only on this machine (remote preservation not authorized: Manual Go authorizes local candidate preservation only; remote preservation requires separate authority.). Push branch codex/preservation-fixture and open a draft pull request to make it remote-recoverable."
+      },
+      "validations": [
+        {
+          "producer": "arcadia-host-seatbelt-v1",
+          "binding": {
+            "reservationId": "wtres_fd1726f472d0405787",
+            "repository": "/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/repo",
+            "worktree": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-j6XRXh",
+            "branch": "codex/preservation-fixture",
+            "baseBranch": "main",
+            "baseRevision": "8242b487fc59e54912dbe61f4f03d2cd6969841b",
+            "projectSlug": "preservation-fixture",
+            "actionId": "write-marker",
+            "actionDefinition": "{\"plan\":\"proof\",\"action\":{\"id\":\"write-marker\",\"title\":\"Write marker\",\"status\":\"open\",\"responsibility\":\"agent\",\"effort\":\"session\",\"nextAction\":\"Write the marker.\",\"expectedArtifact\":\"marker.txt\",\"clarification\":\"clarified\",\"gapType\":null,\"question\":null,\"confidence\":null,\"source\":null,\"milestone\":null,\"dependsOn\":[],\"acceptanceCriteria\":[\"Marker is ready.\"],\"decisions\":[],\"references\":[],\"execution\":null,\"resolvedExecution\":null},\"decisions\":[]}",
+            "commands": [
+              "node check.mjs"
+            ]
+          },
+          "tree": "9022aef86f0fce080e7ecff6d1e2e1bd0d683a6f",
+          "results": [
+            {
+              "command": "node check.mjs",
+              "exitStatus": 1,
+              "signal": null,
+              "error": null,
+              "stdout": "",
+              "stderr": ""
+            }
+          ],
+          "sandboxProfile": "(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-srwgb9/source\") (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-srwgb9/scratch\") (require-all (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/workspace\")) (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/repo\")) (require-not (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-j6XRXh\")))) (allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target self)) (allow file-write* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-srwgb9/scratch\") (literal \"/dev/null\"))",
+          "runtime": "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
+          "node": "v22.23.1",
+          "createdAt": "2026-09-16T22:35:08.537Z"
+        },
+        {
+          "producer": "arcadia-host-seatbelt-v1",
+          "binding": {
+            "reservationId": "wtres_fd1726f472d0405787",
+            "repository": "/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/repo",
+            "worktree": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-j6XRXh",
+            "branch": "codex/preservation-fixture",
+            "baseBranch": "main",
+            "baseRevision": "8242b487fc59e54912dbe61f4f03d2cd6969841b",
+            "projectSlug": "preservation-fixture",
+            "actionId": "write-marker",
+            "actionDefinition": "{\"plan\":\"proof\",\"action\":{\"id\":\"write-marker\",\"title\":\"Write marker\",\"status\":\"open\",\"responsibility\":\"agent\",\"effort\":\"session\",\"nextAction\":\"Write the marker.\",\"expectedArtifact\":\"marker.txt\",\"clarification\":\"clarified\",\"gapType\":null,\"question\":null,\"confidence\":null,\"source\":null,\"milestone\":null,\"dependsOn\":[],\"acceptanceCriteria\":[\"Marker is ready.\"],\"decisions\":[],\"references\":[],\"execution\":null,\"resolvedExecution\":null},\"decisions\":[]}",
+            "commands": [
+              "node check.mjs"
+            ]
+          },
+          "tree": "6d408558371d25308aa300d65d75618399ced35c",
+          "results": [
+            {
+              "command": "node check.mjs",
+              "exitStatus": 0,
+              "signal": null,
+              "error": null,
+              "stdout": "",
+              "stderr": ""
+            }
+          ],
+          "sandboxProfile": "(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-8LcDS7/source\") (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-8LcDS7/scratch\") (require-all (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/workspace\")) (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/repo\")) (require-not (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-j6XRXh\")))) (allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target self)) (allow file-write* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-8LcDS7/scratch\") (literal \"/dev/null\"))",
+          "runtime": "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
+          "node": "v22.23.1",
+          "createdAt": "2026-09-16T22:35:14.397Z"
+        },
+        {
+          "producer": "arcadia-host-seatbelt-v1",
+          "binding": {
+            "reservationId": "wtres_fd1726f472d0405787",
+            "repository": "/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/repo",
+            "worktree": "/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-j6XRXh",
+            "branch": "codex/preservation-fixture",
+            "baseBranch": "main",
+            "baseRevision": "8242b487fc59e54912dbe61f4f03d2cd6969841b",
+            "projectSlug": "preservation-fixture",
+            "actionId": "write-marker",
+            "actionDefinition": "{\"plan\":\"proof\",\"action\":{\"id\":\"write-marker\",\"title\":\"Write marker\",\"status\":\"open\",\"responsibility\":\"agent\",\"effort\":\"session\",\"nextAction\":\"Write the marker.\",\"expectedArtifact\":\"marker.txt\",\"clarification\":\"clarified\",\"gapType\":null,\"question\":null,\"confidence\":null,\"source\":null,\"milestone\":null,\"dependsOn\":[],\"acceptanceCriteria\":[\"Marker is ready.\"],\"decisions\":[],\"references\":[],\"execution\":null,\"resolvedExecution\":null},\"decisions\":[]}",
+            "commands": [
+              "node check.mjs"
+            ]
+          },
+          "tree": "6d408558371d25308aa300d65d75618399ced35c",
+          "results": [
+            {
+              "command": "node check.mjs",
+              "exitStatus": 0,
+              "signal": null,
+              "error": null,
+              "stdout": "",
+              "stderr": ""
+            }
+          ],
+          "sandboxProfile": "(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-dH1I3i/source\") (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-dH1I3i/scratch\") (require-all (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/workspace\")) (require-not (subpath \"/Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/repo\")) (require-not (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-candidate-j6XRXh\")))) (allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target self)) (allow file-write* (subpath \"/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-preservation-dH1I3i/scratch\") (literal \"/dev/null\"))",
+          "runtime": "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
+          "node": "v22.23.1",
+          "createdAt": "2026-09-16T22:35:11.116Z"
+        }
+      ],
+      "workerOutput": "2026-09-16T22:35:05.977Z Worker started (PID: 18956, workspace: /Users/pmark/.local/share/arcadia/preservation-proof-manual-fUtTzQ/workspace)\n"
+    }
+  }
 }

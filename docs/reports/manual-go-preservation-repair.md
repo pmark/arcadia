@@ -1,5 +1,21 @@
 # Manual Go preservation repair candidate
 
+## Addendum, 2026-09-16 — native host validation no longer outstanding
+
+The correction's native host validation, outstanding when this report was
+written, now passes on the host at source revision `ac6ee692`.
+`ARCADIA_PRESERVATION_HOST_TEST=1 pnpm exec vitest run tests/manual-preservation.test.ts tests/preservation-validation.test.ts`
+passed 19 tests with no skips, and
+`mise exec -- node --import tsx scripts/prove-protected-preservation.ts`
+proved the manual `go` handoff end to end through the installed Codex
+`arcadia-unattended` sandbox: no Session, one LOCAL ONLY commit whose tree
+equals the validated snapshot, a replay returning that same commit, and the
+fixture Action and pointer unchanged. See
+`docs/reports/protected-preservation-qa.md` and
+`docs/reports/protected-preservation-fixture.json` for the recorded commands
+and receipts. This addendum changes no governed state; the repair it describes
+is already merged.
+
 ## Bootstrap update, 2026-09-13
 
 The operator installed dependency correction
