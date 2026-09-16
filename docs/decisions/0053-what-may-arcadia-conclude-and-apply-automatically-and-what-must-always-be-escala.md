@@ -4,7 +4,7 @@ type: decision
 id: "0053"
 slug: what-may-arcadia-conclude-and-apply-automatically-and-what-must-always-be-escala
 project: arcadia
-status: open
+status: approved
 question: What may Arcadia conclude and apply automatically, and what must always be escalated to the operator?
 gap_type: missing-decision
 recommendation: Auto-apply obvious, escalate judgment
@@ -21,6 +21,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-09-16
+answer: Auto-apply obvious, escalate judgment
+decided: 2026-09-16
 ---
 
 # Decision 0053: What may Arcadia conclude and apply automatically, and what must always be escalated to the operator?
