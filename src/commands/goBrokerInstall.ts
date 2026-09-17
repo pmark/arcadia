@@ -20,6 +20,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
+import type { GoBrokerAgent } from "../goBroker.js";
 import {
   configureGoBrokerAgents,
   inspectGoBrokerAgentSetup,
@@ -30,7 +31,10 @@ import type { BrokerExecutables, ProviderExecutables } from "../agentSetup/goBro
 import { runWorktreeRuntimeProbe, type WorktreeRuntimeProbeResult } from "../sessions/worktreeRuntimeProbe.js";
 
 import { agentGoTransportReady, preservationTransportReady } from "../sessions/preservationTransport.js";
+import { SESSION_AGENTS } from "../sessions/index.js";
 import { requireResolvedWorkspace } from "../workspace/resolve.js";
+
+const BROKER_AGENTS = SESSION_AGENTS as readonly (keyof ProviderExecutables)[];
 
 const INSTALL_SCHEMA = "arcadia-go-broker-install-v1";
 
@@ -70,12 +74,15 @@ export function permissionSnippets(
   executables: GoBrokerInstallData["executables"]
 ): Pick<GoBrokerInstallData, "codexRules" | "claudePermissions"> {
   return {
-    // Both fixed provider go launchers submit bounded host-worker requests.
-    // Neither executable grants direct reconciliation to its caller.
-    codexRules: agentCallableExecutables(executables).map(
-      (providers) => `prefix_rule(pattern=[${JSON.stringify(providers.codex)}], decision="allow")`
+    // Every fixed provider go launcher submits a bounded host-worker request.
+    // None grants direct reconciliation to its caller, so a Codex or Claude
+    // session may request handoff to any provider, including opencode.
+    codexRules: agentCallableExecutables(executables).flatMap((providers) =>
+      BROKER_AGENTS.map((agent) => `prefix_rule(pattern=[${JSON.stringify(providers[agent])}], decision="allow")`)
     ),
-    claudePermissions: agentCallableExecutables(executables).map((providers) => `Bash(${providers.claude})`)
+    claudePermissions: agentCallableExecutables(executables).flatMap((providers) =>
+      BROKER_AGENTS.map((agent) => `Bash(${providers[agent]})`)
+    )
   };
 }
 
@@ -133,7 +140,7 @@ export function runGoBrokerInstallCommand(
         ["advance", "arcadia-advance-broker"],
         ["work-monitor", "arcadia-work-monitor-broker"]
       ] as const) {
-        for (const agent of ["codex", "claude"] as const) {
+        for (const agent of BROKER_AGENTS) {
           const launcher = path.join(stagedRelease, `${launcherBase}-${agent}`);
         writeFileSync(
           launcher,
@@ -161,7 +168,7 @@ export function runGoBrokerInstallCommand(
 
   for (const [operation, providers] of Object.entries(executables) as Array<[keyof BrokerExecutables, ProviderExecutables]>) {
     const launcherBase = launcherBaseForOperation(operation);
-    for (const agent of ["codex", "claude"] as const) {
+    for (const agent of BROKER_AGENTS) {
       safelyUpdateLink(providers[agent], path.join(releaseDirectory, `${launcherBase}-${agent}`), brokerRoot);
     }
   }
@@ -204,6 +211,7 @@ export function renderGoBrokerInstallSuccess(response: CommandSuccess<GoBrokerIn
     `Installed protected broker revision ${response.data.revision}.`,
     `Codex go executable: ${response.data.executables.go.codex}`,
     `Claude Code go executable: ${response.data.executables.go.claude}`,
+    `opencode go executable: ${response.data.executables.go.opencode}`,
     `Codex preserve executable: ${response.data.executables.preserve.codex}`,
     `Codex advance executable: ${response.data.executables.advance.codex}`,
     `Codex work-monitor executable: ${response.data.executables.workMonitor.codex}`,
@@ -322,7 +330,7 @@ function validateExistingRelease(releaseDirectory: string, revision: string): vo
   const manifestPath = path.join(releaseDirectory, "broker-manifest.json");
   const schemaPath = path.join(releaseDirectory, "dist", "database", "schema.sql");
   const executablePaths = ["arcadia-go-broker", "arcadia-preserve-broker", "arcadia-advance-broker", "arcadia-work-monitor-broker"].flatMap((launcherBase) =>
-    ["codex", "claude"].map((agent) => path.join(releaseDirectory, `${launcherBase}-${agent}`))
+    BROKER_AGENTS.map((agent) => path.join(releaseDirectory, `${launcherBase}-${agent}`))
   );
   if (!existsSync(manifestPath) || !existsSync(schemaPath) || executablePaths.some((candidate) => !existsSync(candidate))) {
     throw validationError("The existing protected broker release is incomplete.", { releaseDirectory });
@@ -456,7 +464,7 @@ function inspectInstalledBroker(executables: BrokerExecutables): {
 } {
   const issues: string[] = [];
   const targets = (Object.entries(executables) as Array<[keyof BrokerExecutables, ProviderExecutables]>).flatMap(([operation, providers]) =>
-    (Object.entries(providers) as Array<["codex" | "claude", string]>).map(([agent, executable]) => {
+    (Object.entries(providers) as Array<[keyof ProviderExecutables, string]>).map(([agent, executable]) => {
     try {
       const stat = lstatSync(executable);
       if (!stat.isSymbolicLink()) {
@@ -507,10 +515,9 @@ function inspectInstalledBroker(executables: BrokerExecutables): {
 }
 
 function providerExecutables(binDirectory: string, launcherBase: string): ProviderExecutables {
-  return {
-    codex: path.join(binDirectory, `${launcherBase}-codex`),
-    claude: path.join(binDirectory, `${launcherBase}-claude`)
-  };
+  return Object.fromEntries(
+    BROKER_AGENTS.map((agent) => [agent, path.join(binDirectory, `${launcherBase}-${agent}`)])
+  ) as unknown as ProviderExecutables;
 }
 
 function launcherBaseForOperation(operation: keyof BrokerExecutables): string {
@@ -523,6 +530,6 @@ function launcherBaseForOperation(operation: keyof BrokerExecutables): string {
 }
 
 /** The exact no-argument launcher, also exercised by the disposable boundary proof. */
-export function renderGoBrokerLauncher(entrypoint: string, agent: "codex" | "claude", operation: "go" | "preserve" | "advance" | "work-monitor"): string {
+export function renderGoBrokerLauncher(entrypoint: string, agent: GoBrokerAgent, operation: "go" | "preserve" | "advance" | "work-monitor"): string {
   return `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(entrypoint)} ${agent} ${operation} "$@"\n`;
 }

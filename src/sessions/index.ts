@@ -70,6 +70,16 @@ const SESSION_PROVIDER: Record<SessionAgent, string> = {
 };
 
 /**
+ * Every Session agent, in registry order. Surfaces that must enumerate
+ * providers — launcher rendering, installer links, launch-command maps — read
+ * this instead of restating the union, so adding an agent here can never leave
+ * one of them silently supporting only the providers it happened to name.
+ */
+export const SESSION_AGENTS: readonly SessionAgent[] = Object.freeze(
+  Object.keys(SESSION_PROVIDER) as SessionAgent[]
+);
+
+/**
  * The single provider-to-agent map, derived from `SESSION_PROVIDER` so the two
  * can never drift. `launchGuardedHostSession` and `prepareSession` both resolve
  * through here, so a provider can never be launchable without a matching

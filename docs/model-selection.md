@@ -29,6 +29,12 @@ docs) rather than trusting a name typed from memory. `go.ts`'s
 reaching `--model` unvalidated is a real failure mode, not a hypothetical one;
 treat any Codex-side pin the same way before it reaches a launch command.
 
+The opencode side (`--agent opencode`, for `arcadia go` and the protected
+broker) has no free-form pin to confirm: it launches the same bundled
+`opencode-go/deepseek-v4.1-flash` binding the managed-production path pins,
+with the Action's effort mapped to opencode's `--variant` dial through
+`opencodeVariant`.
+
 **Managed-production provider pins.** The standing production path does not
 pick a model per Action from `recommended_model`; it launches the provider
 binding the immutable build packet recorded, and that binding's model is pinned

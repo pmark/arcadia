@@ -4,9 +4,11 @@ import type { CommandSuccess } from "./cli/response.js";
 import { runAdvanceCommand, type AdvanceCommandData } from "./commands/advance.js";
 import { runGoCommand, type GoCommandData, type GoCommandOptions } from "./commands/go.js";
 import { runWorkMonitorCommand, type WorkMonitorCommandData } from "./commands/workMonitor.js";
+import { SESSION_AGENTS, type SessionAgent } from "./sessions/index.js";
 import { requireResolvedWorkspace } from "./workspace/resolve.js";
 
-export type GoBrokerAgent = "codex" | "claude";
+/** The protected broker carries the same agent union the Session registry does. */
+export type GoBrokerAgent = SessionAgent;
 export type ProtectedBrokerOperation = "go" | "preserve" | "advance" | "work-monitor";
 
 /** Operations that write shared Git metadata and must never run in the agent sandbox. */
@@ -51,14 +53,14 @@ export function parseGoBrokerArguments(argv: string[], source = process.cwd()): 
   }
 
   const [agent, operation] = argv;
-  if (agent !== "codex" && agent !== "claude") {
+  if (!SESSION_AGENTS.includes(agent as SessionAgent)) {
     throw validationError("The installed broker launcher has an invalid fixed agent.", { agent });
   }
   if (operation !== "go" && operation !== "preserve" && operation !== "advance" && operation !== "work-monitor") {
     throw validationError("The installed broker launcher has an invalid fixed operation.", { operation });
   }
 
-  return { source: path.resolve(source), agent, operation };
+  return { source: path.resolve(source), agent: agent as SessionAgent, operation };
 }
 
 /**

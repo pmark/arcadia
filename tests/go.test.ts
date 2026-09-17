@@ -142,6 +142,31 @@ describe("arcadia go", () => {
     expect(git(result.data.nextWorktree!.path, ["merge-base", "--is-ancestor", "main", "HEAD"])).toBe("");
   });
 
+  it("prepares an opencode worktree on the opencode branch with the pinned model and variant", () => {
+    const fixture = createFixture("codex/prepare-opencode");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    const agentRoot = path.join(fixture.root, "agent-worktrees");
+
+    const result = runGoCommand({
+      repo: fixture.main,
+      source: fixture.feature,
+      apply: true,
+      agent: "opencode",
+      workspace: fixture.workspace,
+      model: "opencode-go/deepseek-v4.1-flash",
+      effort: "high",
+      agentWorktreeRoot: agentRoot,
+      now: new Date("2026-08-05T12:34:56.000Z")
+    });
+
+    expect(result.data.nextWorktree?.agent).toBe("opencode");
+    expect(result.data.nextWorktree?.branch).toBe("opencode/define-contract-20260805T123456000Z");
+    expect(result.data.nextWorktree?.command).toContain(
+      'opencode run --model "opencode-go/deepseek-v4.1-flash" --variant "high" "arcadia advance"'
+    );
+    expect(existsSync(result.data.nextWorktree!.path)).toBe(true);
+  });
+
   it("keeps the zero-commit handoff when tidy --apply runs immediately after go --apply", () => {
     const fixture = createFixture("codex/prepare-then-tidy");
     commitFeature(fixture.feature, "proof.txt", "proof\n");

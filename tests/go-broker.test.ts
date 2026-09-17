@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
-import { permissionSnippets, stageGoBrokerDatabaseSchema, stageGoBrokerDependencies } from "../src/commands/goBrokerInstall.js";
+import { permissionSnippets, renderGoBrokerLauncher, stageGoBrokerDatabaseSchema, stageGoBrokerDependencies } from "../src/commands/goBrokerInstall.js";
 import { assertGoBrokerHostController, parseGoBrokerArguments, runGoBroker } from "../src/goBroker.js";
 import * as broker from "../src/goBroker.js";
 
@@ -15,6 +15,7 @@ describe("protected Arcadia go broker", () => {
       operation: "go"
     });
     expect(parseGoBrokerArguments(["claude", "advance"], "/tmp/finished").agent).toBe("claude");
+    expect(parseGoBrokerArguments(["opencode", "go"], "/tmp/finished").agent).toBe("opencode");
   });
 
   it.each([
@@ -176,35 +177,56 @@ describe("protected Arcadia go broker", () => {
   });
 
   it("allows fixed request and prepared-worktree brokers", () => {
+    const bin = "/Users/operator/.local/bin";
     const executables = {
-      preserve: { codex: "/Users/operator/.local/bin/arcadia-preserve-broker-codex", claude: "/Users/operator/.local/bin/arcadia-preserve-broker-claude" },
+      preserve: {
+        codex: `${bin}/arcadia-preserve-broker-codex`,
+        claude: `${bin}/arcadia-preserve-broker-claude`,
+        opencode: `${bin}/arcadia-preserve-broker-opencode`
+      },
       go: {
-        codex: "/Users/operator/.local/bin/arcadia-go-broker-codex",
-        claude: "/Users/operator/.local/bin/arcadia-go-broker-claude"
+        codex: `${bin}/arcadia-go-broker-codex`,
+        claude: `${bin}/arcadia-go-broker-claude`,
+        opencode: `${bin}/arcadia-go-broker-opencode`
       },
       advance: {
-        codex: "/Users/operator/.local/bin/arcadia-advance-broker-codex",
-        claude: "/Users/operator/.local/bin/arcadia-advance-broker-claude"
+        codex: `${bin}/arcadia-advance-broker-codex`,
+        claude: `${bin}/arcadia-advance-broker-claude`,
+        opencode: `${bin}/arcadia-advance-broker-opencode`
       },
       workMonitor: {
-        codex: "/Users/operator/.local/bin/arcadia-work-monitor-broker-codex",
-        claude: "/Users/operator/.local/bin/arcadia-work-monitor-broker-claude"
+        codex: `${bin}/arcadia-work-monitor-broker-codex`,
+        claude: `${bin}/arcadia-work-monitor-broker-claude`,
+        opencode: `${bin}/arcadia-work-monitor-broker-opencode`
       }
     };
+    // Every fixed request launcher is request-only, so each of the three is
+    // granted to Codex rules and the Claude allowlist alike.
+    const launchers = ["go", "advance", "preserve", "work-monitor"].map(
+      (operation) => `${bin}/arcadia-${operation}-broker`
+    );
     expect(permissionSnippets(executables)).toEqual({
-      codexRules: [
-        'prefix_rule(pattern=["/Users/operator/.local/bin/arcadia-go-broker-codex"], decision="allow")',
-        'prefix_rule(pattern=["/Users/operator/.local/bin/arcadia-advance-broker-codex"], decision="allow")',
-        'prefix_rule(pattern=["/Users/operator/.local/bin/arcadia-preserve-broker-codex"], decision="allow")',
-        'prefix_rule(pattern=["/Users/operator/.local/bin/arcadia-work-monitor-broker-codex"], decision="allow")'
-      ],
-      claudePermissions: [
-        "Bash(/Users/operator/.local/bin/arcadia-go-broker-claude)",
-        "Bash(/Users/operator/.local/bin/arcadia-advance-broker-claude)",
-        "Bash(/Users/operator/.local/bin/arcadia-preserve-broker-claude)",
-        "Bash(/Users/operator/.local/bin/arcadia-work-monitor-broker-claude)"
-      ]
+      codexRules: launchers.flatMap((launcher) =>
+        ["codex", "claude", "opencode"].map(
+          (agent) => `prefix_rule(pattern=["${launcher}-${agent}"], decision="allow")`
+        )
+      ),
+      claudePermissions: launchers.flatMap((launcher) =>
+        ["codex", "claude", "opencode"].map((agent) => `Bash(${launcher}-${agent})`)
+      )
     });
+  });
+
+  it("renders the opencode launcher exactly like the Codex and Claude launchers", () => {
+    const codex = renderGoBrokerLauncher("/release/arcadia-go-broker.js", "codex", "go");
+    const claude = renderGoBrokerLauncher("/release/arcadia-go-broker.js", "claude", "go");
+    const opencode = renderGoBrokerLauncher("/release/arcadia-go-broker.js", "opencode", "go");
+
+    expect(opencode).toBe(codex.replace("codex go", "opencode go"));
+    expect(opencode).toContain('opencode go "$@"');
+    // The fixed agent and operation are the only argument the launcher carries.
+    expect(opencode.split("\n")[1]).toContain("/release/arcadia-go-broker.js");
+    expect(claude).toContain('claude go "$@"');
   });
 
   it("stages the database schema needed when the broker runs outside Arcadia", () => {

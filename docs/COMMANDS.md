@@ -1434,14 +1434,15 @@ pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree
 pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree --agent codex --apply
 pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree --agent claude --apply
 pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree --agent claude --apply --model claude-opus-5 --effort high
+pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree --agent opencode --apply --model opencode-go/deepseek-v4.1-flash --effort high
 pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree --json
 ```
 
 The first command is a deterministic preview. `--apply` is accepted only when:
 
 - the source and any checked-out base worktree are clean;
-- the source has a named agent-owned branch (`codex/`, `claude/`, `agent/`, or
-  Claude Code's `worktree-` prefix);
+- the source has a named agent-owned branch (`codex/`, `claude/`, `opencode/`,
+  `agent/`, or Claude Code's `worktree-` prefix);
 - either the local base branch is an ancestor of the source, so integration is
   a strict fast-forward, or the source is already integrated: it is an
   ancestor of the base, or `git cherry <base> <source>` finds no source-only
@@ -1465,7 +1466,7 @@ metadata, rechecks dispatch, and reports the base ref plus the `arcadia
 advance` handoff. Cleanup never pushes, deletes, or otherwise mutates a remote
 ref; a stale source tracking ref cannot veto local retirement after the local
 proof succeeds. With
-`--agent codex` or `--agent claude`, it also creates a uniquely named isolated
+`--agent codex`, `--agent claude`, or `--agent opencode`, it also creates a uniquely named isolated
 worktree from that updated local base and prints an exact launch command,
 pinned to a model: `--model` on the command line, else the plan's
 `recommended_model` (and optional `recommended_reasoning_effort`), read from
@@ -1481,8 +1482,8 @@ This command intentionally evaluates only the named source worktree. Other
 worktrees remain untouched. Unsafe source state is a refusal with an exact
 remedy, not permission to clean it automatically.
 
-Install the protected broker used by unattended Codex and Claude Code
-`arcadia-go` skills:
+Install the protected broker used by unattended Codex, Claude Code, and
+opencode `arcadia-go` skills:
 
 ```sh
 pnpm arcadia go-broker install
@@ -1511,12 +1512,16 @@ exposes only this contract:
 ```sh
 ~/.local/bin/arcadia-go-broker-codex
 # Claude Code uses: ~/.local/bin/arcadia-go-broker-claude
+# opencode uses: ~/.local/bin/arcadia-go-broker-opencode
 ~/.local/bin/arcadia-advance-broker-codex
 # Claude Code uses: ~/.local/bin/arcadia-advance-broker-claude
+# opencode uses: ~/.local/bin/arcadia-advance-broker-opencode
 ~/.local/bin/arcadia-work-monitor-broker-codex
 # Claude Code uses: ~/.local/bin/arcadia-work-monitor-broker-claude
+# opencode uses: ~/.local/bin/arcadia-work-monitor-broker-opencode
 ~/.local/bin/arcadia-preserve-broker-codex
 # Claude Code uses: ~/.local/bin/arcadia-preserve-broker-claude
+# opencode uses: ~/.local/bin/arcadia-preserve-broker-opencode
 ```
 
 Run the matching `go` executable with no arguments from the completed worktree.
@@ -1542,10 +1547,10 @@ Check `data.agentGoTransport.ready` before an agent `go` request. It requires
 a fresh heartbeat from a worker that supports `go`; an older preservation-only
 worker is unavailable for this operation even when its heartbeat is fresh.
 
-`status` verifies that all six launchers resolve to one valid protected release,
+`status` verifies that every launcher resolves to one valid protected release,
 the default Codex config and every present named `*.config.toml` profile have
-safe approval/sandbox settings and both standard worktree roots, only the
-dedicated Codex rule grants only the prepared-worktree brokers, the installed skill matches Arcadia's
+safe approval/sandbox settings and all three provider worktree roots, the
+dedicated Codex rule grants every fixed request launcher, the installed skill matches Arcadia's
 current template, Claude resolves that same skill, its exact provider
 permission exists, no legacy broad permission remains, and Claude's sandbox is
 enabled fail-closed with bypass mode disabled. It exits nonzero with
