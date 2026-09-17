@@ -1055,7 +1055,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/272", "https://github.com/pmark/arcadia/issues/273", "src/sessions/preservationTransport.ts", "src/sessions/candidatePreservation.ts", "src/sessions/reconciliation.ts", "src/production/tick.ts", "docs/plans/mission-control-view/17-managed-production-contract.md", "docs/working-copy-safety.md"]
 questions: []
 decisions: []
-current_action: clean-up-preserve-transport-request
+current_action: deliver-session-brief
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
