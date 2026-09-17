@@ -1012,9 +1012,51 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/267", "https://github.com/pmark/arcadia/issues/268", "src/docs/sync.ts", "src/ask/settlement.ts", "docs/decisions/"]
+  - id: deliver-session-brief
+    title: A managed-production Session is launched with an actionable Action brief instead of session metadata, so an unattended Session knows its task, its constraints and how to finish.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Deliver the Action brief to every managed-production Session launch so an unattended Session knows its task, its constraints and how to finish.
+    expected_artifact: Evidence satisfying Agent Ask deliver-session-brief
+    clarification: clarified
+    confidence: high
+    source: Agent Ask amend-first-real-unattended-run-actions-2026-09-17
+    acceptance_criteria:
+      - "The managed launch delivers the Action brief to the spawned agent for every configured provider: the Action title and next_action, every acceptance criterion verbatim and in the plan's own order, the candidate worktree path, and the standing constraints (no merge, deploy, publish, push to shared branches, or pointer edits)."
+      - "The brief states the exact completion protocol: run the repository's declared validation, request protected preservation through the existing fixed launcher, and settle a `complete` Agent Ask with candidate_revision equal to the worktree HEAD and one `met` evidence entry per criterion, verbatim and in order."
+      - The brief is derived from the authoritative plan document for the Session's recorded plan_slug and action_id rather than a hardcoded or stale copy; a missing Action or missing acceptance criteria fails closed with a named error before launch.
+      - Deterministic tests cover the rendered brief for an Action carrying criteria and the fail-closed case for a missing Action, and existing provider argument construction (model, effort/variant, worktree cwd, agent Git identity) is unchanged.
+      - pnpm test and the core, Discord and Dashboard builds pass; no new approval, capacity or paid-fallback authority is introduced.
+      - "The Blocker recorded at docs/reports/planning-agent-route-review-2.md:427-437 is resolved and the PR closes GitHub Issue #292 when it merges."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/292", "src/sessions/index.ts", "src/commands/advance.ts", "src/docs/types.ts", "docs/reports/planning-agent-route-review-2.md"]
+  - id: preserve-on-exit-and-integrate
+    title: A finished managed-production Session's candidate is preserved and, under an explicit standing grant, integrated into the governed base branch automatically, so the next dependent Action launches with no operator merge between them.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Preserve a finished managed-production Session's candidate on terminal exit and, only under the authority recorded by Decision 0058, integrate it into the governed base branch so the next dependent Action launches with no operator merge.
+    expected_artifact: Evidence satisfying Agent Ask preserve-on-exit-and-integrate
+    clarification: clarified
+    confidence: high
+    source: Agent Ask amend-first-real-unattended-run-actions-2026-09-17
+    acceptance_criteria:
+      - When a managed-production Session reaches a terminal process state, the host preserves that Session's candidate through the existing candidate-preservation machinery (runPreserveCommand / preserveCandidate) without requiring the agent to have requested preservation while alive; a candidate already preserved is never re-committed.
+      - The host validates the candidate with the Project's declared objective validation_commands run host-side where dependencies are available, refuses to preserve on a failed, skipped or absent check, and preserves all candidate files on refusal.
+      - Candidate integration happens only under the explicit authority recorded by Decision 0058, never inferred from this Action's acceptance criteria or from a standing production grant that delegates only validation, acceptance and pointer transitions. Before integrating, the mechanism verifies the grant is unexpired and names this Project, Plan, Action, agent-owned branch and governed base branch.
+      - Absent a valid grant the mechanism stops after preservation and reports the exact operator merge command; merge, deploy, publish, spend, credentials, messaging and destructive operations remain separate gates.
+      - Integration is a fast-forward or clean merge of the grant's own agent-owned branch into the governed base branch; a conflict, a non-agent-owned branch, a divergent base, or a candidate outside the grant scope stops integration, reports the exact blocker, and preserves all work.
+      - After integration the Action advances through the existing canonical completion and pointer writers, and the worker admits the next eligible Action with no operator command in between; repeated, concurrent or interrupted reconciliation is idempotent and never duplicates a commit, completion, Decision or pointer move.
+      - A deterministic fixture proves terminal-session detection, host-side validation, preservation, integration and admission of the next Action, plus refused-integration cases (a conflict, an expired or absent grant, and an out-of-scope candidate) that preserve all work, and an already-preserved candidate that is not duplicated.
+      - pnpm test and the core, Discord and Dashboard builds pass, and the PR states the exact operator procedure, target and recovery command or why no runnable surface exists.
+    depends_on: [deliver-session-brief]
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/272", "https://github.com/pmark/arcadia/issues/273", "docs/decisions/0058-should-the-standing-managed-production-authorization-delegate-a-bounded.md", "src/sessions/preservationTransport.ts", "src/sessions/candidatePreservation.ts", "src/sessions/reconciliation.ts", "src/production/tick.ts", "src/production/policy.ts", "docs/plans/mission-control-view/17-managed-production-contract.md", "docs/working-copy-safety.md"]
 questions: []
 decisions: []
-current_action: clean-up-preserve-transport-request
+current_action: deliver-session-brief
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
