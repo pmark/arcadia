@@ -11,11 +11,13 @@ import { runPreserveCommand } from "../commands/preserve.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { requireResolvedWorkspace } from "../workspace/resolve.js";
 import { PRESERVATION_REQUEST_FILE } from "./candidateSnapshot.js";
-import type { AgentSession } from "./index.js";
+import { SESSION_AGENTS, type AgentSession, type SessionAgent } from "./index.js";
 
 const HEARTBEAT = ".arcadia/preservation.heartbeat";
 const runningGoSources = new Set<string>();
 const NONCE = /^[a-f0-9-]{36}$/;
+/** How long a published route projection is trusted before it is stale. */
+const TRANSPORT_FRESHNESS_MS = 15_000;
 const responsePath = (workspace: string, session: string, nonce: string) =>
   path.join(workspace, "artifacts", "preservation", session, `${nonce}.json`);
 const goResponsePath = (workspace: string, nonce: string) =>
@@ -28,6 +30,13 @@ interface TransportHeartbeat {
   repositories?: Array<{ path: string; projectSlug: string }>;
   handoffs?: Array<{ id: string; worktree: string }>;
   goRequests?: boolean;
+  /**
+   * When `processPreservationRequests` last actually ran its go route. Unlike
+   * `at`, this is never re-stamped by `refreshPreservationHeartbeat`, so a
+   * worker that is merely alive — its tick stuck in managed production — cannot
+   * claim go serviceability it is not delivering.
+   */
+  goRequestsAt?: number;
 }
 
 type PreservationHeartbeatRoutes = Omit<TransportHeartbeat, "schema" | "at">;
@@ -64,7 +73,7 @@ export function refreshPreservationHeartbeat(workspace: string, at = Date.now())
 export function preservationTransportReady(workspace: string): boolean {
   try {
     const value = JSON.parse(readFileSync(path.join(workspace, HEARTBEAT), "utf8"));
-    return value.schema === "arcadia-preservation-transport-v1" && Date.now() - value.at >= 0 && Date.now() - value.at < 15_000;
+    return value.schema === "arcadia-preservation-transport-v1" && Date.now() - value.at >= 0 && Date.now() - value.at < TRANSPORT_FRESHNESS_MS;
   } catch { return false; }
 }
 
@@ -72,9 +81,41 @@ function readHeartbeat(workspace: string): TransportHeartbeat {
   return JSON.parse(readFileSync(path.join(workspace, HEARTBEAT), "utf8")) as TransportHeartbeat;
 }
 
+/**
+ * How the agent go transport can currently be used:
+ *
+ * - `ready` — the worker has run the go route within the freshness window.
+ * - `busy` — a go-capable worker is alive (fresh heartbeat) but has not run the
+ *   go route recently. It may be mid-tick; it is not the same as a missing or
+ *   outdated worker, so an operator should retry shortly rather than restart it.
+ * - `unavailable` — no fresh heartbeat, or a heartbeat from a worker that does
+ *   not advertise go support at all (an older preservation-only worker).
+ */
+export type AgentGoTransportState = "ready" | "busy" | "unavailable";
+
+/**
+ * Readiness is liveness of the go route, not of the worker process. The
+ * heartbeat's `at` is deliberately re-stamped off-tick to keep preservation
+ * usable during a long synchronous tick; if go readiness trusted that stamp it
+ * would keep reporting READY while the stuck tick never services a request. So
+ * `ready` requires `goRequestsAt`, written only by the pass that actually runs
+ * the go route, to be within the same freshness window. A fresh heartbeat with a
+ * stale `goRequestsAt` is `busy`, not `ready`.
+ */
+export function agentGoTransportState(workspace: string): AgentGoTransportState {
+  let heartbeat: TransportHeartbeat;
+  try {
+    if (!preservationTransportReady(workspace)) return "unavailable";
+    heartbeat = readHeartbeat(workspace);
+  } catch { return "unavailable"; }
+  if (heartbeat.goRequests !== true || typeof heartbeat.goRequestsAt !== "number") return "unavailable";
+  const age = Date.now() - heartbeat.goRequestsAt;
+  return age >= 0 && age < TRANSPORT_FRESHNESS_MS ? "ready" : "busy";
+}
+
+/** Strict readiness for status: true only when the go route is genuinely fresh. */
 export function agentGoTransportReady(workspace: string): boolean {
-  try { return preservationTransportReady(workspace) && readHeartbeat(workspace).goRequests === true; }
-  catch { return false; }
+  return agentGoTransportState(workspace) === "ready";
 }
 
 /** The sandbox can request only preservation of its registered cwd. No commands,
@@ -114,7 +155,13 @@ export async function requestCandidatePreservation(source: string) {
 export async function requestAgentGo(source: string, agent: GoBrokerAgent) {
   const workspace = requireResolvedWorkspace({ cwd: source });
   const current = realpathSync(source);
-  if (!agentGoTransportReady(workspace)) throw validationError("Protected Arcadia go request path is unavailable. Start the updated Arcadia worker on the host before requesting go.");
+  // Refuse only when no go-capable worker is there to consume the request. A
+  // `busy` worker is alive and will run the go route at its next iteration —
+  // possibly mid-tick now — so submit and let the response budget decide rather
+  // than converting a healthy worker's slow tick into an instant refusal.
+  if (agentGoTransportState(workspace) === "unavailable") {
+    throw validationError("Protected Arcadia go request path is unavailable. Start the updated Arcadia worker on the host before requesting go.");
+  }
   const routes = readHeartbeat(workspace);
   const route = routes.sessions.find(s => s.worktree === current)
     ?? routes.handoffs?.find(s => s.worktree === current)
@@ -176,14 +223,16 @@ export function processPreservationRequests(db: Database.Database, workspace: st
   const handoffs = (db.prepare("SELECT id, repository_path, worktree_path FROM agent_worktree_reservations WHERE expires_at > ?")
     .all(new Date().toISOString()) as Array<{ id: string; repository_path: string; worktree_path: string }>)
     .filter(h => repositories.some(r => r.path === h.repository_path) && !leases.some(s => s.worktree_path === h.worktree_path));
+  const at = Date.now();
   const routes: PreservationHeartbeatRoutes = {
     sessions: leases.map(s => ({ id: s.id, worktree: s.worktree_path })),
     repositories,
     handoffs: handoffs.map(h => ({ id: h.id, worktree: h.worktree_path })),
-    goRequests: true
+    goRequests: true,
+    goRequestsAt: at
   };
   latestPreservationRoutes.set(workspace, routes);
-  writePreservationHeartbeat(workspace, routes, Date.now());
+  writePreservationHeartbeat(workspace, routes, at);
   for (const repository of repositories) processGoRequest({ workspace, source: repository.path });
   for (const lease of [...leases, ...handoffs]) {
     processGoRequest({ workspace, source: lease.worktree_path });
@@ -242,7 +291,11 @@ function readGoRequest(request: string): { nonce: string; agent: GoBrokerAgent }
       if (length > 160) return;
       const value = JSON.parse(bytes.subarray(0, length).toString("utf8"));
       if (Object.keys(value).sort().join() !== "agent,nonce" || !NONCE.test(value.nonce)) return;
-      if (value.agent !== "codex" && value.agent !== "claude") return;
+      // Read every Session agent rather than naming codex and claude: the fixed
+      // launchers and the caller's own cleanup both use this reader, so a
+      // hardcoded pair silently stranded every opencode request — it was never
+      // serviced and the caller's timeout could not recognise it to remove it.
+      if (!SESSION_AGENTS.includes(value.agent as SessionAgent)) return;
       return { nonce: value.nonce, agent: value.agent };
     } finally { closeSync(fd); }
   } catch { return; }

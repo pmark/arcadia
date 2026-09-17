@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ projects: vi.fn(), metadata: vi.fn() }));
 vi.mock("../src/db/repositories.js", () => ({ listProjects: mocks.projects, getProjectMetadata: mocks.metadata }));
 vi.mock("../src/commands/preserve.js", () => ({ runPreserveCommand: vi.fn() }));
-import { agentGoTransportReady, processPreservationRequests, refreshPreservationHeartbeat } from "../src/sessions/preservationTransport.js";
+import { agentGoTransportReady, preservationTransportReady, processPreservationRequests, refreshPreservationHeartbeat } from "../src/sessions/preservationTransport.js";
 
 describe("preservation transport heartbeat freshness", () => {
   let root: string;
@@ -37,20 +37,30 @@ describe("preservation transport heartbeat freshness", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it("re-stamps the same routes with a fresh at across a simulated multi-minute tick", () => {
+  it("re-stamps a fresh at for preservation while go serviceability ages out across a stuck tick", () => {
     processPreservationRequests(db, workspace);
     const published = JSON.parse(readFileSync(heartbeatPath(), "utf8"));
     expect(published.schema).toBe("arcadia-preservation-transport-v1");
+    expect(preservationTransportReady(workspace)).toBe(true);
+    expect(agentGoTransportReady(workspace)).toBe(true);
+
+    // One short gap: no route has changed and the last go pass is still within
+    // the freshness window, so serviceability is still trustworthy.
+    vi.setSystemTime(new Date(Date.now() + 5_000));
+    expect(refreshPreservationHeartbeat(workspace)).toBe(true);
+    expect(preservationTransportReady(workspace)).toBe(true);
     expect(agentGoTransportReady(workspace)).toBe(true);
 
     // The tick blocks the event loop for minutes, so the worker's 5s loop
     // cannot fire mid-tick; its re-stamp is driven explicitly and must keep the
-    // transport READY without letting any route change while the tick runs.
+    // preservation transport READY. Go is different: no pass actually ran the
+    // go route, so a merely fresh heartbeat must not keep reporting it ready.
     for (let elapsed = 0; elapsed < 180_000; elapsed += 5_000) {
       vi.setSystemTime(new Date(Date.now() + 5_000));
       expect(refreshPreservationHeartbeat(workspace)).toBe(true);
-      expect(agentGoTransportReady(workspace)).toBe(true);
+      expect(preservationTransportReady(workspace)).toBe(true);
     }
+    expect(agentGoTransportReady(workspace)).toBe(false);
 
     expect(JSON.parse(readFileSync(heartbeatPath(), "utf8"))).toEqual({ ...published, at: Date.now() });
   });

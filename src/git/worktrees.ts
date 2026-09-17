@@ -181,6 +181,32 @@ export function tryGit(cwd: string, args: string[]): string | null {
 }
 
 /**
+ * Stage and commit exactly the named repository-relative paths on whatever
+ * branch `repoRoot` is on, and never push: landing a governed record locally is
+ * Arcadia's job, publishing it is the operator's.
+ *
+ * Returns null on success, or a human-readable message on failure after
+ * restoring the index to HEAD, so a failed commit leaves the written files as a
+ * plain working-tree change rather than a confusingly half-staged index.
+ * Callers must surface the returned message: silently reporting success while
+ * the tree stays dirty is the false-success mode GitHub Issue #283 exists to
+ * remove, and swallowing it here hides the same failure one level down.
+ */
+export function commitOnlyPaths(repoRoot: string, relativePaths: string[], message: string): string | null {
+  try {
+    git(repoRoot, ["add", "--", ...relativePaths]);
+    git(repoRoot, ["commit", "-m", message, "--", ...relativePaths]);
+    return null;
+  } catch (error) {
+    try { git(repoRoot, ["reset", "-q", "HEAD", "--", ...relativePaths]); } catch { /* best effort */ }
+    const failure = error as { message?: string; details?: { cause?: unknown } };
+    const cause = failure.details?.cause;
+    const headline = failure.message ?? String(error);
+    return cause ? `${headline}: ${String(cause).trim()}` : headline;
+  }
+}
+
+/**
  * The checkout a command run from `cwd` should write a Project's documents to.
  *
  * A Project records one `repo_path`, normally the main checkout. When the

@@ -899,7 +899,7 @@ actions:
     references: []
   - id: fix-agent-go-transport-readiness
     title: The protected broker's agent go transport reports ready only when a worker can actually service a go request, and a timed-out or refused request clears its pending marker so a retry needs no hand-editing.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: "The go and pointer commands are durable: advance queue make-next --apply commits the pointer it writes, and the protected broker's agent go transport reports ready only when a worker can service a request and clears its pending marker on timeout or refusal."
@@ -920,7 +920,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/283", "https://github.com/pmark/arcadia/issues/284", "src/dispatch/pointer.ts", "src/sessions/preservationTransport.ts", "src/goBroker.ts", "src/commands/goBrokerInstall.ts", "START_HERE.md", "docs/COMMANDS.md"]
 questions: []
 decisions: []
-current_action: fix-agent-go-transport-readiness
+current_action: prove-two-action-unattended-production
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

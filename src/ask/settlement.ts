@@ -13,7 +13,7 @@ import { syncProjectDocs } from "../docs/sync.js";
 import type { DecisionDoc, LogDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import { buildAgentQueue, unpositionedCountForProject } from "../dispatch/queue.js";
 import { arrangeActionOrder } from "../dispatch/order.js";
-import { assertClean, git, projectCheckoutFor } from "../git/worktrees.js";
+import { assertClean, commitOnlyPaths, git, projectCheckoutFor } from "../git/worktrees.js";
 import { slugify } from "../utils/slug.js";
 
 export type AgentAskDisposition = "accepted" | "rejected";
@@ -747,8 +747,12 @@ export function settleAgentAsk(db: Database.Database, input: {
     throw error;
   }
   // Commit after the database transaction and outside its rollback handler.
-  // A Git failure must leave the settled documents intact for recovery.
-  if (fileMutations.length > 0) commitSettlementOutput(repoRoot, fileMutations, settled);
+  // A Git failure must leave the settled documents intact for recovery, and its
+  // message must reach the operator now rather than at the next refused command.
+  if (fileMutations.length > 0) {
+    const commitError = commitSettlementOutput(repoRoot, fileMutations, settled);
+    if (commitError) process.stderr.write(`The settled managed documents were written but could not be committed: ${commitError}\n`);
+  }
   return settled;
 }
 
@@ -758,15 +762,17 @@ export function settleAgentAsk(db: Database.Database, input: {
  * candidate worktree, so the record ships in that pull request. Never pushes: landing a record locally is
  * Arcadia's job, publishing it is the operator's.
  *
- * Paths are passed explicitly to `add` and `commit` so that nothing outside
- * this settlement can be swept into the commit, even though `assertClean`
- * already established there was nothing else to sweep.
+ * Paths are passed explicitly so that nothing outside this settlement can be
+ * swept into the commit, even though `assertClean` already established there
+ * was nothing else to sweep. Returns null on success or a message on failure;
+ * the caller surfaces it instead of silently reporting success over a dirty
+ * tree.
  */
 function commitSettlementOutput(
   repoRoot: string,
   fileMutations: FileMutation[],
   receipt: AgentAskSettlementReceipt
-): void {
+): string | null {
   const allPaths = fileMutations.map((mutation) => ({ relative: path.relative(repoRoot, mutation.path), deleted: mutation.after === null }));
   // A deletion mutation whose file was never tracked — the drafted Ask file
   // this settlement consumed and archived, when the operator never committed
@@ -791,16 +797,8 @@ function commitSettlementOutput(
     "Arcadia writes and lands its own managed documents; it did not author the",
     "decision they record."
   ].join("\n");
-  if (paths.length === 0) return;
-  try {
-    git(repoRoot, ["add", "--", ...paths]);
-    git(repoRoot, ["commit", "-m", message, "--", ...paths]);
-  } catch {
-    // Intentionally swallowed — see the call site. The settlement is already
-    // durable in both the database and the working tree; only the convenience
-    // of landing it failed, and the next command to touch this repository
-    // reports the dirty tree far more clearly than a rethrow here would.
-  }
+  if (paths.length === 0) return null;
+  return commitOnlyPaths(repoRoot, paths, message);
 }
 
 export function listPendingAgentAskNotifications(db: Database.Database): PendingAgentAskNotification[] {
