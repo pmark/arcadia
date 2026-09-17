@@ -2,6 +2,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { observeProviderCapacity, type ProviderCapacityObservation } from "../codingAgents/capacity.js";
+import { loadModelTierRegistry, type ModelTierRegistry } from "../codingAgents/modelTiers.js";
 import type { ProviderAdapterRegistry } from "../codingAgents/providerAdapters.js";
 import { writeTransaction } from "../db/connection.js";
 import { isDispatchable, resolveDispatch } from "../docs/dispatch.js";
@@ -94,6 +95,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   const repoRoot = path.resolve(input.repoRoot);
   const now = input.now ?? new Date();
   const tmux = input.tmux ?? systemTmux;
+  const registry = loadModelTierRegistry(input.workspace);
 
   const preview = buildLaunchPreview({
     db: input.db,
@@ -118,7 +120,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // already caused.
   const existingLease = getRepositoryLease(input.db, repoRoot);
   if (existingLease && matchesPreview(existingLease, preview)) {
-    return { reused: true, session: resumeOrReturn(input.db, existingLease, tmux), preview, admission: null };
+    return { reused: true, session: resumeOrReturn(input.db, existingLease, tmux, registry), preview, admission: null };
   }
 
   if (!input.standingPolicy && preview.previewFingerprint !== input.previewFingerprint) {
@@ -253,7 +255,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       // hold a concurrency slot until it expires. Release it immediately
       // rather than waiting out the TTL.
       if (admission) releaseAdmission(input.db, admission.requestId, now);
-      return { reused: true, session: resumeOrReturn(input.db, raced, tmux), preview, admission: null };
+      return { reused: true, session: resumeOrReturn(input.db, raced, tmux, registry), preview, admission: null };
     }
     throw error;
   }
@@ -278,15 +280,20 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     admission = committed.receipt;
   }
 
-  return { reused: false, session: launchPreparedSession(input.db, prepared, tmux), preview, admission };
+  return { reused: false, session: launchPreparedSession(input.db, prepared, tmux, registry), preview, admission };
 }
 
 /** A "prepared" lease whose tmux Session was never actually started (a crash between insert and spawn) is resumed rather than left stuck. */
-function resumeOrReturn(db: Database.Database, session: AgentSession, tmux: TmuxAdapter): AgentSession {
+function resumeOrReturn(
+  db: Database.Database,
+  session: AgentSession,
+  tmux: TmuxAdapter,
+  registry?: ModelTierRegistry
+): AgentSession {
   if (session.status === "running" || tmux.hasSession(session.tmux_session_name)) {
     return getSession(db, session.id) ?? session;
   }
-  return launchPreparedSession(db, session, tmux);
+  return launchPreparedSession(db, session, tmux, registry);
 }
 
 function matchesPreview(session: AgentSession, preview: LaunchPreview): boolean {

@@ -94,7 +94,14 @@ describe("tmux-backed Sessions", () => {
       provider_session_id: expect.stringMatching(/^[0-9a-f-]{36}$/)
     });
     expect(tmux.launches).toHaveLength(1);
-    expect(tmux.launches[0].command).toBe("claude");
+    expect(tmux.launches[0].command).toBe("env");
+    expect(tmux.launches[0].args.slice(0, 4)).toEqual([
+      "GIT_AUTHOR_NAME=Claudia Mason",
+      "GIT_AUTHOR_EMAIL=claudia.mason@agents.arcadia.local",
+      "GIT_COMMITTER_NAME=Claudia Mason",
+      "GIT_COMMITTER_EMAIL=claudia.mason@agents.arcadia.local"
+    ]);
+    expect(tmux.launches[0].args).toContain("claude");
     expect(tmux.launches[0].args).toContain("--session-id");
     expect(tmux.launches[0].args.at(-1)).toBe(`arcadia advance --session ${result.data.session!.id}`);
 
@@ -117,7 +124,14 @@ describe("tmux-backed Sessions", () => {
     });
     expect(result.data.session?.provider_session_id).toBe(result.data.session?.id);
     expect(tmux.launches).toHaveLength(1);
-    expect(tmux.launches[0].command).toBe("codex");
+    expect(tmux.launches[0].command).toBe("env");
+    expect(tmux.launches[0].args.slice(0, 4)).toEqual([
+      "GIT_AUTHOR_NAME=Cody Mason",
+      "GIT_AUTHOR_EMAIL=cody.mason@agents.arcadia.local",
+      "GIT_COMMITTER_NAME=Cody Mason",
+      "GIT_COMMITTER_EMAIL=cody.mason@agents.arcadia.local"
+    ]);
+    expect(tmux.launches[0].args).toContain("codex");
     expect(tmux.launches[0].args).toEqual(expect.arrayContaining([
       "--model", "gpt-5.6-terra", "--config", 'model_reasoning_effort="high"', "--cd", result.data.session!.worktree_path
     ]));
