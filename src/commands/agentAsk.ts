@@ -17,6 +17,7 @@ import {
   type AgentAskPlacement,
   type AgentAskResponsibility,
   type AgentAskSettlementReceipt,
+  type AgentAskSettlementTestHooks,
   type PendingAgentAskNotification
 } from "../ask/settlement.js";
 
@@ -192,6 +193,7 @@ export function runAgentAskSettleCommand(options: {
   effort?: string;
   operator?: boolean;
   cwd?: string;
+  hooks?: AgentAskSettlementTestHooks;
 }): CommandSuccess<AgentAskSettleData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   if (options.disposition !== "accepted" && options.disposition !== "rejected") {
@@ -221,7 +223,7 @@ export function runAgentAskSettleCommand(options: {
     effort: options.effort,
     operator: options.operator,
     cwd: options.cwd
-  }));
+  }, options.hooks));
   return createSuccess({ command: "agent-ask.settle", workspace: workspacePath, data: { receipt } });
 }
 
@@ -235,6 +237,7 @@ export function renderAgentAskSettleSuccess(response: CommandSuccess<AgentAskSet
     `Queue: ${queueActionKeys.length > 0 ? `${queueActionKeys.join(", ")} starting at position ${(receipt.queuePosition ?? 0) + 1}` : "no executable entry"}`,
     `Next: ${receipt.nextActionKey ?? "none"}`,
     `Discord: ${receipt.notificationStatus}`,
+    ...(receipt.recovery ? [`Recovery: ${receipt.recovery.remedy}`] : []),
     `Preview fingerprint: ${receipt.previewFingerprint}`,
     `Receipt: ${receipt.id}`
   ];
