@@ -16,24 +16,37 @@ mid-session by task type. So the unit of selection is the Action, not "this
 line is boilerplate, that line is architecture." A plan author sets these two
 fields per Action; `go` refuses to launch unpinned.
 
-| Tier | Model (pinned) | Default effort | When |
-| --- | --- | --- | --- |
-| Frontier | `claude-opus-5` | high | Only when the Action's acceptance criteria call for a genuine redesign, a new cross-cutting mechanism, or resolving a named ambiguity/Decision the Action itself must work through. Not "this is a new feature" — most new features are tier 2. |
-| Default | `claude-sonnet-5` | medium (raise to high only when the Action's own criteria demand it) | The default for every Action unless it qualifies for frontier above. Ordinary feature work, refactors, bug fixes, and the tests that ship with them all stay here — Arcadia dispatches one session per Action, so there is no cheaper coding-agent tier to fall back to mid-session. |
+**Model tiers are agent-agnostic.** A plan names one of three logical tiers in
+`recommended_model`; `arcadia go` resolves it to a concrete model for whichever
+agent is launched, from one registry (`src/codingAgents/modelTiers.ts` bundled
+defaults, overridable per workspace by `config/coding-agent-models.json`). No
+vendor model string is written anywhere else on the handoff path.
 
-Codex-side pins (the equivalent choice for `--agent codex`) are deliberately
-not filled in here — confirm the exact supported model string against the
-Codex CLI's current model list before pinning one (`codex --help` / OpenAI's
-docs) rather than trusting a name typed from memory. `go.ts`'s
-`isPlausibleClaudeModel` guard exists precisely because an unverified string
-reaching `--model` unvalidated is a real failure mode, not a hypothetical one;
-treat any Codex-side pin the same way before it reaches a launch command.
+| Tier | codex | claude | opencode | Default effort | When |
+| --- | --- | --- | --- | --- | --- |
+| heavy | `gpt-5.6-sol` | `opus` | `opencode-go/gpt-5.6-luna` | `e3_deep` | A genuine redesign, a new cross-cutting mechanism, or resolving a named ambiguity/Decision the Action itself must work through. Not "this is a new feature" — most new features are standard. |
+| standard | `gpt-5.6-terra` | `sonnet` | `opencode-go/deepseek-v4.1-flash` | `e2_standard` | The default for every Action unless it qualifies for heavy. Ordinary feature work, refactors, bug fixes, and the tests that ship with them stay here — Arcadia dispatches one session per Action, so there is no cheaper tier to fall back to mid-session. |
+| light | `gpt-5.6-luna` | `haiku` | `opencode-go/glm-5.3-flash` | `e1_brief` | Mechanical, well-specified work whose acceptance criteria leave little judgment: a rename, a bounded test addition, a doc-and-config sync. |
 
-The opencode side (`--agent opencode`, for `arcadia go` and the protected
-broker) has no free-form pin to confirm: it launches the same bundled
-`opencode-go/deepseek-v4.1-flash` binding the managed-production path pins,
-with the Action's effort mapped to opencode's `--variant` dial through
-`opencodeVariant`.
+The rules that make it agent-agnostic:
+
+- **New plans declare a tier** — `recommended_model: standard` (or `light` or
+  `heavy`) — and are valid for any agent.
+- **Existing concrete-model plans keep working.** A plan that still names a
+  concrete model is used as-is when it plausibly belongs to the launched agent;
+  when it names another provider's model it resolves that agent's `standard`
+  tier, and `arcadia go` prints the substitution instead of silently swapping.
+  A value that is neither a known tier nor recognizable for any agent is refused
+  rather than guessed.
+- **Effort is independent of the tier.** `--effort` wins, then the plan's
+  `recommended_reasoning_effort`, then the tier's own default. opencode maps the
+  resolved effort to its provider-specific `--variant` dial through
+  `opencodeVariant`.
+- **An explicit `--model` is trusted as-is** and never re-resolved.
+
+The concrete strings above are this installation's pinned values. Adding or
+changing one means verifying the exact provider string, then editing the tier
+registry or the workspace override — never typing a guessed name into a plan.
 
 **Managed-production provider pins.** The standing production path does not
 pick a model per Action from `recommended_model`; it launches the provider

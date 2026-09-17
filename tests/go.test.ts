@@ -613,12 +613,19 @@ describe("arcadia go — next-session model resolution", () => {
   });
 
   it("builds the codex launch command with -m and the reasoning-effort TOML override", () => {
-    const fixture = createFixture("codex/codex-shape", planDocumentWithModel);
+    const fixture = createFixture(
+      "codex/codex-shape",
+      planDocument.replace(
+        "recommended_model: gpt-5.6-terra\n",
+        "recommended_model: gpt-5.6-terra\nrecommended_reasoning_effort: high\n"
+      )
+    );
     commitFeature(fixture.feature, "proof.txt", "proof\n");
 
     const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "codex", workspace: fixture.workspace });
 
-    expect(result.data.nextWorktree?.command).toContain('-m "opus"');
+    expect(result.data.nextWorktree?.model).toBe("gpt-5.6-terra");
+    expect(result.data.nextWorktree?.command).toContain('-m "gpt-5.6-terra"');
     expect(result.data.nextWorktree?.command).toContain('-c model_reasoning_effort="high"');
     expect(result.data.nextWorktree?.command).not.toContain("--effort");
   });
@@ -633,20 +640,47 @@ describe("arcadia go — next-session model resolution", () => {
     expect(result.data.nextWorktree?.command).not.toContain("--effort");
   });
 
-  it("refuses a plan's recommended_model for a Claude handoff when it names a different agent's model", () => {
+  it("falls back to the agent's standard tier when the plan names another provider's model", () => {
+    // GitHub Issue #282: a plan pinned `gpt-5.6-terra` handed to Claude must not
+    // reach `claude --model` unvalidated, and must not refuse the handoff
+    // either — it resolves Claude's standard tier with a visible note.
     const fixture = createFixture("codex/wrong-provider-model", planDocument);
     commitFeature(fixture.feature, "proof.txt", "proof\n");
 
-    expectValidation(
-      () => runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "claude", workspace: fixture.workspace }),
-      "does not look like a Claude Code model"
-    );
-    // The Git reconciliation (fast-forward and source retirement) already ran
-    // before this check: the model recommendation must be read from the plan
-    // as it exists after that merge, so the refusal only stops the next agent
-    // worktree from being prepared, not the integration itself.
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "claude", workspace: fixture.workspace });
+
+    expect(result.data.nextWorktree?.model).toBe("sonnet");
+    expect(result.data.modelResolution).toMatchObject({ source: "fallback", tier: "standard" });
+    expect(result.data.modelResolution?.note).toContain("gpt-5.6-terra");
+    expect(result.data.nextWorktree?.command).toContain('claude --model "sonnet"');
+    // The Git reconciliation (fast-forward and source retirement) still ran.
     expect(existsSync(path.join(fixture.main, "proof.txt"))).toBe(true);
     expect(() => git(fixture.main, ["show-ref", "--verify", "refs/heads/codex/wrong-provider-model"])).toThrow();
+  });
+
+  it("resolves a logical tier for every agent from the bundled registry", () => {
+    const tieredPlan = planDocument.replace("recommended_model: gpt-5.6-terra\n", "recommended_model: heavy\n");
+    const expected = { codex: "gpt-5.6-sol", claude: "opus", opencode: "opencode-go/gpt-5.6-luna" } as const;
+    for (const agent of ["codex", "claude", "opencode"] as const) {
+      const fixture = createFixture(`codex/tier-${agent}`, tieredPlan);
+      commitFeature(fixture.feature, "proof.txt", "proof\n");
+      const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent, workspace: fixture.workspace });
+      expect(result.data.nextWorktree?.model).toBe(expected[agent]);
+      expect(result.data.modelResolution).toMatchObject({ tier: "heavy", source: "tier" });
+    }
+  });
+
+  it("resolves an opencode model for a plan pinned to Claude, the #282 case", () => {
+    const fixture = createFixture("codex/opencode-fallback", planDocumentWithModel);
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "opencode", workspace: fixture.workspace, effort: "high" });
+
+    expect(result.data.nextWorktree?.model).toBe("opencode-go/deepseek-v4.1-flash");
+    expect(result.data.modelResolution).toMatchObject({ source: "fallback", tier: "standard" });
+    expect(result.data.nextWorktree?.command).toContain(
+      'opencode run --model "opencode-go/deepseek-v4.1-flash" --variant "high" "arcadia advance"'
+    );
   });
 
   it("trusts an explicit --model even when it does not look like a Claude Code model", () => {
