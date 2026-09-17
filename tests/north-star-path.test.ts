@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -247,7 +247,7 @@ function seededWorkspace(options: { gateClarification?: string; gateOpenQuestion
 
 function appendGate(workspace: string, lines: string[]): void {
   const file = northStarPath(workspace);
-  const source = require("node:fs").readFileSync(file, "utf8") as string;
+  const source = readFileSync(file, "utf8") as string;
   const marker = "---\n\n# North Star";
   writeFileSync(file, source.replace(marker, `${lines.join("\n")}\n${marker}`), "utf8");
 }

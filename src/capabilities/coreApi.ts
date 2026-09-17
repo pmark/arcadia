@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { CapabilityModule, CoreCapabilityApi, EmitEventInput } from "./core.js";
+import type { CoreCapabilityApi, EmitEventInput } from "./core.js";
 import { getCapability } from "./registry.js";
 import {
   createApprovalGate,

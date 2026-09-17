@@ -244,7 +244,7 @@ export default function WorkQueuePage() {
       <section aria-label="Complete approved Action order" className="grid gap-3">
         {displayedEntries.length === 0 ? (
           <div className="rounded-xl border border-dashed border-line p-8 text-center text-sm text-muted">No Actions match this view. The underlying order is unchanged.</div>
-        ) : displayedEntries.map((entry, index) => {
+        ) : displayedEntries.map((entry) => {
           const fullIndex = batchOrder ? batchOrder.indexOf(entry.orderKey ?? "") : queue.ordered.findIndex((candidate) => candidate.orderKey === entry.orderKey);
           const previous = queue.ordered[fullIndex - 1]?.orderKey;
           const following = queue.ordered[fullIndex + 1]?.orderKey;

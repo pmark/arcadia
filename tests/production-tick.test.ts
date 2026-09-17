@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -22,7 +22,6 @@ import { packetSha256 } from "../src/execution/planningAuthorization.js";
 import type { CodingAgentProfile } from "../src/intent/registries.js";
 import {
   activateProduction,
-  deactivateProduction,
   fingerprintProductionScope,
   normalizeProductionScope,
   PRODUCTION_CONTROL_DEADLINES,
@@ -488,7 +487,7 @@ function preparedFixture(options: { secondAction?: boolean } = {}) {
           buildPacketSha256: packetSha256(path.join(workspace, promptPath))
         }
       }
-    }).id;
+    });
     const approvalId = db
       .prepare("SELECT id FROM review_items WHERE codex_invocation_id = ? ORDER BY created_at DESC LIMIT 1")
       .get(packetId) as { id: string };

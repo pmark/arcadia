@@ -3,7 +3,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { ArcadiaError } from "../cli/errors.js";
 import type { ProviderAdapterRegistry } from "../codingAgents/providerAdapters.js";
-import { observeProviderCapacity, type ProviderCapacityObservation } from "../codingAgents/capacity.js";
+import { type ProviderCapacityObservation } from "../codingAgents/capacity.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { CodingAgentProfile } from "../intent/registries.js";

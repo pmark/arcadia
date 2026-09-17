@@ -531,8 +531,8 @@ describe("Agent Ask settlement", () => {
     const plan = readFileSync(planPath, "utf8");
     expect(plan).toContain("references: []");
     expect(plan).toContain("depends_on: []");
-    expect(plan).not.toMatch(/references:\r?\n      - docs\/design\.md/);
-    expect(plan).not.toMatch(/depends_on:\r?\n      - existing/);
+    expect(plan).not.toMatch(/references:\r?\n {6}- docs\/design\.md/);
+    expect(plan).not.toMatch(/depends_on:\r?\n {6}- existing/);
     const discovered = discoverDocs(repo);
     expect(discovered.errors.filter((error) => error.relativePath === "docs/plans/demo-plan.md")).toEqual([]);
   });
@@ -674,7 +674,7 @@ describe("Agent Ask settlement", () => {
       disposition: "accepted", revision: 1, preview: preview.data.receipt.previewFingerprint, apply: true
     });
     const settled = readFileSync(planPath, "utf8");
-    const existingBlock = settled.match(/  - id: existing[\s\S]*?(?=  - id: finished)/)?.[0] ?? "";
+    const existingBlock = settled.match(/ {2}- id: existing[\s\S]*?(?= {2}- id: finished)/)?.[0] ?? "";
     expect(existingBlock).toContain("depends_on: []");
     expect(existingBlock).toContain("references: []");
     expect(existingBlock).not.toContain("docs/stale.md");

@@ -1381,27 +1381,27 @@ function amendAction(
   const match = content.match(pattern);
   if (!match) throw validationError("Managed Plan Action block was not found.", { actionId });
   let block = match[1];
-  if (!/^    next_action:/m.test(block)) throw validationError("Managed Plan Action has no next_action field to amend.", { actionId });
-  block = block.replace(/^    next_action:.*$/m, `    next_action: ${yamlScalar(nextAction)}`);
+  if (!/^ {4}next_action:/m.test(block)) throw validationError("Managed Plan Action has no next_action field to amend.", { actionId });
+  block = block.replace(/^ {4}next_action:.*$/m, `    next_action: ${yamlScalar(nextAction)}`);
   if (responsibility) {
-    if (!/^    responsibility:/m.test(block)) throw validationError("Managed Plan Action has no responsibility field to amend.", { actionId });
-    block = block.replace(/^    responsibility:.*$/m, `    responsibility: ${responsibility}`);
+    if (!/^ {4}responsibility:/m.test(block)) throw validationError("Managed Plan Action has no responsibility field to amend.", { actionId });
+    block = block.replace(/^ {4}responsibility:.*$/m, `    responsibility: ${responsibility}`);
   }
   if (acceptance.length > 0) {
     const replacement = ["    acceptance_criteria:", ...acceptance.map((criterion) => `      - ${yamlScalar(criterion)}`)].join("\n");
-    block = block.replace(/^    acceptance_criteria:\r?\n(?:      - .*\r?\n?)*/m, `${replacement}\n`);
+    block = block.replace(/^ {4}acceptance_criteria:\r?\n(?: {6}- .*\r?\n?)*/m, `${replacement}\n`);
   }
   // depends_on/references may already be written as a multi-line block list
   // (each item on its own "      - " line) rather than an inline [a, b]; the
   // continuation lines must be consumed too, or they survive as an orphaned
   // sequence the YAML parser rejects.
-  block = block.replace(/^    depends_on:.*(?:\r?\n      - .*)*/m,
+  block = block.replace(/^ {4}depends_on:.*(?:\r?\n {6}- .*)*/m,
     dependencies.length > 0 ? `    depends_on: [${dependencies.join(", ")}]` : "    depends_on: []");
-  block = block.replace(/^    references:.*(?:\r?\n      - .*)*/m,
+  block = block.replace(/^ {4}references:.*(?:\r?\n {6}- .*)*/m,
     references.length > 0 ? `    references: [${references.map((reference) => JSON.stringify(reference)).join(", ")}]` : "    references: []");
-  block = /^    source:/m.test(block)
-    ? block.replace(/^    source:.*$/m, `    source: ${yamlScalar(`Agent Ask ${requestId}`)}`)
-    : block.replace(/^    clarification:.*$/m, `$&\n    source: ${yamlScalar(`Agent Ask ${requestId}`)}`);
+  block = /^ {4}source:/m.test(block)
+    ? block.replace(/^ {4}source:.*$/m, `    source: ${yamlScalar(`Agent Ask ${requestId}`)}`)
+    : block.replace(/^ {4}clarification:.*$/m, `$&\n    source: ${yamlScalar(`Agent Ask ${requestId}`)}`);
   return content.replace(pattern, block);
 }
 
@@ -1410,8 +1410,8 @@ function markActionDone(content: string, actionId: string): string {
   const match = content.match(pattern);
   if (!match) throw validationError("Managed Plan Action block was not found.", { actionId });
   let block = match[1];
-  if (!/^    status:/m.test(block)) throw validationError("Managed Plan Action has no status field to amend.", { actionId });
-  block = block.replace(/^    status:.*$/m, "    status: done");
+  if (!/^ {4}status:/m.test(block)) throw validationError("Managed Plan Action has no status field to amend.", { actionId });
+  block = block.replace(/^ {4}status:.*$/m, "    status: done");
   return content.replace(pattern, block);
 }
 

@@ -584,7 +584,7 @@ function renderAcceptanceCriteria(input: {
 
 function renderExecutionInstruction(
   purpose: CodexInvocationPurpose,
-  stewardship: GoalStewardshipResult
+  _stewardship: GoalStewardshipResult
 ): string {
   if (purpose === "planning") {
     return "Plan only. Do not make implementation changes. Preserve the original implementation intent by describing implementation as a future phase that requires a separate approved Codex implementation goal.";

@@ -435,7 +435,10 @@ function expandHome(value: string): string {
 }
 
 function sanitizeFileName(value: string): string {
-  return value.replace(/[/:\\]/g, "-").replace(/[\u0000-\u001f]/g, "").replace(/\s+/g, " ").trim();
+  return value.replace(/[/:\\]/g, "-")
+    // eslint-disable-next-line no-control-regex -- the sanitizer's purpose is stripping control characters
+    .replace(/[\u0000-\u001f]/g, "")
+    .replace(/\s+/g, " ").trim();
 }
 
 function sha256File(filePath: string): string {

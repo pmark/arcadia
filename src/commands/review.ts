@@ -7,7 +7,6 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import { discoverDocs } from "../docs/discover.js";
 import {
-  buildStatusReportData,
   buildWeeklyReviewData,
   createReviewExecutionRun,
   createReviewItem,
@@ -31,7 +30,6 @@ import { GAP_TYPES } from "../domain/constants.js";
 import type { ArtifactSummary, ReviewFeedback, ReviewItemSummary, WorkItemSummary } from "../domain/types.js";
 import type { PlanDoc, ProjectDoc } from "../docs/types.js";
 import { declaredAcceptanceCriteria } from "../codex/packets.js";
-import { executeApprovedReview, type ReviewExecutionResult } from "../execution/reviewExecutor.js";
 import { isPlanningApprovalDecision, queueApprovedPlanningRun } from "../execution/planningAuthorization.js";
 import { packetSha256, parseDecisionContext } from "../execution/planningAuthorization.js";
 import { evaluateAcceptanceCriteria, renderAcceptanceCriteriaReport } from "../stewardship/acceptanceCriteria.js";
@@ -1604,13 +1602,13 @@ function runReviewDecisionCommand(
     if (isPlanningAcceptance && status === "rejected" && !feedback) {
       throw validationError("Sending a prepared plan back for refinement requires feedback stating what was unclear.", {
         id: item.id,
-        remedy: `Retry with --feedback \"<what needs refinement>\".`
+        remedy: `Retry with --feedback "<what needs refinement>".`
       });
     }
     if (isPlanningAcceptance && status === "deferred" && !trigger) {
       throw validationError("Deferring a prepared plan requires a named trigger condition.", {
         id: item.id,
-        remedy: `Retry with --trigger \"<condition that revives this plan>\".`
+        remedy: `Retry with --trigger "<condition that revives this plan>".`
       });
     }
     const decisionSummary = isPlanningAcceptance && status === "rejected"
@@ -1690,29 +1688,6 @@ function runReviewDecisionCommand(
       run: null
     }
   });
-}
-
-function reviewExecutionPacket(result: ReviewExecutionResult): ReviewExecutionPacket {
-  return {
-    executor: result.executor,
-    command: result.command,
-    repoPath: result.repoPath,
-    workItemId: result.workItemId,
-    followUpReviewItemId: result.followUpReview.id,
-    followUpReviewSlug: result.followUpReview.slug ?? result.followUpReview.id,
-    startedAt: result.startedAt,
-    endedAt: result.endedAt,
-    exitStatus: result.exitStatus,
-    changedFiles: result.changedFiles,
-    validation: result.validation.map((validation) => ({
-      command: validation.command,
-      exitStatus: validation.exitStatus,
-      error: validation.error
-    })),
-    finalOutput: result.finalOutput,
-    metadataPath: result.metadataPath,
-    artifactPaths: result.artifactPaths
-  };
 }
 
 function getReviewItemByIdOrSlug(db: Parameters<typeof getReviewItem>[0], idOrSlug: string): ReviewItemSummary | null {

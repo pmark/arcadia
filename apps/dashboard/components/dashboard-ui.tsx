@@ -566,19 +566,6 @@ function canReassessPlanQuestion(item: DashboardReviewItem): boolean {
   }
 }
 
-function outcomesEqual(a: ReviewOutcome, b: ReviewOutcome): boolean {
-  if (a.kind !== b.kind) {
-    return false;
-  }
-  if (a.kind === "action" && b.kind === "action") {
-    return a.action === b.action;
-  }
-  if (a.kind === "option" && b.kind === "option") {
-    return a.option === b.option;
-  }
-  return true;
-}
-
 export function ReviewCard({
   item,
   pendingAction,
@@ -885,7 +872,7 @@ export function ReviewCard({
               disabled={confirmDisabled}
               className="min-h-10 rounded-md border border-moss/30 bg-moss/10 px-3 text-sm font-semibold text-moss transition hover:border-moss disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {Boolean(pendingAction) ? "Working..." : `Confirm: ${outcomeLabel(confirming, isPlanning, isAcceptance)}`}
+              {pendingAction ? "Working..." : `Confirm: ${outcomeLabel(confirming, isPlanning, isAcceptance)}`}
             </button>
             <button
               type="button"

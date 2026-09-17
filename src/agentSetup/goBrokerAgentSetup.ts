@@ -448,45 +448,12 @@ function removeTomlTable(content: string, tableName: string): string {
   return lines.join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
-function setTomlTableArray(content: string, file: string, tableName: string, key: string, values: string[]): string {
-  const lines = content.replace(/\r\n/g, "\n").split("\n");
-  const tablePattern = new RegExp(`^\\s*\\[${escapeRegExp(tableName)}\\]\\s*(?:#.*)?$`);
-  const tableIndexes = lines.flatMap((line, index) => tablePattern.test(line) ? [index] : []);
-  if (tableIndexes.length > 1) {
-    throw validationError(`Codex config contains duplicate [${tableName}] tables.`, { file, table: tableName });
-  }
-  if (tableIndexes.length === 0) {
-    const rendered = `${key} = [${values.map((value) => JSON.stringify(value)).join(", ")}]`;
-    const trimmed = lines.join("\n").replace(/\n+$/g, "");
-    return `${trimmed}${trimmed ? "\n\n" : ""}[${tableName}]\n${rendered}\n`;
-  }
-
-  const tableStart = tableIndexes[0];
-  const tableEnd = lines.findIndex((line, index) => index > tableStart && /^\s*\[{1,2}[^\]]+\]{1,2}/.test(line));
-  const end = tableEnd < 0 ? lines.length : tableEnd;
-  const keyPattern = new RegExp(`^\\s*${escapeRegExp(key)}\\s*=`);
-  const keyIndexes = lines.flatMap((line, index) => index > tableStart && index < end && keyPattern.test(line) ? [index] : []);
-  if (keyIndexes.length > 1) {
-    throw validationError(`Codex config contains duplicate ${tableName}.${key} entries.`, { file, table: tableName, key });
-  }
-  const keyEnd = keyIndexes.length === 1 ? tomlArrayEnd(lines, keyIndexes[0], end, file) : null;
-  const existing = keyIndexes.length === 1 ? tomlArrayValues(lines.slice(keyIndexes[0], keyEnd! + 1).join(" ")) : [];
-  const merged = [...existing, ...values.filter((value) => !existing.includes(value))];
-  const rendered = `${key} = [${merged.map((value) => JSON.stringify(value)).join(", ")}]`;
-  if (keyIndexes.length === 1) {
-    lines.splice(keyIndexes[0], keyEnd! - keyIndexes[0] + 1, rendered);
-  } else {
-    lines.splice(end, 0, rendered);
-  }
-  return `${lines.join("\n").replace(/^\n+|\n+$/g, "")}\n`;
-}
-
 function topLevelTomlValue(content: string, key: string): string | null {
   const lines = content.replace(/\r\n/g, "\n").split("\n");
   const firstTable = lines.findIndex((line) => /^\s*\[/.test(line));
   const boundary = firstTable < 0 ? lines.length : firstTable;
   for (let index = 0; index < boundary; index += 1) {
-    const match = lines[index].match(new RegExp(`^\\s*${key}\\s*=\\s*\"([^\"]+)\"`));
+    const match = lines[index].match(new RegExp(`^\\s*${key}\\s*=\\s*"([^"]+)"`));
     if (match) return match[1];
   }
   return null;
@@ -509,41 +476,6 @@ function hasLegacyCodexSandbox(content: string): boolean {
   return /^\s*sandbox_mode\s*=/m.test(content) || /^\s*\[sandbox_workspace_write\]\s*$/m.test(content);
 }
 
-function hasLegacyCodexWorktreeRoots(content: string, expectedRoots: string[]): boolean {
-  const table = tomlTableBody(content, "sandbox_workspace_write");
-  if (table === null) return false;
-  const match = table.match(/^\s*writable_roots\s*=\s*\[([\s\S]*?)\]/m);
-  if (!match) return false;
-  const roots = tomlArrayValues(match[1]);
-  return expectedRoots.every((root) => roots.includes(root));
-}
-
-function tomlArrayValues(line: string): string[] {
-  return [...line.matchAll(/"((?:\\.|[^"\\])*)"|'([^']*)'/g)].map((entry) =>
-    entry[1] !== undefined ? (JSON.parse(`"${entry[1]}"`) as string) : entry[2]
-  );
-}
-
-function tomlArrayEnd(lines: string[], start: number, limit: number, file: string): number {
-  for (let index = start; index < limit; index += 1) {
-    if (lines[index].includes("]")) return index;
-  }
-  throw validationError("Codex config contains an unterminated sandbox_workspace_write.writable_roots array.", {
-    file,
-    key: "sandbox_workspace_write.writable_roots"
-  });
-}
-
-function tomlTableBody(content: string, tableName: string): string | null {
-  const lines = content.replace(/\r\n/g, "\n").split("\n");
-  const tablePattern = new RegExp(`^\\s*\\[${escapeRegExp(tableName)}\\]\\s*(?:#.*)?$`);
-  const tableIndexes = lines.flatMap((line, index) => tablePattern.test(line) ? [index] : []);
-  if (tableIndexes.length !== 1) return null;
-  const start = tableIndexes[0] + 1;
-  const end = lines.findIndex((line, index) => index >= start && /^\s*\[{1,2}[^\]]+\]{1,2}/.test(line));
-  return lines.slice(start, end < 0 ? lines.length : end).join("\n");
-}
-
 function listCodexProfileConfigs(codexDirectory: string): string[] {
   if (!existsSync(codexDirectory)) return [];
   return readdirSync(codexDirectory)
@@ -561,10 +493,6 @@ function listCodexProfileConfigs(codexDirectory: string): string[] {
 
 function codexProfileName(file: string): string {
   return path.basename(file, CODEX_PROFILE_SUFFIX);
-}
-
-function expectedCodexApprovalPolicy(file: string, paths: AgentSetupPaths): string {
-  return file === paths.codexConfig || codexProfileName(file) !== "arcadia-unattended" ? "on-request" : "never";
 }
 
 function expectedCodexWorktreeRoots(home: string): string[] {

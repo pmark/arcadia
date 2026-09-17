@@ -61,6 +61,7 @@ export function loadVoiceMap(raw: string | undefined): VoiceMap {
   } catch (error) {
     throw new Error(
       `ARCADIA_SPEECH_VOICE_MAP is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {

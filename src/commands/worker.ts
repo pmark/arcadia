@@ -452,7 +452,7 @@ export function runWorkerInstallCommand(options: WorkerOptions): void {
   }
 }
 
-export function runWorkerUninstallCommand(options: WorkerOptions): void {
+export function runWorkerUninstallCommand(_options: WorkerOptions): void {
   const plistLabel = "com.arcadia.worker";
   const plistPath = path.join(
     process.env["HOME"] ?? "/tmp",

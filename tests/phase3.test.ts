@@ -29,7 +29,6 @@ import {
   listCodexTasks,
   listApprovalGatesForWorkItem,
   listCodexInvocationsForWorkItem,
-  listBackBurnerItems,
   listReviewFeedback,
   listWorkItems,
   upsertProjectMetadata

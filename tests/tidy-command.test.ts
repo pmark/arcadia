@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { deleteBranchRefIfUnchanged, evaluateMerge, getWorktreeProtection, runTidyCommand, type TidyCommandData } from "../src/commands/tidy.js";
-import { runGoCommand } from "../src/commands/go.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { reserveAgentWorktree } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";

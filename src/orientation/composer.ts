@@ -176,7 +176,7 @@ function groupByArea(entries: OrientationEntry[]): Array<[string, OrientationEnt
   return Array.from(byArea.entries());
 }
 
-function pickConfirmations(stale: OrientationEntry[], now: Date): OrientationEntry[] {
+function pickConfirmations(stale: OrientationEntry[], _now: Date): OrientationEntry[] {
   return [...stale]
     .sort((a, b) => new Date(a.lastConfirmedAt).getTime() - new Date(b.lastConfirmedAt).getTime())
     .slice(0, MAX_CONFIRMATION_QUESTIONS);

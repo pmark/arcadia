@@ -81,7 +81,6 @@ describe("worktree runtime host probe", () => {
       if (command === "git" && args[1] === "remove") throw new Error("worktree is locked");
     });
 
-    let candidatePath = "";
     try {
       runWorktreeRuntimeProbe({ repository: fixture.repository, home: fixture.home, brokerEntrypoint: fixture.entrypoint, run });
       throw new Error("expected probe failure");
@@ -90,11 +89,10 @@ describe("worktree runtime host probe", () => {
       const details = (error as ArcadiaError).details as Record<string, unknown>;
       expect(details.step).toBe("candidate-worktree");
       expect(String(details.remedy)).toContain("git worktree remove --force");
-      candidatePath = String(details.candidatePath);
+      const candidatePath = String(details.candidatePath);
+      expect(existsSync(candidatePath)).toBe(true);
+      expect(existsSync(path.dirname(candidatePath))).toBe(true);
     }
-
-    expect(existsSync(candidatePath)).toBe(true);
-    expect(existsSync(path.dirname(candidatePath))).toBe(true);
   });
 
   it("turns an IPC EPERM into a denial-focused error with one remedy", () => {

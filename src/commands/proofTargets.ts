@@ -4,7 +4,6 @@ import { validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import {
-  getLatestProofTargetCheck,
   getProject,
   getProjectBySlug,
   listLatestProofTargetChecksForProject,

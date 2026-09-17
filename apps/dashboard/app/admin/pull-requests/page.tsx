@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CircleAlert, Clock3, GitMerge, GitPullRequest, RefreshCw } from "lucide-react";
+import { CircleAlert, Clock3, GitMerge, GitPullRequest } from "lucide-react";
 import { DashboardChrome } from "../../../components/chrome";
 import { EmptyState, ErrorState, LoadingState, Metric, Section } from "../../../components/dashboard-ui";
 import type {

@@ -3,7 +3,6 @@ import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import {
   LIVING_SYSTEM_VERSION,
-  type LivingSystemManifest,
   type LivingSystemManifestResult,
   type LivingSystemRelationship,
   type LivingSystemTopic,

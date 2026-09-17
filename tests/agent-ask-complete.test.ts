@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runAgentAskContractCommand, runAgentAskDraftCommand, runAgentAskPreviewCommand, runAgentAskSettleCommand } from "../src/commands/agentAsk.js";
 import { withDatabase } from "../src/db/connection.js";
 import { discoverDocs } from "../src/docs/discover.js";
-import { arrangeActionOrder, loadActionOrder } from "../src/dispatch/order.js";
+import { arrangeActionOrder } from "../src/dispatch/order.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 

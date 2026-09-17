@@ -56,6 +56,20 @@ export function runWorktreeRuntimeProbe(options: WorktreeRuntimeProbeOptions): W
   const checked: WorktreeRuntimeProbeStep[] = [];
   let created = false;
 
+  const retireCandidate = () => {
+    if (created) {
+      try {
+        run("git", ["worktree", "remove", "--force", candidatePath], repository);
+      } catch (error) {
+        throw runtimeProbeError("candidate-worktree", error, {
+          candidatePath,
+          remedy: `Run git worktree remove --force ${JSON.stringify(candidatePath)} from ${JSON.stringify(repository)} after preserving any probe evidence.`
+        });
+      }
+    }
+    removeProbeWrapper(wrapperPath, root);
+  };
+
   try {
     probe("candidate-worktree", () => mkdirSync(path.dirname(candidatePath), { recursive: true }));
     probe("candidate-worktree", () => run("git", ["worktree", "add", "--detach", candidatePath, "HEAD"], repository));
@@ -87,19 +101,12 @@ export function runWorktreeRuntimeProbe(options: WorktreeRuntimeProbeOptions): W
     probe("compiled-broker", () => run(process.execPath, ["--check", options.brokerEntrypoint], candidatePath));
     checked.push("compiled-broker");
 
-    return { candidatePath, checked };
-  } finally {
-    if (created) {
-      try {
-        run("git", ["worktree", "remove", "--force", candidatePath], repository);
-      } catch (error) {
-        throw runtimeProbeError("candidate-worktree", error, {
-          candidatePath,
-          remedy: `Run git worktree remove --force ${JSON.stringify(candidatePath)} from ${JSON.stringify(repository)} after preserving any probe evidence.`
-        });
-      }
-    }
-    removeProbeWrapper(wrapperPath, root);
+    const result = { candidatePath, checked };
+    retireCandidate();
+    return result;
+  } catch (error) {
+    retireCandidate();
+    throw error;
   }
 }
 

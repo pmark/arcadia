@@ -393,7 +393,7 @@ function liveClaimFor(inDirectory: string, fileName: string): number | null {
   const claimPath = path.join(inDirectory, `.processing-${fileName}.lock`);
   if (!existsSync(claimPath)) return null;
 
-  let pid: number | null = null;
+  let pid: number | null;
   try {
     const parsed = JSON.parse(readFileSync(claimPath, "utf8")) as { pid?: unknown };
     pid = typeof parsed.pid === "number" ? parsed.pid : null;
@@ -965,7 +965,6 @@ function processCandidate(input: {
   const request = readFileSync(currentPath, "utf8").trim();
   if (!request) {
     const finalPath = moveToUnique(currentPath, path.join(directories.done, candidate.fileName));
-    currentPath = finalPath;
     const sidecarPath = sidecarPathFor(finalPath, "response");
     writeJson(sidecarPath, {
       status: "skipped_empty",
@@ -1080,7 +1079,6 @@ function processCandidate(input: {
     const finalPath = existsSync(currentPath)
       ? moveToUnique(currentPath, path.join(directories.failed, candidate.fileName))
       : path.join(directories.failed, candidate.fileName);
-    currentPath = finalPath;
     const sidecarPath = sidecarPathFor(finalPath, "error");
     const failure: CommandFailure = {
       ok: false,

@@ -96,7 +96,7 @@ export function buildAgentLaunchCommand(agent: "codex" | "claude" | "opencode", 
     return `cd ${quotedPath} && opencode run --model ${quotedModel}${variantFlag} "arcadia advance"`;
   }
   const effortFlag = effort ? ` -c model_reasoning_effort=${JSON.stringify(effort)}` : "";
-  return `codex -c default_permissions=\"arcadia-unattended\" --ask-for-approval never -C ${quotedPath} -m ${quotedModel}${effortFlag} "arcadia advance"`;
+  return `codex -c default_permissions="arcadia-unattended" --ask-for-approval never -C ${quotedPath} -m ${quotedModel}${effortFlag} "arcadia advance"`;
 }
 
 /**

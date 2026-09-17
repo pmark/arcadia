@@ -505,7 +505,6 @@ function statusLabel(status: string): string {
     case "completed": return "Completed";
     case "failed": return "Failed";
     case "requires_review": return "Requires Review";
-    case "requires_review": return "Requires Review";
     default: return status;
   }
 }

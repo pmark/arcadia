@@ -28,7 +28,6 @@ import {
   getWorkItem,
   listArtifacts,
   listWorkItems,
-  listMilestonesForProject,
   listQueueGroups,
   updateArtifact,
   updateMilestoneStatus,

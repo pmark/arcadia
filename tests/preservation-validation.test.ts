@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { fixtureGit, preservationFixture } from "../scripts/preservation-fixture.js";
