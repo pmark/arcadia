@@ -422,7 +422,7 @@ export function runWorkPlanCommand(options: { workspace: string; workId: string;
 
         const registries = loadPhase3Registries(workspacePath);
         validatePhase3Registries(registries);
-        const seeded = ensureBuildPacketForPlan(db, workspacePath, workItem, plan, registries, buildStep.id);
+        const seeded = ensureBuildPacketForPlan(db, workspacePath, workItem, plan, registries, buildStep.id, options.agentProfile);
         return {
           plan,
           planningDecision: null,
@@ -1123,14 +1123,16 @@ function ensureBuildPacketForPlan(
   workItem: WorkItemSummary,
   plan: ExecutionPlanSummary,
   registries: Phase3Registries,
-  planStepId: string
+  planStepId: string,
+  requestedProfile?: string
 ): {
   approval: ReviewItemSummary;
   invocation: CodexInvocation;
   packetArtifact: ArtifactSummary;
 } {
   ensureCodexPacketsForPlan(db, workspacePath, workItem, plan, registries, {
-    allowCodexBuild: true
+    allowCodexBuild: true,
+    agentProfile: requestedProfile
   });
 
   const invocation = getCodexInvocationForPlan(db, {
