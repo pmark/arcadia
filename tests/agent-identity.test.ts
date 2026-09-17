@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import {
@@ -70,6 +71,20 @@ describe("agent Git identity table", () => {
       "GIT_COMMITTER_NAME=Owen Swift",
       "GIT_COMMITTER_EMAIL=owen.swift@agents.arcadia.local"
     ]);
+  });
+
+  it("delivers each assignment to a child process intact, space and all", () => {
+    // The launch path prefixes the provider command with these exact entries
+    // through `env`. Executing `env` here with the same array proves the name's
+    // space is one argv element, not two, so a launched agent really does
+    // commit as "Owen Mason" rather than "Owen".
+    const identity = resolveAgentIdentity("opencode", "standard");
+    const env = (key: string) =>
+      execFileSync("env", [...agentIdentityEnvironmentArgs(identity), "printenv", key], { encoding: "utf8" }).trim();
+    expect(env("GIT_AUTHOR_NAME")).toBe("Owen Mason");
+    expect(env("GIT_COMMITTER_NAME")).toBe("Owen Mason");
+    expect(env("GIT_AUTHOR_EMAIL")).toBe("owen.mason@agents.arcadia.local");
+    expect(env("GIT_COMMITTER_EMAIL")).toBe("owen.mason@agents.arcadia.local");
   });
 });
 

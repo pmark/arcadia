@@ -245,6 +245,43 @@ describe("tmux-backed Sessions", () => {
     expect(tmux.launches).toHaveLength(0);
   });
 
+  it("refuses to launch and fails the Session when no agent Git identity can be resolved", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const worktree = path.join(fixture.root, "identity-worktree");
+    git(fixture.repo, ["worktree", "add", "-q", "-b", "claude/unbound-model", worktree, "main"]);
+    const baseRevision = git(fixture.repo, ["rev-parse", "main"]).trim();
+    const dispatch = resolveDispatch(fixture.repo, "test-project");
+    const prepared = withDatabase(fixture.workspace, (db) => {
+      const session = prepareSession({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        dispatch,
+        agent: "claude",
+        model: "sonnet",
+        effort: "high",
+        baseRevision,
+        branch: "claude/unbound-model",
+        worktreePath: worktree,
+        now: fixture.now,
+        tmux
+      });
+      // A model bound to no tier with an unrecognized effort is the one shape
+      // the reverse map cannot resolve; the launch must refuse rather than fall
+      // back to the operator's Git identity.
+      db.prepare("UPDATE agent_sessions SET model = ?, effort = ? WHERE id = ?").run("mystery-model", "e9_unknown", session.id);
+      return getSession(db, session.id)!;
+    });
+
+    expectArcadiaError(
+      () => withDatabase(fixture.workspace, (db) => launchPreparedSession(db, prepared, tmux)),
+      "cannot determine the model tier"
+    );
+    expect(tmux.launches).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, prepared.id))?.status).toBe("failed");
+  });
+
   it("lists a Session as active only for the prepared/running lifecycle states, across every terminal state", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();

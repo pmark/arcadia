@@ -971,6 +971,18 @@ exit does not complete the Action or approve, merge, deploy, publish, message,
 spend, or use credentials; repository reconciliation is a separate governed
 transition.
 
+Sessions Arcadia launches commit under a **semantic agent Git identity**, so
+`git log` names the platform and model tier instead of you. The name is the
+platform plus the tier: Codex is `Cody Swift` / `Cody Mason` / `Cody Atlas`,
+Claude is `Claudia Swift` / `Claudia Mason` / `Claudia Atlas`, and OpenCode is
+`Owen Swift` / `Owen Mason` / `Owen Atlas`, for light / standard / heavy, each
+with a matching local address on `agents.arcadia.local`. Arcadia sets only
+`GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, and
+`GIT_COMMITTER_EMAIL` on that one execution — it never reads or writes your
+global Git configuration — and a model whose tier cannot be resolved refuses
+the launch rather than committing under your name. The same environment
+propagates to commits Arcadia itself makes from inside the Session.
+
 The dashboard exposes the same guarded operation for an explicitly approved
 operator request. The route is reachable only where the dashboard is reachable;
 the launch request itself must be same-origin, and the server resolves the
