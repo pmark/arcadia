@@ -89,8 +89,13 @@ describe("launchGuardedHostSession", () => {
     expect(result.session.provider).toBe("opencode-cli");
     expect(result.reused).toBe(false);
     expect(tmux.launches).toHaveLength(1);
-    expect(tmux.launches[0]!.command).toBe("opencode");
+    expect(tmux.launches[0]!.command).toBe("env");
     expect(tmux.launches[0]!.args).toEqual([
+      "GIT_AUTHOR_NAME=Owen Mason",
+      "GIT_AUTHOR_EMAIL=owen.mason@agents.arcadia.local",
+      "GIT_COMMITTER_NAME=Owen Mason",
+      "GIT_COMMITTER_EMAIL=owen.mason@agents.arcadia.local",
+      "opencode",
       "run",
       "--model",
       "opencode-go/deepseek-v4.1-flash",
@@ -429,7 +434,8 @@ describe("launchGuardedHostSession under a standing managed-production policy gr
     expect(result.session.provider).toBe("opencode-cli");
     expect(result.admission?.status).toBe("committed");
     expect(tmux.launches).toHaveLength(1);
-    expect(tmux.launches[0]!.command).toBe("opencode");
+    expect(tmux.launches[0]!.command).toBe("env");
+    expect(tmux.launches[0]!.args).toContain("opencode");
 
     // The existing one-lease-per-repository guard is unchanged for opencode: a
     // second preparation against the same repository is refused.

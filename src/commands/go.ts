@@ -418,7 +418,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
         now: options.now ?? new Date(),
         tmux: options.tmux
       }));
-      session = withDatabase(workspacePath, (db) => launchPreparedSession(db, prepared, options.tmux));
+      session = withDatabase(workspacePath, (db) => launchPreparedSession(db, prepared, options.tmux, loadModelTierRegistry(workspacePath)));
     }
   }
 

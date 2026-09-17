@@ -6,6 +6,8 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { providerLabel } from "../codingAgents/adapters.js";
+import { agentIdentityEnvironmentArgs, resolveSessionAgentIdentity } from "../codingAgents/agentIdentity.js";
+import type { ModelTierRegistry } from "../codingAgents/modelTiers.js";
 import { writeTransaction } from "../db/connection.js";
 import { getProjectBySlug, getWorkItemByDocRef, listCodexInvocationsForWorkItem } from "../db/repositories.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
@@ -369,7 +371,16 @@ export function canonicalPath(value: string): string {
   return path.join(realpathSync(existing), ...suffix);
 }
 
-export function launchPreparedSession(db: Database.Database, session: AgentSession, tmux: TmuxAdapter = systemTmux): AgentSession {
+export function launchPreparedSession(
+  db: Database.Database,
+  session: AgentSession,
+  tmux: TmuxAdapter = systemTmux,
+  /**
+   * The workspace's model-tier registry, so a workspace override binding still
+   * resolves to the right agent identity. Bundled defaults when omitted.
+   */
+  registry?: ModelTierRegistry
+): AgentSession {
   let observedRevision: string;
   try {
     observedRevision = execFileSync("git", ["rev-parse", "HEAD"], {
@@ -392,7 +403,16 @@ export function launchPreparedSession(db: Database.Database, session: AgentSessi
       observed: observedRevision
     });
   }
-  const launch = buildSessionLaunch(session);
+  let launch: { command: string; args: string[] };
+  try {
+    launch = buildSessionLaunch(session, registry);
+  } catch (error) {
+    // An unresolvable agent identity is a launch refusal, not a silent fall
+    // back to the operator's Git identity: mark the prepared Session failed so
+    // nothing runs under the wrong name and the refusal is visible.
+    failPreparedSession(db, session.id);
+    throw error;
+  }
   try {
     tmux.launch({ name: session.tmux_session_name, cwd: session.worktree_path, ...launch });
   } catch (error) {
@@ -552,7 +572,31 @@ export function sessionView(session: AgentSession, tmux: Pick<TmuxAdapter, "hasS
   };
 }
 
-function buildSessionLaunch(session: AgentSession): { command: string; args: string[] } {
+/**
+ * The exact process tmux starts for one Session, with the resolved agent Git
+ * identity in front of it. Running through `env` scopes GIT_AUTHOR_* and
+ * GIT_COMMITTER_* to this execution and every commit it makes, so the agent
+ * never has to choose an identity and the operator's global Git configuration
+ * is never touched.
+ */
+function buildSessionLaunch(session: AgentSession, registry?: ModelTierRegistry): { command: string; args: string[] } {
+  const agent = sessionAgentForProvider(session.provider);
+  if (!agent) {
+    throw validationError(`No agent Git identity can be resolved for provider "${session.provider}".`, {
+      provider: session.provider
+    });
+  }
+  const identity = resolveSessionAgentIdentity({
+    agent,
+    model: session.model,
+    effort: session.effort,
+    registry
+  });
+  const inner = buildProviderLaunch(session);
+  return { command: "env", args: [...agentIdentityEnvironmentArgs(identity), inner.command, ...inner.args] };
+}
+
+function buildProviderLaunch(session: AgentSession): { command: string; args: string[] } {
   const prompt = `arcadia advance --session ${session.id}`;
   if (session.provider === "codex-cli") {
     const args = ["--model", session.model];
