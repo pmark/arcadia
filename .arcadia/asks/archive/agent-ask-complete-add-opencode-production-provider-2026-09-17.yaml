@@ -1,0 +1,41 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-add-opencode-production-provider-2026-09-17",
+  "project": "arcadia",
+  "intent": "complete",
+  "desired_result": "Mark add-opencode-production-provider done: opencode is a first-class managed-production coding-agent provider, launched non-interactively under the existing Session, lease, packet, and promotion guards, with its own bundled model binding and passing tests and builds.",
+  "target_ref": "action/add-opencode-production-provider",
+  "candidate_revision": "c3c386ce7cec17ce851b8edcc3f7b47d087e9078",
+  "evidence": [
+    {
+      "criterion": "An opencode build coding-agent profile and an opencode-cli provider binding are registered in the workspace config, and provider selection picks them without hardcoding a new opencode name outside the existing provider registry.",
+      "status": "met",
+      "note": "config/defaults/coding-agent-profiles.json registers the `opencode_build` profile (provider opencode-cli, command opencode); config/defaults/provider-adapters.json registers the `opencode-cli` adapter and the `opencode-zen` binding pinning opencode-go/deepseek-v4.1-flash with modelArgs and the highest costRank, so it is chosen only when Codex and Claude are unavailable. PROVIDER_LABELS in src/codingAgents/adapters.ts remains the single provider-id map. Covered by tests/provider-adapter-selection.test.ts."
+    },
+    {
+      "criterion": "The guarded launch path launches opencode non-interactively in the prepared worktree: SessionAgent/SESSION_PROVIDER, buildSessionLaunch, the prepareAgentWorktree agent union plus its opencode worktree root, buildAgentLaunchCommand, the provider-to-agent map, and LAUNCH_ADAPTER_SUPPORT each handle opencode, reusing the existing Session, lease, packet, and promotion guards unchanged.",
+      "status": "met",
+      "note": "src/sessions/index.ts adds opencode to SessionAgent and SESSION_PROVIDER and emits the non-interactive `opencode run` launch in buildSessionLaunch; the provider-to-agent map is derived from SESSION_PROVIDER. src/sessions/worktreePreparation.ts adds opencode to the agent union, the ~/.opencode/worktrees root, and buildAgentLaunchCommand. src/sessions/launchPreview.ts marks opencode-cli supported in LAUNCH_ADAPTER_SUPPORT. tests/opencode-provider.test.ts proves command, variant, worktree root, and registry/session-map sync."
+    },
+    {
+      "criterion": "A standing production policy scoped to --provider opencode-cli launches an opencode Session that runs arcadia advance with no per-launch operator click, and a concurrent launch against the same candidate is still refused with the existing lease conflict.",
+      "status": "met",
+      "note": "tests/session-launch.test.ts:416 `launches an opencode Session under a policy scoped to opencode-cli, then holds the lease guard` activates a policy scoped to opencode-cli and proves one Session launches with no per-launch click (admission committed, one tmux launch of `opencode`), then proves the existing one-lease-per-repository guard refuses a second preparation."
+    },
+    {
+      "criterion": "opencode admission uses only the existing bounded operator capacity attestation (arcadia production capacity attest), labeled attended and never standing proof; no new capacity source, credit purchase, or paid fallback is introduced.",
+      "status": "met",
+      "note": "opencode admission uses the same fixtureCapacityObservation/operator-attestation path as the other providers (tests/session-launch.test.ts:427). tests/provider-capacity-admission.test.ts:358 `the operator attestation is admissible, bounded and labeled` proves the attestation admits work while never claiming unattended proof; no new capacity source, credit purchase, or paid fallback was added."
+    },
+    {
+      "criterion": "Existing codex and claude selection, launch, refusal, and reconciliation behavior is unchanged, with deterministic tests covering opencode selection, launch-command construction, worktree root, and refusal cases; the full test suite and the core, Discord, and Dashboard builds pass.",
+      "status": "met",
+      "note": "Existing codex/claude selection, launch, refusal, and reconciliation tests are unchanged and passing. Deterministic opencode coverage lives in tests/opencode-provider.test.ts, tests/session-launch.test.ts, and tests/provider-adapter-selection.test.ts. At merge c3c386ce: pnpm test 1,613 passed / 15 skipped; pnpm build and pnpm dashboard:build pass; pnpm verify:package-boundary passes."
+    },
+    {
+      "criterion": "docs/model-selection.md, START_HERE.md, docs/COMMANDS.md, and the AGENTS.md Codex-only sentence are updated wherever their claims change; the legacy review-approve executor, an opencode planning profile, and go-broker sandbox config stay deferred against a named trigger.",
+      "status": "met",
+      "note": "docs/model-selection.md documents the opencode-cli managed-production pin and that no opencode planning profile exists; START_HERE.md and docs/COMMANDS.md name the opencode_build profile and the opencode launch path; AGENTS.md line 4 now reads `Codex and opencode load it directly`. The three deferrals remain explicit in this criterion. The go-broker sandbox deferral has since fired its trigger: it is now drafted as agent-ask-add-opencode-go-broker-launcher-2026-09-16 (implemented in PR #281) with the posture question filed as agent-ask-opencode-broker-sandbox-posture-2026-09-16."
+    }
+  ]
+}
