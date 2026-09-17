@@ -1,0 +1,36 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-harden-agent-ask-settlement-2026-09-17",
+  "project": "arcadia",
+  "intent": "complete",
+  "desired_result": "Mark harden-agent-ask-settlement done with evidence for every declared acceptance criterion.",
+  "target_ref": "action/harden-agent-ask-settlement",
+  "candidate_revision": "2b1ab152e4f47c70bfd04ad7a34e2ffa147d372b",
+  "evidence": [
+    {
+      "criterion": "A derived Decision or Plan slug from an over-long question is always valid kebab-case: slugify truncates at the 80-character cap without leaving a leading or trailing separator, and a unit test proves an over-long desired_result or question yields a slug the Decision writer accepts (fixes Issue #269).",
+      "status": "met",
+      "note": "src/utils/slug.ts truncates after collapsing and trimming separators, cuts back to the last whole word inside the 80-character cap, and strips any residual separator. tests/slug.test.ts proves the over-long question from Issue #269 and a value whose 80th character is a separator both yield the parser's kebab-case grammar; the settlement test 'derives a valid Decision slug from a question longer than the slug cap' writes and commits a real Decision from that question and asserts no parser error names it."
+    },
+    {
+      "criterion": "agent-ask settle --apply either completes every step (managed-document writes, review-item creation, local commit) or fails cleanly with a clearly reported recoverable state; any post-write side effect (Discord notification, operational sync, database lock) is bounded by a deadline and never gates the local commit (fixes Issue #270).",
+      "status": "met",
+      "note": "src/ask/settlement.ts splits apply into three phases: write and read-only-validate the managed documents (any refusal restores every file), commit the authoritative documents, then run the bounded operational projection. A failed or stalled projection returns a receipt carrying a recovery object (documentsCommitted, operationalSync pending, reason, remedy), records the settlement so a retry is refused, and leaves the committed record untouched. The commit is local and deterministic and no side effect precedes it."
+    },
+    {
+      "criterion": "A regression test settles with the notification/sync path stalled and asserts the command returns and the change is committed; the intermittent hang cannot reoccur without a test failure.",
+      "status": "met",
+      "note": "tests/agent-ask-settlement.test.ts 'commits the recorded documents even when the operational sync stalls' injects a beforeOperationalSync hook that throws, asserts the command returns with recovery.operationalSync pending, that the Mission Log entry is present, that git status is clean, that the commit exists, and that a fresh settlement request id is refused as already settled."
+    },
+    {
+      "criterion": "Existing settlement behavior for the successful path, and existing codex and claude behavior, are unchanged; pnpm test and the core, Discord, and Dashboard builds pass.",
+      "status": "met",
+      "note": "Every pre-existing agent-ask-settlement, agent-ask-complete, and slug-related test passes unchanged, including the Git-commit-failure preservation test. pnpm test ran 1652 passing and 15 skipped (the only first-run failure was packageBoundary's 10s beforeAll building dist/, which passes on a built tree and via pnpm verify:package-boundary). pnpm build (core and Discord) and pnpm dashboard:build both exited 0."
+    },
+    {
+      "criterion": "The Action closes GitHub Issues #269 and #270 when it merges.",
+      "status": "met",
+      "note": "PR #289's body carries 'Closes #269.' and 'Closes #270.'"
+    }
+  ]
+}

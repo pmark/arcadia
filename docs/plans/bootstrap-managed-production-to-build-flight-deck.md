@@ -920,7 +920,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/283", "https://github.com/pmark/arcadia/issues/284", "src/dispatch/pointer.ts", "src/sessions/preservationTransport.ts", "src/goBroker.ts", "src/commands/goBrokerInstall.ts", "START_HERE.md", "docs/COMMANDS.md"]
   - id: harden-agent-ask-settlement
     title: Agent Ask settlement and its derived slugs are durable and deterministic, so a settle either completes every step or fails cleanly and a long question never produces an invalid slug.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Agent Ask settlement and its derived slugs are durable and deterministic, so a settle either completes every step or fails cleanly and a long question never produces an invalid slug.
@@ -1014,7 +1014,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/267", "https://github.com/pmark/arcadia/issues/268", "src/docs/sync.ts", "src/ask/settlement.ts", "docs/decisions/"]
 questions: []
 decisions: []
-current_action: harden-agent-ask-settlement
+current_action: prove-two-action-unattended-production
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

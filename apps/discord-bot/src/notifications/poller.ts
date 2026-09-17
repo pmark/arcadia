@@ -361,6 +361,7 @@ function agentAskSettlementIdFromNotificationKey(key: string): string | null {
 }
 
 export function agentAskSettlementMessage(notification: AgentAskNotificationItem): string {
+  const recovery = notification.recovery;
   return [
     `Agent Ask settled: ${notification.disposition}`,
     `Project: ${notification.projectSlug}`,
@@ -370,6 +371,14 @@ export function agentAskSettlementMessage(notification: AgentAskNotificationItem
       ? `Queue: ${notification.queueActionKeys.join(", ")} starting at position ${(notification.queuePosition ?? 0) + 1}`
       : "Queue: no executable Action created",
     `Next: ${notification.nextActionKey ?? "none"}`,
+    ...(recovery
+      ? [
+          `Recovery needed: ${recovery.reason}`,
+          recovery.documentsCommitted
+            ? `Documents committed; projection ${recovery.operationalSync}. ${recovery.remedy}`
+            : `Documents NOT committed; projection ${recovery.operationalSync}. ${recovery.remedy}`
+        ]
+      : []),
     `Settlement: ${notification.settlementId}`
   ].join("\n");
 }

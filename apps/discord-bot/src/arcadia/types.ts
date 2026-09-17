@@ -54,6 +54,13 @@ export interface QueueData {
   };
 }
 
+export interface AgentAskSettlementRecovery {
+  documentsCommitted: boolean;
+  operationalSync: "complete" | "pending";
+  reason: string;
+  remedy: string;
+}
+
 export interface AgentAskNotificationItem {
   settlementId: string;
   projectSlug: string;
@@ -65,6 +72,7 @@ export interface AgentAskNotificationItem {
   queuePosition: number | null;
   nextActionKey: string | null;
   createdAt: string;
+  recovery?: AgentAskSettlementRecovery | null;
 }
 
 export interface AgentAskNotificationsData {

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -11,8 +11,8 @@ import {
   runAgentAskPreviewCommand,
   runAgentAskSettleCommand
 } from "../src/commands/agentAsk.js";
-import { withDatabase } from "../src/db/connection.js";
-import { discoverDocs } from "../src/docs/discover.js";
+import { openDatabase, withDatabase } from "../src/db/connection.js";
+import type { AgentAskSettlementReceipt } from "../src/ask/settlement.js";import { discoverDocs } from "../src/docs/discover.js";
 import { resolveDispatch, isDispatchable } from "../src/docs/dispatch.js";
 import { arrangeActionOrder, loadActionOrder } from "../src/dispatch/order.js";
 import { createExecutionPlan, createExecutionRun, createWorkItemRecord, getProjectBySlug, upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
@@ -140,10 +140,20 @@ describe("Agent Ask settlement", () => {
     const options = { workspace, proposal: "activate-production", requestId: "commit-failure", disposition: "accepted" as const,
       activate: true, action: "first", model: "gpt-6-astra", top: true };
     const preview = runAgentAskSettleCommand(options);
-    expect(runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint }).data.receipt.applied).toBe(true);
+    const applied = runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
+    expect(applied.data.receipt.applied).toBe(true);
     expect(resolveDispatch(repo, "demo").context?.activePlan).toBe("production");
     withDatabase(workspace, (db) => expect([...loadActionOrder(db).positions.keys()]).toEqual(["demo/first"]));
     expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).not.toBe("");
+    // The manual-commit recovery must reach the operator on the channel the
+    // settlement ping uses, not only this process's stderr.
+    expect(applied.data.receipt.recovery).toMatchObject({ documentsCommitted: false, operationalSync: "complete" });
+    const notifications = runAgentAskNotificationsCommand({ workspace }).data.notifications;
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]!.recovery).toMatchObject({ documentsCommitted: false });
+    const message = agentAskSettlementMessage(notifications[0]!);
+    expect(message).toContain("Recovery needed");
+    expect(message).toContain("by hand");
   });
 
   it("previews and atomically accepts a canonical Action at an explicit queue position", () => {
@@ -1329,6 +1339,145 @@ describe("Agent Ask safety boundaries", () => {
         .get() as { work_classification: string } | undefined;
       expect(existing?.work_classification).toBe("agent");
     });
+  });
+
+  it("derives a valid Decision slug from a question longer than the slug cap", () => {
+    // Issue #269: an over-long question used to truncate to a trailing hyphen,
+    // which the managed-document parser refused as non-kebab-case.
+    const { workspace, repo } = fixture();
+    const question = "Should Arcadia treat plan and Action priority as a projection of the live queue, "
+      + "re-derived at dispatch, so priority belongs in advance queue order and never becomes a Decision?";
+    const applied = settleOne(workspace, "decision", question, "long-decision-question");
+    expect(applied.data.receipt.applied).toBe(true);
+    const decisionFile = readdirSync(path.join(repo, "docs/decisions")).find((name) => name.startsWith("0001-"));
+    expect(decisionFile).toBeDefined();
+    const slug = decisionFile!.replace(/^0001-/, "").replace(/\.md$/, "");
+    expect(slug).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+    expect(slug.length).toBeLessThanOrEqual(80);
+    // The parser accepted the derived document: no validity error names it.
+    expect(discoverDocs(repo).errors.filter((error) => error.relativePath.includes("decisions"))).toEqual([]);
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+  });
+
+  it("commits the recorded documents even when the operational sync stalls", () => {
+    // Issue #270: the commit used to wait on the operational sync inside one
+    // database transaction, so a stall there left the record written but
+    // uncommitted and its review item missing. The commit now happens first, so
+    // a stalled sync returns a recoverable receipt over an already-durable record.
+    const { workspace, repo } = fixture();
+    const requestId = "stalled-sync";
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: askForIntent(requestId, "log", "Record the stalled-sync rehearsal")
+    });
+    const options = {
+      workspace,
+      proposal: proposal.data.proposal.id,
+      requestId: `${requestId}-settle`,
+      disposition: "accepted" as const
+    };
+    const preview = runAgentAskSettleCommand(options);
+    const applied = runAgentAskSettleCommand({
+      ...options,
+      apply: true,
+      preview: preview.data.receipt.previewFingerprint,
+      hooks: { beforeOperationalSync: () => { throw new Error("operational sync deadline exceeded"); } }
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+    expect(applied.data.receipt.recovery).toMatchObject({ documentsCommitted: true, operationalSync: "pending" });
+    expect(applied.data.receipt.recovery?.reason).toContain("deadline exceeded");
+    // The record is durable: present in the checked-in document and committed.
+    expect(readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8")).toContain(`Agent Ask ${requestId}`);
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+    expect(execFileSync("git", ["log", "-1", "--format=%s"], { cwd: repo, encoding: "utf8" }))
+      .toContain(`settle ${requestId}`);
+    // Only the projection is behind: the settlement is recorded, so its ping is
+    // queued even though no queue or review work exists yet.
+    expect(runAgentAskNotificationsCommand({ workspace }).data.notifications).toHaveLength(1);
+    // The same settlement request replays the recorded receipt instead of
+    // re-appending the committed record, and a fresh request id is refused.
+    expect(runAgentAskSettleCommand({
+      ...options, apply: true, preview: preview.data.receipt.previewFingerprint
+    }).data.receipt.id).toBe(applied.data.receipt.id);
+    expect(() => runAgentAskSettleCommand({ ...options, requestId: "stalled-sync-second" }))
+      .toThrow(/already settled/);
+  });
+
+  it("bounds a real held write lock to the projection deadline and still refuses the retry from the documents", () => {
+    // The exact trigger Issue #270 names: another connection holds the workspace
+    // write lock, so BOTH the projection and the recording transaction fail and
+    // no receipt row is written. The documents are committed, and the durable
+    // document marker — not the absent row — must refuse a fresh retry.
+    const { workspace, repo } = fixture();
+    const requestId = "locked-projection";
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: askForIntent(requestId, "log", "Record the locked-projection rehearsal")
+    });
+    const options = {
+      workspace,
+      proposal: proposal.data.proposal.id,
+      requestId: `${requestId}-settle`,
+      disposition: "accepted" as const
+    };
+    const preview = runAgentAskSettleCommand(options);
+
+    // Take the write lock after the settlement opens its connection and commits
+    // its documents, so only the projection meets it — the condition #270 names.
+    let lock: ReturnType<typeof openDatabase> | null = null;
+    let receipt: AgentAskSettlementReceipt;
+    const startedAt = Date.now();
+    try {
+      receipt = runAgentAskSettleCommand({
+        ...options,
+        apply: true,
+        preview: preview.data.receipt.previewFingerprint,
+        projectionBusyTimeoutMs: 250,
+        hooks: {
+          beforeOperationalProjection: () => {
+            lock = openDatabase(workspace);
+            lock.exec("BEGIN IMMEDIATE");
+          }
+        }
+      }).data.receipt;
+    } finally {
+      lock?.exec("ROLLBACK");
+      lock?.close();
+    }
+
+    // Bounded: it returns rather than hanging, and the record is committed.
+    expect(Date.now() - startedAt).toBeLessThan(10_000);
+    expect(receipt.applied).toBe(true);
+    expect(receipt.recovery).toMatchObject({ documentsCommitted: true, operationalSync: "pending" });
+    expect(readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8")).toContain(`Agent Ask ${requestId}`);
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+    // No receipt row exists (the lock refused both transactions), so only the
+    // committed document can stop a duplicate. A fresh request id must be refused.
+    expect(runAgentAskNotificationsCommand({ workspace }).data.notifications).toEqual([]);
+    const retryOptions = { ...options, requestId: `${requestId}-retry`, apply: true as const };
+    const retryPreview = runAgentAskSettleCommand({ ...retryOptions, apply: false });
+    expect(() => runAgentAskSettleCommand({
+      ...retryOptions, preview: retryPreview.data.receipt.previewFingerprint
+    })).toThrow(/already wrote/);
+    expect(readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8").match(new RegExp(`Agent Ask ${requestId}`, "g")))
+      .toHaveLength(1);
+  });
+
+  it("keeps a colliding derived slug within the cap", () => {
+    // The uniqueness suffix must not push a capped slug back over 80 characters.
+    const { workspace, repo } = fixture();
+    const question = "Should Arcadia treat plan and Action priority as a projection of the live queue, "
+      + "re-derived at dispatch, so priority belongs in advance queue order and never becomes a Decision?";
+    settleOne(workspace, "decision", question, "collide-1");
+    settleOne(workspace, "decision", question, "collide-2");
+    const slugs = readdirSync(path.join(repo, "docs/decisions"))
+      .map((name) => name.replace(/^\d+-/, "").replace(/\.md$/, ""));
+    expect(slugs).toHaveLength(2);
+    for (const slug of slugs) {
+      expect(slug).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+      expect(slug.length).toBeLessThanOrEqual(80);
+    }
+    expect(slugs.some((slug) => slug.endsWith("-2"))).toBe(true);
   });
 });
 

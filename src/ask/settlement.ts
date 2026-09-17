@@ -10,15 +10,22 @@ import { discoverDocs } from "../docs/discover.js";
 import { isDispatchable, resolveActionReadiness, resolveDispatch } from "../docs/dispatch.js";
 import { yamlScalar } from "../docs/frontmatter.js";
 import { syncProjectDocs } from "../docs/sync.js";
-import type { DecisionDoc, LogDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
+import type { ArcadiaDoc, DecisionDoc, LogDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import { buildAgentQueue, unpositionedCountForProject } from "../dispatch/queue.js";
 import { arrangeActionOrder } from "../dispatch/order.js";
 import { assertClean, commitOnlyPaths, git, projectCheckoutFor } from "../git/worktrees.js";
-import { slugify } from "../utils/slug.js";
+import { slugify, SLUG_MAX_LENGTH } from "../utils/slug.js";
 
 export type AgentAskDisposition = "accepted" | "rejected";
 export type AgentAskResponsibility = "autonomous" | "agent";
 export type AgentAskPlacement = "top" | "before" | "after";
+
+/**
+ * How long the operational projection may wait for the workspace write lock
+ * before it is declared stalled. The documents are already committed by then,
+ * so this is a side-effect budget, not the settlement's durability window.
+ */
+const DEFAULT_PROJECTION_BUSY_TIMEOUT_MS = 15_000;
 
 /** `after: null` means this mutation deletes `path` (used to archive a settled Ask's source file). */
 interface FileMutation { path: string; before: string | null; after: string | null; }
@@ -41,6 +48,36 @@ export interface AgentAskSettlementReceipt {
   authority: { kind: "operator_acceptance"; requestedAuthority: string; boundedPolicyDecision: null };
   notificationStatus: "withheld_until_apply" | "pending" | "sent";
   createdAt: string;
+  /**
+   * Present only when the settlement did not finish every durable step: the
+   * managed documents could not be committed, the operational projection did
+   * not complete, or both. Describes exactly what is safe and what to do.
+   */
+  recovery?: AgentAskSettlementRecovery | null;
+}
+
+export interface AgentAskSettlementRecovery {
+  /** False when the documents were written but their Git commit failed. */
+  documentsCommitted: boolean;
+  /** "pending" when review items, queue placement, or the receipt are behind. */
+  operationalSync: "complete" | "pending";
+  reason: string;
+  remedy: string;
+}
+
+/**
+ * Injection points for the deterministic regression tests around Issue #270.
+ * Production callers pass none.
+ */
+export interface AgentAskSettlementTestHooks {
+  /** Runs inside the operational-projection transaction, before the sync. */
+  beforeOperationalSync?: () => void;
+  /**
+   * Runs after the documents are committed and before the projection acquires
+   * the workspace write lock. A test uses it to take that lock first, so the
+   * projection deadline is exercised against a real lock.
+   */
+  beforeOperationalProjection?: () => void;
 }
 
 export interface PendingAgentAskNotification {
@@ -54,6 +91,8 @@ export interface PendingAgentAskNotification {
   queuePosition: number | null;
   nextActionKey: string | null;
   createdAt: string;
+  /** Present when the settlement's durable steps did not all complete. */
+  recovery: AgentAskSettlementRecovery | null;
 }
 
 export function settleAgentAsk(db: Database.Database, input: {
@@ -81,7 +120,17 @@ export function settleAgentAsk(db: Database.Database, input: {
   /** Where the command ran. Inside a worktree of the Project's repository,
    * settlement writes and commits there, on that worktree's branch. */
   cwd?: string;
-}): AgentAskSettlementReceipt {
+  /**
+   * Deadline, in milliseconds, for the operational projection to acquire the
+   * workspace write lock. Defaults to 15 s, the connection's own busy timeout.
+   * Tests set it low to exercise a real held lock without a 15-second wait.
+   */
+  projectionBusyTimeoutMs?: number;
+}, hooks?: AgentAskSettlementTestHooks): AgentAskSettlementReceipt {
+  if (input.projectionBusyTimeoutMs !== undefined &&
+      (!Number.isInteger(input.projectionBusyTimeoutMs) || input.projectionBusyTimeoutMs < 1)) {
+    throw validationError("Agent Ask projection deadline must be a positive integer number of milliseconds.");
+  }
   const operation = {
     proposalRef: input.proposalRef,
     disposition: input.disposition,
@@ -646,59 +695,136 @@ export function settleAgentAsk(db: Database.Database, input: {
   if (fileMutations.length > 0) {
     // The drafted Ask file itself sits untracked in the repository this
     // settlement is about to write into. It is not incidental dirt: this
-    // same transaction consumes it (archiveSettledAskFile queued a mutation
+    // same settlement consumes it (archiveSettledAskFile queued a mutation
     // deleting it and writing its content under `.arcadia/asks/archive/`), so
     // it must not also make the repository look unclean. Nothing else in the
     // working tree is exempted.
     assertClean(repoRoot, "Agent Ask Project repository", archivedAskPath ? [archivedAskPath] : []);
   }
+
+  // A settlement's durable record is the committed managed document, not the
+  // database row (Issue #270). The projection transaction that writes the
+  // receipt can fail — a held workspace write lock is exactly that trigger —
+  // and then no `agent_ask_settlements` row exists. Both database guards
+  // (`request_id` and `proposal_id`) would pass on a later attempt, and a
+  // caller retrying with a fresh settlement request id would re-append a record
+  // that is already committed. Detect it from the documents themselves: every
+  // derived-document writer stamps the Ask's request id into a stable field
+  // (`source:` on a Plan Action, the Log entry heading, the Decision body), so
+  // the marker's presence is proof the settlement already landed, database or
+  // no database.
+  const committedDoc = findCommittedSettlement(discoverDocs(repoRoot).docs, project.slug, proposal.normalized.requestId);
+  if (committedDoc) {
+    throw validationError(
+      `Agent Ask ${proposal.normalized.requestId} already wrote ${committedDoc}; a previous apply committed its documents without recording its receipt. Run \`arcadia docs sync\` to reconcile the Project projection instead of re-applying.`,
+      { requestId: proposal.normalized.requestId, path: committedDoc }
+    );
+  }
+
+  // Phase 1 — write the managed documents and prove the canonical truth they
+  // are supposed to produce. Nothing here touches the database, so any refusal
+  // restores every file and leaves the repository exactly as it was.
+  try {
+    for (const mutation of fileMutations) {
+      if (mutation.after === null) { try { unlinkSync(mutation.path); } catch {} }
+      else writeAtomically(mutation.path, mutation.after);
+    }
+    if (input.activate) {
+      const dispatch = resolveDispatch(repoRoot, project.slug);
+      if (!isDispatchable(dispatch) || dispatch.context?.action.id !== input.action) {
+        throw validationError("Plan activation did not produce dispatchable canonical truth.", { blockers: dispatch.blockers, question: dispatch.operatorQuestion });
+      }
+    }
+    if (completionActionId) {
+      const verified = discoverDocs(repoRoot);
+      const verifiedPlan = verified.docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug && doc.slug === completionPlanSlug);
+      const verifiedAction = verifiedPlan?.actions.find((candidate) => candidate.id === completionActionId);
+      if (!verifiedAction || verifiedAction.status !== "done") {
+        throw validationError("Completion did not produce a done canonical Action.", { actionId: completionActionId });
+      }
+    }
+    for (const actionId of actionIdsToValidate) {
+      const readiness = resolveActionReadiness(repoRoot, project.slug, actionId);
+      const structuralBlockers = readiness.blockers.filter((blocker) => !blocker.field.endsWith(".depends_on"));
+      if (!readiness.found || structuralBlockers.length > 0 || readiness.operatorQuestion) {
+        throw validationError("Accepted Agent Ask did not produce a ready canonical Action.", {
+          actionId,
+          blockers: structuralBlockers,
+          operatorQuestion: readiness.operatorQuestion
+        });
+      }
+    }
+    if (fileMutations.length > 0) {
+      // A settlement answers for the documents it wrote, and for nothing else.
+      // Decision 0044: this check used to refuse on any error anywhere in the
+      // corpus, so one stale document from weeks ago permanently blocked every
+      // future settlement in that repository — and, because no intent can amend
+      // an existing document, blocked the very Ask that would have cleared it.
+      // An adopting project hit exactly that on its first real use, with 49
+      // pre-existing errors it had not introduced.
+      //
+      // The crawl still covers everything, because cross-document checks and
+      // ingestion need the whole graph; only the refusal narrows. Unrelated
+      // corpus errors remain real and remain reportable — `arcadia docs` is
+      // where the operator asks that question deliberately, rather than
+      // discovering it as a refusal of unrelated work.
+      //
+      // Run read-only here, before the commit, so a malformed derived document
+      // is still refused with the working tree untouched (Issue #270 moved the
+      // commit ahead of the operational sync; this keeps the old refusal
+      // semantics without letting the sync gate the commit).
+      const validation = syncProjectDocs(db, project, { apply: false, repoRoot });
+      const written = new Set(
+        fileMutations.map((mutation) => path.relative(repoRoot, mutation.path)),
+      );
+      const blocking = validation.errors.filter((error) => written.has(error.relativePath));
+      if (blocking.length > 0) {
+        throw validationError("Accepted Agent Ask managed documents failed operational sync.", {
+          errors: blocking,
+          unrelatedCorpusErrors: validation.errors.length - blocking.length,
+        });
+      }
+    }
+  } catch (error) {
+    for (const mutation of [...fileMutations].reverse()) restoreMutation(mutation);
+    throw error;
+  }
+
+  // Phase 2 — commit the authoritative documents before any side effect can run.
+  // A settlement's durable output is checked-in managed documents; the database
+  // is a projection. Issue #270: the commit used to wait on an operational sync
+  // inside one database transaction, so a stall there (a held workspace write
+  // lock, a worker mid-tick) left the record written but uncommitted and its
+  // review item missing, and a human had to commit by hand. The commit is
+  // local, cheap, and deterministic, so it now happens first and nothing can
+  // gate it.
+  //
+  // A Git failure must leave the settled documents intact for recovery, and its
+  // message must reach the operator now rather than at the next refused
+  // command — so it does not refuse: the projection still runs, the settlement
+  // is recorded, and the working tree is reported as the recoverable part.
+  let commitError: string | null = null;
+  if (fileMutations.length > 0) {
+    commitError = commitSettlementOutput(repoRoot, fileMutations, baseReceipt);
+    if (commitError) process.stderr.write(`The settled managed documents were written but could not be committed: ${commitError}\n`);
+  }
+
+  // Phase 3 — bounded operational projection. Review items, queue placement,
+  // and the settlement receipt are all derived from documents that are already
+  // on disk, so a failure here is recoverable with `arcadia docs sync` and must
+  // never hide or undo the record.
+  //
+  // The bound is explicit and testable. better-sqlite3 is synchronous, so
+  // SQLite's own busy handler is the only place a lock wait can be bounded;
+  // scoping it here keeps it a projection budget rather than a settlement one.
+  hooks?.beforeOperationalProjection?.();
+  db.pragma(`busy_timeout = ${input.projectionBusyTimeoutMs ?? DEFAULT_PROJECTION_BUSY_TIMEOUT_MS}`);
   let settled: AgentAskSettlementReceipt;
   try {
     settled = writeTransaction(db, () => {
-      for (const mutation of fileMutations) {
-        if (mutation.after === null) { try { unlinkSync(mutation.path); } catch {} }
-        else writeAtomically(mutation.path, mutation.after);
-      }
-      if (input.activate) {
-        const dispatch = resolveDispatch(repoRoot, project.slug);
-        if (!isDispatchable(dispatch) || dispatch.context?.action.id !== input.action) {
-          throw validationError("Plan activation did not produce dispatchable canonical truth.", { blockers: dispatch.blockers, question: dispatch.operatorQuestion });
-        }
-      }
-      if (completionActionId) {
-        const verified = discoverDocs(repoRoot);
-        const verifiedPlan = verified.docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug && doc.slug === completionPlanSlug);
-        const verifiedAction = verifiedPlan?.actions.find((candidate) => candidate.id === completionActionId);
-        if (!verifiedAction || verifiedAction.status !== "done") {
-          throw validationError("Completion did not produce a done canonical Action.", { actionId: completionActionId });
-        }
-      }
-      for (const actionId of actionIdsToValidate) {
-        const readiness = resolveActionReadiness(repoRoot, project.slug, actionId);
-        const structuralBlockers = readiness.blockers.filter((blocker) => !blocker.field.endsWith(".depends_on"));
-        if (!readiness.found || structuralBlockers.length > 0 || readiness.operatorQuestion) {
-          throw validationError("Accepted Agent Ask did not produce a ready canonical Action.", {
-            actionId,
-            blockers: structuralBlockers,
-            operatorQuestion: readiness.operatorQuestion
-          });
-        }
-      }
+      hooks?.beforeOperationalSync?.();
       if (fileMutations.length > 0) {
         const sync = syncProjectDocs(db, project, { apply: true, repoRoot });
-        // A settlement answers for the documents it wrote, and for nothing
-        // else. Decision 0044: this check used to refuse on any error anywhere
-        // in the corpus, so one stale document from weeks ago permanently
-        // blocked every future settlement in that repository — and, because no
-        // intent can amend an existing document, blocked the very Ask that
-        // would have cleared it. An adopting project hit exactly that on its
-        // first real use, with 49 pre-existing errors it had not introduced.
-        //
-        // The crawl still covers everything, because cross-document checks and
-        // ingestion need the whole graph; only the refusal narrows. Unrelated
-        // corpus errors remain real and remain reportable — `arcadia docs` is
-        // where the operator asks that question deliberately, rather than
-        // discovering it as a refusal of unrelated work.
         const written = new Set(
           fileMutations.map((mutation) => path.relative(repoRoot, mutation.path)),
         );
@@ -732,28 +858,127 @@ export function settleAgentAsk(db: Database.Database, input: {
       }
       const nextActionKey = buildAgentQueue(db).nextActionKey;
       const receipt: AgentAskSettlementReceipt = { ...baseReceipt, nextActionKey };
-      db.prepare(`INSERT INTO agent_ask_settlements
-        (id, proposal_id, request_id, operation_json, fingerprint, disposition, project_slug,
-         effects_json, queue_action_key, queue_position, next_action_key, notification_status,
-         receipt_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`)
-        .run(receipt.id, proposal.id, input.settlementRequestId, JSON.stringify(operation), previewFingerprint,
-          input.disposition, project.slug, JSON.stringify(effects), queueActionKey, receipt.queuePosition,
-          nextActionKey, JSON.stringify(receipt), now);
+      insertSettlementRow(db, receipt, {
+        proposalId: proposal.id, settlementRequestId: input.settlementRequestId, operation,
+        previewFingerprint, effects, queueActionKey, projectSlug: project.slug, now
+      });
       return receipt;
     });
   } catch (error) {
-    for (const mutation of [...fileMutations].reverse()) restoreMutation(mutation);
-    throw error;
+    // The record is on disk; only its projection is behind. Return a receipt
+    // the operator can act on rather than an opaque failure, and say exactly
+    // how to finish the projection.
+    const reason = error instanceof Error ? error.message : String(error);
+    const syncRemedy = "Run `arcadia docs sync` to reconcile this Project's review items and queue projection.";
+    process.stderr.write(`The settled managed documents were written, but the operational sync did not complete: ${reason}\n${syncRemedy}\n`);
+    const recoveryReceipt: AgentAskSettlementReceipt = {
+      ...baseReceipt,
+      nextActionKey: null,
+      recovery: {
+        documentsCommitted: commitError === null,
+        operationalSync: "pending",
+        reason,
+        remedy: syncRemedy
+      }
+    };
+    // Record the settlement in its own bounded transaction so a retry is
+    // refused rather than silently duplicating the committed record. The
+    // pending notification still describes a settlement that did happen; only
+    // the projection it points at is behind.
+    let recorded = false;
+    try {
+      writeTransaction(db, () => {
+        insertSettlementRow(db, recoveryReceipt, {
+          proposalId: proposal.id, settlementRequestId: input.settlementRequestId, operation,
+          previewFingerprint, effects, queueActionKey, projectSlug: project.slug, now
+        });
+      });
+      recorded = true;
+    } catch {
+      // The projection is unavailable too; the stderr note already says so.
+    }
+    settled = recorded ? recoveryReceipt : { ...recoveryReceipt, notificationStatus: "withheld_until_apply" };
   }
-  // Commit after the database transaction and outside its rollback handler.
-  // A Git failure must leave the settled documents intact for recovery, and its
-  // message must reach the operator now rather than at the next refused command.
-  if (fileMutations.length > 0) {
-    const commitError = commitSettlementOutput(repoRoot, fileMutations, settled);
-    if (commitError) process.stderr.write(`The settled managed documents were written but could not be committed: ${commitError}\n`);
+  if (commitError) {
+    settled = {
+      ...settled,
+      recovery: settled.recovery
+        ? { ...settled.recovery, documentsCommitted: false, remedy: `${settled.recovery.remedy} Commit the settled documents in ${repoRoot} by hand; they are present in the working tree.` }
+        : {
+            documentsCommitted: false,
+            operationalSync: "complete",
+            reason: commitError,
+            remedy: `Commit the settled documents in ${repoRoot} by hand; the settlement is recorded and its files are present in the working tree.`
+          }
+    };
+    // Keep the recorded receipt truthful too. The recovery is what the operator
+    // reads on the channel they actually monitor, not the settling shell's
+    // stderr, so it belongs in the row `notifications` projects from.
+    try {
+      db.prepare("UPDATE agent_ask_settlements SET receipt_json = ?, notification_status = ? WHERE id = ?")
+        .run(JSON.stringify(settled), settled.notificationStatus, settled.id);
+    } catch {
+      // The projection is unavailable as well; the returned receipt still carries it.
+    }
   }
   return settled;
+}
+
+/**
+ * The managed document a previous apply of this Ask already wrote, or null.
+ *
+ * The database receipt can be missing while the documents are committed (Issue
+ * #270's write-lock stall), so this is the durable, database-independent guard
+ * against re-applying a settled Ask. It matches only the exact fields the
+ * settlement writers stamp, never free prose, so a Log entry that merely
+ * mentions an Ask id does not register as that Ask's record.
+ */
+function findCommittedSettlement(docs: ArcadiaDoc[], projectSlug: string, requestId: string): string | null {
+  const marker = `Agent Ask ${requestId}`;
+  for (const doc of docs) {
+    // A Plan Action created or amended by this Ask carries it as `source`.
+    if (doc.type === "plan" && doc.project === projectSlug && doc.actions.some((action) => action.source === marker)) {
+      return doc.relativePath;
+    }
+    // A Log entry this Ask appended is headed with it.
+    if (doc.type === "log" && doc.project === projectSlug && doc.entries.some((entry) => entry.title === marker)) {
+      return doc.relativePath;
+    }
+    // A Decision this Ask filed names it as its proposer.
+    if (doc.type === "decision" && doc.project === projectSlug && doc.body.includes(marker)) {
+      return doc.relativePath;
+    }
+  }
+  return null;
+}
+
+/**
+ * Persist one settlement receipt row. Shared by the happy path (inside the
+ * operational-projection transaction) and the recovery path (#270), which
+ * records the settlement even when the projection could not be rebuilt.
+ */
+function insertSettlementRow(
+  db: Database.Database,
+  receipt: AgentAskSettlementReceipt,
+  context: {
+    proposalId: string;
+    settlementRequestId: string;
+    operation: unknown;
+    previewFingerprint: string;
+    effects: string[];
+    queueActionKey: string | null;
+    projectSlug: string;
+    now: string;
+  }
+): void {
+  db.prepare(`INSERT INTO agent_ask_settlements
+    (id, proposal_id, request_id, operation_json, fingerprint, disposition, project_slug,
+     effects_json, queue_action_key, queue_position, next_action_key, notification_status,
+     receipt_json, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`)
+    .run(receipt.id, context.proposalId, context.settlementRequestId, JSON.stringify(context.operation),
+      context.previewFingerprint, receipt.disposition, context.projectSlug, JSON.stringify(context.effects),
+      context.queueActionKey, receipt.queuePosition, receipt.nextActionKey, JSON.stringify(receipt), context.now);
 }
 
 /**
@@ -819,7 +1044,8 @@ export function listPendingAgentAskNotifications(db: Database.Database): Pending
         queueActionKeys: receipt.queueActionKeys ?? (value.queue_action_key === null ? [] : [String(value.queue_action_key)]),
         queuePosition: value.queue_position === null ? null : Number(value.queue_position),
         nextActionKey: value.next_action_key === null ? null : String(value.next_action_key),
-        createdAt: String(value.created_at)
+        createdAt: String(value.created_at),
+        recovery: receipt.recovery ?? null
       };
     });
 }
@@ -1079,7 +1305,7 @@ function addDecisionMutation(
 function uniqueDecisionSlug(decisions: DecisionDoc[], base: string): string {
   if (!decisions.some((decision) => decision.slug === base)) return base;
   for (let index = 2; index < 1000; index += 1) {
-    const candidate = `${base}-${index}`;
+    const candidate = boundedSuffixedSlug(base, `-${index}`);
     if (!decisions.some((decision) => decision.slug === candidate)) return candidate;
   }
   throw validationError("Agent Ask could not allocate a unique Decision slug.");
@@ -1089,10 +1315,21 @@ function uniquePlanSlug(plans: PlanDoc[], base: string): string {
   const stem = base || "agent-ask-plan";
   if (!plans.some((plan) => plan.slug === stem)) return stem;
   for (let index = 2; index < 1000; index += 1) {
-    const candidate = `${stem}-${index}`;
+    const candidate = boundedSuffixedSlug(stem, `-${index}`);
     if (!plans.some((plan) => plan.slug === candidate)) return candidate;
   }
   throw validationError("Agent Ask could not allocate a unique Plan slug.");
+}
+
+/**
+ * Append a uniqueness suffix without breaking the slug length cap. The base is
+ * already at the cap when a long question collided, so the suffix is carved out
+ * of the base rather than added past 80 characters.
+ */
+function boundedSuffixedSlug(base: string, suffix: string): string {
+  const room = SLUG_MAX_LENGTH - suffix.length;
+  const stem = base.length > room ? base.slice(0, room).replace(/-+$/, "") : base;
+  return `${stem || "item"}${suffix}`;
 }
 
 function newDraftPlan(
