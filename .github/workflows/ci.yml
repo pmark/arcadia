@@ -39,7 +39,7 @@ jobs:
       # package-boundary suite builds dist itself if it is missing; a
       # pre-existing build keeps that hook instant.
       - run: mise exec -- pnpm build
-      - run: mise exec -- pnpm exec vitest run --shard=1/3
+      - run: mise exec -- pnpm exec vitest run --shard=1/4
 
   unit-2:
     runs-on: ubuntu-latest
@@ -67,7 +67,21 @@ jobs:
       - run: mise exec -- corepack enable pnpm
       - run: mise exec -- pnpm install --frozen-lockfile
       - run: mise exec -- pnpm build
-      - run: mise exec -- pnpm exec vitest run --shard=3/3
+      - run: mise exec -- pnpm exec vitest run --shard=3/4
+
+  unit-4:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+        with:
+          install: true
+          cache: true
+      - run: mise exec -- corepack enable pnpm
+      - run: mise exec -- pnpm install --frozen-lockfile
+      - run: mise exec -- pnpm build
+      - run: mise exec -- pnpm exec vitest run --shard=4/4
 
   dashboard:
     runs-on: ubuntu-latest
@@ -101,7 +115,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: apps/dashboard/.next/cache
-          key: next-build-${{ runner.os }}-${{ hashFiles('apps/dashboard/**', 'src/**', 'pnpm-lock.yaml', 'tsconfig.json') }}
+          key: next-build-${{ runner.os }}-${{ hashFiles('apps/dashboard/app/**', 'apps/dashboard/components/**', 'apps/dashboard/lib/**', 'apps/dashboard/hooks/**', 'pnpm-lock.yaml') }}
           restore-keys: |
             next-build-${{ runner.os }}-
       - name: Cache Playwright browsers
