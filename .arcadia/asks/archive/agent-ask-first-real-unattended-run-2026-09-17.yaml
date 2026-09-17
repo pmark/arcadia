@@ -1,0 +1,55 @@
+{
+  "agent_ask": "v1",
+  "request_id": "first-real-unattended-run-2026-09-17",
+  "project": "arcadia",
+  "intent": "action",
+  "requested_authority": "propose",
+  "desired_result": "Unblock the first real unattended managed-production run on Arcadia by delivering the Action brief to a launched Session and by closing the preserve-on-exit and candidate-integration seam.",
+  "rationale": "Diagnosis of 'what blocks automated production with real sessions today', from the current revision. (1) The keystone: a managed Session is launched with the literal prompt `arcadia advance --session <id>` (src/sessions/index.ts:600), and that command prints only session metadata (src/commands/advance.ts:48-62) - no Action, no acceptance criteria, no completion or preservation instructions. The human/`arcadia go` path gets the full dispatch brief; the guarded-launch path does not. An independent review already graded this a Blocker (docs/reports/planning-agent-route-review-2.md:427-437) and no governed Action covers it; captured as GitHub Issue #292. (2) The seam: preservation fires only while the live Session requests it (src/sessions/preservationTransport.ts:214), a Session that dies leaves an uncommitted candidate the tick reconciles as incomplete_resumable but never commits (src/sessions/reconciliation.ts:205-206), and the worker never integrates a preserved candidate into the base branch - it defers one tick 'for its merge to land' (src/production/tick.ts:154-166; tests/production-tick.test.ts:222-225). Action B therefore waits for an operator merge, which is the babysitting this batch exists to remove. The operator has authorized bounded auto-integration for this rehearsal: a host-side mechanism may fast-forward/merge only agent-owned branches it created for a grant whose scope names the Project, Plan and Action, and it must stop and report on any conflict, non-agent branch, divergent base, or out-of-scope candidate. Merge, deploy, publish, spend, credentials, messaging and destructive operations keep their existing gates. (3) Related defects already governed in the same plan are not duplicated here: clean-up-preserve-transport-request (#272, the current pointer), bind-candidate-revision-in-action-settle (#278), translate-reasoning-effort-at-launch (#280), preserve-projects-with-dependencies (#273) and let-agent-preserve-its-candidate.",
+  "actions": [
+    {
+      "id": "deliver-session-brief",
+      "desired_result": "A managed-production Session is launched with an actionable Action brief instead of session metadata, so an unattended Session knows its task, its constraints and how to finish.",
+      "acceptance": [
+        "The managed launch delivers the Action brief to the spawned agent for every configured provider: the Action title and next_action, every acceptance criterion verbatim and in the plan's own order, the candidate worktree path, and the standing constraints (no merge, deploy, publish, push to shared branches, or pointer edits).",
+        "The brief states the exact completion protocol: run the repository's declared validation, request protected preservation through the existing fixed launcher, and settle a `complete` Agent Ask with candidate_revision equal to the worktree HEAD and one `met` evidence entry per criterion, verbatim and in order.",
+        "The brief is derived from the authoritative plan document for the Session's recorded plan_slug and action_id rather than a hardcoded or stale copy; a missing Action or missing acceptance criteria fails closed with a named error before launch.",
+        "Deterministic tests cover the rendered brief for an Action carrying criteria and the fail-closed case for a missing Action, and existing provider argument construction (model, effort/variant, worktree cwd, agent Git identity) is unchanged.",
+        "pnpm test and the core, Discord and Dashboard builds pass; no new approval, capacity or paid-fallback authority is introduced.",
+        "The Blocker recorded at docs/reports/planning-agent-route-review-2.md:427-437 is resolved and the PR closes GitHub Issue #292 when it merges."
+      ],
+      "dependencies": [],
+      "references": [
+        "https://github.com/pmark/arcadia/issues/292",
+        "src/sessions/index.ts",
+        "src/commands/advance.ts",
+        "src/docs/types.ts",
+        "docs/reports/planning-agent-route-review-2.md"
+      ]
+    },
+    {
+      "id": "preserve-on-exit-and-integrate",
+      "desired_result": "A finished managed-production Session's candidate is preserved and, under an explicit standing grant, integrated into the governed base branch automatically, so the next dependent Action launches with no operator merge between them.",
+      "acceptance": [
+        "When a managed-production Session reaches a terminal process state, the host preserves that Session's candidate through the existing candidate-preservation machinery (runPreserveCommand / preserveCandidate) without requiring the agent to have requested preservation while alive; a candidate already preserved is never re-committed.",
+        "The host validates the candidate with the Project's declared objective validation_commands run host-side where dependencies are available, refuses to preserve on a failed, skipped or absent check, and preserves all candidate files on refusal.",
+        "Under a standing grant whose scope names the Project, Plan and Action, the host integrates the preserved candidate branch into the governed base branch (fast-forward when possible) with no per-Action operator command; a conflict, a non-agent-owned branch, a divergent base, or a candidate outside the grant scope stops integration, reports the exact blocker, and preserves all work.",
+        "After integration the Action advances through the existing canonical completion and pointer writers, and the worker admits the next eligible Action with no operator command in between; repeated, concurrent or interrupted reconciliation is idempotent and never duplicates a commit, completion, Decision or pointer move.",
+        "Bounded auto-integration is off by default and requires the operator's recorded grant; without one the mechanism stops and reports the exact merge command instead of performing it. Merge, deploy, publish, spend, credentials, messaging and destructive operations remain separate gates.",
+        "A deterministic fixture proves terminal-session detection, host-side validation, preservation, integration and admission of the next Action, plus refused-integration cases (a conflict and an out-of-scope candidate) that preserve all work, and an already-preserved candidate that is not duplicated.",
+        "pnpm test and the core, Discord and Dashboard builds pass, and the PR states the exact operator procedure, target and recovery command or why no runnable surface exists."
+      ],
+      "dependencies": [],
+      "references": [
+        "https://github.com/pmark/arcadia/issues/272",
+        "https://github.com/pmark/arcadia/issues/273",
+        "src/sessions/preservationTransport.ts",
+        "src/sessions/candidatePreservation.ts",
+        "src/sessions/reconciliation.ts",
+        "src/production/tick.ts",
+        "docs/plans/mission-control-view/17-managed-production-contract.md",
+        "docs/working-copy-safety.md"
+      ]
+    }
+  ]
+}
