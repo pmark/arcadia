@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { validationError } from "../cli/errors.js";
-import type { ApprovalGateType, ExecutorType, WorkClassification } from "../domain/constants.js";
+import type { ApprovalGateType, WorkClassification } from "../domain/constants.js";
 import { APPROVAL_GATE_TYPES, EXECUTOR_TYPES, WORK_CLASSIFICATIONS, assertAllowedValue } from "../domain/constants.js";
 import type { PlannedSkillStep } from "../execution/skills.js";
 import {

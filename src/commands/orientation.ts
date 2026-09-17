@@ -53,7 +53,6 @@ import { buildTimeline, renderTimelineAscii, type Timeline } from "../orientatio
 import { listMonitoredProjects } from "./workMonitor.js";
 import { formatWorkingCopySafetyLines, scanProjectWorkingCopies } from "../workMonitoring/scanner.js";
 import {
-  OrientationEntryNotFoundError,
   OrientationPacketAlreadySentError,
   type DailyCapacity,
   type OrientationEffort,

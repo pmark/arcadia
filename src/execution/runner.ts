@@ -37,7 +37,6 @@ import type {
   CodexInvocation,
   ExecutionPlanSummary,
   ExecutionRunSummary,
-  ExecutionRunStep,
   WorkItemSummary
 } from "../domain/types.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
@@ -509,7 +508,6 @@ function executeCodexStep(
     });
     const validation = recordPlanningArtifactValidation(db, workspace, workItem, plan, invocation);
     validationOutput = validation.summary;
-    validationArtifact = validation.artifact;
     if (validation.status === "failed") {
       status = "requires_review";
       error = validation.summary;

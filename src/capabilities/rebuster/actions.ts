@@ -362,7 +362,7 @@ async function createRebusWithLocalCli(
     return { transport: "local_cli", slug, answer, status };
   } catch (error) {
     if (error instanceof Error) {
-      throw new Error(`Rebuster CLI create failed: ${error.message}`);
+      throw new Error(`Rebuster CLI create failed: ${error.message}`, { cause: error });
     }
     throw error;
   } finally {

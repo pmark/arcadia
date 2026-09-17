@@ -2,12 +2,59 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  fast:
+  lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+        with:
+          install: true
+          cache: true
+      - run: mise exec -- corepack enable pnpm
+      - run: mise exec -- pnpm install --frozen-lockfile
+      - run: mise exec -- pnpm lint
+
+  unit-1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+        with:
+          install: true
+          cache: true
+      - run: mise exec -- corepack enable pnpm
+      - run: mise exec -- pnpm install --frozen-lockfile
+      # Unit tests resolve workspace imports through vitest aliases to the
+      # TypeScript sources, so they do not depend on `pnpm build` output.
+      - run: mise exec -- pnpm exec vitest run --shard=1/2
+
+  unit-2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+        with:
+          install: true
+          cache: true
+      - run: mise exec -- corepack enable pnpm
+      - run: mise exec -- pnpm install --frozen-lockfile
+      - run: mise exec -- pnpm exec vitest run --shard=2/2
+
+  dashboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
@@ -17,8 +64,17 @@ jobs:
       - run: mise exec -- corepack enable pnpm
       - run: mise exec -- pnpm install --frozen-lockfile
       - run: mise exec -- pnpm build
-      - run: mise exec -- pnpm test
       - run: mise exec -- pnpm dashboard:build
+      - name: Upload dashboard build for e2e
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-next-build
+          path: |
+            apps/dashboard/.next
+            !apps/dashboard/.next/cache
+            !apps/dashboard/.next/standalone
+          include-hidden-files: true
+          retention-days: 1
 
   e2e:
     runs-on: ubuntu-latest
@@ -33,9 +89,17 @@ jobs:
           cache: true
       - run: mise exec -- corepack enable pnpm
       - run: mise exec -- pnpm install --frozen-lockfile
-      - run: mise exec -- pnpm build
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - run: mise exec -- pnpm exec playwright install --with-deps chromium
-      - run: mise exec -- pnpm dashboard:build
+      - name: Download dashboard build
+        uses: actions/download-artifact@v4
+        with:
+          name: dashboard-next-build
+          path: apps/dashboard/.next
       - run: mise exec -- pnpm test:e2e
       - name: Upload E2E failure evidence
         if: failure()

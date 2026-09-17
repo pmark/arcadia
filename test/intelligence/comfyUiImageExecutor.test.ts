@@ -73,7 +73,7 @@ describe("ComfyUI image executor", () => {
       leaseDurationMs: 30_000,
       comfyUi: { baseUrl: `http://127.0.0.1:${address.port}`, workflowDir, timeoutMs: 5_000 },
     };
-    const { job: submitted } = await submitIntelligenceRequest(repository, buildIntelligenceRequest({
+    await submitIntelligenceRequest(repository, buildIntelligenceRequest({
       capability: "image.generate",
       execution: "local-required",
       profile: "quality",

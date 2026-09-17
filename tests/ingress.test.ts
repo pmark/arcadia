@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { CommandSuccess } from "../src/cli/response.js";
-import type { AskCommandData, AskOptions } from "../src/commands/ask.js";
+import type { AskCommandData } from "../src/commands/ask.js";
 import {
   runIngressCaptureCommand,
   runIngressDescribeCommand,

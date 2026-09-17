@@ -2,7 +2,6 @@ import type {
   ClarificationConfidence,
   ClarificationStatus,
   GapType,
-  MilestoneStatus,
   ProjectStatus,
   WorkClassification,
   WorkItemStatus

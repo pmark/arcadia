@@ -2,7 +2,6 @@ import { clarifyEngineUnavailable, workItemNotFound } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import type Database from "better-sqlite3";
 import { openDatabase, withDatabase } from "../db/connection.js";
 import { getWorkItem, listWorkItems, updateWorkItem } from "../db/repositories.js";
 import type { WorkItemSummary } from "../domain/types.js";

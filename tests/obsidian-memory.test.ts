@@ -52,8 +52,8 @@ describe("Obsidian accepted planning Artifact memory", () => {
     expect(files).toHaveLength(1);
     const record = readFileSync(files[0]!, "utf8");
     expect(record).toContain("record_type: accepted_planning_artifact");
-    expect(record).toContain(`arcadia_artifact_id: \"${fixture.artifactId}\"`);
-    expect(record).toContain(`arcadia_decision_id: \"${fixture.decisionId}\"`);
+    expect(record).toContain(`arcadia_artifact_id: "${fixture.artifactId}"`);
+    expect(record).toContain(`arcadia_decision_id: "${fixture.decisionId}"`);
     expect(record).toContain("# Complete implementation plan");
     expect(record).toContain("## Provenance");
     expect(record).toContain("validation.json");

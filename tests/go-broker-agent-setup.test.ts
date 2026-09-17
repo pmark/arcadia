@@ -217,7 +217,6 @@ describe("go broker agent setup", () => {
 
   it("creates the required native unattended profile in the shared Codex configuration", () => {
     const fixture = createFixture();
-    const profile = path.join(fixture.home, ".codex", "arcadia-unattended.config.toml");
 
     const result = configureGoBrokerAgents({
       home: fixture.home,
