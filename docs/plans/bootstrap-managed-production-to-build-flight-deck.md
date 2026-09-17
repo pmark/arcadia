@@ -882,20 +882,21 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: arcadia go handoff resolves an agent-appropriate launch model instead of passing a plan's provider-specific recommended_model to a different provider, so the protected broker can hand off to opencode without an operator-supplied --model.
+    next_action: Plans name an agent-agnostic model tier that arcadia go resolves per coding agent, so the protected broker can hand off to opencode without an operator-supplied --model.
     expected_artifact: Evidence satisfying Agent Ask resolve-agent-handoff-model-per-provider
     clarification: clarified
     confidence: high
-    source: Agent Ask promote-issue-282-opencode-handoff-model-2026-09-17
+    source: Agent Ask amend-agent-handoff-model-tiers-2026-09-17
     acceptance_criteria:
-      - "arcadia go --agent opencode never passes a plan recommended_model that is not a plausible opencode provider/model binding to `opencode run --model`: it either resolves the pinned opencode binding from the existing provider registry or refuses with a named remedy, mirroring the existing Claude plausibility guard in src/commands/go.ts."
-      - The protected broker go path succeeds end to end for a plan whose recommended_model is provider-specific, with no operator-supplied --model, and a deterministic test proves all three agents (codex, claude, opencode) resolve an appropriate model or refuse legibly.
-      - Existing codex and claude selection, launch-command construction, refusal, and reconciliation behavior is unchanged; deterministic tests cover the new resolution and refusal cases; pnpm test and the core, Discord, and Dashboard builds pass.
-      - docs/model-selection.md and docs/COMMANDS.md state how the handoff model is resolved per agent when a plan pins a different provider's value, and the resolution reuses the existing provider registry rather than hardcoding a new model list.
-      - "This work closes GitHub Issue #282 when it merges, and introduces no new approval, capacity, or paid-fallback authority."
-    depends_on: [add-opencode-production-provider]
+      - "One tier registry (bundled defaults plus a workspace override) maps light/standard/heavy to a concrete model per coding agent, and no vendor model is hardcoded outside it: codex gpt-5.6-luna, gpt-5.6-terra, gpt-5.6-sol; claude haiku, sonnet, opus; opencode opencode-go/glm-5.3-flash, opencode-go/deepseek-v4.1-flash, opencode-go/gpt-5.6-luna."
+      - arcadia go --agent <agent> resolves a plan recommended_model that names a known tier to that agent's tier model; a plan that names a concrete model uses it as-is only when it is plausible for the chosen agent, and otherwise resolves that agent's standard-tier model. The protected broker path succeeds with no operator-supplied --model.
+      - Reasoning effort resolves independently of the tier (--effort, else recommended_reasoning_effort, else the tier's own default), and opencode's --variant mapping from the resolved effort is preserved.
+      - "Deterministic tests cover tier resolution for all three agents, concrete-model pass-through when plausible, the concrete-model fallback that fixes GitHub Issue #282 (claude-sonnet-5 handed to opencode resolving to the opencode standard model), and a legible refusal for an unknown tier or an agent with no mapping; existing codex and claude behavior for plausible concrete models is unchanged."
+      - "docs/model-selection.md documents the three tiers, the per-agent table, and the rule that new plans declare a tier while existing concrete-model plans keep working through the fallback; docs/COMMANDS.md states the resolution order; the Action closes Issue #282 when it merges and introduces no new approval, capacity, or paid-fallback authority."
+      - pnpm test and the core, Discord, and Dashboard builds pass.
+    depends_on: []
     decisions: []
-    references: ["https://github.com/pmark/arcadia/issues/282", "src/commands/go.ts", "src/sessions/worktreePreparation.ts", "config/defaults/provider-adapters.json", "docs/model-selection.md"]
+    references: []
 questions: []
 decisions: []
 current_action: resolve-agent-handoff-model-per-provider
