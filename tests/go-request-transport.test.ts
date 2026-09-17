@@ -62,6 +62,52 @@ describe("agent go request transport", () => {
     expect(mocks.broker).toHaveBeenCalledTimes(1);
   });
 
+  it("services an opencode go request and clears its marker", async () => {
+    // opencode is a Session agent, so its fixed launcher is installed and its
+    // request must be serviced and cleaned like codex's or claude's. The worker
+    // reader previously named only codex and claude, which left every opencode
+    // request unserviced and its marker impossible for the caller to remove.
+    processPreservationRequests(db, workspace);
+    const pending = requestAgentGo(source, "opencode");
+    expect(existsSync(requestFile())).toBe(true);
+    processPreservationRequests(db, workspace);
+    await expect(pending).resolves.toEqual(result);
+    expect(existsSync(requestFile())).toBe(false);
+    expect(mocks.broker).toHaveBeenCalledExactlyOnceWith(source, "opencode");
+  });
+
+  it("clears the pending marker when the host refuses the request", async () => {
+    mocks.broker.mockResolvedValue({
+      ok: false,
+      error: { code: "VALIDATION_ERROR", message: "host refused the go request", exitCode: 2, details: {} }
+    });
+    processPreservationRequests(db, workspace);
+    const pending = requestAgentGo(source, "codex");
+    processPreservationRequests(db, workspace);
+    await expect(pending).rejects.toThrow("host refused the go request");
+    expect(existsSync(requestFile())).toBe(false);
+  });
+
+  it("clears an opencode marker after a timeout so an immediate retry is not blocked", async () => {
+    vi.useFakeTimers();
+    processPreservationRequests(db, workspace);
+    const first = requestAgentGo(source, "opencode");
+    const rejected = expect(first).rejects.toThrow("timed out");
+    await vi.advanceTimersByTimeAsync(GO_RESPONSE_TIMEOUT_MS + 250);
+    await rejected;
+    expect(existsSync(requestFile())).toBe(false);
+
+    // A healthy tick republishes the projection, then the retry succeeds with
+    // no hand-editing of the repository.
+    processPreservationRequests(db, workspace);
+    const retry = requestAgentGo(source, "opencode");
+    expect(existsSync(requestFile())).toBe(true);
+    processPreservationRequests(db, workspace);
+    await vi.advanceTimersByTimeAsync(500);
+    await expect(retry).resolves.toEqual(result);
+    expect(existsSync(requestFile())).toBe(false);
+  });
+
   it("still refuses real uncommitted work and delivers the refusal", async () => {
     processPreservationRequests(db, workspace);
     writeFileSync(path.join(source, "user-work.txt"), "preserve me");

@@ -365,7 +365,10 @@ pnpm arcadia advance queue make-next --action arcadia/example-action \
 
 Apply is refused when the queue revision, Git worktree, managed documents, or
 preview fingerprint changed. Arcadia re-resolves dispatch from the edited
-documents before recording the receipt and restores both files on failure.
+documents before recording the receipt and restores both files on failure. A
+successful apply commits the two pointer documents on whatever branch it ran
+from and never pushes, so the governed pointer is durable and the next
+clean-tree-gated command is not blocked by the move.
 
 For software work, use the demo-first handoff contract even while Mission
 Control's richer proof surface is still being built:
@@ -828,8 +831,10 @@ Installation readiness is separate from runtime readiness: `status` succeeds for
 a correct install even before the worker starts. Its named
 `preservationTransport` field reports whether the host worker has a fresh
 heartbeat for preservation requests. `agentGoTransport.ready` separately
-confirms that the running worker supports agent `go` requests; an older worker
-cannot pass this check merely by sending a fresh heartbeat.
+confirms that the running worker has recently serviced the agent `go` route. A
+fresh heartbeat alone is not sufficient for either: a worker whose tick is stuck
+in managed production, or an older preservation-only worker, cannot pass the go
+check merely by sending a fresh heartbeat.
 
 No registry request is part of installation: if local dependencies are absent,
 it fails with the `pnpm bridge:worktree` recovery command. Before it reports success, installation also creates and retires one
@@ -858,9 +863,11 @@ arcadia go-broker status
 ```
 
 Go has a five-minute child execution budget and a 30-second response margin.
-Timeouts remove the caller's pending request and report where to inspect the
-result before retrying. The reserved untracked `.arcadia-go-request` does not
-count as candidate work; a tracked file with that name is always refused.
+Timeouts and refusals remove the caller's pending request and report where to
+inspect the result before retrying. If an interrupted run ever leaves the
+reserved untracked `.arcadia-go-request` behind, delete that single file and
+retry — it does not count as candidate work. A tracked file with that name is
+always refused.
 
 `status` refuses an incomplete installation, including a missing
 `preservationLauncher`. An absent heartbeat reports

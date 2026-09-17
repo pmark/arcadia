@@ -959,7 +959,10 @@ The preview fingerprints the queue revision, repository HEAD, and before/after
 Project and active Plan contents. Apply requires that exact fingerprint, a
 clean Project worktree, and an eligible Action; after writing both pointer
 fields atomically, Arcadia re-runs the shared dispatch resolver before it
-records the idempotent receipt. Any failure restores both files.
+records the idempotent receipt. Any failure restores both files. A successful
+apply commits the two pointer documents on whatever branch it ran from and
+never pushes, so the governed pointer is durable and the next clean-tree-gated
+settlement is not blocked by the move.
 
 ### Whether the documents are earning their keep
 
@@ -1554,9 +1557,15 @@ pnpm arcadia go-broker status
 pnpm arcadia go-broker status --json
 ```
 
-Check `data.agentGoTransport.ready` before an agent `go` request. It requires
-a fresh heartbeat from a worker that supports `go`; an older preservation-only
-worker is unavailable for this operation even when its heartbeat is fresh.
+Check `data.agentGoTransport.ready` before an agent `go` request. It requires a
+fresh heartbeat from a worker that has recently serviced the go route. A merely
+fresh heartbeat is liveness, not go serviceability: an older preservation-only
+worker, or a worker whose tick is stuck in managed production, is unavailable
+for this operation even when its heartbeat is fresh.
+
+A go timeout or refusal removes the caller's pending untracked
+`.arcadia-go-request`. If an interrupted run leaves one behind, delete that
+single file and retry; a tracked file with that name is always refused.
 
 `status` verifies that every launcher resolves to one valid protected release,
 the default Codex config and every present named `*.config.toml` profile have

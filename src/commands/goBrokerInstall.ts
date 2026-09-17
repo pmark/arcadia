@@ -264,7 +264,9 @@ export function runGoBrokerStatusCommand(
     const goReady = agentGoTransportReady(workspace);
     agentGoTransport = {
       ready: goReady,
-      detail: goReady ? "Fresh host worker supports agent go requests." : "Start the updated host worker; agent go request support is unavailable."
+      detail: goReady
+        ? "Host worker has serviced agent go requests recently."
+        : "No host worker has serviced agent go requests recently; a fresh heartbeat alone is not enough. Start the updated worker and confirm it is not stuck in a long managed-production tick."
     };
   } catch {
     preservationTransport = { ready: false, detail: "Configured workspace is unavailable; configure it before requesting preservation." };

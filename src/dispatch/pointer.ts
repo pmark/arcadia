@@ -140,7 +140,53 @@ export function transitionActionPointer(db: Database.Database, input: {
     restorePair(projectAbsolutePath, projectBefore, planAbsolutePath, planBefore);
     throw error;
   }
+  // Commit after the database transaction and outside its rollback handler, the
+  // same split `commitSettlementOutput` uses: a Git failure must leave the
+  // written documents intact for recovery rather than restore them over a
+  // receipt that already claims they were applied.
+  const changedPaths = [
+    receipt.projectBeforeSha256 === receipt.projectAfterSha256 ? null : receipt.projectPath,
+    receipt.planBeforeSha256 === receipt.planAfterSha256 ? null : receipt.planPath
+  ].filter((relative): relative is string => relative !== null);
+  if (changedPaths.length > 0) commitPointerTransition(input.repoRoot, changedPaths, receipt);
   return receipt;
+}
+
+/**
+ * Commit the pointer documents one transition wrote, on whatever branch the
+ * command ran from, and never push: landing the governed pointer locally is
+ * Arcadia's job, publishing it is the operator's. Without this the working tree
+ * was left dirty, so the next clean-tree-gated `settle` or `make-next` refused
+ * until someone committed the pointer by hand — and the repository's
+ * authoritative pointer was still the old one despite the command reporting
+ * success.
+ *
+ * Paths are passed explicitly so nothing outside this transition can be swept
+ * into the commit, even though `assertClean` already established there was
+ * nothing else to sweep.
+ */
+function commitPointerTransition(
+  repoRoot: string,
+  relativePaths: string[],
+  receipt: PointerTransitionReceipt
+): void {
+  const message = [
+    `chore(arcadia): point at ${receipt.nextAction}`,
+    "",
+    `- ${receipt.projectPath}: current_action ${receipt.previousAction ?? "none"} → ${receipt.nextAction}`,
+    `- ${receipt.planPath}: current_action → ${receipt.nextAction}`,
+    "",
+    `Written by \`arcadia advance queue make-next --apply\` (${receipt.id}).`
+  ].join("\n");
+  try {
+    git(repoRoot, ["add", "--", ...relativePaths]);
+    git(repoRoot, ["commit", "-m", message, "--", ...relativePaths]);
+  } catch {
+    // Intentionally swallowed — see the call site. The transition is already
+    // durable in both the database and the working tree; only the convenience
+    // of landing it failed, and the next command to touch this repository
+    // reports the dirty tree far more clearly than a rethrow here would.
+  }
 }
 
 function replacePointer(content: string, actionId: string, insertAfterField: string): string {

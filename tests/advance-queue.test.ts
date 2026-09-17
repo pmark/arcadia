@@ -7,6 +7,7 @@ import { buildAgentQueue } from "../src/dispatch/queue.js";
 import { arrangeActionOrder } from "../src/dispatch/order.js";
 import { runAdvanceQueueMakeNextCommand } from "../src/commands/advance.js";
 import { withDatabase } from "../src/db/connection.js";
+import { assertClean } from "../src/git/worktrees.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -296,6 +297,16 @@ describe("Agent Queue", () => {
     expect(projectDoc().includes("current_action: ship-it")).toBe(true);
     expect(readFile(repo, "PROJECT.md")).toContain("current_action: migrate");
     expect(readFile(repo, "docs/plans/queue-plan.md")).toContain("current_action: migrate");
+
+    // GitHub Issue #283: apply commits the governed pointer on the branch it ran
+    // from, so the tree is clean and the next clean-tree-gated settlement — which
+    // calls this exact assertClean — is not blocked by the pointer move.
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" }).trim()).toBe("");
+    expect(() => assertClean(repo, "Agent Ask Project repository")).not.toThrow();
+    expect(
+      execFileSync("git", ["show", "--name-only", "--format=", "HEAD"], { cwd: repo, encoding: "utf8" })
+        .trim().split("\n")
+    ).toEqual(["PROJECT.md", "docs/plans/queue-plan.md"]);
 
     const replay = runAdvanceQueueMakeNextCommand({
       workspace,
