@@ -897,6 +897,25 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: fix-agent-go-transport-readiness
+    title: The protected broker's agent go transport reports ready only when a worker can actually service a go request, and a timed-out or refused request clears its pending marker so a retry needs no hand-editing.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: The protected broker's agent go transport reports ready only when a worker can actually service a go request, and a timed-out or refused request clears its pending marker so a retry needs no hand-editing.
+    expected_artifact: Evidence satisfying Agent Ask fix-agent-go-transport-readiness
+    clarification: clarified
+    confidence: high
+    source: Agent Ask promote-issue-284-go-transport-readiness-2026-09-17
+    acceptance_criteria:
+      - "`arcadia go-broker status` reports the agent go transport NOT READY unless a worker able to service a go request is registered, so a merely fresh heartbeat from a worker whose tick is stuck in managed production can no longer satisfy it."
+      - "A go request timeout or refusal removes the pending `.arcadia-go-request` marker, matching the contract #272 set for the preserve path, so an immediate retry succeeds without removing the file by hand."
+      - Deterministic tests cover readiness false while the worker cannot service a request, marker cleanup on timeout and on refusal, and a successful request still returning its host response; the existing preservation transport and managed-production tick behavior is unchanged.
+      - START_HERE.md and docs/COMMANDS.md state that a fresh heartbeat alone is not sufficient for the go transport and name the recovery for a stranded request marker.
+      - pnpm test and the core, Discord, and Dashboard builds pass; no new approval, capacity, or paid-fallback authority is introduced.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/284", "src/sessions/preservationTransport.ts", "src/goBroker.ts", "src/commands/goBrokerInstall.ts", "START_HERE.md", "docs/COMMANDS.md"]
 questions: []
 decisions: []
 current_action: prove-two-action-unattended-production
