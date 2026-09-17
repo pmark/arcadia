@@ -1054,6 +1054,25 @@ actions:
     depends_on: [deliver-session-brief]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/272", "https://github.com/pmark/arcadia/issues/273", "docs/decisions/0058-should-the-standing-managed-production-authorization-delegate-a-bounded.md", "src/sessions/preservationTransport.ts", "src/sessions/candidatePreservation.ts", "src/sessions/reconciliation.ts", "src/production/tick.ts", "src/production/policy.ts", "docs/plans/mission-control-view/17-managed-production-contract.md", "docs/working-copy-safety.md"]
+  - id: apply-answered-decision-consequences
+    title: Apply an answered Decision's consequence to the Action it governs and advance the governed pointer in one transition.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Apply an answered Decision's consequence to the Action it governs and advance the governed pointer in one transition.
+    expected_artifact: Evidence satisfying Agent Ask apply-answered-decision-consequences
+    clarification: clarified
+    confidence: high
+    source: Agent Ask apply-answered-decision-consequences-2026-09-17
+    acceptance_criteria:
+      - When a Decision that governs an Action is answered, Arcadia applies the chosen option consequence to that Action checked-in plan record in the same transition (a deferral parks the Action so dispatch stops selecting it), or refuses the answer with a named reason and leaves the Decision and the Action unchanged.
+      - When the answer parks the current Action, the governed pointer advances to the next eligible Action in the existing explicit queue with no second operator command and no hand-edited plan field.
+      - "The transition is previewable, idempotent and reversible: one receipt records the Decision, the Action field change and the pointer move, and a retry returns the same receipt without duplicate effects."
+      - An agent cannot perform this transition directly; Arcadia writes the canonical records, and no local script, second pointer writer or new queue is introduced.
+      - "Preserve the proof Artifact: deterministic tests covering the deferral-applies, the refusal naming the missing apply path, the pointer advance, and the idempotent retry, plus the exact operator command in the pull request."
+    depends_on: []
+    decisions: []
+    references: ["docs/decisions/0057-should-prove-two-action-unattended-production-be-deferred-until-the-next-live.md", "docs/decisions/0048-make-arcadia-go-a-total-governed-transition-that-keeps-advancing-whenever-the-ne.md", "src/commands/review.ts", "src/ask/settlement.ts", "src/dispatch/pointer.ts", "src/docs/dispatch.ts"]
 questions: []
 decisions: []
 current_action: let-agent-preserve-its-candidate
