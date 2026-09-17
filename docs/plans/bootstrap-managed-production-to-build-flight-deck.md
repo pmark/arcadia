@@ -918,7 +918,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/284", "src/sessions/preservationTransport.ts", "src/goBroker.ts", "src/commands/goBrokerInstall.ts", "START_HERE.md", "docs/COMMANDS.md"]
 questions: []
 decisions: []
-current_action: prove-two-action-unattended-production
+current_action: fix-agent-go-transport-readiness
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
