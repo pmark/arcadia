@@ -10,15 +10,22 @@ import { discoverDocs } from "../docs/discover.js";
 import { isDispatchable, resolveActionReadiness, resolveDispatch } from "../docs/dispatch.js";
 import { yamlScalar } from "../docs/frontmatter.js";
 import { syncProjectDocs } from "../docs/sync.js";
-import type { DecisionDoc, LogDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
+import type { ArcadiaDoc, DecisionDoc, LogDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import { buildAgentQueue, unpositionedCountForProject } from "../dispatch/queue.js";
 import { arrangeActionOrder } from "../dispatch/order.js";
 import { assertClean, commitOnlyPaths, git, projectCheckoutFor } from "../git/worktrees.js";
-import { slugify } from "../utils/slug.js";
+import { slugify, SLUG_MAX_LENGTH } from "../utils/slug.js";
 
 export type AgentAskDisposition = "accepted" | "rejected";
 export type AgentAskResponsibility = "autonomous" | "agent";
 export type AgentAskPlacement = "top" | "before" | "after";
+
+/**
+ * How long the operational projection may wait for the workspace write lock
+ * before it is declared stalled. The documents are already committed by then,
+ * so this is a side-effect budget, not the settlement's durability window.
+ */
+const DEFAULT_PROJECTION_BUSY_TIMEOUT_MS = 15_000;
 
 /** `after: null` means this mutation deletes `path` (used to archive a settled Ask's source file). */
 interface FileMutation { path: string; before: string | null; after: string | null; }
@@ -65,6 +72,12 @@ export interface AgentAskSettlementRecovery {
 export interface AgentAskSettlementTestHooks {
   /** Runs inside the operational-projection transaction, before the sync. */
   beforeOperationalSync?: () => void;
+  /**
+   * Runs after the documents are committed and before the projection acquires
+   * the workspace write lock. A test uses it to take that lock first, so the
+   * projection deadline is exercised against a real lock.
+   */
+  beforeOperationalProjection?: () => void;
 }
 
 export interface PendingAgentAskNotification {
@@ -78,6 +91,8 @@ export interface PendingAgentAskNotification {
   queuePosition: number | null;
   nextActionKey: string | null;
   createdAt: string;
+  /** Present when the settlement's durable steps did not all complete. */
+  recovery: AgentAskSettlementRecovery | null;
 }
 
 export function settleAgentAsk(db: Database.Database, input: {
@@ -105,7 +120,17 @@ export function settleAgentAsk(db: Database.Database, input: {
   /** Where the command ran. Inside a worktree of the Project's repository,
    * settlement writes and commits there, on that worktree's branch. */
   cwd?: string;
+  /**
+   * Deadline, in milliseconds, for the operational projection to acquire the
+   * workspace write lock. Defaults to 15 s, the connection's own busy timeout.
+   * Tests set it low to exercise a real held lock without a 15-second wait.
+   */
+  projectionBusyTimeoutMs?: number;
 }, hooks?: AgentAskSettlementTestHooks): AgentAskSettlementReceipt {
+  if (input.projectionBusyTimeoutMs !== undefined &&
+      (!Number.isInteger(input.projectionBusyTimeoutMs) || input.projectionBusyTimeoutMs < 1)) {
+    throw validationError("Agent Ask projection deadline must be a positive integer number of milliseconds.");
+  }
   const operation = {
     proposalRef: input.proposalRef,
     disposition: input.disposition,
@@ -676,6 +701,26 @@ export function settleAgentAsk(db: Database.Database, input: {
     // working tree is exempted.
     assertClean(repoRoot, "Agent Ask Project repository", archivedAskPath ? [archivedAskPath] : []);
   }
+
+  // A settlement's durable record is the committed managed document, not the
+  // database row (Issue #270). The projection transaction that writes the
+  // receipt can fail — a held workspace write lock is exactly that trigger —
+  // and then no `agent_ask_settlements` row exists. Both database guards
+  // (`request_id` and `proposal_id`) would pass on a later attempt, and a
+  // caller retrying with a fresh settlement request id would re-append a record
+  // that is already committed. Detect it from the documents themselves: every
+  // derived-document writer stamps the Ask's request id into a stable field
+  // (`source:` on a Plan Action, the Log entry heading, the Decision body), so
+  // the marker's presence is proof the settlement already landed, database or
+  // no database.
+  const committedDoc = findCommittedSettlement(discoverDocs(repoRoot).docs, project.slug, proposal.normalized.requestId);
+  if (committedDoc) {
+    throw validationError(
+      `Agent Ask ${proposal.normalized.requestId} already wrote ${committedDoc}; a previous apply committed its documents without recording its receipt. Run \`arcadia docs sync\` to reconcile the Project projection instead of re-applying.`,
+      { requestId: proposal.normalized.requestId, path: committedDoc }
+    );
+  }
+
   // Phase 1 — write the managed documents and prove the canonical truth they
   // are supposed to produce. Nothing here touches the database, so any refusal
   // restores every file and leaves the repository exactly as it was.
@@ -768,6 +813,12 @@ export function settleAgentAsk(db: Database.Database, input: {
   // and the settlement receipt are all derived from documents that are already
   // on disk, so a failure here is recoverable with `arcadia docs sync` and must
   // never hide or undo the record.
+  //
+  // The bound is explicit and testable. better-sqlite3 is synchronous, so
+  // SQLite's own busy handler is the only place a lock wait can be bounded;
+  // scoping it here keeps it a projection budget rather than a settlement one.
+  hooks?.beforeOperationalProjection?.();
+  db.pragma(`busy_timeout = ${input.projectionBusyTimeoutMs ?? DEFAULT_PROJECTION_BUSY_TIMEOUT_MS}`);
   let settled: AgentAskSettlementReceipt;
   try {
     settled = writeTransaction(db, () => {
@@ -860,8 +911,45 @@ export function settleAgentAsk(db: Database.Database, input: {
             remedy: `Commit the settled documents in ${repoRoot} by hand; the settlement is recorded and its files are present in the working tree.`
           }
     };
+    // Keep the recorded receipt truthful too. The recovery is what the operator
+    // reads on the channel they actually monitor, not the settling shell's
+    // stderr, so it belongs in the row `notifications` projects from.
+    try {
+      db.prepare("UPDATE agent_ask_settlements SET receipt_json = ?, notification_status = ? WHERE id = ?")
+        .run(JSON.stringify(settled), settled.notificationStatus, settled.id);
+    } catch {
+      // The projection is unavailable as well; the returned receipt still carries it.
+    }
   }
   return settled;
+}
+
+/**
+ * The managed document a previous apply of this Ask already wrote, or null.
+ *
+ * The database receipt can be missing while the documents are committed (Issue
+ * #270's write-lock stall), so this is the durable, database-independent guard
+ * against re-applying a settled Ask. It matches only the exact fields the
+ * settlement writers stamp, never free prose, so a Log entry that merely
+ * mentions an Ask id does not register as that Ask's record.
+ */
+function findCommittedSettlement(docs: ArcadiaDoc[], projectSlug: string, requestId: string): string | null {
+  const marker = `Agent Ask ${requestId}`;
+  for (const doc of docs) {
+    // A Plan Action created or amended by this Ask carries it as `source`.
+    if (doc.type === "plan" && doc.project === projectSlug && doc.actions.some((action) => action.source === marker)) {
+      return doc.relativePath;
+    }
+    // A Log entry this Ask appended is headed with it.
+    if (doc.type === "log" && doc.project === projectSlug && doc.entries.some((entry) => entry.title === marker)) {
+      return doc.relativePath;
+    }
+    // A Decision this Ask filed names it as its proposer.
+    if (doc.type === "decision" && doc.project === projectSlug && doc.body.includes(marker)) {
+      return doc.relativePath;
+    }
+  }
+  return null;
 }
 
 /**
@@ -956,7 +1044,8 @@ export function listPendingAgentAskNotifications(db: Database.Database): Pending
         queueActionKeys: receipt.queueActionKeys ?? (value.queue_action_key === null ? [] : [String(value.queue_action_key)]),
         queuePosition: value.queue_position === null ? null : Number(value.queue_position),
         nextActionKey: value.next_action_key === null ? null : String(value.next_action_key),
-        createdAt: String(value.created_at)
+        createdAt: String(value.created_at),
+        recovery: receipt.recovery ?? null
       };
     });
 }
@@ -1216,7 +1305,7 @@ function addDecisionMutation(
 function uniqueDecisionSlug(decisions: DecisionDoc[], base: string): string {
   if (!decisions.some((decision) => decision.slug === base)) return base;
   for (let index = 2; index < 1000; index += 1) {
-    const candidate = `${base}-${index}`;
+    const candidate = boundedSuffixedSlug(base, `-${index}`);
     if (!decisions.some((decision) => decision.slug === candidate)) return candidate;
   }
   throw validationError("Agent Ask could not allocate a unique Decision slug.");
@@ -1226,10 +1315,21 @@ function uniquePlanSlug(plans: PlanDoc[], base: string): string {
   const stem = base || "agent-ask-plan";
   if (!plans.some((plan) => plan.slug === stem)) return stem;
   for (let index = 2; index < 1000; index += 1) {
-    const candidate = `${stem}-${index}`;
+    const candidate = boundedSuffixedSlug(stem, `-${index}`);
     if (!plans.some((plan) => plan.slug === candidate)) return candidate;
   }
   throw validationError("Agent Ask could not allocate a unique Plan slug.");
+}
+
+/**
+ * Append a uniqueness suffix without breaking the slug length cap. The base is
+ * already at the cap when a long question collided, so the suffix is carved out
+ * of the base rather than added past 80 characters.
+ */
+function boundedSuffixedSlug(base: string, suffix: string): string {
+  const room = SLUG_MAX_LENGTH - suffix.length;
+  const stem = base.length > room ? base.slice(0, room).replace(/-+$/, "") : base;
+  return `${stem || "item"}${suffix}`;
 }
 
 function newDraftPlan(

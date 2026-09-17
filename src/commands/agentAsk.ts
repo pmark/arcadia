@@ -193,6 +193,7 @@ export function runAgentAskSettleCommand(options: {
   effort?: string;
   operator?: boolean;
   cwd?: string;
+  projectionBusyTimeoutMs?: number;
   hooks?: AgentAskSettlementTestHooks;
 }): CommandSuccess<AgentAskSettleData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
@@ -222,7 +223,8 @@ export function runAgentAskSettleCommand(options: {
     model: options.model,
     effort: options.effort,
     operator: options.operator,
-    cwd: options.cwd
+    cwd: options.cwd,
+    projectionBusyTimeoutMs: options.projectionBusyTimeoutMs
   }, options.hooks));
   return createSuccess({ command: "agent-ask.settle", workspace: workspacePath, data: { receipt } });
 }
