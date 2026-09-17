@@ -962,7 +962,9 @@ fields atomically, Arcadia re-runs the shared dispatch resolver before it
 records the idempotent receipt. Any failure restores both files. A successful
 apply commits the two pointer documents on whatever branch it ran from and
 never pushes, so the governed pointer is durable and the next clean-tree-gated
-settlement is not blocked by the move.
+settlement is not blocked by the move. If that commit cannot be made, the
+command reports the failure rather than claiming success and leaves the pointer
+documents as an uncommitted working-tree change.
 
 ### Whether the documents are earning their keep
 
@@ -1557,15 +1559,19 @@ pnpm arcadia go-broker status
 pnpm arcadia go-broker status --json
 ```
 
-Check `data.agentGoTransport.ready` before an agent `go` request. It requires a
-fresh heartbeat from a worker that has recently serviced the go route. A merely
-fresh heartbeat is liveness, not go serviceability: an older preservation-only
-worker, or a worker whose tick is stuck in managed production, is unavailable
-for this operation even when its heartbeat is fresh.
+Check `data.agentGoTransport` before an agent `go` request. `state: ready` means
+the worker serviced the go route within the freshness window; `state: busy`
+means a go-capable worker is alive but has not run the route recently, so retry
+in a few seconds rather than restarting it; `state: unavailable` means no
+go-capable worker is there. `ready` is true only for `ready`, so a merely fresh
+heartbeat is liveness, not go serviceability: an older preservation-only worker,
+or a worker whose tick is stuck in managed production, never reads as ready.
 
-A go timeout or refusal removes the caller's pending untracked
-`.arcadia-go-request`. If an interrupted run leaves one behind, delete that
-single file and retry; a tracked file with that name is always refused.
+A `busy` worker still accepts a request, which it services at its next tick
+within the five-minute budget. A go timeout or refusal removes the caller's
+pending untracked `.arcadia-go-request`; if an interrupted run leaves one behind,
+delete that single file and retry. A tracked file with that name is always
+refused.
 
 `status` verifies that every launcher resolves to one valid protected release,
 the default Codex config and every present named `*.config.toml` profile have

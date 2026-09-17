@@ -30,7 +30,7 @@ import {
 import type { BrokerExecutables, ProviderExecutables } from "../agentSetup/goBrokerAgentSetup.js";
 import { runWorktreeRuntimeProbe, type WorktreeRuntimeProbeResult } from "../sessions/worktreeRuntimeProbe.js";
 
-import { agentGoTransportReady, preservationTransportReady } from "../sessions/preservationTransport.js";
+import { agentGoTransportState, preservationTransportReady } from "../sessions/preservationTransport.js";
 import { SESSION_AGENTS } from "../sessions/index.js";
 import { requireResolvedWorkspace } from "../workspace/resolve.js";
 
@@ -60,7 +60,7 @@ export interface GoBrokerStatusData {
   brokerIssues: string[];
   agentSetup: AgentSetupStatus;
   preservationTransport: { ready: boolean; detail: string };
-  agentGoTransport: { ready: boolean; detail: string };
+  agentGoTransport: { ready: boolean; state: "ready" | "busy" | "unavailable"; detail: string };
 }
 
 export interface GoBrokerInstallOptions {
@@ -261,16 +261,19 @@ export function runGoBrokerStatusCommand(
       ready,
       detail: ready ? "Fresh host worker heartbeat." : "No fresh preservation heartbeat; start the updated host worker before requesting preservation."
     };
-    const goReady = agentGoTransportReady(workspace);
+    const goState = agentGoTransportState(workspace);
     agentGoTransport = {
-      ready: goReady,
-      detail: goReady
+      ready: goState === "ready",
+      state: goState,
+      detail: goState === "ready"
         ? "Host worker has serviced agent go requests recently."
-        : "No host worker has serviced agent go requests recently; a fresh heartbeat alone is not enough. Start the updated worker and confirm it is not stuck in a long managed-production tick."
+        : goState === "busy"
+          ? "Host worker is alive but has not run the go route recently; it may be mid-tick. Retry in a few seconds instead of restarting it."
+          : "No host worker with go support is available; a fresh heartbeat alone is not enough. Start the updated worker."
     };
   } catch {
     preservationTransport = { ready: false, detail: "Configured workspace is unavailable; configure it before requesting preservation." };
-    agentGoTransport = { ready: false, detail: "Configured workspace is unavailable; configure it before requesting go." };
+    agentGoTransport = { ready: false, state: "unavailable", detail: "Configured workspace is unavailable; configure it before requesting go." };
   }
   if (broker.issues.length > 0 || !agentSetup.ready) {
     throw validationError("Protected broker setup is not ready.", {
@@ -303,7 +306,7 @@ export function renderGoBrokerStatusSuccess(response: CommandSuccess<GoBrokerSta
   return [
     `Protected broker setup: ${data.ready ? "READY" : "NOT READY"}`,
     `Preservation transport: ${data.preservationTransport.ready ? "READY" : "NOT READY"} — ${data.preservationTransport.detail}`,
-    `Agent go transport: ${data.agentGoTransport.ready ? "READY" : "NOT READY"} — ${data.agentGoTransport.detail}`,
+    `Agent go transport: ${data.agentGoTransport.state === "ready" ? "READY" : data.agentGoTransport.state === "busy" ? "BUSY" : "NOT READY"} — ${data.agentGoTransport.detail}`,
     `Revision: ${data.revision ?? "not installed"}`,
     `Release: ${data.releaseDirectory ?? "not installed"}`,
     ...(data.brokerIssues.length > 0 ? ["Broker issues:", ...data.brokerIssues.map((issue) => `- ${issue}`)] : []),

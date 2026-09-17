@@ -373,7 +373,13 @@ export function renderAdvanceQueueMakeNextSuccess(response: CommandSuccess<Advan
     `Plan: ${receipt.planPath}`,
     `Preview fingerprint: ${receipt.previewFingerprint}`,
     `Next: ${response.data.nextActionKey ?? "none"}`,
-    `Receipt: ${receipt.id}`
+    `Receipt: ${receipt.id}`,
+    ...(receipt.commitError
+      ? [
+          `Warning: the pointer documents were written but could not be committed: ${receipt.commitError}`,
+          "Commit them before running a clean-tree-gated command such as agent-ask settle."
+        ]
+      : [])
   ];
 }
 

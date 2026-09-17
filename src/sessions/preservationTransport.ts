@@ -82,22 +82,40 @@ function readHeartbeat(workspace: string): TransportHeartbeat {
 }
 
 /**
+ * How the agent go transport can currently be used:
+ *
+ * - `ready` — the worker has run the go route within the freshness window.
+ * - `busy` — a go-capable worker is alive (fresh heartbeat) but has not run the
+ *   go route recently. It may be mid-tick; it is not the same as a missing or
+ *   outdated worker, so an operator should retry shortly rather than restart it.
+ * - `unavailable` — no fresh heartbeat, or a heartbeat from a worker that does
+ *   not advertise go support at all (an older preservation-only worker).
+ */
+export type AgentGoTransportState = "ready" | "busy" | "unavailable";
+
+/**
  * Readiness is liveness of the go route, not of the worker process. The
  * heartbeat's `at` is deliberately re-stamped off-tick to keep preservation
  * usable during a long synchronous tick; if go readiness trusted that stamp it
  * would keep reporting READY while the stuck tick never services a request. So
- * this requires `goRequestsAt`, written only by the pass that actually runs the
- * go route, to be within the same freshness window.
+ * `ready` requires `goRequestsAt`, written only by the pass that actually runs
+ * the go route, to be within the same freshness window. A fresh heartbeat with a
+ * stale `goRequestsAt` is `busy`, not `ready`.
  */
-export function agentGoTransportReady(workspace: string): boolean {
+export function agentGoTransportState(workspace: string): AgentGoTransportState {
+  let heartbeat: TransportHeartbeat;
   try {
-    if (!preservationTransportReady(workspace)) return false;
-    const heartbeat = readHeartbeat(workspace);
-    return heartbeat.goRequests === true
-      && typeof heartbeat.goRequestsAt === "number"
-      && Date.now() - heartbeat.goRequestsAt >= 0
-      && Date.now() - heartbeat.goRequestsAt < TRANSPORT_FRESHNESS_MS;
-  } catch { return false; }
+    if (!preservationTransportReady(workspace)) return "unavailable";
+    heartbeat = readHeartbeat(workspace);
+  } catch { return "unavailable"; }
+  if (heartbeat.goRequests !== true || typeof heartbeat.goRequestsAt !== "number") return "unavailable";
+  const age = Date.now() - heartbeat.goRequestsAt;
+  return age >= 0 && age < TRANSPORT_FRESHNESS_MS ? "ready" : "busy";
+}
+
+/** Strict readiness for status: true only when the go route is genuinely fresh. */
+export function agentGoTransportReady(workspace: string): boolean {
+  return agentGoTransportState(workspace) === "ready";
 }
 
 /** The sandbox can request only preservation of its registered cwd. No commands,
@@ -137,7 +155,13 @@ export async function requestCandidatePreservation(source: string) {
 export async function requestAgentGo(source: string, agent: GoBrokerAgent) {
   const workspace = requireResolvedWorkspace({ cwd: source });
   const current = realpathSync(source);
-  if (!agentGoTransportReady(workspace)) throw validationError("Protected Arcadia go request path is unavailable. Start the updated Arcadia worker on the host before requesting go.");
+  // Refuse only when no go-capable worker is there to consume the request. A
+  // `busy` worker is alive and will run the go route at its next iteration —
+  // possibly mid-tick now — so submit and let the response budget decide rather
+  // than converting a healthy worker's slow tick into an instant refusal.
+  if (agentGoTransportState(workspace) === "unavailable") {
+    throw validationError("Protected Arcadia go request path is unavailable. Start the updated Arcadia worker on the host before requesting go.");
+  }
   const routes = readHeartbeat(workspace);
   const route = routes.sessions.find(s => s.worktree === current)
     ?? routes.handoffs?.find(s => s.worktree === current)

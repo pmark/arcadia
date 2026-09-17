@@ -6,7 +6,7 @@ import { validationError } from "../cli/errors.js";
 import { discoverDocs } from "../docs/discover.js";
 import { isDispatchable, resolveActionReadiness, resolveDispatch } from "../docs/dispatch.js";
 import type { PlanDoc, ProjectDoc } from "../docs/types.js";
-import { assertClean, git } from "../git/worktrees.js";
+import { assertClean, commitOnlyPaths, git, tryGit } from "../git/worktrees.js";
 
 export interface PointerTransitionReceipt {
   id: string;
@@ -25,6 +25,10 @@ export interface PointerTransitionReceipt {
   planBeforeSha256: string;
   planAfterSha256: string;
   applied: boolean;
+  /** Set when the pointer was written but its commit failed, so the operator is
+   * told at the command instead of at the next refused settlement. Absent on a
+   * successful commit (and on any receipt written before this field existed). */
+  commitError?: string | null;
   createdAt: string;
 }
 
@@ -119,6 +123,16 @@ export function transitionActionPointer(db: Database.Database, input: {
   if (!input.apply) return receipt;
 
   assertClean(input.repoRoot, "Project repository");
+  // A detached HEAD would accept the commit and then lose it the moment HEAD
+  // moves: the receipt would claim the governed pointer is durable from a commit
+  // no branch reaches. Refuse before writing rather than report a hollow commit.
+  if (tryGit(input.repoRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]) === null) {
+    throw validationError("The Project repository is on a detached HEAD, so a pointer commit would be unreachable from any branch.", {
+      repoRoot: input.repoRoot,
+      actionKey: input.actionKey,
+      remedy: "Check out a branch in the Project repository before applying the pointer transition."
+    });
+  }
   try {
     db.transaction(() => {
       writePairAtomically(projectAbsolutePath, projectBefore, projectAfter, planAbsolutePath, planBefore, planAfter);
@@ -148,28 +162,33 @@ export function transitionActionPointer(db: Database.Database, input: {
     receipt.projectBeforeSha256 === receipt.projectAfterSha256 ? null : receipt.projectPath,
     receipt.planBeforeSha256 === receipt.planAfterSha256 ? null : receipt.planPath
   ].filter((relative): relative is string => relative !== null);
-  if (changedPaths.length > 0) commitPointerTransition(input.repoRoot, changedPaths, receipt);
+  if (changedPaths.length > 0) {
+    const commitError = commitPointerTransition(input.repoRoot, changedPaths, receipt);
+    if (commitError) {
+      // The transition is already durable in the database and the working tree;
+      // only landing it in Git failed. Record that on the receipt and say so at
+      // the command, so the next clean-tree-gated settlement is not the first
+      // place the operator learns the pointer was never committed.
+      receipt.commitError = commitError;
+      db.prepare("UPDATE action_queue_pointer_receipts SET receipt_json = ? WHERE id = ?").run(JSON.stringify(receipt), receipt.id);
+      process.stderr.write(`The governed pointer was written but could not be committed: ${commitError}\n`);
+    }
+  }
   return receipt;
 }
 
 /**
  * Commit the pointer documents one transition wrote, on whatever branch the
- * command ran from, and never push: landing the governed pointer locally is
- * Arcadia's job, publishing it is the operator's. Without this the working tree
- * was left dirty, so the next clean-tree-gated `settle` or `make-next` refused
- * until someone committed the pointer by hand — and the repository's
- * authoritative pointer was still the old one despite the command reporting
- * success.
- *
- * Paths are passed explicitly so nothing outside this transition can be swept
- * into the commit, even though `assertClean` already established there was
- * nothing else to sweep.
+ * command ran from, and never push. Paths are passed explicitly so nothing
+ * outside this transition can be swept into the commit, even though
+ * `assertClean` already established there was nothing else to sweep. Returns
+ * null on success or a message on failure; the caller records and surfaces it.
  */
 function commitPointerTransition(
   repoRoot: string,
   relativePaths: string[],
   receipt: PointerTransitionReceipt
-): void {
+): string | null {
   const message = [
     `chore(arcadia): point at ${receipt.nextAction}`,
     "",
@@ -178,15 +197,7 @@ function commitPointerTransition(
     "",
     `Written by \`arcadia advance queue make-next --apply\` (${receipt.id}).`
   ].join("\n");
-  try {
-    git(repoRoot, ["add", "--", ...relativePaths]);
-    git(repoRoot, ["commit", "-m", message, "--", ...relativePaths]);
-  } catch {
-    // Intentionally swallowed — see the call site. The transition is already
-    // durable in both the database and the working tree; only the convenience
-    // of landing it failed, and the next command to touch this repository
-    // reports the dirty tree far more clearly than a rethrow here would.
-  }
+  return commitOnlyPaths(repoRoot, relativePaths, message);
 }
 
 function replacePointer(content: string, actionId: string, insertAfterField: string): string {

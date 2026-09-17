@@ -1,11 +1,11 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { tmpdir } from "node:os";
+import { devNull, tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildAgentQueue } from "../src/dispatch/queue.js";
 import { arrangeActionOrder } from "../src/dispatch/order.js";
-import { runAdvanceQueueMakeNextCommand } from "../src/commands/advance.js";
+import { renderAdvanceQueueMakeNextSuccess, runAdvanceQueueMakeNextCommand } from "../src/commands/advance.js";
 import { withDatabase } from "../src/db/connection.js";
 import { assertClean } from "../src/git/worktrees.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
@@ -14,6 +14,7 @@ import { initWorkspace } from "../src/workspace/initWorkspace.js";
 const temporary: string[] = [];
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const directory of temporary.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -317,6 +318,84 @@ describe("Agent Queue", () => {
       apply: true
     });
     expect(replay.data.receipt).toEqual(applied.data.receipt);
+  });
+
+  it("reports a failed pointer commit and leaves no half-staged index", () => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", projectDoc());
+    writeDoc(repo, "docs/plans/queue-plan.md", planDoc());
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    const identity = ["-c", "user.email=queue-test@example.invalid", "-c", "user.name=Queue Test"];
+    execFileSync("git", [...identity, "add", "PROJECT.md", "docs/plans/queue-plan.md"], { cwd: repo });
+    execFileSync("git", [...identity, "commit", "-qm", "Add queue fixture"], { cwd: repo });
+    const workspace = queueWorkspace(repo);
+    withDatabase(workspace, (db) => arrangeActionOrder(db, {
+      currentKeys: ["demo/migrate", "demo/ship-it"],
+      order: ["demo/migrate", "demo/ship-it"],
+      requestId: "pointer-order",
+      apply: true
+    }));
+
+    // Isolate Git identity so the pointer commit fails exactly as it does on a
+    // host with no user.name/user.email configured. `assertClean`, the pointer
+    // write, and the receipt must all still happen; only the commit fails.
+    vi.stubEnv("GIT_CONFIG_GLOBAL", devNull);
+    vi.stubEnv("GIT_CONFIG_SYSTEM", devNull);
+    vi.stubEnv("GIT_CONFIG_NOSYSTEM", "1");
+    vi.stubEnv("GIT_AUTHOR_NAME", "");
+    vi.stubEnv("GIT_AUTHOR_EMAIL", "");
+    vi.stubEnv("GIT_COMMITTER_NAME", "");
+    vi.stubEnv("GIT_COMMITTER_EMAIL", "");
+
+    const preview = runAdvanceQueueMakeNextCommand({ workspace, actionKey: "demo/migrate", requestId: "pointer-fail", revision: 1 });
+    const applied = runAdvanceQueueMakeNextCommand({
+      workspace,
+      actionKey: "demo/migrate",
+      requestId: "pointer-fail",
+      revision: 1,
+      previewFingerprint: preview.data.receipt.previewFingerprint,
+      apply: true
+    });
+
+    expect(applied.data.receipt.applied).toBe(true);
+    expect(applied.data.receipt.commitError).toMatch(/ident|user|email|author/i);
+    // The failure is surfaced at the command, not at the next refused settle.
+    expect(renderAdvanceQueueMakeNextSuccess(applied)).toEqual(
+      expect.arrayContaining([expect.stringContaining("could not be committed")])
+    );
+    // The index is restored to HEAD: the written pointer is a plain working-tree
+    // change, not a half-staged one.
+    expect(execFileSync("git", ["diff", "--cached", "--name-only"], { cwd: repo, encoding: "utf8" }).trim()).toBe("");
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toContain("M PROJECT.md");
+    expect(readFile(repo, "PROJECT.md")).toContain("current_action: migrate");
+  });
+
+  it("refuses to write the pointer on a detached HEAD", () => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", projectDoc());
+    writeDoc(repo, "docs/plans/queue-plan.md", planDoc());
+    commitFixture(repo);
+    const workspace = queueWorkspace(repo);
+    withDatabase(workspace, (db) => arrangeActionOrder(db, {
+      currentKeys: ["demo/migrate", "demo/ship-it"],
+      order: ["demo/migrate", "demo/ship-it"],
+      requestId: "pointer-order",
+      apply: true
+    }));
+
+    const preview = runAdvanceQueueMakeNextCommand({ workspace, actionKey: "demo/migrate", requestId: "pointer-detached", revision: 1 });
+    // Detaching keeps the same HEAD revision, so the preview fingerprint still
+    // matches; only the branch is gone and the commit would be unreachable.
+    execFileSync("git", ["checkout", "--detach", "-q"], { cwd: repo });
+    expect(() => runAdvanceQueueMakeNextCommand({
+      workspace,
+      actionKey: "demo/migrate",
+      requestId: "pointer-detached",
+      revision: 1,
+      previewFingerprint: preview.data.receipt.previewFingerprint,
+      apply: true
+    })).toThrow(/detached HEAD/);
+    expect(readFile(repo, "PROJECT.md")).toContain("current_action: ship-it");
   });
 });
 

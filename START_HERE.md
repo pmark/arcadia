@@ -368,7 +368,11 @@ preview fingerprint changed. Arcadia re-resolves dispatch from the edited
 documents before recording the receipt and restores both files on failure. A
 successful apply commits the two pointer documents on whatever branch it ran
 from and never pushes, so the governed pointer is durable and the next
-clean-tree-gated command is not blocked by the move.
+clean-tree-gated command is not blocked by the move. If that commit cannot be
+made — for example, no Git identity is configured — the command reports the
+failure instead of claiming success, and the pointer documents are left as an
+uncommitted working-tree change to commit before the next clean-tree-gated
+command.
 
 For software work, use the demo-first handoff contract even while Mission
 Control's richer proof surface is still being built:
@@ -830,11 +834,12 @@ pnpm arcadia go-broker status
 Installation readiness is separate from runtime readiness: `status` succeeds for
 a correct install even before the worker starts. Its named
 `preservationTransport` field reports whether the host worker has a fresh
-heartbeat for preservation requests. `agentGoTransport.ready` separately
-confirms that the running worker has recently serviced the agent `go` route. A
-fresh heartbeat alone is not sufficient for either: a worker whose tick is stuck
-in managed production, or an older preservation-only worker, cannot pass the go
-check merely by sending a fresh heartbeat.
+heartbeat for preservation requests. `agentGoTransport` separately reports
+whether the go route is serviceable: `READY` when the worker has serviced it
+recently, `BUSY` when a go-capable worker is alive but has not run the route
+within the window (retry in a few seconds; do not restart it), and `NOT READY`
+when no go-capable worker is there (start the updated worker). A fresh heartbeat
+alone is never sufficient.
 
 No registry request is part of installation: if local dependencies are absent,
 it fails with the `pnpm bridge:worktree` recovery command. Before it reports success, installation also creates and retires one
@@ -864,10 +869,11 @@ arcadia go-broker status
 
 Go has a five-minute child execution budget and a 30-second response margin.
 Timeouts and refusals remove the caller's pending request and report where to
-inspect the result before retrying. If an interrupted run ever leaves the
-reserved untracked `.arcadia-go-request` behind, delete that single file and
-retry — it does not count as candidate work. A tracked file with that name is
-always refused.
+inspect the result before retrying. A `BUSY` worker still accepts a request,
+which it services at its next tick within that budget. If an interrupted run
+ever leaves the reserved untracked `.arcadia-go-request` behind, delete that
+single file and retry — it does not count as candidate work. A tracked file with
+that name is always refused.
 
 `status` refuses an incomplete installation, including a missing
 `preservationLauncher`. An absent heartbeat reports

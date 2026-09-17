@@ -15,7 +15,7 @@ vi.mock("../src/sessions/goRequestExecutor.js", async importOriginal => ({
 vi.mock("../src/db/repositories.js", () => ({ listProjects: mocks.projects, getProjectMetadata: mocks.metadata }));
 vi.mock("../src/workspace/resolve.js", () => ({ requireResolvedWorkspace: mocks.workspace }));
 vi.mock("../src/commands/preserve.js", () => ({ runPreserveCommand: vi.fn() }));
-import { agentGoTransportReady, processPreservationRequests, requestAgentGo } from "../src/sessions/preservationTransport.js";
+import { agentGoTransportReady, agentGoTransportState, processPreservationRequests, refreshPreservationHeartbeat, requestAgentGo } from "../src/sessions/preservationTransport.js";
 
 describe("agent go request transport", () => {
   let root: string;
@@ -105,6 +105,24 @@ describe("agent go request transport", () => {
     processPreservationRequests(db, workspace);
     await vi.advanceTimersByTimeAsync(500);
     await expect(retry).resolves.toEqual(result);
+    expect(existsSync(requestFile())).toBe(false);
+  });
+
+  it("submits for a healthy-but-busy worker instead of refusing it", async () => {
+    vi.useFakeTimers();
+    processPreservationRequests(db, workspace);
+    // Age only the go-service stamp; the worker's 5s loop keeps the heartbeat
+    // itself fresh, which is exactly the "alive but mid-tick" case.
+    vi.setSystemTime(new Date(Date.now() + 20_000));
+    expect(refreshPreservationHeartbeat(workspace)).toBe(true);
+    expect(agentGoTransportReady(workspace)).toBe(false);
+    expect(agentGoTransportState(workspace)).toBe("busy");
+
+    const pending = requestAgentGo(source, "codex");
+    expect(existsSync(requestFile())).toBe(true);
+    processPreservationRequests(db, workspace);
+    await vi.advanceTimersByTimeAsync(500);
+    await expect(pending).resolves.toEqual(result);
     expect(existsSync(requestFile())).toBe(false);
   });
 
