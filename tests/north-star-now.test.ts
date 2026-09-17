@@ -10,6 +10,7 @@ import {
   setWorkItemDocRef
 } from "../src/db/repositories.js";
 import { computeNowBrief } from "../src/northStar/compute.js";
+import { collectNarrativeEvidence } from "../src/northStar/narrative.js";
 import {
   loadNorthStar,
   NorthStarParseError,
@@ -281,6 +282,36 @@ describe("the Now brief", () => {
     expect(brief.distance.total).toBe(0);
   });
 
+  it("excludes non-active Projects from the attention breakdown", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    const brief = withDatabase(workspace, (db) => {
+      seedProject(db);
+      pausedProject(db, "Paused Thing");
+      return computeNowBrief(db, loadNorthStar(workspace));
+    });
+
+    const names = brief.attention.slices.map((slice) => slice.projectName);
+    expect(names).toContain("The Thing");
+    expect(names).not.toContain("Paused Thing");
+  });
+
+  it("excludes non-active Projects from narrative evidence", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    const evidence = withDatabase(workspace, (db) => {
+      seedProject(db);
+      pausedProject(db, "Paused Thing");
+      const brief = computeNowBrief(db, loadNorthStar(workspace));
+      return collectNarrativeEvidence(db, brief, 7);
+    });
+
+    expect(evidence.projectNames).toContain("The Thing");
+    expect(evidence.projectNames).not.toContain("Paused Thing");
+  });
+
   it("warns rather than silently dropping a gate whose Action does not exist", () => {
     const workspace = initializedWorkspace();
     writeNorthStar(workspace, GATE_DOC);
@@ -339,6 +370,17 @@ function seedProject(db: Parameters<typeof createProjectWithInitialWork>[0]) {
     status: "active",
     currentMilestone: "First milestone",
     nextAction: "Do the first thing.",
+    workClassification: "agent"
+  });
+}
+
+function pausedProject(db: Parameters<typeof createProjectWithInitialWork>[0], name: string) {
+  return createProjectWithInitialWork(db, {
+    name,
+    mission: "Not now.",
+    status: "paused",
+    currentMilestone: "Later",
+    nextAction: "Wait.",
     workClassification: "agent"
   });
 }

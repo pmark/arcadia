@@ -327,7 +327,7 @@ function measureAttention(
   const slices: AttentionSlice[] = [];
   let daysSinceTargetCommit: number | null = null;
 
-  for (const project of listProjects(db)) {
+  for (const project of listProjects(db).filter((candidate) => candidate.status === "active")) {
     const repositoryPath = getProjectMetadata(db, project.id)?.repo_path ?? null;
     const activity = readRepositoryActivity(repositoryPath, windowDays);
     const isTarget = targetProjectId !== null && project.id === targetProjectId;

@@ -56,7 +56,7 @@ export function collectNarrativeEvidence(
   windowDays: number,
   subjectsPerProject = 12
 ): NowNarrativeEvidence {
-  const projects = listProjects(db);
+  const projects = listProjects(db).filter((candidate) => candidate.status === "active");
   const perProject = brief.attention.slices
     .filter((slice) => slice.commits > 0)
     .map((slice) => {
