@@ -1,13 +1,8 @@
----
-arcadia: v1
-type: reference
-slug: deactivate-non-arcadia-projects
-project: arcadia
-title: Deactivate every Project except arcadia (temporary, reversible)
-updated: 2026-09-17
----
-
 # Deactivate every Project except `arcadia`
+
+Report of 2026-09-17. Managed-doc frontmatter is deliberately absent so
+`docs sync` does not ingest this as a governed record; this is an operational
+report.
 
 Temporary, fully reversible portfolio deactivation performed 2026-09-17. Only
 `arcadia` remains `active`; every other Project is `paused`. Nothing was deleted.
