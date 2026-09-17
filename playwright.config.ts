@@ -8,14 +8,13 @@ export default defineConfig({
   // port, and HOME), so tests can be scheduled freely across workers in CI
   // to cut the wall time.
   fullyParallel: true,
-  workers: process.env.CI ? 4 : 1,
+  workers: process.env.CI ? 3 : 1,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : "line",
   use: {
     browserName: "chromium",
-    trace: "retain-on-failure",
+    trace: "on-first-retry",
     screenshot: "only-on-failure",
-    video: "retain-on-failure",
     viewport: { width: 390, height: 844 }
   },
   outputDir: "test-results/playwright"
