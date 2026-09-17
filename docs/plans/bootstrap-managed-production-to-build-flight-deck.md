@@ -918,6 +918,100 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/283", "https://github.com/pmark/arcadia/issues/284", "src/dispatch/pointer.ts", "src/sessions/preservationTransport.ts", "src/goBroker.ts", "src/commands/goBrokerInstall.ts", "START_HERE.md", "docs/COMMANDS.md"]
+  - id: harden-agent-ask-settlement
+    title: Agent Ask settlement and its derived slugs are durable and deterministic, so a settle either completes every step or fails cleanly and a long question never produces an invalid slug.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Agent Ask settlement and its derived slugs are durable and deterministic, so a settle either completes every step or fails cleanly and a long question never produces an invalid slug.
+    expected_artifact: Evidence satisfying Agent Ask harden-agent-ask-settlement
+    clarification: clarified
+    confidence: high
+    source: Agent Ask triage-open-bug-issues-2026-09-17
+    acceptance_criteria:
+      - "A derived Decision or Plan slug from an over-long question is always valid kebab-case: slugify truncates at the 80-character cap without leaving a leading or trailing separator, and a unit test proves an over-long desired_result or question yields a slug the Decision writer accepts (fixes Issue #269)."
+      - "agent-ask settle --apply either completes every step (managed-document writes, review-item creation, local commit) or fails cleanly with a clearly reported recoverable state; any post-write side effect (Discord notification, operational sync, database lock) is bounded by a deadline and never gates the local commit (fixes Issue #270)."
+      - A regression test settles with the notification/sync path stalled and asserts the command returns and the change is committed; the intermittent hang cannot reoccur without a test failure.
+      - Existing settlement behavior for the successful path, and existing codex and claude behavior, are unchanged; pnpm test and the core, Discord, and Dashboard builds pass.
+      - "The Action closes GitHub Issues #269 and #270 when it merges."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/269", "https://github.com/pmark/arcadia/issues/270", "src/utils/slug.ts", "src/ask/settlement.ts"]
+  - id: clean-up-preserve-transport-request
+    title: The preservation requester removes its own reserved transport file on every exit path, matching the go transport, so a refusal or timeout never dirties the candidate worktree.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: The preservation requester removes its own reserved transport file on every exit path, matching the go transport, so a refusal or timeout never dirties the candidate worktree.
+    expected_artifact: Evidence satisfying Agent Ask clean-up-preserve-transport-request
+    clarification: clarified
+    confidence: high
+    source: Agent Ask triage-open-bug-issues-2026-09-17
+    acceptance_criteria:
+      - "requestCandidatePreservation removes its own .arcadia-preserve-request file on success, refusal, and timeout, exactly as requestAgentGo does in its finally block; it removes only its own nonce and never another caller's or a tracked file (fixes Issue #272)."
+      - Deterministic tests prove a refused or timed-out preservation request leaves the candidate worktree clean and cannot trip an arcadia go cleanliness check, while a successful request still returns its host response.
+      - Existing preservation transport and managed-production tick behavior is unchanged; pnpm test and the core, Discord, and Dashboard builds pass.
+      - "The Action closes GitHub Issue #272 when it merges."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/272", "src/sessions/preservationTransport.ts"]
+  - id: bind-candidate-revision-in-action-settle
+    title: arcadia action settle derives the candidate revision from the same resolved checkout settlement compares against, so the documented candidate-worktree completion path works.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: arcadia action settle derives the candidate revision from the same resolved checkout settlement compares against, so the documented candidate-worktree completion path works.
+    expected_artifact: Evidence satisfying Agent Ask bind-candidate-revision-in-action-settle
+    clarification: clarified
+    confidence: high
+    source: Agent Ask triage-open-bug-issues-2026-09-17
+    acceptance_criteria:
+      - "arcadia action settle computes candidateRevision from the checkout settlement resolves (projectCheckoutFor over the Project repository and cwd), not from the configured main checkout, so completing from a candidate worktree whose HEAD differs from the base HEAD no longer refuses (fixes Issue #278)."
+      - A regression test completes an Action from inside a candidate worktree where the candidate branch HEAD differs from the main checkout HEAD and asserts success; the existing main-checkout flow is unchanged.
+      - The refusal message, when a revision genuinely does not match, names the actual mismatch rather than misdirecting to 'refresh evidence'.
+      - Existing action settle, Agent Ask settlement, and codex and claude behavior is unchanged; pnpm test and the core, Discord, and Dashboard builds pass.
+      - "The Action closes GitHub Issue #278 when it merges."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/278", "src/commands/actionSettle.ts", "src/ask/settlement.ts", "src/git/worktrees.ts"]
+  - id: translate-reasoning-effort-at-launch
+    title: Managed-production launches translate the abstract reasoning-effort key to each provider's native value at the spawn boundary, so a packet whose selection was computed from an execution requirement never hands codex or claude an invalid effort.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Managed-production launches translate the abstract reasoning-effort key to each provider's native value at the spawn boundary, so a packet whose selection was computed from an execution requirement never hands codex or claude an invalid effort.
+    expected_artifact: Evidence satisfying Agent Ask translate-reasoning-effort-at-launch
+    clarification: clarified
+    confidence: high
+    source: Agent Ask triage-open-bug-issues-2026-09-17
+    acceptance_criteria:
+      - "buildProviderLaunch translates the stored abstract ReasoningEffort key (e1_brief/e2_standard/e3_deep/e4_rigorous) to the provider's native value for codex-cli (low/medium/high/xhigh) and for claude-cli (its own accepted set) at the spawn boundary; the abstract key remains the stored and bound value, and opencode's existing --variant mapping is preserved (fixes Issue #280)."
+      - The codex mapping reuses or deliberately mirrors prReview.ts's codexReasoningEffort rather than drifting from it.
+      - A launch-argument regression test covers a packet whose selection was recomputed from an Action's execution requirement (the e-key path), not only the packet-verbatim path with native effort strings.
+      - Existing launch behavior for the packet-verbatim path, and existing codex, claude, and opencode behavior, is unchanged; pnpm test and the core, Discord, and Dashboard builds pass.
+      - "The Action closes GitHub Issue #280 when it merges."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/280", "src/sessions/index.ts", "src/qa/prReview.ts", "src/codingAgents/providerAdapters.ts", "src/codingAgents/agentIdentity.ts"]
+  - id: detect-duplicate-ids-and-dangling-refs
+    title: docs sync refuses a duplicate Decision id and reports a dangling review-item docRef as a named validation issue, and the duplicate-id migration is recorded as a Decision before any historical renumbering.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: docs sync refuses a duplicate Decision id and reports a dangling review-item docRef as a named validation issue, and the duplicate-id migration is recorded as a Decision before any historical renumbering.
+    expected_artifact: Evidence satisfying Agent Ask detect-duplicate-ids-and-dangling-refs
+    clarification: clarified
+    confidence: high
+    source: Agent Ask triage-open-bug-issues-2026-09-17
+    acceptance_criteria:
+      - "arcadia docs sync refuses to create a Decision whose numeric id already exists in docs/decisions/ and reports the collision as a named validation issue, so a new duplicate 0004/0005 can no longer be written (fixes Issue #268)."
+      - "arcadia docs sync detects and reports as a named validation issue any open review item whose sourceInput or docRef points at a document that does not exist on disk, reproducing R195's dangling reference to a non-existent 0053 document (fixes Issue #267)."
+      - "Historical duplicate Decision ids are not renumbered by this Action: the migration choice (renumber the later duplicates versus make the slug the canonical handle) is recorded as an open Decision before any renumbering is applied, and R195's disposition (re-point or reject) is decided there."
+      - Deterministic tests cover the duplicate-id refusal and the dangling-reference detection, including a clean corpus that stays accepted; existing docs sync ingestion of well-formed documents is unchanged; pnpm test and the core, Discord, and Dashboard builds pass.
+      - "The Action closes GitHub Issues #267 and #268 when it merges."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/267", "https://github.com/pmark/arcadia/issues/268", "src/docs/sync.ts", "src/ask/settlement.ts", "docs/decisions/"]
 questions: []
 decisions: []
 current_action: prove-two-action-unattended-production
