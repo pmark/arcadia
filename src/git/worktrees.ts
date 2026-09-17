@@ -31,7 +31,7 @@ export interface WorktreeRecord {
  * base branch or nowhere. Anything else is presumed to be the operator's and is
  * only ever reported.
  */
-export const SAFE_TASK_BRANCH = /^(codex\/|claude\/|agent\/|worktree-)/;
+export const SAFE_TASK_BRANCH = /^(codex\/|claude\/|opencode\/|agent\/|worktree-)/;
 
 export function shortBranch(branch: string | null): string | null {
   return branch === null ? null : branch.replace(/^refs\/heads\//, "");

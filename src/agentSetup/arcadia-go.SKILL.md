@@ -10,8 +10,8 @@ description: Safely finish a completed coding-agent worktree, fast-forward it in
 Arcadia Go reconciliation is a **host-controller** operation. It fetches,
 updates shared Git metadata, and creates or retires worktrees, so it must never
 run inside a Codex or Claude Code sandbox. Do not reproduce its Git logic by
-hand or invoke the mutable `arcadia go` launcher from this task. For both
-providers, the fixed `go` launcher always submits a request to the host worker; it
+hand or invoke the mutable `arcadia go` launcher from this task. For every
+provider, the fixed `go` launcher always submits a request to the host worker; it
 does not run Git mutation in the sandbox.
 
 If the request is exactly `arcadia advance` in a prepared worktree, begin at
@@ -26,6 +26,7 @@ prompt, not permission to invoke the mutable CLI command directly.
    ```sh
    __ARCADIA_CODEX_GO_BROKER__
    # Claude Code uses: __ARCADIA_CLAUDE_GO_BROKER__
+   # opencode uses: __ARCADIA_OPENCODE_GO_BROKER__
    ```
 
    This submits only a host-worker request for either provider. The host worker derives
@@ -53,6 +54,7 @@ prompt, not permission to invoke the mutable CLI command directly.
    ```sh
    __ARCADIA_CODEX_PRESERVE_BROKER__
    # Claude Code uses: __ARCADIA_CLAUDE_PRESERVE_BROKER__
+   # opencode uses: __ARCADIA_OPENCODE_PRESERVE_BROKER__
    ```
 
    The launcher submits a request only. The existing host worker validates an
@@ -68,6 +70,7 @@ prompt, not permission to invoke the mutable CLI command directly.
    ```sh
    __ARCADIA_CODEX_ADVANCE_BROKER__
    # Claude Code uses: __ARCADIA_CLAUDE_ADVANCE_BROKER__
+   # opencode uses: __ARCADIA_OPENCODE_ADVANCE_BROKER__
    ```
 
    Never run mutable `arcadia advance` directly and never pass an argument to
@@ -94,6 +97,7 @@ prompt, not permission to invoke the mutable CLI command directly.
    ```sh
    __ARCADIA_CODEX_WORK_MONITOR_BROKER__
    # Claude Code uses: __ARCADIA_CLAUDE_WORK_MONITOR_BROKER__
+   # opencode uses: __ARCADIA_OPENCODE_WORK_MONITOR_BROKER__
    ```
 
    It runs only `arcadia work monitor --no-pull-requests` against the resolved
@@ -126,7 +130,8 @@ prompt, not permission to invoke the mutable CLI command directly.
   symlink rather than improvising a per-worktree dependency install.
 - The protected broker installer configures the default `~/.codex/config.toml`
   and every present named `~/.codex/*.config.toml` profile with the exact
-  `~/.codex/worktrees` and `~/.claude/worktrees` roots. It preserves other
+  `~/.codex/worktrees`, `~/.claude/worktrees`, and `~/.opencode/worktrees`
+  roots. It preserves other
   roots, keeps interactive profiles on-request, and keeps
   `arcadia-unattended` explicitly unattended; `go-broker status` names any
   present profile whose roots or guardrails are missing.

@@ -779,13 +779,13 @@ branch:
 ```sh
 pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree
 pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree --agent codex --apply
-# or: --agent claude
+# or: --agent claude, or --agent opencode
 ```
 
 The command refuses dirty, detached, divergent, non-agent-owned, or
 non-dispatchable state. It never commits, force-merges, resets, or pushes. With
 `--agent`, it prepares a uniquely named isolated worktree from the updated
-local base branch and prints the exact Codex or Claude Code launch command with
+local base branch and prints the exact Codex, Claude Code, or opencode launch command with
 `arcadia advance`. The personal `arcadia-go` skill performs the preview/apply
 sequence and uses the current agent's native session handoff when available.
 
@@ -806,7 +806,7 @@ refuse any release missing that schema instead of allowing a failure later from
 another Project's repository. In the same idempotent operation it installs the
 shared skill, writes the narrow Codex rule, migrates the default Codex config
 from legacy sandbox settings to the supported named `arcadia-unattended`
-permission profile. It grants only the two exact standard worktree roots,
+permission profile. It grants only the three exact provider worktree roots,
 denies `.env` files and command network access, and keeps interactive approval
 on-request. Governed CLI launches explicitly select that profile with approvals
 disabled. For a Desktop or iPhone-connected task, choose
@@ -844,7 +844,7 @@ network access.
 configuration is missing a required worktree root, retains a legacy sandbox, or
 does not deny command network access.
 
-The installed Codex and Claude `go` launchers always submit a bounded request
+The installed Codex, Claude, and opencode `go` launchers always submit a bounded request
 to the **existing host worker**, including when invoked from a host terminal.
 They never reconcile Git in the calling process. The host runs reconciliation
 in a child process so heartbeats and Run admission continue during a slow fetch.
@@ -878,7 +878,7 @@ fixed launchers:
 ~/.local/bin/arcadia-advance-broker-codex
 ~/.local/bin/arcadia-work-monitor-broker-codex
 ~/.local/bin/arcadia-preserve-broker-codex
-# Claude uses the corresponding -claude executables.
+# Claude and opencode use the corresponding -claude and -opencode executables.
 ```
 
 A normal manual `go` handoff has `session: null`. It does not need a managed

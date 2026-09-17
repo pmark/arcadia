@@ -37,6 +37,7 @@ import {
   systemTmux,
   type AgentSession,
   type ProjectTransition,
+  type SessionAgent,
   type TmuxAdapter
 } from "../sessions/index.js";
 
@@ -52,7 +53,7 @@ export interface GoCommandOptions {
   repo?: string;
   source?: string;
   apply?: boolean;
-  agent?: "codex" | "claude";
+  agent?: SessionAgent;
   /** Overrides the plan's `recommended_model` for this one invocation. */
   model?: string;
   /** Overrides the plan's `recommended_reasoning_effort` for this one invocation. */
@@ -516,7 +517,7 @@ interface CandidateEvaluation {
  */
 function evaluateExistingCandidate(
   db: Database.Database,
-  input: { controlWorktree: string; actionId: string; agent: "codex" | "claude"; tmux: Pick<TmuxAdapter, "hasSession"> }
+  input: { controlWorktree: string; actionId: string; agent: SessionAgent; tmux: Pick<TmuxAdapter, "hasSession"> }
 ): CandidateEvaluation {
   const handoff = getResumableLeaseHandoff(db, input.controlWorktree);
   if (handoff) {
@@ -607,7 +608,7 @@ function evaluateExistingCandidate(
 function findUncommittedManualCandidate(
   repositoryPath: string,
   actionId: string,
-  agent: "codex" | "claude"
+  agent: SessionAgent
 ): { path: string; branch: string } | null {
   const listing = tryGit(repositoryPath, ["worktree", "list", "--porcelain"]);
   if (listing === null) return null;

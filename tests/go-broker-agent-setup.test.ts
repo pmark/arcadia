@@ -98,17 +98,22 @@ describe("go broker agent setup", () => {
     expect(lstatSync(paths.claudeAgentAskSkill).isSymbolicLink()).toBe(true);
     expect(path.resolve(path.dirname(paths.claudeAgentAskSkill), readlinkSync(paths.claudeAgentAskSkill))).toBe(paths.codexAgentAskSkillDirectory);
     const claude = JSON.parse(readFileSync(paths.claudeSettings, "utf8"));
-    expect(claude.permissions.allow).toEqual([
-      "Bash(git status)",
-      `Bash(${fixture.executables.go.claude})`,
-      `Bash(${fixture.executables.advance.claude})`,
-      `Bash(${fixture.executables.preserve.claude})`,
-      `Bash(${fixture.executables.workMonitor.claude})`
+    const expectedLauncherPermissions = [
+      fixture.executables.go,
+      fixture.executables.advance,
+      fixture.executables.preserve,
+      fixture.executables.workMonitor
+    ].flatMap((providers) => [
+      `Bash(${providers.codex})`,
+      `Bash(${providers.claude})`,
+      `Bash(${providers.opencode})`
     ]);
+    expect(claude.permissions.allow).toEqual(["Bash(git status)", ...expectedLauncherPermissions]);
     expect(claude.permissions.additionalDirectories).toEqual([
       "/keep/me",
       path.join(fixture.home, ".codex", "worktrees"),
-      path.join(fixture.home, ".claude", "worktrees")
+      path.join(fixture.home, ".claude", "worktrees"),
+      path.join(fixture.home, ".opencode", "worktrees")
     ]);
     expect(claude.permissions.disableBypassPermissionsMode).toBe("disable");
     expect(claude.sandbox).toEqual({ enabled: true, failIfUnavailable: true });
@@ -371,6 +376,10 @@ describe("go broker agent setup", () => {
     expect(rules).toContain(fixture.executables.preserve.codex);
     expect(rules).toContain(fixture.executables.advance.codex);
     expect(rules).toContain(fixture.executables.workMonitor.codex);
+    // opencode's launcher set is granted through the same rule and allowlist.
+    expect(rules).toContain(fixture.executables.go.opencode);
+    expect(rules).toContain(fixture.executables.workMonitor.opencode);
+    expect(claude.permissions.allow).toContain(`Bash(${fixture.executables.go.opencode})`);
   });
 
   it("reports a stale broad Claude go-controller permission as unsafe", () => {
@@ -459,25 +468,20 @@ describe("go broker agent setup", () => {
 function createFixture(withExecutables = true) {
   const home = mkdtempSync(path.join(tmpdir(), "arcadia-agent-setup-"));
   roots.push(home);
+  const mockAgentExecutables = (launcherBase: string) => ({
+    codex: path.join(home, ".local", "bin", `${launcherBase}-codex`),
+    claude: path.join(home, ".local", "bin", `${launcherBase}-claude`),
+    opencode: path.join(home, ".local", "bin", `${launcherBase}-opencode`)
+  });
   const executables = {
-    preserve: { codex: path.join(home, ".local", "bin", "arcadia-preserve-broker-codex"), claude: path.join(home, ".local", "bin", "arcadia-preserve-broker-claude") },
-    go: {
-      codex: path.join(home, ".local", "bin", "arcadia-go-broker-codex"),
-      claude: path.join(home, ".local", "bin", "arcadia-go-broker-claude")
-    },
-    advance: {
-      codex: path.join(home, ".local", "bin", "arcadia-advance-broker-codex"),
-      claude: path.join(home, ".local", "bin", "arcadia-advance-broker-claude")
-    },
-    workMonitor: {
-      codex: path.join(home, ".local", "bin", "arcadia-work-monitor-broker-codex"),
-      claude: path.join(home, ".local", "bin", "arcadia-work-monitor-broker-claude")
-    }
+    preserve: mockAgentExecutables("arcadia-preserve-broker"),
+    go: mockAgentExecutables("arcadia-go-broker"),
+    advance: mockAgentExecutables("arcadia-advance-broker"),
+    workMonitor: mockAgentExecutables("arcadia-work-monitor-broker")
   };
   if (withExecutables) {
     for (const providers of Object.values(executables)) {
-      write(providers.codex, "broker\n");
-      write(providers.claude, "broker\n");
+      for (const executable of Object.values(providers)) write(executable, "broker\n");
     }
   }
   return { home, executables };

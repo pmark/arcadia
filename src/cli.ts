@@ -157,6 +157,7 @@ import {
 } from "./commands/experiment.js";
 import { runLogCreateCommand } from "./commands/log.js";
 import { renderGoSuccess, runGoCommand } from "./commands/go.js";
+import { SESSION_AGENTS, type SessionAgent } from "./sessions/index.js";
 import {
   renderGoBrokerInstallSuccess,
   renderGoBrokerStatusSuccess,
@@ -3263,7 +3264,7 @@ export function buildProgram(): Command {
       .description("Safely reconcile a completed agent worktree and verify the next governed handoff")
       .option("--repo <path>", "Target repository or any of its worktrees", resolveInvocationPath, invocationRoot())
       .option("--source <path>", "Completed agent worktree to reconcile; defaults to --repo", resolveInvocationPath)
-      .option("--agent <agent>", "Prepare the next isolated worktree: codex or claude")
+      .option("--agent <agent>", `Prepare the next isolated worktree: ${SESSION_AGENTS.join(", ")}`)
       .option("--apply", "Fast-forward and retire the source worktree; without it nothing is changed")
       .option("--model <model>", "Override the plan's recommended_model for the next agent session")
       .option("--effort <level>", "Override the plan's recommended_reasoning_effort for the next agent session")
@@ -3271,10 +3272,10 @@ export function buildProgram(): Command {
       .option("--launch", "Explicitly launch Claude Code in a detached tmux Session")
   ).action((options: { repo?: string; source?: string; agent?: string; apply?: boolean; model?: string; effort?: string; workspace?: string; launch?: boolean; json?: boolean }) =>
     runCliAction("go", options, () => {
-      if (options.agent !== undefined && options.agent !== "codex" && options.agent !== "claude") {
-        throw validationError("--agent must be codex or claude.", { agent: options.agent });
+      if (options.agent !== undefined && !SESSION_AGENTS.includes(options.agent as SessionAgent)) {
+        throw validationError(`--agent must be ${SESSION_AGENTS.join(", ")}.`, { agent: options.agent });
       }
-      return runGoCommand({ ...options, agent: options.agent });
+      return runGoCommand({ ...options, agent: options.agent as SessionAgent | undefined });
     }, renderGoSuccess)
   );
 

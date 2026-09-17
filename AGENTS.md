@@ -1,8 +1,8 @@
 # AGENTS
 
 This is the vendor-neutral source of truth for how work is done here. Every
-coding agent reads it: Codex loads it directly, and `CLAUDE.md` is a thin
-wrapper that imports it. Shared rules belong in this file, never in a
+coding agent reads it: Codex and opencode load it directly, and `CLAUDE.md` is a
+thin wrapper that imports it. Shared rules belong in this file, never in a
 vendor-specific one.
 
 Two companions carry the rest, and both bind every agent:
