@@ -898,7 +898,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/282", "src/commands/go.ts", "src/sessions/worktreePreparation.ts", "config/defaults/provider-adapters.json", "docs/model-selection.md"]
 questions: []
 decisions: []
-current_action: prove-two-action-unattended-production
+current_action: resolve-agent-handoff-model-per-provider
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
