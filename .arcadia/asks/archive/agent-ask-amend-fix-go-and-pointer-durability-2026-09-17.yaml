@@ -1,0 +1,35 @@
+{
+  "agent_ask": "v1",
+  "request_id": "amend-fix-go-and-pointer-durability-2026-09-17",
+  "project": "arcadia",
+  "intent": "plan",
+  "target_ref": "plan/bootstrap-managed-production-to-build-flight-deck",
+  "desired_result": "The go and pointer commands are durable: advance queue make-next --apply commits the pointer it writes, and the protected broker's agent go transport reports ready only when a worker can service a request and clears its pending marker on timeout or refusal.",
+  "rationale": "Operator direction on 2026-09-17: fix #283 and #284 in one Action, one session, one merge, because both are small defects in the same go/pointer machinery. #283 (make-next leaves the pointer patch uncommitted) has forced a manual commit on every pointer move this session; #284 (go transport reports READY while requests time out and strand .arcadia-go-request) blocks every arcadia go continuation, including its own repair. Sequencing them separately would add a session and a merge for no benefit.",
+  "actions": [
+    {
+      "target_ref": "action/fix-agent-go-transport-readiness",
+      "desired_result": "The go and pointer commands are durable: advance queue make-next --apply commits the pointer it writes, and the protected broker's agent go transport reports ready only when a worker can service a request and clears its pending marker on timeout or refusal.",
+      "acceptance": [
+        "arcadia go-broker status reports the agent go transport NOT READY unless a worker able to service a go request is registered, so a merely fresh heartbeat from a worker whose tick is stuck in managed production can no longer satisfy it.",
+        "A go request timeout or refusal removes the pending .arcadia-go-request marker, matching the contract #272 set for the preserve path, so an immediate retry succeeds without removing the file by hand.",
+        "Deterministic tests cover readiness false while the worker cannot service a request, marker cleanup on timeout and on refusal, and a successful request still returning its host response; the existing preservation transport and managed-production tick behavior is unchanged.",
+        "arcadia advance queue make-next --apply commits the pointer transition it writes (PROJECT.md and the active plan), on whatever branch it ran from and never pushing, so the governed pointer is durable and the next clean-tree-gated command is not blocked by the pointer move.",
+        "Deterministic tests prove make-next commits exactly the pointer files and leaves no dirty tree, and that a settlement immediately after a pointer move succeeds with no manual commit.",
+        "START_HERE.md and docs/COMMANDS.md state that a fresh heartbeat alone is not sufficient for the go transport, name the recovery for a stranded request marker, and state that a pointer move is committed by the command.",
+        "pnpm test and the core, Discord, and Dashboard builds pass; no new approval, capacity, or paid-fallback authority is introduced."
+      ],
+      "dependencies": [],
+      "references": [
+        "https://github.com/pmark/arcadia/issues/283",
+        "https://github.com/pmark/arcadia/issues/284",
+        "src/dispatch/pointer.ts",
+        "src/sessions/preservationTransport.ts",
+        "src/goBroker.ts",
+        "src/commands/goBrokerInstall.ts",
+        "START_HERE.md",
+        "docs/COMMANDS.md"
+      ]
+    }
+  ]
+}
