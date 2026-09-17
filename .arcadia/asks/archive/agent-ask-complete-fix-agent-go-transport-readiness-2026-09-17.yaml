@@ -1,0 +1,48 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-fix-agent-go-transport-readiness-2026-09-17",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/fix-agent-go-transport-readiness",
+  "desired_result": "Accept the completion evidence for fix-agent-go-transport-readiness so the Action is marked done and the pointer advances.",
+  "rationale": "Every declared acceptance criterion is met by commit 050bfa9e. GitHub Issue #283 is fixed by committing the pointer transition, and #284 by requiring real go-route serviceability for readiness plus servicing and clearing every Session agent's marker.",
+  "candidate_revision": "050bfa9ec789c8b7f4b2afd40882eff31dcd51ed",
+  "requested_authority": "apply_if_approved",
+  "evidence": [
+    {
+      "criterion": "arcadia go-broker status reports the agent go transport NOT READY unless a worker able to service a go request is registered, so a merely fresh heartbeat from a worker whose tick is stuck in managed production can no longer satisfy it.",
+      "status": "met",
+      "note": "agentGoTransportReady now also requires heartbeat.goRequestsAt, written only by processPreservationRequests (the pass that actually runs the go route) and never re-stamped by refreshPreservationHeartbeat. tests/preservation-heartbeat-freshness.test.ts proves it reports false across a simulated three-minute stuck tick while preservation readiness stays true; src/sessions/preservationTransport.ts."
+    },
+    {
+      "criterion": "A go request timeout or refusal removes the pending .arcadia-go-request marker, matching the contract #272 set for the preserve path, so an immediate retry succeeds without removing the file by hand.",
+      "status": "met",
+      "note": "readGoRequest now accepts every SESSION_AGENTS agent instead of naming only codex and claude, which had let opencode requests go unserviced and left the caller's finally unable to recognise and unlink its own marker. tests/go-request-transport.test.ts covers refusal cleanup and an opencode timeout followed by an immediate successful retry; src/sessions/preservationTransport.ts."
+    },
+    {
+      "criterion": "Deterministic tests cover readiness false while the worker cannot service a request, marker cleanup on timeout and on refusal, and a successful request still returning its host response; the existing preservation transport and managed-production tick behavior is unchanged.",
+      "status": "met",
+      "note": "tests/preservation-heartbeat-freshness.test.ts asserts go readiness false with preservation ready across a stuck tick; tests/go-request-transport.test.ts adds opencode round trip, refusal cleanup, and timeout cleanup plus retry while keeping the existing codex round trip. refreshPreservationHeartbeat, preservationTransportReady's window, and the managed-production heartbeat callback are behaviorally unchanged."
+    },
+    {
+      "criterion": "arcadia advance queue make-next --apply commits the pointer transition it writes (PROJECT.md and the active plan), on whatever branch it ran from and never pushing, so the governed pointer is durable and the next clean-tree-gated command is not blocked by the pointer move.",
+      "status": "met",
+      "note": "transitionActionPointer now commits the changed pointer documents via commitPointerTransition with explicit pathspecs and no push, matching commitSettlementOutput's transaction split; src/dispatch/pointer.ts."
+    },
+    {
+      "criterion": "Deterministic tests prove make-next commits exactly the pointer files and leaves no dirty tree, and that a settlement immediately after a pointer move succeeds with no manual commit.",
+      "status": "met",
+      "note": "tests/advance-queue.test.ts asserts git status --porcelain is empty after apply, that assertClean passes under settlement's exact label ('Agent Ask Project repository'), and that HEAD changed exactly PROJECT.md and docs/plans/queue-plan.md."
+    },
+    {
+      "criterion": "START_HERE.md and docs/COMMANDS.md state that a fresh heartbeat alone is not sufficient for the go transport, name the recovery for a stranded request marker, and state that a pointer move is committed by the command.",
+      "status": "met",
+      "note": "START_HERE.md and docs/COMMANDS.md now say a fresh heartbeat is liveness, not go serviceability; name deleting a single stranded untracked .arcadia-go-request before retrying; and state that a successful make-next apply commits the pointer documents without pushing."
+    },
+    {
+      "criterion": "pnpm test and the core, Discord, and Dashboard builds pass; no new approval, capacity, or paid-fallback authority is introduced.",
+      "status": "met",
+      "note": "pnpm test passes (1633 passed, 13 skipped); pnpm build (core TypeScript + Discord) and pnpm dashboard:build both pass. The change adds no approval, capacity, or paid-fallback authority."
+    }
+  ]
+}
