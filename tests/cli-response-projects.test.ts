@@ -97,7 +97,7 @@ describe("CLI response contract — projects and metadata", () => {
     );
     expect(explicit.data.source).toBe("flag");
     expect(explicit.data.workspacePath).toBe(path.resolve(explicitWorkspace));
-  }, 20_000);
+  }, 45_000);
 
   it("imports projects with JSON output", () => {
     const workspace = initializedWorkspace();

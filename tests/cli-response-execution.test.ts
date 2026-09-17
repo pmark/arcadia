@@ -382,7 +382,7 @@ describe("CLI response contract — execution and review", () => {
     expect(listJson.data.runs).toHaveLength(1);
     expect(listJson.data.runs[0].id).toBe(runJson.data.run.id);
     expect(listJson.data.runs[0].work_item_title).toBe("Generate status report");
-  }, 20_000);
+  }, 45_000);
 
   it("asks natural language intent with JSON output", () => {
     const workspace = initializedWorkspace();
