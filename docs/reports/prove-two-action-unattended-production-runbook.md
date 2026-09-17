@@ -200,6 +200,29 @@ Evidence: _(paste both JSON blocks; state the revision before and after)_
 
 ## Step 1 — create the disposable fixture repository and Project
 
+**Before reusing anything, read the fixture's real state.** The directory
+`~/tmp/arcadia-two-action-rehearsal` from the blocked 2026-09-15 run is still
+on disk and is **not** in proof shape:
+
+- its Action A (`write-marker-a2`) is already `done`, completed through the
+  legacy `--allow-codex-build` path rather than the guarded standing-policy
+  launch this proof must exercise, so it cannot serve as a fresh, splittable
+  Action A;
+- its Action B (`write-marker-b`) already has a seeded dormant build packet
+  (`purpose: build`, `status: packet_created`) awaiting its
+  `CodexBuildPacketApproval` Decision; and
+- the currently-live production grant's scope names
+  `two-action-rehearsal/write-marker-a2` and
+  `two-action-rehearsal/write-marker-b`.
+
+To run the proof you therefore need a **fresh two-Action pair**: either reset
+that fixture to a new `write-marker-a`/`write-marker-b` pair, or add a new
+Action A ahead of the existing `write-marker-b`. Seed each Action's dormant
+build packet with `arcadia work plan <action-id>` (see "Architecture repair"
+above), settle the resulting `CodexBuildPacketApproval` Decision on the host,
+and make Step 2's activation scope name the fresh pair. Without a sealed
+packet the guarded launch refuses — exactly what blocked the 2026-09-15 run.
+
 Pick a name distinct from every existing fixture, e.g.
 `~/tmp/arcadia-two-action-rehearsal` / Project slug `two-action-rehearsal`.
 
@@ -272,7 +295,7 @@ cd ~/Dev/MR/Arcadia/arcadia
 arcadia production preview \
   --project two-action-rehearsal \
   --plan two-action-rehearsal/two-action-rehearsal-bootstrap \
-  --provider codex-cli \
+  --provider claude-code-cli \
   --concurrency 1 \
   --transitions validation,acceptance,pointer \
   --intent "Prove two-Action unattended production with a deliberate split-session continuation." \
@@ -286,7 +309,7 @@ Then activate with the exact revision the preview returned:
 arcadia production activate \
   --project two-action-rehearsal \
   --plan two-action-rehearsal/two-action-rehearsal-bootstrap \
-  --provider codex-cli \
+  --provider claude-code-cli \
   --concurrency 1 \
   --transitions validation,acceptance,pointer \
   --intent "Prove two-Action unattended production with a deliberate split-session continuation." \
@@ -354,7 +377,7 @@ one:
 
 ```sh
 cd ~/tmp/arcadia-two-action-rehearsal
-arcadia-go-broker-codex
+arcadia-go-broker-claude
 ```
 
 Record the returned worktree path and branch, and confirm it is **identical**
@@ -370,7 +393,7 @@ Action" / the existing-lease path) rather than silently starting a second
 execution:
 
 ```sh
-arcadia-go-broker-codex   # while A1 is still live, before Step 4's kill
+arcadia-go-broker-claude   # while A1 is still live, before Step 4's kill
 ```
 
 Evidence: _(the concurrent-launch attempt's exact refusal message; the kill
