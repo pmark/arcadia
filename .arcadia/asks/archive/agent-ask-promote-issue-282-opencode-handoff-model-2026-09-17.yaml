@@ -1,0 +1,32 @@
+{
+  "agent_ask": "v1",
+  "request_id": "promote-issue-282-opencode-handoff-model-2026-09-17",
+  "project": "arcadia",
+  "intent": "action",
+  "requested_authority": "propose",
+  "desired_result": "arcadia go handoff resolves an agent-appropriate launch model instead of passing a plan's provider-specific recommended_model to a different provider, so the protected broker can hand off to opencode without an operator-supplied --model.",
+  "rationale": "Issue #282 is a showstopper for the only reachable provider on this host. The active plan pins recommended_model: claude-sonnet-5 (docs/plans/bootstrap-managed-production-to-build-flight-deck.md:883), and arcadia go --agent opencode passes that value straight to `opencode run --model` with no plausibility guard (src/commands/go.ts:278 guards only claude; src/sessions/worktreePreparation.ts:93-97 interpolates the model). The protected broker cannot pass --model, so opencode handoff is impossible for any provider-specific plan pin. Promoting it puts the repair ahead of the multi-provider proof that cannot currently run.",
+  "actions": [
+    {
+      "id": "resolve-agent-handoff-model-per-provider",
+      "desired_result": "arcadia go handoff resolves an agent-appropriate launch model instead of passing a plan's provider-specific recommended_model to a different provider, so the protected broker can hand off to opencode without an operator-supplied --model.",
+      "acceptance": [
+        "arcadia go --agent opencode never passes a plan recommended_model that is not a plausible opencode provider/model binding to `opencode run --model`: it either resolves the pinned opencode binding from the existing provider registry or refuses with a named remedy, mirroring the existing Claude plausibility guard in src/commands/go.ts.",
+        "The protected broker go path succeeds end to end for a plan whose recommended_model is provider-specific, with no operator-supplied --model, and a deterministic test proves all three agents (codex, claude, opencode) resolve an appropriate model or refuse legibly.",
+        "Existing codex and claude selection, launch-command construction, refusal, and reconciliation behavior is unchanged; deterministic tests cover the new resolution and refusal cases; pnpm test and the core, Discord, and Dashboard builds pass.",
+        "docs/model-selection.md and docs/COMMANDS.md state how the handoff model is resolved per agent when a plan pins a different provider's value, and the resolution reuses the existing provider registry rather than hardcoding a new model list.",
+        "This work closes GitHub Issue #282 when it merges, and introduces no new approval, capacity, or paid-fallback authority."
+      ],
+      "dependencies": [
+        "add-opencode-production-provider"
+      ],
+      "references": [
+        "https://github.com/pmark/arcadia/issues/282",
+        "src/commands/go.ts",
+        "src/sessions/worktreePreparation.ts",
+        "config/defaults/provider-adapters.json",
+        "docs/model-selection.md"
+      ]
+    }
+  ]
+}

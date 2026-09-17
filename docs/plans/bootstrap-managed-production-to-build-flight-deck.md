@@ -877,6 +877,25 @@ actions:
     depends_on: [let-agent-preserve-its-candidate]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/273", "src/sessions/preservationValidation.ts", "src/sessions/candidateSnapshot.ts", "src/sessions/manualPreservation.ts", "docs/reports/protected-preservation-qa.md"]
+  - id: resolve-agent-handoff-model-per-provider
+    title: arcadia go handoff resolves an agent-appropriate launch model instead of passing a plan's provider-specific recommended_model to a different provider, so the protected broker can hand off to opencode without an operator-supplied --model.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: arcadia go handoff resolves an agent-appropriate launch model instead of passing a plan's provider-specific recommended_model to a different provider, so the protected broker can hand off to opencode without an operator-supplied --model.
+    expected_artifact: Evidence satisfying Agent Ask resolve-agent-handoff-model-per-provider
+    clarification: clarified
+    confidence: high
+    source: Agent Ask promote-issue-282-opencode-handoff-model-2026-09-17
+    acceptance_criteria:
+      - "arcadia go --agent opencode never passes a plan recommended_model that is not a plausible opencode provider/model binding to `opencode run --model`: it either resolves the pinned opencode binding from the existing provider registry or refuses with a named remedy, mirroring the existing Claude plausibility guard in src/commands/go.ts."
+      - The protected broker go path succeeds end to end for a plan whose recommended_model is provider-specific, with no operator-supplied --model, and a deterministic test proves all three agents (codex, claude, opencode) resolve an appropriate model or refuse legibly.
+      - Existing codex and claude selection, launch-command construction, refusal, and reconciliation behavior is unchanged; deterministic tests cover the new resolution and refusal cases; pnpm test and the core, Discord, and Dashboard builds pass.
+      - docs/model-selection.md and docs/COMMANDS.md state how the handoff model is resolved per agent when a plan pins a different provider's value, and the resolution reuses the existing provider registry rather than hardcoding a new model list.
+      - "This work closes GitHub Issue #282 when it merges, and introduces no new approval, capacity, or paid-fallback authority."
+    depends_on: [add-opencode-production-provider]
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/282", "src/commands/go.ts", "src/sessions/worktreePreparation.ts", "config/defaults/provider-adapters.json", "docs/model-selection.md"]
 questions: []
 decisions: []
 current_action: prove-two-action-unattended-production
