@@ -144,10 +144,17 @@ controls repeated mechanical admission. Planning Actions retain their
 read-only planning Decision flow, and `--allow-codex-build` remains legacy
 execution rather than proof of guarded production.
 
+The packet's provider follows `--agent-profile`: pass
+`--agent-profile opencode_build` to seed an opencode packet, and pass no flag
+only when the workspace default build profile is the intended provider. The
+grant's `--provider` and the packet's resolved provider must agree, or
+admission refuses the launch as `provider_not_permitted`.
+
 Focused regression coverage verifies packet creation, the open approval, zero
-Runs at preparation time, and the existing build-failure behavior. This repair
-does not constitute the live rehearsal above; the fixture must be prepared and
-the approval must be settled on the host before Steps 2–6 are attempted.
+Runs at preparation time, the requested build profile reaching the packet, and
+the existing build-failure behavior. This repair does not constitute the live
+rehearsal above; the fixture must be prepared and the approval must be settled
+on the host before Steps 2–6 are attempted.
 
 ## What this Action adds beyond the zero-prompt rehearsal
 
@@ -199,6 +206,50 @@ pnpm arcadia go-broker status --json
 Evidence: _(paste both JSON blocks; state the revision before and after)_
 
 ## Step 1 — create the disposable fixture repository and Project
+
+**Before reusing anything, read the fixture's real state.** The directory
+`~/tmp/arcadia-two-action-rehearsal` from the blocked 2026-09-15 run is still
+on disk and is **not** in proof shape:
+
+- its Action A (`write-marker-a2`) is already `done`, completed through the
+  legacy `--allow-codex-build` path rather than the guarded standing-policy
+  launch this proof must exercise, so it cannot serve as a fresh, splittable
+  Action A;
+- its Action B (`write-marker-b`) already has a seeded dormant build packet
+  (`purpose: build`, `status: packet_created`) awaiting its
+  `CodexBuildPacketApproval` Decision — but it was seeded with the workspace
+  default build profile (`codex_build` → provider `codex-cli`), so an
+  opencode-scoped grant cannot consume it; and
+- the currently-live production grant's scope names
+  `two-action-rehearsal/write-marker-a2` and
+  `two-action-rehearsal/write-marker-b`.
+
+This proof runs on **opencode**, per the plan: `add-opencode-production-provider`
+is a done dependency precisely "so prove-two-action-unattended-production can run
+with opencode instead of the credit-exhausted Codex and Claude providers"
+(`docs/plans/bootstrap-managed-production-to-build-flight-deck.md`). To run the
+proof you therefore need a **fresh two-Action pair targeting opencode**. Reset
+the fixture to a new `write-marker-a`/`write-marker-b` pair rather than reusing
+`write-marker-b`: its existing packet is already bound to `codex_build`, and
+`arcadia work plan` refuses to bind a different profile to an existing packet
+("Existing packet is bound to a different coding agent profile"). Seed each
+Action's dormant build packet with an explicit opencode profile (see
+"Architecture repair" above):
+
+```sh
+arcadia work plan <action-id> --agent-profile opencode_build
+```
+
+The profile is what pins the packet's provider. Without `--agent-profile`,
+`arcadia work plan` uses the workspace's default build profile (`codex_build`
+→ `codex-cli`), and Step 2's `--provider opencode-cli` grant then refuses the
+launch at admission (`provider_not_permitted`,
+`src/production/policy.ts:585-592`) — the same provider/scope mismatch this
+section exists to prevent. The seeded packet's resolved provider must equal
+Step 2's `--provider`. Settle the resulting `CodexBuildPacketApproval` Decision
+on the host, and make Step 2's activation scope name the fresh pair. Without a
+sealed packet the guarded launch refuses — exactly what blocked the 2026-09-15
+run, and a packet seeded for a different provider fails the same way.
 
 Pick a name distinct from every existing fixture, e.g.
 `~/tmp/arcadia-two-action-rehearsal` / Project slug `two-action-rehearsal`.
@@ -266,13 +317,18 @@ dispatchable)_
 
 ## Step 2 — scope the standing production policy to this Project only
 
+A grant from the blocked 2026-09-15 run is still live against the old fixture
+actions with provider `claude-code-cli`. This activation replaces its scope, so
+the new `--provider opencode-cli` scope supersedes it; confirm
+`scope.providers` is `["opencode-cli"]` in the preview.
+
 ```sh
 cd ~/Dev/MR/Arcadia/arcadia
 
 arcadia production preview \
   --project two-action-rehearsal \
   --plan two-action-rehearsal/two-action-rehearsal-bootstrap \
-  --provider codex-cli \
+  --provider opencode-cli \
   --concurrency 1 \
   --transitions validation,acceptance,pointer \
   --intent "Prove two-Action unattended production with a deliberate split-session continuation." \
@@ -286,7 +342,7 @@ Then activate with the exact revision the preview returned:
 arcadia production activate \
   --project two-action-rehearsal \
   --plan two-action-rehearsal/two-action-rehearsal-bootstrap \
-  --provider codex-cli \
+  --provider opencode-cli \
   --concurrency 1 \
   --transitions validation,acceptance,pointer \
   --intent "Prove two-Action unattended production with a deliberate split-session continuation." \
@@ -336,16 +392,32 @@ name)_
 
 ## Step 4 — deliberately split Action A across two Sessions (Decision 0051)
 
-This is the criterion the zero-prompt rehearsal could not test. While Session
-A1 is genuinely mid-work (visible in the attached tmux pane, before it edits
-and validates `MARKER.md`), terminate it to simulate a crash or lost
-connection — **not** a clean `arcadia advance` exit:
+This is the criterion the zero-prompt rehearsal could not test. Do the checks
+below in this order — the concurrent-launch refusal is only meaningful while A1
+is still live, so it must come **before** the kill.
+
+First, while Session A1 is genuinely mid-work (visible in the attached tmux
+pane, before it edits and validates `MARKER.md`), attempt a second concurrent
+launch against the same candidate from the fixture repository:
+
+```sh
+cd ~/tmp/arcadia-two-action-rehearsal
+arcadia-go-broker-opencode   # while A1 is still live
+```
+
+Confirm it is **refused** with a lease conflict rather than silently starting a
+second execution — the existing-lease guard at `src/sessions/launch.ts:132-137`
+throws "The repository already has a prepared or running Session for a
+different Action." Record the exact refusal.
+
+Then terminate A1 mid-work to simulate a crash or lost connection — **not** a
+clean `arcadia advance` exit:
 
 ```sh
 tmux kill-session -t <tmux_session_name>
 ```
 
-Then, from the fixture repository, run the fixed launcher a second time. Per
+Now run the fixed launcher a second time. Per
 `refuse-to-orphan-an-uncommitted-candidate` (done) and
 `reconcile-session-exits-to-next-move` (done), the host should recognize
 `write-marker-a` still owns an existing candidate whose prior Session is now
@@ -354,7 +426,7 @@ one:
 
 ```sh
 cd ~/tmp/arcadia-two-action-rehearsal
-arcadia-go-broker-codex
+arcadia-go-broker-opencode
 ```
 
 Record the returned worktree path and branch, and confirm it is **identical**
@@ -362,22 +434,11 @@ to the one Session A1 used, and that any partial edit A1 made (if it got that
 far before you killed it) is still present. Start Session A2 the same way
 Session A1 was started, and let it finish `write-marker-a`.
 
-Then, **before** killing A1 (i.e., while it is still live), separately attempt
-a second concurrent launch against the same candidate and confirm it is
-refused with a lease conflict (`src/sessions/launch.ts:131-136`,
-"The repository already has a prepared or running Session for a different
-Action" / the existing-lease path) rather than silently starting a second
-execution:
-
-```sh
-arcadia-go-broker-codex   # while A1 is still live, before Step 4's kill
-```
-
-Evidence: _(the concurrent-launch attempt's exact refusal message; the kill
-command and timestamp; the `go-broker` JSON showing the resumed — not new —
-worktree/branch; Session A1's native id and Session A2's native id; confirmation
-A2 saw A1's partial state; A2's completion, validation, and preservation
-result)_
+Evidence: _(the concurrent-launch attempt's exact refusal message and the
+timestamp showing it preceded the kill; the kill command and timestamp; the
+`go-broker` JSON showing the resumed — not new — worktree/branch; Session A1's
+native id and Session A2's native id; confirmation A2 saw A1's partial state;
+A2's completion, validation, and preservation result)_
 
 ## Step 5 — confirm Action B launches with no manual relay
 

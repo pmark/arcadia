@@ -123,4 +123,42 @@ describe("executeCodexStep build-purpose failure", () => {
     expect(result.data.run.status).toBe("failed");
     expect(result.data.run.work_item_id).toBe(workId);
   });
+
+  it("seeds a build packet with the requested coding-agent profile", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-work-plan-profile-"));
+    temporaryRoots.push(root);
+    const workspace = path.join(root, "workspace");
+    const repository = path.join(root, "repository");
+    initWorkspace(workspace);
+    mkdirSync(repository, { recursive: true });
+
+    const imported = runProjectImportCommand({
+      workspace,
+      name: "Work Plan Profile Fixture",
+      mission: "Prove work plan honours a requested build profile.",
+      status: "active",
+      milestone: "Prove the requested build profile reaches the packet",
+      nextAction: "Implement a one-line marker file.",
+      classification: "agent"
+    });
+    const workId = imported.data.workItem.id;
+    const projectId = imported.data.project.id;
+
+    withDatabase(workspace, (db) => {
+      upsertProjectMetadata(db, { projectId, repoPath: repository });
+    });
+
+    // Before this fix, the managed-build branch dropped the requested profile,
+    // so the packet silently took the workspace default build profile
+    // (codex_build) and a standing grant scoped to another provider refused it
+    // at admission.
+    const planned = runWorkPlanCommand({ workspace, workId, agentProfile: "opencode_build" });
+    expect(planned.data.buildInvocation).toMatchObject({
+      purpose: "build",
+      status: "packet_created",
+      agent_profile: "opencode_build",
+      work_item_id: workId,
+      plan_id: planned.data.plan.id
+    });
+  });
 });
