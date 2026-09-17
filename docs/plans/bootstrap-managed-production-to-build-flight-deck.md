@@ -879,7 +879,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/273", "src/sessions/preservationValidation.ts", "src/sessions/candidateSnapshot.ts", "src/sessions/manualPreservation.ts", "docs/reports/protected-preservation-qa.md"]
   - id: resolve-agent-handoff-model-per-provider
     title: arcadia go handoff resolves an agent-appropriate launch model instead of passing a plan's provider-specific recommended_model to a different provider, so the protected broker can hand off to opencode without an operator-supplied --model.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Plans name an agent-agnostic model tier that arcadia go resolves per coding agent, so the protected broker can hand off to opencode without an operator-supplied --model.
@@ -899,7 +899,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: resolve-agent-handoff-model-per-provider
+current_action: prove-two-action-unattended-production
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

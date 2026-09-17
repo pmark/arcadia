@@ -1,0 +1,41 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-resolve-agent-handoff-model-per-provider-merged-2026-09-17",
+  "project": "arcadia",
+  "intent": "complete",
+  "desired_result": "Mark resolve-agent-handoff-model-per-provider done: the handoff model is agent-agnostic, resolved from a tier registry per coding agent, with concrete-model plans preserved through a visible standard-tier fallback that fixes Issue #282.",
+  "target_ref": "action/resolve-agent-handoff-model-per-provider",
+  "candidate_revision": "0bd7527292db726d55b2679d45b06eb5fcfd9c0e",
+  "evidence": [
+    {
+      "criterion": "One tier registry (bundled defaults plus a workspace override) maps light/standard/heavy to a concrete model per coding agent, and no vendor model is hardcoded outside it: codex gpt-5.6-luna, gpt-5.6-terra, gpt-5.6-sol; claude haiku, sonnet, opus; opencode opencode-go/glm-5.3-flash, opencode-go/deepseek-v4.1-flash, opencode-go/gpt-5.6-luna.",
+      "status": "met",
+      "note": "src/codingAgents/modelTiers.ts holds the registry as BUNDLED_MODEL_TIERS with the exact table, and loadModelTierRegistry merges a workspace config/coding-agent-models.json override without dropping unnamed bindings. tests/model-tiers.test.ts asserts every tier x agent binding and the override merge. The managed-production path pins models in config/defaults/provider-adapters.json, which is a separate path from the go handoff."
+    },
+    {
+      "criterion": "arcadia go --agent <agent> resolves a plan recommended_model that names a known tier to that agent's tier model; a plan that names a concrete model uses it as-is only when it is plausible for the chosen agent, and otherwise resolves that agent's standard-tier model. The protected broker path succeeds with no operator-supplied --model.",
+      "status": "met",
+      "note": "resolveHandoffModel (src/codingAgents/modelTiers.ts), called from runGoCommand (src/commands/go.ts), resolves a tier for the launched agent, passes a plausible concrete model through, and otherwise resolves that agent standard tier. The protected broker calls runGoCommand with only repo/source/agent (src/goBroker.ts), so the no-model path the broker uses is exactly what tests/go.test.ts exercises for all three agents. The broker transport itself is separately broken on this host (GitHub Issue #284) and was not exercised end to end."
+    },
+    {
+      "criterion": "Reasoning effort resolves independently of the tier (--effort, else recommended_reasoning_effort, else the tier's own default), and opencode's --variant mapping from the resolved effort is preserved.",
+      "status": "met",
+      "note": "Effort precedence is explicit (src/codingAgents/modelTiers.ts: explicit > plan > tier default) and unit-tested in tests/model-tiers.test.ts; tests/go.test.ts asserts the opencode command carries --variant \"high\" from the resolved effort."
+    },
+    {
+      "criterion": "Deterministic tests cover tier resolution for all three agents, concrete-model pass-through when plausible, the concrete-model fallback that fixes GitHub Issue #282 (claude-sonnet-5 handed to opencode resolving to the opencode standard model), and a legible refusal for an unknown tier or an agent with no mapping; existing codex and claude behavior for plausible concrete models is unchanged.",
+      "status": "met",
+      "note": "tests/model-tiers.test.ts (11 tests) plus new cases in tests/go.test.ts cover tier resolution for codex/claude/opencode, concrete pass-through, the claude-sonnet-5-to-opencode fallback that fixes Issue #282, and legible refusals for an unknown value and a missing agent binding. Full suite: 1,630 passed / 13 skipped; existing concrete-model codex/claude pass-through is unchanged."
+    },
+    {
+      "criterion": "docs/model-selection.md documents the three tiers, the per-agent table, and the rule that new plans declare a tier while existing concrete-model plans keep working through the fallback; docs/COMMANDS.md states the resolution order; the Action closes Issue #282 when it merges and introduces no new approval, capacity, or paid-fallback authority.",
+      "status": "met",
+      "note": "docs/model-selection.md now documents light/standard/heavy, the per-agent table, and that new plans declare a tier while concrete-model plans keep working through the fallback; docs/COMMANDS.md states the resolution order in the go section. PR #285 declares \"Fixes #282\", so the merge closes it. The change introduces no new approval, capacity, or paid-fallback authority."
+    },
+    {
+      "criterion": "pnpm test and the core, Discord, and Dashboard builds pass.",
+      "status": "met",
+      "note": "pnpm exec vitest run: 1,630 passed / 13 skipped. pnpm build and pnpm dashboard:build pass; pnpm verify:package-boundary passes."
+    }
+  ]
+}
