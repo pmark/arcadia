@@ -1014,7 +1014,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/267", "https://github.com/pmark/arcadia/issues/268", "src/docs/sync.ts", "src/ask/settlement.ts", "docs/decisions/"]
   - id: deliver-session-brief
     title: A managed-production Session is launched with an actionable Action brief instead of session metadata, so an unattended Session knows its task, its constraints and how to finish.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Deliver the Action brief to every managed-production Session launch so an unattended Session knows its task, its constraints and how to finish.
@@ -1056,7 +1056,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/272", "https://github.com/pmark/arcadia/issues/273", "docs/decisions/0058-should-the-standing-managed-production-authorization-delegate-a-bounded.md", "src/sessions/preservationTransport.ts", "src/sessions/candidatePreservation.ts", "src/sessions/reconciliation.ts", "src/production/tick.ts", "src/production/policy.ts", "docs/plans/mission-control-view/17-managed-production-contract.md", "docs/working-copy-safety.md"]
 questions: []
 decisions: []
-current_action: deliver-session-brief
+current_action: prove-two-action-unattended-production
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

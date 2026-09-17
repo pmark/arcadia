@@ -1,0 +1,41 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-deliver-session-brief-2026-09-17",
+  "project": "arcadia",
+  "intent": "complete",
+  "desired_result": "Mark deliver-session-brief done: every managed-production Session launch now hands the spawned agent an actionable Action brief derived from the authoritative plan document, and refuses the launch when the plan or Action cannot supply one, resolving the Blocker recorded at docs/reports/planning-agent-route-review-2.md:427-437.",
+  "target_ref": "action/deliver-session-brief",
+  "candidate_revision": "0177e565d61063c0488147ba983ae17dda2d770d",
+  "evidence": [
+    {
+      "criterion": "The managed launch delivers the Action brief to the spawned agent for every configured provider: the Action title and next_action, every acceptance criterion verbatim and in the plan's own order, the candidate worktree path, and the standing constraints (no merge, deploy, publish, push to shared branches, or pointer edits).",
+      "status": "met",
+      "note": "src/sessions/actionBrief.ts renders the brief and buildProviderLaunch (src/sessions/index.ts:599) passes it as the single prompt for codex-cli, claude-code-cli, and opencode-cli, replacing `arcadia advance --session <id>`. The brief carries Project, Plan and Action ids, the title, next_action, the candidate worktree and branch, each acceptance criterion verbatim and in plan order, an explicit launch-limits line, and the repository's CONSTITUTION.md. tests/action-brief.test.ts asserts each field, and tests/session.test.ts and tests/session-launch.test.ts assert the launched prompt for claude, codex, and opencode."
+    },
+    {
+      "criterion": "The brief states the exact completion protocol: run the repository's declared validation, request protected preservation through the existing fixed launcher, and settle a `complete` Agent Ask with candidate_revision equal to the worktree HEAD and one `met` evidence entry per criterion, verbatim and in order.",
+      "status": "met",
+      "note": "The rendered brief ends with the numbered protocol: run the repository's declared validation; request protected preservation through `arcadia-preserve-broker-<agent>` for the Session's own provider; and settle a `complete` Agent Ask with candidate_revision equal to the worktree HEAD and one `met` evidence entry per criterion, verbatim and in order. tests/action-brief.test.ts asserts the protocol text and the provider-specific launcher name for all three agents."
+    },
+    {
+      "criterion": "The brief is derived from the authoritative plan document for the Session's recorded plan_slug and action_id rather than a hardcoded or stale copy; a missing Action or missing acceptance criteria fails closed with a named error before launch.",
+      "status": "met",
+      "note": "renderActionBrief reads discoverDocs(session.worktree_path) and resolves the plan by the Session's recorded plan_slug and the action by its recorded action_id; it holds no copy of the text. A missing plan, a missing Action, or an Action with no acceptance criteria throws a named VALIDATION_ERROR, which launchPreparedSession catches to mark the Session failed and start no process. tests/session.test.ts proves the refusal end to end against a candidate worktree whose plan no longer contains the Action (no tmux launch, Session marked failed)."
+    },
+    {
+      "criterion": "Deterministic tests cover the rendered brief for an Action carrying criteria and the fail-closed case for a missing Action, and existing provider argument construction (model, effort/variant, worktree cwd, agent Git identity) is unchanged.",
+      "status": "met",
+      "note": "tests/action-brief.test.ts adds 7 deterministic tests covering the rendered brief (fields, criteria order, constraints, protocol, all three launchers) and the refusals for a missing plan, a missing Action, and an Action with no acceptance criteria. tests/session.test.ts and tests/session-launch.test.ts keep their existing model, effort/--variant, --cd, and GIT_AUTHOR_*/GIT_COMMITTER_* identity assertions unchanged; only the final prompt argument assertion changed from the metadata prompt to the brief."
+    },
+    {
+      "criterion": "pnpm test and the core, Discord and Dashboard builds pass; no new approval, capacity or paid-fallback authority is introduced.",
+      "status": "met",
+      "note": "pnpm test: 1,662 passed / 15 skipped. Two load-induced timeouts under the full parallel run (the test/intelligence/packageBoundary.test.ts build hook and tests/cli-response.test.ts's Back Burner case) each re-passed in isolation and are unrelated to this change. pnpm build (tsc + Discord), pnpm dashboard:build, and pnpm verify:package-boundary all pass. The change adds no approval, capacity, or paid-fallback authority: it only changes the prompt delivered to an already-authorized Session."
+    },
+    {
+      "criterion": "The Blocker recorded at docs/reports/planning-agent-route-review-2.md:427-437 is resolved and the PR closes GitHub Issue #292 when it merges.",
+      "status": "met",
+      "note": "The Blocker was that the canonical handoff landed on a surface no consumer reads: the guard-launched prompt was `arcadia advance --session <id>`, and that command renders only session metadata, leaving an unattended Session with no task. The launch now carries the actionable brief itself, so the mechanism delivers the content the Blocker said was undelivered. The PR body declares \"Closes #292\"."
+    }
+  ]
+}
