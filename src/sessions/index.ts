@@ -13,6 +13,7 @@ import { getProjectBySlug, getWorkItemByDocRef, listCodexInvocationsForWorkItem 
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import { packetSha256 } from "../execution/planningAuthorization.js";
 import { createId } from "../utils/id.js";
+import { renderActionBrief } from "./actionBrief.js";
 import { getResumableLeaseHandoff, supersedeLeaseHandoff } from "./reconciliation.js";
 import { opencodeVariant } from "./worktreePreparation.js";
 
@@ -592,12 +593,20 @@ function buildSessionLaunch(session: AgentSession, registry?: ModelTierRegistry)
     effort: session.effort,
     registry
   });
-  const inner = buildProviderLaunch(session);
+  const inner = buildProviderLaunch(session, agent);
   return { command: "env", args: [...agentIdentityEnvironmentArgs(identity), inner.command, ...inner.args] };
 }
 
-function buildProviderLaunch(session: AgentSession): { command: string; args: string[] } {
-  const prompt = `arcadia advance --session ${session.id}`;
+function buildProviderLaunch(session: AgentSession, agent: SessionAgent): { command: string; args: string[] } {
+  const prompt = renderActionBrief({
+    repoRoot: session.worktree_path,
+    projectSlug: session.project_slug,
+    planSlug: session.plan_slug,
+    actionId: session.action_id,
+    worktreePath: session.worktree_path,
+    branch: session.branch,
+    agent
+  });
   if (session.provider === "codex-cli") {
     const args = ["--model", session.model];
     if (session.effort) args.push("--config", `model_reasoning_effort=${JSON.stringify(session.effort)}`);
