@@ -15,6 +15,7 @@ import {
   launchPreparedSession,
   prepareSession,
   reserveAgentWorktree,
+  sessionAgentForProvider,
   systemTmux,
   type AgentSession,
   type TmuxAdapter
@@ -144,6 +145,19 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     throw validationError("The governed pointer changed since the preview was built; re-preview before launching.", { conflict: true });
   }
 
+  // Resolve the Session adapter before reserving anything. A provider that is
+  // enabled in the adapter registry but has no Session adapter must refuse here,
+  // before `issueAdmission` can reserve a concurrency slot it would never commit.
+  const agent = sessionAgentForProvider(preview.selection.provider);
+  if (!agent) {
+    throw validationError(
+      `No Session launch adapter is registered for provider "${preview.selection.provider}".`,
+      { conflict: true }
+    );
+  }
+  const model = preview.selection.model;
+  const effort = preview.selection.effort ?? null;
+
   let admission: AdmissionReceipt | null = null;
   if (input.standingPolicy) {
     const provider = preview.selection.provider;
@@ -171,9 +185,6 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     input.testHooks?.afterAdmissionIssuedBeforeCommit?.();
   }
 
-  const agent = preview.selection.provider === "codex-cli" ? "codex" : "claude";
-  const model = preview.selection.model;
-  const effort = preview.selection.effort ?? null;
   const baseBranch = resolveBaseBranch(repoRoot);
   const baseRevision = git(repoRoot, ["rev-parse", baseBranch]).trim();
 

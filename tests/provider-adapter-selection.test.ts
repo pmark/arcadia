@@ -13,7 +13,8 @@ const profiles: CodingAgentProfile[] = [
   profile("codex_planning", "codex-cli", "planning", "read-only"),
   profile("codex_build", "codex-cli", "build", "workspace-write"),
   profile("claude_planning", "claude-code-cli", "planning", "read-only"),
-  profile("claude_build", "claude-code-cli", "build", "workspace-write")
+  profile("claude_build", "claude-code-cli", "build", "workspace-write"),
+  profile("opencode_build", "opencode-cli", "build", "workspace-write")
 ];
 
 const availability: CodingAgentAvailabilitySnapshot = {
@@ -118,6 +119,38 @@ describe("provider-adapter selection", () => {
     expect(selected.capability).toBe("c2_integrated");
   });
 
+  it("falls back to the opencode binding when Codex and Claude are both limited", () => {
+    const limited: CodingAgentAvailabilitySnapshot = {
+      ...availability,
+      agents: availability.agents.map((agent) =>
+        agent.profiles[0]?.startsWith("opencode_")
+          ? agent
+          : { ...agent, availability: "usage_limited" }
+      )
+    };
+    const selected = selectCompliantCodingAgent({
+      profiles,
+      adapters: adapters as never,
+      requirement: resolved("routine_implementation"),
+      purpose: "build",
+      availability: limited
+    });
+
+    expect(selected).toMatchObject({
+      bindingId: "opencode-zen",
+      provider: "opencode-cli",
+      capability: "c2_integrated",
+      effort: "e2_standard",
+      profile: { name: "opencode_build" }
+    });
+    expect(selected.args).toEqual([
+      "--model",
+      "opencode-go/deepseek-v4.1-flash",
+      "--variant",
+      "low"
+    ]);
+  });
+
   it("reports an unsatisfied requirement instead of choosing a weaker model", () => {
     expect(() => selectCompliantCodingAgent({
       profiles,
@@ -167,7 +200,7 @@ function profile(
     name,
     provider,
     package: "test",
-    command: provider === "codex-cli" ? "codex" : "claude",
+    command: provider === "codex-cli" ? "codex" : provider === "opencode-cli" ? "opencode" : "claude",
     purpose,
     sandbox,
     args: []

@@ -1356,7 +1356,7 @@ or `defer`; free-form text never grants execution authority.
 
 Mission Control opens each detail view at its own URL. Use the browser Back button to return through the views you opened, or use the in-page **Back** link to return to Mission Control.
 
-Codex remains the default coding agent. Managed planning and build packets can also use Claude Code through the `claude_planning` and `claude_build` profiles. The Dashboard uses the defaults in `config/coding-agent-profiles.json`; advanced CLI use can select a profile per packet with `arcadia ask --agent-profile <name>` or `arcadia work plan --agent-profile <name>`. A Decision stays bound to the profile named in its exact packet.
+Codex remains the default coding agent. Managed planning and build packets can also use Claude Code through the `claude_planning` and `claude_build` profiles, and build packets can use `opencode_build`, which launches the opencode CLI headlessly in the prepared worktree. The provider registry ranks opencode last, so Codex or Claude Code is selected whenever either is available and opencode is used when they are not; opencode has no planning profile. The Dashboard uses the defaults in `config/coding-agent-profiles.json`; advanced CLI use can select a profile per packet with `arcadia ask --agent-profile <name>` or `arcadia work plan --agent-profile <name>`. A Decision stays bound to the profile named in its exact packet.
 
 Managed plan Actions may also declare a vendor-neutral execution profile. For
 those Actions, Arcadia uses the replaceable provider mappings in

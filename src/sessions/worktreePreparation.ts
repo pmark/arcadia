@@ -5,12 +5,24 @@ import { validationError } from "../cli/errors.js";
 import { git } from "../git/worktrees.js";
 
 export interface PreparedAgentWorktree {
-  agent: "codex" | "claude";
+  agent: "codex" | "claude" | "opencode";
   path: string;
   branch: string;
   model: string;
   effort: string | null;
   command: string;
+}
+
+/** Each Session agent prepares its candidate under its own provider directory. */
+const AGENT_WORKTREE_DIRECTORY: Record<PreparedAgentWorktree["agent"], string> = {
+  codex: ".codex/worktrees",
+  claude: ".claude/worktrees",
+  opencode: ".opencode/worktrees"
+};
+
+/** The default candidate root for one agent: `<home>/<agent worktree directory>`. */
+export function defaultAgentWorktreeRoot(agent: PreparedAgentWorktree["agent"]): string {
+  return path.join(homedir(), AGENT_WORKTREE_DIRECTORY[agent]);
 }
 
 /**
@@ -19,7 +31,7 @@ export interface PreparedAgentWorktree {
  * can never accidentally integrate or retire earlier work.
  */
 export function prepareAgentWorktree(input: {
-  agent: "codex" | "claude";
+  agent: "codex" | "claude" | "opencode";
   actionId: string;
   baseBranch: string;
   repositoryPath: string;
@@ -34,7 +46,7 @@ export function prepareAgentWorktree(input: {
   const name = `${safeAction}-${stamp}`;
   const branch = `${input.agent}/${name}`;
   const repositoryName = path.basename(input.repositoryPath);
-  const defaultRoot = path.join(homedir(), input.agent === "codex" ? ".codex/worktrees" : ".claude/worktrees");
+  const defaultRoot = defaultAgentWorktreeRoot(input.agent);
   const root = path.resolve(input.rootOverride ?? defaultRoot);
   const worktreePath = path.join(root, name, repositoryName);
   if (existsSync(worktreePath)) {
@@ -71,13 +83,42 @@ export function isPlausibleClaudeModel(model: string): boolean {
   return normalized.startsWith("claude-") || CLAUDE_MODEL_ALIASES.has(normalized);
 }
 
-export function buildAgentLaunchCommand(agent: "codex" | "claude", worktreePath: string, model: string, effort: string | null): string {
+export function buildAgentLaunchCommand(agent: "codex" | "claude" | "opencode", worktreePath: string, model: string, effort: string | null): string {
   const quotedPath = JSON.stringify(worktreePath);
   const quotedModel = JSON.stringify(model);
   if (agent === "claude") {
     const effortFlag = effort ? ` --effort ${JSON.stringify(effort)}` : "";
     return `cd ${quotedPath} && claude --model ${quotedModel}${effortFlag} "arcadia advance"`;
   }
+  if (agent === "opencode") {
+    const variant = opencodeVariant(effort);
+    const variantFlag = variant ? ` --variant ${JSON.stringify(variant)}` : "";
+    return `cd ${quotedPath} && opencode run --model ${quotedModel}${variantFlag} "arcadia advance"`;
+  }
   const effortFlag = effort ? ` -c model_reasoning_effort=${JSON.stringify(effort)}` : "";
   return `codex -c default_permissions=\"arcadia-unattended\" --ask-for-approval never -C ${quotedPath} -m ${quotedModel}${effortFlag} "arcadia advance"`;
+}
+
+/**
+ * A reasoning effort as opencode's provider-specific `--variant` value for the
+ * pinned `opencode-go/deepseek-v4.1-flash` binding, whose reasoning options are
+ * `low`/`high`/`max`. Both the Arcadia effort key and a stored provider-native
+ * value are accepted; `e1_brief` clamps up to `low` because the provider has no
+ * lower step, and anything unrecognized omits the flag rather than passing an
+ * unsupported value.
+ */
+export function opencodeVariant(effort: string | null): string | null {
+  if (!effort) return null;
+  return ({
+    e1_brief: "low",
+    e2_standard: "low",
+    e3_deep: "high",
+    e4_rigorous: "max",
+    minimal: "low",
+    low: "low",
+    medium: "low",
+    high: "high",
+    xhigh: "max",
+    max: "max"
+  } as Record<string, string>)[effort] ?? null;
 }

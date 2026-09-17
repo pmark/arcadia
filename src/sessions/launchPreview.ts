@@ -29,7 +29,8 @@ import { resolvePacketLifecycle, type PacketLifecycleState } from "./packetLifec
  */
 export const LAUNCH_ADAPTER_SUPPORT: Record<string, boolean> = {
   "codex-cli": true,
-  "claude-code-cli": true
+  "claude-code-cli": true,
+  "opencode-cli": true
 };
 
 export interface LaunchPreviewPacket {

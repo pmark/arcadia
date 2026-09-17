@@ -29,6 +29,23 @@ docs) rather than trusting a name typed from memory. `go.ts`'s
 reaching `--model` unvalidated is a real failure mode, not a hypothetical one;
 treat any Codex-side pin the same way before it reaches a launch command.
 
+**Managed-production provider pins.** The standing production path does not
+pick a model per Action from `recommended_model`; it launches the provider
+binding the immutable build packet recorded, and that binding's model is pinned
+in the bundled `config/defaults/provider-adapters.json` (overridable by a
+workspace `config/provider-adapters.json`). A third provider, `opencode-cli`, is
+configured that way: binding `opencode-zen` pins
+`opencode-go/deepseek-v4.1-flash` behind the `opencode_build` profile, with
+opencode's `--model provider/model` argument and its provider-specific
+`--variant` reasoning dial mapped from the Action's effort and clamped to that
+model's `low`/`high`/`max` steps. opencode carries the
+highest `costRank`, so Codex and Claude remain the default choice and opencode
+is selected only when both are unavailable or excluded — the credit-exhausted
+case it exists for. No `opencode_planning` profile is configured: planning
+stays on Codex and Claude. opencode's own model catalogue is wide, which is why
+exactly one model is pinned here rather than delegated to an unvalidated
+`provider/model` string.
+
 **No tier 3/4 exists at this layer.** Cheaper, faster model families are real
 and useful, but "boilerplate/unit tests" is not a unit Arcadia can route
 separately from the Action that contains it today. Using a cheap model here
