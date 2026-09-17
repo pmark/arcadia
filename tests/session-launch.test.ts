@@ -90,7 +90,7 @@ describe("launchGuardedHostSession", () => {
     expect(result.reused).toBe(false);
     expect(tmux.launches).toHaveLength(1);
     expect(tmux.launches[0]!.command).toBe("env");
-    expect(tmux.launches[0]!.args).toEqual([
+    expect(tmux.launches[0]!.args.slice(0, -1)).toEqual([
       "GIT_AUTHOR_NAME=Owen Mason",
       "GIT_AUTHOR_EMAIL=owen.mason@agents.arcadia.local",
       "GIT_COMMITTER_NAME=Owen Mason",
@@ -100,9 +100,13 @@ describe("launchGuardedHostSession", () => {
       "--model",
       "opencode-go/deepseek-v4.1-flash",
       "--variant",
-      "high",
-      `arcadia advance --session ${result.session.id}`
+      "high"
     ]);
+    const brief = tmux.launches[0]!.args.at(-1)!;
+    expect(brief).toContain("Action: define-contract");
+    expect(brief).toContain("The contract exists.");
+    expect(brief).toContain(`Candidate worktree: ${result.session.worktree_path}`);
+    expect(brief).toContain("arcadia-preserve-broker-opencode");
     // opencode owns its native session id, so Arcadia never invents a resume.
     expect(result.session.provider_session_id).toBe(result.session.id);
     expect(sessionView(result.session, tmux).resumeCommand).toBeNull();

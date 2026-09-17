@@ -310,7 +310,7 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
  * surfaces through the CLI as an opaque `UNEXPECTED_ERROR`, which tells the
  * operator nothing about which file to fix.
  */
-function readStandingConstraints(repoRoot: string): {
+export function readStandingConstraints(repoRoot: string): {
   constraints: string[];
   blocker: DispatchBlocker | null;
 } {

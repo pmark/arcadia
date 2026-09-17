@@ -103,7 +103,11 @@ describe("tmux-backed Sessions", () => {
     ]);
     expect(tmux.launches[0].args).toContain("claude");
     expect(tmux.launches[0].args).toContain("--session-id");
-    expect(tmux.launches[0].args.at(-1)).toBe(`arcadia advance --session ${result.data.session!.id}`);
+    const claudeBrief = tmux.launches[0].args.at(-1)!;
+    expect(claudeBrief).toContain("Action: define-contract");
+    expect(claudeBrief).toContain("The contract exists.");
+    expect(claudeBrief).toContain(`Candidate worktree: ${result.data.session!.worktree_path}`);
+    expect(claudeBrief).toContain("arcadia-preserve-broker-claude");
 
     const view = sessionView(result.data.session!, tmux);
     expect(view.observedStatus).toBe("running");
@@ -136,7 +140,10 @@ describe("tmux-backed Sessions", () => {
       "--model", "gpt-5.6-terra", "--config", 'model_reasoning_effort="high"', "--cd", result.data.session!.worktree_path
     ]));
     expect(tmux.launches[0].args).not.toContain("--session-id");
-    expect(tmux.launches[0].args.at(-1)).toBe(`arcadia advance --session ${result.data.session!.id}`);
+    const codexBrief = tmux.launches[0].args.at(-1)!;
+    expect(codexBrief).toContain("Action: define-contract");
+    expect(codexBrief).toContain("Define the bounded contract.");
+    expect(codexBrief).toContain("arcadia-preserve-broker-codex");
 
     const view = sessionView(result.data.session!, tmux);
     expect(view.reattachCommand).toBe(`tmux attach-session -t ${result.data.session!.tmux_session_name}`);
@@ -277,6 +284,37 @@ describe("tmux-backed Sessions", () => {
     expectArcadiaError(
       () => withDatabase(fixture.workspace, (db) => launchPreparedSession(db, prepared, tmux)),
       "cannot determine the model tier"
+    );
+    expect(tmux.launches).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, prepared.id))?.status).toBe("failed");
+  });
+
+  it("refuses to launch and fails the Session when the candidate worktree has no matching Action for the brief", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const worktree = path.join(fixture.root, "missing-action-worktree");
+    git(fixture.repo, ["worktree", "add", "-q", "-b", "claude/missing-action", worktree, "main"]);
+    writeFileSync(path.join(worktree, "docs", "plans", "copy-proof.md"), planDocumentWithoutTheAction);
+    const baseRevision = git(fixture.repo, ["rev-parse", "main"]).trim();
+    const dispatch = resolveDispatch(fixture.repo, "test-project");
+    const prepared = withDatabase(fixture.workspace, (db) => prepareSession({
+      db,
+      workspace: fixture.workspace,
+      repoRoot: fixture.repo,
+      dispatch,
+      agent: "claude",
+      model: "sonnet",
+      effort: "high",
+      baseRevision,
+      branch: "claude/missing-action",
+      worktreePath: worktree,
+      now: fixture.now,
+      tmux
+    }));
+
+    expectArcadiaError(
+      () => withDatabase(fixture.workspace, (db) => launchPreparedSession(db, prepared, tmux)),
+      'Action "define-contract" was not found in plan "copy-proof"'
     );
     expect(tmux.launches).toHaveLength(0);
     expect(withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, prepared.id))?.status).toBe("failed");
@@ -514,6 +552,35 @@ actions:
     acceptance_criteria:
       - The contract exists.
     decisions: ["0001"]
+---
+
+# Copy proof
+`;
+
+const planDocumentWithoutTheAction = `---
+arcadia: v1
+type: plan
+slug: copy-proof
+project: test-project
+status: active
+milestone: Prove the Session contract
+current_action: other-step
+token_impact: medium
+token_budget: One bounded Session; all checks are deterministic.
+recommended_model: sonnet
+recommended_reasoning_effort: high
+updated: 2026-08-30
+actions:
+  - id: other-step
+    title: Take another step
+    status: open
+    responsibility: codex
+    effort: session
+    clarification: clarified
+    next_action: Take the other bounded step.
+    expected_artifact: docs/other.md
+    acceptance_criteria:
+      - The other step exists.
 ---
 
 # Copy proof

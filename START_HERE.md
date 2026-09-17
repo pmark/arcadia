@@ -954,6 +954,19 @@ the worktree itself and wraps Claude Code in tmux—it does not use Claude Code'
 worktree-owning tmux mode. A separately admitted repository may hold its own
 Session.
 
+Every provider is launched with an actionable **Action brief** as its prompt,
+not session metadata: the Action title and `next_action`, every acceptance
+criterion verbatim and in the plan's own order, the candidate worktree and
+branch, the repository's standing constraints, and the exact completion
+protocol — run the repository's declared validation, request protected
+preservation through the provider's fixed launcher
+(`arcadia-preserve-broker-codex|claude|opencode`), then settle a `complete`
+Agent Ask with `candidate_revision` at the worktree HEAD and one `met` evidence
+entry per criterion, verbatim and in order. The brief is read from the
+authoritative plan document at launch, so a missing plan, a missing Action, or
+an Action with no acceptance criteria refuses the launch and fails the Session
+before any process starts.
+
 The command prints the Session id and exact reattach command. The same
 read-only receipt is available later:
 
