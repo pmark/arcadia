@@ -1014,7 +1014,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/267", "https://github.com/pmark/arcadia/issues/268", "src/docs/sync.ts", "src/ask/settlement.ts", "docs/decisions/"]
 questions: []
 decisions: []
-current_action: prove-two-action-unattended-production
+current_action: harden-agent-ask-settlement
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
