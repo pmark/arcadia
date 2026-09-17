@@ -1056,7 +1056,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/272", "https://github.com/pmark/arcadia/issues/273", "docs/decisions/0058-should-the-standing-managed-production-authorization-delegate-a-bounded.md", "src/sessions/preservationTransport.ts", "src/sessions/candidatePreservation.ts", "src/sessions/reconciliation.ts", "src/production/tick.ts", "src/production/policy.ts", "docs/plans/mission-control-view/17-managed-production-contract.md", "docs/working-copy-safety.md"]
 questions: []
 decisions: []
-current_action: prove-two-action-unattended-production
+current_action: let-agent-preserve-its-candidate
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
