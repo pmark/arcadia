@@ -1468,11 +1468,22 @@ ref; a stale source tracking ref cannot veto local retirement after the local
 proof succeeds. With
 `--agent codex`, `--agent claude`, or `--agent opencode`, it also creates a uniquely named isolated
 worktree from that updated local base and prints an exact launch command,
-pinned to a model: `--model` on the command line, else the plan's
-`recommended_model` (and optional `recommended_reasoning_effort`), read from
-the plan as it exists *after* the fast-forward — the recommendation itself may
-be new content the merge just introduced. Neither resolving is a refusal;
-Arcadia will not launch an agent session unpinned. That refusal does not
+pinned to a model resolved for that agent, in this order:
+
+1. an explicit `--model`, trusted as-is and never re-resolved;
+2. else the plan's `recommended_model`, read from the plan as it exists *after*
+   the fast-forward — the recommendation itself may be new content the merge
+   just introduced. A logical tier (`light`, `standard`, `heavy`) resolves to
+   that agent's tier model from the registry in `src/codingAgents/modelTiers.ts`
+   (overridable per workspace by `config/coding-agent-models.json`); a concrete
+   model is used as-is when it plausibly belongs to the agent, and otherwise
+   falls back to the agent's `standard` tier with the substitution printed. A
+   value that is neither a known tier nor recognizable for any agent is refused.
+
+Effort resolves independently: `--effort`, else the plan's
+`recommended_reasoning_effort`, else the tier's own default. Resolving no model
+at all is a refusal; Arcadia will not launch an agent session unpinned. That
+refusal does not
 undo an already-completed fast-forward, since the two are independent
 outcomes: retiring the finished worktree is valid on its own, with or without
 a next agent session. It does not stage, commit, reset, force-merge, push,

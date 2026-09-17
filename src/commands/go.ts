@@ -43,7 +43,12 @@ import {
 
 import { recoverLegacyAgentAskDrift, type AskRecoveryTestHooks, type LegacyAskRecovery } from "../sessions/legacyAskRecovery.js";
 import { getResumableLeaseHandoff } from "../sessions/reconciliation.js";
-import { buildAgentLaunchCommand, isPlausibleClaudeModel, prepareAgentWorktree, type PreparedAgentWorktree } from "../sessions/worktreePreparation.js";
+import { buildAgentLaunchCommand, prepareAgentWorktree, type PreparedAgentWorktree } from "../sessions/worktreePreparation.js";
+import {
+  loadModelTierRegistry,
+  resolveHandoffModel,
+  type ModelTier
+} from "../codingAgents/modelTiers.js";
 import { bindManualPreservation } from "../sessions/manualPreservation.js";
 import { readPreservationReadiness, type PreservationReadiness } from "../sessions/preservationReadiness.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
@@ -100,6 +105,18 @@ export interface GoCommandData {
   sourceWorktreeRemoved: boolean;
   sourceBranchDeleted: boolean;
   nextWorktree: PreparedAgentWorktree | null;
+  /**
+   * How the handoff model was chosen for the next agent. Null until an agent is
+   * prepared. `note` is set whenever the plan's recommended_model was
+   * reinterpreted, so a fallback is visible rather than silent.
+   */
+  modelResolution: {
+    model: string;
+    effort: string | null;
+    tier: ModelTier | null;
+    source: "explicit" | "tier" | "concrete" | "fallback";
+    note: string | null;
+  } | null;
   dispatch: DispatchResolution;
   dispatchable: boolean;
   transition: ProjectTransition;
@@ -200,6 +217,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
   let sourceWorktreeRemoved = false;
   let sourceBranchDeleted = false;
   let nextWorktree: GoCommandData["nextWorktree"] = null;
+  let modelResolution: GoCommandData["modelResolution"] = null;
   let session: AgentSession | null = null;
   let dispatch = sourceDispatch;
   if (options.apply && integration !== "not-needed" && integration !== null) {
@@ -250,8 +268,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     }
 
     const planModel = dispatch.context?.planRecommendedModel ?? null;
-    const model = options.model ?? planModel;
-    if (!model) {
+    if (!options.model && !planModel) {
       throw validationError(
         "No model is resolved for the next agent session, and Arcadia go will not launch one unpinned.",
         {
@@ -270,28 +287,32 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
         }
       );
     }
-    // `recommended_model` is free-form, provider-agnostic text (a plan may
-    // have been written with Codex in mind), so when Arcadia picks it
-    // automatically for a Claude handoff — no explicit --model given — make
-    // sure it at least looks like a Claude model before it reaches
-    // `claude --model` unvalidated. An explicit --model is trusted as-is.
-    if (!options.model && options.agent === "claude" && !isPlausibleClaudeModel(model)) {
-      throw validationError(
-        "The plan's recommended_model does not look like a Claude Code model, and Arcadia will not hand it to " +
-          "`claude --model` unvalidated.",
-        {
-          planPath: dispatch.context?.planPath ?? null,
-          planRecommendedModel: model,
-          remedy:
-            "Pass --model explicitly with a Claude Code model (e.g. claude-sonnet-5, or the sonnet/opus/haiku/fable " +
-            "aliases), or fix the plan's recommended_model for a Claude handoff — it currently names a model built " +
-            "for a different agent."
-        }
-      );
-    }
-    const effort = options.effort ?? dispatch.context?.planRecommendedReasoningEffort ?? null;
-
+    // `recommended_model` is free-form text that may have been written with a
+    // different agent in mind, so when Arcadia picks it automatically — no
+    // explicit --model given — resolve it for this agent: a logical tier maps
+    // through the model-tier registry, a concrete model the agent plausibly
+    // owns is used as-is, and one that belongs to another agent falls back to
+    // this agent's standard tier with a visible note. An explicit --model is
+    // trusted as-is and never re-resolved.
     const workspacePath = resolveReadyWorkspace(options.workspace).workspacePath;
+    modelResolution = options.model
+      ? {
+          model: options.model,
+          effort: options.effort ?? dispatch.context?.planRecommendedReasoningEffort ?? null,
+          tier: null,
+          source: "explicit" as const,
+          note: null
+        }
+      : resolveHandoffModel({
+          agent: options.agent,
+          recommendedModel: planModel,
+          explicitEffort: options.effort ?? null,
+          planEffort: dispatch.context?.planRecommendedReasoningEffort ?? null,
+          registry: loadModelTierRegistry(workspacePath)
+        });
+    const model = modelResolution.model;
+    const effort = modelResolution.effort;
+
     const tmux = options.tmux ?? systemTmux;
     if (options.launch && workspacePath) {
       const transition = withDatabase(workspacePath, (db) => resolveProjectTransition({
@@ -442,6 +463,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       sourceWorktreeRemoved,
       sourceBranchDeleted,
       nextWorktree,
+      modelResolution,
       dispatch,
       dispatchable: isDispatchable(dispatch),
       transition,
@@ -677,6 +699,8 @@ export function renderGoSuccess(response: CommandSuccess<GoCommandData>): string
   );
   if (data.nextWorktree) {
     lines.push(`Model: ${data.nextWorktree.model}${data.nextWorktree.effort ? ` (${data.nextWorktree.effort} effort)` : ""}`);
+    if (data.modelResolution?.note) lines.push(`  ${data.modelResolution.note}`);
+    else if (data.modelResolution?.tier) lines.push(`  Resolved the ${data.modelResolution.tier} tier for ${data.nextWorktree.agent}.`);
     lines.push(`Launch: ${data.nextWorktree.command}`);
   }
   if (data.preservation) {
