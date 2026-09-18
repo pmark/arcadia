@@ -35,6 +35,15 @@ import { processPreservationRequests, refreshPreservationHeartbeat } from "../se
 
 const POLL_INTERVAL_MS = 2_000;
 
+/**
+ * A transient tick failure should be loud; a persistent one must not become an
+ * unbounded log. The first failure of a streak logs in full, then one summary
+ * line every this many failures (~60s at the 2s interval), and a recovery line
+ * when a tick finally succeeds. `worker.log` is never rotated, so without this
+ * a permanently unopenable workspace grew it by roughly 43k lines/day.
+ */
+const REPEATED_FAILURE_LOG_INTERVAL = 30;
+
 export interface WorkerOptions {
   workspace: string;
 }
@@ -97,14 +106,23 @@ export interface WorkerTickOptions {
  * it. It used to run outside the error boundary — `const db = openDatabase(...)`
  * sat before the `try` — so a transient `SQLITE_BUSY` from shared-writer
  * contention escaped the loop as an uncaught exception and killed the worker
- * without writing anything to `worker.log` (GitHub issue #305). Every step a
- * tick takes now shares one boundary: any throw is logged as `Worker tick
- * error:` and the next tick is always scheduled.
+ * without writing anything to `worker.log` (GitHub issue #305). Every
+ * synchronous step a tick takes now shares one boundary: a throw is logged as
+ * `Worker tick error:` and the next tick is always scheduled.
+ *
+ * The boundary is deliberately synchronous. A rejected promise or a throw
+ * inside some other callback is outside it, and the tick path contains neither:
+ * every step it calls is synchronous. Should one ever be added, it needs its
+ * own boundary rather than an assumption that this one covers it.
  */
 export function createWorkerTick(options: WorkerTickOptions): () => void {
   const openDb = options.openDb ?? openDatabase;
   const schedule = options.schedule
     ?? ((callback: () => void, delayMs: number) => { setTimeout(callback, delayMs); });
+
+  // Consecutive synchronous failures, so a persistent one is summarized rather
+  // than written once per 2s tick.
+  let consecutiveFailures = 0;
 
   const tick = () => {
     try {
@@ -115,9 +133,17 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
       } finally {
         db.close();
       }
+      if (consecutiveFailures > 0) {
+        log(options.logfile, `Worker tick recovered after ${consecutiveFailures} consecutive failure${consecutiveFailures === 1 ? "" : "s"}.`);
+        consecutiveFailures = 0;
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      log(options.logfile, `Worker tick error: ${message}`);
+      consecutiveFailures += 1;
+      if (consecutiveFailures === 1 || consecutiveFailures % REPEATED_FAILURE_LOG_INTERVAL === 0) {
+        const message = error instanceof Error ? error.message : String(error);
+        const suffix = consecutiveFailures === 1 ? "" : ` (repeated ${consecutiveFailures} times)`;
+        log(options.logfile, `Worker tick error: ${message}${suffix}`);
+      }
     } finally {
       schedule(tick, POLL_INTERVAL_MS);
     }
