@@ -107,6 +107,16 @@ export function applyDecisionDeferral(
   }
 
   const { project, plan, action } = resolveTarget(input.repoRoot, input.projectSlug, input.actionId);
+  // A completed Action must never be parked: rewriting `done` to `deferred`
+  // would write false checked-in truth, and dispatch already excludes done
+  // Actions, so the deferral would change nothing it could honestly describe.
+  if (action.status === "done") {
+    throw validationError("This Decision defers an Action that is already done.", {
+      action: action.id,
+      status: action.status,
+      remedy: "A completed Action cannot be parked. Re-open the Action first, or answer the Decision the other way."
+    });
+  }
   const pointerBefore = project.currentAction ?? plan.currentAction;
   const needsPark = action.status !== "deferred";
   const pointerMoved = needsPark && pointerBefore === action.id;

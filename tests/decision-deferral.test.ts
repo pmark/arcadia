@@ -338,6 +338,27 @@ describe("apply an answered Decision's consequence", () => {
     expect(projectFile(repo)).toContain("current_action: park-me");
   });
 
+  it("refuses to defer an Action that is already done, leaving every document untouched", () => {
+    const { workspace, repo, decisionId } = fixture({
+      planActions: [
+        { id: "done-first", status: "done" },
+        { id: "park-me", status: "done" },
+        { id: "after", status: "open" }
+      ]
+    });
+    const planBefore = planFile(repo);
+    const projectBefore = projectFile(repo);
+    const decisionBefore = decisionFile(repo);
+
+    expect(() =>
+      runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" })
+    ).toThrow(/already done/);
+
+    expect(planFile(repo)).toBe(planBefore);
+    expect(projectFile(repo)).toBe(projectBefore);
+    expect(decisionFile(repo)).toBe(decisionBefore);
+  });
+
   it("reports an approved Decision's parked Action as a dispatch blocker before the Plan record changes", () => {
     const { repo } = fixture({ decisionStatus: "approved" });
     const dispatch = resolveDispatch(repo, "demo");
