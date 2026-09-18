@@ -1,0 +1,31 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-fix-tick-database-open-error-boundary-2026-09-18",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "fix-tick-database-open-error-boundary",
+  "candidate_revision": "b0c6e6ae48d41d5fdc1728b1a8df3237123baee3",
+  "desired_result": "Mark fix-tick-database-open-error-boundary complete and resolve the next governed Action.",
+  "evidence": [
+    {
+      "criterion": "openDatabase in tick() (src/commands/worker.ts:118) runs inside the same error boundary as runWorkerIteration, so a throw is logged as Worker tick error: and setTimeout(tick, POLL_INTERVAL_MS) still reschedules.",
+      "status": "met",
+      "note": "createWorkerTick's tick body opens the workspace database inside the single try that also wraps runWorkerIteration, so an open-time throw is caught and logged via log(logfile, `Worker tick error: ${message}`). The reschedule moved into the try's `finally`, so the next tick is scheduled whether the body succeeded or threw."
+    },
+    {
+      "criterion": "No uncaught synchronous throw in the tick path can end the loop without a log line: either the moved try covers it or a process-level uncaughtException handler logs and reschedules.",
+      "status": "met",
+      "note": "The moved try covers the entire tick body - heartbeat write, database open, runWorkerIteration, and close - so no synchronous throw escapes the loop. The try is the chosen remedy, so no process-level uncaughtException handler was added."
+    },
+    {
+      "criterion": "A deterministic test forces openDatabase to throw SQLITE_BUSY and asserts the process does not exit, the failure is logged, and a subsequent tick still runs.",
+      "status": "met",
+      "note": "tests/worker-tick.test.ts injects an openDb that throws an error coded SQLITE_BUSY on the first call, asserts tick() does not throw, the log contains 'Worker tick error: database is locked', the next tick is scheduled, and the rescheduled tick opens the real database (opens === 2)."
+    },
+    {
+      "criterion": "Existing worker tests pass unchanged, and the happy path issues no additional log output.",
+      "status": "met",
+      "note": "No existing test file was modified. pnpm exec vitest run tests/production-tick.test.ts tests/worker-tick.test.ts: 10 passed. Full suite: 1670 passed, 15 skipped, one unrelated packageBoundary hook timeout that needs a cold build. A second worker-tick test asserts a healthy tick writes no 'Worker tick error:' line, and the fix adds no logging on the success path."
+    }
+  ]
+}

@@ -1075,7 +1075,7 @@ actions:
     references: ["docs/decisions/0057-should-prove-two-action-unattended-production-be-deferred-until-the-next-live.md", "docs/decisions/0048-make-arcadia-go-a-total-governed-transition-that-keeps-advancing-whenever-the-ne.md", "src/commands/review.ts", "src/ask/settlement.ts", "src/dispatch/pointer.ts", "src/docs/dispatch.ts"]
   - id: fix-tick-database-open-error-boundary
     title: A transient SQLITE_BUSY while opening the workspace database no longer kills the worker process; it is reported as a tick error and the tick loop retries on its next interval.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: A transient SQLITE_BUSY while opening the workspace database no longer kills the worker process; it is reported as a tick error and the tick loop retries on its next interval.
