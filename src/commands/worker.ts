@@ -80,6 +80,52 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+export interface WorkerTickOptions {
+  workspacePath: string;
+  pid: number;
+  logfile: string;
+  /** Overridable so a deterministic test can force a database-open failure. */
+  openDb?: (workspacePath: string) => ReturnType<typeof openDatabase>;
+  /** Overridable so a deterministic test can drive the loop without timers. */
+  schedule?: (callback: () => void, delayMs: number) => void;
+}
+
+/**
+ * The worker's tick loop.
+ *
+ * Opening the workspace database is part of the tick, not a precondition for
+ * it. It used to run outside the error boundary — `const db = openDatabase(...)`
+ * sat before the `try` — so a transient `SQLITE_BUSY` from shared-writer
+ * contention escaped the loop as an uncaught exception and killed the worker
+ * without writing anything to `worker.log` (GitHub issue #305). Every step a
+ * tick takes now shares one boundary: any throw is logged as `Worker tick
+ * error:` and the next tick is always scheduled.
+ */
+export function createWorkerTick(options: WorkerTickOptions): () => void {
+  const openDb = options.openDb ?? openDatabase;
+  const schedule = options.schedule
+    ?? ((callback: () => void, delayMs: number) => { setTimeout(callback, delayMs); });
+
+  const tick = () => {
+    try {
+      try { writeFileSync(heartbeatPath(options.workspacePath), new Date().toISOString(), "utf8"); } catch {}
+      const db = openDb(options.workspacePath);
+      try {
+        runWorkerIteration(db, options.workspacePath, options.pid, options.logfile);
+      } finally {
+        db.close();
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log(options.logfile, `Worker tick error: ${message}`);
+    } finally {
+      schedule(tick, POLL_INTERVAL_MS);
+    }
+  };
+
+  return tick;
+}
+
 export function runWorkerStartCommand(options: WorkerOptions): never {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const dir = arcadiaDir(workspacePath);
@@ -113,20 +159,7 @@ export function runWorkerStartCommand(options: WorkerOptions): never {
   process.on("SIGINT", cleanup);
   process.on("SIGTERM", cleanup);
 
-  const tick = () => {
-    try { writeFileSync(heartbeatPath(workspacePath), new Date().toISOString(), "utf8"); } catch {}
-    const db = openDatabase(workspacePath);
-    try {
-      runWorkerIteration(db, workspacePath, process.pid, logfile);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      log(logfile, `Worker tick error: ${message}`);
-    } finally {
-      db.close();
-    }
-
-    setTimeout(tick, POLL_INTERVAL_MS);
-  };
+  const tick = createWorkerTick({ workspacePath, pid: process.pid, logfile });
 
   setTimeout(tick, 0);
   process.stdin.resume();
