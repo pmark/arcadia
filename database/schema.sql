@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS work_items (
   work_classification TEXT NOT NULL CHECK (work_classification IN ('autonomous', 'agent', 'requires_review', 'blocked')),
   next_action TEXT NOT NULL,
   expected_artifact TEXT,
-  status TEXT NOT NULL CHECK (status IN ('open', 'in_progress', 'done', 'blocked')),
+  status TEXT NOT NULL CHECK (status IN ('open', 'in_progress', 'done', 'blocked', 'deferred')),
   effort TEXT CHECK (effort IS NULL OR effort IN ('quick', 'short', 'session', 'project')),
   clarification_status TEXT CHECK (
     clarification_status IS NULL

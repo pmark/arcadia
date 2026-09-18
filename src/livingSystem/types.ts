@@ -1,3 +1,5 @@
+import type { WorkItemStatus } from "../domain/constants.js";
+
 export const LIVING_SYSTEM_VERSION = "v1" as const;
 
 export type LivingSystemVersion = typeof LIVING_SYSTEM_VERSION;
@@ -87,7 +89,7 @@ export interface LivingSystemEpisode {
   actionId: string;
   milestone: string | null;
   title: string;
-  status: "open" | "in_progress" | "done" | "blocked";
+  status: WorkItemStatus;
   /** Latest explicit linked Log date, or null when history supplies no date. */
   occurredOn: string | null;
   why: string | null;

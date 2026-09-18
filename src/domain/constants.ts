@@ -14,7 +14,13 @@ export const PROJECT_STATUSES = ["active", "paused", "incubating", "completed"] 
 export const MILESTONE_STATUSES = ["active", "paused", "completed"] as const;
 export const QUEUES = ["inbox", "work_queue", "requires_review", "blocked"] as const;
 export const WORK_CLASSIFICATIONS = ["autonomous", "agent", "requires_review", "blocked"] as const;
-export const WORK_ITEM_STATUSES = ["open", "in_progress", "done", "blocked"] as const;
+/**
+ * `deferred` parks an Action without pretending it is finished or blocked on
+ * an outside party: an answered Decision chose not to do it yet, against a
+ * named reviving condition. Dispatch must stop selecting it, so it is a status
+ * rather than a comment. `blocked` still means someone else owes something.
+ */
+export const WORK_ITEM_STATUSES = ["open", "in_progress", "done", "blocked", "deferred"] as const;
 export const ARTIFACT_STATUSES = ["planned", "drafted", "ready", "published"] as const;
 export const EXECUTOR_TYPES = ["deterministic", "codex_planning", "codex_build", "operator"] as const;
 export const EXECUTION_PLAN_STATUSES = ["planned", "running", "completed", "requires_review", "failed"] as const;

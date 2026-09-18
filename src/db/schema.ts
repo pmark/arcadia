@@ -79,6 +79,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureCandidatePreservationTable(db);
   ensureSessionExitReceiptsTable(db);
   ensureAgentResponsibilityValue(db);
+  ensureDeferredWorkItemStatus(db);
   ensureProductionPolicyTables(db);
   applyCapabilityMigrations(db);
 }
@@ -101,6 +102,25 @@ function ensureAgentResponsibilityValue(db: Database.Database): void {
   rebuildTableWithCurrentSchema(db, "work_items", [
     { column: "work_classification", from: "codex", to: "agent" }
   ]);
+}
+
+/**
+ * `deferred` was added to WORK_ITEM_STATUSES so an answered Decision can park
+ * an Action (Decision 0057 / Issue #310). `work_items.status` carries a CHECK
+ * naming the allowed values, so a database created before that gains the value
+ * would reject a deferred Action during the next `docs sync`. Rebuild the table
+ * from the current schema first — the same approach as
+ * `ensureAgentResponsibilityValue` above.
+ */
+function ensureDeferredWorkItemStatus(db: Database.Database): void {
+  const row = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'work_items'")
+    .get() as { sql: string } | undefined;
+  if (!row?.sql || row.sql.includes("'deferred'")) {
+    return;
+  }
+
+  rebuildTableWithCurrentSchema(db, "work_items", []);
 }
 
 function ensureActionQueueOrderTables(db: Database.Database): void {

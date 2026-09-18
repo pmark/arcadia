@@ -13,6 +13,7 @@ import { parseExecutionRequirement } from "../execution/profiles.js";
 import {
   ARCADIA_DOC_VERSION,
   DECISION_DOC_STATUSES,
+  DECISION_OPTION_EFFECTS,
   DOC_TYPES,
   PLAN_STATUSES,
   SCOPED_OUT_PLAN_STATUSES,
@@ -20,6 +21,7 @@ import {
   TOKEN_IMPACTS,
   type ArcadiaDoc,
   type DecisionOptionDoc,
+  type DecisionOptionEffect,
   type DocType,
   type DocValidationError,
   type LogEntryDoc,
@@ -650,13 +652,19 @@ function parseDecisionOptions(problems: Problems, raw: unknown): DecisionOptionD
       return;
     }
     const recommended = recommendedRaw === true;
+    const effectRaw = value.effect;
+    if (effectRaw !== undefined && !(DECISION_OPTION_EFFECTS as readonly unknown[]).includes(effectRaw)) {
+      problems.add(`${field}.effect`, `\`effect\` must be one of: ${DECISION_OPTION_EFFECTS.join(", ")}.`);
+      return;
+    }
+    const effect = (effectRaw ?? null) as DecisionOptionEffect | null;
     if (!label || !consequence) {
       return;
     }
     if (recommended) {
       recommendedCount += 1;
     }
-    options.push({ label, consequence, recommended });
+    options.push({ label, consequence, recommended, effect });
   });
 
   if (recommendedCount > 1) {

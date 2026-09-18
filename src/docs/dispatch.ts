@@ -250,6 +250,8 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
     });
   }
 
+
+
   const decisionDocs = discovered.docs.filter(
     (doc): doc is DecisionDoc =>
       doc.type === "decision" && doc.project.toLowerCase() === project.slug.toLowerCase()
@@ -367,6 +369,18 @@ function checkActionReadiness(
   decisionDocs: DecisionDoc[]
 ): ActionReadinessResult {
   const blockers: DispatchBlocker[] = [];
+
+  // A deferred Action was parked by an answered Decision against a named
+  // reviving condition (Decision 0057 / Issue #310). It is unfinished but must
+  // never be selected, so it blocks the same way an unmet dependency does.
+  if (action.status === "deferred") {
+    blockers.push({
+      relativePath: plan.relativePath,
+      field: `actions.${action.id}.status`,
+      message: `Action "${action.id}" is deferred; dispatch must not select it.`,
+      remedy: "Advance the pointer to the next eligible Action in the explicit queue. The deferral revives on its named condition."
+    });
+  }
 
   // The plan's `depends_on` edges are an ordering claim, and dispatching past
   // them hands an agent work whose prerequisites do not exist yet. Transitive,
@@ -640,7 +654,9 @@ export function resolveReadySet(repoRoot: string, projectSlug?: string): ReadySe
   const planPath = plan.relativePath;
   const currentActionId = project.currentAction ?? plan.currentAction;
 
-  const unfinished = plan.actions.filter((action) => action.status !== "done" && action.status !== "blocked");
+  const unfinished = plan.actions.filter(
+    (action) => action.status !== "done" && action.status !== "blocked" && action.status !== "deferred"
+  );
 
   const evaluated = unfinished.map((action) => {
     const readiness = resolveActionReadiness(repoRoot, resolvedProjectSlug, action.id);

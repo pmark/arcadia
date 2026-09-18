@@ -1102,6 +1102,26 @@ prior agent wrote is left untouched, in the order it was written — and
 refuses to write if the result would fail validation, e.g. approving without
 `--answer`.
 
+A Decision that names the Action it governs (`action: <id>`) applies its
+answer's consequence in the same command. When the chosen option carries
+`effect: defer`, `approve` parks that Action (`status: deferred` in its Plan)
+and, if it was the governed pointer, advances the pointer to the next eligible
+Action in the explicit queue — one recoverable commit, no second command and no
+hand-edited field. Re-running is idempotent. Add `--dry-run` to see exactly
+which Action would be parked and where the pointer would land, writing nothing;
+`--request-id` keys the pointer move for retries.
+
+```sh
+pnpm arcadia decision approve 0057 \
+  --project arcadia \
+  --answer "Defer until the next opencode-cli live rehearsal" \
+  --dry-run
+```
+
+A deferred Action is unfinished but never dispatchable: `arcadia next`,
+`advance queue`, and the ready set skip it until its Decision is answered the
+other way.
+
 `arcadia decision validate <id> --project <project>` checks one existing file
 against the same rule set with no write at all, for a hand-edited document or
 a suspicious one found in `advance queue`.
