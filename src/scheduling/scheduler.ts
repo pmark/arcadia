@@ -4,7 +4,7 @@ import { createReviewItem, getProjectBySlug, getReviewItem, listProjects } from 
 import { transitionActionPointer } from "../dispatch/pointer.js";
 import type { Project } from "../domain/types.js";
 import { getRepositoryLease } from "../sessions/index.js";
-import { createGitHubBoard, reconcileBoard, type ReconcileResult, type SchedulingBoard } from "./github.js";
+import { createGitHubBoard, reconcileBoard, runGh, type BoardIdentity, type ReconcileResult, type SchedulingBoard } from "./github.js";
 import { buildProjectSchedule, type ProjectSchedule } from "./schedule.js";
 import { getSchedulingProject, recordSchedulingLog, upsertSchedulingProject } from "./store.js";
 
@@ -21,17 +21,74 @@ import { getSchedulingProject, recordSchedulingLog, upsertSchedulingProject } fr
 
 export const MAX_FAILED_RUNS_PER_MILESTONE = 8;
 
-export type BoardFactory = (schedule: ProjectSchedule) => SchedulingBoard | null;
+/**
+ * How long a linked board may go unread while nothing in Arcadia changes.
+ *
+ * The worker ticks every two seconds. Reading a board costs GraphQL points,
+ * and GitHub's hourly limit is per account, so an unthrottled read per tick
+ * would exhaust it and break every other `gh` call the operator makes. Arcadia
+ * never needs to poll to learn about its own changes -- those bump the queue
+ * revision and project immediately. Polling exists only to notice a drag,
+ * which is a human action; a minute of latency on one is not worth thousands
+ * of calls an hour.
+ */
+export const DEFAULT_BOARD_POLL_INTERVAL_MS = 60_000;
 
-export const defaultBoardFactory: BoardFactory = (schedule) => {
+export type BoardFactory = (schedule: ProjectSchedule, db: Database.Database) => SchedulingBoard | null;
+
+export const defaultBoardFactory: BoardFactory = (schedule, db) => {
   if (!schedule.github || !schedule.github.repository || !schedule.repositoryRoot) return null;
-  return createGitHubBoard({
+  const config = {
     owner: schedule.github.owner,
     number: schedule.github.number,
     repository: schedule.github.repository,
     cwd: schedule.repositoryRoot
-  });
+  };
+  const cached = cachedBoardIdentity(schedule);
+  const board = createGitHubBoard(config, runGh, cached);
+  if (!cached) {
+    upsertSchedulingProject(db, schedule.projectSlug, {
+      githubProjectId: board.identity.projectId,
+      githubStatusFieldId: board.identity.statusFieldId,
+      githubStatusOptions: board.identity.statusOptions
+    });
+  }
+  return board;
 };
+
+function cachedBoardIdentity(schedule: ProjectSchedule): BoardIdentity | null {
+  const record = schedule.record;
+  if (!record.githubProjectId || !record.githubStatusFieldId || !record.githubStatusOptions) return null;
+  return {
+    projectId: record.githubProjectId,
+    statusFieldId: record.githubStatusFieldId,
+    statusOptions: record.githubStatusOptions
+  };
+}
+
+/**
+ * Whether this pass should touch the Project's board at all, and why.
+ *
+ * Everything Arcadia itself changes is known locally, so a board read is only
+ * required to publish a change or to notice an operator's drag. An idle
+ * Project with a settled board needs neither.
+ */
+export function boardPassDecision(
+  schedule: ProjectSchedule,
+  now: Date,
+  pollIntervalMs: number
+): { touch: boolean; reason: string } {
+  const record = schedule.record;
+  if (record.projectionInFlight) return { touch: true, reason: "A previous projection did not finish writing to the board." };
+  if (schedule.queueRevision !== record.lastProjectedRevision) return { touch: true, reason: "The queue revision moved since the last projection." };
+  if (schedule.actions.some((action) => action.githubProjectItemId === null)) return { touch: true, reason: "An Action has no card on the board yet." };
+  if (!record.lastReconciledAt) return { touch: true, reason: "The board has never been read." };
+  const elapsed = now.getTime() - Date.parse(record.lastReconciledAt);
+  if (!Number.isFinite(elapsed) || elapsed >= pollIntervalMs) {
+    return { touch: true, reason: "Due for an operator-drag poll." };
+  }
+  return { touch: false, reason: `Board is settled and was read ${Math.round(elapsed / 1000)}s ago; next poll in ${Math.round((pollIntervalMs - elapsed) / 1000)}s.` };
+}
 
 export interface SchedulingProjectPass {
   projectSlug: string;
@@ -39,6 +96,8 @@ export interface SchedulingProjectPass {
   currentAction: string | null;
   reconcile: ReconcileResult | null;
   reconcileError: string | null;
+  /** Why this pass did not read the board, when it did not. */
+  boardSkipped: string | null;
   pointer: { moved: boolean; from: string | null; to: string | null; reason: string };
   paused: string | null;
 }
@@ -63,6 +122,8 @@ export interface SchedulingPassOptions {
    * Project's pointer move. Absent means every active Project.
    */
   projectSlugs?: string[];
+  /** How long a settled board may go unread. Defaults to {@link DEFAULT_BOARD_POLL_INTERVAL_MS}. */
+  boardPollIntervalMs?: number;
   log?: (message: string) => void;
 }
 
@@ -80,6 +141,7 @@ export function runSchedulingPass(db: Database.Database, options: SchedulingPass
   const now = options.now ?? new Date();
   const log = options.log ?? (() => {});
   const boardFactory = options.boardFactory ?? defaultBoardFactory;
+  const pollIntervalMs = options.boardPollIntervalMs ?? DEFAULT_BOARD_POLL_INTERVAL_MS;
   const projects: SchedulingProjectPass[] = [];
   let selection: SchedulingPassResult["selection"] = null;
 
@@ -87,19 +149,32 @@ export function runSchedulingPass(db: Database.Database, options: SchedulingPass
     let schedule = buildProjectSchedule(db, project);
     let reconcile: ReconcileResult | null = null;
     let reconcileError: string | null = null;
+    let boardSkipped: string | null = null;
     if (schedule.blockers.length === 0) {
-      try {
-        const board = boardFactory(schedule);
-        if (board) {
-          reconcile = reconcileBoard(db, schedule, board, {
-            requestId: `scheduler-${project.slug}-${now.getTime()}`,
-            rebuild: () => buildProjectSchedule(db, project)
-          });
-          if (reconcile.operatorMoved || reconcile.projection?.changed) schedule = buildProjectSchedule(db, project);
+      const decision = boardPassDecision(schedule, now, pollIntervalMs);
+      if (!decision.touch) {
+        boardSkipped = decision.reason;
+      } else {
+        try {
+          const board = boardFactory(schedule, db);
+          if (board) {
+            reconcile = reconcileBoard(db, schedule, board, {
+              requestId: `scheduler-${project.slug}-${now.getTime()}`,
+              rebuild: () => buildProjectSchedule(db, project),
+              now
+            });
+            if (reconcile.operatorMoved || reconcile.projection?.changed) schedule = buildProjectSchedule(db, project);
+          } else {
+            boardSkipped = "No GitHub board is linked to this Project.";
+          }
+        } catch (error) {
+          reconcileError = error instanceof Error ? error.message : String(error);
+          // Drop the cached ids: a renamed, recreated or deleted field is one
+          // cause of this, and a cache that never expires would keep failing
+          // the same way. The next pass pays two calls to re-resolve.
+          upsertSchedulingProject(db, project.slug, { githubStatusFieldId: null, githubStatusOptions: null });
+          log(`GitHub reconciliation failed for ${project.slug}: ${reconcileError}`);
         }
-      } catch (error) {
-        reconcileError = error instanceof Error ? error.message : String(error);
-        log(`GitHub reconciliation failed for ${project.slug}: ${reconcileError}`);
       }
     }
 
@@ -114,6 +189,7 @@ export function runSchedulingPass(db: Database.Database, options: SchedulingPass
       currentAction: schedule.currentAction,
       reconcile,
       reconcileError,
+      boardSkipped,
       pointer,
       paused: schedule.pausedReason
     });

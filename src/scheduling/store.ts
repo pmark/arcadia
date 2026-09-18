@@ -30,6 +30,10 @@ export function ensureSchedulingTables(db: Database.Database): void {
       failed_runs_milestone TEXT,
       paused_reason TEXT,
       paused_decision_id TEXT,
+      github_status_field_id TEXT,
+      github_status_options_json TEXT,
+      last_reconciled_at TEXT,
+      projection_in_flight INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -61,11 +65,20 @@ export function ensureSchedulingTables(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_scheduling_log_project ON scheduling_log(project_slug, at);
   `);
-  // `paused_decision_id` was added after the first tables shipped; a workspace
-  // created before it keeps its rows and gains the column here.
-  const columns = db.prepare("PRAGMA table_info(scheduling_projects)").all() as Array<{ name: string }>;
-  if (!columns.some((column) => column.name === "paused_decision_id")) {
-    db.exec("ALTER TABLE scheduling_projects ADD COLUMN paused_decision_id TEXT");
+  // Columns added after the first tables shipped; a workspace created before
+  // any of them keeps its rows and gains the column here.
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(scheduling_projects)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  const added: Array<[string, string]> = [
+    ["paused_decision_id", "TEXT"],
+    ["github_status_field_id", "TEXT"],
+    ["github_status_options_json", "TEXT"],
+    ["last_reconciled_at", "TEXT"],
+    ["projection_in_flight", "INTEGER NOT NULL DEFAULT 0"]
+  ];
+  for (const [name, definition] of added) {
+    if (!columns.has(name)) db.exec(`ALTER TABLE scheduling_projects ADD COLUMN ${name} ${definition}`);
   }
 }
 
@@ -83,6 +96,18 @@ export interface SchedulingProjectRecord {
   pausedReason: string | null;
   /** The Decision opened when the pause was applied; resume waits on its answer. */
   pausedDecisionId: string | null;
+  /** The board's single-select status field id, cached so a tick need not re-resolve it. */
+  githubStatusFieldId: string | null;
+  /** Status name to single-select option id, cached alongside the field id. */
+  githubStatusOptions: Record<string, string> | null;
+  /** When the board was last read, so polling for operator drags can be throttled. */
+  lastReconciledAt: string | null;
+  /**
+   * A projection started writing to the board and has not finished. Until it
+   * does, the board is in an intermediate state that is nobody's intent, so
+   * operator-drag detection must not run against it.
+   */
+  projectionInFlight: boolean;
 }
 
 interface SchedulingProjectRow {
@@ -98,6 +123,10 @@ interface SchedulingProjectRow {
   failed_runs_milestone: string | null;
   paused_reason: string | null;
   paused_decision_id: string | null;
+  github_status_field_id: string | null;
+  github_status_options_json: string | null;
+  last_reconciled_at: string | null;
+  projection_in_flight: number;
 }
 
 function projectFromRow(row: SchedulingProjectRow): SchedulingProjectRecord {
@@ -120,8 +149,24 @@ function projectFromRow(row: SchedulingProjectRow): SchedulingProjectRecord {
     failedRuns: row.failed_runs,
     failedRunsMilestone: row.failed_runs_milestone,
     pausedReason: row.paused_reason,
-    pausedDecisionId: row.paused_decision_id
+    pausedDecisionId: row.paused_decision_id,
+    githubStatusFieldId: row.github_status_field_id,
+    githubStatusOptions: parseOptions(row.github_status_options_json),
+    lastReconciledAt: row.last_reconciled_at,
+    projectionInFlight: row.projection_in_flight === 1
   };
+}
+
+function parseOptions(value: string | null): Record<string, string> | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const entries = Object.entries(parsed as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string");
+    return entries.length > 0 ? Object.fromEntries(entries) : null;
+  } catch {
+    return null;
+  }
 }
 
 export function getSchedulingProject(db: Database.Database, projectSlug: string): SchedulingProjectRecord {
@@ -141,7 +186,11 @@ export function getSchedulingProject(db: Database.Database, projectSlug: string)
         failedRuns: 0,
         failedRunsMilestone: null,
         pausedReason: null,
-        pausedDecisionId: null
+        pausedDecisionId: null,
+        githubStatusFieldId: null,
+        githubStatusOptions: null,
+        lastReconciledAt: null,
+        projectionInFlight: false
       };
 }
 
@@ -163,18 +212,22 @@ export function upsertSchedulingProject(
     `INSERT INTO scheduling_projects (
        project_slug, priority, github_owner, github_project_number, github_project_id, github_repository,
        last_projected_revision, last_projected_order_json, failed_runs, failed_runs_milestone, paused_reason,
-       paused_decision_id, created_at, updated_at
+       paused_decision_id, github_status_field_id, github_status_options_json, last_reconciled_at,
+       projection_in_flight, created_at, updated_at
      ) VALUES (
        @project_slug, @priority, @github_owner, @github_project_number, @github_project_id, @github_repository,
        @last_projected_revision, @last_projected_order_json, @failed_runs, @failed_runs_milestone, @paused_reason,
-       @paused_decision_id, @created_at, @updated_at
+       @paused_decision_id, @github_status_field_id, @github_status_options_json, @last_reconciled_at,
+       @projection_in_flight, @created_at, @updated_at
      )
      ON CONFLICT(project_slug) DO UPDATE SET
        priority = @priority, github_owner = @github_owner, github_project_number = @github_project_number,
        github_project_id = @github_project_id, github_repository = @github_repository,
        last_projected_revision = @last_projected_revision, last_projected_order_json = @last_projected_order_json,
        failed_runs = @failed_runs, failed_runs_milestone = @failed_runs_milestone, paused_reason = @paused_reason,
-       paused_decision_id = @paused_decision_id, updated_at = @updated_at`
+       paused_decision_id = @paused_decision_id, github_status_field_id = @github_status_field_id,
+       github_status_options_json = @github_status_options_json, last_reconciled_at = @last_reconciled_at,
+       projection_in_flight = @projection_in_flight, updated_at = @updated_at`
   ).run({
     project_slug: projectSlug,
     priority: next.priority,
@@ -188,6 +241,10 @@ export function upsertSchedulingProject(
     failed_runs_milestone: next.failedRunsMilestone,
     paused_reason: next.pausedReason,
     paused_decision_id: next.pausedDecisionId,
+    github_status_field_id: next.githubStatusFieldId,
+    github_status_options_json: next.githubStatusOptions ? JSON.stringify(next.githubStatusOptions) : null,
+    last_reconciled_at: next.lastReconciledAt,
+    projection_in_flight: next.projectionInFlight ? 1 : 0,
     created_at: at,
     updated_at: at
   });

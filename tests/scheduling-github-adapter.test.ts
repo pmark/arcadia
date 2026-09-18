@@ -8,10 +8,12 @@ import {
   createGitHubBoard,
   ensureBoardStatusField,
   projectScheduleToBoard,
+  reconcileBoard,
   type CommandRunner
 } from "../src/scheduling/github.js";
 import { buildProjectSchedule } from "../src/scheduling/schedule.js";
-import { upsertSchedulingProject } from "../src/scheduling/store.js";
+import { getSchedulingProject, listSchedulingLog, upsertSchedulingProject } from "../src/scheduling/store.js";
+import { writeProjectOrder } from "../src/scheduling/schedule.js";
 import { schedulingFixture } from "./schedulingFixture.js";
 
 const roots: string[] = [];
@@ -42,6 +44,9 @@ class FakeGh {
   hasStatusField: boolean;
   nextIssue = 100;
   nextItem = 1;
+  /** Fail this many `moveItem` mutations, to cut a projection in half. */
+  failMovesAfter: number | null = null;
+  movesSeen = 0;
 
   constructor(options: { hasStatusField?: boolean } = {}) {
     this.hasStatusField = options.hasStatusField ?? true;
@@ -108,6 +113,10 @@ class FakeGh {
     if (args[0] === "api" && args[1] === "graphql") {
       const query = args.find((value) => value.startsWith("query="))!.slice("query=".length);
       if (query.startsWith("mutation")) {
+        this.movesSeen += 1;
+        if (this.failMovesAfter !== null && this.movesSeen > this.failMovesAfter) {
+          return { ok: false, stdout: "", stderr: "API rate limit exceeded" };
+        }
         const itemId = valueOf(args, "item");
         const afterId = valueOf(args, "after");
         const item = this.items.find((candidate) => candidate.id === itemId)!;
@@ -186,6 +195,69 @@ describe("gh-backed board", () => {
     expect(() => createGitHubBoard(boardConfig(cwd), gh.runner)).toThrow(/has no "Arcadia status" field/);
     expect(gh.writeCalls()).toEqual([]);
     expect(gh.calls.some(([, ...args]) => args.includes("field-create"))).toBe(false);
+  });
+
+  it("makes no project view or field-list call when the caller supplies the cached identity", () => {
+    const { cwd } = workspaceWithProject();
+    const resolving = new FakeGh();
+    const first = createGitHubBoard(boardConfig(cwd), resolving.runner);
+    expect(resolving.calls.filter(([, ...args]) => args[1] === "view" || args[1] === "field-list")).toHaveLength(2);
+
+    const cachedRun = new FakeGh();
+    const second = createGitHubBoard(boardConfig(cwd), cachedRun.runner, first.identity);
+    expect(cachedRun.calls).toEqual([]);
+    expect(second.identity).toEqual(first.identity);
+
+    // And the cached identity still drives real writes correctly.
+    cachedRun.items.push({ id: "PVTI_1", number: 100, title: "#100", status: null });
+    second.setStatus("PVTI_1", "Ready");
+    expect(cachedRun.items[0]!.status).toBe("Ready");
+  });
+
+  it("resumes a projection that failed mid-move instead of reading the half-moved board as an operator drag", () => {
+    const { workspace, cwd } = workspaceWithProject();
+    const gh = new FakeGh();
+    withDatabase(workspace, (db) => {
+      const project = getProjectBySlug(db, "alpha")!;
+      const board = createGitHubBoard(boardConfig(cwd), gh.runner);
+      projectScheduleToBoard(db, buildProjectSchedule(db, project), board);
+      expect(getSchedulingProject(db, "alpha").projectionInFlight).toBe(false);
+      const settled = buildProjectSchedule(db, project).queue;
+      expect(gh.items.map((item) => item.number)).toEqual([100, 101, 102]);
+
+      // Arcadia reorders its own queue, then the board write dies partway.
+      writeProjectOrder(db, "alpha", [settled[2]!, settled[0]!, settled[1]!], {
+        requestId: "arcadia-reorder",
+        source: "arcadia",
+        reason: "Operator reprioritized through advance queue."
+      });
+      gh.failMovesAfter = 0;
+      expect(() => projectScheduleToBoard(db, buildProjectSchedule(db, project), board)).toThrow(/rate limit/);
+
+      // The interrupted projection is recorded, and the stale projected order
+      // is not treated as the truth the board should have matched.
+      const record = getSchedulingProject(db, "alpha");
+      expect(record.projectionInFlight).toBe(true);
+      expect(record.lastProjectedOrder).toEqual(settled);
+
+      gh.failMovesAfter = null;
+      const queueBefore = buildProjectSchedule(db, project).queue;
+      const result = reconcileBoard(db, buildProjectSchedule(db, project), board, {
+        requestId: "resume-1",
+        rebuild: () => buildProjectSchedule(db, project)
+      });
+
+      expect(result.resumedProjection).toBe(true);
+      expect(result.operatorMoved).toBe(false);
+      expect(result.accepted).toBe(false);
+      // Arcadia's own order survived; nothing was attributed to the operator.
+      expect(buildProjectSchedule(db, project).queue).toEqual(queueBefore);
+      expect(listSchedulingLog(db, { projectSlug: "alpha", limit: 100 }).some((entry) => entry.source === "github_operator")).toBe(false);
+      // And the board now actually holds the canonical order.
+      expect(getSchedulingProject(db, "alpha").projectionInFlight).toBe(false);
+      const keyByNumber = new Map(buildProjectSchedule(db, project).actions.map((action) => [action.githubIssueNumber, action.key]));
+      expect(gh.items.map((item) => keyByNumber.get(item.number))).toEqual(queueBefore);
+    });
   });
 
   it("creates the status field only through the explicit link path, and is a no-op when it already exists", () => {

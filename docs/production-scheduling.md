@@ -65,6 +65,33 @@ that Project's pointer move; no other Project is read or written. That is the
 difference between a scoped command and a filtered report, and it matters
 because a pointer move is a commit in someone's repository.
 
+## What a pass costs
+
+The worker ticks every two seconds, and GitHub's GraphQL budget is per
+account and hourly — exhausting it would break every other `gh` call the
+operator makes, not just Arcadia's. So a pass reads a board only when it has
+a reason to:
+
+| Situation | Board read? |
+| --- | --- |
+| Queue revision moved since the last projection | Yes, at once |
+| An Action has no card yet | Yes, at once |
+| A previous projection did not finish | Yes, at once |
+| Nothing changed, last read under a minute ago | No |
+| Nothing changed, last read over a minute ago | Yes, one poll |
+
+Arcadia never has to poll to learn about its own changes; those bump the queue
+revision and publish immediately. Polling exists only to notice an operator's
+drag, so `DEFAULT_BOARD_POLL_INTERVAL_MS` (60s) buys a minute of latency on a
+human action in exchange for two orders of magnitude fewer calls. A settled
+board costs about sixty reads an hour rather than several thousand.
+
+The board's node id, status field id and option ids are cached on
+`scheduling_projects` and reused, so a poll is one GraphQL query rather than
+that plus a `project view` and a `field-list`. Any board error clears that
+cache, so a renamed or recreated field re-resolves on the next pass instead of
+failing the same way forever.
+
 ## Reconciliation
 
 On each pass with a linked board:
@@ -86,6 +113,16 @@ On each pass with a linked board:
 
 Invalid drags never open a Decision. The board simply goes back to canonical
 and the Log says why.
+
+**An unfinished projection is not a drag.** A projection marks the Project
+`projection_in_flight` before its first write and clears it only after the
+last one succeeds. If a write fails partway — a rate limit, a network drop —
+the board is left in an intermediate state that matches neither the canonical
+order nor the last projected one. Without the flag the next pass would read
+that difference as an operator drag and persist a half-applied order as their
+intent, silently reverting part of an `advance queue` reorder and logging it
+against them. While the flag is set, operator detection is skipped and the
+pass re-projects instead.
 
 ## Discovery
 

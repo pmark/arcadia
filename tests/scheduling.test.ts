@@ -7,7 +7,13 @@ import { loadActionOrder } from "../src/dispatch/order.js";
 import { DISCOVERY_LIMITS, recordDiscovery } from "../src/scheduling/discovery.js";
 import { projectScheduleToBoard, reconcileBoard, type BoardItem, type BoardStatus, type SchedulingBoard } from "../src/scheduling/github.js";
 import { buildPortfolioSchedule, buildProjectSchedule, writeProjectOrder } from "../src/scheduling/schedule.js";
-import { MAX_FAILED_RUNS_PER_MILESTONE, recordFailedRun, resumeProjectScheduling, runSchedulingPass } from "../src/scheduling/scheduler.js";
+import {
+  DEFAULT_BOARD_POLL_INTERVAL_MS,
+  MAX_FAILED_RUNS_PER_MILESTONE,
+  recordFailedRun,
+  resumeProjectScheduling,
+  runSchedulingPass
+} from "../src/scheduling/scheduler.js";
 import { getSchedulingProject, listSchedulingLog, upsertSchedulingAction, upsertSchedulingProject } from "../src/scheduling/store.js";
 import { gitIn as git, schedulingFixture, type ProjectSpec } from "./schedulingFixture.js";
 
@@ -322,6 +328,53 @@ describe("scheduling pass", () => {
     expect(readFileSync(path.join(fx.repos.alpha!, "PROJECT.md"), "utf8")).toContain("current_action: c");
     expect(git(fx.repos.alpha!, ["log", "-1", "--format=%s"]).trim()).toBe("chore(arcadia): point at c");
     expect(git(fx.repos.alpha!, ["status", "--porcelain"]).trim()).toBe("");
+  });
+
+  it("leaves a settled board alone between polls, and reads it at once when the queue moves", () => {
+    const fx = fixture([{ slug: "alpha", current: "a", actions: [{ id: "a" }, { id: "b" }] }]);
+    const board = new FakeBoard();
+    let boardsOpened = 0;
+    const boardFactory = () => {
+      boardsOpened += 1;
+      return board;
+    };
+    const start = new Date("2026-09-18T10:00:00.000Z");
+    const at = (seconds: number) => new Date(start.getTime() + seconds * 1000);
+
+    withDatabase(fx.workspace, (db) => {
+      upsertSchedulingProject(db, "alpha", { githubOwner: "example", githubProjectNumber: 7, githubRepository: "example/repo" });
+
+      // First pass has cards to create, so it must read.
+      runSchedulingPass(db, { boardFactory, now: at(0) });
+      expect(boardsOpened).toBe(1);
+
+      // The worker ticks every 2s. Nothing changed, so none of these touch
+      // GitHub at all -- this is the difference between tens of calls an hour
+      // and thousands.
+      for (let tick = 1; tick <= 20; tick += 1) {
+        const pass = runSchedulingPass(db, { boardFactory, now: at(tick * 2) });
+        expect(pass.projects[0]?.boardSkipped).toContain("Board is settled");
+        expect(pass.projects[0]?.reconcile).toBeNull();
+      }
+      expect(boardsOpened).toBe(1);
+
+      // Past the poll interval, one read to notice any drag.
+      runSchedulingPass(db, { boardFactory, now: new Date(start.getTime() + DEFAULT_BOARD_POLL_INTERVAL_MS) });
+      expect(boardsOpened).toBe(2);
+
+      // An Arcadia-side queue change is published immediately, not at the next
+      // poll: the throttle governs polling for drags, never publishing.
+      const queue = buildProjectSchedule(db, getProjectBySlug(db, "alpha")!).queue;
+      writeProjectOrder(db, "alpha", [queue[1]!, queue[0]!], {
+        requestId: "revision-bump",
+        source: "arcadia",
+        reason: "Operator reprioritized through advance queue."
+      });
+      const published = runSchedulingPass(db, { boardFactory, now: new Date(start.getTime() + DEFAULT_BOARD_POLL_INTERVAL_MS + 2000) });
+      expect(boardsOpened).toBe(3);
+      expect(published.projects[0]?.boardSkipped).toBeNull();
+      expect(published.projects[0]?.reconcile?.projection?.moves.length).toBeGreaterThan(0);
+    });
   });
 
   it("confines a Project-scoped pass to that Project, leaving another Project's board and pointer untouched", () => {

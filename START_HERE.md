@@ -398,6 +398,12 @@ tick only read, and refuse a board with no status field rather than creating
 one. `--project` scopes the whole pass, so a scoped run cannot reorder another
 Project's board or move another Project's pointer.
 
+A linked board costs very little to keep synchronized. Arcadia publishes its
+own changes immediately, and otherwise reads the board about once a minute to
+notice a drag, reusing cached GitHub ids — roughly sixty calls an hour per
+board rather than thousands, which matters because the GraphQL limit is shared
+with every other `gh` command on the account.
+
 Dragging Ready cards on the board is the one operator input Arcadia reads
 back. A drag within one scheduling class is persisted as the new queue
 position; a card dragged above a higher class or above its own dependency is

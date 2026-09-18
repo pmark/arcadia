@@ -236,11 +236,28 @@ export function runScheduleReconcileCommand(options: { workspace: string; projec
     for (const schedule of buildPortfolioSchedule(db).projects) {
       if (projectSlugs && !projectSlugs.includes(schedule.projectSlug)) continue;
       if (!schedule.github?.repository || !schedule.repositoryRoot) continue;
-      const board = createGitHubBoard({ owner: schedule.github.owner, number: schedule.github.number, repository: schedule.github.repository, cwd: schedule.repositoryRoot });
+      const cached = schedule.record.githubProjectId && schedule.record.githubStatusFieldId && schedule.record.githubStatusOptions
+        ? {
+            projectId: schedule.record.githubProjectId,
+            statusFieldId: schedule.record.githubStatusFieldId,
+            statusOptions: schedule.record.githubStatusOptions
+          }
+        : null;
+      const board = createGitHubBoard(
+        { owner: schedule.github.owner, number: schedule.github.number, repository: schedule.github.repository, cwd: schedule.repositoryRoot },
+        runGh,
+        cached
+      );
       const keyByItem = new Map(schedule.actions.filter((action) => action.githubProjectItemId).map((action) => [action.githubProjectItemId!, action.key]));
       const observed = board.listItems().map((item) => keyByItem.get(item.itemId)).filter((key): key is string => key !== undefined && schedule.queue.includes(key));
       const lastProjected = schedule.record.lastProjectedOrder.filter((key) => schedule.queue.includes(key) && observed.includes(key));
-      const operatorMoved = schedule.record.lastProjectedRevision >= 0 && observed.length > 0 && !sameSequence(observed, lastProjected);
+      // A board mid-projection differs from the last projected order because
+      // the previous pass did not finish, not because anyone dragged a card.
+      const resumedProjection = schedule.record.projectionInFlight;
+      const operatorMoved = !resumedProjection
+        && schedule.record.lastProjectedRevision >= 0
+        && observed.length > 0
+        && !sameSequence(observed, lastProjected);
       const applied = operatorMoved ? applyOperatorOrder(orderCandidates(schedule.actions), observed) : null;
       reconciles.push({
         projectSlug: schedule.projectSlug,
@@ -251,7 +268,8 @@ export function runScheduleReconcileCommand(options: { workspace: string; projec
         normalizationReasons: applied?.normalizationReasons ?? [],
         canonical: applied?.canonical ?? schedule.queue,
         revision: schedule.queueRevision,
-        projection: null
+        projection: null,
+        resumedProjection
       });
     }
     return { pass: null, reconciles, preview: true };
@@ -266,6 +284,7 @@ export function renderScheduleReconcileSuccess(response: CommandSuccess<Schedule
   for (const entry of reconciles) {
     lines.push(`  ${entry.projectSlug}: board ${entry.observedOrder.join(" → ") || "empty"}`);
     lines.push(`    operator moved: ${entry.operatorMoved ? "yes" : "no"}${entry.accepted ? " (accepted)" : ""}${entry.normalized ? ` (normalized: ${entry.normalizationReasons.join(" ")})` : ""}`);
+    if (entry.resumedProjection) lines.push("    an earlier projection did not finish; this board is being re-projected, not read as an operator drag");
     lines.push(`    canonical: ${entry.canonical.join(" → ") || "empty"} (revision ${entry.revision})`);
     if (entry.projection) {
       lines.push(`    projected: ${entry.projection.issuesCreated.length} issue(s), ${entry.projection.itemsAdded.length} item(s), ${entry.projection.statusChanges.length} status change(s), ${entry.projection.moves.length} move(s)`);
@@ -275,6 +294,7 @@ export function renderScheduleReconcileSuccess(response: CommandSuccess<Schedule
     for (const project of pass.projects) {
       if (project.pointer.moved) lines.push(`  ${project.projectSlug}: pointer ${project.pointer.from ?? "none"} → ${project.pointer.to}`);
       if (project.reconcileError) lines.push(`  ${project.projectSlug}: GitHub error: ${project.reconcileError}`);
+      if (project.boardSkipped) lines.push(`  ${project.projectSlug}: board not read — ${project.boardSkipped}`);
     }
     lines.push(`Selection: ${pass.selection?.actionKey ?? "none"}`);
   }

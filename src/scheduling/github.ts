@@ -71,6 +71,12 @@ export interface ProjectionResult {
  */
 export function projectScheduleToBoard(db: Database.Database, schedule: ProjectSchedule, board: SchedulingBoard): ProjectionResult {
   const result: ProjectionResult = { projectSlug: schedule.projectSlug, issuesCreated: [], itemsAdded: [], statusChanges: [], moves: [], revision: schedule.queueRevision, changed: false };
+  // Mark the board as mid-projection before the first write. Every step below
+  // can fail independently, and a board left half-moved matches neither the
+  // canonical order nor the last projected one -- so until this clears, the
+  // difference is this function's unfinished work and must never be read back
+  // as an operator drag.
+  upsertSchedulingProject(db, schedule.projectSlug, { projectionInFlight: true });
   const items = new Map(board.listItems().map((item) => [item.itemId, item]));
   const actions = schedule.actions.map((action) => ({ ...action }));
 
@@ -113,7 +119,13 @@ export function projectScheduleToBoard(db: Database.Database, schedule: ProjectS
   }
 
   result.changed = result.issuesCreated.length > 0 || result.itemsAdded.length > 0 || result.statusChanges.length > 0 || result.moves.length > 0;
-  upsertSchedulingProject(db, schedule.projectSlug, { lastProjectedRevision: schedule.queueRevision, lastProjectedOrder: desiredQueue });
+  // Reached only when every write above succeeded, so the board now genuinely
+  // holds `desiredQueue` and the projection is no longer in flight.
+  upsertSchedulingProject(db, schedule.projectSlug, {
+    lastProjectedRevision: schedule.queueRevision,
+    lastProjectedOrder: desiredQueue,
+    projectionInFlight: false
+  });
   if (result.changed) {
     recordSchedulingLog(db, {
       projectSlug: schedule.projectSlug,
@@ -148,6 +160,8 @@ export interface ReconcileResult {
   canonical: string[];
   revision: number;
   projection: ProjectionResult | null;
+  /** This pass finished a projection an earlier one left half-written. */
+  resumedProjection: boolean;
 }
 
 /**
@@ -160,7 +174,7 @@ export function reconcileBoard(
   db: Database.Database,
   schedule: ProjectSchedule,
   board: SchedulingBoard,
-  input: { requestId: string; rebuild: () => ProjectSchedule }
+  input: { requestId: string; rebuild: () => ProjectSchedule; now?: Date }
 ): ReconcileResult {
   const keyByItem = new Map(schedule.actions.filter((action) => action.githubProjectItemId).map((action) => [action.githubProjectItemId!, action.key]));
   const queued = new Set(schedule.queue);
@@ -169,7 +183,14 @@ export function reconcileBoard(
     .filter((key): key is string => key !== undefined && queued.has(key));
   const lastProjected = schedule.record.lastProjectedOrder.filter((key) => queued.has(key));
   const boardAlreadyProjected = schedule.record.lastProjectedRevision >= 0;
-  const operatorMoved = boardAlreadyProjected && observedOrder.length > 0 && !sameSequence(observedOrder, lastProjected.filter((key) => observedOrder.includes(key)));
+  // An unfinished projection is not an operator drag. Attributing one to the
+  // operator would persist a half-applied intermediate order as their intent,
+  // reverting part of an `advance queue` reorder and logging it against them.
+  const projectionInFlight = schedule.record.projectionInFlight;
+  const operatorMoved = boardAlreadyProjected
+    && !projectionInFlight
+    && observedOrder.length > 0
+    && !sameSequence(observedOrder, lastProjected.filter((key) => observedOrder.includes(key)));
 
   let current = schedule;
   let accepted = false;
@@ -200,10 +221,14 @@ export function reconcileBoard(
     current = input.rebuild();
   }
 
-  const needsProjection = current.queueRevision !== current.record.lastProjectedRevision
+  const needsProjection = projectionInFlight
+    || current.queueRevision !== current.record.lastProjectedRevision
     || !sameSequence(observedOrder, current.queue.filter((key) => observedOrder.includes(key)))
     || current.actions.some((action) => action.githubProjectItemId === null);
   const projection = needsProjection ? projectScheduleToBoard(db, current, board) : null;
+  // The board was read this pass either way; record that so polling for drags
+  // can be throttled independently of how often the scheduler runs.
+  upsertSchedulingProject(db, schedule.projectSlug, { lastReconciledAt: (input.now ?? new Date()).toISOString() });
   return {
     projectSlug: schedule.projectSlug,
     observedOrder,
@@ -213,7 +238,8 @@ export function reconcileBoard(
     normalizationReasons,
     canonical: current.queue,
     revision: current.queueRevision,
-    projection
+    projection,
+    resumedProjection: projectionInFlight
   };
 }
 
@@ -262,6 +288,23 @@ function ghJson<T>(run: CommandRunner, cwd: string, args: string[], what: string
 interface StatusField {
   id: string;
   options: Map<string, string>;
+}
+
+/**
+ * The board's stable GitHub ids: its node id, its status field, and that
+ * field's option ids.
+ *
+ * These change only when someone edits the board's structure, but resolving
+ * them costs a `project view` and a `field-list` call every time. The worker
+ * ticks every two seconds, so re-resolving per tick spent thousands of
+ * GraphQL points an hour on facts that had not changed -- enough to exhaust
+ * the account's hourly limit and take every other `gh` call down with it.
+ * Callers cache this on the Project's scheduling row and pass it back in.
+ */
+export interface BoardIdentity {
+  projectId: string;
+  statusFieldId: string;
+  statusOptions: Record<string, string>;
 }
 
 /**
@@ -341,14 +384,19 @@ function listBoardItems(run: CommandRunner, config: GitHubBoardConfig, projectId
  * structure as a side effect of looking at it. `schedule github link` is the
  * one command that creates the field.
  */
-export function createGitHubBoard(config: GitHubBoardConfig, run: CommandRunner = runGh): SchedulingBoard {
+export function createGitHubBoard(
+  config: GitHubBoardConfig,
+  run: CommandRunner = runGh,
+  cached?: BoardIdentity | null
+): SchedulingBoard & { identity: BoardIdentity } {
   const owner = config.owner;
   const number = String(config.number);
-  const view = ghJson<{ id: string }>(run, config.cwd, ["project", "view", number, "--owner", owner, "--format", "json"], "project view");
-  const projectId = view.id;
-  const statusField = requireStatusField(run, config);
+  const identity = cached ?? resolveBoardIdentity(config, run);
+  const projectId = identity.projectId;
+  const statusField: StatusField = { id: identity.statusFieldId, options: new Map(Object.entries(identity.statusOptions)) };
 
   return {
+    identity,
     listItems() {
       return listBoardItems(run, config, projectId);
     },
@@ -382,6 +430,18 @@ export function createGitHubBoard(config: GitHubBoardConfig, run: CommandRunner 
       if (!moved.ok) throw validationError(`GitHub item move failed: ${moved.stderr.trim()}`);
     }
   };
+}
+
+/**
+ * Resolve the board's ids from GitHub. Two calls, so callers cache the result
+ * and only come back here when the cache is absent or has gone stale.
+ */
+export function resolveBoardIdentity(config: GitHubBoardConfig, run: CommandRunner = runGh): BoardIdentity {
+  const view = ghJson<{ id: string }>(
+    run, config.cwd, ["project", "view", String(config.number), "--owner", config.owner, "--format", "json"], "project view"
+  );
+  const field = requireStatusField(run, config);
+  return { projectId: view.id, statusFieldId: field.id, statusOptions: Object.fromEntries(field.options) };
 }
 
 /**
