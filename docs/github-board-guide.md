@@ -335,14 +335,15 @@ between status columns has no effect on Arcadia.
 
 ## One open question
 
-This is a known gap, not yet settled. It does not stop you using the system,
-but you should know it exists.
+This is a known gap. It does not stop you using the system, but you should
+know it exists.
 
 **Discovered work skips the usual approval path.** Arcadia's general rule is
 that new work items are proposed to you for approval. Discovery deliberately
-does not do that — a blocker has to become the next task immediately or the
-build stalls waiting for you. This exception is reasonable but has not been
-formally ratified.
+does not do that, because a blocker has to become the next task immediately or
+the build stalls waiting for you. That exception is now written up as
+**Decision 0059** with three options and a recommendation, waiting for your
+answer. Run `arcadia review` to see it.
 
 ---
 
