@@ -1102,6 +1102,35 @@ prior agent wrote is left untouched, in the order it was written — and
 refuses to write if the result would fail validation, e.g. approving without
 `--answer`.
 
+A Decision that names the Action it governs (`action: <id>`) applies its
+answer's consequence in the same command. When the chosen option carries
+`effect: defer`, `approve` parks that Action (`status: deferred` in its Plan)
+and, if it was the governed pointer, advances the pointer to the next eligible
+Action in the explicit queue — one recoverable commit, no second command and no
+hand-edited field. Re-running is idempotent. Add `--dry-run` to see exactly
+which Action would be parked and where the pointer would land, writing nothing;
+`--request-id` keys the pointer move for retries.
+
+```sh
+pnpm arcadia decision approve 0057 \
+  --project arcadia \
+  --answer "Defer until the next opencode-cli live rehearsal" \
+  --dry-run
+```
+
+A deferred Action is unfinished but never dispatchable: `arcadia next`,
+`advance queue`, and the ready set skip it until its Decision is answered the
+other way.
+
+**Recovery and revival.** If the commit fails, `approve` exits with an error and
+names the Git failure rather than reporting a successful deferral; fix it and
+re-run the same command with the same `--request-id`, which retries exactly the
+recorded commit. To revive a deferred Action once its trigger fires, answer the
+same Decision the other way (or open a new one naming the Action) — the trigger
+firing does not revive anything by itself. See
+[`managed-documents.md`](managed-documents.md#deferring-an-action-and-reviving-it)
+for the Decision fields.
+
 `arcadia decision validate <id> --project <project>` checks one existing file
 against the same rule set with no write at all, for a hand-edited document or
 a suspicious one found in `advance queue`.

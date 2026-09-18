@@ -80,6 +80,8 @@ export function applyMigrations(db: Database.Database): void {
   ensureCandidatePreservationTable(db);
   ensureSessionExitReceiptsTable(db);
   ensureAgentResponsibilityValue(db);
+  ensureDeferredWorkItemStatus(db);
+  ensureDecisionDeferralReceiptsTable(db);
   ensureProductionPolicyTables(db);
   ensureSchedulingTables(db);
   applyCapabilityMigrations(db);
@@ -103,6 +105,48 @@ function ensureAgentResponsibilityValue(db: Database.Database): void {
   rebuildTableWithCurrentSchema(db, "work_items", [
     { column: "work_classification", from: "codex", to: "agent" }
   ]);
+}
+
+/**
+ * `deferred` was added to WORK_ITEM_STATUSES so an answered Decision can park
+ * an Action (Decision 0057 / Issue #310). `work_items.status` carries a CHECK
+ * naming the allowed values, so a database created before that gains the value
+ * would reject a deferred Action during the next `docs sync`. Rebuild the table
+ * from the current schema first — the same approach as
+ * `ensureAgentResponsibilityValue` above.
+ */
+function ensureDeferredWorkItemStatus(db: Database.Database): void {
+  const row = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'work_items'")
+    .get() as { sql: string } | undefined;
+  if (!row?.sql || row.sql.includes("'deferred'")) {
+    return;
+  }
+
+  rebuildTableWithCurrentSchema(db, "work_items", []);
+}
+
+/**
+ * One durable receipt per applied Decision deferral: the Decision, the Action's
+ * status change, and the pointer move recorded together. A retry keyed on the
+ * same request id returns the recorded result instead of applying twice.
+ */
+function ensureDecisionDeferralReceiptsTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS decision_deferral_receipts (
+      id TEXT PRIMARY KEY,
+      request_id TEXT NOT NULL UNIQUE,
+      decision_id TEXT NOT NULL,
+      decision_path TEXT NOT NULL,
+      action_key TEXT NOT NULL,
+      plan_path TEXT NOT NULL,
+      applied INTEGER NOT NULL,
+      receipt_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_decision_deferral_receipts_decision
+      ON decision_deferral_receipts(decision_id, created_at DESC);
+  `);
 }
 
 function ensureActionQueueOrderTables(db: Database.Database): void {

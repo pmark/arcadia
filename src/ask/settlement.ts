@@ -7,7 +7,7 @@ import { validationError } from "../cli/errors.js";
 import { writeTransaction } from "../db/connection.js";
 import { createArtifactRecord, getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
 import { discoverDocs } from "../docs/discover.js";
-import { isDispatchable, resolveActionReadiness, resolveDispatch } from "../docs/dispatch.js";
+import { deferringDecisionFor, isDispatchable, resolveActionReadiness, resolveDispatch } from "../docs/dispatch.js";
 import { yamlScalar } from "../docs/frontmatter.js";
 import { syncProjectDocs } from "../docs/sync.js";
 import type { ArcadiaDoc, DecisionDoc, LogDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
@@ -573,7 +573,7 @@ export function settleAgentAsk(db: Database.Database, input: {
         }
 
         const decisionDocsForPlan = discovered.docs.filter((doc): doc is DecisionDoc => doc.type === "decision" && doc.project === project.slug);
-        const nextResolution = selectNextAfterCompletion(plan, actionId, decisionDocsForPlan);
+        const nextResolution = selectNextAfterCompletion(plan, actionId, decisionDocsForPlan, queueAfter, project.slug);
         const updated = today();
         let planAfter = markActionDone(planBefore, actionId);
         let projectAfter: string;
@@ -1434,12 +1434,24 @@ interface NextAfterCompletion {
 function selectNextAfterCompletion(
   plan: PlanDoc,
   completedActionId: string,
-  decisionDocs: DecisionDoc[]
+  decisionDocs: DecisionDoc[],
+  queueOrderKeys: string[],
+  projectSlug: string
 ): NextAfterCompletion {
   const statusOf = new Map(plan.actions.map((action) => [action.id, action.id === completedActionId ? "done" : action.status]));
-  const remaining = plan.actions.filter((action) => action.id !== completedActionId && statusOf.get(action.id) !== "done");
+  // An Action is parked either because its Plan record says so (the deferral
+  // was applied) or because an approved Decision with a `defer` effect names it
+  // and the apply path has not run yet. Both must stop the pointer advancing
+  // onto work the operator parked (Issue #310).
+  const deferredByDecision = deferredActionIdsFromDecisions(plan, decisionDocs);
+  const parked = (actionId: string): boolean =>
+    statusOf.get(actionId) === "deferred" || deferredByDecision.has(actionId);
+
+  const remaining = plan.actions.filter(
+    (action) => action.id !== completedActionId && statusOf.get(action.id) !== "done" && !parked(action.id)
+  );
   if (remaining.length === 0) {
-    return { kind: "planComplete", actionId: null, note: "Every Action in this Plan is now done." };
+    return { kind: "planComplete", actionId: null, note: "Every Action in this Plan is now done or deferred." };
   }
   const evaluated = remaining.map((action) => {
     const unmetDependencies = action.dependsOn.filter((dependency) => statusOf.has(dependency) && statusOf.get(dependency) !== "done");
@@ -1452,9 +1464,15 @@ function selectNextAfterCompletion(
     const blockerCount = unmetDependencies.length + unresolvedDecisions.length + (hasQuestion ? 1 : 0) + (authorized ? 0 : 1);
     return { action, blockerCount };
   });
-  const eligible = evaluated.find((entry) => entry.blockerCount === 0);
+  // Decision 0054: the explicit queue is the source of priority. The pointer
+  // follows it rather than the Plan document's declaration order; an
+  // unpositioned Action keeps document order after positioned ones.
+  const rankOf = buildQueueRank(queueOrderKeys, projectSlug, plan.actions.map((action) => action.id));
+  const eligible = evaluated
+    .filter((entry) => entry.blockerCount === 0)
+    .sort((left, right) => rankOf(left.action.id) - rankOf(right.action.id))[0];
   if (eligible) {
-    return { kind: "next", actionId: eligible.action.id, note: "Advanced to the next eligible Action in document order." };
+    return { kind: "next", actionId: eligible.action.id, note: "Advanced to the next eligible Action in the explicit queue order." };
   }
   const nearest = evaluated.reduce((closest, entry) => (entry.blockerCount < closest.blockerCount ? entry : closest));
   return {
@@ -1462,6 +1480,33 @@ function selectNextAfterCompletion(
     actionId: nearest.action.id,
     note: "No fully eligible Action remains in this Plan; pointer moved to the nearest Action, which needs attention before it can dispatch."
   };
+}
+
+/**
+ * The Action ids an approved Decision with a `defer` effect names. A Decision
+ * governs an Action only when it carries `action:`, and only the option the
+ * operator actually recorded (`answer:`) counts.
+ */
+function deferredActionIdsFromDecisions(plan: PlanDoc, decisionDocs: DecisionDoc[]): Set<string> {
+  const deferred = new Set<string>();
+  for (const action of plan.actions) {
+    if (deferringDecisionFor(action.id, decisionDocs)) deferred.add(action.id);
+  }
+  return deferred;
+}
+
+/** Position of each Action in the explicit queue; unpositioned Actions sort last, in declaration order. */
+function buildQueueRank(queueOrderKeys: string[], projectSlug: string, actionIdsInDocumentOrder: string[]): (actionId: string) => number {
+  const positionById = new Map<string, number>();
+  queueOrderKeys.forEach((key, index) => {
+    const separator = key.indexOf("/");
+    if (separator < 0) return;
+    if (key.slice(0, separator) !== projectSlug) return;
+    positionById.set(key.slice(separator + 1), index);
+  });
+  const fallbackBase = queueOrderKeys.length;
+  const documentRank = new Map(actionIdsInDocumentOrder.map((id, index) => [id, index]));
+  return (actionId: string) => positionById.get(actionId) ?? fallbackBase + (documentRank.get(actionId) ?? 0);
 }
 
 function appendCompletionLog(before: string | null, projectSlug: string, input: {

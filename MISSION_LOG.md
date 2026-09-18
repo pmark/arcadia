@@ -333,3 +333,10 @@ updated: 2026-09-18
 - **Result:** The brief arrived directly from the operator outside the governed pointer; this Log entry records the delivered work so the operator can decide whether it becomes a governed Plan.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-18 — Agent Ask log-decision-deferral-slice-2026-09-18
+
+- **Did:** Record the delivered slice of apply-answered-decision-consequences (PR #314): arcadia decision approve applies a defer effect by parking the Action and advancing the pointer to the next eligible Action in the explicit queue, and dispatch plus Agent Ask completion resolution honor the explicit queue and an approved deferral (Issue #310). Criterion 3 (a single durable receipt and a reversal path) remains open on the Action.
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

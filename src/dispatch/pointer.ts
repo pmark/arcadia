@@ -200,7 +200,7 @@ function commitPointerTransition(
   return commitOnlyPaths(repoRoot, relativePaths, message);
 }
 
-function replacePointer(content: string, actionId: string, insertAfterField: string): string {
+export function replacePointer(content: string, actionId: string, insertAfterField: string): string {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!match) throw validationError("Managed document has no YAML frontmatter block to update.");
   const lines = match[1].split(/\r?\n/);

@@ -1748,6 +1748,8 @@ export function buildProgram(): Command {
       .requiredOption("--answer <answer>", "What was actually decided")
       .option("--decided <YYYY-MM-DD>", "Date decided; defaults to today")
       .option("--status <status>", "open, approved, rejected, or deferred", "approved")
+      .option("--dry-run", "Report the consequence the answer would apply without writing anything")
+      .option("--request-id <id>", "Idempotency key for the deferral's pointer transition")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((id: string, options: {
     workspace: string;
@@ -1755,6 +1757,8 @@ export function buildProgram(): Command {
     answer: string;
     decided?: string;
     status?: string;
+    dryRun?: boolean;
+    requestId?: string;
     json?: boolean;
   }) =>
     runCliAction(
@@ -1766,7 +1770,9 @@ export function buildProgram(): Command {
         id,
         answer: options.answer,
         decided: options.decided,
-        status: options.status as never
+        status: options.status as never,
+        dryRun: options.dryRun,
+        requestId: options.requestId
       }),
       renderDecisionApproveSuccess
     )

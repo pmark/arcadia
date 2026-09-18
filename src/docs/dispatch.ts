@@ -250,6 +250,8 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
     });
   }
 
+
+
   const decisionDocs = discovered.docs.filter(
     (doc): doc is DecisionDoc =>
       doc.type === "decision" && doc.project.toLowerCase() === project.slug.toLowerCase()
@@ -368,6 +370,32 @@ function checkActionReadiness(
 ): ActionReadinessResult {
   const blockers: DispatchBlocker[] = [];
 
+  // A deferred Action was parked by an answered Decision against a named
+  // reviving condition (Decision 0057 / Issue #310). It is unfinished but must
+  // never be selected, so it blocks the same way an unmet dependency does.
+  if (action.status === "deferred") {
+    blockers.push({
+      relativePath: plan.relativePath,
+      field: `actions.${action.id}.status`,
+      message: `Action "${action.id}" is deferred; dispatch must not select it.`,
+      remedy: "Advance the pointer to the next eligible Action in the explicit queue. The deferral revives on its named condition."
+    });
+  } else {
+    // The Decision is authoritative even before its consequence is written
+    // into the Plan: an approved `defer` Decision parks its Action at read
+    // time, so `arcadia next` and `arcadia go` stop dispatching it without
+    // waiting for a command to be run (Issue #310).
+    const deferringDecision = deferringDecisionFor(action.id, decisionDocs);
+    if (deferringDecision) {
+      blockers.push({
+        relativePath: deferringDecision.relativePath,
+        field: `actions.${action.id}.status`,
+        message: `Action "${action.id}" is deferred by Decision ${deferringDecision.id}; dispatch must not select it.`,
+        remedy: "Advance the pointer to the next eligible Action in the explicit queue, or answer the Decision the other way."
+      });
+    }
+  }
+
   // The plan's `depends_on` edges are an ordering claim, and dispatching past
   // them hands an agent work whose prerequisites do not exist yet. Transitive,
   // because a dependency that is itself blocked blocks this action just as
@@ -412,6 +440,25 @@ function checkActionReadiness(
     requiredDecisions,
     operatorQuestion: action.clarification === "question_open" ? action.question : null
   };
+}
+
+/**
+ * The approved Decision that parks this Action, or null. A Decision governs an
+ * Action only when it carries `action:`, and only the option the operator
+ * actually recorded (`answer:`) counts. Dispatch, completion resolution, and
+ * `arcadia next` all read this so an answered deferral stops dispatch
+ * immediately rather than waiting for its consequence to be written.
+ */
+export function deferringDecisionFor(actionId: string, decisionDocs: DecisionDoc[]): DecisionDoc | null {
+  for (const decision of decisionDocs) {
+    if (decision.status !== "approved" || decision.action !== actionId) continue;
+    const answer = decision.answer?.trim().toLowerCase();
+    const chosen = answer
+      ? decision.options.find((option) => option.label.trim().toLowerCase() === answer)
+      : undefined;
+    if (chosen?.effect === "defer") return decision;
+  }
+  return null;
 }
 
 /** What the documents say about one named action, independent of the pointer. */
@@ -640,7 +687,9 @@ export function resolveReadySet(repoRoot: string, projectSlug?: string): ReadySe
   const planPath = plan.relativePath;
   const currentActionId = project.currentAction ?? plan.currentAction;
 
-  const unfinished = plan.actions.filter((action) => action.status !== "done" && action.status !== "blocked");
+  const unfinished = plan.actions.filter(
+    (action) => action.status !== "done" && action.status !== "blocked" && action.status !== "deferred"
+  );
 
   const evaluated = unfinished.map((action) => {
     const readiness = resolveActionReadiness(repoRoot, resolvedProjectSlug, action.id);
