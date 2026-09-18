@@ -6,9 +6,7 @@ import { projectNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import { getProject, getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
-import type { ClarificationConfidence, GapType, WorkItemStatus } from "../domain/constants.js";
-import { discoverDocs } from "../docs/discover.js";
-import { resolveActionReadiness } from "../docs/dispatch.js";
+import type { ClarificationConfidence, GapType } from "../domain/constants.js";
 import { yamlScalar } from "../docs/frontmatter.js";
 import { parseDoc } from "../docs/parse.js";
 import {
@@ -16,13 +14,9 @@ import {
   type DecisionDocStatus,
   type DecisionOptionDoc,
   type DecisionOptionEffect,
-  type DocValidationError,
-  type PlanDoc,
-  type ProjectDoc
+  type DocValidationError
 } from "../docs/types.js";
-import { loadActionOrder } from "../dispatch/order.js";
-import { transitionActionPointer } from "../dispatch/pointer.js";
-import { commitOnlyPaths } from "../git/worktrees.js";
+import { applyDecisionDeferral, type DecisionDeferralConsequence } from "../dispatch/decisionDeferral.js";
 import { localDateStamp } from "../utils/time.js";
 
 const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -152,30 +146,14 @@ export interface DecisionApproveOptions {
   requestId?: string;
 }
 
-/**
- * What answering one Decision changed in the Project, beyond the Decision file
- * itself. This is Issue #310's missing half: before this, recording an answer
- * never touched the Action it governed, so a parked Action kept dispatching.
- */
-export interface DecisionDeferralConsequence {
-  kind: "defer";
-  actionId: string;
-  actionKey: string;
-  planPath: string;
-  actionStatusBefore: WorkItemStatus;
-  actionStatusAfter: WorkItemStatus;
-  pointerBefore: string | null;
-  pointerAfter: string | null;
-  pointerMoved: boolean;
-  /** The canonical pointer-transition receipt, when the pointer moved. */
-  pointerReceiptId: string | null;
-}
-
 export interface DecisionApproveData {
   relativePath: string;
   absolutePath: string;
   applied: boolean;
+  /** What answering changed beyond the Decision file, when it deferred an Action. */
   consequence: DecisionDeferralConsequence | null;
+  /** The durable deferral receipt id, when the answer applied a deferral. */
+  receiptId: string | null;
 }
 
 export function runDecisionApproveCommand(options: DecisionApproveOptions): CommandSuccess<DecisionApproveData> {
@@ -218,28 +196,6 @@ export function runDecisionApproveCommand(options: DecisionApproveOptions): Comm
 
     const decisionDoc = existingDoc && existingDoc.type === "decision" ? existingDoc : null;
 
-    // Applying the chosen option's effect is the point of this command for a
-    // governed Action. It runs BEFORE the Decision file is written: the
-    // canonical pointer transition refuses a dirty tree, and the Decision edit
-    // is exactly what would dirty it.
-    let consequence: DecisionDeferralConsequence | null = null;
-    if (decisionDoc && chosen?.effect === "defer") {
-      if (!decisionDoc.action) {
-        throw validationError("This Decision's chosen option defers an Action, but the Decision names no `action:`.", {
-          id: decisionDoc.id,
-          remedy: "Add `action: <action-id>` to the Decision so its consequence can be applied."
-        });
-      }
-      consequence = applyDeferralConsequence(db, {
-        repoRoot,
-        projectSlug: decisionDoc.project,
-        decisionId: decisionDoc.id,
-        actionId: decisionDoc.action,
-        requestId: options.requestId ?? `decision-defer-${decisionDoc.id}`,
-        dryRun: options.dryRun === true
-      });
-    }
-
     const updatedContent = setFrontmatterFields(raw, {
       status,
       answer,
@@ -249,242 +205,60 @@ export function runDecisionApproveCommand(options: DecisionApproveOptions): Comm
 
     failOnValidationErrors(parseDoc(relativePath, absolutePath, updatedContent).errors, "updated");
 
+    // Applying the chosen option's effect is the point of this command for a
+    // governed Action. The Decision answer, the Action's parked status, and the
+    // pointer move are written and committed together by one transition, then
+    // validated against the post-deferral dispatch state before the commit.
+    if (decisionDoc && chosen?.effect === "defer") {
+      if (!decisionDoc.action) {
+        throw validationError("This Decision's chosen option defers an Action, but the Decision names no `action:`.", {
+          id: decisionDoc.id,
+          remedy: "Add `action: <action-id>` to the Decision so its consequence can be applied."
+        });
+      }
+      const result = applyDecisionDeferral(db, {
+        repoRoot,
+        projectSlug: decisionDoc.project,
+        decisionId: decisionDoc.id,
+        actionId: decisionDoc.action,
+        requestId: options.requestId ?? `decision-defer-${decisionDoc.id}`,
+        decisionAbsolutePath: absolutePath,
+        decisionRelativePath: relativePath,
+        decisionAfter: updatedContent,
+        dryRun: options.dryRun === true
+      });
+      return createSuccess({
+        command: "decision.approve",
+        workspace: workspacePath,
+        data: {
+          relativePath,
+          absolutePath,
+          applied: result.applied,
+          consequence: result.consequence,
+          receiptId: result.receiptId
+        }
+      });
+    }
+
     if (options.dryRun) {
       return createSuccess({
         command: "decision.approve",
         workspace: workspacePath,
-        data: { relativePath, absolutePath, applied: false, consequence }
+        data: { relativePath, absolutePath, applied: false, consequence: null, receiptId: null }
       });
     }
 
-    writeFileSync(absolutePath, updatedContent, "utf8");
-
-    // Park the Action in its Plan when the answer deferred it, and land the
-    // Decision edit and the Action field change as one commit. A failed commit
-    // leaves both written documents recoverable, exactly as the settlement path
-    // does; it is never silently dropped.
     // A plain Decision answer keeps its old contract: the Decision file is
-    // written and nothing is committed. Only a deferral that actually parked an
-    // Action lands, so its Action field change and pointer move are one
-    // recoverable commit rather than loose working-tree state.
-    if (consequence && consequence.actionStatusBefore !== consequence.actionStatusAfter) {
-      const planAbsolutePath = path.join(repoRoot, consequence.planPath);
-      const planRaw = readFileSync(planAbsolutePath, "utf8");
-      writeFileSync(planAbsolutePath, setActionStatus(planRaw, consequence.actionId, "deferred"), "utf8");
-      commitDecisionApproval(repoRoot, [consequence.planPath, relativePath], decisionDoc, consequence);
-    }
+    // written and nothing is committed. Only an applied deferral lands, so its
+    // Action field change and pointer move are one recoverable commit.
+    writeFileSync(absolutePath, updatedContent, "utf8");
 
     return createSuccess({
       command: "decision.approve",
       workspace: workspacePath,
-      data: { relativePath, absolutePath, applied: true, consequence }
+      data: { relativePath, absolutePath, applied: true, consequence: null, receiptId: null }
     });
   });
-}
-
-/**
- * Apply a deferral: park the Action the Decision names and, when it was the
- * governed pointer, advance the pointer to the next eligible Action in the
- * explicit queue through the one canonical pointer writer.
- *
- * Refuses rather than half-applying. Every refusal leaves the Decision and the
- * Action exactly as they were, per the Action's own acceptance criterion.
- */
-function applyDeferralConsequence(
-  db: Parameters<typeof loadActionOrder>[0],
-  input: { repoRoot: string; projectSlug: string; decisionId: string; actionId: string; requestId: string; dryRun: boolean }
-): DecisionDeferralConsequence {
-  const discovered = discoverDocs(input.repoRoot);
-  const project = discovered.docs.find(
-    (doc): doc is ProjectDoc => doc.type === "project" && doc.slug === input.projectSlug
-  );
-  if (!project?.activePlan) {
-    throw validationError("This Decision defers an Action, but its Project has no active Plan to park it in.", {
-      project: input.projectSlug,
-      action: input.actionId
-    });
-  }
-  const plan = discovered.docs.find(
-    (doc): doc is PlanDoc =>
-      doc.type === "plan" && doc.project === project.slug && doc.slug === project.activePlan
-  );
-  if (!plan) {
-    throw validationError("This Decision defers an Action, but the Project's active Plan document was not found.", {
-      project: input.projectSlug,
-      plan: project.activePlan
-    });
-  }
-  const action = plan.actions.find((candidate) => candidate.id === input.actionId);
-  if (!action) {
-    throw validationError("This Decision defers an Action that is not in the Project's active Plan.", {
-      action: input.actionId,
-      plan: plan.slug
-    });
-  }
-
-  const pointerBefore = project.currentAction ?? plan.currentAction;
-  const pointerMoved = pointerBefore === action.id;
-  const actionKey = `${project.slug}/${action.id}`;
-
-  // Re-answering an already-deferred Action is idempotent: the Decision file
-  // rewrite still happens, but no second Action or pointer effect is produced.
-  if (action.status === "deferred") {
-    return {
-      kind: "defer",
-      actionId: action.id,
-      actionKey,
-      planPath: plan.relativePath,
-      actionStatusBefore: "deferred",
-      actionStatusAfter: "deferred",
-      pointerBefore,
-      pointerAfter: pointerBefore,
-      pointerMoved: false,
-      pointerReceiptId: null
-    };
-  }
-
-  const nextActionId = pointerMoved
-    ? nextEligibleInQueue(input.repoRoot, project.slug, plan, action.id, loadActionOrder(db).positions)
-    : null;
-  if (pointerMoved && !nextActionId) {
-    throw validationError("This Decision defers the current Action, but no other eligible Action can take the pointer.", {
-      action: input.actionId,
-      remedy: "Make the next queued Action eligible first, or defer this Action once its successor can be dispatched."
-    });
-  }
-
-  const consequence: DecisionDeferralConsequence = {
-    kind: "defer",
-    actionId: action.id,
-    actionKey,
-    planPath: plan.relativePath,
-    actionStatusBefore: action.status,
-    actionStatusAfter: "deferred",
-    pointerBefore,
-    pointerAfter: pointerMoved ? nextActionId : pointerBefore,
-    pointerMoved,
-    pointerReceiptId: null
-  };
-  if (input.dryRun) {
-    return consequence;
-  }
-
-  if (pointerMoved && nextActionId) {
-    const queueRevision = loadActionOrder(db).revision;
-    const targetKey = `${project.slug}/${nextActionId}`;
-    const preview = transitionActionPointer(db, {
-      repoRoot: input.repoRoot,
-      projectSlug: project.slug,
-      actionId: nextActionId,
-      actionKey: targetKey,
-      queueRevision,
-      requestId: `${input.requestId}:pointer`
-    });
-    const applied = transitionActionPointer(db, {
-      repoRoot: input.repoRoot,
-      projectSlug: project.slug,
-      actionId: nextActionId,
-      actionKey: targetKey,
-      queueRevision,
-      requestId: `${input.requestId}:pointer`,
-      previewFingerprint: preview.previewFingerprint,
-      apply: true
-    });
-    consequence.pointerReceiptId = applied.id;
-  }
-
-  return consequence;
-}
-
-/**
- * The first Action, in the Project's explicit queue order, that is not done,
- * blocked, deferred, or the Action being parked, and whose own readiness is
- * clear. Unpositioned Actions keep Plan declaration order after positioned
- * ones, so a queue that has never been arranged is still deterministic.
- */
-function nextEligibleInQueue(
-  repoRoot: string,
-  projectSlug: string,
-  plan: PlanDoc,
-  excludeActionId: string,
-  positions: Map<string, number>
-): string | null {
-  const documentRank = new Map(plan.actions.map((action, index) => [action.id, index]));
-  const unpositionedBase = plan.actions.length + positions.size;
-  const rankOf = (actionId: string): number => {
-    const position = positions.get(`${projectSlug}/${actionId}`);
-    if (position !== undefined) return position;
-    return unpositionedBase + (documentRank.get(actionId) ?? 0);
-  };
-
-  const isEligible = (actionId: string): boolean => {
-    const action = plan.actions.find((candidate) => candidate.id === actionId);
-    if (!action) return false;
-    const authorized = action.responsibility === "agent" || action.responsibility === "autonomous";
-    if (!authorized) return false;
-    const readiness = resolveActionReadiness(repoRoot, projectSlug, actionId);
-    return readiness.blockers.length === 0 && readiness.operatorQuestion === null;
-  };
-
-  const ordered = plan.actions
-    .filter((action) =>
-      action.id !== excludeActionId &&
-      action.status !== "done" &&
-      action.status !== "blocked" &&
-      action.status !== "deferred")
-    .sort((left, right) => rankOf(left.id) - rankOf(right.id));
-
-  // "Next" means the next eligible Action after the parked one in queue order;
-  // if the parked Action was last, the earliest eligible Action takes the
-  // pointer rather than leaving it stranded on parked work.
-  const parkedRank = rankOf(excludeActionId);
-  const strictlyAfter = ordered.find((action) => rankOf(action.id) > parkedRank && isEligible(action.id));
-  if (strictlyAfter) return strictlyAfter.id;
-  const anyEligible = ordered.find((action) => isEligible(action.id));
-  return anyEligible?.id ?? null;
-}
-
-/** Park one Action by rewriting its `status:` line inside its Plan block. */
-function setActionStatus(content: string, actionId: string, status: WorkItemStatus): string {
-  const pattern = new RegExp(`(^  - id: ${escapeRegex(actionId)}\\r?$[\\s\\S]*?)(?=^  - id: |^---\\r?$)`, "m");
-  const match = content.match(pattern);
-  if (!match) {
-    throw validationError("Managed Plan Action block was not found.", { actionId });
-  }
-  const block = match[1];
-  if (!/^ {4}status:/m.test(block)) {
-    throw validationError("Managed Plan Action has no status field to amend.", { actionId });
-  }
-  return content.replace(pattern, block.replace(/^ {4}status:.*$/m, `    status: ${status}`));
-}
-
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function commitDecisionApproval(
-  repoRoot: string,
-  relativePaths: string[],
-  decisionDoc: { id: string; slug: string } | null,
-  consequence: DecisionDeferralConsequence | null
-): void {
-  if (relativePaths.length === 0) return;
-  const lines = [`chore(arcadia): answer Decision ${decisionDoc?.id ?? ""}`, ""];
-  lines.push(`- ${relativePaths[0]}: recorded the Decision answer.`);
-  if (consequence && consequence.actionStatusBefore !== consequence.actionStatusAfter) {
-    lines.push(`- ${consequence.planPath}: ${consequence.actionKey} status ${consequence.actionStatusBefore} → ${consequence.actionStatusAfter}.`);
-  }
-  if (consequence?.pointerMoved) {
-    lines.push(
-      `- pointer advanced ${consequence.pointerBefore ?? "none"} → ${consequence.pointerAfter ?? "none"}` +
-      (consequence.pointerReceiptId ? ` (${consequence.pointerReceiptId})` : "") + "."
-    );
-  }
-  lines.push("", "Written by `arcadia decision approve`.");
-  const error = commitOnlyPaths(repoRoot, relativePaths, lines.join("\n"));
-  if (error) {
-    process.stderr.write(`The Decision answer was written but the Action deferral could not be committed: ${error}\n`);
-  }
 }
 
 export interface DecisionValidateOptions {
@@ -587,7 +361,7 @@ export function renderDecisionNewSuccess(response: CommandSuccess<DecisionNewDat
 }
 
 export function renderDecisionApproveSuccess(response: CommandSuccess<DecisionApproveData>): string[] {
-  const { applied, consequence } = response.data;
+  const { applied, consequence, receiptId } = response.data;
   const lines = [
     applied ? "Decision updated." : "Decision dry run (nothing written).",
     `Path: ${response.data.relativePath}`
@@ -600,11 +374,13 @@ export function renderDecisionApproveSuccess(response: CommandSuccess<DecisionAp
     if (consequence.pointerMoved) {
       lines.push(
         `${applied ? "Advanced" : "Would advance"} the pointer ` +
-          `${consequence.pointerBefore ?? "none"} → ${consequence.pointerAfter ?? "none"}` +
-          (consequence.pointerReceiptId ? ` (receipt ${consequence.pointerReceiptId})` : "") + "."
+          `${consequence.pointerBefore ?? "none"} → ${consequence.pointerAfter ?? "none"}.`
       );
     } else {
       lines.push("The pointer did not move (the deferred Action was not the current Action).");
+    }
+    if (receiptId) {
+      lines.push(`Receipt: ${receiptId}`);
     }
   }
   return lines;

@@ -22,6 +22,19 @@ describe("checked-in Arcadia control documents", () => {
       expect(resolution.context?.action.responsibility).toBe("requires_review");
       expect(resolution.context?.action.clarification).toBe("question_open");
       expect(resolution.blockers.every((blocker) => blocker.field === "status")).toBe(true);
+    } else if (resolution.context?.action.id === "prove-two-action-unattended-production") {
+      // Decision 0057 intentionally defers this Action ("Defer until the next
+      // opencode-cli live rehearsal"), so while the pointer still names it,
+      // dispatch reports exactly that one blocker. Any other blocker is a
+      // regression in the checked-in documents. Once the deferral is applied
+      // and the pointer advances, the next branch requires a clean resolution.
+      expect(resolution.blockers).toHaveLength(1);
+      expect(resolution.blockers[0]).toMatchObject({
+        relativePath: "docs/decisions/0057-should-prove-two-action-unattended-production-be-deferred-until-the-next-live.md",
+        field: "actions.prove-two-action-unattended-production.status",
+        message:
+          'Action "prove-two-action-unattended-production" is deferred by Decision 0057; dispatch must not select it.'
+      });
     } else {
       expect(resolution.blockers).toEqual([]);
     }

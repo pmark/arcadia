@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { devNull, tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runDecisionApproveCommand, runDecisionNewCommand, runDecisionValidateCommand } from "../src/commands/decision.js";
 import { withDatabase } from "../src/db/connection.js";
 import { discoverDocs } from "../src/docs/discover.js";
@@ -179,7 +179,7 @@ describe("apply an answered Decision's consequence", () => {
     });
 
     expect(result.data.applied).toBe(true);
-    expect(result.data.consequence?.pointerReceiptId).toBeTruthy();
+    expect(result.data.receiptId).toBeTruthy();
     expect(decisionFile(repo)).toContain("status: approved");
     expect(decisionFile(repo)).toContain("answer: Defer until later");
     expect(planFile(repo)).toMatch(/^ {2}- id: park-me[\s\S]*?^ {4}status: deferred$/m);
@@ -194,14 +194,16 @@ describe("apply an answered Decision's consequence", () => {
     expect(dispatch.context?.action.id).toBe("after");
   });
 
-  it("is idempotent: re-answering produces no duplicate Action or pointer effect", () => {
+  it("is idempotent: re-answering returns the recorded receipt with no duplicate effect", () => {
     const { workspace, repo, decisionId } = fixture();
-    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    const first = runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
     const afterFirst = planFile(repo);
 
     const replay = runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
 
-    expect(replay.data.consequence).toMatchObject({ actionStatusBefore: "deferred", pointerMoved: false });
+    expect(replay.data.applied).toBe(true);
+    expect(replay.data.receiptId).toBe(first.data.receiptId);
+    expect(replay.data.consequence).toEqual(first.data.consequence);
     expect(planFile(repo)).toBe(afterFirst);
     expect(projectFile(repo)).toContain("current_action: after");
     expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
@@ -255,6 +257,45 @@ describe("apply an answered Decision's consequence", () => {
 
     const parked = resolveDispatch(repo, "demo");
     expect(parked.blockers.map((blocker) => blocker.message).join(" ")).toContain("deferred");
+  });
+
+  it("fails the command when the deferral commit fails, then retries the same transition after recovery", () => {
+    const { workspace, repo, decisionId } = fixture();
+    // Isolate Git identity so the commit fails exactly as it does on a host with
+    // no user.name/user.email. The documents are written and the receipt records
+    // that the commit failed; the command must not report a successful deferral.
+    execFileSync("git", ["config", "--unset", "user.email"], { cwd: repo });
+    execFileSync("git", ["config", "--unset", "user.name"], { cwd: repo });
+    vi.stubEnv("GIT_CONFIG_GLOBAL", devNull);
+    vi.stubEnv("GIT_CONFIG_SYSTEM", devNull);
+    vi.stubEnv("GIT_CONFIG_NOSYSTEM", "1");
+    vi.stubEnv("GIT_AUTHOR_NAME", "");
+    vi.stubEnv("GIT_AUTHOR_EMAIL", "");
+    vi.stubEnv("GIT_COMMITTER_NAME", "");
+    vi.stubEnv("GIT_COMMITTER_EMAIL", "");
+
+    expect(() =>
+      runDecisionApproveCommand({
+        workspace, project: "demo", id: decisionId, answer: "Defer until later", requestId: "defer-commit-fail"
+      })
+    ).toThrow(/could not be committed/);
+
+    // Written but not committed: visible, and never reported as applied.
+    expect(planFile(repo)).toMatch(/^ {2}- id: park-me[\s\S]*?^ {4}status: deferred$/m);
+    expect(projectFile(repo)).toContain("current_action: after");
+
+    // Recovery: the same request id retries exactly the commit it recorded, so a
+    // retry cannot leave the pointer committed with an uncommitted deferral.
+    vi.unstubAllEnvs();
+    execFileSync("git", ["config", "user.email", "deferral-test@example.invalid"], { cwd: repo });
+    execFileSync("git", ["config", "user.name", "Deferral Test"], { cwd: repo });
+    const retry = runDecisionApproveCommand({
+      workspace, project: "demo", id: decisionId, answer: "Defer until later", requestId: "defer-commit-fail"
+    });
+    expect(retry.data.applied).toBe(true);
+    expect(retry.data.receiptId).toBeTruthy();
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+    expect(projectFile(repo)).toContain("current_action: after");
   });
 
   it("excludes a deferred Action from the ready set", () => {

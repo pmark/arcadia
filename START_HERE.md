@@ -1248,6 +1248,23 @@ Action it `fires`, and a `condition` of one of two kinds:
 
 Anything else is reported `unevaluable` rather than guessed at.
 
+An Action can also be deferred by an answered Decision rather than by prose. A
+Decision that names its Action (`action:`) and offers an option with
+`effect: defer` is applied by answering it:
+
+```sh
+pnpm arcadia decision approve 0057 --project arcadia \
+  --answer "Defer until the next opencode-cli live rehearsal" --dry-run
+```
+
+`--dry-run` shows which Action would be parked and where the pointer would land;
+drop it to apply, which sets `status: deferred`, advances the pointer to the next
+eligible queued Action, and lands one recoverable receipt and commit. A deferred
+Action stops dispatching immediately. To revive it once its trigger fires, answer
+the same Decision the other way — the trigger firing alone revives nothing. See
+`docs/COMMANDS.md` and `docs/managed-documents.md` for the fields and the
+commit-failure recovery.
+
 ## Working across many projects without losing the thread
 
 Momentum across several projects at once depends on two things nobody usually

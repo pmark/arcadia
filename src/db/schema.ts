@@ -80,6 +80,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureSessionExitReceiptsTable(db);
   ensureAgentResponsibilityValue(db);
   ensureDeferredWorkItemStatus(db);
+  ensureDecisionDeferralReceiptsTable(db);
   ensureProductionPolicyTables(db);
   applyCapabilityMigrations(db);
 }
@@ -121,6 +122,29 @@ function ensureDeferredWorkItemStatus(db: Database.Database): void {
   }
 
   rebuildTableWithCurrentSchema(db, "work_items", []);
+}
+
+/**
+ * One durable receipt per applied Decision deferral: the Decision, the Action's
+ * status change, and the pointer move recorded together. A retry keyed on the
+ * same request id returns the recorded result instead of applying twice.
+ */
+function ensureDecisionDeferralReceiptsTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS decision_deferral_receipts (
+      id TEXT PRIMARY KEY,
+      request_id TEXT NOT NULL UNIQUE,
+      decision_id TEXT NOT NULL,
+      decision_path TEXT NOT NULL,
+      action_key TEXT NOT NULL,
+      plan_path TEXT NOT NULL,
+      applied INTEGER NOT NULL,
+      receipt_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_decision_deferral_receipts_decision
+      ON decision_deferral_receipts(decision_id, created_at DESC);
+  `);
 }
 
 function ensureActionQueueOrderTables(db: Database.Database): void {

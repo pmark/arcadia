@@ -1122,6 +1122,15 @@ A deferred Action is unfinished but never dispatchable: `arcadia next`,
 `advance queue`, and the ready set skip it until its Decision is answered the
 other way.
 
+**Recovery and revival.** If the commit fails, `approve` exits with an error and
+names the Git failure rather than reporting a successful deferral; fix it and
+re-run the same command with the same `--request-id`, which retries exactly the
+recorded commit. To revive a deferred Action once its trigger fires, answer the
+same Decision the other way (or open a new one naming the Action) — the trigger
+firing does not revive anything by itself. See
+[`managed-documents.md`](managed-documents.md#deferring-an-action-and-reviving-it)
+for the Decision fields.
+
 `arcadia decision validate <id> --project <project>` checks one existing file
 against the same rule set with no write at all, for a hand-edited document or
 a suspicious one found in `advance queue`.
