@@ -180,17 +180,27 @@ describe("arcadia tidy — safety invariants", () => {
     expect(run(root, ["for-each-ref", "--format=%(refname:short)", "refs/heads"])).not.toContain("claude/done");
   });
 
-  it("leaves a merged branch alone when the operator named it, until asked", () => {
+  it("retires a merged branch the operator named by default, unless excluded", () => {
     const root = repo();
     commitOn(root, "my-own-work", "a.txt");
     run(root, ["merge", "-q", "--no-ff", "-m", "merge", "my-own-work"]);
 
-    const guarded = data(runTidyCommand({ repo: root, apply: true }));
-    expect(guarded.branches.find((b) => b.branch === "my-own-work")?.verdict).toBe("protected");
-    expect(run(root, ["for-each-ref", "--format=%(refname:short)", "refs/heads"])).toContain("my-own-work");
+    const guarded = data(runTidyCommand({ repo: root, apply: false }));
+    expect(guarded.branches.find((b) => b.branch === "my-own-work")?.verdict).toBe("merged");
 
-    const opted = data(runTidyCommand({ repo: root, apply: true, includeOwnBranches: true }));
-    expect(opted.branches.find((b) => b.branch === "my-own-work")?.retired).toBe(true);
+    const byDefault = data(runTidyCommand({ repo: root, apply: true }));
+    expect(byDefault.branches.find((b) => b.branch === "my-own-work")?.retired).toBe(true);
+    expect(run(root, ["for-each-ref", "--format=%(refname:short)", "refs/heads"])).not.toContain("my-own-work");
+  });
+
+  it("leaves an operator-named merged branch alone when --exclude-own-branches is set", () => {
+    const root = repo();
+    commitOn(root, "my-own-work", "a.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", "my-own-work"]);
+
+    const opted = data(runTidyCommand({ repo: root, apply: true, excludeOwnBranches: true }));
+    expect(opted.branches.find((b) => b.branch === "my-own-work")?.verdict).toBe("protected");
+    expect(run(root, ["for-each-ref", "--format=%(refname:short)", "refs/heads"])).toContain("my-own-work");
   });
 
   it("never touches a worktree with uncommitted changes, even on a merged branch", () => {
