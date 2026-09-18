@@ -1111,7 +1111,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/303", "src/commands/worker.ts", "src/runtime/launchAgents.ts"]
 questions: []
 decisions: []
-current_action: prove-two-action-unattended-production
+current_action: fix-tick-database-open-error-boundary
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
