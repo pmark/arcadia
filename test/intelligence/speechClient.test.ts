@@ -84,7 +84,7 @@ describe("speech generation client", () => {
       baseUrl: "http://arcadia.test",
       fetchImpl: (async () => {
         throw new Error("should not be called");
-      }) as typeof fetch,
+      }),
     });
     const operation = client.audio.defineSpeechOperation<{ text: string; voiceId: string }, unknown>({
       operationId: "rebuster.generate-narration",

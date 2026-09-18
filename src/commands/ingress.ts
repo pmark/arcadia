@@ -802,7 +802,7 @@ export function runIngressCaptureCommand(options: IngressCaptureOptions): Comman
   mkdirSync(attachmentDirectory, { recursive: true });
   const selectedFiles = files.map((file) => path.basename(file));
   const attachmentFiles = files.map((file, index) => {
-    const destination = path.join(attachmentDirectory, `${String(index + 1).padStart(3, "0")}-${selectedFiles[index]!}`);
+    const destination = path.join(attachmentDirectory, `${String(index + 1).padStart(3, "0")}-${selectedFiles[index]}`);
     copyFileSync(file, destination);
     return destination;
   });
@@ -1558,7 +1558,7 @@ function listCandidates(
       const observation = unchanged
         ? previous
         : { size: stats.size, mtimeMs: stats.mtimeMs, observedAtMs: now };
-      nextObservations[entry.name] = observation as StabilityObservation;
+      nextObservations[entry.name] = observation;
       return {
         absolutePath,
         fileName: entry.name,
@@ -1568,7 +1568,7 @@ function listCandidates(
           : [],
         workflow,
         kind: workflow ? "workflow" : isRequest ? "request" : "unclassified",
-        stable: isRequest || stableSeconds === 0 || Boolean(unchanged && now - observation!.observedAtMs >= stableSeconds * 1000)
+        stable: isRequest || stableSeconds === 0 || Boolean(unchanged && now - observation.observedAtMs >= stableSeconds * 1000)
       };
     })
     .filter((candidate): candidate is CandidateFile => Boolean(candidate))

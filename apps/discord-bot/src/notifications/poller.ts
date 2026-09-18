@@ -258,8 +258,6 @@ export function startNotificationPoller(
   cli: ArcadiaCli,
   logJson: (level: LogLevel, obj: Record<string, unknown>) => void
 ): void {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-
   const tick = async (): Promise<void> => {
     let hasActiveRuns = false;
     try {
@@ -320,11 +318,10 @@ export function startNotificationPoller(
     }
 
     const nextInterval = hasActiveRuns ? ACTIVE_POLL_INTERVAL_MS : config.pollIntervalSeconds * 1000;
-    timer = setTimeout(() => void tick(), nextInterval);
+    setTimeout(() => void tick(), nextInterval);
   };
 
-  timer = setTimeout(() => void tick(), 0);
-  void timer;
+  setTimeout(() => void tick(), 0);
 }
 
 const DISCORD_MAX_MESSAGE_LENGTH = 2000;

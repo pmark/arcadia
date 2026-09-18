@@ -153,7 +153,7 @@ export function buildLaunchPreview(input: {
           if (!existsSync(metadataPath)) {
             prerequisites.push("missing packet: the prepared build packet metadata is missing.");
           } else {
-            const metadata = JSON.parse(readFileSync(metadataPath, "utf8")) as any;
+            const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
             if (metadata.invocationId !== invocation.id || metadata.workItemId !== workItem.id || metadata.promptPath !== invocation.prompt_path) {
               prerequisites.push("stale pointer: the prepared build packet metadata is stale or belongs to another Action.");
             } else {

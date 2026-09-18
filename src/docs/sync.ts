@@ -23,7 +23,7 @@ import {
   updateReviewItemFromDoc,
   updateWorkItem
 } from "../db/repositories.js";
-import { queueForWorkClassification, type WorkClassification } from "../domain/constants.js";
+import { queueForWorkClassification } from "../domain/constants.js";
 import type { Project } from "../domain/types.js";
 import { executionRequirementToPortableValue } from "../execution/profiles.js";
 import { discoverDocs } from "./discover.js";
@@ -580,7 +580,7 @@ function syncAction(
   apply: boolean
 ): DocChange {
   const existing = getWorkItemByDocRef(db, ref);
-  const responsibility = action.responsibility as WorkClassification;
+  const responsibility = action.responsibility;
   const desired = {
     title: action.title,
     status: action.status,

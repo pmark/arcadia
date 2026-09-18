@@ -214,7 +214,7 @@ describe("runWayPropagation", () => {
     );
 
     expect(summary.results).toHaveLength(1);
-    expect(summary.results[0]!.status).toBe("current");
+    expect(summary.results[0].status).toBe("current");
     expect(calls.some((call) => call.command === "gh")).toBe(false);
   });
 
@@ -231,9 +231,9 @@ describe("runWayPropagation", () => {
       runWayPropagation({ db, runCommand: fakeGhRunner(calls), now: () => "20260101000000" })
     );
 
-    expect(summary.results[0]!.status).toBe("merged");
-    expect(summary.results[0]!.pullRequestUrl).toBe("https://github.com/example/repo/pull/1");
-    expect(summary.results[0]!.filesChanged).toEqual(["AGENTS.md"]);
+    expect(summary.results[0].status).toBe("merged");
+    expect(summary.results[0].pullRequestUrl).toBe("https://github.com/example/repo/pull/1");
+    expect(summary.results[0].filesChanged).toEqual(["AGENTS.md"]);
     expect(calls.some((call) => call.command === "gh" && call.args[1] === "merge")).toBe(true);
 
     // The branch reached the remote with the regenerated content, and the
@@ -259,8 +259,8 @@ describe("runWayPropagation", () => {
       runWayPropagation({ db, runCommand: fakeGhRunner(calls), now: () => "20260101000000" })
     );
 
-    expect(summary.results[0]!.status).toBe("opened-governing");
-    expect(summary.results[0]!.filesChanged.sort()).toEqual(["AGENTS.md", "CONSTITUTION.md"]);
+    expect(summary.results[0].status).toBe("opened-governing");
+    expect(summary.results[0].filesChanged.sort()).toEqual(["AGENTS.md", "CONSTITUTION.md"]);
     expect(calls.some((call) => call.command === "gh" && call.args[1] === "merge")).toBe(false);
   });
 
@@ -283,7 +283,7 @@ describe("runWayPropagation", () => {
       runWayPropagation({ db, runCommand: fakeGhRunner(calls) })
     );
 
-    expect(summary.results[0]!.status).toBe("declined");
+    expect(summary.results[0].status).toBe("declined");
     expect(calls.some((call) => call.command === "gh")).toBe(false);
     expect(calls.some((call) => call.args.includes("push"))).toBe(false);
   });
@@ -301,7 +301,7 @@ describe("runWayPropagation", () => {
       runWayPropagation({ db, dryRun: true, runCommand: fakeGhRunner(calls) })
     );
 
-    expect(summary.results[0]!.status).toBe("dry-run");
+    expect(summary.results[0].status).toBe("dry-run");
     expect(calls.some((call) => call.command === "gh")).toBe(false);
     expect(calls.some((call) => call.args.includes("push"))).toBe(false);
     expect(git(repo, ["status", "--porcelain"]).trim()).toBe("");

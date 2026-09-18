@@ -84,7 +84,7 @@ function TextForm({
   const [offeringId, setOfferingId] = useState(offerings[0]?.id ?? "");
   const [prompt, setPrompt] = useState("");
   const [outputMode, setOutputMode] = useState<AdminOutputMode>("structured");
-  const [presetId, setPresetId] = useState(STRUCTURED_TEXT_PRESETS[0]!.id);
+  const [presetId, setPresetId] = useState(STRUCTURED_TEXT_PRESETS[0].id);
   const [label, setLabel] = useState("");
   const [paidConfirmed, setPaidConfirmed] = useState(false);
 
@@ -297,7 +297,7 @@ function SpeechForm({
 }) {
   const [offeringId, setOfferingId] = useState(offerings[0]?.id ?? "");
   const [text, setText] = useState("");
-  const [voiceId, setVoiceId] = useState(ADMIN_SPEECH_VOICES[0]!.id);
+  const [voiceId, setVoiceId] = useState(ADMIN_SPEECH_VOICES[0].id);
   const [label, setLabel] = useState("");
   const [paidConfirmed, setPaidConfirmed] = useState(false);
 

@@ -53,12 +53,14 @@ function AdminIntelligencePageInner() {
     }
   }, [job, jobIdParam, router]);
 
+  const jobStatus = job?.status;
+
   useEffect(() => {
-    if (job && (job.status === "completed" || job.status === "failed" || job.status === "blocked")) {
+    if (jobStatus === "completed" || jobStatus === "failed" || jobStatus === "blocked") {
       void refreshRecent();
       void refreshUsage();
     }
-  }, [job?.status, job?.id, refreshRecent, refreshUsage]);
+  }, [jobStatus, refreshRecent, refreshUsage]);
 
   async function handleSubmit(submission: AdminSubmission) {
     await submit(submission);

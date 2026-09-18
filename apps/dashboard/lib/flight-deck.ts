@@ -56,7 +56,7 @@ export function buildFlightDeck(queue: WorkQueue, snapshot: DashboardSnapshot): 
       const words = [decision.context, decision.proposedAction, decision.decisionNeeded].join(" ").toLowerCase().split(/[^a-z0-9-]+/);
       const mentions = plans.filter((plan) => words.includes(plan.toLowerCase()));
       if (mentions.length === 1) link = {
-        planSlug: mentions[0]!, milestone: projectActions.find((card) => card.planSlug === mentions[0])?.milestone ?? null,
+        planSlug: mentions[0], milestone: projectActions.find((card) => card.planSlug === mentions[0])?.milestone ?? null,
         relation: "named-in-prose"
       };
     }

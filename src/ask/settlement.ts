@@ -259,7 +259,7 @@ export function settleAgentAsk(db: Database.Database, input: {
                 action: actionIds[index], dependencies: unknownDependencies
               });
             }
-            return { ...action, id: actionIds[index]!, dependencies };
+            return { ...action, id: actionIds[index], dependencies };
           });
           // A cycle inside the bundle would leave every Action in it waiting on
           // another forever — permanently ineligible, with no event that could
@@ -420,7 +420,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           const existingIds = new Set(target.actions.map((action) => action.id));
           const availableIds = new Set([...existingIds, ...newActionIds]);
           const normalizedActions = proposedActions.map((action, index) => {
-            const id = newActionIds[index]!;
+            const id = newActionIds[index];
             const existing = action.targetRef !== null;
             if (existing && !existingIds.has(id)) throw validationError("Agent Ask Plan Action amendment target was not found.", { targetRef: action.targetRef });
             if (action.acceptance.length === 0) throw validationError("Every created or amended Plan Action requires at least one observable acceptance criterion.", { action: id });
@@ -518,7 +518,7 @@ export function settleAgentAsk(db: Database.Database, input: {
             if (unknownDependencies.length > 0) {
               throw validationError("Draft Plan Action dependencies must name another Action in the same Ask.", { action: actionIds[index], dependencies: unknownDependencies });
             }
-            return { ...action, id: actionIds[index]!, dependencies, references: uniqueStrings([...proposal.normalized.references, ...action.references]) };
+            return { ...action, id: actionIds[index], dependencies, references: uniqueStrings([...proposal.normalized.references, ...action.references]) };
           });
           const orderedIds = dependencyOrderedActionIds(actions.map((action) => ({ id: action.id, dependencies: action.dependencies })));
           const orderedActions = orderedIds.map((id) => actions.find((action) => action.id === id)!);
@@ -1188,8 +1188,8 @@ function dependencyOrderedActionIds(actions: Array<{ id: string; dependencies: s
       throw validationError("Agent Ask Plan Actions contain a dependency cycle.", { actions: remaining.map((action) => action.id) });
     }
     const [next] = remaining.splice(index, 1);
-    ordered.push(next!.id);
-    resolved.add(next!.id);
+    ordered.push(next.id);
+    resolved.add(next.id);
   }
   return ordered;
 }
@@ -1200,8 +1200,8 @@ function uniqueStrings(values: string[]): string[] {
 
 function resolveManagedTargetRef(targetRef: string, kind: "action" | "plan", projectSlug: string): string {
   const parts = targetRef.split("/").filter(Boolean);
-  if (parts.length === 1) return parts[0]!;
-  if (parts.length === 2 && (parts[0] === kind || parts[0] === projectSlug)) return parts[1]!;
+  if (parts.length === 1) return parts[0];
+  if (parts.length === 2 && (parts[0] === kind || parts[0] === projectSlug)) return parts[1];
   throw validationError("Agent Ask cannot mutate another Project without explicit governed authority.", {
     destinationProject: projectSlug,
     targetRef

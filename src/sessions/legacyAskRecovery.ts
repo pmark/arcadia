@@ -71,7 +71,7 @@ export function recoverLegacyAgentAskDrift(repo: string, worktreePath: string, t
     .filter(Boolean);
   if (status.length !== 1) return NOT_RECOVERED;
 
-  const line = status[0]!;
+  const line = status[0];
   const filePath = line.slice(3).trim();
   const isLegacy = LEGACY_AGENT_ASK_PATTERN.test(filePath);
   const isIsolatedDraftInBaseCheckout = ISOLATED_ASK_FILE_PATTERN.test(filePath);
@@ -148,7 +148,7 @@ export function findRecoveredAsk(repo: string, requestId: string): { branch: str
   const listed = tryGit(repo, ["branch", "--list", `ask/recover-${sanitized}-*`]) ?? "";
   const branches = listed.split("\n").map((line) => line.trim()).filter(Boolean);
   if (branches.length === 0) return null;
-  const branch = branches[0]!;
+  const branch = branches[0];
   const files = (tryGit(repo, ["ls-tree", "-r", "--name-only", branch, ASK_ISOLATION_DIR]) ?? "")
     .split("\n").filter(Boolean);
   const askFile = files.find((file) => path.basename(file).includes(sanitized)) ?? files[0];
@@ -158,7 +158,7 @@ export function findRecoveredAsk(repo: string, requestId: string): { branch: str
 
 function extractRequestId(content: string): string | null {
   const match = content.match(/^request_id:\s*(.+)$/m);
-  return match ? match[1]!.trim().replace(/^["']|["']$/g, "") : null;
+  return match ? match[1].trim().replace(/^["']|["']$/g, "") : null;
 }
 
 function shortHash(content: string): string {

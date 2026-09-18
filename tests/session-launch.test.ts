@@ -89,8 +89,8 @@ describe("launchGuardedHostSession", () => {
     expect(result.session.provider).toBe("opencode-cli");
     expect(result.reused).toBe(false);
     expect(tmux.launches).toHaveLength(1);
-    expect(tmux.launches[0]!.command).toBe("env");
-    expect(tmux.launches[0]!.args.slice(0, -1)).toEqual([
+    expect(tmux.launches[0].command).toBe("env");
+    expect(tmux.launches[0].args.slice(0, -1)).toEqual([
       "GIT_AUTHOR_NAME=Owen Mason",
       "GIT_AUTHOR_EMAIL=owen.mason@agents.arcadia.local",
       "GIT_COMMITTER_NAME=Owen Mason",
@@ -102,7 +102,7 @@ describe("launchGuardedHostSession", () => {
       "--variant",
       "high"
     ]);
-    const brief = tmux.launches[0]!.args.at(-1)!;
+    const brief = tmux.launches[0].args.at(-1)!;
     expect(brief).toContain("Action: define-contract");
     expect(brief).toContain("The contract exists.");
     expect(brief).toContain(`Candidate worktree: ${result.session.worktree_path}`);
@@ -438,8 +438,8 @@ describe("launchGuardedHostSession under a standing managed-production policy gr
     expect(result.session.provider).toBe("opencode-cli");
     expect(result.admission?.status).toBe("committed");
     expect(tmux.launches).toHaveLength(1);
-    expect(tmux.launches[0]!.command).toBe("env");
-    expect(tmux.launches[0]!.args).toContain("opencode");
+    expect(tmux.launches[0].command).toBe("env");
+    expect(tmux.launches[0].args).toContain("opencode");
 
     // The existing one-lease-per-repository guard is unchanged for opencode: a
     // second preparation against the same repository is refused.

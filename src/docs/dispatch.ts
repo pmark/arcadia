@@ -341,8 +341,8 @@ export function readStandingConstraints(repoRoot: string): {
 
   let start = 0;
   let end = body.length;
-  while (start < end && body[start]!.trim() === "") start += 1;
-  while (end > start && body[end - 1]!.trim() === "") end -= 1;
+  while (start < end && body[start].trim() === "") start += 1;
+  while (end > start && body[end - 1].trim() === "") end -= 1;
 
   return { constraints: body.slice(start, end), blocker: null };
 }

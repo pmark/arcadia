@@ -547,9 +547,9 @@ function resolveConfiguredProject(
 function normalizeGitHubRepository(remote: string): string | null {
   const value = remote.trim().replace(/\.git$/, "");
   const ssh = value.match(/^git@github\.com:([^/]+\/[^/]+)$/i);
-  if (ssh) return ssh[1]!.toLowerCase();
+  if (ssh) return ssh[1].toLowerCase();
   const https = value.match(/^https:\/\/github\.com\/([^/]+\/[^/]+)$/i);
-  return https ? https[1]!.toLowerCase() : null;
+  return https ? https[1].toLowerCase() : null;
 }
 
 function readPullRequest(
@@ -1157,7 +1157,7 @@ function repositoryGitHeadPath(repositoryPath: string): string | null {
     if (!stat.isFile()) return null;
     const match = readFileSync(dotGitPath, "utf8").trim().match(/^gitdir:\s*(.+)$/i);
     if (!match) return null;
-    const gitDirectory = path.resolve(repositoryPath, match[1]!);
+    const gitDirectory = path.resolve(repositoryPath, match[1]);
     const headPath = path.join(gitDirectory, "HEAD");
     return existsSync(headPath) ? headPath : null;
   } catch {

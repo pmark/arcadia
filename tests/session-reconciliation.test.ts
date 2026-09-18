@@ -92,7 +92,7 @@ describe("reconcileSessionExit", () => {
     );
 
     // A competing preparation for the SAME Action is allowed and supersedes the handoff.
-    const dispatch = resolveProjectTransition({ repoRoot: fixture.repo, projectSlug: "test-project", db: undefined as any }).dispatch;
+    const dispatch = resolveProjectTransition({ repoRoot: fixture.repo, projectSlug: "test-project", db: undefined }).dispatch;
     const baseRevision = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
     const nextWorktree = path.join(fixture.root, "resume");
     git(fixture.repo, ["worktree", "add", "-b", "claude/resume", nextWorktree, "HEAD"]);

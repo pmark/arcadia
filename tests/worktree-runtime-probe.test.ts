@@ -57,8 +57,8 @@ describe("worktree runtime host probe", () => {
     const fixture = createFixture();
     const run = vi.fn((command: string, args: string[]) => {
       if (command !== "git" || args[0] !== "worktree") return;
-      if (args[1] === "add") mkdirSync(args[3]!, { recursive: true });
-      if (args[1] === "remove") rmSync(args[3]!, { recursive: true, force: true });
+      if (args[1] === "add") mkdirSync(args[3], { recursive: true });
+      if (args[1] === "remove") rmSync(args[3], { recursive: true, force: true });
     });
 
     const result = runWorktreeRuntimeProbe({
@@ -77,7 +77,7 @@ describe("worktree runtime host probe", () => {
   it("leaves the wrapper directory in place when the candidate could not be retired", () => {
     const fixture = createFixture();
     const run = vi.fn((command: string, args: string[]) => {
-      if (command === "git" && args[1] === "add") mkdirSync(args[3]!, { recursive: true });
+      if (command === "git" && args[1] === "add") mkdirSync(args[3], { recursive: true });
       if (command === "git" && args[1] === "remove") throw new Error("worktree is locked");
     });
 

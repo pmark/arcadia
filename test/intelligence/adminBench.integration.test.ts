@@ -131,7 +131,7 @@ describe("admin Intelligence test bench — real job pipeline", () => {
     expect(result.artifacts).toHaveLength(1);
     expect(result.artifacts[0]?.mimeType).toBe("image/png");
 
-    const bytes = await artifactStore.getArtifactBytes(result.artifacts[0]!.id);
+    const bytes = await artifactStore.getArtifactBytes(result.artifacts[0].id);
     expect(bytes).toBeDefined();
   });
 });

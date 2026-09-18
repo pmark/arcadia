@@ -193,7 +193,7 @@ export function setDeclaredGateStatus(
 
   const previous = (statusLine >= 0
     ? (lines[statusLine].split(":").slice(1).join(":").trim() as GateStatus)
-    : "open") as GateStatus;
+    : "open");
 
   if (previous === next) {
     return { gateId, title, previous, next, changed: false, path: absolute };

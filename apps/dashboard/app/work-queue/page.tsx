@@ -152,7 +152,7 @@ export default function WorkQueuePage() {
     const target = current + delta;
     if (current < 0 || target < 0 || target >= batchOrder.length) return;
     const nextOrder = [...batchOrder];
-    [nextOrder[current], nextOrder[target]] = [nextOrder[target]!, nextOrder[current]!];
+    [nextOrder[current], nextOrder[target]] = [nextOrder[target], nextOrder[current]];
     setBatchOrder(nextOrder);
   }
 

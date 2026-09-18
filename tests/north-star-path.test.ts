@@ -247,7 +247,7 @@ function seededWorkspace(options: { gateClarification?: string; gateOpenQuestion
 
 function appendGate(workspace: string, lines: string[]): void {
   const file = northStarPath(workspace);
-  const source = readFileSync(file, "utf8") as string;
+  const source = readFileSync(file, "utf8");
   const marker = "---\n\n# North Star";
   writeFileSync(file, source.replace(marker, `${lines.join("\n")}\n${marker}`), "utf8");
 }

@@ -63,7 +63,7 @@ describe("minimal independent pull-request QA", () => {
           reviewerPrompt = stdin ?? "";
           reviewerArgs = args;
           reviewerCwd = cwd;
-          const outputPath = args[args.indexOf("--output-last-message") + 1]!;
+          const outputPath = args[args.indexOf("--output-last-message") + 1];
           writeFileSync(outputPath, `${JSON.stringify(passingModelVerdict("The documentation Candidate is internally consistent."))}\n`, "utf8");
           return success('{"type":"task.completed"}\n');
         }
@@ -182,7 +182,7 @@ describe("minimal independent pull-request QA", () => {
         if (command === "codex" && args[0] === "sandbox") return sandboxSuccess();
         if (command === "codex") {
           reviewerInvocations += 1;
-          const outputPath = args[args.indexOf("--output-last-message") + 1]!;
+          const outputPath = args[args.indexOf("--output-last-message") + 1];
           writeFileSync(outputPath, `${JSON.stringify(passingModelVerdict(
             "All applicable evidence passes.",
             ["Release approval remains with the operator."]
@@ -381,10 +381,10 @@ describe("minimal independent pull-request QA", () => {
         if (command === "/bin/zsh") return hostBaselineSuccess();
         if (command === "codex" && args[0] === "sandbox") return sandboxSuccess();
         if (command === "codex") {
-          const outputPath = args[args.indexOf("--output-last-message") + 1]!;
+          const outputPath = args[args.indexOf("--output-last-message") + 1];
           const verdict = passingModelVerdict("The reviewer cannot prove every criterion.");
-          verdict.checks[0]!.status = "not-checked";
-          verdict.checks[0]!.evidence = "No runnable proof.";
+          verdict.checks[0].status = "not-checked";
+          verdict.checks[0].evidence = "No runnable proof.";
           writeFileSync(outputPath, `${JSON.stringify(verdict)}\n`, "utf8");
           return success();
         }
@@ -412,7 +412,7 @@ describe("minimal independent pull-request QA", () => {
         if (command === "/bin/zsh") return hostBaselineSuccess();
         if (command === "codex" && args[0] === "sandbox") return sandboxSuccess();
         if (command === "codex") {
-          const outputPath = args[args.indexOf("--output-last-message") + 1]!;
+          const outputPath = args[args.indexOf("--output-last-message") + 1];
           writeFileSync(outputPath, `${JSON.stringify({
             verdict: "pass",
             summary: "One generic check passed.",
@@ -530,7 +530,7 @@ describe("minimal independent pull-request QA", () => {
         if (command === "codex" && args[0] === "sandbox") return sandboxSuccess();
         if (command === "codex") {
           evidenceChanged = true;
-          const outputPath = args[args.indexOf("--output-last-message") + 1]!;
+          const outputPath = args[args.indexOf("--output-last-message") + 1];
           writeFileSync(outputPath, `${JSON.stringify(passingModelVerdict("The initial evidence passed."))}\n`, "utf8");
           return success();
         }

@@ -139,6 +139,7 @@ function ImageResult({ job }: { job: IntelligenceJob }) {
         <div className="grid gap-3 sm:grid-cols-2">
           {artifacts.map((artifact) => (
             <figure key={artifact.id} className="rounded-md border border-line p-2">
+              {/* eslint-disable-next-line @next/next/no-img-element -- artifact bytes are served dynamically and have no static dimensions */}
               <img
                 src={`/api/admin-intelligence/artifacts/${encodeURIComponent(artifact.id)}`}
                 alt={`Generated artifact ${artifact.id}`}

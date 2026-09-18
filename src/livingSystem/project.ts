@@ -504,7 +504,7 @@ function renderSignal(signal: LivingSystemSignal): string {
 
 function renderSource(source: LivingSystemSourceReceipt, repoRoot: string): string {
   const reference = source.kind === "manifest" || source.kind === "project" || source.kind === "plan" || source.kind === "log" || source.kind === "decision"
-    ? sourceLink(repoRoot, source.reference.split("#")[0]!, source.reference)
+    ? sourceLink(repoRoot, source.reference.split("#")[0], source.reference)
     : `\`${source.reference}\``;
   return `${label(source.kind)} · **${source.availability}** · ${reference} · observed ${source.observedAt ?? "not recorded"}`;
 }
@@ -539,7 +539,7 @@ function wiki(target: string, labelText: string): string {
 }
 
 function label(value: string): string {
-  return value.split("_").map((part) => part ? `${part[0]!.toUpperCase()}${part.slice(1)}` : part).join(" ");
+  return value.split("_").map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : part).join(" ");
 }
 
 function episodeDateCompare(left: LivingSystemEpisode, right: LivingSystemEpisode): number {
