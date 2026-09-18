@@ -66,6 +66,9 @@ export interface Verdict {
   fixRound: number;
   maxFixRounds: number;
   findings: Finding[];
+  // CodeRabbit puts findings on lines outside the diff in the review body,
+  // with no thread to reply to or resolve. They appear only in `prompt`.
+  outsideDiffFindings: boolean;
   prompt: string | null;
   note: string;
 }
@@ -80,7 +83,7 @@ export function decide(head: string, reviews: Review[], threads: Thread[]): Verd
   const approved = latestOnHead?.state === "APPROVED";
 
   const findings: Finding[] = threads
-    .filter((thread) => thread.author === BOT && !thread.isResolved)
+    .filter((thread) => thread.author.startsWith(BOT) && !thread.isResolved)
     .map((thread) => ({
       threadId: thread.id,
       path: thread.path,
@@ -94,14 +97,15 @@ export function decide(head: string, reviews: Review[], threads: Thread[]): Verd
   const roundHeads = new Set(
     bot.filter((review) => review.state !== "APPROVED").map((review) => review.commitId)
   );
-  if (findings.length > 0) roundHeads.add(head);
+  const outsideDiffFindings = hasOutsideDiffFindings(latestOnHead?.body ?? "");
+  if (findings.length > 0 || outsideDiffFindings) roundHeads.add(head);
   const fixRound = roundHeads.size;
 
   const prompt = extractPrompt(latestOnHead?.body ?? "");
-  const base = { head, approved, fixRound, maxFixRounds: MAX_FIX_ROUNDS, findings, prompt };
+  const base = { head, approved, fixRound, maxFixRounds: MAX_FIX_ROUNDS, findings, outsideDiffFindings, prompt };
 
   if (approved) return { ...base, verdict: "done", note: "CodeRabbit approved this head." };
-  if (findings.length === 0 && latestOnHead?.state !== "CHANGES_REQUESTED") {
+  if (findings.length === 0 && !outsideDiffFindings && latestOnHead?.state !== "CHANGES_REQUESTED") {
     return {
       ...base,
       verdict: "done",
@@ -118,7 +122,11 @@ export function decide(head: string, reviews: Review[], threads: Thread[]): Verd
   return {
     ...base,
     verdict: "fix",
-    note: `Fix round ${fixRound} of ${MAX_FIX_ROUNDS}. Fix valid findings, decline wrong ones with a reason, push, run wait again.`
+    note:
+      `Fix round ${fixRound} of ${MAX_FIX_ROUNDS}. Fix valid findings, decline wrong ones with a reason, push, run wait again.` +
+      (outsideDiffFindings
+        ? " Some findings are outside the diff and listed only in `prompt`; they have no thread, so name any you decline in the handoff instead."
+        : "")
   };
 }
 
@@ -130,6 +138,10 @@ export function condense(body: string): string {
     .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+export function hasOutsideDiffFindings(body: string): boolean {
+  return /<summary>[^<]*outside diff range[^<]*<\/summary>/i.test(body);
 }
 
 export function extractPrompt(body: string): string | null {
@@ -160,20 +172,20 @@ interface CombinedStatus {
   statuses: { context: string; state: string; description: string | null }[];
 }
 
+interface ThreadNode {
+  id: string;
+  isResolved: boolean;
+  isOutdated: boolean;
+  comments: {
+    nodes: { author: { login: string } | null; path: string; line: number | null; url: string; body: string }[];
+  };
+}
+
 interface ThreadsResponse {
   data: {
     repository: {
       pullRequest: {
-        reviewThreads: {
-          nodes: {
-            id: string;
-            isResolved: boolean;
-            isOutdated: boolean;
-            comments: {
-              nodes: { author: { login: string } | null; path: string; line: number | null; url: string; body: string }[];
-            };
-          }[];
-        };
+        reviewThreads: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: ThreadNode[] };
       };
     };
   };
@@ -195,20 +207,17 @@ function fetchReviews(repo: string, pr: number): Review[] {
 
 function fetchThreads(repo: string, pr: number): Thread[] {
   const [owner, name] = repo.split("/");
-  const query = `query($owner:String!,$name:String!,$pr:Int!){repository(owner:$owner,name:$name){pullRequest(number:$pr){reviewThreads(first:100){nodes{id isResolved isOutdated comments(first:1){nodes{author{login} path line url body}}}}}}}`;
-  const response = ghJson<ThreadsResponse>([
-    "api",
-    "graphql",
-    "-f",
-    `query=${query}`,
-    "-f",
-    `owner=${owner}`,
-    "-f",
-    `name=${name}`,
-    "-F",
-    `pr=${pr}`
-  ]);
-  return response.data.repository.pullRequest.reviewThreads.nodes.flatMap((node) => {
+  const query = `query($owner:String!,$name:String!,$pr:Int!,$after:String){repository(owner:$owner,name:$name){pullRequest(number:$pr){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{id isResolved isOutdated comments(first:1){nodes{author{login} path line url body}}}}}}}`;
+  const nodes: ThreadNode[] = [];
+  let after: string | null = null;
+  do {
+    const args = ["api", "graphql", "-f", `query=${query}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-F", `pr=${pr}`];
+    if (after) args.push("-f", `after=${after}`);
+    const page = ghJson<ThreadsResponse>(args).data.repository.pullRequest.reviewThreads;
+    nodes.push(...page.nodes);
+    after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+  } while (after);
+  return nodes.flatMap((node) => {
     const first = node.comments.nodes[0];
     if (!first) return [];
     return [
@@ -284,5 +293,7 @@ async function main(argv: string[]): Promise<void> {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await main(process.argv.slice(2));
+  // Exit 1 means "fix", so a thrown gh/git/JSON failure must not fall through
+  // to Node's default exit code 1 and read as a verdict.
+  await main(process.argv.slice(2)).catch((error: unknown) => fail(error instanceof Error ? error.message : String(error)));
 }

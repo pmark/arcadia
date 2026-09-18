@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { condense, decide, extractPrompt, MAX_FIX_ROUNDS, type Review, type Thread } from "../scripts/coderabbit-loop.js";
+import { condense, decide, extractPrompt, hasOutsideDiffFindings, MAX_FIX_ROUNDS, type Review, type Thread } from "../scripts/coderabbit-loop.js";
 
 const review = (commitId: string, state: string, submittedAt: string, body = ""): Review => ({ commitId, state, submittedAt, body });
 const thread = (id: string, overrides: Partial<Thread> = {}): Thread => ({
@@ -52,6 +52,18 @@ describe("coderabbit loop decide", () => {
     expect(verdict.verdict).toBe("cap");
   });
 
+  it("matches the bot login in either form GitHub reports it", () => {
+    expect(decide("h1", [], [thread("t1", { author: "coderabbitai[bot]" })]).findings).toHaveLength(1);
+  });
+
+  it("does not call a head done while findings outside the diff remain", () => {
+    const body = "<details>\n<summary>⚠️ Outside diff range comments (1)</summary>\n\nFix it.\n</details>";
+    const verdict = decide("h1", [review("h1", "COMMENTED", "1", body)], []);
+    expect(verdict.outsideDiffFindings).toBe(true);
+    expect(verdict.verdict).toBe("fix");
+    expect(verdict.note).toMatch(/outside the diff/);
+  });
+
   it("still allows the last fix round at the cap boundary", () => {
     const reviews = ["h1", "h2", "h3"].map((head, index) => review(head, "CHANGES_REQUESTED", String(index)));
     expect(decide("h3", reviews, [thread("t1")]).verdict).toBe("fix");
@@ -61,6 +73,11 @@ describe("coderabbit loop decide", () => {
 describe("coderabbit body helpers", () => {
   it("strips analysis details and HTML markers from a finding", () => {
     expect(condense("_Minor_\n\n<details>\n<summary>chain</summary>\nlong\n</details>\n\nDo X.<!-- marker -->")).toBe("_Minor_\n\nDo X.");
+  });
+
+  it("detects the outside-diff section heading", () => {
+    expect(hasOutsideDiffFindings("<summary>⚠️ Outside diff range comments (2)</summary>")).toBe(true);
+    expect(hasOutsideDiffFindings("<summary>🧹 Nitpick comments (2)</summary>")).toBe(false);
   });
 
   it("extracts the agent prompt block from a review body", () => {
