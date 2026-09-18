@@ -209,6 +209,104 @@ describe("apply an answered Decision's consequence", () => {
     expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
   });
 
+  it("never commits under --dry-run when an unapplied deferral receipt exists", () => {
+    const { workspace, repo, decisionId } = fixture();
+    execFileSync("git", ["config", "--unset", "user.email"], { cwd: repo });
+    execFileSync("git", ["config", "--unset", "user.name"], { cwd: repo });
+    vi.stubEnv("GIT_CONFIG_GLOBAL", devNull);
+    vi.stubEnv("GIT_CONFIG_SYSTEM", devNull);
+    vi.stubEnv("GIT_CONFIG_NOSYSTEM", "1");
+    vi.stubEnv("GIT_AUTHOR_NAME", "");
+    vi.stubEnv("GIT_AUTHOR_EMAIL", "");
+    vi.stubEnv("GIT_COMMITTER_NAME", "");
+    vi.stubEnv("GIT_COMMITTER_EMAIL", "");
+
+    expect(() =>
+      runDecisionApproveCommand({
+        workspace, project: "demo", id: decisionId, answer: "Defer until later", requestId: "defer-dry-run"
+      })
+    ).toThrow(/could not be committed/);
+    const dirtyAfterFailure = execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" });
+    expect(dirtyAfterFailure).not.toBe("");
+
+    // The dry run reports the recorded consequence and touches nothing, even
+    // though the receipt is still unapplied (Issue #315).
+    const preview = runDecisionApproveCommand({
+      workspace, project: "demo", id: decisionId, answer: "Defer until later", requestId: "defer-dry-run", dryRun: true
+    });
+
+    expect(preview.data.applied).toBe(false);
+    expect(preview.data.consequence?.actionId).toBe("park-me");
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe(dirtyAfterFailure);
+
+    vi.unstubAllEnvs();
+  });
+
+  it("refuses to apply a defer option when the recorded status is not approved", () => {
+    const { workspace, repo, decisionId } = fixture();
+    const planBefore = planFile(repo);
+    const projectBefore = projectFile(repo);
+    const decisionBefore = decisionFile(repo);
+
+    expect(() =>
+      runDecisionApproveCommand({
+        workspace, project: "demo", id: decisionId, answer: "Defer until later", status: "open"
+      })
+    ).toThrow(/recorded status is not `approved`/);
+
+    expect(planFile(repo)).toBe(planBefore);
+    expect(projectFile(repo)).toBe(projectBefore);
+    expect(decisionFile(repo)).toBe(decisionBefore);
+    expect(resolveDispatch(repo, "demo").context?.action.id).toBe("park-me");
+  });
+
+  it("re-applies the deferral after the Action is revived instead of returning the stale receipt", () => {
+    const { workspace, repo, decisionId } = fixture();
+    const first = runDecisionApproveCommand({
+      workspace, project: "demo", id: decisionId, answer: "Defer until later", decided: "2026-09-18"
+    });
+    expect(first.data.applied).toBe(true);
+
+    // Revival: the Action returns to open at the head of the pointer and the
+    // Decision is re-opened. A later re-approval must write a new deferral
+    // rather than replay the first receipt (Issue #317).
+    const revivedPlan = planFile(repo)
+      .replace(/^current_action: after$/m, "current_action: park-me")
+      .replace(
+        /^ {2}- id: park-me[\s\S]*?^ {4}status: deferred$/m,
+        (block) => block.replace(/^ {4}status: deferred$/m, "    status: open")
+      );
+    writeFileSync(path.join(repo, "docs/plans/defer-plan.md"), revivedPlan, "utf8");
+    writeFileSync(
+      path.join(repo, "PROJECT.md"),
+      projectFile(repo).replace(/^current_action: after$/m, "current_action: park-me"),
+      "utf8"
+    );
+    writeFileSync(path.join(repo, "docs/decisions/0057-defer-park-me.md"), [
+      "---", "arcadia: v1", "type: decision", 'id: "0057"', "slug: defer-park-me", "project: demo",
+      "status: open", "question: Defer the current Action?", "confidence: high", "plan: defer-plan",
+      "action: park-me", "updated: 2026-09-18",
+      "options:", "  - label: Defer until later", "    consequence: The Action stops dispatching.",
+      "    recommended: true", "    effect: defer",
+      "  - label: Keep it dispatchable", "    consequence: It keeps dispatching.", "    recommended: false",
+      "---", "", "# Decision 0057: Defer the current Action?", ""
+    ].join("\n"), "utf8");
+    execFileSync("git", ["add", "-A"], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Revive the Action and re-open the Decision"], { cwd: repo });
+
+    const second = runDecisionApproveCommand({
+      workspace, project: "demo", id: decisionId, answer: "Defer until later", decided: "2026-09-19"
+    });
+
+    expect(second.data.applied).toBe(true);
+    expect(second.data.receiptId).not.toBe(first.data.receiptId);
+    expect(planFile(repo)).toMatch(/^ {2}- id: park-me[\s\S]*?^ {4}status: deferred$/m);
+    expect(projectFile(repo)).toContain("current_action: after");
+    expect(decisionFile(repo)).toContain("status: approved");
+    expect(resolveDispatch(repo, "demo").context?.action.id).toBe("after");
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+  });
+
   it("refuses when the Decision names an Action outside the active Plan, leaving the Decision open", () => {
     const { workspace, repo, decisionId } = fixture({ decisionAction: "ghost" });
     const decisionBefore = decisionFile(repo);

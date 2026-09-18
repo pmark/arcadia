@@ -80,18 +80,30 @@ export function applyDecisionDeferral(
         requestedDecision: input.decisionId
       });
     }
-    if (existing.applied) {
+    // A dry run never touches Git, even when an earlier attempt left an
+    // unapplied receipt behind. Report the recorded consequence and stop
+    // (Issue #315).
+    if (input.dryRun) {
+      return { consequence: existing.consequence, receiptId: existing.id, applied: false };
+    }
+    if (existing.applied && receiptReflectedOnDisk(input.repoRoot, input.projectSlug, existing)) {
       return { consequence: existing.consequence, receiptId: existing.id, applied: true };
     }
-    // A previous attempt wrote the documents but could not commit them. Retry
-    // exactly that commit — recomputing from disk would see the already-written
-    // state as "no change" and leave the deferral uncommitted forever.
-    const retryError = commitDecisionDeferral(input.repoRoot, existing.changedPaths, existing);
-    existing.applied = retryError === null;
-    existing.commitError = retryError;
-    saveReceipt(db, existing);
-    if (retryError) throw commitFailure(existing, retryError);
-    return { consequence: existing.consequence, receiptId: existing.id, applied: true };
+    if (!existing.applied) {
+      // A previous attempt wrote the documents but could not commit them. Retry
+      // exactly that commit — recomputing from disk would see the already-written
+      // state as "no change" and leave the deferral uncommitted forever.
+      const retryError = commitDecisionDeferral(input.repoRoot, existing.changedPaths, existing);
+      existing.applied = retryError === null;
+      existing.commitError = retryError;
+      saveReceipt(db, existing);
+      if (retryError) throw commitFailure(existing, retryError);
+      return { consequence: existing.consequence, receiptId: existing.id, applied: true };
+    }
+    // An applied receipt whose Action has since been revived (or whose pointer
+    // has moved on) no longer describes checked-in truth. Fall through to apply
+    // the transition again and replace the stale receipt, so re-approving a
+    // re-opened Decision is not a silent no-op (Issue #317).
   }
 
   const { project, plan, action } = resolveTarget(input.repoRoot, input.projectSlug, input.actionId);
@@ -235,6 +247,36 @@ function resolveTarget(repoRoot: string, projectSlug: string, actionId: string):
     });
   }
   return { project, plan, action };
+}
+
+/**
+ * True when checked-in documents still reflect the receipt's recorded
+ * consequence, so replaying its request id is a genuine no-op rather than a
+ * fresh transition. An Action revived after a deferral no longer matches, which
+ * is what lets a re-opened Decision be deferred again (Issue #317).
+ */
+function receiptReflectedOnDisk(
+  repoRoot: string,
+  projectSlug: string,
+  receipt: DecisionDeferralReceipt
+): boolean {
+  let target: ReturnType<typeof resolveTarget>;
+  try {
+    target = resolveTarget(repoRoot, projectSlug, receipt.consequence.actionId);
+  } catch {
+    return false;
+  }
+  const { project, plan, action } = target;
+  if (action.status !== receipt.consequence.actionStatusAfter) {
+    return false;
+  }
+  if (receipt.consequence.pointerMoved) {
+    const pointer = project.currentAction ?? plan.currentAction;
+    if (pointer !== receipt.consequence.pointerAfter) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
