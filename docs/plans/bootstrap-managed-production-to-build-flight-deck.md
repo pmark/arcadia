@@ -1109,6 +1109,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/303", "src/commands/worker.ts", "src/runtime/launchAgents.ts"]
+  - id: fix-decision-deferral-review-bugs
+    title: "decision approve defer path honors --dry-run, requires approved status, and re-applies a later deferral (issues #315, #316, #317)."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "decision approve defer path honors --dry-run, requires approved status, and re-applies a later deferral (issues #315, #316, #317)."
+    expected_artifact: Evidence satisfying Agent Ask fix-decision-deferral-review-bugs
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-decision-deferral-review-bugs-2026-09-18
+    acceptance_criteria:
+      - "decision approve --dry-run never commits, even when an unapplied receipt exists (#315), with a test."
+      - "A defer effect is applied only when the recorded status is approved (#316), with a test."
+      - "Re-approving a previously applied deferral after revival writes and commits the new deferral (#317), with a test."
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
 current_action: prove-two-action-unattended-production
