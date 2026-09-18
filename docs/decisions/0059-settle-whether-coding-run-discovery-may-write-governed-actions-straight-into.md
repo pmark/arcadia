@@ -1,0 +1,38 @@
+---
+arcadia: v1
+type: decision
+id: "0059"
+slug: settle-whether-coding-run-discovery-may-write-governed-actions-straight-into
+project: arcadia
+status: open
+question: Settle whether coding-Run discovery may write governed Actions straight into the active Plan, or must route them through an Agent Ask like every other new Action.
+gap_type: missing-decision
+recommendation: Ratify the bounded exception as it stands
+options:
+  - label: Ratify the bounded exception as it stands
+    consequence: "Discovery keeps writing blocker, corrective and follow_up Actions directly into the active Plan under the existing bounds: acceptance criteria required, committed never pushed, every one logged with its origin Action, and the three circuit breakers converting an over-budget branch into a Decision. Unattended production keeps running through a discovered blocker with no operator round trip. The cost is that an agent creates governed Action records without a per-record approval, which is the thing the Agent Ask rule exists to prevent."
+    recommended: true
+  - label: "Narrow it: blockers and correctives direct, follow-ups through an Agent Ask"
+    consequence: The exception shrinks to the two classes that genuinely cannot wait, because a follow-up never touches the queue and nothing stalls while the operator settles it. Discovery gains a second code path and a follow-up stops being a one-command act, so an agent that finds something minor mid-Run has more reason to skip recording it at all.
+    recommended: false
+  - label: Route every discovery through an Agent Ask
+    consequence: "Governance is uniform and no agent writes an Action record unattended. Unattended production stops being continuous: a Run that hits a blocker cannot clear it and must wait for the operator to settle an Ask, and because settlement refuses queue placement from a candidate worktree that settlement cannot even run where the Run is. This would need the queue to see candidate Actions before it could work at all."
+    recommended: false
+confidence: high
+plan: bootstrap-managed-production-to-build-flight-deck
+updated: 2026-09-18
+---
+
+# Decision 0059: Settle whether coding-Run discovery may write governed Actions straight into the active Plan, or must route them through an Agent Ask like every other new Action.
+
+## Options
+
+- **Ratify the bounded exception as it stands** (recommended): Discovery keeps writing blocker, corrective and follow_up Actions directly into the active Plan under the existing bounds: acceptance criteria required, committed never pushed, every one logged with its origin Action, and the three circuit breakers converting an over-budget branch into a Decision. Unattended production keeps running through a discovered blocker with no operator round trip. The cost is that an agent creates governed Action records without a per-record approval, which is the thing the Agent Ask rule exists to prevent.
+- **Narrow it: blockers and correctives direct, follow-ups through an Agent Ask**: The exception shrinks to the two classes that genuinely cannot wait, because a follow-up never touches the queue and nothing stalls while the operator settles it. Discovery gains a second code path and a follow-up stops being a one-command act, so an agent that finds something minor mid-Run has more reason to skip recording it at all.
+- **Route every discovery through an Agent Ask**: Governance is uniform and no agent writes an Action record unattended. Unattended production stops being continuous: a Run that hits a blocker cannot clear it and must wait for the operator to settle an Ask, and because settlement refuses queue placement from a candidate worktree that settlement cannot even run where the Run is. This would need the queue to see candidate Actions before it could work at all.
+
+## Rationale
+
+AGENTS.md reserves creating Actions and touching the queue for an Agent Ask, and `arcadia schedule discover` does neither: it derives an Action id, writes the Action into the active Plan, commits it, and places it in the queue, unattended. That is a real departure and it currently lives only in a PR description and docs/production-scheduling.md, which is not where a Way change belongs. Routing discovery through an Ask is not merely inconvenient for the blocker case, it defeats it: a blocker exists to become the next runnable work inside the same Run, and an Ask waits for the operator to settle it, so the Run stalls on exactly the thing the blocker was raised to clear. Separately, settlement refuses queue placement from a candidate worktree, and a Run is always in one. The mitigations already in the code are that only blocker, corrective and follow_up classes can be created, each needs acceptance criteria, the write is committed and never pushed, every one is logged to the scheduling Log with its origin, and three circuit breakers (depth 2, three corrective descendants per root Action, eight correctives per Milestone) stop the branch and open a Decision instead. The operator's judgment is which of these boundaries is the right one, so this is a Decision rather than a documentation note.
+
+Proposed by Agent Ask ratify-discovery-writes-actions-directly-2026-09-18. This Decision remains open until the operator answers it.
