@@ -365,12 +365,21 @@ export function replaySchedulingResult<T>(db: Database.Database, requestId: stri
   return row?.result_json ? (JSON.parse(row.result_json) as T) : null;
 }
 
+/**
+ * The Log, newest first.
+ *
+ * Ties on `at` break by `rowid`, which is insertion order, never by `id` --
+ * ids are random, so two entries written inside the same millisecond used to
+ * come back in an arbitrary order. For an audit trail that is not a cosmetic
+ * detail: "what happened last" is the question the Log exists to answer, and
+ * scheduling routinely writes several entries in one pass.
+ */
 export function listSchedulingLog(db: Database.Database, options: { projectSlug?: string; limit?: number } = {}): SchedulingLogEntry[] {
   ensureSchedulingTables(db);
   const limit = options.limit ?? 50;
   const rows = (options.projectSlug
-    ? db.prepare("SELECT * FROM scheduling_log WHERE project_slug = ? ORDER BY at DESC, id DESC LIMIT ?").all(options.projectSlug, limit)
-    : db.prepare("SELECT * FROM scheduling_log ORDER BY at DESC, id DESC LIMIT ?").all(limit)) as Array<{
+    ? db.prepare("SELECT * FROM scheduling_log WHERE project_slug = ? ORDER BY at DESC, rowid DESC LIMIT ?").all(options.projectSlug, limit)
+    : db.prepare("SELECT * FROM scheduling_log ORDER BY at DESC, rowid DESC LIMIT ?").all(limit)) as Array<{
     id: string; at: string; project_slug: string | null; action_key: string | null; source: SchedulingLogSource;
     reason: string; previous_json: string | null; new_json: string | null; request_id: string | null;
   }>;

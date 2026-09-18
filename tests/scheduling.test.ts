@@ -113,8 +113,10 @@ describe("project schedule", () => {
       expect(unchanged.changed).toBe(false);
       expect(loadActionOrder(db).revision).toBe(3);
     });
+    // Newest first, and the three writes above land inside the same
+    // millisecond, so this also pins the Log's insertion-order tiebreak.
     const log = withReadOnlyDatabase(fx.workspace, (db) => listSchedulingLog(db, { projectSlug: "alpha" }));
-    expect(log[0]?.source).toBe("github_operator");
+    expect(log.map((entry) => entry.source)).toEqual(["github_operator", "arcadia"]);
     expect(log[0]?.previous).toEqual({ order: ["alpha/a", "alpha/c"], revision: 2 });
     expect(log[0]?.next).toEqual({ order: ["alpha/c", "alpha/a"], revision: 3 });
   });
