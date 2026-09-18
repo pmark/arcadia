@@ -1111,7 +1111,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/303", "src/commands/worker.ts", "src/runtime/launchAgents.ts"]
   - id: fix-decision-deferral-review-bugs
     title: "decision approve defer path honors --dry-run, requires approved status, and re-applies a later deferral (issues #315, #316, #317)."
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: "decision approve defer path honors --dry-run, requires approved status, and re-applies a later deferral (issues #315, #316, #317)."
@@ -1128,7 +1128,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: fix-decision-deferral-review-bugs
+current_action: preserve-projects-with-dependencies
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
