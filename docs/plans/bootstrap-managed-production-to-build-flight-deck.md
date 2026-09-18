@@ -1128,7 +1128,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: prove-zero-prompt-production-loop
+current_action: fix-decision-deferral-review-bugs
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
