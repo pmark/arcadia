@@ -34,6 +34,9 @@ export interface Review {
 
 export interface Thread {
   id: string;
+  // The head CodeRabbit opened the thread on, which is what makes that head a
+  // fix round whatever the review's state.
+  commitId: string;
   isResolved: boolean;
   isOutdated: boolean;
   author: string;
@@ -60,7 +63,10 @@ export interface Verdict {
   maxFixRounds: number;
   findings: Finding[];
   // CodeRabbit puts findings on lines outside the diff in the review body,
-  // with no thread to reply to or resolve. They appear only in `prompt`.
+  // with no thread to reply to or resolve. They appear only in `prompt`, and
+  // they never block `done` on their own: a finding with no thread can never
+  // be resolved, so blocking on it would strand a round that only declines.
+  // When one matters, CodeRabbit's CHANGES_REQUESTED review is what blocks.
   outsideDiffFindings: boolean;
   prompt: string | null;
   note: string;
@@ -68,8 +74,13 @@ export interface Verdict {
 
 // Pure: everything the loop decides, given what GitHub reported for `head`.
 export function decide(head: string, reviews: Review[], threads: Thread[]): Verdict {
+  // CodeRabbit posts each reply to a thread as its own empty COMMENTED
+  // review (seen live on pmark/arcadia#324). Counting those would let a reply
+  // mask a real CHANGES_REQUESTED review, and its missing prompt would hide
+  // the actual one, so only reviews that say something count.
   const bot = reviews
     .filter((review) => review.state !== "PENDING")
+    .filter((review) => review.state !== "COMMENTED" || review.body.trim() !== "")
     .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt));
   const onHead = bot.filter((review) => review.commitId === head);
   const latestOnHead = onHead.at(-1);
@@ -85,28 +96,35 @@ export function decide(head: string, reviews: Review[], threads: Thread[]): Verd
       body: condense(thread.body)
     }));
 
-  // A round is one reviewed head that came back with something to fix.
-  const roundHeads = new Set(
-    bot.filter((review) => review.state !== "APPROVED").map((review) => review.commitId)
-  );
-  const outsideDiffFindings = hasOutsideDiffFindings(latestOnHead?.body ?? "");
+  // A round is one reviewed head that came back with something to fix: a head
+  // CodeRabbit opened a thread on, or requested changes on. Review state alone
+  // cannot say: without request_changes_workflow every review is COMMENTED,
+  // including ones that only list findings outside the diff.
+  const roundHeads = new Set([
+    ...bot.filter((review) => review.state === "CHANGES_REQUESTED").map((review) => review.commitId),
+    ...threads.filter((thread) => thread.author.startsWith(BOT)).map((thread) => thread.commitId)
+  ]);
+  const prompt = extractPrompt(latestOnHead?.body ?? "");
+  const outsideDiffFindings = hasOutsideDiffFindings(prompt ?? "");
   // CodeRabbit does not re-approve a head it found clean: its earlier approval
   // simply stands, exactly as GitHub's reviewDecision shows. A later review
   // requesting changes would supersede it as the latest, so the latest review
   // being an approval, with nothing left open, is approval of this head.
-  const approved = bot.at(-1)?.state === "APPROVED" && findings.length === 0 && !outsideDiffFindings;
-  if (findings.length > 0 || outsideDiffFindings) roundHeads.add(head);
+  const approved = bot.at(-1)?.state === "APPROVED" && findings.length === 0;
+  if (findings.length > 0) roundHeads.add(head);
   const fixRound = roundHeads.size;
+  const outsideNote = outsideDiffFindings
+    ? " CodeRabbit also listed findings outside the diff in `prompt`; they have no thread, so fix them or name any you decline in the handoff."
+    : "";
 
-  const prompt = extractPrompt(latestOnHead?.body ?? "");
   const base = { head, approved, fixRound, maxFixRounds: MAX_FIX_ROUNDS, findings, outsideDiffFindings, prompt };
 
-  if (approved) return { ...base, verdict: "done", note: "CodeRabbit approved this head." };
-  if (findings.length === 0 && !outsideDiffFindings && latestOnHead?.state !== "CHANGES_REQUESTED") {
+  if (approved) return { ...base, verdict: "done", note: `CodeRabbit approved this head.${outsideNote}` };
+  if (findings.length === 0 && latestOnHead?.state !== "CHANGES_REQUESTED") {
     return {
       ...base,
       verdict: "done",
-      note: "No unresolved CodeRabbit threads, but no approval on this head either; report that rather than claiming approval."
+      note: `No unresolved CodeRabbit threads, but no approval on this head either; report that rather than claiming approval.${outsideNote}`
     };
   }
   if (fixRound > MAX_FIX_ROUNDS) {
@@ -119,11 +137,7 @@ export function decide(head: string, reviews: Review[], threads: Thread[]): Verd
   return {
     ...base,
     verdict: "fix",
-    note:
-      `Fix round ${fixRound} of ${MAX_FIX_ROUNDS}. Fix valid findings, decline wrong ones with 'arcadia pr decline-finding', push, and run 'arcadia pr code-review' again.` +
-      (outsideDiffFindings
-        ? " Some findings are outside the diff and listed only in `prompt`; they have no thread, so name any you decline in the handoff instead."
-        : "")
+    note: `Fix round ${fixRound} of ${MAX_FIX_ROUNDS}. Fix valid findings, decline wrong ones with 'arcadia pr decline-finding', push, and run 'arcadia pr code-review' again.${outsideNote}`
   };
 }
 
@@ -137,8 +151,10 @@ export function condense(body: string): string {
     .trim();
 }
 
-export function hasOutsideDiffFindings(body: string): boolean {
-  return /<summary>[^<]*outside diff range[^<]*<\/summary>/i.test(body);
+// The review body's own heading for these has changed shape across CodeRabbit
+// releases; the agent prompt's section label is the stable marker.
+export function hasOutsideDiffFindings(prompt: string): boolean {
+  return /^Outside diff (range )?comments:/im.test(prompt);
 }
 
 export function extractPrompt(body: string): string | null {
@@ -238,7 +254,7 @@ interface ThreadNode {
   isResolved: boolean;
   isOutdated: boolean;
   comments: {
-    nodes: { author: { login: string } | null; path: string; line: number | null; url: string; body: string }[];
+    nodes: { author: { login: string } | null; path: string; line: number | null; url: string; body: string; originalCommit: { oid: string } | null }[];
   };
 }
 
@@ -268,7 +284,7 @@ function fetchReviews(gh: (args: string[]) => string, repository: string, pr: nu
 
 function fetchThreads(ghJson: <T>(args: string[]) => T, repository: string, pr: number): Thread[] {
   const [owner, name] = repository.split("/");
-  const query = `query($owner:String!,$name:String!,$pr:Int!,$after:String){repository(owner:$owner,name:$name){pullRequest(number:$pr){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{id isResolved isOutdated comments(first:1){nodes{author{login} path line url body}}}}}}}`;
+  const query = `query($owner:String!,$name:String!,$pr:Int!,$after:String){repository(owner:$owner,name:$name){pullRequest(number:$pr){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{id isResolved isOutdated comments(first:1){nodes{author{login} path line url body originalCommit{oid}}}}}}}}`;
   const nodes: ThreadNode[] = [];
   let after: string | null = null;
   do {
@@ -284,6 +300,7 @@ function fetchThreads(ghJson: <T>(args: string[]) => T, repository: string, pr: 
     return [
       {
         id: node.id,
+        commitId: first.originalCommit?.oid ?? "",
         isResolved: node.isResolved,
         isOutdated: node.isOutdated,
         author: first.author?.login ?? "",
