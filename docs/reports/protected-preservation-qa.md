@@ -229,8 +229,10 @@ compilation):
 Review follow-up (2026-09-18, PR #324):
 
 - `src/sessions/preservationChecks.ts` now matches only executable positions
-  (the first token of each shell segment, skipping `env`/`sudo` and `NAME=value`
-  prefixes) instead of every token, so a self-contained check whose argument or
+  (the first token of each shell segment, skipping `NAME=value` prefixes and
+  launcher wrappers such as `env`/`sudo`/`nice` together with their options and
+  the values those options consume, so `sudo -u user vitest` resolves to
+  `vitest`) instead of every token, so a self-contained check whose argument or
   filename is merely named `git`, `curl`, or `vitest` is no longer refused. It
   also classifies `python -m <module>` as dependency-backed for known
   third-party modules (`pytest`, `mypy`, …) while leaving standard-library

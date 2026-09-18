@@ -49,6 +49,16 @@ const DEPENDENCY_PYTHON_MODULES = new Set([
 /** Tokens that wrap another executable, so the command follows them. */
 const LAUNCHER_TOKENS = new Set(["env", "sudo", "command", "nohup", "time", "exec", "nice", "stdbuf"]);
 
+/** Launcher options that consume the next token, so `sudo -u user vitest`
+ * resolves to `vitest` rather than to the value `user` or the flag `-u`. */
+const LAUNCHER_VALUE_OPTIONS: Record<string, Set<string>> = {
+  env: new Set(["-u", "--unset", "-C", "--chdir", "-S", "--split-string"]),
+  sudo: new Set(["-u", "--user", "-g", "--group", "-p", "--prompt", "-C", "--close-from",
+    "-h", "--host", "-r", "--role", "-t", "--type", "-U", "--other-user"]),
+  nice: new Set(["-n", "--adjustment"]),
+  stdbuf: new Set(["-i", "--input", "-o", "--output", "-e", "--error"])
+};
+
 const SHELL_SEGMENT = /(?:&&|\|\||[;&|()`\n])/;
 
 export interface PreservationCheckDependency {
@@ -92,9 +102,26 @@ function dependencyTool(command: string): string | null {
 
 function firstExecutable(tokens: string[]): string | null {
   let index = 0;
-  while (index < tokens.length &&
-    (LAUNCHER_TOKENS.has(tokens[index]) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[index]))) {
-    index += 1;
+  let launcher: string | null = null;
+  while (index < tokens.length) {
+    const token = tokens[index];
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) {
+      index += 1;
+      continue;
+    }
+    if (LAUNCHER_TOKENS.has(token)) {
+      launcher = token;
+      index += 1;
+      continue;
+    }
+    // Options belong to a launcher only until the wrapped executable appears;
+    // after that they are arguments to the executable and must not be eaten.
+    if (launcher && token.startsWith("-")) {
+      index += 1;
+      if (LAUNCHER_VALUE_OPTIONS[launcher]?.has(token) && index < tokens.length) index += 1;
+      continue;
+    }
+    break;
   }
   return tokens[index] ?? null;
 }

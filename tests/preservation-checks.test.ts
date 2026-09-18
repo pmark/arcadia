@@ -44,6 +44,15 @@ describe("preservation check dependency classification", () => {
     expect(dependencyRequiringPreservationCheck(["env FOO=bar pnpm test"])?.tool).toBe("pnpm");
   });
 
+  it("skips launcher options, including value-consuming ones, to find the executable", () => {
+    expect(dependencyRequiringPreservationCheck(["env -i npm test"])?.tool).toBe("npm");
+    expect(dependencyRequiringPreservationCheck(["sudo -u user vitest run"])?.tool).toBe("vitest");
+    expect(dependencyRequiringPreservationCheck(["nice -n 5 pnpm test"])?.tool).toBe("pnpm");
+    expect(dependencyRequiringPreservationCheck(["nice -n 5 node scripts/check.mjs"])).toBeNull();
+    expect(dependencyRequiringPreservationCheck(["env -u FOO python3 -m json.tool data.json"])).toBeNull();
+    expect(dependencyRequiringPreservationCheck(["sudo -u user python3 -m pytest tests"])?.tool).toBe("python -m pytest");
+  });
+
   it("reports the first offending command in declaration order", () => {
     const dependency = dependencyRequiringPreservationCheck(["node scripts/ok.mjs", "pnpm test", "curl https://x"]);
     expect(dependency?.command).toBe("pnpm test");
