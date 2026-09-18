@@ -1,9 +1,10 @@
-import { readFileSync, rmSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { getProjectBySlug, listActionableReviewItems, updateReviewItemStatus } from "../src/db/repositories.js";
 import { loadActionOrder } from "../src/dispatch/order.js";
+import { ensureCandidatePreservationTable } from "../src/sessions/candidatePreservation.js";
 import { DISCOVERY_LIMITS, recordDiscovery } from "../src/scheduling/discovery.js";
 import { projectScheduleToBoard, reconcileBoard, type BoardItem, type BoardStatus, type SchedulingBoard } from "../src/scheduling/github.js";
 import { buildPortfolioSchedule, buildProjectSchedule, writeProjectOrder } from "../src/scheduling/schedule.js";
@@ -424,6 +425,56 @@ describe("scheduling pass", () => {
     expect(betaBoard.order()).toEqual([101, 100]);
     const betaQueue = withReadOnlyDatabase(fx.workspace, (db) => buildProjectSchedule(db, getProjectBySlug(db, "beta")!).queue);
     expect(betaQueue).toEqual(["beta/b1", "beta/b2"]);
+  });
+
+  it("holds the pointer while the finished Action's candidate is still unmerged, and releases it once that lands", () => {
+    const fx = fixture([{ slug: "alpha", current: "a", actions: [{ id: "a" }, { id: "b" }, { id: "urgent" }] }]);
+    const repo = fx.repos.alpha!;
+
+    // The Session for `a` finished. Its completion settlement lives on the
+    // candidate branch, which has not been merged; on base, `a` still reads as
+    // unfinished and the repository lease is already released.
+    git(repo, ["checkout", "-q", "-b", "candidate/a"]);
+    writeFileSync(path.join(repo, "candidate-work.md"), "the finished Action's output\n");
+    git(repo, ["add", "candidate-work.md"]);
+    git(repo, ["commit", "-qm", "chore(arcadia): settle complete-a"]);
+    const candidateSha = git(repo, ["rev-parse", "HEAD"]).trim();
+    git(repo, ["checkout", "-q", "main"]);
+
+    withDatabase(fx.workspace, (db) => {
+      ensureCandidatePreservationTable(db);
+      db.prepare(
+        `INSERT INTO candidate_preservation_receipts (
+           id, request_id, repository_path, candidate_worktree_path, branch, base_branch, base_revision,
+           action_id, packet_sha256, policy_epoch, policy_revision, candidate_fingerprint, commit_sha,
+           preservation_state, pushed_remote, pull_request_number, pull_request_url, retry_action,
+           receipt_json, created_at
+         ) VALUES (
+           'cp_1', 'req_1', @repo, @repo, 'candidate/a', 'main', 'base', 'a', 'sha', 1, 1, 'fp', @sha,
+           'IN PR', 'origin', 42, 'https://github.com/example/repo/pull/42', NULL, '{}', '2026-09-18T10:00:00.000Z'
+         )`
+      ).run({ repo, sha: candidateSha });
+
+      // Something outranks `a`, so without the hold the scheduler would commit
+      // a pointer move to base and collide with the candidate's own settlement.
+      upsertSchedulingAction(db, "alpha/urgent", { schedulingClass: "blocker" });
+
+      const held = runSchedulingPass(db, { boardFactory: () => null, now: new Date("2026-09-18T11:00:00.000Z") });
+      expect(held.projects[0]?.pointer.moved).toBe(false);
+      expect(held.projects[0]?.pointer.reason).toContain("pull request #42");
+    });
+
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("current_action: a");
+    expect(git(repo, ["log", "-1", "--format=%s"]).trim()).toBe("initial");
+
+    // The operator merges the pull request. The hold clears itself.
+    git(repo, ["merge", "--no-ff", "-q", "candidate/a", "-m", "Merge pull request #42"]);
+
+    withDatabase(fx.workspace, (db) => {
+      const released = runSchedulingPass(db, { boardFactory: () => null, now: new Date("2026-09-18T12:00:00.000Z") });
+      expect(released.projects[0]?.pointer).toMatchObject({ moved: true, from: "a", to: "urgent" });
+    });
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("current_action: urgent");
   });
 
   it("pauses a Project and opens a Decision when the failed-Run budget is exceeded, and resumes on operator say-so", () => {

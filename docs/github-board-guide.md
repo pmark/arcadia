@@ -333,16 +333,10 @@ between status columns has no effect on Arcadia.
 
 ---
 
-## Two open questions
+## One open question
 
-These are known gaps, not yet settled. They do not stop you using the system,
-but you should know they exist.
-
-**Pointer conflicts while a pull request is open.** When a build finishes, its
-results sit in a pull request until you merge it. If Arcadia discovers a
-blocker during that window, it may record a change to the same file the pull
-request touches, which shows up as a merge conflict. Merging promptly avoids
-it.
+This is a known gap, not yet settled. It does not stop you using the system,
+but you should know it exists.
 
 **Discovered work skips the usual approval path.** Arcadia's general rule is
 that new work items are proposed to you for approval. Discovery deliberately

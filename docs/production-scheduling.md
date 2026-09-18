@@ -59,6 +59,16 @@ managed-production tick while the standing policy is Active, and on demand via
 The production tick then launches whatever the pointer names, as it always
 has. The scheduler never launches anything itself.
 
+The pointer is held, not moved, while any of these is true: the Project is
+paused, the current Action is running, a Session holds the repository lease,
+or **the current Action has a preserved candidate that has not landed on the
+base branch**. That last one covers the window after a Session exits and
+before its pull request merges. The completion settlement is already on the
+candidate branch, where it has rewritten `current_action`; moving the pointer
+in the base checkout during that window writes the same field from two places
+and collides at merge. "Landed" is the test `arcadia go` uses for an
+integrated branch, so a squash or rebase merge releases the hold too.
+
 `--project <slug>` scopes the entire pass, not just which board is read. A pass
 scoped to one Project reconciles only that Project's board and commits only
 that Project's pointer move; no other Project is read or written. That is the

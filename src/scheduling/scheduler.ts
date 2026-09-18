@@ -4,6 +4,7 @@ import { createReviewItem, getProjectBySlug, getReviewItem, listProjects } from 
 import { transitionActionPointer } from "../dispatch/pointer.js";
 import type { Project } from "../domain/types.js";
 import { getRepositoryLease } from "../sessions/index.js";
+import { findOutstandingCandidate } from "../sessions/candidatePreservation.js";
 import { createGitHubBoard, reconcileBoard, runGh, type BoardIdentity, type ReconcileResult, type SchedulingBoard } from "./github.js";
 import { buildProjectSchedule, type ProjectSchedule } from "./schedule.js";
 import { getSchedulingProject, recordSchedulingLog, upsertSchedulingProject } from "./store.js";
@@ -217,6 +218,22 @@ function alignPointer(db: Database.Database, schedule: ProjectSchedule, now: Dat
   const current = schedule.actions.find((action) => action.actionId === from);
   if (current && current.status === "running") return unchanged(`Current Action ${from} is running; the pointer moves when it finishes.`);
   if (getRepositoryLease(db, schedule.repositoryRoot)) return unchanged("A Session holds the repository lease; the pointer moves after reconciliation.");
+
+  // A finished Session leaves its completion settlement on the candidate
+  // branch, where it has already rewritten `current_action`. Until that merges,
+  // the Action still reads as unfinished here, so moving the pointer in the
+  // base checkout writes the same field twice from two places and collides at
+  // merge. The Session is gone and the lease is released by this point, so
+  // nothing above catches it; the unlanded candidate is the only signal left.
+  if (from) {
+    const outstanding = findOutstandingCandidate(db, { repositoryPath: schedule.repositoryRoot, actionId: from });
+    if (outstanding) {
+      const where = outstanding.pullRequestNumber
+        ? `pull request #${outstanding.pullRequestNumber}`
+        : `branch ${outstanding.branch} (${outstanding.preservationState})`;
+      return unchanged(`Action ${from} has an unmerged candidate in ${where}; the pointer moves once it lands.`);
+    }
+  }
 
   const requestId = `scheduler-pointer-${actionKey.replaceAll("/", "-")}-r${schedule.queueRevision}-${now.getTime()}`;
   try {
