@@ -330,6 +330,22 @@ describe("scheduling pass", () => {
     expect(git(fx.repos.alpha!, ["status", "--porcelain"]).trim()).toBe("");
   });
 
+  it("keeps a deferred Action out of the queue and off the needs-operator column", () => {
+    const fx = fixture([{ slug: "alpha", current: "a", actions: [{ id: "a" }, { id: "parked", status: "deferred" }, { id: "c" }] }]);
+    const result = schedule(fx.workspace, "alpha");
+
+    // A deferral is an answered Decision, not a pending question. Showing it as
+    // "needs operator" would contradict the one column that means Arcadia is
+    // actually waiting on someone.
+    const parked = result.actions.find((action) => action.actionId === "parked");
+    expect(parked?.status).toBe("deferred");
+    expect(parked?.reason).toMatch(/deferred/i);
+    expect(result.queue).toEqual(["alpha/a", "alpha/c"]);
+    expect(result.backlog).toEqual(["alpha/parked"]);
+    expect(result.next).toBe("alpha/a");
+    expect(result.actions.filter((action) => action.status === "needs_operator")).toEqual([]);
+  });
+
   it("leaves a settled board alone between polls, and reads it at once when the queue moves", () => {
     const fx = fixture([{ slug: "alpha", current: "a", actions: [{ id: "a" }, { id: "b" }] }]);
     const board = new FakeBoard();

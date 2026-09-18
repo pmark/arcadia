@@ -39,7 +39,7 @@ is `ready`. Statuses are derived from the documents and live Sessions:
 | `blocked` | An unfinished dependency, or externally blocked |
 | `needs_operator` | Open question, review required, unresolved Decision, or the Project is paused |
 | `done` | The Plan records it done |
-| `deferred` | Follow-up; backlog |
+| `deferred` | Follow-up, or parked by an answered `defer` Decision; backlog either way, never queued |
 
 Across Projects, `arcadia schedule prioritize --order a b c` sets one ordered
 list. The scheduler scans it and the first Project with runnable work is

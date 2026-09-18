@@ -188,7 +188,10 @@ export function buildProjectSchedule(db: Database.Database, project: Project): P
     };
   });
 
-  base.queue = canonicalOrder(orderCandidates(base.actions));
+  // Deferred Actions leave the queue entirely. Anything depending on one stays
+  // blocked through `resolveActionReadiness`, which treats an unfinished
+  // dependency as unmet whether it is deferred or merely not started.
+  base.queue = canonicalOrder(orderCandidates(base.actions.filter((action) => action.status !== "deferred")));
   base.backlog = base.actions.filter((action) => action.status === "deferred").map((action) => action.key);
   const byKey = new Map(base.actions.map((action) => [action.key, action]));
   base.next = record.pausedReason
@@ -206,6 +209,12 @@ function deriveStatus(
   pausedReason: string | null
 ): { status: ScheduleStatus; reason: string } {
   if (action.status === "done") return { status: "done", reason: "The Plan records this Action as done." };
+  // An answered Decision parked this Action against a reviving condition. It is
+  // settled, not pending, so it belongs in the backlog rather than in the column
+  // that means "Arcadia needs an answer from you".
+  if (action.status === "deferred") {
+    return { status: "deferred", reason: "An answered Decision deferred this Action; it revives on its named condition." };
+  }
   if (schedulingClass === "follow_up") return { status: "deferred", reason: "Follow-up work waits in the backlog and never enters the active queue." };
   if (runningActionIds.has(action.id)) return { status: "running", reason: "A live Session holds this Action." };
   if (action.responsibility === "requires_review") return { status: "needs_operator", reason: "The Action requires operator review." };
@@ -213,6 +222,11 @@ function deriveStatus(
   if (action.clarification === "question_open") return { status: "needs_operator", reason: action.question ?? "The Action has an open clarification question." };
   const readiness = resolveActionReadiness(repositoryRoot, projectSlug, action.id);
   if (readiness.operatorQuestion) return { status: "needs_operator", reason: readiness.operatorQuestion };
+  // An approved `defer` Decision parks its Action at read time, before the
+  // consequence is written into the Plan, so it arrives only as a readiness
+  // blocker against the Action's own status field.
+  const deferral = readiness.blockers.find((blocker) => blocker.field.endsWith(".status") && blocker.message.includes("is deferred"));
+  if (deferral) return { status: "deferred", reason: deferral.message };
   const dependencyBlocker = readiness.blockers.find((blocker) => blocker.field.includes("depends_on") || /depends on/i.test(blocker.message));
   if (dependencyBlocker) return { status: "blocked", reason: dependencyBlocker.message };
   if (readiness.blockers.length > 0) return { status: "needs_operator", reason: readiness.blockers[0]!.message };

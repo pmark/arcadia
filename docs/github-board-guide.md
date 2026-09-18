@@ -147,7 +147,7 @@ Six statuses. Each answers "why is this card not being worked on right now?"
 | **Blocked** | Waiting on another Action to finish. | Nothing. It will clear itself. |
 | **Needs operator** | Arcadia is stuck and needs you. | Read the reason, answer it. |
 | **Done** | The Plan records it finished. | Nothing. |
-| **Backlog** | Recorded, not scheduled. | Promote it when it matters. |
+| **Backlog** | Recorded, not scheduled. Includes work you deferred by answering a Decision. | Promote it when it matters. |
 
 **Needs operator is the only status that is actually asking you for something.**
 If nothing is in that column, Arcadia does not need you.

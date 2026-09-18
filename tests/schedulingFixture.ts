@@ -18,7 +18,7 @@ import { initWorkspace } from "../src/workspace/initWorkspace.js";
 export interface ActionSpec {
   id: string;
   dependsOn?: string[];
-  status?: "open" | "done";
+  status?: "open" | "done" | "deferred";
 }
 
 export interface ProjectSpec {
