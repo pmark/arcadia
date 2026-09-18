@@ -7,7 +7,9 @@ import { buildIngressServicePlist } from "../src/commands/ingressService.js";
 import { runIngressRecoverCommand } from "../src/commands/ingress.js";
 import {
   auditArcadiaLaunchAgents,
+  duplicateWorkerWarning,
   evaluateLaunchAgent,
+  flagDuplicateWorkspaces,
   launchAgentOwner,
   launchAgentRemedy
 } from "../src/runtime/launchAgents.js";
@@ -46,6 +48,24 @@ describe("generated launch agents run under the pinned runtime", () => {
     expect(plist).toContain(miseLeadingPath("/opt/homebrew/bin/mise", "/Users/example"));
     expect(plist).not.toContain("node_modules/.bin/tsx");
     expect(plist).not.toContain(process.execPath);
+  });
+
+  it("restarts the worker only on a crash, so a benign already-running exit does not loop", () => {
+    // A bare `KeepAlive` <true/> restarts the job on a clean exit too. The
+    // benign "a worker already holds this workspace" path then respawns forever
+    // and writes each refusal into the project's own worker.log (issue #303).
+    const plist = buildWorkerPlist({
+      workspacePath: "/tmp/ws",
+      repositoryRoot: "/repo",
+      miseBin: "/opt/homebrew/bin/mise",
+      logPath: "/tmp/ws/worker.log",
+      home: "/Users/example"
+    });
+
+    expect(plist).toContain("<key>KeepAlive</key>");
+    expect(plist).toContain("<key>SuccessfulExit</key>");
+    expect(plist).toContain("<false/>");
+    expect(plist).not.toMatch(/<key>KeepAlive<\/key>\s*<true\/>/);
   });
 
   it("routes the ingress agent through mise", () => {
@@ -147,6 +167,94 @@ describe("generated launch agents run under the pinned runtime", () => {
     expect(launchAgentOwner("com.arcadia.local.742852621.worker")).toBe("unmanaged");
     expect(launchAgentRemedy("com.arcadia.local.742852621.worker")).not.toContain("arcadia worker install");
     expect(launchAgentRemedy("com.arcadia.local.742852621.worker")).toContain("second agent");
+  });
+
+  // Issue #303: two agents targeting one workspace is what made the crash loop
+  // possible, and nothing detected it before starting.
+  const workerInvocation = (workspace: string) => ({
+    argv: ["/opt/homebrew/bin/mise", "-C", "/repo", "exec", "--", "node", "tsx", "cli", "worker", "start", "--workspace", workspace],
+    pathValue: "/opt/homebrew/bin:/usr/bin"
+  });
+  const ingressInvocation = (workspace: string) => ({
+    argv: ["/opt/homebrew/bin/mise", "-C", "/repo", "exec", "--", "node", "tsx", "cli", "ingress", "service", "run", "--workspace", workspace],
+    pathValue: "/opt/homebrew/bin:/usr/bin"
+  });
+
+  it("flags two installed worker agents that resolve to the same workspace", () => {
+    const canonical = evaluateLaunchAgent(
+      "com.arcadia.worker", "/agents/com.arcadia.worker.plist", workerInvocation("/ws/martianrover")
+    );
+    const local = evaluateLaunchAgent(
+      "com.arcadia.local.742852621.worker", "/agents/com.arcadia.local.742852621.worker.plist", workerInvocation("/ws/martianrover")
+    );
+
+    const flagged = flagDuplicateWorkspaces([canonical, local]);
+    const byLabel = Object.fromEntries(flagged.map((agent) => [agent.label, agent]));
+
+    expect(byLabel["com.arcadia.worker"]?.duplicateLabels).toEqual(["com.arcadia.local.742852621.worker"]);
+    expect(byLabel["com.arcadia.local.742852621.worker"]?.duplicateLabels).toEqual(["com.arcadia.worker"]);
+    for (const agent of flagged) {
+      // The remedy must remove an agent by label; a reinstall cannot replace a
+      // differently-labelled agent and would leave a third one running.
+      expect(agent.remedy).toContain("launchctl bootout");
+      expect(agent.remedy).not.toContain("arcadia worker install");
+    }
+  });
+
+  it("does not flag a worker and an ingress service that share a workspace", () => {
+    const agents = [
+      evaluateLaunchAgent("com.arcadia.worker", "/agents/com.arcadia.worker.plist", workerInvocation("/ws/martianrover")),
+      evaluateLaunchAgent("com.arcadia.ingress.iCloudIdeas", "/agents/com.arcadia.ingress.iCloudIdeas.plist", ingressInvocation("/ws/martianrover"))
+    ];
+
+    expect(flagDuplicateWorkspaces(agents).every((agent) => agent.duplicateLabels.length === 0)).toBe(true);
+  });
+
+  it("leaves a lone worker, and a worker on a different workspace, unflagged", () => {
+    const agents = [
+      evaluateLaunchAgent("com.arcadia.worker", "/agents/com.arcadia.worker.plist", workerInvocation("/ws/one")),
+      evaluateLaunchAgent("com.arcadia.local.9.worker", "/agents/com.arcadia.local.9.worker.plist", workerInvocation("/ws/two"))
+    ];
+
+    expect(flagDuplicateWorkspaces(agents).every((agent) => agent.duplicateLabels.length === 0)).toBe(true);
+  });
+
+  it("warns install when another worker agent already serves the workspace", () => {
+    const agents = flagDuplicateWorkspaces([
+      evaluateLaunchAgent("com.arcadia.worker", "/agents/com.arcadia.worker.plist", workerInvocation("/ws/martianrover")),
+      evaluateLaunchAgent("com.arcadia.local.742852621.worker", "/agents/com.arcadia.local.742852621.worker.plist", workerInvocation("/ws/martianrover"))
+    ]);
+
+    const warning = duplicateWorkerWarning(agents, "/ws/martianrover");
+    expect(warning).toContain("com.arcadia.worker");
+    expect(warning).toContain("com.arcadia.local.742852621.worker");
+    expect(warning).toContain("launchctl bootout");
+    expect(duplicateWorkerWarning(agents, "/ws/somewhere-else")).toBeNull();
+  });
+
+  it.runIf(process.platform === "darwin")("reports duplicate workspaces through the on-disk audit", () => {
+    const home = temporary("arcadia-agents-dup-");
+    const agents = path.join(home, "Library", "LaunchAgents");
+    mkdirSync(agents, { recursive: true });
+
+    const workerPlist = (label: string) => `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${label}</string>
+  <key>ProgramArguments</key><array><string>/opt/homebrew/bin/mise</string><string>-C</string><string>/repo</string><string>exec</string><string>--</string><string>node</string><string>/repo/src/cli.ts</string><string>worker</string><string>start</string><string>--workspace</string><string>/ws/martianrover</string></array>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>/opt/homebrew/bin:/usr/bin</string></dict>
+</dict>
+</plist>`;
+
+    writeFileSync(path.join(agents, "com.arcadia.worker.plist"), workerPlist("com.arcadia.worker"), "utf8");
+    writeFileSync(path.join(agents, "com.arcadia.local.742852621.worker.plist"),
+      workerPlist("com.arcadia.local.742852621.worker"), "utf8");
+
+    const result = auditArcadiaLaunchAgents(home);
+
+    expect(result.counts.duplicate).toBe(2);
+    expect(result.agents.every((agent) => agent.duplicateLabels.length === 1)).toBe(true);
   });
 });
 

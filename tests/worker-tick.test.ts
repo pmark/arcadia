@@ -1,10 +1,11 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createWorkerTick } from "../src/commands/worker.js";
+import { createWorkerTick, decideWorkerStart } from "../src/commands/worker.js";
 import { openDatabase } from "../src/db/connection.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { runCli } from "./cli-response-fixture.js";
 
 const temporary: string[] = [];
 
@@ -19,6 +20,31 @@ function workspace(): { root: string; logfile: string } {
   mkdirSync(path.join(root, ".arcadia"), { recursive: true });
   return { root, logfile: path.join(root, ".arcadia", "worker.log") };
 }
+
+describe("worker start already-running guard", () => {
+  it("starts when no live worker owns the pidfile", () => {
+    expect(decideWorkerStart(null, () => true)).toEqual({ action: "start", pid: null });
+    expect(decideWorkerStart(4242, () => false)).toEqual({ action: "start", pid: null });
+  });
+
+  it("treats a live pidfile holder as already running rather than a failure", () => {
+    expect(decideWorkerStart(4242, () => true)).toEqual({ action: "already-running", pid: 4242 });
+  });
+
+  // Issue #303: exiting 1 here is what turned the benign path into a launchd
+  // crash loop. The guard must exit 0, and the CLI-level test proves the exit
+  // code rather than only the decision that precedes it.
+  it("exits 0 from the CLI when another worker already holds the workspace pidfile", () => {
+    const { root } = workspace();
+    writeFileSync(path.join(root, ".arcadia", "worker.pid"), String(process.pid), "utf8");
+
+    const result = runCli(["worker", "start", "--workspace", root]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain("already running");
+    expect(result.stdout).toContain("already running");
+  });
+});
 
 describe("createWorkerTick", () => {
   it("logs a transient SQLITE_BUSY from opening the database and schedules the next tick instead of exiting", () => {

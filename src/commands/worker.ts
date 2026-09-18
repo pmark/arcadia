@@ -32,6 +32,7 @@ import { runManagedProductionTick } from "../production/tick.js";
 import { createId } from "../utils/id.js";
 
 import { processPreservationRequests, refreshPreservationHeartbeat } from "../sessions/preservationTransport.js";
+import { auditArcadiaLaunchAgents, duplicateWorkerWarning } from "../runtime/launchAgents.js";
 
 const POLL_INTERVAL_MS = 2_000;
 
@@ -152,15 +153,42 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
   return tick;
 }
 
+export interface WorkerStartDecision {
+  action: "start" | "already-running";
+  pid: number | null;
+}
+
+/**
+ * Whether this process may own the workspace, or a live worker already does.
+ *
+ * The already-running path is benign, not a failure: it is exactly what a
+ * second launch agent for one workspace hits on every run. Reporting it as an
+ * error is what made a `KeepAlive` agent respawn forever and write the refusal
+ * into `.arcadia/worker.log` (GitHub issue #303). Keeping the decision separate
+ * from the exit code lets a test prove the benign path without spawning one.
+ */
+export function decideWorkerStart(
+  existingPid: number | null,
+  isAlive: (pid: number) => boolean
+): WorkerStartDecision {
+  if (existingPid !== null && existingPid > 0 && isAlive(existingPid)) {
+    return { action: "already-running", pid: existingPid };
+  }
+  return { action: "start", pid: null };
+}
+
 export function runWorkerStartCommand(options: WorkerOptions): never {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const dir = arcadiaDir(workspacePath);
   mkdirSync(dir, { recursive: true });
 
-  const existing = readPid(workspacePath);
-  if (existing && isProcessAlive(existing)) {
-    process.stderr.write(`Worker already running (PID ${existing}).\n`);
-    process.exit(1);
+  const decision = decideWorkerStart(readPid(workspacePath), isProcessAlive);
+  if (decision.action === "already-running") {
+    // Exit 0, not 1: a non-zero status is what launchd reads as a crash. Paired
+    // with KeepAlive SuccessfulExit false below, a clean exit leaves the agent
+    // stopped instead of respawning it against a supervisor that already won.
+    process.stdout.write(`Worker already running (PID ${decision.pid}); leaving it in place.\n`);
+    process.exit(0);
   }
 
   const logfile = logPath(workspacePath);
@@ -441,6 +469,12 @@ export const WORKER_PLIST_LABEL = "com.arcadia.worker";
  * installer's own `PATH` into the plist, which meant the worker ran forever
  * under whichever Node happened to be active the day someone typed
  * `arcadia worker install`.
+ *
+ * `KeepAlive` is a dictionary with `SuccessfulExit: false`, not a bare `true`:
+ * launchd restarts the job only when it exits non-zero. A bare `true` respawns
+ * on a clean exit too, so a second agent on a workspace whose pidfile is
+ * already held looped forever writing the refusal into `worker.log`
+ * (GitHub issue #303).
  */
 export function buildWorkerPlist(input: WorkerPlistInput): string {
   const { workspacePath, repositoryRoot, miseBin, logPath: logFile } = input;
@@ -468,7 +502,10 @@ ${[...miseNodeArgv(miseBin, repositoryRoot), tsxBin, cliPath, "worker", "start",
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
-  <true/>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
   <key>StandardOutPath</key>
   <string>${xmlEscape(logFile)}</string>
   <key>StandardErrorPath</key>
@@ -508,6 +545,23 @@ export function runWorkerInstallCommand(options: WorkerOptions): void {
     process.stdout.write(`Worker installed and started via launchd.\nPlist: ${plistPath}\n`);
   } catch {
     process.stdout.write(`Plist written to ${plistPath}. Run: launchctl load "${plistPath}"\n`);
+  }
+
+  warnOnDuplicateWorkers(workspacePath);
+}
+
+/**
+ * Installing a worker cannot replace an agent carrying a different label, so a
+ * machine that already has one gets a second worker beside it rather than a
+ * repaired one. Say so, once, at the moment it happens.
+ */
+function warnOnDuplicateWorkers(workspacePath: string): void {
+  try {
+    const warning = duplicateWorkerWarning(auditArcadiaLaunchAgents().agents, workspacePath);
+    if (warning) process.stdout.write(`${warning}\n`);
+  } catch {
+    // An unreadable plist or a missing LaunchAgents directory must not fail an
+    // install that already succeeded.
   }
 }
 

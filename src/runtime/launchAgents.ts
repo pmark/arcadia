@@ -51,6 +51,61 @@ export function launchAgentRemedy(label: string): string {
   }
 }
 
+/**
+ * What an installed agent actually runs, read from its ProgramArguments.
+ *
+ * Only a worker competes for a workspace's pidfile, and only a worker is the
+ * agent issue #303 found crash-looping. An ingress service shares a workspace
+ * by design -- one per source -- so the role is part of the duplicate test
+ * rather than an assumption that one workspace means one agent.
+ */
+export type LaunchAgentRole = "worker" | "ingress-service" | "other";
+
+export function launchAgentRole(label: string, argv: string[]): LaunchAgentRole {
+  if (argv.includes("worker") && argv.includes("start")) return "worker";
+  // A label ending in `.worker` is the naming convention every worker installer
+  // follows, including ones no Arcadia installer owns. It catches an agent
+  // whose argv cannot be classified by command tokens alone.
+  if (label.endsWith(".worker")) return "worker";
+  if (argv.includes("ingress") && argv.includes("service") && argv.includes("run")) return "ingress-service";
+  return "other";
+}
+
+/**
+ * The workspace an agent serves, from its `--workspace <path>` argument.
+ *
+ * Both installer families pass it explicitly. A plist that omits it cannot be
+ * grouped, so it is left alone rather than guessed at from its label.
+ */
+export function launchAgentWorkspace(argv: string[]): string | null {
+  for (let index = 0; index < argv.length - 1; index += 1) {
+    if (argv[index] !== "--workspace") continue;
+    const value = argv[index + 1];
+    if (value && !value.startsWith("-")) return value;
+  }
+  return null;
+}
+
+/**
+ * The fix for two worker agents on one workspace.
+ *
+ * It must not be a reinstall: launchd keys agents by label, so `arcadia worker
+ * install` only ever replaces `com.arcadia.worker` and adds a third agent
+ * beside any other. Removing one by label is the only remediation that shrinks
+ * the set.
+ */
+export function duplicateWorkerRemedy(label: string, others: string[]): string {
+  const listed = others.join(", ");
+  if (launchAgentOwner(label) === "worker") {
+    const remove = others[0] ?? "<other-label>";
+    return `This is the Arcadia-installed worker, but ${listed} also serves the same workspace. `
+      + `Keep this one and remove ${remove}: launchctl bootout gui/$(id -u)/${remove}, then delete its plist.`;
+  }
+  return `No Arcadia installer owns this label, and ${listed} already serves the same workspace. `
+    + `Remove this one: launchctl bootout gui/$(id -u)/${label}, then delete its plist. `
+    + "Reinstalling would only add a third agent.";
+}
+
 export interface LaunchAgentAudit {
   label: string;
   plistPath: string;
@@ -63,25 +118,31 @@ export interface LaunchAgentAudit {
   /** The first PATH entry, which decides what a bare `node` resolves to. */
   pathHead: string | null;
   detail: string;
+  /** The workspace named by `--workspace`, when the plist has one. */
+  workspace: string | null;
+  role: LaunchAgentRole;
+  /**
+   * Labels of other installed worker agents that serve the same workspace.
+   * Issue #303: this is the condition that made one agent spam the log forever
+   * because nothing checked for it before starting.
+   */
+  duplicateLabels: string[];
 }
 
 export interface LaunchAgentAuditResult {
   directory: string;
   agents: LaunchAgentAudit[];
-  counts: { pinned: number; unpinned: number; unreadable: number };
+  counts: { pinned: number; unpinned: number; unreadable: number; duplicate: number };
 }
 
 export function auditArcadiaLaunchAgents(home = homedir()): LaunchAgentAuditResult {
   const directory = path.join(home, "Library", "LaunchAgents");
-  const agents: LaunchAgentAudit[] = [];
 
   const entries = existsSync(directory)
     ? readdirSync(directory).filter((name) => name.startsWith("com.arcadia.") && name.endsWith(".plist")).sort()
     : [];
 
-  for (const name of entries) {
-    agents.push(auditOne(path.join(directory, name)));
-  }
+  const agents = flagDuplicateWorkspaces(entries.map((name) => auditOne(path.join(directory, name))));
 
   return {
     directory,
@@ -89,9 +150,62 @@ export function auditArcadiaLaunchAgents(home = homedir()): LaunchAgentAuditResu
     counts: {
       pinned: agents.filter((agent) => agent.verdict === "pinned").length,
       unpinned: agents.filter((agent) => agent.verdict === "unpinned").length,
-      unreadable: agents.filter((agent) => agent.verdict === "unreadable").length
+      unreadable: agents.filter((agent) => agent.verdict === "unreadable").length,
+      duplicate: agents.filter((agent) => agent.duplicateLabels.length > 0).length
     }
   };
+}
+
+/**
+ * Mark every worker agent that shares its workspace with another worker.
+ *
+ * Pure so the rule can be tested without `plutil` or a real LaunchAgents
+ * directory, and so `arcadia worker install` can reuse it to notice a duplicate
+ * at the moment it is created.
+ */
+export function flagDuplicateWorkspaces(agents: LaunchAgentAudit[]): LaunchAgentAudit[] {
+  const byWorkspace = new Map<string, LaunchAgentAudit[]>();
+  for (const agent of agents) {
+    if (agent.role !== "worker" || agent.workspace === null) continue;
+    const group = byWorkspace.get(agent.workspace) ?? [];
+    group.push(agent);
+    byWorkspace.set(agent.workspace, group);
+  }
+
+  const othersByLabel = new Map<string, string[]>();
+  for (const group of byWorkspace.values()) {
+    if (group.length < 2) continue;
+    for (const agent of group) {
+      othersByLabel.set(agent.label, group.filter((other) => other.label !== agent.label).map((other) => other.label));
+    }
+  }
+  if (othersByLabel.size === 0) return agents;
+
+  return agents.map((agent) => {
+    const others = othersByLabel.get(agent.label);
+    if (!others) return agent;
+    return {
+      ...agent,
+      duplicateLabels: others,
+      remedy: duplicateWorkerRemedy(agent.label, others),
+      detail: `${others.length + 1} installed worker agents serve ${agent.workspace}. ${agent.detail}`
+    };
+  });
+}
+
+/**
+ * A one-line warning for `arcadia worker install` when the workspace it just
+ * installed for already has another worker agent. Null on the ordinary,
+ * unambiguous machine.
+ */
+export function duplicateWorkerWarning(agents: LaunchAgentAudit[], workspace: string): string | null {
+  const duplicates = agents.filter((agent) => agent.workspace === workspace && agent.duplicateLabels.length > 0);
+  if (duplicates.length === 0) return null;
+  const labels = [...new Set(duplicates.flatMap((agent) => [agent.label, ...agent.duplicateLabels]))].sort();
+  return `Warning: ${labels.length} worker launch agents serve ${workspace} (${labels.join(", ")}). `
+    + "Only one can hold the workspace pidfile; the others return without work. "
+    + "Remove the extras: launchctl bootout gui/$(id -u)/<label>, then delete their plists. "
+    + "Reinstalling cannot replace an agent with a different label.";
 }
 
 /**
@@ -116,7 +230,10 @@ export function evaluateLaunchAgent(
     label,
     plistPath,
     owner: launchAgentOwner(label),
-    remedy: launchAgentRemedy(label)
+    remedy: launchAgentRemedy(label),
+    workspace: invocation === null ? null : launchAgentWorkspace(invocation.argv),
+    role: invocation === null ? ("other" as LaunchAgentRole) : launchAgentRole(label, invocation.argv),
+    duplicateLabels: [] as string[]
   };
 
   if (invocation === null) {
