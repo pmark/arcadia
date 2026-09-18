@@ -5,6 +5,7 @@ import { getRepositoryLease, getActiveWorktreeReservation } from "./index.js";
 import { assertManualPreservationBinding } from "./manualPreservation.js";
 import type { ManualPreservationBinding } from "./manualPreservation.js";
 import { preservationAuthority } from "./preservationValidation.js";
+import { dependencyRequiringPreservationCheck, PRESERVATION_DEPENDENCY_CODE } from "./preservationChecks.js";
 
 export interface PreservationReadiness {
   kind: "managed_session" | "manual_handoff";
@@ -23,8 +24,20 @@ export function readPreservationReadiness(db: Database.Database, input: {
   worktree: string;
   projectSlug: string;
 }): PreservationReadiness {
+  const project = getProjectBySlug(db, input.projectSlug);
+  const commands = project ? getProjectMetadata(db, project.id)?.validation_commands : null;
+  let checks: unknown;
+  try { checks = commands ? JSON.parse(commands) : null; } catch { checks = null; }
+  const dependency = Array.isArray(checks)
+    ? dependencyRequiringPreservationCheck(checks.filter((c): c is string => typeof c === "string"))
+    : null;
+  const dependencyBlocker = dependency ? { code: PRESERVATION_DEPENDENCY_CODE, reason: dependency.remedy } : null;
+
   const lease = getRepositoryLease(db, input.repository);
   if (lease && samePath(lease.worktree_path, input.worktree)) {
+    if (dependencyBlocker) {
+      return { kind: "managed_session", ready: false, sessionId: lease.id, blockers: [dependencyBlocker] };
+    }
     try {
       preservationAuthority(db, input.workspace, lease);
       return { kind: "managed_session", ready: true, sessionId: lease.id, blockers: [] };
@@ -44,7 +57,9 @@ export function readPreservationReadiness(db: Database.Database, input: {
       if (row) {
         try {
           assertManualPreservationBinding(db, JSON.parse(row.binding_json) as ManualPreservationBinding);
-          return { kind: "manual_handoff", ready: true, sessionId: null, blockers: [], operatorDecisionRequired: false };
+          if (!dependencyBlocker) {
+            return { kind: "manual_handoff", ready: true, sessionId: null, blockers: [], operatorDecisionRequired: false };
+          }
         } catch (error) {
           blockers.push({ code: "manual_binding_changed", reason: error instanceof Error ? error.message : String(error) });
         }
@@ -52,11 +67,8 @@ export function readPreservationReadiness(db: Database.Database, input: {
     }
   }
   if (lease) blockers.push({ code: "different_session_worktree", reason: `The existing Session ${lease.id} belongs to another worktree.` });
-  const project = getProjectBySlug(db, input.projectSlug);
-  const commands = project ? getProjectMetadata(db, project.id)?.validation_commands : null;
-  let checks: unknown;
-  try { checks = commands ? JSON.parse(commands) : null; } catch { checks = null; }
-  if (!Array.isArray(checks) || checks.length === 0) blockers.push({ code: "validation_commands_missing",
+  if (dependencyBlocker) blockers.push(dependencyBlocker);
+  else if (!Array.isArray(checks) || checks.length === 0) blockers.push({ code: "validation_commands_missing",
     reason: "The Project has no configured preservation validation commands. A planning packet alone cannot make preservation ready." });
   return { kind: "manual_handoff", ready: false, sessionId: null, blockers, operatorDecisionRequired: false };
 }

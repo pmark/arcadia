@@ -105,6 +105,18 @@ describe("manual Go preservation binding", () => {
     expect(result.data.preservation).toMatchObject({ ready: false, operatorDecisionRequired: false,
       blockers: expect.arrayContaining([expect.objectContaining({ code: "validation_commands_missing" })]) });
   });
+  it("names the dependency remedy instead of reporting a runnable readiness", () => {
+    const f = fixture();
+    withDatabase(f.workspace, db => db.prepare("UPDATE project_metadata SET validation_commands = '[\"pnpm test\"]'").run());
+    expect(() => bind(f)).toThrow(/needs installed dependencies/);
+    const result = runGoCommand({ repo: f.repo, apply: true, agent: "codex", workspace: f.workspace,
+      agentWorktreeRoot: path.join(f.root, "handoffs") });
+    expect(result.data.preservation).toMatchObject({ ready: false, operatorDecisionRequired: false,
+      blockers: expect.arrayContaining([
+        expect.objectContaining({ code: "validation_requires_dependencies" }),
+        expect.objectContaining({ code: "manual_binding_failed" })
+      ]) });
+  });
   it("refuses changed check definitions and changed Action authority", () => {
     const f = fixture(); const binding = bind(f);
     withDatabase(f.workspace, db => {

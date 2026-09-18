@@ -861,7 +861,7 @@ actions:
     references: ["src/production/tick.ts", "MISSION_LOG.md", "src/dashboard/snapshot.ts", "src/activity/report.ts", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md"]
   - id: preserve-projects-with-dependencies
     title: Preservation can validate a Project whose declared objective checks need installed dependencies, or Arcadia declares a genuine self-contained objective check, with the sandbox boundary and the operator remedy made explicit.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Preservation can validate a Project whose declared objective checks need installed dependencies, or Arcadia declares a genuine self-contained objective check, with the sandbox boundary and the operator remedy made explicit.
@@ -1128,7 +1128,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: preserve-projects-with-dependencies
+current_action: prove-zero-prompt-production-loop
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

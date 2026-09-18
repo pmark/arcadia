@@ -987,9 +987,18 @@ commits that exact tested tree. Candidate changes or changed authority refuse.
 The bounded initial path requires `/usr/bin/python3` and `/usr/bin/sandbox-exec`,
 regular files totaling at most 64 MiB, and self-contained checks using available
 local tools. Source writes, network access, symlinks/submodules and undeclared
-checks fail closed. Checks may write temporary output only beneath `$TMPDIR`;
-a check that needs dependency installation or in-tree build output needs an
-explicitly configured compatible command before requesting preservation.
+checks fail closed. Checks may write temporary output only beneath `$TMPDIR`.
+
+A declared check that needs installed dependencies (`pnpm test`, a binary from
+`node_modules/.bin`, a network tool) cannot run in that sandbox. `go`, `advance`
+and `go-broker status` refuse it with a named `validation_requires_dependencies`
+remedy instead of reporting readiness and then failing, and that remedy names a
+self-contained substitute. Arcadia itself declares
+`node scripts/preservation-self-check.mjs`, a tracked, dependency-free check of
+the immutable tree (required control documents, parseable JSON, no merge-conflict
+markers, resolvable relative imports). The full suite and builds remain the
+Action-completion and PR-QA gate outside the sandbox; host-side dependency-aware
+validation is separate governed work (`preserve-on-exit-and-integrate`).
 
 Passing checks prove those checks passed. Preservation does not accept,
 integrate, complete, or advance the Action. Remote preservation still requires

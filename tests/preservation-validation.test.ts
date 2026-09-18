@@ -26,6 +26,14 @@ describe("preservation authority and content", () => {
       expect(() => preservationAuthority(db, f.workspace, f.lease)).toThrow(/no longer approved/);
     });
   });
+  it("refuses a dependency-requiring check with the named remedy before executing it", () => {
+    const f = fixture();
+    withDatabase(f.workspace, db => {
+      db.prepare("UPDATE project_metadata SET validation_commands = ? WHERE project_id = ?").run('["pnpm test"]', f.lease.project_id);
+      expect(() => preservationAuthority(db, f.workspace, f.lease)).toThrow(/needs installed dependencies/);
+      expect(() => validatePreservationCandidate(db, f.workspace, f.lease)).toThrow(/needs installed dependencies/);
+    });
+  });
   it("exports exact Git bytes despite export attributes, excludes transport and refuses symlink escapes", () => {
     const f = fixture(); const destination = mkdtempSync(path.join(f.root, "snapshot-"));
     writeFileSync(path.join(f.candidate, ".gitattributes"), "marker.txt export-ignore\n");
