@@ -431,8 +431,11 @@ a Decision. `schedule resume --project <slug> --reason ...` continues it, and
 refuses while that Decision is unanswered — answer it with `arcadia review
 approve <id>` or `arcadia review reject <id>` first, because skipping that
 judgment is the one thing the pause exists to prevent.
-[`docs/production-scheduling.md`](docs/production-scheduling.md) has the
-full rule set and what was deliberately not built.
+[`docs/github-board-guide.md`](docs/github-board-guide.md) is the
+project-manager guide to running production from the board: setup, what each
+status means, what dragging can and cannot do, and what Arcadia does when it
+finds work mid-build. [`docs/production-scheduling.md`](docs/production-scheduling.md)
+has the full rule set and what was deliberately not built.
 
 Apply is refused when the queue revision, Git worktree, managed documents, or
 preview fingerprint changed. Arcadia re-resolves dispatch from the edited
