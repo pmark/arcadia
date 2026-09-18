@@ -56,7 +56,7 @@ export function collectNarrativeEvidence(
   windowDays: number,
   subjectsPerProject = 12
 ): NowNarrativeEvidence {
-  const projects = listProjects(db);
+  const projects = listProjects(db).filter((candidate) => candidate.status === "active");
   const perProject = brief.attention.slices
     .filter((slice) => slice.commits > 0)
     .map((slice) => {
@@ -71,7 +71,7 @@ export function collectNarrativeEvidence(
 
   return {
     target: brief.target.text,
-    targetProject: brief.target.projectName,
+    targetProject: brief.target.paused ? null : brief.target.projectName,
     gatesDone: brief.distance.done,
     gatesRemaining: brief.distance.remaining,
     gatesStillOpen: brief.gates.filter((gate) => gate.status !== "done").slice(0, 5).map((gate) => gate.title),

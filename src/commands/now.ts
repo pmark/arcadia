@@ -103,7 +103,7 @@ export function renderNowSuccess(response: CommandSuccess<NowCommandData>): stri
   lines.push(wrap(brief.drift.line));
   lines.push("");
 
-  lines.push("DO THIS NOW");
+  lines.push(brief.theOneThing.kind === "target_paused" ? "TARGET PAUSED" : "DO THIS NOW");
   lines.push(`  ${wrap(brief.theOneThing.doThis, 2)}`.trimEnd());
   lines.push(`  → ${brief.theOneThing.unlocks}`);
 

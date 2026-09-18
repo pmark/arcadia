@@ -45,10 +45,12 @@ export function reportWayDrift(db: Database.Database): WayDriftReport[] {
   const canonicalConstitution = readAdoptedConstitution();
   const canonicalProtocolSource = readAdoptedFile(CONTINUATION_PROTOCOL_FILE);
 
-  return listProjects(db).map((project) => {
-    const repoPath = getProjectMetadata(db, project.id)?.repo_path?.trim() || null;
-    return buildDriftReport(project, repoPath, canonicalConstitution, canonicalProtocolSource);
-  });
+  return listProjects(db)
+    .filter((project) => project.status === "active")
+    .map((project) => {
+      const repoPath = getProjectMetadata(db, project.id)?.repo_path?.trim() || null;
+      return buildDriftReport(project, repoPath, canonicalConstitution, canonicalProtocolSource);
+    });
 }
 
 function buildDriftReport(

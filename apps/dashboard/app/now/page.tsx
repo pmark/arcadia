@@ -423,7 +423,7 @@ function UndeclaredTarget({ one, warnings }: { one: TheOneThing; warnings: strin
         Distance is undefined without a finish line, so every other number on this screen would be theatre.
       </p>
       <section className="grid gap-3 rounded-lg bg-ink p-5 text-white shadow-soft">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/60">Do this now</span>
+      <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/60">{one.kind === "target_paused" ? "Target paused" : "Do this now"}</span>
         <p className="text-[20px] font-semibold leading-[1.25]">{one.doThis}</p>
         <p className="text-sm text-white/70">→ {one.unlocks}</p>
       </section>

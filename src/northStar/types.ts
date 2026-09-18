@@ -73,7 +73,7 @@ export interface ResolvedGate extends NorthStarGate {
  * choices is a screen that gets closed.
  */
 export interface TheOneThing {
-  kind: "action" | "decision" | "clarify" | "declare_target";
+  kind: "action" | "decision" | "clarify" | "declare_target" | "target_paused";
   id: string | null;
   title: string;
   /** Verb-first, concrete. This is the sentence rendered largest. */
@@ -104,6 +104,12 @@ export interface NowBrief {
     /** Where to open and actually try it. See `NorthStarDocument.qaUrl`. */
     qaUrl: string | null;
     projectName: string | null;
+    /**
+     * True when the declared target Project is not active. The screen refuses
+     * to select a "do this now" Action from it, because a paused Project
+     * receives no dispatch.
+     */
+    paused: boolean;
     documentPath: string | null;
   };
   distance: {

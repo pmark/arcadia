@@ -64,6 +64,18 @@ describe("reportWayDrift", () => {
     expect(report.upgradePolicy).toBeNull();
   });
 
+  it("excludes non-active Projects from the report", () => {
+    const workspace = tempWorkspace();
+    withDatabase(workspace, (db) => {
+      upsertProject(db, { name: "Running", mission: "Ship it.", status: "active" });
+      upsertProject(db, { name: "Paused", mission: "Not now.", status: "paused" });
+    });
+
+    const reports = withDatabase(workspace, (db) => reportWayDrift(db));
+
+    expect(reports.map((report) => report.projectName)).toEqual(["Running"]);
+  });
+
   it("reports a project whose repository path does not exist as unknown", () => {
     const workspace = tempWorkspace();
     withDatabase(workspace, (db) => {

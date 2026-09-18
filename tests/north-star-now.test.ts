@@ -10,6 +10,7 @@ import {
   setWorkItemDocRef
 } from "../src/db/repositories.js";
 import { computeNowBrief } from "../src/northStar/compute.js";
+import { collectNarrativeEvidence } from "../src/northStar/narrative.js";
 import {
   loadNorthStar,
   NorthStarParseError,
@@ -281,6 +282,74 @@ describe("the Now brief", () => {
     expect(brief.distance.total).toBe(0);
   });
 
+  it("excludes non-active Projects from the attention breakdown", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    const brief = withDatabase(workspace, (db) => {
+      seedProject(db);
+      pausedProject(db, "Paused Thing");
+      return computeNowBrief(db, loadNorthStar(workspace));
+    });
+
+    const names = brief.attention.slices.map((slice) => slice.projectName);
+    expect(names).toContain("The Thing");
+    expect(names).not.toContain("Paused Thing");
+  });
+
+  it("excludes non-active Projects from narrative evidence", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    const evidence = withDatabase(workspace, (db) => {
+      seedProject(db);
+      pausedProject(db, "Paused Thing");
+      const brief = computeNowBrief(db, loadNorthStar(workspace));
+      return collectNarrativeEvidence(db, brief, 7);
+    });
+
+    expect(evidence.projectNames).toContain("The Thing");
+    expect(evidence.projectNames).not.toContain("Paused Thing");
+  });
+
+  it("refuses a North Star whose target Project is paused, naming it", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    const brief = withDatabase(workspace, (db) => {
+      const { project } = pausedProject(db, "The Thing");
+      seedAction(db, project.id, {
+        title: "Paused gate",
+        docRef: "plan/p#done-one",
+        status: "open",
+        clarification: "clarified",
+        nextAction: "Do the paused thing."
+      });
+      return computeNowBrief(db, loadNorthStar(workspace));
+    });
+
+    expect(brief.target.paused).toBe(true);
+    expect(brief.theOneThing.kind).toBe("target_paused");
+    expect(brief.theOneThing.doThis).toContain("The Thing");
+    expect(brief.fifteenMinutes).toBeNull();
+    expect(brief.attention.slices.map((slice) => slice.projectName)).not.toContain("The Thing");
+    expect(brief.warnings.join(" ")).toContain("The Thing");
+  });
+
+  it("does not pass a paused target to the narrative as targetProject", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    const evidence = withDatabase(workspace, (db) => {
+      pausedProject(db, "The Thing");
+      const brief = computeNowBrief(db, loadNorthStar(workspace));
+      return collectNarrativeEvidence(db, brief, 7);
+    });
+
+    expect(evidence.targetProject).toBeNull();
+    expect(evidence.projectNames).not.toContain("The Thing");
+  });
+
   it("warns rather than silently dropping a gate whose Action does not exist", () => {
     const workspace = initializedWorkspace();
     writeNorthStar(workspace, GATE_DOC);
@@ -339,6 +408,17 @@ function seedProject(db: Parameters<typeof createProjectWithInitialWork>[0]) {
     status: "active",
     currentMilestone: "First milestone",
     nextAction: "Do the first thing.",
+    workClassification: "agent"
+  });
+}
+
+function pausedProject(db: Parameters<typeof createProjectWithInitialWork>[0], name: string) {
+  return createProjectWithInitialWork(db, {
+    name,
+    mission: "Not now.",
+    status: "paused",
+    currentMilestone: "Later",
+    nextAction: "Wait.",
     workClassification: "agent"
   });
 }
