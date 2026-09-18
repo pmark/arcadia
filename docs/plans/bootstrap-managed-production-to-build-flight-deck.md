@@ -1073,6 +1073,42 @@ actions:
     depends_on: []
     decisions: []
     references: ["docs/decisions/0057-should-prove-two-action-unattended-production-be-deferred-until-the-next-live.md", "docs/decisions/0048-make-arcadia-go-a-total-governed-transition-that-keeps-advancing-whenever-the-ne.md", "src/commands/review.ts", "src/ask/settlement.ts", "src/dispatch/pointer.ts", "src/docs/dispatch.ts"]
+  - id: fix-tick-database-open-error-boundary
+    title: A transient SQLITE_BUSY while opening the workspace database no longer kills the worker process; it is reported as a tick error and the tick loop retries on its next interval.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: A transient SQLITE_BUSY while opening the workspace database no longer kills the worker process; it is reported as a tick error and the tick loop retries on its next interval.
+    expected_artifact: Evidence satisfying Agent Ask fix-tick-database-open-error-boundary
+    clarification: clarified
+    confidence: high
+    source: Agent Ask promote-worker-supervision-defects-2026-09-17
+    acceptance_criteria:
+      - "openDatabase in tick() (src/commands/worker.ts:118) runs inside the same error boundary as runWorkerIteration, so a throw is logged as Worker tick error: and setTimeout(tick, POLL_INTERVAL_MS) still reschedules."
+      - "No uncaught synchronous throw in the tick path can end the loop without a log line: either the moved try covers it or a process-level uncaughtException handler logs and reschedules."
+      - A deterministic test forces openDatabase to throw SQLITE_BUSY and asserts the process does not exit, the failure is logged, and a subsequent tick still runs.
+      - Existing worker tests pass unchanged, and the happy path issues no additional log output.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/305", "src/commands/worker.ts", "src/db/connection.ts"]
+  - id: stop-keepalive-worker-crash-loop
+    title: An installed worker launch agent stops respawning forever when a worker already holds the workspace pidfile, and a duplicate agent for one workspace is detected instead of silently reinstalled.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: An installed worker launch agent stops respawning forever when a worker already holds the workspace pidfile, and a duplicate agent for one workspace is detected instead of silently reinstalled.
+    expected_artifact: Evidence satisfying Agent Ask stop-keepalive-worker-crash-loop
+    clarification: clarified
+    confidence: high
+    source: Agent Ask promote-worker-supervision-defects-2026-09-17
+    acceptance_criteria:
+      - "arcadia worker install no longer produces an agent that crash-loops on the benign already-running path: worker start exits 0 there, or the generated plist uses KeepAlive with SuccessfulExit false, and a test asserts the generated plist shape."
+      - After a fresh install with a second worker already running for the same workspace, .arcadia/worker.log gains no repeated already-running lines over a sustained interval.
+      - The launch-agent audit (src/runtime/launchAgents.ts) reports when two installed agents resolve to the same workspace, and its remedy names the correct command rather than a reinstalling one.
+      - Deterministic tests cover the already-running exit path and the duplicate-workspace audit; existing runtime-pinning tests pass.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/303", "src/commands/worker.ts", "src/runtime/launchAgents.ts"]
 questions: []
 decisions: []
 current_action: let-agent-preserve-its-candidate
