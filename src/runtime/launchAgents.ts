@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -87,6 +87,40 @@ export function launchAgentWorkspace(argv: string[]): string | null {
 }
 
 /**
+ * The filesystem identity of a workspace, so two plists naming one workspace
+ * through different symlink aliases still collapse to a single group.
+ *
+ * The worker's pidfile lives at the workspace's real path and workspace
+ * resolution only calls `path.resolve`, which preserves symlink aliases
+ * (`src/workspace/paths.ts`). Grouping the raw `--workspace` strings would
+ * therefore miss exactly the duplicate that matters: two agents installed
+ * through different aliases of one workspace still fight over one pidfile.
+ *
+ * `realpathSync` collapses the aliases. When the path does not exist there is
+ * nothing to collapse and realpath throws, so the resolved-but-uncanonicalized
+ * path is the documented fallback -- deterministic, and never a crash.
+ */
+export function canonicalWorkspaceIdentity(workspacePath: string): string {
+  try {
+    return realpathSync(workspacePath);
+  } catch {
+    return path.resolve(workspacePath);
+  }
+}
+
+/**
+ * The recovery an operator actually has after a duplicate exits cleanly.
+ *
+ * `KeepAlive { SuccessfulExit: false }` deliberately leaves a cleanly-exited
+ * job stopped, so a duplicate that lost the pidfile race does not quietly
+ * become failover: launchd will not bring it back when the surviving worker
+ * disappears. Reloading it is a deliberate `kickstart`, not an automatic
+ * restart, and the honest remedy says so.
+ */
+const NOT_FAILOVER_REMEDY = " A cleanly-exited duplicate is not failover: launchd leaves it stopped, so"
+  + " reload it with launchctl kickstart -k gui/$(id -u)/<label> once the surviving worker is gone.";
+
+/**
  * The fix for two worker agents on one workspace.
  *
  * It must not be a reinstall: launchd keys agents by label, so `arcadia worker
@@ -99,11 +133,13 @@ export function duplicateWorkerRemedy(label: string, others: string[]): string {
   if (launchAgentOwner(label) === "worker") {
     const remove = others[0] ?? "<other-label>";
     return `This is the Arcadia-installed worker, but ${listed} also serves the same workspace. `
-      + `Keep this one and remove ${remove}: launchctl bootout gui/$(id -u)/${remove}, then delete its plist.`;
+      + `Keep this one and remove ${remove}: launchctl bootout gui/$(id -u)/${remove}, then delete its plist.`
+      + NOT_FAILOVER_REMEDY;
   }
   return `No Arcadia installer owns this label, and ${listed} already serves the same workspace. `
-    + `Remove this one: launchctl bootout gui/$(id -u)/${label}, then delete its plist. `
-    + "Reinstalling would only add a third agent.";
+    + `Remove this one: launchctl bootout gui/$(id -u)/${label}, then delete its plist.`
+    + " Reinstalling would only add a third agent."
+    + NOT_FAILOVER_REMEDY;
 }
 
 export interface LaunchAgentAudit {
@@ -167,28 +203,34 @@ export function flagDuplicateWorkspaces(agents: LaunchAgentAudit[]): LaunchAgent
   const byWorkspace = new Map<string, LaunchAgentAudit[]>();
   for (const agent of agents) {
     if (agent.role !== "worker" || agent.workspace === null) continue;
-    const group = byWorkspace.get(agent.workspace) ?? [];
+    // Group on the canonical identity, not the raw argument: two agents can
+    // name one workspace through different symlink aliases.
+    const identity = canonicalWorkspaceIdentity(agent.workspace);
+    const group = byWorkspace.get(identity) ?? [];
     group.push(agent);
-    byWorkspace.set(agent.workspace, group);
+    byWorkspace.set(identity, group);
   }
 
-  const othersByLabel = new Map<string, string[]>();
-  for (const group of byWorkspace.values()) {
+  const duplicates = new Map<string, { identity: string; others: string[] }>();
+  for (const [identity, group] of byWorkspace) {
     if (group.length < 2) continue;
     for (const agent of group) {
-      othersByLabel.set(agent.label, group.filter((other) => other.label !== agent.label).map((other) => other.label));
+      duplicates.set(agent.label, {
+        identity,
+        others: group.filter((other) => other.label !== agent.label).map((other) => other.label)
+      });
     }
   }
-  if (othersByLabel.size === 0) return agents;
+  if (duplicates.size === 0) return agents;
 
   return agents.map((agent) => {
-    const others = othersByLabel.get(agent.label);
-    if (!others) return agent;
+    const duplicate = duplicates.get(agent.label);
+    if (!duplicate) return agent;
     return {
       ...agent,
-      duplicateLabels: others,
-      remedy: duplicateWorkerRemedy(agent.label, others),
-      detail: `${others.length + 1} installed worker agents serve ${agent.workspace}. ${agent.detail}`
+      duplicateLabels: duplicate.others,
+      remedy: duplicateWorkerRemedy(agent.label, duplicate.others),
+      detail: `${duplicate.others.length + 1} installed worker agents serve ${duplicate.identity}. ${agent.detail}`
     };
   });
 }
@@ -199,13 +241,18 @@ export function flagDuplicateWorkspaces(agents: LaunchAgentAudit[]): LaunchAgent
  * unambiguous machine.
  */
 export function duplicateWorkerWarning(agents: LaunchAgentAudit[], workspace: string): string | null {
-  const duplicates = agents.filter((agent) => agent.workspace === workspace && agent.duplicateLabels.length > 0);
+  const identity = canonicalWorkspaceIdentity(workspace);
+  const duplicates = agents.filter((agent) =>
+    agent.workspace !== null
+    && canonicalWorkspaceIdentity(agent.workspace) === identity
+    && agent.duplicateLabels.length > 0);
   if (duplicates.length === 0) return null;
   const labels = [...new Set(duplicates.flatMap((agent) => [agent.label, ...agent.duplicateLabels]))].sort();
-  return `Warning: ${labels.length} worker launch agents serve ${workspace} (${labels.join(", ")}). `
+  return `Warning: ${labels.length} worker launch agents serve ${identity} (${labels.join(", ")}). `
     + "Only one can hold the workspace pidfile; the others return without work. "
     + "Remove the extras: launchctl bootout gui/$(id -u)/<label>, then delete their plists. "
-    + "Reinstalling cannot replace an agent with a different label.";
+    + "Reinstalling cannot replace an agent with a different label."
+    + NOT_FAILOVER_REMEDY;
 }
 
 /**

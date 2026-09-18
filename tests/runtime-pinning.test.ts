@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -7,6 +7,7 @@ import { buildIngressServicePlist } from "../src/commands/ingressService.js";
 import { runIngressRecoverCommand } from "../src/commands/ingress.js";
 import {
   auditArcadiaLaunchAgents,
+  canonicalWorkspaceIdentity,
   duplicateWorkerWarning,
   evaluateLaunchAgent,
   flagDuplicateWorkspaces,
@@ -62,10 +63,13 @@ describe("generated launch agents run under the pinned runtime", () => {
       home: "/Users/example"
     });
 
-    expect(plist).toContain("<key>KeepAlive</key>");
-    expect(plist).toContain("<key>SuccessfulExit</key>");
-    expect(plist).toContain("<false/>");
-    expect(plist).not.toMatch(/<key>KeepAlive<\/key>\s*<true\/>/);
+    // Assert the whole element, not just that the two tokens appear somewhere:
+    // a plist with `SuccessfulExit` misfiled under another key, or with a bare
+    // <true/> before it, must not pass while claiming crash-only restart.
+    const keepAlive = plist.match(/<key>KeepAlive<\/key>\s*(<dict>[\s\S]*?<\/dict>|<true\/>|<false\/>)/);
+    expect(keepAlive?.[1]?.replace(/\s+/g, " ").trim()).toBe(
+      "<dict> <key>SuccessfulExit</key> <false/> </dict>"
+    );
   });
 
   it("routes the ingress agent through mise", () => {
@@ -198,6 +202,10 @@ describe("generated launch agents run under the pinned runtime", () => {
       // differently-labelled agent and would leave a third one running.
       expect(agent.remedy).toContain("launchctl bootout");
       expect(agent.remedy).not.toContain("arcadia worker install");
+      // A cleanly-exited duplicate is not failover, and the remedy says how to
+      // bring it back deliberately once the surviving worker is gone.
+      expect(agent.remedy).toContain("launchctl kickstart");
+      expect(agent.remedy).toContain("not failover");
     }
   });
 
@@ -229,7 +237,34 @@ describe("generated launch agents run under the pinned runtime", () => {
     expect(warning).toContain("com.arcadia.worker");
     expect(warning).toContain("com.arcadia.local.742852621.worker");
     expect(warning).toContain("launchctl bootout");
+    expect(warning).toContain("launchctl kickstart");
     expect(duplicateWorkerWarning(agents, "/ws/somewhere-else")).toBeNull();
+  });
+
+  // The workspace's pidfile lives at its real path, and workspace resolution
+  // only calls path.resolve, which preserves symlink aliases. Two agents
+  // installed through different aliases of one workspace still fight over one
+  // pidfile, so raw-string grouping would miss exactly the duplicate that matters.
+  it("collapses symlink aliases of one workspace before deciding a duplicate", () => {
+    const root = temporary("arcadia-ws-alias-");
+    const real = path.join(root, "real-workspace");
+    const alias = path.join(root, "alias-workspace");
+    mkdirSync(real, { recursive: true });
+    symlinkSync(real, alias);
+
+    const agents = flagDuplicateWorkspaces([
+      evaluateLaunchAgent("com.arcadia.worker", "/agents/a.plist", workerInvocation(real)),
+      evaluateLaunchAgent("com.arcadia.local.9.worker", "/agents/b.plist", workerInvocation(alias))
+    ]);
+
+    expect(agents.every((agent) => agent.duplicateLabels.length === 1)).toBe(true);
+    // The install warning is asked about whichever alias the installer used.
+    expect(duplicateWorkerWarning(agents, real)).not.toBeNull();
+    expect(duplicateWorkerWarning(agents, alias)).not.toBeNull();
+  });
+
+  it("falls back to a resolved path when the workspace does not exist, without throwing", () => {
+    expect(canonicalWorkspaceIdentity("/no/such/workspace/")).toBe(path.resolve("/no/such/workspace/"));
   });
 
   it.runIf(process.platform === "darwin")("reports duplicate workspaces through the on-disk audit", () => {

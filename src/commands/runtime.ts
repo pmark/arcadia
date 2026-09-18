@@ -50,6 +50,8 @@ export function renderRuntimeSuccess(response: CommandSuccess<RuntimeData>): str
     lines.push("Two workers on one workspace cannot both hold the pidfile: the loser exits without work, and a");
     lines.push("KeepAlive agent that treats that exit as a crash respawns into the project's own worker.log.");
     lines.push("Remove the extras by label -- reinstalling only replaces an agent that carries its own label.");
+    lines.push("A cleanly-exited duplicate is not failover: launchd leaves it stopped, so reload it with");
+    lines.push("`launchctl kickstart -k gui/$(id -u)/<label>` only after the surviving worker is gone.");
   }
 
   if (launchAgents.counts.unpinned > 0 || launchAgents.counts.unreadable > 0) {
