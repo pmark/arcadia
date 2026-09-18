@@ -144,8 +144,12 @@ export interface TidyCommandOptions {
   workspace?: string;
   /** Without this nothing is changed, whatever the verdicts say. */
   apply?: boolean;
-  /** Also retire merged branches the operator named themselves, not just agent-owned ones. */
-  includeOwnBranches?: boolean;
+  /**
+   * Leave fully merged branches the operator named themselves untouched. All
+   * fully merged branches are retired by default, agent-owned or not; this is
+   * the opt-out for an operator who wants their own refs kept.
+   */
+  excludeOwnBranches?: boolean;
   /**
    * Skip fetching `origin` first. Every worktree in a repository shares one
    * set of refs, so comparing against a stale local base branch silently
@@ -226,7 +230,7 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
     repoRoot,
     comparisonBase,
     claimedByWorktree,
-    includeOwn: options.includeOwnBranches,
+    includeOwn: !options.excludeOwnBranches,
     prMergeCommits
   });
 
@@ -503,7 +507,7 @@ function assessBranches(input: {
           mergeProof: merge.proof,
           retired: false,
           archivedAs: null,
-          reason: `Fully merged, but not an agent-owned name (${merge.reason.toLowerCase()}). Pass --include-own-branches to retire it too.`
+          reason: `Fully merged, but not an agent-owned name (${merge.reason.toLowerCase()}). Left alone because --exclude-own-branches was set.`
         };
       }
 
@@ -743,7 +747,7 @@ export function renderTidySuccess(response: CommandSuccess<TidyCommandData>): st
   const protectedBranches = branches.filter((entry) => entry.verdict === "protected");
   if (protectedBranches.length > 0) {
     lines.push("");
-    lines.push(`Merged, but yours to confirm (${protectedBranches.length}) — pass --include-own-branches:`);
+    lines.push(`Merged, but excluded by --exclude-own-branches (${protectedBranches.length}):`);
     lines.push(...protectedBranches.map((entry) => `  · ${entry.branch}`));
   }
 

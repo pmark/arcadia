@@ -1425,10 +1425,10 @@ Authentication, rate-limit, malformed-response, and remote-resolution failures
 disable this proof for the run and are reported as unavailable; they never
 produce a merged verdict.
 
-Merged branches you named yourself are reported but not retired, since
-deleting your own ref is your call — pass `--include-own-branches` to include
-them. Agent-owned branches (`codex/`, `claude/`, `agent/`, `worktree-`
-prefixes) are retired by default.
+By default every fully merged branch is retired, agent-owned or named by you.
+Pass `--exclude-own-branches` to keep the merged branches you named yourself,
+since deleting your own ref is your call. Agent-owned branches (`codex/`,
+`claude/`, `agent/`, `worktree-` prefixes) are always retired.
 
 Anything genuinely unmerged is never touched, and anything with no remote copy
 is called out explicitly as the only copy of that work.
