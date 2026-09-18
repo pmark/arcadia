@@ -152,6 +152,34 @@ TypeScript compilation):
   recorded a managed Session lease at policy epoch 1. Zero sandbox approval
   prompts and zero hidden interventions were observed.
 
+Boundary Artifact refresh and fail-closed refusal (2026-09-17, source revision
+`747be489`, prepared opencode candidate worktree after the dependency bridge and
+TypeScript compilation):
+
+- `pnpm exec tsc -p tsconfig.json`: exit 0.
+- Deterministic suite (`candidate-preservation`, `preservation-validation`,
+  `manual-preservation`, `go-broker`, `go-broker-agent-setup`,
+  `go-request-transport`, `preservation-heartbeat-freshness`): **7 files passed;
+  84 passed, 7 skipped** (the native cases skip by design off the host).
+- Disposable protected-boundary proof
+  (`mise exec -- node --import tsx scripts/prove-protected-preservation.ts`):
+  exit 0. Both the managed Session and the manual handoff scenarios reached the
+  existing worker through the real installed Codex `arcadia-unattended` sandbox
+  at source revision `747be4898ac2b6cabe47316ccc2fea9910516f8a`, runtime SHA-256
+  `5de0dc43a65bf058e87b65df38047debb43fbadbcdc2c2da97815310ddb64e03`, each
+  creating exactly one LOCAL ONLY commit whose committed tree equals the
+  validated snapshot, with zero sandbox approval prompts and zero hidden
+  interventions. `docs/reports/protected-preservation-fixture.json` is the
+  refreshed Artifact for this revision.
+- From this prepared opencode candidate, the fixed preservation launcher
+  `arcadia-preserve-broker-opencode` reached the existing host worker and was
+  refused with `Manual preservation requires 1–10 host-configured objective
+  validation_commands; a planning approval is not the remedy.` The agent-callable
+  path is live and fails closed with a named remedy. Declaring a sandbox-runnable
+  objective check for Arcadia is the dependent Action
+  `preserve-projects-with-dependencies` (GitHub Issue #273), which depends on
+  this Action.
+
 Review correction verification (2026-09-12):
 
 - `mise exec -- pnpm exec tsc -p tsconfig.json`: exit 0.
