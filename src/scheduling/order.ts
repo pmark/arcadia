@@ -63,7 +63,7 @@ export function canonicalOrder(candidates: OrderCandidate[]): string[] {
     const index = remaining.findIndex((candidate) =>
       candidate.dependsOn.every((dependency) => emitted.has(dependency) || doneKeys.has(dependency) || !known.has(dependency))
     );
-    const next = remaining.splice(index < 0 ? 0 : index, 1)[0]!;
+    const next = remaining.splice(index < 0 ? 0 : index, 1)[0];
     emitted.add(next.key);
     result.push(next.key);
   }
@@ -136,7 +136,7 @@ function explainNormalization(candidates: OrderCandidate[], requested: string[],
   const canonicalIndex = new Map(canonical.map((key, index) => [key, index]));
   const reasons: string[] = [];
   for (let index = 0; index < requested.length; index += 1) {
-    const key = requested[index]!;
+    const key = requested[index];
     for (const later of requested.slice(index + 1)) {
       if ((canonicalIndex.get(later) ?? 0) >= (canonicalIndex.get(key) ?? 0)) continue;
       const moved = byKey.get(key);
@@ -175,12 +175,12 @@ export function sameSequence(left: string[], right: string[]): boolean {
 export function minimalMoves(current: string[], desired: string[]): Array<{ key: string; after: string | null }> {
   const desiredIndex = new Map(desired.map((key, index) => [key, index]));
   const sequence = current.filter((key) => desiredIndex.has(key)).map((key) => desiredIndex.get(key)!);
-  const keep = new Set(longestIncreasingSubsequence(sequence).map((index) => desired[index]!));
+  const keep = new Set(longestIncreasingSubsequence(sequence).map((index) => desired[index]));
   const moves: Array<{ key: string; after: string | null }> = [];
   for (let index = 0; index < desired.length; index += 1) {
-    const key = desired[index]!;
+    const key = desired[index];
     if (keep.has(key)) continue;
-    moves.push({ key, after: index === 0 ? null : desired[index - 1]! });
+    moves.push({ key, after: index === 0 ? null : desired[index - 1] });
   }
   return moves;
 }
@@ -190,22 +190,22 @@ function longestIncreasingSubsequence(values: number[]): number[] {
   const tailIndices: number[] = [];
   const previous: number[] = new Array(values.length).fill(-1);
   for (let index = 0; index < values.length; index += 1) {
-    const value = values[index]!;
+    const value = values[index];
     let low = 0;
     let high = tails.length;
     while (low < high) {
       const mid = (low + high) >> 1;
-      if (tails[mid]! < value) low = mid + 1;
+      if (tails[mid] < value) low = mid + 1;
       else high = mid;
     }
     tails[low] = value;
     tailIndices[low] = index;
-    previous[index] = low > 0 ? tailIndices[low - 1]! : -1;
+    previous[index] = low > 0 ? tailIndices[low - 1] : -1;
   }
   const result: number[] = [];
-  let cursor = tailIndices.length > 0 ? tailIndices[tailIndices.length - 1]! : -1;
+  let cursor = tailIndices.length > 0 ? tailIndices[tailIndices.length - 1] : -1;
   while (cursor >= 0) {
-    result.unshift(values[cursor]!);
+    result.unshift(values[cursor]);
     cursor = previous[cursor]!;
   }
   return result;

@@ -266,7 +266,7 @@ function placeDiscovered(schedule: ProjectSchedule, actionKey: string, originKey
 
 function uniqueActionId(schedule: ProjectSchedule, title: string): string {
   const taken = new Set(schedule.actions.map((action) => action.actionId));
-  const words = title.split(/[.;:!?]|,\s/)[0]!.split(/\s+/).slice(0, 6).join(" ");
+  const words = title.split(/[.;:!?]|,\s/)[0].split(/\s+/).slice(0, 6).join(" ");
   const base = slugify(words).slice(0, 48).replace(/-+$/, "") || "discovered-action";
   if (!taken.has(base)) return base;
   for (let index = 2; index < 1000; index += 1) {
@@ -280,12 +280,12 @@ function addDependency(content: string, actionId: string, dependencyId: string):
   const pattern = new RegExp(`(^  - id: ${escapeRegex(actionId)}\\r?$[\\s\\S]*?)(?=^  - id: |^---\\r?$)`, "m");
   const match = content.match(pattern);
   if (!match) throw validationError("Origin Action block was not found in the Plan.", { actionId });
-  let block = match[1]!;
+  let block = match[1];
   const inline = /^ {4}depends_on:[ \t]*\[([^\]]*)\][ \t]*$/m.exec(block);
   const blockList = /^ {4}depends_on:[ \t]*\r?\n((?: {6}- .*\r?\n?)*)/m.exec(block);
   let existing: string[] = [];
-  if (inline) existing = inline[1]!.split(",").map((value) => value.trim()).filter(Boolean);
-  else if (blockList) existing = blockList[1]!.split(/\r?\n/).map((line) => line.replace(/^ {6}- /, "").trim()).filter(Boolean);
+  if (inline) existing = inline[1].split(",").map((value) => value.trim()).filter(Boolean);
+  else if (blockList) existing = blockList[1].split(/\r?\n/).map((line) => line.replace(/^ {6}- /, "").trim()).filter(Boolean);
   const next = [...new Set([...existing, dependencyId])];
   const replacement = `    depends_on: [${next.join(", ")}]`;
   if (inline) block = block.replace(inline[0], replacement);

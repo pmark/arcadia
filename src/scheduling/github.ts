@@ -96,9 +96,9 @@ export function projectScheduleToBoard(db: Database.Database, schedule: ProjectS
       result.itemsAdded.push(action.key);
     }
     const desired = boardStatusFor(action.status);
-    const current = items.get(action.githubProjectItemId!)?.status ?? null;
+    const current = items.get(action.githubProjectItemId)?.status ?? null;
     if (current !== desired) {
-      board.setStatus(action.githubProjectItemId!, desired);
+      board.setStatus(action.githubProjectItemId, desired);
       result.statusChanges.push({ actionKey: action.key, from: current, to: desired });
     }
   }

@@ -229,7 +229,7 @@ function deriveStatus(
   if (deferral) return { status: "deferred", reason: deferral.message };
   const dependencyBlocker = readiness.blockers.find((blocker) => blocker.field.includes("depends_on") || /depends on/i.test(blocker.message));
   if (dependencyBlocker) return { status: "blocked", reason: dependencyBlocker.message };
-  if (readiness.blockers.length > 0) return { status: "needs_operator", reason: readiness.blockers[0]!.message };
+  if (readiness.blockers.length > 0) return { status: "needs_operator", reason: readiness.blockers[0].message };
   if (pausedReason) return { status: "needs_operator", reason: pausedReason };
   return { status: "ready", reason: "Every dependency is met and the Action is eligible to run." };
 }
