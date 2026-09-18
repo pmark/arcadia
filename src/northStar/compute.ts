@@ -50,19 +50,33 @@ export function computeNowBrief(
       `NORTH_STAR.md points at project \`${northStar.projectSlug}\`, which is not in this workspace.`
     );
   }
+  // A target that names a paused Project is refused, not quietly worked around.
+  // Pausing means Arcadia dispatches no work to that Project, so selecting a
+  // "do this now" Action from it would tell the operator to do exactly the work
+  // the pause exists to stop -- directly above an empty attention list.
+  const targetPaused = Boolean(targetProject && targetProject.status !== "active");
+  if (targetProject && targetPaused) {
+    warnings.push(
+      `NORTH_STAR.md points at project \`${targetProject.name}\`, which is ${targetProject.status} — Arcadia does not dispatch work to it. Reactivate it or point the target at an active Project.`
+    );
+  }
 
   const gates = northStar ? resolveGates(db, northStar, warnings) : [];
   const done = gates.filter((gate) => gate.status === "done").length;
   const remaining = gates.length - done;
 
   const attention = measureAttention(db, targetProject?.id ?? null, windowDays, now);
-  const openReviews = targetProject
+  const openReviews = targetProject && !targetPaused
     ? listReviewItems(db, "open").filter((item) => item.project_id === targetProject.id)
     : [];
   const elsewhereReviews = listReviewItems(db, "open").length - openReviews.length;
 
-  const theOneThing = selectTheOneThing({ northStar, gates, openReviews, targetProjectName: targetProject?.name ?? null });
-  const fifteenMinutes = selectFifteenMinutes({ openReviews, gates, chosen: theOneThing, targetProjectName: targetProject?.name ?? null });
+  const theOneThing = targetPaused
+    ? pausedTargetOneThing(targetProject!.name)
+    : selectTheOneThing({ northStar, gates, openReviews, targetProjectName: targetProject?.name ?? null });
+  const fifteenMinutes = targetPaused
+    ? null
+    : selectFifteenMinutes({ openReviews, gates, chosen: theOneThing, targetProjectName: targetProject?.name ?? null });
 
   return {
     generatedAt: now.toISOString(),
@@ -73,6 +87,7 @@ export function computeNowBrief(
       looksLike: northStar?.looksLike ?? "",
       qaUrl: northStar?.qaUrl ?? null,
       projectName: targetProject?.name ?? null,
+      paused: targetPaused,
       documentPath: northStar?.path ?? null
     },
     distance: {
@@ -179,6 +194,27 @@ function statusOf(item: WorkItemSummary): GateStatus {
  * 5. Then clarification, because an Action whose next move is undefined is the
  *    single most reliable cause of avoidance, and clarifying it *is* the work.
  */
+
+/**
+ * A paused target is not a target Arcadia will route work to.
+ *
+ * The pause exists to stop dispatch, so the one thing cannot be an Action from
+ * that Project. Instead of dropping the target silently -- which would leave
+ * the screen measuring a finish line nobody is walking toward -- it names the
+ * contradiction and offers the two moves that resolve it.
+ */
+function pausedTargetOneThing(projectName: string): TheOneThing {
+  return {
+    kind: "target_paused",
+    id: null,
+    title: `${projectName} is paused`,
+    doThis: `Reactivate "${projectName}" or point NORTH_STAR.md at an active Project.`,
+    unlocks: "Arcadia does not dispatch work to a paused Project, so the target cannot move until one of those happens.",
+    projectName,
+    onTarget: true
+  };
+}
+
 function selectTheOneThing(input: {
   northStar: NorthStarDocument | null;
   gates: ResolvedGate[];

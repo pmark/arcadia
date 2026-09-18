@@ -22,7 +22,7 @@ export interface ResolvedGate {
 }
 
 export interface TheOneThing {
-  kind: "action" | "decision" | "clarify" | "declare_target";
+  kind: "action" | "decision" | "clarify" | "declare_target" | "target_paused";
   id: string | null;
   title: string;
   doThis: string;
@@ -47,6 +47,7 @@ export interface NowBrief {
     why: string;
     looksLike: string;
     projectName: string | null;
+    paused: boolean;
     documentPath: string | null;
   };
   distance: { total: number; done: number; remaining: number; fraction: number };

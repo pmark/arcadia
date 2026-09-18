@@ -78,12 +78,15 @@ changes. No `status: … -> …` drift for any Project.
 | north star attention | `src/northStar/compute.ts:330` | `listProjects` now filtered to `active` | `tests/north-star-now.test.ts` — "excludes non-active Projects from the attention breakdown" |
 | north star narrative | `src/northStar/narrative.ts:59` | `listProjects` now filtered to `active` | `tests/north-star-now.test.ts` — "excludes non-active Projects from narrative evidence" |
 | way drift | `src/projects/wayDrift.ts:48` | `listProjects` now filtered to `active` | `tests/way-status.test.ts` — "excludes non-active Projects from the report" |
+| north star paused target | `src/northStar/compute.ts` (`targetPaused`, `pausedTargetOneThing`) and `src/commands/now.ts:106` | a target naming a non-active Project is refused with a named warning; the one-thing becomes `target_paused`, `fifteenMinutes` is null, and no Action is selected from the paused Project | `tests/north-star-now.test.ts` — "refuses a North Star whose target Project is paused, naming it" |
+| north star narrative target | `src/northStar/narrative.ts:74` | a paused target is no longer passed as `targetProject`, so the model is not fed mutually exclusive evidence | `tests/north-star-now.test.ts` — "does not pass a paused target to the narrative as targetProject" |
 
-Consequence to note: the workspace `NORTH_STAR.md` targets `private-practice-now`.
-With that Project paused, `arcadia now` now measures 0% attention to the target
-instead of including the paused target's commits. That is the intended reading
-of "paused Projects receive no automated attention"; reactivating the target
-restores its measurement.
+Consequence to note: the workspace `NORTH_STAR.md` targets `private-practice-now`,
+which is now paused. `arcadia now` therefore prints `TARGET PAUSED` (not
+`DO THIS NOW`), names the paused target in a warning, measures attention against
+active Projects only, and offers no Action or 15-minute step from the paused
+Project. The screen no longer contradicts itself. Reactivating the target
+restores the normal selection.
 
 ### Checked, deliberately not changed (Issues filed)
 
