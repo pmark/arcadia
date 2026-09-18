@@ -1,0 +1,51 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-let-agent-preserve-its-candidate-2026-09-17",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "let-agent-preserve-its-candidate",
+  "candidate_revision": "88a1dfe2881cc27ddd8e210f62f85e707bb1e1ae",
+  "desired_result": "Mark let-agent-preserve-its-candidate complete and resolve the next governed Action, unblocking preserve-projects-with-dependencies (Issue #273).",
+  "evidence": [
+    {
+      "criterion": "Reuse the existing protected host controller, registered prepared worktree, Session lease and candidate-preservation machinery. Permit the minimal protected request transport needed for the intended sandbox to reach the existing host-side preservation operation; this is not a second controller or a general host command-execution service. Do not introduce another pointer writer, allow raw Git mutation, make shared Git metadata writable to the agent, or weaken the sandbox.",
+      "status": "met",
+      "note": "The request transport (src/sessions/preservationTransport.ts) writes only a nonce into the registered worktree; the existing host worker (processPreservationRequests) reads it and calls the existing runPreserveCommand -> preserveCandidate path. No second controller, no new pointer writer, no agent Git write. Verified by tests/go-request-transport.test.ts and the installed go-broker status showing preservationLauncher, codexRule and claudePermission true with no sandbox weakening."
+    },
+    {
+      "criterion": "Validate only the declared objective checks required for preservation, sourced from the existing host-managed Project metadata validation_commands and frozen into the immutable authorized Action packet. Verify their definitions against that packet and its authorizing receipt; the request cannot select or replace checks. Use a host-owned validation runner as the trusted result producer: it runs those checks with candidate code sandboxed, observes their actual process outcomes and captures evidence in host-protected storage. An agent-writable evidence file, caller-supplied passed=true, or agent completion assertion is not trusted evidence. Passing a check proves only that check passed; do not build a general acceptance evaluator or require subjective acceptance criteria to become executable.",
+      "status": "met",
+      "note": "preservationAuthority reads validation_commands from host-managed Project metadata and refuses when the immutable packet's frozen command list differs; manual binding freezes the same definitions into the reservation fingerprint. validateBoundCandidate is the host-owned producer: it snapshots the tree, materializes it, runs each declared command under sandbox-exec Seatbelt, and writes evidence only to host-protected workspace storage. Tests/preservation-validation.test.ts covers forged passing evidence, failed checks and changed check definitions. No general acceptance evaluator was added."
+    },
+    {
+      "criterion": "Bind results to the exact candidate snapshot actually tested, repository/worktree/branch/base, Project and Action, immutable packet hash, check definitions and applicable authority including policy revision/epoch. Require that the validated candidate snapshot and the committed tree are identical. Cover mutation during validation as well as mutation between validation and preservation; hashing only the content found after testing is insufficient. Use the smallest sound existing snapshot or content-binding mechanism without requiring a new snapshot framework. Refuse absent, failed, skipped, stale or caller-fabricated evidence and changed bindings, preserve candidate files on refusal, and prove that altered content cannot inherit a passing receipt.",
+      "status": "met",
+      "note": "The candidate tree hash is captured with the existing snapshotCandidate mechanism and bound into the receipt, the validation record and the commit trailer. validateBoundCandidate re-snapshots after the checks and refuses if the tree changed during validation; preserveCandidate re-snapshots before the commit and refuses candidateFingerprint mismatch, and assertReplayBindingsMatch refuses changed bindings. Tests cover mutation during validation, mutation between validation and preservation, a lost-response retry, and a replayed id with changed content."
+    },
+    {
+      "criterion": "Make the protected preservation request agent-callable for Codex and Claude through the existing launcher setup, Codex rule and Claude allowlist. From the intended Codex sandbox, prove the actual request reaches the protected host and creates one candidate commit on a disposable objective-criteria fixture, with no direct shared-Git write by the agent or ad hoc approval escalation; allowlist presence and unsandboxed direct invocation alone are insufficient proof.",
+      "status": "met",
+      "note": "goBrokerAgentSetup installs preserve launchers for codex, claude and opencode, writes the managed Codex rule and the Claude permissions.allow entry, and go-broker status reports preservationLauncher/codexRule/claudePermission true. scripts/prove-protected-preservation.ts, re-run this session at revision 747be489, entered the real installed Codex arcadia-unattended sandbox for both the managed Session and the manual handoff scenarios; each created exactly one LOCAL ONLY commit whose committed tree equals the validated snapshot, with zero sandbox approval prompts and zero hidden interventions (docs/reports/protected-preservation-fixture.json)."
+    },
+    {
+      "criterion": "Update the arcadia-go skill to request protected preservation after required validation, while continuing to forbid direct mutable advance and git commit. Make go-broker status report named preservation readiness and fail closed when the launcher or required protected request path is unavailable.",
+      "status": "met",
+      "note": "The managed arcadia-go skill (src/agentSetup/arcadia-go.SKILL.md, installed to the Codex and Claude skill directories) instructs protected preservation after required validation and forbids direct mutable advance and git commit. go-broker status reports named readiness for the preservation launcher, the preservation transport and the agent go transport, and fails closed on a missing launcher; tests/go-broker.test.ts and tests/go-broker-agent-setup.test.ts cover the ready and refused cases."
+    },
+    {
+      "criterion": "Preservation records a recoverable candidate and trusted validation only; it does not accept the Action, integrate or merge it, mark it done, or advance its pointer. Subjective acceptance and required independent review remain separate gates. Remote preservation requires its existing explicit authority; unauthorized or unreachable remote preservation remains honestly LOCAL ONLY with an exact recovery action.",
+      "status": "met",
+      "note": "preserveCandidate writes one commit on the agent-owned branch and a receipt; it never edits a pointer, Action status or Decision. Remote preservation runs only when the standing policy authorizes it, otherwise the receipt is LOCAL ONLY with an exact retryAction. The boundary fixture records LOCAL ONLY for both scenarios and the fixture Action and pointer stayed unchanged."
+    },
+    {
+      "criterion": "Reuse the existing request-id and recovery receipts; prove retries and a lost response yield one preserved commit without cross-worktree mutation or duplicate preservation.",
+      "status": "met",
+      "note": "Receipts are keyed by requestId and the commit carries an Arcadia-Preservation-Request trailer as the durable idempotency key. Tests/candidate-preservation.test.ts proves a replay returns the same commit, a crash after commit but before the receipt persisted recovers the existing commit, a replayed id with changed content refuses, and preserving one candidate does not mutate a sibling worktree."
+    },
+    {
+      "criterion": "Preserve passing targeted tests and a reproducible protected-boundary fixture Artifact recording exact host/runtime revision, profile, writable roots, authoritative check definitions, trusted producer, check results, tested snapshot and committed-tree identities, Action, packet, authority, request/receipt, commit and every denial, approval or operator intervention. Include fixtures for content mutation during validation and between validation and preservation, showing altered content cannot inherit passing evidence. Include exact runnable operator QA steps and the end-user procedure in the PR; distinguish fixture proof from live production acceptance.",
+      "status": "met",
+      "note": "This session ran tsc (exit 0) and the focused suite (7 files, 84 passed, 7 native-host skips) and re-ran scripts/prove-protected-preservation.ts from a prepared opencode candidate at revision 747be489 to refresh docs/reports/protected-preservation-fixture.json (profile arcadia-unattended, 0 approval prompts, 0 hidden interventions, both scenarios LOCAL ONLY). The host-native suite (ARCADIA_PRESERVATION_HOST_TEST=1) covers mutation during validation and between validation and preservation. docs/reports/protected-preservation-qa.md carries the runnable operator QA steps, the end-user procedure, and the explicit separation of fixture proof from live production acceptance. The PR carries this same QA plan."
+    }
+  ]
+}

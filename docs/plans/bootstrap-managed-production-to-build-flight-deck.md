@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to build Flight Deck
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-09-17
+updated: 2026-09-18
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -420,7 +420,7 @@ actions:
     references: ["docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/operator-demo-and-release-contract.md"]
   - id: let-agent-preserve-its-candidate
     title: A sandboxed coding-agent session can preserve its completed candidate through the protected controller boundary, without direct write access to shared Git metadata and without ad hoc approval escalation.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Connect trusted candidate-bound validation to the existing protected preservation request and prove it from the intended agent sandbox on a disposable fixture.
@@ -1075,7 +1075,7 @@ actions:
     references: ["docs/decisions/0057-should-prove-two-action-unattended-production-be-deferred-until-the-next-live.md", "docs/decisions/0048-make-arcadia-go-a-total-governed-transition-that-keeps-advancing-whenever-the-ne.md", "src/commands/review.ts", "src/ask/settlement.ts", "src/dispatch/pointer.ts", "src/docs/dispatch.ts"]
 questions: []
 decisions: []
-current_action: let-agent-preserve-its-candidate
+current_action: prove-two-action-unattended-production
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
