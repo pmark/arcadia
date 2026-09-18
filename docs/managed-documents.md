@@ -130,7 +130,7 @@ updated: 2026-07-28
 actions:
   - id: some-action
     title: What to do
-    status: open             # open | in_progress | done | blocked
+    status: open             # open | in_progress | done | blocked | deferred
     responsibility: agent    # autonomous | agent | requires_review | blocked
     effort: session          # quick | short | session | project
     next_action: The concrete thing to do first.
@@ -185,6 +185,40 @@ decisions: []
 - **`responsibility`** decides authorization. `requires_review` means a coding
   agent must not implement it; `blocked` means progress depends on something
   outside the repository.
+
+- **`status: deferred`** parks an Action that an answered Decision chose not to
+  do yet. It is unfinished but never dispatchable: `arcadia next`, the ready set,
+  and `advance queue` all skip it. A deferral is applied by answering its
+  Decision, not by editing the plan by hand — see below.
+
+### Deferring an Action, and reviving it
+
+An Action is deferred by answering a Decision, never by hand-editing the plan.
+The Decision names the Action it governs and its deferral option carries a
+machine-readable effect:
+
+```yaml
+plan: my-initiative
+action: some-action
+options:
+  - label: Defer until the next live rehearsal
+    consequence: The Action stops dispatching until then.
+    recommended: true
+    effect: defer
+```
+
+`arcadia decision approve <id> --project <project> --answer "<label>"` then
+records the answer, sets `status: deferred` on that Action, and — when it was
+the governed pointer — advances the pointer to the next eligible Action in the
+explicit queue. All of it is one commit and one receipt; `--dry-run` previews it
+first, and re-running the same request id returns the same receipt rather than
+applying twice. If the commit fails, the command fails and says so; the written
+documents and the receipt stay recoverable.
+
+**Reviving a deferred Action.** The deferral's named trigger is the condition
+that ends it. When the trigger fires, answer the same Decision the other way (or
+open a new Decision that names the Action) and clear the deferral — no revival
+is implied by the trigger firing on its own.
 
 ## What is enforced, and where
 

@@ -326,3 +326,10 @@ updated: 2026-09-18
 - **Result:** Every declared acceptance criterion was accepted as met: "arcadia worker install no longer produces an agent that crash-loops on the benign already-running path: worker start exits 0 there, or the generated plist uses KeepAlive with SuccessfulExit false, and a test asserts the generated plist shape."; "After a fresh install with a second worker already running for the same workspace, .arcadia/worker.log gains no repeated already-running lines over a sustained interval."; "The launch-agent audit (src/runtime/launchAgents.ts) reports when two installed agents resolve to the same workspace, and its remedy names the correct command rather than a reinstalling one."; "Deterministic tests cover the already-running exit path and the duplicate-workspace audit; existing runtime-pinning tests pass.".
 - **Next:** Advanced to the next eligible Action in document order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-stop-keepalive-worker-crash-loop-2026-09-18).
+
+## 2026-09-18 — Agent Ask log-decision-deferral-slice-2026-09-18
+
+- **Did:** Record the delivered slice of apply-answered-decision-consequences (PR #314): arcadia decision approve applies a defer effect by parking the Action and advancing the pointer to the next eligible Action in the explicit queue, and dispatch plus Agent Ask completion resolution honor the explicit queue and an approved deferral (Issue #310). Criterion 3 (a single durable receipt and a reversal path) remains open on the Action.
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

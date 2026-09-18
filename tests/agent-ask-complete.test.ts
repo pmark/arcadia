@@ -54,6 +54,45 @@ describe("Agent Ask complete", () => {
     expect(replay.data.receipt).toEqual(applied.data.receipt);
   });
 
+  it("follows the explicit queue order, not document order, when advancing the pointer", () => {
+    const { workspace, repo, head } = fixture({ withThird: true, queueOrder: ["demo/first", "demo/third", "demo/second"] });
+    const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-queue-order", "first", head) });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-queue-order", disposition: "accepted"
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-queue-order", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+    expect(applied.data.receipt.effects.join(" ")).toContain("explicit queue order");
+    expect(applied.data.receipt.effects.join(" ")).toContain("Pointer: demo/third.");
+    const project = discoverDocs(repo).docs.find((doc) => doc.type === "project");
+    expect(project).toMatchObject({ currentAction: "third" });
+  });
+
+  it("skips an Action an approved Decision deferred, even before its Plan record says so (Issue #310)", () => {
+    const { workspace, repo, head } = fixture({ withThird: true, secondDeferredByDecision: true });
+    const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-skip-deferred", "first", head) });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-skip-deferred", disposition: "accepted"
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-skip-deferred", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+    expect(applied.data.receipt.effects.join(" ")).toContain("Pointer: demo/third.");
+    const plan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
+    // The deferred Action is untouched — the Decision is what parks it.
+    expect(plan).toMatchObject({
+      currentAction: "third",
+      actions: [
+        expect.objectContaining({ id: "first", status: "done" }),
+        expect.objectContaining({ id: "second", status: "open" }),
+        expect.objectContaining({ id: "third", status: "open" })
+      ]
+    });
+  });
+
   it("marks the Plan complete when the finished Action was the last one open", () => {
     const { workspace, repo, head } = fixture({ secondDone: true });
     const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-last", "first", head) });
@@ -270,6 +309,12 @@ function fixture(options: {
   secondDone?: boolean;
   firstDone?: boolean;
   withOpenDecision?: boolean;
+  /** Add a third open Action after `second`. */
+  withThird?: boolean;
+  /** Write an approved Decision that defers `second` with `effect: defer`. */
+  secondDeferredByDecision?: boolean;
+  /** Explicit queue order; defaults to document order. */
+  queueOrder?: string[];
 } = {}): { workspace: string; repo: string; head: string } {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-agent-ask-complete-"));
   roots.push(root);
@@ -281,7 +326,7 @@ function fixture(options: {
   // reports it by its own path rather than collapsing the whole directory.
   mkdirSync(path.join(repo, ".arcadia/asks/archive"), { recursive: true });
   writeFileSync(path.join(repo, ".arcadia/asks/archive/.gitkeep"), "", "utf8");
-  if (options.withOpenDecision) mkdirSync(path.join(repo, "docs/decisions"), { recursive: true });
+  if (options.withOpenDecision || options.secondDeferredByDecision) mkdirSync(path.join(repo, "docs/decisions"), { recursive: true });
   writeFileSync(path.join(repo, "PROJECT.md"), projectDoc(), "utf8");
   writeFileSync(path.join(repo, "docs/plans/demo-plan.md"), planDoc(options), "utf8");
   if (options.withOpenDecision) {
@@ -291,12 +336,24 @@ function fixture(options: {
       "action: first", "updated: 2026-09-01", "---", "", "# Decision 0001: Does the independent review pass?", ""
     ].join("\n"), "utf8");
   }
+  if (options.secondDeferredByDecision) {
+    writeFileSync(path.join(repo, "docs/decisions/0057-defer-second.md"), [
+      "---", "arcadia: v1", "type: decision", 'id: "0057"', "slug: defer-second", "project: demo",
+      "status: approved", "question: Defer the second Action?", "confidence: high", "plan: demo-plan",
+      "action: second", "answer: Defer until later", "decided: 2026-09-01",
+      "options:", "  - label: Defer until later", "    consequence: The second Action stops dispatching.",
+      "    recommended: true", "    effect: defer",
+      "  - label: Keep it dispatchable", "    consequence: It keeps dispatching.", "    recommended: false",
+      "updated: 2026-09-01", "---", "", "# Decision 0057: Defer the second Action?", ""
+    ].join("\n"), "utf8");
+  }
   execFileSync("git", ["init", "-q"], { cwd: repo });
   execFileSync("git", ["config", "user.email", "ask-test@example.invalid"], { cwd: repo });
   execFileSync("git", ["config", "user.name", "Ask Test"], { cwd: repo });
   execFileSync("git", ["add", "."], { cwd: repo });
   execFileSync("git", ["commit", "-qm", "Add Ask fixture"], { cwd: repo });
   const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+  const actionIds = options.withThird ? ["first", "second", "third"] : ["first", "second"];
   initWorkspace(workspace);
   withDatabase(workspace, (db) => {
     const project = upsertProject(db, {
@@ -305,7 +362,10 @@ function fixture(options: {
     });
     upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
     arrangeActionOrder(db, {
-      currentKeys: ["demo/first", "demo/second"], order: ["demo/first", "demo/second"], requestId: "fixture-order", apply: true
+      currentKeys: actionIds.map((id) => `demo/${id}`),
+      order: options.queueOrder ?? actionIds.map((id) => `demo/${id}`),
+      requestId: "fixture-order",
+      apply: true
     });
   });
   return { workspace, repo, head };
@@ -332,6 +392,7 @@ function planDoc(options: {
   secondDone?: boolean;
   firstDone?: boolean;
   withOpenDecision?: boolean;
+  withThird?: boolean;
 }): string {
   return ["---", "arcadia: v1", "type: plan", "slug: demo-plan", "project: demo", "status: active",
     "milestone: Completion", "current_action: first", "token_impact: medium",
@@ -348,5 +409,11 @@ function planDoc(options: {
     "    expected_artifact: Second proof", "    clarification: clarified", "    confidence: high",
     "    acceptance_criteria:", "      - Second proof exists.",
     `    depends_on: [${options.secondDependsOnFirst ? "first" : ""}]`, "    decisions: []", "    references: []",
+    ...(options.withThird ? [
+      "  - id: third", "    title: Third Action", "    status: open",
+      "    responsibility: agent", "    effort: session", "    next_action: Finish the third Action.",
+      "    expected_artifact: Third proof", "    clarification: clarified", "    confidence: high",
+      "    acceptance_criteria:", "      - Third proof exists.", "    depends_on: []", "    decisions: []", "    references: []"
+    ] : []),
     "questions: []", "---", "", "# Demo plan", ""].join("\n");
 }

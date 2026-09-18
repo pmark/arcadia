@@ -200,10 +200,25 @@ export interface PlanDoc extends DocLocation {
  * reading the rationale first — the consequence is what a choice costs or
  * buys, stated plainly enough to decide from alone.
  */
+/**
+ * Machine-readable consequence of choosing one option, so Arcadia can *apply*
+ * an answer rather than only record it. The prose `consequence` stays for the
+ * human reading the Decision; `effect` is what a command acts on.
+ *
+ * - `defer` — park the Action the Decision names (`action:`) so dispatch stops
+ *   selecting it, and advance the governed pointer to the next eligible Action
+ *   in the explicit queue. This is Issue #310's "approved deferral".
+ */
+export type DecisionOptionEffect = "defer";
+
+export const DECISION_OPTION_EFFECTS: readonly DecisionOptionEffect[] = ["defer"];
+
 export interface DecisionOptionDoc {
   label: string;
   consequence: string;
   recommended: boolean;
+  /** Null when the option only has prose to explain it. */
+  effect: DecisionOptionEffect | null;
 }
 
 export interface DecisionDoc extends DocLocation {
