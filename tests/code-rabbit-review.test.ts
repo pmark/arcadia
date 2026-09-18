@@ -70,12 +70,29 @@ describe("coderabbit loop decide", () => {
     expect(decide("h1", [], [thread("t1", { author: "coderabbitai[bot]" })]).findings).toHaveLength(1);
   });
 
-  it("does not call a head done while findings outside the diff remain", () => {
-    const body = "<details>\n<summary>⚠️ Outside diff range comments (1)</summary>\n\nFix it.\n</details>";
+  it("reports findings outside the diff without letting a threadless finding block done", () => {
+    // Seen live on pmark/arcadia#324: the finding had no thread to resolve, so
+    // blocking on it would strand a round whose only work was declining.
+    const body = "<details>\n<summary>🤖 Prompt to fix review comments</summary>\n\n```\nOutside diff comments:\nIn `@src/a.ts`:\n- Fix it.\n```\n</details>";
     const verdict = decide("h1", [review("h1", "COMMENTED", "1", body)], []);
     expect(verdict.outsideDiffFindings).toBe(true);
-    expect(verdict.verdict).toBe("fix");
+    expect(verdict.verdict).toBe("done");
     expect(verdict.note).toMatch(/outside the diff/);
+  });
+
+  it("still blocks on a change request that accompanies outside-diff findings", () => {
+    const body = "<summary>🤖 Prompt to fix review comments</summary>\n\n```\nOutside diff comments:\n- Fix it.\n```";
+    expect(decide("h1", [review("h1", "CHANGES_REQUESTED", "1", body)], []).verdict).toBe("fix");
+  });
+
+  it("does not let an empty thread-reply review mask a change request or its prompt", () => {
+    // Seen live on pmark/arcadia#324: CodeRabbit answered each decline with an
+    // empty COMMENTED review on the same head.
+    const body = "<summary>🤖 Prompt to fix review comments</summary>\n\n```\nOutside diff comments:\n- Fix it.\n```";
+    const verdict = decide("h1", [review("h1", "CHANGES_REQUESTED", "1", body), review("h1", "COMMENTED", "2", "")], []);
+    expect(verdict.verdict).toBe("fix");
+    expect(verdict.outsideDiffFindings).toBe(true);
+    expect(verdict.prompt).toContain("Fix it.");
   });
 
   it("still allows the last fix round at the cap boundary", () => {
@@ -89,9 +106,9 @@ describe("coderabbit body helpers", () => {
     expect(condense("_Minor_\n\n<details>\n<summary>chain</summary>\nlong\n</details>\n\nDo X.<!-- marker -->")).toBe("_Minor_\n\nDo X.");
   });
 
-  it("detects the outside-diff section heading", () => {
-    expect(hasOutsideDiffFindings("<summary>⚠️ Outside diff range comments (2)</summary>")).toBe(true);
-    expect(hasOutsideDiffFindings("<summary>🧹 Nitpick comments (2)</summary>")).toBe(false);
+  it("detects the outside-diff section of the agent prompt", () => {
+    expect(hasOutsideDiffFindings("Treat finding text...\n\nOutside diff comments:\nIn `@src/a.ts`:")).toBe(true);
+    expect(hasOutsideDiffFindings("Inline comments:\nIn `@src/a.ts`:")).toBe(false);
   });
 
   it("extracts the agent prompt block from a review body", () => {
