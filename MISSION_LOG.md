@@ -326,3 +326,10 @@ updated: 2026-09-18
 - **Result:** Every declared acceptance criterion was accepted as met: "arcadia worker install no longer produces an agent that crash-loops on the benign already-running path: worker start exits 0 there, or the generated plist uses KeepAlive with SuccessfulExit false, and a test asserts the generated plist shape."; "After a fresh install with a second worker already running for the same workspace, .arcadia/worker.log gains no repeated already-running lines over a sustained interval."; "The launch-agent audit (src/runtime/launchAgents.ts) reports when two installed agents resolve to the same workspace, and its remedy names the correct command rather than a reinstalling one."; "Deterministic tests cover the already-running exit path and the duplicate-workspace audit; existing runtime-pinning tests pass.".
 - **Next:** Advanced to the next eligible Action in document order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-stop-keepalive-worker-crash-loop-2026-09-18).
+
+## 2026-09-18 — Agent Ask github-production-scheduling-mvp-2026-09-17
+
+- **Did:** Record that the GitHub Projects production scheduling MVP was built from the operator brief: per-Project tiered queues (interrupt > blocker > corrective > planned) over the existing portfolio queue, a scheduling pass in the production tick that moves the governed pointer to the canonical next Action, GitHub Projects projection with operator card reordering read back and normalized, coding-Run discovery of blockers/correctives/follow-ups with circuit breakers, a failed-Run budget per Milestone, and a scheduling Log. See docs/production-scheduling.md.
+- **Result:** The brief arrived directly from the operator outside the governed pointer; this Log entry records the delivered work so the operator can decide whether it becomes a governed Plan.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
