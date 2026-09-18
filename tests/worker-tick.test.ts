@@ -45,13 +45,51 @@ describe("createWorkerTick", () => {
 
     expect(() => tick()).not.toThrow();
     expect(scheduled).toHaveLength(1);
-    expect(readFileSync(logfile, "utf8")).toContain("Worker tick error: database is locked");
+    const afterFailure = readFileSync(logfile, "utf8");
+    expect(afterFailure).toContain("Worker tick error: database is locked");
 
-    // The rescheduled tick opens the real database, so a transient open-time
-    // failure never ends the loop.
+    // The rescheduled tick opens the real database and completes a real
+    // iteration, so a transient open-time failure never ends the loop and the
+    // recovery path is clean rather than merely reaching a second open.
     scheduled.shift()!();
     expect(opens).toBe(2);
     expect(scheduled).toHaveLength(1);
+    const afterRecovery = readFileSync(logfile, "utf8");
+    expect(afterRecovery.slice(afterFailure.length)).not.toContain("Worker tick error:");
+  });
+
+  it("summarizes a persistent open failure instead of logging every tick, then reports recovery", () => {
+    const { root, logfile } = workspace();
+    const scheduled: Array<() => void> = [];
+    let failing = true;
+    const openDb = () => {
+      if (failing) {
+        const error = new Error("database is locked") as Error & { code: string };
+        error.code = "SQLITE_BUSY";
+        throw error;
+      }
+      return openDatabase(root);
+    };
+
+    const tick = createWorkerTick({
+      workspacePath: root,
+      pid: process.pid,
+      logfile,
+      openDb,
+      schedule: (callback) => { scheduled.push(callback); }
+    });
+
+    for (let attempt = 0; attempt < 100; attempt += 1) tick();
+
+    const errorLines = () => readFileSync(logfile, "utf8").split("\n").filter((line) => line.includes("Worker tick error:"));
+    // The first failure plus one summary per interval — not one line per tick.
+    expect(errorLines()).toHaveLength(4);
+
+    failing = false;
+    tick();
+
+    expect(readFileSync(logfile, "utf8")).toContain("Worker tick recovered after 100 consecutive failures.");
+    expect(errorLines()).toHaveLength(4);
   });
 
   it("adds no error line to the log on a healthy tick", () => {
