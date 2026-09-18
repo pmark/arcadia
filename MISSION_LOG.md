@@ -340,3 +340,10 @@ updated: 2026-09-18
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-18 — Completed arcadia/fix-decision-deferral-review-bugs
+
+- **Did:** Completed Action arcadia/fix-decision-deferral-review-bugs from accepted evidence (Candidate 928fc741df90be89b1f97b163809150c42f55728).
+- **Result:** Every declared acceptance criterion was accepted as met: "decision approve --dry-run never commits, even when an unapplied receipt exists (#315), with a test."; "A defer effect is applied only when the recorded status is approved (#316), with a test."; "Re-approving a previously applied deferral after revival writes and commits the new deferral (#317), with a test.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-fix-decision-deferral-review-bugs-2026-09-18).

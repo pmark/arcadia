@@ -1,0 +1,26 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-fix-decision-deferral-review-bugs-2026-09-18",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/fix-decision-deferral-review-bugs",
+  "candidate_revision": "60280c6c4d0bb79d7fa1996cdf5ebec6b9bbeeed",
+  "desired_result": "Record the deferred-Decision review fixes for issues #315, #316, and #317.",
+  "evidence": [
+    {
+      "criterion": "decision approve --dry-run never commits, even when an unapplied receipt exists (#315), with a test.",
+      "status": "met",
+      "note": "applyDecisionDeferral now returns the recorded consequence with applied:false before the receipt branch touches Git. Test: \"never commits under --dry-run when an unapplied deferral receipt exists\" leaves the failed-commit working tree untouched."
+    },
+    {
+      "criterion": "A defer effect is applied only when the recorded status is approved (#316), with a test.",
+      "status": "met",
+      "note": "runDecisionApproveCommand refuses the defer option unless status is approved. Test: \"refuses to apply a defer option when the recorded status is not approved\" asserts the refusal and unchanged documents."
+    },
+    {
+      "criterion": "Re-approving a previously applied deferral after revival writes and commits the new deferral (#317), with a test.",
+      "status": "met",
+      "note": "An applied receipt is replayed only while receiptReflectedOnDisk still matches the Action status and pointer; otherwise a fresh deferral is applied and committed. Test: \"re-applies the deferral after the Action is revived instead of returning the stale receipt\" asserts a new receipt id and committed effects."
+    }
+  ]
+}
