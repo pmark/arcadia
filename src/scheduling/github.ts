@@ -175,10 +175,8 @@ export function reconcileBoard(
   let accepted = false;
   let normalized = false;
   let normalizationReasons: string[] = [];
-  let canonical = schedule.queue;
   if (operatorMoved) {
     const applied = applyOperatorOrder(orderCandidates(schedule.actions), observedOrder);
-    canonical = applied.canonical;
     normalized = applied.normalized;
     normalizationReasons = applied.normalizationReasons;
     if (applied.changed) {

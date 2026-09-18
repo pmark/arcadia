@@ -106,7 +106,7 @@ class FakeBoard implements SchedulingBoard {
   listItems(): BoardItem[] {
     return this.items.map(({ itemId, issueNumber, title, status }) => ({ itemId, issueNumber, title, status }));
   }
-  createIssue(input: { title: string; body: string }) {
+  createIssue(_input: { title: string; body: string }) {
     const number = this.nextIssue++;
     this.calls.push(`createIssue:${number}`);
     return { number, url: `https://github.com/example/repo/issues/${number}` };
