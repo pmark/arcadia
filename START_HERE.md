@@ -389,7 +389,14 @@ existing GitHub Project or create one, then reconcile:
 pnpm arcadia schedule github link --project arcadia --owner pmark --create --workspace "$WORKSPACE"
 pnpm arcadia schedule reconcile --workspace "$WORKSPACE"            # preview: what the boards say
 pnpm arcadia schedule reconcile --apply --workspace "$WORKSPACE"    # apply drags, move pointers, re-project
+pnpm arcadia schedule reconcile --apply --project arcadia --workspace "$WORKSPACE"  # one Project only
 ```
+
+`link` is the only command that changes the board's own structure: it creates
+the `Arcadia status` field when the Project has none. Preview and every worker
+tick only read, and refuse a board with no status field rather than creating
+one. `--project` scopes the whole pass, so a scoped run cannot reorder another
+Project's board or move another Project's pointer.
 
 Dragging Ready cards on the board is the one operator input Arcadia reads
 back. A drag within one scheduling class is persisted as the new queue
@@ -414,7 +421,10 @@ ahead of remaining planned work without interrupting the current Run. A
 `follow_up` goes to the backlog. Discovery stops at depth 2, three corrective
 descendants per root Action, or eight correctives per Milestone, and opens a
 Decision instead. A ninth failed Run in one Milestone pauses the Project with
-a Decision; `schedule resume --project <slug> --reason ...` continues it.
+a Decision. `schedule resume --project <slug> --reason ...` continues it, and
+refuses while that Decision is unanswered — answer it with `arcadia review
+approve <id>` or `arcadia review reject <id>` first, because skipping that
+judgment is the one thing the pause exists to prevent.
 [`docs/production-scheduling.md`](docs/production-scheduling.md) has the
 full rule set and what was deliberately not built.
 

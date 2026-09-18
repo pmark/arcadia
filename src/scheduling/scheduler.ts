@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
-import { createReviewItem, getProjectBySlug, listProjects } from "../db/repositories.js";
+import { validationError } from "../cli/errors.js";
+import { createReviewItem, getProjectBySlug, getReviewItem, listProjects } from "../db/repositories.js";
 import { transitionActionPointer } from "../dispatch/pointer.js";
 import type { Project } from "../domain/types.js";
 import { getRepositoryLease } from "../sessions/index.js";
@@ -55,12 +56,21 @@ export interface SchedulingPassOptions {
   boardFactory?: BoardFactory;
   /** Move governed pointers when the queue disagrees with them (default true). */
   alignPointers?: boolean;
+  /**
+   * Restrict the whole pass to these Project slugs. This is the scope of every
+   * effect the pass has, not a filter on one of them: a pass scoped to one
+   * Project must not reconcile another Project's board or commit another
+   * Project's pointer move. Absent means every active Project.
+   */
+  projectSlugs?: string[];
   log?: (message: string) => void;
 }
 
-export function listProjectsInSchedulingOrder(db: Database.Database): Project[] {
+export function listProjectsInSchedulingOrder(db: Database.Database, projectSlugs?: string[]): Project[] {
+  const scope = projectSlugs === undefined ? null : new Set(projectSlugs);
   return listProjects(db)
     .filter((project) => project.status === "active")
+    .filter((project) => scope === null || scope.has(project.slug))
     .map((project) => ({ project, priority: getSchedulingProject(db, project.slug).priority }))
     .sort((left, right) => left.priority - right.priority || left.project.slug.localeCompare(right.project.slug))
     .map((entry) => entry.project);
@@ -73,7 +83,7 @@ export function runSchedulingPass(db: Database.Database, options: SchedulingPass
   const projects: SchedulingProjectPass[] = [];
   let selection: SchedulingPassResult["selection"] = null;
 
-  for (const project of listProjectsInSchedulingOrder(db)) {
+  for (const project of listProjectsInSchedulingOrder(db, options.projectSlugs)) {
     let schedule = buildProjectSchedule(db, project);
     let reconcile: ReconcileResult | null = null;
     let reconcileError: string | null = null;
@@ -204,7 +214,12 @@ export function recordFailedRun(db: Database.Database, projectSlug: string, inpu
     decisionId = decision.id;
     pausedReason = `Failed-Run budget exceeded (${failedRuns} > ${MAX_FAILED_RUNS_PER_MILESTONE}); Decision ${decision.id} is open.`;
   }
-  upsertSchedulingProject(db, projectSlug, { failedRuns, failedRunsMilestone: milestone, pausedReason });
+  upsertSchedulingProject(db, projectSlug, {
+    failedRuns,
+    failedRunsMilestone: milestone,
+    pausedReason,
+    pausedDecisionId: decisionId ?? record.pausedDecisionId
+  });
   recordSchedulingLog(db, {
     projectSlug,
     actionKey: input.actionKey ?? null,
@@ -218,16 +233,36 @@ export function recordFailedRun(db: Database.Database, projectSlug: string, inpu
   return { projectSlug, failedRuns, paused: Boolean(pausedReason), decisionId };
 }
 
-/** Operator resume after the failed-Run Decision is answered: clears the pause and the counter. */
+/**
+ * Operator resume after the failed-Run Decision is answered.
+ *
+ * The pause exists to force one judgment: whether this Milestone deserves more
+ * attempts. Clearing it while that Decision is still open would let the resume
+ * command stand in for the answer, which is the one thing the pause is for --
+ * so an unanswered Decision refuses here, and the answer (approve or reject) is
+ * what makes resuming possible.
+ */
 export function resumeProjectScheduling(db: Database.Database, projectSlug: string, reason: string): void {
   const record = getSchedulingProject(db, projectSlug);
-  upsertSchedulingProject(db, projectSlug, { pausedReason: null, failedRuns: 0 });
+  if (record.pausedDecisionId) {
+    const decision = getReviewItem(db, record.pausedDecisionId);
+    if (decision && (decision.status === "open" || decision.status === "deferred")) {
+      throw validationError("The failed-Run Decision that paused this Project is still unanswered.", {
+        projectSlug,
+        decisionId: decision.id,
+        decisionStatus: decision.status,
+        decisionNeeded: decision.decision_needed,
+        remedy: `Answer it first with \`arcadia review approve ${decision.id}\` or \`arcadia review reject ${decision.id}\`, then resume; resume cannot substitute for that judgment.`
+      });
+    }
+  }
+  upsertSchedulingProject(db, projectSlug, { pausedReason: null, failedRuns: 0, pausedDecisionId: null });
   recordSchedulingLog(db, {
     projectSlug,
     actionKey: null,
     source: "decision",
     reason: `Scheduling resumed: ${reason}`,
-    previous: { paused: record.pausedReason, failedRuns: record.failedRuns },
+    previous: { paused: record.pausedReason, failedRuns: record.failedRuns, decisionId: record.pausedDecisionId },
     next: { paused: null, failedRuns: 0 }
   });
 }

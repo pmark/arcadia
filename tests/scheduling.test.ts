@@ -1,18 +1,15 @@
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
-import { getProjectBySlug, listActionableReviewItems, upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
-import { syncProjectDocs } from "../src/docs/sync.js";
+import { getProjectBySlug, listActionableReviewItems, updateReviewItemStatus } from "../src/db/repositories.js";
 import { loadActionOrder } from "../src/dispatch/order.js";
 import { DISCOVERY_LIMITS, recordDiscovery } from "../src/scheduling/discovery.js";
 import { projectScheduleToBoard, reconcileBoard, type BoardItem, type BoardStatus, type SchedulingBoard } from "../src/scheduling/github.js";
 import { buildPortfolioSchedule, buildProjectSchedule, writeProjectOrder } from "../src/scheduling/schedule.js";
 import { MAX_FAILED_RUNS_PER_MILESTONE, recordFailedRun, resumeProjectScheduling, runSchedulingPass } from "../src/scheduling/scheduler.js";
-import { listSchedulingLog, upsertSchedulingAction, upsertSchedulingProject } from "../src/scheduling/store.js";
-import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { getSchedulingProject, listSchedulingLog, upsertSchedulingAction, upsertSchedulingProject } from "../src/scheduling/store.js";
+import { gitIn as git, schedulingFixture, type ProjectSpec } from "./schedulingFixture.js";
 
 const roots: string[] = [];
 
@@ -20,78 +17,10 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-interface ActionSpec {
-  id: string;
-  dependsOn?: string[];
-  status?: "open" | "done";
-}
-
-function planDocument(slug: string, project: string, current: string, actions: ActionSpec[]): string {
-  const blocks = actions.map((action) => [
-    `  - id: ${action.id}`,
-    `    title: ${action.id.replace(/-/g, " ")}`,
-    `    status: ${action.status ?? "open"}`,
-    "    responsibility: agent",
-    "    effort: session",
-    `    next_action: Do ${action.id}.`,
-    `    expected_artifact: docs/${action.id}.md`,
-    "    clarification: clarified",
-    "    acceptance_criteria:",
-    `      - ${action.id} exists.`,
-    `    depends_on: [${(action.dependsOn ?? []).join(", ")}]`,
-    "    decisions: []",
-    "    references: []"
-  ].join("\n"));
-  return [
-    "---", "arcadia: v1", "type: plan", `slug: ${slug}`, `project: ${project}`, "status: active",
-    `milestone: ${project} milestone`, `current_action: ${current}`, "token_impact: medium",
-    "token_budget: One bounded Session; deterministic checks.", "recommended_model: sonnet", "updated: 2026-09-17",
-    "actions:", ...blocks, "---", "", `# ${slug}`, ""
-  ].join("\n");
-}
-
-function projectDocument(slug: string, plan: string, current: string): string {
-  return [
-    "---", "arcadia: v1", "type: project", `slug: ${slug}`, `name: ${slug}`, "status: active",
-    `goal: Schedule ${slug}.`, `milestone: ${slug} milestone`, `active_plan: ${plan}`, `current_action: ${current}`, "updated: 2026-09-17", "---", "", `# ${slug}`, ""
-  ].join("\n");
-}
-
-function git(cwd: string, args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf8" });
-}
-
-interface Fixture {
-  root: string;
-  workspace: string;
-  repos: Record<string, string>;
-}
-
-function fixture(projects: Array<{ slug: string; current: string; actions: ActionSpec[] }>): Fixture {
-  const root = mkdtempSync(path.join(tmpdir(), "arcadia-scheduling-"));
-  roots.push(root);
-  const workspace = path.join(root, "workspace");
-  initWorkspace(workspace);
-  const repos: Record<string, string> = {};
-  for (const spec of projects) {
-    const repo = path.join(root, spec.slug);
-    mkdirSync(path.join(repo, "docs", "plans"), { recursive: true });
-    writeFileSync(path.join(repo, "PROJECT.md"), projectDocument(spec.slug, `${spec.slug}-plan`, spec.current));
-    writeFileSync(path.join(repo, "docs", "plans", `${spec.slug}-plan.md`), planDocument(`${spec.slug}-plan`, spec.slug, spec.current, spec.actions));
-    git(repo, ["init", "-q", "-b", "main"]);
-    git(repo, ["config", "user.email", "arcadia@example.test"]);
-    git(repo, ["config", "user.name", "Arcadia Test"]);
-    git(repo, ["add", "."]);
-    git(repo, ["commit", "-qm", "initial"]);
-    repos[spec.slug] = repo;
-    withDatabase(workspace, (db) => {
-      const project = upsertProject(db, { name: spec.slug, mission: `Schedule ${spec.slug}.`, goal: `Schedule ${spec.slug}.`, status: "active" });
-      upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
-      const sync = syncProjectDocs(db, project, { apply: true });
-      if (sync.errors.length || sync.rejected.length) throw new Error(`fixture docs did not sync: ${JSON.stringify(sync.errors)}`);
-    });
-  }
-  return { root, workspace, repos };
+function fixture(projects: ProjectSpec[]) {
+  const created = schedulingFixture(projects);
+  roots.push(created.root);
+  return created;
 }
 
 function schedule(workspace: string, slug: string) {
@@ -393,6 +322,39 @@ describe("scheduling pass", () => {
     expect(git(fx.repos.alpha!, ["status", "--porcelain"]).trim()).toBe("");
   });
 
+  it("confines a Project-scoped pass to that Project, leaving another Project's board and pointer untouched", () => {
+    const fx = fixture([
+      { slug: "alpha", current: "a", actions: [{ id: "a" }, { id: "b" }] },
+      { slug: "beta", current: "b1", actions: [{ id: "b1" }, { id: "b2" }] }
+    ]);
+    const alphaBoard = new FakeBoard();
+    const betaBoard = new FakeBoard();
+    withDatabase(fx.workspace, (db) => {
+      for (const slug of ["alpha", "beta"]) {
+        upsertSchedulingProject(db, slug, { githubOwner: "example", githubProjectNumber: 7, githubRepository: "example/repo" });
+      }
+      const boards: Record<string, FakeBoard> = { alpha: alphaBoard, beta: betaBoard };
+      const boardFactory = (schedule: { projectSlug: string }) => boards[schedule.projectSlug] ?? null;
+      runSchedulingPass(db, { boardFactory, now: new Date("2026-09-18T10:00:00.000Z") });
+
+      // Both Projects now want their pointer moved: each board is dragged so
+      // the second Action leads.
+      alphaBoard.drag([101, 100]);
+      betaBoard.drag([101, 100]);
+
+      const scoped = runSchedulingPass(db, { boardFactory, projectSlugs: ["alpha"], now: new Date("2026-09-18T10:01:00.000Z") });
+      expect(scoped.projects.map((project) => project.projectSlug)).toEqual(["alpha"]);
+      expect(scoped.projects[0]?.pointer).toMatchObject({ moved: true, from: "a", to: "b" });
+    });
+    // Alpha moved; beta was never read, reordered, or committed.
+    expect(readFileSync(path.join(fx.repos.alpha!, "PROJECT.md"), "utf8")).toContain("current_action: b");
+    expect(readFileSync(path.join(fx.repos.beta!, "PROJECT.md"), "utf8")).toContain("current_action: b1");
+    expect(git(fx.repos.beta!, ["log", "-1", "--format=%s"]).trim()).toBe("initial");
+    expect(betaBoard.order()).toEqual([101, 100]);
+    const betaQueue = withReadOnlyDatabase(fx.workspace, (db) => buildProjectSchedule(db, getProjectBySlug(db, "beta")!).queue);
+    expect(betaQueue).toEqual(["beta/b1", "beta/b2"]);
+  });
+
   it("pauses a Project and opens a Decision when the failed-Run budget is exceeded, and resumes on operator say-so", () => {
     const fx = fixture([{ slug: "alpha", current: "a", actions: [{ id: "a" }] }]);
     withDatabase(fx.workspace, (db) => {
@@ -409,9 +371,17 @@ describe("scheduling pass", () => {
       expect(buildProjectSchedule(db, project).pausedReason).toContain("Failed-Run budget exceeded");
       expect(runSchedulingPass(db, { boardFactory: () => null }).selection).toBeNull();
 
+      // Resume cannot stand in for the judgment the pause exists to force.
+      expect(() => resumeProjectScheduling(db, "alpha", "Just keep going.")).toThrow(/still unanswered/);
+      expect(buildProjectSchedule(db, project).pausedReason).toContain("Failed-Run budget exceeded");
+      expect(getSchedulingProject(db, "alpha").pausedDecisionId).toBe(over.decisionId);
+
+      // Answering it is what makes resuming possible.
+      updateReviewItemStatus(db, over.decisionId!, { status: "approved", decisionNote: "Two more attempts approved." });
       resumeProjectScheduling(db, "alpha", "Decision answered: continue.");
       expect(buildProjectSchedule(db, project).next).toBe("alpha/a");
       expect(buildProjectSchedule(db, project).record.failedRuns).toBe(0);
+      expect(getSchedulingProject(db, "alpha").pausedDecisionId).toBeNull();
     });
     const log = withReadOnlyDatabase(fx.workspace, (db) => listSchedulingLog(db, { projectSlug: "alpha", limit: 100 }));
     expect(log.some((entry) => entry.reason.includes("Milestone paused because the failed-Run budget was exceeded"))).toBe(true);

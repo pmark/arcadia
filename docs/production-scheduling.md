@@ -59,11 +59,17 @@ managed-production tick while the standing policy is Active, and on demand via
 The production tick then launches whatever the pointer names, as it always
 has. The scheduler never launches anything itself.
 
+`--project <slug>` scopes the entire pass, not just which board is read. A pass
+scoped to one Project reconciles only that Project's board and commits only
+that Project's pointer move; no other Project is read or written. That is the
+difference between a scoped command and a filtered report, and it matters
+because a pointer move is a commit in someone's repository.
+
 ## Reconciliation
 
 On each pass with a linked board:
 
-1. Read the board's items in board order.
+1. Read the board's items in board order (a GraphQL query; see below).
 2. Map items to Actions through the stored item ids; keep only queued Actions.
 3. Compare with the order Arcadia last projected. A difference is an operator
    reorder.
@@ -109,8 +115,15 @@ and writes nothing to the Plan or queue.
 
 `recordFailedRun` counts failed Runs per Project and active Milestone. The
 ninth failure pauses the Project (no pointer moves, no launches) and opens a
-Decision. `arcadia schedule resume --project <slug> --reason ...` clears the
-pause and the counter after the operator answers.
+Decision, whose id is stored on the Project's scheduling row.
+
+`arcadia schedule resume --project <slug> --reason ...` clears the pause and
+the counter, and **refuses while that Decision is still open or deferred**. The
+pause exists to force exactly one judgment — whether this Milestone deserves
+more attempts — so a resume that could clear it without an answer would be a
+way to skip the judgment rather than make it. Answer the Decision first
+(`arcadia review approve <id>` or `arcadia review reject <id>`); either answer
+unblocks resume, because either one is a judgment.
 
 ## The Log
 
@@ -127,15 +140,32 @@ Mission Log stays human-scale.
 
 `src/scheduling/github.ts` drives `gh`:
 
-- `gh project view/field-list/item-list/item-add/item-edit` for the board;
-- `gh issue create` for Issues;
-- one GraphQL mutation, `updateProjectV2ItemPosition`, for card order.
+- `gh project view` and `field-list` to resolve the board and its status field;
+- `gh issue create` for Issues, `gh project item-add` to put one on the board,
+  `gh project item-edit` to set a status;
+- GraphQL for reading items and for `updateProjectV2ItemPosition`.
 
 Status is carried on a single-select field named `Arcadia status` with options
-`Needs operator`, `Ready`, `Running`, `Blocked`, `Done`, `Backlog`. The field is
-created on link when missing. GitHub's built-in `Status` field is left alone
-because its options cannot be renamed through the API; the operator groups the
-board view by `Arcadia status`.
+`Needs operator`, `Ready`, `Running`, `Blocked`, `Done`, `Backlog`. GitHub's
+built-in `Status` field is left alone because its options cannot be renamed
+through the API; the operator groups the board view by `Arcadia status`.
+
+**Reading items is a GraphQL query, not `gh project item-list`.** `item-list
+--format json` flattens custom fields into camelCased keys derived from the
+field's title, so "Arcadia status" arrives under a spelling this code would
+have to guess. Guessing wrong is not a visible failure: every status reads as
+absent, so the projection believes no card has a status and rewrites all of
+them on every tick, forever. GraphQL's `fieldValueByName` takes the name
+verbatim and answers for that field alone. `tests/scheduling-github-adapter.test.ts`
+holds a `CommandRunner` fake that proves a second projection over a healthy
+board issues no writes at all.
+
+**Only `schedule github link` changes the board's schema.** It calls
+`ensureBoardStatusField`, which creates the `Arcadia status` field when the
+Project has none. Every other path — `schedule reconcile` with or without
+`--apply`, and every worker tick — opens the board through `createGitHubBoard`,
+which reads and refuses a board with no status field rather than creating one.
+A preview therefore performs no GitHub mutation of any kind, including schema.
 
 GitHub Project views cannot be created through the API either, so the
 "execution" and "backlog" views are one manual step: in the board view, filter

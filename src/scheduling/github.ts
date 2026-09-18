@@ -222,6 +222,7 @@ function describeMoves(before: string[], requested: string[]): string {
   return moved.length === 0 ? "no net change" : `moved ${moved.slice(0, 3).join(", ")}${moved.length > 3 ? ` and ${moved.length - 3} more` : ""}`;
 }
 
+
 // ---------------------------------------------------------------------------
 // gh-backed board
 // ---------------------------------------------------------------------------
@@ -258,49 +259,98 @@ function ghJson<T>(run: CommandRunner, cwd: string, args: string[], what: string
   }
 }
 
+interface StatusField {
+  id: string;
+  options: Map<string, string>;
+}
+
 /**
- * Resolve a Project's node id and its `Arcadia status` single-select field
- * once, creating the field when it does not exist yet, then serve the board
- * operations over `gh project ...` and one GraphQL mutation for position.
+ * Items, in the board's own order, with the `Arcadia status` value each one
+ * carries.
+ *
+ * This is a GraphQL read rather than `gh project item-list` because the field
+ * has to be addressed by its exact name. `item-list --format json` flattens
+ * custom fields into camelCased keys derived from the field's title, so
+ * "Arcadia status" arrives as some spelling this code would have to guess at;
+ * guessing wrong reads every status as absent, and a projection that believes
+ * every card is unset rewrites every status on every tick forever. GraphQL's
+ * `fieldValueByName` takes the name verbatim and answers for that field only.
+ */
+const ITEMS_QUERY = `query($project: ID!, $status: String!, $after: String) {
+  node(id: $project) {
+    ... on ProjectV2 {
+      items(first: 100, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          content {
+            ... on Issue { number title }
+            ... on PullRequest { number title }
+            ... on DraftIssue { title }
+          }
+          fieldValueByName(name: $status) {
+            ... on ProjectV2ItemFieldSingleSelectValue { name }
+          }
+        }
+      }
+    }
+  }
+}`;
+
+interface ItemsResponse {
+  data?: {
+    node?: {
+      items?: {
+        pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
+        nodes?: Array<{
+          id: string;
+          content?: { number?: number; title?: string } | null;
+          fieldValueByName?: { name?: string } | null;
+        }>;
+      };
+    };
+  };
+}
+
+function listBoardItems(run: CommandRunner, config: GitHubBoardConfig, projectId: string): BoardItem[] {
+  const items: BoardItem[] = [];
+  let after: string | null = null;
+  for (let page = 0; page < 50; page += 1) {
+    const args = ["api", "graphql", "-f", `query=${ITEMS_QUERY}`, "-F", `project=${projectId}`, "-f", `status=${BOARD_STATUS_FIELD}`];
+    if (after) args.push("-F", `after=${after}`);
+    const response = ghJson<ItemsResponse>(run, config.cwd, args, "project items query");
+    const connection = response.data?.node?.items;
+    for (const node of connection?.nodes ?? []) {
+      items.push({
+        itemId: node.id,
+        issueNumber: typeof node.content?.number === "number" ? node.content.number : null,
+        title: node.content?.title ?? "",
+        status: typeof node.fieldValueByName?.name === "string" ? node.fieldValueByName.name : null
+      });
+    }
+    if (!connection?.pageInfo?.hasNextPage || !connection.pageInfo.endCursor) return items;
+    after = connection.pageInfo.endCursor;
+  }
+  return items;
+}
+
+/**
+ * Open an existing board for reading and projection. This never creates or
+ * alters the board's schema: a missing `Arcadia status` field is a refusal
+ * with the remedy, so a preview or a worker tick cannot mutate GitHub's
+ * structure as a side effect of looking at it. `schedule github link` is the
+ * one command that creates the field.
  */
 export function createGitHubBoard(config: GitHubBoardConfig, run: CommandRunner = runGh): SchedulingBoard {
   const owner = config.owner;
   const number = String(config.number);
   const view = ghJson<{ id: string }>(run, config.cwd, ["project", "view", number, "--owner", owner, "--format", "json"], "project view");
   const projectId = view.id;
-  let field = findStatusField(run, config);
-  if (!field) {
-    const created = run(config.cwd, "gh", [
-      "project", "field-create", number, "--owner", owner, "--name", BOARD_STATUS_FIELD,
-      "--data-type", "SINGLE_SELECT", "--single-select-options", BOARD_STATUSES.join(",")
-    ]);
-    if (!created.ok) throw validationError(`GitHub field-create failed: ${created.stderr.trim()}`);
-    field = findStatusField(run, config);
-    if (!field) throw validationError(`GitHub Project ${owner}/${number} has no "${BOARD_STATUS_FIELD}" field after creating it.`);
-  }
-  const missing = BOARD_STATUSES.filter((status) => !field!.options.has(status));
-  if (missing.length > 0) {
-    throw validationError(`GitHub field "${BOARD_STATUS_FIELD}" is missing option(s): ${missing.join(", ")}.`, {
-      remedy: `Add the missing single-select option(s) to "${BOARD_STATUS_FIELD}" on Project ${owner}/${number}.`
-    });
-  }
-  const statusField = field;
+  const statusField = requireStatusField(run, config);
 
   return {
     listItems() {
-      const data = ghJson<{ items: Array<{ id: string; title?: string; content?: { number?: number; title?: string }; [key: string]: unknown }> }>(
-        run, config.cwd, ["project", "item-list", number, "--owner", owner, "--format", "json", "--limit", "500"], "item-list"
-      );
-      const fieldKey = BOARD_STATUS_FIELD.toLowerCase().replace(/\s+/g, " ");
-      return data.items.map((item) => {
-        const statusValue = Object.entries(item).find(([key]) => key.toLowerCase().replace(/\s+/g, " ") === fieldKey)?.[1];
-        return {
-          itemId: item.id,
-          issueNumber: typeof item.content?.number === "number" ? item.content.number : null,
-          title: item.content?.title ?? item.title ?? "",
-          status: typeof statusValue === "string" ? statusValue : null
-        };
-      });
+      return listBoardItems(run, config, projectId);
     },
     createIssue(input) {
       const created = run(config.cwd, "gh", ["issue", "create", "--repo", config.repository, "--title", input.title, "--body", input.body]);
@@ -334,7 +384,39 @@ export function createGitHubBoard(config: GitHubBoardConfig, run: CommandRunner 
   };
 }
 
-function findStatusField(run: CommandRunner, config: GitHubBoardConfig): { id: string; options: Map<string, string> } | null {
+/**
+ * Create the `Arcadia status` field when the board does not have one yet. Only
+ * `schedule github link` calls this, so board schema changes stay an explicit
+ * operator act rather than something a read path performs on its own.
+ */
+export function ensureBoardStatusField(config: GitHubBoardConfig, run: CommandRunner = runGh): { created: boolean } {
+  if (findStatusField(run, config)) return { created: false };
+  const created = run(config.cwd, "gh", [
+    "project", "field-create", String(config.number), "--owner", config.owner, "--name", BOARD_STATUS_FIELD,
+    "--data-type", "SINGLE_SELECT", "--single-select-options", BOARD_STATUSES.join(",")
+  ]);
+  if (!created.ok) throw validationError(`GitHub field-create failed: ${created.stderr.trim()}`);
+  requireStatusField(run, config);
+  return { created: true };
+}
+
+function requireStatusField(run: CommandRunner, config: GitHubBoardConfig): StatusField {
+  const field = findStatusField(run, config);
+  if (!field) {
+    throw validationError(`GitHub Project ${config.owner}/${config.number} has no "${BOARD_STATUS_FIELD}" field.`, {
+      remedy: `Run \`arcadia schedule github link --project <slug> --owner ${config.owner} --number ${config.number}\` to create it; reading and projecting never create board fields.`
+    });
+  }
+  const missing = BOARD_STATUSES.filter((status) => !field.options.has(status));
+  if (missing.length > 0) {
+    throw validationError(`GitHub field "${BOARD_STATUS_FIELD}" is missing option(s): ${missing.join(", ")}.`, {
+      remedy: `Add the missing single-select option(s) to "${BOARD_STATUS_FIELD}" on Project ${config.owner}/${config.number}.`
+    });
+  }
+  return field;
+}
+
+function findStatusField(run: CommandRunner, config: GitHubBoardConfig): StatusField | null {
   const data = ghJson<{ fields: Array<{ id: string; name: string; type?: string; options?: Array<{ id: string; name: string }> }> }>(
     run, config.cwd, ["project", "field-list", String(config.number), "--owner", config.owner, "--format", "json", "--limit", "100"], "field-list"
   );

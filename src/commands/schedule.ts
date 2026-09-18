@@ -5,8 +5,17 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
 import { getProjectBySlug } from "../db/repositories.js";
 import { recordDiscovery, type DiscoveryKind, type DiscoveryResult } from "../scheduling/discovery.js";
-import { createGitHubBoard, createGitHubProject, reconcileBoard, runGh, type ReconcileResult } from "../scheduling/github.js";
-import { SCHEDULING_CLASSES, canonicalOrder, type SchedulingClass } from "../scheduling/order.js";
+import {
+  BOARD_STATUSES,
+  BOARD_STATUS_FIELD,
+  createGitHubBoard,
+  createGitHubProject,
+  ensureBoardStatusField,
+  reconcileBoard,
+  runGh,
+  type ReconcileResult
+} from "../scheduling/github.js";
+import { SCHEDULING_CLASSES, applyOperatorOrder, canonicalOrder, sameSequence, type SchedulingClass } from "../scheduling/order.js";
 import { buildPortfolioSchedule, buildProjectSchedule, orderCandidates, writeProjectOrder, type PortfolioSchedule, type ProjectSchedule } from "../scheduling/schedule.js";
 import { resumeProjectScheduling, runSchedulingPass, type SchedulingPassResult } from "../scheduling/scheduler.js";
 import {
@@ -208,35 +217,39 @@ export interface ScheduleReconcileData {
 export function runScheduleReconcileCommand(options: { workspace: string; project?: string; apply?: boolean }): CommandSuccess<ScheduleReconcileData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const data = withDatabase(workspacePath, (db): ScheduleReconcileData => {
+    if (options.project && !getProjectBySlug(db, options.project)) {
+      throw validationError("Unknown Project slug.", { project: options.project });
+    }
+    // `--project` scopes the whole pass, not just which board is read: a pass
+    // scoped to one Project must not commit another Project's pointer move.
+    const projectSlugs = options.project ? [options.project] : undefined;
     if (options.apply) {
-      const pass = runSchedulingPass(db, {
-        boardFactory: (schedule) => {
-          if (options.project && schedule.projectSlug !== options.project) return null;
-          if (!schedule.github?.repository || !schedule.repositoryRoot) return null;
-          return createGitHubBoard({ owner: schedule.github.owner, number: schedule.github.number, repository: schedule.github.repository, cwd: schedule.repositoryRoot });
-        }
-      });
+      const pass = runSchedulingPass(db, { projectSlugs });
       return { pass, reconciles: pass.projects.flatMap((project) => project.reconcile ? [project.reconcile] : []), preview: false };
     }
-    // Preview: read the boards and report what a pass would change, writing nothing.
-    const portfolio = buildPortfolioSchedule(db);
+
+    // Preview reads every linked board in scope and reports what an applied
+    // pass would change. It writes nothing -- not to Arcadia, and not to
+    // GitHub: `createGitHubBoard` only reads, and creating a missing status
+    // field belongs to `schedule github link`.
     const reconciles: ReconcileResult[] = [];
-    for (const schedule of portfolio.projects) {
-      if (options.project && schedule.projectSlug !== options.project) continue;
+    for (const schedule of buildPortfolioSchedule(db).projects) {
+      if (projectSlugs && !projectSlugs.includes(schedule.projectSlug)) continue;
       if (!schedule.github?.repository || !schedule.repositoryRoot) continue;
       const board = createGitHubBoard({ owner: schedule.github.owner, number: schedule.github.number, repository: schedule.github.repository, cwd: schedule.repositoryRoot });
       const keyByItem = new Map(schedule.actions.filter((action) => action.githubProjectItemId).map((action) => [action.githubProjectItemId!, action.key]));
       const observed = board.listItems().map((item) => keyByItem.get(item.itemId)).filter((key): key is string => key !== undefined && schedule.queue.includes(key));
       const lastProjected = schedule.record.lastProjectedOrder.filter((key) => schedule.queue.includes(key) && observed.includes(key));
-      const operatorMoved = schedule.record.lastProjectedRevision >= 0 && observed.length > 0 && observed.join("\n") !== lastProjected.join("\n");
+      const operatorMoved = schedule.record.lastProjectedRevision >= 0 && observed.length > 0 && !sameSequence(observed, lastProjected);
+      const applied = operatorMoved ? applyOperatorOrder(orderCandidates(schedule.actions), observed) : null;
       reconciles.push({
         projectSlug: schedule.projectSlug,
         observedOrder: observed,
         operatorMoved,
         accepted: false,
-        normalized: false,
-        normalizationReasons: [],
-        canonical: schedule.queue,
+        normalized: applied?.normalized ?? false,
+        normalizationReasons: applied?.normalizationReasons ?? [],
+        canonical: applied?.canonical ?? schedule.queue,
         revision: schedule.queueRevision,
         projection: null
       });
@@ -275,6 +288,8 @@ export interface ScheduleGitHubLinkData {
   repository: string;
   created: boolean;
   url: string | null;
+  /** Whether this link created the board's `Arcadia status` field. */
+  statusFieldCreated: boolean;
 }
 
 export function runScheduleGitHubLinkCommand(options: {
@@ -305,19 +320,23 @@ export function runScheduleGitHubLinkCommand(options: {
       url = made.url;
       created = true;
     }
-    // Resolving the board verifies the Project exists and creates the status field when missing.
+    // Link is the one command that may change the board's schema: it creates
+    // the `Arcadia status` field when the Project has none, then opens the
+    // board read-only to prove the result is usable.
+    const field = ensureBoardStatusField({ owner: options.owner, number, repository, cwd: schedule.repositoryRoot });
     createGitHubBoard({ owner: options.owner, number, repository, cwd: schedule.repositoryRoot });
     upsertSchedulingProject(db, project.slug, { githubOwner: options.owner, githubProjectNumber: number, githubProjectId: id, githubRepository: repository, lastProjectedRevision: -1, lastProjectedOrder: [] });
-    recordSchedulingLog(db, { projectSlug: project.slug, actionKey: null, source: "arcadia", reason: `${created ? "Created and linked" : "Linked"} GitHub Project ${options.owner}/${number} (issues in ${repository}).`, next: { owner: options.owner, number, repository } });
-    return { projectSlug: project.slug, owner: options.owner, number, repository, created, url };
+    recordSchedulingLog(db, { projectSlug: project.slug, actionKey: null, source: "arcadia", reason: `${created ? "Created and linked" : "Linked"} GitHub Project ${options.owner}/${number} (issues in ${repository})${field.created ? `; created the "${BOARD_STATUS_FIELD}" field` : ""}.`, next: { owner: options.owner, number, repository, statusFieldCreated: field.created } });
+    return { projectSlug: project.slug, owner: options.owner, number, repository, created, url, statusFieldCreated: field.created };
   });
   return createSuccess({ command: "schedule.github.link", workspace: workspacePath, data });
 }
 
 export function renderScheduleGitHubLinkSuccess(response: CommandSuccess<ScheduleGitHubLinkData>): string[] {
-  const { projectSlug, owner, number, repository, created, url } = response.data;
+  const { projectSlug, owner, number, repository, created, url, statusFieldCreated } = response.data;
   return [
     `${created ? "Created and linked" : "Linked"} ${projectSlug} → GitHub Project ${owner}/${number}${url ? ` (${url})` : ""}; issues in ${repository}.`,
+    statusFieldCreated ? `Created the "${BOARD_STATUS_FIELD}" single-select field with options: ${BOARD_STATUSES.join(", ")}.` : `The "${BOARD_STATUS_FIELD}" field already existed; nothing on the board was changed.`,
     "Run `arcadia schedule reconcile --apply` to project the queue onto the board."
   ];
 }

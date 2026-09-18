@@ -29,6 +29,7 @@ export function ensureSchedulingTables(db: Database.Database): void {
       failed_runs INTEGER NOT NULL DEFAULT 0,
       failed_runs_milestone TEXT,
       paused_reason TEXT,
+      paused_decision_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -60,6 +61,12 @@ export function ensureSchedulingTables(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_scheduling_log_project ON scheduling_log(project_slug, at);
   `);
+  // `paused_decision_id` was added after the first tables shipped; a workspace
+  // created before it keeps its rows and gains the column here.
+  const columns = db.prepare("PRAGMA table_info(scheduling_projects)").all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === "paused_decision_id")) {
+    db.exec("ALTER TABLE scheduling_projects ADD COLUMN paused_decision_id TEXT");
+  }
 }
 
 export interface SchedulingProjectRecord {
@@ -74,6 +81,8 @@ export interface SchedulingProjectRecord {
   failedRuns: number;
   failedRunsMilestone: string | null;
   pausedReason: string | null;
+  /** The Decision opened when the pause was applied; resume waits on its answer. */
+  pausedDecisionId: string | null;
 }
 
 interface SchedulingProjectRow {
@@ -88,6 +97,7 @@ interface SchedulingProjectRow {
   failed_runs: number;
   failed_runs_milestone: string | null;
   paused_reason: string | null;
+  paused_decision_id: string | null;
 }
 
 function projectFromRow(row: SchedulingProjectRow): SchedulingProjectRecord {
@@ -109,7 +119,8 @@ function projectFromRow(row: SchedulingProjectRow): SchedulingProjectRecord {
     lastProjectedOrder: order,
     failedRuns: row.failed_runs,
     failedRunsMilestone: row.failed_runs_milestone,
-    pausedReason: row.paused_reason
+    pausedReason: row.paused_reason,
+    pausedDecisionId: row.paused_decision_id
   };
 }
 
@@ -129,7 +140,8 @@ export function getSchedulingProject(db: Database.Database, projectSlug: string)
         lastProjectedOrder: [],
         failedRuns: 0,
         failedRunsMilestone: null,
-        pausedReason: null
+        pausedReason: null,
+        pausedDecisionId: null
       };
 }
 
@@ -150,16 +162,19 @@ export function upsertSchedulingProject(
   db.prepare(
     `INSERT INTO scheduling_projects (
        project_slug, priority, github_owner, github_project_number, github_project_id, github_repository,
-       last_projected_revision, last_projected_order_json, failed_runs, failed_runs_milestone, paused_reason, created_at, updated_at
+       last_projected_revision, last_projected_order_json, failed_runs, failed_runs_milestone, paused_reason,
+       paused_decision_id, created_at, updated_at
      ) VALUES (
        @project_slug, @priority, @github_owner, @github_project_number, @github_project_id, @github_repository,
-       @last_projected_revision, @last_projected_order_json, @failed_runs, @failed_runs_milestone, @paused_reason, @created_at, @updated_at
+       @last_projected_revision, @last_projected_order_json, @failed_runs, @failed_runs_milestone, @paused_reason,
+       @paused_decision_id, @created_at, @updated_at
      )
      ON CONFLICT(project_slug) DO UPDATE SET
        priority = @priority, github_owner = @github_owner, github_project_number = @github_project_number,
        github_project_id = @github_project_id, github_repository = @github_repository,
        last_projected_revision = @last_projected_revision, last_projected_order_json = @last_projected_order_json,
-       failed_runs = @failed_runs, failed_runs_milestone = @failed_runs_milestone, paused_reason = @paused_reason, updated_at = @updated_at`
+       failed_runs = @failed_runs, failed_runs_milestone = @failed_runs_milestone, paused_reason = @paused_reason,
+       paused_decision_id = @paused_decision_id, updated_at = @updated_at`
   ).run({
     project_slug: projectSlug,
     priority: next.priority,
@@ -172,6 +187,7 @@ export function upsertSchedulingProject(
     failed_runs: next.failedRuns,
     failed_runs_milestone: next.failedRunsMilestone,
     paused_reason: next.pausedReason,
+    paused_decision_id: next.pausedDecisionId,
     created_at: at,
     updated_at: at
   });
