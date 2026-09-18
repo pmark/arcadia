@@ -1,0 +1,31 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-preserve-projects-with-dependencies-2026-09-18",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "preserve-projects-with-dependencies",
+  "candidate_revision": "24dc7aeb09ffe98a3218b9e7a2f0239ba435e3e5",
+  "desired_result": "Mark preserve-projects-with-dependencies complete and resolve the next governed Action.",
+  "evidence": [
+    {
+      "criterion": "A Project whose declared objective validation check needs installed dependencies can complete protected preservation, or Arcadia's own Project declares a genuine self-contained objective check that runs inside the existing sandbox; the chosen mechanism and its security boundary are documented, and no check that cannot run is left configured as if it could.",
+      "status": "met",
+      "note": "Chosen mechanism: Arcadia's own Project declares a genuine self-contained check. scripts/preservation-self-check.mjs uses only Node built-in modules against the immutable tracked tree and fails on a missing control document, invalid JSON, an unresolved merge-conflict marker, or an unresolvable relative import. Arcadia's host-managed Project metadata now declares node scripts/preservation-self-check.mjs (set with 'arcadia project metadata proj_ccdbfb22a7e4415ca7 --validation-command \"node scripts/preservation-self-check.mjs\"'). Documented in docs/reports/protected-preservation-qa.md and START_HERE.md. No check that cannot run is left configured as if it could: any declared check needing installed dependencies is refused before execution with a named remedy, and host-side dependency-aware validation is explicitly owned by the later Action preserve-on-exit-and-integrate."
+    },
+    {
+      "criterion": "The existing preservation invariants hold or any reviewed exception is narrower and bounded and named: no network, no source writes, regular files only, at most 64 MiB, temporary output only in the private scratch/TMPDIR.",
+      "status": "met",
+      "note": "No sandbox exception was added; all existing invariants hold. Proof: the real protected preservation of this candidate (receipt presv_a08062e9ac3643a08b, authorityKind manual_handoff, policyEpoch 0, commit 24dc7aeb09ff) ran the declared check inside the existing macOS Seatbelt sandbox and recorded validation evidence at workspaces/martianrover/artifacts/preservation/wtres_65a677573360497589/check-Zk0hbS/validation.json: producer arcadia-host-seatbelt-v1, command 'node scripts/preservation-self-check.mjs', exitStatus 0, stdout 'preservation self-check passed (964 files inspected)'."
+    },
+    {
+      "criterion": "advance, go, and go-broker status report this as a named, actionable remedy instead of only validation_commands_missing when a declared check requires dependencies the sandbox refuses.",
+      "status": "met",
+      "note": "src/sessions/preservationChecks.ts classifies each declared command deterministically (no execution) as self-contained or dependency-requiring. readPreservationReadiness now returns blocker code validation_requires_dependencies with the remedy for advance and go; bindManualPreservation and preservationAuthority refuse a dependency-requiring check before execution with the same wording; go-broker status adds a preservationChecks field and renders 'Preservation checks: NEEDS DEPENDENCIES'. tests/preservation-checks.test.ts covers classification; tests/manual-preservation.test.ts 'names the dependency remedy instead of reporting a runnable readiness' asserts ready:false with validation_requires_dependencies; tests/preservation-validation.test.ts asserts the managed authority refuses with the named remedy."
+    },
+    {
+      "criterion": "Deterministic tests cover the chosen validation path including pass, fail, and refusal, and prove a check that cannot run reports refusal rather than readiness; existing codex and claude launch, refusal, and reconciliation behavior is unchanged; pnpm test and the core, Discord, and Dashboard builds pass.",
+      "status": "met",
+      "note": "tests/preservation-self-check.test.ts covers pass (repo tree and a well-formed fixture) and fail (invalid JSON, conflict markers, missing required file, unresolved relative import). Focused suite of preservation-checks, preservation-self-check, manual-preservation, preservation-validation, candidate-preservation, go-broker, go-broker-agent-setup: 7 files passed, 73 passed, 7 skipped. tsc -p tsconfig.json, pnpm lint, pnpm build and pnpm dashboard:build all exit 0. pnpm test: 1742 passed, 13 skipped, 1 failed (cli-response-contracts.test.ts 'runs a clarification Decision through open, list, and resolve' timed out at 30s under full parallel load; it passes 34/34 in isolation and touches no preservation path). codex and claude launch, refusal and reconciliation paths are untouched and their tests pass. A stale Sep-17 host worker (predating the deferred Action status) initially refused preservation; it was restarted via its launchd service and preservation then succeeded."
+    }
+  ]
+}
