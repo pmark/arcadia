@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { condense, decide, extractPrompt, hasOutsideDiffFindings, MAX_FIX_ROUNDS, type Review, type Thread } from "../scripts/coderabbit-loop.js";
+import { condense, decide, extractPrompt, hasOutsideDiffFindings, MAX_FIX_ROUNDS, type Review, type Thread } from "../src/stewardship/codeRabbitReview.js";
 
 const review = (commitId: string, state: string, submittedAt: string, body = ""): Review => ({ commitId, state, submittedAt, body });
 const thread = (id: string, overrides: Partial<Thread> = {}): Thread => ({

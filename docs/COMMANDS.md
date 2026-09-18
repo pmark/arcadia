@@ -1444,6 +1444,32 @@ Automating the actual merge on top of this assessment is a separate, explicit
 approval boundary (see the orchestration vision document's trigger table) and
 is not part of this command.
 
+## Run The CodeRabbit Review Loop On A PR
+
+In a repository with a `.coderabbit.yaml`, an agent does not stop at a push.
+The "CodeRabbit loop" section of the managed `AGENTS.md` block has it wait for
+CodeRabbit's review, fix or decline each finding, push, and repeat until
+CodeRabbit approves or three fix rounds have passed.
+
+```sh
+pnpm arcadia pr code-review 325 --json
+pnpm arcadia pr decline-finding PRRT_kwDO... "Not reachable: the caller already validates this." --json
+```
+
+`code-review` only reads. It waits (up to `--timeout-min`, default 20) for the
+`CodeRabbit` commit status on the PR's pushed head to finish, then returns
+`verdict`: `done` (approved, or nothing unresolved; `note` says which), `fix`
+(unresolved `findings`, each with its `threadId`), or `cap` (findings remain
+after three fix rounds; hand them to the operator). Findings CodeRabbit places
+outside the diff have no thread and are flagged by `outsideDiffFindings`, with
+their text in `prompt`. A draft PR, an unpushed local HEAD, a timeout, or a
+CodeRabbit failure is an error rather than a verdict.
+
+`decline-finding` replies on the thread with the reason and resolves it, so a
+wrong finding stops blocking approval without being silently ignored.
+CodeRabbit only approves when `.coderabbit.yaml` sets
+`reviews.request_changes_workflow: true`.
+
 ## Working-Copy Safety
 
 Scan every active Project's configured repository and all of its Git worktrees
