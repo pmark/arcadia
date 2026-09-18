@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# The review loop in AGENTS.md ("CodeRabbit loop") stops on an APPROVED review.
+# request_changes_workflow is what makes CodeRabbit give one: it requests
+# changes while its threads are open and approves once they are resolved, so
+# "done" is a signal it emits rather than something an agent infers.
+# profile stays chill, which is what the account defaults already used.
+language: en-US
+reviews:
+  profile: chill
+  request_changes_workflow: true
