@@ -153,6 +153,15 @@ The Plan write lands in the Project's configured repository and is committed
 there, never pushed. The repository must be clean; a dirty tree refuses the
 discovery rather than mixing it with someone's uncommitted work.
 
+Discovery writes these Actions into the Plan directly rather than through an
+Agent Ask. Decision 0059 ratified that as a bounded exception: only the three
+classes above, each with acceptance criteria, committed and never pushed,
+refused on a dirty repository, every one logged with its origin, and capped by
+the breakers below. A blocker has to become the next runnable work inside the
+same Run, and an Ask waits for operator settlement, so routing it that way
+would stall the Run on the thing the blocker was raised to clear. Every other
+governance write still requires an Ask.
+
 Three fixed circuit breakers stop runaway branches: discovery depth 2,
 three corrective descendants per root Action, eight discovered correctives per
 Milestone. Crossing any of them opens a Decision carrying the proposed Action

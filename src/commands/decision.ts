@@ -17,6 +17,7 @@ import {
   type DocValidationError
 } from "../docs/types.js";
 import { applyDecisionDeferral, type DecisionDeferralConsequence } from "../dispatch/decisionDeferral.js";
+import { projectCheckoutFor } from "../git/worktrees.js";
 import { localDateStamp } from "../utils/time.js";
 
 const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -319,6 +320,18 @@ function resolveProjectRepo(workspacePath: string, projectIdOrSlug: string): str
   return withDatabase(workspacePath, (db) => resolveProjectRepoFromDb(db, projectIdOrSlug));
 }
 
+/**
+ * The checkout this command should read and write Decisions in.
+ *
+ * A Project records one `repo_path`, normally the main checkout, but a
+ * Decision raised during an Action's Session lives on that Session's candidate
+ * branch and exists nowhere else until the pull request merges. Resolving
+ * `repo_path` unconditionally made such a Decision unanswerable from the one
+ * place it exists: `decision approve` reported "No decision file matches this
+ * id" while the file sat in the current worktree. `projectCheckoutFor` is the
+ * same resolution `agent-ask settle` already uses, so a Decision is answered
+ * where it lives and the answer ships in that Action's pull request.
+ */
 function resolveProjectRepoFromDb(db: Parameters<typeof getProject>[0], projectIdOrSlug: string): string {
   const project = getProject(db, projectIdOrSlug) ?? getProjectBySlug(db, projectIdOrSlug);
   if (!project) {
@@ -331,7 +344,7 @@ function resolveProjectRepoFromDb(db: Parameters<typeof getProject>[0], projectI
       project: projectIdOrSlug
     });
   }
-  return repoPath;
+  return projectCheckoutFor(repoPath, process.cwd());
 }
 
 function nextDecisionId(decisionsDir: string): string {

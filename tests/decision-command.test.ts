@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -269,5 +270,47 @@ describe("decision validate", () => {
     const validated = runDecisionValidateCommand({ workspace, project: projectSlug, id: "0001" });
     expect(validated.data.valid).toBe(false);
     expect(validated.data.errors[0]?.message).toMatch(/must record an `answer`/);
+  });
+});
+
+describe("decision commands in a candidate worktree", () => {
+  /**
+   * A Decision raised during an Action's Session lives on that Session's
+   * candidate branch and exists nowhere else until its pull request merges.
+   * Resolving the Project's recorded `repo_path` unconditionally made such a
+   * Decision unanswerable from the only place it exists, reporting "No
+   * decision file matches this id" while the file sat in the current
+   * directory.
+   */
+  it("answers a Decision that exists only on the candidate branch", () => {
+    const { workspace, repoRoot, projectSlug } = workspaceWithProject();
+    const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" });
+    git(repoRoot, ["init", "-q", "-b", "main"]);
+    git(repoRoot, ["config", "user.email", "decision-test@example.invalid"]);
+    git(repoRoot, ["config", "user.name", "Decision Test"]);
+    writeFileSync(path.join(repoRoot, "README.md"), "base\n");
+    git(repoRoot, ["add", "README.md"]);
+    git(repoRoot, ["commit", "-qm", "initial"]);
+
+    const candidate = path.join(scratch(), "candidate");
+    git(repoRoot, ["worktree", "add", "-q", "-b", "candidate/work", candidate]);
+
+    // The Decision is written from the candidate, so it lands only there.
+    const previous = process.cwd();
+    try {
+      process.chdir(candidate);
+      runDecisionNewCommand({ workspace, project: projectSlug, slug: "raised-mid-session", question: "Settle this?" });
+      const candidatePath = path.join(candidate, "docs/decisions/0001-raised-mid-session.md");
+      expect(readFileSync(candidatePath, "utf8")).toContain("status: open");
+      expect(() => readFileSync(path.join(repoRoot, "docs/decisions/0001-raised-mid-session.md"), "utf8")).toThrow();
+
+      runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes, proceed." });
+      const answered = readFileSync(candidatePath, "utf8");
+      expect(answered).toContain("status: approved");
+      expect(answered).toContain("answer: Yes, proceed.");
+    } finally {
+      process.chdir(previous);
+      git(repoRoot, ["worktree", "remove", "--force", candidate]);
+    }
   });
 });

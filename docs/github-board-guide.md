@@ -333,17 +333,25 @@ between status columns has no effect on Arcadia.
 
 ---
 
-## One open question
+## Why discovered work skips the approval step
 
-This is a known gap. It does not stop you using the system, but you should
-know it exists.
+Arcadia's general rule is that new work items are proposed to you for approval
+before they become real. Discovery deliberately does not do that, because a
+blocker has to become the next task immediately or the build stalls waiting on
+you for the very thing it raised.
 
-**Discovered work skips the usual approval path.** Arcadia's general rule is
-that new work items are proposed to you for approval. Discovery deliberately
-does not do that, because a blocker has to become the next task immediately or
-the build stalls waiting for you. That exception is now written up as
-**Decision 0059** with three options and a recommendation, waiting for your
-answer. Run `arcadia review` to see it.
+**Decision 0059 ratified that exception**, with these bounds:
+
+- only blockers, correctives and follow-ups can be created this way;
+- each one carries acceptance criteria, so "done" is observable;
+- the change is committed to your repository and never pushed;
+- a repository with uncommitted changes refuses the discovery outright;
+- every one is logged with the Action that found it;
+- the three discovery limits turn an over-budget branch into a Decision.
+
+Nothing else was authorized. Creating Plans, Milestones or Outcomes, answering
+Decisions, and adding work outside the active Milestone all still come to you
+first.
 
 ---
 

@@ -4,7 +4,7 @@ type: decision
 id: "0059"
 slug: settle-whether-coding-run-discovery-may-write-governed-actions-straight-into
 project: arcadia
-status: open
+status: approved
 question: Settle whether coding-Run discovery may write governed Actions straight into the active Plan, or must route them through an Agent Ask like every other new Action.
 gap_type: missing-decision
 recommendation: Ratify the bounded exception as it stands
@@ -21,6 +21,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-09-18
+answer: Ratify the bounded exception as it stands
+decided: 2026-09-18
 ---
 
 # Decision 0059: Settle whether coding-Run discovery may write governed Actions straight into the active Plan, or must route them through an Agent Ask like every other new Action.
