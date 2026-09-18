@@ -210,6 +210,20 @@ export function runDecisionApproveCommand(options: DecisionApproveOptions): Comm
     // pointer move are written and committed together by one transition, then
     // validated against the post-deferral dispatch state before the commit.
     if (decisionDoc && chosen?.effect === "defer") {
+      // Dispatch only honors a deferring Decision while its recorded status is
+      // `approved` (`deferringDecisionFor`). Applying the effect under any other
+      // status would write a parked Action and a moved pointer that no approved
+      // Decision backs, so refuse the contradictory combination here (Issue #316).
+      if (status !== "approved") {
+        throw validationError(
+          "This Decision's chosen option defers an Action, but the recorded status is not `approved`.",
+          {
+            id: decisionDoc.id,
+            status,
+            remedy: "Re-run with `--status approved`, or record the answer without the deferring option."
+          }
+        );
+      }
       if (!decisionDoc.action) {
         throw validationError("This Decision's chosen option defers an Action, but the Decision names no `action:`.", {
           id: decisionDoc.id,

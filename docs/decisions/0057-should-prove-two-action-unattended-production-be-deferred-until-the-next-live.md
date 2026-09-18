@@ -21,7 +21,7 @@ plan: bootstrap-managed-production-to-build-flight-deck
 action: prove-two-action-unattended-production
 updated: 2026-09-18
 answer: Defer until the next opencode-cli live rehearsal
-decided: 2026-09-17
+decided: 2026-09-18
 ---
 
 # Decision 0057: Should prove-two-action-unattended-production be deferred until the next live rehearsal uses --provider opencode-cli, or stay dispatchable?
