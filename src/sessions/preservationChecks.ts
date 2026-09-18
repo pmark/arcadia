@@ -37,6 +37,20 @@ const NETWORK_OR_VCS_TOOLS = new Set([
   "curl", "wget", "ssh", "scp", "rsync", "git", "gh", "nc", "telnet", "ftp", "sftp"
 ]);
 
+/** Python modules that are installed rather than shipped with the interpreter.
+ * `python -m <module>` is only a dependency signal for these; standard-library
+ * modules stay self-contained. */
+const DEPENDENCY_PYTHON_MODULES = new Set([
+  "pytest", "coverage", "black", "ruff", "mypy", "isort", "flake8", "pylint",
+  "pyright", "bandit", "tox", "nose", "nose2", "setuptools", "pip", "build",
+  "wheel", "twine", "poetry", "pipenv", "sphinx", "mkdocs", "uvicorn", "gunicorn"
+]);
+
+/** Tokens that wrap another executable, so the command follows them. */
+const LAUNCHER_TOKENS = new Set(["env", "sudo", "command", "nohup", "time", "exec", "nice", "stdbuf"]);
+
+const SHELL_SEGMENT = /(?:&&|\|\||[;&|()`\n])/;
+
 export interface PreservationCheckDependency {
   command: string;
   tool: string;
@@ -61,10 +75,34 @@ export function dependencyRequiringPreservationCheck(commands: string[]): Preser
 
 function dependencyTool(command: string): string | null {
   if (/node_modules/.test(command)) return "node_modules";
-  const tokens = command.split(/[\s;|&()<>`'"]+/).filter(Boolean);
-  for (const token of tokens) {
-    const base = token.split("/").pop() ?? token;
+  // Only executable positions count. Scanning every token flagged a
+  // self-contained check whose argument or filename merely happened to be
+  // named `git`, `curl`, or `vitest`, which would refuse a runnable check.
+  for (const segment of command.split(SHELL_SEGMENT)) {
+    const tokens = segment.trim().split(/\s+/).filter(Boolean);
+    const executable = firstExecutable(tokens);
+    if (!executable) continue;
+    const base = executable.split("/").pop() ?? executable;
     if (DEPENDENCY_TOOLS.has(base) || PROJECT_BINARIES.has(base) || NETWORK_OR_VCS_TOOLS.has(base)) return base;
+    const pythonModule = dependencyPythonModule(base, tokens);
+    if (pythonModule) return `python -m ${pythonModule}`;
   }
   return null;
+}
+
+function firstExecutable(tokens: string[]): string | null {
+  let index = 0;
+  while (index < tokens.length &&
+    (LAUNCHER_TOKENS.has(tokens[index]) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[index]))) {
+    index += 1;
+  }
+  return tokens[index] ?? null;
+}
+
+function dependencyPythonModule(executable: string, tokens: string[]): string | null {
+  if (!/^python[0-9.]*$/.test(executable)) return null;
+  const flag = tokens.indexOf("-m");
+  if (flag < 0 || flag + 1 >= tokens.length) return null;
+  const module = tokens[flag + 1].split(".")[0];
+  return DEPENDENCY_PYTHON_MODULES.has(module) ? module : null;
 }

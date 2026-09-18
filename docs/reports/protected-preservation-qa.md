@@ -226,6 +226,33 @@ compilation):
   `validation_requires_dependencies` remedy by `advance`, `go` and `go-broker
   status` instead of reporting readiness and then failing in the sandbox.
 
+Review follow-up (2026-09-18, PR #324):
+
+- `src/sessions/preservationChecks.ts` now matches only executable positions
+  (the first token of each shell segment, skipping `env`/`sudo` and `NAME=value`
+  prefixes) instead of every token, so a self-contained check whose argument or
+  filename is merely named `git`, `curl`, or `vitest` is no longer refused. It
+  also classifies `python -m <module>` as dependency-backed for known
+  third-party modules (`pytest`, `mypy`, …) while leaving standard-library
+  modules self-contained. `node_modules` path detection is unchanged.
+- `scripts/preservation-self-check.mjs` no longer skips every hidden entry; it
+  skips symbolic links and `.git`, and relies on the explicit ignored-directory
+  set. Tracked hidden files (`.arcadia/**`, `.claude/**`, `.github/**`,
+  `.env.example`, `.gitignore`) are now inspected. The check passes on the
+  tracked tree (1044 files inspected).
+- Re-validation: `pnpm exec tsc -p tsconfig.json`, `pnpm lint`, `pnpm build` and
+  `pnpm dashboard:build` exit 0; the four preservation test files pass (23
+  passed, 7 native skips). A `pnpm test` run under heavy local background load
+  (dashboard, Discord, Intelligence, worker and a second live session) recorded
+  1729 passed, 13 skipped and 17 timeout failures, all `Test timed out in
+  30000ms` in CLI-spawn contract files; those five files pass 127/127 together
+  in isolation. The timeouts are host contention, not code regression.
+- Not adopted from the review: a host-owned or digest-pinned preservation
+  checker. Arcadia's declared check is candidate-owned by the approved
+  mechanism (the same trust model as the repository's test suite); moving to a
+  host-owned checker or pinning the checker digest into host metadata is a
+  design change owned by `preserve-on-exit-and-integrate`, not this Action.
+
 Review correction verification (2026-09-12):
 
 - `mise exec -- pnpm exec tsc -p tsconfig.json`: exit 0.

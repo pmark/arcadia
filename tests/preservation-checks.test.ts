@@ -28,6 +28,22 @@ describe("preservation check dependency classification", () => {
     expect(dependencyRequiringPreservationCheck(["git fetch origin"])?.tool).toBe("git");
   });
 
+  it("recognises dependency-backed python modules but keeps standard-library ones self-contained", () => {
+    expect(dependencyRequiringPreservationCheck(["python3 -m pytest tests"])?.tool).toBe("python -m pytest");
+    expect(dependencyRequiringPreservationCheck(["/usr/bin/python3 -m mypy src"])?.tool).toBe("python -m mypy");
+    expect(dependencyRequiringPreservationCheck(["python3 -m json.tool data.json"])).toBeNull();
+    expect(dependencyRequiringPreservationCheck(["python3 -m unittest discover"])).toBeNull();
+  });
+
+  it("matches only executable positions, not arguments or filenames", () => {
+    expect(dependencyRequiringPreservationCheck(["node scripts/report.mjs git"])).toBeNull();
+    expect(dependencyRequiringPreservationCheck(["node scripts/check.mjs --label curl"])).toBeNull();
+    expect(dependencyRequiringPreservationCheck(["node scripts/vitest-summary.mjs"])).toBeNull();
+    expect(dependencyRequiringPreservationCheck(["FOO=bar node scripts/check.mjs"]))
+      .toBeNull();
+    expect(dependencyRequiringPreservationCheck(["env FOO=bar pnpm test"])?.tool).toBe("pnpm");
+  });
+
   it("reports the first offending command in declaration order", () => {
     const dependency = dependencyRequiringPreservationCheck(["node scripts/ok.mjs", "pnpm test", "curl https://x"]);
     expect(dependency?.command).toBe("pnpm test");

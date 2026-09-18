@@ -25,7 +25,9 @@ const REQUIRED_FILES = [
 ];
 
 const IGNORED_DIRECTORIES = new Set([
-  ".git", ".next", ".turbo", ".cache", "node_modules", "dist", "build", "out", "coverage", "tmp", "temp"
+  ".git", ".next", ".turbo", ".cache", ".pnpm-store", ".venv", ".vscode", ".idea",
+  ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox",
+  "node_modules", "dist", "build", "out", "coverage", "tmp", "temp"
 ]);
 
 const TEXT_EXTENSIONS = new Set([
@@ -36,8 +38,9 @@ const CODE_EXTENSIONS = new Set([".ts", ".tsx", ".mts"]);
 
 function walk(directory, files) {
   for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-    if (entry.name.startsWith(".")) continue;
     if (entry.isSymbolicLink()) continue;
+    // A linked worktree's `.git` is a pointer file, not a directory.
+    if (entry.name === ".git") continue;
     const full = path.join(directory, entry.name);
     if (entry.isDirectory()) {
       if (!IGNORED_DIRECTORIES.has(entry.name)) walk(full, files);
