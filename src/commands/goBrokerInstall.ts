@@ -32,6 +32,10 @@ import { runWorktreeRuntimeProbe, type WorktreeRuntimeProbeResult } from "../ses
 
 import { agentGoTransportState, preservationTransportReady } from "../sessions/preservationTransport.js";
 import { SESSION_AGENTS } from "../sessions/index.js";
+import { dependencyRequiringPreservationCheck, PRESERVATION_DEPENDENCY_CODE } from "../sessions/preservationChecks.js";
+import { withReadOnlyDatabase } from "../db/connection.js";
+import { getProjectMetadata, listProjects } from "../db/repositories.js";
+import { samePath } from "../git/worktrees.js";
 import { requireResolvedWorkspace } from "../workspace/resolve.js";
 
 const BROKER_AGENTS = SESSION_AGENTS as readonly (keyof ProviderExecutables)[];
@@ -61,6 +65,13 @@ export interface GoBrokerStatusData {
   agentSetup: AgentSetupStatus;
   preservationTransport: { ready: boolean; detail: string };
   agentGoTransport: { ready: boolean; state: "ready" | "busy" | "unavailable"; detail: string };
+  preservationChecks: PreservationChecksStatus | null;
+}
+
+export interface PreservationChecksStatus {
+  ok: boolean;
+  code: string | null;
+  detail: string;
 }
 
 export interface GoBrokerInstallOptions {
@@ -254,8 +265,10 @@ export function runGoBrokerStatusCommand(
   });
   let preservationTransport: GoBrokerStatusData["preservationTransport"];
   let agentGoTransport: GoBrokerStatusData["agentGoTransport"];
+  let preservationChecks: GoBrokerStatusData["preservationChecks"];
   try {
     const workspace = requireResolvedWorkspace({ cwd: repository });
+    preservationChecks = readPreservationChecksStatus(workspace, repository);
     const ready = preservationTransportReady(workspace);
     preservationTransport = {
       ready,
@@ -274,6 +287,7 @@ export function runGoBrokerStatusCommand(
   } catch {
     preservationTransport = { ready: false, detail: "Configured workspace is unavailable; configure it before requesting preservation." };
     agentGoTransport = { ready: false, state: "unavailable", detail: "Configured workspace is unavailable; configure it before requesting go." };
+    preservationChecks = null;
   }
   if (broker.issues.length > 0 || !agentSetup.ready) {
     throw validationError("Protected broker setup is not ready.", {
@@ -284,7 +298,8 @@ export function runGoBrokerStatusCommand(
       agentSetupIssues: agentSetup.issues,
       checks: agentSetup.checks,
       preservationTransport,
-      agentGoTransport
+      agentGoTransport,
+      preservationChecks
     });
   }
   return createSuccess({
@@ -296,9 +311,32 @@ export function runGoBrokerStatusCommand(
       brokerIssues: broker.issues,
       agentSetup,
       preservationTransport,
-      agentGoTransport
+      agentGoTransport,
+      preservationChecks
     }
   });
+}
+
+/** Name a declared check the preservation sandbox cannot run, so status reports
+ * the dependency remedy instead of only the generic missing-commands blocker. */
+function readPreservationChecksStatus(workspace: string, repository: string): PreservationChecksStatus | null {
+  try {
+    return withReadOnlyDatabase(workspace, (db) => {
+      const project = listProjects(db).find((candidate) => {
+        const repoPath = getProjectMetadata(db, candidate.id)?.repo_path;
+        return repoPath ? samePath(repoPath, repository) : false;
+      });
+      if (!project) return null;
+      const raw = getProjectMetadata(db, project.id)?.validation_commands ?? "[]";
+      let parsed: unknown;
+      try { parsed = JSON.parse(raw); } catch { parsed = null; }
+      const commands = Array.isArray(parsed) ? parsed.filter((c): c is string => typeof c === "string") : [];
+      const dependency = dependencyRequiringPreservationCheck(commands);
+      return dependency ? { ok: false, code: PRESERVATION_DEPENDENCY_CODE, detail: dependency.remedy } : null;
+    });
+  } catch {
+    return null;
+  }
 }
 
 export function renderGoBrokerStatusSuccess(response: CommandSuccess<GoBrokerStatusData>): string[] {
@@ -307,6 +345,9 @@ export function renderGoBrokerStatusSuccess(response: CommandSuccess<GoBrokerSta
     `Protected broker setup: ${data.ready ? "READY" : "NOT READY"}`,
     `Preservation transport: ${data.preservationTransport.ready ? "READY" : "NOT READY"} — ${data.preservationTransport.detail}`,
     `Agent go transport: ${data.agentGoTransport.state === "ready" ? "READY" : data.agentGoTransport.state === "busy" ? "BUSY" : "NOT READY"} — ${data.agentGoTransport.detail}`,
+    ...(data.preservationChecks && !data.preservationChecks.ok
+      ? [`Preservation checks: NEEDS DEPENDENCIES — ${data.preservationChecks.detail}`]
+      : []),
     `Revision: ${data.revision ?? "not installed"}`,
     `Release: ${data.releaseDirectory ?? "not installed"}`,
     ...(data.brokerIssues.length > 0 ? ["Broker issues:", ...data.brokerIssues.map((issue) => `- ${issue}`)] : []),

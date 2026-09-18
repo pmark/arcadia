@@ -10,6 +10,7 @@ import { resolveActionReadiness } from "../docs/dispatch.js";
 import { readProductionPolicy } from "../production/policy.js";
 import { findPromotionDecision, type AgentSession } from "./index.js";
 import { materializeCandidateTree, snapshotCandidate } from "./candidateSnapshot.js";
+import { dependencyRequiringPreservationCheck } from "./preservationChecks.js";
 
 export function preservationAuthority(db: Database.Database, workspace: string, lease: AgentSession) {
   const current = db.prepare("SELECT * FROM agent_sessions WHERE id = ?").get(lease.id) as AgentSession | undefined;
@@ -33,6 +34,8 @@ export function preservationAuthority(db: Database.Database, workspace: string, 
   if (!Array.isArray(commands) || !commands.length || commands.length > 10 || commands.some(c => typeof c !== "string" || !c.trim() || /[\r\n]/.test(c))) {
     throw validationError("Preservation requires 1–10 declared objective validation_commands in host-managed Project metadata.");
   }
+  const dependency = dependencyRequiringPreservationCheck(commands as string[]);
+  if (dependency) throw validationError(dependency.remedy);
   const frozen = [...packet.matchAll(/^- Run validation command: (.+)$/gm)].map(m => m[1]);
   if (JSON.stringify(frozen) !== JSON.stringify(commands)) throw validationError("Validation check definitions differ from the authorized immutable packet; prepare and authorize a fresh packet.");
   const policy = readProductionPolicy(db);

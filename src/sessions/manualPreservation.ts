@@ -5,6 +5,7 @@ import { getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
 import { resolveDispatch, isDispatchable } from "../docs/dispatch.js";
 import { git, samePath } from "../git/worktrees.js";
 import { getActiveWorktreeReservation, getRepositoryLease } from "./index.js";
+import { dependencyRequiringPreservationCheck } from "./preservationChecks.js";
 
 export interface ManualPreservationBinding {
   reservationId: string;
@@ -62,6 +63,8 @@ export function bindManualPreservation(db: Database.Database, input: {
       commands.some(c => typeof c !== "string" || !c.trim() || /[\r\n]/.test(c))) {
     throw validationError("Manual preservation requires 1–10 host-configured objective validation_commands; a planning approval is not the remedy.");
   }
+  const dependency = dependencyRequiringPreservationCheck(commands as string[]);
+  if (dependency) throw validationError(dependency.remedy);
   const baseRevision = git(input.repository, ["rev-parse", input.baseBranch]).trim();
   if (git(input.worktree, ["rev-parse", "HEAD"]).trim() !== baseRevision) {
     throw validationError("Cannot recover a manual binding after branch history changed; retain the candidate.");

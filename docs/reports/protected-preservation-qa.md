@@ -79,8 +79,34 @@ up to 64 MiB total, at most ten checks with a two-minute deadline each, and
 self-contained check commands. The immutable source tree has no writable build
 or dependency directories; checks may write temporary output under `$TMPDIR`.
 Network, source writes, symlinks/submodules, missing checks and unsupported hosts
-fail closed. Broader build/dependency support earns work only when a real
-Project's declared preservation check needs it.
+fail closed.
+
+A declared check that needs installed dependencies cannot run in that tree. The
+dependency boundary is now explicit rather than a misleading readiness followed
+by a sandbox failure: `advance`, `go` and `go-broker status` classify each
+declared command and report a named `validation_requires_dependencies` blocker
+whose remedy names a self-contained substitute, and the manual and managed
+binding paths refuse with the same wording before any check runs. Classification
+is a deterministic command scan (`src/sessions/preservationChecks.ts`); it never
+executes anything, and an unrecognised command still runs and fails closed.
+
+Arcadia's own Project declares a genuine self-contained objective check,
+`node scripts/preservation-self-check.mjs` (`scripts/preservation-self-check.mjs`),
+declared once per Project with:
+
+```sh
+pnpm arcadia project metadata <project-id> --validation-command "node scripts/preservation-self-check.mjs"
+```
+
+It uses only Node built-in modules against the immutable tracked tree and fails
+on a missing control document, invalid JSON, an unresolved merge-conflict
+marker, or an unresolvable relative import. It is a preservation gate, not a
+replacement for the objective checks: `pnpm test` plus the core, Discord and
+Dashboard builds remain the Action-completion and PR-QA gate, run outside the
+sandbox where dependencies are available. Dependency-aware host-side validation
+is separate governed work (`preserve-on-exit-and-integrate`, which validates
+host-side where dependencies are available); this Action adds no network,
+read, write or symlink exception to the sandbox.
 
 The existing worker consumes preservation requests; this change does not add
 continuous Session admission, reconciliation, acceptance, integration or
@@ -179,6 +205,26 @@ TypeScript compilation):
   objective check for Arcadia is the dependent Action
   `preserve-projects-with-dependencies` (GitHub Issue #273), which depends on
   this Action.
+
+Dependency remedy and self-contained check (2026-09-18, prepared opencode
+candidate at base `7958bd15` after the dependency bridge and TypeScript
+compilation):
+
+- `pnpm exec tsc -p tsconfig.json`: exit 0. `pnpm lint`: exit 0.
+- Focused suite (`preservation-checks`, `preservation-self-check`,
+  `manual-preservation`, `preservation-validation`, `candidate-preservation`,
+  `go-broker`, `go-broker-agent-setup`): **7 files passed; 73 passed, 7 skipped**
+  (the seven native cases skip by design off the host).
+- `pnpm test`: 1742 passed, 13 skipped, 1 failed. The single failure,
+  `cli-response-contracts.test.ts` "runs a clarification Decision through open,
+  list, and resolve", timed out at 30s under full parallel load; it passes 34/34
+  in isolation and touches no preservation path.
+- `pnpm build` and `pnpm dashboard:build`: exit 0.
+- Arcadia's Project now declares `node scripts/preservation-self-check.mjs` in
+  host-managed `validation_commands`, set with the exact command documented
+  above. A declared `pnpm test` check is refused with the named
+  `validation_requires_dependencies` remedy by `advance`, `go` and `go-broker
+  status` instead of reporting readiness and then failing in the sandbox.
 
 Review correction verification (2026-09-12):
 
