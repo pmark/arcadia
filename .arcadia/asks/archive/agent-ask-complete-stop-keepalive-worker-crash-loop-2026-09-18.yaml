@@ -1,0 +1,31 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-stop-keepalive-worker-crash-loop-2026-09-18",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "stop-keepalive-worker-crash-loop",
+  "candidate_revision": "e35885c86d453ec9eece59dbe039458dca99e2f7",
+  "desired_result": "Mark stop-keepalive-worker-crash-loop complete and resolve the next governed Action.",
+  "evidence": [
+    {
+      "criterion": "arcadia worker install no longer produces an agent that crash-loops on the benign already-running path: worker start exits 0 there, or the generated plist uses KeepAlive with SuccessfulExit false, and a test asserts the generated plist shape.",
+      "status": "met",
+      "note": "Both halves are in place. buildWorkerPlist now emits KeepAlive { SuccessfulExit: false } (src/commands/worker.ts:504-507), and runWorkerStartCommand exits 0 on the already-running path through the new decideWorkerStart guard (src/commands/worker.ts:156-193). A real launchd run of the generated agent recorded runs = 1 and last exit code = 0. tests/runtime-pinning.test.ts asserts the plist contains SuccessfulExit false and not a bare KeepAlive true; tests/worker-tick.test.ts runs the real CLI against a workspace whose pidfile is held and asserts process status 0."
+    },
+    {
+      "criterion": "After a fresh install with a second worker already running for the same workspace, .arcadia/worker.log gains no repeated already-running lines over a sustained interval.",
+      "status": "met",
+      "note": "Observed on this Mac with a throwaway workspace (initWorkspace plus a live holder process in .arcadia/worker.pid). arcadia worker install loaded the agent; after 45s the log held exactly one line, 'Worker already running (PID 7330); leaving it in place.', and 20s later it was still exactly one line, with launchctl print showing state = not running, runs = 1, last exit code = 0. Under the old bare KeepAlive true the job would have respawned every ~10s. The temp agent was unloaded and its plist removed; the operator's running worker was untouched."
+    },
+    {
+      "criterion": "The launch-agent audit (src/runtime/launchAgents.ts) reports when two installed agents resolve to the same workspace, and its remedy names the correct command rather than a reinstalling one.",
+      "status": "met",
+      "note": "launchAgentWorkspace and launchAgentRole (src/runtime/launchAgents.ts) read the --workspace argument and the worker command tokens; flagDuplicateWorkspaces groups worker agents by workspace and sets duplicateLabels on each. duplicateWorkerRemedy names 'launchctl bootout gui/$(id -u)/<label>' and never 'arcadia worker install'. Verified end-to-end: with two worker plists for one workspace in a temp HOME, arcadia runtime marked both DUPLICATE and each Fix: named the bootout command. arcadia worker install also prints duplicateWorkerWarning. Ingress services sharing a workspace are deliberately not flagged."
+    },
+    {
+      "criterion": "Deterministic tests cover the already-running exit path and the duplicate-workspace audit; existing runtime-pinning tests pass.",
+      "status": "met",
+      "note": "tests/worker-tick.test.ts adds decideWorkerStart unit tests and a CLI-subprocess test asserting exit 0 when another live worker holds the pidfile. tests/runtime-pinning.test.ts adds the plist-shape test, duplicate flagging (pure), the worker-versus-ingress non-duplicate case, the install warning, and a darwin-only on-disk audit through plutil. All existing runtime-pinning tests still pass: pnpm exec vitest run tests/runtime-pinning.test.ts tests/worker-tick.test.ts -> 24 passed. Full suite: 1680 passed, 15 skipped; tsc and ESLint clean. The single test/intelligence/packageBoundary.test.ts failure was a cold-build beforeAll hook timeout and passed once dist/ existed."
+    }
+  ]
+}

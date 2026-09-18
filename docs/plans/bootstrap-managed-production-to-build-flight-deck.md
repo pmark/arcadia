@@ -1093,7 +1093,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/305", "src/commands/worker.ts", "src/db/connection.ts"]
   - id: stop-keepalive-worker-crash-loop
     title: An installed worker launch agent stops respawning forever when a worker already holds the workspace pidfile, and a duplicate agent for one workspace is detected instead of silently reinstalled.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: An installed worker launch agent stops respawning forever when a worker already holds the workspace pidfile, and a duplicate agent for one workspace is detected instead of silently reinstalled.
@@ -1111,7 +1111,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/303", "src/commands/worker.ts", "src/runtime/launchAgents.ts"]
 questions: []
 decisions: []
-current_action: stop-keepalive-worker-crash-loop
+current_action: prove-two-action-unattended-production
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
