@@ -25,7 +25,11 @@ interface Fixture {
  * explicit queue in that order, and an approved-by-answer Decision naming
  * `park-me` whose chosen option carries `effect: defer`.
  */
-function fixture(options: { decisionAction?: string; planActions?: Array<{ id: string; status: string }> } = {}): Fixture {
+function fixture(options: {
+  decisionAction?: string;
+  planActions?: Array<{ id: string; status: string }>;
+  decisionStatus?: "open" | "approved";
+} = {}): Fixture {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-decision-deferral-"));
   roots.push(root);
   const repo = path.join(root, "repo");
@@ -70,8 +74,9 @@ function fixture(options: { decisionAction?: string; planActions?: Array<{ id: s
 
   writeFileSync(path.join(repo, "docs/decisions/0057-defer-park-me.md"), [
     "---", "arcadia: v1", "type: decision", 'id: "0057"', "slug: defer-park-me", "project: demo",
-    "status: open", "question: Defer the current Action?", "confidence: high", "plan: defer-plan",
+    `status: ${options.decisionStatus ?? "open"}`, "question: Defer the current Action?", "confidence: high", "plan: defer-plan",
     `action: ${options.decisionAction ?? "park-me"}`, "updated: 2026-09-18",
+    ...(options.decisionStatus === "approved" ? ["answer: Defer until later", "decided: 2026-09-18"] : []),
     "options:", "  - label: Defer until later", "    consequence: The Action stops dispatching.",
     "    recommended: true", "    effect: defer",
     "  - label: Keep it dispatchable", "    consequence: It keeps dispatching.", "    recommended: false",
@@ -231,6 +236,12 @@ describe("apply an answered Decision's consequence", () => {
     expect(planFile(repo)).toBe(planBefore);
     expect(decisionFile(repo)).toBe(decisionBefore);
     expect(projectFile(repo)).toContain("current_action: park-me");
+  });
+
+  it("reports an approved Decision's parked Action as a dispatch blocker before the Plan record changes", () => {
+    const { repo } = fixture({ decisionStatus: "approved" });
+    const dispatch = resolveDispatch(repo, "demo");
+    expect(dispatch.blockers.map((blocker) => blocker.message).join(" ")).toContain("deferred by Decision 0057");
   });
 
   it("reports a deferred current Action as a dispatch blocker", () => {

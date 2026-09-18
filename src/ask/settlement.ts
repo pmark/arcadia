@@ -7,7 +7,7 @@ import { validationError } from "../cli/errors.js";
 import { writeTransaction } from "../db/connection.js";
 import { createArtifactRecord, getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
 import { discoverDocs } from "../docs/discover.js";
-import { isDispatchable, resolveActionReadiness, resolveDispatch } from "../docs/dispatch.js";
+import { deferringDecisionFor, isDispatchable, resolveActionReadiness, resolveDispatch } from "../docs/dispatch.js";
 import { yamlScalar } from "../docs/frontmatter.js";
 import { syncProjectDocs } from "../docs/sync.js";
 import type { ArcadiaDoc, DecisionDoc, LogDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
@@ -1487,15 +1487,9 @@ function selectNextAfterCompletion(
  * operator actually recorded (`answer:`) counts.
  */
 function deferredActionIdsFromDecisions(plan: PlanDoc, decisionDocs: DecisionDoc[]): Set<string> {
-  const actionIds = new Set(plan.actions.map((action) => action.id));
   const deferred = new Set<string>();
-  for (const decision of decisionDocs) {
-    if (decision.status !== "approved" || !decision.action || !actionIds.has(decision.action)) continue;
-    const answer = decision.answer?.trim().toLowerCase();
-    const chosen = answer
-      ? decision.options.find((option) => option.label.trim().toLowerCase() === answer)
-      : undefined;
-    if (chosen?.effect === "defer") deferred.add(decision.action);
+  for (const action of plan.actions) {
+    if (deferringDecisionFor(action.id, decisionDocs)) deferred.add(action.id);
   }
   return deferred;
 }
