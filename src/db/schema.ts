@@ -7,6 +7,7 @@ import { ensureProductionPolicyTables } from "../production/policy.js";
 import { ensureManualPreservationTable } from "../sessions/manualPreservation.js";
 import { ensureCandidatePreservationTable } from "../sessions/candidatePreservation.js";
 import { ensureSessionExitReceiptsTable } from "../sessions/reconciliation.js";
+import { ensureSchedulingTables } from "../scheduling/store.js";
 
 export function getSchemaPath(): string {
   const fromCwd = path.resolve("database", "schema.sql");
@@ -82,6 +83,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureDeferredWorkItemStatus(db);
   ensureDecisionDeferralReceiptsTable(db);
   ensureProductionPolicyTables(db);
+  ensureSchedulingTables(db);
   applyCapabilityMigrations(db);
 }
 

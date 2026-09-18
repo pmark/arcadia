@@ -3,7 +3,7 @@ import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
-import { git, listWorktrees, tryGit } from "../git/worktrees.js";
+import { git, isAncestor, isPatchEquivalent, listWorktrees, refExists, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import { snapshotCandidate } from "./candidateSnapshot.js";
 import { createId } from "../utils/id.js";
 import { getActiveWorktreeReservation, getRepositoryLease } from "./index.js";
@@ -537,3 +537,79 @@ export const systemPreservationRemote: CandidatePreservationRemote = {
     return { number, url: output };
   }
 };
+
+export interface OutstandingCandidate {
+  actionId: string;
+  branch: string;
+  commitSha: string;
+  preservationState: CandidatePreservationReceipt["preservationState"];
+  pullRequestNumber: number | null;
+  pullRequestUrl: string | null;
+}
+
+/**
+ * The preserved candidate for one Action that has not landed on the base
+ * branch yet, or null when none is outstanding.
+ *
+ * A finished Session leaves its work on a candidate branch, usually behind a
+ * pull request. Until that merges, the Action reads as unfinished in the base
+ * checkout while a completion settlement for it already exists on the
+ * candidate. Anything in the base checkout that writes the same governed
+ * documents during that window collides with the settlement at merge, so
+ * callers use this to hold off rather than to decide anything about the work
+ * itself.
+ *
+ * "Landed" is the same test `arcadia go` uses to call a branch integrated:
+ * an ancestor of the base branch, or patch-equivalent to it, so a squash or
+ * rebase merge counts. When the branch ref is gone the commit alone is
+ * checked, and an unreadable repository reports nothing outstanding rather
+ * than blocking the caller forever.
+ */
+export function findOutstandingCandidate(
+  db: Database.Database,
+  input: { repositoryPath: string; actionId: string; baseBranch?: string }
+): OutstandingCandidate | null {
+  ensureCandidatePreservationTable(db);
+  const repositoryPath = canonical(input.repositoryPath);
+  const rows = db
+    .prepare(
+      `SELECT repository_path, branch, commit_sha, preservation_state, pull_request_number, pull_request_url
+         FROM candidate_preservation_receipts
+        WHERE action_id = ?
+        ORDER BY created_at DESC, rowid DESC`
+    )
+    .all(input.actionId) as Array<{
+      repository_path: string;
+      branch: string;
+      commit_sha: string;
+      preservation_state: CandidatePreservationReceipt["preservationState"];
+      pull_request_number: number | null;
+      pull_request_url: string | null;
+    }>;
+  const row = rows.find((candidate) => canonical(candidate.repository_path) === repositoryPath);
+  if (!row) return null;
+
+  let baseBranch: string;
+  try {
+    baseBranch = input.baseBranch ?? resolveBaseBranch(repositoryPath);
+  } catch {
+    return null;
+  }
+  try {
+    const landed = refExists(repositoryPath, row.branch)
+      ? isAncestor(repositoryPath, row.branch, baseBranch) || isPatchEquivalent(repositoryPath, baseBranch, row.branch)
+      : isAncestor(repositoryPath, row.commit_sha, baseBranch);
+    if (landed) return null;
+  } catch {
+    return null;
+  }
+
+  return {
+    actionId: input.actionId,
+    branch: row.branch,
+    commitSha: row.commit_sha,
+    preservationState: row.preservation_state,
+    pullRequestNumber: row.pull_request_number,
+    pullRequestUrl: row.pull_request_url
+  };
+}

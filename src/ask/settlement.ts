@@ -271,7 +271,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           arrangeQueue = true;
           let planAfter = planBefore;
           for (const action of normalizedActions) {
-            planAfter = appendAction(planAfter, {
+            planAfter = appendPlanAction(planAfter, {
               id: action.id, title: action.desiredResult, responsibility: input.responsibility,
               acceptance: action.acceptance, dependencies: action.dependencies, references: action.references,
               source: `Agent Ask ${proposal.normalized.requestId}`
@@ -456,7 +456,7 @@ export function settleAgentAsk(db: Database.Database, input: {
               effects.push(`Amended Action ${project.slug}/${action.id} in Plan ${target.slug}.`);
               actionIdsToValidate.push(action.id);
             } else {
-              after = appendAction(after, {
+              after = appendPlanAction(after, {
                 id: action.id, title: action.desiredResult, responsibility: input.responsibility!,
                 acceptance: action.acceptance, dependencies: action.dependencies, references: action.references,
                 source: `Agent Ask ${proposal.normalized.requestId}`
@@ -1063,7 +1063,8 @@ export function markAgentAskNotificationSent(db: Database.Database, settlementId
   }
 }
 
-function appendAction(content: string, action: {
+/** Append one Action block to a managed Plan's block-form `actions:` list. Shared with production scheduling's discovery path. */
+export function appendPlanAction(content: string, action: {
   id: string; title: string; responsibility: AgentAskResponsibility; acceptance: string[]; dependencies: string[]; references: string[]; source: string;
 }): string {
   const end = content.indexOf("\n---", 4);

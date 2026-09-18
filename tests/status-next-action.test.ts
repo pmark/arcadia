@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runStatusCommand } from "../src/commands/status.js";
 import { withDatabase } from "../src/db/connection.js";
-import { createProjectWithInitialWork, createWorkItemWithOptionalArtifact } from "../src/db/repositories.js";
+import { createProjectWithInitialWork, createWorkItemWithOptionalArtifact, listProjectSummaries } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -82,5 +82,50 @@ describe("status report next Actions", () => {
 
     expect(project?.nextAction).toMatch(/^Nothing ready/);
     expect(project?.nextAction).not.toBe("Something that looks startable");
+  });
+
+  /**
+   * A Project's reported responsibility is "the most recent unfinished Action",
+   * and two Actions created in the same millisecond used to make that an
+   * arbitrary choice: `ORDER BY updated_at DESC, created_at DESC LIMIT 1` with
+   * no further tiebreak lets SQLite return either row. The margin in practice
+   * is one millisecond, so it held under a quiet test run and flipped under a
+   * loaded CI shard -- which is how it was found, as an unrelated dashboard
+   * assertion failing on a machine that happened to be busy.
+   */
+  it("reports the later Action's responsibility when two Actions share a timestamp exactly", () => {
+    const workspace = tempWorkspace();
+
+    const projectId = withDatabase(workspace, (db) => {
+      const bundle = createProjectWithInitialWork(db, {
+        name: "Same millisecond",
+        mission: "Two Actions, one timestamp.",
+        status: "active",
+        currentMilestone: "First milestone",
+        nextAction: "The earlier action",
+        workClassification: "agent"
+      });
+      createWorkItemWithOptionalArtifact(db, {
+        projectId: bundle.project.id,
+        title: "Decision pending",
+        rawInput: "Decision pending",
+        queue: "requires_review",
+        workClassification: "requires_review",
+        nextAction: "The later action"
+      });
+      // Force the tie the clock only sometimes produces.
+      db.prepare("UPDATE work_items SET created_at = ?, updated_at = ? WHERE project_id = ?")
+        .run("2026-09-18T00:00:00.000Z", "2026-09-18T00:00:00.000Z", bundle.project.id);
+      return bundle.project.id;
+    });
+
+    // Re-read repeatedly: an arbitrary tiebreak can agree by luck once.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const summary = withDatabase(workspace, (db) =>
+        listProjectSummaries(db).find((candidate) => candidate.id === projectId)
+      );
+      expect(summary?.work_classification).toBe("requires_review");
+      expect(summary?.responsibility).toBe("requires_review");
+    }
   });
 });

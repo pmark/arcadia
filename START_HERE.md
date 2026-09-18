@@ -363,6 +363,80 @@ pnpm arcadia advance queue make-next --action arcadia/example-action \
   --preview <sha256-from-preview> --apply --workspace "$WORKSPACE"
 ```
 
+### Production scheduling and the GitHub board
+
+Under an Active production policy the worker does not wait for `make-next`.
+Every tick runs a **scheduling pass** first: it computes each Project's
+canonical queue -- scheduling class (`interrupt` > `blocker` > `corrective` >
+`planned`), then queue position, with dependencies always honoured -- and
+moves the governed pointer to the first ready Action in that order, using the
+same preview-then-apply transition as `make-next`. Projects are scanned in
+one configured order and the first with runnable work is selected.
+
+```sh
+pnpm arcadia schedule status --workspace "$WORKSPACE"
+pnpm arcadia schedule prioritize --order private-practice-now arcadia rebuster --workspace "$WORKSPACE"
+pnpm arcadia schedule classify --action arcadia/example-action --class corrective --workspace "$WORKSPACE"
+pnpm arcadia schedule log --workspace "$WORKSPACE"
+```
+
+Each Project can project its queue onto a GitHub Project board: one Issue per
+Action, an `Arcadia status` field (`Needs operator`, `Ready`, `Running`,
+`Blocked`, `Done`, `Backlog`) and card order equal to queue order. Link an
+existing GitHub Project or create one, then reconcile:
+
+```sh
+pnpm arcadia schedule github link --project arcadia --owner pmark --create --workspace "$WORKSPACE"
+pnpm arcadia schedule reconcile --workspace "$WORKSPACE"            # preview: what the boards say
+pnpm arcadia schedule reconcile --apply --workspace "$WORKSPACE"    # apply drags, move pointers, re-project
+pnpm arcadia schedule reconcile --apply --project arcadia --workspace "$WORKSPACE"  # one Project only
+```
+
+`link` is the only command that changes the board's own structure: it creates
+the `Arcadia status` field when the Project has none. Preview and every worker
+tick only read, and refuse a board with no status field rather than creating
+one. `--project` scopes the whole pass, so a scoped run cannot reorder another
+Project's board or move another Project's pointer.
+
+A linked board costs very little to keep synchronized. Arcadia publishes its
+own changes immediately, and otherwise reads the board about once a minute to
+notice a drag, reusing cached GitHub ids — roughly sixty calls an hour per
+board rather than thousands, which matters because the GraphQL limit is shared
+with every other `gh` command on the account.
+
+Dragging Ready cards on the board is the one operator input Arcadia reads
+back. A drag within one scheduling class is persisted as the new queue
+position; a card dragged above a higher class or above its own dependency is
+put back in canonical order and the reason is written to `schedule log`. No
+Decision is opened for an invalid drag. In the board view, group by `Arcadia
+status` and filter out `Backlog` and `Done` to see only the active Milestone;
+a second view filtered to `Backlog` is the backlog.
+
+A coding Run that finds work it was not sent to do records it instead of
+doing it:
+
+```sh
+pnpm arcadia schedule discover --from arcadia/example-action --kind blocker \
+  --title "Fix the migration the Action depends on" \
+  --acceptance "The migration applies cleanly" --request-id disc-20260917-1 --workspace "$WORKSPACE"
+```
+
+A `blocker` is written into the active Plan, the origin Action is made to
+depend on it, and it becomes the next runnable Action. A `corrective` is queued
+ahead of remaining planned work without interrupting the current Run. A
+`follow_up` goes to the backlog. Discovery stops at depth 2, three corrective
+descendants per root Action, or eight correctives per Milestone, and opens a
+Decision instead. A ninth failed Run in one Milestone pauses the Project with
+a Decision. `schedule resume --project <slug> --reason ...` continues it, and
+refuses while that Decision is unanswered — answer it with `arcadia review
+approve <id>` or `arcadia review reject <id>` first, because skipping that
+judgment is the one thing the pause exists to prevent.
+[`docs/github-board-guide.md`](docs/github-board-guide.md) is the
+project-manager guide to running production from the board: setup, what each
+status means, what dragging can and cannot do, and what Arcadia does when it
+finds work mid-build. [`docs/production-scheduling.md`](docs/production-scheduling.md)
+has the full rule set and what was deliberately not built.
+
 Apply is refused when the queue revision, Git worktree, managed documents, or
 preview fingerprint changed. Arcadia re-resolves dispatch from the edited
 documents before recording the receipt and restores both files on failure. A

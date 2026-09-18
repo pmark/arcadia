@@ -4,7 +4,9 @@ import type Database from "better-sqlite3";
 import { ArcadiaError } from "../cli/errors.js";
 import type { ProviderAdapterRegistry } from "../codingAgents/providerAdapters.js";
 import { type ProviderCapacityObservation } from "../codingAgents/capacity.js";
-import { getProjectMetadata, listProjects } from "../db/repositories.js";
+import { getProjectMetadata } from "../db/repositories.js";
+import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type BoardFactory, type SchedulingPassResult } from "../scheduling/scheduler.js";
+import { getSchedulingProject } from "../scheduling/store.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely } from "./policy.js";
@@ -43,6 +45,8 @@ export interface ManagedProductionTickOptions {
    */
   heartbeat?: () => void;
   log?: (message: string) => void;
+  /** Override how a Project's GitHub board is reached; tests pass an in-memory board. */
+  boardFactory?: BoardFactory;
 }
 
 export interface BaseBranchAdvanceObservation {
@@ -77,6 +81,9 @@ export interface ManagedProductionTickProjectResult {
 
 export interface ManagedProductionTickResult {
   policyActive: boolean;
+  /** The scheduling pass that ran before admission, when the policy was Active. */
+  scheduling: SchedulingPassResult | null;
+  schedulingError: string | null;
   projects: ManagedProductionTickProjectResult[];
 }
 
@@ -118,8 +125,23 @@ export function runManagedProductionTick(
   const policyRead = readProductionPolicySafely(db);
   const active = policyRead.status === "ok" && policyRead.policy.desiredState === "active";
 
+  // Scheduling runs first: reconcile each linked GitHub board and point every
+  // Project at its canonical next Action, so admission below launches what the
+  // queue says rather than whatever the pointer last happened to name.
+  let scheduling: SchedulingPassResult | null = null;
+  let schedulingError: string | null = null;
+  if (active) {
+    try {
+      scheduling = runSchedulingPass(db, { now, log, boardFactory: options.boardFactory });
+    } catch (error) {
+      schedulingError = error instanceof Error ? error.message : String(error);
+      log(`Scheduling pass failed: ${schedulingError}`);
+    }
+    options.heartbeat?.();
+  }
+
   const projects: ManagedProductionTickProjectResult[] = [];
-  for (const project of listProjects(db).filter((candidate) => candidate.status === "active")) {
+  for (const project of listProjectsInSchedulingOrder(db)) {
     options.heartbeat?.();
     const metadata = getProjectMetadata(db, project.id);
     const configuredPath = metadata?.repo_path?.trim() || null;
@@ -145,6 +167,10 @@ export function runManagedProductionTick(
         const result = reconcileSessionExit({ db, sessionId: lease.id, requestId: `worker-tick-reconcile-${lease.id}`, repoRoot });
         reconciled.push({ sessionId: lease.id, outcome: result.receipt.outcome });
         log(`Reconciled Session ${lease.id} for ${project.slug}: ${result.receipt.outcome} (${result.receipt.reason})`);
+        if (result.receipt.outcome === "failed_execution" || result.receipt.outcome === "missing_evidence") {
+          const budget = recordFailedRun(db, project.slug, { reason: `Session ${lease.id}: ${result.receipt.reason}`, actionKey: `${project.slug}/${lease.action_id}` });
+          if (budget.paused) log(`Paused ${project.slug}: failed-Run budget exceeded (${budget.failedRuns}); Decision ${budget.decisionId} opened.`);
+        }
       }
     } catch (error) {
       log(`Reconciliation failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
@@ -169,7 +195,7 @@ export function runManagedProductionTick(
     projects.push({ projectSlug: project.slug, repositoryRoot: repoRoot, baseBranchAdvance, reconciled, launch });
   }
 
-  return { policyActive: active, projects };
+  return { policyActive: active, scheduling, schedulingError, projects };
 }
 
 function attemptProjectLaunch(
@@ -187,6 +213,10 @@ function attemptProjectLaunch(
   const lease = getRepositoryLease(db, input.repoRoot);
   if (lease) {
     return { attempted: false, outcome: "skipped", reason: `Repository lease held by Session ${lease.id}.`, actionKey: null };
+  }
+  const paused = getSchedulingProject(db, input.projectSlug).pausedReason;
+  if (paused) {
+    return { attempted: false, outcome: "skipped", reason: `Scheduling is paused: ${paused}`, actionKey: null };
   }
 
   const transition = resolveProjectTransition({ repoRoot: input.repoRoot, projectSlug: input.projectSlug, db, tmux: input.tmux });
@@ -239,6 +269,7 @@ function attemptProjectLaunch(
     }
     const message = error instanceof Error ? error.message : String(error);
     recordRepairAttempt(db, actionKey, message, input.now);
+    recordFailedRun(db, input.projectSlug, { reason: `Launch failed for ${actionKey}: ${message}`, actionKey });
     input.log(`Launch attempt failed for ${actionKey}: ${message}`);
     return { attempted: true, outcome: "failed", reason: message, actionKey };
   }
