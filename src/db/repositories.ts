@@ -820,6 +820,18 @@ export function getActiveMilestoneForProject(db: Database.Database, projectId: s
   );
 }
 
+/**
+ * One row per Project, each carrying the Project's current Milestone and the
+ * fields of its most recent unfinished Action.
+ *
+ * Every `LIMIT 1` subquery below breaks ties on `rowid`, which is insertion
+ * order. Without it, two Actions created in the same millisecond leave "the
+ * most recent unfinished Action" genuinely undefined, and SQLite may return
+ * either one -- so a Project's reported responsibility, next action and
+ * expected Artifact could all flip between two identical reads. The clock
+ * margin here is a single millisecond, which is why this held on a quiet
+ * machine for a long time and only surfaced under load.
+ */
 export function listProjectSummaries(db: Database.Database): ProjectSummary[] {
   return db
     .prepare(
@@ -830,42 +842,42 @@ export function listProjectSummaries(db: Database.Database): ProjectSummary[] {
           SELECT m.title
           FROM milestones m
           WHERE m.project_id = p.id AND m.status = 'active'
-          ORDER BY m.created_at DESC
+          ORDER BY m.created_at DESC, m.rowid DESC
           LIMIT 1
         ) AS current_milestone,
         (
           SELECT m.id
           FROM milestones m
           WHERE m.project_id = p.id AND m.status = 'active'
-          ORDER BY m.created_at DESC
+          ORDER BY m.created_at DESC, m.rowid DESC
           LIMIT 1
         ) AS current_milestone_id,
         (
           SELECT wi.next_action
           FROM work_items wi
           WHERE wi.project_id = p.id AND wi.status != 'done' AND wi.archived_at IS NULL
-          ORDER BY wi.updated_at DESC, wi.created_at DESC
+          ORDER BY wi.updated_at DESC, wi.created_at DESC, wi.rowid DESC
           LIMIT 1
         ) AS next_action,
         (
           SELECT wi.work_classification
           FROM work_items wi
           WHERE wi.project_id = p.id AND wi.status != 'done' AND wi.archived_at IS NULL
-          ORDER BY wi.updated_at DESC, wi.created_at DESC
+          ORDER BY wi.updated_at DESC, wi.created_at DESC, wi.rowid DESC
           LIMIT 1
         ) AS work_classification,
         (
           SELECT wi.work_classification
           FROM work_items wi
           WHERE wi.project_id = p.id AND wi.status != 'done' AND wi.archived_at IS NULL
-          ORDER BY wi.updated_at DESC, wi.created_at DESC
+          ORDER BY wi.updated_at DESC, wi.created_at DESC, wi.rowid DESC
           LIMIT 1
         ) AS responsibility,
         (
           SELECT wi.expected_artifact
           FROM work_items wi
           WHERE wi.project_id = p.id AND wi.status != 'done' AND wi.archived_at IS NULL
-          ORDER BY wi.updated_at DESC, wi.created_at DESC
+          ORDER BY wi.updated_at DESC, wi.created_at DESC, wi.rowid DESC
           LIMIT 1
         ) AS expected_artifact
       FROM projects p
