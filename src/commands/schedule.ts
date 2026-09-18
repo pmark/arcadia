@@ -224,7 +224,10 @@ export function runScheduleReconcileCommand(options: { workspace: string; projec
     // scoped to one Project must not commit another Project's pointer move.
     const projectSlugs = options.project ? [options.project] : undefined;
     if (options.apply) {
-      const pass = runSchedulingPass(db, { projectSlugs });
+      // An operator asking for a reconcile gets one now. The poll throttle
+      // exists to keep the two-second worker tick off GitHub's rate limit, not
+      // to ignore an explicit command.
+      const pass = runSchedulingPass(db, { projectSlugs, boardPollIntervalMs: 0 });
       return { pass, reconciles: pass.projects.flatMap((project) => project.reconcile ? [project.reconcile] : []), preview: false };
     }
 
