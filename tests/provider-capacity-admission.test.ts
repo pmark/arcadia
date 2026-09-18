@@ -338,7 +338,7 @@ describe("refresh is bounded and spends no tokens", () => {
       fileURLToPath(new URL("../src/codingAgents/capacity.ts", import.meta.url)),
       "utf8"
     );
-    const imports = [...source.matchAll(/from "([^"]+)"/g)].map((match) => match[1]!);
+    const imports = [...source.matchAll(/from "([^"]+)"/g)].map((match) => match[1]);
 
     expect(imports.sort()).toEqual([
       "../intent/registries.js",

@@ -248,7 +248,7 @@ describe("arcadia go", () => {
 
     expect(result.data.applied).toBe(true);
     expect(result.data.askRecoveries).toHaveLength(1);
-    const recovery = result.data.askRecoveries[0]!;
+    const recovery = result.data.askRecoveries[0];
     expect(recovery.askFile).toMatch(/^\.arcadia\/asks\/agent-ask-legacy-drift-2026-09-12-.+\.yaml$/);
     expect(recovery.requestId).toBe("legacy-drift-2026-09-12");
     expect(existsSync(path.join(fixture.main, "agent-ask.yaml"))).toBe(false);
@@ -287,10 +287,10 @@ describe("arcadia go", () => {
 
     expect(result.data.askRecoveries).toHaveLength(2);
     const [recoverySource, recoveryBase] = result.data.askRecoveries;
-    expect(recoverySource!.requestId).toBe("concurrent-drift-source");
-    expect(recoveryBase!.requestId).toBe("concurrent-drift-base");
-    expect(recoverySource!.branch).not.toBe(recoveryBase!.branch);
-    expect(recoverySource!.askFile).not.toBe(recoveryBase!.askFile);
+    expect(recoverySource.requestId).toBe("concurrent-drift-source");
+    expect(recoveryBase.requestId).toBe("concurrent-drift-base");
+    expect(recoverySource.branch).not.toBe(recoveryBase.branch);
+    expect(recoverySource.askFile).not.toBe(recoveryBase.askFile);
     expect(existsSync(path.join(fixture.feature, "agent-ask.yaml"))).toBe(false);
     expect(existsSync(path.join(fixture.main, "agent-ask.yaml"))).toBe(false);
     expect(git(fixture.main, ["status", "--porcelain"]).trim()).toBe("");
@@ -299,8 +299,8 @@ describe("arcadia go", () => {
     // neither recovery's worktree-add/commit/worktree-remove sequence
     // clobbered the other's branch or left it half-written.
     expect(git(fixture.main, ["branch", "--list", "ask/recover-*"]).trim().split("\n")).toHaveLength(2);
-    expect(git(fixture.main, ["show", `${recoverySource!.branch}:${recoverySource!.askFile}`])).toContain("concurrent drift on source");
-    expect(git(fixture.main, ["show", `${recoveryBase!.branch}:${recoveryBase!.askFile}`])).toContain("concurrent drift on base");
+    expect(git(fixture.main, ["show", `${recoverySource.branch}:${recoverySource.askFile}`])).toContain("concurrent drift on source");
+    expect(git(fixture.main, ["show", `${recoveryBase.branch}:${recoveryBase.askFile}`])).toContain("concurrent drift on base");
 
     const previewedSource = runAgentAskPreviewCommand({ workspace: fixture.workspace, requestId: "concurrent-drift-source", dir: fixture.main });
     const previewedBase = runAgentAskPreviewCommand({ workspace: fixture.workspace, requestId: "concurrent-drift-base", dir: fixture.main });
@@ -320,7 +320,7 @@ describe("arcadia go", () => {
 
     expect(result.data.applied).toBe(true);
     expect(result.data.askRecoveries).toHaveLength(1);
-    const recovery = result.data.askRecoveries[0]!;
+    const recovery = result.data.askRecoveries[0];
     // Renamed into the isolated directory under its own request id, exactly
     // like the bare legacy name — the topic suffix carries no identity.
     expect(recovery.askFile).toMatch(/^\.arcadia\/asks\/agent-ask-suffixed-drift-2026-09-13-.+\.yaml$/);
@@ -352,7 +352,7 @@ describe("arcadia go", () => {
 
     expect(result.data.applied).toBe(true);
     expect(result.data.askRecoveries).toHaveLength(1);
-    const recovery = result.data.askRecoveries[0]!;
+    const recovery = result.data.askRecoveries[0];
     expect(recovery.askFile).toBe(".arcadia/asks/agent-ask-isolated-draft-2026-09-13.yaml");
     expect(recovery.requestId).toBe("isolated-draft-2026-09-13");
     expect(existsSync(path.join(fixture.main, ".arcadia", "asks", "agent-ask-isolated-draft-2026-09-13.yaml"))).toBe(false);
@@ -414,7 +414,7 @@ describe("arcadia go", () => {
     // Retrying produced no second branch and no second commit under this same drift.
     const branchesAfterRetry = git(fixture.main, ["branch", "--list", "ask/recover-*"]).trim();
     expect(branchesAfterRetry).toBe(branches);
-    const recoveredBranch = retried.data.askRecoveries[0]!.branch!;
+    const recoveredBranch = retried.data.askRecoveries[0].branch!;
     expect(git(fixture.main, ["log", recoveredBranch, "--oneline", "--grep=Recover drifted Agent Ask"]).trim().split("\n")).toHaveLength(1);
   });
 

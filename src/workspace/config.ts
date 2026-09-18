@@ -81,7 +81,7 @@ export function loadWorkspaceConfig(configPath: string): WorkspaceArcadiaConfig 
   const config = parsed as Record<string, unknown>;
   const memoryValue = config.memory;
   if (memoryValue === undefined) {
-    return config as WorkspaceArcadiaConfig;
+    return config;
   }
   if (!memoryValue || typeof memoryValue !== "object" || Array.isArray(memoryValue)) {
     throw validationError("Workspace memory configuration must be a JSON object.", { configPath });

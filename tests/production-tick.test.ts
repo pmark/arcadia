@@ -265,7 +265,7 @@ describe("runManagedProductionTick", () => {
       db.prepare("SELECT event_type, payload_json FROM events WHERE event_type = 'managed_production.base_branch_advanced'").all()
     ) as Array<{ event_type: string; payload_json: string }>;
     expect(events).toHaveLength(1);
-    const payload = JSON.parse(events[0]!.payload_json);
+    const payload = JSON.parse(events[0].payload_json);
     expect(payload.newSha).toBe(newSha);
     expect(payload.projectSlug).toBe("test-project");
 

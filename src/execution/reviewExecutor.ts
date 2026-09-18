@@ -19,7 +19,7 @@ import { createId } from "../utils/id.js";
 import { getWorkspacePaths, toWorkspaceRelativePath } from "../workspace/paths.js";
 import { cloudflareWorkerName } from "../projects/stagingDeployment.js";
 
-export type ExecutorName = "codex" | "claude-code" | "gemini" | string;
+export type ExecutorName = "codex" | "claude-code" | "gemini" | (string & {});
 export type PromptMode = "stdin" | "prompt-file";
 export type WorkingDirectoryMode = "repo" | "workspace" | "cwd";
 export type OutputCaptureMode = "combined" | "split" | "none";

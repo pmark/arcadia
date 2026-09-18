@@ -53,12 +53,15 @@ function AdminIntelligencePageInner() {
     }
   }, [job, jobIdParam, router]);
 
+  const jobStatus = job?.status;
+  const jobId = job?.id;
+
   useEffect(() => {
-    if (job && (job.status === "completed" || job.status === "failed" || job.status === "blocked")) {
+    if (jobId && (jobStatus === "completed" || jobStatus === "failed" || jobStatus === "blocked")) {
       void refreshRecent();
       void refreshUsage();
     }
-  }, [job?.status, job?.id, refreshRecent, refreshUsage]);
+  }, [jobId, jobStatus, refreshRecent, refreshUsage]);
 
   async function handleSubmit(submission: AdminSubmission) {
     await submit(submission);

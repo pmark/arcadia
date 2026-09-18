@@ -26,7 +26,7 @@ export default function ReviewPage() {
   const [showExcluded, setShowExcluded] = useState(false);
   const [search, setSearch] = useState("");
 
-  const reviewItems = snapshot?.requiresReviewItems ?? [];
+  const reviewItems = useMemo(() => snapshot?.requiresReviewItems ?? [], [snapshot]);
   const reviewById = useMemo(() => new Map(reviewItems.map((review) => [review.id, review])), [reviewItems]);
 
   const board = useMemo(
@@ -41,7 +41,7 @@ export default function ReviewPage() {
     [snapshot, reviewItems]
   );
 
-  const focused = board.dominant ? [board.dominant, ...board.queue] : board.queue;
+  const focused = useMemo(() => (board.dominant ? [board.dominant, ...board.queue] : board.queue), [board]);
   const searchable = useMemo(() => [
     ...focused,
     ...board.excluded.map(({ item }) => ({
@@ -51,7 +51,7 @@ export default function ReviewPage() {
       tokenImpact: null,
       tokenBudget: null
     }))
-  ], [board]);
+  ], [board, focused]);
   const normalizedSearch = search.trim().toLocaleLowerCase();
   const searchResults = useMemo(
     () => normalizedSearch
@@ -365,7 +365,7 @@ function ReviewFocusControls({
   useEffect(() => {
     if (!hasEdited) return;
     const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
+    const save = async () => {
       setSaving(true);
       setMessage(null);
       setSaveError(null);
@@ -395,12 +395,18 @@ function ReviewFocusControls({
         setParked(new Set(previous.parked));
         setSaveError(error instanceof Error ? error.message : String(error));
       }
+    };
+    const timer = window.setTimeout(() => {
+      void save();
     }, 350);
 
     return () => {
       window.clearTimeout(timer);
       controller.abort();
     };
+    // `parked` is read through `parkedSignature`: keying on the Set's content
+    // rather than its identity keeps a failed save's restore from retriggering.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus?.maxItems, hasEdited, onSaved, parkedSignature, primary, secondary]);
 
   function choosePrimary(value: string) {

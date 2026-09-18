@@ -667,7 +667,7 @@ function existingActivePlanningPreparation(
   }
 
   assertRequiredPlanningContext(db, workItem);
-  const planningDecision = decisions[0] as ReviewItemSummary;
+  const planningDecision = decisions[0];
   const plan = planningDecision.plan_id ? getExecutionPlan(db, planningDecision.plan_id) : null;
   const codexInvocation = planningDecision.codex_invocation_id
     ? getCodexInvocation(db, planningDecision.codex_invocation_id)

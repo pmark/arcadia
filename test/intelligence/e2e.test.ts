@@ -274,7 +274,7 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
       route: "some-other-route",
       model: "gpt-4o",
     };
-    await submitIntelligenceRequest(repository, request as unknown as Parameters<typeof submitIntelligenceRequest>[1]);
+    await submitIntelligenceRequest(repository, request);
 
     const config = testIntelligenceConfig(baseUrl);
     const worker = new IntelligenceWorker(repository, createLiteLlmHttpClient({ baseUrl }), config);

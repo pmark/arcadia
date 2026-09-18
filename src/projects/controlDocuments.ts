@@ -229,10 +229,10 @@ function promoteToCurrent(action: SeededAction): SeededAction {
 function pickCurrentAction(actions: SeededAction[]): string | null {
   const inProgress = actions.filter((action) => action.status === "in_progress");
   if (inProgress.length === 1) {
-    return inProgress[0]!.id;
+    return inProgress[0].id;
   }
   const startable = actions.filter((action) => action.status === "open" && action.responsibility !== "blocked");
-  return startable.length === 1 ? startable[0]!.id : null;
+  return startable.length === 1 ? startable[0].id : null;
 }
 
 function decodeAcceptanceCriteria(raw: string | null): string[] {

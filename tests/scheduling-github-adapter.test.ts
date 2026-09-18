@@ -161,7 +161,7 @@ function workspaceWithProject(): { workspace: string; cwd: string } {
   withDatabase(fixture.workspace, (db) => {
     upsertSchedulingProject(db, "alpha", { githubOwner: "example", githubProjectNumber: 7, githubRepository: "example/repo" });
   });
-  return { workspace: fixture.workspace, cwd: fixture.repos.alpha! };
+  return { workspace: fixture.workspace, cwd: fixture.repos.alpha };
 }
 
 describe("gh-backed board", () => {
@@ -211,7 +211,7 @@ describe("gh-backed board", () => {
     // And the cached identity still drives real writes correctly.
     cachedRun.items.push({ id: "PVTI_1", number: 100, title: "#100", status: null });
     second.setStatus("PVTI_1", "Ready");
-    expect(cachedRun.items[0]!.status).toBe("Ready");
+    expect(cachedRun.items[0].status).toBe("Ready");
   });
 
   it("resumes a projection that failed mid-move instead of reading the half-moved board as an operator drag", () => {
@@ -226,7 +226,7 @@ describe("gh-backed board", () => {
       expect(gh.items.map((item) => item.number)).toEqual([100, 101, 102]);
 
       // Arcadia reorders its own queue, then the board write dies partway.
-      writeProjectOrder(db, "alpha", [settled[2]!, settled[0]!, settled[1]!], {
+      writeProjectOrder(db, "alpha", [settled[2], settled[0], settled[1]], {
         requestId: "arcadia-reorder",
         source: "arcadia",
         reason: "Operator reprioritized through advance queue."

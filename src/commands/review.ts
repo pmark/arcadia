@@ -858,7 +858,7 @@ export function runReviewApproveCommand(
       const acceptedWorkItem = getWorkItem(db, specialized.work_item_id);
       const criteria = acceptedWorkItem ? declaredAcceptanceCriteria(acceptedWorkItem) : [];
       const criteriaResults = criteria.length > 0
-        ? evaluateAcceptanceCriteria(criteria, readAcceptedArtifactText(workspacePath, getArtifact(db, specialized.artifact_id as string)))
+        ? evaluateAcceptanceCriteria(criteria, readAcceptedArtifactText(workspacePath, getArtifact(db, specialized.artifact_id)))
         : [];
       const criteriaReport = renderAcceptanceCriteriaReport(criteriaResults);
       const promotionPreparation = prepareProjectIdeaPromotion(db, workspacePath, specialized);

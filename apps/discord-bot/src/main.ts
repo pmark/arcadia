@@ -50,34 +50,38 @@ async function main(): Promise<void> {
     startDigestScheduler(client, config, cli, logJson);
   });
 
-  client.on(Events.InteractionCreate, async (interaction) => {
-    lastEventAt = new Date().toISOString();
-    heartbeat("connected");
-    if (!interaction.isChatInputCommand()) {
-      return;
-    }
-
-    await handleArcadiaInteraction(interaction, config, cli);
-  });
-
-  client.on(Events.MessageCreate, async (message) => {
-    lastEventAt = new Date().toISOString();
-    heartbeat("connected");
-    if (message.author.bot) {
-      return;
-    }
-    try {
-      const handledByRouter = await replyRouter.handle(message);
-      if (handledByRouter) {
+  client.on(Events.InteractionCreate, (interaction) => {
+    void (async () => {
+      lastEventAt = new Date().toISOString();
+      heartbeat("connected");
+      if (!interaction.isChatInputCommand()) {
         return;
       }
-      await handleArcadiaMessage(message, config, cli);
-    } catch (error) {
-      logJson("error", {
-        msg: "discord message handling failed",
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
+
+      await handleArcadiaInteraction(interaction, config, cli);
+    })();
+  });
+
+  client.on(Events.MessageCreate, (message) => {
+    void (async () => {
+      lastEventAt = new Date().toISOString();
+      heartbeat("connected");
+      if (message.author.bot) {
+        return;
+      }
+      try {
+        const handledByRouter = await replyRouter.handle(message);
+        if (handledByRouter) {
+          return;
+        }
+        await handleArcadiaMessage(message, config, cli);
+      } catch (error) {
+        logJson("error", {
+          msg: "discord message handling failed",
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    })();
   });
 
   client.on(Events.Error, (error) => {

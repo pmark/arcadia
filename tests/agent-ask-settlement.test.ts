@@ -150,8 +150,8 @@ describe("Agent Ask settlement", () => {
     expect(applied.data.receipt.recovery).toMatchObject({ documentsCommitted: false, operationalSync: "complete" });
     const notifications = runAgentAskNotificationsCommand({ workspace }).data.notifications;
     expect(notifications).toHaveLength(1);
-    expect(notifications[0]!.recovery).toMatchObject({ documentsCommitted: false });
-    const message = agentAskSettlementMessage(notifications[0]!);
+    expect(notifications[0].recovery).toMatchObject({ documentsCommitted: false });
+    const message = agentAskSettlementMessage(notifications[0]);
     expect(message).toContain("Recovery needed");
     expect(message).toContain("by hand");
   });
@@ -228,8 +228,8 @@ describe("Agent Ask settlement", () => {
 
     const pending = runAgentAskNotificationsCommand({ workspace });
     expect(pending.data.notifications).toHaveLength(1);
-    expect(agentAskSettlementMessage(pending.data.notifications[0]!)).toContain("Agent Ask settled: accepted");
-    expect(agentAskSettlementMessage(pending.data.notifications[0]!)).toContain("Queue: demo/add-settlement-proof starting at position 1");
+    expect(agentAskSettlementMessage(pending.data.notifications[0])).toContain("Agent Ask settled: accepted");
+    expect(agentAskSettlementMessage(pending.data.notifications[0])).toContain("Queue: demo/add-settlement-proof starting at position 1");
     runAgentAskNotificationSentCommand({ workspace, settlement: applied.data.receipt.id, messageId: "discord-ask-1" });
     expect(runAgentAskNotificationsCommand({ workspace }).data.notifications).toEqual([]);
   });
@@ -565,7 +565,7 @@ describe("Agent Ask settlement", () => {
         ["demo/build-release-proof", 0], ["demo/publish-release-guide", 1], ["demo/existing", 2]
       ]);
     });
-    const message = agentAskSettlementMessage(runAgentAskNotificationsCommand({ workspace }).data.notifications[0]!);
+    const message = agentAskSettlementMessage(runAgentAskNotificationsCommand({ workspace }).data.notifications[0]);
     expect(message).toContain("demo/build-release-proof, demo/publish-release-guide starting at position 1");
   });
 
@@ -640,7 +640,7 @@ describe("Agent Ask settlement", () => {
         ["other/waiting", 0], ["demo/existing", 1], ["demo/audit-release", 2]
       ]);
     });
-    const message = agentAskSettlementMessage(runAgentAskNotificationsCommand({ workspace }).data.notifications[0]!);
+    const message = agentAskSettlementMessage(runAgentAskNotificationsCommand({ workspace }).data.notifications[0]);
     expect(message).toContain("Reprioritized active Plan demo-plan as one dependency-safe queue segment");
     expect(message).toContain("demo/existing, demo/audit-release starting at position 2");
   });

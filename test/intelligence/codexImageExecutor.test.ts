@@ -51,7 +51,7 @@ describe("Codex CLI image executor", () => {
     expect(result.artifacts).toHaveLength(1);
     expect(result.generation).toEqual({ requestedCount: 1, returnedCount: 1 });
 
-    const artifact = result.artifacts[0]!;
+    const artifact = result.artifacts[0];
     expect(artifact.kind).toBe("image");
     expect(artifact.mimeType).toBe("image/png");
     expect(artifact.dimensions).toEqual({ width: 1, height: 1 });

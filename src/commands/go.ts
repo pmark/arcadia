@@ -427,13 +427,13 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     const workspacePath = resolveReadyWorkspace(options.workspace).workspacePath;
     preservation = withDatabase(workspacePath, db => {
       try {
-        bindManualPreservation(db, { repository: controlWorktree, worktree: nextWorktree!.path, baseBranch, projectSlug });
+        bindManualPreservation(db, { repository: controlWorktree, worktree: nextWorktree.path, baseBranch, projectSlug });
       } catch (error) {
-        const readiness = readPreservationReadiness(db, { workspace: workspacePath, repository: controlWorktree, worktree: nextWorktree!.path, projectSlug });
+        const readiness = readPreservationReadiness(db, { workspace: workspacePath, repository: controlWorktree, worktree: nextWorktree.path, projectSlug });
         readiness.blockers.unshift({ code: "manual_binding_failed", reason: error instanceof Error ? error.message : String(error) });
         return { ...readiness, ready: false };
       }
-      return readPreservationReadiness(db, { workspace: workspacePath, repository: controlWorktree, worktree: nextWorktree!.path, projectSlug });
+      return readPreservationReadiness(db, { workspace: workspacePath, repository: controlWorktree, worktree: nextWorktree.path, projectSlug });
     });
   }
 
@@ -804,7 +804,7 @@ function syncBaseBranchWithRemote(input: {
   if (!upstream) {
     return { attempted: false, remote: null, fastForwarded: false, reason: "The base branch has no tracked remote configured." };
   }
-  const remoteName = upstream.split("/")[0]!;
+  const remoteName = upstream.split("/")[0];
   git(controlWorktree, ["fetch", remoteName]);
   const remoteRef = `refs/remotes/${upstream}`;
   const baseHeadRef = `refs/heads/${baseBranch}`;

@@ -139,7 +139,7 @@ export function observeCodingAgentAvailability(
   const snapshot: CodingAgentAvailabilitySnapshot = {
     generatedAt: now.toISOString(),
     agents: [...groups.values()].map((profilesForProvider) => {
-      const representative = profilesForProvider[0]!;
+      const representative = profilesForProvider[0];
       const statuses = representative.provider === "codex-cli"
         ? localCodexTasks.map((task) => task.status.toLowerCase())
         : [];

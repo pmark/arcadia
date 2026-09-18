@@ -84,7 +84,7 @@ export function useArcadiaSnapshot(): SnapshotState {
           await refresh();
           scheduleNext();
         })();
-      }, delay) as unknown as number;
+      }, delay);
     }
 
     scheduleNext();

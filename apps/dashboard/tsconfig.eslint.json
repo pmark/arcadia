@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@pmark/arcadia/intelligence/contracts": ["../../src/intelligence/contracts.ts"],
+      "@pmark/arcadia/intelligence/client": ["../../src/intelligence/client/index.ts"]
+    }
+  }
+}

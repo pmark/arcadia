@@ -293,6 +293,7 @@ export function queueApprovedPlanningRun(
       });
       db.prepare("UPDATE review_items SET codex_invocation_id = ?, updated_at = ? WHERE id = ?")
         .run(invocation.id, nowIso(), decision.id);
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- re-narrowing a `let` the rule misreads as already non-null
       decision = getReviewItem(db, decision.id) as ReviewItemSummary;
     }
 

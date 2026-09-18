@@ -218,17 +218,17 @@ describe("project digest composition", () => {
       db.close();
     }
 
-    const first = runDigestExportCommand({ workspace, digestId: result!.digest.id });
-    const second = runDigestExportCommand({ workspace, digestId: result!.digest.id });
+    const first = runDigestExportCommand({ workspace, digestId: result.digest.id });
+    const second = runDigestExportCommand({ workspace, digestId: result.digest.id });
     const recordPath = first.data.memory?.recordPath;
 
-    expect(first.data.memory).toMatchObject({ status: "created", artifactId: result!.artifact.id, project: "Alpha" });
+    expect(first.data.memory).toMatchObject({ status: "created", artifactId: result.artifact.id, project: "Alpha" });
     expect(second.data.memory?.status).toBe("skipped");
     expect(recordPath).not.toBeNull();
     const record = readFileSync(recordPath!, "utf8");
     expect(record).toContain("record_type: narrative_digest");
     expect(record).toContain("narration: local_preferred_ai");
-    expect(record).toContain(`arcadia_digest_id: ${JSON.stringify(result!.digest.id)}`);
+    expect(record).toContain(`arcadia_digest_id: ${JSON.stringify(result.digest.id)}`);
     expect(record).toContain("Alpha made the parser dependable.");
     expect(record).toContain("AI-narrated from the digest's bounded Arcadia fact snapshot");
   });
@@ -250,7 +250,7 @@ describe("project digest composition", () => {
       db.close();
     }
 
-    expect(runDigestExportCommand({ workspace, digestId: result!.digest.id }).data.memory).toBeNull();
+    expect(runDigestExportCommand({ workspace, digestId: result.digest.id }).data.memory).toBeNull();
   });
 });
 

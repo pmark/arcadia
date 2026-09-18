@@ -3368,7 +3368,7 @@ export function buildProgram(): Command {
     // `next` declares --workspace too, and commander binds a repeated flag to
     // the parent. optsWithGlobals is what makes `next history --workspace X`
     // see it wherever it landed.
-    const options = command.optsWithGlobals() as { workspace: string; limit?: string; json?: boolean };
+    const options = command.optsWithGlobals();
     return runCliAction(
       "next.history",
       options,

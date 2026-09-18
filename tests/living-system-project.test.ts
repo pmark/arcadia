@@ -72,7 +72,7 @@ describe("living-system Obsidian projection", () => {
     expect(episode).toContain("**Observed**");
     expect(episode).toContain("**Current**");
 
-    const canvas = JSON.parse(readFileSync(path.join(root, "Living_System.canvas"), "utf8")) as any;
+    const canvas = JSON.parse(readFileSync(path.join(root, "Living_System.canvas"), "utf8"));
     expect(canvas.nodes.map((node: any) => node.file)).toEqual([
       "Maps/00_Capability_Map.md",
       "Timeline/00_Project_Evolution.md",
@@ -229,7 +229,7 @@ function resolveWikiLinks(projectRoot: string): string[] {
   for (const file of projectFiles(projectRoot).filter((candidate) => candidate.endsWith(".md"))) {
     const content = readFileSync(file, "utf8");
     for (const match of content.matchAll(/\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g)) {
-      const target = match[1]!;
+      const target = match[1];
       const targetFile = path.join(projectRoot, `${target}.md`);
       if (!existsSync(targetFile)) missing.push(`${path.relative(projectRoot, file)} -> ${target}`);
     }

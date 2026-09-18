@@ -182,6 +182,7 @@ export default function IngressPage() {
                       <div className="relative aspect-square bg-canvas">
                         {file.kind === "image" && file.previewUrl && !failedPreviews.includes(file.name) && file.downloadState !== "not_downloaded" ? (
                           // The browser needs the native element here for HEIC and other local media fallbacks.
+                          // eslint-disable-next-line @next/next/no-img-element -- local blob previews are not optimizable by next/image
                           <img
                             src={file.previewUrl}
                             alt={file.name}

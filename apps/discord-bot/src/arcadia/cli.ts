@@ -246,7 +246,7 @@ export class ArcadiaCli {
           return parsed;
         }
         const detail = error.stderr?.trim() || error.stdout?.trim() || error.message;
-        throw new Error(`Arcadia CLI failed: ${detail}`);
+        throw new Error(`Arcadia CLI failed: ${detail}`, { cause: error });
       }
       throw error;
     }
@@ -269,7 +269,7 @@ export class ArcadiaCli {
     } catch (error) {
       if (isExecError(error)) {
         const detail = error.stderr?.trim() || error.stdout?.trim() || error.message;
-        throw new Error(`Arcadia CLI failed: ${detail}`);
+        throw new Error(`Arcadia CLI failed: ${detail}`, { cause: error });
       }
       throw error;
     }

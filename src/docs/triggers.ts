@@ -123,10 +123,12 @@ function evaluateRegistry(repoRoot: string): EvaluatedTrigger[] {
 
     if (condition.kind === "count") {
       const evaluated = evaluateCount(repoRoot, condition);
+      const collection = typeof condition.collection === "string" ? condition.collection : "items";
+      const file = typeof condition.file === "string" ? condition.file : "an unnamed file";
       return {
         ...base,
         state: evaluated.ok === false ? "unevaluable" : evaluated.fired ? "fired" : "waiting",
-        condition: describe ?? `${condition.collection ?? "items"} in ${condition.file ?? "an unnamed file"}`,
+        condition: describe ?? `${collection} in ${file}`,
         reason: evaluated.reason
       };
     }

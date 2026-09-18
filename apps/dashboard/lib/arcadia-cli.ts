@@ -540,7 +540,7 @@ export interface ReviewActionResponse {
     status: "approved" | "rejected" | "deferred" | "pending_execution";
     summary: string;
   };
-  approval: unknown | null;
+  approval: unknown;
   execution: ReviewExecutionResponse | null;
   run: { id: string } | null;
 }
@@ -596,9 +596,9 @@ export interface ReviewResolveReplyResponse {
   };
   action: "approved" | "rejected" | "deferred" | "feedback_captured";
   selectedOption: string | null;
-  feedback: unknown | null;
+  feedback: unknown;
   result: ReviewActionResponse["result"] | null;
-  approval: unknown | null;
+  approval: unknown;
   execution: ReviewExecutionResponse | null;
   confirmation: string;
 }

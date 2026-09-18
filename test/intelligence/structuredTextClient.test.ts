@@ -114,7 +114,7 @@ describe("structured text client", () => {
       baseUrl: "http://arcadia.test",
       fetchImpl: (() => {
         throw new Error("fetch should not be called");
-      }) as typeof fetch,
+      }),
     });
     const operation = client.text.defineStructuredOperation<
       { prompt: string },

@@ -381,7 +381,7 @@ function projectForRepoPath(db: Database.Database, repoPath: string): Project | 
     }
   });
 
-  return matches.length === 1 ? matches[0]! : null;
+  return matches.length === 1 ? matches[0] : null;
 }
 
 function validateRepoPath(repoPath: string): string {

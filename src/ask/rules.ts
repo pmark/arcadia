@@ -139,7 +139,7 @@ export function validateAskRuleRegistry(
   const seenPrefixes = new Set<string>();
   const validated = registry.rules.map((candidate, index) => {
     validateRuleShape(candidate, index);
-    const rule = candidate as unknown as AskRuleDefinition;
+    const rule = candidate;
     const normalizedPrefix = normalizePrefix(rule.prefix);
     if (seenIds.has(rule.id)) {
       throw validationError("Ask rule ids must be unique.", { reason: "duplicate", ruleId: rule.id });

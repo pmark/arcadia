@@ -214,7 +214,7 @@ export function prepareSession(input: {
   if (!existsSync(absolutePacket)) throw validationError("The prepared build packet is missing.", { packetPath: invocation.prompt_path });
   const metadataPath = path.join(path.dirname(absolutePacket), "metadata.json");
   if (!existsSync(metadataPath)) throw validationError("The prepared build packet metadata is missing.", { metadataPath });
-  const metadata = JSON.parse(readFileSync(metadataPath, "utf8")) as any;
+  const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
   if (metadata.invocationId !== invocation.id || metadata.workItemId !== workItem.id || metadata.promptPath !== invocation.prompt_path) {
     throw validationError("The prepared build packet metadata is stale or belongs to another Action.");
   }

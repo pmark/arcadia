@@ -1,5 +1,5 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer, type IncomingMessage, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -280,7 +280,7 @@ expected_reaction: SMART_PAYOFF
 async function startFakeRebusterServer(
   handler: (request: IncomingMessage) => Promise<unknown>
 ): Promise<{ server: Server; baseUrl: string }> {
-  const server = createServer(async (request, response) => {
+  const onRequest = async (request: IncomingMessage, response: ServerResponse) => {
     try {
       if (request.method !== "POST" || request.url !== "/api/rebuses/add") {
         response.writeHead(404, { "content-type": "application/json" });
@@ -295,6 +295,9 @@ async function startFakeRebusterServer(
       response.writeHead(500, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
     }
+  };
+  const server = createServer((request, response) => {
+    void onRequest(request, response);
   });
 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

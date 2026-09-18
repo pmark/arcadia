@@ -38,7 +38,7 @@ test("canonical dashboard capture completes as a Decision-gated validated planni
   expect(terminal.invocation?.status).toBe("completed");
   expect(terminal.acceptance?.status).toBe("open");
   expect(terminal.finalArtifact?.status).toBe("drafted");
-  expect(new Date(terminal.decision!.decided_at!).getTime()).toBeLessThanOrEqual(
+  expect(new Date(terminal.decision!.decided_at).getTime()).toBeLessThanOrEqual(
     new Date(terminal.invocation!.updated_at).getTime()
   );
 

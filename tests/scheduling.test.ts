@@ -132,7 +132,7 @@ describe("project schedule", () => {
 describe("discovery", () => {
   it("records a blocker in the Plan, makes the origin depend on it, queues it first, commits and logs", () => {
     const fx = fixture([{ slug: "alpha", current: "a", actions: [{ id: "a" }, { id: "c" }] }]);
-    const headBefore = git(fx.repos.alpha!, ["rev-parse", "HEAD"]).trim();
+    const headBefore = git(fx.repos.alpha, ["rev-parse", "HEAD"]).trim();
     const result = withDatabase(fx.workspace, (db) => recordDiscovery(db, {
       originActionKey: "alpha/a",
       kind: "blocker",
@@ -143,9 +143,9 @@ describe("discovery", () => {
     expect(result.outcome).toBe("queued");
     expect(result.actionKey).toBe("alpha/fix-the-broken-migration");
     expect(result.commitError).toBeNull();
-    expect(git(fx.repos.alpha!, ["rev-parse", "HEAD"]).trim()).not.toBe(headBefore);
-    expect(git(fx.repos.alpha!, ["status", "--porcelain"]).trim()).toBe("");
-    const plan = readFileSync(path.join(fx.repos.alpha!, "docs/plans/alpha-plan.md"), "utf8");
+    expect(git(fx.repos.alpha, ["rev-parse", "HEAD"]).trim()).not.toBe(headBefore);
+    expect(git(fx.repos.alpha, ["status", "--porcelain"]).trim()).toBe("");
+    const plan = readFileSync(path.join(fx.repos.alpha, "docs/plans/alpha-plan.md"), "utf8");
     expect(plan).toContain("  - id: fix-the-broken-migration");
     expect(plan).toMatch(/- id: a\n[\s\S]*?depends_on: \[fix-the-broken-migration\]/);
 
@@ -326,9 +326,9 @@ describe("scheduling pass", () => {
       expect(second.projects[0]?.pointer).toMatchObject({ moved: true, from: "a", to: "c" });
       expect(second.selection).toEqual({ projectSlug: "alpha", actionKey: "alpha/c" });
     });
-    expect(readFileSync(path.join(fx.repos.alpha!, "PROJECT.md"), "utf8")).toContain("current_action: c");
-    expect(git(fx.repos.alpha!, ["log", "-1", "--format=%s"]).trim()).toBe("chore(arcadia): point at c");
-    expect(git(fx.repos.alpha!, ["status", "--porcelain"]).trim()).toBe("");
+    expect(readFileSync(path.join(fx.repos.alpha, "PROJECT.md"), "utf8")).toContain("current_action: c");
+    expect(git(fx.repos.alpha, ["log", "-1", "--format=%s"]).trim()).toBe("chore(arcadia): point at c");
+    expect(git(fx.repos.alpha, ["status", "--porcelain"]).trim()).toBe("");
   });
 
   it("keeps a deferred Action out of the queue and off the needs-operator column", () => {
@@ -382,7 +382,7 @@ describe("scheduling pass", () => {
       // An Arcadia-side queue change is published immediately, not at the next
       // poll: the throttle governs polling for drags, never publishing.
       const queue = buildProjectSchedule(db, getProjectBySlug(db, "alpha")!).queue;
-      writeProjectOrder(db, "alpha", [queue[1]!, queue[0]!], {
+      writeProjectOrder(db, "alpha", [queue[1], queue[0]], {
         requestId: "revision-bump",
         source: "arcadia",
         reason: "Operator reprioritized through advance queue."
@@ -419,9 +419,9 @@ describe("scheduling pass", () => {
       expect(scoped.projects[0]?.pointer).toMatchObject({ moved: true, from: "a", to: "b" });
     });
     // Alpha moved; beta was never read, reordered, or committed.
-    expect(readFileSync(path.join(fx.repos.alpha!, "PROJECT.md"), "utf8")).toContain("current_action: b");
-    expect(readFileSync(path.join(fx.repos.beta!, "PROJECT.md"), "utf8")).toContain("current_action: b1");
-    expect(git(fx.repos.beta!, ["log", "-1", "--format=%s"]).trim()).toBe("initial");
+    expect(readFileSync(path.join(fx.repos.alpha, "PROJECT.md"), "utf8")).toContain("current_action: b");
+    expect(readFileSync(path.join(fx.repos.beta, "PROJECT.md"), "utf8")).toContain("current_action: b1");
+    expect(git(fx.repos.beta, ["log", "-1", "--format=%s"]).trim()).toBe("initial");
     expect(betaBoard.order()).toEqual([101, 100]);
     const betaQueue = withReadOnlyDatabase(fx.workspace, (db) => buildProjectSchedule(db, getProjectBySlug(db, "beta")!).queue);
     expect(betaQueue).toEqual(["beta/b1", "beta/b2"]);
@@ -429,7 +429,7 @@ describe("scheduling pass", () => {
 
   it("holds the pointer while the finished Action's candidate is still unmerged, and releases it once that lands", () => {
     const fx = fixture([{ slug: "alpha", current: "a", actions: [{ id: "a" }, { id: "b" }, { id: "urgent" }] }]);
-    const repo = fx.repos.alpha!;
+    const repo = fx.repos.alpha;
 
     // The Session for `a` finished. Its completion settlement lives on the
     // candidate branch, which has not been merged; on base, `a` still reads as

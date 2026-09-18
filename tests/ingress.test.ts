@@ -53,7 +53,7 @@ describe("ingress process command", () => {
     expect(existsSync(result.data.requestFile)).toBe(true);
     expect(readFileSync(result.data.requestFile, "utf8")).toContain("Capture this idea");
     expect(readFileSync(result.data.requestFile, "utf8")).toContain("# A captured idea");
-    expect(readFileSync(result.data.attachmentFiles[0]!, "utf8")).toContain("A captured idea");
+    expect(readFileSync(result.data.attachmentFiles[0], "utf8")).toContain("A captured idea");
     expect(result.data.captureEnvelope).toMatchObject({
       originalText: "Capture this idea and route it deterministically.",
       ingressSource: "ingress:iCloudIdeas",

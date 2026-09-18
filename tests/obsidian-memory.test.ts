@@ -50,7 +50,7 @@ describe("Obsidian accepted planning Artifact memory", () => {
 
     const files = recordFiles(fixture.vault);
     expect(files).toHaveLength(1);
-    const record = readFileSync(files[0]!, "utf8");
+    const record = readFileSync(files[0], "utf8");
     expect(record).toContain("record_type: accepted_planning_artifact");
     expect(record).toContain(`arcadia_artifact_id: "${fixture.artifactId}"`);
     expect(record).toContain(`arcadia_decision_id: "${fixture.decisionId}"`);
@@ -97,7 +97,7 @@ describe("Obsidian accepted planning Artifact memory", () => {
   it("replays acceptance and sync idempotently, and repairs a changed Record at the stable path", () => {
     const fixture = planningFixture({ memory: true });
     runReviewApproveCommand({ workspace: fixture.workspace, id: fixture.decisionId });
-    const firstPath = recordFiles(fixture.vault)[0]!;
+    const firstPath = recordFiles(fixture.vault)[0];
 
     runReviewApproveCommand({ workspace: fixture.workspace, id: fixture.decisionId });
     expect(recordFiles(fixture.vault)).toEqual([firstPath]);

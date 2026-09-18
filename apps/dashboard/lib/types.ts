@@ -42,8 +42,8 @@ export type QaRefreshRefusalReason =
 
 export interface QaRefreshResult {
   project: string;
-  before: unknown | null;
-  after: unknown | null;
+  before: unknown;
+  after: unknown;
   fetched: boolean;
   advanced: boolean;
   restarted: boolean;
@@ -95,8 +95,8 @@ export interface QaProjectRow {
 
 export interface QaFetchResult {
   project: string;
-  before: unknown | null;
-  after: unknown | null;
+  before: unknown;
+  after: unknown;
   fetched: boolean;
   verdict: ProjectVerdict | null;
   refused: QaRefreshRefusalReason | null;

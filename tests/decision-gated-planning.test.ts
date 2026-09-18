@@ -55,7 +55,7 @@ describe("Decision-gated planning", () => {
   it("modified packet and public work run cannot bypass approval", () => {
     const workspace = fixtureWorkspace();
     const response = runAskCommand({ workspace, request: "Prepare a plan for adding Pinterest publishing to Rebuster." });
-    const invocation = response.data.codexInvocations[0]!;
+    const invocation = response.data.codexInvocations[0];
     writeFileSync(path.join(workspace, invocation.prompt_path), `${readFileSync(path.join(workspace, invocation.prompt_path), "utf8")}\nchanged\n`);
     expect(() => runReviewApproveCommand({ workspace, id: response.data.reviewItemId! })).toThrow(/missing or changed/);
     expect(() => runWorkRunCommand({
@@ -131,7 +131,7 @@ describe("Decision-gated planning", () => {
 
       db.prepare("UPDATE execution_runs SET status = 'running', pid = 999999 WHERE id = ?").run(runId);
       db.prepare("UPDATE codex_invocations SET status = 'running' WHERE id = ?")
-        .run(response.data.codexInvocations[0]!.id);
+        .run(response.data.codexInvocations[0].id);
       recoverOrphanedRuns(db, logfile);
       const failed = getExecutionRun(db, runId)!;
       expect(failed.status).toBe("failed");

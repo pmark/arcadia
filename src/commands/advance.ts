@@ -89,7 +89,7 @@ export function runSessionReconcileCommand(options: {
 }
 
 export function renderSessionReconcileSuccess(response: ReturnType<typeof runSessionReconcileCommand>): string[] {
-  const data = response.data as ReconcileSessionExitResult;
+  const data = response.data;
   return [
     `Session: ${data.receipt.session_id}`,
     `Outcome: ${data.receipt.outcome}${data.created ? "" : " (already reconciled)"}`,

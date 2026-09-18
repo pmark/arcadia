@@ -87,19 +87,19 @@ async function handleRequest(
 
     const retryMatch = method === "POST" ? RETRY_PATTERN.exec(url.pathname) : null;
     if (retryMatch) {
-      await handleRetryJob(res, repository, config, decodeURIComponent(retryMatch[1]!), scheduler);
+      await handleRetryJob(res, repository, config, decodeURIComponent(retryMatch[1]), scheduler);
       return;
     }
 
     const jobMatch = method === "GET" ? JOB_ID_PATTERN.exec(url.pathname) : null;
     if (jobMatch) {
-      await handleGetJob(res, repository, decodeURIComponent(jobMatch[1]!));
+      await handleGetJob(res, repository, decodeURIComponent(jobMatch[1]));
       return;
     }
 
     const artifactMatch = method === "GET" ? ARTIFACT_ID_PATTERN.exec(url.pathname) : null;
     if (artifactMatch) {
-      await handleGetArtifact(req, res, artifactStore, decodeURIComponent(artifactMatch[1]!));
+      await handleGetArtifact(req, res, artifactStore, decodeURIComponent(artifactMatch[1]));
       return;
     }
 
@@ -470,7 +470,7 @@ function readJsonBody(req: IncomingMessage): Promise<unknown> {
       try {
         resolve(JSON.parse(raw));
       } catch (error) {
-        reject(error);
+        reject(error instanceof Error ? error : new Error(String(error)));
       }
     });
     req.on("error", reject);
