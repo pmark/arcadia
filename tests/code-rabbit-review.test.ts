@@ -4,6 +4,7 @@ import { condense, decide, extractPrompt, hasOutsideDiffFindings, MAX_FIX_ROUNDS
 const review = (commitId: string, state: string, submittedAt: string, body = ""): Review => ({ commitId, state, submittedAt, body });
 const thread = (id: string, overrides: Partial<Thread> = {}): Thread => ({
   id,
+  commitId: "h1",
   isResolved: false,
   isOutdated: false,
   author: "coderabbitai",
@@ -93,6 +94,22 @@ describe("coderabbit loop decide", () => {
     expect(verdict.verdict).toBe("fix");
     expect(verdict.outsideDiffFindings).toBe(true);
     expect(verdict.prompt).toContain("Fix it.");
+  });
+
+  it("does not count a COMMENTED review with only outside-diff findings as a round", () => {
+    const body = "<summary>🤖 Prompt to fix review comments</summary>\n\n```\nOutside diff comments:\n- Fix it.\n```";
+    const verdict = decide("h1", [review("h1", "COMMENTED", "1", body)], []);
+    expect(verdict.fixRound).toBe(0);
+  });
+
+  it("counts rounds by where threads opened when every review is COMMENTED", () => {
+    // Without request_changes_workflow (pmark/arcadia#324 had three such
+    // rounds), review state never says CHANGES_REQUESTED.
+    const reviews = ["h1", "h2", "h3", "h4"].map((head, index) => review(head, "COMMENTED", String(index), "Actionable comments posted: 1"));
+    const threads = ["h1", "h2", "h3"].map((head) => thread(`t-${head}`, { commitId: head, isResolved: true }));
+    const verdict = decide("h4", reviews, [...threads, thread("t-h4", { commitId: "h4" })]);
+    expect(verdict.fixRound).toBe(4);
+    expect(verdict.verdict).toBe("cap");
   });
 
   it("still allows the last fix round at the cap boundary", () => {

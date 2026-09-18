@@ -34,6 +34,9 @@ export interface Review {
 
 export interface Thread {
   id: string;
+  // The head CodeRabbit opened the thread on, which is what makes that head a
+  // fix round whatever the review's state.
+  commitId: string;
   isResolved: boolean;
   isOutdated: boolean;
   author: string;
@@ -93,10 +96,14 @@ export function decide(head: string, reviews: Review[], threads: Thread[]): Verd
       body: condense(thread.body)
     }));
 
-  // A round is one reviewed head that came back with something to fix.
-  const roundHeads = new Set(
-    bot.filter((review) => review.state !== "APPROVED").map((review) => review.commitId)
-  );
+  // A round is one reviewed head that came back with something to fix: a head
+  // CodeRabbit opened a thread on, or requested changes on. Review state alone
+  // cannot say: without request_changes_workflow every review is COMMENTED,
+  // including ones that only list findings outside the diff.
+  const roundHeads = new Set([
+    ...bot.filter((review) => review.state === "CHANGES_REQUESTED").map((review) => review.commitId),
+    ...threads.filter((thread) => thread.author.startsWith(BOT)).map((thread) => thread.commitId)
+  ]);
   const prompt = extractPrompt(latestOnHead?.body ?? "");
   const outsideDiffFindings = hasOutsideDiffFindings(prompt ?? "");
   // CodeRabbit does not re-approve a head it found clean: its earlier approval
@@ -247,7 +254,7 @@ interface ThreadNode {
   isResolved: boolean;
   isOutdated: boolean;
   comments: {
-    nodes: { author: { login: string } | null; path: string; line: number | null; url: string; body: string }[];
+    nodes: { author: { login: string } | null; path: string; line: number | null; url: string; body: string; originalCommit: { oid: string } | null }[];
   };
 }
 
@@ -277,7 +284,7 @@ function fetchReviews(gh: (args: string[]) => string, repository: string, pr: nu
 
 function fetchThreads(ghJson: <T>(args: string[]) => T, repository: string, pr: number): Thread[] {
   const [owner, name] = repository.split("/");
-  const query = `query($owner:String!,$name:String!,$pr:Int!,$after:String){repository(owner:$owner,name:$name){pullRequest(number:$pr){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{id isResolved isOutdated comments(first:1){nodes{author{login} path line url body}}}}}}}`;
+  const query = `query($owner:String!,$name:String!,$pr:Int!,$after:String){repository(owner:$owner,name:$name){pullRequest(number:$pr){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{id isResolved isOutdated comments(first:1){nodes{author{login} path line url body originalCommit{oid}}}}}}}}`;
   const nodes: ThreadNode[] = [];
   let after: string | null = null;
   do {
@@ -293,6 +300,7 @@ function fetchThreads(ghJson: <T>(args: string[]) => T, repository: string, pr: 
     return [
       {
         id: node.id,
+        commitId: first.originalCommit?.oid ?? "",
         isResolved: node.isResolved,
         isOutdated: node.isOutdated,
         author: first.author?.login ?? "",
