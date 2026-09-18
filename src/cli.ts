@@ -133,6 +133,7 @@ import {
   runSessionLaunchCommand
 } from "./commands/advance.js";
 import { runAssessPrBlastRadiusCommand, renderAssessPrBlastRadiusSuccess } from "./commands/prBlastRadius.js";
+import { renderPrCodeReviewSuccess, renderPrDeclineFindingSuccess, runPrCodeReviewCommand, runPrDeclineFindingCommand } from "./commands/prCodeReview.js";
 import {
   renderDogfoodAskSuccess,
   renderDogfoodInitSuccess,
@@ -1695,6 +1696,27 @@ export function buildProgram(): Command {
       }),
       renderAssessPrBlastRadiusSuccess
     )
+  );
+
+  addJsonOption(
+    pr
+      .command("code-review")
+      .description("Wait for CodeRabbit to review a PR's pushed head and return the loop verdict: done, fix, or cap. Reads only.")
+      .argument("<pr>", "Pull request number")
+      .option("--timeout-min <minutes>", "Give up waiting after this many minutes", "20")
+      .option("--repo <path>", "Repository checkout the PR belongs to", resolveInvocationPath, invocationRoot())
+  ).action((prNumber: string, options: { repo: string; timeoutMin: string; json?: boolean }) =>
+    runCliAction("pr.codeReview", options, () => runPrCodeReviewCommand({ ...options, pr: prNumber }), renderPrCodeReviewSuccess)
+  );
+  addJsonOption(
+    pr
+      .command("decline-finding")
+      .description("Reply to a CodeRabbit review thread with the reason a finding is wrong, and resolve it")
+      .argument("<thread-id>", "Review thread id from `arcadia pr code-review`")
+      .argument("<reason>", "Why the finding does not apply; posted on the thread")
+      .option("--repo <path>", "Repository checkout the PR belongs to", resolveInvocationPath, invocationRoot())
+  ).action((threadId: string, reason: string, options: { repo: string; json?: boolean }) =>
+    runCliAction("pr.declineFinding", options, () => runPrDeclineFindingCommand({ repo: options.repo, threadId, reason }), renderPrDeclineFindingSuccess)
   );
 
   const decision = program.command("decision").description("Create and update checked-in Decision documents");
