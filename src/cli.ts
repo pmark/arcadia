@@ -61,6 +61,24 @@ import {
   runProductionStatusCommand
 } from "./commands/production.js";
 import {
+  renderScheduleClassifySuccess,
+  renderScheduleDiscoverSuccess,
+  renderScheduleGitHubLinkSuccess,
+  renderScheduleLogSuccess,
+  renderSchedulePrioritizeSuccess,
+  renderScheduleReconcileSuccess,
+  renderScheduleResumeSuccess,
+  renderScheduleStatusSuccess,
+  runScheduleClassifyCommand,
+  runScheduleDiscoverCommand,
+  runScheduleGitHubLinkCommand,
+  runScheduleLogCommand,
+  runSchedulePrioritizeCommand,
+  runScheduleReconcileCommand,
+  runScheduleResumeCommand,
+  runScheduleStatusCommand
+} from "./commands/schedule.js";
+import {
   renderFeedbackListSuccess,
   renderFeedbackRecordSuccess,
   runFeedbackListCommand,
@@ -831,6 +849,101 @@ export function buildProgram(): Command {
     expectedArtifact?: string;
     json?: boolean;
   }) => runCliAction("capture", options, () => runCaptureCommand(options), renderCaptureSuccess));
+
+  const schedule = program.command("schedule").description("Production scheduling: per-Project queues by tier, the GitHub board projection, and discovery");
+  addJsonOption(
+    schedule
+      .command("status")
+      .description("Show every Project's canonical queue, next runnable Action, and GitHub projection state")
+      .option("--project <slug>", "Limit to one Project")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; project?: string; json?: boolean }) =>
+    runCliAction("schedule.status", options, () => runScheduleStatusCommand(options), renderScheduleStatusSuccess)
+  );
+  addJsonOption(
+    schedule
+      .command("log")
+      .description("Show scheduling mutations: who moved what, from where to where, and why")
+      .option("--project <slug>", "Limit to one Project")
+      .option("--limit <n>", "Entries to show", "50")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; project?: string; limit: string; json?: boolean }) =>
+    runCliAction("schedule.log", options, () => runScheduleLogCommand({ ...options, limit: Number(options.limit) }), renderScheduleLogSuccess)
+  );
+  addJsonOption(
+    schedule
+      .command("prioritize")
+      .description("Set the cross-Project order the scheduler scans (first Project with runnable work wins)")
+      .requiredOption("--order <slugs...>", "Project slugs in priority order")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; order: string[]; json?: boolean }) =>
+    runCliAction("schedule.prioritize", options, () => runSchedulePrioritizeCommand(options), renderSchedulePrioritizeSuccess)
+  );
+  addJsonOption(
+    schedule
+      .command("classify")
+      .description("Set an Action's scheduling class (interrupt, blocker, corrective, planned, follow_up) and recompute the queue")
+      .requiredOption("--action <project/action>", "Action key")
+      .requiredOption("--class <class>", "Scheduling class")
+      .option("--request-id <id>", "Idempotency key", randomUUID())
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; action: string; class: string; requestId: string; json?: boolean }) =>
+    runCliAction("schedule.classify", options, () => runScheduleClassifyCommand(options), renderScheduleClassifySuccess)
+  );
+  addJsonOption(
+    schedule
+      .command("discover")
+      .description("Record work a coding Run discovered: a blocker, a corrective, or a follow-up")
+      .requiredOption("--from <project/action>", "The Action whose Run discovered the work")
+      .requiredOption("--kind <kind>", "blocker | corrective | follow_up")
+      .requiredOption("--title <text>", "What must be done")
+      .option("--acceptance <criterion...>", "Observable acceptance criteria", [])
+      .option("--evidence <text>", "Where the discovery was observed")
+      .requiredOption("--request-id <id>", "Idempotency key for this discovery")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; from: string; kind: string; title: string; acceptance: string[]; evidence?: string; requestId: string; json?: boolean }) =>
+    runCliAction("schedule.discover", options, () => runScheduleDiscoverCommand(options), renderScheduleDiscoverSuccess)
+  );
+  addJsonOption(
+    schedule
+      .command("reconcile")
+      .description("Read each linked GitHub board, apply operator card reorders, and re-project the canonical queue (preview unless --apply)")
+      .option("--project <slug>", "Limit to one Project")
+      .option("--apply", "Write accepted reorders, pointer moves, and board updates")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; project?: string; apply?: boolean; json?: boolean }) =>
+    runCliAction("schedule.reconcile", options, () => runScheduleReconcileCommand(options), renderScheduleReconcileSuccess)
+  );
+  addJsonOption(
+    schedule
+      .command("resume")
+      .description("Resume a Project paused by the failed-Run budget after its Decision is answered")
+      .requiredOption("--project <slug>", "Project slug")
+      .requiredOption("--reason <text>", "Why scheduling may continue")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; project: string; reason: string; json?: boolean }) =>
+    runCliAction("schedule.resume", options, () => runScheduleResumeCommand(options), renderScheduleResumeSuccess)
+  );
+  const scheduleGitHub = schedule.command("github").description("Bind a Project to its GitHub Project board");
+  addJsonOption(
+    scheduleGitHub
+      .command("link")
+      .description("Link an existing GitHub Project (or --create one) as the Project's board")
+      .requiredOption("--project <slug>", "Arcadia Project slug")
+      .requiredOption("--owner <login>", "GitHub user or organization that owns the Project")
+      .option("--number <n>", "Existing GitHub Project number")
+      .option("--create", "Create the GitHub Project first")
+      .option("--title <text>", "Title for a created GitHub Project")
+      .option("--repository <owner/name>", "Repository Issues are created in (default: the Project repository's remote)")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; project: string; owner: string; number?: string; create?: boolean; title?: string; repository?: string; json?: boolean }) =>
+    runCliAction(
+      "schedule.github.link",
+      options,
+      () => runScheduleGitHubLinkCommand({ ...options, number: options.number === undefined ? undefined : Number(options.number) }),
+      renderScheduleGitHubLinkSuccess
+    )
+  );
 
   const production = program.command("production").description("Managed production policy: the standing authorization for unattended admission");
   addJsonOption(
@@ -4364,6 +4477,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "production" && ["status", "preview", "activate", "deactivate"].includes(second ?? "")) {
     return `production.${second}`;
+  }
+
+  if (first === "schedule" && ["status", "log", "prioritize", "classify", "discover", "reconcile", "resume"].includes(second ?? "")) {
+    return `schedule.${second}`;
   }
 
   if (first === "back-burner" && ["list", "show", "promote", "archive"].includes(second ?? "")) {
