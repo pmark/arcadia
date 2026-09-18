@@ -73,7 +73,6 @@ export function decide(head: string, reviews: Review[], threads: Thread[]): Verd
     .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt));
   const onHead = bot.filter((review) => review.commitId === head);
   const latestOnHead = onHead.at(-1);
-  const approved = latestOnHead?.state === "APPROVED";
 
   const findings: Finding[] = threads
     .filter((thread) => thread.author.startsWith(BOT) && !thread.isResolved)
@@ -91,6 +90,11 @@ export function decide(head: string, reviews: Review[], threads: Thread[]): Verd
     bot.filter((review) => review.state !== "APPROVED").map((review) => review.commitId)
   );
   const outsideDiffFindings = hasOutsideDiffFindings(latestOnHead?.body ?? "");
+  // CodeRabbit does not re-approve a head it found clean: its earlier approval
+  // simply stands, exactly as GitHub's reviewDecision shows. A later review
+  // requesting changes would supersede it as the latest, so the latest review
+  // being an approval, with nothing left open, is approval of this head.
+  const approved = bot.at(-1)?.state === "APPROVED" && findings.length === 0 && !outsideDiffFindings;
   if (findings.length > 0 || outsideDiffFindings) roundHeads.add(head);
   const fixRound = roundHeads.size;
 

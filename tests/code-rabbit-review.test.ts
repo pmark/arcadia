@@ -21,8 +21,22 @@ describe("coderabbit loop decide", () => {
     expect(verdict.approved).toBe(true);
   });
 
-  it("does not count an approval of an older head", () => {
+  it("does not count an older approval while a finding is open", () => {
     const verdict = decide("h2", [review("h1", "APPROVED", "1")], [thread("t1")]);
+    expect(verdict.approved).toBe(false);
+    expect(verdict.verdict).toBe("fix");
+  });
+
+  it("counts a standing approval when a later clean head drew no new review", () => {
+    // Seen live on pmark/arcadia#325: CodeRabbit approved one head, found the
+    // next push clean, and posted nothing new -- reviewDecision stayed APPROVED.
+    const verdict = decide("h3", [review("h1", "CHANGES_REQUESTED", "1"), review("h2", "APPROVED", "2")], []);
+    expect(verdict.approved).toBe(true);
+    expect(verdict.verdict).toBe("done");
+  });
+
+  it("lets a later change request supersede an earlier approval", () => {
+    const verdict = decide("h2", [review("h1", "APPROVED", "1"), review("h2", "CHANGES_REQUESTED", "2")], []);
     expect(verdict.approved).toBe(false);
     expect(verdict.verdict).toBe("fix");
   });
