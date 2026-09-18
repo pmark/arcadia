@@ -1461,8 +1461,8 @@ pnpm arcadia pr decline-finding PRRT_kwDO... "Not reachable: the caller already 
 `verdict`: `done` (approved, or nothing unresolved; `note` says which), `fix`
 (unresolved `findings`, each with its `threadId`), or `cap` (findings remain
 after three fix rounds; hand them to the operator). Findings CodeRabbit places
-outside the diff have no thread and are flagged by `outsideDiffFindings`, with
-their text in `prompt`. A draft PR, an unpushed local HEAD, a timeout, or a
+outside the diff have no thread, so they are flagged by `outsideDiffFindings`
+with their text in `prompt` but never block `done` on their own. A draft PR, an unpushed local HEAD, a timeout, or a
 CodeRabbit failure is an error rather than a verdict.
 
 `decline-finding` replies on the thread with the reason and resolves it, so a
