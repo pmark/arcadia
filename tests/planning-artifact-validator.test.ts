@@ -61,3 +61,34 @@ describe("planning artifact validator fixtures", () => {
     expect(result.contract.approvalBoundaryKeywords).toContain("credentials");
   });
 });
+
+describe("validation-execution claim detection", () => {
+  const complete = planningArtifactValidationFixtures.find((fixture) => fixture.name === "passes complete planning artifact")!;
+  const codesFor = (extraLine: string): string[] =>
+    issueCodesBySeverity(
+      validatePlanningArtifact({
+        packetText: complete.packetText,
+        artifactText: `${complete.artifactText}\n${extraLine}\n`
+      }).failures,
+      "failure"
+    );
+
+  it.each([
+    "- No files changed this session, so no validation ran in this planning packet.",
+    "Nothing was run: no tests passed or failed because none were executed.",
+    "We did not run pnpm test; the checks were not run."
+  ])("does not treat a disclaimer as a claim: %s", (line) => {
+    expect(codesFor(line)).not.toContain("validation_execution_claim_not_required");
+  });
+
+  it.each([
+    "Tests passed locally.",
+    "I ran `pnpm test` and lint completed.",
+    "No validation ran locally, but tests passed in CI."
+  ])(
+    "still flags an affirmative claim: %s",
+    (line) => {
+      expect(codesFor(line)).toContain("validation_execution_claim_not_required");
+    }
+  );
+});

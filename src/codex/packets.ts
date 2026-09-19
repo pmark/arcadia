@@ -561,7 +561,8 @@ function renderAcceptanceCriteria(input: {
       `- Keep the plan aligned with ${project}${projectGoal}.`,
       "- Preserve implementation intent by framing implementation as a future phase, not work authorized by this packet.",
       "- Include ordered phases, concrete expected artifacts, repository impact assessment, approval needs, validation strategy, risks/open questions, a recommended next action, and the smallest useful follow-up Codex implementation goal.",
-      "- Put the complete plan, under those headings, in your final message. Do not leave it only in a plan file; the final message is what gets validated.",
+      "- Put the complete plan in your final message, using these exact section headings: Ordered Phases, Concrete Expected Artifacts, Repository Impact Assessment, Approval Needs, Validation Strategy, Risks / Open Questions, Recommended Next Action, Smallest Useful Follow-up Codex Goal. Do not leave it only in a plan file; the final message is what gets validated.",
+      "- Do not describe validation as having run (or as not having run) beyond stating the validation strategy; this is a planning-only packet.",
       "- Do not require tests, lint, deployment, credentials, publishing, spending, production access, or outbound actions unless files are changed while preparing the plan."
     ].join("\n");
   }

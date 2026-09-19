@@ -432,11 +432,26 @@ function claimsValidationCommandsExecuted(artifactText: string): boolean {
   return validationClaimEvidence(artifactText).length > 0;
 }
 
+// "no validation ran" disclaims execution; only an affirmative claim counts.
+// Each clause is judged on its own, so "No validation ran locally, but tests
+// passed in CI" still counts as a claim.
+const VALIDATION_CLAIM_PATTERNS = [
+  /\b(?:tests?|lint|validation|checks?)\s+(?:passed|completed|succeeded|ran|were run)\b/i,
+  /\b(?:ran|executed|completed)\s+`?(?:pnpm|npm|yarn|bun|vitest|pytest|cargo|go test|swift test|xcodebuild|make)\b/i
+];
+const NEGATED_VALIDATION_CLAIM =
+  /\b(?:no|not|never|nothing|without|neither|nor|none)\b[^\n]*\b(?:tests?|lint|validation|checks?)\s+(?:passed|completed|succeeded|ran|were run)\b/i;
+const CLAUSE_BOUNDARY = /[.;,:]|\b(?:but|however|although|though|yet)\b/i;
+
 function validationClaimEvidence(artifactText: string): string[] {
-  return matchingLines(artifactText, [
-    /\b(?:tests?|lint|validation|checks?)\s+(?:passed|completed|succeeded|ran|were run)\b/i,
-    /\b(?:ran|executed|completed)\s+`?(?:pnpm|npm|yarn|bun|vitest|pytest|cargo|go test|swift test|xcodebuild|make)\b/i
-  ]);
+  return matchingLines(artifactText, VALIDATION_CLAIM_PATTERNS).filter((line) =>
+    line
+      .split(CLAUSE_BOUNDARY)
+      .some(
+        (clause) =>
+          VALIDATION_CLAIM_PATTERNS.some((pattern) => pattern.test(clause)) && !NEGATED_VALIDATION_CLAIM.test(clause)
+      )
+  );
 }
 
 function approvalContradictionEvidence(
