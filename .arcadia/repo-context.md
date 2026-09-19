@@ -1,10 +1,9 @@
 # Arcadia Repo Context
 
-Generated: 2026-09-02T20:59:24.733Z
+Generated: 2026-09-19T14:15:54.375Z
 Repo path: /Users/pmark/Dev/MR/Arcadia/arcadia
 
 ## Detected Languages
-- CSS
 - Markdown
 - TypeScript
 - YAML
@@ -31,7 +30,10 @@ Repo path: /Users/pmark/Dev/MR/Arcadia/arcadia
 - specs
 
 ## Safe Commands And Scripts
+- node scripts/preservation-self-check.mjs
 - pnpm build
+- pnpm lint
+- pnpm lint:fix
 - pnpm smoke
 - pnpm test
 - pnpm test:e2e
