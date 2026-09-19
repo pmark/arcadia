@@ -1,15 +1,17 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorkerTick, decideWorkerStart } from "../src/commands/worker.js";
 import { openDatabase } from "../src/db/connection.js";
+import { preservationTransportReady } from "../src/sessions/preservationTransport.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { runCli } from "./cli-response-fixture.js";
 
 const temporary: string[] = [];
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const directory of temporary.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
@@ -24,11 +26,15 @@ function workspace(): { root: string; logfile: string } {
 describe("worker start already-running guard", () => {
   it("starts when no live worker owns the pidfile", () => {
     expect(decideWorkerStart(null, () => true)).toEqual({ action: "start", pid: null });
-    expect(decideWorkerStart(4242, () => false)).toEqual({ action: "start", pid: null });
+    expect(decideWorkerStart({ pid: 4242, owner: "old" }, () => false)).toEqual({ action: "start", pid: null });
   });
 
   it("treats a live pidfile holder as already running rather than a failure", () => {
-    expect(decideWorkerStart(4242, () => true)).toEqual({ action: "already-running", pid: 4242 });
+    expect(decideWorkerStart({ pid: 4242, owner: "worker" }, () => true, () => true)).toEqual({ action: "already-running", pid: 4242 });
+  });
+
+  it("restarts when a stale pidfile points to an unrelated live process", () => {
+    expect(decideWorkerStart({ pid: 4242, owner: "stale" }, () => true, () => false)).toEqual({ action: "start", pid: null });
   });
 
   // Issue #303: exiting 1 here is what turned the benign path into a launchd
@@ -36,13 +42,25 @@ describe("worker start already-running guard", () => {
   // code rather than only the decision that precedes it.
   it("exits 0 from the CLI when another worker already holds the workspace pidfile", () => {
     const { root } = workspace();
-    writeFileSync(path.join(root, ".arcadia", "worker.pid"), String(process.pid), "utf8");
+    writeFileSync(path.join(root, ".arcadia", "worker.pid"), JSON.stringify({ pid: process.pid, owner: "existing", at: Date.now() }), "utf8");
 
     const result = runCli(["worker", "start", "--workspace", root]);
 
     expect(result.status).toBe(0);
     expect(result.stderr).not.toContain("already running");
     expect(result.stdout).toContain("already running");
+  });
+
+  it("does not replace a live legacy numeric pidfile before the worker has restarted", () => {
+    const { root } = workspace();
+    const pidfile = path.join(root, ".arcadia", "worker.pid");
+    writeFileSync(pidfile, String(process.pid), "utf8");
+
+    const result = runCli(["worker", "start", "--workspace", root]);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Legacy worker still running");
+    expect(readFileSync(pidfile, "utf8")).toBe(String(process.pid));
   });
 });
 
@@ -135,5 +153,46 @@ describe("createWorkerTick", () => {
     // A healthy tick adds no log line, so the file may not exist at all.
     const logged = existsSync(logfile) ? readFileSync(logfile, "utf8") : "";
     expect(logged).not.toContain("Worker tick error:");
+  });
+
+  it("publishes the preservation heartbeat from a host worker tick", () => {
+    const { root, logfile } = workspace();
+    const scheduled: Array<() => void> = [];
+    vi.stubEnv("CODEX_SANDBOX", "");
+
+    const tick = createWorkerTick({
+      workspacePath: root,
+      pid: process.pid,
+      logfile,
+      schedule: (callback) => { scheduled.push(callback); }
+    });
+
+    tick();
+
+    expect(preservationTransportReady(root)).toBe(true);
+    expect(scheduled).toHaveLength(1);
+  });
+
+  it("fences a worker that loses ownership after a blocked iteration", () => {
+    const { root, logfile } = workspace();
+    const scheduled: Array<() => void> = [];
+    let ownershipChecks = 0;
+    let ownershipLosses = 0;
+    const tick = createWorkerTick({
+      workspacePath: root,
+      pid: process.pid,
+      logfile,
+      ownsWorker: () => {
+        ownershipChecks += 1;
+        return ownershipChecks === 1;
+      },
+      onOwnershipLost: () => { ownershipLosses += 1; },
+      schedule: (callback) => { scheduled.push(callback); }
+    });
+
+    tick();
+
+    expect(ownershipLosses).toBe(1);
+    expect(scheduled).toHaveLength(0);
   });
 });
