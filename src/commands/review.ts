@@ -2,6 +2,7 @@ import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
+import { prepareBuildPacketForAcceptedPlan } from "./work.js";
 import { projectNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
@@ -888,16 +889,23 @@ export function runReviewApproveCommand(
           return { updated, promotion };
         }
 
-        const decisionNote = criteriaReport
-          ? `Validated planning Artifact accepted.\n\n${criteriaReport}`
-          : "Validated planning Artifact accepted.";
+        let buildPrepared = false;
         updateArtifact(db, specialized.artifact_id as string, { status: "ready" });
-        updateWorkItem(db, specialized.work_item_id as string, {
-          queue: "work_queue",
-          workClassification: "requires_review",
-          status: "done",
-          nextAction: "Plan accepted; choose the next implementation Action when ready."
-        });
+        // A governed plan-document Action is what the accepted plan will be
+        // built as, so it stays open and gets its build packet and approval.
+        // Anything Arcadia captured itself has no plan document to build.
+        const governedAction = acceptedWorkItem?.doc_ref ? acceptedWorkItem : null;
+        if (governedAction) {
+          prepareBuildPacketForAcceptedPlan(db, workspacePath, governedAction, specialized.id);
+          buildPrepared = true;
+        } else {
+          updateWorkItem(db, specialized.work_item_id as string, {
+            queue: "work_queue",
+            workClassification: "requires_review",
+            status: "done",
+            nextAction: "Plan accepted; choose the next implementation Action when ready."
+          });
+        }
         if (criteriaResults.length > 0) {
           mergeReviewItemContext(db, specialized.id, { acceptanceCriteriaResults: criteriaResults });
         }
@@ -914,6 +922,10 @@ export function runReviewApproveCommand(
             });
           }
         }
+        const acceptedNote = buildPrepared
+          ? "Validated planning Artifact accepted. Build packet prepared for one guarded Session; no Run started."
+          : "Validated planning Artifact accepted.";
+        const decisionNote = criteriaReport ? `${acceptedNote}\n\n${criteriaReport}` : acceptedNote;
         const updated = updateReviewItemStatus(db, specialized.id, {
           status: "approved",
           decisionNote

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -20,7 +20,7 @@ import type { CodingAgentProfile } from "../src/intent/registries.js";
 import { prepareSession } from "../src/sessions/index.js";
 import { buildLaunchPreview, LAUNCH_ADAPTER_SUPPORT } from "../src/sessions/launchPreview.js";
 import { resolvePacketLifecycle } from "../src/sessions/packetLifecycle.js";
-import { runWorkPlanCommand } from "../src/commands/work.js";
+import { prepareBuildPacketForAcceptedPlan, runWorkPlanCommand } from "../src/commands/work.js";
 import { resolveDispatch } from "../src/docs/dispatch.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -115,6 +115,55 @@ describe("buildLaunchPreview", () => {
       decisionId: prepared.data.planningDecision!.id
     });
     expect(lifecycle.remedy).toContain("planning only, not implementation");
+  });
+
+  it("reports Ready for an accepted plan once its prepared build approval is approved", () => {
+    const fixture = preparedFixture({ skipInvocation: true });
+    const approval = withDatabase(fixture.workspace, (db) => {
+      const workItem = getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!;
+      const acceptance = createReviewItem(db, {
+        workItemId: workItem.id,
+        projectId: workItem.project_id,
+        decisionNeeded: "Accept the planning Artifact.",
+        sourceInput: "fixture",
+        proposedAction: "Accept.",
+        resolvedIntent: "CodexPlanningArtifactAcceptance",
+        confidenceLabel: "high",
+        confidence: 1,
+        missingFields: []
+      });
+      const prepared = prepareBuildPacketForAcceptedPlan(db, fixture.workspace, workItem, acceptance.id);
+      // This fixture Action declares no execution requirement, so the packet
+      // records no provider selection. Record the one an Action with a
+      // requirement would have, so this test isolates the approval mechanic.
+      const metadataPath = path.join(fixture.workspace, path.dirname(prepared.invocation.prompt_path), "metadata.json");
+      const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
+      metadata.providerSelection = { provider: "claude-code-cli", model: "sonnet", mappingId: "fixture-map", bindingId: "fixture-binding" };
+      writeFileSync(metadataPath, JSON.stringify(metadata));
+      return acceptance;
+    });
+    const preview = () =>
+      withReadOnlyDatabase(fixture.workspace, (db) =>
+        buildLaunchPreview({
+          db,
+          workspace: fixture.workspace,
+          repoRoot: fixture.repo,
+          projectSlug: "test-project",
+          requestId: "req-accepted-plan",
+          profiles,
+          adapters: defaultAdapters as ProviderAdapterRegistry
+        })
+      );
+
+    expect(preview().ready).toBe(false);
+    expect(preview().prerequisites.join("\n")).toContain("no longer approved");
+
+    withDatabase(fixture.workspace, (db) => updateReviewItemStatus(db, approval.id, { status: "approved", decisionNote: "Accepted." }));
+
+    const ready = preview();
+    expect(ready.prerequisites).toEqual([]);
+    expect(ready.ready).toBe(true);
+    expect(ready.packetLifecycle?.kind).toBe("build_packet_ready");
   });
 
   it("names a changed packet's stale authority as a prerequisite instead of throwing", () => {
