@@ -44,7 +44,10 @@
     "specs"
   ],
   "safe_commands": [
+    "node scripts/preservation-self-check.mjs",
     "pnpm build",
+    "pnpm lint",
+    "pnpm lint:fix",
     "pnpm smoke",
     "pnpm test",
     "pnpm test:e2e"
