@@ -1137,8 +1137,15 @@ export function prepareBuildPacketForAcceptedPlan(
 ): { invocation: CodexInvocation; packetArtifact: ArtifactSummary } {
   assertRequiredProjectRepoContext(db, workItem);
   ensureBuiltInSkills(db);
-  const plan = reusableUnpreparedBuildPlan(getLatestExecutionPlanForWorkItem(db, workItem.id))
-    ?? createExecutionPlan(db, {
+  // A plan is only reusable while it has no build invocation at all: an
+  // invocation past `packet_created` (run, failed, cancelled) is not a packet
+  // to hand back, and plan status does not track invocation status.
+  const latestPlan = getLatestExecutionPlanForWorkItem(db, workItem.id);
+  const reusablePlan = reusableUnpreparedBuildPlan(latestPlan);
+  const plan = (reusablePlan && !getCodexInvocationForPlan(db, { workItemId: workItem.id, planId: reusablePlan.id, purpose: "build" })
+     ? reusablePlan
+     : null)
+     ?? createExecutionPlan(db, {
       workItemId: workItem.id,
       summary: `Execution plan for "${workItem.title}".`,
       steps: [{
@@ -1173,6 +1180,10 @@ export function prepareBuildPacketForAcceptedPlan(
   return prepared;
 }
 
+/**
+ * Prepare the immutable build packet for a plan step and bind it to the
+ * Action, without creating any Decision.
+ */
 function ensureBuildPacketOnly(
   db: Parameters<typeof getWorkItem>[0],
   workspacePath: string,
@@ -1231,7 +1242,7 @@ function ensureBuildPacketForPlan(
   packetArtifact: ArtifactSummary;
 } {
   const { invocation, packetArtifact } = ensureBuildPacketOnly(db, workspacePath, workItem, plan, registries, planStepId, requestedProfile);
-  const existingApproval = listReviewItems(db, "all").find((item) =>
+    const existingApproval = listReviewItems(db, "all").find((item) =>
     item.work_item_id === workItem.id &&
     item.codex_invocation_id === invocation.id &&
     item.resolved_intent === "CodexBuildPacketApproval" &&

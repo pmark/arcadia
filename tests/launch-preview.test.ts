@@ -160,6 +160,49 @@ describe("buildLaunchPreview", () => {
     expect(preview.selection).toMatchObject({ provider: "codex-cli", model: "gpt-5.6-terra" });
   });
 
+  it("reports Ready for an accepted plan once its prepared build approval is approved", () => {
+    const fixture = preparedFixture({ skipInvocation: true });
+    const approval = withDatabase(fixture.workspace, (db) => {
+      const workItem = getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!;
+      const acceptance = createReviewItem(db, {
+        workItemId: workItem.id,
+        projectId: workItem.project_id,
+        decisionNeeded: "Accept the planning Artifact.",
+        sourceInput: "fixture",
+        proposedAction: "Accept.",
+        resolvedIntent: "CodexPlanningArtifactAcceptance",
+        confidenceLabel: "high",
+        confidence: 1,
+        missingFields: []
+      });
+      const prepared = prepareBuildPacketForAcceptedPlan(db, fixture.workspace, workItem, acceptance.id);
+      expect(prepared.invocation.provider_mapping_id).toBe("bundled-2026-07-25.1");
+      return acceptance;
+    });
+    const preview = () =>
+      withReadOnlyDatabase(fixture.workspace, (db) =>
+        buildLaunchPreview({
+          db,
+          workspace: fixture.workspace,
+          repoRoot: fixture.repo,
+          projectSlug: "test-project",
+          requestId: "req-accepted-plan",
+          profiles,
+          adapters: defaultAdapters as ProviderAdapterRegistry
+        })
+      );
+
+    expect(preview().ready).toBe(false);
+    expect(preview().prerequisites.join("\n")).toContain("no longer approved");
+
+    withDatabase(fixture.workspace, (db) => updateReviewItemStatus(db, approval.id, { status: "approved", decisionNote: "Accepted." }));
+
+    const ready = preview();
+    expect(ready.prerequisites).toEqual([]);
+    expect(ready.ready).toBe(true);
+    expect(ready.packetLifecycle?.kind).toBe("build_packet_ready");
+  });
+
   it("names a changed packet's stale authority as a prerequisite instead of throwing", () => {
     const fixture = preparedFixture();
     writeFileSync(path.join(fixture.workspace, "prompts", "codex", fixture.packetId, "prompt.md"), "changed after approval\n");

@@ -536,8 +536,13 @@ the Way's intake for code-level defects in Arcadia and every managed Project.
 ## CodeRabbit loop
 
 When this repository has a `.coderabbit.yaml`, CodeRabbit reviews every
-non-draft PR, and a push is not a stopping point. After you open a PR or push
-to one, run the loop until CodeRabbit is satisfied or the cap is reached:
+non-draft PR, and a push is not a stopping point. **Running this loop is
+mandatory, not optional:** opening a PR without starting it is an incomplete
+handoff. Cost, wait time, and "the work is small" are never reasons to skip
+it; the only valid reasons are the named errors in step 5. Start it in the same
+turn the PR is created, before presenting the handoff picker. After you open a
+PR or push to one, run the loop until CodeRabbit is satisfied or the cap is
+reached:
 
 1. Run `arcadia pr code-review <pr> --json`. It blocks until CodeRabbit
    finishes reviewing the pushed head (~2–10 min), then returns a verdict.
