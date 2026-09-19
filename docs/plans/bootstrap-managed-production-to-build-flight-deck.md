@@ -1144,7 +1144,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: clean-up-preserve-transport-request
+current_action: fix-plan-mode-planning-artifact
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
