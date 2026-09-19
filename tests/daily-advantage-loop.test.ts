@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runReviewApproveCommand, runReviewRequiredCommand } from "../src/commands/review.js";
+import { runReviewApproveCommand, runReviewRejectCommand, runReviewRequiredCommand } from "../src/commands/review.js";
 import { runWorkPlanCommand } from "../src/commands/work.js";
 import { buildDashboardSnapshot } from "../src/dashboard/snapshot.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -10,6 +10,7 @@ import {
   countRows,
   createExecutionPlan,
   createProjectWithInitialWork,
+  createReviewItem,
   createWorkItemWithOptionalArtifact,
   getWorkItem,
   listReviewItems,
@@ -220,6 +221,35 @@ describe("Daily Advantage existing-Action planning preparation", () => {
     expect(prepared.data.plan.steps).toHaveLength(1);
     expect(prepared.data.plan.steps[0]).toMatchObject({ executor_type: "codex_planning" });
     expect(prepared.data.codexInvocation).toMatchObject({ purpose: "planning", status: "packet_created" });
+  });
+
+  it("re-prepares a planning packet on another profile after a failed validation is sent back", () => {
+    const fixture = createRebusterFixture();
+    const first = runWorkPlanCommand({ workspace: fixture.workspace, workId: fixture.workItemId, agentProfile: "codex_planning" });
+    runReviewApproveCommand({ workspace: fixture.workspace, id: first.data.planningDecision!.id });
+    const validation = withDatabase(fixture.workspace, (db) => {
+      db.prepare("UPDATE execution_runs SET status = 'requires_review' WHERE work_item_id = ?").run(fixture.workItemId);
+      db.prepare("UPDATE codex_invocations SET status = 'completed' WHERE work_item_id = ?").run(fixture.workItemId);
+      db.prepare("UPDATE execution_plans SET status = 'requires_review' WHERE work_item_id = ?").run(fixture.workItemId);
+      updateWorkItem(db, fixture.workItemId, { queue: "requires_review", status: "in_progress" });
+      return createReviewItem(db, {
+        workItemId: fixture.workItemId,
+        decisionNeeded: "Revise the Codex planning artifact before treating it as ready.",
+        sourceInput: "planning validation",
+        proposedAction: "Retry planning",
+        resolvedIntent: "codex_planning_artifact_validation",
+        confidenceLabel: "high",
+        confidence: 1
+      });
+    });
+
+    runReviewRejectCommand({ workspace: fixture.workspace, id: validation.id, feedback: "Put the whole plan in the final message." });
+    const second = runWorkPlanCommand({ workspace: fixture.workspace, workId: fixture.workItemId, agentProfile: "claude_planning" });
+
+    expect(second.data.plan.id).not.toBe(first.data.plan.id);
+    expect(second.data.codexInvocation).toMatchObject({ agent_profile: "claude_planning", status: "packet_created" });
+    expect(second.data.planningDecision).toMatchObject({ status: "open" });
+    expect(second.data.planningDecision!.id).not.toBe(first.data.planningDecision!.id);
   });
 
   it("falls back to generated criteria when the Action declares none", () => {
