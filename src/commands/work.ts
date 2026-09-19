@@ -818,6 +818,12 @@ function reusableUnpreparedPlanningPlan(
       codexInvocationId: invocation.id
     });
   }
+  // A plan whose only step is an operator review was made while the Action was
+  // parked in requires_review. It carries no packet, so it must not block
+  // preparing a real planning packet once the Action has been reopened.
+  if (plan.steps.length === 1 && plan.steps[0]?.executor_type === "operator") {
+    return null;
+  }
   if (plan.steps.length !== 1 || plan.steps[0]?.executor_type !== "codex_planning") {
     throw validationError("Existing planned workflow is not a single managed Codex planning step.", {
       actionId: workItem.id,
