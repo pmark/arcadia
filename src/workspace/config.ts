@@ -135,8 +135,17 @@ function parseCodingAgentConfig(
   if (codingAgent.capacityGateEnabled !== undefined && typeof codingAgent.capacityGateEnabled !== "boolean") {
     throw validationError("Workspace codingAgent.capacityGateEnabled must be a boolean.", { configPath });
   }
+  if (
+    codingAgent.capacityGateEnabled === false &&
+    (typeof codingAgent.provider !== "string" || !codingAgent.provider.trim())
+  ) {
+    throw validationError(
+      "Workspace codingAgent.provider is required when codingAgent.capacityGateEnabled is false.",
+      { configPath }
+    );
+  }
   return {
-    provider: typeof codingAgent.provider === "string" ? codingAgent.provider : undefined,
+    provider: typeof codingAgent.provider === "string" ? codingAgent.provider.trim() : undefined,
     capacityGateEnabled:
       typeof codingAgent.capacityGateEnabled === "boolean" ? codingAgent.capacityGateEnabled : undefined
   };

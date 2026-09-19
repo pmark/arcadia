@@ -28,27 +28,34 @@ export function useProductionControl() {
   const [toggling, setToggling] = useState(false);
   const inFlightRef = useRef<Promise<void> | null>(null);
   const timerRef = useRef<number | null>(null);
+  const sequenceRef = useRef(0);
+  const disposedRef = useRef(false);
 
-  const refresh = useCallback(async (): Promise<void> => {
-    if (inFlightRef.current) return inFlightRef.current;
+  // `force` skips joining an in-flight GET: after a toggle, that GET may carry
+  // the pre-toggle state. The sequence check makes any superseded response a no-op.
+  const refresh = useCallback(async (force = false): Promise<void> => {
+    if (!force && inFlightRef.current) return inFlightRef.current;
+    const sequence = ++sequenceRef.current;
     const run = (async () => {
       try {
         const response = await fetch("/api/production-control", { cache: "no-store" });
         const body = await response.json();
         if (!response.ok) throw new Error(body?.error ?? "Failed to load production control status.");
+        if (sequence !== sequenceRef.current) return;
         setData(body as ProductionControlData);
         setError(null);
       } catch (refreshError) {
+        if (sequence !== sequenceRef.current) return;
         setError(refreshError instanceof Error ? refreshError.message : String(refreshError));
       } finally {
-        setLoading(false);
+        if (sequence === sequenceRef.current) setLoading(false);
       }
     })();
     inFlightRef.current = run;
     try {
       await run;
     } finally {
-      inFlightRef.current = null;
+      if (inFlightRef.current === run) inFlightRef.current = null;
     }
   }, []);
 
@@ -63,7 +70,7 @@ export function useProductionControl() {
         });
         const body = await response.json();
         if (!response.ok) throw new Error(body?.error ?? `Failed to ${action} production.`);
-        await refresh();
+        await refresh(true);
         return { ok: true as const };
       } catch (toggleError) {
         const message = toggleError instanceof Error ? toggleError.message : String(toggleError);
@@ -81,13 +88,18 @@ export function useProductionControl() {
   }, [refresh]);
 
   useEffect(() => {
+    disposedRef.current = false;
     function schedule() {
+      if (disposedRef.current) return;
       timerRef.current = window.setTimeout(() => {
-        void refresh().then(schedule);
+        void refresh().then(() => {
+          if (!disposedRef.current) schedule();
+        });
       }, POLL_MS);
     }
     schedule();
     return () => {
+      disposedRef.current = true;
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     };
   }, [refresh]);

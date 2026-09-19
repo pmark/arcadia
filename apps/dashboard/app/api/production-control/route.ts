@@ -9,6 +9,7 @@ import {
   loadScheduleSummary,
   resolveDashboardWorkspace
 } from "../../../lib/arcadia-cli";
+import { isSameOriginRequest } from "../../../lib/originGuard";
 import { readManagedRunWorker } from "../../../lib/system-status";
 
 export const dynamic = "force-dynamic";
@@ -58,6 +59,12 @@ interface ToggleRequest {
 }
 
 export async function POST(request: Request) {
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json(
+      { error: "Cross-origin production toggle requests are refused.", details: { conflict: true } },
+      { status: 403 }
+    );
+  }
   try {
     const body = (await request.json()) as ToggleRequest;
     const action = typeof body.action === "string" ? body.action : "";
