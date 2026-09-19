@@ -1240,6 +1240,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["apps/dashboard/app/runs", "apps/dashboard/components", "src/agentAsk", "src/dashboard/snapshot.ts", "src/commands/agentAsk.ts", "docs/plans/mission-control-view/17-managed-production-contract.md"]
+  - id: reference-constitution-without-duplicating-it
+    title: Replace repeated Constitution text in dispatch, next, and session briefs with one canonical repository reference and content fingerprint; load only the applicable canonical clauses at an authority-sensitive boundary.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Replace repeated Constitution text in dispatch, next, and session briefs with one canonical repository reference and content fingerprint; load only the applicable canonical clauses at an authority-sensitive boundary.
+    expected_artifact: Evidence satisfying Agent Ask reference-constitution-without-duplicating-it
+    clarification: clarified
+    confidence: high
+    source: Agent Ask reduce-constitution-dispatch-duplication-2026-09-19
+    acceptance_criteria:
+      - A dispatch and agent brief identify the repository CONSTITUTION.md and its content fingerprint without embedding its full text more than once across the handoff path.
+      - An agent still receives or deterministically loads the canonical Constitution before performing an authority-sensitive action, and a changed or unreadable Constitution fails closed with an actionable remedy.
+      - Regression tests prove dispatch and session briefs remain bounded while constitution drift or unreadability cannot silently weaken the contract.
+    depends_on: []
+    decisions: []
+    references: ["CONSTITUTION.md", "AGENTS.md", "src/docs/dispatch.ts", "src/commands/next.ts", "src/sessions/actionBrief.ts", "src/projects/contextSetup.ts"]
 questions: []
 decisions: []
 current_action: restore-preservation-worker-heartbeat
