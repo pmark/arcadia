@@ -1144,7 +1144,7 @@ actions:
     references: []
   - id: fix-accepted-plan-to-build-packet-path
     title: Accepting a validated planning Artifact for a governed plan-document Action prepares, or offers exactly one supported command to prepare, its immutable build packet and build approval, so managed production can launch it.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Accepting a validated planning Artifact for a governed plan-document Action prepares, or offers exactly one supported command to prepare, its immutable build packet and build approval, so managed production can launch it.
@@ -1175,7 +1175,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: fix-accepted-plan-to-build-packet-path
+current_action: fix-packet-lifecycle-latest-planning-decision
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
