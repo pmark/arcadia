@@ -58,6 +58,13 @@ export type CapacitySource =
   | "claude_usage_snapshot"
   /** A bounded, explicitly recorded operator attestation. */
   | "operator_receipt"
+  /**
+   * The workspace's `codingAgent.capacityGateEnabled: false` config names this
+   * exact provider as unmetered. Unlike an attestation, it has no expiry — it
+   * stands until the operator edits the config or names a different provider.
+   * It is still an operator's stated choice, never proof of a real limit.
+   */
+  | "operator_config"
   /** Nothing on this host reported capacity for the provider. */
   | "none";
 
@@ -187,6 +194,13 @@ export interface CapacityObservationOptions {
   operatorReceipts?: OperatorCapacityReceiptStore;
   /** Force how receipts are stamped. Defaults to what this host can prove. */
   evidence?: CapacityEvidenceMode;
+  /**
+   * The provider id the workspace config names under
+   * `codingAgent.capacityGateEnabled: false`, or null/undefined when the gate
+   * is enforced for every provider as usual. Only this exact provider id is
+   * affected; every other configured provider is still fully gated.
+   */
+  unmeteredProvider?: string | null;
 }
 
 /**
@@ -212,7 +226,8 @@ export function observeProviderCapacity(
         record,
         now,
         attestation: attestations.receipts[providerId] ?? null,
-        evidence: options.evidence
+        evidence: options.evidence,
+        unmetered: options.unmeteredProvider === providerId
       });
       return evaluateCapacityAdmission(receipt, now);
     })
@@ -226,6 +241,8 @@ export interface BuildCapacityReceiptInput {
   now: Date;
   attestation?: OperatorCapacityReceipt | null;
   evidence?: CapacityEvidenceMode;
+  /** True when the workspace config names this exact provider as unmetered. */
+  unmetered?: boolean;
 }
 
 /**
@@ -248,6 +265,34 @@ export function buildProviderCapacityReceipt(
     accountScope: accountScope(input.providerId),
     evidence
   };
+
+  if (input.unmetered) {
+    return {
+      ...base,
+      unsupported: unsupportedFields({ windows: [], credits: null, bankedResets: [], planScope: null }),
+      credits: null,
+      bankedResets: [],
+      planScope: null,
+      source: "operator_config",
+      unattended: false,
+      observedAt: input.now.toISOString(),
+      observedAgeMs: 0,
+      expiresAt: null,
+      confidence: "attested",
+      freshness: "fresh",
+      usagePolicy: "unknown",
+      usagePolicyReason:
+        `Workspace configuration (codingAgent.capacityGateEnabled: false) names ${label} as unmetered; ` +
+        `usage policy was never observed.`,
+      windows: [],
+      nextResetAt: null,
+      availability: input.record?.availability ?? "unknown",
+      telemetry:
+        `${label} capacity is unmetered by workspace configuration, not by observation. ` +
+        `This is an operator's standing choice, never proof of a real limit — it lasts until the ` +
+        `config is changed.`
+    };
+  }
 
   const windows = (input.record?.rateLimits ?? []).map((limit) => ({
     label: limit.label,
@@ -365,6 +410,19 @@ export function evaluateCapacityAdmission(
     refreshRequired: extra.refreshRequired ?? true,
     receipt
   });
+
+  if (receipt.source === "operator_config") {
+    return {
+      providerId: receipt.providerId,
+      admitted: true,
+      code: null,
+      reason: receipt.telemetry,
+      unattendedProof: false,
+      retryAfter: null,
+      refreshRequired: false,
+      receipt
+    };
+  }
 
   if (receipt.source === "operator_receipt" && receipt.expiresAt
     && Date.parse(receipt.expiresAt) <= now.getTime()) {

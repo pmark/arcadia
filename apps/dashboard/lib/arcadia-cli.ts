@@ -342,6 +342,172 @@ export interface IntelligenceUsageResponse {
   summary: unknown;
 }
 
+export interface ProductionScopeInfo {
+  intent: string;
+  projects: string[];
+  plans: string[];
+  actions: string[];
+  providers: string[];
+  maxConcurrentSessions: number;
+  mechanicalTransitions: string[];
+}
+
+export interface ProductionStatusResponse {
+  read: {
+    status: string;
+    policy: {
+      desiredState: "active" | "inactive";
+      revision: number;
+      epoch: number;
+      scope: ProductionScopeInfo;
+      authority: {
+        requestId: string;
+        grantedBy: string;
+        grantedAt: string;
+        decisionRef: string | null;
+        scopeFingerprint: string;
+      } | null;
+      revokedAt: string | null;
+      updatedAt: string;
+    } | null;
+    observedAt: string;
+  };
+  display: { state: string; label: string; observedAt: string };
+  liveAdmissions: number;
+}
+
+export async function loadProductionStatus(): Promise<ArcadiaJsonSuccess<ProductionStatusResponse>> {
+  return runArcadiaCliJson<ProductionStatusResponse>(["production", "status"]);
+}
+
+/**
+ * Off just needs an idempotency key. On reuses the scope already recorded on
+ * the policy (read via `loadProductionStatus`) rather than asking the
+ * operator to reconstruct project/plan/provider flags from a toggle — the
+ * dashboard is a switch, not a scope editor.
+ */
+export async function deactivateProduction(input: { requestId: string; reason?: string }): Promise<ArcadiaJsonSuccess<unknown>> {
+  const args = ["production", "deactivate", "--request-id", input.requestId];
+  if (input.reason) args.push("--reason", input.reason);
+  return runArcadiaCliJson<unknown>(args);
+}
+
+export async function activateProduction(input: {
+  scope: ProductionScopeInfo;
+  requestId: string;
+  grantedBy: string;
+  expectRevision: number;
+}): Promise<ArcadiaJsonSuccess<unknown>> {
+  const args = [
+    "production",
+    "activate",
+    "--request-id",
+    input.requestId,
+    "--granted-by",
+    input.grantedBy,
+    "--expect-revision",
+    String(input.expectRevision),
+    "--concurrency",
+    String(input.scope.maxConcurrentSessions || 1)
+  ];
+  for (const project of input.scope.projects) args.push("--project", project);
+  for (const plan of input.scope.plans) args.push("--plan", plan);
+  for (const provider of input.scope.providers) args.push("--provider", provider);
+  if (input.scope.intent) args.push("--intent", input.scope.intent);
+  if (input.scope.mechanicalTransitions?.length) {
+    args.push("--transitions", input.scope.mechanicalTransitions.join(","));
+  }
+  return runArcadiaCliJson<unknown>(args);
+}
+
+export interface CapacityProviderDecision {
+  providerId: string;
+  admitted: boolean;
+  code: string | null;
+  reason: string;
+  unattendedProof: boolean;
+  receipt: { providerLabel: string; source: string; evidence: string };
+}
+
+export interface CapacityStatusResponse {
+  observation: { generatedAt: string; providers: CapacityProviderDecision[] };
+  admittedProviders: string[];
+}
+
+export async function loadCapacityStatus(): Promise<ArcadiaJsonSuccess<CapacityStatusResponse>> {
+  return runArcadiaCliJson<CapacityStatusResponse>(["production", "capacity"]);
+}
+
+export interface ScheduleQueueAction {
+  key: string;
+  actionId: string;
+  title: string;
+  schedulingClass: string;
+  status: string;
+  reason: string;
+  current: boolean;
+}
+
+export interface ScheduleProjectSummary {
+  projectSlug: string;
+  projectName: string;
+  currentAction: string | null;
+  github: { owner: string; number: number; repository: string } | null;
+  queue: ScheduleQueueAction[];
+}
+
+export interface ScheduleStatusResponse {
+  schedule: {
+    generatedAt: string;
+    projects: Array<{
+      projectSlug: string;
+      projectName: string;
+      currentAction: string | null;
+      github: { owner: string; number: number; repository: string } | null;
+      actions: Array<{
+        key: string;
+        actionId: string;
+        title: string;
+        schedulingClass: string;
+        status: string;
+        reason: string;
+        current: boolean;
+        index: number;
+      }>;
+    }>;
+    selection: string | null;
+  };
+}
+
+/**
+ * The full schedule payload lists every Action, including finished ones. The
+ * dashboard only wants the live picture: which board this Project projects
+ * onto, and the next several Actions that are not already done.
+ */
+export async function loadScheduleSummary(limit = 6): Promise<ArcadiaJsonSuccess<{ projects: ScheduleProjectSummary[]; selection: string | null }>> {
+  const response = await runArcadiaCliJson<ScheduleStatusResponse>(["schedule", "status"]);
+  const projects = response.data.schedule.projects.map((project) => ({
+    projectSlug: project.projectSlug,
+    projectName: project.projectName,
+    currentAction: project.currentAction,
+    github: project.github,
+    queue: project.actions
+      .filter((action) => action.status !== "done")
+      .sort((a, b) => a.index - b.index)
+      .slice(0, limit)
+      .map((action) => ({
+        key: action.key,
+        actionId: action.actionId,
+        title: action.title,
+        schedulingClass: action.schedulingClass,
+        status: action.status,
+        reason: action.reason,
+        current: action.current
+      }))
+  }));
+  return { ...response, data: { projects, selection: response.data.schedule.selection } };
+}
+
 export interface DispatchJournalEvent {
   id: string;
   occurredAt: string;

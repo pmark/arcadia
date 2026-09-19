@@ -14,6 +14,8 @@ import {
   type ProviderCapacityObservation
 } from "../codingAgents/capacity.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
+import { loadWorkspaceConfig } from "../workspace/config.js";
+import { getWorkspacePaths } from "../workspace/paths.js";
 
 export interface CapacityStatusOptions {
   workspace: string;
@@ -59,11 +61,15 @@ export async function runCapacityStatusCommand(
   validatePhase3Registries(registries);
   const profiles = registries.codingAgents.profiles;
   const now = options.now ?? new Date();
+  const codingAgentConfig = loadWorkspaceConfig(getWorkspacePaths(workspacePath).configFile).codingAgent;
+  const unmeteredProvider =
+    codingAgentConfig?.capacityGateEnabled === false ? codingAgentConfig.provider ?? null : null;
 
   const refreshed = options.refresh
-    ? await refreshProviderCapacity(profiles, { now })
+    ? await refreshProviderCapacity(profiles, { now, unmeteredProvider })
     : null;
-  const observation = refreshed?.observation ?? observeProviderCapacity(profiles, { now });
+  const observation =
+    refreshed?.observation ?? observeProviderCapacity(profiles, { now, unmeteredProvider });
 
   const warnings: string[] = [];
   for (const decision of observation.providers) {
@@ -252,7 +258,10 @@ export function renderCapacityAttestSuccess(
 
 function describeAdmission(decision: CapacityAdmissionDecision): string {
   if (!decision.admitted) return `REFUSED (${decision.code})`;
-  return decision.unattendedProof ? "admitted (unattended proof)" : "admitted (attended attestation)";
+  if (decision.unattendedProof) return "admitted (unattended proof)";
+  return decision.receipt.source === "operator_config"
+    ? "admitted (unmetered by config)"
+    : "admitted (attended attestation)";
 }
 
 /** `<label>:<usedPercent>[:<resetsAtIso>]`, using the provider's own window label. */

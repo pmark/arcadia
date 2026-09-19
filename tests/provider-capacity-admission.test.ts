@@ -448,6 +448,49 @@ describe("the operator attestation is admissible, bounded and labeled", () => {
   });
 });
 
+describe("workspace config can name one provider as unmetered", () => {
+  it("admits the named provider with no observation and no attestation", () => {
+    const observed = observeProviderCapacity(
+      [profile("gemini_build", "gemini-cli", "build", "workspace-write")],
+      { now: NOW, snapshot: snapshot([]), unmeteredProvider: "gemini-cli" }
+    );
+    const gemini = observed.providers.find((entry) => entry.providerId === "gemini-cli")!;
+
+    expect(gemini.admitted).toBe(true);
+    expect(gemini.unattendedProof).toBe(false);
+    expect(gemini.receipt.source).toBe("operator_config");
+    expect(gemini.receipt.expiresAt).toBeNull();
+    expect(gemini.reason).toContain("never proof of a real limit");
+  });
+
+  it("leaves every other configured provider fully gated", () => {
+    const observed = observeProviderCapacity(profiles, {
+      now: NOW,
+      snapshot: snapshot([]),
+      unmeteredProvider: "gemini-cli"
+    });
+
+    for (const decision of observed.providers) {
+      expect(decision.receipt.source).not.toBe("operator_config");
+      expect(decision).toMatchObject({ admitted: false, code: "capacity_unknown" });
+    }
+  });
+
+  it("overrides even a live observation for the named provider", () => {
+    const observed = observeProviderCapacity(profiles, {
+      now: NOW,
+      snapshot: snapshot([record("codex-cli", {
+        rateLimits: [{ label: "5h", usedPercentage: 100, resetsAt: "2026-09-06T15:00:00.000Z" }]
+      })]),
+      unmeteredProvider: "codex-cli"
+    });
+    const codex = observed.providers.find((entry) => entry.providerId === "codex-cli")!;
+
+    expect(codex.receipt.source).toBe("operator_config");
+    expect(codex.admitted).toBe(true);
+  });
+});
+
 describe("selection runs after the admission filter", () => {
   const requirement = resolvedRequirement("routine_implementation");
 

@@ -12,12 +12,26 @@ export interface WorkspaceMemoryConfig {
   obsidianVaultPath?: string;
 }
 
+/**
+ * Which single coding-agent provider the operator has chosen, and whether
+ * that provider's capacity gate is enforced. `capacityGateEnabled: false` is
+ * a deliberate, visible operator override — the provider is treated as
+ * admitted without a real observation or a bounded attestation. It is not
+ * proof of any real limit, only a stated operator choice, and it applies to
+ * exactly the one named provider, never silently to any other.
+ */
+export interface WorkspaceCodingAgentConfig {
+  provider?: string;
+  capacityGateEnabled?: boolean;
+}
+
 export interface WorkspaceArcadiaConfig {
   name?: string;
   version?: number;
   createdAt?: string;
   database?: string;
   memory?: WorkspaceMemoryConfig;
+  codingAgent?: WorkspaceCodingAgentConfig;
 }
 
 export function userConfigPath(env: NodeJS.ProcessEnv = process.env): string {
@@ -79,9 +93,10 @@ export function loadWorkspaceConfig(configPath: string): WorkspaceArcadiaConfig 
     throw validationError("Workspace configuration must be a JSON object.", { configPath });
   }
   const config = parsed as Record<string, unknown>;
+  const codingAgent = parseCodingAgentConfig(config.codingAgent, configPath);
   const memoryValue = config.memory;
   if (memoryValue === undefined) {
-    return config;
+    return { ...config, codingAgent };
   }
   if (!memoryValue || typeof memoryValue !== "object" || Array.isArray(memoryValue)) {
     throw validationError("Workspace memory configuration must be a JSON object.", { configPath });
@@ -98,6 +113,40 @@ export function loadWorkspaceConfig(configPath: string): WorkspaceArcadiaConfig 
     memory: {
       enabled: memory.enabled,
       obsidianVaultPath: typeof memory.obsidianVaultPath === "string" ? memory.obsidianVaultPath : undefined
-    }
+    },
+    codingAgent
+  };
+}
+
+function parseCodingAgentConfig(
+  value: unknown,
+  configPath: string
+): WorkspaceCodingAgentConfig | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw validationError("Workspace codingAgent configuration must be a JSON object.", { configPath });
+  }
+  const codingAgent = value as Record<string, unknown>;
+  if (codingAgent.provider !== undefined && typeof codingAgent.provider !== "string") {
+    throw validationError("Workspace codingAgent.provider must be a string.", { configPath });
+  }
+  if (codingAgent.capacityGateEnabled !== undefined && typeof codingAgent.capacityGateEnabled !== "boolean") {
+    throw validationError("Workspace codingAgent.capacityGateEnabled must be a boolean.", { configPath });
+  }
+  if (
+    codingAgent.capacityGateEnabled === false &&
+    (typeof codingAgent.provider !== "string" || !codingAgent.provider.trim())
+  ) {
+    throw validationError(
+      "Workspace codingAgent.provider is required when codingAgent.capacityGateEnabled is false.",
+      { configPath }
+    );
+  }
+  return {
+    provider: typeof codingAgent.provider === "string" ? codingAgent.provider.trim() : undefined,
+    capacityGateEnabled:
+      typeof codingAgent.capacityGateEnabled === "boolean" ? codingAgent.capacityGateEnabled : undefined
   };
 }
