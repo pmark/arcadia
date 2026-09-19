@@ -1656,12 +1656,25 @@ function runReviewDecisionCommand(
       "CodexPlanningArtifactAcceptance",
       "codex_planning_artifact_validation"
     ].includes(item.resolved_intent)) {
+      const isFailedValidation = item.resolved_intent === "codex_planning_artifact_validation";
       if (isPlanningAcceptance && status === "rejected") {
         updateWorkItem(db, item.work_item_id, {
           queue: "work_queue",
           workClassification: "agent",
           status: "open",
           nextAction: `Refine the planning Artifact using the operator feedback: ${feedback}`
+        });
+      } else if (isFailedValidation && status === "rejected") {
+        // Rejecting a failed-validation Decision withdraws that Artifact. Reopen
+        // the Action so `work plan` can prepare a fresh packet (optionally for a
+        // different --agent-profile) instead of stranding it in requires_review.
+        updateWorkItem(db, item.work_item_id, {
+          queue: "work_queue",
+          workClassification: "agent",
+          status: "open",
+          nextAction: feedback
+            ? `Prepare a new planning packet; the previous Artifact failed validation. Operator feedback: ${feedback}`
+            : "Prepare a new planning packet; the previous Artifact failed validation."
         });
       } else {
         updateWorkItem(db, item.work_item_id, {
