@@ -264,10 +264,11 @@ candidate Actions.
 
 When you do settle from the main checkout, never copy or `draft` the Ask file
 into it. An untracked `.arcadia/asks/*.yaml` there fails settle's clean check
-("repository is not clean"), and `draft` already stored the proposal, so
-`settle --proposal <id>` finds it without the file. Draft in your own worktree,
-then run `settle` (preview, then `--apply`) from the main checkout with no
-extra files.
+("repository is not clean"). Where `draft` previewed the Ask against a
+workspace it already stored the proposal, so `settle --proposal <id>` finds it
+without the file. If `draft` reported no workspace, the committed file is the
+only record: keep it, confirm `arcadia agent-ask preview --file <path> --json`
+succeeds, and only then settle from the main checkout without the file.
 
 The gap this leaves is real, not theoretical: a settlement against a repository
 already checked out locally produces exactly one commit that only exists there
