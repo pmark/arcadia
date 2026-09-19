@@ -16,6 +16,11 @@ export const SCHEDULING_LOG_SOURCES = ["arcadia", "github_operator", "coding_run
 export type SchedulingLogSource = (typeof SCHEDULING_LOG_SOURCES)[number];
 
 export function ensureSchedulingTables(db: Database.Database): void {
+  // A read-only connection runs no migrations (src/db/connection.ts). On a
+  // workspace opened before these tables existed, the DDL below is itself a
+  // write and SQLite refuses it -- so a read-only connection skips it and
+  // relies on the read paths below tolerating an absent table instead.
+  if (db.readonly) return;
   db.exec(`
     CREATE TABLE IF NOT EXISTS scheduling_projects (
       project_slug TEXT PRIMARY KEY,
@@ -149,10 +154,13 @@ function projectFromRow(row: SchedulingProjectRow): SchedulingProjectRecord {
     failedRuns: row.failed_runs,
     failedRunsMilestone: row.failed_runs_milestone,
     pausedReason: row.paused_reason,
-    pausedDecisionId: row.paused_decision_id,
-    githubStatusFieldId: row.github_status_field_id,
-    githubStatusOptions: parseOptions(row.github_status_options_json),
-    lastReconciledAt: row.last_reconciled_at,
+    // A read-only connection skips the column migration below, so a
+    // pre-migration row (from before these columns existed) comes back
+    // through `SELECT *` with these keys simply absent, not null.
+    pausedDecisionId: row.paused_decision_id ?? null,
+    githubStatusFieldId: row.github_status_field_id ?? null,
+    githubStatusOptions: parseOptions(row.github_status_options_json ?? null),
+    lastReconciledAt: row.last_reconciled_at ?? null,
     projectionInFlight: row.projection_in_flight === 1
   };
 }
@@ -169,34 +177,55 @@ function parseOptions(value: string | null): Record<string, string> | null {
   }
 }
 
+function defaultSchedulingProject(projectSlug: string): SchedulingProjectRecord {
+  return {
+    projectSlug,
+    priority: 1000,
+    githubOwner: null,
+    githubProjectNumber: null,
+    githubProjectId: null,
+    githubRepository: null,
+    lastProjectedRevision: -1,
+    lastProjectedOrder: [],
+    failedRuns: 0,
+    failedRunsMilestone: null,
+    pausedReason: null,
+    pausedDecisionId: null,
+    githubStatusFieldId: null,
+    githubStatusOptions: null,
+    lastReconciledAt: null,
+    projectionInFlight: false
+  };
+}
+
+/**
+ * True for the "table/column does not exist" errors a read hits on a
+ * workspace whose read-only connection skipped `ensureSchedulingTables`
+ * (see there). Any other error is a real failure and must propagate.
+ */
+function isMissingSchemaError(error: unknown): boolean {
+  return error instanceof Error && (error.message.includes("no such table") || error.message.includes("no such column"));
+}
+
 export function getSchedulingProject(db: Database.Database, projectSlug: string): SchedulingProjectRecord {
   ensureSchedulingTables(db);
-  const row = db.prepare("SELECT * FROM scheduling_projects WHERE project_slug = ?").get(projectSlug) as SchedulingProjectRow | undefined;
-  return row
-    ? projectFromRow(row)
-    : {
-        projectSlug,
-        priority: 1000,
-        githubOwner: null,
-        githubProjectNumber: null,
-        githubProjectId: null,
-        githubRepository: null,
-        lastProjectedRevision: -1,
-        lastProjectedOrder: [],
-        failedRuns: 0,
-        failedRunsMilestone: null,
-        pausedReason: null,
-        pausedDecisionId: null,
-        githubStatusFieldId: null,
-        githubStatusOptions: null,
-        lastReconciledAt: null,
-        projectionInFlight: false
-      };
+  let row: SchedulingProjectRow | undefined;
+  try {
+    row = db.prepare("SELECT * FROM scheduling_projects WHERE project_slug = ?").get(projectSlug) as SchedulingProjectRow | undefined;
+  } catch (error) {
+    if (!isMissingSchemaError(error)) throw error;
+  }
+  return row ? projectFromRow(row) : defaultSchedulingProject(projectSlug);
 }
 
 export function listSchedulingProjects(db: Database.Database): SchedulingProjectRecord[] {
   ensureSchedulingTables(db);
-  return (db.prepare("SELECT * FROM scheduling_projects ORDER BY priority, project_slug").all() as SchedulingProjectRow[]).map(projectFromRow);
+  try {
+    return (db.prepare("SELECT * FROM scheduling_projects ORDER BY priority, project_slug").all() as SchedulingProjectRow[]).map(projectFromRow);
+  } catch (error) {
+    if (isMissingSchemaError(error)) return [];
+    throw error;
+  }
 }
 
 export function upsertSchedulingProject(
@@ -301,13 +330,23 @@ export function parseActionKey(actionKey: string): { projectSlug: string; action
 
 export function getSchedulingAction(db: Database.Database, actionKey: string): SchedulingActionRecord | null {
   ensureSchedulingTables(db);
-  const row = db.prepare("SELECT * FROM scheduling_actions WHERE action_key = ?").get(actionKey) as SchedulingActionRow | undefined;
-  return row ? actionFromRow(row) : null;
+  try {
+    const row = db.prepare("SELECT * FROM scheduling_actions WHERE action_key = ?").get(actionKey) as SchedulingActionRow | undefined;
+    return row ? actionFromRow(row) : null;
+  } catch (error) {
+    if (isMissingSchemaError(error)) return null;
+    throw error;
+  }
 }
 
 export function listSchedulingActions(db: Database.Database, projectSlug: string): SchedulingActionRecord[] {
   ensureSchedulingTables(db);
-  return (db.prepare("SELECT * FROM scheduling_actions WHERE project_slug = ? ORDER BY created_at, action_key").all(projectSlug) as SchedulingActionRow[]).map(actionFromRow);
+  try {
+    return (db.prepare("SELECT * FROM scheduling_actions WHERE project_slug = ? ORDER BY created_at, action_key").all(projectSlug) as SchedulingActionRow[]).map(actionFromRow);
+  } catch (error) {
+    if (isMissingSchemaError(error)) return [];
+    throw error;
+  }
 }
 
 export function upsertSchedulingAction(
@@ -418,7 +457,12 @@ export function recordSchedulingLog(
 /** The stored result of an earlier mutation with this request id, for idempotent replay. */
 export function replaySchedulingResult<T>(db: Database.Database, requestId: string): T | null {
   ensureSchedulingTables(db);
-  const row = db.prepare("SELECT result_json FROM scheduling_log WHERE request_id = ?").get(requestId) as { result_json: string | null } | undefined;
+  let row: { result_json: string | null } | undefined;
+  try {
+    row = db.prepare("SELECT result_json FROM scheduling_log WHERE request_id = ?").get(requestId) as { result_json: string | null } | undefined;
+  } catch (error) {
+    if (!isMissingSchemaError(error)) throw error;
+  }
   return row?.result_json ? (JSON.parse(row.result_json) as T) : null;
 }
 
@@ -434,12 +478,18 @@ export function replaySchedulingResult<T>(db: Database.Database, requestId: stri
 export function listSchedulingLog(db: Database.Database, options: { projectSlug?: string; limit?: number } = {}): SchedulingLogEntry[] {
   ensureSchedulingTables(db);
   const limit = options.limit ?? 50;
-  const rows = (options.projectSlug
-    ? db.prepare("SELECT * FROM scheduling_log WHERE project_slug = ? ORDER BY at DESC, rowid DESC LIMIT ?").all(options.projectSlug, limit)
-    : db.prepare("SELECT * FROM scheduling_log ORDER BY at DESC, rowid DESC LIMIT ?").all(limit)) as Array<{
+  let rows: Array<{
     id: string; at: string; project_slug: string | null; action_key: string | null; source: SchedulingLogSource;
     reason: string; previous_json: string | null; new_json: string | null; request_id: string | null;
   }>;
+  try {
+    rows = (options.projectSlug
+      ? db.prepare("SELECT * FROM scheduling_log WHERE project_slug = ? ORDER BY at DESC, rowid DESC LIMIT ?").all(options.projectSlug, limit)
+      : db.prepare("SELECT * FROM scheduling_log ORDER BY at DESC, rowid DESC LIMIT ?").all(limit)) as typeof rows;
+  } catch (error) {
+    if (isMissingSchemaError(error)) return [];
+    throw error;
+  }
   return rows.map((row) => ({
     id: row.id,
     at: row.at,
