@@ -39,6 +39,7 @@ export function useProductionControl() {
   const [queue, setQueue] = useState<ProductionQueueData | null>(null);
   const [alerts, setAlerts] = useState<ProductionAlertsData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [partErrors, setPartErrors] = useState<{ queue: string | null; alerts: string | null }>({ queue: null, alerts: null });
   const [toggling, setToggling] = useState(false);
   const sequences = useRef<Record<Part, number>>({ core: 0, queue: 0, alerts: 0 });
   const inFlight = useRef<Record<Part, Promise<void> | null>>({ core: null, queue: null, alerts: null });
@@ -70,9 +71,12 @@ export function useProductionControl() {
           setAlerts(body as ProductionAlertsData);
         }
         if (part === "core") setError(null);
+        else setPartErrors((current) => ({ ...current, [part]: null }));
       } catch (loadError) {
         if (sequence !== sequences.current[part]) return;
-        if (part === "core") setError(loadError instanceof Error ? loadError.message : String(loadError));
+        const message = loadError instanceof Error ? loadError.message : String(loadError);
+        if (part === "core") setError(message);
+        else setPartErrors((current) => ({ ...current, [part]: message }));
       }
     })();
     inFlight.current[part] = run;
@@ -135,5 +139,5 @@ export function useProductionControl() {
     };
   }, [refresh]);
 
-  return { core, queue, alerts, error, toggling, toggle, refresh };
+  return { core, queue, alerts, error, queueError: partErrors.queue, alertsError: partErrors.alerts, toggling, toggle, refresh };
 }

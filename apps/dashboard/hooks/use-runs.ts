@@ -29,21 +29,27 @@ export function useRuns(historyOpen: boolean) {
   const activeRef = useRef(false);
   const timerRef = useRef<number | null>(null);
   const disposedRef = useRef(false);
+  const sequenceRef = useRef(0);
 
   const refresh = useCallback(async (): Promise<void> => {
     setRefreshing(true);
+    const withHistory = historyRef.current;
+    const sequence = ++sequenceRef.current;
     try {
-      const withHistory = historyRef.current;
       const response = await fetch(`/api/runs?recent=${withHistory ? 10 : 0}`, { cache: "no-store" });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error ?? "Runs request failed.");
+      // Overlapping requests (load, history toggle, poll) can finish out of
+      // order; only the newest may update what the page shows.
+      if (sequence !== sequenceRef.current) return;
       setData(body as RunsData);
-      if (withHistory) setHistoryLoaded(true);
+      setHistoryLoaded(withHistory);
       setError(null);
       setLastLoadedAt(new Date());
       failuresRef.current = 0;
       activeRef.current = body.activeAgentSessions.length > 0 || body.activeExecutionRuns.length > 0;
     } catch (refreshError) {
+      if (sequence !== sequenceRef.current) return;
       failuresRef.current += 1;
       setError(refreshError instanceof Error ? refreshError.message : String(refreshError));
     } finally {

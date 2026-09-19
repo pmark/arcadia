@@ -40,6 +40,8 @@ export default function RunsPage() {
         queue={control.queue}
         alerts={control.alerts}
         error={control.error}
+        queueError={control.queueError}
+        alertsError={control.alertsError}
         toggling={control.toggling}
         onToggle={control.toggle}
       />

@@ -580,19 +580,20 @@ export async function getIntelligenceUsage(options: { refresh?: boolean } = {}):
   return runArcadiaCliJson<IntelligenceUsageResponse>(args);
 }
 
-let resolvedWorkspace: string | null = null;
+let resolvedWorkspace: { path: string; at: number } | null = null;
+const WORKSPACE_CACHE_MS = 30_000;
 
 export async function resolveDashboardWorkspace(): Promise<string> {
-  // The workspace path does not change while the dashboard runs; resolving it
-  // spawns a CLI process, so pay that once.
-  if (resolvedWorkspace) return resolvedWorkspace;
+  // Resolving spawns a CLI process, so reuse the answer briefly. The TTL keeps a
+  // changed default workspace from being served for the life of the process.
+  if (resolvedWorkspace && Date.now() - resolvedWorkspace.at < WORKSPACE_CACHE_MS) return resolvedWorkspace.path;
   const response = await runArcadiaCliJson<{ workspacePath: string | null }>(["workspace", "resolve"]);
   if (!response.data.workspacePath) {
     throw new ArcadiaCliError("Arcadia workspace is not configured.", 503, response.data);
   }
 
-  resolvedWorkspace = response.data.workspacePath;
-  return resolvedWorkspace;
+  resolvedWorkspace = { path: response.data.workspacePath, at: Date.now() };
+  return resolvedWorkspace.path;
 }
 
 export interface IngressListResponse {

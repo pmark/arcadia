@@ -597,12 +597,24 @@ export interface DashboardRunsSnapshot {
  */
 export function buildRunsSnapshot(options: { workspace: string; recentLimit?: number }): DashboardRunsSnapshot {
   const recentLimit = options.recentLimit ?? 0;
-  return withReadOnlyDatabase(options.workspace, (db) => ({
-    generatedAt: new Date().toISOString(),
-    activeAgentSessions: listActiveAgentSessions(db).map((session) => toDashboardAgentSession(db, session)),
-    activeExecutionRuns: listActiveExecutionRuns(db).map(toDashboardRun),
-    recentRuns: recentLimit > 0 ? listExecutionRuns(db, recentLimit).map(toDashboardRun) : []
-  }));
+  return withReadOnlyDatabase(options.workspace, (db) => {
+    const active = listActiveExecutionRuns(db);
+    const activeIds = new Set(active.map((run) => run.id));
+    // History excludes active Runs, which already appear above it. Over-fetch by
+    // the active count so filtering them out still leaves `recentLimit` finished Runs.
+    const recent =
+      recentLimit > 0
+        ? listExecutionRuns(db, recentLimit + active.length)
+            .filter((run) => !activeIds.has(run.id))
+            .slice(0, recentLimit)
+        : [];
+    return {
+      generatedAt: new Date().toISOString(),
+      activeAgentSessions: listActiveAgentSessions(db).map((session) => toDashboardAgentSession(db, session)),
+      activeExecutionRuns: active.map(toDashboardRun),
+      recentRuns: recent.map(toDashboardRun)
+    };
+  });
 }
 
 function toDashboardBackBurnerItem(item: BackBurnerItemSummary): DashboardBackBurnerItem {

@@ -9,6 +9,8 @@ interface ProductionControlPanelProps {
   queue: ProductionQueueData | null;
   alerts: ProductionAlertsData | null;
   error: string | null;
+  queueError: string | null;
+  alertsError: string | null;
   toggling: boolean;
   onToggle: (action: "activate" | "deactivate") => Promise<{ ok: boolean; error?: string }>;
 }
@@ -17,7 +19,7 @@ function Skeleton({ className }: { className: string }) {
   return <div className={`animate-pulse rounded bg-line/60 ${className}`} aria-hidden="true" />;
 }
 
-export function ProductionControlPanel({ core, queue, alerts, error, toggling, onToggle }: ProductionControlPanelProps) {
+export function ProductionControlPanel({ core, queue, alerts, error, queueError, alertsError, toggling, onToggle }: ProductionControlPanelProps) {
   const policy = core?.production.read.policy;
   const active = policy?.desiredState === "active";
   const providers = policy?.scope?.providers ?? [];
@@ -98,6 +100,8 @@ export function ProductionControlPanel({ core, queue, alerts, error, toggling, o
             ) : (
               <span className="text-sm text-muted">Not linked</span>
             )
+          ) : queueError ? (
+            <span className="text-sm text-clay">Unavailable</span>
           ) : (
             <Skeleton className="h-4 w-28" />
           )}
@@ -113,12 +117,15 @@ export function ProductionControlPanel({ core, queue, alerts, error, toggling, o
                 {alertCount}
               </span>
             )
+          ) : alertsError ? (
+            <span className="text-sm text-clay">Unavailable</span>
           ) : (
             <Skeleton className="h-4 w-10" />
           )}
         </PanelStat>
       </div>
 
+      {alertsError ? <p className="text-xs text-clay">Alerts unavailable: {alertsError}</p> : null}
       {alerts && alertCount > 0 ? (
         <div className="grid min-w-0 gap-1.5 rounded-md border border-clay/30 bg-clay/5 p-3 text-xs text-ink">
           {alerts.alerts.capacityRefusals.map((refusal) => (
@@ -139,7 +146,9 @@ export function ProductionControlPanel({ core, queue, alerts, error, toggling, o
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
           Next up{project ? ` — ${project.projectName}` : ""}
         </h3>
-        {!queue ? (
+        {!queue && queueError ? (
+          <p className="text-sm text-clay">Queue unavailable: {queueError}</p>
+        ) : !queue ? (
           <div className="grid gap-2">
             {Array.from({ length: 4 }).map((_, index) => (
               <Skeleton key={index} className="h-5 w-full" />
