@@ -1141,7 +1141,14 @@ export function prepareBuildPacketForAcceptedPlan(
 ): { invocation: CodexInvocation; packetArtifact: ArtifactSummary } {
   assertRequiredProjectRepoContext(db, workItem);
   ensureBuiltInSkills(db);
-  const plan = reusableUnpreparedBuildPlan(getLatestExecutionPlanForWorkItem(db, workItem.id))
+  // A plan is only reusable while it has no build invocation at all: an
+  // invocation past `packet_created` (run, failed, cancelled) is not a packet
+  // to hand back, and plan status does not track invocation status.
+  const latestPlan = getLatestExecutionPlanForWorkItem(db, workItem.id);
+  const reusablePlan = reusableUnpreparedBuildPlan(latestPlan);
+  const plan = (reusablePlan && !getCodexInvocationForPlan(db, { workItemId: workItem.id, planId: reusablePlan.id, purpose: "build" })
+    ? reusablePlan
+    : null)
     ?? createExecutionPlan(db, {
       workItemId: workItem.id,
       summary: `Execution plan for "${workItem.title}".`,
