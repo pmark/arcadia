@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -59,6 +59,53 @@ describe("coding-agent CLI adapters", () => {
       stdout: JSON.stringify({ type: "result", subtype: "success", result: "Finished the bounded plan." }),
       stderr: ""
     })).toBe("Finished the bounded plan.\n");
+  });
+
+  describe("Claude plan-mode plan files", () => {
+    function claudeResult(root: string, plansDir: string, result: string): string {
+      const finalPath = path.join(root, "final.md");
+      writeFileSync(finalPath, "Claude Code has not been invoked yet.\n", "utf8");
+      return finalMessageFromExecution({
+        profile: profile({ provider: "claude-code-cli", command: "claude" }),
+        finalMessagePath: finalPath,
+        stdout: JSON.stringify({ type: "result", subtype: "success", result }),
+        stderr: "",
+        claudePlansDir: plansDir
+      });
+    }
+
+    it("appends the plan file the summary names so validation sees the real plan", () => {
+      const root = createRoot();
+      const plans = path.join(root, "plans");
+      mkdirSync(plans);
+      const planFile = path.join(plans, "quiet-otter.md");
+      writeFileSync(planFile, "## Ordered Phases\n1. Do it.\n", "utf8");
+
+      const message = claudeResult(root, plans, `The plan is written to \`${planFile}\`. Summary: fix it.`);
+
+      expect(message).toContain("Summary: fix it.");
+      expect(message).toContain("## Ordered Phases");
+    });
+
+    it("leaves the message alone when no plan file is named", () => {
+      const root = createRoot();
+      const plans = path.join(root, "plans");
+      mkdirSync(plans);
+
+      expect(claudeResult(root, plans, "Just a summary.")).toBe("Just a summary.\n");
+    });
+
+    it("never reads a file outside the plans directory, even via a symlink", () => {
+      const root = createRoot();
+      const plans = path.join(root, "plans");
+      mkdirSync(plans);
+      const secret = path.join(root, "secret.md");
+      writeFileSync(secret, "TOP SECRET", "utf8");
+      const link = path.join(plans, "link.md");
+      symlinkSync(secret, link);
+
+      expect(claudeResult(root, plans, `See ${secret} and ${link}`)).not.toContain("TOP SECRET");
+    });
   });
 });
 

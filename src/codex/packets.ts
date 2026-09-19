@@ -560,7 +560,8 @@ function renderAcceptanceCriteria(input: {
       `- Deliver the expected planning artifact: ${trimTerminalPunctuation(artifact)}.`,
       `- Keep the plan aligned with ${project}${projectGoal}.`,
       "- Preserve implementation intent by framing implementation as a future phase, not work authorized by this packet.",
-      "- Include ordered phases, concrete expected artifacts, repository impact assessment, approval needs, validation strategy, risks/open questions, and the smallest useful follow-up Codex implementation goal.",
+      "- Include ordered phases, concrete expected artifacts, repository impact assessment, approval needs, validation strategy, risks/open questions, a recommended next action, and the smallest useful follow-up Codex implementation goal.",
+      "- Put the complete plan, under those headings, in your final message. Do not leave it only in a plan file; the final message is what gets validated.",
       "- Do not require tests, lint, deployment, credentials, publishing, spending, production access, or outbound actions unless files are changed while preparing the plan."
     ].join("\n");
   }
