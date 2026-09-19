@@ -1142,6 +1142,37 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: fix-accepted-plan-to-build-packet-path
+    title: Accepting a validated planning Artifact for a governed plan-document Action prepares, or offers exactly one supported command to prepare, its immutable build packet and build approval, so managed production can launch it.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Accepting a validated planning Artifact for a governed plan-document Action prepares, or offers exactly one supported command to prepare, its immutable build packet and build approval, so managed production can launch it.
+    expected_artifact: Evidence satisfying Agent Ask fix-accepted-plan-to-build-packet-path
+    clarification: clarified
+    confidence: high
+    source: Agent Ask promote-issue-404-accepted-plan-to-build-packet-2026-09-19
+    acceptance_criteria:
+      - A test shows an accepted validated planning Artifact for a plan-document Action yields a build packet and build approval through one supported command or automatically.
+      - session preview-launch reports Ready for that Action once the build approval exists, with a test covering it.
+    depends_on: []
+    decisions: []
+    references: []
+  - id: fix-packet-lifecycle-latest-planning-decision
+    title: Make resolvePacketLifecycle read the latest planning Decision instead of the oldest.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make resolvePacketLifecycle read the latest planning Decision instead of the oldest.
+    expected_artifact: Evidence satisfying Agent Ask fix-packet-lifecycle-latest-planning-decision
+    clarification: clarified
+    confidence: high
+    source: Agent Ask promote-issue-404-accepted-plan-to-build-packet-2026-09-19
+    acceptance_criteria:
+      - A test with an old finished planning Decision and a newer accepted one shows the lifecycle remedy names the newer Decision, and it fails before the fix.
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
 current_action: clean-up-preserve-transport-request
