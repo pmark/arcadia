@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import type Database from "better-sqlite3";
-import { validationError } from "../cli/errors.js";
+import { ArcadiaError, validationError } from "../cli/errors.js";
 import { applyOperatorOrder, minimalMoves, sameSequence } from "./order.js";
 import { orderCandidates, writeProjectOrder, type ProjectSchedule, type ScheduledAction, type ScheduleStatus } from "./schedule.js";
 import { recordSchedulingLog, upsertSchedulingAction, upsertSchedulingProject } from "./store.js";
@@ -27,6 +27,8 @@ export type BoardStatus = (typeof BOARD_STATUSES)[number];
 export interface BoardItem {
   itemId: string;
   issueNumber: number | null;
+  /** The content's own URL, so items can be matched across repositories where issue numbers repeat. */
+  url: string | null;
   title: string;
   status: string | null;
 }
@@ -92,8 +94,17 @@ export function projectScheduleToBoard(db: Database.Database, schedule: ProjectS
       const itemId = board.addIssue({ number: action.githubIssueNumber, url: action.githubIssueUrl ?? "" });
       action.githubProjectItemId = itemId;
       upsertSchedulingAction(db, action.key, { githubProjectItemId: itemId });
-      items.set(itemId, { itemId, issueNumber: action.githubIssueNumber, title: action.title, status: null });
-      result.itemsAdded.push(action.key);
+      // `addIssue` can recover an item that was already on the board (GitHub's
+      // "already exists" refusal) and hand back its real id, which `items`
+      // (read from `listItems()` above) already holds with its true status.
+      // Only synthesize a fresh entry -- and only count it as added -- when
+      // this genuinely is new to the board; otherwise the real status is
+      // overwritten with `null` and every recovered item gets rewritten and
+      // misreported as added.
+      if (!items.has(itemId)) {
+        items.set(itemId, { itemId, issueNumber: action.githubIssueNumber, url: action.githubIssueUrl ?? null, title: action.title, status: null });
+        result.itemsAdded.push(action.key);
+      }
     }
     const desired = boardStatusFor(action.status);
     const current = items.get(action.githubProjectItemId)?.status ?? null;
@@ -327,8 +338,8 @@ const ITEMS_QUERY = `query($project: ID!, $status: String!, $after: String) {
         nodes {
           id
           content {
-            ... on Issue { number title }
-            ... on PullRequest { number title }
+            ... on Issue { number title url }
+            ... on PullRequest { number title url }
             ... on DraftIssue { title }
           }
           fieldValueByName(name: $status) {
@@ -347,7 +358,7 @@ interface ItemsResponse {
         pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
         nodes?: Array<{
           id: string;
-          content?: { number?: number; title?: string } | null;
+          content?: { number?: number; title?: string; url?: string } | null;
           fieldValueByName?: { name?: string } | null;
         }>;
       };
@@ -367,6 +378,7 @@ function listBoardItems(run: CommandRunner, config: GitHubBoardConfig, projectId
       items.push({
         itemId: node.id,
         issueNumber: typeof node.content?.number === "number" ? node.content.number : null,
+        url: typeof node.content?.url === "string" ? node.content.url : null,
         title: node.content?.title ?? "",
         status: typeof node.fieldValueByName?.name === "string" ? node.fieldValueByName.name : null
       });
@@ -410,8 +422,25 @@ export function createGitHubBoard(
     },
     addIssue(input) {
       const url = input.url || `https://github.com/${config.repository}/issues/${input.number}`;
-      const added = ghJson<{ id: string }>(run, config.cwd, ["project", "item-add", number, "--owner", owner, "--url", url, "--format", "json"], "item-add");
-      return added.id;
+      try {
+        const added = ghJson<{ id: string }>(run, config.cwd, ["project", "item-add", number, "--owner", owner, "--url", url, "--format", "json"], "item-add");
+        return added.id;
+      } catch (error) {
+        // GitHub refuses to add an Issue that is already an item on this
+        // board. That happens when a prior pass added it but crashed before
+        // `upsertSchedulingAction` persisted the item id locally, so the next
+        // pass sees `githubProjectItemId === null` and tries again -- the item
+        // already exists, so look it up and reuse it instead of treating
+        // GitHub's refusal as fatal.
+        if (error instanceof ArcadiaError && /content already exists in this project/i.test(error.message)) {
+          // Match by URL, not issue number: a Project can hold Issues from more
+          // than one repository, and numbers repeat across repositories, so a
+          // number-only match could pick up an unrelated Issue's item here.
+          const existing = listBoardItems(run, config, projectId).find((item) => item.url === url);
+          if (existing) return existing.itemId;
+        }
+        throw error;
+      }
     },
     setStatus(itemId, status) {
       const optionId = statusField.options.get(status)!;

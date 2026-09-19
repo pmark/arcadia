@@ -12,7 +12,7 @@ import {
   type CommandRunner
 } from "../src/scheduling/github.js";
 import { buildProjectSchedule } from "../src/scheduling/schedule.js";
-import { getSchedulingProject, listSchedulingLog, upsertSchedulingProject } from "../src/scheduling/store.js";
+import { getSchedulingProject, listSchedulingLog, upsertSchedulingAction, upsertSchedulingProject } from "../src/scheduling/store.js";
 import { writeProjectOrder } from "../src/scheduling/schedule.js";
 import { schedulingFixture } from "./schedulingFixture.js";
 
@@ -29,6 +29,7 @@ const OPTION_IDS = new Map(BOARD_STATUSES.map((status, index) => [status, `opt_$
 interface FakeItem {
   id: string;
   number: number;
+  url: string;
   title: string;
   status: string | null;
 }
@@ -90,16 +91,19 @@ class FakeGh {
     if (args[0] === "issue" && args[1] === "create") {
       const number = this.nextIssue++;
       const title = args[args.indexOf("--title") + 1] ?? "";
-      this.items.push({ id: "", number, title, status: null });
-      return ok(`https://github.com/example/repo/issues/${number}\n`);
+      const url = `https://github.com/example/repo/issues/${number}`;
+      this.items.push({ id: "", number, url, title, status: null });
+      return ok(`${url}\n`);
     }
     if (args[0] === "project" && args[1] === "item-add") {
       const url = args[args.indexOf("--url") + 1] ?? "";
       const number = Number(url.split("/").pop());
+      const existing = this.items.find((item) => item.url === url && item.id !== "");
+      if (existing) return { ok: false, stdout: "", stderr: "GraphQL: Content already exists in this project (addProjectV2ItemById)" };
       const id = `PVTI_${this.nextItem++}`;
-      const pending = this.items.find((item) => item.number === number && item.id === "");
+      const pending = this.items.find((item) => item.url === url && item.id === "");
       if (pending) pending.id = id;
-      else this.items.push({ id, number, title: `#${number}`, status: null });
+      else this.items.push({ id, number, url, title: `#${number}`, status: null });
       return ok(JSON.stringify({ id }));
     }
     if (args[0] === "project" && args[1] === "item-edit") {
@@ -134,7 +138,7 @@ class FakeGh {
               pageInfo: { hasNextPage: false, endCursor: null },
               nodes: this.items.filter((item) => item.id !== "").map((item) => ({
                 id: item.id,
-                content: { number: item.number, title: item.title },
+                content: { number: item.number, url: item.url, title: item.title },
                 fieldValueByName: item.status === null ? null : { name: item.status }
               }))
             }
@@ -209,7 +213,7 @@ describe("gh-backed board", () => {
     expect(second.identity).toEqual(first.identity);
 
     // And the cached identity still drives real writes correctly.
-    cachedRun.items.push({ id: "PVTI_1", number: 100, title: "#100", status: null });
+    cachedRun.items.push({ id: "PVTI_1", number: 100, url: "https://github.com/example/repo/issues/100", title: "#100", status: null });
     second.setStatus("PVTI_1", "Ready");
     expect(cachedRun.items[0].status).toBe("Ready");
   });
@@ -258,6 +262,71 @@ describe("gh-backed board", () => {
       const keyByNumber = new Map(buildProjectSchedule(db, project).actions.map((action) => [action.githubIssueNumber, action.key]));
       expect(gh.items.map((item) => keyByNumber.get(item.number))).toEqual(queueBefore);
     });
+  });
+
+  it("reuses the existing item when GitHub refuses to add an Issue already on the board", () => {
+    const { cwd } = workspaceWithProject();
+    const gh = new FakeGh();
+    const board = createGitHubBoard(boardConfig(cwd), gh.runner);
+    gh.items.push({ id: "PVTI_1", number: 100, url: "https://github.com/example/repo/issues/100", title: "#100", status: null });
+
+    const itemId = board.addIssue({ number: 100, url: "https://github.com/example/repo/issues/100" });
+
+    expect(itemId).toBe("PVTI_1");
+    // No duplicate item was created for the same issue number.
+    expect(gh.items.filter((item) => item.number === 100)).toHaveLength(1);
+  });
+
+  it("keeps a recovered item's real status instead of overwriting it and reporting it as newly added", () => {
+    const { workspace, cwd } = workspaceWithProject();
+    const gh = new FakeGh();
+    withDatabase(workspace, (db) => {
+      const project = getProjectBySlug(db, "alpha")!;
+      const board = createGitHubBoard(boardConfig(cwd), gh.runner);
+      const first = projectScheduleToBoard(db, buildProjectSchedule(db, project), board);
+      expect(first.itemsAdded).toHaveLength(3);
+
+      // Simulate the crash this recovery exists for: the item made it onto the
+      // board (and already carries the right status) but the local id was
+      // never persisted, so Arcadia believes the item does not exist yet.
+      const actionKey = buildProjectSchedule(db, project).actions[0].key;
+      upsertSchedulingAction(db, actionKey, { githubProjectItemId: null });
+
+      const editsBefore = gh.calls.filter(([, ...args]) => args.includes("item-edit")).length;
+      const second = projectScheduleToBoard(db, buildProjectSchedule(db, project), board);
+
+      // The item was recovered (one item-add call, refused and resolved by
+      // lookup), not newly added, and its already-correct status was read as-is
+      // rather than reset to null and rewritten with a status-edit call.
+      expect(second.itemsAdded).not.toContain(actionKey);
+      expect(second.statusChanges).toEqual([]);
+      expect(gh.calls.filter(([, ...args]) => args.includes("item-edit"))).toHaveLength(editsBefore);
+    });
+  });
+
+  it("does not reuse another repository's item that happens to share the same issue number", () => {
+    const { cwd } = workspaceWithProject();
+    const gh = new FakeGh();
+    const board = createGitHubBoard(boardConfig(cwd), gh.runner);
+    // A Project can hold Issues from more than one repository, so a same-numbered
+    // Issue elsewhere on the board must not be picked up by number alone.
+    gh.items.push({ id: "PVTI_other_repo", number: 100, url: "https://github.com/example/other-repo/issues/100", title: "#100", status: null });
+    // GitHub still refuses the add for our own already-existing item (below).
+    gh.items.push({ id: "PVTI_1", number: 100, url: "https://github.com/example/repo/issues/100", title: "#100", status: null });
+
+    const itemId = board.addIssue({ number: 100, url: "https://github.com/example/repo/issues/100" });
+
+    expect(itemId).toBe("PVTI_1");
+  });
+
+  it("still fails when GitHub's item-add error is not the already-exists case", () => {
+    const { cwd } = workspaceWithProject();
+    const gh = new FakeGh();
+    const failing = createGitHubBoard(boardConfig(cwd), (cwd2, command, args) => {
+      if (args[0] === "project" && args[1] === "item-add") return { ok: false, stdout: "", stderr: "API rate limit exceeded" };
+      return gh.runner(cwd2, command, args);
+    });
+    expect(() => failing.addIssue({ number: 101, url: "https://github.com/example/repo/issues/101" })).toThrow(/rate limit/);
   });
 
   it("creates the status field only through the explicit link path, and is a no-op when it already exists", () => {
