@@ -5,7 +5,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runScheduleLogCommand, runScheduleStatusCommand } from "../src/commands/schedule.js";
 import { openReadOnlyDatabase, withDatabase } from "../src/db/connection.js";
 import { upsertProject } from "../src/db/repositories.js";
-import { getSchedulingProject } from "../src/scheduling/store.js";
+import {
+  getSchedulingAction,
+  getSchedulingProject,
+  listSchedulingActions,
+  replaySchedulingResult
+} from "../src/scheduling/store.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const temporary: string[] = [];
@@ -41,6 +46,18 @@ describe("schedule status/log on a workspace without the scheduling tables", () 
     const root = workspaceMissingSchedulingTables();
     const response = runScheduleLogCommand({ workspace: root });
     expect(response.data.entries).toEqual([]);
+  });
+
+  it("falls back to empty/null for scheduling_actions and scheduling_log reads directly, not just through the command", () => {
+    const root = workspaceMissingSchedulingTables();
+    const db = openReadOnlyDatabase(root);
+    try {
+      expect(getSchedulingAction(db, "readonly-test-project/some-action")).toBeNull();
+      expect(listSchedulingActions(db, "readonly-test-project")).toEqual([]);
+      expect(replaySchedulingResult(db, "some-request-id")).toBeNull();
+    } finally {
+      db.close();
+    }
   });
 
   it("normalizes a pre-migration scheduling_projects row instead of returning undefined for later columns", () => {
