@@ -1173,6 +1173,22 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: restore-preservation-worker-heartbeat
+    title: Make the managed Arcadia worker publish and maintain a fresh preservation and Go-route heartbeat after restart, with deterministic coverage for startup and stale-heartbeat refusal paths.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make the managed Arcadia worker publish and maintain a fresh preservation and Go-route heartbeat after restart, with deterministic coverage for startup and stale-heartbeat refusal paths.
+    expected_artifact: Evidence satisfying Agent Ask restore-preservation-worker-heartbeat
+    clarification: clarified
+    confidence: high
+    source: Agent Ask promote-fix-preservation-worker-heartbeat-2026-09-19
+    acceptance_criteria:
+      - "After `restart-services.sh restart` reports the worker running, `arcadia go-broker status --json` reports `preservationTransport.ready: true` and a usable Go transport state for the configured workspace."
+      - A deterministic regression test proves the worker publishes a preservation heartbeat after startup and that a missing or stale heartbeat fails with a diagnostic that identifies the worker route.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/411"]
 questions: []
 decisions: []
 current_action: fix-packet-lifecycle-latest-planning-decision
