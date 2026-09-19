@@ -245,7 +245,9 @@ describe("Daily Advantage existing-Action planning preparation", () => {
 
     runReviewRejectCommand({ workspace: fixture.workspace, id: validation.id, feedback: "Put the whole plan in the final message." });
     withDatabase(fixture.workspace, (db) => {
-      expect(listReviewItems(db, "all").find((item) => item.id === validation.id)?.status).toBe("rejected");
+      const rejected = listReviewItems(db, "all").find((item) => item.id === validation.id);
+      expect(rejected?.status).toBe("rejected");
+      expect(rejected?.decision_note).toBeTruthy();
       expect(getWorkItem(db, fixture.workItemId)?.next_action).toContain("Put the whole plan in the final message.");
     });
     const second = runWorkPlanCommand({ workspace: fixture.workspace, workId: fixture.workItemId, agentProfile: "claude_planning" });
