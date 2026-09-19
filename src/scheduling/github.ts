@@ -27,6 +27,8 @@ export type BoardStatus = (typeof BOARD_STATUSES)[number];
 export interface BoardItem {
   itemId: string;
   issueNumber: number | null;
+  /** The content's own URL, so items can be matched across repositories where issue numbers repeat. */
+  url: string | null;
   title: string;
   status: string | null;
 }
@@ -92,7 +94,7 @@ export function projectScheduleToBoard(db: Database.Database, schedule: ProjectS
       const itemId = board.addIssue({ number: action.githubIssueNumber, url: action.githubIssueUrl ?? "" });
       action.githubProjectItemId = itemId;
       upsertSchedulingAction(db, action.key, { githubProjectItemId: itemId });
-      items.set(itemId, { itemId, issueNumber: action.githubIssueNumber, title: action.title, status: null });
+      items.set(itemId, { itemId, issueNumber: action.githubIssueNumber, url: action.githubIssueUrl ?? null, title: action.title, status: null });
       result.itemsAdded.push(action.key);
     }
     const desired = boardStatusFor(action.status);
@@ -327,8 +329,8 @@ const ITEMS_QUERY = `query($project: ID!, $status: String!, $after: String) {
         nodes {
           id
           content {
-            ... on Issue { number title }
-            ... on PullRequest { number title }
+            ... on Issue { number title url }
+            ... on PullRequest { number title url }
             ... on DraftIssue { title }
           }
           fieldValueByName(name: $status) {
@@ -347,7 +349,7 @@ interface ItemsResponse {
         pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
         nodes?: Array<{
           id: string;
-          content?: { number?: number; title?: string } | null;
+          content?: { number?: number; title?: string; url?: string } | null;
           fieldValueByName?: { name?: string } | null;
         }>;
       };
@@ -367,6 +369,7 @@ function listBoardItems(run: CommandRunner, config: GitHubBoardConfig, projectId
       items.push({
         itemId: node.id,
         issueNumber: typeof node.content?.number === "number" ? node.content.number : null,
+        url: typeof node.content?.url === "string" ? node.content.url : null,
         title: node.content?.title ?? "",
         status: typeof node.fieldValueByName?.name === "string" ? node.fieldValueByName.name : null
       });
@@ -421,7 +424,10 @@ export function createGitHubBoard(
         // already exists, so look it up and reuse it instead of treating
         // GitHub's refusal as fatal.
         if (error instanceof ArcadiaError && /content already exists in this project/i.test(error.message)) {
-          const existing = listBoardItems(run, config, projectId).find((item) => item.issueNumber === input.number);
+          // Match by URL, not issue number: a Project can hold Issues from more
+          // than one repository, and numbers repeat across repositories, so a
+          // number-only match could pick up an unrelated Issue's item here.
+          const existing = listBoardItems(run, config, projectId).find((item) => item.url === url);
           if (existing) return existing.itemId;
         }
         throw error;
