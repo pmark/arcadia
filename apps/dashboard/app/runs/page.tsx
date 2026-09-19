@@ -2,10 +2,13 @@
 
 import { DashboardChrome } from "../../components/chrome";
 import { EmptyState, ErrorState, LoadingState, RunCard, SessionCard } from "../../components/dashboard-ui";
+import { ProductionControlPanel } from "../../components/production-control-panel";
 import { useArcadiaSnapshot } from "../../hooks/use-arcadia-snapshot";
+import { useProductionControl } from "../../hooks/use-production-control";
 
 export default function RunsPage() {
   const { snapshot, error, loading, refreshing, stale, lastLoadedAt, refresh } = useArcadiaSnapshot();
+  const control = useProductionControl();
   const activeSessions = snapshot?.activeAgentSessions ?? [];
   const activeRuns = snapshot?.activeExecutionRuns ?? [];
 
@@ -17,6 +20,13 @@ export default function RunsPage() {
       lastLoadedAt={lastLoadedAt}
       onRefresh={() => void refresh()}
     >
+      <ProductionControlPanel
+        data={control.data}
+        error={control.error}
+        loading={control.loading}
+        toggling={control.toggling}
+        onToggle={control.toggle}
+      />
       {error ? <ErrorState message={stale ? `${error} Showing the last known state.` : error} /> : null}
       {loading && !snapshot ? (
         <LoadingState />

@@ -69,7 +69,7 @@ interface IntelligenceHealthBody {
   };
 }
 
-interface HeartbeatState {
+export interface HeartbeatState {
   timestamp: string | null;
   fresh: boolean;
   available: boolean;
@@ -303,7 +303,7 @@ async function resolveWorkspaceSafely(): Promise<string | null> {
   }
 }
 
-async function readManagedRunWorker(workspace: string): Promise<{ running: boolean; heartbeat: HeartbeatState }> {
+export async function readManagedRunWorker(workspace: string): Promise<{ running: boolean; heartbeat: HeartbeatState }> {
   const pidPath = path.join(workspace, ".arcadia", "worker.pid");
   let pid: number | null = null;
   try {

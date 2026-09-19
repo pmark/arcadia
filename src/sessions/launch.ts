@@ -2,6 +2,8 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { observeProviderCapacity, type ProviderCapacityObservation } from "../codingAgents/capacity.js";
+import { loadWorkspaceConfig } from "../workspace/config.js";
+import { getWorkspacePaths } from "../workspace/paths.js";
 import { loadModelTierRegistry, type ModelTierRegistry } from "../codingAgents/modelTiers.js";
 import type { ProviderAdapterRegistry } from "../codingAgents/providerAdapters.js";
 import { writeTransaction } from "../db/connection.js";
@@ -163,7 +165,11 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   let admission: AdmissionReceipt | null = null;
   if (input.standingPolicy) {
     const provider = preview.selection.provider;
-    const observation = input.capacityObservation ?? observeProviderCapacity(input.profiles, { now });
+    const codingAgentConfig = loadWorkspaceConfig(getWorkspacePaths(input.workspace).configFile).codingAgent;
+    const unmeteredProvider =
+      codingAgentConfig?.capacityGateEnabled === false ? codingAgentConfig.provider ?? null : null;
+    const observation =
+      input.capacityObservation ?? observeProviderCapacity(input.profiles, { now, unmeteredProvider });
     const capacity = observation.providers.find((decision) => decision.providerId === provider);
     if (!capacity) {
       throw validationError(`No capacity observation is available for provider "${provider}".`, { conflict: true });
