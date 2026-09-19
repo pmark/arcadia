@@ -1222,6 +1222,24 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/411", "src/commands/worker.ts", "src/sessions/preservationTransport.ts", "src/commands/goBrokerInstall.ts"]
+  - id: surface-terminal-operator-approvals-in-runs
+    title: Add a /runs approval queue that presents only terminal operator-only approvals, each with its essential recommended option and a details expansion containing evidence, costs, consequences, alternatives, and the exact canonical settlement effect.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Add a /runs approval queue that presents only terminal operator-only approvals, each with its essential recommended option and a details expansion containing evidence, costs, consequences, alternatives, and the exact canonical settlement effect.
+    expected_artifact: Evidence satisfying Agent Ask surface-terminal-operator-approvals-in-runs
+    clarification: clarified
+    confidence: high
+    source: Agent Ask runs-primary-operator-approval-queue-2026-09-19
+    acceptance_criteria:
+      - /runs lists every pending Agent Ask and other terminal operator-only approval that blocks managed production, while excluding mechanics agents may safely perform.
+      - Each queue item offers one minimal recommended action plus an expandable details view that states evidence, cost, consequence, alternatives, and what the canonical settlement will change.
+      - Choosing an option invokes the existing fingerprinted canonical settlement path, preserves approval boundaries, and records one durable receipt.
+      - Regression tests cover prioritization, minimal-versus-expanded rendering, stale-preview refusal, and successful operator settlement.
+    depends_on: []
+    decisions: []
+    references: ["apps/dashboard/app/runs", "apps/dashboard/components", "src/agentAsk", "src/dashboard/snapshot.ts", "src/commands/agentAsk.ts", "docs/plans/mission-control-view/17-managed-production-contract.md"]
 questions: []
 decisions: []
 current_action: restore-preservation-worker-heartbeat
