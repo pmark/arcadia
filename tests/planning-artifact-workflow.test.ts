@@ -307,6 +307,42 @@ describe("acceptance criteria reporting on artifact acceptance", () => {
     expect(item?.decision_note).toBe("Validated planning Artifact accepted.");
     expect(JSON.parse(item!.context_json)).not.toHaveProperty("acceptanceCriteriaResults");
   });
+
+  it("prepares a build packet for an accepted governed plan-document Action", () => {
+    const workspace = initializedWorkspace();
+    const fixture = setupCodexRun(workspace, { purpose: "planning", agentOutput: completePlanningArtifact });
+    const paths = getWorkspacePaths(workspace);
+    const registry = JSON.parse(readFileSync(paths.codingAgentProfiles, "utf8"));
+    registry.defaults = { planning: "fake_planning", build: "codex_build" };
+    registry.profiles.push({
+      ...registry.profiles[0],
+      name: "codex_build",
+      provider: "codex-cli",
+      purpose: "build",
+      sandbox: "workspace-write"
+    });
+    writeFileSync(paths.codingAgentProfiles, JSON.stringify(registry), "utf8");
+    withDatabase(workspace, (db) => {
+      db.prepare("UPDATE work_items SET doc_ref = ? WHERE id = ?").run("plan/example#define-contract", fixture.workItemId);
+    });
+    executeFixture(workspace, fixture);
+    const acceptance = withDatabase(workspace, (db) =>
+      listReviewItems(db, "open").find((item) => item.resolved_intent === "CodexPlanningArtifactAcceptance")
+    );
+
+    runReviewApproveCommand({ workspace, id: acceptance!.id });
+
+    withDatabase(workspace, (db) => {
+      const action = getWorkItem(db, fixture.workItemId)!;
+      expect(action.status).not.toBe("done");
+      const receipt = JSON.parse(getReviewItem(db, acceptance!.id)!.context_json).planningPromotion;
+      expect(receipt).toMatchObject({ actionDocRef: "plan/example#define-contract", buildProfile: "codex_build" });
+      expect(listCodexInvocationsForWorkItem(db, fixture.workItemId).some(
+        (invocation) => invocation.id === receipt.buildInvocationId && invocation.purpose === "build" && invocation.status === "packet_created"
+      )).toBe(true);
+      expect(getReviewItem(db, acceptance!.id)?.decision_note).toContain("Build packet prepared");
+    });
+  });
 });
 
 describe("accepting a plan for a governed plan-document Action", () => {
@@ -315,8 +351,14 @@ describe("accepting a plan for a governed plan-document Action", () => {
     const fixture = setupCodexRun(workspace, { purpose: "planning", agentOutput: completePlanningArtifact });
     const paths = getWorkspacePaths(workspace);
     const registry = JSON.parse(readFileSync(paths.codingAgentProfiles, "utf8"));
-    registry.defaults = { planning: "fake_planning", build: "fake_build" };
-    registry.profiles.push({ ...registry.profiles[0], name: "fake_build", purpose: "build", sandbox: "workspace-write" });
+    registry.defaults = { planning: "fake_planning", build: "codex_build" };
+    registry.profiles.push({
+      ...registry.profiles[0],
+      name: "codex_build",
+      provider: "codex-cli",
+      purpose: "build",
+      sandbox: "workspace-write"
+    });
     writeFileSync(paths.codingAgentProfiles, JSON.stringify(registry), "utf8");
     withDatabase(workspace, (db) => {
       db.prepare("UPDATE work_items SET doc_ref = ? WHERE id = ?").run("plan/example#define-contract", fixture.workItemId);
@@ -335,7 +377,7 @@ describe("accepting a plan for a governed plan-document Action", () => {
       // approval would queue a legacy Run when approved.
       expect(listReviewItems(db, "all").some((item) => item.resolved_intent === "CodexBuildPacketApproval")).toBe(false);
       const receipt = JSON.parse(getReviewItem(db, acceptance!.id)!.context_json).planningPromotion;
-      expect(receipt).toMatchObject({ actionDocRef: "plan/example#define-contract", buildProfile: "fake_build" });
+      expect(receipt).toMatchObject({ actionDocRef: "plan/example#define-contract", buildProfile: "codex_build" });
       expect(listCodexInvocationsForWorkItem(db, fixture.workItemId).some(
         (invocation) => invocation.id === receipt.buildInvocationId && invocation.purpose === "build" && invocation.status === "packet_created"
       )).toBe(true);

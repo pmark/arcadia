@@ -892,8 +892,8 @@ export function runReviewApproveCommand(
         let buildPrepared = false;
         updateArtifact(db, specialized.artifact_id as string, { status: "ready" });
         // A governed plan-document Action is what the accepted plan will be
-        // built as, so it stays open and gets its build packet and approval.
-        // Anything Arcadia captured itself has no plan document to build.
+        // built as, so it stays open and gets its build packet and authority.
+        // Captured Actions have no plan document to build.
         const governedAction = acceptedWorkItem?.doc_ref ? acceptedWorkItem : null;
         if (governedAction) {
           prepareBuildPacketForAcceptedPlan(db, workspacePath, governedAction, specialized.id);

@@ -7,7 +7,7 @@ import type { CodexInvocationPurpose } from "../domain/constants.js";
 import type { ProjectContext, WorkItemSummary } from "../domain/types.js";
 import type { CodingAgentProfile, TemplateDefinition } from "../intent/registries.js";
 import type { ProviderAdapterRegistry, SelectedCodingAgentConfiguration } from "../codingAgents/providerAdapters.js";
-import { selectCompliantCodingAgent } from "../codingAgents/providerAdapters.js";
+import { selectCompliantCodingAgent, selectDefaultCodingAgentConfiguration } from "../codingAgents/providerAdapters.js";
 import {
   parseExecutionRequirement,
   type ExecutionPhase,
@@ -222,14 +222,23 @@ export function selectAgentProfileForWorkItem(input: {
   defaults?: Partial<Record<"planning" | "build", string>>;
 }): AgentProfileSelection {
   if (!input.workItem.execution_requirement_json || !input.adapters) {
+    const profile = selectAgentProfile(
+      input.profiles,
+      input.purpose,
+      input.requestedName,
+      input.defaults
+    );
+    const configuration = input.adapters
+      ? selectDefaultCodingAgentConfiguration(input.adapters, profile)
+      : null;
+    if (input.adapters && !configuration) {
+      throw new Error(
+        `No enabled provider adapter binding supports profile ${profile.name} at e2_standard.`
+      );
+    }
     return {
-      profile: selectAgentProfile(
-        input.profiles,
-        input.purpose,
-        input.requestedName,
-        input.defaults
-      ),
-      configuration: null,
+      profile,
+      configuration,
       executionRequirement: null
     };
   }
