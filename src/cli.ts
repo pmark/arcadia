@@ -998,6 +998,17 @@ export function buildProgram(): Command {
     runCliAction("production.deactivate", options, () => runProductionDeactivateCommand(options), renderProductionTransitionSuccess)
   );
 
+  interface CapacityAttestActionOptions {
+    workspace: string;
+    provider: string;
+    grantedBy: string;
+    usagePolicy?: string;
+    window?: string[];
+    hours?: string;
+    note?: string;
+    json?: boolean;
+  }
+
   const capacity = addJsonOption(
     production
       .command("capacity", { isDefault: false })
@@ -1019,18 +1030,17 @@ export function buildProgram(): Command {
       .option("--window <label:usedPercent[:resetsAtIso]>", "A window the provider actually reports (repeatable)", collectRepeatable, [])
       .option("--hours <n>", "How long the attestation stands, capped by the receipt limit", "1")
       .option("--note <text>", "What the operator actually looked at")
-  ).action((options: {
-    workspace: string;
-    provider: string;
-    grantedBy: string;
-    usagePolicy?: string;
-    window?: string[];
-    hours?: string;
-    note?: string;
-    json?: boolean;
-  }) =>
-    runCliAction("production.capacity.attest", options, () => runCapacityAttestCommand(options), renderCapacityAttestSuccess)
-  );
+  ).action((options: CapacityAttestActionOptions, cmd: Command) => {
+    // `capacity` (the parent command) is itself directly invocable and
+    // redeclares --json/--workspace for its own action, so Commander's
+    // parser consumes those flags at the parent level before this
+    // subcommand ever sees them — `options` here silently lacks them no
+    // matter what the operator passed. `optsWithGlobals()` walks back up
+    // the command chain and recovers the value from wherever it actually
+    // landed.
+    const merged: CapacityAttestActionOptions = cmd.optsWithGlobals();
+    return runCliAction("production.capacity.attest", merged, () => runCapacityAttestCommand(merged), renderCapacityAttestSuccess);
+  });
 
   const backBurner = program.command("back-burner").description("List and manage Back Burner items");
   addJsonOption(
