@@ -3,6 +3,7 @@ import type { CodingAgentAvailabilitySnapshot } from "../src/codingAgents/availa
 import {
   ExecutionProfileUnsatisfiedError,
   selectCompliantCodingAgent,
+  selectDefaultCodingAgentConfiguration,
   validateProviderAdapterRegistry
 } from "../src/codingAgents/providerAdapters.js";
 import { parseExecutionRequirement } from "../src/execution/profiles.js";
@@ -64,6 +65,49 @@ describe("provider-adapter selection", () => {
       "--config",
       "model_reasoning_effort=\"medium\""
     ]);
+  });
+
+  it("selects the least-cost default binding before comparing capability", () => {
+    const selected = selectDefaultCodingAgentConfiguration({
+      mappingId: "test-map",
+      version: 1,
+      observedAt: "2026-07-25T00:00:00.000Z",
+      providers: [
+        { id: "codex-cli", enabled: true }
+      ],
+      bindings: [
+        {
+          id: "higher-capability-expensive",
+          provider: "codex-cli",
+          model: "expensive",
+          capability: "c3_systems",
+          agentProfiles: ["codex_build"],
+          enabled: true,
+          costRank: 2,
+          modelArgs: [],
+          effortArgs: { e2_standard: [] },
+          tools: true,
+          contextScopes: ["project"],
+          locality: "local"
+        },
+        {
+          id: "lower-capability-cheap",
+          provider: "codex-cli",
+          model: "cheap",
+          capability: "c2_integrated",
+          agentProfiles: ["codex_build"],
+          enabled: true,
+          costRank: 1,
+          modelArgs: [],
+          effortArgs: { e2_standard: [] },
+          tools: true,
+          contextScopes: ["project"],
+          locality: "local"
+        }
+      ]
+    }, profiles[1]);
+
+    expect(selected?.bindingId).toBe("lower-capability-cheap");
   });
 
   it("uses a systems-capable binding for a systems Action", () => {

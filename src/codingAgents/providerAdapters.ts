@@ -227,8 +227,8 @@ export function selectDefaultCodingAgentConfiguration(
     }];
   });
   candidates.sort((left, right) =>
-    capabilityRank(left.capability) - capabilityRank(right.capability) ||
     left.costRank - right.costRank ||
+    capabilityRank(left.capability) - capabilityRank(right.capability) ||
     left.bindingId.localeCompare(right.bindingId)
   );
   return candidates[0] ?? null;

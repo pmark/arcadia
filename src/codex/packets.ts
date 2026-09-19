@@ -228,11 +228,17 @@ export function selectAgentProfileForWorkItem(input: {
       input.requestedName,
       input.defaults
     );
+    const configuration = input.adapters
+      ? selectDefaultCodingAgentConfiguration(input.adapters, profile)
+      : null;
+    if (input.adapters && !configuration) {
+      throw new Error(
+        `No enabled provider adapter binding supports profile ${profile.name} at e2_standard.`
+      );
+    }
     return {
       profile,
-      configuration: input.adapters
-        ? selectDefaultCodingAgentConfiguration(input.adapters, profile)
-        : null,
+      configuration,
       executionRequirement: null
     };
   }
