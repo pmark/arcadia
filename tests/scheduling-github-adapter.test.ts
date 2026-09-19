@@ -12,7 +12,7 @@ import {
   type CommandRunner
 } from "../src/scheduling/github.js";
 import { buildProjectSchedule } from "../src/scheduling/schedule.js";
-import { getSchedulingProject, listSchedulingLog, upsertSchedulingProject } from "../src/scheduling/store.js";
+import { getSchedulingProject, listSchedulingLog, upsertSchedulingAction, upsertSchedulingProject } from "../src/scheduling/store.js";
 import { writeProjectOrder } from "../src/scheduling/schedule.js";
 import { schedulingFixture } from "./schedulingFixture.js";
 
@@ -275,6 +275,33 @@ describe("gh-backed board", () => {
     expect(itemId).toBe("PVTI_1");
     // No duplicate item was created for the same issue number.
     expect(gh.items.filter((item) => item.number === 100)).toHaveLength(1);
+  });
+
+  it("keeps a recovered item's real status instead of overwriting it and reporting it as newly added", () => {
+    const { workspace, cwd } = workspaceWithProject();
+    const gh = new FakeGh();
+    withDatabase(workspace, (db) => {
+      const project = getProjectBySlug(db, "alpha")!;
+      const board = createGitHubBoard(boardConfig(cwd), gh.runner);
+      const first = projectScheduleToBoard(db, buildProjectSchedule(db, project), board);
+      expect(first.itemsAdded).toHaveLength(3);
+
+      // Simulate the crash this recovery exists for: the item made it onto the
+      // board (and already carries the right status) but the local id was
+      // never persisted, so Arcadia believes the item does not exist yet.
+      const actionKey = buildProjectSchedule(db, project).actions[0].key;
+      upsertSchedulingAction(db, actionKey, { githubProjectItemId: null });
+
+      const editsBefore = gh.calls.filter(([, ...args]) => args.includes("item-edit")).length;
+      const second = projectScheduleToBoard(db, buildProjectSchedule(db, project), board);
+
+      // The item was recovered (one item-add call, refused and resolved by
+      // lookup), not newly added, and its already-correct status was read as-is
+      // rather than reset to null and rewritten with a status-edit call.
+      expect(second.itemsAdded).not.toContain(actionKey);
+      expect(second.statusChanges).toEqual([]);
+      expect(gh.calls.filter(([, ...args]) => args.includes("item-edit"))).toHaveLength(editsBefore);
+    });
   });
 
   it("does not reuse another repository's item that happens to share the same issue number", () => {

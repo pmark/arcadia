@@ -94,8 +94,17 @@ export function projectScheduleToBoard(db: Database.Database, schedule: ProjectS
       const itemId = board.addIssue({ number: action.githubIssueNumber, url: action.githubIssueUrl ?? "" });
       action.githubProjectItemId = itemId;
       upsertSchedulingAction(db, action.key, { githubProjectItemId: itemId });
-      items.set(itemId, { itemId, issueNumber: action.githubIssueNumber, url: action.githubIssueUrl ?? null, title: action.title, status: null });
-      result.itemsAdded.push(action.key);
+      // `addIssue` can recover an item that was already on the board (GitHub's
+      // "already exists" refusal) and hand back its real id, which `items`
+      // (read from `listItems()` above) already holds with its true status.
+      // Only synthesize a fresh entry -- and only count it as added -- when
+      // this genuinely is new to the board; otherwise the real status is
+      // overwritten with `null` and every recovered item gets rewritten and
+      // misreported as added.
+      if (!items.has(itemId)) {
+        items.set(itemId, { itemId, issueNumber: action.githubIssueNumber, url: action.githubIssueUrl ?? null, title: action.title, status: null });
+        result.itemsAdded.push(action.key);
+      }
     }
     const desired = boardStatusFor(action.status);
     const current = items.get(action.githubProjectItemId)?.status ?? null;
