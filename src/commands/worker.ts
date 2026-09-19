@@ -141,12 +141,17 @@ function readLegacyPid(workspacePath: string): number | null {
   }
 }
 
-function isProcessAlive(pid: number): boolean {
+/**
+ * A failed signal probe is not evidence that a process is gone. In particular,
+ * an unattended coding-agent sandbox can receive EPERM while the host worker
+ * is alive. Only ESRCH permits replacing or deleting a recorded owner.
+ */
+export function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
   }
 }
 
@@ -241,10 +246,12 @@ export interface WorkerStartDecision {
  */
 export function decideWorkerStart(
   existing: WorkerIdentity | null,
-  isAlive: (pid: number) => boolean,
-  hasFreshHeartbeat: (identity: WorkerIdentity) => boolean = () => false
+  isAlive: (pid: number) => boolean
 ): WorkerStartDecision {
-  if (existing && isAlive(existing.pid) && hasFreshHeartbeat(existing)) {
+  // A stale heartbeat means unhealthy, not dead. Replacing a PID that remains
+  // live can create two workers; only the service controller may stop it and
+  // establish a fresh ownership boundary before another start is attempted.
+  if (existing && isAlive(existing.pid)) {
     return { action: "already-running", pid: existing.pid };
   }
   return { action: "start", pid: null };
@@ -266,8 +273,7 @@ export function runWorkerStartCommand(options: WorkerOptions): never {
   }
   const decision = decideWorkerStart(
     existing,
-    isProcessAlive,
-    (identity) => hasFreshWorkerHeartbeat(workspacePath, identity)
+    isProcessAlive
   );
   if (decision.action === "already-running") {
     // Exit 0, not 1: a non-zero status is what launchd reads as a crash. Paired
@@ -551,9 +557,9 @@ export function runWorkerStopCommand(options: WorkerOptions): void {
   }
 
   const identity = readWorkerIdentity(workspacePath);
-  if (!identity || !isProcessAlive(pid) || !hasFreshWorkerHeartbeat(workspacePath, identity)) {
+  if (!identity || !isProcessAlive(pid)) {
     try { unlinkSync(pidfilePath(workspacePath)); } catch {}
-    process.stdout.write(`Worker PID ${pid} is stale or unverified. Removed its pidfile without signalling that PID.\n`);
+    process.stdout.write(`Worker PID ${pid} is not alive or has no ownership record. Removed its pidfile without signalling that PID.\n`);
     return;
   }
 

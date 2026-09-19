@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createWorkerTick, decideWorkerStart } from "../src/commands/worker.js";
+import { createWorkerTick, decideWorkerStart, isProcessAlive } from "../src/commands/worker.js";
 import { openDatabase } from "../src/db/connection.js";
 import { preservationTransportReady } from "../src/sessions/preservationTransport.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -30,11 +30,21 @@ describe("worker start already-running guard", () => {
   });
 
   it("treats a live pidfile holder as already running rather than a failure", () => {
-    expect(decideWorkerStart({ pid: 4242, owner: "worker" }, () => true, () => true)).toEqual({ action: "already-running", pid: 4242 });
+    expect(decideWorkerStart({ pid: 4242, owner: "worker" }, () => true)).toEqual({ action: "already-running", pid: 4242 });
   });
 
-  it("restarts when a stale pidfile points to an unrelated live process", () => {
-    expect(decideWorkerStart({ pid: 4242, owner: "stale" }, () => true, () => false)).toEqual({ action: "start", pid: null });
+  it("does not replace a live worker merely because its heartbeat is stale", () => {
+    expect(decideWorkerStart({ pid: 4242, owner: "stale" }, () => true)).toEqual({ action: "already-running", pid: 4242 });
+  });
+
+  it("treats EPERM as live and only ESRCH as dead", () => {
+    const kill = vi.spyOn(process, "kill");
+    const error = (code: string) => Object.assign(new Error(code), { code });
+    kill.mockImplementationOnce(() => { throw error("EPERM"); });
+    expect(isProcessAlive(4242)).toBe(true);
+    kill.mockImplementationOnce(() => { throw error("ESRCH"); });
+    expect(isProcessAlive(4242)).toBe(false);
+    kill.mockRestore();
   });
 
   // Issue #303: exiting 1 here is what turned the benign path into a launchd
