@@ -96,6 +96,8 @@ class FakeGh {
     if (args[0] === "project" && args[1] === "item-add") {
       const url = args[args.indexOf("--url") + 1] ?? "";
       const number = Number(url.split("/").pop());
+      const existing = this.items.find((item) => item.number === number && item.id !== "");
+      if (existing) return { ok: false, stdout: "", stderr: "GraphQL: Content already exists in this project (addProjectV2ItemById)" };
       const id = `PVTI_${this.nextItem++}`;
       const pending = this.items.find((item) => item.number === number && item.id === "");
       if (pending) pending.id = id;
@@ -258,6 +260,29 @@ describe("gh-backed board", () => {
       const keyByNumber = new Map(buildProjectSchedule(db, project).actions.map((action) => [action.githubIssueNumber, action.key]));
       expect(gh.items.map((item) => keyByNumber.get(item.number))).toEqual(queueBefore);
     });
+  });
+
+  it("reuses the existing item when GitHub refuses to add an Issue already on the board", () => {
+    const { cwd } = workspaceWithProject();
+    const gh = new FakeGh();
+    const board = createGitHubBoard(boardConfig(cwd), gh.runner);
+    gh.items.push({ id: "PVTI_1", number: 100, title: "#100", status: null });
+
+    const itemId = board.addIssue({ number: 100, url: "https://github.com/example/repo/issues/100" });
+
+    expect(itemId).toBe("PVTI_1");
+    // No duplicate item was created for the same issue number.
+    expect(gh.items.filter((item) => item.number === 100)).toHaveLength(1);
+  });
+
+  it("still fails when GitHub's item-add error is not the already-exists case", () => {
+    const { cwd } = workspaceWithProject();
+    const gh = new FakeGh();
+    const failing = createGitHubBoard(boardConfig(cwd), (cwd2, command, args) => {
+      if (args[0] === "project" && args[1] === "item-add") return { ok: false, stdout: "", stderr: "API rate limit exceeded" };
+      return gh.runner(cwd2, command, args);
+    });
+    expect(() => failing.addIssue({ number: 101, url: "https://github.com/example/repo/issues/101" })).toThrow(/rate limit/);
   });
 
   it("creates the status field only through the explicit link path, and is a no-op when it already exists", () => {

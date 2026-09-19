@@ -283,7 +283,14 @@ export function runScheduleReconcileCommand(options: { workspace: string; projec
 export function renderScheduleReconcileSuccess(response: CommandSuccess<ScheduleReconcileData>): string[] {
   const { pass, reconciles, preview } = response.data;
   const lines: string[] = [preview ? "Reconciliation preview (nothing written):" : "Reconciliation applied:"];
-  if (reconciles.length === 0) lines.push("  No Project is linked to a GitHub board.");
+  // `reconciles` is empty both when nothing has a board linked and when a
+  // linked board's reconcile attempt threw -- those are different states, so
+  // only report "no board linked" when nothing in this pass actually reached
+  // GitHub (no reconcile, no error, no board-skip reason recorded).
+  const anyBoardAttempted = pass
+    ? pass.projects.some((project) => project.reconcile !== null || project.reconcileError !== null || project.boardSkipped !== null)
+    : reconciles.length > 0;
+  if (!anyBoardAttempted) lines.push("  No Project is linked to a GitHub board.");
   for (const entry of reconciles) {
     lines.push(`  ${entry.projectSlug}: board ${entry.observedOrder.join(" → ") || "empty"}`);
     lines.push(`    operator moved: ${entry.operatorMoved ? "yes" : "no"}${entry.accepted ? " (accepted)" : ""}${entry.normalized ? ` (normalized: ${entry.normalizationReasons.join(" ")})` : ""}`);

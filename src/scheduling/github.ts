@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import type Database from "better-sqlite3";
-import { validationError } from "../cli/errors.js";
+import { ArcadiaError, validationError } from "../cli/errors.js";
 import { applyOperatorOrder, minimalMoves, sameSequence } from "./order.js";
 import { orderCandidates, writeProjectOrder, type ProjectSchedule, type ScheduledAction, type ScheduleStatus } from "./schedule.js";
 import { recordSchedulingLog, upsertSchedulingAction, upsertSchedulingProject } from "./store.js";
@@ -410,8 +410,22 @@ export function createGitHubBoard(
     },
     addIssue(input) {
       const url = input.url || `https://github.com/${config.repository}/issues/${input.number}`;
-      const added = ghJson<{ id: string }>(run, config.cwd, ["project", "item-add", number, "--owner", owner, "--url", url, "--format", "json"], "item-add");
-      return added.id;
+      try {
+        const added = ghJson<{ id: string }>(run, config.cwd, ["project", "item-add", number, "--owner", owner, "--url", url, "--format", "json"], "item-add");
+        return added.id;
+      } catch (error) {
+        // GitHub refuses to add an Issue that is already an item on this
+        // board. That happens when a prior pass added it but crashed before
+        // `upsertSchedulingAction` persisted the item id locally, so the next
+        // pass sees `githubProjectItemId === null` and tries again -- the item
+        // already exists, so look it up and reuse it instead of treating
+        // GitHub's refusal as fatal.
+        if (error instanceof ArcadiaError && /content already exists in this project/i.test(error.message)) {
+          const existing = listBoardItems(run, config, projectId).find((item) => item.issueNumber === input.number);
+          if (existing) return existing.itemId;
+        }
+        throw error;
+      }
     },
     setStatus(itemId, status) {
       const optionId = statusField.options.get(status)!;
