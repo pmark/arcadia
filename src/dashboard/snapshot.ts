@@ -583,6 +583,28 @@ export function buildDashboardSnapshot(options: DashboardSnapshotOptions): Dashb
   });
 }
 
+export interface DashboardRunsSnapshot {
+  generatedAt: string;
+  activeAgentSessions: DashboardAgentSession[];
+  activeExecutionRuns: DashboardRun[];
+  recentRuns: DashboardRun[];
+}
+
+/**
+ * The Runs page's read model. The full snapshot also builds the agent queue,
+ * attention and review items, and is hundreds of KB; this reads only what the
+ * Runs page renders. `recentLimit` of 0 skips history entirely.
+ */
+export function buildRunsSnapshot(options: { workspace: string; recentLimit?: number }): DashboardRunsSnapshot {
+  const recentLimit = options.recentLimit ?? 0;
+  return withReadOnlyDatabase(options.workspace, (db) => ({
+    generatedAt: new Date().toISOString(),
+    activeAgentSessions: listActiveAgentSessions(db).map((session) => toDashboardAgentSession(db, session)),
+    activeExecutionRuns: listActiveExecutionRuns(db).map(toDashboardRun),
+    recentRuns: recentLimit > 0 ? listExecutionRuns(db, recentLimit).map(toDashboardRun) : []
+  }));
+}
+
 function toDashboardBackBurnerItem(item: BackBurnerItemSummary): DashboardBackBurnerItem {
   return {
     id: item.id,

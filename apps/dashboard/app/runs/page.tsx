@@ -1,69 +1,95 @@
 "use client";
 
+import { useState } from "react";
 import { DashboardChrome } from "../../components/chrome";
-import { EmptyState, ErrorState, LoadingState, RunCard, SessionCard } from "../../components/dashboard-ui";
+import { EmptyState, ErrorState, RunCard, SessionCard } from "../../components/dashboard-ui";
 import { ProductionControlPanel } from "../../components/production-control-panel";
-import { useArcadiaSnapshot } from "../../hooks/use-arcadia-snapshot";
 import { useProductionControl } from "../../hooks/use-production-control";
+import { useRuns } from "../../hooks/use-runs";
+
+function CardSkeletons() {
+  return (
+    <div className="grid min-w-0 gap-3 md:grid-cols-2" aria-hidden="true">
+      {Array.from({ length: 2 }).map((_, index) => (
+        <div key={index} className="h-28 animate-pulse rounded-md border border-line bg-panel" />
+      ))}
+    </div>
+  );
+}
 
 export default function RunsPage() {
-  const { snapshot, error, loading, refreshing, stale, lastLoadedAt, refresh } = useArcadiaSnapshot();
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const runs = useRuns(historyOpen);
   const control = useProductionControl();
-  const activeSessions = snapshot?.activeAgentSessions ?? [];
-  const activeRuns = snapshot?.activeExecutionRuns ?? [];
+  const activeSessions = runs.data?.activeAgentSessions ?? [];
+  const activeRuns = runs.data?.activeExecutionRuns ?? [];
 
   return (
     <DashboardChrome
-      title="Recent Runs"
-      subtitle={snapshot ? `${snapshot.counts.recentRuns} loaded` : undefined}
-      refreshing={refreshing}
-      lastLoadedAt={lastLoadedAt}
-      onRefresh={() => void refresh()}
+      title="Runs"
+      subtitle={runs.data ? `${activeSessions.length + activeRuns.length} active` : undefined}
+      refreshing={runs.refreshing}
+      lastLoadedAt={runs.lastLoadedAt}
+      onRefresh={() => {
+        void runs.refresh();
+        void control.refresh();
+      }}
     >
       <ProductionControlPanel
-        data={control.data}
+        core={control.core}
+        queue={control.queue}
+        alerts={control.alerts}
         error={control.error}
-        loading={control.loading}
         toggling={control.toggling}
         onToggle={control.toggle}
       />
-      {error ? <ErrorState message={stale ? `${error} Showing the last known state.` : error} /> : null}
-      {loading && !snapshot ? (
-        <LoadingState />
-      ) : (
-        <>
-          <section aria-label="Active now" className="mb-6">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted">
-              Active now — every Session and Run, regardless of history limits
-            </h2>
-            {activeSessions.length === 0 && activeRuns.length === 0 ? (
-              <EmptyState text="Nothing is currently prepared or running." />
-            ) : (
-              <div className="grid min-w-0 gap-3 md:grid-cols-2">
-                {activeSessions.map((session) => (
-                  <SessionCard key={session.id} session={session} />
-                ))}
-                {activeRuns
-                  .filter((run) => !activeSessions.some((session) => session.actionId === run.workItemId))
-                  .map((run) => (
-                    <RunCard key={run.id} run={run} />
-                  ))}
-              </div>
-            )}
-          </section>
+      {runs.error ? (
+        <ErrorState title="Runs unavailable" message={runs.stale ? `${runs.error} Showing the last known state.` : runs.error} />
+      ) : null}
 
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted">Recent history</h2>
-          {snapshot?.recentRuns.length ? (
+      <section aria-label="Active now" aria-busy={runs.loading} className="mb-6">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted">Active now</h2>
+        {runs.loading && !runs.data ? (
+          <CardSkeletons />
+        ) : activeSessions.length === 0 && activeRuns.length === 0 ? (
+          <EmptyState text="Nothing is currently prepared or running." />
+        ) : (
+          <div className="grid min-w-0 gap-3 md:grid-cols-2">
+            {activeSessions.map((session) => (
+              <SessionCard key={session.id} session={session} />
+            ))}
+            {activeRuns
+              .filter((run) => !activeSessions.some((session) => session.actionId === run.workItemId))
+              .map((run) => (
+                <RunCard key={run.id} run={run} />
+              ))}
+          </div>
+        )}
+      </section>
+
+      <section aria-label="Recent history">
+        <button
+          type="button"
+          aria-expanded={historyOpen}
+          onClick={() => setHistoryOpen((open) => !open)}
+          className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted hover:text-ink"
+        >
+          {historyOpen ? "▾" : "▸"} Recent history
+        </button>
+        {historyOpen ? (
+          !runs.historyLoaded ? (
+            <CardSkeletons />
+          ) : runs.data && runs.data.recentRuns.length > 0 ? (
             <div className="grid min-w-0 gap-3 md:grid-cols-2">
-              {snapshot.recentRuns.map((run) => (
+              {runs.data.recentRuns.map((run) => (
                 <RunCard key={run.id} run={run} />
               ))}
             </div>
           ) : (
             <EmptyState text="No runs yet." />
-          )}
-        </>
-      )}
+          )
+        ) : null}
+      </section>
     </DashboardChrome>
   );
 }

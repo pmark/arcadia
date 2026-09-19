@@ -8,56 +8,86 @@ import type {
   ScheduleProjectSummary
 } from "../lib/arcadia-cli";
 
-export interface ProductionControlData {
+export interface ProductionCoreData {
   production: ProductionStatusResponse;
   worker: { running: boolean; heartbeat: { timestamp: string | null; fresh: boolean; available: boolean } };
-  capacity: CapacityStatusResponse | null;
+}
+
+export interface ProductionQueueData {
   schedule: { projects: ScheduleProjectSummary[]; selection: string | null } | null;
+}
+
+export interface ProductionAlertsData {
+  capacity: CapacityStatusResponse | null;
   alerts: {
     capacityRefusals: Array<{ providerId: string; label: string; reason: string }>;
     blockedDispatches: DispatchJournalEvent[];
   };
 }
 
+type Part = "core" | "queue" | "alerts";
+
 const POLL_MS = 20_000;
 
+/**
+ * Three independent requests: the fast core (switch, worker, provider) paints
+ * without waiting on the queue or alert calls, and a failure in one part never
+ * blanks the others.
+ */
 export function useProductionControl() {
-  const [data, setData] = useState<ProductionControlData | null>(null);
+  const [core, setCore] = useState<ProductionCoreData | null>(null);
+  const [queue, setQueue] = useState<ProductionQueueData | null>(null);
+  const [alerts, setAlerts] = useState<ProductionAlertsData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
-  const inFlightRef = useRef<Promise<void> | null>(null);
+  const sequences = useRef<Record<Part, number>>({ core: 0, queue: 0, alerts: 0 });
+  const inFlight = useRef<Record<Part, Promise<void> | null>>({ core: null, queue: null, alerts: null });
   const timerRef = useRef<number | null>(null);
-  const sequenceRef = useRef(0);
   const disposedRef = useRef(false);
 
   // `force` skips joining an in-flight GET: after a toggle, that GET may carry
   // the pre-toggle state. The sequence check makes any superseded response a no-op.
-  const refresh = useCallback(async (force = false): Promise<void> => {
-    if (!force && inFlightRef.current) return inFlightRef.current;
-    const sequence = ++sequenceRef.current;
+  const load = useCallback(async (part: Part, force = false): Promise<void> => {
+    if (!force && inFlight.current[part]) return inFlight.current[part]!;
+    const sequence = ++sequences.current[part];
     const run = (async () => {
       try {
-        const response = await fetch("/api/production-control", { cache: "no-store" });
+        const response = await fetch(`/api/production-control?part=${part}`, { cache: "no-store" });
         const body = await response.json();
-        if (!response.ok) throw new Error(body?.error ?? "Failed to load production control status.");
-        if (sequence !== sequenceRef.current) return;
-        setData(body as ProductionControlData);
-        setError(null);
-      } catch (refreshError) {
-        if (sequence !== sequenceRef.current) return;
-        setError(refreshError instanceof Error ? refreshError.message : String(refreshError));
-      } finally {
-        if (sequence === sequenceRef.current) setLoading(false);
+        if (!response.ok) throw new Error(body?.error ?? `Failed to load production ${part}.`);
+        if (sequence !== sequences.current[part]) return;
+        // A body that is not this part's shape (a stale route during a dev
+        // reload, say) is dropped rather than handed to the panel.
+        if (part === "core") {
+          if (!body?.production?.read || !body?.worker) throw new Error("Malformed production status.");
+          setCore(body as ProductionCoreData);
+        } else if (part === "queue") {
+          if (!body || !("schedule" in body)) throw new Error("Malformed production queue.");
+          setQueue(body as ProductionQueueData);
+        } else {
+          if (!body?.alerts?.capacityRefusals || !body.alerts.blockedDispatches) throw new Error("Malformed production alerts.");
+          setAlerts(body as ProductionAlertsData);
+        }
+        if (part === "core") setError(null);
+      } catch (loadError) {
+        if (sequence !== sequences.current[part]) return;
+        if (part === "core") setError(loadError instanceof Error ? loadError.message : String(loadError));
       }
     })();
-    inFlightRef.current = run;
+    inFlight.current[part] = run;
     try {
       await run;
     } finally {
-      if (inFlightRef.current === run) inFlightRef.current = null;
+      if (inFlight.current[part] === run) inFlight.current[part] = null;
     }
   }, []);
+
+  const refresh = useCallback(
+    async (force = false): Promise<void> => {
+      await Promise.all([load("core", force), load("queue", force), load("alerts", force)]);
+    },
+    [load]
+  );
 
   const toggle = useCallback(
     async (action: "activate" | "deactivate") => {
@@ -104,5 +134,5 @@ export function useProductionControl() {
     };
   }, [refresh]);
 
-  return { data, error, loading, toggling, toggle, refresh };
+  return { core, queue, alerts, error, toggling, toggle, refresh };
 }

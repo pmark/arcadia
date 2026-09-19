@@ -10,7 +10,9 @@ import type {
   DashboardSnapshotResponse,
   FeedbackListResponse,
   FeedbackRecordResponse,
+  DashboardAgentSession,
   DashboardOutstandingPullRequests,
+  DashboardRun,
   IngressActivityResponse,
   ProofTargetCheckResponse,
   ProofTargetListResponse,
@@ -342,6 +344,22 @@ export interface IntelligenceUsageResponse {
   summary: unknown;
 }
 
+export interface RunsSnapshotResponse {
+  runs: {
+    generatedAt: string;
+    activeAgentSessions: DashboardAgentSession[];
+    activeExecutionRuns: DashboardRun[];
+    recentRuns: DashboardRun[];
+  };
+}
+
+/** Lean Runs-page read model; `recentLimit` 0 skips history. */
+export async function loadRunsSnapshot(recentLimit = 0): Promise<ArcadiaJsonSuccess<RunsSnapshotResponse>> {
+  const args = ["dashboard", "runs"];
+  if (recentLimit > 0) args.push("--limit", String(recentLimit));
+  return runArcadiaCliJson<RunsSnapshotResponse>(args);
+}
+
 export interface ProductionScopeInfo {
   intent: string;
   projects: string[];
@@ -562,13 +580,19 @@ export async function getIntelligenceUsage(options: { refresh?: boolean } = {}):
   return runArcadiaCliJson<IntelligenceUsageResponse>(args);
 }
 
+let resolvedWorkspace: string | null = null;
+
 export async function resolveDashboardWorkspace(): Promise<string> {
+  // The workspace path does not change while the dashboard runs; resolving it
+  // spawns a CLI process, so pay that once.
+  if (resolvedWorkspace) return resolvedWorkspace;
   const response = await runArcadiaCliJson<{ workspacePath: string | null }>(["workspace", "resolve"]);
   if (!response.data.workspacePath) {
     throw new ArcadiaCliError("Arcadia workspace is not configured.", 503, response.data);
   }
 
-  return response.data.workspacePath;
+  resolvedWorkspace = response.data.workspacePath;
+  return resolvedWorkspace;
 }
 
 export interface IngressListResponse {

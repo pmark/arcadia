@@ -108,8 +108,10 @@ import {
 } from "./commands/codex.js";
 import {
   renderAttentionSuccess,
+  renderDashboardRunsSuccess,
   renderDashboardSnapshotSuccess,
   runAttentionCommand,
+  runDashboardRunsCommand,
   runDashboardSnapshotCommand
 } from "./commands/dashboard.js";
 import {
@@ -2006,6 +2008,16 @@ export function buildProgram(): Command {
       () => runDashboardSnapshotCommand(options),
       renderDashboardSnapshotSuccess
     )
+  );
+
+  addJsonOption(
+    dashboard
+      .command("runs")
+      .description("Emit the lean Runs-page read model: active Sessions and Runs, plus recent history on request")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--limit <n>", "Recent Runs to include (default 0: none)")
+  ).action((options: { workspace: string; limit?: string; json?: boolean }) =>
+    runCliAction("dashboard.runs", options, () => runDashboardRunsCommand(options), renderDashboardRunsSuccess)
   );
 
   const codex = program.command("codex").description("Codex Companion commands");
@@ -4558,6 +4570,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "dashboard" && second === "snapshot") {
     return "dashboard.snapshot";
+  }
+
+  if (first === "dashboard" && second === "runs") {
+    return "dashboard.runs";
   }
 
   if (first === "intelligence" && second === "smoke-image") {
