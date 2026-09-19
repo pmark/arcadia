@@ -719,3 +719,34 @@ or ready PR. If commit, push, or PR creation is not authorized, report the exact
 repository, worktree, branch, dirty paths, and recovery action; never silently
 leave uncommitted work on `main` or a detached HEAD. These rules do not broaden
 approval authority. See `docs/working-copy-safety.md`.
+
+### Automatic production conflict recovery
+
+Production-managed work must not stop merely because its pull request becomes
+behind, `DIRTY`, blocked, or red. After every push, and before every production
+handoff, inspect the pull request's merge state, required checks, review state,
+and branch protection requirements. Anything within the candidate's authority
+that prevents merging — including conflicts, build failures, test failures,
+lint failures, CodeRabbit findings, stale generated artifacts, or failed
+required checks — is part of the work and must be resolved before handoff. The
+agent must automatically:
+
+1. fetch the current base branch;
+2. merge that base into the candidate branch, preserving both the candidate
+   change and the newer base change;
+3. resolve textual conflicts deterministically, then run the affected tests,
+   lint, `git diff --check`, and the repository's required build/check commands;
+4. commit the reconciliation on the candidate branch and push it; and
+5. rerun the complete CodeRabbit loop and required checks against the new head
+   before handoff, repeating the repair/push/review cycle until the PR is
+   mergeable or the allowed repair cap is reached.
+
+Do not leave a PR in a conflicted, failing, or otherwise non-mergeable state
+with a narrative status report or ask the operator to perform these routine
+steps. If a failure is genuinely outside the candidate's authority — for
+example, unavailable credentials, a required external service, a product
+decision, or an approval gate — preserve the candidate, record the exact
+failure and the smallest draft ask, and report that concrete blocker. This rule
+never authorizes merging the PR, bypassing branch protection, weakening tests,
+falsifying checks, or crossing any approval gate; automatic recovery ends with
+a clean, reviewed, mergeable PR ready for the operator's normal merge decision.
