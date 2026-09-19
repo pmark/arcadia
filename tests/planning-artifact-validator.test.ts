@@ -81,7 +81,11 @@ describe("validation-execution claim detection", () => {
     expect(codesFor(line)).not.toContain("validation_execution_claim_not_required");
   });
 
-  it.each(["Tests passed locally.", "I ran `pnpm test` and lint completed."])(
+  it.each([
+    "Tests passed locally.",
+    "I ran `pnpm test` and lint completed.",
+    "No validation ran locally, but tests passed in CI."
+  ])(
     "still flags an affirmative claim: %s",
     (line) => {
       expect(codesFor(line)).toContain("validation_execution_claim_not_required");
