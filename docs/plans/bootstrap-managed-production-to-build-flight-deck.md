@@ -1279,7 +1279,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/419", "src/goBroker.ts", "src/sessions/preservationTransport.ts", "scripts/arcadia-go-broker.ts"]
 questions: []
 decisions: []
-current_action: restore-preservation-worker-heartbeat
+current_action: recover-protected-go-base-divergence
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
