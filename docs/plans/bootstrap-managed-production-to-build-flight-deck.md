@@ -1260,6 +1260,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["CONSTITUTION.md", "AGENTS.md", "src/docs/dispatch.ts", "src/commands/next.ts", "src/sessions/actionBrief.ts", "src/projects/contextSetup.ts"]
+  - id: recover-protected-go-base-divergence
+    title: Make the host-controlled Arcadia Go path safely reconcile governed local base commits with merged remote changes, or generate a bounded operator script that invokes only that supported route and returns a prepared-worktree receipt.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make the host-controlled Arcadia Go path safely reconcile governed local base commits with merged remote changes, or generate a bounded operator script that invokes only that supported route and returns a prepared-worktree receipt.
+    expected_artifact: Evidence satisfying Agent Ask recover-protected-go-base-divergence
+    clarification: clarified
+    confidence: high
+    source: Agent Ask promote-protected-go-divergence-recovery-2026-09-19
+    acceptance_criteria:
+      - When the local base is ahead and behind its configured remote, protected Arcadia Go either completes a host-controlled reconciliation with an auditable receipt or refuses with a generated bounded operator script; it never directs a coding agent to manually rebase or merge.
+      - A deterministic regression test covers the divergent-base case and proves no prepared worktree is issued before the supported reconciliation outcome is known.
+      - A live host probe after the repair returns a valid prepared or resumed worktree receipt through the protected Go request path.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/419", "src/goBroker.ts", "src/sessions/preservationTransport.ts", "scripts/arcadia-go-broker.ts"]
 questions: []
 decisions: []
 current_action: restore-preservation-worker-heartbeat
