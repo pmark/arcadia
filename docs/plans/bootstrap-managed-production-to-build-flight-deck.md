@@ -1205,6 +1205,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/411", "src/goBroker.ts", "src/sessions/preservationTransport.ts"]
+  - id: verify-worker-recovery-before-success
+    title: Make the managed worker control path fail on launchd load failure and report success only after the worker has recovered stale state and published fresh preservation and Go-route heartbeats.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make the managed worker control path fail on launchd load failure and report success only after the worker has recovered stale state and published fresh preservation and Go-route heartbeats.
+    expected_artifact: Evidence satisfying Agent Ask verify-worker-recovery-before-success
+    clarification: clarified
+    confidence: high
+    source: Agent Ask promote-truthful-worker-recovery-2026-09-19
+    acceptance_criteria:
+      - A failed launchd load or bootstrap makes worker recovery return a nonzero actionable refusal instead of reporting that the worker started.
+      - After a successful managed restart, worker recovery verifies a fresh preservation heartbeat and a fresh Go-capable heartbeat before reporting ready.
+      - A regression test covers a stale worker state and a launchd startup failure without relying on a live macOS service.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/411", "src/commands/worker.ts", "src/sessions/preservationTransport.ts", "src/commands/goBrokerInstall.ts"]
 questions: []
 decisions: []
 current_action: restore-preservation-worker-heartbeat
