@@ -169,6 +169,37 @@ describe("runManagedProductionTick", () => {
     expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).not.toBeNull();
   });
 
+  it("logs a refused launch with its code so an operator tailing worker.log can see why nothing starts", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const wrongScope = normalizeProductionScope({ ...productionScope, providers: ["opencode"] });
+    withDatabase(fixture.workspace, (db) =>
+      activateProduction(db, {
+        requestId: "policy-grant-wrong-provider",
+        scope: wrongScope,
+        scopeFingerprint: fingerprintProductionScope(wrongScope),
+        grantedBy: "operator"
+      })
+    );
+    const log = vi.fn();
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: fixture.now,
+        log,
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+
+    expect(result.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("refused");
+    expect(tmux.launches).toHaveLength(0);
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/Launch refused for test-project\/define-contract \[provider_not_permitted\]/));
+  });
+
   it("skips a repository that already holds a lease rather than launching a second Session", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();

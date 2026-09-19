@@ -265,6 +265,8 @@ function attemptProjectLaunch(
     // a repair-worthy failure. Anything else is a real defect in preparing or
     // spawning the Session and counts against the finite repair budget.
     if (error instanceof ArcadiaError && error.details?.conflict) {
+      const code = typeof error.details?.code === "string" ? ` [${error.details.code}]` : "";
+      input.log(`Launch refused for ${actionKey}${code}: ${error.message}`);
       return { attempted: true, outcome: "refused", reason: error.message, actionKey };
     }
     const message = error instanceof Error ? error.message : String(error);

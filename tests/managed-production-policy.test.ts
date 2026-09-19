@@ -12,6 +12,7 @@ import {
 } from "../src/production/activation.js";
 import { buildJudgmentRequest } from "../src/production/judgment.js";
 import {
+  runProductionPreviewCommand,
   runProductionDeactivateCommand,
   runProductionStatusCommand
 } from "../src/commands/production.js";
@@ -696,5 +697,14 @@ describe("judgment requests", () => {
         options: [{ label: "A", consequence: "Something." }, { label: "B", consequence: "Other." }]
       })
     ).toThrow(/must state a recommendation/);
+  });
+});
+
+describe("production --provider validation", () => {
+  it("rejects a provider id that is not in the coding-agent profiles and suggests the real one", () => {
+    const target = workspace();
+    expect(() =>
+      runProductionPreviewCommand({ workspace: target, project: ["demo"], provider: ["opencode"], plan: ["demo/queue-plan"], intent: "x" })
+    ).toThrow(/"opencode" is not a coding-agent provider id.*opencode-cli/);
   });
 });

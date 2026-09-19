@@ -2,6 +2,7 @@ import { validationError } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
+import { loadPhase3Registries } from "../intent/registries.js";
 import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
 import {
   PRODUCTION_OFF_CONSEQUENCE,
@@ -108,7 +109,7 @@ export function runProductionPreviewCommand(
 ): CommandSuccess<ProductionPreviewData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const preview = withDatabase(workspacePath, (db) =>
-    buildProductionActivationPreview(db, previewInput(options))
+    buildProductionActivationPreview(db, previewInput(options, workspacePath))
   );
 
   const warnings: string[] = [];
@@ -143,7 +144,7 @@ export function runProductionActivateCommand(
   }
 
   const result = withDatabase(workspacePath, (db) => {
-    const preview = buildProductionActivationPreview(db, previewInput(options));
+    const preview = buildProductionActivationPreview(db, previewInput(options, workspacePath));
     if (preview.orderedActions.length === 0) {
       throw validationError(
         "The requested scope contains no queued Actions; activating would authorize nothing.",
@@ -307,7 +308,20 @@ export function renderProductionTransitionSuccess(
   return lines;
 }
 
-function previewInput(options: ProductionPreviewOptions) {
+function assertKnownProviders(workspacePath: string, providers: string[]): void {
+  const known = [...new Set(loadPhase3Registries(workspacePath).codingAgents.profiles.map((profile) => profile.provider))].sort();
+  for (const provider of providers) {
+    if (known.includes(provider)) continue;
+    const near = known.filter((id) => id.startsWith(provider) || provider.startsWith(id));
+    throw validationError(
+      `--provider "${provider}" is not a coding-agent provider id.${near.length ? ` Did you mean ${near.map((id) => `"${id}"`).join(", ")}?` : ""} Known: ${known.join(", ")}.`,
+      { field: "provider", value: provider, known }
+    );
+  }
+}
+
+function previewInput(options: ProductionPreviewOptions, workspacePath: string) {
+  assertKnownProviders(workspacePath, options.provider ?? []);
   return {
     projects: options.project ?? [],
     plans: options.plan ?? [],
