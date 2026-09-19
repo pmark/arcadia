@@ -244,10 +244,16 @@ describe("Daily Advantage existing-Action planning preparation", () => {
     });
 
     runReviewRejectCommand({ workspace: fixture.workspace, id: validation.id, feedback: "Put the whole plan in the final message." });
+    withDatabase(fixture.workspace, (db) => {
+      expect(listReviewItems(db, "all").find((item) => item.id === validation.id)?.status).toBe("rejected");
+      expect(getWorkItem(db, fixture.workItemId)?.next_action).toContain("Put the whole plan in the final message.");
+    });
     const second = runWorkPlanCommand({ workspace: fixture.workspace, workId: fixture.workItemId, agentProfile: "claude_planning" });
 
     expect(second.data.plan.id).not.toBe(first.data.plan.id);
     expect(second.data.codexInvocation).toMatchObject({ agent_profile: "claude_planning", status: "packet_created" });
+    expect(second.data.packetArtifact?.id).toBeTruthy();
+    expect(second.data.packetArtifact!.id).not.toBe(first.data.packetArtifact!.id);
     expect(second.data.planningDecision).toMatchObject({ status: "open" });
     expect(second.data.planningDecision!.id).not.toBe(first.data.planningDecision!.id);
   });
