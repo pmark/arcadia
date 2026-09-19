@@ -154,10 +154,13 @@ function projectFromRow(row: SchedulingProjectRow): SchedulingProjectRecord {
     failedRuns: row.failed_runs,
     failedRunsMilestone: row.failed_runs_milestone,
     pausedReason: row.paused_reason,
-    pausedDecisionId: row.paused_decision_id,
-    githubStatusFieldId: row.github_status_field_id,
-    githubStatusOptions: parseOptions(row.github_status_options_json),
-    lastReconciledAt: row.last_reconciled_at,
+    // A read-only connection skips the column migration below, so a
+    // pre-migration row (from before these columns existed) comes back
+    // through `SELECT *` with these keys simply absent, not null.
+    pausedDecisionId: row.paused_decision_id ?? null,
+    githubStatusFieldId: row.github_status_field_id ?? null,
+    githubStatusOptions: parseOptions(row.github_status_options_json ?? null),
+    lastReconciledAt: row.last_reconciled_at ?? null,
     projectionInFlight: row.projection_in_flight === 1
   };
 }

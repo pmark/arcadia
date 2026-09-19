@@ -3,8 +3,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runScheduleLogCommand, runScheduleStatusCommand } from "../src/commands/schedule.js";
-import { withDatabase } from "../src/db/connection.js";
+import { openReadOnlyDatabase, withDatabase } from "../src/db/connection.js";
 import { upsertProject } from "../src/db/repositories.js";
+import { getSchedulingProject } from "../src/scheduling/store.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const temporary: string[] = [];
@@ -40,6 +41,52 @@ describe("schedule status/log on a workspace without the scheduling tables", () 
     const root = workspaceMissingSchedulingTables();
     const response = runScheduleLogCommand({ workspace: root });
     expect(response.data.entries).toEqual([]);
+  });
+
+  it("normalizes a pre-migration scheduling_projects row instead of returning undefined for later columns", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-schedule-readonly-"));
+    temporary.push(root);
+    initWorkspace(root);
+    withDatabase(root, (db) => {
+      // Recreate the table as it looked before paused_decision_id,
+      // github_status_field_id, github_status_options_json,
+      // last_reconciled_at, and projection_in_flight were added.
+      db.exec(`
+        DROP TABLE scheduling_projects;
+        CREATE TABLE scheduling_projects (
+          project_slug TEXT PRIMARY KEY,
+          priority INTEGER NOT NULL DEFAULT 1000,
+          github_owner TEXT,
+          github_project_number INTEGER,
+          github_project_id TEXT,
+          github_repository TEXT,
+          last_projected_revision INTEGER NOT NULL DEFAULT -1,
+          last_projected_order_json TEXT NOT NULL DEFAULT '[]',
+          failed_runs INTEGER NOT NULL DEFAULT 0,
+          failed_runs_milestone TEXT,
+          paused_reason TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `);
+      db.prepare(
+        `INSERT INTO scheduling_projects (project_slug, priority, last_projected_order_json, created_at, updated_at)
+         VALUES ('pre-migration-project', 500, '[]', '2020-01-01', '2020-01-01')`
+      ).run();
+    });
+
+    const db = openReadOnlyDatabase(root);
+    try {
+      const record = getSchedulingProject(db, "pre-migration-project");
+      expect(record.priority).toBe(500);
+      expect(record.pausedDecisionId).toBeNull();
+      expect(record.githubStatusFieldId).toBeNull();
+      expect(record.githubStatusOptions).toBeNull();
+      expect(record.lastReconciledAt).toBeNull();
+      expect(record.projectionInFlight).toBe(false);
+    } finally {
+      db.close();
+    }
   });
 
   it("a later writable open still creates the tables normally", () => {
