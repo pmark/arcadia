@@ -93,9 +93,14 @@ function appendClaudePlanFile(result: string, plansDir = path.join(os.homedir(),
   } catch {
     return result;
   }
-  for (const match of result.matchAll(/(\/[^\s`'"*()<>]+\.md)\b/g)) {
+  // Backtick spans may hold spaces; bare paths cannot.
+  const candidates = [
+    ...[...result.matchAll(/`(\/[^`\n]+\.md)`/g)].map((match) => match[1]),
+    ...[...result.matchAll(/(\/[^\s`'"*()<>]+\.md)\b/g)].map((match) => match[1])
+  ];
+  for (const candidate of candidates) {
     try {
-      const real = realpathSync(match[1]);
+      const real = realpathSync(candidate);
       if (!real.startsWith(`${root}${path.sep}`)) continue;
       const stat = statSync(real);
       if (!stat.isFile() || stat.size === 0 || stat.size > MAX_PLAN_FILE_BYTES) continue;

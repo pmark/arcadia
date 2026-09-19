@@ -87,6 +87,16 @@ describe("coding-agent CLI adapters", () => {
       expect(message).toContain("## Ordered Phases");
     });
 
+    it("accepts a plan filename containing spaces when quoted in backticks", () => {
+      const root = createRoot();
+      const plans = path.join(root, "plans");
+      mkdirSync(plans);
+      const planFile = path.join(plans, "release plan.md");
+      writeFileSync(planFile, "## Ordered Phases\n1. Ship.\n", "utf8");
+
+      expect(claudeResult(root, plans, `Plan saved to \`${planFile}\`.`)).toContain("## Ordered Phases");
+    });
+
     it("leaves the message alone when no plan file is named", () => {
       const root = createRoot();
       const plans = path.join(root, "plans");
