@@ -137,15 +137,47 @@ export async function requestCandidatePreservation(source: string) {
   try { writeFileSync(fd, JSON.stringify({ nonce })); } finally { closeSync(fd); }
   const response = responsePath(workspace, lease.id, nonce);
   const deadline = Date.now() + 1_230_000; // ten bounded two-minute checks plus transport margin
-  while (Date.now() < deadline) {
-    if (existsSync(response)) {
-      const result = JSON.parse(readFileSync(response, "utf8"));
-      if (!result.ok) throw validationError(result.error);
-      return result.response;
+  try {
+    while (Date.now() < deadline) {
+      if (existsSync(response)) {
+        const result = JSON.parse(readFileSync(response, "utf8"));
+        if (!result.ok) throw validationError(result.error);
+        return result.response;
+      }
+      await new Promise(resolve => setTimeout(resolve, 250));
     }
-    await new Promise(resolve => setTimeout(resolve, 250));
+    throw validationError("Protected preservation response timed out; retain candidate and inspect the host worker. Retry is safe.");
+  } finally {
+    // Remove only this caller's untracked request on every exit path, never
+    // another caller's or a tracked file, matching requestAgentGo. A hard kill
+    // may still leave it behind; cleanliness and capture exclude the reserved name.
+    try {
+      assertUntrackedPreserveRequest(candidate);
+      if (readPreserveRequest(request)?.nonce === nonce) unlinkSync(request);
+    } catch { /* The host may already have consumed it or retired the candidate. */ }
   }
-  throw validationError("Protected preservation response timed out; retain candidate and inspect the host worker. Retry is safe.");
+}
+
+function assertUntrackedPreserveRequest(source: string): void {
+  if (git(source, ["ls-files", "--", PRESERVATION_REQUEST_FILE])) {
+    throw validationError("The preservation transport file must not be tracked.", { source });
+  }
+}
+
+function readPreserveRequest(request: string): { nonce: string } | undefined {
+  try {
+    const fd = openSync(request, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    try {
+      const stat = fstatSync(fd);
+      if (!stat.isFile() || stat.size > 128) return;
+      const bytes = Buffer.alloc(129);
+      const length = readSync(fd, bytes, 0, bytes.length, 0);
+      if (length > 128) return;
+      const value = JSON.parse(bytes.subarray(0, length).toString("utf8"));
+      if (Object.keys(value).join() !== "nonce" || !NONCE.test(value.nonce)) return;
+      return { nonce: value.nonce };
+    } finally { closeSync(fd); }
+  } catch { return; }
 }
 
 /** The sandbox can ask the host worker to perform canonical `arcadia go` for
@@ -238,20 +270,8 @@ export function processPreservationRequests(db: Database.Database, workspace: st
     processGoRequest({ workspace, source: lease.worktree_path });
     const request = path.join(lease.worktree_path, PRESERVATION_REQUEST_FILE);
     if (!existsSync(request)) continue;
-    let nonce: string;
-    try {
-      const fd = openSync(request, constants.O_RDONLY | constants.O_NOFOLLOW);
-      try {
-        const stat = fstatSync(fd);
-        if (!stat.isFile() || stat.size > 128) continue;
-        const bytes = Buffer.alloc(129);
-        const length = readSync(fd, bytes, 0, bytes.length, 0);
-        if (length > 128) continue;
-        const value = JSON.parse(bytes.subarray(0, length).toString("utf8"));
-        if (Object.keys(value).join() !== "nonce" || !NONCE.test(value.nonce)) continue;
-        nonce = value.nonce;
-      } finally { closeSync(fd); }
-    } catch { continue; }
+    const nonce = readPreserveRequest(request)?.nonce;
+    if (!nonce) continue;
     const response = responsePath(workspace, lease.id, nonce);
     if (existsSync(response)) continue;
     // Brief ownership transaction only. Never hold a workspace write lock while

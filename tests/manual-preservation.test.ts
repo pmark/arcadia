@@ -1,8 +1,10 @@
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fixtureGit, preservationFixture } from "../scripts/preservation-fixture.js";
 import { withDatabase } from "../src/db/connection.js";
+import { uncommittedChanges } from "../src/git/worktrees.js";
 import { runAdvanceCommand } from "../src/commands/advance.js";
 import { runGoCommand } from "../src/commands/go.js";
 import { bindManualPreservation, assertManualPreservationBinding } from "../src/sessions/manualPreservation.js";
@@ -90,6 +92,88 @@ describe("manual Go preservation binding", () => {
     withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace));
     await expect(pending).resolves.toEqual(response);
     expect(host).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ source: f.candidate, workspace: f.workspace }));
+  });
+  describe("the preservation request marker is cleaned up by its own requester", () => {
+    const marker = (f: ReturnType<typeof fixture>) => path.join(f.candidate, ".arcadia-preserve-request");
+    const ready = (f: ReturnType<typeof fixture>) => {
+      vi.stubEnv("ARCADIA_WORKSPACE", f.workspace);
+      withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace));
+    };
+    const service = (f: ReturnType<typeof fixture>) =>
+      withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace));
+
+    it("clears the marker after a successful response, and it never trips a cleanliness check while pending", async () => {
+      const f = fixture(); ready(f);
+      const response = { ok: true, command: "preserve", data: { receipt: { commitSha: "fixture-only" } } };
+      vi.spyOn(preserve, "runPreserveCommand").mockReturnValue(response as never);
+      const pending = requestCandidatePreservation(f.candidate);
+      expect(existsSync(marker(f))).toBe(true);
+      expect(uncommittedChanges(f.candidate).join("\n")).not.toContain(".arcadia-preserve-request");
+      service(f);
+      await expect(pending).resolves.toEqual(response);
+      expect(existsSync(marker(f))).toBe(false);
+    });
+
+    it("clears the marker when the host refuses", async () => {
+      const f = fixture(); ready(f);
+      vi.spyOn(preserve, "runPreserveCommand").mockImplementation(() => { throw new Error("host refused"); });
+      const pending = requestCandidatePreservation(f.candidate);
+      service(f);
+      await expect(pending).rejects.toThrow();
+      expect(existsSync(marker(f))).toBe(false);
+      expect(uncommittedChanges(f.candidate).join("\n")).not.toContain(".arcadia-preserve-request");
+    });
+
+    it("clears the marker on timeout so an immediate retry is not blocked", async () => {
+      vi.useFakeTimers();
+      try {
+        const f = fixture(); ready(f);
+        const first = requestCandidatePreservation(f.candidate);
+        const rejected = expect(first).rejects.toThrow("timed out");
+        await vi.advanceTimersByTimeAsync(1_230_000 + 500);
+        await rejected;
+        expect(existsSync(marker(f))).toBe(false);
+
+        // A healthy tick republishes the projection, then the retry succeeds.
+        service(f);
+        const response = { ok: true, command: "preserve", data: { receipt: { commitSha: "fixture-only" } } };
+        vi.spyOn(preserve, "runPreserveCommand").mockReturnValue(response as never);
+        const retry = requestCandidatePreservation(f.candidate);
+        expect(existsSync(marker(f))).toBe(true);
+        service(f);
+        await vi.advanceTimersByTimeAsync(500);
+        await expect(retry).resolves.toEqual(response);
+        expect(existsSync(marker(f))).toBe(false);
+      } finally { vi.useRealTimers(); }
+    });
+
+    it("never removes a marker carrying another caller's nonce", async () => {
+      vi.useFakeTimers();
+      try {
+        const f = fixture(); ready(f);
+        const pending = requestCandidatePreservation(f.candidate);
+        const rejected = expect(pending).rejects.toThrow("timed out");
+        writeFileSync(marker(f), JSON.stringify({ nonce: randomUUID() }));
+        await vi.advanceTimersByTimeAsync(1_230_000 + 500);
+        await rejected;
+        expect(existsSync(marker(f))).toBe(true);
+      } finally { vi.useRealTimers(); }
+    });
+
+    it("leaves a tracked file at the reserved name alone", async () => {
+      vi.useFakeTimers();
+      try {
+        const f = fixture(); ready(f);
+        writeFileSync(marker(f), "tracked content");
+        fixtureGit(f.candidate, ["add", "-f", ".arcadia-preserve-request"]);
+        fixtureGit(f.candidate, ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-m", "track marker"]);
+        const pending = requestCandidatePreservation(f.candidate);
+        const rejected = expect(pending).rejects.toThrow("timed out");
+        await vi.advanceTimersByTimeAsync(1_230_000 + 500);
+        await rejected;
+        expect(existsSync(marker(f))).toBe(true);
+      } finally { vi.useRealTimers(); }
+    });
   });
   it("refuses a stale base or switched candidate branch", () => {
     const f = fixture(); const binding = bind(f);
