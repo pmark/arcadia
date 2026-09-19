@@ -34,7 +34,7 @@ describe("schedule status/log on a workspace without the scheduling tables", () 
     const root = workspaceMissingSchedulingTables();
     const response = runScheduleStatusCommand({ workspace: root });
     expect(response.data.schedule.projects).toHaveLength(1);
-    expect(response.data.schedule.projects[0]!.record.priority).toBe(1000);
+    expect(response.data.schedule.projects[0].record.priority).toBe(1000);
   });
 
   it("schedule log succeeds with an empty result instead of failing to write a readonly database", () => {
