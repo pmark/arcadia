@@ -8,6 +8,7 @@ import { buildDashboardSnapshot } from "../src/dashboard/snapshot.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
   countRows,
+  createExecutionPlan,
   createProjectWithInitialWork,
   createWorkItemWithOptionalArtifact,
   getWorkItem,
@@ -15,6 +16,7 @@ import {
   updateWorkItem,
   upsertProjectMetadata
 } from "../src/db/repositories.js";
+import { ensureBuiltInSkills } from "../src/execution/skills.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -191,6 +193,33 @@ describe("Daily Advantage existing-Action planning preparation", () => {
     // The declared criteria are the contract, so they lead; the generated
     // guardrails still follow rather than being replaced.
     expect(criteria.indexOf("safe area")).toBeLessThan(criteria.indexOf("Keep the plan aligned with"));
+  });
+
+  it("ignores an unprepared operator-review-only plan instead of refusing to prepare a packet", () => {
+    const fixture = createRebusterFixture();
+    withDatabase(fixture.workspace, (db) => {
+      ensureBuiltInSkills(db);
+      createExecutionPlan(db, {
+        workItemId: fixture.workItemId,
+        summary: "Parked while the Action was in requires_review",
+        steps: [
+          {
+            skillName: "requires_review_decision",
+            title: "Surface required review",
+            command: null,
+            executorType: "operator",
+            safeToRun: false,
+            needsOperator: "Revise the planning request or packet before creating a new Decision."
+          }
+        ]
+      });
+    });
+
+    const prepared = runWorkPlanCommand({ workspace: fixture.workspace, workId: fixture.workItemId });
+
+    expect(prepared.data.plan.steps).toHaveLength(1);
+    expect(prepared.data.plan.steps[0]).toMatchObject({ executor_type: "codex_planning" });
+    expect(prepared.data.codexInvocation).toMatchObject({ purpose: "planning", status: "packet_created" });
   });
 
   it("falls back to generated criteria when the Action declares none", () => {
