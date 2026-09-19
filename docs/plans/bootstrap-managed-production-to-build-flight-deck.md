@@ -1189,6 +1189,22 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/411"]
+  - id: gate-prepared-dispatch-on-transport-readiness
+    title: Add deterministic prepared-dispatch admission checks that refuse task preparation until the selected profile can access the resolved workspace database and fresh Go and preservation transport heartbeats are available.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Add deterministic prepared-dispatch admission checks that refuse task preparation until the selected profile can access the resolved workspace database and fresh Go and preservation transport heartbeats are available.
+    expected_artifact: Evidence satisfying Agent Ask gate-prepared-dispatch-on-transport-readiness
+    clarification: clarified
+    confidence: high
+    source: Agent Ask promote-pre-dispatch-transport-readiness-2026-09-19
+    acceptance_criteria:
+      - A deterministic pre-dispatch check refuses preparation with an actionable remedy when the workspace database cannot be opened by the selected agent profile.
+      - A deterministic pre-dispatch check refuses preparation when either Go-capable or preservation transport lacks a fresh heartbeat, before a coding agent is started.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/411", "src/goBroker.ts", "src/sessions/preservationTransport.ts"]
 questions: []
 decisions: []
 current_action: restore-preservation-worker-heartbeat
