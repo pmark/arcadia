@@ -1125,13 +1125,9 @@ function updatedFields(options: WorkUpdateOptions): string[] {
 }
 
 /**
- * Accepting a validated planning Artifact for a governed plan-document Action
- * is the moment its implementation becomes launchable. Prepare the immutable
- * build packet there, in the caller's transaction, and record it on the
- * acceptance Decision as the build authority -- the same receipt Project-idea
- * promotion writes -- so managed production needs no second hand-run command.
- * That authority covers one guarded Session and nothing else. No separate
- * build approval is opened, because approving one would queue a legacy Run.
+ * Prepare the immutable build packet when a governed planning Artifact is
+ * accepted. The acceptance Decision is the single authority for this Session;
+ * no second approval Decision is created and no Run is started.
  */
 export function prepareBuildPacketForAcceptedPlan(
   db: Parameters<typeof getWorkItem>[0],
@@ -1147,9 +1143,9 @@ export function prepareBuildPacketForAcceptedPlan(
   const latestPlan = getLatestExecutionPlanForWorkItem(db, workItem.id);
   const reusablePlan = reusableUnpreparedBuildPlan(latestPlan);
   const plan = (reusablePlan && !getCodexInvocationForPlan(db, { workItemId: workItem.id, planId: reusablePlan.id, purpose: "build" })
-    ? reusablePlan
-    : null)
-    ?? createExecutionPlan(db, {
+     ? reusablePlan
+     : null)
+     ?? createExecutionPlan(db, {
       workItemId: workItem.id,
       summary: `Execution plan for "${workItem.title}".`,
       steps: [{
@@ -1246,8 +1242,7 @@ function ensureBuildPacketForPlan(
   packetArtifact: ArtifactSummary;
 } {
   const { invocation, packetArtifact } = ensureBuildPacketOnly(db, workspacePath, workItem, plan, registries, planStepId, requestedProfile);
-
-  const existingApproval = listReviewItems(db, "all").find((item) =>
+    const existingApproval = listReviewItems(db, "all").find((item) =>
     item.work_item_id === workItem.id &&
     item.codex_invocation_id === invocation.id &&
     item.resolved_intent === "CodexBuildPacketApproval" &&

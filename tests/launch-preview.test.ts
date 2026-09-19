@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -117,6 +117,49 @@ describe("buildLaunchPreview", () => {
     expect(lifecycle.remedy).toContain("planning only, not implementation");
   });
 
+  it("is Ready after accepting a governed plan whose Action has no execution requirement", () => {
+    const fixture = preparedFixture({ skipInvocation: true });
+    const acceptance = withDatabase(fixture.workspace, (db) => {
+      const workItem = getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!;
+      const decision = createReviewItem(db, {
+        workItemId: workItem.id,
+        projectId: workItem.project_id,
+        decisionNeeded: "Accept the validated planning Artifact.",
+        sourceInput: "fixture",
+        proposedAction: "Accept the plan.",
+        resolvedIntent: "CodexPlanningArtifactAcceptance",
+        confidenceLabel: "high",
+        confidence: 1,
+        missingFields: []
+      });
+      const packet = prepareBuildPacketForAcceptedPlan(db, fixture.workspace, workItem, decision.id);
+      expect(packet.invocation).toMatchObject({
+        provider_mapping_id: "bundled-2026-07-25.1",
+        provider_binding_id: "codex-terra"
+      });
+      updateReviewItemStatus(db, decision.id, { status: "approved", decisionNote: "Accepted." });
+      return decision;
+    });
+
+    const preview = withReadOnlyDatabase(fixture.workspace, (db) =>
+      buildLaunchPreview({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "req-accepted-plan-without-requirement",
+        profiles,
+        adapters: defaultAdapters as ProviderAdapterRegistry
+      })
+    );
+
+    expect(preview.prerequisites).toEqual([]);
+    expect(preview.ready).toBe(true);
+    expect(preview.packetLifecycle?.kind).toBe("build_packet_ready");
+    expect(preview.authorizingDecisions).toContain(acceptance.id);
+    expect(preview.selection).toMatchObject({ provider: "codex-cli", model: "gpt-5.6-terra" });
+  });
+
   it("reports Ready for an accepted plan once its prepared build approval is approved", () => {
     const fixture = preparedFixture({ skipInvocation: true });
     const approval = withDatabase(fixture.workspace, (db) => {
@@ -133,13 +176,7 @@ describe("buildLaunchPreview", () => {
         missingFields: []
       });
       const prepared = prepareBuildPacketForAcceptedPlan(db, fixture.workspace, workItem, acceptance.id);
-      // This fixture Action declares no execution requirement, so the packet
-      // records no provider selection. Record the one an Action with a
-      // requirement would have, so this test isolates the approval mechanic.
-      const metadataPath = path.join(fixture.workspace, path.dirname(prepared.invocation.prompt_path), "metadata.json");
-      const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
-      metadata.providerSelection = { provider: "claude-code-cli", model: "sonnet", mappingId: "fixture-map", bindingId: "fixture-binding" };
-      writeFileSync(metadataPath, JSON.stringify(metadata));
+      expect(prepared.invocation.provider_mapping_id).toBe("bundled-2026-07-25.1");
       return acceptance;
     });
     const preview = () =>

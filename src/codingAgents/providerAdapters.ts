@@ -196,6 +196,44 @@ export function selectCompliantCodingAgent(
   );
 }
 
+/**
+ * Bind an Action that predates execution requirements to the configured
+ * default profile's least-cost enabled mapping. The default profile is already
+ * the operator's choice; recording its binding makes the immutable packet
+ * launchable and auditable instead of silently leaving it unbound.
+ */
+export function selectDefaultCodingAgentConfiguration(
+  adapters: ProviderAdapterRegistry,
+  profile: CodingAgentProfile
+): SelectedCodingAgentConfiguration | null {
+  const providers = new Map(adapters.providers.map((provider) => [provider.id, provider]));
+  const candidates = adapters.bindings.flatMap((binding) => {
+    const provider = providers.get(binding.provider);
+    if (!binding.enabled || !provider?.enabled || !binding.agentProfiles.includes(profile.name)) {
+      return [];
+    }
+    const effort = leastSupportedEffort(binding, "e2_standard");
+    if (!effort) return [];
+    return [{
+      mappingId: adapters.mappingId,
+      bindingId: binding.id,
+      profile,
+      provider: binding.provider,
+      model: binding.model,
+      capability: binding.capability,
+      effort,
+      args: [...binding.modelArgs, ...(binding.effortArgs[effort] ?? [])],
+      costRank: binding.costRank
+    }];
+  });
+  candidates.sort((left, right) =>
+    left.costRank - right.costRank ||
+    capabilityRank(left.capability) - capabilityRank(right.capability) ||
+    left.bindingId.localeCompare(right.bindingId)
+  );
+  return candidates[0] ?? null;
+}
+
 export function validateProviderAdapterRegistry(
   registry: ProviderAdapterRegistry,
   profiles: CodingAgentProfile[]
