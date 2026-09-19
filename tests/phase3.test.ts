@@ -1165,6 +1165,23 @@ describe("arcadia ask command", () => {
       )}\n`,
       "utf8"
     );
+    const providerAdapters = JSON.parse(readFileSync(paths.providerAdapters, "utf8"));
+    providerAdapters.providers.push({ id: "fake-agent", enabled: true });
+    providerAdapters.bindings.push({
+      id: "fake-build",
+      provider: "fake-agent",
+      agentProfiles: ["fake_build"],
+      capability: "c2_integrated",
+      model: "fake-agent",
+      modelArgs: ["--model", "fake-agent"],
+      effortArgs: { e2_standard: [] },
+      tools: true,
+      contextScopes: ["local"],
+      locality: "local",
+      costRank: 1,
+      enabled: true
+    });
+    writeFileSync(paths.providerAdapters, `${JSON.stringify(providerAdapters, null, 2)}\n`, "utf8");
 
     const reviewAsk = runAskCommand({
       workspace,
