@@ -739,7 +739,9 @@ agent must automatically:
 4. commit the reconciliation on the candidate branch and push it; and
 5. rerun the complete CodeRabbit loop and required checks against the new head
    before handoff, repeating the repair/push/review cycle until the PR is
-   mergeable or the allowed repair cap is reached.
+   mergeable or the three-round CodeRabbit repair cap is reached. If required
+   checks remain red at that cap, stop the automatic cycle and report the exact
+   unresolved checks and recovery attempted as a concrete blocker.
 
 Do not leave a PR in a conflicted, failing, or otherwise non-mergeable state
 with a narrative status report or ask the operator to perform these routine
