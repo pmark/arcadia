@@ -939,7 +939,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/269", "https://github.com/pmark/arcadia/issues/270", "src/utils/slug.ts", "src/ask/settlement.ts"]
   - id: clean-up-preserve-transport-request
     title: The preservation requester removes its own reserved transport file on every exit path, matching the go transport, so a refusal or timeout never dirties the candidate worktree.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: The preservation requester removes its own reserved transport file on every exit path, matching the go transport, so a refusal or timeout never dirties the candidate worktree.
@@ -1175,7 +1175,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: clean-up-preserve-transport-request
+current_action: fix-accepted-plan-to-build-packet-path
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

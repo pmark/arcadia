@@ -361,3 +361,10 @@ updated: 2026-09-19
 - **Result:** Every declared acceptance criterion was accepted as met: "A plan-mode planning Run whose plan is written by Claude passes codex_planning_artifact_validation."; "A test reproduces the plan-in-plan-file, summary-in-final.md case and fails before the fix.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-fix-plan-mode-planning-artifact-2026-09-19).
+
+## 2026-09-19 — Completed arcadia/clean-up-preserve-transport-request
+
+- **Did:** Completed Action arcadia/clean-up-preserve-transport-request from accepted evidence (Candidate f207a497810b2b9af1d7ec44cce678ba077a0912).
+- **Result:** Every declared acceptance criterion was accepted as met: "requestCandidatePreservation removes its own .arcadia-preserve-request file on success, refusal, and timeout, exactly as requestAgentGo does in its finally block; it removes only its own nonce and never another caller's or a tracked file (fixes Issue #272)."; "Deterministic tests prove a refused or timed-out preservation request leaves the candidate worktree clean and cannot trip an arcadia go cleanliness check, while a successful request still returns its host response."; "Existing preservation transport and managed-production tick behavior is unchanged; pnpm test and the core, Discord, and Dashboard builds pass."; "The Action closes GitHub Issue #272 when it merges.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-clean-up-preserve-transport-request-2026-09-19).
