@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { validationError } from "../cli/errors.js";
+import { PRESERVATION_REQUEST_FILE } from "../sessions/candidateSnapshot.js";
 import { GO_REQUEST_FILE } from "../sessions/goRequestProtocol.js";
 
 /**
@@ -45,12 +46,12 @@ export function existingDirectory(input: string, label: string): string {
   return realpathSync(resolved);
 }
 
-/** Uncommitted work, excluding only the untracked reserved go request and any
+/** Uncommitted work, excluding only the untracked reserved go and preservation requests and any
  * caller-named untracked paths (repo-relative, e.g. an Agent Ask file a
  * settlement is about to consume and archive in the same transaction). A
  * tracked file at one of those paths remains dirty and is still refused. */
 export function uncommittedChanges(cwd: string, ignoreUntracked: string[] = []): string[] {
-  const ignored = new Set([GO_REQUEST_FILE, ...ignoreUntracked]);
+  const ignored = new Set([GO_REQUEST_FILE, PRESERVATION_REQUEST_FILE, ...ignoreUntracked]);
   return git(cwd, ["status", "--porcelain=v1", "--untracked-files=all"])
     .split("\n")
     .filter(line => Boolean(line) && !(line.startsWith("?? ") && ignored.has(line.slice(3))));
