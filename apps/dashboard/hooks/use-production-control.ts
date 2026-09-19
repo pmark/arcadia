@@ -48,7 +48,8 @@ export function useProductionControl() {
   // `force` skips joining an in-flight GET: after a toggle, that GET may carry
   // the pre-toggle state. The sequence check makes any superseded response a no-op.
   const load = useCallback(async (part: Part, force = false): Promise<void> => {
-    if (!force && inFlight.current[part]) return inFlight.current[part]!;
+    const existing = inFlight.current[part];
+    if (!force && existing) return existing;
     const sequence = ++sequences.current[part];
     const run = (async () => {
       try {

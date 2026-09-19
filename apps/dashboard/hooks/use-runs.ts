@@ -29,7 +29,6 @@ export function useRuns(historyOpen: boolean) {
   const activeRef = useRef(false);
   const timerRef = useRef<number | null>(null);
   const disposedRef = useRef(false);
-  historyRef.current = historyOpen;
 
   const refresh = useCallback(async (): Promise<void> => {
     setRefreshing(true);
@@ -54,6 +53,8 @@ export function useRuns(historyOpen: boolean) {
   }, []);
 
   useEffect(() => {
+    // Sync the ref before refreshing so the request sees the new history state.
+    historyRef.current = historyOpen;
     void refresh();
   }, [refresh, historyOpen]);
 
