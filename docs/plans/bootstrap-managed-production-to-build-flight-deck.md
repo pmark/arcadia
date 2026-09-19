@@ -1126,6 +1126,22 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: fix-plan-mode-planning-artifact
+    title: Make a claude --print --permission-mode plan planning Run produce a plan that passes planning-artifact validation, by carrying the full plan in final.md or reading the plan file Claude wrote.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make a claude --print --permission-mode plan planning Run produce a plan that passes planning-artifact validation, by carrying the full plan in final.md or reading the plan file Claude wrote.
+    expected_artifact: Evidence satisfying Agent Ask fix-plan-mode-planning-artifact
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-mode-planning-artifact-2026-09-19
+    acceptance_criteria:
+      - A plan-mode planning Run whose plan is written by Claude passes codex_planning_artifact_validation.
+      - A test reproduces the plan-in-plan-file, summary-in-final.md case and fails before the fix.
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
 current_action: clean-up-preserve-transport-request
