@@ -75,7 +75,9 @@ export function writeFailure(response: CommandFailure, context: CommandContext):
     return;
   }
 
-  process.stderr.write(`Error [${response.error.code}]: ${response.error.message}\n`);
+  const cause = response.error.details?.cause;
+  const causeLine = typeof cause === "string" ? `\nCause: ${cause}` : "";
+  process.stderr.write(`Error [${response.error.code}]: ${response.error.message}${causeLine}\n`);
 }
 
 export function wantsJson(argv: string[]): boolean {
