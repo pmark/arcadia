@@ -432,11 +432,15 @@ function claimsValidationCommandsExecuted(artifactText: string): boolean {
   return validationClaimEvidence(artifactText).length > 0;
 }
 
+// "no validation ran" disclaims execution; only an affirmative claim counts.
+const NEGATED_VALIDATION_CLAIM =
+  /\b(?:no|not|never|nothing|without|neither|nor|none)\b[^.;\n]*\b(?:tests?|lint|validation|checks?)\s+(?:passed|completed|succeeded|ran|were run)\b/i;
+
 function validationClaimEvidence(artifactText: string): string[] {
   return matchingLines(artifactText, [
     /\b(?:tests?|lint|validation|checks?)\s+(?:passed|completed|succeeded|ran|were run)\b/i,
     /\b(?:ran|executed|completed)\s+`?(?:pnpm|npm|yarn|bun|vitest|pytest|cargo|go test|swift test|xcodebuild|make)\b/i
-  ]);
+  ]).filter((line) => !NEGATED_VALIDATION_CLAIM.test(line));
 }
 
 function approvalContradictionEvidence(
