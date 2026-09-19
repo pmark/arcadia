@@ -1191,7 +1191,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/411"]
 questions: []
 decisions: []
-current_action: fix-packet-lifecycle-latest-planning-decision
+current_action: restore-preservation-worker-heartbeat
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
