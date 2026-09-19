@@ -20,7 +20,7 @@ import type { CodingAgentProfile } from "../src/intent/registries.js";
 import { prepareSession } from "../src/sessions/index.js";
 import { buildLaunchPreview, LAUNCH_ADAPTER_SUPPORT } from "../src/sessions/launchPreview.js";
 import { resolvePacketLifecycle } from "../src/sessions/packetLifecycle.js";
-import { runWorkPlanCommand } from "../src/commands/work.js";
+import { prepareBuildPacketForAcceptedPlan, runWorkPlanCommand } from "../src/commands/work.js";
 import { resolveDispatch } from "../src/docs/dispatch.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -115,6 +115,49 @@ describe("buildLaunchPreview", () => {
       decisionId: prepared.data.planningDecision!.id
     });
     expect(lifecycle.remedy).toContain("planning only, not implementation");
+  });
+
+  it("is Ready after accepting a governed plan whose Action has no execution requirement", () => {
+    const fixture = preparedFixture({ skipInvocation: true });
+    const acceptance = withDatabase(fixture.workspace, (db) => {
+      const workItem = getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!;
+      const decision = createReviewItem(db, {
+        workItemId: workItem.id,
+        projectId: workItem.project_id,
+        decisionNeeded: "Accept the validated planning Artifact.",
+        sourceInput: "fixture",
+        proposedAction: "Accept the plan.",
+        resolvedIntent: "CodexPlanningArtifactAcceptance",
+        confidenceLabel: "high",
+        confidence: 1,
+        missingFields: []
+      });
+      const packet = prepareBuildPacketForAcceptedPlan(db, fixture.workspace, workItem, decision.id);
+      expect(packet.invocation).toMatchObject({
+        provider_mapping_id: "bundled-2026-07-25.1",
+        provider_binding_id: "codex-terra"
+      });
+      updateReviewItemStatus(db, decision.id, { status: "approved", decisionNote: "Accepted." });
+      return decision;
+    });
+
+    const preview = withReadOnlyDatabase(fixture.workspace, (db) =>
+      buildLaunchPreview({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "req-accepted-plan-without-requirement",
+        profiles,
+        adapters: defaultAdapters as ProviderAdapterRegistry
+      })
+    );
+
+    expect(preview.prerequisites).toEqual([]);
+    expect(preview.ready).toBe(true);
+    expect(preview.packetLifecycle?.kind).toBe("build_packet_ready");
+    expect(preview.authorizingDecisions).toContain(acceptance.id);
+    expect(preview.selection).toMatchObject({ provider: "codex-cli", model: "gpt-5.6-terra" });
   });
 
   it("names a changed packet's stale authority as a prerequisite instead of throwing", () => {

@@ -7,7 +7,7 @@ import type { CodexInvocationPurpose } from "../domain/constants.js";
 import type { ProjectContext, WorkItemSummary } from "../domain/types.js";
 import type { CodingAgentProfile, TemplateDefinition } from "../intent/registries.js";
 import type { ProviderAdapterRegistry, SelectedCodingAgentConfiguration } from "../codingAgents/providerAdapters.js";
-import { selectCompliantCodingAgent } from "../codingAgents/providerAdapters.js";
+import { selectCompliantCodingAgent, selectDefaultCodingAgentConfiguration } from "../codingAgents/providerAdapters.js";
 import {
   parseExecutionRequirement,
   type ExecutionPhase,
@@ -222,14 +222,17 @@ export function selectAgentProfileForWorkItem(input: {
   defaults?: Partial<Record<"planning" | "build", string>>;
 }): AgentProfileSelection {
   if (!input.workItem.execution_requirement_json || !input.adapters) {
+    const profile = selectAgentProfile(
+      input.profiles,
+      input.purpose,
+      input.requestedName,
+      input.defaults
+    );
     return {
-      profile: selectAgentProfile(
-        input.profiles,
-        input.purpose,
-        input.requestedName,
-        input.defaults
-      ),
-      configuration: null,
+      profile,
+      configuration: input.adapters
+        ? selectDefaultCodingAgentConfiguration(input.adapters, profile)
+        : null,
       executionRequirement: null
     };
   }

@@ -26,6 +26,7 @@ import {
   getReviewItemForInvocation,
   archiveWorkItem,
   getWorkItem,
+  mergeReviewItemContext,
   listArchivedWorkItems,
   listArtifacts,
   listReviewItems,
@@ -1123,7 +1124,56 @@ function updatedFields(options: WorkUpdateOptions): string[] {
   return fields;
 }
 
-function ensureBuildPacketForPlan(
+/**
+ * Prepare the immutable build packet when a governed planning Artifact is
+ * accepted. The acceptance Decision is the single authority for this Session;
+ * no second approval Decision is created and no Run is started.
+ */
+export function prepareBuildPacketForAcceptedPlan(
+  db: Parameters<typeof getWorkItem>[0],
+  workspacePath: string,
+  workItem: WorkItemSummary,
+  acceptanceDecisionId: string
+): { invocation: CodexInvocation; packetArtifact: ArtifactSummary } {
+  assertRequiredProjectRepoContext(db, workItem);
+  ensureBuiltInSkills(db);
+  const plan = reusableUnpreparedBuildPlan(getLatestExecutionPlanForWorkItem(db, workItem.id))
+    ?? createExecutionPlan(db, {
+      workItemId: workItem.id,
+      summary: `Execution plan for "${workItem.title}".`,
+      steps: [{
+        skillName: "codex_build",
+        title: "Prepare Codex handoff",
+        command: null,
+        executorType: "codex_build",
+        safeToRun: false,
+        needsOperator: "Codex execution requires explicit review or invocation."
+      }]
+    });
+  const buildStep = plan?.steps.find((step) => step.executor_type === "codex_build");
+  if (!plan || !buildStep) {
+    throw validationError("Accepted plan could not produce a build plan.", { actionId: workItem.id });
+  }
+  const registries = loadPhase3Registries(workspacePath);
+  validatePhase3Registries(registries);
+  const prepared = ensureBuildPacketOnly(db, workspacePath, workItem, plan, registries, buildStep.id);
+  const repoPath = (workItem.project_id ? getProjectMetadata(db, workItem.project_id)?.repo_path?.trim() : null) ?? "";
+  const actionDocRef = workItem.doc_ref?.trim() ?? "";
+  mergeReviewItemContext(db, acceptanceDecisionId, {
+    planningPromotion: {
+      actionId: actionDocRef.split("#").at(-1) ?? workItem.id,
+      actionDocRef,
+      repoPath,
+      buildProfile: prepared.invocation.agent_profile,
+      buildInvocationId: prepared.invocation.id,
+      buildPacketPath: prepared.invocation.prompt_path,
+      buildPacketSha256: packetSha256(path.join(workspacePath, prepared.invocation.prompt_path))
+    }
+  });
+  return prepared;
+}
+
+function ensureBuildPacketOnly(
   db: Parameters<typeof getWorkItem>[0],
   workspacePath: string,
   workItem: WorkItemSummary,
@@ -1132,7 +1182,6 @@ function ensureBuildPacketForPlan(
   planStepId: string,
   requestedProfile?: string
 ): {
-  approval: ReviewItemSummary;
   invocation: CodexInvocation;
   packetArtifact: ArtifactSummary;
 } {
@@ -1165,6 +1214,23 @@ function ensureBuildPacketForPlan(
     });
   }
 
+  return { invocation, packetArtifact };
+}
+
+function ensureBuildPacketForPlan(
+  db: Parameters<typeof getWorkItem>[0],
+  workspacePath: string,
+  workItem: WorkItemSummary,
+  plan: ExecutionPlanSummary,
+  registries: Phase3Registries,
+  planStepId: string,
+  requestedProfile?: string
+): {
+  approval: ReviewItemSummary;
+  invocation: CodexInvocation;
+  packetArtifact: ArtifactSummary;
+} {
+  const { invocation, packetArtifact } = ensureBuildPacketOnly(db, workspacePath, workItem, plan, registries, planStepId, requestedProfile);
   const existingApproval = listReviewItems(db, "all").find((item) =>
     item.work_item_id === workItem.id &&
     item.codex_invocation_id === invocation.id &&
