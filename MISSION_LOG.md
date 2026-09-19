@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-18
+updated: 2026-09-19
 ---
 
 # Mission Log: Arcadia
@@ -354,3 +354,10 @@ updated: 2026-09-18
 - **Result:** Every declared acceptance criterion was accepted as met: "A Project whose declared objective validation check needs installed dependencies can complete protected preservation, or Arcadia's own Project declares a genuine self-contained objective check that runs inside the existing sandbox; the chosen mechanism and its security boundary are documented, and no check that cannot run is left configured as if it could."; "The existing preservation invariants hold or any reviewed exception is narrower and bounded and named: no network, no source writes, regular files only, at most 64 MiB, temporary output only in the private scratch/TMPDIR."; "advance, go, and go-broker status report this as a named, actionable remedy instead of only validation_commands_missing when a declared check requires dependencies the sandbox refuses."; "Deterministic tests cover the chosen validation path including pass, fail, and refusal, and prove a check that cannot run reports refusal rather than readiness; existing codex and claude launch, refusal, and reconciliation behavior is unchanged; pnpm test and the core, Discord, and Dashboard builds pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-preserve-projects-with-dependencies-2026-09-18).
+
+## 2026-09-19 — Completed arcadia/fix-plan-mode-planning-artifact
+
+- **Did:** Completed Action arcadia/fix-plan-mode-planning-artifact from accepted evidence (Candidate 7916fa9919078d41e5016aa01e5b40857bb70e43).
+- **Result:** Every declared acceptance criterion was accepted as met: "A plan-mode planning Run whose plan is written by Claude passes codex_planning_artifact_validation."; "A test reproduces the plan-in-plan-file, summary-in-final.md case and fails before the fix.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-fix-plan-mode-planning-artifact-2026-09-19).

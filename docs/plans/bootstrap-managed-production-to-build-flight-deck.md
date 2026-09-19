@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to build Flight Deck
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-09-18
+updated: 2026-09-19
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -1128,7 +1128,7 @@ actions:
     references: []
   - id: fix-plan-mode-planning-artifact
     title: Make a claude --print --permission-mode plan planning Run produce a plan that passes planning-artifact validation, by carrying the full plan in final.md or reading the plan file Claude wrote.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make a claude --print --permission-mode plan planning Run produce a plan that passes planning-artifact validation, by carrying the full plan in final.md or reading the plan file Claude wrote.
@@ -1144,7 +1144,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: fix-plan-mode-planning-artifact
+current_action: clean-up-preserve-transport-request
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
