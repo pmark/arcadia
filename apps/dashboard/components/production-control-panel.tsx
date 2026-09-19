@@ -2,112 +2,138 @@
 
 import { AlertTriangle, ExternalLink } from "lucide-react";
 import { StatusBadge } from "./dashboard-ui";
-import type { ProductionControlData } from "../hooks/use-production-control";
+import type { ProductionAlertsData, ProductionCoreData, ProductionQueueData } from "../hooks/use-production-control";
 
 interface ProductionControlPanelProps {
-  data: ProductionControlData | null;
+  core: ProductionCoreData | null;
+  queue: ProductionQueueData | null;
+  alerts: ProductionAlertsData | null;
   error: string | null;
-  loading: boolean;
+  queueError: string | null;
+  alertsError: string | null;
   toggling: boolean;
   onToggle: (action: "activate" | "deactivate") => Promise<{ ok: boolean; error?: string }>;
 }
 
-export function ProductionControlPanel({ data, error, loading, toggling, onToggle }: ProductionControlPanelProps) {
-  if (loading && !data) {
-    return <div className="mb-6 h-40 animate-pulse rounded-md border border-line bg-panel" />;
-  }
+function Skeleton({ className }: { className: string }) {
+  return <div className={`animate-pulse rounded bg-line/60 ${className}`} aria-hidden="true" />;
+}
 
-  if (!data) {
-    return (
-      <div className="mb-6 rounded-md border border-clay bg-panel p-4 text-sm text-clay">
-        <div className="flex items-center gap-2 font-semibold">
-          <AlertTriangle className="h-4 w-4" aria-hidden="true" />
-          Production control unavailable
-        </div>
-        <p className="mt-2 text-ink">{error ?? "Could not load production status."}</p>
-      </div>
-    );
-  }
-
-  const policy = data.production.read.policy;
+export function ProductionControlPanel({ core, queue, alerts, error, queueError, alertsError, toggling, onToggle }: ProductionControlPanelProps) {
+  const policy = core?.production.read.policy;
   const active = policy?.desiredState === "active";
-  const scope = policy?.scope;
-  const providers = scope?.providers ?? [];
-  const project = data.schedule?.projects[0] ?? null;
+  const providers = policy?.scope?.providers ?? [];
+  const project = queue?.schedule?.projects[0] ?? null;
   const boardUrl = project?.github ? githubProjectUrl(project.github.owner, project.github.number) : null;
-  const alertCount = data.alerts.capacityRefusals.length + data.alerts.blockedDispatches.length;
+  const alertCount = alerts ? alerts.alerts.capacityRefusals.length + alerts.alerts.blockedDispatches.length : 0;
 
   return (
-    <section className="mb-6 grid min-w-0 gap-3 rounded-md border border-line bg-panel p-4 shadow-soft">
+    <section
+      aria-label="Production control"
+      aria-busy={!core || !queue || !alerts}
+      className="mb-6 grid min-w-0 gap-3 rounded-md border border-line bg-panel p-4 shadow-soft"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <ToggleSwitch
-            checked={active}
-            disabled={toggling}
-            onChange={(next) => void onToggle(next ? "activate" : "deactivate")}
-            label="Managed production"
-          />
-          <span className="text-sm font-semibold text-ink">
-            {active ? "Active" : "Inactive"}
-            {active && data.production.liveAdmissions > 0 ? ` · ${data.production.liveAdmissions} admitted` : ""}
-          </span>
+          {core ? (
+            <>
+              <ToggleSwitch
+                checked={active}
+                disabled={toggling}
+                onChange={(next) => void onToggle(next ? "activate" : "deactivate")}
+                label="Managed production"
+              />
+              <span className="text-sm font-semibold text-ink">
+                {active ? "Active" : "Inactive"}
+                {active && core.production.liveAdmissions > 0 ? ` · ${core.production.liveAdmissions} admitted` : ""}
+              </span>
+            </>
+          ) : (
+            <>
+              <Skeleton className="h-6 w-11 rounded-full" />
+              <Skeleton className="h-4 w-20" />
+            </>
+          )}
         </div>
         {error ? <span className="text-xs text-clay">{error}</span> : null}
       </div>
 
       <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <PanelStat label="Worker">
-          <StatusBadge status={data.worker.running ? "active" : "blocked"} label={data.worker.running ? "Running" : "Stopped"} />
-          {data.worker.running && data.worker.heartbeat.available ? (
-            <span className="mt-1 block text-xs text-muted">
-              {data.worker.heartbeat.fresh ? "Heartbeat fresh" : "Heartbeat stale"}
-            </span>
-          ) : null}
+          {core ? (
+            <>
+              <StatusBadge status={core.worker.running ? "active" : "blocked"} label={core.worker.running ? "Running" : "Stopped"} />
+              {core.worker.running && core.worker.heartbeat.available ? (
+                <span className="mt-1 block text-xs text-muted">
+                  {core.worker.heartbeat.fresh ? "Heartbeat fresh" : "Heartbeat stale"}
+                </span>
+              ) : null}
+            </>
+          ) : (
+            <Skeleton className="h-6 w-16" />
+          )}
         </PanelStat>
 
         <PanelStat label="Provider">
-          {providers.length > 0 ? (
-            <span className="text-sm font-medium text-ink">{providers.join(", ")}</span>
+          {core ? (
+            providers.length > 0 ? (
+              <span className="text-sm font-medium text-ink">{providers.join(", ")}</span>
+            ) : (
+              <span className="text-sm text-muted">None selected</span>
+            )
           ) : (
-            <span className="text-sm text-muted">None selected</span>
+            <Skeleton className="h-4 w-24" />
           )}
         </PanelStat>
 
         <PanelStat label="GitHub board">
-          {boardUrl ? (
-            <a
-              href={boardUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-sm font-medium text-steel hover:underline"
-            >
-              {project?.github?.repository} <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-            </a>
+          {queue ? (
+            boardUrl ? (
+              <a
+                href={boardUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-sm font-medium text-steel hover:underline"
+              >
+                {project?.github?.repository} <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+              </a>
+            ) : (
+              <span className="text-sm text-muted">Not linked</span>
+            )
+          ) : queueError ? (
+            <span className="text-sm text-clay">Unavailable</span>
           ) : (
-            <span className="text-sm text-muted">Not linked</span>
+            <Skeleton className="h-4 w-28" />
           )}
         </PanelStat>
 
         <PanelStat label="Alerts">
-          {alertCount === 0 ? (
-            <span className="text-sm text-muted">None</span>
+          {alerts ? (
+            alertCount === 0 ? (
+              <span className="text-sm text-muted">None</span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-sm font-medium text-clay">
+                <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+                {alertCount}
+              </span>
+            )
+          ) : alertsError ? (
+            <span className="text-sm text-clay">Unavailable</span>
           ) : (
-            <span className="inline-flex items-center gap-1 text-sm font-medium text-clay">
-              <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
-              {alertCount}
-            </span>
+            <Skeleton className="h-4 w-10" />
           )}
         </PanelStat>
       </div>
 
-      {alertCount > 0 ? (
+      {alertsError ? <p className="text-xs text-clay">Alerts unavailable: {alertsError}</p> : null}
+      {alerts && alertCount > 0 ? (
         <div className="grid min-w-0 gap-1.5 rounded-md border border-clay/30 bg-clay/5 p-3 text-xs text-ink">
-          {data.alerts.capacityRefusals.map((refusal) => (
+          {alerts.alerts.capacityRefusals.map((refusal) => (
             <div key={refusal.providerId}>
               <span className="font-semibold">{refusal.label}:</span> {refusal.reason}
             </div>
           ))}
-          {data.alerts.blockedDispatches.slice(0, 3).map((event) => (
+          {alerts.alerts.blockedDispatches.slice(0, 3).map((event) => (
             <div key={event.id}>
               <span className="font-semibold">{event.projectSlug ?? "dispatch"}:</span>{" "}
               {event.blockerFields.length > 0 ? event.blockerFields.join(", ") : "refused"}
@@ -120,7 +146,15 @@ export function ProductionControlPanel({ data, error, loading, toggling, onToggl
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
           Next up{project ? ` — ${project.projectName}` : ""}
         </h3>
-        {project && project.queue.length > 0 ? (
+        {!queue && queueError ? (
+          <p className="text-sm text-clay">Queue unavailable: {queueError}</p>
+        ) : !queue ? (
+          <div className="grid gap-2">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <Skeleton key={index} className="h-5 w-full" />
+            ))}
+          </div>
+        ) : project && project.queue.length > 0 ? (
           <ol className="grid min-w-0 gap-1.5">
             {project.queue.map((action) => (
               <li key={action.key} className="flex min-w-0 items-center gap-2 text-sm">

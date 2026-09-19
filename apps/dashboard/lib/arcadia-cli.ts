@@ -10,7 +10,9 @@ import type {
   DashboardSnapshotResponse,
   FeedbackListResponse,
   FeedbackRecordResponse,
+  DashboardAgentSession,
   DashboardOutstandingPullRequests,
+  DashboardRun,
   IngressActivityResponse,
   ProofTargetCheckResponse,
   ProofTargetListResponse,
@@ -342,6 +344,22 @@ export interface IntelligenceUsageResponse {
   summary: unknown;
 }
 
+export interface RunsSnapshotResponse {
+  runs: {
+    generatedAt: string;
+    activeAgentSessions: DashboardAgentSession[];
+    activeExecutionRuns: DashboardRun[];
+    recentRuns: DashboardRun[];
+  };
+}
+
+/** Lean Runs-page read model; `recentLimit` 0 skips history. */
+export async function loadRunsSnapshot(recentLimit = 0): Promise<ArcadiaJsonSuccess<RunsSnapshotResponse>> {
+  const args = ["dashboard", "runs"];
+  if (recentLimit > 0) args.push("--limit", String(recentLimit));
+  return runArcadiaCliJson<RunsSnapshotResponse>(args);
+}
+
 export interface ProductionScopeInfo {
   intent: string;
   projects: string[];
@@ -562,13 +580,20 @@ export async function getIntelligenceUsage(options: { refresh?: boolean } = {}):
   return runArcadiaCliJson<IntelligenceUsageResponse>(args);
 }
 
+let resolvedWorkspace: { path: string; at: number } | null = null;
+const WORKSPACE_CACHE_MS = 30_000;
+
 export async function resolveDashboardWorkspace(): Promise<string> {
+  // Resolving spawns a CLI process, so reuse the answer briefly. The TTL keeps a
+  // changed default workspace from being served for the life of the process.
+  if (resolvedWorkspace && Date.now() - resolvedWorkspace.at < WORKSPACE_CACHE_MS) return resolvedWorkspace.path;
   const response = await runArcadiaCliJson<{ workspacePath: string | null }>(["workspace", "resolve"]);
   if (!response.data.workspacePath) {
     throw new ArcadiaCliError("Arcadia workspace is not configured.", 503, response.data);
   }
 
-  return response.data.workspacePath;
+  resolvedWorkspace = { path: response.data.workspacePath, at: Date.now() };
+  return resolvedWorkspace.path;
 }
 
 export interface IngressListResponse {

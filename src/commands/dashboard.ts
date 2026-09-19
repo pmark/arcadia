@@ -1,8 +1,11 @@
+import { validationError } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import {
   buildDashboardSnapshot,
+  buildRunsSnapshot,
+  type DashboardRunsSnapshot,
   type DashboardAttentionItem,
   type DashboardSnapshot
 } from "../dashboard/snapshot.js";
@@ -25,6 +28,28 @@ export function runDashboardSnapshotCommand(options: { workspace: string }): Com
     workspace: workspacePath,
     data: { snapshot }
   });
+}
+
+export function runDashboardRunsCommand(options: {
+  workspace: string;
+  limit?: string;
+}): CommandSuccess<{ runs: DashboardRunsSnapshot }> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const limit = options.limit === undefined ? 0 : Number(options.limit);
+  if (options.limit?.trim() === "" || !Number.isInteger(limit) || limit < 0) {
+    throw validationError("--limit must be a whole number of 0 or more.", { field: "limit", value: options.limit });
+  }
+  const runs = buildRunsSnapshot({ workspace: workspacePath, recentLimit: Math.min(limit, 100) });
+  return createSuccess({ command: "dashboard.runs", workspace: workspacePath, data: { runs } });
+}
+
+export function renderDashboardRunsSuccess(response: CommandSuccess<{ runs: DashboardRunsSnapshot }>): string[] {
+  const { runs } = response.data;
+  return [
+    `Active agent Sessions: ${runs.activeAgentSessions.length}`,
+    `Active execution Runs: ${runs.activeExecutionRuns.length}`,
+    `Recent runs: ${runs.recentRuns.length}`
+  ];
 }
 
 export function runAttentionCommand(options: { workspace: string }): CommandSuccess<AttentionCommandData> {

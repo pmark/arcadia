@@ -9,40 +9,55 @@ import {
   loadScheduleSummary,
   resolveDashboardWorkspace
 } from "../../../lib/arcadia-cli";
+import { cachedStale } from "../../../lib/swr-cache";
 import { isSameOriginRequest } from "../../../lib/originGuard";
 import { readManagedRunWorker } from "../../../lib/system-status";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET() {
+type Part = "core" | "queue" | "alerts";
+
+// Queue and capacity projections take seconds to compute; serve the last result
+// immediately and refresh behind it.
+const SLOW_TTL_MS = 15_000;
+
+// Each part is a separate request so the panel can paint what is ready
+// without waiting on the slowest CLI call.
+export async function GET(request: Request) {
   try {
+    const part = (new URL(request.url).searchParams.get("part") ?? "core") as Part;
+
+    if (part === "queue") {
+      const schedule = await cachedStale("production-control:queue", SLOW_TTL_MS, () => loadScheduleSummary()).catch(
+        () => null
+      );
+      return NextResponse.json({ schedule: schedule?.data ?? null });
+    }
+
+    if (part === "alerts") {
+      const [capacity, journal] = await Promise.all([
+        cachedStale("production-control:capacity", SLOW_TTL_MS, () => loadCapacityStatus()).catch(() => null),
+        cachedStale("production-control:journal", SLOW_TTL_MS, () => loadDispatchJournal(10)).catch(() => null)
+      ]);
+      const refusedProviders = (capacity?.data.observation.providers ?? []).filter((entry) => !entry.admitted);
+      const blockedDispatches = (journal?.data.events ?? []).filter((event) => !event.dispatchable).slice(0, 5);
+      return NextResponse.json({
+        capacity: capacity?.data ?? null,
+        alerts: {
+          capacityRefusals: refusedProviders.map((entry) => ({
+            providerId: entry.providerId,
+            label: entry.receipt.providerLabel,
+            reason: entry.reason
+          })),
+          blockedDispatches
+        }
+      });
+    }
+
     const workspace = await resolveDashboardWorkspace();
-    const [production, capacity, schedule, journal, worker] = await Promise.all([
-      loadProductionStatus(),
-      loadCapacityStatus().catch(() => null),
-      loadScheduleSummary().catch(() => null),
-      loadDispatchJournal(10).catch(() => null),
-      readManagedRunWorker(workspace)
-    ]);
-
-    const refusedProviders = (capacity?.data.observation.providers ?? []).filter((entry) => !entry.admitted);
-    const blockedDispatches = (journal?.data.events ?? []).filter((event) => !event.dispatchable).slice(0, 5);
-
-    return NextResponse.json({
-      production: production.data,
-      worker,
-      capacity: capacity?.data ?? null,
-      schedule: schedule?.data ?? null,
-      alerts: {
-        capacityRefusals: refusedProviders.map((entry) => ({
-          providerId: entry.providerId,
-          label: entry.receipt.providerLabel,
-          reason: entry.reason
-        })),
-        blockedDispatches
-      }
-    });
+    const [production, worker] = await Promise.all([loadProductionStatus(), readManagedRunWorker(workspace)]);
+    return NextResponse.json({ production: production.data, worker });
   } catch (error) {
     return NextResponse.json(
       {
