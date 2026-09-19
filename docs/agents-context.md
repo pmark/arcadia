@@ -262,6 +262,14 @@ queue is the exception and is refused there: the queue reads Actions from the
 main checkout, so settle those from the main checkout until the queue can see
 candidate Actions.
 
+When you do settle from the main checkout, never copy or `draft` the Ask file
+into it. An untracked `.arcadia/asks/*.yaml` there fails settle's clean check
+("repository is not clean"). Where `draft` previewed the Ask against a
+workspace it already stored the proposal, so `settle --proposal <id>` finds it
+without the file. If `draft` reported no workspace, the committed file is the
+only record: keep it, confirm `arcadia agent-ask preview --file <path> --json`
+succeeds, and only then settle from the main checkout without the file.
+
 The gap this leaves is real, not theoretical: a settlement against a repository
 already checked out locally produces exactly one commit that only exists there
 until something pushes it. Nothing currently reminds anyone to, which is how it
