@@ -1,4 +1,6 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { CodingAgentProfile } from "../intent/registries.js";
 
 export interface CodingAgentInvocationCommand {
@@ -43,6 +45,8 @@ export function finalMessageFromExecution(input: {
   finalMessagePath: string;
   stdout: string;
   stderr: string;
+  /** Where Claude Code plan mode writes plans. Overridable for tests. */
+  claudePlansDir?: string;
 }): string {
   if (input.profile.provider === "codex-cli" && hasAgentProducedFinalMessage(input.finalMessagePath)) {
     return readFileSync(input.finalMessagePath, "utf8");
@@ -51,7 +55,8 @@ export function finalMessageFromExecution(input: {
   if (input.profile.provider === "claude-code-cli") {
     const result = extractClaudeResult(input.stdout);
     if (result) {
-      return result.endsWith("\n") ? result : `${result}\n`;
+      const withPlan = appendClaudePlanFile(result, input.claudePlansDir);
+      return withPlan.endsWith("\n") ? withPlan : `${withPlan}\n`;
     }
   }
 
@@ -69,6 +74,42 @@ export function isUninvokedFinalMessage(filePath: string): boolean {
 
 function hasAgentProducedFinalMessage(filePath: string): boolean {
   return existsSync(filePath) && statSync(filePath).size > 0 && !isUninvokedFinalMessage(filePath);
+}
+
+const MAX_PLAN_FILE_BYTES = 1_000_000;
+
+/**
+ * `claude --print --permission-mode plan` writes the actual plan to
+ * `~/.claude/plans/<name>.md` and replies with only a summary that names that
+ * file, so the captured final message never holds the plan and planning-artifact
+ * validation fails. When the result names a plan file, append its contents. The
+ * path comes from agent output, so only a regular file that really resolves
+ * inside the plans directory, under a size cap, is ever read.
+ */
+function appendClaudePlanFile(result: string, plansDir = path.join(os.homedir(), ".claude", "plans")): string {
+  let root: string;
+  try {
+    root = realpathSync(plansDir);
+  } catch {
+    return result;
+  }
+  // Backtick spans may hold spaces; bare paths cannot.
+  const candidates = [
+    ...[...result.matchAll(/`(\/[^`\n]+\.md)`/g)].map((match) => match[1]),
+    ...[...result.matchAll(/(\/[^\s`'"*()<>]+\.md)\b/g)].map((match) => match[1])
+  ];
+  for (const candidate of candidates) {
+    try {
+      const real = realpathSync(candidate);
+      if (!real.startsWith(`${root}${path.sep}`)) continue;
+      const stat = statSync(real);
+      if (!stat.isFile() || stat.size === 0 || stat.size > MAX_PLAN_FILE_BYTES) continue;
+      return `${result.trimEnd()}\n\n---\n\n## Plan file written by the agent (${path.basename(real)})\n\n${readFileSync(real, "utf8")}`;
+    } catch {
+      continue;
+    }
+  }
+  return result;
 }
 
 function extractClaudeResult(stdout: string): string | null {
