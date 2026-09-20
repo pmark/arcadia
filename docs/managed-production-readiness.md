@@ -265,10 +265,14 @@ future enhancement. If answering from the board is wanted, it competes with
 `surface-terminal-operator-approvals-in-runs` rather than adding to it.
 
 Every *governed* change above went through an Agent Ask and was settled on
-2026-09-20: the Milestone, the three Actions' next actions and acceptance
-criteria, and Decision 0061. Exactly one edit in this section was made by
-hand — the Plan's `#` heading, which asserts nothing about the work and so
-falls under Decision 0044's hygiene carve-out. It is called out as hand-made
+2026-09-20: the Milestone, and three Actions' next actions and acceptance
+criteria. A fourth Ask settled by **opening Decision 0061, which is open and
+unanswered** — settling an Ask of that intent creates the question, it does
+not answer it.
+
+Exactly one edit in this section was made by hand — the Plan's `#` heading,
+which asserts nothing about the work and so falls under Decision 0044's
+hygiene carve-out. It is called out as hand-made
 above rather than folded in with the settlements.
 
 Un-deferring `prove-two-action-unattended-production` was deliberately *not*
