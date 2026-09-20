@@ -1285,6 +1285,6 @@ recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
 
-# Bootstrap managed production to build Flight Deck
+# Bootstrap managed production to run unattended from the GitHub board
 
 Created as an inactive draft from accepted Agent Ask managed-production-completion-first-handoff-2026-09-05; creation changed no pointer. Current activation is recorded in frontmatter.
