@@ -151,6 +151,24 @@ For example, a Decision-approval script must pin or read the exact Decision,
 answer, proposal fingerprint, and expected open state, then refuse stale or
 different state; never turn it into a blanket approval command.
 
+### Publishing `/runs` actions
+
+`/runs` reads the main checkout's generated-script library at
+`artifacts/generated/operator-scripts/`; it does not discover candidate
+worktree files. Publish the executable `<id>.sh` and descriptor `<id>.json`
+there, then verify the live `/api/operator-script` response lists the action
+before handoff. A descriptor must include `schema`, `id`, `title`, `script`,
+`problem`, `desired_effect`, `authority.does`, `authority.never_does`,
+`success.effect`, `success.next`, `failure.effect`, and `failure.next`; its
+script must be executable and expose only `run` and `--describe`.
+
+One-shot actions (`repeatable: false`) never delete themselves: `/runs` keeps
+their disabled succeeded state and receipt as the durable audit trail. Keep a
+reusable action repeatable only when rerunning is safe and useful. Do not add
+operator actions for deterministic completion evidence: the agent validates,
+preserves, and settles it automatically. Buttons are for genuine external or
+irreversible authority only.
+
 The dashboard records each launch as available, running, succeeded, or failed.
 It polls while work runs, exposes failure instead of treating process launch as
 completion, and disables a successful one-shot action. A reusable action stays

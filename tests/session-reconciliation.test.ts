@@ -274,6 +274,11 @@ describe("reconcileSessionExit automatic production completion", () => {
 
     expect(result.receipt.outcome).toBe("accepted_completion");
     expect(result.receipt.reason).toContain("standing production policy");
+    const automaticSettlement = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT receipt_json FROM agent_ask_settlements WHERE request_id = ?")
+        .get(`auto-complete-${sessionId.replaceAll("_", "-")}`) as { receipt_json: string }
+    );
+    expect(JSON.parse(automaticSettlement.receipt_json).authority.kind).toBe("deterministic_proof");
     const plan = discoverDocs(worktreePath).docs.find((doc) => doc.type === "plan" && doc.slug === "copy-proof");
     expect(plan).toMatchObject({ status: "complete" });
     expect(execFileSync("git", ["status", "--porcelain"], { cwd: worktreePath, encoding: "utf8" })).toBe("");

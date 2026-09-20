@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createWorkerTick, decideWorkerStart, isProcessAlive } from "../src/commands/worker.js";
+import { createWorkerTick, decideWorkerStart, isProcessAlive, runWorkerInstallCommand } from "../src/commands/worker.js";
 import { openDatabase } from "../src/db/connection.js";
 import { preservationTransportReady } from "../src/sessions/preservationTransport.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -71,6 +71,42 @@ describe("worker start already-running guard", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("Legacy worker still running");
     expect(readFileSync(pidfile, "utf8")).toBe(String(process.pid));
+  });
+});
+
+describe("worker install readiness", () => {
+  it("refuses clearly when launchd cannot load the worker", () => {
+    const { root } = workspace();
+
+    expect(() => runWorkerInstallCommand({ workspace: root }, {
+      execFileSync: () => { throw new Error("bootstrap failed"); }
+    })).toThrow(/launchctl load failed.*bootstrap failed.*worker was not started/i);
+  });
+
+  it("reports ready only after a fresh preservation and Go-route heartbeat", () => {
+    const { root } = workspace();
+    const load = vi.fn();
+    const waitForRoutes = vi.fn(() => true);
+    const output = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    runWorkerInstallCommand({ workspace: root }, {
+      execFileSync: load,
+      waitForRoutes,
+      now: () => 123_456
+    });
+
+    expect(load).toHaveBeenCalledWith("launchctl", expect.arrayContaining(["load"]), { stdio: "pipe" });
+    expect(waitForRoutes).toHaveBeenCalledWith(root, 30_000, 123_456);
+    expect(output).toHaveBeenCalledWith(expect.stringContaining("preservation and go heartbeats are fresh"));
+  });
+
+  it("refuses stale worker readiness without relying on a live launchd service", () => {
+    const { root } = workspace();
+
+    expect(() => runWorkerInstallCommand({ workspace: root }, {
+      execFileSync: vi.fn(),
+      waitForRoutes: () => false
+    })).toThrow(/did not publish fresh heartbeats/i);
   });
 });
 

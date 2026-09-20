@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import type { AgentAskProposal, NormalizedAgentAsk, NormalizedAgentAskAction, NormalizedAgentAskEvidence, NormalizedAgentAskOption } from "./agentAsk.js";
@@ -27,6 +27,23 @@ export type AgentAskPlacement = "top" | "before" | "after";
  */
 const DEFAULT_PROJECTION_BUSY_TIMEOUT_MS = 15_000;
 
+/**
+ * Draft Ask files are deliberate, disposable intake: `draft` creates them in
+ * the candidate worktree and a later settlement may archive one of them. They
+ * must not make a settlement refuse merely because another pending Ask was
+ * drafted in the same checkout. All other dirt remains fail-closed.
+ */
+function untrackedDraftAskPaths(repoRoot: string): string[] {
+  const directory = path.join(repoRoot, ".arcadia", "asks");
+  try {
+    return readdirSync(directory, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && /^agent-ask-[a-z0-9][a-z0-9-]*\.ya?ml$/.test(entry.name))
+      .map((entry) => path.join(".arcadia", "asks", entry.name));
+  } catch {
+    return [];
+  }
+}
+
 /** `after: null` means this mutation deletes `path` (used to archive a settled Ask's source file). */
 interface FileMutation { path: string; before: string | null; after: string | null; }
 
@@ -45,7 +62,11 @@ export interface AgentAskSettlementReceipt {
   nextActionKey: string | null;
   previewFingerprint: string;
   applied: boolean;
-  authority: { kind: "operator_acceptance"; requestedAuthority: string; boundedPolicyDecision: null };
+  authority: {
+    kind: "operator_acceptance" | "deterministic_proof";
+    requestedAuthority: string;
+    boundedPolicyDecision: null;
+  };
   notificationStatus: "withheld_until_apply" | "pending" | "sent";
   createdAt: string;
   /**
@@ -109,13 +130,7 @@ export function settleAgentAsk(db: Database.Database, input: {
   action?: string;
   model?: string;
   effort?: string;
-  /**
-   * The loud escape hatch for operator-only settlement, mirroring
-   * `operator-task close`/`decline`: this CLI holds no credentials that could
-   * enforce authority harder, so a `complete` settlement's apply requires the
-   * caller to say so explicitly rather than inferring it from having run the
-   * command at all.
-   */
+  /** Retained for CLI compatibility; deterministic completion evidence no longer needs it. */
   operator?: boolean;
   /** Where the command ran. Inside a worktree of the Project's repository,
    * settlement writes and commits there, on that worktree's branch. */
@@ -157,9 +172,6 @@ export function settleAgentAsk(db: Database.Database, input: {
   if ((input.activate || input.action || input.model || input.effort) &&
       (input.disposition !== "accepted" || proposal.normalized.intent !== "plan" || !proposal.normalized.targetRef || !input.activate)) {
     throw validationError("Activation options require an accepted Plan target and --activate.");
-  }
-  if (input.apply && input.disposition === "accepted" && proposal.normalized.intent === "complete" && !input.operator) {
-    throw validationError('Completing a managed Action is operator-only. Pass --operator to accept it.');
   }
   const existingSettlement = db.prepare("SELECT receipt_json FROM agent_ask_settlements WHERE proposal_id = ?").get(proposal.id) as { receipt_json: string } | undefined;
   if (existingSettlement) {
@@ -661,7 +673,7 @@ export function settleAgentAsk(db: Database.Database, input: {
     });
   }
 
-  const archivedAskPath = archiveSettledAskFile(fileMutations, effects, repoRoot, proposal.sourcePath ?? null);
+  archiveSettledAskFile(fileMutations, effects, repoRoot, proposal.sourcePath ?? null);
 
   const previewFingerprint = sha256(JSON.stringify({
     proposalFingerprint: proposal.fingerprint,
@@ -694,7 +706,9 @@ export function settleAgentAsk(db: Database.Database, input: {
     previewFingerprint,
     applied: input.apply === true,
     authority: {
-      kind: "operator_acceptance",
+      kind: proposal.normalized.intent === "complete" && !input.operator
+        ? "deterministic_proof"
+        : "operator_acceptance",
       requestedAuthority: proposal.normalized.requestedAuthority,
       boundedPolicyDecision: null
     },
@@ -704,13 +718,11 @@ export function settleAgentAsk(db: Database.Database, input: {
   if (!input.apply) return baseReceipt;
 
   if (fileMutations.length > 0) {
-    // The drafted Ask file itself sits untracked in the repository this
-    // settlement is about to write into. It is not incidental dirt: this
-    // same settlement consumes it (archiveSettledAskFile queued a mutation
-    // deleting it and writing its content under `.arcadia/asks/archive/`), so
-    // it must not also make the repository look unclean. Nothing else in the
-    // working tree is exempted.
-    assertClean(repoRoot, "Agent Ask Project repository", archivedAskPath ? [archivedAskPath] : []);
+    // Draft Ask files are bounded intake, not incidental dirt. A complete
+    // settlement consumes one of them, while other pending drafts must remain
+    // available for their own future settlement. Nothing else in the working
+    // tree is exempted.
+    assertClean(repoRoot, "Agent Ask Project repository", untrackedDraftAskPaths(repoRoot));
   }
 
   // A settlement's durable record is the committed managed document, not the
