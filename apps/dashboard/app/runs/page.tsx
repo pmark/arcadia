@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircle2, CircleAlert, Loader2, Play } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DashboardChrome } from "../../components/chrome";
 import { EmptyState, ErrorState, RunCard, SessionCard } from "../../components/dashboard-ui";
 import { ProductionControlPanel } from "../../components/production-control-panel";
@@ -39,20 +39,28 @@ export default function RunsPage() {
   const [operatorScriptError, setOperatorScriptError] = useState<string | null>(null);
   const [pendingScriptId, setPendingScriptId] = useState<string | null>(null);
   const [operatorMessage, setOperatorMessage] = useState<string | null>(null);
+  const operatorRefreshSequence = useRef(0);
   const runs = useRuns(historyOpen);
   const control = useProductionControl();
   const activeSessions = runs.data?.activeAgentSessions ?? [];
   const activeRuns = runs.data?.activeExecutionRuns ?? [];
 
   const refreshOperatorScripts = useCallback(async () => {
+    const sequence = ++operatorRefreshSequence.current;
     await fetch("/api/operator-script", { cache: "no-store" })
       .then(async (response) => {
         const body = await response.json() as { scripts?: OperatorScript[]; error?: string };
         if (!response.ok) throw new Error(body.error ?? "Could not load operator scripts.");
-        setOperatorScripts(body.scripts ?? []);
-        setOperatorScriptError(null);
+        if (sequence === operatorRefreshSequence.current) {
+          setOperatorScripts(body.scripts ?? []);
+          setOperatorScriptError(null);
+        }
       })
-      .catch((error) => setOperatorScriptError(error instanceof Error ? error.message : String(error)));
+      .catch((error) => {
+        if (sequence === operatorRefreshSequence.current) {
+          setOperatorScriptError(error instanceof Error ? error.message : String(error));
+        }
+      });
   }, []);
 
   useEffect(() => {

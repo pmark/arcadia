@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { operatorScriptRunnerSource, POST } from "./route";
+import { operatorScriptRunnerSource } from "../../../lib/operatorScriptRunner";
+import { POST } from "./route";
 
 describe("POST /api/operator-script", () => {
   it("refuses cross-origin execution", async () => {

@@ -1,9 +1,10 @@
 import { constants } from "node:fs";
-import { access, mkdir, readFile, readdir, realpath } from "node:fs/promises";
+import { access, mkdir, open, readFile, readdir, realpath, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { NextResponse } from "next/server";
 import { isSameOriginRequest } from "../../../lib/originGuard";
+import { operatorScriptRunnerSource } from "../../../lib/operatorScriptRunner";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -11,27 +12,7 @@ export const runtime = "nodejs";
 const LIBRARY_PATH = "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts";
 const STATE_PATH = path.join(LIBRARY_PATH, "runs", "state");
 const SAFE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-export const operatorScriptRunnerSource = String.raw`
-const { spawn } = require("node:child_process");
-const fs = require("node:fs");
-const [scriptPath, statePath] = process.argv.slice(1);
-const writeState = (value) => {
-  const temporary = statePath + ".tmp-" + process.pid;
-  fs.writeFileSync(temporary, JSON.stringify(value) + "\n");
-  fs.renameSync(temporary, statePath);
-};
-const startedAt = new Date().toISOString();
-writeState({ status: "running", pid: process.pid, startedAt });
-const child = spawn(scriptPath, ["run"], { stdio: "ignore" });
-child.once("error", (error) => {
-  writeState({ status: "failed", startedAt, finishedAt: new Date().toISOString(), exitCode: null, message: error.message });
-  process.exit(1);
-});
-child.once("close", (code) => {
-  writeState({ status: code === 0 ? "succeeded" : "failed", startedAt, finishedAt: new Date().toISOString(), exitCode: code });
-  process.exit(code ?? 1);
-});
-`;
+const STALE_LOCK_MS = 30_000;
 
 interface OperatorScriptDescriptor {
   schema: "arcadia-operator-script-v1";
@@ -113,6 +94,26 @@ function processIsRunning(pid: number | undefined): boolean {
   }
 }
 
+async function claimLaunch(id: string): Promise<string> {
+  await mkdir(STATE_PATH, { recursive: true });
+  const lockPath = path.join(STATE_PATH, `${id}.lock`);
+  try {
+    const handle = await open(lockPath, "wx");
+    await handle.close();
+    return lockPath;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    const age = Date.now() - (await stat(lockPath)).mtimeMs;
+    if (age <= STALE_LOCK_MS) throw new Error("OPERATOR_SCRIPT_ALREADY_CLAIMED", { cause: error });
+    const state = await loadState(id);
+    if (state?.status === "running" && processIsRunning(state.pid)) throw new Error("OPERATOR_SCRIPT_ALREADY_CLAIMED", { cause: error });
+    await unlink(lockPath);
+    const handle = await open(lockPath, "wx");
+    await handle.close();
+    return lockPath;
+  }
+}
+
 /** List every valid operator script currently available in the library. */
 export async function GET() {
   try {
@@ -151,6 +152,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Cross-origin operator-script requests are refused." }, { status: 403 });
   }
   let body: { id?: unknown };
+  let lockPath: string | null = null;
   try {
     body = await request.json() as { id?: unknown };
   } catch {
@@ -169,9 +171,20 @@ export async function POST(request: Request) {
     if (state?.status === "succeeded" && descriptor.repeatable !== true) {
       return NextResponse.json({ error: `${descriptor.title} already completed and is no longer executable.` }, { status: 409 });
     }
-    await mkdir(STATE_PATH, { recursive: true });
+    lockPath = await claimLaunch(id);
+    const latestState = await loadState(id);
+    if (latestState?.status === "running" && processIsRunning(latestState.pid)) {
+      await unlink(lockPath);
+      lockPath = null;
+      return NextResponse.json({ error: `${descriptor.title} is already running.` }, { status: 409 });
+    }
+    if (latestState?.status === "succeeded" && descriptor.repeatable !== true) {
+      await unlink(lockPath);
+      lockPath = null;
+      return NextResponse.json({ error: `${descriptor.title} already completed and is no longer executable.` }, { status: 409 });
+    }
     const scriptStatePath = path.join(STATE_PATH, `${id}.json`);
-    const child = spawn(process.execPath, ["-e", operatorScriptRunnerSource, scriptPath, scriptStatePath], { detached: true, stdio: "ignore" });
+    const child = spawn(process.execPath, ["-e", operatorScriptRunnerSource, scriptPath, scriptStatePath, lockPath], { detached: true, stdio: "ignore" });
     await new Promise<void>((resolve, reject) => {
       child.once("spawn", resolve);
       child.once("error", reject);
@@ -179,6 +192,13 @@ export async function POST(request: Request) {
     child.unref();
     return NextResponse.json({ message: `${descriptor.title} started. Progress is recorded in the operator-script runs folder.` }, { status: 202 });
   } catch (error) {
+    if (lockPath) {
+      await writeFile(path.join(STATE_PATH, `${id}.json`), JSON.stringify({ status: "failed", finishedAt: new Date().toISOString(), exitCode: null, message: "The launcher could not start." }) + "\n");
+      await unlink(lockPath).catch(() => undefined);
+    }
+    if (error instanceof Error && error.message === "OPERATOR_SCRIPT_ALREADY_CLAIMED") {
+      return NextResponse.json({ error: "That operator action is already being started." }, { status: 409 });
+    }
     console.error(`Could not launch operator script ${id}.`, error);
     return NextResponse.json({ error: "That operator script could not be started on the host. Check the dashboard service log." }, { status: 500 });
   }
