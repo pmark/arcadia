@@ -1191,7 +1191,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/411"]
   - id: gate-prepared-dispatch-on-transport-readiness
     title: Add deterministic prepared-dispatch admission checks that refuse task preparation until the selected profile can access the resolved workspace database and fresh Go and preservation transport heartbeats are available.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Add deterministic prepared-dispatch admission checks that refuse task preparation until the selected profile can access the resolved workspace database and fresh Go and preservation transport heartbeats are available.
@@ -1279,7 +1279,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/419", "src/goBroker.ts", "src/sessions/preservationTransport.ts", "scripts/arcadia-go-broker.ts"]
 questions: []
 decisions: []
-current_action: gate-prepared-dispatch-on-transport-readiness
+current_action: verify-worker-recovery-before-success
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
