@@ -178,6 +178,8 @@ import {
 } from "./commands/experiment.js";
 import { runLogCreateCommand } from "./commands/log.js";
 import { renderGoSuccess, runGoCommand } from "./commands/go.js";
+import { assertPreparedDispatchAdmission } from "./sessions/dispatchAdmission.js";
+import { resolveReadyWorkspace } from "./cli/workspace.js";
 import { SESSION_AGENTS, type SessionAgent } from "./sessions/index.js";
 import {
   renderGoBrokerInstallSuccess,
@@ -3437,6 +3439,11 @@ export function buildProgram(): Command {
     runCliAction("go", options, () => {
       if (options.agent !== undefined && !SESSION_AGENTS.includes(options.agent as SessionAgent)) {
         throw validationError(`--agent must be ${SESSION_AGENTS.join(", ")}.`, { agent: options.agent });
+      }
+      // Before any Git mutation: a worktree prepared for an agent that cannot
+      // reach the database or the worker transport is a wasted handoff.
+      if (options.apply && options.agent !== undefined) {
+        assertPreparedDispatchAdmission(resolveReadyWorkspace(options.workspace).workspacePath);
       }
       return runGoCommand({ ...options, agent: options.agent as SessionAgent | undefined });
     }, renderGoSuccess)
