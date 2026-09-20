@@ -37,4 +37,4 @@ decided: 2026-09-20
 
 AGENTS.md now carries a 'Merge on green' rule (PR #431, merged 2026-09-20) that the operator authorized in chat: if CodeRabbit approves the current head and checks are green, the agent merges, because the operator would merge it anyway. CONSTITUTION.md line 11 (Authority) still lists 'merge' among hard stops that need an explicit Decision, and the Constitution outranks AGENTS.md. Today the two documents disagree, so a strict agent may refuse to merge while a permissive one merges under a rule the Constitution does not back. Related Constitution text already supports the intent: 'Carrying out a decision already made is not a second decision' and 'Gate judgment, not mechanics'. Evidence: #429 and #431 were both merged under this rule with CodeRabbit approval and all seven required checks green.
 
-Proposed by Agent Ask decide-constitution-merge-on-green-2026-09-20. This Decision remains open until the operator answers it.
+Proposed by Agent Ask decide-constitution-merge-on-green-2026-09-20. The operator approved this Decision on 2026-09-20, answering: Amend the Constitution to authorize merge-on-green (bounded).
