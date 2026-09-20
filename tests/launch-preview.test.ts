@@ -117,6 +117,44 @@ describe("buildLaunchPreview", () => {
     expect(lifecycle.remedy).toContain("planning only, not implementation");
   });
 
+  it("uses the newest accepted planning Decision, not the oldest", () => {
+    const fixture = preparedFixture({ skipInvocation: true });
+    const { older, newer } = withDatabase(fixture.workspace, (db) => {
+      const workItem = getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!;
+      const createPlanningDecision = (sourceInput: string) =>
+        createReviewItem(db, {
+          workItemId: workItem.id,
+          projectId: workItem.project_id,
+          decisionNeeded: "Approve the planning Run.",
+          sourceInput,
+          proposedAction: "Prepare a planning Artifact.",
+          resolvedIntent: "CodexPlanningRunApproval",
+          confidenceLabel: "high",
+          confidence: 1,
+          missingFields: []
+        });
+
+      // Backdate the first Decision so the two are unambiguously ordered.
+      // listReviewItems sorts by created_at DESC, so `newer` must come first.
+      const older = createPlanningDecision("older planning request");
+      db.prepare("UPDATE review_items SET created_at = ?, updated_at = ? WHERE id = ?")
+        .run("2020-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z", older.id);
+      updateReviewItemStatus(db, older.id, { status: "approved", decisionNote: "Finished." });
+
+      const newer = createPlanningDecision("newer planning request");
+      updateReviewItemStatus(db, newer.id, { status: "approved", decisionNote: "Accepted." });
+      return { older, newer };
+    });
+
+    const lifecycle = withReadOnlyDatabase(fixture.workspace, (db) =>
+      resolvePacketLifecycle(db, getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!)
+    );
+
+    expect(lifecycle).toMatchObject({ kind: "planning_in_progress", decisionId: newer.id });
+    expect(lifecycle.remedy).toContain(newer.slug!);
+    expect(lifecycle.remedy).not.toContain(older.slug!);
+  });
+
   it("is Ready after accepting a governed plan whose Action has no execution requirement", () => {
     const fixture = preparedFixture({ skipInvocation: true });
     const acceptance = withDatabase(fixture.workspace, (db) => {

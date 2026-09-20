@@ -32,7 +32,13 @@ export function resolvePacketLifecycle(db: Database.Database, workItem: WorkItem
       candidate.resolved_intent === "CodexPlanningRunApproval" &&
       (candidate.status === "open" || candidate.status === "deferred" || candidate.status === "approved")
     )
-    .at(-1);
+    // listReviewItems orders newest first, so the newest matching Decision is
+    // the head of the list. `.at(-1)` here selected the OLDEST one, which left
+    // the worker waiting forever on a planning Decision that had already been
+    // superseded (Issue #404). The build-packet lookup above is the opposite
+    // case: listCodexInvocationsForWorkItem orders oldest first, so its
+    // `.at(-1)` correctly takes the newest.
+    .at(0);
   if (planningDecision) {
     const invocation = planningDecision.codex_invocation_id
       ? getCodexInvocation(db, planningDecision.codex_invocation_id)
