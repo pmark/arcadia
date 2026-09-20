@@ -18,7 +18,11 @@ describe("Agent Ask v1", () => {
         ? `${strictAsk(`kind-${intent}`, intent)}actions:\n  - desired_result: Deliver the Plan Action\n    acceptance:\n      - Plan Action proof exists.\n    dependencies: []\n`
         : intent === "complete"
           ? `${strictAsk(`kind-${intent}`, intent)}target_ref: action/existing\ncandidate_revision: abadc0deabadc0deabadc0deabadc0deabadc0de\nevidence:\n  - criterion: "Observable proof exists"\n    status: met\n`
-          : strictAsk(`kind-${intent}`, intent);
+          // A project_update must name a field Arcadia can apply; an
+          // unapplicable target is refused at preview (Issue #351).
+          : intent === "project_update"
+            ? `${strictAsk(`kind-${intent}`, intent)}target_ref: milestone\n`
+            : strictAsk(`kind-${intent}`, intent);
       const result = runAgentAskPreviewCommand({ workspace, request });
       expect(result.data.proposal.normalized.intent).toBe(intent);
       expect(result.data.proposal.effects[0]?.targetKind).toBe(intent === "auto" ? "interpretation" : intent);
@@ -78,6 +82,27 @@ describe("Agent Ask v1", () => {
     expect(result.data.proposal.normalized.dependencies).toEqual(["work/first"]);
     expect(result.data.proposal.managedDocumentTransition).toEqual({ required: true, status: "withheld_until_acceptance", authority: "checked_in_documents" });
     expect(result.data.proposal).toMatchObject({ unchanged: [], conflicts: [], refused: [] });
+  });
+
+  it("normalizes only project_update target fields and rejects the legacy goal target", () => {
+    const workspace = initializedWorkspace();
+    const projectUpdate = runAgentAskPreviewCommand({
+      workspace,
+      request: `${strictAsk("project-update-case", "project_update")}target_ref: MILESTONE\n`
+    });
+    expect(projectUpdate.data.proposal.normalized.targetRef).toBe("milestone");
+    expect(projectUpdate.data.proposal.effects[0]?.targetRef).toBe("milestone");
+
+    expect(() => runAgentAskPreviewCommand({
+      workspace,
+      request: `${strictAsk("project-update-goal", "project_update")}target_ref: goal\n`
+    })).toThrow(/no apply path/);
+
+    const plan = runAgentAskPreviewCommand({
+      workspace,
+      request: `${strictAsk("plan-case", "plan")}target_ref: Plan/Existing\n`
+    });
+    expect(plan.data.proposal.normalized.targetRef).toBe("Plan/Existing");
   });
 
   it("supports natural fallback only with an explicit id and keeps intent unknown", () => {

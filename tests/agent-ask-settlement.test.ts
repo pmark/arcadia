@@ -349,6 +349,42 @@ describe("Agent Ask settlement", () => {
     }
   });
 
+  it("refuses a project_update whose target_ref has no apply path, instead of opening a Decision", () => {
+    // Issue #351 / R183. This used to create an open Decision reading "How
+    // should this Project update be applied: ...". Nothing could act on it:
+    // `review approve` has no apply path for an unnamed Project field, so
+    // answering it changed nothing and the Decision stayed open forever. A
+    // target Arcadia cannot apply is refused at preview, before any write.
+    const { workspace, repo } = fixture();
+
+    expect(() => runAgentAskPreviewCommand({
+      workspace,
+      request: askForIntent("unapplicable-project-update", "project_update", "Set the work pointer to some-action", "current_action")
+    })).toThrow(/no apply path/);
+
+    // Preview writes nothing, so no Decision may have appeared.
+    expect(existsSync(path.join(repo, "docs/decisions/0001-how-should-this-project-update-be-applied-set-the-work-pointer-to-some-action.md"))).toBe(false);
+  });
+
+  it("still applies a project_update whose target_ref names a supported field", () => {
+    const { workspace, repo } = fixture();
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: askForIntent("supported-project-update", "project_update", "Reach the retargeted milestone", "milestone")
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-supported-project-update",
+      disposition: "accepted", revision: 1
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-supported-project-update",
+      disposition: "accepted", revision: 1, preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+
+    expect(applied.data.receipt.effects.join(" ")).toContain("Milestone");
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("milestone: Reach the retargeted milestone");
+  });
+
   it("writes a settled decision Ask's options into the Decision document, recommendation flagged", () => {
     const { workspace, repo } = fixture();
     const request = [

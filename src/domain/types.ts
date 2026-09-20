@@ -270,6 +270,15 @@ export interface ReviewItem {
   decided_at: string | null;
   decision_note: string | null;
   resulting_ask_request_id: string | null;
+  /**
+   * The managed document this item was raised from, as `<kind>/<slug>` — for
+   * example `decision/<slug>` for a Decision ingested by `docs sync`. Null for
+   * items Arcadia raised itself, which have no checked-in document to write
+   * an answer back to. The column has always been selected by `ri.*`; it was
+   * simply never declared, so the approval path could not see that some items
+   * do have an authoritative document and some do not (Issue #351).
+   */
+  doc_ref: string | null;
 }
 
 export interface ReviewFeedback {
