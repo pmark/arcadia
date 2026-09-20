@@ -396,3 +396,10 @@ updated: 2026-09-20
 - **Result:** Every declared acceptance criterion was accepted as met: "A deterministic pre-dispatch check refuses preparation with an actionable remedy when the workspace database cannot be opened by the selected agent profile."; "A deterministic pre-dispatch check refuses preparation when either Go-capable or preservation transport lacks a fresh heartbeat, before a coding agent is started.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-gate-prepared-dispatch-2026-09-20).
+
+## 2026-09-20 — Completed arcadia/fix-packet-lifecycle-latest-planning-decision
+
+- **Did:** Completed Action arcadia/fix-packet-lifecycle-latest-planning-decision from accepted evidence (Candidate 5d288e6a46060b3d5ebed94f01a2b591ecdf2d06).
+- **Result:** Every declared acceptance criterion was accepted as met: "A test with an old finished planning Decision and a newer accepted one shows the lifecycle remedy names the newer Decision, and it fails before the fix.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-fix-packet-lifecycle-latest-planning-decision-2026-09-20).

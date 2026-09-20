@@ -1161,7 +1161,7 @@ actions:
     references: []
   - id: fix-packet-lifecycle-latest-planning-decision
     title: Make resolvePacketLifecycle read the latest planning Decision instead of the oldest.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make resolvePacketLifecycle read the latest planning Decision instead of the oldest.
