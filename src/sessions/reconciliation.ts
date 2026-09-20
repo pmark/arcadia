@@ -301,7 +301,10 @@ export function attemptAutomaticCompletion(
     return { attempted: true, completed: false, reason: "The Action declares no acceptance criteria to bind automatic evidence to.", settlement: null };
   }
 
-  const requestId = `auto-complete-${session.id}`;
+  // Session ids use an underscore prefix, while generated Ask filenames are
+  // deliberately hyphenated so the settlement clean-input allowlist recognizes
+  // them as disposable Ask intake.
+  const requestId = `auto-complete-${session.id.replaceAll("_", "-")}`;
   const note = `Mechanically accepted: Session ${session.id} exited cleanly with a passing Run (${evidence.runId}) on candidate ${evidence.candidateRevision}, and standing production policy revision ${policy.revision} explicitly delegates mechanical acceptance and pointer transitions for ${actionKeyFor(session)}.`;
   const requestBody = {
     agent_ask: "v1",
