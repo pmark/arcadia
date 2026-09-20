@@ -1208,7 +1208,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/411", "src/goBroker.ts", "src/sessions/preservationTransport.ts"]
   - id: verify-worker-recovery-before-success
     title: Make the managed worker control path fail on launchd load failure and report success only after the worker has recovered stale state and published fresh preservation and Go-route heartbeats.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make the managed worker control path fail on launchd load failure and report success only after the worker has recovered stale state and published fresh preservation and Go-route heartbeats.
@@ -1280,7 +1280,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/419", "src/goBroker.ts", "src/sessions/preservationTransport.ts", "scripts/arcadia-go-broker.ts"]
 questions: []
 decisions: []
-current_action: verify-worker-recovery-before-success
+current_action: surface-terminal-operator-approvals-in-runs
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
