@@ -776,7 +776,7 @@ export function buildProgram(): Command {
     .option("--revision <number>", "Expected queue revision")
     .option("--preview <sha256>", "Exact preview fingerprint required with --apply")
     .option("--apply", "Apply the exact previewed settlement")
-    .option("--operator", "Confirm operator authority; required to apply a complete-intent settlement")
+    .option("--operator", "Compatibility flag; deterministic complete-intent settlements are agent-executable")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: {
     workspace: string; proposal: string; requestId: string; disposition: string; responsibility?: string;

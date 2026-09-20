@@ -110,18 +110,18 @@ describe("Agent Ask complete", () => {
     expect(project).toMatchObject({ currentAction: null });
   });
 
-  it("refuses apply without --operator, without writing anything", () => {
+  it("settles deterministic completion evidence without an operator flag", () => {
     const { workspace, repo, head } = fixture();
     const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-no-operator", "first", head) });
     const preview = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-no-operator", disposition: "accepted"
     });
-    const before = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
-    expect(() => runAgentAskSettleCommand({
+    const applied = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-no-operator", disposition: "accepted",
       preview: preview.data.receipt.previewFingerprint, apply: true
-    })).toThrow(/operator-only/);
-    expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toBe(before);
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+    expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toContain("status: done");
   });
 
   it("refuses completion evidence that does not mark every criterion met", () => {

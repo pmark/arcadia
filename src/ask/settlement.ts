@@ -126,13 +126,7 @@ export function settleAgentAsk(db: Database.Database, input: {
   action?: string;
   model?: string;
   effort?: string;
-  /**
-   * The loud escape hatch for operator-only settlement, mirroring
-   * `operator-task close`/`decline`: this CLI holds no credentials that could
-   * enforce authority harder, so a `complete` settlement's apply requires the
-   * caller to say so explicitly rather than inferring it from having run the
-   * command at all.
-   */
+  /** Retained for CLI compatibility; deterministic completion evidence no longer needs it. */
   operator?: boolean;
   /** Where the command ran. Inside a worktree of the Project's repository,
    * settlement writes and commits there, on that worktree's branch. */
@@ -174,9 +168,6 @@ export function settleAgentAsk(db: Database.Database, input: {
   if ((input.activate || input.action || input.model || input.effort) &&
       (input.disposition !== "accepted" || proposal.normalized.intent !== "plan" || !proposal.normalized.targetRef || !input.activate)) {
     throw validationError("Activation options require an accepted Plan target and --activate.");
-  }
-  if (input.apply && input.disposition === "accepted" && proposal.normalized.intent === "complete" && !input.operator) {
-    throw validationError('Completing a managed Action is operator-only. Pass --operator to accept it.');
   }
   const existingSettlement = db.prepare("SELECT receipt_json FROM agent_ask_settlements WHERE proposal_id = ?").get(proposal.id) as { receipt_json: string } | undefined;
   if (existingSettlement) {
