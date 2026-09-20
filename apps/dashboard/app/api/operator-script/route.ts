@@ -23,6 +23,14 @@ interface OperatorScriptDescriptor {
   failure: { effect: string; next: string };
 }
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isStringList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(isNonEmptyString);
+}
+
 async function loadDescriptor(id: string): Promise<{ descriptor: OperatorScriptDescriptor; scriptPath: string }> {
   if (!SAFE_ID.test(id)) throw new Error("Invalid operator-script id.");
   const descriptorPath = path.join(LIBRARY_PATH, `${id}.json`);
@@ -30,7 +38,17 @@ async function loadDescriptor(id: string): Promise<{ descriptor: OperatorScriptD
   if (descriptor.schema !== "arcadia-operator-script-v1" || descriptor.id !== id || descriptor.script !== `${id}.sh`) {
     throw new Error("Operator-script descriptor does not match its library entry.");
   }
-  if (!descriptor.title || !descriptor.desired_effect || !descriptor.authority?.does || !descriptor.authority?.never_does) {
+  if (
+    !isNonEmptyString(descriptor.title) ||
+    !isNonEmptyString(descriptor.problem) ||
+    !isNonEmptyString(descriptor.desired_effect) ||
+    !isStringList(descriptor.authority?.does) ||
+    !isStringList(descriptor.authority?.never_does) ||
+    !isNonEmptyString(descriptor.success?.effect) ||
+    !isNonEmptyString(descriptor.success?.next) ||
+    !isNonEmptyString(descriptor.failure?.effect) ||
+    !isNonEmptyString(descriptor.failure?.next)
+  ) {
     throw new Error("Operator-script descriptor is incomplete.");
   }
   const scriptPath = await realpath(path.join(LIBRARY_PATH, descriptor.script));
