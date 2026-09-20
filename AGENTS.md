@@ -621,8 +621,10 @@ reached:
    correctness, reliability, security, data-integrity, or user-visible failure
    — first search open and closed Issues in the owning repository, then file a
    `bug` Issue or update the existing one with the evidence and relevant
-   `file:line`. Link each Issue in the handoff beside its finding. List minor,
-   stylistic, or unsupported findings without filing an Issue. The operator
+   `file:line`. Link each Issue in the handoff beside its finding. For findings
+   remaining at the cap, this rule takes precedence over the general defect
+   rule: list minor, stylistic, or unsupported findings without filing or
+   updating an Issue. The operator
    judges the remaining work; the cap does not make a significant defect vanish.
 5. **An error** — a timeout, a draft PR, an unpushed HEAD, or a CodeRabbit
    failure — names its cause. Fix that, or report it; do not retry blindly.
