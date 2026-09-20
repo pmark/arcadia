@@ -348,7 +348,7 @@ function deliveryState(preservation: PreservationState, pullRequest: PullRequest
   const mergeState = pullRequest.mergeStateStatus?.toUpperCase();
   if (mergeState === "DIRTY" || mergeState === "BLOCKED") return "blocked";
   if (pullRequest.isDraft) return "draft";
-  if (mergeState === "CLEAN" || mergeState === "HAS_HOOKS") return "merge_ready";
+  if (mergeState === "CLEAN") return "merge_ready";
   return "reviewable";
 }
 

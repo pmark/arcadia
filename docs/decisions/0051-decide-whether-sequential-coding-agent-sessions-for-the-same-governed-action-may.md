@@ -37,4 +37,4 @@ decided: 2026-09-13
 
 docs/proposals/host-owned-agent-workspace-contract.md (PR #230) proposes that Arcadia owns all Git and worktree lifecycle while agents only edit and validate the prepared candidate. Today a multi-session Action needs manual worktree preparation between sessions, and the open Action refuse-to-orphan-an-uncommitted-candidate would make go refuse rather than resume. Loosening a Way rule is the operator's judgment, so it needs a ratified Decision before the plan amendments that implement it.
 
-Proposed by Agent Ask host-owned-candidate-continuation-2026-09-13. This Decision remains open until the operator answers it.
+Proposed by Agent Ask host-owned-candidate-continuation-2026-09-13.

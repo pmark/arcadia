@@ -16,4 +16,4 @@ decided: 2026-09-01
 
 # Decision 0042: How should Arcadia structure this request: Reactivate the arcadia-ask-active-sessions plan at build-guided-understanding-session as the next Ask tail, ahead of dogfood-songbook-ask-session, per Decision 0041's recommendation.
 
-Proposed by Agent Ask demo-reactivate-guided-session-2026-09-01. This Decision remains open until the operator answers it.
+Proposed by Agent Ask demo-reactivate-guided-session-2026-09-01.

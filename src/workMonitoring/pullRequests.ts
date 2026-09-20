@@ -333,15 +333,21 @@ export function derivePullRequestReadiness(input: {
 }): PullRequestReadiness {
   const mergeState = input.mergeStateStatus?.toUpperCase();
   const reviewDecision = input.reviewDecision?.toUpperCase();
-  const failing = input.checks.some((check) => ["FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "ERROR"].includes(check.conclusion?.toUpperCase() ?? ""));
+  // Only an explicit SUCCESS is green. NEUTRAL, SKIPPED, STALE, STARTUP_FAILURE
+  // and every other completed conclusion need attention, so none can pass as
+  // "every required check is green".
+  const failing = input.checks.some((check) => {
+    const conclusion = check.conclusion?.toUpperCase();
+    return check.status?.toUpperCase() === "COMPLETED" && conclusion !== undefined && conclusion !== "SUCCESS";
+  });
   const pending = input.checks.some((check) => check.status?.toUpperCase() !== "COMPLETED" || !check.conclusion);
   if (mergeState === "DIRTY" || mergeState === "BLOCKED" || reviewDecision === "CHANGES_REQUESTED") return "blocked";
   if (failing) return "checks_failing";
   if (input.isDraft) return "draft";
   if (pending) return "checks_pending";
-  if (mergeState === "CLEAN" || mergeState === "HAS_HOOKS") {
-    return reviewDecision === "APPROVED" ? "merge_ready" : "ready";
-  }
+  // HAS_HOOKS is a distinct merge state from CLEAN, so it is never merge-ready.
+  if (mergeState === "CLEAN") return reviewDecision === "APPROVED" ? "merge_ready" : "ready";
+  if (mergeState === "HAS_HOOKS") return "ready";
   return "unknown";
 }
 

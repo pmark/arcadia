@@ -33,4 +33,4 @@ decided: 2026-09-16
 
 The 0053 triage showed strict auto-adjudication resolves almost nothing, because the open queue is gates, Way changes, and acceptance judgments that must escalate. The remaining cost is presentation: a concluded question still needs a human to convert it into work, and open questions sit as passive files. This rule closes that gap without widening authority: any conclusion -- auto-applied under 0053 or answered by the operator -- immediately drafts its candidate Action through Agent Ask and hands it to arcadia go, and every escalation arrives as one ranked menu with consequences and a recommendation instead of an unranked list. Decision 0053 governs what may be concluded; this governs what happens the moment it is.
 
-Proposed by Agent Ask conclusion-creates-candidate-action-2026-09-16. This Decision remains open until the operator answers it.
+Proposed by Agent Ask conclusion-creates-candidate-action-2026-09-16.

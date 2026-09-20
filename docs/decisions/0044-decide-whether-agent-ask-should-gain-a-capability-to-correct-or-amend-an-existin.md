@@ -17,4 +17,4 @@ decided: 2026-09-03
 
 # Decision 0044: Decide whether Agent Ask should gain a capability to correct or amend an existing managed document, and whether settle's full-corpus revalidation on every apply should change. Right now neither exists, and together they mean that once any single managed document anywhere in a governed repo drifts out of schema, every future Agent Ask settlement in that repo is permanently blocked with no path through Arcadia to fix it.
 
-Proposed by Agent Ask agent-ask-has-no-correction-capability-2026-09-03. This Decision remains open until the operator answers it.
+Proposed by Agent Ask agent-ask-has-no-correction-capability-2026-09-03.

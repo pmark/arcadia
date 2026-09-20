@@ -15,6 +15,27 @@ describe("outstanding pull-request readiness", () => {
     })).toBe("merge_ready");
   });
 
+  it.each(["NEUTRAL", "SKIPPED", "STALE", "STARTUP_FAILURE"])("does not rate a PR merge-ready when a completed check concluded %s", (conclusion) => {
+    expect(derivePullRequestReadiness({
+      isDraft: false,
+      mergeStateStatus: "CLEAN",
+      reviewDecision: "APPROVED",
+      checks: [
+        { name: "CI", status: "COMPLETED", conclusion: "SUCCESS", url: null },
+        { name: "optional", status: "COMPLETED", conclusion, url: null }
+      ]
+    })).toBe("checks_failing");
+  });
+
+  it("does not rate HAS_HOOKS as merge-ready even when approved with green checks", () => {
+    expect(derivePullRequestReadiness({
+      isDraft: false,
+      mergeStateStatus: "HAS_HOOKS",
+      reviewDecision: "APPROVED",
+      checks: [{ name: "CI", status: "COMPLETED", conclusion: "SUCCESS", url: null }]
+    })).toBe("ready");
+  });
+
   it("prioritizes conflicts and failing checks over draft state", () => {
     expect(derivePullRequestReadiness({
       isDraft: true,
