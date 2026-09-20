@@ -113,8 +113,31 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
 }
 
 export function agentAskFingerprint(request: string, normalized: NormalizedAgentAsk): string { return createHash("sha256").update(JSON.stringify({ request, normalized })).digest("hex"); }
+/** The Project fields a `project_update` Ask can actually apply. */
+const PROJECT_UPDATE_TARGETS = new Set(["outcome", "goal", "milestone"]);
+
 export function buildAgentAskEffects(normalized: NormalizedAgentAsk): { effects: AgentAskEffect[]; requiredDecisions: string[] } {
   const requiredDecisions: string[] = [];
+  // A `project_update` naming a field with no apply path used to settle into an
+  // open Decision: "How should this Project update be applied: ...". Nothing
+  // could act on it. Approving it recorded an answer and changed no Project
+  // field, because no code maps an arbitrary field name to a write, so the
+  // question sat open indefinitely (R183 / Decision 0046, Issue #351).
+  // Refusing here — during preview, before anything is written — costs the
+  // author one corrected Ask and names the fields that do work.
+  if (normalized.intent === "project_update") {
+    const requested = (normalized.targetRef ?? "").trim().toLowerCase();
+    if (!PROJECT_UPDATE_TARGETS.has(requested)) {
+      throw validationError(
+        "Agent Ask project_update names a Project field Arcadia has no apply path for, so settling it could not change anything.",
+        {
+          targetRef: normalized.targetRef ?? null,
+          supported: [...PROJECT_UPDATE_TARGETS],
+          remedy: "Use target_ref: outcome or milestone, or choose the intent that owns the field — `action` or `plan` for Plan work, `decision` to ask the operator a question."
+        }
+      );
+    }
+  }
   if (normalized.project === "unknown") requiredDecisions.push("Choose the destination Project.");
   if (normalized.intent === "auto") requiredDecisions.push("Confirm the proposed Arcadia structure after interpretation.");
   if (normalized.requestedAuthority === "apply_if_approved") requiredDecisions.push("Accept the exact preview before apply.");

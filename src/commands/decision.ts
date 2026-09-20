@@ -157,54 +157,123 @@ export interface DecisionApproveData {
   receiptId: string | null;
 }
 
+/**
+ * The state a Decision document will hold once an answer is recorded, computed
+ * without writing anything.
+ */
+export interface PreparedDecisionAnswer {
+  relativePath: string;
+  absolutePath: string;
+  /** Content as it is on disk now, so a caller can restore it after a later failure. */
+  before: string;
+  /** Content to write. */
+  after: string;
+  /** The offered option that was chosen, when the Decision offered any. */
+  chosen: DecisionOptionDoc | null;
+  /** The answer as recorded — an offered option's exact label when there were options. */
+  answer: string;
+  decisionId: string | null;
+}
+
+/**
+ * Resolve a Decision document and compute the content that records `answer`,
+ * refusing with a named reason when that cannot be done.
+ *
+ * This exists so that every path which answers a Decision writes the same
+ * document the same way. `arcadia decision approve` and `arcadia review
+ * approve` used to disagree: one wrote the checked-in document, the other
+ * wrote only the workspace database and reported success, which left the file
+ * saying `status: open` for a Decision the operator had already answered
+ * (Issue #351, seen on Decisions 0058 and 0061).
+ *
+ * It writes nothing. The caller decides when to commit the returned content,
+ * which lets a caller that also mutates the database order the two so they
+ * cannot disagree.
+ */
+export function prepareDecisionAnswer(
+  db: Parameters<typeof getProject>[0],
+  input: {
+    projectIdOrSlug: string;
+    /** Decision id, slug, or filename — whatever `findDecisionFile` can match. */
+    decisionRef: string;
+    answer: string;
+    status?: DecisionDocStatus;
+    decided?: string;
+  }
+): PreparedDecisionAnswer {
+  const recorded = input.answer.trim();
+  if (!recorded) {
+    throw validationError("Recording a Decision answer requires the answer text.", { decision: input.decisionRef });
+  }
+
+  const status = input.status ?? "approved";
+  if (!(DECISION_DOC_STATUSES as readonly string[]).includes(status)) {
+    throw validationError(`status must be one of: ${DECISION_DOC_STATUSES.join(", ")}`, { status });
+  }
+
+  const repoRoot = resolveProjectRepoFromDb(db, input.projectIdOrSlug);
+  const decisionsDir = path.join(repoRoot, "docs", "decisions");
+  const absolutePath = findDecisionFile(decisionsDir, input.decisionRef);
+  if (!absolutePath) {
+    throw validationError("No decision file matches this id.", {
+      id: input.decisionRef,
+      decision: input.decisionRef,
+      decisionsDir,
+      remedy: "This item names a Decision document that is not in the repository. Create it, or correct the reference, before recording an answer."
+    });
+  }
+
+  const before = readFileSync(absolutePath, "utf8");
+  const relativePath = path.relative(repoRoot, absolutePath);
+  const { doc: existingDoc } = parseDoc(relativePath, absolutePath, before);
+  const decisionDoc = existingDoc && existingDoc.type === "decision" ? existingDoc : null;
+
+  // A Decision that offered specific options records one of them, verbatim —
+  // not a paraphrase that happens to mean the same thing. This is what makes
+  // "which option was chosen" a fact the file states rather than a guess a
+  // future reader makes from free text.
+  let answer = recorded;
+  let chosen: DecisionOptionDoc | null = null;
+  if (decisionDoc && decisionDoc.options.length > 0) {
+    chosen = decisionDoc.options.find(
+      (option) => option.label.trim().toLowerCase() === recorded.toLowerCase()
+    ) ?? null;
+    if (!chosen) {
+      throw validationError("This Decision offers specific options; answer with one of their labels.", {
+        answer: recorded,
+        labels: decisionDoc.options.map((option) => option.label)
+      });
+    }
+    answer = chosen.label;
+  }
+
+  const after = setFrontmatterFields(before, {
+    status,
+    answer,
+    decided: input.decided ?? localDateStamp(),
+    updated: localDateStamp()
+  });
+
+  failOnValidationErrors(parseDoc(relativePath, absolutePath, after).errors, "updated");
+
+  return { relativePath, absolutePath, before, after, chosen, answer, decisionId: decisionDoc?.id ?? null };
+}
+
 export function runDecisionApproveCommand(options: DecisionApproveOptions): CommandSuccess<DecisionApproveData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   return withDatabase(workspacePath, (db) => {
     const repoRoot = resolveProjectRepoFromDb(db, options.project);
-    const decisionsDir = path.join(repoRoot, "docs", "decisions");
-    const absolutePath = findDecisionFile(decisionsDir, options.id);
-    if (!absolutePath) {
-      throw validationError("No decision file matches this id.", { id: options.id });
-    }
-
     const status = options.status ?? "approved";
-    if (!(DECISION_DOC_STATUSES as readonly string[]).includes(status)) {
-      throw validationError(`status must be one of: ${DECISION_DOC_STATUSES.join(", ")}`, { status });
-    }
-
-    const raw = readFileSync(absolutePath, "utf8");
-    const relativePath = path.relative(repoRoot, absolutePath);
-    const { doc: existingDoc } = parseDoc(relativePath, absolutePath, raw);
-
-    // A Decision that offered specific options records one of them, verbatim —
-    // not a paraphrase that happens to mean the same thing. This is what makes
-    // "which option was chosen" a fact the file states rather than a guess a
-    // future reader makes from free text.
-    let answer = options.answer;
-    let chosen: DecisionOptionDoc | null = null;
-    if (existingDoc && existingDoc.type === "decision" && existingDoc.options.length > 0) {
-      chosen = existingDoc.options.find(
-        (option) => option.label.trim().toLowerCase() === options.answer.trim().toLowerCase()
-      ) ?? null;
-      if (!chosen) {
-        throw validationError("This Decision offers specific options; answer with one of their labels.", {
-          answer: options.answer,
-          labels: existingDoc.options.map((option) => option.label)
-        });
-      }
-      answer = chosen.label;
-    }
-
-    const decisionDoc = existingDoc && existingDoc.type === "decision" ? existingDoc : null;
-
-    const updatedContent = setFrontmatterFields(raw, {
+    const prepared = prepareDecisionAnswer(db, {
+      projectIdOrSlug: options.project,
+      decisionRef: options.id,
+      answer: options.answer,
       status,
-      answer,
-      decided: options.decided ?? localDateStamp(),
-      updated: localDateStamp()
+      decided: options.decided
     });
-
-    failOnValidationErrors(parseDoc(relativePath, absolutePath, updatedContent).errors, "updated");
+    const { relativePath, absolutePath, after: updatedContent, chosen } = prepared;
+    const parsedDecision = parseDoc(relativePath, absolutePath, prepared.before).doc;
+    const decisionDoc = parsedDecision && parsedDecision.type === "decision" ? parsedDecision : null;
 
     // Applying the chosen option's effect is the point of this command for a
     // governed Action. The Decision answer, the Action's parked status, and the

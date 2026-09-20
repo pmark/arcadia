@@ -1,8 +1,9 @@
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { prepareBuildPacketForAcceptedPlan } from "./work.js";
+import { prepareDecisionAnswer } from "./decision.js";
 import { projectNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
@@ -1183,11 +1184,42 @@ function resolveClarificationDecision(
     });
   }
 
+  // The authoritative record of a Decision is its checked-in document, not the
+  // workspace database. This path used to write only the database and report
+  // success, so a Decision the operator had answered kept reading
+  // `status: open` on disk until someone noticed and edited it by hand
+  // (Issue #351, seen on Decisions 0058 and 0061). Resolve and render the
+  // document write first: if it cannot be applied, this throws before anything
+  // is consumed and the item stays in the attention queue.
+  // Only an item raised from a checked-in Decision has a document to keep in
+  // step. Arcadia raises clarifications of its own for an Action's open
+  // question, and for those the workspace database is the whole record — there
+  // is no file to contradict, so there is nothing to refuse.
+  const documentRef = decisionDocumentRef(decision);
+  if (documentRef && !decision.project_id) {
+    throw validationError(
+      "This clarification names a Decision document but no Project, so the document cannot be located.",
+      { id: decision.id, docRef: decision.doc_ref, remedy: "Reject this item and re-raise it against a Project." }
+    );
+  }
+
+  const prepared = documentRef && decision.project_id
+    ? withDatabase(workspacePath, (db) =>
+        prepareDecisionAnswer(db, {
+          projectIdOrSlug: decision.project_id as string,
+          decisionRef: documentRef,
+          answer: recorded
+        })
+      )
+    : null;
+
+  const recordedAnswer = prepared?.answer ?? recorded;
+  const clarificationReset = Boolean(decision.work_item_id);
   const updated = withDatabase(workspacePath, (db) =>
     db.transaction(() => {
       const next = updateReviewItemStatus(db, decision.id, {
         status: "approved",
-        decisionNote: recorded
+        decisionNote: recordedAnswer
       });
       if (!next) {
         throw validationError("Clarification Decision was not found.", { id: decision.id });
@@ -1197,8 +1229,15 @@ function resolveClarificationDecision(
         updateWorkItem(db, decision.work_item_id, {
           clarificationStatus: "unclarified",
           openQuestion: null,
-          clarificationSource: `Answered ${decision.slug ?? decision.id}: ${recorded}`
+          clarificationSource: `Answered ${decision.slug ?? decision.id}: ${recordedAnswer}`
         });
+      }
+
+      // Inside the transaction: a failed write rolls the database back, so the
+      // document and the database can never disagree about whether this
+      // Decision is answered.
+      if (prepared) {
+        writeFileSync(prepared.absolutePath, prepared.after, "utf8");
       }
 
       return next;
@@ -1212,13 +1251,38 @@ function resolveClarificationDecision(
       item: reviewPacketForReviewItem(updated),
       result: {
         status: "approved",
-        summary: `Clarification answered; Action returned to unclarified for an explicit re-clarify. No executor was invoked.`
+        summary: [
+          prepared ? `Clarification answered; recorded in ${prepared.relativePath}.` : "Clarification answered.",
+          clarificationReset ? "Action returned to unclarified for an explicit re-clarify." : null,
+          "No executor was invoked."
+        ].filter(Boolean).join(" ")
       },
       approval: null,
       execution: null,
       run: null
     }
   });
+}
+
+/**
+ * The Decision document a review item points at, if any.
+ *
+ * `doc_ref` is `decision/<slug>` for an item raised from a checked-in
+ * Decision. Anything else — a null ref, or a ref naming another document kind
+ * — has no Decision document to answer, which is a refusal rather than
+ * something to guess at.
+ */
+function decisionDocumentRef(item: ReviewItemSummary): string | null {
+  const ref = item.doc_ref?.trim();
+  if (!ref) {
+    return null;
+  }
+  const [kind, ...rest] = ref.split("/");
+  if (kind !== "decision" || rest.length === 0) {
+    return null;
+  }
+  const slug = rest.join("/").trim();
+  return slug.length > 0 ? slug : null;
 }
 
 function createPendingExecutionReviewItem(

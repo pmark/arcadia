@@ -1531,7 +1531,12 @@ export function createReviewItem(db: Database.Database, input: CreateReviewItemI
     updated_at: timestamp,
     decided_at: null,
     decision_note: null,
-    resulting_ask_request_id: null
+    resulting_ask_request_id: null,
+    // Items Arcadia raises itself have no checked-in document behind them.
+    // `docs sync` sets this for Decisions it ingests; the INSERT below omits
+    // the column so it defaults to NULL, and this keeps the in-memory row
+    // honest about that.
+    doc_ref: null
   };
 
   db.prepare(

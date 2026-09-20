@@ -306,9 +306,20 @@ export function settleAgentAsk(db: Database.Database, input: {
           addMilestoneMutations(fileMutations, projectPath, activePlanPath, proposal.normalized.desiredResult);
           effects.push(`Updated Project ${project.slug} and active Plan ${plan.slug} Milestone.`);
         } else {
-          addDecisionMutation(fileMutations, discovered.docs.filter((doc): doc is DecisionDoc => doc.type === "decision"), repoRoot, project.slug,
-            plan.slug, null, `How should this Project update be applied: ${proposal.normalized.desiredResult}`, proposal.normalized.rationale, proposal.normalized.requestId);
-          effects.push("Created one open Decision because the Project update target was not explicit.");
+          // Opening a Decision here produced a question no command could act
+          // on: `review approve` has no apply path for an unnamed Project
+          // field, so answering it changed nothing and the Decision sat open
+          // (R183 / Decision 0046, Issue #351). A target Arcadia cannot apply
+          // is refused at preview, before anything is written, where the
+          // message can name the supported fields.
+          throw validationError(
+            "Agent Ask project_update names a Project field Arcadia has no apply path for, so settling it could not change anything.",
+            {
+              targetRef: targetRef ?? null,
+              supported: ["outcome", "goal", "milestone"],
+              remedy: "Use target_ref: outcome or milestone, or choose the intent that owns the field — `action` or `plan` for Plan work, `decision` to ask the operator a question."
+            }
+          );
         }
         break;
       }
