@@ -133,6 +133,8 @@ there:
 - an executable `<id>.sh` with only `run` and `--describe` entrypoints;
 - an `arcadia-operator-script-v1` `<id>.json` descriptor naming the problem,
   desired effect, exact operator command, authority, success, and failure;
+- `repeatable: true` only when repeating the completed operation is safe and
+  useful; omit it or set it to `false` for approvals and other one-shot input;
 - bounded waits, fail-closed preconditions, an idempotent retry story, and a
   timestamped `runs/<timestamp-pid>/` log plus failure handoff; and
 - one command for the operator to run that performs every safe, automatable
@@ -148,6 +150,14 @@ and validated at run time. Keep one-off scripts when the authority is specific.
 For example, a Decision-approval script must pin or read the exact Decision,
 answer, proposal fingerprint, and expected open state, then refuse stale or
 different state; never turn it into a blanket approval command.
+
+The dashboard records each launch as available, running, succeeded, or failed.
+It polls while work runs, exposes failure instead of treating process launch as
+completion, and disables a successful one-shot action. A reusable action stays
+available after success. Do not work around that lifecycle with background
+wrappers or by resetting its state merely to make a stale button clickable;
+repair the script or descriptor, preserve the failure receipt, and retry only
+when the represented operator action is still live.
 
 Before adding a script, inspect the existing descriptors for the same desired
 effect. Reuse an exact match. If extending a reusable entry, preserve its

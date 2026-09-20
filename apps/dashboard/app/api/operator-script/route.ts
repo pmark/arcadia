@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { access, readFile, readdir, realpath } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { NextResponse } from "next/server";
@@ -9,7 +9,29 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const LIBRARY_PATH = "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts";
+const STATE_PATH = path.join(LIBRARY_PATH, "runs", "state");
 const SAFE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const operatorScriptRunnerSource = String.raw`
+const { spawn } = require("node:child_process");
+const fs = require("node:fs");
+const [scriptPath, statePath] = process.argv.slice(1);
+const writeState = (value) => {
+  const temporary = statePath + ".tmp-" + process.pid;
+  fs.writeFileSync(temporary, JSON.stringify(value) + "\n");
+  fs.renameSync(temporary, statePath);
+};
+const startedAt = new Date().toISOString();
+writeState({ status: "running", pid: process.pid, startedAt });
+const child = spawn(scriptPath, ["run"], { stdio: "ignore" });
+child.once("error", (error) => {
+  writeState({ status: "failed", startedAt, finishedAt: new Date().toISOString(), exitCode: null, message: error.message });
+  process.exit(1);
+});
+child.once("close", (code) => {
+  writeState({ status: code === 0 ? "succeeded" : "failed", startedAt, finishedAt: new Date().toISOString(), exitCode: code });
+  process.exit(code ?? 1);
+});
+`;
 
 interface OperatorScriptDescriptor {
   schema: "arcadia-operator-script-v1";
@@ -21,6 +43,16 @@ interface OperatorScriptDescriptor {
   authority: { does: string[]; never_does: string[] };
   success: { effect: string; next: string };
   failure: { effect: string; next: string };
+  repeatable?: boolean;
+}
+
+interface OperatorScriptState {
+  status: "running" | "succeeded" | "failed";
+  pid?: number;
+  startedAt?: string;
+  finishedAt?: string;
+  exitCode?: number | null;
+  message?: string;
 }
 
 /** Return whether a value is a non-empty string after trimming whitespace. */
@@ -50,7 +82,8 @@ async function loadDescriptor(id: string): Promise<{ descriptor: OperatorScriptD
     !isNonEmptyString(descriptor.success?.effect) ||
     !isNonEmptyString(descriptor.success?.next) ||
     !isNonEmptyString(descriptor.failure?.effect) ||
-    !isNonEmptyString(descriptor.failure?.next)
+    !isNonEmptyString(descriptor.failure?.next) ||
+    (descriptor.repeatable !== undefined && typeof descriptor.repeatable !== "boolean")
   ) {
     throw new Error("Operator-script descriptor is incomplete.");
   }
@@ -61,6 +94,25 @@ async function loadDescriptor(id: string): Promise<{ descriptor: OperatorScriptD
   return { descriptor, scriptPath };
 }
 
+async function loadState(id: string): Promise<OperatorScriptState | null> {
+  try {
+    return JSON.parse(await readFile(path.join(STATE_PATH, `${id}.json`), "utf8")) as OperatorScriptState;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function processIsRunning(pid: number | undefined): boolean {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** List every valid operator script currently available in the library. */
 export async function GET() {
   try {
@@ -69,7 +121,18 @@ export async function GET() {
     const scripts = await Promise.all(ids.map(async (id) => {
       try {
         const { descriptor } = await loadDescriptor(id);
-        return { id: descriptor.id, title: descriptor.title, desiredEffect: descriptor.desired_effect, authority: descriptor.authority };
+        const recorded = await loadState(id);
+        const state = recorded?.status === "running" && !processIsRunning(recorded.pid)
+          ? { ...recorded, status: "failed" as const, message: "The launcher stopped before recording a result." }
+          : recorded;
+        return {
+          id: descriptor.id,
+          title: descriptor.title,
+          desiredEffect: descriptor.desired_effect,
+          authority: descriptor.authority,
+          repeatable: descriptor.repeatable === true,
+          state: state ?? { status: "available" }
+        };
       } catch (error) {
         console.error(`Ignoring invalid operator-script library entry ${id}.`, error);
         return null;
@@ -99,7 +162,16 @@ export async function POST(request: Request) {
   }
   try {
     const { descriptor, scriptPath } = await loadDescriptor(id);
-    const child = spawn(scriptPath, ["run"], { detached: true, stdio: "ignore" });
+    const state = await loadState(id);
+    if (state?.status === "running" && processIsRunning(state.pid)) {
+      return NextResponse.json({ error: `${descriptor.title} is already running.` }, { status: 409 });
+    }
+    if (state?.status === "succeeded" && descriptor.repeatable !== true) {
+      return NextResponse.json({ error: `${descriptor.title} already completed and is no longer executable.` }, { status: 409 });
+    }
+    await mkdir(STATE_PATH, { recursive: true });
+    const scriptStatePath = path.join(STATE_PATH, `${id}.json`);
+    const child = spawn(process.execPath, ["-e", operatorScriptRunnerSource, scriptPath, scriptStatePath], { detached: true, stdio: "ignore" });
     await new Promise<void>((resolve, reject) => {
       child.once("spawn", resolve);
       child.once("error", reject);

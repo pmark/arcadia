@@ -1,5 +1,9 @@
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { POST } from "./route";
+import { operatorScriptRunnerSource, POST } from "./route";
 
 describe("POST /api/operator-script", () => {
   it("refuses cross-origin execution", async () => {
@@ -28,6 +32,19 @@ describe("POST /api/operator-script", () => {
       body: "{not-json"
     }));
     expect(response.status).toBe(400);
+  });
+
+  it("records the terminal result of a detached script runner", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-operator-state-"));
+    const script = path.join(root, "example.sh");
+    const state = path.join(root, "state.json");
+    writeFileSync(script, "#!/usr/bin/env bash\nexit 7\n");
+    chmodSync(script, 0o755);
+
+    const result = spawnSync(process.execPath, ["-e", operatorScriptRunnerSource, script, state]);
+
+    expect(result.status).toBe(7);
+    expect(JSON.parse(readFileSync(state, "utf8"))).toMatchObject({ status: "failed", exitCode: 7 });
   });
 
 });
