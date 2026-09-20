@@ -698,6 +698,11 @@ attention and protects nothing.
   head, a conflict, or a bypass of branch protection means repair per
   "Automatic production conflict recovery" or report the blocker; never merge
   around it, weaken a test, or force a check.
+- **Not every PR is in scope.** Do not merge a PR that opens or carries an
+  important Decision, or that changes what agents are authorized to do: the
+  Constitution, approval boundaries, spend, or credentials. Settle, commit,
+  push, open the PR, and run the CodeRabbit loop as usual, then stop at the
+  handoff and leave the merge and the Decision's answer to the operator.
 - **This is a merge authorization only.** It does not authorize deployment,
   spend, credentials, production access, messaging, or any other approval
   boundary in `CONSTITUTION.md`.
