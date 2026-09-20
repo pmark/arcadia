@@ -333,7 +333,7 @@ export function attemptAutomaticCompletion(
     });
     const settlement = settleAgentAsk(db, {
       proposalRef: proposal.proposal.id, settlementRequestId: requestId, disposition: "accepted",
-      previewFingerprint: preview.previewFingerprint, apply: true, operator: true, cwd: worktree
+      previewFingerprint: preview.previewFingerprint, apply: true, cwd: worktree
     });
     return { attempted: true, completed: true, reason: `Automatically completed under standing production policy revision ${policy.revision}.`, settlement };
   } catch (error) {
