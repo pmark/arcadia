@@ -72,7 +72,8 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   const authority = requiredText(data.requested_authority ?? "propose", "Requested authority is required.") as AgentAskAuthority;
   if (!(["propose", "apply_if_approved"] as string[]).includes(authority)) throw validationError("Agent Ask cannot claim or expand execution authority.", { requestedAuthority: authority });
   const actions = actionList(data.actions);
-  const targetRef = optionalText(data.target_ref);
+  const rawTargetRef = optionalText(data.target_ref);
+  const targetRef = intent === "project_update" ? rawTargetRef?.toLowerCase() ?? null : rawTargetRef;
   if (intent === "plan" && !targetRef && actions.length === 0) {
     throw validationError("A new Plan Agent Ask requires at least one governed Action.");
   }
@@ -114,7 +115,7 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
 
 export function agentAskFingerprint(request: string, normalized: NormalizedAgentAsk): string { return createHash("sha256").update(JSON.stringify({ request, normalized })).digest("hex"); }
 /** The Project fields a `project_update` Ask can actually apply. */
-const PROJECT_UPDATE_TARGETS = new Set(["outcome", "goal", "milestone"]);
+const PROJECT_UPDATE_TARGETS = new Set(["outcome", "milestone"]);
 
 export function buildAgentAskEffects(normalized: NormalizedAgentAsk): { effects: AgentAskEffect[]; requiredDecisions: string[] } {
   const requiredDecisions: string[] = [];
@@ -126,7 +127,7 @@ export function buildAgentAskEffects(normalized: NormalizedAgentAsk): { effects:
   // Refusing here — during preview, before anything is written — costs the
   // author one corrected Ask and names the fields that do work.
   if (normalized.intent === "project_update") {
-    const requested = (normalized.targetRef ?? "").trim().toLowerCase();
+    const requested = (normalized.targetRef ?? "").trim();
     if (!PROJECT_UPDATE_TARGETS.has(requested)) {
       throw validationError(
         "Agent Ask project_update names a Project field Arcadia has no apply path for, so settling it could not change anything.",

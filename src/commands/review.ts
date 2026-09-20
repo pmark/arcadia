@@ -1215,34 +1215,49 @@ function resolveClarificationDecision(
 
   const recordedAnswer = prepared?.answer ?? recorded;
   const clarificationReset = Boolean(decision.work_item_id);
-  const updated = withDatabase(workspacePath, (db) =>
-    db.transaction(() => {
-      const next = updateReviewItemStatus(db, decision.id, {
-        status: "approved",
-        decisionNote: recordedAnswer
-      });
-      if (!next) {
-        throw validationError("Clarification Decision was not found.", { id: decision.id });
-      }
-
-      if (decision.work_item_id) {
-        updateWorkItem(db, decision.work_item_id, {
-          clarificationStatus: "unclarified",
-          openQuestion: null,
-          clarificationSource: `Answered ${decision.slug ?? decision.id}: ${recordedAnswer}`
+  let decisionFileWriteStarted = false;
+  let updated: ReviewItemSummary;
+  try {
+    updated = withDatabase(workspacePath, (db) =>
+      db.transaction(() => {
+        const next = updateReviewItemStatus(db, decision.id, {
+          status: "approved",
+          decisionNote: recordedAnswer
         });
-      }
+        if (!next) {
+          throw validationError("Clarification Decision was not found.", { id: decision.id });
+        }
 
-      // Inside the transaction: a failed write rolls the database back, so the
-      // document and the database can never disagree about whether this
-      // Decision is answered.
-      if (prepared) {
-        writeFileSync(prepared.absolutePath, prepared.after, "utf8");
-      }
+        if (decision.work_item_id) {
+          updateWorkItem(db, decision.work_item_id, {
+            clarificationStatus: "unclarified",
+            openQuestion: null,
+            clarificationSource: `Answered ${decision.slug ?? decision.id}: ${recordedAnswer}`
+          });
+        }
 
-      return next;
-    })()
-  );
+        // The file is part of the same logical transition as the database. If
+        // committing the transaction fails after this begins, restore the
+        // original bytes before rethrowing the transaction's error.
+        if (prepared) {
+          decisionFileWriteStarted = true;
+          writeFileSync(prepared.absolutePath, prepared.after, "utf8");
+        }
+
+        return next;
+      })()
+    );
+  } catch (error) {
+    if (prepared && decisionFileWriteStarted) {
+      try {
+        writeFileSync(prepared.absolutePath, prepared.before, "utf8");
+      } catch {
+        // Preserve the transaction error; the original failure is the useful
+        // handoff even if filesystem recovery itself is unavailable.
+      }
+    }
+    throw error;
+  }
 
   return createSuccess({
     command: "review.approve",
@@ -1268,9 +1283,9 @@ function resolveClarificationDecision(
  * The Decision document a review item points at, if any.
  *
  * `doc_ref` is `decision/<slug>` for an item raised from a checked-in
- * Decision. Anything else — a null ref, or a ref naming another document kind
- * — has no Decision document to answer, which is a refusal rather than
- * something to guess at.
+ * Decision. A missing ref has no Decision document to answer; a nonempty ref
+ * naming another document kind is malformed and must be refused rather than
+ * treated as a database-only clarification.
  */
 function decisionDocumentRef(item: ReviewItemSummary): string | null {
   const ref = item.doc_ref?.trim();
@@ -1279,10 +1294,19 @@ function decisionDocumentRef(item: ReviewItemSummary): string | null {
   }
   const [kind, ...rest] = ref.split("/");
   if (kind !== "decision" || rest.length === 0) {
-    return null;
+    throw validationError("Clarification Decision doc_ref must be a decision/<slug> reference.", {
+      docRef: ref,
+      remedy: "Repair the review item's doc_ref or clear it before approving."
+    });
   }
   const slug = rest.join("/").trim();
-  return slug.length > 0 ? slug : null;
+  if (!slug) {
+    throw validationError("Clarification Decision doc_ref must be a decision/<slug> reference.", {
+      docRef: ref,
+      remedy: "Repair the review item's doc_ref or clear it before approving."
+    });
+  }
+  return slug;
 }
 
 function createPendingExecutionReviewItem(

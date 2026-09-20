@@ -124,6 +124,20 @@ describe("review approve applies its effect or refuses", () => {
     expect(stored?.status).toBe("open");
   });
 
+  it.each(["plan/not-a-decision", "proposal/not-a-decision", "decision/"]) (
+    "refuses a malformed nonempty Decision doc_ref: %s",
+    (docRef) => {
+      const { workspace, projectId } = workspaceWithProject();
+      const item = clarificationFor(workspace, projectId, docRef);
+
+      expect(() => runReviewApproveCommand({ workspace, id: item.id, answer: "Go left" }))
+        .toThrow(/doc_ref must be a decision\/<slug>/);
+
+      const stored = withReadOnlyDatabase(workspace, (db) => getReviewItem(db, item.id));
+      expect(stored?.status).toBe("open");
+    }
+  );
+
   it("refuses an answer that is not one of the Decision's offered options, and changes nothing", () => {
     const { workspace, repoRoot, projectSlug, projectId } = workspaceWithProject();
     runDecisionNewCommand({

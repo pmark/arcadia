@@ -84,6 +84,27 @@ describe("Agent Ask v1", () => {
     expect(result.data.proposal).toMatchObject({ unchanged: [], conflicts: [], refused: [] });
   });
 
+  it("normalizes only project_update target fields and rejects the legacy goal target", () => {
+    const workspace = initializedWorkspace();
+    const projectUpdate = runAgentAskPreviewCommand({
+      workspace,
+      request: `${strictAsk("project-update-case", "project_update")}target_ref: MILESTONE\n`
+    });
+    expect(projectUpdate.data.proposal.normalized.targetRef).toBe("milestone");
+    expect(projectUpdate.data.proposal.effects[0]?.targetRef).toBe("milestone");
+
+    expect(() => runAgentAskPreviewCommand({
+      workspace,
+      request: `${strictAsk("project-update-goal", "project_update")}target_ref: goal\n`
+    })).toThrow(/no apply path/);
+
+    const plan = runAgentAskPreviewCommand({
+      workspace,
+      request: `${strictAsk("plan-case", "plan")}target_ref: Plan/Existing\n`
+    });
+    expect(plan.data.proposal.normalized.targetRef).toBe("Plan/Existing");
+  });
+
   it("supports natural fallback only with an explicit id and keeps intent unknown", () => {
     const workspace = initializedWorkspace();
     const result = runAgentAskPreviewCommand({ workspace, request: "Make the release safer.", requestId: "natural-1" });
