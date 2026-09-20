@@ -48,4 +48,19 @@ describe("POST /api/operator-script", () => {
     expect(JSON.parse(readFileSync(state, "utf8"))).toMatchObject({ status: "failed", exitCode: 7 });
   });
 
+  it("does not leak dashboard runtime markers into operator scripts", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-operator-env-"));
+    const script = path.join(root, "example.sh");
+    const state = path.join(root, "state.json");
+    writeFileSync(script, "#!/usr/bin/env bash\n[[ -z \"${NODE_ENV:-}\" && -z \"${NEXT_RUNTIME:-}\" && -z \"${__NEXT_PRIVATE_TEST:-}\" ]]\n");
+    chmodSync(script, 0o755);
+
+    const result = spawnSync(process.execPath, ["-e", operatorScriptRunnerSource, script, state], {
+      env: { ...process.env, NODE_ENV: "dashboard-runtime", NEXT_RUNTIME: "nodejs", __NEXT_PRIVATE_TEST: "present" }
+    });
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(readFileSync(state, "utf8"))).toMatchObject({ status: "succeeded", exitCode: 0 });
+  });
+
 });
