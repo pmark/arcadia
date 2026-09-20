@@ -8,9 +8,15 @@
 
 ## Authority
 
-- Approval boundaries are hard stops. Do not merge, deploy, publish, delete,
-  spend, use credentials, access production, or send messages without an
-  explicit Decision. Capability never grants authority.
+- Approval boundaries are hard stops. Do not deploy, publish, delete, spend,
+  use credentials, access production, or send messages without an explicit
+  Decision. Capability never grants authority.
+- Merging is a hard stop with one standing exception (Decision 0060): an agent
+  may merge a pull request once CodeRabbit has approved its current head, every
+  required check on that head is green, and the merge state is clean. A push
+  resets the condition. The exception excludes any pull request that opens or
+  carries an important Decision or changes what agents are authorized to do;
+  those wait for the operator.
 - Reversibility earns autonomy. Previewable, idempotent, recoverable work may
   advance farther on its own; the boundaries above do not move.
 - Operator attention is a budget. Interrupt only when human judgment or
