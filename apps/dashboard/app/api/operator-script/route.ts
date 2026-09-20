@@ -23,14 +23,17 @@ interface OperatorScriptDescriptor {
   failure: { effect: string; next: string };
 }
 
+/** Return whether a value is a non-empty string after trimming whitespace. */
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+/** Return whether a value is an array containing only non-empty strings. */
 function isStringList(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(isNonEmptyString);
 }
 
+/** Load and validate an operator-script descriptor and its executable path. */
 async function loadDescriptor(id: string): Promise<{ descriptor: OperatorScriptDescriptor; scriptPath: string }> {
   if (!SAFE_ID.test(id)) throw new Error("Invalid operator-script id.");
   const descriptorPath = path.join(LIBRARY_PATH, `${id}.json`);
@@ -58,6 +61,7 @@ async function loadDescriptor(id: string): Promise<{ descriptor: OperatorScriptD
   return { descriptor, scriptPath };
 }
 
+/** List every valid operator script currently available in the library. */
 export async function GET() {
   try {
     const entries = await readdir(LIBRARY_PATH);
@@ -78,6 +82,7 @@ export async function GET() {
   }
 }
 
+/** Validate and launch a requested operator script as a detached process. */
 export async function POST(request: Request) {
   if (!isSameOriginRequest(request)) {
     return NextResponse.json({ error: "Cross-origin operator-script requests are refused." }, { status: 403 });
