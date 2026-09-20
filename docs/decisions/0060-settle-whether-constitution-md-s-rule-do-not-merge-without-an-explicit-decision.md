@@ -4,7 +4,7 @@ type: decision
 id: "0060"
 slug: settle-whether-constitution-md-s-rule-do-not-merge-without-an-explicit-decision
 project: arcadia
-status: open
+status: approved
 question: Settle whether CONSTITUTION.md's rule 'do not merge ... without an explicit Decision' should be amended so an agent may merge a pull request once CodeRabbit has approved its current head and every required check is green.
 gap_type: missing-decision
 recommendation: Amend the Constitution to authorize merge-on-green (bounded)
@@ -21,6 +21,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-09-20
+answer: Amend the Constitution to authorize merge-on-green (bounded)
+decided: 2026-09-20
 ---
 
 # Decision 0060: Settle whether CONSTITUTION.md's rule 'do not merge ... without an explicit Decision' should be amended so an agent may merge a pull request once CodeRabbit has approved its current head and every required check is green.
