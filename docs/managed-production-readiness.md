@@ -38,11 +38,21 @@ path" below names them.
 
 Everything here counts individual Action ids, never grouped work items.
 
-**The nearest honest milestone is not "unattended production." It is one Action
-launched, finished, landed and followed by the next one, with nobody typing
-anything.** That is `prove-zero-prompt-production-loop`, and **three code
-Actions plus one operator credential step** stand between here and attempting
-it.
+**The nearest milestone is not "unattended production" — it is the preflight
+for it.** `prove-zero-prompt-production-loop` proves the chain end to end with
+*no permission relay*: Action A prepared, executed, validated, preserved, its
+pointer advanced, Action B prepared. It is not a fully unattended run, and its
+own acceptance criteria say so — it permits a predeclared, visible
+host-controller invocation ("not autonomous execution") and requires a
+separately authorized integration grant, because `preserve-on-exit-and-integrate`
+is still open when it runs. Call it an **assisted zero-prompt preflight**.
+**Three code Actions plus one operator credential step** stand between here
+and attempting it.
+
+**The unattended claim belongs to `prove-two-action-unattended-production`**
+— two dependent Actions from one activation with no operator step between
+them — and nothing before it in this document should be read as making that
+claim.
 
 ---
 
@@ -89,7 +99,7 @@ The worker ticks, sees the pointer, and refuses to launch.
 | | Item | Why it blocks |
 | --- | --- | --- |
 | ✅ | **Decision 0058** — delegate bounded candidate integration? | **Approved** (R212, 2026-09-19): bounded integration is delegated under a named, expiring grant. The document lagged the canonical record until 2026-09-20 — itself an instance of `approval-must-apply-or-refuse` below. `preserve-on-exit-and-integrate` now has its authority. |
-| ⬜ | `preserve-on-exit-and-integrate` | Without it, every Action needs one operator merge before the next dependent Action can start. This single item is the difference between "assisted" and "unattended." |
+| ⬜ | `preserve-on-exit-and-integrate` | Without it, every Action needs one operator merge before the next dependent Action can start. This single item is the difference between "assisted" and "unattended" — which is exactly why the proof that precedes it in the queue can only be the assisted one. |
 | ⬜ | `bind-candidate-revision-in-action-settle` | `action settle` derives the wrong revision, so the documented candidate-worktree completion path fails. |
 | ⬜ | `approval-must-apply-or-refuse` | Approval can consume an item without applying its effect — a silent loss of the thing being approved. |
 | ⬜ | `apply-answered-decision-consequences` | An answered Decision does not move the Action it governs, so answering one changes nothing until a human acts on it. |
@@ -111,8 +121,8 @@ Nothing here is code. These are live runs that either happen or do not.
 
 | | Action | Scope |
 | --- | --- | --- |
-| ⬜ | `prove-zero-prompt-production-loop` | **The nearest real milestone.** One Action: hand off, execute, validate, preserve, advance — no permission relay. |
-| 🟡 | `prove-two-action-unattended-production` | `status: deferred`. Two dependent Actions from one activation, one Action split across two Sessions. **It blocks three other Actions while deferred** (see below). |
+| ⬜ | `prove-zero-prompt-production-loop` | **The nearest milestone, and an assisted one.** Hand off, execute, validate, preserve, advance, prepare the next — no permission relay, but a predeclared visible host-controller step and a separately authorized integration grant are both permitted. Not a claim of unattended execution. |
+| 🟡 | `prove-two-action-unattended-production` | `status: deferred`. Two dependent Actions from one activation, one Action split across two Sessions, no operator step in between. **This is where the unattended claim is actually earned.** It blocks three other Actions while deferred (see below). |
 | ⬜ | `prove-multi-provider-production-recovery` | Continuous production across providers and capacity exhaustion. |
 | ⬜ | `prove-managed-production-fault-matrix` | The contract-20 fault-injection matrix before any unattended handoff. |
 | ⬜ | `harden-zero-prompt-production-loop` | Only after the happy path runs clean twice. |
@@ -136,13 +146,13 @@ unattended production on the board.
 2. `fix-packet-lifecycle-latest-planning-decision`
 3. `translate-reasoning-effort-at-launch`
 4. **Operator:** restore provider auth (see External blockers)
-5. `prove-zero-prompt-production-loop` — first real proof
+5. `prove-zero-prompt-production-loop` — assisted zero-prompt preflight, not an unattended claim
 6. `preserve-on-exit-and-integrate` — authorized by Decision 0058
 7. `bind-candidate-revision-in-action-settle`
 8. `apply-answered-decision-consequences`
 9. `approval-must-apply-or-refuse`
 10. **Operator:** un-defer `prove-two-action-unattended-production`
-11. `prove-two-action-unattended-production` — the "unattended" claim becomes true here
+11. `prove-two-action-unattended-production` — the unattended claim is earned here
 12. `make-go-total-across-plans`
 13. `detect-hung-managed-production-sessions`
 14. `prove-multi-provider-production-recovery`
