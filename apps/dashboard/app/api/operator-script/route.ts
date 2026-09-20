@@ -31,14 +31,19 @@ export async function POST(request: Request) {
       detached: true,
       stdio: "ignore"
     });
+    await new Promise<void>((resolve, reject) => {
+      child.once("spawn", resolve);
+      child.once("error", reject);
+    });
     child.unref();
     return NextResponse.json(
       { message: "Protected Go handoff started. The dashboard may briefly restart; progress is recorded in the operator-script runs folder." },
       { status: 202 }
     );
   } catch (error) {
+    console.error("Could not launch the pinned operator script.", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : String(error) },
+      { error: "The protected handoff could not be started on the host. Check the dashboard service log." },
       { status: 500 }
     );
   }

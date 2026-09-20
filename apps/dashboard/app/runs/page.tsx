@@ -73,6 +73,7 @@ export default function RunsPage() {
                 setHandoffMessage(body.message ?? "Protected handoff started.");
               } catch (error) {
                 setHandoffError(error instanceof Error ? error.message : String(error));
+              } finally {
                 setHandoffPending(false);
               }
             }}
