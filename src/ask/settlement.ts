@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import type { AgentAskProposal, NormalizedAgentAsk, NormalizedAgentAskAction, NormalizedAgentAskEvidence, NormalizedAgentAskOption } from "./agentAsk.js";
@@ -26,6 +26,23 @@ export type AgentAskPlacement = "top" | "before" | "after";
  * so this is a side-effect budget, not the settlement's durability window.
  */
 const DEFAULT_PROJECTION_BUSY_TIMEOUT_MS = 15_000;
+
+/**
+ * Draft Ask files are deliberate, disposable intake: `draft` creates them in
+ * the candidate worktree and a later settlement may archive one of them. They
+ * must not make a settlement refuse merely because another pending Ask was
+ * drafted in the same checkout. All other dirt remains fail-closed.
+ */
+function untrackedDraftAskPaths(repoRoot: string): string[] {
+  const directory = path.join(repoRoot, ".arcadia", "asks");
+  try {
+    return readdirSync(directory, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && /^agent-ask-[a-z0-9][a-z0-9-]*\.ya?ml$/.test(entry.name))
+      .map((entry) => path.join(".arcadia", "asks", entry.name));
+  } catch {
+    return [];
+  }
+}
 
 /** `after: null` means this mutation deletes `path` (used to archive a settled Ask's source file). */
 interface FileMutation { path: string; before: string | null; after: string | null; }
@@ -661,7 +678,7 @@ export function settleAgentAsk(db: Database.Database, input: {
     });
   }
 
-  const archivedAskPath = archiveSettledAskFile(fileMutations, effects, repoRoot, proposal.sourcePath ?? null);
+  archiveSettledAskFile(fileMutations, effects, repoRoot, proposal.sourcePath ?? null);
 
   const previewFingerprint = sha256(JSON.stringify({
     proposalFingerprint: proposal.fingerprint,
@@ -704,13 +721,11 @@ export function settleAgentAsk(db: Database.Database, input: {
   if (!input.apply) return baseReceipt;
 
   if (fileMutations.length > 0) {
-    // The drafted Ask file itself sits untracked in the repository this
-    // settlement is about to write into. It is not incidental dirt: this
-    // same settlement consumes it (archiveSettledAskFile queued a mutation
-    // deleting it and writing its content under `.arcadia/asks/archive/`), so
-    // it must not also make the repository look unclean. Nothing else in the
-    // working tree is exempted.
-    assertClean(repoRoot, "Agent Ask Project repository", archivedAskPath ? [archivedAskPath] : []);
+    // Draft Ask files are bounded intake, not incidental dirt. A complete
+    // settlement consumes one of them, while other pending drafts must remain
+    // available for their own future settlement. Nothing else in the working
+    // tree is exempted.
+    assertClean(repoRoot, "Agent Ask Project repository", untrackedDraftAskPaths(repoRoot));
   }
 
   // A settlement's durable record is the committed managed document, not the

@@ -187,6 +187,15 @@ describe("Agent Ask complete", () => {
     expect(execFileSync("git", ["status", "--porcelain"], { cwd: candidate, encoding: "utf8" }).trim())
       .toBe("?? .arcadia/asks/agent-ask-complete-from-candidate.yaml");
 
+    // A second draft is legitimate pending intake, not unrelated working-tree
+    // dirt. The current settlement must archive only its own source and leave
+    // this future Ask available.
+    const pendingAsk = path.join(candidate, ".arcadia", "asks", "agent-ask-pending-follow-up.yaml");
+    writeFileSync(pendingAsk, JSON.stringify({
+      agent_ask: "v1", request_id: "pending-follow-up", project: "demo", intent: "log",
+      desired_result: "Record a later follow-up."
+    }), "utf8");
+
     const preview = runAgentAskSettleCommand({
       workspace, proposal: draft.data.preview!.proposal.id, requestId: "settle-complete-from-candidate",
       disposition: "accepted", cwd: candidate
@@ -204,7 +213,8 @@ describe("Agent Ask complete", () => {
     // this settlement never touched is untouched and still at the original head.
     expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim()).toBe(head);
     expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
-    expect(execFileSync("git", ["status", "--porcelain"], { cwd: candidate, encoding: "utf8" })).toBe("");
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: candidate, encoding: "utf8" }).trim())
+      .toBe("?? .arcadia/asks/agent-ask-pending-follow-up.yaml");
     expect(execFileSync("git", ["rev-list", "--count", `${head}..HEAD`], { cwd: candidate, encoding: "utf8" }).trim()).toBe("1");
     expect(execFileSync("git", ["log", "-1", "--format=%s"], { cwd: candidate, encoding: "utf8" }))
       .toContain("settle complete-from-candidate");
