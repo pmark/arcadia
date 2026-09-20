@@ -1,4 +1,7 @@
-import { existsSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
@@ -25,7 +28,6 @@ import {
   summarizeClutter,
   tryGit,
   uncommittedChanges,
-  upstreamRef,
   type ClutterSummary
 } from "../git/worktrees.js";
 import {
@@ -77,15 +79,27 @@ export interface GoCommandOptions {
     afterWorktreeCreatedBeforeReservationCommit?: () => void;
     /** Deterministic fault injection inside the Agent Ask drift recovery it runs before the clean check. */
     askRecovery?: AskRecoveryTestHooks;
+    /** Deterministic race injection immediately before a divergent-base result is published. */
+    beforeBaseReconciliationPublish?: () => void;
   };
 }
 
 export interface BaseRemoteSync {
-  /** False when the base branch has no tracked remote; every other field is then null/false. */
+  /** False when no remote operation ran (preview or no tracked remote). */
   attempted: boolean;
   /** The remote name (e.g. "origin"), present whenever a fetch was attempted. */
   remote: string | null;
+  /** The exact configured upstream observed by the protected snapshot. */
+  upstream: string | null;
   fastForwarded: boolean;
+  /** The verified host-controller outcome, separate from source-branch integration. */
+  strategy: "none" | "current" | "fast-forward" | "governed-merge";
+  localHeadBefore: string | null;
+  remoteHead: string | null;
+  mergeBase: string | null;
+  resultHead: string | null;
+  localGovernanceCommits: string[];
+  remoteCommitsIntegrated: number;
   /** Set whenever fastForwarded is false, explaining why (no remote, already current). */
   reason: string | null;
 }
@@ -135,6 +149,12 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
   if (options.launch && (!options.apply || !options.agent)) {
     throw validationError("--launch requires --apply and an explicit Session adapter; it is the only authority to start a process.");
   }
+  if (options.apply && process.env.CODEX_SANDBOX) {
+    throw validationError("Arcadia go mutation must run in the protected host controller.", {
+      sandbox: process.env.CODEX_SANDBOX,
+      remedy: "Run the installed fixed Go request launcher; the host worker owns reconciliation and worktree preparation."
+    });
+  }
   const requestedRepo = options.repo ?? invocationRoot();
   const requestedSource = options.source ?? requestedRepo;
   const repo = existingDirectory(requestedRepo, "repository");
@@ -170,17 +190,28 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     assertClean(baseRecord.path, "base worktree");
   }
 
-  // Fetches and fast-forwards local base onto its remote before anything below
+  const sourceBranch = sourceRecord.branch.replace(/^refs\/heads\//, "");
+  const operationNow = options.now ?? new Date();
+
+  // Fetches and reconciles local base with its remote before anything below
   // reads from it — dispatch, `commitsToIntegrate`, and the next worktree all
   // have to see current state, not whatever the last session happened to leave
   // on disk. Failing closed on divergence here is the same fail-closed
   // contract the rest of this command already applies to the source branch.
   // Preview changes no Git state, fetch included, so this only runs on apply.
   const baseRemoteSync: BaseRemoteSync = options.apply
-    ? syncBaseBranchWithRemote({ controlWorktree, baseBranch, baseWorktreePath: baseRecord?.path ?? null })
-    : { attempted: false, remote: null, fastForwarded: false, reason: "Preview does not fetch or modify the base branch." };
+    ? syncBaseBranchWithRemote({
+        controlWorktree,
+        baseBranch,
+        baseWorktreePath: baseRecord?.path ?? null,
+        sourceWorktreePath: sourceRecord.path,
+        sourceBranch,
+        sourceHead: sourceRecord.head,
+        now: operationNow,
+        beforePublish: options.testHooks?.beforeBaseReconciliationPublish
+      })
+    : emptyBaseRemoteSync("Preview does not fetch or modify the base branch.");
 
-  const sourceBranch = sourceRecord.branch.replace(/^refs\/heads\//, "");
   const integration = reconciliationKind(sourceRecord.path, baseBranch, sourceBranch);
   const commitsToIntegrate = countCommits(sourceRecord.path, baseBranch, sourceBranch);
 
@@ -189,14 +220,15 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       throw validationError("Arcadia go only removes clearly agent-owned task branches.", {
         sourceBranch,
         allowedPrefixes: ["codex/", "claude/", "agent/", "worktree-"],
-        remedy: "Integrate and retire this branch manually, or rename it to an agent-owned task branch after review."
+        remedy: "Preserve this branch and route it through a reviewed Arcadia recovery; protected Go will not retire it."
       });
     }
     if (integration === null) {
       throw validationError("The source branch cannot fast-forward the local base branch.", {
         sourceBranch,
         baseBranch,
-        remedy: "Reconcile the divergent histories manually in a separate integration worktree."
+        requiresProtectedRemoteObservation: options.apply !== true,
+        remedy: "Preserve both histories and route them through a reviewed Arcadia recovery; protected Go issued no worktree."
       });
     }
   }
@@ -223,12 +255,12 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
   if (options.apply && integration !== "not-needed" && integration !== null) {
     if (integration === "fast-forward") {
       if (baseRecord) {
-        git(baseRecord.path, ["merge", "--ff-only", sourceBranch]);
+        git(baseRecord.path, ["-c", "core.hooksPath=/dev/null", "merge", "--ff-only", sourceBranch]);
       } else {
         // The base branch may be unattached because an agent switched the
         // primary checkout onto its task branch. Updating it is safe only after
         // the ancestry check above proves this is a strict fast-forward.
-        git(sourceRecord.path, ["branch", "-f", baseBranch, sourceBranch]);
+        git(sourceRecord.path, ["-c", "core.hooksPath=/dev/null", "branch", "-f", baseBranch, sourceBranch]);
       }
 
       const baseDispatch = resolveDispatch(baseRecord?.path ?? sourceRecord.path, projectSlug);
@@ -246,19 +278,19 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     if (!baseRecord && samePath(worktrees[0].path, sourceRecord.path)) {
       // A primary checkout cannot be removed as a linked worktree. Return it
       // to the now-fast-forwarded base branch instead.
-      git(sourceRecord.path, ["switch", baseBranch]);
+      git(sourceRecord.path, ["-c", "core.hooksPath=/dev/null", "switch", baseBranch]);
     } else {
       // Removing the caller's current directory is legal but leaves its shell
       // unusable. Move to a retained worktree (or its parent) first.
       if (isInside(process.cwd(), sourceRecord.path)) {
         process.chdir(baseRecord?.path ?? path.dirname(sourceRecord.path));
       }
-      git(controlWorktree, ["worktree", "remove", sourceRecord.path]);
+      git(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "remove", sourceRecord.path]);
       sourceWorktreeRemoved = true;
     }
     deleteVerifiedSafeSourceBranch(controlWorktree, baseBranch, sourceBranch, sourceRecord.head);
     sourceBranchDeleted = true;
-    git(controlWorktree, ["worktree", "prune"]);
+    git(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "prune"]);
   }
 
   if (options.apply && options.agent) {
@@ -330,7 +362,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       }
     }
 
-    const now = options.now ?? new Date();
+    const now = operationNow;
     // The conflict check and whatever it decides to do about it (resume's
     // reservation refresh, or a fresh worktree's creation+reservation) must
     // run inside one atomic transaction, not two separate `withDatabase`
@@ -396,8 +428,8 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       // retire. This worktree was created by this failed call and cannot yet
       // contain agent changes, so compensating removal is lossless.
       if (reservationCommitCleanup.candidate) {
-        tryGit(controlWorktree, ["worktree", "remove", reservationCommitCleanup.candidate.path]);
-        tryGit(controlWorktree, ["branch", "-D", reservationCommitCleanup.candidate.branch]);
+        tryGit(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "remove", reservationCommitCleanup.candidate.path]);
+        tryGit(controlWorktree, ["-c", "core.hooksPath=/dev/null", "branch", "-D", reservationCommitCleanup.candidate.branch]);
       }
       throw error;
     }
@@ -657,9 +689,11 @@ export function renderGoSuccess(response: CommandSuccess<GoCommandData>): string
 
   if (data.baseRemoteSync.attempted) {
     lines.push(
-      data.baseRemoteSync.fastForwarded
-        ? `Base remote sync: fast-forwarded ${data.baseBranch} from ${data.baseRemoteSync.remote}.`
-        : `Base remote sync: ${data.baseRemoteSync.reason}`
+      data.baseRemoteSync.strategy === "governed-merge"
+        ? `Base remote sync: reconciled governed local commits with ${data.baseRemoteSync.remote} at ${data.baseRemoteSync.resultHead}.`
+        : data.baseRemoteSync.fastForwarded
+          ? `Base remote sync: fast-forwarded ${data.baseBranch} from ${data.baseRemoteSync.remote}.`
+          : `Base remote sync: ${data.baseRemoteSync.reason}`
     );
   } else if (data.baseRemoteSync.reason) {
     lines.push(`Base remote sync: ${data.baseRemoteSync.reason}`);
@@ -782,51 +816,709 @@ function deleteVerifiedSafeSourceBranch(cwd: string, baseBranch: string, sourceB
     throw validationError("The source branch changed before cleanup; Arcadia go will not delete it.", {
       sourceBranch,
       baseBranch,
-      remedy: "Inspect and reconcile the changed branch manually before retrying cleanup."
+      remedy: "Preserve the changed branch and route it through a reviewed Arcadia recovery; protected Go will not delete it."
     });
   }
-  git(cwd, ["update-ref", "-d", `refs/heads/${sourceBranch}`, expectedHead]);
+  git(cwd, ["-c", "core.hooksPath=/dev/null", "update-ref", "-d", `refs/heads/${sourceBranch}`, expectedHead]);
 }
 
 /**
- * Fetch the base branch's tracked remote and fast-forward the local base onto
- * it when that is a clean ancestor merge. Skips cleanly when no remote is
- * configured, and refuses (never silently proceeds) when local base has
- * diverged from the fetched remote ref in a way a fast-forward cannot resolve.
+ * Fetch the base branch's tracked remote. Fast-forward ordinary ancestry; for
+ * a true divergence, admit only recognized Arcadia-generated governance
+ * commits and publish one conflict-free, two-parent host-controller commit.
  */
+const FULL_GIT_OID = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
+
+function emptyBaseRemoteSync(reason: string): BaseRemoteSync {
+  return {
+    attempted: false,
+    remote: null,
+    upstream: null,
+    fastForwarded: false,
+    strategy: "none",
+    localHeadBefore: null,
+    remoteHead: null,
+    mergeBase: null,
+    resultHead: null,
+    localGovernanceCommits: [],
+    remoteCommitsIntegrated: 0,
+    reason
+  };
+}
+
 function syncBaseBranchWithRemote(input: {
   controlWorktree: string;
   baseBranch: string;
   baseWorktreePath: string | null;
+  sourceWorktreePath: string;
+  sourceBranch: string;
+  sourceHead: string;
+  now: Date;
+  beforePublish?: () => void;
 }): BaseRemoteSync {
-  const { controlWorktree, baseBranch, baseWorktreePath } = input;
-  const upstream = upstreamRef(controlWorktree, baseBranch);
-  if (!upstream) {
-    return { attempted: false, remote: null, fastForwarded: false, reason: "The base branch has no tracked remote configured." };
+  const {
+    controlWorktree,
+    baseBranch,
+    baseWorktreePath,
+    sourceWorktreePath,
+    sourceBranch,
+    sourceHead,
+    now,
+    beforePublish
+  } = input;
+  const remoteName = tryGit(controlWorktree, ["config", "--get", `branch.${baseBranch}.remote`]);
+  const remoteBranchRef = tryGit(controlWorktree, ["config", "--get", `branch.${baseBranch}.merge`]);
+  if (!remoteName && !remoteBranchRef) {
+    return emptyBaseRemoteSync("The base branch has no tracked remote configured.");
   }
-  const remoteName = upstream.split("/")[0];
-  git(controlWorktree, ["fetch", remoteName]);
-  const remoteRef = `refs/remotes/${upstream}`;
-  const baseHeadRef = `refs/heads/${baseBranch}`;
-  if (!refExists(controlWorktree, remoteRef)) {
-    return { attempted: true, remote: remoteName, fastForwarded: false, reason: "The fetch produced no remote-tracking ref for the base branch." };
-  }
-  if (isAncestor(controlWorktree, remoteRef, baseHeadRef)) {
-    return { attempted: true, remote: remoteName, fastForwarded: false, reason: "Local base branch is already current with its remote." };
-  }
-  if (!isAncestor(controlWorktree, baseHeadRef, remoteRef)) {
-    throw validationError("The local base branch has diverged from its remote; Arcadia go will not fast-forward through a rewrite.", {
+  if (!remoteName || remoteName === "." || !remoteBranchRef?.startsWith("refs/heads/")) {
+    unsupportedBaseHistory("The base branch upstream is not one protected remote branch.", {
       baseBranch,
-      remote: upstream,
-      remedy: "Reconcile the divergence manually (rebase or merge) before retrying."
+      remoteName,
+      remoteBranchRef
     });
   }
-  if (baseWorktreePath) {
-    git(baseWorktreePath, ["merge", "--ff-only", remoteRef]);
-  } else {
-    git(controlWorktree, ["branch", "-f", baseBranch, remoteRef]);
+  const remoteBranch = remoteBranchRef.slice("refs/heads/".length);
+  const upstream = `${remoteName}/${remoteBranch}`;
+  const remoteRef = `refs/remotes/${remoteName}/${remoteBranch}`;
+  const configuredFetch = tryGit(controlWorktree, ["config", "--get-all", `remote.${remoteName}.fetch`]);
+  const standardFetch = `refs/heads/*:refs/remotes/${remoteName}/*`;
+  if (!configuredFetch?.split("\n").some(value => value.replace(/^\+/, "") === standardFetch)) {
+    unsupportedBaseHistory("The base remote does not use the recognized remote-tracking ref mapping.", {
+      baseBranch,
+      upstream,
+      configuredFetch
+    });
   }
-  return { attempted: true, remote: remoteName, fastForwarded: true, reason: null };
+  const baseHeadRef = "refs/heads/" + baseBranch;
+  const sourceHeadRef = "refs/heads/" + sourceBranch;
+  const localHeadBefore = resolveFullRef(controlWorktree, baseHeadRef, "local base branch");
+  assertRefValue(controlWorktree, sourceHeadRef, sourceHead, "source branch before remote observation");
+  const remoteHeadBefore = refExists(controlWorktree, remoteRef)
+    ? resolveFullRef(controlWorktree, remoteRef, "remote-tracking branch")
+    : null;
+  const temporaryRemoteRef = `refs/arcadia/go-fetch/${process.pid}-${randomUUID()}`;
+  try {
+    fetchRemoteSnapshot({
+      cwd: controlWorktree,
+      remoteName,
+      remoteBranchRef,
+      temporaryRemoteRef,
+      upstream
+    });
+    const remoteHead = resolveFullRef(controlWorktree, temporaryRemoteRef, "protected fetched upstream");
+    if (remoteHeadBefore && remoteHeadBefore !== remoteHead &&
+        !isAncestor(controlWorktree, remoteHeadBefore, remoteHead)) {
+      unsupportedBaseHistory("The fetched upstream was rewritten instead of advanced.", {
+        baseBranch,
+        remote: upstream,
+        previousRemoteHead: remoteHeadBefore,
+        fetchedRemoteHead: remoteHead
+      });
+    }
+
+    if (isAncestor(controlWorktree, remoteHead, localHeadBefore)) {
+      assertSourceCompatibleWithLinearBase({
+        cwd: controlWorktree,
+        baseBranch,
+        sourceBranch,
+        sourceHead,
+        plannedBaseHead: localHeadBefore
+      });
+      assertRefValue(controlWorktree, baseHeadRef, localHeadBefore, "local base before reporting current remote state");
+      assertRefValue(controlWorktree, sourceHeadRef, sourceHead, "source branch before reporting current remote state");
+      assertTrackingRefValue(controlWorktree, remoteRef, remoteHeadBefore);
+      assertClean(sourceWorktreePath, "source worktree after remote observation");
+      if (baseWorktreePath && !samePath(baseWorktreePath, sourceWorktreePath)) {
+        assertClean(baseWorktreePath, "base worktree after remote observation");
+      }
+      publishRemoteTrackingSnapshot(controlWorktree, remoteRef, remoteHeadBefore, remoteHead);
+      assertRefValue(controlWorktree, baseHeadRef, localHeadBefore, "local base after publishing current remote state");
+      assertRefValue(controlWorktree, sourceHeadRef, sourceHead, "source branch after publishing current remote state");
+      return {
+        attempted: true,
+        remote: remoteName,
+        upstream,
+        fastForwarded: false,
+        strategy: "current",
+        localHeadBefore,
+        remoteHead,
+        mergeBase: remoteHead,
+        resultHead: localHeadBefore,
+        localGovernanceCommits: [],
+        remoteCommitsIntegrated: 0,
+        reason: "Local base branch already contains its fetched remote."
+      };
+    }
+
+    if (isAncestor(controlWorktree, localHeadBefore, remoteHead)) {
+      assertSourceCompatibleWithLinearBase({
+        cwd: controlWorktree,
+        baseBranch,
+        sourceBranch,
+        sourceHead,
+        plannedBaseHead: remoteHead
+      });
+      assertRefValue(controlWorktree, baseHeadRef, localHeadBefore, "local base before fast-forward");
+      assertRefValue(controlWorktree, sourceHeadRef, sourceHead, "source branch before base fast-forward");
+      assertClean(sourceWorktreePath, "source worktree before base fast-forward");
+      if (baseWorktreePath && !samePath(baseWorktreePath, sourceWorktreePath)) {
+        assertClean(baseWorktreePath, "base worktree before fast-forward");
+      }
+      publishRemoteTrackingSnapshot(controlWorktree, remoteRef, remoteHeadBefore, remoteHead);
+      if (baseWorktreePath) {
+        assertCheckedOutBranch(baseWorktreePath, baseHeadRef, "base worktree before fast-forward");
+        git(baseWorktreePath, ["-c", "core.hooksPath=/dev/null", "merge", "--ff-only", remoteHead]);
+      } else {
+        git(controlWorktree, ["-c", "core.hooksPath=/dev/null", "update-ref", baseHeadRef, remoteHead, localHeadBefore]);
+      }
+      assertRefValue(controlWorktree, baseHeadRef, remoteHead, "fast-forwarded local base");
+      return {
+        attempted: true,
+        remote: remoteName,
+        upstream,
+        fastForwarded: true,
+        strategy: "fast-forward",
+        localHeadBefore,
+        remoteHead,
+        mergeBase: localHeadBefore,
+        resultHead: remoteHead,
+        localGovernanceCommits: [],
+        remoteCommitsIntegrated: countRevisionRange(controlWorktree, localHeadBefore + ".." + remoteHead),
+        reason: null
+      };
+    }
+
+    if (!remoteHeadBefore) {
+      unsupportedBaseHistory("Protected Go has no pinned prior observation of this divergent upstream.", {
+        baseBranch,
+        remote: upstream,
+        localHead: localHeadBefore,
+        remoteHead
+      });
+    }
+    if (!baseWorktreePath) {
+      unsupportedBaseHistory("Protected Go requires the clean base branch to be checked out before reconciling its divergence.", {
+        baseBranch,
+        sourceBranch,
+        sourceWorktree: sourceWorktreePath,
+        remote: upstream
+      });
+    }
+    assertSourceIntegratedWithDivergentInput({
+      cwd: controlWorktree,
+      baseBranch,
+      sourceBranch,
+      sourceHead,
+      localHead: localHeadBefore,
+      remoteHead
+    });
+
+    const plan = inspectGovernedBaseDivergence({
+      cwd: controlWorktree,
+      baseBranch,
+      upstream,
+      localHead: localHeadBefore,
+      remoteHead
+    });
+    const mergeTree = writeCleanBaseMergeTree(controlWorktree, localHeadBefore, remoteHead);
+    const message = baseReconciliationCommitMessage({
+      baseBranch,
+      upstream,
+      localHead: localHeadBefore,
+      remoteHead,
+      mergeBase: plan.mergeBase,
+      localCommits: plan.localCommits.length,
+      remoteCommits: plan.remoteCommits
+    });
+    const resultHead = createBaseReconciliationCommit({
+      cwd: controlWorktree,
+      tree: mergeTree,
+      localHead: localHeadBefore,
+      remoteHead,
+      message,
+      now
+    });
+    verifyReconciliationCommit(controlWorktree, resultHead, mergeTree, localHeadBefore, remoteHead);
+    validateReconciledDispatch(controlWorktree, resultHead);
+
+    beforePublish?.();
+    assertRefValue(controlWorktree, baseHeadRef, localHeadBefore, "local base before reconciliation");
+    assertRefValue(controlWorktree, sourceHeadRef, sourceHead, "source branch before reconciliation");
+    assertTrackingRefValue(controlWorktree, remoteRef, remoteHeadBefore);
+    assertClean(baseWorktreePath, "base worktree");
+    assertCheckedOutBranch(baseWorktreePath, baseHeadRef, "base worktree before reconciliation");
+    publishRemoteTrackingSnapshot(controlWorktree, remoteRef, remoteHeadBefore, remoteHead);
+    git(baseWorktreePath, ["-c", "core.hooksPath=/dev/null", "merge", "--ff-only", resultHead]);
+    assertRefValue(controlWorktree, baseHeadRef, resultHead, "reconciled local base");
+    assertClean(baseWorktreePath, "reconciled base worktree");
+
+    return {
+      attempted: true,
+      remote: remoteName,
+      upstream,
+      fastForwarded: false,
+      strategy: "governed-merge",
+      localHeadBefore,
+      remoteHead,
+      mergeBase: plan.mergeBase,
+      resultHead,
+      localGovernanceCommits: plan.localCommits,
+      remoteCommitsIntegrated: plan.remoteCommits,
+      reason: null
+    };
+  } finally {
+    tryGit(controlWorktree, ["-c", "core.hooksPath=/dev/null", "update-ref", "-d", temporaryRemoteRef]);
+  }
+}
+
+function fetchRemoteSnapshot(input: {
+  cwd: string;
+  remoteName: string;
+  remoteBranchRef: string;
+  temporaryRemoteRef: string;
+  upstream: string;
+}): void {
+  const result = spawnSync("git", [
+    "-c",
+    "core.hooksPath=/dev/null",
+    "fetch",
+    "--no-tags",
+    "--no-write-fetch-head",
+    "--refmap=",
+    "--",
+    input.remoteName,
+    `${input.remoteBranchRef}:${input.temporaryRemoteRef}`
+  ], {
+    cwd: input.cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  if (result.status !== 0) {
+    throw validationError("Protected Go could not observe the configured upstream branch.", {
+      upstream: input.upstream,
+      cause: result.stderr?.trim() || result.error?.message || null,
+      remedy: "Restore the configured upstream or record a reviewed host-controller repair; no worktree was issued."
+    });
+  }
+}
+
+function assertSourceCompatibleWithLinearBase(input: {
+  cwd: string;
+  baseBranch: string;
+  sourceBranch: string;
+  sourceHead: string;
+  plannedBaseHead: string;
+}): void {
+  if (input.sourceBranch === input.baseBranch) return;
+  if (!SAFE_TASK_BRANCH.test(input.sourceBranch)) {
+    unsupportedBaseHistory("Protected Go will not reconcile a non-agent-owned source branch.", input);
+  }
+  const integrated = isAncestor(input.cwd, input.sourceHead, input.plannedBaseHead) ||
+    isPatchEquivalent(input.cwd, input.plannedBaseHead, input.sourceHead);
+  const fastForwardable = isAncestor(input.cwd, input.plannedBaseHead, input.sourceHead);
+  if (!integrated && !fastForwardable) {
+    unsupportedBaseHistory("The source branch is not safely related to the observed base result.", input);
+  }
+}
+
+function assertSourceIntegratedWithDivergentInput(input: {
+  cwd: string;
+  baseBranch: string;
+  sourceBranch: string;
+  sourceHead: string;
+  localHead: string;
+  remoteHead: string;
+}): void {
+  if (input.sourceBranch === input.baseBranch) return;
+  if (!SAFE_TASK_BRANCH.test(input.sourceBranch)) {
+    unsupportedBaseHistory("Protected Go will not reconcile a non-agent-owned source branch.", input);
+  }
+  const integratedLocal = isAncestor(input.cwd, input.sourceHead, input.localHead) ||
+    isPatchEquivalent(input.cwd, input.localHead, input.sourceHead);
+  const integratedRemote = isAncestor(input.cwd, input.sourceHead, input.remoteHead) ||
+    isPatchEquivalent(input.cwd, input.remoteHead, input.sourceHead);
+  if (!integratedLocal && !integratedRemote) {
+    unsupportedBaseHistory("The divergent base cannot absorb source-only work through the governed-history route.", input);
+  }
+}
+
+function publishRemoteTrackingSnapshot(
+  cwd: string,
+  remoteRef: string,
+  expectedBefore: string | null,
+  remoteHead: string
+): void {
+  const actual = resolveOptionalRef(cwd, remoteRef);
+  if (actual === remoteHead) return;
+  if (actual !== expectedBefore) {
+    throw validationError("The remote-tracking ref changed during protected reconciliation.", {
+      remoteRef,
+      expected: expectedBefore,
+      actual,
+      observedRemoteHead: remoteHead,
+      remedy: "Protected Go did not publish the planned base result. Retry through the fixed host-controller route."
+    });
+  }
+  git(cwd, [
+    "-c", "core.hooksPath=/dev/null",
+    "update-ref",
+    "-m", "arcadia go: observe protected upstream snapshot",
+    remoteRef,
+    remoteHead,
+    expectedBefore ?? "0".repeat(remoteHead.length)
+  ]);
+  assertRefValue(cwd, remoteRef, remoteHead, "published remote-tracking snapshot");
+}
+
+function assertTrackingRefValue(cwd: string, ref: string, expected: string | null): void {
+  const actual = resolveOptionalRef(cwd, ref);
+  if (actual !== expected) {
+    throw validationError("The remote-tracking ref changed before protected reconciliation could publish.", {
+      ref,
+      expected,
+      actual,
+      remedy: "Protected Go left the local base unchanged. Retry through the fixed host-controller route."
+    });
+  }
+}
+
+function inspectGovernedBaseDivergence(input: {
+  cwd: string;
+  baseBranch: string;
+  upstream: string;
+  localHead: string;
+  remoteHead: string;
+}): { mergeBase: string; localCommits: string[]; remoteCommits: number } {
+  const { cwd, baseBranch, upstream, localHead, remoteHead } = input;
+  if (git(cwd, ["rev-parse", "--is-shallow-repository"]).trim() === "true") {
+    unsupportedBaseHistory("Protected Go refuses to reconcile a shallow base history.", input);
+  }
+  if (process.env.GIT_REPLACE_REF_BASE) {
+    unsupportedBaseHistory("Protected Go refuses history with a custom replacement-ref namespace.", {
+      ...input,
+      replacementRefBase: process.env.GIT_REPLACE_REF_BASE
+    });
+  }
+  const replacements = tryGit(cwd, ["for-each-ref", "--format=%(refname)", "refs/replace"]);
+  if (replacements) {
+    unsupportedBaseHistory("Protected Go refuses base history with replacement refs.", {
+      ...input,
+      replacements: replacements.split("\n").filter(Boolean)
+    });
+  }
+  const graftPathOutput = git(cwd, ["rev-parse", "--git-path", "info/grafts"]).trim();
+  const graftPath = path.isAbsolute(graftPathOutput) ? graftPathOutput : path.resolve(cwd, graftPathOutput);
+  if (existsSync(graftPath) && readFileSync(graftPath, "utf8").trim()) {
+    unsupportedBaseHistory("Protected Go refuses base history with legacy grafts.", {
+      ...input,
+      graftPath
+    });
+  }
+  const customMergeDrivers = tryGit(cwd, ["config", "--get-regexp", "^merge\\..*\\.driver$"]);
+  if (customMergeDrivers) {
+    unsupportedBaseHistory("Protected Go refuses to run repository-configured merge drivers on the host.", {
+      ...input,
+      customMergeDrivers: customMergeDrivers.split("\n").filter(Boolean)
+    });
+  }
+  const mergeBaseOutput = tryGit(cwd, ["merge-base", "--all", localHead, remoteHead]);
+  const mergeBases = mergeBaseOutput?.split("\n").map(value => value.trim()).filter(Boolean) ?? [];
+  if (mergeBases.length !== 1 || !FULL_GIT_OID.test(mergeBases[0])) {
+    unsupportedBaseHistory("Protected Go requires exactly one complete shared merge base.", {
+      ...input,
+      mergeBases
+    });
+  }
+
+  const localCommits = git(cwd, ["rev-list", "--reverse", remoteHead + ".." + localHead])
+    .split("\n").map(value => value.trim()).filter(Boolean);
+  const unrecognized = localCommits.filter(commit =>
+    !isRecognizedGovernanceCommit(cwd, commit, { baseBranch, upstream, remoteHead })
+  );
+  if (localCommits.length === 0 || unrecognized.length > 0) {
+    unsupportedBaseHistory("The divergent local base contains commits that are not recognized Arcadia-generated governance writes.", {
+      ...input,
+      unrecognizedCommits: unrecognized
+    });
+  }
+  return {
+    mergeBase: mergeBases[0],
+    localCommits,
+    remoteCommits: countRevisionRange(cwd, localHead + ".." + remoteHead)
+  };
+}
+
+function isRecognizedGovernanceCommit(
+  cwd: string,
+  commit: string,
+  context: { baseBranch: string; upstream: string; remoteHead: string }
+): boolean {
+  const parents = git(cwd, ["show", "-s", "--format=%P", commit]).trim().split(/\s+/).filter(Boolean);
+  const message = git(cwd, ["show", "-s", "--format=%B", commit]);
+  const subject = message.split(/\r?\n/, 1)[0];
+  if (subject === "chore(arcadia): reconcile " + context.baseBranch + " with " + context.upstream) {
+    return isRecognizedProtectedReconciliation(cwd, commit, parents, message, context);
+  }
+  if (parents.length !== 1) return false;
+  const paths = git(cwd, ["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", commit])
+    .split("\0").filter(Boolean);
+  if (paths.length === 0 || !paths.every(isGovernancePath)) return false;
+  return (
+    (/^chore\(arcadia\): settle .+$/.test(subject) &&
+      /^Written by `arcadia agent-ask settle --apply` \([A-Za-z0-9][A-Za-z0-9_.:-]*\)\.$/m.test(message)) ||
+    (/^chore\(arcadia\): point at .+$/.test(subject) &&
+      /^Written by `arcadia advance queue make-next --apply` \([A-Za-z0-9][A-Za-z0-9_.:-]*\)\.$/m.test(message)) ||
+    (/^chore\(arcadia\): answer Decision .+$/.test(subject) &&
+      /^Written by `arcadia decision approve` \([A-Za-z0-9][A-Za-z0-9_.:-]*\)\.$/m.test(message)) ||
+    (/^chore\(arcadia\): record (?:blocker|corrective|follow_up) .+$/.test(subject) &&
+      /^Discovered by [^\n]+ \([A-Za-z0-9][A-Za-z0-9_.:-]*\)\.$/m.test(message))
+  );
+}
+
+function isRecognizedProtectedReconciliation(
+  cwd: string,
+  commit: string,
+  parents: string[],
+  message: string,
+  context: { baseBranch: string; upstream: string; remoteHead: string }
+): boolean {
+  if (parents.length !== 2 || !isAncestor(cwd, parents[1], context.remoteHead)) return false;
+  const mergeBases = tryGit(cwd, ["merge-base", "--all", parents[0], parents[1]])
+    ?.split("\n").map(value => value.trim()).filter(Boolean) ?? [];
+  if (mergeBases.length !== 1 || !FULL_GIT_OID.test(mergeBases[0])) return false;
+  const mergeAttempt = attemptBaseMergeTree(cwd, parents[0], parents[1]);
+  if (mergeAttempt.status !== 0 || mergeAttempt.lines.length !== 1 ||
+      !FULL_GIT_OID.test(mergeAttempt.lines[0])) return false;
+  const actualTree = tryGit(cwd, ["show", "-s", "--format=%T", commit]);
+  if (actualTree !== mergeAttempt.lines[0]) return false;
+  const expectedMessage = baseReconciliationCommitMessage({
+    baseBranch: context.baseBranch,
+    upstream: context.upstream,
+    localHead: parents[0],
+    remoteHead: parents[1],
+    mergeBase: mergeBases[0],
+    localCommits: countRevisionRange(cwd, parents[1] + ".." + parents[0]),
+    remoteCommits: countRevisionRange(cwd, parents[0] + ".." + parents[1])
+  });
+  return message.trimEnd() === expectedMessage;
+}
+
+function isGovernancePath(relativePath: string): boolean {
+  return relativePath === "PROJECT.md" ||
+    relativePath === "MISSION_LOG.md" ||
+    /^docs\/(?:plans|decisions)\/.+\.md$/.test(relativePath) ||
+    /^\.arcadia\/asks\/(?:archive\/)?agent-ask-.+\.ya?ml$/.test(relativePath);
+}
+
+function writeCleanBaseMergeTree(cwd: string, localHead: string, remoteHead: string): string {
+  const result = attemptBaseMergeTree(cwd, localHead, remoteHead);
+  if (result.status === 129 || /unknown option|usage: git merge-tree/i.test(result.stderr)) {
+    throw validationError("The installed Git cannot compute a protected two-commit merge tree.", {
+      localHead,
+      remoteHead,
+      cause: result.stderr || result.error,
+      remedy: "Run the protected controller on a host with Git 2.38 or newer; no base ref or worktree was changed."
+    });
+  }
+  if (result.status !== 0) {
+    throw validationError("The governed local base and fetched remote do not reconcile cleanly; Arcadia left the base ref and worktree unchanged.", {
+      localHead,
+      remoteHead,
+      conflictingPaths: result.lines.slice(1),
+      cause: result.stderr || result.error,
+      remedy: "Record a focused governed repair for the overlap, then request protected Go again."
+    });
+  }
+  if (result.lines.length !== 1 || !FULL_GIT_OID.test(result.lines[0])) {
+    throw validationError("Git did not return one auditable tree for protected base reconciliation.", {
+      localHead,
+      remoteHead,
+      output: result.lines
+    });
+  }
+  return result.lines[0];
+}
+
+function attemptBaseMergeTree(cwd: string, localHead: string, remoteHead: string): {
+  status: number | null;
+  lines: string[];
+  stderr: string;
+  error: string | null;
+} {
+  const result = spawnSync("git", ["merge-tree", "--write-tree", "--name-only", localHead, remoteHead], {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  const lines = result.stdout?.split("\n").map(value => value.trim()).filter(Boolean) ?? [];
+  return {
+    status: result.status,
+    lines,
+    stderr: result.stderr?.trim() ?? "",
+    error: result.error?.message ?? null
+  };
+}
+
+function createBaseReconciliationCommit(input: {
+  cwd: string;
+  tree: string;
+  localHead: string;
+  remoteHead: string;
+  message: string;
+  now: Date;
+}): string {
+  const stamp = input.now.toISOString();
+  let resultHead: string;
+  try {
+    resultHead = execFileSync("git", [
+      "-c", "core.hooksPath=/dev/null",
+      "-c", "commit.gpgSign=false",
+      "commit-tree", input.tree,
+      "-p", input.localHead,
+      "-p", input.remoteHead,
+      "-m", input.message
+    ], {
+      cwd: input.cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "Arcadia Controller",
+        GIT_AUTHOR_EMAIL: "controller@arcadia.local",
+        GIT_COMMITTER_NAME: "Arcadia Controller",
+        GIT_COMMITTER_EMAIL: "controller@arcadia.local",
+        GIT_AUTHOR_DATE: stamp,
+        GIT_COMMITTER_DATE: stamp
+      }
+    }).trim();
+  } catch (error) {
+    const detail = error as { stderr?: Buffer | string; message?: string };
+    throw validationError("Protected Go could not create the pinned reconciliation commit.", {
+      cause: String(detail.stderr ?? detail.message ?? error).trim()
+    });
+  }
+  if (!FULL_GIT_OID.test(resultHead)) {
+    throw validationError("Git did not return a full object id for the host-controller reconciliation commit.", {
+      resultHead
+    });
+  }
+  return resultHead;
+}
+
+function verifyReconciliationCommit(
+  cwd: string,
+  resultHead: string,
+  expectedTree: string,
+  localHead: string,
+  remoteHead: string
+): void {
+  const parents = git(cwd, ["show", "-s", "--format=%P", resultHead]).trim();
+  const tree = git(cwd, ["show", "-s", "--format=%T", resultHead]).trim();
+  if (parents !== localHead + " " + remoteHead || tree !== expectedTree) {
+    throw validationError("The generated reconciliation commit does not match its pinned parents and tree.", {
+      resultHead,
+      expectedParents: [localHead, remoteHead],
+      actualParents: parents.split(/\s+/).filter(Boolean),
+      expectedTree,
+      actualTree: tree
+    });
+  }
+}
+
+function validateReconciledDispatch(cwd: string, resultHead: string): void {
+  const scratchRoot = mkdtempSync(path.join(tmpdir(), "arcadia-go-reconcile-"));
+  const checkout = path.join(scratchRoot, "checkout");
+  let registered = false;
+  try {
+    git(cwd, ["-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", checkout, resultHead]);
+    registered = true;
+    const projectSlug = resolveProjectSlug(checkout);
+    const dispatch = resolveDispatch(checkout, projectSlug);
+    if (!isDispatchable(dispatch)) {
+      throw validationError("The conflict-free base reconciliation does not resolve a dispatchable governed Action.", {
+        resultHead,
+        projectSlug,
+        blockers: dispatch.blockers,
+        operatorQuestion: dispatch.operatorQuestion,
+        remedy: "Record a focused governed repair for the merged control documents; protected Go left the base unchanged."
+      });
+    }
+  } finally {
+    if (registered) {
+      tryGit(cwd, ["-c", "core.hooksPath=/dev/null", "worktree", "remove", "--force", checkout]);
+    }
+    rmSync(scratchRoot, { recursive: true, force: true });
+  }
+}
+
+function baseReconciliationCommitMessage(input: {
+  baseBranch: string;
+  upstream: string;
+  localHead: string;
+  remoteHead: string;
+  mergeBase: string;
+  localCommits: number;
+  remoteCommits: number;
+}): string {
+  return [
+    "chore(arcadia): reconcile " + input.baseBranch + " with " + input.upstream,
+    "",
+    "Local-Head: " + input.localHead,
+    "Remote-Head: " + input.remoteHead,
+    "Merge-Base: " + input.mergeBase,
+    "Local-Governance-Commits: " + input.localCommits,
+    "Remote-Commits-Integrated: " + input.remoteCommits,
+    "",
+    "Written by protected Arcadia Go host-controller reconciliation."
+  ].join("\n");
+}
+
+function resolveFullRef(cwd: string, ref: string, label: string): string {
+  const value = git(cwd, ["rev-parse", "--verify", ref]).trim();
+  if (!FULL_GIT_OID.test(value)) {
+    throw validationError("The " + label + " did not resolve to a full object id.", { ref, value });
+  }
+  return value;
+}
+
+function resolveOptionalRef(cwd: string, ref: string): string | null {
+  const value = tryGit(cwd, ["rev-parse", "--verify", ref]);
+  return value && FULL_GIT_OID.test(value) ? value : null;
+}
+
+function assertRefValue(cwd: string, ref: string, expected: string, label: string): void {
+  const actual = tryGit(cwd, ["rev-parse", "--verify", ref]);
+  if (actual !== expected) {
+    throw validationError("The " + label + " changed during protected reconciliation.", {
+      ref,
+      expected,
+      actual,
+      remedy: "Protected Go did not publish the planned result. Retry through the fixed host-controller route."
+    });
+  }
+}
+
+function assertCheckedOutBranch(cwd: string, expectedRef: string, label: string): void {
+  const actual = tryGit(cwd, ["symbolic-ref", "-q", "HEAD"]);
+  if (actual !== expectedRef) {
+    throw validationError("The " + label + " changed branches during protected reconciliation.", {
+      expectedRef,
+      actual,
+      remedy: "Protected Go did not publish the planned result. Retry through the fixed host-controller route."
+    });
+  }
+}
+
+function countRevisionRange(cwd: string, range: string): number {
+  return Number.parseInt(git(cwd, ["rev-list", "--count", range]).trim(), 10);
+}
+
+function unsupportedBaseHistory(message: string, details: Record<string, unknown>): never {
+  throw validationError(message, {
+    ...details,
+    remedy: "Arcadia left both histories untouched. Preserve the repository and record a reviewed host-controller repair; protected Go issued no worktree."
+  });
 }
 
 function resolveProjectSlug(repoRoot: string): string {

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { validationError } from "./cli/errors.js";
+import { ArcadiaError, validationError } from "./cli/errors.js";
 import type { CommandSuccess } from "./cli/response.js";
 import { runAdvanceCommand, type AdvanceCommandData } from "./commands/advance.js";
 import { runGoCommand, type GoCommandData, type GoCommandOptions } from "./commands/go.js";
@@ -65,9 +65,12 @@ export function parseGoBrokerArguments(argv: string[], source = process.cwd()): 
 
 /**
  * The `go` operation reuses Arcadia's canonical safety checks twice: first as a
- * read-only preview, then as the identical apply. `advance` and `work-monitor`
- * reuse their canonical read-only implementations with the caller's repository
- * and resolved workspace fixed by the launcher.
+ * read-only preview, then as the identical apply. A prepared source can be
+ * provably integrated only after the host observes the pinned upstream; that
+ * one preview refusal is deferred to apply, which performs the observation and
+ * repeats every safety check before mutation. `advance` and `work-monitor` reuse
+ * their canonical read-only implementations with the caller's repository and
+ * resolved workspace fixed by the launcher.
  */
 export function runGoBroker(
   request: GoBrokerRequest & { operation: Exclude<ProtectedBrokerOperation, "preserve"> },
@@ -94,7 +97,11 @@ export function runGoBroker(
     agent: request.agent
   } satisfies GoCommandOptions;
 
-  runner(options);
+  try {
+    runner(options);
+  } catch (error) {
+    if (!(error instanceof ArcadiaError) || error.details.requiresProtectedRemoteObservation !== true) throw error;
+  }
   const applied = runner({ ...options, apply: true });
   return { ...applied, command: "go-broker" };
 }

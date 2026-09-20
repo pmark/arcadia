@@ -1,6 +1,7 @@
-import { appendFileSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { miseLeadingPath, miseNodeArgv, resolveMiseExecutable } from "../runtime/mise.js";
 import { openDatabase } from "../db/connection.js";
@@ -35,6 +36,7 @@ import { processPreservationRequests, refreshPreservationHeartbeat } from "../se
 import { auditArcadiaLaunchAgents, duplicateWorkerWarning } from "../runtime/launchAgents.js";
 
 const POLL_INTERVAL_MS = 2_000;
+const WORKER_HEARTBEAT_FRESHNESS_MS = 15_000;
 
 /**
  * A transient tick failure should be loud; a persistent one must not become an
@@ -61,8 +63,56 @@ function logPath(workspacePath: string): string {
   return path.join(arcadiaDir(workspacePath), "worker.log");
 }
 
-function heartbeatPath(workspacePath: string): string {
-  return path.join(arcadiaDir(workspacePath), "worker.heartbeat");
+interface WorkerIdentity {
+  pid: number;
+  owner: string;
+}
+
+interface WorkerRecord extends WorkerIdentity {
+  at: number;
+}
+
+function readWorkerRecord(workspacePath: string): WorkerRecord | null {
+  try {
+    const raw = readFileSync(pidfilePath(workspacePath), "utf8").trim();
+    const value = JSON.parse(raw) as { pid?: unknown; owner?: unknown; at?: unknown };
+    return typeof value.pid === "number" && value.pid > 0 &&
+      typeof value.owner === "string" && value.owner.length > 0 &&
+      typeof value.at === "number"
+      ? { pid: value.pid, owner: value.owner, at: value.at }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function readWorkerIdentity(workspacePath: string): WorkerIdentity | null {
+  const record = readWorkerRecord(workspacePath);
+  return record ? { pid: record.pid, owner: record.owner } : null;
+}
+
+function writeWorkerHeartbeat(workspacePath: string, identity: WorkerIdentity, at = Date.now()): void {
+  // Identity and freshness must be one record. Writing separate pid and
+  // heartbeat files let a concurrent start observe a new owner with an old
+  // heartbeat and replace a live worker. A sibling rename gives readers either
+  // the complete previous record or the complete new record, never a mixture.
+  const target = pidfilePath(workspacePath);
+  const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
+  writeFileSync(temporary, JSON.stringify({ ...identity, at }), "utf8");
+  try { renameSync(temporary, target); } finally { try { unlinkSync(temporary); } catch {} }
+}
+
+function hasFreshWorkerHeartbeat(workspacePath: string, identity: WorkerIdentity, now = Date.now()): boolean {
+  const record = readWorkerRecord(workspacePath);
+  return record?.pid === identity.pid &&
+    record.owner === identity.owner &&
+    now - record.at >= 0 &&
+    now - record.at < WORKER_HEARTBEAT_FRESHNESS_MS;
+}
+
+function ownsWorker(workspacePath: string, identity: WorkerIdentity): boolean {
+  const current = readWorkerIdentity(workspacePath);
+  return current?.pid === identity.pid && current.owner === identity.owner;
 }
 
 function log(logfile: string, message: string): void {
@@ -72,21 +122,36 @@ function log(logfile: string, message: string): void {
 }
 
 function readPid(workspacePath: string): number | null {
+  const identity = readWorkerIdentity(workspacePath);
+  if (identity) return identity.pid;
+  return readLegacyPid(workspacePath);
+}
+
+/**
+ * Pre-ownership workers wrote only a decimal PID. A live record is not safe to
+ * adopt: it has no owner token to fence, so a new process must leave it alone
+ * until launchd stops it during an explicit restart.
+ */
+function readLegacyPid(workspacePath: string): number | null {
   try {
     const raw = readFileSync(pidfilePath(workspacePath), "utf8").trim();
-    const pid = Number(raw);
-    return Number.isFinite(pid) && pid > 0 ? pid : null;
+    return /^[1-9]\d*$/.test(raw) ? Number(raw) : null;
   } catch {
     return null;
   }
 }
 
-function isProcessAlive(pid: number): boolean {
+/**
+ * A failed signal probe is not evidence that a process is gone. In particular,
+ * an unattended coding-agent sandbox can receive EPERM while the host worker
+ * is alive. Only ESRCH permits replacing or deleting a recorded owner.
+ */
+export function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
   }
 }
 
@@ -94,10 +159,15 @@ export interface WorkerTickOptions {
   workspacePath: string;
   pid: number;
   logfile: string;
+  identity?: WorkerIdentity;
   /** Overridable so a deterministic test can force a database-open failure. */
   openDb?: (workspacePath: string) => ReturnType<typeof openDatabase>;
   /** Overridable so a deterministic test can drive the loop without timers. */
   schedule?: (callback: () => void, delayMs: number) => void;
+  /** Prevent a worker replaced after a blocked tick from resuming shared work. */
+  ownsWorker?: () => boolean;
+  /** Called exactly when a worker loses its workspace ownership fence. */
+  onOwnershipLost?: () => void;
 }
 
 /**
@@ -120,14 +190,20 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
   const openDb = options.openDb ?? openDatabase;
   const schedule = options.schedule
     ?? ((callback: () => void, delayMs: number) => { setTimeout(callback, delayMs); });
+  const owns = options.ownsWorker ?? (() => true);
+  const onOwnershipLost = options.onOwnershipLost ?? (() => {});
 
   // Consecutive synchronous failures, so a persistent one is summarized rather
   // than written once per 2s tick.
   let consecutiveFailures = 0;
 
   const tick = () => {
+    if (!owns()) {
+      onOwnershipLost();
+      return;
+    }
     try {
-      try { writeFileSync(heartbeatPath(options.workspacePath), new Date().toISOString(), "utf8"); } catch {}
+      try { writeWorkerHeartbeat(options.workspacePath, options.identity ?? { pid: options.pid, owner: "test" }); } catch {}
       const db = openDb(options.workspacePath);
       try {
         runWorkerIteration(db, options.workspacePath, options.pid, options.logfile);
@@ -146,7 +222,8 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
         log(options.logfile, `Worker tick error: ${message}${suffix}`);
       }
     } finally {
-      schedule(tick, POLL_INTERVAL_MS);
+      if (owns()) schedule(tick, POLL_INTERVAL_MS);
+      else onOwnershipLost();
     }
   };
 
@@ -168,11 +245,14 @@ export interface WorkerStartDecision {
  * from the exit code lets a test prove the benign path without spawning one.
  */
 export function decideWorkerStart(
-  existingPid: number | null,
+  existing: WorkerIdentity | null,
   isAlive: (pid: number) => boolean
 ): WorkerStartDecision {
-  if (existingPid !== null && existingPid > 0 && isAlive(existingPid)) {
-    return { action: "already-running", pid: existingPid };
+  // A stale heartbeat means unhealthy, not dead. Replacing a PID that remains
+  // live can create two workers; only the service controller may stop it and
+  // establish a fresh ownership boundary before another start is attempted.
+  if (existing && isAlive(existing.pid)) {
+    return { action: "already-running", pid: existing.pid };
   }
   return { action: "start", pid: null };
 }
@@ -182,7 +262,19 @@ export function runWorkerStartCommand(options: WorkerOptions): never {
   const dir = arcadiaDir(workspacePath);
   mkdirSync(dir, { recursive: true });
 
-  const decision = decideWorkerStart(readPid(workspacePath), isProcessAlive);
+  const existing = readWorkerIdentity(workspacePath);
+  const legacyPid = existing ? null : readLegacyPid(workspacePath);
+  if (legacyPid && isProcessAlive(legacyPid)) {
+    // Do not replace a process from before ownership records existed. There is
+    // no token with which to prove that it is ours or safely fence it; the
+    // service restart that stopped it is the migration boundary.
+    process.stdout.write(`Legacy worker still running (PID ${legacyPid}); leaving it in place until restart.\n`);
+    process.exit(0);
+  }
+  const decision = decideWorkerStart(
+    existing,
+    isProcessAlive
+  );
   if (decision.action === "already-running") {
     // Exit 0, not 1: a non-zero status is what launchd reads as a crash. Paired
     // with KeepAlive SuccessfulExit false below, a clean exit leaves the agent
@@ -192,10 +284,22 @@ export function runWorkerStartCommand(options: WorkerOptions): never {
   }
 
   const logfile = logPath(workspacePath);
-  writeFileSync(pidfilePath(workspacePath), String(process.pid), "utf8");
-  writeFileSync(heartbeatPath(workspacePath), new Date().toISOString(), "utf8");
+  const identity = { pid: process.pid, owner: randomUUID() };
+  writeWorkerHeartbeat(workspacePath, identity);
+  let ownershipLost = false;
+  const stopWhenOwnershipChanges = () => {
+    if (ownershipLost) return;
+    ownershipLost = true;
+    clearInterval(heartbeatTimer);
+    log(logfile, "Worker lost its ownership fence; stopping without touching the replacement worker.");
+    process.exit(0);
+  };
   const heartbeatTimer = setInterval(() => {
-    try { writeFileSync(heartbeatPath(workspacePath), new Date().toISOString(), "utf8"); } catch {}
+    if (!ownsWorker(workspacePath, identity)) {
+      stopWhenOwnershipChanges();
+      return;
+    }
+    try { writeWorkerHeartbeat(workspacePath, identity); } catch {}
     // The preservation transport projection is only published on a tick. A tick
     // can block the event loop for minutes, so this loop — and the per-Project
     // re-stamps inside the tick — keep its freshness window from lapsing.
@@ -206,14 +310,22 @@ export function runWorkerStartCommand(options: WorkerOptions): never {
   const cleanup = () => {
     log(logfile, "Worker stopping.");
     clearInterval(heartbeatTimer);
-    try { unlinkSync(pidfilePath(workspacePath)); } catch {}
-    try { unlinkSync(heartbeatPath(workspacePath)); } catch {}
+    if (ownsWorker(workspacePath, identity)) {
+      try { unlinkSync(pidfilePath(workspacePath)); } catch {}
+    }
     process.exit(0);
   };
   process.on("SIGINT", cleanup);
   process.on("SIGTERM", cleanup);
 
-  const tick = createWorkerTick({ workspacePath, pid: process.pid, logfile });
+  const tick = createWorkerTick({
+    workspacePath,
+    pid: process.pid,
+    logfile,
+    identity,
+    ownsWorker: () => ownsWorker(workspacePath, identity),
+    onOwnershipLost: stopWhenOwnershipChanges
+  });
 
   setTimeout(tick, 0);
   process.stdin.resume();
@@ -425,8 +537,11 @@ export function runWorkerStatusCommand(options: WorkerOptions): void {
     return;
   }
 
-  if (isProcessAlive(pid)) {
+  const identity = readWorkerIdentity(workspacePath);
+  if (identity && isProcessAlive(pid) && hasFreshWorkerHeartbeat(workspacePath, identity)) {
     process.stdout.write(`Worker: running (PID ${pid})\n`);
+  } else if (isProcessAlive(pid)) {
+    process.stdout.write(`Worker: unhealthy (PID ${pid} has no fresh matching heartbeat; launchd may restart it)\n`);
   } else {
     process.stdout.write(`Worker: stopped (stale pidfile for PID ${pid})\n`);
   }
@@ -441,9 +556,10 @@ export function runWorkerStopCommand(options: WorkerOptions): void {
     return;
   }
 
-  if (!isProcessAlive(pid)) {
+  const identity = readWorkerIdentity(workspacePath);
+  if (!identity || !isProcessAlive(pid)) {
     try { unlinkSync(pidfilePath(workspacePath)); } catch {}
-    process.stdout.write(`Worker PID ${pid} is not alive. Removed stale pidfile.\n`);
+    process.stdout.write(`Worker PID ${pid} is not alive or has no ownership record. Removed its pidfile without signalling that PID.\n`);
     return;
   }
 

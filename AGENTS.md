@@ -117,6 +117,72 @@ one action as a single-option picker unless a pull request is the completed
 work's handoff. The absence of both a pull request and a picker is a defect in
 the handoff, not a neutral ending.
 
+### Make operator steps executable
+
+Whenever the operator must provide input or perform one or more steps after an
+agent handoff — approving a Decision, selecting a prepared choice, merging a
+pull request, installing or restarting local software, running a credentialed
+command, completing manual QA, or carrying out any other operator-only action
+— **do not leave that input or those steps as prose commands alone.** When the
+input can be represented as a bounded executable choice, give the operator a
+button for it in the `/runs` operator-action library.
+Create or update a paired generated operator script and descriptor under
+`artifacts/generated/operator-scripts/`, following the format already present
+there:
+
+- an executable `<id>.sh` with only `run` and `--describe` entrypoints;
+- an `arcadia-operator-script-v1` `<id>.json` descriptor naming the problem,
+  desired effect, exact operator command, authority, success, and failure;
+- `repeatable: true` only when repeating the completed operation is safe and
+  useful; omit it or set it to `false` for approvals and other one-shot input;
+- bounded waits, fail-closed preconditions, an idempotent retry story, and a
+  timestamped `runs/<timestamp-pid>/` log plus failure handoff; and
+- one command for the operator to run that performs every safe, automatable
+  step in order and prints the resulting receipt or exact remaining blocker.
+
+That directory is the dashboard's execution path. A valid pair appears
+automatically on `/runs`; the browser never supplies a command or filesystem
+path. Put every custom executable operator action there so the operator can
+run it from the phone. Prefer reusing or safely generalizing an existing
+library entry over creating a near-duplicate. Build common recurring actions
+as reusable scripts when their target and current authority can be discovered
+and validated at run time. Keep one-off scripts when the authority is specific.
+For example, a Decision-approval script must pin or read the exact Decision,
+answer, proposal fingerprint, and expected open state, then refuse stale or
+different state; never turn it into a blanket approval command.
+
+The dashboard records each launch as available, running, succeeded, or failed.
+It polls while work runs, exposes failure instead of treating process launch as
+completion, and disables a successful one-shot action. A reusable action stays
+available after success. Do not work around that lifecycle with background
+wrappers or by resetting its state merely to make a stale button clickable;
+repair the script or descriptor, preserve the failure receipt, and retry only
+when the represented operator action is still live.
+
+Before adding a script, inspect the existing descriptors for the same desired
+effect. Reuse an exact match. If extending a reusable entry, preserve its
+current callers and safety boundaries and update its descriptor. Do not delete
+an old library entry merely because the immediate handoff is over: repeatable
+operations are the beginning of the shared script library. If the operator's
+input is genuinely free-form and cannot yet be represented safely by the
+button contract, ask for that value directly, then generate the narrow script
+that validates and applies it; do not smuggle arbitrary arguments, shell text,
+or paths through the dashboard endpoint.
+
+Generating a script does not widen authority: a merge, deployment, approval,
+credential use, or other operator gate stays gated until the operator runs the
+script. The script must state those effects plainly and must never hide manual
+Git reconciliation, governance settlement, or another unsupported shortcut
+inside automation.
+
+If a load-bearing detail is unclear — repository, pull request, workspace,
+merge method, service target, credential boundary, desired effect, or recovery
+route — ask the operator before generating the script. In a continuation where
+a previous agent established the setup, inspect its generated descriptor,
+run/failure handoff, and thread first; if the needed detail is still absent,
+ask that previous agent or the operator rather than guessing. Do not finish the
+handoff until the script and descriptor match the final reviewed state.
+
 `docs/agent-continuation-protocol.md` carries these rules with the reasoning
 behind each. It is a reference, not a prerequisite: everything you must do is
 stated above.
@@ -584,8 +650,16 @@ reached:
    `arcadia pr decline-finding <threadId> "<reason>"`, which replies with the
    reason and resolves the thread. Then validate, commit, push, and go back
    to step 1. CodeRabbit resolves the threads your push fixed.
-4. **`cap`:** three fix rounds have not satisfied it. Stop and list the
-   remaining findings in the handoff for the operator to judge.
+4. **`cap`:** three fix rounds have not satisfied it. Stop the automatic
+   repair cycle. For every remaining finding that is significant — a plausible
+   correctness, reliability, security, data-integrity, or user-visible failure
+   — first search open and closed Issues in the owning repository, then file a
+   `bug` Issue or update the existing one with the evidence and relevant
+   `file:line`. Link each Issue in the handoff beside its finding. For findings
+   remaining at the cap, this rule takes precedence over the general defect
+   rule: list minor, stylistic, or unsupported findings without filing or
+   updating an Issue. The operator
+   judges the remaining work; the cap does not make a significant defect vanish.
 5. **An error** — a timeout, a draft PR, an unpushed HEAD, or a CodeRabbit
    failure — names its cause. Fix that, or report it; do not retry blindly.
 

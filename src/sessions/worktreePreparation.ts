@@ -62,7 +62,7 @@ export function prepareAgentWorktree(input: {
   };
   input.beforeCreate?.(candidate);
   mkdirSync(path.dirname(worktreePath), { recursive: true });
-  git(input.repositoryPath, ["worktree", "add", "-b", branch, worktreePath, input.baseBranch]);
+  git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktree", "add", "-b", branch, worktreePath, input.baseBranch]);
   return candidate;
 }
 
