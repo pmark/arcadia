@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: Bootstrap managed production to build Flight Deck
 active_plan: bootstrap-managed-production-to-build-flight-deck
 current_action: restore-preservation-worker-heartbeat
-updated: 2026-09-19
+updated: 2026-09-20
 ---
 
 # Arcadia

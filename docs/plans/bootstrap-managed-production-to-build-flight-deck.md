@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to build Flight Deck
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-09-19
+updated: 2026-09-20
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -1189,6 +1189,94 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/411"]
+  - id: gate-prepared-dispatch-on-transport-readiness
+    title: Add deterministic prepared-dispatch admission checks that refuse task preparation until the selected profile can access the resolved workspace database and fresh Go and preservation transport heartbeats are available.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Add deterministic prepared-dispatch admission checks that refuse task preparation until the selected profile can access the resolved workspace database and fresh Go and preservation transport heartbeats are available.
+    expected_artifact: Evidence satisfying Agent Ask gate-prepared-dispatch-on-transport-readiness
+    clarification: clarified
+    confidence: high
+    source: Agent Ask promote-pre-dispatch-transport-readiness-2026-09-19
+    acceptance_criteria:
+      - A deterministic pre-dispatch check refuses preparation with an actionable remedy when the workspace database cannot be opened by the selected agent profile.
+      - A deterministic pre-dispatch check refuses preparation when either Go-capable or preservation transport lacks a fresh heartbeat, before a coding agent is started.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/411", "src/goBroker.ts", "src/sessions/preservationTransport.ts"]
+  - id: verify-worker-recovery-before-success
+    title: Make the managed worker control path fail on launchd load failure and report success only after the worker has recovered stale state and published fresh preservation and Go-route heartbeats.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make the managed worker control path fail on launchd load failure and report success only after the worker has recovered stale state and published fresh preservation and Go-route heartbeats.
+    expected_artifact: Evidence satisfying Agent Ask verify-worker-recovery-before-success
+    clarification: clarified
+    confidence: high
+    source: Agent Ask promote-truthful-worker-recovery-2026-09-19
+    acceptance_criteria:
+      - A failed launchd load or bootstrap makes worker recovery return a nonzero actionable refusal instead of reporting that the worker started.
+      - After a successful managed restart, worker recovery verifies a fresh preservation heartbeat and a fresh Go-capable heartbeat before reporting ready.
+      - A regression test covers a stale worker state and a launchd startup failure without relying on a live macOS service.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/411", "src/commands/worker.ts", "src/sessions/preservationTransport.ts", "src/commands/goBrokerInstall.ts"]
+  - id: surface-terminal-operator-approvals-in-runs
+    title: Add a /runs approval queue that presents only terminal operator-only approvals, each with its essential recommended option and a details expansion containing evidence, costs, consequences, alternatives, and the exact canonical settlement effect.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Add a /runs approval queue that presents only terminal operator-only approvals, each with its essential recommended option and a details expansion containing evidence, costs, consequences, alternatives, exact canonical settlement effect, and a bounded operator-script control when Arcadia can derive a scriptable step.
+    expected_artifact: Evidence satisfying Agent Ask surface-terminal-operator-approvals-in-runs
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-runs-operator-script-controls-v3-2026-09-19
+    acceptance_criteria:
+      - /runs lists every pending Agent Ask and other terminal operator-only approval that blocks managed production, while excluding mechanics agents may safely perform.
+      - Each queue item offers one minimal recommended action plus an expandable details view that states evidence, cost, consequence, alternatives, and what the canonical settlement will change.
+      - Choosing an option invokes the existing fingerprinted canonical settlement path, preserves approval boundaries, and records one durable receipt.
+      - For every bounded scriptable operator step Arcadia derives, it writes a short-lived script and an arcadia-operator-script-v1 descriptor only beneath artifacts/generated/operator-scripts/; /runs displays the descriptor's problem, desired effect, exact CLI invocation, checksum, prerequisites, authority boundary, success next step, and failure next step.
+      - A script failure writes a timestamped, immutable failure handoff and complete run log beneath that script's generated directory; /runs exposes both as the exact input for a coding agent to diagnose the first failed command and propose a narrower follow-up script.
+      - The /runs execute control sends only the selected fingerprinted script descriptor to the host-side service controller; it records output and a durable receipt, refuses when that controller is unavailable or the descriptor is stale, and never lets a browser execute an arbitrary command.
+      - Regression tests cover prioritization, minimal-versus-expanded rendering, stale-preview refusal, successful operator settlement, generated-script integrity, failure-handoff generation, unavailable-host refusal, and successful host-mediated execution.
+    depends_on: []
+    decisions: []
+    references: ["apps/dashboard/app/runs", "apps/dashboard/components", "src/agentAsk", "src/dashboard/snapshot.ts", "src/commands/agentAsk.ts", "docs/plans/mission-control-view/17-managed-production-contract.md", "scripts/services.sh", "src/commands/worker.ts", "artifacts/generated/operator-scripts"]
+  - id: reference-constitution-without-duplicating-it
+    title: Replace repeated Constitution text in dispatch, next, and session briefs with one canonical repository reference and content fingerprint; load only the applicable canonical clauses at an authority-sensitive boundary.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Replace repeated Constitution text in dispatch, next, and session briefs with one canonical repository reference and content fingerprint; load only the applicable canonical clauses at an authority-sensitive boundary.
+    expected_artifact: Evidence satisfying Agent Ask reference-constitution-without-duplicating-it
+    clarification: clarified
+    confidence: high
+    source: Agent Ask reduce-constitution-dispatch-duplication-2026-09-19
+    acceptance_criteria:
+      - A dispatch and agent brief identify the repository CONSTITUTION.md and its content fingerprint without embedding its full text more than once across the handoff path.
+      - An agent still receives or deterministically loads the canonical Constitution before performing an authority-sensitive action, and a changed or unreadable Constitution fails closed with an actionable remedy.
+      - Regression tests prove dispatch and session briefs remain bounded while constitution drift or unreadability cannot silently weaken the contract.
+    depends_on: []
+    decisions: []
+    references: ["CONSTITUTION.md", "AGENTS.md", "src/docs/dispatch.ts", "src/commands/next.ts", "src/sessions/actionBrief.ts", "src/projects/contextSetup.ts"]
+  - id: recover-protected-go-base-divergence
+    title: Make the host-controlled Arcadia Go path safely reconcile governed local base commits with merged remote changes, or generate a bounded operator script that invokes only that supported route and returns a prepared-worktree receipt.
+    status: done
+    responsibility: agent
+    effort: session
+    next_action: Make the host-controlled Arcadia Go path safely reconcile governed local base commits with merged remote changes, or generate a bounded operator script that invokes only that supported route and returns a prepared-worktree receipt.
+    expected_artifact: Evidence satisfying Agent Ask recover-protected-go-base-divergence
+    clarification: clarified
+    confidence: high
+    source: Agent Ask promote-protected-go-divergence-recovery-2026-09-19
+    acceptance_criteria:
+      - When the local base is ahead and behind its configured remote, protected Arcadia Go either completes a host-controlled reconciliation with an auditable receipt or refuses with a generated bounded operator script; it never directs a coding agent to manually rebase or merge.
+      - A deterministic regression test covers the divergent-base case and proves no prepared worktree is issued before the supported reconciliation outcome is known.
+      - A live host probe after the repair returns a valid prepared or resumed worktree receipt through the protected Go request path.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/419", "src/goBroker.ts", "src/sessions/preservationTransport.ts", "scripts/arcadia-go-broker.ts"]
 questions: []
 decisions: []
 current_action: restore-preservation-worker-heartbeat
