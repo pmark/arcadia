@@ -73,12 +73,18 @@ function observeLocalGoals(codexHome = process.env.ARCADIA_CODEX_HOME ?? process
     return [];
   }
 
-  const db = withSqliteNativeAddonPreflight(() => new Database(goalsPath, { readonly: true, fileMustExist: true }));
+  let db: Database.Database;
   try {
-    if (existsSync(statePath)) {
-      db.exec(`ATTACH DATABASE '${statePath.replaceAll("'", "''")}' AS codex_state`);
-    }
-    const hasState = existsSync(statePath);
+    db = withSqliteNativeAddonPreflight(() => new Database(goalsPath, { readonly: true, fileMustExist: true }));
+  } catch {
+    // Codex owns these files and may rotate or remove one at any moment. Local
+    // goals are an optional observability source, so an unreadable database is
+    // "no local goals", never an error that propagates into profile selection.
+    return [];
+  }
+
+  try {
+    const hasState = attachCodexState(db, statePath);
     const rows = db.prepare(
       hasState
         ? `SELECT
@@ -120,8 +126,38 @@ function observeLocalGoals(codexHome = process.env.ARCADIA_CODEX_HOME ?? process
       summary: [row.objective, row.cwd ? `Workspace: ${row.cwd}` : ""].filter(Boolean).join("\n"),
       codexUpdatedAt: new Date(row.updated_at_ms).toISOString()
     }));
+  } catch {
+    // Same reasoning as above: a mid-read failure degrades to no local goals.
+    // observeCloudTasks already swallows its own failures this way; this path
+    // did not, so a transient SQLite error reached selectAgentProfile and
+    // refused a launch that had nothing to do with Codex goals.
+    return [];
   } finally {
     db.close();
+  }
+}
+
+/**
+ * Attach Codex's thread-state database when it is readable, reporting whether
+ * the join against `codex_state` is safe to make.
+ *
+ * The state database is optional and lives in a directory Codex writes to
+ * concurrently. Checking `existsSync` and then attaching is a race: the file
+ * can be rotated away in between, and SQLite then raises "unable to open
+ * database file". Reporting the attach's own outcome — rather than asking the
+ * filesystem a second time — also keeps the answer consistent with what is
+ * actually attached, so the goals-only query is never run against a schema
+ * that expects `codex_state`, and vice versa.
+ */
+function attachCodexState(db: Database.Database, statePath: string): boolean {
+  if (!existsSync(statePath)) {
+    return false;
+  }
+  try {
+    db.exec(`ATTACH DATABASE '${statePath.replaceAll("'", "''")}' AS codex_state`);
+    return true;
+  } catch {
+    return false;
   }
 }
 

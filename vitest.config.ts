@@ -22,6 +22,17 @@ export default defineConfig({
   test: {
     environment: "node",
     testTimeout: 30_000,
+    env: {
+      // Codex observation falls back to the developer's real ~/.codex, so any
+      // test that reaches profile selection read, attached and queried the
+      // SQLite databases the Codex app was concurrently writing. That made
+      // tests/launch-preview.test.ts fail intermittently with "unable to open
+      // database file" on a machine that runs Codex, and never in CI, which
+      // has no ~/.codex at all. Pointing every test run at a directory that
+      // does not exist makes local goals deterministically empty and keeps the
+      // suite independent of whatever the developer's own tools are doing.
+      ARCADIA_CODEX_HOME: path.join(import.meta.dirname, "tests", ".no-codex-home")
+    },
     exclude: [
       "**/node_modules/**",
       "**/dist/**",
