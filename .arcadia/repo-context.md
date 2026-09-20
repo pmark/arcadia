@@ -1,9 +1,10 @@
 # Arcadia Repo Context
 
-Generated: 2026-09-19T14:15:54.375Z
+Generated: 2026-09-20T06:08:09.762Z
 Repo path: /Users/pmark/Dev/MR/Arcadia/arcadia
 
 ## Detected Languages
+- CSS
 - Markdown
 - TypeScript
 - YAML

@@ -587,7 +587,10 @@ the Way's intake for code-level defects in Arcadia and every managed Project.
 - **Capture is not governance.** An Issue is a signal, never work state. Do not
   read Issues as a queue, a pointer, or a Decision. When a defect becomes work,
   promote it to a governed Action through an Agent Ask that references the
-  Issue, and close the Issue when that work merges. This is the same rule that
+  Issue, and close the Issue when that work merges: put `Closes #<ISSUE>` in
+  the body of each pull request that resolves it, so GitHub closes the Issue on
+  merge with no manual step. Use `Refs #<ISSUE>` when a PR only partly
+  resolves it. This is the same rule that
   keeps telemetry out of the Mission Log: one authoritative home per fact, and
   the tracker is not a second truth store.
 - **Report, don't detour.** Do not investigate past what the capture needs. A
