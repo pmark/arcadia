@@ -4,7 +4,7 @@ type: decision
 id: "0062"
 slug: stop-requiring-operator-clicks-to-settle-a-coding-action-whose-declared
 project: arcadia
-status: open
+status: approved
 question: Stop requiring operator clicks to settle a coding Action whose declared acceptance criteria have deterministic evidence, while retaining hard gates for external or irreversible authority.
 gap_type: missing-decision
 recommendation: Automate proven completion
@@ -18,6 +18,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-09-20
+answer: Automate proven completion
+decided: 2026-09-20
 ---
 
 # Decision 0062: Stop requiring operator clicks to settle a coding Action whose declared acceptance criteria have deterministic evidence, while retaining hard gates for external or irreversible authority.
