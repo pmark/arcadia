@@ -1511,15 +1511,30 @@ The first command is a deterministic preview. `--apply` is accepted only when:
 - the repository resolves exactly one dispatchable Arcadia Action with no open
   Decision or document blocker; and
 - the source is not detached and has no source-only patch; a genuinely
-  divergent source remains a manual reconciliation refusal.
+  divergent source remains preserved and requires a reviewed Arcadia repair.
 
 On `--apply`, Arcadia first fetches the base branch's tracked remote and
-fast-forwards local base onto it when that is a clean ancestor merge —
-skipping cleanly (reported in `baseRemoteSync`) when no remote is tracked, and
-refusing outright when local base has diverged from the fetched remote rather
-than silently dispatching from stale state. It fast-forwards the local base
-branch only when needed. An already-integrated source leaves the base
-unchanged, then follows the same retirement and dispatch path. Arcadia removes
+fast-forwards local base onto it when that is a clean ancestor relationship.
+The fetch names only the configured upstream branch and lands first in an
+isolated controller ref, so a rewritten upstream cannot overwrite the prior
+remote-tracking evidence and become acceptable on retry.
+When the checked-out base is genuinely ahead and behind, the host controller
+reconciles only if every local-only commit has recognized Arcadia governance
+provenance and managed-document paths, history has exactly one complete merge
+base, no custom merge driver can execute, the remote was not rewritten, and
+Git computes a conflict-free tree. Arcadia checks the result in a temporary
+detached checkout by first creating an unreferenced two-parent candidate from
+the exact local and fetched remote heads. It requires a dispatchable governed
+Action before that candidate can move any branch. It then rechecks every pinned
+ref, advances the clean checked-out base with hooks disabled, verifies the
+result, and reports all input and result SHAs in `baseRemoteSync`. A prepared
+source is accepted only when its work is already present in one of the pinned
+histories. Conflicting, unrelated, rewritten,
+unrecognized, missing-observation, or concurrently changed history refuses
+without a prepared worktree and without a manual rebase/merge remedy.
+
+An already-integrated source leaves the base unchanged, then follows the same
+retirement and dispatch path. Arcadia removes
 a linked source worktree or switches a primary task checkout back to the base
 branch, deletes only the verified-safe local source branch, prunes worktree
 metadata, rechecks dispatch, and reports the base ref plus the `arcadia
@@ -1546,8 +1561,9 @@ at all is a refusal; Arcadia will not launch an agent session unpinned. That
 refusal does not
 undo an already-completed fast-forward, since the two are independent
 outcomes: retiring the finished worktree is valid on its own, with or without
-a next agent session. It does not stage, commit, reset, force-merge, push,
-open a PR, or launch an agent process implicitly.
+a next agent session. It does not stage arbitrary files, reset, force-merge,
+push, open a PR, or launch an agent process implicitly. The one commit it may
+create is the audited divergent-base reconciliation described above.
 
 This command intentionally evaluates only the named source worktree. Other
 worktrees remain untouched. Unsafe source state is a refusal with an exact
