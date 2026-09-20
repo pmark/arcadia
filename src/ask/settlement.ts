@@ -62,7 +62,11 @@ export interface AgentAskSettlementReceipt {
   nextActionKey: string | null;
   previewFingerprint: string;
   applied: boolean;
-  authority: { kind: "operator_acceptance"; requestedAuthority: string; boundedPolicyDecision: null };
+  authority: {
+    kind: "operator_acceptance" | "deterministic_proof";
+    requestedAuthority: string;
+    boundedPolicyDecision: null;
+  };
   notificationStatus: "withheld_until_apply" | "pending" | "sent";
   createdAt: string;
   /**
@@ -702,7 +706,9 @@ export function settleAgentAsk(db: Database.Database, input: {
     previewFingerprint,
     applied: input.apply === true,
     authority: {
-      kind: "operator_acceptance",
+      kind: proposal.normalized.intent === "complete" && !input.operator
+        ? "deterministic_proof"
+        : "operator_acceptance",
       requestedAuthority: proposal.normalized.requestedAuthority,
       boundedPolicyDecision: null
     },

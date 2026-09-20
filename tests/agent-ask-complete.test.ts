@@ -121,6 +121,7 @@ describe("Agent Ask complete", () => {
       preview: preview.data.receipt.previewFingerprint, apply: true
     });
     expect(applied.data.receipt.applied).toBe(true);
+    expect(applied.data.receipt.authority.kind).toBe("deterministic_proof");
     expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toContain("status: done");
   });
 
