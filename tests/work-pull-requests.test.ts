@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildPullRequestBriefing,
   derivePullRequestReadiness,
+  normalizeCheck,
   normalizePullRequest
 } from "../src/workMonitoring/pullRequests.js";
 
@@ -101,5 +102,12 @@ describe("outstanding pull-request readiness", () => {
     expect(briefing.decisionFiles).toEqual(["docs/decisions/0038-authorize-real-session-dogfood.md"]);
     expect(briefing.unmentionedFiles).toEqual(["src/db/schema.ts", "src/new-file.ts"]);
     expect(briefing.materialFacts.join(" ")).toMatch(/database schema|not named/i);
+  });
+
+  it("reads a commit StatusContext like CodeRabbit as complete once it has a settled state", () => {
+    expect(normalizeCheck({ context: "CodeRabbit", state: "SUCCESS" })).toMatchObject({ name: "CodeRabbit", status: "COMPLETED", conclusion: "SUCCESS" });
+    expect(normalizeCheck({ context: "CodeRabbit", state: "PENDING" })).toMatchObject({ status: "PENDING", conclusion: null });
+    expect(normalizeCheck({ context: "CodeRabbit", state: "EXPECTED" })).toMatchObject({ status: "PENDING", conclusion: null });
+    expect(normalizeCheck({ name: "lint", status: "COMPLETED", conclusion: "SUCCESS" })).toMatchObject({ name: "lint", status: "COMPLETED", conclusion: "SUCCESS" });
   });
 });
