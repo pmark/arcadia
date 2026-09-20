@@ -141,11 +141,20 @@ prompt, not permission to invoke the mutable CLI command directly.
 ## Safety contract
 
 The host controller and prepared-worktree brokers fail closed for dirty,
-detached, divergent, non-agent-owned, or non-dispatchable state. Only the host
-controller may fast-forward, fetch, or create/remove a worktree; it may remove
-only the named clean source worktree and its merged agent branch. It never
-stages, commits, force-merges, resets, pushes, opens a pull request, deploys,
-launches a coding-agent process, or discards work. Every launcher accepts no
-public arguments. `advance` and `work-monitor` emit read-only results. `go`
-and `preserve` submit fixed requests for either provider and read only
-host-protected responses.
+detached, source-divergent, non-agent-owned, or non-dispatchable state. A base
+that is both ahead and behind its remote is reconciled only by the host, only
+when its local-only commits are recognized Arcadia-generated governance writes,
+history has one complete merge base, and the computed tree is conflict-free.
+The host snapshots only the configured upstream into an isolated ref, rejects
+custom merge drivers, verifies that the merged governance tree is dispatchable,
+by creating one unreferenced auditable two-parent candidate and checking it in
+a temporary checkout, rechecks every pinned ref, and advances the base with
+hooks disabled. Only then may it return a prepared/resumed
+worktree. Rewritten, unrelated, conflicting, unrecognized, missing-observation,
+or prepublication racing history refuses without a manual Git remedy. Only the host controller may fetch, reconcile, or
+create/remove a worktree; it may remove only the named clean source worktree
+and its merged agent branch. It never stages arbitrary files, force-merges,
+resets, pushes, opens a pull request, deploys, launches a coding-agent process,
+or discards work. Every launcher accepts no public arguments. `advance` and
+`work-monitor` emit read-only results. `go` and `preserve` submit fixed
+requests for either provider and read only host-protected responses.

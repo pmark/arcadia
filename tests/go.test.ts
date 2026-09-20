@@ -1,18 +1,20 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { runAgentAskPreviewCommand } from "../src/commands/agentAsk.js";
 import { runGoCommand } from "../src/commands/go.js";
 import { runTidyCommand } from "../src/commands/tidy.js";
 import { withReadOnlyDatabase } from "../src/db/connection.js";
+import { runGoBroker } from "../src/goBroker.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -515,16 +517,35 @@ describe("arcadia go — refuses to orphan an uncommitted candidate", () => {
 });
 
 describe("arcadia go — base branch remote sync", () => {
+  it("refuses direct mutation inside a coding-agent sandbox before changing Git state", () => {
+    const fixture = createFixture("claude/sandbox-direct-apply");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    const mainBefore = git(fixture.main, ["rev-parse", "main"]).trim();
+    const sourceBefore = git(fixture.main, ["rev-parse", "claude/sandbox-direct-apply"]).trim();
+    vi.stubEnv("CODEX_SANDBOX", "seatbelt");
+
+    const failure = expectValidation(
+      () => runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true }),
+      "protected host controller"
+    );
+
+    expect(git(fixture.main, ["rev-parse", "main"]).trim()).toBe(mainBefore);
+    expect(git(fixture.main, ["rev-parse", "claude/sandbox-direct-apply"]).trim()).toBe(sourceBefore);
+    expect(existsSync(fixture.feature)).toBe(true);
+    expectNoManualGitRemedy(failure);
+  });
+
   it("skips cleanly when the base branch has no tracked remote", () => {
     const fixture = createFixture("claude/no-tracked-remote");
     commitFeature(fixture.feature, "proof.txt", "proof\n");
 
     const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true });
 
-    expect(result.data.baseRemoteSync).toEqual({
+    expect(result.data.baseRemoteSync).toMatchObject({
       attempted: false,
       remote: null,
       fastForwarded: false,
+      strategy: "none",
       reason: "The base branch has no tracked remote configured."
     });
   });
@@ -552,21 +573,561 @@ describe("arcadia go — base branch remote sync", () => {
 
     const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true });
 
-    expect(result.data.baseRemoteSync).toEqual({ attempted: true, remote: "origin", fastForwarded: true, reason: null });
+    expect(result.data.baseRemoteSync).toMatchObject({
+      attempted: true,
+      remote: "origin",
+      fastForwarded: true,
+      strategy: "fast-forward",
+      reason: null
+    });
+    expect(result.data.baseRemoteSync.resultHead).toBe(result.data.baseRemoteSync.remoteHead);
     expect(git(fixture.main, ["log", "--format=%s", "main"])).toContain("remote-only commit");
   });
 
-  it("refuses when the local base branch has diverged from its fetched remote", () => {
+  it("reconciles recognized governed base commits before issuing the prepared-worktree receipt", () => {
     const fixture = createFixtureWithRemote("claude/diverged-base");
-    git(fixture.remote, ["commit", "--allow-empty", "-m", "remote-only commit"]);
-    git(fixture.main, ["commit", "--allow-empty", "-m", "local-only commit"]);
-    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    writeFileSync(path.join(fixture.remote, "remote-one.txt"), "remote one\n");
+    git(fixture.remote, ["add", "remote-one.txt"]);
+    git(fixture.remote, ["commit", "-m", "remote-only commit one"]);
+    writeFileSync(path.join(fixture.remote, "remote-two.txt"), "remote two\n");
+    git(fixture.remote, ["add", "remote-two.txt"]);
+    git(fixture.remote, ["commit", "-m", "remote-only commit two"]);
+    const remoteHead = git(fixture.remote, ["rev-parse", "HEAD"]).trim();
+    commitGovernance(fixture.main, "governed local state\n");
+    const settlementHead = git(fixture.main, ["rev-parse", "HEAD"]).trim();
+    commitGovernedPointer(fixture.main);
+    const localHead = git(fixture.main, ["rev-parse", "HEAD"]).trim();
+    const agentRoot = path.join(fixture.root, "agent-worktrees");
+    const hookSentinel = path.join(fixture.root, "post-merge-ran");
+    const referenceHookSentinel = path.join(fixture.root, "reference-transaction-ran");
+    const postMergeHook = path.join(fixture.main, ".git", "hooks", "post-merge");
+    const referenceHook = path.join(fixture.main, ".git", "hooks", "reference-transaction");
+    writeFileSync(postMergeHook, `#!/bin/sh\nprintf ran > ${JSON.stringify(hookSentinel)}\n`);
+    writeFileSync(referenceHook, `#!/bin/sh\nprintf ran > ${JSON.stringify(referenceHookSentinel)}\n`);
+    chmodSync(postMergeHook, 0o755);
+    chmodSync(referenceHook, 0o755);
 
-    expectValidation(
-      () => runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true }),
-      "diverged from its remote"
+    const result = runGoCommand({
+      repo: fixture.main,
+      source: fixture.main,
+      apply: true,
+      agent: "codex",
+      model: "gpt-5.6-terra",
+      workspace: fixture.workspace,
+      agentWorktreeRoot: agentRoot,
+      now: new Date("2026-09-19T23:30:00.000Z")
+    });
+
+    expect(result.data.baseRemoteSync).toMatchObject({
+      strategy: "governed-merge",
+      upstream: "origin/main",
+      localHeadBefore: localHead,
+      remoteHead,
+      localGovernanceCommits: [settlementHead, localHead],
+      remoteCommitsIntegrated: 2,
+      reason: null
+    });
+    const reconciled = result.data.baseRemoteSync.resultHead!;
+    expect(git(fixture.main, ["show", "-s", "--format=%P", reconciled]).trim()).toBe(`${localHead} ${remoteHead}`);
+    expect(git(fixture.main, ["merge-base", "--is-ancestor", localHead, reconciled])).toBe("");
+    expect(git(fixture.main, ["merge-base", "--is-ancestor", remoteHead, reconciled])).toBe("");
+    expect(result.data.nextWorktree).not.toBeNull();
+    expect(git(result.data.nextWorktree!.path, ["rev-parse", "HEAD"]).trim()).toBe(reconciled);
+    expect(result.data.dispatch.context?.action.id).toBe("dispatch-next");
+    expect(readFileSync(path.join(result.data.nextWorktree!.path, "MISSION_LOG.md"), "utf8")).toBe("governed local state\n");
+    expect(readFileSync(path.join(result.data.nextWorktree!.path, "remote-one.txt"), "utf8")).toBe("remote one\n");
+    expect(readFileSync(path.join(result.data.nextWorktree!.path, "remote-two.txt"), "utf8")).toBe("remote two\n");
+    expect(git(fixture.main, ["rev-parse", "refs/remotes/origin/main"]).trim()).toBe(remoteHead);
+    expect(git(fixture.main, ["for-each-ref", "--format=%(refname)", "refs/arcadia/go-fetch"])).toBe("");
+    expect(git(fixture.remote, ["rev-parse", "HEAD"]).trim()).toBe(remoteHead);
+    expect(existsSync(hookSentinel)).toBe(false);
+    expect(existsSync(referenceHookSentinel)).toBe(false);
+  });
+
+  it("returns the governed reconciliation as a normal protected-broker receipt", () => {
+    const fixture = createFixtureWithRemote("claude/broker-diverged-base");
+    writeFileSync(path.join(fixture.remote, "remote.txt"), "remote\n");
+    git(fixture.remote, ["add", "remote.txt"]);
+    git(fixture.remote, ["commit", "-m", "remote-only commit"]);
+    commitGovernance(fixture.main, "governed local state\n");
+    const agentRoot = path.join(fixture.root, "broker-agent-worktrees");
+
+    const result = runGoBroker(
+      { source: fixture.main, agent: "codex", operation: "go" },
+      options => runGoCommand({
+        ...options,
+        model: "gpt-5.6-terra",
+        workspace: fixture.workspace,
+        agentWorktreeRoot: agentRoot,
+        now: new Date("2026-09-19T23:30:00.000Z")
+      })
     );
-    expect(git(fixture.main, ["log", "-1", "--format=%s", "main"]).trim()).toBe("local-only commit");
+
+    expect(result.command).toBe("go-broker");
+    expect("baseRemoteSync" in result.data && result.data.baseRemoteSync.strategy).toBe("governed-merge");
+    expect("nextWorktree" in result.data && result.data.nextWorktree).not.toBeNull();
+  });
+
+  it("refuses a conflicting governed divergence before preparing any worktree", () => {
+    const fixture = createFixtureWithRemote("claude/conflicting-base");
+    const remoteProject = readFileSync(path.join(fixture.remote, "PROJECT.md"), "utf8")
+      .replace("goal: Prove safe handoffs.", "goal: Remote direction.");
+    writeFileSync(path.join(fixture.remote, "PROJECT.md"), remoteProject);
+    git(fixture.remote, ["add", "PROJECT.md"]);
+    git(fixture.remote, ["commit", "-m", "remote project change"]);
+    const localProject = readFileSync(path.join(fixture.main, "PROJECT.md"), "utf8")
+      .replace("goal: Prove safe handoffs.", "goal: Local governed direction.");
+    writeFileSync(path.join(fixture.main, "PROJECT.md"), localProject);
+    git(fixture.main, ["add", "PROJECT.md"]);
+    git(fixture.main, ["commit", "-m", "chore(arcadia): point at define-contract", "-m", "Written by `arcadia advance queue make-next --apply` (qpointer_test)."]);
+    const localHead = git(fixture.main, ["rev-parse", "HEAD"]).trim();
+    const remoteHead = git(fixture.remote, ["rev-parse", "HEAD"]).trim();
+    const trackingBefore = git(fixture.main, ["rev-parse", "refs/remotes/origin/main"]).trim();
+    const worktreesBefore = git(fixture.main, ["worktree", "list", "--porcelain"]);
+    const agentRoot = path.join(fixture.root, "conflict-agent-worktrees");
+
+    const failure = expectValidation(
+      () => runGoCommand({
+        repo: fixture.main,
+        source: fixture.main,
+        apply: true,
+        agent: "codex",
+        model: "gpt-5.6-terra",
+        workspace: fixture.workspace,
+        agentWorktreeRoot: agentRoot
+      }),
+      "do not reconcile cleanly"
+    );
+    expect(git(fixture.main, ["rev-parse", "main"]).trim()).toBe(localHead);
+    expect(git(fixture.main, ["status", "--porcelain"]).trim()).toBe("");
+    expect(git(fixture.main, ["rev-parse", "refs/remotes/origin/main"]).trim()).toBe(trackingBefore);
+    expect(git(fixture.remote, ["rev-parse", "HEAD"]).trim()).toBe(remoteHead);
+    expect(git(fixture.main, ["worktree", "list", "--porcelain"])).toBe(worktreesBefore);
+    expect(existsSync(agentRoot)).toBe(false);
+    expectNoManualGitRemedy(failure);
+  });
+
+  it("refuses unrecognized local base history without a manual Git remedy", () => {
+    const fixture = createFixtureWithRemote("claude/unrecognized-base");
+    git(fixture.remote, ["commit", "--allow-empty", "-m", "remote-only commit"]);
+    writeFileSync(path.join(fixture.main, "local-code.ts"), "export const local = true;\n");
+    git(fixture.main, ["add", "local-code.ts"]);
+    git(fixture.main, ["commit", "-m", "local code change"]);
+    const localHead = git(fixture.main, ["rev-parse", "HEAD"]).trim();
+    const worktreesBefore = git(fixture.main, ["worktree", "list", "--porcelain"]);
+    const agentRoot = path.join(fixture.root, "unrecognized-agent-worktrees");
+    let failure: ArcadiaError | null = null;
+    try {
+      runGoCommand({
+        repo: fixture.main,
+        source: fixture.main,
+        apply: true,
+        agent: "codex",
+        model: "gpt-5.6-terra",
+        workspace: fixture.workspace,
+        agentWorktreeRoot: agentRoot
+      });
+    } catch (error) {
+      failure = error as ArcadiaError;
+    }
+    expect(failure).toBeInstanceOf(ArcadiaError);
+    expect(failure?.message).toContain("not recognized Arcadia-generated governance writes");
+    expectNoManualGitRemedy(failure!);
+    expect(git(fixture.main, ["rev-parse", "main"]).trim()).toBe(localHead);
+    expect(git(fixture.main, ["worktree", "list", "--porcelain"])).toBe(worktreesBefore);
+    expect(existsSync(agentRoot)).toBe(false);
+  });
+
+  it("refuses a base ref race before publishing or preparing a worktree", () => {
+    const fixture = createFixtureWithRemote("claude/racing-base");
+    git(fixture.remote, ["commit", "--allow-empty", "-m", "remote-only commit"]);
+    commitGovernance(fixture.main, "governed local state\n");
+    const agentRoot = path.join(fixture.root, "race-agent-worktrees");
+    const worktreesBefore = git(fixture.main, ["worktree", "list", "--porcelain"]);
+    const trackingBefore = git(fixture.main, ["rev-parse", "refs/remotes/origin/main"]).trim();
+
+    const failure = expectValidation(
+      () => runGoCommand({
+        repo: fixture.main,
+        source: fixture.main,
+        apply: true,
+        agent: "codex",
+        model: "gpt-5.6-terra",
+        workspace: fixture.workspace,
+        agentWorktreeRoot: agentRoot,
+        testHooks: {
+          beforeBaseReconciliationPublish() {
+            expect(existsSync(agentRoot)).toBe(false);
+            expect(git(fixture.main, ["worktree", "list", "--porcelain"])).toBe(worktreesBefore);
+            git(fixture.main, ["commit", "--allow-empty", "-m", "concurrent base update"]);
+          }
+        }
+      }),
+      "changed during protected reconciliation"
+    );
+    expect(git(fixture.main, ["log", "-1", "--format=%s"]).trim()).toBe("concurrent base update");
+    expect(git(fixture.main, ["rev-parse", "refs/remotes/origin/main"]).trim()).toBe(trackingBefore);
+    expect(existsSync(agentRoot)).toBe(false);
+    expectNoManualGitRemedy(failure);
+  });
+
+  it("refuses when the base worktree switches branches before publication", () => {
+    const fixture = createFixtureWithRemote("claude/base-worktree-branch-race");
+    git(fixture.remote, ["commit", "--allow-empty", "-m", "remote-only commit"]);
+    commitGovernance(fixture.main, "governed local state\n");
+    const localHead = git(fixture.main, ["rev-parse", "main"]).trim();
+    const trackingBefore = git(fixture.main, ["rev-parse", "refs/remotes/origin/main"]).trim();
+    const agentRoot = path.join(fixture.root, "branch-race-agent-worktrees");
+
+    const failure = expectValidation(
+      () => runGoCommand({
+        repo: fixture.main,
+        source: fixture.main,
+        apply: true,
+        agent: "codex",
+        model: "gpt-5.6-terra",
+        workspace: fixture.workspace,
+        agentWorktreeRoot: agentRoot,
+        testHooks: {
+          beforeBaseReconciliationPublish() {
+            git(fixture.main, ["switch", "-c", "concurrent-base-branch"]);
+          }
+        }
+      }),
+      "changed branches during protected reconciliation"
+    );
+
+    expect(git(fixture.main, ["rev-parse", "main"]).trim()).toBe(localHead);
+    expect(git(fixture.main, ["rev-parse", "concurrent-base-branch"]).trim()).toBe(localHead);
+    expect(git(fixture.main, ["rev-parse", "refs/remotes/origin/main"]).trim()).toBe(trackingBefore);
+    expect(existsSync(agentRoot)).toBe(false);
+    expectNoManualGitRemedy(failure);
+  });
+
+  it("refuses source-only work before publishing a divergent base result", () => {
+    const fixture = createFixtureWithRemote("claude/separate-source");
+    git(fixture.remote, ["commit", "--allow-empty", "-m", "remote-only commit"]);
+    commitGovernance(fixture.main, "governed local state\n");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    const localHead = git(fixture.main, ["rev-parse", "main"]).trim();
+    const worktreesBefore = git(fixture.main, ["worktree", "list", "--porcelain"]);
+    const agentRoot = path.join(fixture.root, "separate-source-agent-worktrees");
+
+    const failure = expectValidation(
+      () => runGoCommand({
+        repo: fixture.main,
+        source: fixture.feature,
+        apply: true,
+        agent: "codex",
+        model: "gpt-5.6-terra",
+        workspace: fixture.workspace,
+        agentWorktreeRoot: agentRoot
+      }),
+      "cannot absorb source-only work"
+    );
+    expect(git(fixture.main, ["rev-parse", "main"]).trim()).toBe(localHead);
+    expect(git(fixture.main, ["worktree", "list", "--porcelain"])).toBe(worktreesBefore);
+    expect(existsSync(agentRoot)).toBe(false);
+    expectNoManualGitRemedy(failure);
+  });
+
+  it("reconciles the base when a prepared source is already integrated remotely", () => {
+    const fixture = createFixtureWithRemote("claude/integrated-source");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    git(fixture.remote, ["fetch", fixture.main, "refs/heads/claude/integrated-source"]);
+    git(fixture.remote, ["cherry-pick", "FETCH_HEAD"]);
+    writeFileSync(path.join(fixture.remote, "remote-follow-up.txt"), "remote follow-up\n");
+    git(fixture.remote, ["add", "remote-follow-up.txt"]);
+    git(fixture.remote, ["commit", "-m", "remote follow-up"]);
+    commitGovernance(fixture.main, "governed local state\n");
+    const agentRoot = path.join(fixture.root, "integrated-source-agent-worktrees");
+
+    const brokerResult = runGoBroker(
+      { source: fixture.feature, agent: "codex", operation: "go" },
+      options => runGoCommand({
+        ...options,
+        model: "gpt-5.6-terra",
+        workspace: fixture.workspace,
+        agentWorktreeRoot: agentRoot
+      })
+    );
+    if (!("baseRemoteSync" in brokerResult.data)) throw new Error("Expected protected Go receipt");
+    const result = brokerResult.data;
+
+    expect(brokerResult.command).toBe("go-broker");
+    expect(result.baseRemoteSync.strategy).toBe("governed-merge");
+    expect(result.integration).toBe("already-integrated");
+    expect(result.sourceWorktreeRemoved).toBe(true);
+    expect(result.sourceBranchDeleted).toBe(true);
+    expect(result.nextWorktree).not.toBeNull();
+    expect(readFileSync(path.join(result.nextWorktree!.path, "proof.txt"), "utf8")).toBe("proof\n");
+    expect(readFileSync(path.join(result.nextWorktree!.path, "MISSION_LOG.md"), "utf8")).toBe("governed local state\n");
+  });
+
+  it("refuses a conflict-free merge whose governed pointer is semantically invalid", () => {
+    const fixture = createFixtureWithRemote("claude/invalid-merged-dispatch");
+    const remoteProject = readFileSync(path.join(fixture.remote, "PROJECT.md"), "utf8")
+      .replace("current_action: define-contract", "current_action: missing-action");
+    writeFileSync(path.join(fixture.remote, "PROJECT.md"), remoteProject);
+    git(fixture.remote, ["add", "PROJECT.md"]);
+    git(fixture.remote, ["commit", "-m", "remote pointer change"]);
+    commitGovernance(fixture.main, "governed local state\n");
+    const localHead = git(fixture.main, ["rev-parse", "main"]).trim();
+    const trackingBefore = git(fixture.main, ["rev-parse", "refs/remotes/origin/main"]).trim();
+    const worktreesBefore = git(fixture.main, ["worktree", "list", "--porcelain"]);
+    const agentRoot = path.join(fixture.root, "invalid-dispatch-agent-worktrees");
+
+    const failure = expectValidation(
+      () => runGoCommand({
+        repo: fixture.main,
+        source: fixture.main,
+        apply: true,
+        agent: "codex",
+        model: "gpt-5.6-terra",
+        workspace: fixture.workspace,
+        agentWorktreeRoot: agentRoot
+      }),
+      "does not resolve a dispatchable governed Action"
+    );
+
+    expect(git(fixture.main, ["rev-parse", "main"]).trim()).toBe(localHead);
+    expect(git(fixture.main, ["rev-parse", "refs/remotes/origin/main"]).trim()).toBe(trackingBefore);
+    expect(git(fixture.main, ["worktree", "list", "--porcelain"])).toBe(worktreesBefore);
+    expect(existsSync(agentRoot)).toBe(false);
+    expectNoManualGitRemedy(failure);
+  });
+
+  it("preserves remote rewrite evidence and refuses the same rewrite on retry", () => {
+    const fixture = createFixtureWithRemote("claude/rewritten-upstream");
+    const initial = git(fixture.remote, ["rev-parse", "HEAD"]).trim();
+    writeFileSync(path.join(fixture.remote, "observed.txt"), "observed\n");
+    git(fixture.remote, ["add", "observed.txt"]);
+    git(fixture.remote, ["commit", "-m", "observed remote head"]);
+    const observedHead = git(fixture.remote, ["rev-parse", "HEAD"]).trim();
+    git(fixture.main, ["fetch", "origin"]);
+    expect(git(fixture.main, ["rev-parse", "refs/remotes/origin/main"]).trim()).toBe(observedHead);
+
+    git(fixture.remote, ["switch", "--detach", initial]);
+    writeFileSync(path.join(fixture.remote, "rewritten.txt"), "rewritten\n");
+    git(fixture.remote, ["add", "rewritten.txt"]);
+    git(fixture.remote, ["commit", "-m", "rewritten remote head"]);
+    const rewrittenHead = git(fixture.remote, ["rev-parse", "HEAD"]).trim();
+    git(fixture.remote, ["branch", "-f", "main", rewrittenHead]);
+    git(fixture.remote, ["switch", "main"]);
+    const localHead = git(fixture.main, ["rev-parse", "main"]).trim();
+    const agentRoot = path.join(fixture.root, "rewrite-agent-worktrees");
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const failure = expectValidation(
+        () => runGoCommand({
+          repo: fixture.main,
+          source: fixture.main,
+          apply: true,
+          agent: "codex",
+          model: "gpt-5.6-terra",
+          workspace: fixture.workspace,
+          agentWorktreeRoot: agentRoot
+        }),
+        "rewritten instead of advanced"
+      );
+      expectNoManualGitRemedy(failure);
+      expect(git(fixture.main, ["rev-parse", "refs/remotes/origin/main"]).trim()).toBe(observedHead);
+      expect(git(fixture.main, ["rev-parse", "main"]).trim()).toBe(localHead);
+      expect(existsSync(agentRoot)).toBe(false);
+    }
+    expect(git(fixture.remote, ["rev-parse", "main"]).trim()).toBe(rewrittenHead);
+  });
+
+  it("refuses divergent history when its prior remote-tracking observation is missing", () => {
+    const fixture = createFixtureWithRemote("claude/missing-remote-observation");
+    writeFileSync(path.join(fixture.remote, "remote.txt"), "remote\n");
+    git(fixture.remote, ["add", "remote.txt"]);
+    git(fixture.remote, ["commit", "-m", "remote-only commit"]);
+    commitGovernance(fixture.main, "governed local state\n");
+    const localHead = git(fixture.main, ["rev-parse", "main"]).trim();
+    git(fixture.main, ["update-ref", "-d", "refs/remotes/origin/main"]);
+    const agentRoot = path.join(fixture.root, "missing-observation-agent-worktrees");
+
+    const failure = expectValidation(
+      () => runGoCommand({
+        repo: fixture.main,
+        source: fixture.main,
+        apply: true,
+        agent: "codex",
+        model: "gpt-5.6-terra",
+        workspace: fixture.workspace,
+        agentWorktreeRoot: agentRoot
+      }),
+      "no pinned prior observation"
+    );
+
+    expect(git(fixture.main, ["rev-parse", "main"]).trim()).toBe(localHead);
+    expect(() => git(fixture.main, ["show-ref", "--verify", "refs/remotes/origin/main"])).toThrow();
+    expect(existsSync(agentRoot)).toBe(false);
+    expectNoManualGitRemedy(failure);
+  });
+
+  it("refuses a disappeared configured upstream before preparing a worktree", () => {
+    const fixture = createFixtureWithRemote("claude/missing-upstream");
+    git(fixture.remote, ["switch", "-c", "surviving-branch"]);
+    git(fixture.remote, ["branch", "-D", "main"]);
+    const localHead = git(fixture.main, ["rev-parse", "main"]).trim();
+    const agentRoot = path.join(fixture.root, "missing-upstream-agent-worktrees");
+
+    const failure = expectValidation(
+      () => runGoCommand({
+        repo: fixture.main,
+        source: fixture.main,
+        apply: true,
+        agent: "codex",
+        model: "gpt-5.6-terra",
+        workspace: fixture.workspace,
+        agentWorktreeRoot: agentRoot
+      }),
+      "could not observe the configured upstream"
+    );
+
+    expect(git(fixture.main, ["rev-parse", "main"]).trim()).toBe(localHead);
+    expect(existsSync(agentRoot)).toBe(false);
+    expectNoManualGitRemedy(failure);
+  });
+
+  it("recognizes and verifies a prior protected reconciliation on a later run", () => {
+    const fixture = createFixtureWithRemote("claude/repeated-reconciliation");
+    writeFileSync(path.join(fixture.remote, "remote-one.txt"), "one\n");
+    git(fixture.remote, ["add", "remote-one.txt"]);
+    git(fixture.remote, ["commit", "-m", "remote one"]);
+    commitGovernance(fixture.main, "governed state one\n");
+
+    const first = runGoCommand({
+      repo: fixture.main,
+      source: fixture.main,
+      apply: true,
+      now: new Date("2026-09-19T23:30:00.000Z")
+    });
+    expect(first.data.baseRemoteSync.strategy).toBe("governed-merge");
+    const firstResult = first.data.baseRemoteSync.resultHead!;
+
+    writeFileSync(path.join(fixture.remote, "remote-two.txt"), "two\n");
+    git(fixture.remote, ["add", "remote-two.txt"]);
+    git(fixture.remote, ["commit", "-m", "remote two"]);
+    commitGovernance(fixture.main, "governed state two\n");
+    const second = runGoCommand({
+      repo: fixture.main,
+      source: fixture.main,
+      apply: true,
+      now: new Date("2026-09-20T00:30:00.000Z")
+    });
+
+    expect(second.data.baseRemoteSync.strategy).toBe("governed-merge");
+    expect(second.data.baseRemoteSync.localGovernanceCommits).toContain(firstResult);
+    expect(git(fixture.main, ["merge-base", "--is-ancestor", firstResult, second.data.baseRemoteSync.resultHead!])).toBe("");
+  });
+
+  it("refuses a forged prior reconciliation whose tree does not match its parents", () => {
+    const fixture = createFixtureWithRemote("claude/forged-reconciliation");
+    const initial = git(fixture.main, ["rev-parse", "main"]).trim();
+    writeFileSync(path.join(fixture.remote, "remote-one.txt"), "remote one\n");
+    git(fixture.remote, ["add", "remote-one.txt"]);
+    git(fixture.remote, ["commit", "-m", "remote one"]);
+    const remoteOne = git(fixture.remote, ["rev-parse", "HEAD"]).trim();
+    git(fixture.main, ["fetch", "origin"]);
+    commitGovernance(fixture.main, "governed local state\n");
+    const localGovernance = git(fixture.main, ["rev-parse", "HEAD"]).trim();
+
+    const forgedPath = path.join(fixture.main, "forged-code.ts");
+    writeFileSync(forgedPath, "export const forged = true;\n");
+    git(fixture.main, ["add", "forged-code.ts"]);
+    const forgedTree = git(fixture.main, ["write-tree"]).trim();
+    git(fixture.main, ["restore", "--staged", "forged-code.ts"]);
+    rmSync(forgedPath);
+    const forgedMessage = [
+      "chore(arcadia): reconcile main with origin/main",
+      "",
+      `Local-Head: ${localGovernance}`,
+      `Remote-Head: ${remoteOne}`,
+      `Merge-Base: ${initial}`,
+      "Local-Governance-Commits: 1",
+      "Remote-Commits-Integrated: 1",
+      "",
+      "Written by protected Arcadia Go host-controller reconciliation."
+    ].join("\n");
+    const forgedCommit = git(fixture.main, [
+      "commit-tree", forgedTree,
+      "-p", localGovernance,
+      "-p", remoteOne,
+      "-m", forgedMessage
+    ]).trim();
+    git(fixture.main, ["-c", "core.hooksPath=/dev/null", "merge", "--ff-only", forgedCommit]);
+    writeFileSync(path.join(fixture.remote, "remote-two.txt"), "remote two\n");
+    git(fixture.remote, ["add", "remote-two.txt"]);
+    git(fixture.remote, ["commit", "-m", "remote two"]);
+    const agentRoot = path.join(fixture.root, "forged-reconciliation-agent-worktrees");
+
+    const failure = expectValidation(
+      () => runGoCommand({
+        repo: fixture.main,
+        source: fixture.main,
+        apply: true,
+        agent: "codex",
+        model: "gpt-5.6-terra",
+        workspace: fixture.workspace,
+        agentWorktreeRoot: agentRoot
+      }),
+      "not recognized Arcadia-generated governance writes"
+    );
+
+    expect(git(fixture.main, ["rev-parse", "main"]).trim()).toBe(forgedCommit);
+    expect(existsSync(agentRoot)).toBe(false);
+    expectNoManualGitRemedy(failure);
+  });
+
+  it("refuses a remote-tracking race before publishing the generated base", () => {
+    const fixture = createFixtureWithRemote("claude/remote-ref-race");
+    git(fixture.remote, ["commit", "--allow-empty", "-m", "remote-only commit"]);
+    commitGovernance(fixture.main, "governed local state\n");
+    const localHead = git(fixture.main, ["rev-parse", "main"]).trim();
+    const agentRoot = path.join(fixture.root, "remote-race-agent-worktrees");
+
+    const failure = expectValidation(
+      () => runGoCommand({
+        repo: fixture.main,
+        source: fixture.main,
+        apply: true,
+        agent: "codex",
+        model: "gpt-5.6-terra",
+        workspace: fixture.workspace,
+        agentWorktreeRoot: agentRoot,
+        testHooks: {
+          beforeBaseReconciliationPublish() {
+            expect(existsSync(agentRoot)).toBe(false);
+            git(fixture.main, ["update-ref", "refs/remotes/origin/main", localHead]);
+          }
+        }
+      }),
+      "remote-tracking ref changed before"
+    );
+
+    expect(git(fixture.main, ["rev-parse", "main"]).trim()).toBe(localHead);
+    expect(git(fixture.main, ["rev-parse", "refs/remotes/origin/main"]).trim()).toBe(localHead);
+    expect(existsSync(agentRoot)).toBe(false);
+    expectNoManualGitRemedy(failure);
+  });
+
+  it("refuses configured merge drivers before computing a host merge", () => {
+    const fixture = createFixtureWithRemote("claude/custom-merge-driver");
+    git(fixture.remote, ["commit", "--allow-empty", "-m", "remote-only commit"]);
+    commitGovernance(fixture.main, "governed local state\n");
+    git(fixture.main, ["config", "merge.arcadia.driver", "false"]);
+    const localHead = git(fixture.main, ["rev-parse", "main"]).trim();
+
+    const failure = expectValidation(
+      () => runGoCommand({ repo: fixture.main, source: fixture.main, apply: true }),
+      "refuses to run repository-configured merge drivers"
+    );
+
+    expect(git(fixture.main, ["rev-parse", "main"]).trim()).toBe(localHead);
+    expectNoManualGitRemedy(failure);
   });
 });
 
@@ -733,12 +1294,13 @@ function createFixture(branch: string, plan: string = planDocument): { root: str
 }
 
 /** Like createFixture, but `main` is a real clone of a separate remote repo, so `git fetch` has something distinct to pull. */
-function createFixtureWithRemote(branch: string, plan: string = planDocument): { root: string; remote: string; main: string; feature: string } {
+function createFixtureWithRemote(branch: string, plan: string = planDocument): { root: string; remote: string; main: string; feature: string; workspace: string } {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-go-remote-"));
   roots.push(root);
   const remote = path.join(root, "remote");
   const main = path.join(root, "repo");
   const feature = path.join(root, "feature");
+  const workspace = path.join(root, "workspace");
   mkdirSync(remote);
   git(remote, ["init", "-q", "-b", "main"]);
   git(remote, ["config", "user.email", "arcadia@example.test"]);
@@ -752,13 +1314,50 @@ function createFixtureWithRemote(branch: string, plan: string = planDocument): {
   git(main, ["config", "user.email", "arcadia@example.test"]);
   git(main, ["config", "user.name", "Arcadia Test"]);
   git(main, ["worktree", "add", "-q", "-b", branch, feature, "main"]);
-  return { root, remote, main, feature };
+  initWorkspace(workspace);
+  return { root, remote, main, feature, workspace };
 }
 
 function commitFeature(cwd: string, file: string, content: string): void {
   writeFileSync(path.join(cwd, file), content);
   git(cwd, ["add", file]);
   git(cwd, ["commit", "-m", "feature proof"]);
+}
+
+function commitGovernance(cwd: string, content: string): void {
+  writeFileSync(path.join(cwd, "MISSION_LOG.md"), content);
+  git(cwd, ["add", "MISSION_LOG.md"]);
+  git(cwd, [
+    "commit",
+    "-m", "chore(arcadia): settle protected-go-divergence-test",
+    "-m", "Written by `arcadia agent-ask settle --apply` (asksettle_test)."
+  ]);
+}
+
+function commitGovernedPointer(cwd: string): void {
+  writeFileSync(path.join(cwd, "PROJECT.md"), projectDocument.replace("current_action: define-contract", "current_action: dispatch-next"));
+  writeFileSync(path.join(cwd, "docs", "plans", "copy-proof.md"), planDocument.replace(
+    "---\n\n# Copy proof",
+    `  - id: dispatch-next
+    title: Dispatch the next Action
+    status: open
+    responsibility: agent
+    effort: session
+    clarification: clarified
+    next_action: Dispatch the next governed Action.
+    expected_artifact: docs/next.md
+    acceptance_criteria:
+      - The next Action is dispatchable.
+---
+
+# Copy proof`
+  ));
+  git(cwd, ["add", "PROJECT.md", "docs/plans/copy-proof.md"]);
+  git(cwd, [
+    "commit",
+    "-m", "chore(arcadia): point at dispatch-next",
+    "-m", "Written by `arcadia advance queue make-next --apply` (qpointer_test)."
+  ]);
 }
 
 /** Model the completion settlement that moves the governed pointer after code landed. */
@@ -788,14 +1387,19 @@ function git(cwd: string, args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 
-function expectValidation(run: () => unknown, fragment: string): void {
+function expectValidation(run: () => unknown, fragment: string): ArcadiaError {
   try {
     run();
     throw new Error("Expected validation failure");
   } catch (error) {
     expect(error).toBeInstanceOf(ArcadiaError);
     expect((error as Error).message).toContain(fragment);
+    return error as ArcadiaError;
   }
+}
+
+function expectNoManualGitRemedy(error: ArcadiaError): void {
+  expect(JSON.stringify(error.details)).not.toMatch(/manual|rebase|git\s+merge/i);
 }
 
 const projectDocument = `---

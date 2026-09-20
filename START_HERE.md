@@ -853,9 +853,9 @@ pnpm arcadia orientation packet export <packet-id> --workspace "$WORKSPACE"
 
 When a coding-agent task is complete and the repository already records its
 single next Action, use `arcadia go` to reconcile the finished task before
-starting another session. Preview first; the second command performs only a
-strict fast-forward, then retires only a clean, merged agent worktree and
-branch:
+starting another session. Preview first; the second command performs the
+bounded host-controller reconciliation, then retires only a clean, merged
+agent worktree and branch:
 
 ```sh
 pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree
@@ -863,10 +863,19 @@ pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree --ag
 # or: --agent claude, or --agent opencode
 ```
 
-The command refuses dirty, detached, divergent, non-agent-owned, or
-non-dispatchable state. It never commits, force-merges, resets, or pushes. With
-`--agent`, it prepares a uniquely named isolated worktree from the updated
-local base branch and prints the exact Codex, Claude Code, or opencode launch command with
+The command refuses dirty, detached, source-divergent, non-agent-owned, or
+non-dispatchable state. If the checked-out base itself is ahead and behind its
+remote, the host controller admits only recognized Arcadia-generated
+governance commits, one complete merge base, and a conflict-free result. It
+fetches that one upstream into an isolated controller ref, writes one
+unreferenced auditable two-parent candidate, verifies its merged governance tree
+is dispatchable in a temporary checkout, and rechecks the exact refs before a
+hook-suppressed fast-forward.
+Unrecognized, rewritten, conflicting, missing-observation, or prepublication
+racing history refuses without moving the base and never asks anyone to
+improvise a rebase or merge. It never force-merges, resets, or pushes. With `--agent`, it
+prepares a uniquely named isolated worktree from the verified updated local
+base and prints the exact Codex, Claude Code, or opencode launch command with
 `arcadia advance`. The personal `arcadia-go` skill performs the preview/apply
 sequence and uses the current agent's native session handoff when available.
 
