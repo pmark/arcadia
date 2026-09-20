@@ -1175,7 +1175,7 @@ actions:
     references: []
   - id: restore-preservation-worker-heartbeat
     title: Make the managed Arcadia worker publish and maintain a fresh preservation and Go-route heartbeat after restart, with deterministic coverage for startup and stale-heartbeat refusal paths.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make the managed Arcadia worker publish and maintain a fresh preservation and Go-route heartbeat after restart, with deterministic coverage for startup and stale-heartbeat refusal paths.
@@ -1279,7 +1279,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/419", "src/goBroker.ts", "src/sessions/preservationTransport.ts", "scripts/arcadia-go-broker.ts"]
 questions: []
 decisions: []
-current_action: restore-preservation-worker-heartbeat
+current_action: gate-prepared-dispatch-on-transport-readiness
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

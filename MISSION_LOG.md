@@ -382,3 +382,10 @@ updated: 2026-09-20
 - **Result:** Every declared acceptance criterion was accepted as met: "When the local base is ahead and behind its configured remote, protected Arcadia Go either completes a host-controlled reconciliation with an auditable receipt or refuses with a generated bounded operator script; it never directs a coding agent to manually rebase or merge."; "A deterministic regression test covers the divergent-base case and proves no prepared worktree is issued before the supported reconciliation outcome is known."; "A live host probe after the repair returns a valid prepared or resumed worktree receipt through the protected Go request path.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-recover-protected-go-base-divergence-2026-09-19).
+
+## 2026-09-20 — Completed arcadia/restore-preservation-worker-heartbeat
+
+- **Did:** Completed Action arcadia/restore-preservation-worker-heartbeat from accepted evidence (Candidate 6d7593434e746847410d13843a790c7d31ee4d60).
+- **Result:** Every declared acceptance criterion was accepted as met: "After `restart-services.sh restart` reports the worker running, `arcadia go-broker status --json` reports `preservationTransport.ready: true` and a usable Go transport state for the configured workspace."; "A deterministic regression test proves the worker publishes a preservation heartbeat after startup and that a missing or stale heartbeat fails with a diagnostic that identifies the worker route.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-restore-preservation-worker-heartbeat-2026-09-20).
