@@ -87,6 +87,38 @@ one action as a single-option picker unless a pull request is the completed
 work's handoff. The absence of both a pull request and a picker is a defect in
 the handoff, not a neutral ending.
 
+### Make operator steps executable
+
+Whenever the operator must perform one or more steps after an agent handoff —
+merging a pull request, installing or restarting local software, running a
+credentialed command, completing manual QA, or carrying out any other
+operator-only action — **do not leave those steps as prose commands alone.**
+Create or update a paired generated operator script and descriptor under
+`artifacts/generated/operator-scripts/`, following the format already present
+there:
+
+- an executable `<id>.sh` with only `run` and `--describe` entrypoints;
+- an `arcadia-operator-script-v1` `<id>.json` descriptor naming the problem,
+  desired effect, exact operator command, authority, success, and failure;
+- bounded waits, fail-closed preconditions, an idempotent retry story, and a
+  timestamped `runs/<timestamp-pid>/` log plus failure handoff; and
+- one command for the operator to run that performs every safe, automatable
+  step in order and prints the resulting receipt or exact remaining blocker.
+
+Generating a script does not widen authority: a merge, deployment, approval,
+credential use, or other operator gate stays gated until the operator runs the
+script. The script must state those effects plainly and must never hide manual
+Git reconciliation, governance settlement, or another unsupported shortcut
+inside automation.
+
+If a load-bearing detail is unclear — repository, pull request, workspace,
+merge method, service target, credential boundary, desired effect, or recovery
+route — ask the operator before generating the script. In a continuation where
+a previous agent established the setup, inspect its generated descriptor,
+run/failure handoff, and thread first; if the needed detail is still absent,
+ask that previous agent or the operator rather than guessing. Do not finish the
+handoff until the script and descriptor match the final reviewed state.
+
 `docs/agent-continuation-protocol.md` carries these rules with the reasoning
 behind each. It is a reference, not a prerequisite: everything you must do is
 stated above.
@@ -554,8 +586,14 @@ reached:
    `arcadia pr decline-finding <threadId> "<reason>"`, which replies with the
    reason and resolves the thread. Then validate, commit, push, and go back
    to step 1. CodeRabbit resolves the threads your push fixed.
-4. **`cap`:** three fix rounds have not satisfied it. Stop and list the
-   remaining findings in the handoff for the operator to judge.
+4. **`cap`:** three fix rounds have not satisfied it. Stop the automatic
+   repair cycle. For every remaining finding that is significant — a plausible
+   correctness, reliability, security, data-integrity, or user-visible failure
+   — first search open and closed Issues in the owning repository, then file a
+   `bug` Issue or update the existing one with the evidence and relevant
+   `file:line`. Link each Issue in the handoff beside its finding. List minor,
+   stylistic, or unsupported findings without filing an Issue. The operator
+   judges the remaining work; the cap does not make a significant defect vanish.
 5. **An error** — a timeout, a draft PR, an unpushed HEAD, or a CodeRabbit
    failure — names its cause. Fix that, or report it; do not retry blindly.
 
