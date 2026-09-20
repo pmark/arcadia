@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ projects: vi.fn(), metadata: vi.fn() }));
 vi.mock("../src/db/repositories.js", () => ({ listProjects: mocks.projects, getProjectMetadata: mocks.metadata }));
 vi.mock("../src/commands/preserve.js", () => ({ runPreserveCommand: vi.fn() }));
-import { agentGoTransportReady, preservationTransportReady, processPreservationRequests, refreshPreservationHeartbeat, transportHeartbeatDiagnostic } from "../src/sessions/preservationTransport.js";
+import { agentGoTransportReady, preservationTransportReady, processPreservationRequests, refreshPreservationHeartbeat, transportHeartbeatDiagnostic, transportPublishedSince } from "../src/sessions/preservationTransport.js";
 
 describe("preservation transport heartbeat freshness", () => {
   let root: string;
@@ -99,5 +99,15 @@ describe("preservation transport heartbeat freshness", () => {
     vi.setSystemTime(new Date(Date.now() + 60_000));
     expect(preservationTransportReady(workspace)).toBe(false);
     expect(transportHeartbeatDiagnostic(workspace, "go")).toMatch(/go route heartbeat at .* is stale \(60s old/);
+  });
+
+  it("does not let a heartbeat published before the install vouch for a worker that never started", () => {
+    processPreservationRequests(db, workspace);
+    const installedAt = Date.now() + 1_000;
+    vi.setSystemTime(new Date(installedAt));
+    expect(agentGoTransportReady(workspace)).toBe(true);
+    expect(transportPublishedSince(workspace, installedAt)).toBe(false);
+    processPreservationRequests(db, workspace);
+    expect(transportPublishedSince(workspace, installedAt)).toBe(true);
   });
 });

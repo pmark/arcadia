@@ -78,6 +78,19 @@ export function preservationTransportReady(workspace: string): boolean {
 }
 
 /**
+ * True only when both the heartbeat and the go route were published at or after
+ * `notBefore`, so a heartbeat left by a worker that just stopped cannot vouch
+ * for one that never started.
+ */
+export function transportPublishedSince(workspace: string, notBefore: number): boolean {
+  if (!agentGoTransportReady(workspace)) return false;
+  try {
+    const heartbeat = readHeartbeat(workspace);
+    return heartbeat.at >= notBefore && (heartbeat.goRequestsAt ?? 0) >= notBefore;
+  } catch { return false; }
+}
+
+/**
  * Why a route is not servicing requests, naming the route and the heartbeat
  * file so an operator can tell a missing worker from a stale one.
  */
