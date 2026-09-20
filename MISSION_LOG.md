@@ -403,3 +403,10 @@ updated: 2026-09-20
 - **Result:** Every declared acceptance criterion was accepted as met: "A test with an old finished planning Decision and a newer accepted one shows the lifecycle remedy names the newer Decision, and it fails before the fix.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-fix-packet-lifecycle-latest-planning-decision-2026-09-20).
+
+## 2026-09-20 — Completed arcadia/approval-must-apply-or-refuse
+
+- **Did:** Completed Action arcadia/approval-must-apply-or-refuse from accepted evidence (Candidate cf9bdf6cbea2d082a1f982c899aa6f0b3788cea9).
+- **Result:** Every declared acceptance criterion was accepted as met: "Approving a review item writes the resulting state to the authoritative checked-in document, or refuses; the workspace database and that document never disagree about whether a Decision is answered."; "An approval whose effect cannot be applied is refused with a reason naming what is missing, and the item remains in the attention queue rather than leaving it."; "A `project_update` Ask whose `target_ref` names a field with no apply path is refused at preview time, rather than opening a clarification Decision that approval cannot act on."; "A regression test reproduces R183: approve a project-field clarification and assert either the field moved and the document was updated, or the approval was refused and the item is still queued."; "Preserve the proof Artifact: the regression test plus a before/after of the database and document state; include the exact runnable target and operator QA steps in the pull request.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-approval-must-apply-or-refuse-2026-09-20-v2).

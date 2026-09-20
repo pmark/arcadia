@@ -482,7 +482,7 @@ actions:
     references: ["src/agentSetup/goBrokerAgentSetup.ts", "src/goBroker.ts", "docs/reports/prove-zero-prompt-production-loop-runbook.md", "docs/working-copy-safety.md"]
   - id: approval-must-apply-or-refuse
     title: Review approval applies its effect to the authoritative document or refuses with a named reason, and never consumes an item it cannot apply.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Review approval applies its effect to the authoritative document or refuses with a named reason, and never consumes an item it cannot apply.
@@ -1280,7 +1280,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/419", "src/goBroker.ts", "src/sessions/preservationTransport.ts", "scripts/arcadia-go-broker.ts"]
 questions: []
 decisions: []
-current_action: approval-must-apply-or-refuse
+current_action: verify-worker-recovery-before-success
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
