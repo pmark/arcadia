@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to build Flight Deck
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-09-19
+updated: 2026-09-20
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -1262,7 +1262,7 @@ actions:
     references: ["CONSTITUTION.md", "AGENTS.md", "src/docs/dispatch.ts", "src/commands/next.ts", "src/sessions/actionBrief.ts", "src/projects/contextSetup.ts"]
   - id: recover-protected-go-base-divergence
     title: Make the host-controlled Arcadia Go path safely reconcile governed local base commits with merged remote changes, or generate a bounded operator script that invokes only that supported route and returns a prepared-worktree receipt.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make the host-controlled Arcadia Go path safely reconcile governed local base commits with merged remote changes, or generate a bounded operator script that invokes only that supported route and returns a prepared-worktree receipt.
@@ -1279,7 +1279,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/419", "src/goBroker.ts", "src/sessions/preservationTransport.ts", "scripts/arcadia-go-broker.ts"]
 questions: []
 decisions: []
-current_action: recover-protected-go-base-divergence
+current_action: restore-preservation-worker-heartbeat
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

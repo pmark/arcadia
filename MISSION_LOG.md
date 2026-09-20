@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-19
+updated: 2026-09-20
 ---
 
 # Mission Log: Arcadia
@@ -375,3 +375,10 @@ updated: 2026-09-19
 - **Result:** Every declared acceptance criterion was accepted as met: "A test shows an accepted validated planning Artifact for a plan-document Action yields a build packet and build approval through one supported command or automatically."; "session preview-launch reports Ready for that Action once the build approval exists, with a test covering it.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-arcadia-fix-accepted-plan-to-build-packet-path-12694df73ac8).
+
+## 2026-09-20 — Completed arcadia/recover-protected-go-base-divergence
+
+- **Did:** Completed Action arcadia/recover-protected-go-base-divergence from accepted evidence (Candidate eb8d296029c913c2f42bf19e56d7ac186ac3c933).
+- **Result:** Every declared acceptance criterion was accepted as met: "When the local base is ahead and behind its configured remote, protected Arcadia Go either completes a host-controlled reconciliation with an auditable receipt or refuses with a generated bounded operator script; it never directs a coding agent to manually rebase or merge."; "A deterministic regression test covers the divergent-base case and proves no prepared worktree is issued before the supported reconciliation outcome is known."; "A live host probe after the repair returns a valid prepared or resumed worktree receipt through the protected Go request path.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-recover-protected-go-base-divergence-2026-09-19).
