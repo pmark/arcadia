@@ -1280,7 +1280,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/419", "src/goBroker.ts", "src/sessions/preservationTransport.ts", "scripts/arcadia-go-broker.ts"]
 questions: []
 decisions: []
-current_action: verify-worker-recovery-before-success
+current_action: approval-must-apply-or-refuse
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
