@@ -52,6 +52,17 @@ export interface WorkerOptions {
   workspace: string;
 }
 
+/**
+ * The install command normally talks to launchd and waits for the host worker.
+ * Keeping those two effects injectable lets the refusal and readiness contract
+ * be covered without depending on a live macOS service.
+ */
+export interface WorkerInstallDependencies {
+  execFileSync?: typeof execFileSync;
+  waitForRoutes?: typeof waitForWorkerRoutes;
+  now?: () => number;
+}
+
 function arcadiaDir(workspacePath: string): string {
   return path.join(workspacePath, ".arcadia");
 }
@@ -651,7 +662,7 @@ export function waitForWorkerRoutes(workspacePath: string, timeoutMs: number, no
   }
 }
 
-export function runWorkerInstallCommand(options: WorkerOptions): void {
+export function runWorkerInstallCommand(options: WorkerOptions, dependencies: WorkerInstallDependencies = {}): void {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const repositoryRoot = path.resolve(import.meta.dirname, "../..");
   const home = process.env["HOME"] ?? "/tmp";
@@ -668,15 +679,15 @@ export function runWorkerInstallCommand(options: WorkerOptions): void {
   mkdirSync(agentsDir, { recursive: true });
   writeFileSync(plistPath, plist, "utf8");
 
-  const notBefore = Date.now();
+  const notBefore = (dependencies.now ?? Date.now)();
   try {
-    execFileSync("launchctl", ["load", plistPath], { stdio: "pipe" });
+    (dependencies.execFileSync ?? execFileSync)("launchctl", ["load", plistPath], { stdio: "pipe" });
   } catch (error) {
     throw validationError(`launchctl load failed for ${plistPath}: ${error instanceof Error ? error.message : String(error)}. The worker was not started.`);
   }
   // `launchctl load` can exit 0 while the job never runs, so success is the
   // worker's own fresh preservation and go heartbeats, not the load call.
-  if (!waitForWorkerRoutes(workspacePath, WORKER_READINESS_TIMEOUT_MS, notBefore)) {
+  if (!(dependencies.waitForRoutes ?? waitForWorkerRoutes)(workspacePath, WORKER_READINESS_TIMEOUT_MS, notBefore)) {
     throw validationError(`Worker was loaded via launchd but did not publish fresh heartbeats. ${transportHeartbeatDiagnostic(workspacePath, "go")}`);
   }
   process.stdout.write(`Worker installed and started via launchd; preservation and go heartbeats are fresh.\nPlist: ${plistPath}\n`);
