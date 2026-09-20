@@ -753,11 +753,11 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Prove the contract-20 fault-injection matrix and staged evidence bundle before unattended Flight Deck handoff.
+    next_action: Prove the contract-20 fault-injection matrix and staged evidence bundle before any unattended production handoff.
     expected_artifact: Evidence satisfying Agent Ask prove-managed-production-fault-matrix
     clarification: clarified
     confidence: high
-    source: Agent Ask split-hung-detection-and-fault-soak-from-feed-and-supervise-2026-09-14
+    source: Agent Ask retire-flight-deck-from-fault-matrix-2026-09-20
     acceptance_criteria:
       - Each deterministic race scenario in the contract-20 boundary table (admission/launch, completion/pointer, Off, process health, capacity, priority/authority, runtime) is repeated at least 100 times with reproducible seeds/interleavings, with zero invariant violations and retained failing-seed/timeline evidence for any violation found and fixed.
       - The two-dependent-Action live rehearsal passes from one activation with no manual Session relay, with every human intervention recorded.
