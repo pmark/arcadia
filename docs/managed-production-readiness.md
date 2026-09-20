@@ -10,7 +10,7 @@ status` output. When those disagree with this file, they are right and this
 file is stale. "Refreshing this document" at the bottom says how to re-derive it
 in about a minute.
 
-Last derived: **2026-09-20**, after the pivot-cleanup settlements (`352ffeb9`).
+Last derived: **2026-09-20**, after the `approval-must-apply-or-refuse` completion settlement (`ed15716c`).
 
 ---
 
@@ -94,14 +94,14 @@ The worker ticks, sees the pointer, and refuses to launch.
 | ✅ | `deliver-session-brief` | A launched Session gets its task, not session metadata. |
 | ✅ | `add-opencode-production-provider` | Third provider exists in the launch path. |
 
-### Gate 3 — A finished Session lands with no operator ⬜ **open — 4 Actions on the critical path, 1 beside it**
+### Gate 3 — A finished Session lands with no operator ⬜ **open — 3 Actions on the critical path, 1 beside it**
 
 | | Item | Why it blocks |
 | --- | --- | --- |
 | ✅ | **Decision 0058** — delegate bounded candidate integration? | **Approved** (R212, 2026-09-19): bounded integration is delegated under a named, expiring grant. The document lagged the canonical record until 2026-09-20 — itself an instance of `approval-must-apply-or-refuse` below. `preserve-on-exit-and-integrate` now has its authority. |
 | ⬜ | `preserve-on-exit-and-integrate` | Without it, every Action needs one operator merge before the next dependent Action can start. This single item is the difference between "assisted" and "unattended" — which is exactly why the proof that precedes it in the queue can only be the assisted one. |
 | ⬜ | `bind-candidate-revision-in-action-settle` | `action settle` derives the wrong revision, so the documented candidate-worktree completion path fails. |
-| ⬜ | `approval-must-apply-or-refuse` | Approval can consume an item without applying its effect — a silent loss of the thing being approved. |
+| ✅ | `approval-must-apply-or-refuse` | Completed 2026-09-20 in PR #447: review approval now writes the authoritative Decision document or refuses before consuming its queue item. |
 | ⬜ | `apply-answered-decision-consequences` | An answered Decision does not move the Action it governs, so answering one changes nothing until a human acts on it. |
 | ⬜ | `auto-settle-pending-completions-before-dispatch` | Not blocking; a clean drafted completion should settle deterministically with no LLM session before the next dispatch. Off the critical path. |
 
@@ -150,16 +150,15 @@ unattended production on the board.
 6. `preserve-on-exit-and-integrate` — authorized by Decision 0058
 7. `bind-candidate-revision-in-action-settle`
 8. `apply-answered-decision-consequences`
-9. `approval-must-apply-or-refuse`
-10. **Operator:** un-defer `prove-two-action-unattended-production`
-11. `prove-two-action-unattended-production` — the unattended claim is earned here
-12. `make-go-total-across-plans`
-13. `detect-hung-managed-production-sessions`
-14. `prove-multi-provider-production-recovery`
-15. `prove-managed-production-fault-matrix`
-16. `harden-zero-prompt-production-loop`
+9. **Operator:** un-defer `prove-two-action-unattended-production`
+10. `prove-two-action-unattended-production` — the unattended claim is earned here
+11. `make-go-total-across-plans`
+12. `detect-hung-managed-production-sessions`
+13. `prove-multi-provider-production-recovery`
+14. `prove-managed-production-fault-matrix`
+15. `harden-zero-prompt-production-loop`
 
-**Sixteen numbered entries: 14 Action ids and 2 operator steps.** One id per
+**Fifteen numbered entries: 13 Action ids and 2 operator steps.** One id per
 entry, so the list and the totals agree.
 
 - **Code sessions (9):** entries 1, 2, 3, 6, 7, 8, 9, 12, 13.
