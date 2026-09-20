@@ -3,6 +3,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
+import { validationError } from "../cli/errors.js";
 import { miseLeadingPath, miseNodeArgv, resolveMiseExecutable } from "../runtime/mise.js";
 import { openDatabase } from "../db/connection.js";
 import {
@@ -32,7 +33,7 @@ import { deployApprovedProjectProposal } from "../projects/stagingDeployment.js"
 import { runManagedProductionTick } from "../production/tick.js";
 import { createId } from "../utils/id.js";
 
-import { processPreservationRequests, refreshPreservationHeartbeat } from "../sessions/preservationTransport.js";
+import { agentGoTransportReady, preservationTransportReady, processPreservationRequests, refreshPreservationHeartbeat, transportHeartbeatDiagnostic } from "../sessions/preservationTransport.js";
 import { auditArcadiaLaunchAgents, duplicateWorkerWarning } from "../runtime/launchAgents.js";
 
 const POLL_INTERVAL_MS = 2_000;
@@ -639,6 +640,17 @@ ${[...miseNodeArgv(miseBin, repositoryRoot), tsxBin, cliPath, "worker", "start",
 </plist>`;
 }
 
+const WORKER_READINESS_TIMEOUT_MS = 30_000;
+
+function waitForWorkerRoutes(workspacePath: string, timeoutMs: number): boolean {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (preservationTransportReady(workspacePath) && agentGoTransportReady(workspacePath)) return true;
+    if (Date.now() >= deadline) return false;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+  }
+}
+
 export function runWorkerInstallCommand(options: WorkerOptions): void {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const repositoryRoot = path.resolve(import.meta.dirname, "../..");
@@ -657,11 +669,16 @@ export function runWorkerInstallCommand(options: WorkerOptions): void {
   writeFileSync(plistPath, plist, "utf8");
 
   try {
-    execFileSync("launchctl", ["load", plistPath]);
-    process.stdout.write(`Worker installed and started via launchd.\nPlist: ${plistPath}\n`);
-  } catch {
-    process.stdout.write(`Plist written to ${plistPath}. Run: launchctl load "${plistPath}"\n`);
+    execFileSync("launchctl", ["load", plistPath], { stdio: "pipe" });
+  } catch (error) {
+    throw validationError(`launchctl load failed for ${plistPath}: ${error instanceof Error ? error.message : String(error)}. The worker was not started.`);
   }
+  // `launchctl load` can exit 0 while the job never runs, so success is the
+  // worker's own fresh preservation and go heartbeats, not the load call.
+  if (!waitForWorkerRoutes(workspacePath, WORKER_READINESS_TIMEOUT_MS)) {
+    throw validationError(`Worker was loaded via launchd but did not publish fresh heartbeats. ${transportHeartbeatDiagnostic(workspacePath, "go")}`);
+  }
+  process.stdout.write(`Worker installed and started via launchd; preservation and go heartbeats are fresh.\nPlist: ${plistPath}\n`);
 
   warnOnDuplicateWorkers(workspacePath);
 }

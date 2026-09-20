@@ -77,6 +77,26 @@ export function preservationTransportReady(workspace: string): boolean {
   } catch { return false; }
 }
 
+/**
+ * Why a route is not servicing requests, naming the route and the heartbeat
+ * file so an operator can tell a missing worker from a stale one.
+ */
+export function transportHeartbeatDiagnostic(workspace: string, route: "preservation" | "go"): string {
+  const file = path.join(workspace, HEARTBEAT);
+  let heartbeat: TransportHeartbeat;
+  try { heartbeat = readHeartbeat(workspace); } catch {
+    return `The ${route} route has no readable heartbeat at ${file}; the Arcadia worker has not published one (worker not running).`;
+  }
+  const age = Date.now() - heartbeat.at;
+  if (heartbeat.schema !== "arcadia-preservation-transport-v1" || age < 0 || age >= TRANSPORT_FRESHNESS_MS) {
+    return `The ${route} route heartbeat at ${file} is stale (${Math.round(age / 1000)}s old, limit ${TRANSPORT_FRESHNESS_MS / 1000}s); the Arcadia worker stopped refreshing it.`;
+  }
+  if (route === "go" && agentGoTransportState(workspace) !== "ready") {
+    return `The go route heartbeat at ${file} is fresh but the worker has not serviced go recently; it may be mid-tick or an older worker without go support.`;
+  }
+  return `The ${route} route heartbeat at ${file} is fresh.`;
+}
+
 function readHeartbeat(workspace: string): TransportHeartbeat {
   return JSON.parse(readFileSync(path.join(workspace, HEARTBEAT), "utf8")) as TransportHeartbeat;
 }
@@ -124,7 +144,7 @@ export function agentGoTransportReady(workspace: string): boolean {
 export async function requestCandidatePreservation(source: string) {
   const workspace = requireResolvedWorkspace({ cwd: source });
   const candidate = realpathSync(source);
-  if (!preservationTransportReady(workspace)) throw validationError("Protected preservation request path is unavailable. Start the updated Arcadia worker on the host before requesting preservation.");
+  if (!preservationTransportReady(workspace)) throw validationError(`Protected preservation request path is unavailable. ${transportHeartbeatDiagnostic(workspace, "preservation")} Start the updated Arcadia worker on the host before requesting preservation.`);
   // Read a host-owned projection, not SQLite: readonly WAL opens can still
   // require shared-memory coordination writes that the sandbox rightly denies.
   const routes = readHeartbeat(workspace);

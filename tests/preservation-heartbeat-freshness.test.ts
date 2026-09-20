@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ projects: vi.fn(), metadata: vi.fn() }));
 vi.mock("../src/db/repositories.js", () => ({ listProjects: mocks.projects, getProjectMetadata: mocks.metadata }));
 vi.mock("../src/commands/preserve.js", () => ({ runPreserveCommand: vi.fn() }));
-import { agentGoTransportReady, preservationTransportReady, processPreservationRequests, refreshPreservationHeartbeat } from "../src/sessions/preservationTransport.js";
+import { agentGoTransportReady, preservationTransportReady, processPreservationRequests, refreshPreservationHeartbeat, transportHeartbeatDiagnostic } from "../src/sessions/preservationTransport.js";
 
 describe("preservation transport heartbeat freshness", () => {
   let root: string;
@@ -90,5 +90,14 @@ describe("preservation transport heartbeat freshness", () => {
     refreshPreservationHeartbeat(workspace);
     expect(JSON.parse(readFileSync(heartbeatPath(), "utf8")).repositories).toEqual([{ path: other, projectSlug: "other" }]);
     expect(agentGoTransportReady(workspace)).toBe(true);
+  });
+
+  it("names the route and heartbeat file when the heartbeat is missing or stale", () => {
+    expect(transportHeartbeatDiagnostic(workspace, "preservation")).toMatch(/preservation route has no readable heartbeat at .*preservation\.heartbeat.*worker not running/);
+    processPreservationRequests(db, workspace);
+    expect(transportHeartbeatDiagnostic(workspace, "go")).toMatch(/go route heartbeat .* is fresh/);
+    vi.setSystemTime(new Date(Date.now() + 60_000));
+    expect(preservationTransportReady(workspace)).toBe(false);
+    expect(transportHeartbeatDiagnostic(workspace, "go")).toMatch(/go route heartbeat at .* is stale \(60s old/);
   });
 });
