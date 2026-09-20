@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { access, mkdir, open, readFile, readdir, realpath, stat, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, open, readFile, readdir, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { NextResponse } from "next/server";
@@ -82,6 +82,13 @@ async function loadState(id: string): Promise<OperatorScriptState | null> {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   }
+}
+
+async function writeStateAtomically(id: string, state: OperatorScriptState): Promise<void> {
+  const destination = path.join(STATE_PATH, `${id}.json`);
+  const temporary = path.join(STATE_PATH, `${id}.tmp-${process.pid}-${Date.now()}.json`);
+  await writeFile(temporary, JSON.stringify(state) + "\n");
+  await rename(temporary, destination);
 }
 
 function processIsRunning(pid: number | undefined): boolean {
@@ -193,7 +200,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: `${descriptor.title} started. Progress is recorded in the operator-script runs folder.` }, { status: 202 });
   } catch (error) {
     if (lockPath) {
-      await writeFile(path.join(STATE_PATH, `${id}.json`), JSON.stringify({ status: "failed", finishedAt: new Date().toISOString(), exitCode: null, message: "The launcher could not start." }) + "\n");
+      await writeStateAtomically(id, { status: "failed", finishedAt: new Date().toISOString(), exitCode: null, message: "The launcher could not start." });
       await unlink(lockPath).catch(() => undefined);
     }
     if (error instanceof Error && error.message === "OPERATOR_SCRIPT_ALREADY_CLAIMED") {
