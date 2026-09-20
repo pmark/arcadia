@@ -1298,7 +1298,7 @@ function addDecisionMutation(
     `updated: ${today()}`, "---", "", `# Decision ${id}: ${question}`, "",
     ...optionsBody,
     ...rationaleBody,
-    `Proposed by Agent Ask ${requestId}. This Decision remains open until the operator answers it.`, ""
+    `Proposed by Agent Ask ${requestId}.`, ""
   ].join("\n");
   mutations.push({ path: targetPath, before: null, after: frontmatter });
 }

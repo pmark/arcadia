@@ -1,5 +1,6 @@
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { derivePullRequestReadiness, normalizeCheck } from "./pullRequests.js";
 import type {
   DeliveryState,
   LandedRepositoryWork,
@@ -348,8 +349,13 @@ function deliveryState(preservation: PreservationState, pullRequest: PullRequest
   const mergeState = pullRequest.mergeStateStatus?.toUpperCase();
   if (mergeState === "DIRTY" || mergeState === "BLOCKED") return "blocked";
   if (pullRequest.isDraft) return "draft";
-  if (mergeState === "CLEAN" || mergeState === "HAS_HOOKS") return "merge_ready";
-  return "reviewable";
+  const readiness = derivePullRequestReadiness({
+    isDraft: false,
+    mergeStateStatus: pullRequest.mergeStateStatus,
+    reviewDecision: pullRequest.reviewDecision ?? null,
+    checks: (pullRequest.statusCheckRollup ?? []).map(normalizeCheck)
+  });
+  return readiness === "merge_ready" ? "merge_ready" : "reviewable";
 }
 
 function summary(
@@ -542,7 +548,7 @@ function resolveGitHubRepository(cwd: string): string | null {
 function findPullRequest(cwd: string, repository: string, branch: string): PullRequestSnapshot | null {
   const result = run(cwd, "gh", [
     "pr", "list", "--repo", repository, "--head", branch, "--state", "all", "--limit", "1",
-    "--json", "number,title,url,state,isDraft,mergeStateStatus,updatedAt"
+    "--json", "number,title,url,state,isDraft,mergeStateStatus,updatedAt,reviewDecision,statusCheckRollup"
   ]);
   if (!result.ok) return null;
   try {

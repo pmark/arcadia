@@ -81,6 +81,17 @@ export interface OutstandingPullRequestsSnapshot {
   };
 }
 
+/** One entry of GitHub's statusCheckRollup: a CheckRun or a commit StatusContext. */
+export interface RawStatusCheck {
+  name?: unknown;
+  status?: unknown;
+  conclusion?: unknown;
+  context?: unknown;
+  state?: unknown;
+  targetUrl?: unknown;
+  detailsUrl?: unknown;
+}
+
 interface RawPullRequest {
   number?: unknown;
   title?: unknown;
@@ -94,12 +105,7 @@ interface RawPullRequest {
   reviewDecision?: unknown;
   createdAt?: unknown;
   updatedAt?: unknown;
-  statusCheckRollup?: Array<{
-    name?: unknown;
-    status?: unknown;
-    conclusion?: unknown;
-    detailsUrl?: unknown;
-  }> | null;
+  statusCheckRollup?: RawStatusCheck[] | null;
 }
 
 interface RawPullRequestDetails {
@@ -237,6 +243,25 @@ export function listOutstandingPullRequests(
   };
 }
 
+/**
+ * One rollup entry as a check. A CheckRun carries `name`/`status`/`conclusion`;
+ * a commit StatusContext (CodeRabbit is one) carries only `context` and a
+ * `state`, and is complete as soon as it has one, so it must not read as
+ * pending forever.
+ */
+export function normalizeCheck(check: RawStatusCheck): PullRequestCheck {
+  const state = stringValue(check.state)?.toUpperCase() ?? null;
+  const settled = state !== null && ["SUCCESS", "FAILURE", "ERROR"].includes(state);
+  const isContext = stringValue(check.context) !== null && stringValue(check.status) === null;
+  const context = stringValue(check.context);
+  return {
+    name: stringValue(check.name) ?? context ?? "Unnamed check",
+    status: isContext ? (settled ? "COMPLETED" : "PENDING") : stringValue(check.status),
+    conclusion: isContext ? (settled ? state : null) : stringValue(check.conclusion),
+    url: stringValue(check.detailsUrl) ?? stringValue(check.targetUrl)
+  };
+}
+
 export function normalizePullRequest(
   project: WorkMonitorProject,
   repositoryPath: string,
@@ -248,12 +273,7 @@ export function normalizePullRequest(
   const url = stringValue(raw.url);
   if (!Number.isFinite(number) || !title || !url) return null;
 
-  const checks = (raw.statusCheckRollup ?? []).map((check) => ({
-    name: stringValue(check.name) ?? "Unnamed check",
-    status: stringValue(check.status),
-    conclusion: stringValue(check.conclusion),
-    url: stringValue(check.detailsUrl)
-  }));
+  const checks = (raw.statusCheckRollup ?? []).map(normalizeCheck);
   const isDraft = raw.isDraft === true;
   const mergeStateStatus = stringValue(raw.mergeStateStatus);
   const reviewDecision = stringValue(raw.reviewDecision);
@@ -333,15 +353,21 @@ export function derivePullRequestReadiness(input: {
 }): PullRequestReadiness {
   const mergeState = input.mergeStateStatus?.toUpperCase();
   const reviewDecision = input.reviewDecision?.toUpperCase();
-  const failing = input.checks.some((check) => ["FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "ERROR"].includes(check.conclusion?.toUpperCase() ?? ""));
+  // Only an explicit SUCCESS is green. NEUTRAL, SKIPPED, STALE, STARTUP_FAILURE
+  // and every other completed conclusion need attention, so none can pass as
+  // "every required check is green".
+  const failing = input.checks.some((check) => {
+    const conclusion = check.conclusion?.toUpperCase();
+    return check.status?.toUpperCase() === "COMPLETED" && conclusion !== undefined && conclusion !== "SUCCESS";
+  });
   const pending = input.checks.some((check) => check.status?.toUpperCase() !== "COMPLETED" || !check.conclusion);
   if (mergeState === "DIRTY" || mergeState === "BLOCKED" || reviewDecision === "CHANGES_REQUESTED") return "blocked";
   if (failing) return "checks_failing";
   if (input.isDraft) return "draft";
   if (pending) return "checks_pending";
-  if (mergeState === "CLEAN" || mergeState === "HAS_HOOKS") {
-    return reviewDecision === "APPROVED" ? "merge_ready" : "ready";
-  }
+  // HAS_HOOKS is a distinct merge state from CLEAN, so it is never merge-ready.
+  if (mergeState === "CLEAN") return reviewDecision === "APPROVED" ? "merge_ready" : "ready";
+  if (mergeState === "HAS_HOOKS") return "ready";
   return "unknown";
 }
 

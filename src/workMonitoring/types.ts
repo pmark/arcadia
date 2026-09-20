@@ -1,3 +1,4 @@
+import type { RawStatusCheck } from "./pullRequests.js";
 export const PRESERVATION_STATES = ["unsaved", "local_only", "pushed", "in_pr", "landed"] as const;
 export type PreservationState = (typeof PRESERVATION_STATES)[number];
 
@@ -37,6 +38,9 @@ export interface PullRequestSnapshot {
   isDraft: boolean;
   mergeStateStatus: string | null;
   updatedAt: string | null;
+  /** Fetched so delivery state can apply the same readiness rule as the PR list. */
+  reviewDecision?: string | null;
+  statusCheckRollup?: RawStatusCheck[] | null;
 }
 
 export interface WorkingCopyAssessment {

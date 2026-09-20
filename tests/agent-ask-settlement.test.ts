@@ -335,8 +335,10 @@ describe("Agent Ask settlement", () => {
         expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain(`milestone: ${scenario.desired}`);
         expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toContain(`milestone: ${scenario.desired}`);
       } else if (scenario.intent === "decision" || scenario.intent === "auto") {
-        expect(readFileSync(path.join(repo, "docs/decisions/0001-" + (scenario.intent === "decision" ? "should-this-approach-ship" : "how-should-arcadia-structure-this-request-make-the-ambiguous-thing-happen") + ".md"), "utf8"))
-          .toContain("status: open");
+        const decisionDoc = readFileSync(path.join(repo, "docs/decisions/0001-" + (scenario.intent === "decision" ? "should-this-approach-ship" : "how-should-arcadia-structure-this-request-make-the-ambiguous-thing-happen") + ".md"), "utf8");
+        expect(decisionDoc).toContain("status: open");
+        // Openness lives only in frontmatter `status`; prose would go stale on approval.
+        expect(decisionDoc).not.toContain("remains open");
       } else if (scenario.intent === "log") {
         expect(readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8")).toContain(`Agent Ask ${requestId}`);
       } else if (scenario.intent === "artifact") {

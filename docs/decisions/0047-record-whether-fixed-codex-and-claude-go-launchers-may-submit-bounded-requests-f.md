@@ -33,4 +33,4 @@ decided: 2026-09-12
 
 The operator explicitly requested restoration of the arcadia go agent entry point. PR 226 review identified that exposing a host-controller executable directly to Claude widened capability. The revised code makes both provider launchers request-only and retains canonical guards. This Ask records the authority distinction without claiming that review, acceptance, merge, deployment, or autonomous continuous-production authority has been granted.
 
-Proposed by Agent Ask ratify-agent-go-host-requests-pr226-2026-09-12. This Decision remains open until the operator answers it.
+Proposed by Agent Ask ratify-agent-go-host-requests-pr226-2026-09-12.

@@ -37,4 +37,4 @@ decided: 2026-09-16
 
 Open proposals and Decisions currently wait uniformly for a human regardless of whether exactly one defensible, reversible answer exists, so operator attention is spent on mechanical questions and forward progress stalls. Arcadia already separates mechanics from judgment for work via the Constitution's three-question gate; applying the same gate to decisions would auto-resolve the obvious and interrupt only where judgment changes the outcome. This Decision grants the standing policy that governs that triage.
 
-Proposed by Agent Ask auto-adjudication-policy-2026-09-16. This Decision remains open until the operator answers it.
+Proposed by Agent Ask auto-adjudication-policy-2026-09-16.
