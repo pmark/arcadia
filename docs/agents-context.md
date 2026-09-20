@@ -593,6 +593,11 @@ the Way's intake for code-level defects in Arcadia and every managed Project.
   resolves it. This is the same rule that
   keeps telemetry out of the Mission Log: one authoritative home per fact, and
   the tracker is not a second truth store.
+- **An obvious bug is logged, not asked about.** When you notice a defect that
+  is plainly wrong — a failing command, a misleading message, a crash, a guard
+  that does not guard — file the Issue without seeking permission, including
+  when it appears in tooling outside the task. Uncertainty about whether
+  something is a bug is a reason to describe the evidence, not to stay silent.
 - **Report, don't detour.** Do not investigate past what the capture needs. A
   filed Issue costs a minute; a repair mid-task costs the task.
 - **A blocking defect is different.** When the blast radius meets the "Stop the
@@ -636,14 +641,36 @@ reached:
 5. **An error** — a timeout, a draft PR, an unpushed HEAD, or a CodeRabbit
    failure — names its cause. Fix that, or report it; do not retry blindly.
 
-The loop never widens authority: it pushes only to the PR's own branch, never
-merges, and a CodeRabbit finding is never a reason to cross an approval gate
+The loop itself never widens authority: it pushes only to the PR's own branch,
+merging is governed only by "Merge on green" below, and a CodeRabbit finding is never a reason to cross an approval gate
 in `CONSTITUTION.md`. Findings outside the PR's scope get a GitHub Issue per
 "Log defects with GitHub Issues", then a decline that links it.
 
 `done` means approved only when `.coderabbit.yaml` sets
 `reviews.request_changes_workflow: true`; without it CodeRabbit never
 approves, and the loop can only report that nothing is left unresolved.
+
+## Merge on green
+
+The operator has authorized this standing merge: **when CodeRabbit has approved
+the pull request's current head and every required check on that head is green,
+the agent merges it.** The operator would merge it anyway, so asking spends
+attention and protects nothing.
+
+- **All of it must hold, on the current head:** `arcadia pr code-review` returned
+  `done` with an approval (not merely "nothing unresolved"); every required
+  check passed; and the merge state is clean and mergeable. A push after the
+  approval resets all three, so re-check on the new head.
+- **Squash-merge, then leave the record whole.** Confirm the PR shows merged
+  and that any `Closes #<ISSUE>` Issue is closed. Restart managed services when
+  the merged change is runtime code, and confirm they came back.
+- **Anything less is not authorized.** A red or pending check, an unapproved
+  head, a conflict, or a bypass of branch protection means repair per
+  "Automatic production conflict recovery" or report the blocker; never merge
+  around it, weaken a test, or force a check.
+- **This is a merge authorization only.** It does not authorize deployment,
+  spend, credentials, production access, messaging, or any other approval
+  boundary in `CONSTITUTION.md`.
 
 ## Make it real
 
