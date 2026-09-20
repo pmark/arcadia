@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, Play } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DashboardChrome } from "../../components/chrome";
 import { EmptyState, ErrorState, RunCard, SessionCard } from "../../components/dashboard-ui";
 import { ProductionControlPanel } from "../../components/production-control-panel";
@@ -18,15 +18,34 @@ function CardSkeletons() {
   );
 }
 
+interface OperatorScript {
+  id: string;
+  title: string;
+  desiredEffect: string;
+  authority: { does: string[]; never_does: string[] };
+}
+
 export default function RunsPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [handoffPending, setHandoffPending] = useState(false);
-  const [handoffMessage, setHandoffMessage] = useState<string | null>(null);
-  const [handoffError, setHandoffError] = useState<string | null>(null);
+  const [operatorScripts, setOperatorScripts] = useState<OperatorScript[]>([]);
+  const [operatorScriptError, setOperatorScriptError] = useState<string | null>(null);
+  const [pendingScriptId, setPendingScriptId] = useState<string | null>(null);
+  const [operatorMessage, setOperatorMessage] = useState<string | null>(null);
   const runs = useRuns(historyOpen);
   const control = useProductionControl();
   const activeSessions = runs.data?.activeAgentSessions ?? [];
   const activeRuns = runs.data?.activeExecutionRuns ?? [];
+
+  useEffect(() => {
+    void fetch("/api/operator-script", { cache: "no-store" })
+      .then(async (response) => {
+        const body = await response.json() as { scripts?: OperatorScript[]; error?: string };
+        if (!response.ok) throw new Error(body.error ?? "Could not load operator scripts.");
+        setOperatorScripts(body.scripts ?? []);
+        setOperatorScriptError(null);
+      })
+      .catch((error) => setOperatorScriptError(error instanceof Error ? error.message : String(error)));
+  }, []);
 
   return (
     <DashboardChrome
@@ -49,43 +68,48 @@ export default function RunsPage() {
         toggling={control.toggling}
         onToggle={control.toggle}
       />
-      <section className="mb-6 rounded-md border border-line bg-panel p-4 shadow-soft" aria-label="Protected Go handoff">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="font-semibold">Issue #419 protected handoff</h2>
-            <p className="mt-1 text-sm text-muted">Merge the reviewed repair instructions and reconcile through protected Arcadia Go.</p>
+      {operatorScripts.length > 0 || operatorScriptError ? (
+        <section className="mb-6" aria-label="Operator script library">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted">Operator actions</h2>
+          <div className="grid gap-3 md:grid-cols-2">
+            {operatorScripts.map((script) => (
+              <article key={script.id} className="rounded-md border border-line bg-panel p-4 shadow-soft">
+                <h3 className="font-semibold">{script.title}</h3>
+                <p className="mt-1 text-sm text-muted">{script.desiredEffect}</p>
+                <button
+                  type="button"
+                  disabled={pendingScriptId !== null}
+                  onClick={async () => {
+                    setPendingScriptId(script.id);
+                    setOperatorMessage(null);
+                    setOperatorScriptError(null);
+                    try {
+                      const response = await fetch("/api/operator-script", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ id: script.id })
+                      });
+                      const body = await response.json() as { message?: string; error?: string };
+                      if (!response.ok) throw new Error(body.error ?? "Could not start the operator action.");
+                      setOperatorMessage(body.message ?? `${script.title} started.`);
+                    } catch (error) {
+                      setOperatorScriptError(error instanceof Error ? error.message : String(error));
+                    } finally {
+                      setPendingScriptId(null);
+                    }
+                  }}
+                  className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-md bg-steel px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {pendingScriptId === script.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Play className="h-4 w-4" aria-hidden="true" />}
+                  {pendingScriptId === script.id ? "Starting…" : "Run"}
+                </button>
+              </article>
+            ))}
           </div>
-          <button
-            type="button"
-            disabled={handoffPending}
-            onClick={async () => {
-              setHandoffPending(true);
-              setHandoffMessage(null);
-              setHandoffError(null);
-              try {
-                const response = await fetch("/api/operator-script", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ id: "request-arcadia-go-handoff" })
-                });
-                const body = await response.json() as { message?: string; error?: string };
-                if (!response.ok) throw new Error(body.error ?? "Could not start the protected handoff.");
-                setHandoffMessage(body.message ?? "Protected handoff started.");
-              } catch (error) {
-                setHandoffError(error instanceof Error ? error.message : String(error));
-              } finally {
-                setHandoffPending(false);
-              }
-            }}
-            className="inline-flex min-h-11 items-center gap-2 rounded-md bg-steel px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
-          >
-            {handoffPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Play className="h-4 w-4" aria-hidden="true" />}
-            {handoffPending ? "Starting…" : "Run protected handoff"}
-          </button>
-        </div>
-        {handoffMessage ? <p className="mt-3 text-sm text-moss">{handoffMessage}</p> : null}
-        {handoffError ? <p className="mt-3 text-sm text-clay">{handoffError}</p> : null}
-      </section>
+          {operatorMessage ? <p className="mt-3 text-sm text-moss">{operatorMessage}</p> : null}
+          {operatorScriptError ? <p className="mt-3 text-sm text-clay">{operatorScriptError}</p> : null}
+        </section>
+      ) : null}
       {runs.error ? (
         <ErrorState title="Runs unavailable" message={runs.stale ? `${runs.error} Showing the last known state.` : runs.error} />
       ) : null}

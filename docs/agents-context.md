@@ -89,10 +89,13 @@ the handoff, not a neutral ending.
 
 ### Make operator steps executable
 
-Whenever the operator must perform one or more steps after an agent handoff —
-merging a pull request, installing or restarting local software, running a
-credentialed command, completing manual QA, or carrying out any other
-operator-only action — **do not leave those steps as prose commands alone.**
+Whenever the operator must provide input or perform one or more steps after an
+agent handoff — approving a Decision, selecting a prepared choice, merging a
+pull request, installing or restarting local software, running a credentialed
+command, completing manual QA, or carrying out any other operator-only action
+— **do not leave that input or those steps as prose commands alone.** When the
+input can be represented as a bounded executable choice, give the operator a
+button for it in the `/runs` operator-action library.
 Create or update a paired generated operator script and descriptor under
 `artifacts/generated/operator-scripts/`, following the format already present
 there:
@@ -104,6 +107,27 @@ there:
   timestamped `runs/<timestamp-pid>/` log plus failure handoff; and
 - one command for the operator to run that performs every safe, automatable
   step in order and prints the resulting receipt or exact remaining blocker.
+
+That directory is the dashboard's execution path. A valid pair appears
+automatically on `/runs`; the browser never supplies a command or filesystem
+path. Put every custom executable operator action there so the operator can
+run it from the phone. Prefer reusing or safely generalizing an existing
+library entry over creating a near-duplicate. Build common recurring actions
+as reusable scripts when their target and current authority can be discovered
+and validated at run time. Keep one-off scripts when the authority is specific.
+For example, a Decision-approval script must pin or read the exact Decision,
+answer, proposal fingerprint, and expected open state, then refuse stale or
+different state; never turn it into a blanket approval command.
+
+Before adding a script, inspect the existing descriptors for the same desired
+effect. Reuse an exact match. If extending a reusable entry, preserve its
+current callers and safety boundaries and update its descriptor. Do not delete
+an old library entry merely because the immediate handoff is over: repeatable
+operations are the beginning of the shared script library. If the operator's
+input is genuinely free-form and cannot yet be represented safely by the
+button contract, ask for that value directly, then generate the narrow script
+that validates and applies it; do not smuggle arbitrary arguments, shell text,
+or paths through the dashboard endpoint.
 
 Generating a script does not widen authority: a merge, deployment, approval,
 credential use, or other operator gate stays gated until the operator runs the
