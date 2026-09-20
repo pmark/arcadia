@@ -4,7 +4,7 @@ type: plan
 slug: bootstrap-managed-production-to-build-flight-deck
 project: arcadia
 status: active
-milestone: Bootstrap managed production to build Flight Deck
+milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
 updated: 2026-09-20
@@ -242,17 +242,17 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Expose the production switch, priority, capacity and review stops on the existing Work Queue, informed by operating the CLI control through the two-Action unattended proof.
+    next_action: Expose the production switch, priority, capacity and review stops on the existing Work Queue.
     expected_artifact: Evidence satisfying Agent Ask expose-bootstrap-production-controls
     clarification: clarified
     confidence: high
-    source: Agent Ask apply-8020-yagni-to-bootstrap-plan-2026-09-06-v2
+    source: Agent Ask retire-flight-deck-scope-from-bootstrap-plan-2026-09-20
     acceptance_criteria:
       - Add a minimal Active/Inactive control and desired-versus-observed status to /work-queue using the production service; no /flight-deck route or component is required.
       - Reuse existing Plan segment/Action priority previews, review destinations and Session links; show included scope, selected/next Action, capacity age and exact operator stops.
       - Every operator stop offers contextual multiple-choice options with the affected Project/Plan/Action, evidence, recommendation and consequence of each choice; preserve free-text direction and route the selected answer through existing canonical review/settlement controls.
       - The control works on phone and desktop and remains responsive during execution and slow source reads; Off follows the documented policy.
-      - Extract the concrete production control for reuse by Flight Deck rather than building a second controller or state store.
+      - Extract the concrete production control as a reusable unit rather than building a second controller or state store; the GitHub board shows state and cannot hold an Off switch, an approval or a capacity reading, so this control is the only place those live.
       - Preserve a runnable QA Artifact naming exact URL, host, revision and recovery command.
       - Measure durable Off acknowledgment within two seconds on the recorded healthy local host under stalled execution/provider reads; persistence failure is visible within five seconds without false confirmation.
     depends_on: [prove-two-action-unattended-production]
@@ -303,18 +303,19 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Freeze the proven single-provider production runtime and hand off Flight Deck as its first workload without waiting on the deferred dual-provider soak proof.
+    next_action: Freeze the proven production runtime and prepare the first real production workload, once that workload is named and agreed.
     expected_artifact: Evidence satisfying Agent Ask freeze-production-runtime-and-handoff-flight-deck
     clarification: clarified
     confidence: high
-    source: Agent Ask defer-multi-provider-soak-until-single-provider-hardened-2026-09-14-v2
+    source: Agent Ask retire-flight-deck-scope-from-bootstrap-plan-2026-09-20
     acceptance_criteria:
       - Identify and preserve the exact proven worker/runtime revision, service command, workspace/schema compatibility and rollback/recovery procedure independently of coding worktrees.
-      - Prove that editing/building Flight Deck in an isolated Arcadia worktree does not replace, hot-reload or restart the controller; runtime upgrades require a separate controlled handoff.
-      - Present the Flight Deck Plan scope and first two dependent Actions, current queue segment, automatic completion policy and external merge/publication boundaries as one handoff Artifact.
-      - After bootstrap acceptance and approved Plan transition, the canonical pointer selects Flight Deck and production admits its first Action; no repeated human Session setup is required.
-      - If Flight Deck cannot advance without a merge or subjective acceptance, show that exact approval in the existing review surface. Never weaken a gate to manufacture uninterrupted progress.
-      - Publish the contract 20 release evidence index; every required proof is passed at the accepted revision, blocking findings are resolved, and independent status/Off plus recovery are exercised before unattended Flight Deck handoff.
+      - Name the first real production workload and record the operator's agreement to it before any handoff step; Flight Deck is no longer that workload and nothing may be assumed in its place.
+      - Prove that editing/building the first workload in an isolated Arcadia worktree does not replace, hot-reload or restart the controller; runtime upgrades require a separate controlled handoff.
+      - Present the first workload's Plan scope and first two dependent Actions, current queue segment, automatic completion policy and external merge/publication boundaries as one handoff Artifact.
+      - After bootstrap acceptance and approved Plan transition, the canonical pointer selects the first workload and production admits its first Action; no repeated human Session setup is required.
+      - If the first workload cannot advance without a merge or subjective acceptance, show that exact approval in the existing review surface. Never weaken a gate to manufacture uninterrupted progress.
+      - Publish the contract 20 release evidence index; every required proof is passed at the accepted revision, blocking findings are resolved, and independent status/Off plus recovery are exercised before unattended handoff of the first workload.
     depends_on: [prove-two-action-unattended-production, expose-bootstrap-production-controls]
     decisions: []
     references: []
@@ -752,11 +753,11 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Prove the contract-20 fault-injection matrix and staged evidence bundle before unattended Flight Deck handoff.
+    next_action: Prove the contract-20 fault-injection matrix and staged evidence bundle before any unattended production handoff.
     expected_artifact: Evidence satisfying Agent Ask prove-managed-production-fault-matrix
     clarification: clarified
     confidence: high
-    source: Agent Ask split-hung-detection-and-fault-soak-from-feed-and-supervise-2026-09-14
+    source: Agent Ask retire-flight-deck-from-fault-matrix-2026-09-20
     acceptance_criteria:
       - Each deterministic race scenario in the contract-20 boundary table (admission/launch, completion/pointer, Off, process health, capacity, priority/authority, runtime) is repeated at least 100 times with reproducible seeds/interleavings, with zero invariant violations and retained failing-seed/timeline evidence for any violation found and fixed.
       - The two-dependent-Action live rehearsal passes from one activation with no manual Session relay, with every human intervention recorded.
@@ -1284,6 +1285,6 @@ recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
 
-# Bootstrap managed production to build Flight Deck
+# Bootstrap managed production to run unattended from the GitHub board
 
 Created as an inactive draft from accepted Agent Ask managed-production-completion-first-handoff-2026-09-05; creation changed no pointer. Current activation is recorded in frontmatter.

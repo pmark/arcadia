@@ -10,7 +10,7 @@ status` output. When those disagree with this file, they are right and this
 file is stale. "Refreshing this document" at the bottom says how to re-derive it
 in about a minute.
 
-Last derived: **2026-09-20**, at `ae88e8dc` (PR #438).
+Last derived: **2026-09-20**, after the pivot-cleanup settlements (`352ffeb9`).
 
 ---
 
@@ -127,13 +127,13 @@ Nothing here is code. These are live runs that either happen or do not.
 | ⬜ | `prove-managed-production-fault-matrix` | The contract-20 fault-injection matrix before any unattended handoff. |
 | ⬜ | `harden-zero-prompt-production-loop` | Only after the happy path runs clean twice. |
 
-### Gate 6 — The operator surface ⬜ **open — scope changed by the pivot**
+### Gate 6 — The operator surface ⬜ **open — rescoped by the pivot, 2026-09-20**
 
 | | Action | Pivot effect |
 | --- | --- | --- |
 | ⬜ | `surface-terminal-operator-approvals-in-runs` | Still needed and still correct. Board cards show *that* you are needed; they do not carry the evidence, options and consequences you answer with. |
-| 🔶 | `expose-bootstrap-production-controls` | Acceptance criterion 5 — "extract the production control for reuse by **Flight Deck**" — is now stale. The Off switch and capacity/status readout are still wanted; the Flight Deck extraction is not. |
-| 🔶 | `freeze-production-runtime-and-handoff-flight-deck` | Its whole premise — freeze the runtime and hand it Flight Deck as the first real workload — needs a new first workload. |
+| ⬜ | `expose-bootstrap-production-controls` | **Amended, not reduced.** Only the *reuse-by-Flight-Deck* target was retired. The Action still requires a reusable production-control unit rather than a second controller or state store, the Active/Inactive switch, the desired-versus-observed status, the capacity reading, and the operator stops with their options and consequences. The pivot strengthens the case: a board cell can hold none of those. |
+| 🔶 | `freeze-production-runtime-and-handoff-flight-deck` | **Amended and workload-neutral.** Criteria no longer name Flight Deck, and a new criterion requires the first real production workload to be named and agreed before any handoff step. **Which workload that is remains an open operator choice** — nothing has replaced Flight Deck. The Action's `title` still names it; the contract cannot amend a title (see the pivot section). |
 
 ---
 
@@ -193,25 +193,64 @@ declare `depends_on` it: `expose-bootstrap-production-controls`,
 `freeze-production-runtime-and-handoff-flight-deck`. All three read `blocked`
 on the board right now for that one reason. Nothing else unblocks them.
 
-It was deferred when Codex and Claude were out of capacity and opencode was
-broken. That is a capacity condition, not a scope decision — so it is a
-deferral whose trigger is "a provider has capacity again," and that trigger
-may already have fired.
+**Decision 0057** deferred it on 2026-09-18, and its trigger is narrower than
+"capacity came back." Read it exactly: the Action *"revives when the operator
+begins the live rehearsal with `--provider opencode-cli`, after the further
+managed-production defects are fixed."* Two conditions, both unmet — the
+defects are items 1–3 and 6–10 of the critical path, and opencode still
+returns `Unexpected server error`.
+
+So the knot does not untie on its own, and it should not be untied early: the
+proof's runbook restricts the rehearsal to the operator's own terminal, which
+is why dispatching it to a coding agent was the problem 0057 solved. Clearing
+the critical path ahead of it *is* the work that fires its trigger.
 
 ---
 
 ## What the Flight Deck → GitHub Projects pivot changed
 
-**Superseded.** `docs/plans/flight-deck-board-carries-the-whole-portfolio-on-one-surface.md`
-(`status: draft`) proposed swimlanes, pipeline columns and drag reordering on a
-built-in route. GitHub Projects now provides all of it. The plan should be
-closed rather than left drafting.
+**Done, 2026-09-20.** Three Agent Asks retargeted everything the contract can
+reach:
 
-**Renamed but not rescoped.** The active Milestone is still "Bootstrap managed
-production to build Flight Deck," and the Plan slug still carries it. The
-*bootstrap* work is entirely unaffected by the pivot — only its stated
-destination changed. The Milestone needs a new name and, more importantly, a
-new first workload.
+- `rename-milestone-off-flight-deck-2026-09-20` — the Milestone is now
+  **"Bootstrap managed production to run unattended from the GitHub board"** in
+  both `PROJECT.md` and the Plan.
+- `retire-flight-deck-scope-from-bootstrap-plan-2026-09-20` — rewrote
+  `expose-bootstrap-production-controls` criterion 5 (the production control is
+  now justified by what a board cell *cannot* hold, rather than by reuse in
+  Flight Deck) and made all of
+  `freeze-production-runtime-and-handoff-flight-deck` workload-neutral, adding
+  a criterion that the first workload must be **named and agreed** before any
+  handoff step.
+- `retire-flight-deck-from-fault-matrix-2026-09-20` — the fault matrix now
+  gates "any unattended production handoff" rather than a Flight Deck one.
+
+**Not done, and not hand-editable.** Four things have no field in the Ask
+contract, so `docs/proposals/amend-action-title-and-plan-identity.md` asks for
+them rather than this repository writing them by hand:
+
+- **Two Action `title:` fields still name Flight Deck**, because
+  `desired_result` writes `next_action` and nothing writes `title`.
+  `freeze-production-runtime-and-handoff-flight-deck` now contradicts itself —
+  its title names Flight Deck as the first workload, its next action says the
+  workload is undecided. **The next action is the current one.** Same for
+  `prove-managed-production-fault-matrix`.
+- **The Plan slug and filename** still read
+  `bootstrap-managed-production-to-build-flight-deck`, as does the
+  `freeze-…-flight-deck` Action id. Cosmetic, but there is no supported rename.
+- **The draft Flight Deck plan** —
+  `docs/plans/flight-deck-board-carries-the-whole-portfolio-on-one-surface.md`,
+  `status: draft` — proposed swimlanes, pipeline columns and drag reordering on
+  a built-in route. GitHub Projects provides all of it, but no intent sets a
+  Plan's status and the only Decision effect is `defer`, so nothing can retire
+  it. It stays `draft`.
+- **The Plan's `#` heading** was stale too; that one is repairable by hand
+  under Decision 0044 and was repaired.
+
+**Still open, and a real choice:** what the *first real production workload*
+is. Flight Deck was it. Nothing replaced it, and this document does not guess —
+the amended Action now requires the answer before any handoff step. It is not
+urgent: that Action is blocked behind the deferred proof.
 
 **Still wanted from the dashboard, and not delivered by GitHub.** A board cell
 cannot hold an approval with its evidence, options and consequences; it cannot
@@ -225,9 +264,21 @@ be an Off switch; it cannot show capacity age. That is exactly
 future enhancement. If answering from the board is wanted, it competes with
 `surface-terminal-operator-approvals-in-runs` rather than adding to it.
 
-None of the above is a governance edit. Changing the Milestone name, closing
-the Flight Deck plan, un-deferring the proof Action, and amending the two stale
-acceptance criteria all go through an Agent Ask.
+Every *governed* change above went through an Agent Ask and was settled on
+2026-09-20: the Milestone, and three Actions' next actions and acceptance
+criteria. A fourth Ask settled by **opening Decision 0061, which is open and
+unanswered** — settling an Ask of that intent creates the question, it does
+not answer it.
+
+Exactly one edit in this section was made by hand — the Plan's `#` heading,
+which asserts nothing about the work and so falls under Decision 0044's
+hygiene carve-out. It is called out as hand-made
+above rather than folded in with the settlements.
+
+Un-deferring `prove-two-action-unattended-production` was deliberately *not*
+done, by either route: Decision 0057's second condition has not been met (see
+"The one knot worth naming"), and reversing an answered Decision is the
+operator's call, which is what Decision 0061 is for.
 
 ---
 
