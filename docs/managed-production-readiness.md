@@ -127,13 +127,13 @@ Nothing here is code. These are live runs that either happen or do not.
 | ⬜ | `prove-managed-production-fault-matrix` | The contract-20 fault-injection matrix before any unattended handoff. |
 | ⬜ | `harden-zero-prompt-production-loop` | Only after the happy path runs clean twice. |
 
-### Gate 6 — The operator surface ⬜ **open — scope changed by the pivot**
+### Gate 6 — The operator surface ⬜ **open — rescoped by the pivot, 2026-09-20**
 
 | | Action | Pivot effect |
 | --- | --- | --- |
 | ⬜ | `surface-terminal-operator-approvals-in-runs` | Still needed and still correct. Board cards show *that* you are needed; they do not carry the evidence, options and consequences you answer with. |
-| 🔶 | `expose-bootstrap-production-controls` | Acceptance criterion 5 — "extract the production control for reuse by **Flight Deck**" — is now stale. The Off switch and capacity/status readout are still wanted; the Flight Deck extraction is not. |
-| 🔶 | `freeze-production-runtime-and-handoff-flight-deck` | Its whole premise — freeze the runtime and hand it Flight Deck as the first real workload — needs a new first workload. |
+| ⬜ | `expose-bootstrap-production-controls` | **Amended, not reduced.** Only the *reuse-by-Flight-Deck* target was retired. The Action still requires a reusable production-control unit rather than a second controller or state store, the Active/Inactive switch, the desired-versus-observed status, the capacity reading, and the operator stops with their options and consequences. The pivot strengthens the case: a board cell can hold none of those. |
+| 🔶 | `freeze-production-runtime-and-handoff-flight-deck` | **Amended and workload-neutral.** Criteria no longer name Flight Deck, and a new criterion requires the first real production workload to be named and agreed before any handoff step. **Which workload that is remains an open operator choice** — nothing has replaced Flight Deck. The Action's `title` still names it; the contract cannot amend a title (see the pivot section). |
 
 ---
 
@@ -264,10 +264,17 @@ be an Off switch; it cannot show capacity age. That is exactly
 future enhancement. If answering from the board is wanted, it competes with
 `surface-terminal-operator-approvals-in-runs` rather than adding to it.
 
-Every governed change above went through an Agent Ask and was settled on
-2026-09-20. Nothing in this section was hand-written into a Plan, and
-un-deferring `prove-two-action-unattended-production` was deliberately *not*
-done: Decision 0057's trigger has not fired (see "The one knot worth naming").
+Every *governed* change above went through an Agent Ask and was settled on
+2026-09-20: the Milestone, the three Actions' next actions and acceptance
+criteria, and Decision 0061. Exactly one edit in this section was made by
+hand — the Plan's `#` heading, which asserts nothing about the work and so
+falls under Decision 0044's hygiene carve-out. It is called out as hand-made
+above rather than folded in with the settlements.
+
+Un-deferring `prove-two-action-unattended-production` was deliberately *not*
+done, by either route: Decision 0057's second condition has not been met (see
+"The one knot worth naming"), and reversing an answered Decision is the
+operator's call, which is what Decision 0061 is for.
 
 ---
 
