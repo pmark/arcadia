@@ -876,7 +876,11 @@ racing history refuses without moving the base and never asks anyone to
 improvise a rebase or merge. It never force-merges, resets, or pushes. With `--agent`, it
 prepares a uniquely named isolated worktree from the verified updated local
 base and prints the exact Codex, Claude Code, or opencode launch command with
-`arcadia advance`. The personal `arcadia-go` skill performs the preview/apply
+`arcadia advance`. Before any Git change, `--agent --apply` refuses unless the
+workspace database is writable by the invoking profile and both the
+preservation and Go routes carry a fresh worker heartbeat; the refusal names
+the missing piece and its remedy, and no worktree is prepared. The personal
+`arcadia-go` skill performs the preview/apply
 sequence and uses the current agent's native session handoff when available.
 
 For unattended `arcadia-go` skill runs, do not allowlist the general Arcadia

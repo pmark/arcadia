@@ -389,3 +389,10 @@ updated: 2026-09-20
 - **Result:** Every declared acceptance criterion was accepted as met: "After `restart-services.sh restart` reports the worker running, `arcadia go-broker status --json` reports `preservationTransport.ready: true` and a usable Go transport state for the configured workspace."; "A deterministic regression test proves the worker publishes a preservation heartbeat after startup and that a missing or stale heartbeat fails with a diagnostic that identifies the worker route.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-restore-preservation-worker-heartbeat-2026-09-20).
+
+## 2026-09-20 — Completed arcadia/gate-prepared-dispatch-on-transport-readiness
+
+- **Did:** Completed Action arcadia/gate-prepared-dispatch-on-transport-readiness from accepted evidence (Candidate 36cb9b5c43bc97591624525e0073aeb72792f65c).
+- **Result:** Every declared acceptance criterion was accepted as met: "A deterministic pre-dispatch check refuses preparation with an actionable remedy when the workspace database cannot be opened by the selected agent profile."; "A deterministic pre-dispatch check refuses preparation when either Go-capable or preservation transport lacks a fresh heartbeat, before a coding agent is started.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-gate-prepared-dispatch-2026-09-20).
