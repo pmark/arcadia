@@ -236,6 +236,7 @@ describe("Agent Ask complete", () => {
     const moved = runAgentAskDraftCommand({
       workspace, dir: candidate, request: completeAsk("complete-invoked-from-2", "first", candidateHead)
     });
+    const previousInvokedFrom = process.env.ARCADIA_INVOKED_FROM;
     process.env.ARCADIA_INVOKED_FROM = candidate;
     try {
       const preview = runAgentAskSettleCommand({
@@ -247,7 +248,8 @@ describe("Agent Ask complete", () => {
       });
       expect(applied.data.receipt.applied).toBe(true);
     } finally {
-      delete process.env.ARCADIA_INVOKED_FROM;
+      if (previousInvokedFrom === undefined) delete process.env.ARCADIA_INVOKED_FROM;
+      else process.env.ARCADIA_INVOKED_FROM = previousInvokedFrom;
     }
     expect(draft.data.written).toBe("created");
     expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim()).toBe(head);
