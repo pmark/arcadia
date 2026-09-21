@@ -12,6 +12,7 @@ import {
 } from "../src/production/activation.js";
 import { buildJudgmentRequest } from "../src/production/judgment.js";
 import {
+  runProductionActivateCommand,
   runProductionPreviewCommand,
   runProductionDeactivateCommand,
   runProductionStatusCommand
@@ -652,6 +653,69 @@ describe("activation preview", () => {
       })
     );
     expect(wider.scopeFingerprint).not.toBe(base.scopeFingerprint);
+  });
+
+  it("refuses to activate a scope that would silently omit a named, unmatched Project", () => {
+    const target = fixtureWorkspace();
+    expect(() =>
+      runProductionActivateCommand({
+        workspace: target,
+        project: ["demo", "ghost"],
+        plan: ["demo/queue-plan"],
+        provider: ["opencode-cli"],
+        intent: "Extend the grant without dropping a named Project.",
+        requestId: "grant-partial-scope-1",
+        grantedBy: "operator"
+      })
+    ).toThrow(/does not match queued work for: ghost/);
+  });
+
+  it("refuses to activate a scope that would silently omit a named, unmatched Plan", () => {
+    const target = fixtureWorkspace();
+    expect(() =>
+      runProductionActivateCommand({
+        workspace: target,
+        project: ["demo"],
+        plan: ["demo/queue-plan", "demo/missing-plan"],
+        provider: ["opencode-cli"],
+        intent: "Extend the grant without dropping a named Plan.",
+        requestId: "grant-partial-plan-1",
+        grantedBy: "operator"
+      })
+    ).toThrow(/does not match queued work for: demo\/missing-plan/);
+  });
+
+  it("still activates the whole requested scope when every entry matches", () => {
+    const target = fixtureWorkspace();
+    const activated = runProductionActivateCommand({
+      workspace: target,
+      project: ["demo"],
+      plan: ["demo/queue-plan"],
+      provider: ["opencode-cli"],
+      intent: "Authorize the fixture Plan.",
+      requestId: "grant-full-scope-1",
+      grantedBy: "operator"
+    });
+    expect(activated.data.result.policy.scope.projects).toEqual(["demo"]);
+  });
+
+  it("replays a settled grant instead of re-validating a changed queue on retry", () => {
+    const target = fixtureWorkspace();
+    const request = {
+      workspace: target,
+      project: ["demo"],
+      plan: ["demo/queue-plan"],
+      provider: ["opencode-cli"],
+      intent: "Authorize the fixture Plan.",
+      grantedBy: "operator",
+      requestId: "grant-replay-after-move-1"
+    };
+    expect(runProductionActivateCommand(request).data.result.replayed).toBe(false);
+
+    // The retry names a Project the queue cannot match. Idempotency outranks
+    // scope validation, so it must replay its receipt rather than refuse.
+    const retry = runProductionActivateCommand({ ...request, project: ["demo", "ghost"] });
+    expect(retry.data.result.replayed).toBe(true);
   });
 });
 

@@ -17,6 +17,7 @@ import {
   activateProduction,
   countLiveAdmissions,
   deactivateProduction,
+  findTransitionReceipt,
   listAdmissions,
   readProductionPolicySafely,
   type AdmissionReceipt,
@@ -144,15 +145,40 @@ export function runProductionActivateCommand(
   }
 
   const result = withDatabase(workspacePath, (db) => {
+    const requestId = options.requestId.trim();
     const preview = buildProductionActivationPreview(db, previewInput(options, workspacePath));
-    if (preview.orderedActions.length === 0) {
-      throw validationError(
-        "The requested scope contains no queued Actions; activating would authorize nothing.",
-        { projects: options.project, plans: options.plan ?? [] }
-      );
+    /**
+     * Idempotency outranks scope validation. A retry of an already-applied grant
+     * must replay its receipt even when the queue has since moved or a named
+     * Project has been paused, so the current-queue checks below run only when
+     * this request id has not settled a transition yet.
+     */
+    if (!findTransitionReceipt(db, requestId)) {
+      if (preview.orderedActions.length === 0) {
+        throw validationError(
+          "The requested scope contains no queued Actions; activating would authorize nothing.",
+          { projects: options.project, plans: options.plan ?? [] }
+        );
+      }
+      /**
+       * A partially matched scope is the dangerous case: a requested Project or
+       * Plan that did not match is simply absent from what gets granted, and the
+       * operator sees no warning here — only `preview` reports `unmatched`. Naming
+       * a paused Project is the usual cause, so refuse and name the entry that did
+       * not match rather than granting less than what was asked for.
+       */
+      if (preview.unmatched.projects.length > 0 || preview.unmatched.plans.length > 0) {
+        throw validationError(
+          `The requested scope does not match queued work for: ${[
+            ...preview.unmatched.projects,
+            ...preview.unmatched.plans
+          ].join(", ")}. Activating would grant a scope that omits it.`,
+          { projects: preview.unmatched.projects, plans: preview.unmatched.plans }
+        );
+      }
     }
     return activateProduction(db, {
-      requestId: options.requestId.trim(),
+      requestId,
       scope: preview.scope,
       scopeFingerprint: preview.scopeFingerprint,
       grantedBy: options.grantedBy.trim(),
