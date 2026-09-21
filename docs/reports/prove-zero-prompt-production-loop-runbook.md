@@ -237,19 +237,23 @@ cd ~/tmp/arcadia-zero-prompt-rehearsal
 git branch --show-current      # expect: main
 ```
 
-If it is not `main`, compare against the base **before** switching, so you are
-not switching away from unmerged work:
+If it is not `main`, compare the **whole branch** against the base and confirm
+the working tree is clean — both before switching, so you are not switching away
+from unmerged work:
 
 ```sh
-git diff --stat main HEAD -- PROJECT.md   # expect: no output
+git diff --stat main HEAD       # expect: NO output — every path, not just PROJECT.md
+git status --short              # expect: clean
 git switch main
-git status --short                        # expect: clean
+git status --short              # expect: clean, again
 ```
 
-A branch whose only difference from the base is a pause/reactivate pair is a
+A branch whose entire difference from the base is a pause/reactivate pair is a
 provable no-op and can then be dropped with `git branch -D <that branch>`. If
 the diff is **not** empty, stop: the branch holds work and needs a reviewed
-recovery, not a delete.
+recovery, not a delete. Scoping that diff to a single path would prove nothing
+about a branch that changed anything else, and `git branch -D` is not undoable
+from here.
 
 > **Why every `--json` below is piped through `sed -n '/^{/,$p'`:** when
 > `node_modules` is out of sync, the `arcadia` shim prints a
@@ -451,11 +455,15 @@ Action:          write-rehearsal-marker
 Agent:           opencode
 Candidate:       opencode/write-rehearsal-marker-<utc-stamp>   [pinned from Step 3]
 Governed base:   main of ~/tmp/arcadia-zero-prompt-rehearsal
-Scope limits:    fast-forward or clean merge of that one branch only; stop and
-                 report on a conflict, a non-agent-owned branch, a divergent
-                 base, or a candidate outside this grant
-Not granted:     any other branch, merge/deploy/publish, spend, credentials,
-                 messaging, deletion, or pointer edits
+Scope limits:    fast-forward integration of that one branch only; a candidate
+                 that cannot fast-forward is refused, not merged (go's
+                 reconciliationKind supports only fast-forward,
+                 already-integrated and not-needed, and every merge it runs is
+                 --ff-only). Stop and report on a conflict, a non-agent-owned
+                 branch, a divergent base, or a candidate outside this grant
+Not granted:     any other branch, non-fast-forward candidate integration,
+                 deploy/publish, spend, credentials, messaging, deletion, or
+                 pointer edits
 Ends when:       the rehearsal ends (Step 2.6 restores the policy)
 ```
 
