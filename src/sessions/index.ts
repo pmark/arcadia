@@ -7,6 +7,7 @@ import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { providerLabel } from "../codingAgents/adapters.js";
 import { agentIdentityEnvironmentArgs, resolveSessionAgentIdentity } from "../codingAgents/agentIdentity.js";
+import { claudeReasoningEffort, codexReasoningEffort } from "../codingAgents/reasoningEffort.js";
 import type { ModelTierRegistry } from "../codingAgents/modelTiers.js";
 import { writeTransaction } from "../db/connection.js";
 import { getProjectBySlug, getWorkItemByDocRef, listCodexInvocationsForWorkItem } from "../db/repositories.js";
@@ -609,7 +610,7 @@ function buildProviderLaunch(session: AgentSession, agent: SessionAgent): { comm
   });
   if (session.provider === "codex-cli") {
     const args = ["--model", session.model];
-    if (session.effort) args.push("--config", `model_reasoning_effort=${JSON.stringify(session.effort)}`);
+    if (session.effort) args.push("--config", `model_reasoning_effort=${JSON.stringify(codexReasoningEffort(session.effort))}`);
     args.push("--cd", session.worktree_path, prompt);
     return { command: "codex", args };
   }
@@ -627,7 +628,7 @@ function buildProviderLaunch(session: AgentSession, agent: SessionAgent): { comm
   }
 
   const args = ["--model", session.model];
-  if (session.effort) args.push("--effort", session.effort);
+  if (session.effort) args.push("--effort", claudeReasoningEffort(session.effort));
   args.push("--session-id", session.provider_session_id, "--name", session.display_name, prompt);
   return { command: "claude", args };
 }

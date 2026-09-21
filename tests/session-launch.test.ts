@@ -112,6 +112,106 @@ describe("launchGuardedHostSession", () => {
     expect(sessionView(result.session, tmux).resumeCommand).toBeNull();
   });
 
+  it("translates an abstract reasoning effort to the provider value at spawn", () => {
+    for (const [provider, model, profileName, command, expected] of [
+      ["codex-cli", "gpt-5.6-terra", "codex_build", "codex", ["--config", 'model_reasoning_effort="high"']],
+      ["claude-code-cli", "sonnet", "claude_build", "claude", ["--effort", "high"]]
+    ] as const) {
+      const fixture = preparedFixture({ provider, model, profileName, command, effort: "e3_deep" });
+      const tmux = new FakeTmux();
+      const preview = preview1(fixture);
+
+      doLaunch(fixture, tmux, preview.previewFingerprint);
+      expect(tmux.launches[0].args).toEqual(expect.arrayContaining([...expected]));
+      expect(tmux.launches[0].args).not.toContain("e3_deep");
+    }
+  });
+
+  it("leaves a provider-native reasoning effort unchanged at spawn", () => {
+    const fixture = preparedFixture({
+      provider: "codex-cli",
+      model: "gpt-5.6-terra",
+      profileName: "codex_build",
+      command: "codex",
+      effort: "high"
+    });
+    const tmux = new FakeTmux();
+    const preview = preview1(fixture);
+
+    doLaunch(fixture, tmux, preview.previewFingerprint);
+    expect(tmux.launches[0].args).toEqual(expect.arrayContaining(["--config", 'model_reasoning_effort="high"']));
+  });
+
+  it("translates an effort recomputed from an Action's execution requirement, not only a packet-verbatim value", () => {
+    const fixture = preparedFixture({
+      provider: "codex-cli",
+      model: "gpt-5.6-sol",
+      profileName: "codex_build",
+      command: "codex",
+      mappingId: "bundled-2026-07-25.1",
+      bindingId: "codex-sol",
+      executionRequirement: { schema: "arcadia.execution/v1", profile: "systems_change" }
+    });
+
+    const preview = preview1(fixture);
+    expect(preview.ready).toBe(true);
+    // systems_change resolves to an abstract key, which is the value the session
+    // stores and the bound packet records — the spawn must not see it raw.
+    expect(preview.selection).toMatchObject({ provider: "codex-cli", model: "gpt-5.6-sol", effort: "e3_deep" });
+
+    const tmux = new FakeTmux();
+    doLaunch(fixture, tmux, preview.previewFingerprint);
+    expect(tmux.launches[0].args).toEqual(expect.arrayContaining(["--config", 'model_reasoning_effort="high"']));
+    expect(tmux.launches[0].args).not.toContain("e3_deep");
+  });
+
+  it("translates an effort recomputed for a Claude-only selection", () => {
+    const claudeOnlyProfiles = [profile("claude_build", "claude-code-cli")];
+    const fixture = preparedFixture({
+      provider: "claude-code-cli",
+      model: "opus",
+      profileName: "claude_build",
+      command: "claude",
+      mappingId: "bundled-2026-07-25.1",
+      bindingId: "claude-opus",
+      executionRequirement: { schema: "arcadia.execution/v1", profile: "systems_change" }
+    });
+
+    const preview = withReadOnlyDatabase(fixture.workspace, (db) =>
+      buildLaunchPreview({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "req-claude-recompute",
+        profiles: claudeOnlyProfiles,
+        adapters
+      })
+    );
+    expect(preview.ready).toBe(true);
+    expect(preview.selection).toMatchObject({ provider: "claude-code-cli", model: "opus", effort: "e3_deep" });
+
+    const tmux = new FakeTmux();
+    const result = withDatabase(fixture.workspace, (db) =>
+      launchGuardedHostSession({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "req-claude-recompute",
+        previewFingerprint: preview.previewFingerprint,
+        profiles: claudeOnlyProfiles,
+        adapters,
+        now: fixture.now,
+        tmux,
+        agentWorktreeRoot: path.join(fixture.root, "claude-recompute")
+      })
+    );
+    expect(result.session.provider).toBe("claude-code-cli");
+    expect(tmux.launches[0].args).toEqual(expect.arrayContaining(["--effort", "high"]));
+    expect(tmux.launches[0].args).not.toContain("e3_deep");
+  });
+
   it("rejects a stale or altered preview fingerprint for a brand-new launch", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
@@ -683,6 +783,9 @@ interface FixtureSelection {
   profileName: string;
   command: string;
   effort?: string;
+  mappingId?: string;
+  bindingId?: string;
+  executionRequirement?: Record<string, unknown>;
 }
 
 const CLAUDE_SELECTION: FixtureSelection = {
@@ -710,12 +813,18 @@ function preparedFixture(selection: FixtureSelection = CLAUDE_SELECTION) {
   initWorkspace(workspace);
   const packetId = "codex_session_launch_fixture";
   const { provider, model, profileName } = selection;
+  const mappingId = selection.mappingId ?? "fixture-map";
+  const bindingId = selection.bindingId ?? "fixture-binding";
   withDatabase(workspace, (db) => {
     const project = upsertProject(db, { name: "Test Project", mission: "Prove guarded launch.", goal: "Prove guarded launch.", status: "active" });
     upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
     const sync = syncProjectDocs(db, project, { apply: true });
     if (sync.errors.length || sync.rejected.length) throw new Error("fixture docs did not sync");
     const workItem = getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!;
+    if (selection.executionRequirement) {
+      db.prepare("UPDATE work_items SET execution_requirement_json = ? WHERE id = ?")
+        .run(JSON.stringify(selection.executionRequirement), workItem.id);
+    }
     const promptPath = `prompts/codex/${packetId}/prompt.md`;
     const baseRevision = git(repo, ["rev-parse", "HEAD"]).trim();
     mkdirSync(path.join(workspace, path.dirname(promptPath)), { recursive: true });
@@ -725,7 +834,7 @@ function preparedFixture(selection: FixtureSelection = CLAUDE_SELECTION) {
       workItemId: workItem.id,
       promptPath,
       baseRevision,
-      providerSelection: { provider, model, mappingId: "fixture-map", bindingId: "fixture-binding", ...(selection.effort ? { effort: selection.effort } : {}) }
+      providerSelection: { provider, model, mappingId, bindingId, ...(selection.effort ? { effort: selection.effort } : {}) }
     }));
     createCodexInvocation(db, {
       id: packetId,
@@ -739,8 +848,8 @@ function preparedFixture(selection: FixtureSelection = CLAUDE_SELECTION) {
       status: "packet_created",
       workItemId: workItem.id,
       executionProfileJson: JSON.stringify({ schema: "arcadia.execution/v1", profile: "routine_implementation" }),
-      providerMappingId: "fixture-map",
-      providerBindingId: "fixture-binding"
+      providerMappingId: mappingId,
+      providerBindingId: bindingId
     });
     const approval = createReviewItem(db, {
       workItemId: workItem.id,
