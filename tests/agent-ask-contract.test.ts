@@ -37,4 +37,13 @@ describe("agent-ask contract", () => {
     expect(rendered).toContain("propose | apply_if_approved");
     for (const intent of AGENT_ASK_INTENTS) expect(rendered).toContain(intent);
   });
+
+  it("carries a complete example built only from real envelope fields, so an agent never hunts for one", () => {
+    const { data } = runAgentAskContractCommand();
+    for (const key of Object.keys(data.completeExample)) expect(data.fields.envelope).toContain(key);
+    expect(data.completeExample.intent).toBe("complete");
+    const rendered = renderAgentAskContractSuccess(runAgentAskContractCommand()).join("\n");
+    expect(rendered).toContain('"candidate_revision"');
+    expect(rendered).toContain('"evidence"');
+  });
 });
