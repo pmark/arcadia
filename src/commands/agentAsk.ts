@@ -5,6 +5,7 @@ import { discoverUnprocessedAgentAsks, EMPTY_AGENT_ASK_DISCOVERY, type AgentAskD
 import { previewAgentAskRequest } from "../ask/preview.js";
 import { findRecoveredAsk } from "../sessions/legacyAskRecovery.js";
 import { normalizeError, validationError } from "../cli/errors.js";
+import { invocationRoot } from "../cli/invocation.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
@@ -223,7 +224,9 @@ export function runAgentAskSettleCommand(options: {
     model: options.model,
     effort: options.effort,
     operator: options.operator,
-    cwd: options.cwd,
+    // The launcher cds into Arcadia's checkout, so process.cwd() is the runtime,
+    // not the candidate worktree the operator is standing in (#468).
+    cwd: options.cwd ?? invocationRoot(),
     projectionBusyTimeoutMs: options.projectionBusyTimeoutMs
   }, options.hooks));
   return createSuccess({ command: "agent-ask.settle", workspace: workspacePath, data: { receipt } });
