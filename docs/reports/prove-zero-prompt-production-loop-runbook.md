@@ -1,6 +1,6 @@
 # Prove zero-prompt production loop — operator runbook and proof template
 
-Milestone: Bootstrap managed production to build Flight Deck.
+Milestone: Bootstrap managed production to run unattended from the GitHub board.
 Action: `prove-zero-prompt-production-loop`.
 
 ## Required preflight before a counted run
@@ -27,7 +27,7 @@ waived:
   id. `docs/COMMANDS.md` carries the operator procedure. `arcadia advance` and
   `arcadia-advance-broker-*` report the same `kind: reconcile` case without
   writing.
-- The revision-pinned host `arcadia-go-broker-codex` host controller prepares
+- The revision-pinned host `arcadia-go-broker-opencode` host controller prepares
   Action B's worktree. That is a **predeclared, visible operator step**; it is
   not autonomous execution.
 
@@ -92,16 +92,16 @@ by hand, that is no longer a failure. Zero sandbox prompts is still absolute.
 The decision rule:
 
 - A sandbox approval prompt **anywhere in Steps 3–4** → criterion 6 `failed`.
-- Action B needing a hand-run `codex` line to start → expected; record how, and
+- Action B needing a hand-run `opencode run` line to start → expected; record how, and
   it does not affect the verdict.
 
 The seven criteria this run must satisfy, verbatim from
 `docs/plans/bootstrap-managed-production-to-build-flight-deck.md`:
 
 1. Use the Zero Prompt Rehearsal fixture Project with two dependent small
-   Actions and the same Codex profile, protected launchers, workspace root,
-   dependency bridge, build, test, SQLite, Git, network and pull-request path
-   that managed production will use.
+   Actions and the same OpenCode provider profile, protected launchers,
+   workspace root, dependency bridge, build, test, SQLite, Git, network and
+   pull-request path that managed production will use.
 2. Before the counted run, record and verify every required launch,
    remote-preservation, integration and mechanical-completion grant, with its
    exact fixture scope, policy/receipt identity, freshness and limits. A missing,
@@ -111,7 +111,7 @@ The seven criteria this run must satisfy, verbatim from
    point delivered by reconcile-session-exits-to-next-move and
    advance-approved-production-work that drives reconciliation and canonical
    completion without the continuous worker. Record its command and the
-   revision-pinned arcadia-go-broker-codex host-controller invocation that
+   revision-pinned arcadia-go-broker-opencode host-controller invocation that
    prepares Action B, or the supported combined entry point if the prerequisite
    implementation provides one. Current go prepares work but does not supply the
    missing reconciliation bridge; until a supported bridge is shipped and
@@ -146,37 +146,46 @@ Criterion 3's bridge now ships as `arcadia session reconcile` (see preflight
 above); record that verification. Criteria 2 and 5 require grants that preflight
 records before the counted run begins.
 
-## State verified 2026-09-11 — do not rebuild the fixture
+## State — read it live, never from this page
 
-An earlier draft of this runbook told you to create the fixture. That work is
-done and pushed; re-running it would fork the Project. Confirmed on this host:
+An earlier draft of this runbook told you to create the fixture, and a later one
+asserted a verified snapshot of the host. That snapshot went stale, and its
+staleness was its own hazard: on 2026-09-21 the fixture Project was `paused`,
+the standing policy was Active at revision 8 / epoch 7 and scoped to `arcadia`
+rather than the fixture, and `codex-cli` had no capacity until 2026-09-26. A
+page cannot stay true about values that move, so this section no longer claims
+them. See Issue #454.
 
-| Fact | Verified value |
+**Step 0 is the `/runs` operator action
+`preflight-zero-prompt-rehearsal-2026-09-21`, not a hand-run sequence.** It
+reads every value below from the live host, refuses with the exact unmet
+precondition and changes nothing, and repins the protected broker only once
+everything else is green. Run it and keep its receipt; the manual commands in
+the historical note below are what it performs, not a procedure to follow
+first.
+
+What is stable, and what the fixture must still look like when the run begins:
+
+| Fact | Expected value |
 | --- | --- |
 | Fixture repository | `~/tmp/arcadia-zero-prompt-rehearsal`, clean, `main` |
 | Fixture remote | `https://github.com/pmark/arcadia-zero-prompt-rehearsal.git`, `main` pushed |
-| Project | `zero-prompt-rehearsal`, active |
-| Active plan | `zero-prompt-rehearsal-bootstrap`, active |
+| Project | `zero-prompt-rehearsal`, **`status: active`** |
+| Active plan | `zero-prompt-rehearsal-bootstrap` |
 | Pointer | `current_action: write-rehearsal-marker` |
 | Action A | `write-rehearsal-marker` — open, no dependencies |
 | Action B | `confirm-rehearsal-marker` — open, `depends_on: [write-rehearsal-marker]` |
 | Fixture progress | `REHEARSAL.md` does not exist yet; neither Action has run |
-| Production policy | **Inactive**, revision 0, epoch 0 |
-| Broker | `READY`, pinned at `f2a377e` |
-| Arcadia `main` | ahead of the broker; re-check with `git rev-parse --short main` |
 
-The last two rows are the one prerequisite defect: the installed broker is
-frozen at `f2a377e` while `main` has moved on, and it keeps drifting further
-with every merge — including the merge of this runbook. Do not trust a
-remembered sha here; the only thing that matters is that after Step 0 the
-broker's revision **equals `main`'s HEAD at the moment you rehearse**. Step 0
-repins it and asserts exactly that.
+Everything else — the production policy's state, revision, epoch and scope, the
+installed broker's revision, OpenCode's launch adapter and capacity — is read by
+Step 0's preflight. The one invariant that still matters here: after Step 0 the
+broker's revision **equals `main`'s HEAD at the moment you rehearse**.
 
-## Step 0 — repin the broker, then confirm READY
+## Historical note — what Step 0 does by hand
 
-The broker runs a frozen copy of Arcadia taken at install time. Rehearsing
-against `f2a377e` would prove a controller that is not the one `main` ships.
-From the Arcadia repository on `main`:
+The broker runs a frozen copy of Arcadia taken at install time, and it drifts
+behind `main` with every merge. From the Arcadia repository on `main`:
 
 ```sh
 pnpm arcadia go-broker install --json
@@ -186,9 +195,10 @@ pnpm arcadia go-broker status --json
 `status` must report `ready: true` and a `revision` equal to `main`'s HEAD.
 If `ready` is false it names the exact missing root, profile, or guardrail —
 fix that before going further rather than rehearsing a known-broken install.
+The preflight above performs exactly this and asserts the revision for you.
 
-Evidence: _(paste both JSON blocks; state the revision before and after, and
-confirm it now matches `git rev-parse HEAD` on `main`)_
+Evidence: _(paste the preflight run log and receipt, or both JSON blocks if you
+ran this by hand; state the revision before and after)_
 
 ## Step 1 — confirm the fixture preconditions, do not recreate them
 
@@ -227,7 +237,7 @@ cd ~/Dev/MR/Arcadia/arcadia
 arcadia production preview \
   --project zero-prompt-rehearsal \
   --plan zero-prompt-rehearsal/zero-prompt-rehearsal-bootstrap \
-  --provider codex-cli \
+  --provider opencode-cli \
   --concurrency 1 \
   --transitions validation,acceptance,pointer \
   --intent "Prove the zero-prompt production loop on a disposable fixture." \
@@ -235,21 +245,31 @@ arcadia production preview \
 ```
 
 `--provider` is **required** — omitting it fails with "Production scope needs at
-least one permitted provider." The value is `codex-cli`, not `codex`:
-`SESSION_PROVIDER` maps the `codex` session agent to that string
-(`src/sessions/index.ts:60`), and admission compares the policy scope against it
-directly (`src/production/policy.ts:585`), so `codex` would be accepted at grant
-time and then refuse every launch with `provider_not_permitted`.
+least one permitted provider." The value is `opencode-cli`, not `opencode`:
+`SESSION_PROVIDER` maps the `opencode` session agent to that string
+(`src/sessions/index.ts:70`), and admission compares the policy scope against it
+directly (`src/production/policy.ts:585`), so `opencode` would be accepted at
+grant time and then refuse every launch with `provider_not_permitted`.
+
+> **Rescoping replaces, it does not add.** When this runbook was written the
+> standing policy was Inactive, so the sentence below — "must name
+> `zero-prompt-rehearsal` and nothing else" — read as a pure safety property.
+> It is not one any more. On 2026-09-21 that same policy is **Active**,
+> revision 8, epoch 7, scoped to Project `arcadia` and Plan
+> `arcadia/bootstrap-managed-production-to-build-flight-deck`. Activating the
+> spread below therefore moves live production authority **off Arcadia's own
+> bootstrap Plan and onto the fixture**. Do it deliberately, record the previous
+> scope in the ledger, and restore it after the rehearsal.
 
 Read the preview. `scope.projects` must name `zero-prompt-rehearsal` and
-nothing else — this grant must not be able to admit Arcadia's own work or any
-other Project. Then activate with the exact revision the preview returned:
+nothing else — this grant must not be able to admit any other Project's work.
+Then activate with the exact revision the preview returned:
 
 ```sh
 arcadia production activate \
   --project zero-prompt-rehearsal \
   --plan zero-prompt-rehearsal/zero-prompt-rehearsal-bootstrap \
-  --provider codex-cli \
+  --provider opencode-cli \
   --concurrency 1 \
   --transitions validation,acceptance,pointer \
   --intent "Prove the zero-prompt production loop on a disposable fixture." \
@@ -278,7 +298,7 @@ integration into this policy.
 The standing form of that grant is the `preserve-on-exit-and-integrate` Action
 under the authority recorded by Decision 0058. That Action is still `open`, so
 unless it has shipped before your run, the integration grant is the visible
-host-controller `arcadia-go-broker-codex` invocation run from the governed base
+host-controller `arcadia-go-broker-opencode` invocation run from the governed base
 that reports `commitsToIntegrate` greater than zero and fast-forwards the exact
 candidate branch, recorded here as a predeclared operator step naming the exact
 Project, Plan, Action, agent-owned branch and governed base branch it may
@@ -295,12 +315,12 @@ Evidence: _(the integration grant you recorded, and the `go` invocation with its
 This is the bounded activation criterion 4 counts from. Everything after it
 must happen without you relaying a permission or hand-assembling a Session.
 
-From the **fixture repository root**, in a plain terminal — not inside a Codex
-or Claude Code session:
+From the **fixture repository root**, in a plain terminal — not inside a coding
+agent session (Codex, Claude Code or opencode):
 
 ```sh
 cd ~/tmp/arcadia-zero-prompt-rehearsal
-arcadia-go-broker-codex
+arcadia-go-broker-opencode
 ```
 
 The launcher takes no arguments. It runs Arcadia's canonical safety checks
@@ -310,31 +330,35 @@ worktree for `write-rehearsal-marker`. Record the prepared worktree path and
 branch it returns.
 
 Then start the coding agent against that worktree with the **exact** command
-Arcadia's own launch code builds (`buildAgentLaunchCommand`,
-`src/sessions/worktreePreparation.ts:57`):
+Arcadia's own launch code builds for opencode (`buildAgentLaunchCommand`,
+`src/sessions/worktreePreparation.ts:86-97`):
 
 ```sh
-codex -c default_permissions="arcadia-unattended" --ask-for-approval never \
-  -C <prepared-worktree-path> -m <plan recommended_model> "arcadia advance"
+cd <prepared-worktree-path> && \
+  opencode run --model <resolved model> [--variant <resolved variant>] "arcadia advance"
 ```
 
-`--ask-for-approval never` is what makes this a real test rather than a
-hopeful one: anything that would have prompted instead hard-fails. Zero
-prompts and zero permission failures are both required.
+`opencode run` is non-interactive: it presents no approval composer, so any
+permission it would have asked for either resolves from opencode's own
+configuration or fails the run. Take the model and variant from the Action's
+packet rather than from this page — `arcadia session preview-launch` reports
+the automatic selection and the bound identity, and the standard-tier binding
+is `opencode-zen` (`opencode-go/deepseek-v4.1-flash`, variant `low`). Record
+the resolved values in the ledger.
 
-If you drive this from Codex Desktop instead of the CLI, select the
-**arcadia-unattended** profile in the permissions control beneath the composer
-and wait for the environment to refresh **before** starting the task; Desktop
-cannot receive a profile selection from the task-creation call. If that named
-profile is not offered, fail closed — do not start the task. The remedy is
-`pnpm arcadia go-broker install`, a full Codex Desktop restart, then select
-the profile again.
+**Zero prompts is still absolute, and it is now measured differently.** Unlike
+Codex, this build ships no `arcadia-unattended` profile for opencode: go-broker
+installs the opencode worktree root but deliberately leaves opencode's
+sandbox and permission configuration alone — deferred by
+`add-opencode-production-provider` against a named trigger. So record what
+opencode actually did: every prompt shown and every permission-denied line.
+A prompt appearing is criterion 6 `failed`; do not answer it and continue.
 
 The session should create `REHEARSAL.md`, validate it, and hand off through
-`arcadia-advance-broker-codex` to preserve its branch and open a draft pull
+`arcadia-advance-broker-opencode` to preserve its branch and open a draft pull
 request.
 
-Evidence: _(the `arcadia-go-broker-codex` JSON; prepared worktree path and
+Evidence: _(the `arcadia-go-broker-opencode` JSON; prepared worktree path and
 branch; the launch command verbatim; the session transcript or its pointer;
 the exact count of approval prompts — acceptance requires zero; exit code and
 any permission-denied or sandbox-EPERM line — acceptance requires none;
@@ -368,12 +392,12 @@ not decide:
 - Reconciliation, the pointer advance and worktree preparation are the
   controller's work, and they **are** criterion 4's acceptance. Confirm each
   happened and that the Plan and Project documents actually changed.
-- `arcadia-go-broker-codex` does not launch the agent — `runGoBroker` calls
+- `arcadia-go-broker-opencode` does not launch the agent — `runGoBroker` calls
   `runGoCommand` without `--launch` (`src/goBroker.ts`). The guarded server-side
   launch lives in `expose-guarded-host-session-launch`, which is `done`, but this
   rehearsal still expects you to start Action B's Session by hand.
 
-So expect to run the `codex …` line by hand to start Action B. **That is not a
+So expect to run the `opencode …` line by hand to start Action B. **That is not a
 failure and does not fail criterion 4.** Record the exact command you ran and
 note that automatic launch is `prove-two-action-unattended-production`'s
 acceptance, not this one.
@@ -425,7 +449,7 @@ rather than reconstructing it afterwards.
 | Integration grant (separate, per Step 2.5) | |
 | Mechanical-completion grant | |
 | Reconciliation entry point verified (`arcadia session reconcile`) | |
-| Codex profile used | `arcadia-unattended` |
+| OpenCode provider / binding / model | `opencode-cli` / `opencode-zen` / `opencode-go/deepseek-v4.1-flash` |
 | Model | |
 | Writable roots in effect | |
 | Workspace root | |
@@ -443,7 +467,7 @@ rather than reconstructing it afterwards.
 | Action B worktree prepared by the controller | *(acceptance: yes)* |
 | Action completion / pointer writers used | *(acceptance: canonical writers, never preservation alone)* |
 | Actual Plan and Project document effects | |
-| How Action B's Session was started | *(hand-run `codex` line expected; paste it verbatim)* |
+| How Action B's Session was started | *(hand-run `opencode run` line expected; paste it verbatim)* |
 | **Other operator interventions after Step 3** | *(acceptance: 0; list every one)* |
 
 ## Step 6 — settle
@@ -466,15 +490,15 @@ target_ref: action/prove-zero-prompt-production-loop
 candidate_revision: <sha of the commit carrying the filled-in runbook>
 desired_result: Record the real-host zero-prompt rehearsal result.
 evidence:
-  - criterion: "Use the Zero Prompt Rehearsal fixture Project with two dependent small Actions and the same Codex profile, protected launchers, workspace root, dependency bridge, build, test, SQLite, Git, network and pull-request path that managed production will use."
+  - criterion: "Use the Zero Prompt Rehearsal fixture Project with two dependent small Actions and the same OpenCode provider profile, protected launchers, workspace root, dependency bridge, build, test, SQLite, Git, network and pull-request path that managed production will use."
     status: met
-    note: "Step 1 — fixture confirmed, not rebuilt; profile arcadia-unattended."
+    note: "Step 1 — fixture confirmed, not rebuilt; provider opencode-cli via the opencode-zen binding."
   - criterion: "Before the counted run, record and verify every required launch, remote-preservation, integration and mechanical-completion grant, with its exact fixture scope, policy/receipt identity, freshness and limits. A missing, stale or insufficient grant stops preflight before the run begins; no new approval halfway through the proof is part of a successful run."
     status: met
     note: "Steps 2-2.5 — production, remote-preservation, integration and mechanical-completion grants recorded before the run; none added mid-run."
-  - criterion: "Before the counted run, identify and verify the exact supported host entry point delivered by reconcile-session-exits-to-next-move and advance-approved-production-work that drives reconciliation and canonical completion without the continuous worker. Record its command and the revision-pinned arcadia-go-broker-codex host-controller invocation that prepares Action B, or the supported combined entry point if the prerequisite implementation provides one. Current go prepares work but does not supply the missing reconciliation bridge; until a supported bridge is shipped and verified, preflight refuses. Any explicit host-controller invocation is a visible, predeclared operator step, not autonomous execution."
+  - criterion: "Before the counted run, identify and verify the exact supported host entry point delivered by reconcile-session-exits-to-next-move and advance-approved-production-work that drives reconciliation and canonical completion without the continuous worker. Record its command and the revision-pinned arcadia-go-broker-opencode host-controller invocation that prepares Action B, or the supported combined entry point if the prerequisite implementation provides one. Current go prepares work but does not supply the missing reconciliation bridge; until a supported bridge is shipped and verified, preflight refuses. Any explicit host-controller invocation is a visible, predeclared operator step, not autonomous execution."
     status: met
-    note: "Preflight — arcadia session reconcile verified against the shipped bridge; the revision-pinned arcadia-go-broker-codex invocation was recorded as a visible operator step."
+    note: "Preflight — arcadia session reconcile verified against the shipped bridge; the revision-pinned arcadia-go-broker-opencode invocation was recorded as a visible operator step."
   - criterion: "From one bounded activation and the predeclared visible host steps, Arcadia prepares Action A's worktree, advances and monitors it, edits, builds, tests, preserves its exact branch and authorized draft pull request, reconciles evidence through the implemented canonical completion bridge, advances the governed pointer to Action B and prepares Action B's worktree. Record and verify the actual authoritative Action completion and both pointer document effects; a successful command response alone is insufficient."
     status: met
     note: "Steps 3-4 — reconciliation ran, the pointer advanced to confirm-rehearsal-marker, and B's worktree was prepared; actual Plan and Project document effects confirmed."
