@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { scopeToRepository } from "../src/commands/workMonitor.js";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -126,3 +127,19 @@ function gitAt(cwd: string, args: string[], isoDate: string): string {
     env: { ...process.env, GIT_AUTHOR_DATE: isoDate, GIT_COMMITTER_DATE: isoDate }
   });
 }
+
+describe("scopeToRepository", () => {
+  const projects = [
+    { id: "a", name: "Arcadia", repositoryPath: "/tmp/scope-arcadia" },
+    { id: "f", name: "Fixture", repositoryPath: "/tmp/scope-fixture" },
+    { id: "n", name: "No repo", repositoryPath: null }
+  ];
+
+  it("keeps only the Project that owns the repository, so an agent never sees another Project's paths", () => {
+    expect(scopeToRepository(projects, "/tmp/scope-fixture").map((p) => p.id)).toEqual(["f"]);
+  });
+
+  it("refuses a repository no Project owns instead of returning an empty scan", () => {
+    expect(() => scopeToRepository(projects, "/tmp/scope-elsewhere")).toThrow(/No active Project owns/);
+  });
+});

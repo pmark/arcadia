@@ -172,7 +172,7 @@ describe("protected Arcadia go broker", () => {
       () => "/tmp/arcadia-workspace"
     );
 
-    expect(workMonitorRunner).toHaveBeenCalledWith({ workspace: "/tmp/arcadia-workspace", includePullRequests: false });
+    expect(workMonitorRunner).toHaveBeenCalledWith({ workspace: "/tmp/arcadia-workspace", includePullRequests: false, repositoryPath: "/tmp/prepared" });
     expect(result.command).toBe("work-monitor-broker");
   });
 

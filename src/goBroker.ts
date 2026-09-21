@@ -36,7 +36,7 @@ export function assertGoBrokerHostController(request: GoBrokerRequest, environme
 
 export type GoBrokerRunner = (options: GoCommandOptions) => CommandSuccess<GoCommandData>;
 export type AdvanceBrokerRunner = (options: { workspace: string; repo: string }) => CommandSuccess<AdvanceCommandData>;
-export type WorkMonitorBrokerRunner = (options: { workspace: string; includePullRequests: false }) => CommandSuccess<WorkMonitorCommandData>;
+export type WorkMonitorBrokerRunner = (options: { workspace: string; includePullRequests: false; repositoryPath: string }) => CommandSuccess<WorkMonitorCommandData>;
 export type BrokerWorkspaceResolver = (source: string) => string;
 
 /**
@@ -87,7 +87,7 @@ export function runGoBroker(
   }
   if (request.operation === "work-monitor") {
     return {
-      ...workMonitorRunner({ workspace: resolveWorkspace(request.source), includePullRequests: false }),
+      ...workMonitorRunner({ workspace: resolveWorkspace(request.source), includePullRequests: false, repositoryPath: request.source }),
       command: "work-monitor-broker"
     };
   }
