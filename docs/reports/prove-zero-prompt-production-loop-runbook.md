@@ -41,6 +41,19 @@ zero. The `preserve-on-exit-and-integrate` Action (Decision 0058) is the standin
 form of that grant and is still `open`; if it has not shipped, the integration
 grant is the visible operator `go` invocation recorded in preflight.
 
+**One precondition expires on its own: provider capacity.** Admission is decided
+from an observation no older than 15 minutes
+(`CAPACITY_ADMISSION_LIMITS.observationFreshnessMs`, `src/codingAgents/capacity.ts:162`),
+so a bounded operator attestation passes `--hours 4` for its *receipt* but is
+*fresh* for only the first 15 minutes of it. The `/runs` preflight prints
+`ADMISSION EXPIRES` for exactly this reason.
+
+**Attest last.** Clear every other precondition, attest the real provider
+reading, confirm the preflight says `READY`, and start the run inside that
+window. Attesting first and then working through this runbook produces a
+`NOT READY` refusal that has nothing to do with the state of the world — the
+observation simply aged out.
+
 Any explicit host invocation must be a predeclared, visible operator step.
 Verify actual Action and pointer document effects. This rehearsal proves **zero
 sandbox approval prompts** and **zero hidden interventions**. It does not claim
@@ -209,6 +222,39 @@ status is `active` (`src/dispatch/queue.ts:130`). Editing `PROJECT.md` to
 `status: active` changes nothing on its own. That split is Issue #298: the
 document's `status:` has no canonical writer, so both have to be set.
 
+**The fixture repository must be on its governed base branch.** Protected Go
+refuses a source worktree whose branch is not a clearly agent-owned task branch
+(`src/commands/go.ts:218`, predicate `src/git/worktrees.ts:35`), and a Project
+repository left on an Arcadia-created operations branch — a pause branch, for
+instance — is refused with:
+
+> `Arcadia go only removes clearly agent-owned task branches.`
+
+Check that before anything else, because every later step assumes it:
+
+```sh
+cd ~/tmp/arcadia-zero-prompt-rehearsal
+git branch --show-current      # expect: main
+```
+
+If it is not `main`, compare the **whole branch** against the base and confirm
+the working tree is clean — both before switching, so you are not switching away
+from unmerged work:
+
+```sh
+git diff --stat main HEAD       # expect: NO output — every path, not just PROJECT.md
+git status --short              # expect: clean
+git switch main
+git status --short              # expect: clean, again
+```
+
+A branch whose entire difference from the base is a pause/reactivate pair is a
+provable no-op and can then be dropped with `git branch -D <that branch>`. If
+the diff is **not** empty, stop: the branch holds work and needs a reviewed
+recovery, not a delete. Scoping that diff to a single path would prove nothing
+about a branch that changed anything else, and `git branch -D` is not undoable
+from here.
+
 > **Why every `--json` below is piped through `sed -n '/^{/,$p'`:** when
 > `node_modules` is out of sync, the `arcadia` shim prints a
 > `[WARN] Your node_modules are out of sync…` line to **stdout** ahead of the
@@ -374,21 +420,69 @@ The production policy above deliberately permits only
 integration to happen under a **separately explicit** grant, so do not fold
 integration into this policy.
 
-The standing form of that grant is the `preserve-on-exit-and-integrate` Action
-under the authority recorded by Decision 0058. That Action is still `open`, so
-unless it has shipped before your run, the integration grant is the visible
-host-controller `arcadia-go-broker-opencode` invocation run from the governed base
-that reports `commitsToIntegrate` greater than zero and fast-forwards the exact
-candidate branch, recorded here as a predeclared operator step naming the exact
-Project, Plan, Action, agent-owned branch and governed base branch it may
-integrate.
+`preserve-on-exit-and-integrate` — the standing form of that grant under Decision
+0058 — is still `open`, so the grant is **yours to declare**, and nothing in
+Arcadia records it for you. Two constraints shape what you can write down, and
+both are load-bearing.
 
-Record that grant before the counted run. A missing or stale integration grant
-stops preflight: preservation alone must never be recorded as completion.
+**You cannot name the candidate branch yet.** `prepareAgentWorktree` derives it
+from a timestamp (`src/sessions/worktreePreparation.ts:44-47`), producing
+`opencode/write-rehearsal-marker-<utc-stamp>`. It does not exist until Step 3
+creates it. Declare everything else now and pin the branch from Step 3's
+prepared-worktree receipt; that is what makes this a *predeclared* grant rather
+than a guess.
 
-Evidence: _(the integration grant you recorded, and the `go` invocation with its
-`commitsToIntegrate` and `integration` fields)_
+**The invocation must run from the candidate worktree, not the Project root.**
+`runGoBroker` forces `source` to be its own working directory
+(`src/goBroker.ts:94-98`), and integration is keyed on the *source branch* against
+the base. Run from the Project root it reports `integration: "not-needed"` and
+`commitsToIntegrate: 0`, and integrates nothing at all — a grant that satisfies
+the letter of this step and then quietly does no work. So the grant names either
+the broker run **from** Action A's prepared worktree, or the explicit equivalent.
 
+Record this before the counted run:
+
+```
+Predeclared integration grant — criterion 5, under Decision 0058's authority
+
+Granted by:      <operator>, <date>
+Invocation:      arcadia go --repo ~/tmp/arcadia-zero-prompt-rehearsal \
+                   --source <Action A's prepared worktree> --apply
+                 (equivalently: arcadia-go-broker-opencode run FROM that worktree)
+Project:         zero-prompt-rehearsal
+Plan:            zero-prompt-rehearsal/zero-prompt-rehearsal-bootstrap
+Action:          write-rehearsal-marker
+Agent:           opencode
+Candidate:       opencode/write-rehearsal-marker-<utc-stamp>   [pinned from Step 3]
+Governed base:   main of ~/tmp/arcadia-zero-prompt-rehearsal
+Scope limits:    fast-forward integration of that one branch only; a candidate
+                 that cannot fast-forward is refused, not merged (go's
+                 reconciliationKind supports only fast-forward,
+                 already-integrated and not-needed, and every merge it runs is
+                 --ff-only). Stop and report on a conflict, a non-agent-owned
+                 branch, a divergent base, or a candidate outside this grant
+Not granted:     any other branch, non-fast-forward candidate integration,
+                 deploy/publish, spend, credentials, messaging, deletion, or
+                 pointer edits
+Ends when:       the rehearsal ends (Step 2.6 restores the policy)
+```
+
+A missing or stale integration grant stops preflight: preservation alone must
+never be recorded as completion.
+
+### When this Evidence line completes
+
+`commitsToIntegrate` and `integration` are fields on `GoCommandData`
+(`src/commands/go.ts:117-118`), and they carry a number only once a preserved
+candidate exists. So the evidence arrives at **Step 4**, not before Step 3:
+
+- **Before Step 3:** the declaration above. Nothing numeric exists yet.
+- **At Step 4**, run the invocation from Action A's prepared worktree. Expect
+  `integration: "fast-forward"` and `commitsToIntegrate: 1`, plus that commit on
+  the fixture's `main`.
+
+Evidence: _(the declaration above, then the Step 4 `go` JSON quoting
+`commitsToIntegrate` and `integration`)_
 ## Step 2.6 — restore the original scope when the rehearsal ends
 
 The grant in Step 2 is standing, and it now names a disposable fixture. When the
