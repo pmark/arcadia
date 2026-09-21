@@ -151,6 +151,22 @@ export function runProductionActivateCommand(
         { projects: options.project, plans: options.plan ?? [] }
       );
     }
+    /**
+     * A partially matched scope is the dangerous case: a requested Project or
+     * Plan that did not match is simply absent from what gets granted, and the
+     * operator sees no warning here — only `preview` reports `unmatched`. Naming
+     * a paused Project is the usual cause, so refuse and name the entry that did
+     * not match rather than granting less than what was asked for.
+     */
+    if (preview.unmatched.projects.length > 0 || preview.unmatched.plans.length > 0) {
+      throw validationError(
+        `The requested scope does not match queued work for: ${[
+          ...preview.unmatched.projects,
+          ...preview.unmatched.plans
+        ].join(", ")}. Activating would grant a scope that omits it.`,
+        { projects: preview.unmatched.projects, plans: preview.unmatched.plans }
+      );
+    }
     return activateProduction(db, {
       requestId: options.requestId.trim(),
       scope: preview.scope,

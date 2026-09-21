@@ -12,6 +12,7 @@ import {
 } from "../src/production/activation.js";
 import { buildJudgmentRequest } from "../src/production/judgment.js";
 import {
+  runProductionActivateCommand,
   runProductionPreviewCommand,
   runProductionDeactivateCommand,
   runProductionStatusCommand
@@ -652,6 +653,35 @@ describe("activation preview", () => {
       })
     );
     expect(wider.scopeFingerprint).not.toBe(base.scopeFingerprint);
+  });
+
+  it("refuses to activate a scope that would silently omit a named, unmatched Project", () => {
+    const target = fixtureWorkspace();
+    expect(() =>
+      runProductionActivateCommand({
+        workspace: target,
+        project: ["demo", "ghost"],
+        plan: ["demo/queue-plan"],
+        provider: ["opencode-cli"],
+        intent: "Extend the grant without dropping a named Project.",
+        requestId: "grant-partial-scope-1",
+        grantedBy: "operator"
+      })
+    ).toThrow(/does not match queued work for: ghost/);
+  });
+
+  it("still activates the whole requested scope when every entry matches", () => {
+    const target = fixtureWorkspace();
+    const activated = runProductionActivateCommand({
+      workspace: target,
+      project: ["demo"],
+      plan: ["demo/queue-plan"],
+      provider: ["opencode-cli"],
+      intent: "Authorize the fixture Plan.",
+      requestId: "grant-full-scope-1",
+      grantedBy: "operator"
+    });
+    expect(activated.data.result.policy.scope.projects).toEqual(["demo"]);
   });
 });
 

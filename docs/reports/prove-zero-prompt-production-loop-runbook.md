@@ -307,10 +307,27 @@ scope against it directly (`src/production/policy.ts:585`), so `opencode` would
 be accepted at grant time and then refuse every launch with
 `provider_not_permitted`.
 
+**The provider list is policy-wide, not per-Project.** The scope carries one flat
+`providers` list, so naming both providers authorizes **both for both Projects**:
+Arcadia's bootstrap Plan may be admitted with `opencode-cli`, and the fixture may
+be admitted with `codex-cli`. The CLI cannot express an
+"Arcadia on codex, fixture on opencode" pairing — that would need per-Project
+provider bindings enforced at admission, which do not exist today. The Project and
+Plan lists *are* exact, so no unrelated Plan is pulled in. Choose deliberately:
+
+- **Both listed** (what the command above does): preserves exactly what the
+  current policy authorizes and adds OpenCode. Arcadia's own work keeps its
+  provider, and Codex becomes usable for the fixture again once its window
+  resets on 2026-09-26.
+- **`--provider opencode-cli` alone**: authorizes OpenCode and nothing else, for
+  both Projects. Use this if the point is that *only* OpenCode may run, accepting
+  that Arcadia's own critical path is then restricted to OpenCode too.
+
 **Read `unmatched` before you activate.** A paused Project cannot be matched, so
 an `unmatched.projects` entry naming `zero-prompt-rehearsal` means Step 1 did
 not take effect and the scope you are about to grant would silently drop the
-fixture:
+fixture. Since this PR, `activate` refuses such a partially matched scope rather
+than granting it:
 
 ```sh
 jq '{unmatched: .data.preview.unmatched,
