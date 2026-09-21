@@ -1,0 +1,33 @@
+{
+  "agent_ask": "v1",
+  "request_id": "decide-flexible-provider-incapacity-handling-2026-09-21",
+  "project": "arcadia",
+  "intent": "decision",
+  "requested_authority": "apply_if_approved",
+  "desired_result": "How should Arcadia handle a provider that cannot run the work, given that capacity evidence is now advisory rather than a gate?",
+  "rationale": "The operator directed on 2026-09-21 that capacity attestation should stop blocking execution because it is unreliable at best, and that a better solution is flexible handling of provider incapacity before or during a session. The first half is delivered as configuration: codingAgent.capacityGateEnabled: false with no provider named now exempts every configured provider, so admission waits on no receipt and a provider with no allowance is discovered when the work runs. That leaves the second half, and it is not a mechanics question. CapacityAdmittedSelection and selectCapacityAdmittedCodingAgent already exist in src/codingAgents/capacity.ts and implement exactly the advertised-substitution behaviour, but they have no production caller, and where they could be called is constrained: resolve-production-agent-and-launch-preview records that selection never silently changes an immutable packet provider, so substitution can only happen before a packet binds. Retrying on another provider after a session has started is a different thing again, and feed-and-supervise-managed-production's accepted criterion 5 explicitly forbids looping across providers to bypass a failure. Choosing between those is a judgment about spend, replay risk and where an operator learns what happened, and it changes accepted criteria of two completed Actions, so it needs the operator's answer rather than an agent's preference. The question is genuinely open: all three options leave the config change in place, and none of them widens merge, deploy, publish, credentials or messaging authority.",
+  "options": [
+    {
+      "label": "Substitute the provider before a packet binds, and record why",
+      "consequence": "session preview-launch stops failing when the intended provider has no capacity: selectCapacityAdmittedCodingAgent picks a different permitted, admitted provider under the same capability floors and never a weaker one, and the preview reports the substitution, its reason and the provider that will actually run. Nothing is bound yet, so no immutable packet changes and no work is replayed. Costs one changed preview selection the operator must read, and the resume guidance must keep 'do not replay work the first provider already applied' true.",
+      "recommended": true
+    },
+    {
+      "label": "Retry on another provider when a Session fails",
+      "consequence": "Selection stays as it is, and a launch or Session that fails for a capacity reason is re-admitted on another permitted provider. This covers incapacity discovered mid-session, which option 1 cannot, but it is the cross-provider retry that feed-and-supervise-managed-production criterion 5 forbids, so that criterion must be amended first, and it must not replay partially-applied work or duplicate a commit. It also spends on a second provider's allowance without a fresh operator choice.",
+      "recommended": false
+    },
+    {
+      "label": "Neither: capacity stays advisory and incapacity surfaces at launch",
+      "consequence": "This is what the configuration change already delivers. The gate never blocks, a provider with no allowance fails when the work runs, and the existing finite repair budget reports it. Nothing new is built and no criterion changes. The cost is a wasted launch and a manual step instead of an automatic fallback, and an Action that could have run on a permitted provider simply stops until the operator notices.",
+      "recommended": false
+    }
+  ],
+  "references": [
+    "src/codingAgents/capacity.ts",
+    "src/sessions/launch.ts",
+    "src/workspace/config.ts",
+    "START_HERE.md",
+    "docs/plans/bootstrap-managed-production-to-build-flight-deck.md"
+  ]
+}
