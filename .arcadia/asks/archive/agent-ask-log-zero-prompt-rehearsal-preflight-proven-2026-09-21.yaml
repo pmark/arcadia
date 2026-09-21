@@ -1,0 +1,19 @@
+{
+  "agent_ask": "v1",
+  "request_id": "log-zero-prompt-rehearsal-preflight-proven-2026-09-21",
+  "project": "arcadia",
+  "intent": "log",
+  "requested_authority": "apply_if_approved",
+  "desired_result": "Record that the zero-prompt rehearsal's preconditions were completed and the chain proven READY end to end on the real host without launching a model, and that the counted run itself remains the operator's.",
+  "rationale": "This entry records a proof and a repair, not a completion: the rehearsal did not run, no coding-agent process was started, and prove-zero-prompt-production-loop is still open. Two things were repaired. First, the fixture repository was sitting on arcadia/pause-zero-prompt-rehearsal-20260917T231722Z, an Arcadia operations branch, so protected Go refused its root outright ('Arcadia go only removes clearly agent-owned task branches', src/commands/go.ts:218). The branch was proven to be a whole-branch no-op against main before it was deleted, main was pushed, and the launcher's read-only preview then accepted the root with sourceBranch main, baseBranch main, integration not-needed, commitsToIntegrate 0 and the dispatch action resolving to write-rehearsal-marker. Second, the /runs operator action preflight-zero-prompt-rehearsal-2026-09-21 was corrected: it now reads the database status rather than only PROJECT.md, prints the correct non-displacing policy remedy, prints ADMISSION EXPIRES, and describes the integration grant as the candidate-worktree invocation rather than one run from the Project root. With the operator's re-attested opencode-cli reading (7d window, 10 percent used, from the opencode.ai dashboard) the preflight reached RESULT: READY, exit 0, and repinned the protected broker to main HEAD af55a3c9. The chain was then proven without a model call: arcadia next --project zero-prompt-rehearsal reports the Action dispatchable, arcadia session preview-launch resolves write-rehearsal-marker, buildAgentLaunchCommand produces the exact opencode run line, the opencode binary answers 1.15.4, the worktree root is writable, and the worker heartbeat registers the fixture repository as a go route. One property was proven by observation rather than inference: admission rests on an observation under 15 minutes old, so the same attestation that produced READY at 06:21:06Z produced capacity_stale at 06:26:55Z. That makes capacity the one precondition that expires on its own, and the operator must attest last and start inside the window. The runbook's premises were fixed in PR #461, which closes #458: Step 2.5 can now be satisfied (the candidate branch is only knowable from Step 3, and the integrating invocation must run from that worktree), and Step 1 asserts the fixture is on its governed base branch rather than merely clean. Three defects were filed rather than repaired in passing: #458 (closed by #461), #459 (go's refusal message names an allowedPrefixes list that omits opencode/, which SAFE_TASK_BRANCH accepts), and #460 (the fixture's Actions have no build packet, so the guarded session-launch path reports planning_required; the manual path this runbook uses is unaffected, but prove-two-action-unattended-production will need it). What remains is the counted run itself, which belongs in the operator's own terminal: an agent driving it would be the hidden intervention criterion 6 forbids.",
+  "references": [
+    "docs/reports/prove-zero-prompt-production-loop-runbook.md",
+    "docs/plans/bootstrap-managed-production-to-build-flight-deck.md",
+    "artifacts/generated/operator-scripts/preflight-zero-prompt-rehearsal-2026-09-21.sh",
+    "src/commands/go.ts",
+    "src/production/policy.ts",
+    "https://github.com/pmark/arcadia/pull/461",
+    "https://github.com/pmark/arcadia/issues/459",
+    "https://github.com/pmark/arcadia/issues/460"
+  ]
+}
