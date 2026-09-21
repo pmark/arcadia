@@ -4,7 +4,7 @@ type: decision
 id: "0063"
 slug: how-should-arcadia-handle-a-provider-that-cannot-run-the-work-given-that
 project: arcadia
-status: open
+status: approved
 question: How should Arcadia handle a provider that cannot run the work, given that capacity evidence is now advisory rather than a gate?
 gap_type: missing-decision
 recommendation: Substitute the provider before a packet binds, and record why
@@ -21,6 +21,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-09-21
+answer: Substitute the provider before a packet binds, and record why
+decided: 2026-09-21
 ---
 
 # Decision 0063: How should Arcadia handle a provider that cannot run the work, given that capacity evidence is now advisory rather than a gate?
