@@ -449,8 +449,8 @@ rather than reconstructing it afterwards.
 | Integration grant (separate, per Step 2.5) | |
 | Mechanical-completion grant | |
 | Reconciliation entry point verified (`arcadia session reconcile`) | |
-| OpenCode provider / binding / model | `opencode-cli` / `opencode-zen` / `opencode-go/deepseek-v4.1-flash` |
-| Model | |
+| OpenCode provider (granted by the policy in Step 2) | `opencode-cli` |
+| Binding / model / variant (copy the packet's resolved selection) | *(from `arcadia session preview-launch`; never hand-typed)* |
 | Writable roots in effect | |
 | Workspace root | |
 | Dependency bridge used | |
@@ -492,7 +492,7 @@ desired_result: Record the real-host zero-prompt rehearsal result.
 evidence:
   - criterion: "Use the Zero Prompt Rehearsal fixture Project with two dependent small Actions and the same OpenCode provider profile, protected launchers, workspace root, dependency bridge, build, test, SQLite, Git, network and pull-request path that managed production will use."
     status: met
-    note: "Step 1 — fixture confirmed, not rebuilt; provider opencode-cli via the opencode-zen binding."
+    note: "Step 1 — fixture confirmed, not rebuilt; provider opencode-cli, with the binding, model and variant copied from the packet's resolved preview-launch selection."
   - criterion: "Before the counted run, record and verify every required launch, remote-preservation, integration and mechanical-completion grant, with its exact fixture scope, policy/receipt identity, freshness and limits. A missing, stale or insufficient grant stops preflight before the run begins; no new approval halfway through the proof is part of a successful run."
     status: met
     note: "Steps 2-2.5 — production, remote-preservation, integration and mechanical-completion grants recorded before the run; none added mid-run."
