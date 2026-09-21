@@ -60,6 +60,11 @@ export function finalMessageFromExecution(input: {
     }
   }
 
+  if (input.profile.provider === "opencode-cli") {
+    const text = extractOpencodeText(input.stdout);
+    if (text) return text.endsWith("\n") ? text : `${text}\n`;
+  }
+
   const fallback = input.stdout || input.stderr || `${codingAgentLabel(input.profile)} execution produced no output.\n`;
   return fallback.endsWith("\n") ? fallback : `${fallback}\n`;
 }
@@ -124,6 +129,30 @@ function extractClaudeResult(stdout: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * `opencode run --format json` prints one JSON event per line: tool calls,
+ * step markers and `text` parts. The agent's answer is the `text` parts; the
+ * rest is transcript. Falling back to raw stdout left planning validation
+ * reading tool output and finding no section headings (zero-prompt rehearsal
+ * Action B). Lines that are not JSON, or not text events, are ignored.
+ */
+function extractOpencodeText(stdout: string): string | null {
+  const parts: string[] = [];
+  for (const line of stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) continue;
+    try {
+      const event = JSON.parse(trimmed) as { type?: unknown; part?: { text?: unknown } };
+      if (event.type === "text" && typeof event.part?.text === "string" && event.part.text.trim()) {
+        parts.push(event.part.text.trim());
+      }
+    } catch {
+      // Not an event line.
+    }
+  }
+  return parts.length > 0 ? parts.join("\n\n") : null;
 }
 
 function renderCommandArgument(value: string): string {
