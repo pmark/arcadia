@@ -13,16 +13,41 @@ export interface WorkspaceMemoryConfig {
 }
 
 /**
- * Which single coding-agent provider the operator has chosen, and whether
- * that provider's capacity gate is enforced. `capacityGateEnabled: false` is
- * a deliberate, visible operator override — the provider is treated as
- * admitted without a real observation or a bounded attestation. It is not
- * proof of any real limit, only a stated operator choice, and it applies to
- * exactly the one named provider, never silently to any other.
+ * Whether the capacity gate is enforced, and for which providers.
+ * `capacityGateEnabled: false` is a deliberate, visible operator override: the
+ * exempted providers are treated as admitted without a real observation or a
+ * bounded attestation. It is not proof of any real limit, only a stated
+ * operator choice.
+ *
+ * Naming `provider` exempts exactly that one provider — never silently any
+ * other. Omitting it exempts **every configured provider**, which is the
+ * operator saying capacity evidence is not a gate at all. Both forms are
+ * off by default: the gate is enforced unless the operator turns it off.
  */
 export interface WorkspaceCodingAgentConfig {
   provider?: string;
   capacityGateEnabled?: boolean;
+}
+
+/**
+ * Which providers the config exempts: `"all"` for every configured provider,
+ * a list of ids for specific ones, or `null` when the gate is enforced
+ * everywhere (the default).
+ */
+export type UnmeteredProviderSelector = "all" | readonly string[] | null;
+
+/**
+ * Resolve the config into the selector the capacity observer takes.
+ * `null` means the gate is enforced for every provider. `"all"` means the
+ * operator disabled it entirely, which is the difference between "this one is
+ * unmetered" and "capacity evidence is not a gate".
+ */
+export function unmeteredProviderSelector(
+  config: WorkspaceCodingAgentConfig | undefined
+): UnmeteredProviderSelector {
+  if (config?.capacityGateEnabled !== false) return null;
+  const named = config.provider?.trim();
+  return named ? [named] : "all";
 }
 
 export interface WorkspaceArcadiaConfig {
@@ -135,14 +160,8 @@ function parseCodingAgentConfig(
   if (codingAgent.capacityGateEnabled !== undefined && typeof codingAgent.capacityGateEnabled !== "boolean") {
     throw validationError("Workspace codingAgent.capacityGateEnabled must be a boolean.", { configPath });
   }
-  if (
-    codingAgent.capacityGateEnabled === false &&
-    (typeof codingAgent.provider !== "string" || !codingAgent.provider.trim())
-  ) {
-    throw validationError(
-      "Workspace codingAgent.provider is required when codingAgent.capacityGateEnabled is false.",
-      { configPath }
-    );
+  if (codingAgent.provider !== undefined && !String(codingAgent.provider).trim()) {
+    throw validationError("Workspace codingAgent.provider must not be blank when present.", { configPath });
   }
   return {
     provider: typeof codingAgent.provider === "string" ? codingAgent.provider.trim() : undefined,

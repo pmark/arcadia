@@ -776,7 +776,7 @@ deleting, spending, credentials, production access, and messaging each still
 need their own Decision, and a Plan that is not listed is never activated just
 because it is next on screen.
 
-### Provider capacity gates every admission
+### Provider capacity gates every admission, unless you turn the gate off
 
 Being Active is not enough on its own. Before any Action is admitted, Arcadia
 has to be able to *prove* the provider has included allowance left. Read what
@@ -798,14 +798,42 @@ purchased credits and banked resets kept separate from plan allowance, and the
 fields this host simply cannot report. Every receipt is stamped `REAL` or
 `SIMULATED`, so a fixture can never be mistaken for evidence about your account.
 
-**Unknown capacity is inadmissible.** Unattended admission refuses — with the
-reason printed — when capacity is unknown, when the observation is stale, when
-included-versus-paid mode cannot be established, when a window is spent, or
-when it is inside the reserve margin that keeps an already-admitted Run able to
-finish. An elapsed reset time is not renewed allowance: work is readmitted only
-after a fresh observation shows the new window. Arcadia never redeems a banked
-reset, buys credits, or enables paid fallback to keep busy — if a banked reset
-exists, it says so and leaves it alone.
+**Unknown capacity is inadmissible by default.** Unattended admission refuses —
+with the reason printed — when capacity is unknown, when the observation is
+stale, when included-versus-paid mode cannot be established, when a window is
+spent, or when it is inside the reserve margin that keeps an already-admitted Run
+able to finish. An elapsed reset time is not renewed allowance: work is
+readmitted only after a fresh observation shows the new window. Arcadia never
+redeems a banked reset, buys credits, or enables paid fallback to keep busy — if
+a banked reset exists, it says so and leaves it alone.
+
+**Or you can state that capacity is not a gate at all.** The evidence is
+unreliable by construction: an automatic observation describes one moment, and an
+attestation is only your own reading of a dashboard, so neither deserves to *stop*
+work. In `<workspace>/config/arcadia.json`:
+
+```json
+{
+  "codingAgent": {
+    "capacityGateEnabled": false
+  }
+}
+```
+
+That exempts **every configured provider**. Admission stops waiting on a receipt,
+and a provider with no allowance left is discovered when the work runs rather than
+before it is admitted. Add a `provider` name to exempt exactly that one and leave
+every other provider fully gated:
+
+```json
+{
+  "codingAgent": { "provider": "opencode-cli", "capacityGateEnabled": false }
+}
+```
+
+Either way this is a standing operator choice and never proof of a real limit; it
+lasts until the config changes, and it does not relax anything else — no banked
+reset is redeemed, no credit is bought, and no paid fallback is enabled.
 
 When one provider is limited and another configured provider is eligible,
 selection moves to it under the same capability floors — never to something

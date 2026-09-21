@@ -14,7 +14,7 @@ import {
   type ProviderCapacityObservation
 } from "../codingAgents/capacity.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
-import { loadWorkspaceConfig } from "../workspace/config.js";
+import { loadWorkspaceConfig, unmeteredProviderSelector } from "../workspace/config.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 
 export interface CapacityStatusOptions {
@@ -62,8 +62,7 @@ export async function runCapacityStatusCommand(
   const profiles = registries.codingAgents.profiles;
   const now = options.now ?? new Date();
   const codingAgentConfig = loadWorkspaceConfig(getWorkspacePaths(workspacePath).configFile).codingAgent;
-  const unmeteredProvider =
-    codingAgentConfig?.capacityGateEnabled === false ? codingAgentConfig.provider ?? null : null;
+  const unmeteredProvider = unmeteredProviderSelector(codingAgentConfig);
 
   const refreshed = options.refresh
     ? await refreshProviderCapacity(profiles, { now, unmeteredProvider })
