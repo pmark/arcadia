@@ -288,6 +288,8 @@ export interface AgentAskContractData {
   fields: { envelope: string[]; action: string[]; option: string[]; required: string[] };
   actionId: { pattern: string; maxLength: number; derivedWhenOmitted: true };
   authorityBoundary: string[];
+  /** A worked `complete` Ask, so an agent never has to hunt for an example outside its worktree. */
+  completeExample: Record<string, unknown>;
 }
 
 /**
@@ -317,7 +319,17 @@ export function runAgentAskContractCommand(): CommandSuccess<AgentAskContractDat
         "Agent text cannot approve, reject, defer, answer a Decision, merge, deploy, publish, spend, use credentials, message externally, or widen a prior approval.",
         "Preview performs zero Project writes and creates no queue entry.",
         "Replaying a request_id returns the original receipt; changed content under a used id is refused."
-      ]
+      ],
+      completeExample: {
+        agent_ask: "v1",
+        request_id: "complete-<action-id>-<yyyy-mm-dd>",
+        project: "<project-slug>",
+        intent: "complete",
+        target_ref: "action/<action-id>",
+        candidate_revision: "<git rev-parse HEAD of the candidate worktree, after the final commit>",
+        evidence: [{ criterion: "<acceptance criterion, verbatim and in the plan's order>", status: "met" }],
+        desired_result: "Mark <action-id> complete."
+      }
     }
   });
 }
@@ -334,6 +346,8 @@ export function renderAgentAskContractSuccess(response: CommandSuccess<AgentAskC
     `Option fields (decision intent only): ${d.fields.option.join(", ")}`,
     `Action id: ${d.actionId.pattern} (max ${d.actionId.maxLength}; derived from desired_result when omitted)`,
     "Authority boundary:",
-    ...d.authorityBoundary.map((line) => `  - ${line}`)
+    ...d.authorityBoundary.map((line) => `  - ${line}`),
+    "Complete Ask (one evidence entry per declared acceptance criterion, each verbatim and in order; settle only from your own worktree):",
+    `  ${JSON.stringify(d.completeExample)}`
   ];
 }
