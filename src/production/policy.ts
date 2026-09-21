@@ -820,7 +820,14 @@ function toReceipt(row: AdmissionRow): AdmissionReceipt {
   };
 }
 
-function findTransitionReceipt(
+/**
+ * The already-recorded transition for this request id, if any. Exported because
+ * a caller that validates the *current* queue before activating has to ask this
+ * first: idempotency outranks validation, or a retry after the queue moved — or
+ * after a named Project was paused — becomes a refusal instead of the receipt it
+ * should replay.
+ */
+export function findTransitionReceipt(
   db: Database.Database,
   requestId: string
 ): { revision_before: number } | undefined {
