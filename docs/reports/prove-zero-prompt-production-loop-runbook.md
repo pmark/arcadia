@@ -200,11 +200,49 @@ The preflight above performs exactly this and asserts the revision for you.
 Evidence: _(paste the preflight run log and receipt, or both JSON blocks if you
 ran this by hand; state the revision before and after)_
 
-## Step 1 — confirm the fixture preconditions, do not recreate them
+## Step 1 — reactivate the fixture, then confirm its preconditions
+
+The fixture Project is `paused` in Arcadia's **database**, and that — not the
+`status:` line in the fixture's own `PROJECT.md` — is what the agent queue and
+the production policy read: `buildAgentQueue` walks only projects whose database
+status is `active` (`src/dispatch/queue.ts:130`). Editing `PROJECT.md` to
+`status: active` changes nothing on its own. That split is Issue #298: the
+document's `status:` has no canonical writer, so both have to be set.
+
+> **Why every `--json` below is piped through `sed -n '/^{/,$p'`:** when
+> `node_modules` is out of sync, the `arcadia` shim prints a
+> `[WARN] Your node_modules are out of sync…` line to **stdout** ahead of the
+> JSON, so `arcadia … --json | jq` fails with
+> `parse error: Invalid numeric literal at line 1, column 6`. The `sed` drops
+> that banner (and anything else before the first `{`). If you see the warning
+> in the main checkout rather than a worktree, `mise exec -- pnpm install`
+> clears its cause.
+
+```sh
+cd ~/Dev/MR/Arcadia/arcadia
+
+FIXTURE_ID="$(arcadia project list --json 2>/dev/null \
+  | sed -n '/^{/,$p' \
+  | jq -r '.data.projects[] | select(.slug=="zero-prompt-rehearsal") | .id')"
+echo "$FIXTURE_ID"          # expect a proj_… id; empty means the Project is gone
+
+arcadia project update "$FIXTURE_ID" --status active --json
+arcadia project list --json 2>/dev/null \
+  | sed -n '/^{/,$p' \
+  | jq -r '.data.projects[] | select(.slug=="zero-prompt-rehearsal") | .status'
+# expect: active
+```
+
+Then commit the matching document edit in the fixture, so the two sources agree
+and the tree is clean — the preflight refuses a dirty fixture repository:
 
 ```sh
 cd ~/tmp/arcadia-zero-prompt-rehearsal
-git status --short          # expect: empty
+git status --short          # expect: M PROJECT.md
+git add PROJECT.md
+git commit -m "chore(arcadia): reactivate the Zero Prompt Rehearsal Project for the rehearsal"
+git push
+
 git log --oneline -1
 ls REHEARSAL.md             # expect: No such file or directory
 
@@ -220,10 +258,10 @@ If `REHEARSAL.md` does exist, a previous rehearsal left state behind. Reset
 the fixture to its initial commit before continuing, or the run passes for the
 wrong reason.
 
-Evidence: _(paste the four outputs; confirm clean tree, no `REHEARSAL.md`,
-and `write-rehearsal-marker` dispatchable)_
+Evidence: _(the `project update` JSON; `project list` showing `active`; the
+fixture commit; `next` resolving `write-rehearsal-marker` dispatchable)_
 
-## Step 2 — scope the standing production policy to this Project only
+## Step 2 — extend the standing production policy to include this Project
 
 Run Arcadia's CLI **from the Arcadia checkout, not the fixture repository**.
 `pnpm arcadia` resolves through Arcadia's own `package.json`, so it fails with
@@ -231,49 +269,73 @@ Run Arcadia's CLI **from the Arcadia checkout, not the fixture repository**.
 standing in at the end of Step 1. The bare `arcadia` command works from any
 directory; the `cd` below removes the question entirely.
 
+> **Activation replaces the entire policy, so this command names everything that
+> must survive it — including Arcadia's own scope.** `--project`, `--plan` and
+> `--provider` are each **repeatable**. Adding `--project arcadia` and
+> `--plan arcadia/bootstrap-managed-production-to-build-flight-deck` keeps
+> production authorization for Arcadia's bootstrap Plan intact; dropping them is
+> what would move live production authority onto the fixture alone. The
+> preflight refuses with this exact remedy if any part of the current scope is
+> missing from the policy.
+
 ```sh
 cd ~/Dev/MR/Arcadia/arcadia
 
+# Record what is there now; Step 2.6 restores exactly this.
+arcadia production status --json 2>/dev/null \
+  | sed -n '/^{/,$p' \
+  | jq '.data.read.policy | {revision, epoch, scope}'
+
 arcadia production preview \
+  --project arcadia \
   --project zero-prompt-rehearsal \
+  --plan arcadia/bootstrap-managed-production-to-build-flight-deck \
   --plan zero-prompt-rehearsal/zero-prompt-rehearsal-bootstrap \
+  --provider codex-cli \
   --provider opencode-cli \
   --concurrency 1 \
   --transitions validation,acceptance,pointer \
-  --intent "Prove the zero-prompt production loop on a disposable fixture." \
-  --json
+  --intent "Keep the unattended-production critical path and add the disposable Zero Prompt Rehearsal fixture so prove-zero-prompt-production-loop can run on opencode-cli." \
+  --json 2>/dev/null | sed -n '/^{/,$p' | tee /tmp/zero-prompt-preview.json
 ```
 
 `--provider` is **required** — omitting it fails with "Production scope needs at
-least one permitted provider." The value is `opencode-cli`, not `opencode`:
-`SESSION_PROVIDER` maps the `opencode` session agent to that string
-(`src/sessions/index.ts:70`), and admission compares the policy scope against it
-directly (`src/production/policy.ts:585`), so `opencode` would be accepted at
-grant time and then refuse every launch with `provider_not_permitted`.
+least one permitted provider." The rehearsal needs `opencode-cli`, not
+`opencode`: `SESSION_PROVIDER` maps the `opencode` session agent to
+`opencode-cli` (`src/sessions/index.ts:70`), and admission compares the policy
+scope against it directly (`src/production/policy.ts:585`), so `opencode` would
+be accepted at grant time and then refuse every launch with
+`provider_not_permitted`.
 
-> **Rescoping replaces, it does not add.** When this runbook was written the
-> standing policy was Inactive, so the sentence below — "must name
-> `zero-prompt-rehearsal` and nothing else" — read as a pure safety property.
-> It is not one any more. On 2026-09-21 that same policy is **Active**,
-> revision 8, epoch 7, scoped to Project `arcadia` and Plan
-> `arcadia/bootstrap-managed-production-to-build-flight-deck`. Activating the
-> spread below therefore moves live production authority **off Arcadia's own
-> bootstrap Plan and onto the fixture**. Do it deliberately, record the previous
-> scope in the ledger, and restore it after the rehearsal.
+**Read `unmatched` before you activate.** A paused Project cannot be matched, so
+an `unmatched.projects` entry naming `zero-prompt-rehearsal` means Step 1 did
+not take effect and the scope you are about to grant would silently drop the
+fixture:
 
-Read the preview. `scope.projects` must name `zero-prompt-rehearsal` and
-nothing else — this grant must not be able to admit any other Project's work.
+```sh
+jq '{unmatched: .data.preview.unmatched,
+     includedProjects: .data.preview.includedProjects,
+     providers: .data.preview.scope.providers,
+     expectedRevision: .data.preview.expectedRevision}' /tmp/zero-prompt-preview.json
+# expect unmatched:      {"projects":[],"plans":[]}
+# expect includedProjects: ["arcadia","zero-prompt-rehearsal"]
+# expect providers:        ["codex-cli","opencode-cli"]
+```
+
 Then activate with the exact revision the preview returned:
 
 ```sh
 arcadia production activate \
+  --project arcadia \
   --project zero-prompt-rehearsal \
+  --plan arcadia/bootstrap-managed-production-to-build-flight-deck \
   --plan zero-prompt-rehearsal/zero-prompt-rehearsal-bootstrap \
+  --provider codex-cli \
   --provider opencode-cli \
   --concurrency 1 \
   --transitions validation,acceptance,pointer \
-  --intent "Prove the zero-prompt production loop on a disposable fixture." \
-  --request-id prove-zero-prompt-production-loop-<yyyy-mm-dd> \
+  --intent "Keep the unattended-production critical path and add the disposable Zero Prompt Rehearsal fixture so prove-zero-prompt-production-loop can run on opencode-cli." \
+  --request-id add-zero-prompt-rehearsal-fixture-<yyyy-mm-dd> \
   --granted-by "P. Mark Anderson" \
   --expect-revision <n from preview> \
   --json
@@ -281,12 +343,12 @@ arcadia production activate \
 
 `--request-id` and `--granted-by` are required; `--expect-revision` is what
 makes the grant refuse to apply if the policy moved between preview and
-activate. Pass `--plan` explicitly here: `preview` defaults it to every Plan of
-the named Projects, but `activate` does not, and an omitted `--plan` fails with
+activate. Pass `--plan` explicitly: `preview` defaults it to every Plan of the
+named Projects, but `activate` does not, and an omitted `--plan` fails with
 "Production scope needs at least one Plan."
 
-Evidence: _(paste preview + activate JSON; quote `scope.projects` and the new
-revision/epoch)_
+Evidence: _(the pre-recorded scope; preview + activate JSON; quote
+`scope.projects`, `scope.providers`, `unmatched` and the new revision/epoch)_
 
 ## Step 2.5 — record the separate integration grant (criterion 5)
 
@@ -309,6 +371,46 @@ stops preflight: preservation alone must never be recorded as completion.
 
 Evidence: _(the integration grant you recorded, and the `go` invocation with its
 `commitsToIntegrate` and `integration` fields)_
+
+## Step 2.6 — restore the original scope when the rehearsal ends
+
+The grant in Step 2 is standing, and it now names a disposable fixture. When the
+rehearsal is over, restore the scope you recorded at the top of Step 2 so the
+fixture stops being admitted. Naming only Arcadia is correct **here**, because
+this command's whole purpose is to remove the fixture:
+
+```sh
+cd ~/Dev/MR/Arcadia/arcadia
+
+arcadia production preview \
+  --project arcadia \
+  --plan arcadia/bootstrap-managed-production-to-build-flight-deck \
+  --provider codex-cli \
+  --concurrency 1 \
+  --transitions validation,acceptance,pointer \
+  --intent "Build the unattended-production critical path from the GitHub board without a per-Action relay." \
+  --json
+# read expectedRevision, then pass it to --expect-revision below
+
+arcadia production activate \
+  --project arcadia \
+  --plan arcadia/bootstrap-managed-production-to-build-flight-deck \
+  --provider codex-cli \
+  --concurrency 1 \
+  --transitions validation,acceptance,pointer \
+  --intent "Build the unattended-production critical path from the GitHub board without a per-Action relay." \
+  --request-id restore-critical-path-scope-<yyyy-mm-dd> \
+  --granted-by "P. Mark Anderson" \
+  --expect-revision <n from the restore preview> \
+  --json
+```
+
+`arcadia production deactivate` is **not** the right call here: it switches all
+managed production Off, including Arcadia's own critical path. If you would
+rather keep the fixture admitted until the Project is deleted, that is a
+deliberate choice — record it in the ledger instead.
+
+Evidence: _(the restore preview + activate JSON; the restored scope)_
 
 ## Step 3 — one activation: prepare and run Action A
 
