@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-09-20
+updated: 2026-09-21
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -977,7 +977,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/278", "src/commands/actionSettle.ts", "src/ask/settlement.ts", "src/git/worktrees.ts"]
   - id: translate-reasoning-effort-at-launch
     title: Managed-production launches translate the abstract reasoning-effort key to each provider's native value at the spawn boundary, so a packet whose selection was computed from an execution requirement never hands codex or claude an invalid effort.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Managed-production launches translate the abstract reasoning-effort key to each provider's native value at the spawn boundary, so a packet whose selection was computed from an execution requirement never hands codex or claude an invalid effort.
@@ -1280,7 +1280,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/419", "src/goBroker.ts", "src/sessions/preservationTransport.ts", "scripts/arcadia-go-broker.ts"]
 questions: []
 decisions: []
-current_action: translate-reasoning-effort-at-launch
+current_action: prove-zero-prompt-production-loop
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

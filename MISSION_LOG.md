@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-20
+updated: 2026-09-21
 ---
 
 # Mission Log: Arcadia
@@ -417,3 +417,10 @@ updated: 2026-09-20
 - **Result:** Every declared acceptance criterion was accepted as met: "A failed launchd load or bootstrap makes worker recovery return a nonzero actionable refusal instead of reporting that the worker started."; "After a successful managed restart, worker recovery verifies a fresh preservation heartbeat and a fresh Go-capable heartbeat before reporting ready."; "A regression test covers a stale worker state and a launchd startup failure without relying on a live macOS service.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-verify-worker-recovery-before-success-2026-09-20-v3).
+
+## 2026-09-21 — Completed arcadia/translate-reasoning-effort-at-launch
+
+- **Did:** Completed Action arcadia/translate-reasoning-effort-at-launch from accepted evidence (Candidate afecc0d30ea090f1ebc5ccfb7733d6b853001804).
+- **Result:** Every declared acceptance criterion was accepted as met: "buildProviderLaunch translates the stored abstract ReasoningEffort key (e1_brief/e2_standard/e3_deep/e4_rigorous) to the provider's native value for codex-cli (low/medium/high/xhigh) and for claude-cli (its own accepted set) at the spawn boundary; the abstract key remains the stored and bound value, and opencode's existing --variant mapping is preserved (fixes Issue #280)."; "The codex mapping reuses or deliberately mirrors prReview.ts's codexReasoningEffort rather than drifting from it."; "A launch-argument regression test covers a packet whose selection was recomputed from an Action's execution requirement (the e-key path), not only the packet-verbatim path with native effort strings."; "Existing launch behavior for the packet-verbatim path, and existing codex, claude, and opencode behavior, is unchanged; pnpm test and the core, Discord, and Dashboard builds pass."; "The Action closes GitHub Issue #280 when it merges.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-translate-reasoning-effort-at-launch-2026-09-20).
