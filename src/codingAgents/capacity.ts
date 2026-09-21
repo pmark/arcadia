@@ -195,12 +195,13 @@ export interface CapacityObservationOptions {
   /** Force how receipts are stamped. Defaults to what this host can prove. */
   evidence?: CapacityEvidenceMode;
   /**
-   * The provider id the workspace config names under
-   * `codingAgent.capacityGateEnabled: false`, or null/undefined when the gate
-   * is enforced for every provider as usual. Only this exact provider id is
-   * affected; every other configured provider is still fully gated.
+   * What the workspace config exempts under
+   * `codingAgent.capacityGateEnabled: false`. `"all"` exempts every configured
+   * provider, which is the operator stating that capacity evidence is not a
+   * gate; a list of ids exempts only those; null/undefined enforces the gate
+   * everywhere.
    */
-  unmeteredProvider?: string | null;
+  unmeteredProvider?: "all" | readonly string[] | null;
 }
 
 /**
@@ -227,7 +228,9 @@ export function observeProviderCapacity(
         now,
         attestation: attestations.receipts[providerId] ?? null,
         evidence: options.evidence,
-        unmetered: options.unmeteredProvider === providerId
+        unmetered:
+          options.unmeteredProvider === "all"
+          || (Array.isArray(options.unmeteredProvider) && options.unmeteredProvider.includes(providerId))
       });
       return evaluateCapacityAdmission(receipt, now);
     })
@@ -290,7 +293,7 @@ export function buildProviderCapacityReceipt(
       telemetry:
         `${label} capacity is unmetered by workspace configuration, not by observation. ` +
         `This is an operator's standing choice, never proof of a real limit — it lasts until the ` +
-        `config is changed.`
+        `config is changed. Incapacity is discovered when the work runs, not before it is admitted.`
     };
   }
 

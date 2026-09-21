@@ -74,7 +74,7 @@ const EXPLICIT_STOPS: readonly string[] = [
   "A Plan not listed here is never activated automatically, even when it is next in the queue.",
   "Expanded scope, a new draft Plan, or changed consequential authority ends this authorization and needs a fresh grant.",
   "Product and UX judgment stays with the operator; only the listed mechanical transitions are delegated.",
-  "Provider capacity is not granted here: unknown or stale capacity refuses admission rather than assuming free."
+  "Provider capacity is not granted here. Unknown or stale capacity refuses admission unless the workspace config exempts the provider under codingAgent.capacityGateEnabled: false, which is the operator's own standing choice and never proof of a real limit."
 ];
 
 export function buildProductionActivationPreview(

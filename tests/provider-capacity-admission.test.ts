@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,6 +31,7 @@ import {
   normalizeProductionScope
 } from "../src/production/policy.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { loadWorkspaceConfig, unmeteredProviderSelector } from "../src/workspace/config.js";
 import adapters from "../config/defaults/provider-adapters.json";
 
 const NOW = new Date("2026-09-06T12:00:00.000Z");
@@ -452,7 +453,7 @@ describe("workspace config can name one provider as unmetered", () => {
   it("admits the named provider with no observation and no attestation", () => {
     const observed = observeProviderCapacity(
       [profile("gemini_build", "gemini-cli", "build", "workspace-write")],
-      { now: NOW, snapshot: snapshot([]), unmeteredProvider: "gemini-cli" }
+      { now: NOW, snapshot: snapshot([]), unmeteredProvider: ["gemini-cli"] }
     );
     const gemini = observed.providers.find((entry) => entry.providerId === "gemini-cli")!;
 
@@ -467,7 +468,7 @@ describe("workspace config can name one provider as unmetered", () => {
     const observed = observeProviderCapacity(profiles, {
       now: NOW,
       snapshot: snapshot([]),
-      unmeteredProvider: "gemini-cli"
+      unmeteredProvider: ["gemini-cli"]
     });
 
     for (const decision of observed.providers) {
@@ -482,12 +483,80 @@ describe("workspace config can name one provider as unmetered", () => {
       snapshot: snapshot([record("codex-cli", {
         rateLimits: [{ label: "5h", usedPercentage: 100, resetsAt: "2026-09-06T15:00:00.000Z" }]
       })]),
-      unmeteredProvider: "codex-cli"
+      unmeteredProvider: ["codex-cli"]
     });
     const codex = observed.providers.find((entry) => entry.providerId === "codex-cli")!;
 
     expect(codex.receipt.source).toBe("operator_config");
     expect(codex.admitted).toBe(true);
+  });
+});
+
+describe("workspace config can remove the capacity gate entirely", () => {
+  it("admits every configured provider when the config names none", () => {
+    const observed = observeProviderCapacity(profiles, {
+      now: NOW,
+      snapshot: snapshot([]),
+      unmeteredProvider: "all"
+    });
+
+    expect(observed.providers.length).toBeGreaterThan(1);
+    for (const decision of observed.providers) {
+      expect(decision.admitted).toBe(true);
+      expect(decision.receipt.source).toBe("operator_config");
+      expect(decision.receipt.telemetry).toContain("never proof of a real limit");
+      expect(decision.receipt.telemetry).toContain("discovered when the work runs");
+    }
+  });
+
+  it("overrides an exhausted window for every provider, not just one", () => {
+    const observed = observeProviderCapacity(profiles, {
+      now: NOW,
+      snapshot: snapshot([
+        record("codex-cli", {
+          rateLimits: [{ label: "5h", usedPercentage: 100, resetsAt: "2026-09-06T15:00:00.000Z" }]
+        }),
+        record("claude-code-cli", {
+          rateLimits: [{ label: "5h", usedPercentage: 100, resetsAt: "2026-09-06T15:00:00.000Z" }]
+        })
+      ]),
+      unmeteredProvider: "all"
+    });
+
+    for (const decision of observed.providers) {
+      expect(decision).toMatchObject({ admitted: true, code: null });
+      expect(decision.receipt.source).toBe("operator_config");
+    }
+  });
+});
+
+describe("the workspace config resolves to the selector the gate reads", () => {
+  it("maps each config shape to what the observer should exempt", () => {
+    expect(unmeteredProviderSelector(undefined)).toBeNull();
+    expect(unmeteredProviderSelector({})).toBeNull();
+    expect(unmeteredProviderSelector({ capacityGateEnabled: true, provider: "codex-cli" })).toBeNull();
+    expect(unmeteredProviderSelector({ capacityGateEnabled: false, provider: "codex-cli" })).toEqual(["codex-cli"]);
+    // No provider named is the operator stating capacity evidence is not a gate
+    // at all, rather than that one provider happens to be unmetered.
+    expect(unmeteredProviderSelector({ capacityGateEnabled: false })).toBe("all");
+    expect(unmeteredProviderSelector({ capacityGateEnabled: false, provider: "   " })).toBe("all");
+  });
+
+  it("accepts a config that disables the gate without naming a provider", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-capacity-config-"));
+    temporary.push(root);
+    const configPath = path.join(root, "arcadia.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({ codingAgent: { capacityGateEnabled: false } }),
+      "utf8"
+    );
+
+    expect(loadWorkspaceConfig(configPath).codingAgent).toEqual({
+      provider: undefined,
+      capacityGateEnabled: false
+    });
+    expect(unmeteredProviderSelector(loadWorkspaceConfig(configPath).codingAgent)).toBe("all");
   });
 });
 
