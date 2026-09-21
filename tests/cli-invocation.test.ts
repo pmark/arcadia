@@ -112,13 +112,17 @@ describe("path options are wired to the invocation-aware resolver", () => {
    * checkout. Enumerating the options rather than naming them means a command
    * added later cannot reintroduce that quietly.
    */
-  const repositoryOptionNames = new Set(["--repo", "--repo-path", "--source"]);
+  const repositoryOptionNames = new Set(["--repo", "--repo-path", "--source", "--dir"]);
 
   /**
    * `--source` is overloaded across the CLI -- an ingress folder, a Codex
    * lane, "cli|discord|admin". Only `go --source` is a repository path, and
    * the `<path>` placeholder is what says so, so the declaration does the
    * disambiguating rather than a hand-maintained list of exceptions.
+   *
+   * `--dir` is here because `agent-ask draft` defaulted it to `process.cwd()`,
+   * so a draft written from another Project's worktree landed in Arcadia's own
+   * shared checkout and dirtied it (issue #465).
    */
   function takesRepositoryPath(option: { long?: string | null; flags: string }): boolean {
     return Boolean(option.long) && repositoryOptionNames.has(option.long!) && option.flags.includes("<path>");
@@ -153,6 +157,7 @@ describe("path options are wired to the invocation-aware resolver", () => {
       "decline --repo",
       "decline-finding --repo",
       "docket --repo",
+      "draft --dir",
       "evidence --repo",
       "go --repo",
       "go --source",
@@ -160,6 +165,7 @@ describe("path options are wired to the invocation-aware resolver", () => {
       "list --repo",
       "metadata --repo-path",
       "plans --repo",
+      "preview --dir",
       "preview-launch --repo",
       "raise --repo",
       "reconcile --repo",
