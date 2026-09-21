@@ -1278,6 +1278,27 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/419", "src/goBroker.ts", "src/sessions/preservationTransport.ts", "scripts/arcadia-go-broker.ts"]
+  - id: substitute-unavailable-provider-before-binding
+    title: Substitute an equivalent-or-stronger permitted provider before packet binding when hard evidence shows the intended provider cannot execute the work, record and surface the substitution, and never switch providers once execution has begun.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Substitute an equivalent-or-stronger permitted provider before packet binding when hard evidence shows the intended provider cannot execute the work, record and surface the substitution, and never switch providers once execution has begun.
+    expected_artifact: Evidence satisfying Agent Ask substitute-unavailable-provider-before-binding
+    clarification: clarified
+    confidence: high
+    source: Agent Ask substitute-unavailable-provider-before-binding-2026-09-21
+    acceptance_criteria:
+      - "Substitution happens only before packet binding, reusing selectCompliantCodingAgent's existing capability, tools, context, locality and sandbox floors: the replacement is equivalent-or-stronger and never a weaker or cheaper substitution, and when no equivalent eligible permitted provider exists Arcadia surfaces the incapacity normally rather than lowering a capability floor to keep work moving."
+      - "Hard evidence is a closed enum in code rather than a heuristic, containing exactly: provider unavailable, model unavailable, authentication failure, explicit quota or rate-limit rejection, and one explicitly named deterministic launch-precluding catch-all. Advisory capacity estimates — including an unadmitted, stale, reserve-margin or exhausted capacity decision — never trigger substitution, and a regression test fails if a value is added to or removed from the closed set without the change being deliberate."
+      - intended_provider, selected_provider and substitution_reason are recorded where an operator sees them in aggregate — the Session or Plan log, not only the per-launch preview — and the record names which hard-evidence value caused the substitution.
+      - "Once packet binding or execution has begun, provider identity is execution history: no automatic cross-provider retry, re-admission or provider swap occurs, and a mid-session failure still terminates or suspends under the existing recovery rules. feed-and-supervise-managed-production criterion 5 is unchanged by this Action."
+      - A substitution never replays work the intended provider already applied and never changes an immutable packet's bound provider; resumed work is recorded against the provider that actually runs it, with the resume guidance the existing selection contract already produces.
+      - Deterministic tests cover substitution for each hard-evidence value, refusal to substitute on advisory capacity alone (unadmitted, stale, reserve-margin, exhausted), refusal when no equivalent permitted provider exists without lowering a floor, and the post-binding guarantee that no switch occurs.
+      - pnpm test and the core, Discord and Dashboard builds pass, and the PR states the exact operator procedure, target and recovery command or why no runnable surface exists.
+    depends_on: []
+    decisions: []
+    references: ["docs/decisions/0063-how-should-arcadia-handle-a-provider-that-cannot-run-the-work-given-that.md", "src/codingAgents/capacity.ts", "src/sessions/launchPreview.ts", "src/codingAgents/providerAdapters.ts", "docs/model-selection.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md"]
 questions: []
 decisions: []
 current_action: prove-zero-prompt-production-loop

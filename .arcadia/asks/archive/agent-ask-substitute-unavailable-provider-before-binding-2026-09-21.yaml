@@ -1,0 +1,38 @@
+{
+  "agent_ask": "v1",
+  "request_id": "substitute-unavailable-provider-before-binding-2026-09-21",
+  "project": "arcadia",
+  "intent": "action",
+  "desired_result": "Substitute an equivalent-or-stronger permitted provider before packet binding when hard evidence shows the intended provider cannot execute the work, record and surface the substitution, and never switch providers once execution has begun.",
+  "rationale": "Implements Decision 0063, ratified 2026-09-21, whose answer accepts Option 1 with the operator's hard-evidence restriction. The distinction the operator drew is the whole point: provider identity is mutable scheduling state before packet binding and execution history after it. Advisory capacity evidence cannot cause substitution, because using it here would rebuild the capacity gate indirectly on exactly the data the operator ruled out as a gating input; only a closed set of deterministic, launch-precluding conditions may. Two implementation requirements come from the operator's answer and are recorded as acceptance criteria: intended_provider, selected_provider and substitution_reason must appear where an operator sees them in aggregate rather than only in a per-launch preview, and the hard-evidence set must be a closed enum in code so it cannot drift back toward advisory heuristics under schedule pressure. Option 2 (mid-session failover) is deliberately not folded in: it stays its own future Action, and feed-and-supervise-managed-production criterion 5 (no cross-provider retry) remains intact and unamended. Nothing here widens merge, deploy, publish, spend, credentials, messaging or production authority; the substitution only ever chooses among providers the standing policy already permits.",
+  "actions": [
+    {
+      "id": "substitute-unavailable-provider-before-binding",
+      "desired_result": "Substitute an equivalent-or-stronger permitted provider before packet binding when hard evidence shows the intended provider cannot execute the work, record and surface the substitution, and never switch providers once execution has begun.",
+      "acceptance": [
+        "Substitution happens only before packet binding, reusing selectCompliantCodingAgent's existing capability, tools, context, locality and sandbox floors: the replacement is equivalent-or-stronger and never a weaker or cheaper substitution, and when no equivalent eligible permitted provider exists Arcadia surfaces the incapacity normally rather than lowering a capability floor to keep work moving.",
+        "Hard evidence is a closed enum in code rather than a heuristic, containing exactly: provider unavailable, model unavailable, authentication failure, explicit quota or rate-limit rejection, and one explicitly named deterministic launch-precluding catch-all. Advisory capacity estimates — including an unadmitted, stale, reserve-margin or exhausted capacity decision — never trigger substitution, and a regression test fails if a value is added to or removed from the closed set without the change being deliberate.",
+        "intended_provider, selected_provider and substitution_reason are recorded where an operator sees them in aggregate — the Session or Plan log, not only the per-launch preview — and the record names which hard-evidence value caused the substitution.",
+        "Once packet binding or execution has begun, provider identity is execution history: no automatic cross-provider retry, re-admission or provider swap occurs, and a mid-session failure still terminates or suspends under the existing recovery rules. feed-and-supervise-managed-production criterion 5 is unchanged by this Action.",
+        "A substitution never replays work the intended provider already applied and never changes an immutable packet's bound provider; resumed work is recorded against the provider that actually runs it, with the resume guidance the existing selection contract already produces.",
+        "Deterministic tests cover substitution for each hard-evidence value, refusal to substitute on advisory capacity alone (unadmitted, stale, reserve-margin, exhausted), refusal when no equivalent permitted provider exists without lowering a floor, and the post-binding guarantee that no switch occurs.",
+        "pnpm test and the core, Discord and Dashboard builds pass, and the PR states the exact operator procedure, target and recovery command or why no runnable surface exists."
+      ],
+      "dependencies": [],
+      "references": [
+        "docs/decisions/0063-how-should-arcadia-handle-a-provider-that-cannot-run-the-work-given-that.md",
+        "src/codingAgents/capacity.ts",
+        "src/sessions/launchPreview.ts",
+        "src/codingAgents/providerAdapters.ts",
+        "docs/model-selection.md",
+        "docs/plans/bootstrap-managed-production-to-build-flight-deck.md"
+      ]
+    }
+  ],
+  "references": [
+    "docs/decisions/0063-how-should-arcadia-handle-a-provider-that-cannot-run-the-work-given-that.md",
+    "src/codingAgents/capacity.ts",
+    "src/sessions/launchPreview.ts",
+    "docs/model-selection.md"
+  ]
+}
