@@ -6,6 +6,7 @@ import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { observeCodingAgentAvailability } from "../codingAgents/availability.js";
+import { codexReasoningEffort } from "../codingAgents/reasoningEffort.js";
 import {
   selectCompliantCodingAgent,
   type SelectedCodingAgentConfiguration
@@ -1384,15 +1385,6 @@ function buildQaReviewerEnvironment(): NodeJS.ProcessEnv {
     }
   }
   return environment;
-}
-
-function codexReasoningEffort(effort: SelectedCodingAgentConfiguration["effort"]): "low" | "medium" | "high" | "xhigh" {
-  return ({
-    e1_brief: "low",
-    e2_standard: "medium",
-    e3_deep: "high",
-    e4_rigorous: "xhigh"
-  } as const)[effort];
 }
 
 function qaEvidencePermissionProfileConfig(): string {

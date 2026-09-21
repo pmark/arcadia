@@ -1,0 +1,37 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-translate-reasoning-effort-at-launch-2026-09-20",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/translate-reasoning-effort-at-launch",
+  "requested_authority": "apply_if_approved",
+  "desired_result": "Record completion of the spawn-boundary reasoning-effort translation with its regression and build evidence.",
+  "candidate_revision": "afecc0d30ea090f1ebc5ccfb7733d6b853001804",
+  "evidence": [
+    {
+      "criterion": "buildProviderLaunch translates the stored abstract ReasoningEffort key (e1_brief/e2_standard/e3_deep/e4_rigorous) to the provider's native value for codex-cli (low/medium/high/xhigh) and for claude-cli (its own accepted set) at the spawn boundary; the abstract key remains the stored and bound value, and opencode's existing --variant mapping is preserved (fixes Issue #280).",
+      "status": "met",
+      "note": "New src/codingAgents/reasoningEffort.ts holds the single e1_brief/e2_standard/e3_deep/e4_rigorous -> low/medium/high/xhigh map. buildProviderLaunch (src/sessions/index.ts) now passes codexReasoningEffort(session.effort) to codex's model_reasoning_effort and claudeReasoningEffort(session.effort) to claude's --effort. session.effort stays the abstract stored and bound value, and the opencode --variant branch is unchanged."
+    },
+    {
+      "criterion": "The codex mapping reuses or deliberately mirrors prReview.ts's codexReasoningEffort rather than drifting from it.",
+      "status": "met",
+      "note": "prReview.ts no longer defines its own codexReasoningEffort; it imports the shared codexReasoningEffort from ../codingAgents/reasoningEffort.js, so the two call sites cannot drift. The local duplicate was deleted."
+    },
+    {
+      "criterion": "A launch-argument regression test covers a packet whose selection was recomputed from an Action's execution requirement (the e-key path), not only the packet-verbatim path with native effort strings.",
+      "status": "met",
+      "note": "tests/session-launch.test.ts adds two recompute-path tests: an Action with a systems_change execution requirement resolves to the abstract e3_deep key and spawns codex with model_reasoning_effort=\"high\", and a Claude-only selection resolves e3_deep and spawns claude with --effort high. Both fail on the unfixed source (verified by stashing the source change: 3 tests fail without the fix) and pass with it, alongside the packet-verbatim e-key and native pass-through tests."
+    },
+    {
+      "criterion": "Existing launch behavior for the packet-verbatim path, and existing codex, claude, and opencode behavior, is unchanged; pnpm test and the core, Discord, and Dashboard builds pass.",
+      "status": "met",
+      "note": "pnpm test passes 1867-1874 of 1891 (13-15 skipped); the only failures across two runs were load-dependent subprocess timeouts in CLI/discord integration tests that vary run to run and pass in isolation (e.g. tests/cli-response-contracts.test.ts 34/34, cli-response-execution/projects/workspaces + discord-bot + workerConcurrency 76/76). pnpm build (lint + tsc + Discord) and pnpm dashboard:build both exit 0. The existing packet-verbatim, opencode, and provider-adapter-selection tests are unchanged and green."
+    },
+    {
+      "criterion": "The Action closes GitHub Issue #280 when it merges.",
+      "status": "met",
+      "note": "Commit afecc0d3 carries the closing keyword 'Fixes #280' in its message, so merging this candidate to the default branch closes Issue #280 without a manual step. The Issue remains open until that merge."
+    }
+  ]
+}
