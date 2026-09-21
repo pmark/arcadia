@@ -223,6 +223,39 @@ describe("Agent Ask complete", () => {
     expect(existsSync(path.join(candidate, ".arcadia/asks/archive/agent-ask-complete-from-candidate.yaml"))).toBe(true);
   });
 
+  it("finds the candidate worktree from the invoking directory when no cwd is passed, as the real CLI runs", () => {
+    // The launcher cds into Arcadia's checkout, so process.cwd() never names the
+    // candidate. Passing `cwd` (as the test above does) hid that: the CLI never
+    // does. Settlement then compared the Ask against the base checkout's HEAD.
+    const { workspace, repo, head } = fixture();
+    const candidate = path.join(path.dirname(repo), "candidate-invoked-from");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate-invoked-from", candidate], { cwd: repo });
+    const draft = runAgentAskDraftCommand({ workspace, dir: candidate, request: completeAsk("complete-invoked-from", "first", head) });
+    execFileSync("git", ["commit", "-q", "--allow-empty", "-m", "candidate work"], { cwd: candidate });
+    const candidateHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: candidate, encoding: "utf8" }).trim();
+    const moved = runAgentAskDraftCommand({
+      workspace, dir: candidate, request: completeAsk("complete-invoked-from-2", "first", candidateHead)
+    });
+    const previousInvokedFrom = process.env.ARCADIA_INVOKED_FROM;
+    process.env.ARCADIA_INVOKED_FROM = candidate;
+    try {
+      const preview = runAgentAskSettleCommand({
+        workspace, proposal: moved.data.preview!.proposal.id, requestId: "settle-invoked-from", disposition: "accepted"
+      });
+      const applied = runAgentAskSettleCommand({
+        workspace, proposal: moved.data.preview!.proposal.id, requestId: "settle-invoked-from", disposition: "accepted",
+        preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+      });
+      expect(applied.data.receipt.applied).toBe(true);
+    } finally {
+      if (previousInvokedFrom === undefined) delete process.env.ARCADIA_INVOKED_FROM;
+      else process.env.ARCADIA_INVOKED_FROM = previousInvokedFrom;
+    }
+    expect(draft.data.written).toBe("created");
+    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim()).toBe(head);
+    expect(execFileSync("git", ["log", "-1", "--format=%s"], { cwd: candidate, encoding: "utf8" })).toContain("settle complete-invoked-from-2");
+  });
+
   it("still refuses a stale Candidate revision when the drafted Ask file sits in the candidate worktree", () => {
     const { workspace, repo, head } = fixture();
     const candidate = path.join(path.dirname(repo), "candidate-complete-stale");
