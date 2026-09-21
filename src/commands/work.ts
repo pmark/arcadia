@@ -745,6 +745,12 @@ function assertPlanningPreparationEligibility(
      WHERE ci.work_item_id = ?
        AND ci.purpose = 'planning'
        AND ci.status IN ('packet_created', 'running')
+       AND NOT EXISTS (
+         -- A packet whose Decision was rejected is spent, not active. Nothing
+         -- else retires it, so counting it here made a rejected planning
+         -- Decision a dead end: the Action could never be planned again.
+         SELECT 1 FROM review_items r WHERE r.codex_invocation_id = ci.id AND r.status = 'rejected'
+       )
      ORDER BY ci.created_at DESC LIMIT 1`
   ).get(workItem.id) as { id: string; status: string } | undefined;
   if (unreviewedInvocation) {
@@ -812,6 +818,13 @@ function reusableUnpreparedPlanningPlan(
     planId: plan.id,
     purpose: "planning"
   });
+  // A packet whose Decision was rejected is spent, so the Action gets a fresh plan.
+  const rejected = invocation
+    ? db.prepare("SELECT 1 FROM review_items WHERE codex_invocation_id = ? AND status = 'rejected' LIMIT 1").get(invocation.id)
+    : undefined;
+  if (rejected) {
+    return null;
+  }
   if (invocation) {
     throw validationError("Planned Action already has a planning packet that is not safely reusable.", {
       actionId: workItem.id,

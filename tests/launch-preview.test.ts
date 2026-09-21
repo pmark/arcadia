@@ -20,6 +20,7 @@ import type { CodingAgentProfile } from "../src/intent/registries.js";
 import { prepareSession } from "../src/sessions/index.js";
 import { buildLaunchPreview, LAUNCH_ADAPTER_SUPPORT } from "../src/sessions/launchPreview.js";
 import { resolvePacketLifecycle } from "../src/sessions/packetLifecycle.js";
+import { runReviewRejectCommand } from "../src/commands/review.js";
 import { prepareBuildPacketForAcceptedPlan, runWorkPlanCommand } from "../src/commands/work.js";
 import { resolveDispatch } from "../src/docs/dispatch.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -115,6 +116,25 @@ describe("buildLaunchPreview", () => {
       decisionId: prepared.data.planningDecision!.id
     });
     expect(lifecycle.remedy).toContain("planning only, not implementation");
+  });
+
+  it("lets an Action be planned again after its planning Decision is rejected", () => {
+    const fixture = preparedFixture({ skipInvocation: true });
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!);
+    const first = runWorkPlanCommand({ workspace: fixture.workspace, workId: workItem.id });
+    expect(first.data.planningDecision).toBeTruthy();
+
+    runReviewRejectCommand({ workspace: fixture.workspace, id: first.data.planningDecision!.id });
+    // Rejecting moves the Action to requires_review; a docs sync restores it from
+    // the plan document, which is what an operator does before planning again.
+    withDatabase(fixture.workspace, (db) => {
+      db.prepare("UPDATE work_items SET status = 'open', queue = 'work_queue', work_classification = 'agent' WHERE id = ?").run(workItem.id);
+    });
+
+    const second = runWorkPlanCommand({ workspace: fixture.workspace, workId: workItem.id });
+    expect(second.data.planningDecision).toBeTruthy();
+    expect(second.data.planningDecision!.id).not.toBe(first.data.planningDecision!.id);
+    expect(second.data.planningDecision!.status).toBe("open");
   });
 
   it("uses the newest accepted planning Decision, not the oldest", () => {
