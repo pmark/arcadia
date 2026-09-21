@@ -61,6 +61,41 @@ describe("coding-agent CLI adapters", () => {
     })).toBe("Finished the bounded plan.\n");
   });
 
+  it("uses OpenCode's text parts as the final message, not its raw event stream", () => {
+    const root = createRoot();
+    const finalPath = path.join(root, "final.md");
+    writeFileSync(finalPath, "OpenCode has not been invoked yet.\n", "utf8");
+    const events = [
+      { type: "step_start", part: { type: "step-start" } },
+      { type: "tool_use", part: { type: "tool", tool: "bash", state: { output: "ls output" } } },
+      { type: "text", part: { type: "text", text: "## Ordered Phases\n1. Do it." } },
+      { type: "step_finish", part: { type: "step-finish" } }
+    ].map((event) => JSON.stringify(event)).join("\n");
+
+    const message = finalMessageFromExecution({
+      profile: profile({ provider: "opencode-cli", command: "opencode" }),
+      finalMessagePath: finalPath,
+      stdout: events,
+      stderr: ""
+    });
+
+    expect(message).toBe("## Ordered Phases\n1. Do it.\n");
+    expect(message).not.toContain("tool_use");
+  });
+
+  it("falls back to OpenCode's raw output when it produced no text part", () => {
+    const root = createRoot();
+    const finalPath = path.join(root, "final.md");
+    writeFileSync(finalPath, "OpenCode has not been invoked yet.\n", "utf8");
+    const stdout = JSON.stringify({ type: "step_start", part: {} });
+    expect(finalMessageFromExecution({
+      profile: profile({ provider: "opencode-cli", command: "opencode" }),
+      finalMessagePath: finalPath,
+      stdout,
+      stderr: ""
+    })).toBe(`${stdout}\n`);
+  });
+
   describe("Claude plan-mode plan files", () => {
     function claudeResult(root: string, plansDir: string, result: string): string {
       const finalPath = path.join(root, "final.md");
