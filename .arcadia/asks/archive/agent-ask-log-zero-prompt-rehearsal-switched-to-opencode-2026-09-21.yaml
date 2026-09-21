@@ -1,0 +1,19 @@
+{
+  "agent_ask": "v1",
+  "request_id": "log-zero-prompt-rehearsal-switched-to-opencode-2026-09-21",
+  "project": "arcadia",
+  "intent": "log",
+  "requested_authority": "apply_if_approved",
+  "desired_result": "Record that the prove-zero-prompt-production-loop rehearsal was switched to the OpenCode provider on operator direction, and that a /runs preflight now verifies its preconditions.",
+  "rationale": "The guard this log exists for is a hazard, not a completion. On 2026-09-21 the operator ran the new preflight operator action and then directed that the rehearsal use OpenCode rather than the Codex profile. Two settled Agent Asks amended the Action's own text so the proof would not have to misdescribe its run: criterion 1 (55dafafb) now reads 'the same OpenCode provider profile', and criterion 3 (beda56d8) now names the revision-pinned arcadia-go-broker-opencode host controller. The runbook followed in PR #456 (d0782fe3): Steps 2 and 3 grant --provider opencode-cli and launch with 'opencode run', the ledger records the packet's resolved binding instead of a bundled default, and the stale 'State verified 2026-09-11' table is replaced by a live-read section, because it had claimed an active fixture Project (paused), an Inactive policy at revision 0 (Active at revision 8 / epoch 7, scoped to arcadia), and a broker pinned at f2a377e. Its Step 2 now states plainly that activation replaces scope, so following it moves live production authority off Arcadia's own bootstrap Plan and onto the fixture. The rehearsal still cannot start, and this entry does not claim it did: OpenCode capacity is manual_receipt_expired and needs an operator attestation; the fixture Project is paused with no governed reactivation writer (Issue #298); the policy must be rescoped deliberately; and the broker needs repinning, which the preflight performs once the rest is green. Three defects were captured rather than repaired here: #453 (Arcadia Go still dispatches this operator-run proof to a coding agent because the managed documents cannot express an operator-run Action), #454 (the runbook staleness, closed by PR #456), and #455 (nine documents silently omitted from docs sync for declaring the unrecognized type 'evidence'). The operator preflight itself, artifacts/generated/operator-scripts/preflight-zero-prompt-rehearsal-2026-09-21.sh, is host-local and gitignored by design.",
+  "references": [
+    "docs/reports/prove-zero-prompt-production-loop-runbook.md",
+    "docs/plans/bootstrap-managed-production-to-build-flight-deck.md",
+    "docs/decisions/0058-should-the-standing-managed-production-authorization-delegate-a-bounded.md",
+    "docs/decisions/0061-retarget-decision-0057-s-reactivation-trigger-so-prove-two-action-unattended.md",
+    "https://github.com/pmark/arcadia/pull/456",
+    "https://github.com/pmark/arcadia/issues/453",
+    "https://github.com/pmark/arcadia/issues/455",
+    "artifacts/generated/operator-scripts/preflight-zero-prompt-rehearsal-2026-09-21.sh"
+  ]
+}
