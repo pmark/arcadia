@@ -1,5 +1,7 @@
+import { realpathSync } from "node:fs";
 import type Database from "better-sqlite3";
 import type { CommandSuccess } from "../cli/response.js";
+import { validationError } from "../cli/errors.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { openReadOnlyDatabase } from "../db/connection.js";
@@ -25,14 +27,37 @@ export function listMonitoredProjects(
     }));
 }
 
+function realPathOrResolved(input: string): string {
+  try { return realpathSync(input); } catch { return input; }
+}
+
+/**
+ * Keep only the Project that owns `repositoryPath`. A coding agent's protected
+ * broker must not show it other Projects' worktrees, paths and changed files:
+ * the zero-prompt rehearsal agent read a leaked Arcadia path and tripped its
+ * `external_directory` sandbox rule (#470). No owner is an error, not an empty
+ * scan, so a mistyped source cannot pass as "nothing to report".
+ */
+export function scopeToRepository(projects: WorkMonitorProject[], repositoryPath: string): WorkMonitorProject[] {
+  const wanted = realPathOrResolved(repositoryPath);
+  const owned = projects.filter((project) => project.repositoryPath && realPathOrResolved(project.repositoryPath) === wanted);
+  if (owned.length === 0) {
+    throw validationError("No active Project owns the repository this work monitor was scoped to.", { repositoryPath });
+  }
+  return owned;
+}
+
 export function runWorkMonitorCommand(options: {
   workspace: string;
   includePullRequests?: boolean;
+  /** Restrict the scan to the Project that owns this repository. */
+  repositoryPath?: string;
 }): CommandSuccess<WorkMonitorCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const db = openReadOnlyDatabase(workspacePath);
   try {
-    const snapshot = scanProjectWorkingCopies(listMonitoredProjects(db), {
+    const monitored = listMonitoredProjects(db);
+    const snapshot = scanProjectWorkingCopies(options.repositoryPath ? scopeToRepository(monitored, options.repositoryPath) : monitored, {
       includePullRequests: options.includePullRequests !== false
     });
     return createSuccess({
