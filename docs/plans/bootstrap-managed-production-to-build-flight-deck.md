@@ -1421,7 +1421,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: preserve-on-exit-and-integrate
+current_action: serialize-current-action-writes
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
