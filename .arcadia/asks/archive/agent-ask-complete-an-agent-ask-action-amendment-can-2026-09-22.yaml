@@ -1,0 +1,31 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-an-agent-ask-action-amendment-can-2026-09-22",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/an-agent-ask-action-amendment-can",
+  "candidate_revision": "3e3372ac3abe4b4d955db45d8dc3007d407d7abe",
+  "desired_result": "Record that the agent-ask --responsibility widening merged (PR #481) with CodeRabbit approval and all required checks green.",
+  "evidence": [
+    {
+      "criterion": "arcadia agent-ask settle --responsibility requires_review (or blocked) succeeds for an action-amendment intent, on explicit operator direction in the live session, matching the existing agent/autonomous behavior.",
+      "status": "met",
+      "note": "src/commands/agentAsk.ts now validates --responsibility against the full WorkClassification set instead of only autonomous/agent; src/ask/settlement.ts widened AgentAskResponsibility accordingly. Verified with the new regression test amending an existing Action to requires_review."
+    },
+    {
+      "criterion": "arcadia agent-ask settle --responsibility <unrecognized value> is refused with a clear error naming the accepted values.",
+      "status": "met",
+      "note": "Validation error now reads Agent Ask Action Responsibility must be one of: autonomous, agent, requires_review, blocked. Covered by the new refusal regression test."
+    },
+    {
+      "criterion": "A regression test amends an existing Actions responsibility to requires_review through this path and asserts the written plan document and settlement effects.",
+      "status": "met",
+      "note": "tests/agent-ask-settlement.test.ts: amends an existing Actions Responsibility to requires_review per Decision 0045, not only toward agent -- asserts both the settlement effects string and the written plan document."
+    },
+    {
+      "criterion": "No change to the existing restriction that a brand-new Action still requires an explicit --responsibility at creation time.",
+      "status": "met",
+      "note": "The presence checks at settlement.ts lines 251/459/521 (requires --responsibility to create a new Action) were untouched; only the accepted-value set was widened. All 71 pre-existing plus new tests in agent-ask-settlement.test.ts and agent-ask-complete.test.ts pass."
+    }
+  ]
+}

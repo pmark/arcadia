@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-21
+updated: 2026-09-22
 ---
 
 # Mission Log: Arcadia
@@ -459,3 +459,10 @@ updated: 2026-09-21
 - **Result:** Run 20260921T214756Z-2193 (launch-zero-prompt-rehearsal-action-a button): opencode exit 0, 0 permission-denial lines, REHEARSAL.md correct, branch opencode/write-rehearsal-marker-20260921T214955821Z pushed, fixture PR #2 open and non-draft, and the agent settled its own complete Ask in the candidate (commit e562ae8: Action A done, fixture pointer now confirm-rehearsal-marker). Four earlier attempts failed criterion 6 on external_directory reads of Arcadia checkout, each from a real defect now fixed: #466 draft target, #469 settle target, #471 complete example in the contract, #472 work-monitor broker scoped to its Project. Criterion 6 is NOT recorded met: it spans Action B through completion. Open: go-broker without --launch creates no Session (session null, zero agent_sessions rows), so runbook Step 4 session reconcile has nothing to reconcile (issue 460); fixture PR #2 is unmerged so the fixture main pointer has not advanced to Action B.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-22 — Completed arcadia/an-agent-ask-action-amendment-can
+
+- **Did:** Completed Action arcadia/an-agent-ask-action-amendment-can from accepted evidence (Candidate 3e3372ac3abe4b4d955db45d8dc3007d407d7abe).
+- **Result:** Every declared acceptance criterion was accepted as met: "arcadia agent-ask settle --responsibility requires_review (or blocked) succeeds for an action-amendment intent, on explicit operator direction in the live session, matching the existing agent/autonomous behavior."; "arcadia agent-ask settle --responsibility <unrecognized value> is refused with a clear error naming the accepted values."; "A regression test amends an existing Actions responsibility to requires_review through this path and asserts the written plan document and settlement effects."; "No change to the existing restriction that a brand-new Action still requires an explicit --responsibility at creation time.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-an-agent-ask-action-amendment-can-2026-09-22).

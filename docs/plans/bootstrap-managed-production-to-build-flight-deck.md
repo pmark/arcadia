@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-09-21
+updated: 2026-09-22
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -1301,7 +1301,7 @@ actions:
     references: ["docs/decisions/0063-how-should-arcadia-handle-a-provider-that-cannot-run-the-work-given-that.md", "src/codingAgents/capacity.ts", "src/sessions/launchPreview.ts", "src/codingAgents/providerAdapters.ts", "docs/model-selection.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md"]
   - id: an-agent-ask-action-amendment-can
     title: An Agent Ask action-amendment can move an existing Actions responsibility to requires_review or blocked, not only to agent or autonomous, per Decision 0045s already-ratified, direction-agnostic answer.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: An Agent Ask action-amendment can move an existing Actions responsibility to requires_review or blocked, not only to agent or autonomous, per Decision 0045s already-ratified, direction-agnostic answer.
@@ -1319,7 +1319,7 @@ actions:
     references: ["src/commands/agentAsk.ts", "src/ask/settlement.ts", "src/cli.ts", "src/domain/constants.ts", "docs/decisions/0045-agent-ask-can-amend-action-responsibility.md", "docs/decisions/0064-resolve-how-to-handle-prove-zero-prompt-production-loop-being-dispatched-to.md", "tests/agent-ask-settlement.test.ts"]
 questions: []
 decisions: []
-current_action: an-agent-ask-action-amendment-can
+current_action: prove-zero-prompt-production-loop
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
