@@ -324,6 +324,52 @@ describe("Agent Ask complete", () => {
     expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
   });
 
+  it("completes an Action in a non-active Plan and leaves the active Plan, its pointer, and the queue untouched", () => {
+    const { workspace, repo, head } = fixture({ withInactivePlan: true });
+    const request = completeAsk("complete-inactive", "first", head)
+      .replace("target_ref: action/first", "target_ref: plan/side-plan#side-one")
+      .replace('criterion: "First proof exists."', 'criterion: "Side proof exists."');
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-inactive", disposition: "accepted"
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-inactive", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+    expect(applied.data.receipt.effects.join(" ")).toContain("Marked Action demo/side-one done");
+    expect(applied.data.receipt.effects.join(" ")).toContain("is not the active Plan");
+
+    const docs = discoverDocs(repo).docs;
+    // The non-active Plan records its own progress.
+    expect(docs.find((doc) => doc.type === "plan" && doc.slug === "side-plan")).toMatchObject({
+      status: "draft",
+      currentAction: "side-two",
+      actions: [
+        expect.objectContaining({ id: "side-one", status: "done" }),
+        expect.objectContaining({ id: "side-two", status: "open" })
+      ]
+    });
+    // The active Plan and the Project pointer are byte-for-byte untouched.
+    expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toBe(planDoc({}));
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toBe(projectDoc());
+    expect(docs.find((doc) => doc.type === "project")).toMatchObject({ activePlan: "demo-plan", currentAction: "first" });
+    // The queue never moved: complete arranges no order, in either Plan.
+    expect(applied.data.receipt.queueActionKeys).toEqual([]);
+    expect(readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8")).toContain("Completed demo/side-one");
+  });
+
+  it("refuses a Plan-scoped completion whose Plan does not exist", () => {
+    const { workspace, head } = fixture({ withInactivePlan: true });
+    const request = completeAsk("complete-missing-plan", "first", head)
+      .replace("target_ref: action/first", "target_ref: plan/no-such-plan#side-one");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-missing-plan", disposition: "accepted"
+    })).toThrow(/names a Plan that was not found/);
+  });
+
   it("refuses completing an Action that is already done", () => {
     const { workspace, head } = fixture({ firstDone: true });
     const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-done", "first", head) });
@@ -359,6 +405,8 @@ function fixture(options: {
   secondDeferredByDecision?: boolean;
   /** Explicit queue order; defaults to document order. */
   queueOrder?: string[];
+  /** Add a second, inactive draft Plan with its own two open Actions. */
+  withInactivePlan?: boolean;
 } = {}): { workspace: string; repo: string; head: string } {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-agent-ask-complete-"));
   roots.push(root);
@@ -373,6 +421,7 @@ function fixture(options: {
   if (options.withOpenDecision || options.secondDeferredByDecision) mkdirSync(path.join(repo, "docs/decisions"), { recursive: true });
   writeFileSync(path.join(repo, "PROJECT.md"), projectDoc(), "utf8");
   writeFileSync(path.join(repo, "docs/plans/demo-plan.md"), planDoc(options), "utf8");
+  if (options.withInactivePlan) writeFileSync(path.join(repo, "docs/plans/side-plan.md"), inactivePlanDoc(), "utf8");
   if (options.withOpenDecision) {
     writeFileSync(path.join(repo, "docs/decisions/0001-review-first.md"), [
       "---", "arcadia: v1", "type: decision", 'id: "0001"', "slug: review-first", "project: demo",
@@ -429,6 +478,23 @@ function projectDoc(): string {
   return ["---", "arcadia: v1", "type: project", "slug: demo", "name: Demo", "status: active",
     "goal: Complete work safely.", "milestone: Completion", "active_plan: demo-plan", "current_action: first",
     "updated: 2026-09-01", "---", "", "# Demo", ""].join("\n");
+}
+
+/** A second Plan that is not `active_plan` and is in no queue. */
+function inactivePlanDoc(): string {
+  return ["---", "arcadia: v1", "type: plan", "slug: side-plan", "project: demo", "status: draft",
+    "milestone: Parallel work", "token_impact: medium",
+    "token_budget: Deterministic completion with one accepted evidence pass.",
+    "updated: 2026-09-01", "actions:",
+    "  - id: side-one", "    title: Side Action One", "    status: open",
+    "    responsibility: agent", "    effort: session", "    next_action: Finish the first side Action.",
+    "    expected_artifact: Side proof", "    clarification: clarified", "    confidence: high",
+    "    acceptance_criteria:", "      - Side proof exists.", "    depends_on: []", "    decisions: []", "    references: []",
+    "  - id: side-two", "    title: Side Action Two", "    status: open",
+    "    responsibility: agent", "    effort: session", "    next_action: Finish the second side Action.",
+    "    expected_artifact: Second side proof", "    clarification: clarified", "    confidence: high",
+    "    acceptance_criteria:", "      - Second side proof exists.", "    depends_on: []", "    decisions: []", "    references: []",
+    "questions: []", "---", "", "# Side plan", ""].join("\n");
 }
 
 function planDoc(options: {
