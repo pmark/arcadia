@@ -1442,7 +1442,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: serialize-current-action-writes
+current_action: plan-scoped-agent-ask-complete
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
