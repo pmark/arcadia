@@ -17,6 +17,8 @@ import {
   getSession,
   launchPreparedSession,
   prepareSession,
+  releaseActionClaim,
+  releaseWorktreeReservation,
   reserveAgentWorktree,
   sessionAgentForProvider,
   systemTmux,
@@ -196,6 +198,10 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   const baseRevision = git(repoRoot, ["rev-parse", baseBranch]).trim();
 
   const reservationCommitCleanup: { candidate: PreparedAgentWorktree | null } = { candidate: null };
+  // The generation this launch claimed, so a Session preparation that fails
+  // after the claim committed releases it explicitly instead of leaving the
+  // Action blocked for the TTL over work that never started.
+  const claim: { generation: string | null } = { generation: null };
   let nextWorktree: PreparedAgentWorktree;
   try {
     nextWorktree = writeTransaction(input.db, () => {
@@ -209,12 +215,14 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
         model,
         effort,
         beforeCreate(candidate) {
-          reserveAgentWorktree(input.db, {
+          claim.generation = reserveAgentWorktree(input.db, {
             repositoryPath: repoRoot,
             worktreePath: candidate.path,
             branch: candidate.branch,
-            now
-          });
+            now,
+            project: preview.projectSlug,
+            actionId: preview.actionId!
+          }).claim_generation;
         }
       });
       reservationCommitCleanup.candidate = created;
@@ -253,6 +261,19 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     // failure for a request that was, in substance, satisfied.
     tryGit(repoRoot, ["worktree", "remove", nextWorktree.path]);
     tryGit(repoRoot, ["branch", "-D", nextWorktree.branch]);
+    // The worktree this call claimed the Action for is gone, so both of the
+    // row's guarantees end here: release the claim fenced on this call's own
+    // generation, then drop the reservation the removed worktree no longer
+    // needs.
+    if (claim.generation) {
+      releaseActionClaim(input.db, {
+        repositoryPath: repoRoot,
+        project: preview.projectSlug,
+        actionId: preview.actionId,
+        generation: claim.generation
+      });
+    }
+    releaseWorktreeReservation(input.db, repoRoot, nextWorktree.path);
     const raced = getRepositoryLease(input.db, repoRoot);
     if (raced && matchesPreview(raced, preview)) {
       // The winner's Session satisfies this request; this call's own reserved
@@ -277,6 +298,15 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       failPreparedSession(input.db, prepared.id);
       tryGit(repoRoot, ["worktree", "remove", nextWorktree.path]);
       tryGit(repoRoot, ["branch", "-D", nextWorktree.branch]);
+      if (claim.generation) {
+        releaseActionClaim(input.db, {
+          repositoryPath: repoRoot,
+          project: preview.projectSlug,
+          actionId: preview.actionId,
+          generation: claim.generation
+        });
+      }
+      releaseWorktreeReservation(input.db, repoRoot, nextWorktree.path);
       throw validationError(`The standing managed-production policy withdrew authorization before launch commitment: ${committed.reason}`, {
         code: committed.code,
         conflict: true
@@ -285,7 +315,24 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     admission = committed.receipt;
   }
 
-  return { reused: false, session: launchPreparedSession(input.db, prepared, tmux, registry), preview, admission };
+  try {
+    return { reused: false, session: launchPreparedSession(input.db, prepared, tmux, registry), preview, admission };
+  } catch (error) {
+    // A spawn that fails outright releases the lease (`failPreparedSession`),
+    // and the claim has to go with it: otherwise the Action stays claimed by a
+    // Session that never ran, and the retry this failure exists to allow is
+    // refused for the TTL's full 24 hours. Fenced on this call's own
+    // generation, so a claim that has since moved on is left alone.
+    if (claim.generation) {
+      releaseActionClaim(input.db, {
+        repositoryPath: repoRoot,
+        project: preview.projectSlug,
+        actionId: preview.actionId,
+        generation: claim.generation
+      });
+    }
+    throw error;
+  }
 }
 
 /** A "prepared" lease whose tmux Session was never actually started (a crash between insert and spawn) is resumed rather than left stuck. */
