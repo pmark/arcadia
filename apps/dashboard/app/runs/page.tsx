@@ -79,6 +79,27 @@ export default function RunsPage() {
     return () => clearInterval(interval);
   }, [refreshOperatorScripts]);
 
+  const runScript = useCallback(async (script: OperatorScript) => {
+    setPendingScriptId(script.id);
+    setOperatorMessage(null);
+    setOperatorScriptError(null);
+    try {
+      const response = await fetch("/api/operator-script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: script.id })
+      });
+      const body = await response.json() as { message?: string; error?: string };
+      if (!response.ok) throw new Error(body.error ?? "Could not start the operator action.");
+      setOperatorMessage(body.message ?? `${script.title} started.`);
+      await refreshOperatorScripts();
+    } catch (error) {
+      setOperatorScriptError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPendingScriptId(null);
+    }
+  }, [refreshOperatorScripts]);
+
   return (
     <DashboardChrome
       title="Runs"
@@ -116,27 +137,6 @@ export default function RunsPage() {
           const completed = operatorScripts
             .filter((script) => script.state.status === "succeeded" && !script.repeatable)
             .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-
-          const runScript = async (script: OperatorScript) => {
-            setPendingScriptId(script.id);
-            setOperatorMessage(null);
-            setOperatorScriptError(null);
-            try {
-              const response = await fetch("/api/operator-script", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ id: script.id })
-              });
-              const body = await response.json() as { message?: string; error?: string };
-              if (!response.ok) throw new Error(body.error ?? "Could not start the operator action.");
-              setOperatorMessage(body.message ?? `${script.title} started.`);
-              await refreshOperatorScripts();
-            } catch (error) {
-              setOperatorScriptError(error instanceof Error ? error.message : String(error));
-            } finally {
-              setPendingScriptId(null);
-            }
-          };
 
           return (
             <section className="mb-6" aria-label="Operator script library">
