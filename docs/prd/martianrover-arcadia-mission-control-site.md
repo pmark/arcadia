@@ -1,9 +1,10 @@
 ---
 arcadia: v1
-type: prd
+type: reference
+slug: martianrover-arcadia-mission-control-site-prd
 project: arcadia
 status: draft
-date: 2026-09-22
+updated: 2026-09-22
 ---
 
 # PRD — MartianRover Arcadia Mission Control (public website)
