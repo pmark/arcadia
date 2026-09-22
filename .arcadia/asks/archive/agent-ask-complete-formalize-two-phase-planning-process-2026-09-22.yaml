@@ -1,0 +1,41 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-formalize-two-phase-planning-process-2026-09-22",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/formalize-two-phase-planning-process",
+  "candidate_revision": "c83b2838e2aeb7c1eccc36e7156674532af3504b",
+  "desired_result": "Record that the two-phase planning process documentation merged (PR #484) with CodeRabbit approval and all required checks green.",
+  "evidence": [
+    {
+      "criterion": "docs/planning-process.md exists, vendor-neutral, and states the two-phase process: Phase 1 (Outcome Alignment Interview) produces a confirmed Outcome/Milestone plus any open Decisions with options and consequences; Phase 2 (Staff Planning Architect) consumes that and produces a Plan amendment or new Plan with dependency-ordered, session-sized Actions.",
+      "status": "met",
+      "note": "docs/planning-process.md merged, states both phases exactly as described."
+    },
+    {
+      "criterion": "The document embeds both role prompts in full, written so they can be pasted into any coding-agent or chat surface -- Claude Code, Codex, opencode, or a bare frontier-model chat -- not gated behind a single vendors skill mechanism.",
+      "status": "met",
+      "note": "Both role prompts are embedded verbatim as fenced blocks; no Claude-Code-only mechanism used."
+    },
+    {
+      "criterion": "The document states how to invoke each phase today (a coding-agent session prompt, or pasting the role prompt directly) given that Claude Code skills live outside this repository at ~/.claude/skills and are not repository-managed content; wiring automatic invocation into arcadia ask routing is named as an explicit deferred trigger, not built here.",
+      "status": "met",
+      "note": "Each phase has a How to run it today subsection, refined during CodeRabbit review to spell out exact context requirements for coding-agent vs bare-chat invocation. Deferred section names the arcadia ask routing gap and its trigger."
+    },
+    {
+      "criterion": "AGENTS.md gains a short pointer to docs/planning-process.md so a future session of any vendor can discover it without being told.",
+      "status": "met",
+      "note": "AGENTS.md Two companions section now lists docs/planning-process.md."
+    },
+    {
+      "criterion": "Neither the document invents a new Arcadia document type or CLI capability; both phases produce only Agent Asks against existing intents (outcome, milestone, decision, plan, action).",
+      "status": "met",
+      "note": "Verified: only outcome/milestone/decision/plan Agent Ask intents referenced, all pre-existing."
+    },
+    {
+      "criterion": "mise exec -- pnpm exec tsc -p tsconfig.json --noEmit passes, and arcadia docs sync reports no new errors attributable to the changed files; pnpm builds full-repo lint step is not a gate here, since it already fails in a prepared worktree on files this Action never touches (tracked, unrelated, in Issue #480).",
+      "status": "met",
+      "note": "tsc clean; docs sync reported 9 pre-existing errors unrelated to this change, 0 new. CI lint on GitHub Actions (not the worktree-only issue) passed clean on the PR."
+    }
+  ]
+}

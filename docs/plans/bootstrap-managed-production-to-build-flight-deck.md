@@ -1317,6 +1317,47 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/commands/agentAsk.ts", "src/ask/settlement.ts", "src/cli.ts", "src/domain/constants.ts", "docs/decisions/0045-agent-ask-can-amend-action-responsibility.md", "docs/decisions/0064-resolve-how-to-handle-prove-zero-prompt-production-loop-being-dispatched-to.md", "tests/agent-ask-settlement.test.ts"]
+  - id: formalize-two-phase-planning-process
+    title: A documented, reusable two-phase planning process (Outcome Alignment Interview, then Staff Planning Architect) exists as vendor-neutral Arcadia documentation plus Claude Code skills wrapping it.
+    status: done
+    responsibility: agent
+    effort: session
+    next_action: A documented, reusable two-phase planning process (Outcome Alignment Interview, then Staff Planning Architect) exists as vendor-neutral Arcadia documentation, discoverable from AGENTS.md so every coding agent (not only Claude Code) can run it.
+    expected_artifact: Evidence satisfying Agent Ask formalize-two-phase-planning-process
+    clarification: clarified
+    confidence: high
+    source: Agent Ask scope-planning-process-build-criterion-2026-09-22
+    acceptance_criteria:
+      - "docs/planning-process.md exists, vendor-neutral, and states the two-phase process: Phase 1 (Outcome Alignment Interview) produces a confirmed Outcome/Milestone plus any open Decisions with options and consequences; Phase 2 (Staff Planning Architect) consumes that and produces a Plan amendment or new Plan with dependency-ordered, session-sized Actions."
+      - The document embeds both role prompts in full, written so they can be pasted into any coding-agent or chat surface -- Claude Code, Codex, opencode, or a bare frontier-model chat -- not gated behind a single vendors skill mechanism.
+      - The document states how to invoke each phase today (a coding-agent session prompt, or pasting the role prompt directly) given that Claude Code skills live outside this repository at ~/.claude/skills and are not repository-managed content; wiring automatic invocation into arcadia ask routing is named as an explicit deferred trigger, not built here.
+      - AGENTS.md gains a short pointer to docs/planning-process.md so a future session of any vendor can discover it without being told.
+      - Neither the document invents a new Arcadia document type or CLI capability; both phases produce only Agent Asks against existing intents (outcome, milestone, decision, plan, action).
+      - "mise exec -- pnpm exec tsc -p tsconfig.json --noEmit passes, and arcadia docs sync reports no new errors attributable to the changed files; pnpm builds full-repo lint step is not a gate here, since it already fails in a prepared worktree on files this Action never touches (tracked, unrelated, in Issue #480)."
+    depends_on: []
+    decisions: []
+    references: ["AGENTS.md", "docs/managed-documents.md", "docs/arcadia-semantics.md", "docs/agents-context.md", "CONSTITUTION.md"]
+  - id: refresh-managed-production-readiness-2026-09-22
+    title: docs/managed-production-readiness.md accurately reflects live Plan/Decision/production state as of 2026-09-22 and names the shortest remaining path to indefinite unattended production.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: docs/managed-production-readiness.md accurately reflects live Plan/Decision/production state as of 2026-09-22 and names the shortest remaining path to indefinite unattended production.
+    expected_artifact: Evidence satisfying Agent Ask refresh-managed-production-readiness-2026-09-22
+    clarification: clarified
+    confidence: high
+    source: Agent Ask refresh-managed-production-readiness-2026-09-22
+    acceptance_criteria:
+      - "The gate tables reflect each named Actions current status: and Gate 2 is marked closed now that verify-worker-recovery-before-success, fix-packet-lifecycle-latest-planning-decision, and translate-reasoning-effort-at-launch are done."
+      - "prove-zero-prompt-production-loop is described accurately: reclassified to responsibility requires_review this session (Decision 0064, PR #481), so it is no longer wrongly dispatched to coding agents; separately, the real rehearsals Action A succeeded live with opencode on 2026-09-21 per MISSION_LOG, and the specific remaining technical gap is named (Issue #460)."
+      - The new current-pointer Action substitute-unavailable-provider-before-binding is named, with its concrete blocker (packet lifecycle planning_required, per arcadia session preview-launch).
+      - "The newly filed worker-hang defect (Issue #485) is named as a blocker to the indefinite-unattended claim specifically, distinct from the existing detect-hung-managed-production-sessions Action which covers hung Sessions, not a hung worker daemon itself."
+      - The critical path list is re-sequenced in dependency order against current Plan state, and the Last derived date and executive summary numbers (distance, gate counts, scoreboard) are updated to match.
+      - External blockers table is re-verified against live arcadia production capacity output and MISSION_LOG, correcting the stale opencode Unexpected server error claim.
+      - Every claim in the refreshed document traces to a live command output, a Plan document field, a Decision file, or a MISSION_LOG entry actually read during this Action -- no guessing forward from the prior version.
+    depends_on: []
+    decisions: []
+    references: ["docs/managed-production-readiness.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "PROJECT.md", "MISSION_LOG.md", "docs/decisions/0064-resolve-how-to-handle-prove-zero-prompt-production-loop-being-dispatched-to.md"]
 questions: []
 decisions: []
 current_action: preserve-on-exit-and-integrate

@@ -467,6 +467,13 @@ updated: 2026-09-22
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-an-agent-ask-action-amendment-can-2026-09-22).
 
+## 2026-09-22 — Completed arcadia/formalize-two-phase-planning-process
+
+- **Did:** Completed Action arcadia/formalize-two-phase-planning-process from accepted evidence (Candidate c83b2838e2aeb7c1eccc36e7156674532af3504b).
+- **Result:** Every declared acceptance criterion was accepted as met: "docs/planning-process.md exists, vendor-neutral, and states the two-phase process: Phase 1 (Outcome Alignment Interview) produces a confirmed Outcome/Milestone plus any open Decisions with options and consequences; Phase 2 (Staff Planning Architect) consumes that and produces a Plan amendment or new Plan with dependency-ordered, session-sized Actions."; "The document embeds both role prompts in full, written so they can be pasted into any coding-agent or chat surface -- Claude Code, Codex, opencode, or a bare frontier-model chat -- not gated behind a single vendors skill mechanism."; "The document states how to invoke each phase today (a coding-agent session prompt, or pasting the role prompt directly) given that Claude Code skills live outside this repository at ~/.claude/skills and are not repository-managed content; wiring automatic invocation into arcadia ask routing is named as an explicit deferred trigger, not built here."; "AGENTS.md gains a short pointer to docs/planning-process.md so a future session of any vendor can discover it without being told."; "Neither the document invents a new Arcadia document type or CLI capability; both phases produce only Agent Asks against existing intents (outcome, milestone, decision, plan, action)."; "mise exec -- pnpm exec tsc -p tsconfig.json --noEmit passes, and arcadia docs sync reports no new errors attributable to the changed files; pnpm builds full-repo lint step is not a gate here, since it already fails in a prepared worktree on files this Action never touches (tracked, unrelated, in Issue #480).".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-formalize-two-phase-planning-process-2026-09-22).
+
 ## 2026-09-22 — Completed arcadia/substitute-unavailable-provider-before-binding
 
 - **Did:** Completed Action arcadia/substitute-unavailable-provider-before-binding from accepted evidence (Candidate e3faec97194eee2406beaec91cd95520ab3f441e).

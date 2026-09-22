@@ -1,0 +1,25 @@
+{
+  "agent_ask": "v1",
+  "request_id": "refresh-managed-production-readiness-2026-09-22",
+  "project": "arcadia",
+  "intent": "action",
+  "desired_result": "docs/managed-production-readiness.md is re-derived from live state (2026-09-22) so it accurately answers how far Arcadia is from indefinite unattended sequential production, since the last derivation (2026-09-20) predates a completed Gate 2, a reclassified prove-zero-prompt-production-loop, a newly discovered worker-hang defect, and a live opencode rehearsal success.",
+  "rationale": "The operator asked for a canonical, continuously-updated list of everything preventing Arcadia from running sequential automated sessions indefinitely, to keep the operator and every future agent focused on the shortest path to automated production. docs/managed-production-readiness.md already exists for exactly this purpose and is explicitly designed to be re-derived (its own footer names the four commands to run). It is two days stale: since 2026-09-20, Gate 2 (verify-worker-recovery-before-success, fix-packet-lifecycle-latest-planning-decision, translate-reasoning-effort-at-launch) fully completed; prove-zero-prompt-production-loop was reclassified from agent to requires_review (Decision 0064, PR #481) so it stops being wrongly dispatched to coding agents; the zero-prompt rehearsals Action A actually succeeded live with opencode on 2026-09-21 (MISSION_LOG), leaving Issue #460 as the specific remaining technical gap; a new Action (substitute-unavailable-provider-before-binding) is now the dispatch pointer, blocked on a pending planning packet; and this session discovered and filed a new, more fundamental defect (Issue #485): the worker daemon can hang silently and does not self-heal, which blocks every future preservation attempt until a human intervenes.",
+  "actions": [
+    {
+      "id": "refresh-managed-production-readiness-2026-09-22",
+      "desired_result": "docs/managed-production-readiness.md accurately reflects live Plan/Decision/production state as of 2026-09-22 and names the shortest remaining path to indefinite unattended production.",
+      "acceptance": [
+        "The gate tables reflect each named Actions current status: and Gate 2 is marked closed now that verify-worker-recovery-before-success, fix-packet-lifecycle-latest-planning-decision, and translate-reasoning-effort-at-launch are done.",
+        "prove-zero-prompt-production-loop is described accurately: reclassified to responsibility requires_review this session (Decision 0064, PR #481), so it is no longer wrongly dispatched to coding agents; separately, the real rehearsals Action A succeeded live with opencode on 2026-09-21 per MISSION_LOG, and the specific remaining technical gap is named (Issue #460).",
+        "The new current-pointer Action substitute-unavailable-provider-before-binding is named, with its concrete blocker (packet lifecycle planning_required, per arcadia session preview-launch).",
+        "The newly filed worker-hang defect (Issue #485) is named as a blocker to the indefinite-unattended claim specifically, distinct from the existing detect-hung-managed-production-sessions Action which covers hung Sessions, not a hung worker daemon itself.",
+        "The critical path list is re-sequenced in dependency order against current Plan state, and the Last derived date and executive summary numbers (distance, gate counts, scoreboard) are updated to match.",
+        "External blockers table is re-verified against live arcadia production capacity output and MISSION_LOG, correcting the stale opencode Unexpected server error claim.",
+        "Every claim in the refreshed document traces to a live command output, a Plan document field, a Decision file, or a MISSION_LOG entry actually read during this Action -- no guessing forward from the prior version."
+      ],
+      "dependencies": [],
+      "references": ["docs/managed-production-readiness.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "PROJECT.md", "MISSION_LOG.md", "docs/decisions/0064-resolve-how-to-handle-prove-zero-prompt-production-loop-being-dispatched-to.md"]
+    }
+  ]
+}
