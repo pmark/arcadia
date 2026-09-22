@@ -4,12 +4,14 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import { validationError } from "../cli/errors.js";
+import { invocationRoot } from "../cli/invocation.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveProjectReference } from "../ask/rules.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { resolveDispatch } from "../docs/dispatch.js";
+import { projectCheckoutFor } from "../git/worktrees.js";
 import { runAgentAskPreviewCommand, runAgentAskSettleCommand } from "./agentAsk.js";
 
 /**
@@ -41,6 +43,12 @@ export interface ActionSettleOptions {
   notesFile?: string;
   /** Preview only: resolve and validate, but do not settle. */
   dryRun?: boolean;
+  /**
+   * The directory settlement resolves the checkout from. Defaults to
+   * `invocationRoot()` (the operator's real directory), matching the default
+   * the eventual `agent-ask settle` call uses. Set explicitly only in tests.
+   */
+  cwd?: string;
 }
 
 export interface ActionSettleEvidence {
@@ -76,7 +84,7 @@ interface ResolvedTarget {
   criteria: string[];
 }
 
-function resolveTarget(workspacePath: string, options: ActionSettleOptions): ResolvedTarget {
+function resolveTarget(workspacePath: string, options: ActionSettleOptions, cwd: string): ResolvedTarget {
   const [refSlug, refId] = options.action?.includes("/")
     ? (options.action.split("/") as [string, string])
     : [undefined, options.action];
@@ -99,7 +107,11 @@ function resolveTarget(workspacePath: string, options: ActionSettleOptions): Res
     if (!metadata?.repo_path) {
       throw validationError("Project has no configured repository path.", { project: slug });
     }
-    const repoRoot = path.resolve(metadata.repo_path);
+    // The same checkout `agent-ask settle` will bind and compare HEAD against
+    // (src/ask/settlement.ts): the candidate worktree the operator is standing
+    // in, when this runs there, not the Project's configured main checkout
+    // (Issue #278).
+    const repoRoot = projectCheckoutFor(path.resolve(metadata.repo_path), cwd);
 
     const dispatch = resolveDispatch(repoRoot, slug);
     if (!dispatch.context) {
@@ -161,7 +173,8 @@ function resolveNotes(criteria: string[], options: ActionSettleOptions, candidat
 
 export function runActionSettleCommand(options: ActionSettleOptions): CommandSuccess<ActionSettleData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const target = resolveTarget(workspacePath, options);
+  const cwd = path.resolve(options.cwd ?? invocationRoot());
+  const target = resolveTarget(workspacePath, options, cwd);
   const candidateRevision = execFileSync("git", ["rev-parse", "HEAD"], {
     cwd: target.repoRoot,
     encoding: "utf8"
@@ -202,7 +215,8 @@ export function runActionSettleCommand(options: ActionSettleOptions): CommandSuc
     workspace: workspacePath,
     proposal: proposalRequestId,
     requestId: settlementRequestId,
-    disposition: "accepted"
+    disposition: "accepted",
+    cwd
   });
 
   const plan: ActionSettlePlan = {
@@ -232,7 +246,8 @@ export function runActionSettleCommand(options: ActionSettleOptions): CommandSuc
     disposition: "accepted",
     preview: plan.previewFingerprint,
     apply: true,
-    operator: true
+    operator: true,
+    cwd
   });
 
   return createSuccess({
