@@ -8,6 +8,7 @@ import {
   normalizeProductionScope,
   readProductionPolicySafely,
   type MechanicalTransition,
+  type ProductionIntegrationGrant,
   type ProductionPolicyRead,
   type ProductionScope
 } from "./policy.js";
@@ -28,6 +29,8 @@ export interface ProductionActivationPreviewInput {
   plans?: string[];
   maxConcurrentSessions?: number;
   mechanicalTransitions?: MechanicalTransition[];
+  /** Optional Decision 0058 bounded candidate-integration grant. */
+  integrationGrant?: ProductionIntegrationGrant;
   intent: string;
   now?: Date;
 }
@@ -124,7 +127,8 @@ export function buildProductionActivationPreview(
     actions: orderedActions.map((action) => action.actionKey),
     providers: input.providers,
     maxConcurrentSessions: input.maxConcurrentSessions ?? 1,
-    mechanicalTransitions: input.mechanicalTransitions ?? [...MECHANICAL_TRANSITIONS]
+    mechanicalTransitions: input.mechanicalTransitions ?? [...MECHANICAL_TRANSITIONS],
+    ...(input.integrationGrant ? { integrationGrant: input.integrationGrant } : {})
   });
 
   const currentPolicy = readProductionPolicySafely(db);

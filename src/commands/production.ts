@@ -22,6 +22,7 @@ import {
   readProductionPolicySafely,
   type AdmissionReceipt,
   type MechanicalTransition,
+  type ProductionIntegrationGrant,
   type ProductionPolicyRead,
   type ProductionTransitionResult
 } from "../production/policy.js";
@@ -42,6 +43,10 @@ export interface ProductionPreviewOptions {
   intent?: string;
   concurrency?: string;
   transitions?: string;
+  /** Decision 0058 bounded candidate-integration grant, when the operator records one. */
+  integrationGrantDecision?: string;
+  integrationGrantExpiresAt?: string;
+  integrationGrantAction?: string[];
 }
 
 export interface ProductionActivateOptions extends ProductionPreviewOptions {
@@ -246,6 +251,7 @@ export function renderProductionStatusSuccess(
       lines.push(`  Providers: ${policy.scope.providers.join(", ")}`);
       lines.push(`  Concurrency: ${policy.scope.maxConcurrentSessions}`);
       lines.push(`  Delegated mechanics: ${policy.scope.mechanicalTransitions.join(", ") || "none"}`);
+      lines.push(`  Candidate integration grant: ${describeIntegrationGrant(policy.scope.integrationGrant)}`);
     }
     if (policy.authority) {
       lines.push(`  Authority: ${policy.authority.grantedBy} at ${policy.authority.grantedAt}`);
@@ -294,6 +300,7 @@ export function renderProductionPreviewSuccess(
     `  Providers: ${preview.scope.providers.join(", ")}`,
     `  Concurrency: ${preview.scope.maxConcurrentSessions}`,
     `  Delegated mechanics: ${preview.scope.mechanicalTransitions.join(", ") || "none"}`,
+    `  Candidate integration grant: ${describeIntegrationGrant(preview.scope.integrationGrant)}`,
     `  Scope fingerprint: ${preview.scopeFingerprint}`,
     `  Expected revision: ${preview.expectedRevision ?? "unknown"}`,
     `  Ordered Action scope (${preview.orderedActions.length}):`
@@ -348,14 +355,41 @@ function assertKnownProviders(workspacePath: string, providers: string[]): void 
 
 function previewInput(options: ProductionPreviewOptions, workspacePath: string) {
   assertKnownProviders(workspacePath, options.provider ?? []);
+  const integrationGrant = parseIntegrationGrant(options);
   return {
     projects: options.project ?? [],
     plans: options.plan ?? [],
     providers: options.provider ?? [],
     intent: options.intent ?? "",
     maxConcurrentSessions: parseOptionalInteger(options.concurrency, "concurrency") ?? 1,
-    mechanicalTransitions: parseTransitions(options.transitions)
+    mechanicalTransitions: parseTransitions(options.transitions),
+    ...(integrationGrant ? { integrationGrant } : {})
   };
+}
+
+/**
+ * The bounded candidate-integration grant (Decision 0058) is recorded only when
+ * both its Decision and its expiry are given. Half a grant is refused rather
+ * than silently dropped: an operator who names one field expects integration,
+ * and a policy that quietly omits it would stop at preservation every tick.
+ */
+function parseIntegrationGrant(options: ProductionPreviewOptions) {
+  const decisionRef = options.integrationGrantDecision?.trim();
+  const expiresAt = options.integrationGrantExpiresAt?.trim();
+  if (!decisionRef && !expiresAt) return null;
+  if (!decisionRef || !expiresAt) {
+    throw validationError(
+      "A candidate-integration grant needs both --integration-grant-decision and --integration-grant-expires-at.",
+      { decision: decisionRef ?? null, expiresAt: expiresAt ?? null }
+    );
+  }
+  return { decisionRef, expiresAt, actions: options.integrationGrantAction ?? [] };
+}
+
+function describeIntegrationGrant(grant: ProductionIntegrationGrant | undefined): string {
+  if (!grant) return "none (preservation only; a merge stays an operator step)";
+  const scope = grant.actions.length > 0 ? grant.actions.join(", ") : "the scope's own Actions";
+  return `Decision ${grant.decisionRef}, expires ${grant.expiresAt}, covers ${scope}`;
 }
 
 function parseTransitions(raw?: string): MechanicalTransition[] {

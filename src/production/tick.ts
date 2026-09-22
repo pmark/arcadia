@@ -13,6 +13,7 @@ import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely } from "./poli
 import { getRepositoryLease, resolveProjectTransition, systemTmux, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
 import { reconcileSessionExit } from "../sessions/reconciliation.js";
+import { handoffIntegrated, integrateSessionCandidate, preserveSessionCandidate, type IntegrateSessionDeps, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
 import { createId } from "../utils/id.js";
 
 /**
@@ -47,6 +48,8 @@ export interface ManagedProductionTickOptions {
   log?: (message: string) => void;
   /** Override how a Project's GitHub board is reached; tests pass an in-memory board. */
   boardFactory?: BoardFactory;
+  /** Test overrides for the terminal-session preservation/integration handoff. */
+  handoff?: { preserve?: PreserveSessionDeps; integrate?: IntegrateSessionDeps };
 }
 
 export interface BaseBranchAdvanceObservation {
@@ -76,6 +79,7 @@ export interface ManagedProductionTickProjectResult {
   repositoryRoot: string | null;
   baseBranchAdvance: BaseBranchAdvanceObservation | null;
   reconciled: Array<{ sessionId: string; outcome: string }>;
+  handoff: SessionHandoffResult | null;
   launch: ManagedProductionLaunchAttempt | null;
 }
 
@@ -146,7 +150,7 @@ export function runManagedProductionTick(
     const metadata = getProjectMetadata(db, project.id);
     const configuredPath = metadata?.repo_path?.trim() || null;
     if (!configuredPath || !existsSync(configuredPath)) {
-      projects.push({ projectSlug: project.slug, repositoryRoot: null, baseBranchAdvance: null, reconciled: [], launch: null });
+      projects.push({ projectSlug: project.slug, repositoryRoot: null, baseBranchAdvance: null, reconciled: [], handoff: null, launch: null });
       continue;
     }
     const repoRoot = path.resolve(configuredPath);
@@ -161,10 +165,22 @@ export function runManagedProductionTick(
     options.heartbeat?.();
 
     const reconciled: Array<{ sessionId: string; outcome: string }> = [];
+    let handoff: SessionHandoffResult | null = null;
     try {
       const lease = getRepositoryLease(db, repoRoot);
       if (lease && !tmux.hasSession(lease.tmux_session_name)) {
+        // Preserve the dead Session's candidate before reconciliation marks it
+        // terminal (validation runs against the still-active lease), then
+        // reconcile through the canonical completion/pointer writers, then
+        // integrate the branch -- now carrying the completion settlement --
+        // only under Decision 0058's separately recorded grant. Absent a valid
+        // grant this stops after preservation and reports the operator merge.
+        const preservation = preserveSessionCandidate({ db, workspace, repoRoot, session: lease, now }, options.handoff?.preserve ?? {});
         const result = reconcileSessionExit({ db, sessionId: lease.id, requestId: `worker-tick-reconcile-${lease.id}`, repoRoot });
+        const integration = preservation.kind === "preserved"
+          ? integrateSessionCandidate({ db, workspace, repoRoot, session: lease, now }, options.handoff?.integrate ?? {})
+          : { kind: "refused" as const, reason: `Integration waits on a preserved candidate: ${preservation.reason}`, operatorMergeCommand: null };
+        handoff = { preservation, integration };
         reconciled.push({ sessionId: lease.id, outcome: result.receipt.outcome });
         log(`Reconciled Session ${lease.id} for ${project.slug}: ${result.receipt.outcome} (${result.receipt.reason})`);
         if (result.receipt.outcome === "failed_execution" || result.receipt.outcome === "missing_evidence") {
@@ -179,7 +195,17 @@ export function runManagedProductionTick(
     let launch: ManagedProductionLaunchAttempt | null = null;
     if (active && reconciled.length === 0) {
       launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log });
+    } else if (active && handoff !== null && handoffIntegrated(handoff)) {
+      // The candidate is preserved and its exact branch is now on the governed
+      // base branch, carrying the completion and pointer settlement. Admit the
+      // next eligible Action in this same tick -- no operator command, no
+      // one-tick wait.
+      launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log });
     } else if (active) {
+      const refusal = handoff?.integration.kind === "refused" ? handoff.integration : null;
+      if (refusal?.operatorMergeCommand) {
+        log(`Candidate for ${project.slug} preserved but not integrated: ${refusal.reason} Operator merge: ${refusal.operatorMergeCommand}`);
+      }
       // A Session for this repository was just reconciled this very tick. Its
       // outcome (e.g. `accepted_completion`) may have settled onto the
       // candidate's own branch, which has not been merged into this checked-in
@@ -192,7 +218,7 @@ export function runManagedProductionTick(
     }
 
     options.heartbeat?.();
-    projects.push({ projectSlug: project.slug, repositoryRoot: repoRoot, baseBranchAdvance, reconciled, launch });
+    projects.push({ projectSlug: project.slug, repositoryRoot: repoRoot, baseBranchAdvance, reconciled, handoff, launch });
   }
 
   return { policyActive: active, scheduling, schedulingError, projects };
