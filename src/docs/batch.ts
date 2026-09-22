@@ -189,9 +189,17 @@ export function resolveBatch(inputs: BatchProjectInput[], options: ResolveBatchO
     const planTokenPoints = planTokenImpact ? TOKEN_TIER_POINTS[planTokenImpact] : 0;
 
     const order = rotateToCurrent(readySet.currentAction, readySet.candidates);
-    if (order.length > 0 && order[0].ready) pinnedActionKeys.add(`${projectSlug}/${order[0].actionId}`);
 
     let lane = lanes.get(repositoryRoot);
+    // Only the lane's very own first Action is pinned — the first project to
+    // reach a repository decides what leads it. A second Project sharing the
+    // lane contributes its ready Actions like everything else after that: its
+    // own pointer is what dispatch would run *if* it held the lease, but this
+    // lane's lease is already spoken for by whichever Action leads it, so
+    // there is nothing to protect it from being reordered by queue priority.
+    if ((!lane || lane.actions.length === 0) && order.length > 0 && order[0].ready) {
+      pinnedActionKeys.add(`${projectSlug}/${order[0].actionId}`);
+    }
     if (!lane) {
       lane = {
         laneId: repositoryRoot,
