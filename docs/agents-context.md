@@ -256,7 +256,7 @@ required everywhere.
 | `log` | Appends one Project Log entry | No |
 | `proposal` | Preserves evidence only — no executable Action | No |
 | `project_update` | `target_ref: outcome` or `milestone` updates that field; any other `target_ref`, or none, is refused at preview | No |
-| `complete` | With `target_ref` naming an Action, `candidate_revision` (the Candidate's git sha) and `evidence` (one `met`/`failed`/`skipped` entry per declared acceptance criterion, verbatim and in order): marks the Action done and resolves the next governed Action, question, blocker, or completed Plan. Refuses any criterion not `met`, an unresolved required review Decision, a stale `candidate_revision`, or an apply without `--operator` | No |
+| `complete` | With `target_ref` naming an Action (`action/<action-id>` for the active Plan's Action, or `plan/<plan-slug>#<action-id>` for that Action in any Plan, active or not), `candidate_revision` (the Candidate's git sha) and `evidence` (one `met`/`failed`/`skipped` entry per declared acceptance criterion, verbatim and in order): marks the Action done and resolves the next governed Action, question, blocker, or completed Plan. A non-active-Plan completion writes only that Plan's document, leaving `PROJECT.md` and the active Plan's `current_action`/queue untouched. Refuses any criterion not `met`, an unresolved required review Decision, a stale `candidate_revision`, or an ambiguous Action id across Plans. An apply without `--operator` still applies, recorded with `deterministic_proof` authority instead of `operator_acceptance` | No |
 
 `requested_authority` is `propose` or `apply_if_approved`, and neither lets an
 agent apply anything by itself.
