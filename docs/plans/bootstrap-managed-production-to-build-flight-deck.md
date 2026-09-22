@@ -1280,7 +1280,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/419", "src/goBroker.ts", "src/sessions/preservationTransport.ts", "scripts/arcadia-go-broker.ts"]
   - id: substitute-unavailable-provider-before-binding
     title: Substitute an equivalent-or-stronger permitted provider before packet binding when hard evidence shows the intended provider cannot execute the work, record and surface the substitution, and never switch providers once execution has begun.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Substitute an equivalent-or-stronger permitted provider before packet binding when hard evidence shows the intended provider cannot execute the work, record and surface the substitution, and never switch providers once execution has begun.
@@ -1360,7 +1360,7 @@ actions:
     references: ["docs/managed-production-readiness.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "PROJECT.md", "MISSION_LOG.md", "docs/decisions/0064-resolve-how-to-handle-prove-zero-prompt-production-loop-being-dispatched-to.md"]
 questions: []
 decisions: []
-current_action: refresh-managed-production-readiness-2026-09-22
+current_action: preserve-on-exit-and-integrate
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

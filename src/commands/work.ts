@@ -1384,6 +1384,29 @@ function ensureCodexPacketsForPlan(
         mappingId: packet.agentConfiguration.mappingId,
         bindingId: packet.agentConfiguration.bindingId
       });
+      if (agentSelection.substitution) {
+        const substitution = agentSelection.substitution;
+        recordExecutionProfileEvent(db, {
+          eventType: "coding_agent.provider_substituted",
+          workItemId: workItem.id,
+          invocationId: invocation.id,
+          phase,
+          reason:
+            `Substituted ${substitution.intendedProvider} → ${packet.agentConfiguration.provider} before packet binding ` +
+            `(${substitution.code}: ${substitution.reason}). ${substitution.resumeGuidance}`,
+          summary:
+            `provider substituted: ${substitution.intendedProvider} → ${packet.agentConfiguration.provider} ` +
+            `(${substitution.code})`,
+          mappingId: packet.agentConfiguration.mappingId,
+          bindingId: packet.agentConfiguration.bindingId,
+          providerSubstitution: {
+            intendedProvider: substitution.intendedProvider,
+            selectedProvider: packet.agentConfiguration.provider,
+            code: substitution.code,
+            hardEvidenceReason: substitution.reason
+          }
+        });
+      }
     }
 
     createArtifactRecord(db, {

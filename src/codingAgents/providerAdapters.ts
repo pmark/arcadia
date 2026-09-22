@@ -75,6 +75,41 @@ export interface CodingAgentSelectionInput {
    * capability floors below still apply to whatever remains.
    */
   capacityRefusals?: Record<string, string>;
+  /**
+   * Deterministic, named reasons a specific provider cannot execute the work
+   * right now — never an advisory capacity estimate. Selection excludes a
+   * provider named here from candidates, exactly like `capacityRefusals`, but
+   * the reason is carried through as a closed, typed code so a caller can
+   * record *why* a substitution happened. See {@link HardProviderEvidenceCode}.
+   */
+  hardEvidence?: HardProviderEvidence[];
+}
+
+/**
+ * The closed set of deterministic, launch-precluding facts that justify
+ * substituting a different permitted provider before a packet binds (Decision
+ * 0063). Nothing advisory belongs here: an unadmitted, stale, reserve-margin
+ * or exhausted capacity *estimate* (src/codingAgents/capacity.ts) is never
+ * hard evidence, because capacity attestation is deliberately non-gating.
+ * Adding or removing a value here is a deliberate change to what may trigger
+ * substitution — `providerAdapters.test.ts` pins this exact list so that
+ * change cannot happen silently.
+ */
+export const HARD_PROVIDER_EVIDENCE_CODES = [
+  "provider_unavailable",
+  "model_unavailable",
+  "authentication_failure",
+  "quota_or_rate_limit_rejected",
+  "launch_precluded"
+] as const;
+
+export type HardProviderEvidenceCode = (typeof HARD_PROVIDER_EVIDENCE_CODES)[number];
+
+/** One deterministic, named reason a provider cannot run the work right now. */
+export interface HardProviderEvidence {
+  providerId: string;
+  code: HardProviderEvidenceCode;
+  reason: string;
 }
 
 export class ExecutionProfileUnsatisfiedError extends Error {
@@ -98,6 +133,9 @@ export function selectCompliantCodingAgent(
   const providerStates = new Map(
     input.adapters.providers.map((provider) => [provider.id, provider])
   );
+  const hardEvidenceByProvider = new Map(
+    (input.hardEvidence ?? []).map((evidence) => [evidence.providerId, evidence])
+  );
   const candidates: SelectedCodingAgentConfiguration[] = [];
   const rejected: Array<{ binding: string; reason: string }> = [];
 
@@ -105,6 +143,11 @@ export function selectCompliantCodingAgent(
     const provider = providerStates.get(binding.provider);
     if (!binding.enabled || !provider?.enabled) {
       rejected.push({ binding: binding.id, reason: provider?.unavailableReason ?? "disabled" });
+      continue;
+    }
+    const hardEvidence = hardEvidenceByProvider.get(binding.provider);
+    if (hardEvidence) {
+      rejected.push({ binding: binding.id, reason: `${hardEvidence.code}: ${hardEvidence.reason}` });
       continue;
     }
     const capacityRefusal = input.capacityRefusals?.[binding.provider];
@@ -191,9 +234,184 @@ export function selectCompliantCodingAgent(
       dataLocality: requirement.dataLocality,
       requestedProfile: input.requestedProfile ?? null,
       capacityRefusals: input.capacityRefusals ?? {},
+      hardEvidence: input.hardEvidence ?? [],
       rejected
     }
   );
+}
+
+// ---------------------------------------------------------------------------
+// Hard-evidence substitution (Decision 0063)
+// ---------------------------------------------------------------------------
+
+/** Visible record of a provider substitution driven by hard evidence. */
+export interface HardEvidenceSubstitution {
+  /** The provider that would have run this work absent the hard evidence. */
+  intendedProvider: string;
+  /** Which closed hard-evidence value caused the substitution. */
+  code: HardProviderEvidenceCode;
+  /** The visible reason the intended provider could not run the work. */
+  reason: string;
+  /**
+   * Substitution changes who runs the work, never what was already applied.
+   * Carried on the result so a caller cannot quietly restart a partial Run on
+   * the substitute.
+   */
+  resumeGuidance: string;
+}
+
+export interface HardEvidenceAdmittedSelection {
+  configuration: SelectedCodingAgentConfiguration;
+  substitution: HardEvidenceSubstitution | null;
+  /** Every provider hard evidence excluded, for the record. */
+  excluded: Record<string, HardProviderEvidence>;
+}
+
+/**
+ * Select a compliant provider, substituting away from a provider named by
+ * hard evidence before this work's packet binds. The order matters: hard
+ * evidence removes providers from the pool, and `selectCompliantCodingAgent`
+ * then applies the same capability, tools, context, locality and sandbox
+ * floors it always does to whatever is left — a limited provider therefore
+ * yields a *different eligible configured provider* or nothing at all, never
+ * a weaker one. `capacityRefusals` (advisory) is applied identically to both
+ * the "intended" and the "actual" selection below, so an advisory-only
+ * difference can never be recorded as a substitution — only a difference hard
+ * evidence caused can be.
+ *
+ * "Intended" is computed against a registry where only the exact provider and
+ * bindings the hard evidence names are treated as available again — not by
+ * merely dropping the `hardEvidence` list. Some hard evidence (a disabled
+ * registry provider, every binding for it disabled, no launch adapter) is
+ * *also* what a disabled `providers`/`bindings` entry already excludes
+ * structurally, so dropping only `hardEvidence` would leave that provider
+ * excluded either way and silently produce `intended === actual` — losing the
+ * substitution record for exactly the evidence this function exists to prove.
+ *
+ * This function makes no call itself once a packet exists: it is meant to run
+ * only at the moment a new packet is about to bind, never again for an
+ * existing one (see selectAgentProfileForWorkItem in src/codex/packets.ts).
+ */
+export function selectProviderWithHardEvidenceSubstitution(
+  input: CodingAgentSelectionInput
+): HardEvidenceAdmittedSelection {
+  const excluded: Record<string, HardProviderEvidence> = {};
+  for (const evidence of input.hardEvidence ?? []) {
+    excluded[evidence.providerId] = evidence;
+  }
+
+  const adaptersWithoutHardEvidence = bypassHardEvidenceRestriction(input.adapters, excluded);
+  const intended = ((): SelectedCodingAgentConfiguration | null => {
+    try {
+      return selectCompliantCodingAgent({
+        ...input,
+        adapters: adaptersWithoutHardEvidence,
+        hardEvidence: undefined
+      });
+    } catch (error) {
+      if (!(error instanceof ExecutionProfileUnsatisfiedError)) throw error;
+      return null;
+    }
+  })();
+
+  const configuration = selectCompliantCodingAgent(input);
+
+  const intendedEvidence = intended ? excluded[intended.provider] : undefined;
+  const substitution =
+    intended && intendedEvidence && intended.provider !== configuration.provider
+      ? {
+          intendedProvider: intended.provider,
+          code: intendedEvidence.code,
+          reason: intendedEvidence.reason,
+          resumeGuidance:
+            `Resume this Action from its recorded checkpoint on ${configuration.provider}. ` +
+            `Work already applied by ${intended.provider} must not be replayed.`
+        }
+      : null;
+
+  return { configuration, substitution, excluded };
+}
+
+/**
+ * Rebuild a registry as if the providers named in `excluded` were never
+ * restricted, so an "intended" selection can be computed as a true
+ * counterfactual of the hard evidence — not merely of the `hardEvidence`
+ * input field, which by itself cannot undo a structurally disabled provider
+ * or binding. Only the exact providers named are touched; every other
+ * capability, tools, context, locality, sandbox and capacity constraint is
+ * untouched, so this never widens what an evidenced provider is eligible for
+ * beyond "as if this one restriction did not apply".
+ */
+function bypassHardEvidenceRestriction(
+  adapters: ProviderAdapterRegistry,
+  excluded: Record<string, HardProviderEvidence>
+): ProviderAdapterRegistry {
+  if (Object.keys(excluded).length === 0) return adapters;
+  return {
+    ...adapters,
+    providers: adapters.providers.map((provider) =>
+      excluded[provider.id] ? { ...provider, enabled: true, unavailableReason: undefined } : provider),
+    bindings: adapters.bindings.map((binding) =>
+      excluded[binding.provider] ? { ...binding, enabled: true } : binding)
+  };
+}
+
+/**
+ * Providers the canonical Session subsystem can actually spawn today. Mirrors
+ * the hardcoded check in prepareSession (sessions/index.ts) — kept as an
+ * explicit, named table here so this table's callers (launch preview and
+ * packet binding) and prepareSession's launch-time refusal can never silently
+ * drift apart from being the same fact stated twice with different wording.
+ */
+export const LAUNCH_ADAPTER_SUPPORT: Record<string, boolean> = {
+  "codex-cli": true,
+  "claude-code-cli": true,
+  "opencode-cli": true
+};
+
+/**
+ * Detect the deterministic, non-advisory facts this host already knows about
+ * each configured provider: disabled in the registry, every model binding for
+ * it disabled, or no supported Session launch adapter exists for it yet.
+ * `authentication_failure` and `quota_or_rate_limit_rejected` are valid, typed
+ * members of {@link HardProviderEvidenceCode} that a caller may populate from
+ * its own explicit rejection (a real 401, a provider's own "rate limit
+ * reached" flag) — this detector does not emit them, because no such
+ * structured, non-advisory signal exists on this host yet without reusing the
+ * percentage-based capacity estimates Decision 0063 made deliberately
+ * non-gating.
+ */
+export function detectHardProviderEvidence(
+  adapters: ProviderAdapterRegistry
+): HardProviderEvidence[] {
+  const evidence: HardProviderEvidence[] = [];
+  for (const provider of adapters.providers) {
+    if (!provider.enabled) {
+      evidence.push({
+        providerId: provider.id,
+        code: "provider_unavailable",
+        reason: provider.unavailableReason ?? `Provider ${provider.id} is disabled in the provider-adapter registry.`
+      });
+      continue;
+    }
+    if (!LAUNCH_ADAPTER_SUPPORT[provider.id]) {
+      evidence.push({
+        providerId: provider.id,
+        code: "launch_precluded",
+        reason: `Provider ${provider.id} has no supported Session launch adapter yet.`
+      });
+      continue;
+    }
+    const providerBindings = adapters.bindings.filter((binding) => binding.provider === provider.id);
+    if (providerBindings.length > 0 && providerBindings.every((binding) => !binding.enabled)) {
+      evidence.push({
+        providerId: provider.id,
+        code: "model_unavailable",
+        reason: `Every provider-adapter binding for ${provider.id} is disabled; no model is currently offered.`
+      });
+    }
+  }
+  return evidence;
 }
 
 /**
