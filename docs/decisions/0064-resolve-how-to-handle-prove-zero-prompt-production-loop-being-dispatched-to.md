@@ -4,7 +4,7 @@ type: decision
 id: "0064"
 slug: resolve-how-to-handle-prove-zero-prompt-production-loop-being-dispatched-to
 project: arcadia
-status: open
+status: approved
 question: Resolve how to handle prove-zero-prompt-production-loop being dispatched to coding agents when its own runbook forbids a coding agent from running it.
 gap_type: missing-decision
 recommendation: "Implement the #453 dispatch-vocabulary fix now (new scoped Action)"
@@ -20,7 +20,9 @@ options:
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
-updated: 2026-09-22
+updated: 2026-09-21
+answer: "Implement the #453 dispatch-vocabulary fix now (new scoped Action)"
+decided: 2026-09-21
 ---
 
 # Decision 0064: Resolve how to handle prove-zero-prompt-production-loop being dispatched to coding agents when its own runbook forbids a coding agent from running it.
