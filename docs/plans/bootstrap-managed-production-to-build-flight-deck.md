@@ -1360,7 +1360,7 @@ actions:
     references: ["docs/managed-production-readiness.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "PROJECT.md", "MISSION_LOG.md", "docs/decisions/0064-resolve-how-to-handle-prove-zero-prompt-production-loop-being-dispatched-to.md"]
 questions: []
 decisions: []
-current_action: substitute-unavailable-provider-before-binding
+current_action: refresh-managed-production-readiness-2026-09-22
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
