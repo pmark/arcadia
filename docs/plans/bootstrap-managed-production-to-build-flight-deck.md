@@ -1337,6 +1337,27 @@ actions:
     depends_on: []
     decisions: []
     references: ["AGENTS.md", "docs/managed-documents.md", "docs/arcadia-semantics.md", "docs/agents-context.md", "CONSTITUTION.md"]
+  - id: refresh-managed-production-readiness-2026-09-22
+    title: docs/managed-production-readiness.md accurately reflects live Plan/Decision/production state as of 2026-09-22 and names the shortest remaining path to indefinite unattended production.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: docs/managed-production-readiness.md accurately reflects live Plan/Decision/production state as of 2026-09-22 and names the shortest remaining path to indefinite unattended production.
+    expected_artifact: Evidence satisfying Agent Ask refresh-managed-production-readiness-2026-09-22
+    clarification: clarified
+    confidence: high
+    source: Agent Ask refresh-managed-production-readiness-2026-09-22
+    acceptance_criteria:
+      - "The gate tables reflect each named Actions current status: and Gate 2 is marked closed now that verify-worker-recovery-before-success, fix-packet-lifecycle-latest-planning-decision, and translate-reasoning-effort-at-launch are done."
+      - "prove-zero-prompt-production-loop is described accurately: reclassified to responsibility requires_review this session (Decision 0064, PR #481), so it is no longer wrongly dispatched to coding agents; separately, the real rehearsals Action A succeeded live with opencode on 2026-09-21 per MISSION_LOG, and the specific remaining technical gap is named (Issue #460)."
+      - The new current-pointer Action substitute-unavailable-provider-before-binding is named, with its concrete blocker (packet lifecycle planning_required, per arcadia session preview-launch).
+      - "The newly filed worker-hang defect (Issue #485) is named as a blocker to the indefinite-unattended claim specifically, distinct from the existing detect-hung-managed-production-sessions Action which covers hung Sessions, not a hung worker daemon itself."
+      - The critical path list is re-sequenced in dependency order against current Plan state, and the Last derived date and executive summary numbers (distance, gate counts, scoreboard) are updated to match.
+      - External blockers table is re-verified against live arcadia production capacity output and MISSION_LOG, correcting the stale opencode Unexpected server error claim.
+      - Every claim in the refreshed document traces to a live command output, a Plan document field, a Decision file, or a MISSION_LOG entry actually read during this Action -- no guessing forward from the prior version.
+    depends_on: []
+    decisions: []
+    references: ["docs/managed-production-readiness.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "PROJECT.md", "MISSION_LOG.md", "docs/decisions/0064-resolve-how-to-handle-prove-zero-prompt-production-loop-being-dispatched-to.md"]
 questions: []
 decisions: []
 current_action: substitute-unavailable-provider-before-binding
