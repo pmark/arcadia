@@ -1399,6 +1399,26 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/docs/dispatch.ts", "apps/dashboard/components/production-control-panel.tsx", "apps/dashboard/app/runs/page.tsx", "apps/dashboard/hooks/use-production-control.ts", "docs/managed-production-readiness.md", "docs/github-board-guide.md", "docs/production-scheduling.md"]
+  - id: serialize-current-action-writes
+    title: arcadia agent-ask settle's current_action/Plan pointer write for project_update and complete goes through transitionActionPointer's existing fingerprint-checked compare-and-set instead of settleAgentAsk's own independent, unguarded read-then-write.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: arcadia agent-ask settle's current_action/Plan pointer write for project_update and complete goes through transitionActionPointer's existing fingerprint-checked compare-and-set instead of settleAgentAsk's own independent, unguarded read-then-write.
+    expected_artifact: Evidence satisfying Agent Ask serialize-current-action-writes
+    clarification: clarified
+    confidence: high
+    source: Agent Ask action-serialize-current-action-writes-2026-09-22
+    acceptance_criteria:
+      - "settleAgentAsk's PROJECT.md/Plan pointer write for project_update and complete routes through transitionActionPointer (or reuses its fingerprint discipline: headBefore plus both documents' content hashes, verified fresh at write time) instead of its own independent readFileSync-then-writeFileSync-via-temp-file path."
+      - "The retry rule preserves an explicitly resolved settlement target: project_update and complete can resolve an Action outside queue order, and a compare-and-set failure retries the pointer transition against that same resolved target, re-reading only the base content for a fresh diff -- it never re-derives current_action from fresh queue state, which could silently retarget a different Action."
+      - A compare-and-set failure retries under the same settlementRequestId, since that id is what the existing duplicate-settlement guard already keys idempotency on.
+      - writePairAtomically's existing pair-write (PROJECT.md and the Plan document, inside transitionActionPointer's db.transaction) covers the settlement path too, so a retry or a concurrent transition cannot interleave the two documents' renames or leave them pointing at different current_action values.
+      - "A regression test reproduces two concurrent settlements for two different Actions racing to write current_action: the second settlement's compare-and-set fails against the first's already-applied change, retries against fresh state, and both pointer moves are preserved in the correct final order -- neither is silently discarded."
+      - pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
 current_action: preserve-on-exit-and-integrate

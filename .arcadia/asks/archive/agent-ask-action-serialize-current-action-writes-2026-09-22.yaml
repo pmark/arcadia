@@ -1,0 +1,23 @@
+{
+  "agent_ask": "v1",
+  "request_id": "action-serialize-current-action-writes-2026-09-22",
+  "project": "arcadia",
+  "intent": "action",
+  "desired_result": "arcadia agent-ask settle's current_action/Plan pointer write for project_update and complete goes through transitionActionPointer's existing fingerprint-checked compare-and-set (headBefore plus both documents' content hashes, already used by arcadia advance queue make-next), instead of settleAgentAsk's own independent, unguarded readFileSync-then-write, so two concurrent settlements can never silently overwrite each other's pointer move.",
+  "rationale": "Stop-the-line promotion, not ordinary work: this is a live, already-twice-observed defect in machinery the active plan's own worker daemon depends on for its unattended-production goal, discovered on 2026-09-22 while working this Project. Its only workaround today is a person noticing a suspicious commit and manually running git reset --hard plus a fresh queue make-next -- exactly what this session did twice in one hour, once against the worker daemon's own tick (PID 74961). It blocks work unrelated to itself: any two concurrent settlements for two different Actions can silently corrupt PROJECT.md's current_action, not only the specific collision that surfaced it. Full analysis, with the exact source verification (src/dispatch/pointer.ts, src/ask/settlement.ts), is in docs/proposals/concurrent-session-action-claims.md capability 3 (PR #489/#496).",
+  "actions": [
+    {
+      "id": "serialize-current-action-writes",
+      "desired_result": "arcadia agent-ask settle's current_action/Plan pointer write for project_update and complete goes through transitionActionPointer's existing fingerprint-checked compare-and-set instead of settleAgentAsk's own independent, unguarded read-then-write.",
+      "acceptance": [
+        "settleAgentAsk's PROJECT.md/Plan pointer write for project_update and complete routes through transitionActionPointer (or reuses its fingerprint discipline: headBefore plus both documents' content hashes, verified fresh at write time) instead of its own independent readFileSync-then-writeFileSync-via-temp-file path.",
+        "The retry rule preserves an explicitly resolved settlement target: project_update and complete can resolve an Action outside queue order, and a compare-and-set failure retries the pointer transition against that same resolved target, re-reading only the base content for a fresh diff -- it never re-derives current_action from fresh queue state, which could silently retarget a different Action.",
+        "A compare-and-set failure retries under the same settlementRequestId, since that id is what the existing duplicate-settlement guard already keys idempotency on.",
+        "writePairAtomically's existing pair-write (PROJECT.md and the Plan document, inside transitionActionPointer's db.transaction) covers the settlement path too, so a retry or a concurrent transition cannot interleave the two documents' renames or leave them pointing at different current_action values.",
+        "A regression test reproduces two concurrent settlements for two different Actions racing to write current_action: the second settlement's compare-and-set fails against the first's already-applied change, retries against fresh state, and both pointer moves are preserved in the correct final order -- neither is silently discarded.",
+        "pnpm test and the core, Discord and Dashboard builds pass."
+      ],
+      "dependencies": []
+    }
+  ]
+}
