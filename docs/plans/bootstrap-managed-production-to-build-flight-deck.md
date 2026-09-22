@@ -1401,7 +1401,7 @@ actions:
     references: ["src/docs/dispatch.ts", "apps/dashboard/components/production-control-panel.tsx", "apps/dashboard/app/runs/page.tsx", "apps/dashboard/hooks/use-production-control.ts", "docs/managed-production-readiness.md", "docs/github-board-guide.md", "docs/production-scheduling.md"]
   - id: serialize-current-action-writes
     title: arcadia agent-ask settle's current_action/Plan pointer write for project_update and complete goes through transitionActionPointer's existing fingerprint-checked compare-and-set instead of settleAgentAsk's own independent, unguarded read-then-write.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: arcadia agent-ask settle's current_action/Plan pointer write for project_update and complete goes through transitionActionPointer's existing fingerprint-checked compare-and-set instead of settleAgentAsk's own independent, unguarded read-then-write.
@@ -1421,7 +1421,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: serialize-current-action-writes
+current_action: bind-candidate-revision-in-action-settle
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
