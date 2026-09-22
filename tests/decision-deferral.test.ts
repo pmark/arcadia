@@ -646,6 +646,19 @@ describe("reverse an applied Decision deferral", () => {
     ).toThrow(/belongs to a different Decision/i);
   });
 
+  it("refuses a reversal request id reused for a later deferral", () => {
+    const { workspace, decisionId } = fixture();
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    const first = runDecisionReverseCommand({ workspace, project: "demo", id: decisionId, requestId: "reverse-one" });
+    expect(first.data.applied).toBe(true);
+    // A new deferral, then reuse of the first reversal's request id.
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+
+    expect(() =>
+      runDecisionReverseCommand({ workspace, project: "demo", id: decisionId, requestId: "reverse-one" })
+    ).toThrow(/already used to reverse a different deferral/i);
+  });
+
   it("refuses to replay a failed reversal commit after a document changed", () => {
     const { workspace, repo, decisionId } = fixture();
     runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });

@@ -3,6 +3,7 @@ import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
+import { writeTransaction } from "../db/connection.js";
 import { discoverDocs } from "../docs/discover.js";
 import { resolveActionReadiness, resolveDispatch } from "../docs/dispatch.js";
 import { parseDoc } from "../docs/parse.js";
@@ -354,6 +355,16 @@ export function reverseDecisionDeferral(
         requestedDecision: input.decisionId
       });
     }
+    // A reversal request id idempotently keys exactly one deferral. Reusing it
+    // for a later deferral of the same Decision must refuse rather than replace
+    // the original reversal's receipt.
+    if (existing.consequence.reversesReceiptId !== deferral.id) {
+      throw validationError("This reversal request id was already used to reverse a different deferral.", {
+        requestId: input.requestId,
+        originalDeferral: existing.consequence.reversesReceiptId,
+        requestedDeferral: deferral.id
+      });
+    }
     // A dry run never touches Git, even when an earlier attempt left an
     // unapplied receipt behind. Report the recorded reversal and stop.
     if (input.dryRun) {
@@ -385,127 +396,140 @@ export function reverseDecisionDeferral(
     // than replay a reversal that no longer matches the repository.
   }
 
-  const { project, plan, action } = resolveTarget(input.repoRoot, input.projectSlug, deferral.consequence.actionId);
-  // The receipt names the Plan it parked the Action in. Resolving the Project's
-  // *current* active Plan is only safe when it is still that Plan; otherwise a
-  // different Plan holding the same Action id would be changed instead.
-  if (plan.relativePath !== deferral.consequence.planPath) {
-    throw validationError("The deferral names a different Plan than the Project now has active, so reversing it would change the wrong Plan.", {
-      deferralPlan: deferral.consequence.planPath,
-      activePlan: plan.relativePath,
-      remedy: "Reactivate that Plan, or leave the deferral in place."
-    });
-  }
-  if (action.status !== deferral.consequence.actionStatusAfter) {
-    throw validationError("The Action's status has changed since the deferral, so reversing it would discard newer checked-in truth.", {
-      action: action.id,
-      deferralLeft: deferral.consequence.actionStatusAfter,
-      current: action.status,
-      remedy: "Reconcile the Action first, or leave the deferral in place."
-    });
-  }
-  if (deferral.consequence.pointerMoved) {
-    // Both documents hold the pointer. Comparing only the effective one would
-    // let a newer Plan pointer be overwritten by a stale Project pointer.
-    const projectPointer = project.currentAction;
-    const planPointer = plan.currentAction;
-    if (projectPointer !== deferral.consequence.pointerAfter || planPointer !== deferral.consequence.pointerAfter) {
-      throw validationError("The governed pointer has moved since the deferral, so reversing it would discard newer checked-in truth.", {
-        deferralLeft: deferral.consequence.pointerAfter,
-        projectPointer,
-        planPointer,
-        remedy: "Reconcile the pointer first, or leave the deferral in place."
+  // Guards, file writes, and the post-write assertion all run under the same
+  // workspace write interlock `transitionActionPointer` uses. Without it, a
+  // pointer transition landing between this read and its write could be
+  // overwritten by the restored receipt pointer. The Git commit stays outside
+  // the transaction so a commit failure leaves the written documents for
+  // recovery instead of rolling them back over a receipt.
+  const prepared = writeTransaction(db, () => {
+    const { project, plan, action } = resolveTarget(input.repoRoot, input.projectSlug, deferral.consequence.actionId);
+    // The receipt names the Plan it parked the Action in. Resolving the Project's
+    // *current* active Plan is only safe when it is still that Plan; otherwise a
+    // different Plan holding the same Action id would be changed instead.
+    if (plan.relativePath !== deferral.consequence.planPath) {
+      throw validationError("The deferral names a different Plan than the Project now has active, so reversing it would change the wrong Plan.", {
+        deferralPlan: deferral.consequence.planPath,
+        activePlan: plan.relativePath,
+        remedy: "Reactivate that Plan, or leave the deferral in place."
       });
     }
+    if (action.status !== deferral.consequence.actionStatusAfter) {
+      throw validationError("The Action's status has changed since the deferral, so reversing it would discard newer checked-in truth.", {
+        action: action.id,
+        deferralLeft: deferral.consequence.actionStatusAfter,
+        current: action.status,
+        remedy: "Reconcile the Action first, or leave the deferral in place."
+      });
+    }
+    if (deferral.consequence.pointerMoved) {
+      // Both documents hold the pointer. Comparing only the effective one would
+      // let a newer Plan pointer be overwritten by a stale Project pointer.
+      const projectPointer = project.currentAction;
+      const planPointer = plan.currentAction;
+      if (projectPointer !== deferral.consequence.pointerAfter || planPointer !== deferral.consequence.pointerAfter) {
+        throw validationError("The governed pointer has moved since the deferral, so reversing it would discard newer checked-in truth.", {
+          deferralLeft: deferral.consequence.pointerAfter,
+          projectPointer,
+          planPointer,
+          remedy: "Reconcile the pointer first, or leave the deferral in place."
+        });
+      }
+    }
+    // Re-opening the Decision clears its answer, so refuse when a newer answer has
+    // been recorded since the deferral rather than silently discarding it. A
+    // receipt written before answers were recorded cannot prove this and skips the
+    // exact check.
+    if (input.decisionStatus !== "approved") {
+      throw validationError("The Decision is no longer recorded as approved, so its deferral cannot be reversed.", {
+        decision: input.decisionId,
+        status: input.decisionStatus,
+        remedy: "Re-answer the Decision, or leave the deferral in place."
+      });
+    }
+    const recordedAnswer = deferral.consequence.decisionAnswer ?? null;
+    const currentAnswer = input.decisionAnswer?.trim() ?? "";
+    if (recordedAnswer !== null && currentAnswer.toLowerCase() !== recordedAnswer.trim().toLowerCase()) {
+      throw validationError("The Decision has been answered differently since the deferral, so reversing it would discard that newer answer.", {
+        decision: input.decisionId,
+        recordedAnswer,
+        currentAnswer: input.decisionAnswer,
+        remedy: "Reconcile the Decision first, or leave the deferral in place."
+      });
+    }
+
+    const actionKey = `${project.slug}/${action.id}`;
+    const consequence: DecisionReversalConsequence = {
+      kind: "reverse",
+      actionId: action.id,
+      actionKey,
+      planPath: plan.relativePath,
+      actionStatusBefore: deferral.consequence.actionStatusAfter,
+      actionStatusAfter: deferral.consequence.actionStatusBefore,
+      pointerBefore: deferral.consequence.pointerAfter,
+      pointerAfter: deferral.consequence.pointerBefore,
+      pointerMoved: deferral.consequence.pointerMoved,
+      reversesReceiptId: deferral.id
+    };
+    if (input.dryRun) {
+      return { consequence, receipt: null as DecisionReversalReceipt | null };
+    }
+
+    const projectAbsolutePath = path.join(input.repoRoot, project.relativePath);
+    const planAbsolutePath = path.join(input.repoRoot, plan.relativePath);
+    const projectBefore = readFileSync(projectAbsolutePath, "utf8");
+    const planBefore = readFileSync(planAbsolutePath, "utf8");
+    const decisionBefore = readFileSync(input.decisionAbsolutePath, "utf8");
+
+    let planAfter = setActionStatus(planBefore, action.id, consequence.actionStatusAfter);
+    let projectAfter = projectBefore;
+    if (consequence.pointerMoved && consequence.pointerAfter) {
+      planAfter = replacePointer(planAfter, consequence.pointerAfter, "milestone");
+      projectAfter = replacePointer(projectAfter, consequence.pointerAfter, "active_plan");
+    }
+
+    const mutations = [
+      { absolutePath: input.decisionAbsolutePath, relativePath: input.decisionRelativePath, before: decisionBefore, after: input.decisionAfter },
+      { absolutePath: planAbsolutePath, relativePath: plan.relativePath, before: planBefore, after: planAfter },
+      ...(consequence.pointerMoved ? [{ absolutePath: projectAbsolutePath, relativePath: project.relativePath, before: projectBefore, after: projectAfter }] : [])
+    ];
+
+    if (tryGit(input.repoRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]) === null) {
+      throw validationError("The Project repository is on a detached HEAD, so the reversal commit would be unreachable from any branch.", {
+        repoRoot: input.repoRoot,
+        actionKey
+      });
+    }
+
+    writeAllAtomically(mutations);
+    try {
+      assertPostReversalState(input.repoRoot, project.slug, consequence);
+    } catch (error) {
+      restoreAll(mutations);
+      throw error;
+    }
+
+    const receipt: DecisionReversalReceipt = {
+      id: `decisionrev_${randomUUID().replaceAll("-", "").slice(0, 18)}`,
+      requestId: input.requestId,
+      decisionId: input.decisionId,
+      decisionPath: input.decisionRelativePath,
+      actionKey,
+      consequence,
+      changedPaths: mutations
+        .filter((mutation) => sha256(mutation.before) !== sha256(mutation.after))
+        .map((mutation) => mutation.relativePath),
+      applied: false,
+      commitError: null,
+      createdAt: new Date().toISOString()
+    };
+    return { consequence, receipt };
+  });
+
+  if (!prepared.receipt) {
+    return { consequence: prepared.consequence, receiptId: null, applied: false };
   }
-  // Re-opening the Decision clears its answer, so refuse when a newer answer has
-  // been recorded since the deferral rather than silently discarding it. A
-  // receipt written before answers were recorded cannot prove this and skips the
-  // exact check.
-  if (input.decisionStatus !== "approved") {
-    throw validationError("The Decision is no longer recorded as approved, so its deferral cannot be reversed.", {
-      decision: input.decisionId,
-      status: input.decisionStatus,
-      remedy: "Re-answer the Decision, or leave the deferral in place."
-    });
-  }
-  const recordedAnswer = deferral.consequence.decisionAnswer ?? null;
-  const currentAnswer = input.decisionAnswer?.trim() ?? "";
-  if (recordedAnswer !== null && currentAnswer.toLowerCase() !== recordedAnswer.trim().toLowerCase()) {
-    throw validationError("The Decision has been answered differently since the deferral, so reversing it would discard that newer answer.", {
-      decision: input.decisionId,
-      recordedAnswer,
-      currentAnswer: input.decisionAnswer,
-      remedy: "Reconcile the Decision first, or leave the deferral in place."
-    });
-  }
-
-  const actionKey = `${project.slug}/${action.id}`;
-  const consequence: DecisionReversalConsequence = {
-    kind: "reverse",
-    actionId: action.id,
-    actionKey,
-    planPath: plan.relativePath,
-    actionStatusBefore: deferral.consequence.actionStatusAfter,
-    actionStatusAfter: deferral.consequence.actionStatusBefore,
-    pointerBefore: deferral.consequence.pointerAfter,
-    pointerAfter: deferral.consequence.pointerBefore,
-    pointerMoved: deferral.consequence.pointerMoved,
-    reversesReceiptId: deferral.id
-  };
-  if (input.dryRun) {
-    return { consequence, receiptId: null, applied: false };
-  }
-
-  const projectAbsolutePath = path.join(input.repoRoot, project.relativePath);
-  const planAbsolutePath = path.join(input.repoRoot, plan.relativePath);
-  const projectBefore = readFileSync(projectAbsolutePath, "utf8");
-  const planBefore = readFileSync(planAbsolutePath, "utf8");
-  const decisionBefore = readFileSync(input.decisionAbsolutePath, "utf8");
-
-  let planAfter = setActionStatus(planBefore, action.id, consequence.actionStatusAfter);
-  let projectAfter = projectBefore;
-  if (consequence.pointerMoved && consequence.pointerAfter) {
-    planAfter = replacePointer(planAfter, consequence.pointerAfter, "milestone");
-    projectAfter = replacePointer(projectAfter, consequence.pointerAfter, "active_plan");
-  }
-
-  const mutations = [
-    { absolutePath: input.decisionAbsolutePath, relativePath: input.decisionRelativePath, before: decisionBefore, after: input.decisionAfter },
-    { absolutePath: planAbsolutePath, relativePath: plan.relativePath, before: planBefore, after: planAfter },
-    ...(consequence.pointerMoved ? [{ absolutePath: projectAbsolutePath, relativePath: project.relativePath, before: projectBefore, after: projectAfter }] : [])
-  ];
-
-  if (tryGit(input.repoRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]) === null) {
-    throw validationError("The Project repository is on a detached HEAD, so the reversal commit would be unreachable from any branch.", {
-      repoRoot: input.repoRoot,
-      actionKey
-    });
-  }
-
-  writeAllAtomically(mutations);
-  try {
-    assertPostReversalState(input.repoRoot, project.slug, consequence);
-  } catch (error) {
-    restoreAll(mutations);
-    throw error;
-  }
-
-  const receipt: DecisionReversalReceipt = {
-    id: `decisionrev_${randomUUID().replaceAll("-", "").slice(0, 18)}`,
-    requestId: input.requestId,
-    decisionId: input.decisionId,
-    decisionPath: input.decisionRelativePath,
-    actionKey,
-    consequence,
-    changedPaths: mutations
-      .filter((mutation) => sha256(mutation.before) !== sha256(mutation.after))
-      .map((mutation) => mutation.relativePath),
-    applied: false,
-    commitError: null,
-    createdAt: new Date().toISOString()
-  };
-
+  const receipt = prepared.receipt;
   const commitError = receipt.changedPaths.length > 0
     ? commitDecisionReversal(input.repoRoot, receipt.changedPaths, receipt)
     : null;
@@ -516,7 +540,7 @@ export function reverseDecisionDeferral(
 
   if (commitError) throw commitFailure(receipt, commitError);
 
-  return { consequence, receiptId: receipt.id, applied: true };
+  return { consequence: prepared.consequence, receiptId: receipt.id, applied: true };
 }
 
 /**
@@ -562,6 +586,8 @@ function isReversalReceipt(receipt: DecisionConsequenceReceipt): receipt is Deci
 /**
  * True when checked-in documents still reflect the receipt's recorded reversal,
  * so replaying its request id is a genuine no-op rather than a fresh transition.
+ * Both pointers and the receipt's Plan path are checked, so a retry cannot
+ * replay a commit over state that moved on.
  */
 function reversalReflectedOnDisk(
   repoRoot: string,
@@ -575,12 +601,17 @@ function reversalReflectedOnDisk(
     return false;
   }
   const { project, plan, action } = target;
+  if (plan.relativePath !== receipt.consequence.planPath) {
+    return false;
+  }
   if (action.status !== receipt.consequence.actionStatusAfter) {
     return false;
   }
   if (receipt.consequence.pointerMoved) {
-    const pointer = project.currentAction ?? plan.currentAction;
-    if (pointer !== receipt.consequence.pointerAfter) {
+    if (
+      project.currentAction !== receipt.consequence.pointerAfter ||
+      plan.currentAction !== receipt.consequence.pointerAfter
+    ) {
       return false;
     }
   }
@@ -661,6 +692,9 @@ function resolveTarget(repoRoot: string, projectSlug: string, actionId: string):
  * consequence, so replaying its request id is a genuine no-op rather than a
  * fresh transition. An Action revived after a deferral no longer matches, which
  * is what lets a re-opened Decision be deferred again (Issue #317).
+ *
+ * Checks the Decision's post-answer state too, so a retry cannot replay a commit
+ * over a Decision that was since answered differently.
  */
 function receiptReflectedOnDisk(
   repoRoot: string,
@@ -674,6 +708,9 @@ function receiptReflectedOnDisk(
     return false;
   }
   const { project, plan, action } = target;
+  if (plan.relativePath !== receipt.consequence.planPath) {
+    return false;
+  }
   if (action.status !== receipt.consequence.actionStatusAfter) {
     return false;
   }
@@ -682,6 +719,18 @@ function receiptReflectedOnDisk(
     if (pointer !== receipt.consequence.pointerAfter) {
       return false;
     }
+  }
+  const decisionAbsolutePath = path.join(repoRoot, receipt.decisionPath);
+  if (!existsSync(decisionAbsolutePath)) {
+    return false;
+  }
+  const { doc } = parseDoc(receipt.decisionPath, decisionAbsolutePath, readFileSync(decisionAbsolutePath, "utf8"));
+  if (!doc || doc.type !== "decision" || doc.status !== "approved") {
+    return false;
+  }
+  const recordedAnswer = receipt.consequence.decisionAnswer ?? null;
+  if (recordedAnswer !== null && (doc.answer ?? "").trim().toLowerCase() !== recordedAnswer.trim().toLowerCase()) {
+    return false;
   }
   return true;
 }
