@@ -1,0 +1,25 @@
+{
+  "agent_ask": "v1",
+  "request_id": "surface-batch-readiness-view-2026-09-22",
+  "project": "arcadia",
+  "intent": "action",
+  "desired_result": "The operator can see, without reading a markdown file, which ready Actions form the current batch (the dependency-graph prefix from current_action to the next required operator input), grouped into safe-parallel lanes with a token-exposure rollup -- first on the dashboards /runs page, then mirrored onto the GitHub Kanban board via the existing card-status projection pipeline rather than a new sync path.",
+  "rationale": "Design session on 2026-09-22 (this conversation) worked out that Sprint and Epic/Batch are the same underlying computation: extend resolveReadySet (deterministic, no model calls) to group the ready set into parallel lanes (same-repo = sequence-advised, different-repo = already-safe-parallel per existing production policy), roll up token_impact per lane, and draw a boundary at the first Decision, deferred Action, unfiled Action, or capacity gate downstream. Everything before that boundary is the batch; everything after stays collapsed, same pattern Recent history already uses. This extends the existing /api/production-control payload and useProductionControl hook feeding the Next up list already in apps/dashboard/components/production-control-panel.tsx -- no new page, no new document type, no new schema field. The GitHub board mirror is a second phase: Gate 1 already keeps per-card Arcadia status fresh from documents on some cadence -- reuse that same projection pipeline to also write which lane/batch position a card is in, recomputed on every tick rather than cached, since the boundary is genuinely a live computed value (proven live this same session when a completion shifted it mid-conversation) and writing it as a stale-but-trusted static field would be exactly the Truth-section failure Arcadia exists to avoid. GitHubs API cannot create a saved grouped board view (confirmed in docs/managed-production-readiness.md Gate 1) -- Arcadia only ever keeps a field fresh; the operator creates the grouped view once by hand in GitHubs own UI. Filed now rather than built now because this sessions token budget resets at midnight PDT; the design should not be lost waiting for that reset.",
+  "actions": [
+    {
+      "id": "surface-batch-readiness-view",
+      "desired_result": "The dashboards /runs page shows the current batch (ready-set prefix to the next operator gate) as parallel lanes with a token rollup, and the same computed batch position is mirrored onto GitHub board cards via the existing status-projection pipeline.",
+      "acceptance": [
+        "resolveReadySet (or a thin wrapper over it) groups its existing ready-set output into lanes by repo/Project -- same-repo Actions in one lane labeled sequence-advised, different-repo Actions each in their own lane -- and sums each lanes token_impact tier plus an overall total, with zero model calls.",
+        "The same function computes the batch boundary: walk the dependency-clear ready set forward from current_action and stop at the first Decision, deferred Action, clarification: question_open Action, or capacity-gated proof run; everything before the boundary is the batch, everything after is named but not expanded.",
+        "apps/dashboard/app/runs/page.tsx and production-control-panel.tsx extend the existing Next up section into This push (the batch, expanded, lanes visible) and Next push (collapsed by default, same pattern as Recent history) instead of the current flat list; the boundary itself renders as an actionable prompt (a Decision link, an un-defer control, or a plain named blocker) rather than prose.",
+        "This reuses the existing /api/production-control route and useProductionControl hook -- extend their payload/types, do not add a new API route or a new top-level dashboard page.",
+        "The GitHub board mirror writes the computed lane/batch position through the existing card-status projection pipeline (the same mechanism Gate 1 already uses to keep Arcadia status fresh per card), recomputed on the same cadence as that projection -- never cached separately, since a stale batch label on a card is worse than none.",
+        "The mirror does not attempt to create or manage a GitHub Projects saved view, grouped board, or swimlane -- GitHubs API has no capability for that (confirmed, docs/managed-production-readiness.md Gate 1). Document that creating a grouped view from the mirrored field is a one-time manual operator step in GitHubs own UI, not something this Action builds.",
+        "A regression test covers lane grouping (same-repo vs cross-repo), the boundary computation stopping at each of the four named gate types, and token rollup arithmetic, using a fixture Plan rather than live production state."
+      ],
+      "dependencies": [],
+      "references": ["src/docs/dispatch.ts", "apps/dashboard/components/production-control-panel.tsx", "apps/dashboard/app/runs/page.tsx", "apps/dashboard/hooks/use-production-control.ts", "docs/managed-production-readiness.md", "docs/github-board-guide.md", "docs/production-scheduling.md"]
+    }
+  ]
+}
