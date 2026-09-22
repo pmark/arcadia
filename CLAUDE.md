@@ -50,16 +50,21 @@ constraints arrive with the objective rather than depending on this file.
   comparing against) were two names for one fact. If a command fails with a
   Node-version-shaped error, it is a real failure — investigate it — not this
   warning, because this warning no longer exists.
-- `pnpm-workspace.yaml` sets `verifyDepsBeforeRun: warn` for a related reason,
-  and this one had teeth. pnpm's default is `install`: before running any
-  script it checks dependency freshness and, if unsatisfied, shells out to
-  `pnpm install` — which asks to **remove the modules directory** first. An
-  agent worktree bridges `node_modules` in as a symlink to the main checkout's
-  (a per-worktree install is slow, and the `better-sqlite3` ABI rebuild makes
-  it fragile), and pnpm reads that bridge as out of sync, so a bare
-  `pnpm arcadia` in a worktree offered to purge the dependency tree *every*
-  checkout shares. Nothing but the absence of a TTY stopped it. `warn` keeps
-  the diagnosis and drops the action, and stays silent in a synced checkout.
-  So the `[WARN] Your node_modules are out of sync` line in a worktree is
-  expected and harmless; the same line in the main checkout means run
-  `mise exec -- pnpm install`.
+- `pnpm-workspace.yaml` sets `verifyDepsBeforeRun: false`, and it used to be
+  `warn`. pnpm's default is `install`: before running any script it checks
+  dependency freshness and, if unsatisfied, shells out to `pnpm install` —
+  which asks to **remove the modules directory** first. An agent worktree
+  bridges `node_modules` from the main checkout, so pnpm reads that bridge as
+  out of sync and a bare `pnpm arcadia` offered to purge the dependency tree
+  *every* checkout shares; `warn` dropped that action but kept the diagnosis.
+  The diagnosis turned out not to be trustworthy either. In a worktree it is a
+  false positive by construction, because the bridged workspace-state file
+  names the main checkout's project roots; in the main checkout it is a false
+  positive whenever a worktree ran `pnpm install` last, because the bridge
+  symlinks that state file and the worktree's install rewrites the main
+  checkout's copy. It also prints to **stdout**, so it corrupts `--json` output
+  and breaks automation. The one true positive it might catch — a manifest
+  edited without an install — is already caught by CI's
+  `pnpm install --frozen-lockfile` and by a clear runtime module error. Same
+  reasoning that removed `engines.node` above: a preflight that never reflects
+  a real problem is noise.

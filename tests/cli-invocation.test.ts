@@ -221,12 +221,18 @@ describe("enclosingProjectRoot", () => {
 });
 
 describe("running the CLI through pnpm", () => {
-  it("never lets a script invocation reinstall dependencies behind the operator", () => {
+  it("never lets a script invocation check or reinstall dependencies behind the operator", () => {
     // pnpm's default `verifyDepsBeforeRun: install` shells out to `pnpm
     // install` before running any script, and that install asks to remove the
-    // modules directory first. An agent worktree symlinks `node_modules` to
-    // the main checkout's, so in a worktree the offer is to purge the tree
-    // every checkout shares -- and only a missing TTY declined it.
+    // modules directory first. An agent worktree bridges `node_modules` from
+    // the main checkout, so in a worktree the offer is to purge the tree every
+    // checkout shares.
+    //
+    // `warn` dropped that action but kept a diagnosis that is not reliable
+    // under the bridge: it fires as a false positive in every worktree by
+    // construction, and in the main checkout whenever a worktree installed
+    // last -- and it prints to stdout, corrupting `--json` output. So the
+    // preflight is disabled outright: it must neither act nor warn.
     //
     // Asserted here rather than trusted, because this is one line of YAML that
     // would regress silently and only bite inside a worktree, which is exactly
@@ -234,6 +240,6 @@ describe("running the CLI through pnpm", () => {
     // Resolved from this file, not the working directory, so the assertion is
     // about the repository rather than about wherever vitest was launched.
     const workspace = readFileSync(new URL("../pnpm-workspace.yaml", import.meta.url), "utf8");
-    expect(workspace).toMatch(/^verifyDepsBeforeRun:\s*warn$/m);
+    expect(workspace).toMatch(/^verifyDepsBeforeRun:\s*false$/m);
   });
 });

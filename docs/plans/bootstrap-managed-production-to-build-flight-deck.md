@@ -958,7 +958,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/272", "src/sessions/preservationTransport.ts"]
   - id: bind-candidate-revision-in-action-settle
     title: arcadia action settle derives the candidate revision from the same resolved checkout settlement compares against, so the documented candidate-worktree completion path works.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: arcadia action settle derives the candidate revision from the same resolved checkout settlement compares against, so the documented candidate-worktree completion path works.
@@ -1442,7 +1442,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: bind-candidate-revision-in-action-settle
+current_action: apply-answered-decision-consequences
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

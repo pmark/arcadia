@@ -623,9 +623,10 @@ export function settleAgentAsk(db: Database.Database, input: {
         const head = git(repoRoot, ["rev-parse", "HEAD"]).trim();
         const candidateRevision = proposal.normalized.candidateRevision!;
         if (head !== candidateRevision && !head.startsWith(candidateRevision)) {
-          throw validationError("Completion Candidate revision does not match the repository's current HEAD; refresh evidence against the current revision.", {
-            expectedHead: head, receivedRevision: candidateRevision
-          });
+          throw validationError(
+            `Completion Candidate revision ${candidateRevision} does not match ${repoRoot}'s current HEAD ${head}.`,
+            { expectedHead: head, receivedRevision: candidateRevision, repoRoot }
+          );
         }
         const declared = action.acceptanceCriteria;
         if (declared.length === 0) throw validationError("Action declares no acceptance criteria to bind completion evidence to.", { actionId });

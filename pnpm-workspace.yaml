@@ -2,26 +2,30 @@ packages:
   - apps/discord-bot
   - apps/dashboard
 
-# Report out-of-sync dependencies; never act on them behind a script.
+# No dependency preflight before a script; it cannot be trusted in this repo.
 #
-# pnpm's default here is `install`: every `pnpm <script>` first runs a deps
-# check and, if it is unsatisfied, silently shells out to `pnpm install` --
-# which asks to REMOVE the modules directory before reinstalling.
+# pnpm's default here is `install`: every `pnpm <script>` checks dependency
+# freshness and, when unsatisfied, silently shells out to `pnpm install` --
+# which asks to REMOVE the modules directory before reinstalling. A coding-agent
+# worktree bridges `node_modules` from the main checkout, so pnpm reads that
+# bridge as out-of-sync and offers to purge the *shared* tree every checkout
+# uses. `warn` dropped that action but kept the diagnosis, and the diagnosis is
+# not reliable here either:
 #
-# A coding-agent worktree bridges `node_modules` in as a symlink to the main
-# checkout's, because installing a second copy per worktree is slow and the
-# `better-sqlite3` ABI rebuild makes it fragile. pnpm reads that bridge as
-# out-of-sync (the workspace-state file names another directory), so a bare
-# `pnpm arcadia` in a worktree proposes to purge the *shared* dependency tree
-# that every worktree and the main checkout are using. Only the absence of a
-# TTY stops it, which means an interactive session is one keystroke from it.
+#   - In a worktree it is a false positive by construction: the bridged
+#     workspace-state file names the main checkout's project roots, which can
+#     never equal the worktree's.
+#   - In the main checkout it is a false positive whenever a worktree ran
+#     `pnpm install` last, because the bridge symlinks that state file, so the
+#     worktree's install rewrites the main checkout's copy.
+#   - It prints to stdout, so it corrupts `--json` output and breaks automation.
 #
-# `warn` keeps the diagnosis and drops the action. A synced checkout returns
-# early and prints nothing, so this is silent in normal use -- the same reason
-# `engines.node` is deliberately absent from package.json: a preflight warning
-# that never reflects a real problem is noise, and one that mutates state
-# behind a read-only-looking command is worse.
-verifyDepsBeforeRun: warn
+# The true positive it might catch -- a manifest edited without an install -- is
+# already caught by CI's `pnpm install --frozen-lockfile` and by a clear runtime
+# module-resolution error. `false` is strictly safer than `warn` about the
+# destructive install (it does nothing at all) and removes the noise -- the same
+# reasoning that removed `engines.node`; see CLAUDE.md.
+verifyDepsBeforeRun: false
 
 onlyBuiltDependencies:
   - better-sqlite3
