@@ -1322,24 +1322,24 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: A documented, reusable two-phase planning process (Outcome Alignment Interview, then Staff Planning Architect) exists as vendor-neutral Arcadia documentation plus Claude Code skills wrapping it.
+    next_action: A documented, reusable two-phase planning process (Outcome Alignment Interview, then Staff Planning Architect) exists as vendor-neutral Arcadia documentation, discoverable from AGENTS.md so every coding agent (not only Claude Code) can run it.
     expected_artifact: Evidence satisfying Agent Ask formalize-two-phase-planning-process
     clarification: clarified
     confidence: high
-    source: Agent Ask formalize-two-phase-planning-process-2026-09-22-v2
+    source: Agent Ask scope-planning-process-build-criterion-2026-09-22
     acceptance_criteria:
       - "docs/planning-process.md exists, vendor-neutral, and states the two-phase process: Phase 1 (Outcome Alignment Interview) produces a confirmed Outcome/Milestone plus any open Decisions with options and consequences; Phase 2 (Staff Planning Architect) consumes that and produces a Plan amendment or new Plan with dependency-ordered, session-sized Actions."
-      - The document embeds both role prompts in full (Outcome Alignment Interviewer, Staff Planning Architect), written so they can be pasted into any coding-agent or chat surface, not just Claude Code.
-      - Two Claude Code skills exist (.claude/skills/outcome-interview and .claude/skills/planning-architect, or equivalently named) that load docs/planning-process.md and drive each phase; each documents which model/effort it expects (Phase 1 needs high reasoning for alignment quality; Phase 2 needs high reasoning for decomposition quality).
-      - AGENTS.md (or another already-referenced doc) gains a short pointer to docs/planning-process.md so a future session can discover it without being told.
-      - Neither the document nor the skills invent a new Arcadia document type or CLI capability; both phases produce only Agent Asks against existing intents (outcome, milestone, decision, plan, action).
-      - pnpm build and any existing docs-sync/lint checks pass with the new files present.
+      - The document embeds both role prompts in full, written so they can be pasted into any coding-agent or chat surface -- Claude Code, Codex, opencode, or a bare frontier-model chat -- not gated behind a single vendors skill mechanism.
+      - The document states how to invoke each phase today (a coding-agent session prompt, or pasting the role prompt directly) given that Claude Code skills live outside this repository at ~/.claude/skills and are not repository-managed content; wiring automatic invocation into arcadia ask routing is named as an explicit deferred trigger, not built here.
+      - AGENTS.md gains a short pointer to docs/planning-process.md so a future session of any vendor can discover it without being told.
+      - Neither the document invents a new Arcadia document type or CLI capability; both phases produce only Agent Asks against existing intents (outcome, milestone, decision, plan, action).
+      - "mise exec -- pnpm exec tsc -p tsconfig.json --noEmit passes, and arcadia docs sync reports no new errors attributable to the changed files; pnpm builds full-repo lint step is not a gate here, since it already fails in a prepared worktree on files this Action never touches (tracked, unrelated, in Issue #480)."
     depends_on: []
     decisions: []
-    references: ["AGENTS.md", "docs/managed-documents.md", "docs/arcadia-semantics.md", "docs/agents-context.md", "CONSTITUTION.md", ".claude/skills"]
+    references: ["AGENTS.md", "docs/managed-documents.md", "docs/arcadia-semantics.md", "docs/agents-context.md", "CONSTITUTION.md"]
 questions: []
 decisions: []
-current_action: substitute-unavailable-provider-before-binding
+current_action: formalize-two-phase-planning-process
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

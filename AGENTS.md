@@ -13,6 +13,10 @@ Two companions carry the rest, and both bind every agent:
 - [`docs/managed-documents.md`](docs/managed-documents.md) — the work pointer,
   plan anatomy, and which fields are enforced where. Read it before writing or
   changing a `PROJECT.md`, a plan under `docs/plans/`, or a Decision.
+- [`docs/planning-process.md`](docs/planning-process.md) — how a raw operator
+  request becomes a governed Plan: an Outcome Alignment Interview first, then
+  a Staff Planning Architect pass. Use it whenever you are starting a new
+  planning cycle rather than continuing an existing Action.
 
 Arcadia exists to maintain momentum across creative projects with minimal cognitive overhead.
 
