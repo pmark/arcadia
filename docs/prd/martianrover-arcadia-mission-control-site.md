@@ -861,12 +861,13 @@ lives only in a chat log gets made again, differently, in three months.
    *Consequence:* this unblocks §14, which was explicitly waiting on it. The credible
    pricing structures narrow to a free and open local core, a paid hosted service, a
    setup/onboarding package, and a founder-assisted program; per-project and usage-based
-   pricing stay plausible for the hosted tier only. It also strengthens §19 — the local-first, operator-owned-data claim becomes
-   verifiable by reading the code rather than asserted, which matters for an audience that
-   is rightly suspicious of closed software touching their repositories. What is sold
-   becomes convenience and operation rather than capability, and that is the accepted
-   trade. *Still open underneath this:* which licence, and where exactly the core/hosted
-   line falls. Neither blocks the website.
+   pricing stay plausible for the hosted tier only. It also strengthens §19 — the
+   local-first, operator-owned-data claim becomes verifiable by reading the code rather
+   than asserted, which matters for an audience that is rightly suspicious of closed
+   software touching their repositories. What is sold becomes convenience and operation
+   rather than capability, and that is the accepted trade. *Still open underneath this:*
+   which licence, and where exactly the core/hosted line falls. Neither blocks the
+   website.
 6. **DEC (2026-09-22) — Early access is a free preview.** It costs nothing during the
    early-access period. *Consequence:* maximizes tester count and learning volume at the
    stage where learning is the entire point. Gate C needs five people who actually install,
