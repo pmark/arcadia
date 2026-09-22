@@ -80,6 +80,27 @@ describe("arcadia action settle", () => {
     const { workspace } = fixture({ noPointer: true });
     expect(() => runActionSettleCommand({ workspace, dryRun: true })).toThrow(/does not resolve a current Action/);
   });
+
+  it("settles from a candidate worktree whose HEAD differs from the main checkout HEAD (Issue #278)", () => {
+    const { workspace, repo, head } = fixture();
+    const candidate = path.join(path.dirname(repo), "candidate-settle");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate-settle", candidate], { cwd: repo });
+    writeFileSync(path.join(candidate, "README.md"), "candidate work\n", "utf8");
+    execFileSync("git", ["add", "README.md"], { cwd: candidate });
+    execFileSync("git", ["commit", "-qm", "Candidate work"], { cwd: candidate });
+    const candidateHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: candidate, encoding: "utf8" }).trim();
+    expect(candidateHead).not.toBe(head);
+
+    const result = runActionSettleCommand({ workspace, cwd: candidate });
+
+    expect(result.data.applied).toBe(true);
+    expect(result.data.plan.candidateRevision).toBe(candidateHead);
+
+    // The settlement commit lands on the candidate branch, not the main checkout.
+    expect(execFileSync("git", ["log", "-1", "--format=%s"], { cwd: candidate, encoding: "utf8" }))
+      .toContain("settle");
+    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim()).toBe(head);
+  });
 });
 
 function fixture(options: { noPointer?: boolean } = {}): { workspace: string; repo: string; head: string } {

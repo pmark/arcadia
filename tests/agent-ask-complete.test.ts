@@ -167,7 +167,7 @@ describe("Agent Ask complete", () => {
     const proposal = runAgentAskPreviewCommand({ workspace, request });
     expect(() => runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-stale", disposition: "accepted"
-    })).toThrow(/does not match the repository's current HEAD/);
+    })).toThrow(new RegExp(`does not match .*HEAD ${head}`));
   });
 
   it("settles a complete Ask from its own drafted file inside a candidate worktree, with no manual relocation and no commit rewrite", () => {
@@ -263,6 +263,7 @@ describe("Agent Ask complete", () => {
     writeFileSync(path.join(candidate, "README.md"), "advance the candidate past the recorded revision\n", "utf8");
     execFileSync("git", ["add", "README.md"], { cwd: candidate });
     execFileSync("git", ["commit", "-qm", "Advance candidate"], { cwd: candidate });
+    const advancedCandidateHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: candidate, encoding: "utf8" }).trim();
 
     const draft = runAgentAskDraftCommand({
       workspace, dir: candidate, request: completeAsk("complete-from-candidate-stale", "first", head)
@@ -270,7 +271,7 @@ describe("Agent Ask complete", () => {
     expect(() => runAgentAskSettleCommand({
       workspace, proposal: draft.data.preview!.proposal.id, requestId: "settle-complete-from-candidate-stale",
       disposition: "accepted", cwd: candidate
-    })).toThrow(/does not match the repository's current HEAD/);
+    })).toThrow(new RegExp(`Candidate revision ${head} does not match .*current HEAD ${advancedCandidateHead}`));
     // Refused before any write: the drafted file is still exactly where draft left it.
     expect(existsSync(draft.data.path)).toBe(true);
   });
