@@ -38,6 +38,12 @@ interface OperatorScript {
 // anything running, failed, or freshly added should stay in front of the operator.
 const RECENT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 
+// Module-scoped, not a hook value, so a function that reads it can still be
+// forwarded through props without React Compiler's ref/immutability rules
+// treating that as an unsafe render-time read. Guards the single RunsPage
+// instance against an earlier poll response overwriting a later one.
+let operatorRefreshSequence = 0;
+
 export default function RunsPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   // The push disclosure mirrors Recent history: collapsed until asked for, so
@@ -55,15 +61,20 @@ export default function RunsPage() {
   const activeRuns = runs.data?.activeExecutionRuns ?? [];
 
   const refreshOperatorScripts = useCallback(async () => {
+    const requested = ++operatorRefreshSequence;
     await fetch("/api/operator-script", { cache: "no-store" })
       .then(async (response) => {
         const body = await response.json() as { scripts?: OperatorScript[]; error?: string };
         if (!response.ok) throw new Error(body.error ?? "Could not load operator scripts.");
-        setOperatorScripts(body.scripts ?? []);
-        setOperatorScriptError(null);
+        if (requested === operatorRefreshSequence) {
+          setOperatorScripts(body.scripts ?? []);
+          setOperatorScriptError(null);
+        }
       })
       .catch((error) => {
-        setOperatorScriptError(error instanceof Error ? error.message : String(error));
+        if (requested === operatorRefreshSequence) {
+          setOperatorScriptError(error instanceof Error ? error.message : String(error));
+        }
       });
   }, []);
 
