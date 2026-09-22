@@ -3,6 +3,7 @@ import path from "node:path";
 import { ACTION_ID_MAX_LENGTH, ACTION_ID_PATTERN, AGENT_ASK_AUTHORITIES, AGENT_ASK_INTENTS, normalizeAgentAsk, STRICT_ACTION_FIELDS, STRICT_FIELDS, STRICT_OPTION_FIELDS, type AgentAskProposal } from "../ask/agentAsk.js";
 import { discoverUnprocessedAgentAsks, EMPTY_AGENT_ASK_DISCOVERY, type AgentAskDiscoveryResult } from "../ask/discovery.js";
 import { previewAgentAskRequest } from "../ask/preview.js";
+import { WORK_CLASSIFICATIONS } from "../domain/constants.js";
 import { findRecoveredAsk } from "../sessions/legacyAskRecovery.js";
 import { normalizeError, validationError } from "../cli/errors.js";
 import { invocationRoot } from "../cli/invocation.js";
@@ -201,8 +202,8 @@ export function runAgentAskSettleCommand(options: {
   if (options.disposition !== "accepted" && options.disposition !== "rejected") {
     throw validationError("Agent Ask disposition must be accepted or rejected.");
   }
-  if (options.responsibility && options.responsibility !== "autonomous" && options.responsibility !== "agent") {
-    throw validationError("Agent Ask Action Responsibility must be autonomous or agent.");
+  if (options.responsibility && !WORK_CLASSIFICATIONS.includes(options.responsibility)) {
+    throw validationError(`Agent Ask Action Responsibility must be one of: ${WORK_CLASSIFICATIONS.join(", ")}.`);
   }
   const placements = [options.top ? "top" : null, options.before ? "before" : null, options.after ? "after" : null].filter(Boolean);
   if (placements.length > 1) throw validationError("Choose at most one queue placement: --top, --before, or --after.");

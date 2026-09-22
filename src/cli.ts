@@ -765,7 +765,7 @@ export function buildProgram(): Command {
     .requiredOption("--proposal <id>", "Proposal id or original Agent Ask request id")
     .requiredOption("--request-id <id>", "Idempotency key for this settlement")
     .requiredOption("--disposition <accepted|rejected>", "Terminal proposal disposition")
-    .option("--responsibility <autonomous|agent>", "Approved Responsibility for each created Action")
+    .option("--responsibility <responsibility>", "Responsibility for each created or amended Action: autonomous, agent, requires_review, blocked")
     .option("--activate", "Activate the named draft Plan, preserving unfinished work in the previous Plan")
     .option("--action <id>", "Explicit eligible first Action for Plan activation")
     .option("--model <id>", "Explicit coding-agent model pin for Plan activation")

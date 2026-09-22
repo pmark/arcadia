@@ -525,6 +525,52 @@ describe("Agent Ask settlement", () => {
     withDatabase(workspace, (db) => expect(loadActionOrder(db).revision).toBe(1));
   });
 
+  it("amends an existing Action's Responsibility to requires_review per Decision 0045, not only toward agent", () => {
+    const { workspace, repo } = fixture();
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: askForIntent("amend-responsibility-review", "action", "Runbook restricts this to the operator", "action/existing", ["Improved proof exists."])
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace,
+      proposal: proposal.data.proposal.id,
+      requestId: "settle-amend-responsibility-review",
+      disposition: "accepted",
+      responsibility: "requires_review",
+      revision: 1
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace,
+      proposal: proposal.data.proposal.id,
+      requestId: "settle-amend-responsibility-review",
+      disposition: "accepted",
+      responsibility: "requires_review",
+      revision: 1,
+      preview: preview.data.receipt.previewFingerprint,
+      apply: true
+    });
+    expect(applied.data.receipt.effects).toContain("Set Responsibility to requires_review on the operator's explicit direction, per Decision 0045.");
+    const plan = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
+    expect(plan).toContain("responsibility: requires_review");
+  });
+
+  it("refuses a --responsibility value settlement does not recognize", () => {
+    const { workspace } = fixture();
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: askForIntent("amend-responsibility-bogus", "action", "Improve existing proof", "action/existing", ["Improved proof exists."])
+    });
+    expect(() => runAgentAskSettleCommand({
+      workspace,
+      proposal: proposal.data.proposal.id,
+      requestId: "settle-amend-responsibility-bogus",
+      disposition: "accepted",
+      // @ts-expect-error deliberately invalid for the refusal path
+      responsibility: "urgent",
+      revision: 1
+    })).toThrow(/Agent Ask Action Responsibility must be one of/);
+  });
+
   it("still refuses to move an existing Action's queue position during an amendment", () => {
     const { workspace } = fixture();
     const proposal = runAgentAskPreviewCommand({
