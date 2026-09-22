@@ -13,7 +13,7 @@ import { syncProjectDocs } from "../docs/sync.js";
 import type { ArcadiaDoc, DecisionDoc, LogDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import { buildAgentQueue, unpositionedCountForProject } from "../dispatch/queue.js";
 import { arrangeActionOrder } from "../dispatch/order.js";
-import { writePointerPairWithCompareAndSet, type PointerPairWriteReceipt } from "../dispatch/pointer.js";
+import { writePointerPairWithCompareAndSet } from "../dispatch/pointer.js";
 import type { WorkClassification } from "../domain/constants.js";
 import { assertClean, commitOnlyPaths, git, projectCheckoutFor } from "../git/worktrees.js";
 import { slugify, SLUG_MAX_LENGTH } from "../utils/slug.js";
@@ -815,13 +815,15 @@ export function settleAgentAsk(db: Database.Database, input: {
 
   hooks?.beforeDocumentWrite?.();
   // Phase 1 — write the managed documents and prove the canonical truth they
-  // are supposed to produce. The write runs inside the workspace database's
-  // immediate transaction, the same interlock `arcadia tidy` uses, so two
-  // concurrent settlements serialize here and each re-reads the other's change
-  // instead of overwriting it. Any refusal restores every file and leaves the
-  // repository exactly as it was.
-  try {
-    if (fileMutations.length > 0) writeTransaction(db, () => {
+  // are supposed to produce, all inside the workspace database's immediate
+  // transaction — the same interlock `arcadia tidy` uses. Two concurrent
+  // settlements serialize here and each re-reads the other's change instead of
+  // overwriting it. A refusal rolls back exactly the mutations this attempt
+  // wrote, before the interlock is released, so it can never restore stale
+  // content over a concurrent writer.
+  if (fileMutations.length > 0) writeTransaction(db, () => {
+    const applied: FileMutation[] = [];
+    try {
       // The PROJECT.md + Plan pair is written through the same fingerprint-checked
       // compare-and-set `arcadia advance queue make-next` uses: a concurrent
       // settlement that moved the pointer between this settlement's resolution and
@@ -829,32 +831,22 @@ export function settleAgentAsk(db: Database.Database, input: {
       // of it rather than overwriting it with a stale computed result.
       const pointerPair = selectPointerPair(fileMutations);
       if (pointerPair) {
-        const projectTransform = pointerPair.project.retransform!;
-        const planTransform = pointerPair.plan.retransform!;
-        let receipt: PointerPairWriteReceipt;
-        try {
-          receipt = writePointerPairWithCompareAndSet({
-            repoRoot,
-            projectPath: pointerPair.project.path,
-            planPath: pointerPair.plan.path,
-            projectBefore: pointerPair.project.before!,
-            planBefore: pointerPair.plan.before!,
-            projectAfter: projectTransform,
-            planAfter: planTransform
-          });
-        } catch (error) {
-          // The writer refused without a result. Leave the documents as a
-          // concurrent writer left them, so the outer rollback is a no-op.
-          pointerPair.project.before = readFileSync(pointerPair.project.path, "utf8");
-          pointerPair.plan.before = readFileSync(pointerPair.plan.path, "utf8");
-          throw error;
-        }
+        const receipt = writePointerPairWithCompareAndSet({
+          repoRoot,
+          projectPath: pointerPair.project.path,
+          planPath: pointerPair.plan.path,
+          projectBefore: pointerPair.project.before!,
+          planBefore: pointerPair.plan.before!,
+          projectAfter: pointerPair.project.retransform!,
+          planAfter: pointerPair.plan.retransform!
+        });
         // Anchor the rollback on the pre-transform content the writer read, not
         // on its output, so a later refusal undoes exactly this settlement's move.
         pointerPair.project.before = receipt.projectBefore;
         pointerPair.project.after = receipt.projectAfter;
         pointerPair.plan.before = receipt.planBefore;
         pointerPair.plan.after = receipt.planAfter;
+        applied.push(pointerPair.project, pointerPair.plan);
         if (receipt.retried) {
           effects.push("Re-read PROJECT.md and the Plan after a concurrent pointer write and re-applied this settlement's change on top.");
         }
@@ -875,34 +867,33 @@ export function settleAgentAsk(db: Database.Database, input: {
         }
         if (mutation.after === null) { try { unlinkSync(mutation.path); } catch {} }
         else writeAtomically(mutation.path, mutation.after);
+        applied.push(mutation);
       }
-    });
-    if (input.activate) {
-      const dispatch = resolveDispatch(repoRoot, project.slug);
-      if (!isDispatchable(dispatch) || dispatch.context?.action.id !== input.action) {
-        throw validationError("Plan activation did not produce dispatchable canonical truth.", { blockers: dispatch.blockers, question: dispatch.operatorQuestion });
+      if (input.activate) {
+        const dispatch = resolveDispatch(repoRoot, project.slug);
+        if (!isDispatchable(dispatch) || dispatch.context?.action.id !== input.action) {
+          throw validationError("Plan activation did not produce dispatchable canonical truth.", { blockers: dispatch.blockers, question: dispatch.operatorQuestion });
+        }
       }
-    }
-    if (completionActionId) {
-      const verified = discoverDocs(repoRoot);
-      const verifiedPlan = verified.docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug && doc.slug === completionPlanSlug);
-      const verifiedAction = verifiedPlan?.actions.find((candidate) => candidate.id === completionActionId);
-      if (!verifiedAction || verifiedAction.status !== "done") {
-        throw validationError("Completion did not produce a done canonical Action.", { actionId: completionActionId });
+      if (completionActionId) {
+        const verified = discoverDocs(repoRoot);
+        const verifiedPlan = verified.docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug && doc.slug === completionPlanSlug);
+        const verifiedAction = verifiedPlan?.actions.find((candidate) => candidate.id === completionActionId);
+        if (!verifiedAction || verifiedAction.status !== "done") {
+          throw validationError("Completion did not produce a done canonical Action.", { actionId: completionActionId });
+        }
       }
-    }
-    for (const actionId of actionIdsToValidate) {
-      const readiness = resolveActionReadiness(repoRoot, project.slug, actionId);
-      const structuralBlockers = readiness.blockers.filter((blocker) => !blocker.field.endsWith(".depends_on"));
-      if (!readiness.found || structuralBlockers.length > 0 || readiness.operatorQuestion) {
-        throw validationError("Accepted Agent Ask did not produce a ready canonical Action.", {
-          actionId,
-          blockers: structuralBlockers,
-          operatorQuestion: readiness.operatorQuestion
-        });
+      for (const actionId of actionIdsToValidate) {
+        const readiness = resolveActionReadiness(repoRoot, project.slug, actionId);
+        const structuralBlockers = readiness.blockers.filter((blocker) => !blocker.field.endsWith(".depends_on"));
+        if (!readiness.found || structuralBlockers.length > 0 || readiness.operatorQuestion) {
+          throw validationError("Accepted Agent Ask did not produce a ready canonical Action.", {
+            actionId,
+            blockers: structuralBlockers,
+            operatorQuestion: readiness.operatorQuestion
+          });
+        }
       }
-    }
-    if (fileMutations.length > 0) {
       // A settlement answers for the documents it wrote, and for nothing else.
       // Decision 0044: this check used to refuse on any error anywhere in the
       // corpus, so one stale document from weeks ago permanently blocked every
@@ -932,11 +923,14 @@ export function settleAgentAsk(db: Database.Database, input: {
           unrelatedCorpusErrors: validation.errors.length - blocking.length,
         });
       }
+    } catch (error) {
+      // Roll back exactly what this attempt wrote, inside the interlock, so a
+      // mutation the loop never reached cannot be reverted over a concurrent
+      // writer's content.
+      for (const mutation of [...applied].reverse()) restoreMutation(mutation);
+      throw error;
     }
-  } catch (error) {
-    for (const mutation of [...fileMutations].reverse()) restoreMutation(mutation);
-    throw error;
-  }
+  });
 
   // Phase 2 — commit the authoritative documents before any side effect can run.
   // A settlement's durable output is checked-in managed documents; the database
