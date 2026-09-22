@@ -59,12 +59,14 @@ is also not proven. Two separate things happened to it this session:
    fixture's PR #2 (in `pmark/arcadia-zero-prompt-rehearsal`) is also still
    open/unmerged.
 
-**Distance: 12 Actions — 11 open plus the 1 deferred proof — out of the
-Plan's 25 unfinished Actions, plus the worker-hang defect (#485) and 2
-operator steps.** Of the 12 Actions: **7 are ordinary code sessions** and
-**5 are proof or hardening runs** that cost provider capacity rather than
-code. The other 13 unfinished Actions are real work, but the unattended claim
-does not depend on them; "What is *not* on the critical path" below names
+**Distance: 10 filed Actions — 9 open plus the 1 deferred proof — plus one
+not-yet-filed Action for the worker-hang defect (#485), out of the Plan's 25
+unfinished Actions, plus 2 operator steps.** Of the 10 filed Actions: **5 are
+ordinary code sessions**, all ready today with no blocking dependency, and
+**5 are proof or hardening runs** (4 open, 1 deferred) that cost provider
+capacity rather than code. The other 15 unfinished Actions are real work, but
+the unattended claim does not depend on them; "What is *not* on the critical
+path" below names
 them.
 
 Everything here counts individual Action ids, never grouped work items.
@@ -201,15 +203,16 @@ unattended production on the board.
 12. `prove-managed-production-fault-matrix`
 13. `harden-zero-prompt-production-loop`
 
-**Thirteen numbered entries: 11 Action ids (one not yet filed), 2 operator
-steps.**
+**Thirteen numbered entries: 10 filed Action ids, 1 not-yet-filed Action, and
+2 operator steps — 11 Action-shaped entries in total.**
 
-- **Code sessions, ready today with no blocking dependency (4):** entries
-  1, 2, 3, 9, 10 — five, not four; all five have zero open prerequisites as
-  of this derivation. This is the fastest place to spend a session right now.
+- **Code sessions, ready today with no blocking dependency (5):** entries
+  1, 2, 3, 9, 10 — all five have zero open prerequisites as of this
+  derivation. This is the fastest place to spend a session right now.
 - **Needs filing first (1):** entry 4, the worker-hang Action.
-- **Proof and hardening runs (5):** entries 6, 8, 11, 12, 13. These cost
-  provider capacity, not code, and several are operator-terminal by design.
+- **Proof and hardening runs (5):** entries 6, 8, 11, 12, 13 (4 open, 1
+  deferred). These cost provider capacity, not code, and several are
+  operator-terminal by design.
 - **Yours (2):** entries 5 (or delegate it as a filed Action) and 7. Minutes
   each, once their preconditions are actually true.
 
@@ -268,8 +271,10 @@ trusting further out than a session or two.
 | Open | 24 |
 | Deferred | 1 |
 | Unfinished (open + deferred) | 25 |
-| **On the critical path** | **12** (11 open + 1 deferred), **1 not yet filed** (worker-hang), + 2 operator steps |
-| Unfinished but off the critical path | 12 |
+| **On the critical path (filed)** | **10** (9 open + 1 deferred) |
+| **On the critical path (not yet filed)** | **1** (worker-hang defect, #485) |
+| **Operator steps on the critical path** | **2** |
+| Unfinished but off the critical path | 15 (25 unfinished − 10 filed on the path) |
 | Open Decisions repo-wide | 2 (0041, 0052) — unrelated to production readiness: 0041 is about reactivating a guided-understanding session; 0052 is about `isolate-agent-asks-from-production-handoff`'s acceptance. Decision 0064 (this session, production-dispatch related) is already answered. |
 
 ---
