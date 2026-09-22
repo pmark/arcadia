@@ -370,6 +370,16 @@ describe("Agent Ask complete", () => {
     })).toThrow(/names a Plan that was not found/);
   });
 
+  it("refuses a Plan-scoped completion whose Action id is ambiguous across the Project's Plans", () => {
+    const { workspace, head } = fixture({ withInactivePlan: true, withDuplicateActionId: true });
+    const request = completeAsk("complete-ambiguous-id", "first", head)
+      .replace("target_ref: action/first", "target_ref: plan/side-plan#first");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-ambiguous-id", disposition: "accepted"
+    })).toThrow(/not unique across this Project's Plans/);
+  });
+
   it("refuses completing an Action that is already done", () => {
     const { workspace, head } = fixture({ firstDone: true });
     const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-done", "first", head) });
@@ -407,6 +417,8 @@ function fixture(options: {
   queueOrder?: string[];
   /** Add a second, inactive draft Plan with its own two open Actions. */
   withInactivePlan?: boolean;
+  /** Give the inactive Plan's first Action the same id as demo-plan's `first`. */
+  withDuplicateActionId?: boolean;
 } = {}): { workspace: string; repo: string; head: string } {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-agent-ask-complete-"));
   roots.push(root);
@@ -421,7 +433,9 @@ function fixture(options: {
   if (options.withOpenDecision || options.secondDeferredByDecision) mkdirSync(path.join(repo, "docs/decisions"), { recursive: true });
   writeFileSync(path.join(repo, "PROJECT.md"), projectDoc(), "utf8");
   writeFileSync(path.join(repo, "docs/plans/demo-plan.md"), planDoc(options), "utf8");
-  if (options.withInactivePlan) writeFileSync(path.join(repo, "docs/plans/side-plan.md"), inactivePlanDoc(), "utf8");
+  if (options.withInactivePlan) {
+    writeFileSync(path.join(repo, "docs/plans/side-plan.md"), inactivePlanDoc(options.withDuplicateActionId), "utf8");
+  }
   if (options.withOpenDecision) {
     writeFileSync(path.join(repo, "docs/decisions/0001-review-first.md"), [
       "---", "arcadia: v1", "type: decision", 'id: "0001"', "slug: review-first", "project: demo",
@@ -481,12 +495,13 @@ function projectDoc(): string {
 }
 
 /** A second Plan that is not `active_plan` and is in no queue. */
-function inactivePlanDoc(): string {
+function inactivePlanDoc(duplicateFirstActionId = false): string {
+  const firstId = duplicateFirstActionId ? "first" : "side-one";
   return ["---", "arcadia: v1", "type: plan", "slug: side-plan", "project: demo", "status: draft",
     "milestone: Parallel work", "token_impact: medium",
     "token_budget: Deterministic completion with one accepted evidence pass.",
     "updated: 2026-09-01", "actions:",
-    "  - id: side-one", "    title: Side Action One", "    status: open",
+    `  - id: ${firstId}`, "    title: Side Action One", "    status: open",
     "    responsibility: agent", "    effort: session", "    next_action: Finish the first side Action.",
     "    expected_artifact: Side proof", "    clarification: clarified", "    confidence: high",
     "    acceptance_criteria:", "      - Side proof exists.", "    depends_on: []", "    decisions: []", "    references: []",
