@@ -372,7 +372,11 @@ describe("Agent Ask complete", () => {
     // The compare-and-set detected A's change and re-applied B's pinned change
     // on top of it, rather than writing a stale resolution-time result.
     expect(appliedB.data.receipt.effects.join(" ")).toContain("Re-read PROJECT.md and the Plan");
-    expect(readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8")).toContain("Completed demo/first");
+    // The shared completion log kept A's entry as well as B's: neither
+    // settlement's record was silently discarded.
+    const log = readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8");
+    expect(log).toContain("Completed demo/first");
+    expect(log).toContain("Completed demo/third");
     expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
   });
 

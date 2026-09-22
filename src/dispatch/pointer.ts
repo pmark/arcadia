@@ -3,6 +3,7 @@ import { readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
+import { writeTransaction } from "../db/connection.js";
 import { discoverDocs } from "../docs/discover.js";
 import { isDispatchable, resolveActionReadiness, resolveDispatch } from "../docs/dispatch.js";
 import type { PlanDoc, ProjectDoc } from "../docs/types.js";
@@ -134,7 +135,22 @@ export function transitionActionPointer(db: Database.Database, input: {
     });
   }
   try {
-    db.transaction(() => {
+    writeTransaction(db, () => {
+      // Re-read both documents under the workspace write interlock and compare
+      // them against the content the accepted preview was computed from. A
+      // pointer move that landed between preview and apply must refuse rather
+      // than be overwritten, and the interlock is what turns this read-then-write
+      // into a real compare-and-set: every writer that takes it (including
+      // `settleAgentAsk`) serializes here.
+      const currentProject = readFileSync(projectAbsolutePath, "utf8");
+      const currentPlan = readFileSync(planAbsolutePath, "utf8");
+      if (sha256(currentProject) !== sha256(projectBefore) || sha256(currentPlan) !== sha256(planBefore)) {
+        throw validationError("Pointer transition apply does not match the current preview.", {
+          expectedPreviewFingerprint: previewFingerprint,
+          receivedPreviewFingerprint: input.previewFingerprint ?? null,
+          remedy: "Preview make-next again, then apply that exact fingerprint against the current queue revision."
+        });
+      }
       writePairAtomically(projectAbsolutePath, projectBefore, projectAfter, planAbsolutePath, planBefore, planAfter);
       const dispatch = resolveDispatch(input.repoRoot, input.projectSlug);
       if (!isDispatchable(dispatch) || dispatch.context?.action.id !== input.actionId) {
@@ -149,7 +165,7 @@ export function transitionActionPointer(db: Database.Database, input: {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(receipt.id, receipt.requestId, receipt.actionKey, previewFingerprint, input.queueRevision,
           input.repoRoot, headBefore, JSON.stringify(receipt), receipt.createdAt);
-    })();
+    });
   } catch (error) {
     restorePair(projectAbsolutePath, projectBefore, planAbsolutePath, planBefore);
     throw error;
@@ -182,10 +198,12 @@ export interface PointerPairWriteReceipt {
   attempts: number;
   /** True when a concurrent writer changed a document and this re-read it. */
   retried: boolean;
-  projectBeforeSha256: string;
-  projectAfterSha256: string;
-  planBeforeSha256: string;
-  planAfterSha256: string;
+  /** What each document held before this write — the caller's rollback anchor. */
+  projectBefore: string;
+  planBefore: string;
+  /** What each document was written with. */
+  projectAfter: string;
+  planAfter: string;
 }
 
 /**
@@ -205,7 +223,8 @@ export interface PointerPairWriteReceipt {
  * a concurrent writer's unrelated change survives instead of being overwritten
  * by a stale computed result. `writePairAtomically` still performs the two
  * renames together, so a retry can never leave the documents pointing at
- * different Actions.
+ * different Actions. The receipt carries both the pre-transform content (the
+ * caller's rollback anchor) and the content actually written.
  */
 export function writePointerPairWithCompareAndSet(input: {
   repoRoot: string;
@@ -235,10 +254,10 @@ export function writePointerPairWithCompareAndSet(input: {
         headBefore,
         attempts: attempt,
         retried: attempt > 1,
-        projectBeforeSha256: projectCurrentSha,
-        projectAfterSha256: sha256(projectAfter),
-        planBeforeSha256: planCurrentSha,
-        planAfterSha256: sha256(planAfter)
+        projectBefore: projectCurrent,
+        projectAfter,
+        planBefore: planCurrent,
+        planAfter
       };
     }
     if (attempt >= maxAttempts) {
