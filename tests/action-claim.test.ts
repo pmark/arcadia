@@ -222,6 +222,43 @@ describe("Action-scoped worktree claims", () => {
     });
   });
 
+  it("keeps the worktree reservation when only the claim is released", () => {
+    withDatabase(claimWorkspace(), (db) => {
+      const claimed = reserveAgentWorktree(db, {
+        repositoryPath: "/repo",
+        worktreePath: "/repo/wt-a",
+        branch: "claude/a",
+        now: NOW,
+        project: "arcadia",
+        actionId: "action-a"
+      });
+
+      expect(releaseActionClaim(db, {
+        repositoryPath: "/repo",
+        project: "arcadia",
+        actionId: "action-a",
+        generation: claimed.claim_generation!
+      })).toBe(true);
+
+      // The claim is gone, so the Action can be dispatched again...
+      expect(getActiveActionClaim(db, "/repo", "arcadia", "action-a", NOW)).toBeNull();
+      // ...but the worktree is still on disk after a failed spawn, and its
+      // reservation is what stops `tidy` retiring a clean handoff. The row
+      // carries two guarantees; releasing one must not surrender the other.
+      expect(getActiveWorktreeReservation(db, "/repo", "/repo/wt-a", NOW)?.branch).toBe("claude/a");
+
+      // And the freed Action is genuinely claimable by another worktree.
+      expect(reserveAgentWorktree(db, {
+        repositoryPath: "/repo",
+        worktreePath: "/repo/wt-b",
+        branch: "claude/b",
+        now: NOW,
+        project: "arcadia",
+        actionId: "action-a"
+      }).worktree_path).toBe("/repo/wt-b");
+    });
+  });
+
   it("removes the claim when preparation fails inside the reserving transaction", () => {
     withDatabase(claimWorkspace(), (db) => {
       // `go` and `guardedLaunch` both reserve inside `beforeCreate`, within one

@@ -18,6 +18,7 @@ import {
   launchPreparedSession,
   prepareSession,
   releaseActionClaim,
+  releaseWorktreeReservation,
   reserveAgentWorktree,
   sessionAgentForProvider,
   systemTmux,
@@ -260,9 +261,10 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     // failure for a request that was, in substance, satisfied.
     tryGit(repoRoot, ["worktree", "remove", nextWorktree.path]);
     tryGit(repoRoot, ["branch", "-D", nextWorktree.branch]);
-    // The worktree this call claimed the Action for is gone; release the claim
-    // with it, fenced on this call's own generation so a claim that has since
-    // moved on to another session is left untouched.
+    // The worktree this call claimed the Action for is gone, so both of the
+    // row's guarantees end here: release the claim fenced on this call's own
+    // generation, then drop the reservation the removed worktree no longer
+    // needs.
     if (claim.generation) {
       releaseActionClaim(input.db, {
         repositoryPath: repoRoot,
@@ -271,6 +273,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
         generation: claim.generation
       });
     }
+    releaseWorktreeReservation(input.db, repoRoot, nextWorktree.path);
     const raced = getRepositoryLease(input.db, repoRoot);
     if (raced && matchesPreview(raced, preview)) {
       // The winner's Session satisfies this request; this call's own reserved
@@ -303,6 +306,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
           generation: claim.generation
         });
       }
+      releaseWorktreeReservation(input.db, repoRoot, nextWorktree.path);
       throw validationError(`The standing managed-production policy withdrew authorization before launch commitment: ${committed.reason}`, {
         code: committed.code,
         conflict: true

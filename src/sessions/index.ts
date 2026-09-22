@@ -599,16 +599,25 @@ export function getActiveActionClaim(
  * Release a claim, conditioned atomically on the exact generation the caller
  * believes it holds.
  *
+ * This clears the claim columns rather than deleting the row, because the row
+ * carries *two* guarantees and only one of them is being given up: the
+ * worktree-path reservation is what keeps `tidy` from retiring a clean handoff,
+ * and a spawn failure leaves the worktree on disk. Dropping the row to release
+ * the claim would hand `tidy` a worktree it could retire out from under an
+ * operator. A caller that genuinely removed the worktree calls
+ * `releaseWorktreeReservation` for that separately.
+ *
  * Returns whether this call was the one that released it. Releasing an
  * already-released claim, or one whose generation has since moved on to a
  * different session, is a deliberate no-op rather than an error: a retried
  * settlement must be able to repeat its release safely, and a slow settlement
- * or a delayed cleanup must never delete a newer, actively-owned claim out from
- * under whoever now holds it.
+ * or a delayed cleanup must never release a newer, actively-owned claim out
+ * from under whoever now holds it.
  */
 export function releaseActionClaim(db: Database.Database, fence: ActionClaimFence): boolean {
   if (!hasWorktreeReservationTable(db)) return false;
-  const result = db.prepare(`DELETE FROM agent_worktree_reservations
+  const result = db.prepare(`UPDATE agent_worktree_reservations
+    SET project = NULL, action_id = NULL, claim_generation = NULL
     WHERE repository_path = ? AND project = ? AND action_id = ? AND claim_generation = ?`)
     .run(canonicalPath(fence.repositoryPath), fence.project, fence.actionId, fence.generation);
   return result.changes > 0;
