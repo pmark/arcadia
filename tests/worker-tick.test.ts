@@ -1,17 +1,33 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { spawn, type ChildProcess } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createWorkerTick, decideWorkerStart, isProcessAlive, runWorkerInstallCommand } from "../src/commands/worker.js";
+import {
+  classifyWorkerHealth,
+  createWorkerTick,
+  decideWorkerStart,
+  isProcessAlive,
+  isWorkspaceWorkerCommand,
+  runWorkerInstallCommand,
+  runWorkerStartCommand,
+  runWorkerStatusCommand,
+  runWorkerStopCommand
+} from "../src/commands/worker.js";
 import { openDatabase } from "../src/db/connection.js";
-import { preservationTransportReady } from "../src/sessions/preservationTransport.js";
+import { TRANSPORT_FRESHNESS_MS, preservationTransportReady } from "../src/sessions/preservationTransport.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
-import { runCli } from "./cli-response-fixture.js";
+import { repoRoot, runCli } from "./cli-response-fixture.js";
 
 const temporary: string[] = [];
+const fixtures: ChildProcess[] = [];
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+  for (const child of fixtures.splice(0)) {
+    try { child.kill("SIGKILL"); } catch { /* already gone */ }
+  }
   for (const directory of temporary.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
@@ -23,18 +39,86 @@ function workspace(): { root: string; logfile: string } {
   return { root, logfile: path.join(root, ".arcadia", "worker.log") };
 }
 
+function pidfileOf(root: string): string {
+  return path.join(root, ".arcadia", "worker.pid");
+}
+
+function writeRecord(root: string, record: { pid: number; owner: string; at: number }): void {
+  writeFileSync(pidfileOf(root), JSON.stringify(record), "utf8");
+}
+
+function readRecord(root: string): { pid: number; owner: string; at: number } {
+  return JSON.parse(readFileSync(pidfileOf(root), "utf8"));
+}
+
+function captureStdout(run: () => void): string {
+  let captured = "";
+  const write = vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+    captured += String(chunk);
+    return true;
+  });
+  try { run(); } finally { write.mockRestore(); }
+  return captured;
+}
+
+/**
+ * `runWorkerStartCommand` installs SIGINT/SIGTERM handlers that call
+ * `process.exit`, which is correct for the daemon and wrong for the test
+ * runner. Drop only the handlers that call installed, so any the runner owns
+ * survive.
+ */
+function dropSignalHandlersInstalledBy(run: () => void): void {
+  const signals = ["SIGINT", "SIGTERM"] as const;
+  const before = Object.fromEntries(signals.map((signal) => [signal, process.listeners(signal)]));
+  run();
+  for (const signal of signals) {
+    for (const listener of process.listeners(signal)) {
+      if (!before[signal].includes(listener)) process.removeListener(signal, listener);
+    }
+  }
+}
+
+/**
+ * A real live process that ignores SIGTERM, so recovery has to escalate to
+ * SIGKILL — the closest honest fixture to the hung daemon in Issue #485
+ * without waiting for one to hang for 159 minutes. It announces readiness
+ * after installing its SIGTERM handler, so the test never races a signal
+ * against process startup.
+ *
+ * `exited` resolves once the child is reaped. Recovery sleeps with a blocked
+ * event loop, so a killed child stays a zombie — alive to `kill(pid, 0)` —
+ * until the loop turns, and asserting on liveness before that would fail on
+ * the fixture rather than on the behaviour.
+ */
+async function stubbornProcess(): Promise<{ pid: number; exited: Promise<void> }> {
+  const child = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); console.log('ready'); setInterval(() => {}, 1000);"], {
+    stdio: ["ignore", "pipe", "ignore"]
+  });
+  fixtures.push(child);
+  await new Promise<void>((resolve) => child.stdout?.once("data", () => resolve()));
+  const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  return { pid: child.pid, exited };
+}
+
 describe("worker start already-running guard", () => {
   it("starts when no live worker owns the pidfile", () => {
-    expect(decideWorkerStart(null, () => true)).toEqual({ action: "start", pid: null });
-    expect(decideWorkerStart({ pid: 4242, owner: "old" }, () => false)).toEqual({ action: "start", pid: null });
+    const now = 1_000_000;
+    expect(decideWorkerStart(null, () => true, now)).toEqual({ action: "start", pid: null });
+    expect(decideWorkerStart({ pid: 4242, owner: "old", at: now }, () => false, now)).toEqual({ action: "start", pid: null });
   });
 
-  it("treats a live pidfile holder as already running rather than a failure", () => {
-    expect(decideWorkerStart({ pid: 4242, owner: "worker" }, () => true)).toEqual({ action: "already-running", pid: 4242 });
+  it("treats a live pidfile holder with a fresh heartbeat as already running rather than a failure", () => {
+    const now = 1_000_000;
+    expect(decideWorkerStart({ pid: 4242, owner: "worker", at: now }, () => true, now)).toEqual({ action: "already-running", pid: 4242 });
   });
 
-  it("does not replace a live worker merely because its heartbeat is stale", () => {
-    expect(decideWorkerStart({ pid: 4242, owner: "stale" }, () => true)).toEqual({ action: "already-running", pid: 4242 });
+  it("decides recovery, not already-running, for a live worker whose heartbeat is stale (Issue #485)", () => {
+    const now = 1_000_000;
+    expect(decideWorkerStart({ pid: 4242, owner: "hung", at: now - TRANSPORT_FRESHNESS_MS }, () => true, now)).toEqual({ action: "recover", pid: 4242 });
+    // One millisecond inside the window is still a live worker, not a hang.
+    expect(decideWorkerStart({ pid: 4242, owner: "busy", at: now - TRANSPORT_FRESHNESS_MS + 1 }, () => true, now)).toEqual({ action: "already-running", pid: 4242 });
+    // A record stamped in the future is clock skew, not evidence of a hang.
+    expect(decideWorkerStart({ pid: 4242, owner: "skewed", at: now + 60_000 }, () => true, now)).toEqual({ action: "already-running", pid: 4242 });
   });
 
   it("treats EPERM as live and only ESRCH as dead", () => {
@@ -52,7 +136,7 @@ describe("worker start already-running guard", () => {
   // code rather than only the decision that precedes it.
   it("exits 0 from the CLI when another worker already holds the workspace pidfile", () => {
     const { root } = workspace();
-    writeFileSync(path.join(root, ".arcadia", "worker.pid"), JSON.stringify({ pid: process.pid, owner: "existing", at: Date.now() }), "utf8");
+    writeRecord(root, { pid: process.pid, owner: "existing", at: Date.now() });
 
     const result = runCli(["worker", "start", "--workspace", root]);
 
@@ -63,7 +147,7 @@ describe("worker start already-running guard", () => {
 
   it("does not replace a live legacy numeric pidfile before the worker has restarted", () => {
     const { root } = workspace();
-    const pidfile = path.join(root, ".arcadia", "worker.pid");
+    const pidfile = pidfileOf(root);
     writeFileSync(pidfile, String(process.pid), "utf8");
 
     const result = runCli(["worker", "start", "--workspace", root]);
@@ -73,6 +157,145 @@ describe("worker start already-running guard", () => {
     expect(readFileSync(pidfile, "utf8")).toBe(String(process.pid));
   });
 });
+
+describe("worker health classification", () => {
+  it("uses the same staleness threshold the preservation transport refuses at", () => {
+    const at = 1_000_000;
+    const record = { pid: 4242, owner: "hung", at };
+
+    expect(classifyWorkerHealth(record, null, () => true, at + TRANSPORT_FRESHNESS_MS)).toEqual({ health: "unhealthy", pid: 4242 });
+    expect(classifyWorkerHealth(record, null, () => true, at + TRANSPORT_FRESHNESS_MS - 1)).toEqual({ health: "running", pid: 4242 });
+    expect(classifyWorkerHealth(record, null, () => false, at + TRANSPORT_FRESHNESS_MS)).toEqual({ health: "stopped", pid: 4242 });
+    expect(classifyWorkerHealth(null, null, () => true, at)).toEqual({ health: "stopped", pid: null });
+    // A legacy numeric pidfile has no heartbeat to age, so a live PID with no
+    // ownership record is unhealthy rather than running.
+    expect(classifyWorkerHealth(null, 4242, () => true, at)).toEqual({ health: "unhealthy", pid: 4242 });
+  });
+
+  it("reports an alive-but-stale process as unhealthy and names its age", async () => {
+    const { root } = workspace();
+    const fixture = await stubbornProcess();
+    writeRecord(root, { pid: fixture.pid, owner: "hung", at: Date.now() - 60_000 });
+
+    const output = captureStdout(() => runWorkerStatusCommand({ workspace: root }));
+
+    expect(output).toContain("unhealthy");
+    expect(output).toContain(String(fixture.pid));
+    expect(output).toContain("60s old");
+    expect(output).not.toContain("already running");
+  });
+});
+
+describe("worker process identity", () => {
+  const workspacePath = "/Users/example/workspaces/one";
+
+  it("accepts only a live PID that is this workspace's own worker", () => {
+    expect(isWorkspaceWorkerCommand(
+      `mise exec -- node /repo/node_modules/tsx/dist/cli.mjs /repo/src/cli.ts worker start --workspace ${workspacePath}`,
+      workspacePath
+    )).toBe(true);
+    // A default-workspace invocation names no path to compare against.
+    expect(isWorkspaceWorkerCommand("pnpm arcadia worker start", workspacePath)).toBe(true);
+    // Another workspace's worker is not this workspace's worker.
+    expect(isWorkspaceWorkerCommand("node /repo/src/cli.ts worker start --workspace /somewhere/else", workspacePath)).toBe(false);
+    // Same workspace, different verb.
+    expect(isWorkspaceWorkerCommand(`node /repo/src/cli.ts worker status --workspace ${workspacePath}`, workspacePath)).toBe(false);
+    // An unrelated process the kernel recycled the PID onto.
+    expect(isWorkspaceWorkerCommand("node -e setInterval(() => {}, 1000)", workspacePath)).toBe(false);
+  });
+
+  it("refuses to signal a stale PID that is not this workspace's worker", async () => {
+    const { root } = workspace();
+    const fixture = await stubbornProcess();
+    writeRecord(root, { pid: fixture.pid, owner: "recycled", at: Date.now() - 60_000 });
+
+    const result = runCli(["worker", "start", "--workspace", root]);
+
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}${result.stderr}`).toContain(String(fixture.pid));
+    expect(`${result.stdout}${result.stderr}`).toMatch(/Refusing to signal/);
+    // The unrelated process was never signalled.
+    expect(isProcessAlive(fixture.pid)).toBe(true);
+  });
+});
+
+describe("worker stale-heartbeat recovery (Issue #485)", () => {
+  it("recovers a hung worker through worker start and leaves no duplicate or orphaned pidfile", async () => {
+    const { root, logfile } = workspace();
+    const fixture = await stubbornProcess();
+    writeRecord(root, { pid: fixture.pid, owner: "hung", at: Date.now() - 60_000 });
+
+    expect(captureStdout(() => runWorkerStatusCommand({ workspace: root }))).toContain("unhealthy");
+
+    // The tick loop and its heartbeat interval are what keep `worker start`
+    // resident; this test asserts the recovery that happens before them.
+    const intervals = vi.spyOn(globalThis, "setInterval").mockReturnValue(0 as unknown as NodeJS.Timeout);
+    const timeouts = vi.spyOn(globalThis, "setTimeout").mockReturnValue(0 as unknown as NodeJS.Timeout);
+    const resume = vi.spyOn(process.stdin, "resume").mockReturnValue(process.stdin);
+    dropSignalHandlersInstalledBy(() => runWorkerStartCommand({ workspace: root }, {
+      identify: () => `node ${path.join(repoRoot, "src", "cli.ts")} worker start --workspace ${root}`,
+      terminateGraceMs: 50,
+      killGraceMs: 50
+    }));
+    intervals.mockRestore();
+    timeouts.mockRestore();
+    resume.mockRestore();
+    // No manual intervention: the hung process is gone and the workspace has a
+    // fresh owner whose heartbeat is inside the shared freshness window.
+    await fixture.exited;
+    expect(isProcessAlive(fixture.pid)).toBe(false);
+    const recovered = readRecord(root);
+    expect(recovered.pid).toBe(process.pid);
+    expect(Date.now() - recovered.at).toBeLessThan(TRANSPORT_FRESHNESS_MS);
+
+    // The escalation is recorded where the operator's own restart would be.
+    const logged = readFileSync(logfile, "utf8");
+    expect(logged).toContain(`Recovered hung worker: PID ${fixture.pid}`);
+    expect(logged).toContain("ended with SIGKILL");
+
+    // Recovery leaves no duplicate: the next start sees a healthy owner.
+    expect(captureStdout(() => runWorkerStatusCommand({ workspace: root }))).toContain("running");
+    expect(decideWorkerStart(recovered, () => true)).toEqual({ action: "already-running", pid: process.pid });
+  });
+
+  it("force-kills a hung worker from worker stop after SIGTERM is ignored", async () => {
+    const { root } = workspace();
+    const fixture = await stubbornProcess();
+    writeRecord(root, { pid: fixture.pid, owner: "hung", at: Date.now() - 60_000 });
+
+    const output = captureStdout(() => runWorkerStopCommand({ workspace: root }, {
+      identify: () => `node ${path.join(repoRoot, "src", "cli.ts")} worker start --workspace ${root}`,
+      terminateGraceMs: 50,
+      killGraceMs: 50
+    }));
+
+    expect(output).toContain("ignored SIGTERM");
+    expect(output).toContain("SIGKILL");
+    await fixture.exited;
+    expect(isProcessAlive(fixture.pid)).toBe(false);
+    // A force-killed worker never runs its own cleanup, so stop must clear the
+    // record rather than leave a pidfile naming a dead PID.
+    expect(existsSync(pidfileOf(root))).toBe(false);
+  });
+
+  it("leaves a worker that is mid-tick alone rather than killing it", async () => {
+    const { root } = workspace();
+    const fixture = await stubbornProcess();
+    // Alive and refusing SIGTERM, but its heartbeat is inside the window: it
+    // may simply be blocked in a long tick, which is not a hang.
+    writeRecord(root, { pid: fixture.pid, owner: "busy", at: Date.now() });
+
+    const output = captureStdout(() => runWorkerStopCommand({ workspace: root }, {
+      identify: () => `node ${path.join(repoRoot, "src", "cli.ts")} worker start --workspace ${root}`,
+      terminateGraceMs: 50,
+      killGraceMs: 50
+    }));
+
+    expect(output).toContain("still fresh");
+    expect(isProcessAlive(fixture.pid)).toBe(true);
+  });
+});
+
 
 describe("worker install readiness", () => {
   it("refuses clearly when launchd cannot load the worker", () => {

@@ -16,8 +16,16 @@ import { SESSION_AGENTS, type AgentSession, type SessionAgent } from "./index.js
 const HEARTBEAT = ".arcadia/preservation.heartbeat";
 const runningGoSources = new Set<string>();
 const NONCE = /^[a-f0-9-]{36}$/;
-/** How long a published route projection is trusted before it is stale. */
-const TRANSPORT_FRESHNESS_MS = 15_000;
+/**
+ * How long a published route projection is trusted before it is stale.
+ *
+ * Exported because the worker daemon uses the very same number to decide
+ * whether its own heartbeat has gone stale (GitHub issue #485). They describe
+ * one failure — a worker that stopped refreshing — and two independent
+ * constants would let `arcadia worker status` call a process healthy while
+ * `arcadia-preserve-broker-*` refuses it, on the same evidence.
+ */
+export const TRANSPORT_FRESHNESS_MS = 15_000;
 const responsePath = (workspace: string, session: string, nonce: string) =>
   path.join(workspace, "artifacts", "preservation", session, `${nonce}.json`);
 const goResponsePath = (workspace: string, nonce: string) =>
