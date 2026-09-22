@@ -5,8 +5,9 @@ import { transitionActionPointer } from "../dispatch/pointer.js";
 import type { Project } from "../domain/types.js";
 import { getRepositoryLease } from "../sessions/index.js";
 import { findOutstandingCandidate } from "../sessions/candidatePreservation.js";
+import { resolveBatch, type BatchResolution } from "../docs/batch.js";
 import { createGitHubBoard, reconcileBoard, runGh, type BoardIdentity, type ReconcileResult, type SchedulingBoard } from "./github.js";
-import { buildProjectSchedule, type ProjectSchedule } from "./schedule.js";
+import { buildProjectSchedule, projectRepositoryRoot, type ProjectSchedule } from "./schedule.js";
 import { getSchedulingProject, recordSchedulingLog, upsertSchedulingProject } from "./store.js";
 
 /**
@@ -51,7 +52,8 @@ export const defaultBoardFactory: BoardFactory = (schedule, db) => {
     upsertSchedulingProject(db, schedule.projectSlug, {
       githubProjectId: board.identity.projectId,
       githubStatusFieldId: board.identity.statusFieldId,
-      githubStatusOptions: board.identity.statusOptions
+      githubStatusOptions: board.identity.statusOptions,
+      githubPushField: board.identity.pushField ?? { absent: true }
     });
   }
   return board;
@@ -60,10 +62,16 @@ export const defaultBoardFactory: BoardFactory = (schedule, db) => {
 function cachedBoardIdentity(schedule: ProjectSchedule): BoardIdentity | null {
   const record = schedule.record;
   if (!record.githubProjectId || !record.githubStatusFieldId || !record.githubStatusOptions) return null;
+  // A resolved absence is a fact worth caching: re-resolving a board that has
+  // no `Arcadia push` field on every poll would spend a `field-list` call per
+  // minute forever. `undefined` here means "not yet resolved", which is the
+  // only state that costs a call.
+  if (record.githubPushField === null) return null;
   return {
     projectId: record.githubProjectId,
     statusFieldId: record.githubStatusFieldId,
-    statusOptions: record.githubStatusOptions
+    statusOptions: record.githubStatusOptions,
+    pushField: "absent" in record.githubPushField ? null : record.githubPushField
   };
 }
 
@@ -128,6 +136,33 @@ export interface SchedulingPassOptions {
   log?: (message: string) => void;
 }
 
+/**
+ * The push for the repository this schedule belongs to, computed once per pass
+ * and shared by every Project in it. Built from the active Projects' configured
+ * repository paths — a cheap metadata read, not a second document scan — so the
+ * lanes agree with the portfolio view without adding a pass per Project.
+ */
+function repositoryBatch(
+  db: Database.Database,
+  schedule: ProjectSchedule,
+  cache: Map<string, BatchResolution | null>
+): BatchResolution | null {
+  if (!schedule.repositoryRoot) return null;
+  const cached = cache.get(schedule.repositoryRoot);
+  if (cached !== undefined) return cached;
+
+  const inputs = listProjects(db)
+    .filter((project) => project.status === "active")
+    .map((project) => ({ repositoryRoot: projectRepositoryRoot(db, project), projectSlug: project.slug }))
+    .filter((entry): entry is { repositoryRoot: string; projectSlug: string } => entry.repositoryRoot === schedule.repositoryRoot);
+
+  const batch = resolveBatch(
+    inputs.length > 0 ? inputs : [{ repositoryRoot: schedule.repositoryRoot, projectSlug: schedule.projectSlug }]
+  );
+  cache.set(schedule.repositoryRoot, batch);
+  return batch;
+}
+
 export function listProjectsInSchedulingOrder(db: Database.Database, projectSlugs?: string[]): Project[] {
   const scope = projectSlugs === undefined ? null : new Set(projectSlugs);
   return listProjects(db)
@@ -145,6 +180,11 @@ export function runSchedulingPass(db: Database.Database, options: SchedulingPass
   const pollIntervalMs = options.boardPollIntervalMs ?? DEFAULT_BOARD_POLL_INTERVAL_MS;
   const projects: SchedulingProjectPass[] = [];
   let selection: SchedulingPassResult["selection"] = null;
+  // One push per repository per pass, shared by every Project in it: a lane is
+  // a repository, so a Project projected from its own Actions alone would
+  // label a shared lane "This push" while the dashboard says "sequence
+  // advised" for the same work.
+  const batchesByRepository = new Map<string, BatchResolution | null>();
 
   for (const project of listProjectsInSchedulingOrder(db, options.projectSlugs)) {
     let schedule = buildProjectSchedule(db, project);
@@ -162,7 +202,8 @@ export function runSchedulingPass(db: Database.Database, options: SchedulingPass
             reconcile = reconcileBoard(db, schedule, board, {
               requestId: `scheduler-${project.slug}-${now.getTime()}`,
               rebuild: () => buildProjectSchedule(db, project),
-              now
+              now,
+              batch: repositoryBatch(db, schedule, batchesByRepository)
             });
             if (reconcile.operatorMoved || reconcile.projection?.changed) schedule = buildProjectSchedule(db, project);
           } else {
@@ -173,7 +214,7 @@ export function runSchedulingPass(db: Database.Database, options: SchedulingPass
           // Drop the cached ids: a renamed, recreated or deleted field is one
           // cause of this, and a cache that never expires would keep failing
           // the same way. The next pass pays two calls to re-resolve.
-          upsertSchedulingProject(db, project.slug, { githubStatusFieldId: null, githubStatusOptions: null });
+          upsertSchedulingProject(db, project.slug, { githubStatusFieldId: null, githubStatusOptions: null, githubPushField: null });
           log(`GitHub reconciliation failed for ${project.slug}: ${reconcileError}`);
         }
       }

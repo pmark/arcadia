@@ -38,6 +38,7 @@ Arcadia uses a small number of words precisely. Five of them matter here.
 | **Action** | One unit of work a coding agent can finish in a sitting. This is what becomes a card on your board. |
 | **Plan** | The document listing a Milestone's Actions and their order. |
 | **Decision** | A question only you can answer. Arcadia stops and asks rather than guessing. |
+| **Push** | The work Arcadia will get through before it next needs you: everything ready now, plus the first thing that stops it. |
 
 ---
 
@@ -104,9 +105,12 @@ arcadia schedule github link --project arcadia --owner your-github-login --creat
 This creates a GitHub Project called "Arcadia — Development" and links it. Use
 `--number 7` instead of `--create` to attach an existing board.
 
-This is the **only** command that changes the board's structure. It adds a
-single-select field called **Arcadia status** with six options. Everything else
-Arcadia does only reads the board's shape.
+This is the **only** command that changes the board's structure. It adds two
+single-select fields: **Arcadia status** with six options, and **Arcadia push**
+with eight. Everything else Arcadia does only reads the board's shape.
+
+An already-linked board keeps working without the push field — its cards simply
+carry no push label until you run the link command again to add it.
 
 ### Step 3 — Publish the queue
 
@@ -127,6 +131,9 @@ is manual and takes a minute.
    only live work.
 3. Add a second view. Filter it to `Arcadia status:Backlog`. That is your
    backlog.
+4. Add a third view. Group by **Arcadia push**, and filter it to
+   `Arcadia push:This push,"This push · sequence"`. That is the current push —
+   the work Arcadia will get through before it needs you.
 
 ### Step 5 — Set the cross-Project order
 
@@ -158,6 +165,44 @@ card:
 ```bash
 arcadia schedule status --project arcadia
 ```
+
+---
+
+## Reading the push
+
+Status answers "why is this card not moving?" The push answers the question you
+actually have in the morning: **what will Arcadia get through before it needs
+me?**
+
+One push is: every Action that can start right now, plus the first thing that
+will stop it. The **Arcadia push** field carries it, and the same picture is at
+the top of the Runs dashboard.
+
+| Push value | Means | Your move |
+| --- | --- | --- |
+| **This push** | Ready now, and the only work in its lane. | Nothing. |
+| **This push · sequence** | Ready now, but shares a repository with other work in the push, so it runs in order. | Nothing. |
+| **Decision needed** | The first thing stopping more work. A Decision must be answered. | Answer it. |
+| **Deferred** | The first stop. An Action was parked against a named condition. | Wait, or revive it. |
+| **Question open** | The first stop. An Action was never clarified. | Answer the question. |
+| **Review needed** | The first stop. The Action needs you to run it — it spends provider capacity a coding agent must not spend for you. | Run it from your own terminal. |
+| **Next push** | After that stop. Real work, not yet reached. | Nothing yet. |
+| **Not queued** | Waiting on a dependency, or already done. | Nothing. |
+
+Two things about the boundary worth knowing:
+
+- **The first gate is the boundary, not a wall.** Arcadia's production policy
+  still lets independent eligible work proceed past an operator stop, which is
+  why ready work stays in the push even when it sits after the gate in the Plan.
+- **The label is recomputed, never remembered.** Every projection asks the
+  documents again and rewrites whatever changed. A push label that disagreed
+  with the Plan would be worse than no label, so nothing caches one.
+
+A note on lanes: **This push · sequence** is the same repository as another
+Action in the push. Two repositories can run side by side; one repository runs
+one thing at a time, because two agents editing the same checkout is how work
+gets corrupted. If you manage more than one Project, `arcadia schedule status`
+shows the lanes across all of them.
 
 ---
 
@@ -313,8 +358,10 @@ those tests pass. But no one has yet pointed it at an actual GitHub Project.
 The first time you run step 2 above, treat it as a trial: use a throwaway
 Project and repository if you can.
 
-**Board views are manual.** GitHub's API cannot create them. If you recreate a
-board, you redo step 4.
+**Board views are manual.** GitHub's API cannot create a saved view, a grouped
+board, or a swimlane. Arcadia keeps the **Arcadia push** *field* fresh on every
+projection; turning that field into a grouped view is a one-time click in
+GitHub's own UI (step 4). If you recreate a board, you redo step 4.
 
 **Arcadia writes to your repository.** Recording a discovery commits a change
 to the Plan document in the Project's main checkout. It never pushes. If that
@@ -381,6 +428,8 @@ Ideas, not commitments. Roughly in order of how much they would help.
   have been fiction.
 - *Syncing every GitHub field.* Two systems both claiming to own the same field
   is how drift starts. Card order is the single exception, and it earns it.
+  `Arcadia push` is Arcadia's own field, written Arcadia-to-GitHub on the same
+  projection that writes status, and it is never read back as state.
 
 Each of these should be driven by something that actually goes wrong, not by
 anticipating it.
@@ -391,7 +440,7 @@ anticipating it.
 
 | Command | Does |
 | --- | --- |
-| `arcadia schedule status` | Show every Project's queue and what runs next |
+| `arcadia schedule status` | Show every Project's queue, the current push, and what runs next |
 | `arcadia schedule status --project <slug>` | Same, one Project |
 | `arcadia schedule log --project <slug>` | The audit trail |
 | `arcadia schedule prioritize --order <slugs...>` | Set cross-Project order |

@@ -474,6 +474,61 @@ export interface ScheduleProjectSummary {
   queue: ScheduleQueueAction[];
 }
 
+/**
+ * The current push, as `arcadia schedule status --json` reports it. Mirrored
+ * here rather than imported: the dashboard is a separate Next application and
+ * reaches the CLI only through its JSON output.
+ */
+export type ScheduleBatchStopKind =
+  | "decision"
+  | "deferred"
+  | "question_open"
+  | "capacity_proof_run"
+  | "dependency"
+  | "unavailable";
+
+export interface ScheduleBatchAction {
+  actionId: string;
+  title: string;
+  projectSlug: string;
+  projectName: string | null;
+  planSlug: string;
+  planPath: string;
+  tokenImpact: string | null;
+  tokenPoints: number;
+  position: number;
+}
+
+export interface ScheduleBatchStop {
+  kind: ScheduleBatchStopKind;
+  actionId: string;
+  title: string;
+  projectSlug: string;
+  projectName: string | null;
+  planPath: string;
+  decisionId: string | null;
+  prompt: string;
+}
+
+export interface ScheduleBatchLane {
+  laneId: string;
+  laneLabel: string;
+  repositoryRoot: string | null;
+  projectSlugs: string[];
+  sequenceAdvised: boolean;
+  token: { points: number; tiers: string[] };
+  actions: ScheduleBatchAction[];
+  stops: ScheduleBatchStop[];
+  boundary: ScheduleBatchStop | null;
+  nextPush: Array<{ actionId: string; title: string; projectSlug: string }>;
+}
+
+export interface ScheduleBatch {
+  lanes: ScheduleBatchLane[];
+  token: { points: number; tiers: string[] };
+  blockers: Array<{ relativePath: string; field: string; message: string; remedy: string }>;
+}
+
 export interface ScheduleStatusResponse {
   schedule: {
     generatedAt: string;
@@ -495,6 +550,7 @@ export interface ScheduleStatusResponse {
     }>;
     selection: string | null;
   };
+  batch: ScheduleBatch;
 }
 
 /**
@@ -502,7 +558,7 @@ export interface ScheduleStatusResponse {
  * dashboard only wants the live picture: which board this Project projects
  * onto, and the next several Actions that are not already done.
  */
-export async function loadScheduleSummary(limit = 6): Promise<ArcadiaJsonSuccess<{ projects: ScheduleProjectSummary[]; selection: string | null }>> {
+export async function loadScheduleSummary(limit = 6): Promise<ArcadiaJsonSuccess<{ projects: ScheduleProjectSummary[]; selection: string | null; batch: ScheduleBatch | null }>> {
   const response = await runArcadiaCliJson<ScheduleStatusResponse>(["schedule", "status"]);
   const projects = response.data.schedule.projects.map((project) => ({
     projectSlug: project.projectSlug,
@@ -523,7 +579,14 @@ export async function loadScheduleSummary(limit = 6): Promise<ArcadiaJsonSuccess
         current: action.current
       }))
   }));
-  return { ...response, data: { projects, selection: response.data.schedule.selection } };
+  return {
+    ...response,
+    data: {
+      projects,
+      selection: response.data.schedule.selection,
+      batch: response.data.batch ?? null
+    }
+  };
 }
 
 export interface DispatchJournalEvent {

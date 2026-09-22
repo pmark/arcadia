@@ -5,6 +5,7 @@ import type {
   CapacityStatusResponse,
   DispatchJournalEvent,
   ProductionStatusResponse,
+  ScheduleBatch,
   ScheduleProjectSummary
 } from "../lib/arcadia-cli";
 
@@ -14,7 +15,7 @@ export interface ProductionCoreData {
 }
 
 export interface ProductionQueueData {
-  schedule: { projects: ScheduleProjectSummary[]; selection: string | null } | null;
+  schedule: { projects: ScheduleProjectSummary[]; selection: string | null; batch: ScheduleBatch | null } | null;
 }
 
 export interface ProductionAlertsData {

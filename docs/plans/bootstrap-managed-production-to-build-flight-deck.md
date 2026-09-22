@@ -1380,7 +1380,7 @@ actions:
     references: ["src/commands/worker.ts", "docs/managed-production-readiness.md"]
   - id: surface-batch-readiness-view
     title: The dashboards /runs page shows the current batch (ready-set prefix to the next operator gate) as parallel lanes with a token rollup, and the same computed batch position is mirrored onto GitHub board cards via the existing status-projection pipeline.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: The dashboards /runs page shows the current batch (ready-set prefix to the next operator gate) as parallel lanes with a token rollup, and the same computed batch position is mirrored onto GitHub board cards via the existing status-projection pipeline.
@@ -1401,7 +1401,7 @@ actions:
     references: ["src/docs/dispatch.ts", "apps/dashboard/components/production-control-panel.tsx", "apps/dashboard/app/runs/page.tsx", "apps/dashboard/hooks/use-production-control.ts", "docs/managed-production-readiness.md", "docs/github-board-guide.md", "docs/production-scheduling.md"]
 questions: []
 decisions: []
-current_action: surface-batch-readiness-view
+current_action: preserve-on-exit-and-integrate
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

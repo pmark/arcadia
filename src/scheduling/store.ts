@@ -37,6 +37,7 @@ export function ensureSchedulingTables(db: Database.Database): void {
       paused_decision_id TEXT,
       github_status_field_id TEXT,
       github_status_options_json TEXT,
+      github_push_field_json TEXT,
       last_reconciled_at TEXT,
       projection_in_flight INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
@@ -79,6 +80,7 @@ export function ensureSchedulingTables(db: Database.Database): void {
     ["paused_decision_id", "TEXT"],
     ["github_status_field_id", "TEXT"],
     ["github_status_options_json", "TEXT"],
+    ["github_push_field_json", "TEXT"],
     ["last_reconciled_at", "TEXT"],
     ["projection_in_flight", "INTEGER NOT NULL DEFAULT 0"]
   ];
@@ -105,6 +107,13 @@ export interface SchedulingProjectRecord {
   githubStatusFieldId: string | null;
   /** Status name to single-select option id, cached alongside the field id. */
   githubStatusOptions: Record<string, string> | null;
+  /**
+   * The board's `Arcadia push` field, cached in three states because they are
+   * genuinely different facts: `null` means it has not been resolved yet,
+   * `{ absent: true }` means the board has no such field, and an id/options
+   * pair means it does. Only the first costs a `field-list` call.
+   */
+  githubPushField: CachedPushField | null;
   /** When the board was last read, so polling for operator drags can be throttled. */
   lastReconciledAt: string | null;
   /**
@@ -114,6 +123,8 @@ export interface SchedulingProjectRecord {
    */
   projectionInFlight: boolean;
 }
+
+export type CachedPushField = { id: string; options: Record<string, string> } | { absent: true };
 
 interface SchedulingProjectRow {
   project_slug: string;
@@ -130,6 +141,7 @@ interface SchedulingProjectRow {
   paused_decision_id: string | null;
   github_status_field_id: string | null;
   github_status_options_json: string | null;
+  github_push_field_json: string | null;
   last_reconciled_at: string | null;
   projection_in_flight: number;
 }
@@ -160,6 +172,7 @@ function projectFromRow(row: SchedulingProjectRow): SchedulingProjectRecord {
     pausedDecisionId: row.paused_decision_id ?? null,
     githubStatusFieldId: row.github_status_field_id ?? null,
     githubStatusOptions: parseOptions(row.github_status_options_json ?? null),
+    githubPushField: parsePushField(row.github_push_field_json ?? null),
     lastReconciledAt: row.last_reconciled_at ?? null,
     projectionInFlight: row.projection_in_flight === 1
   };
@@ -172,6 +185,21 @@ function parseOptions(value: string | null): Record<string, string> | null {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
     const entries = Object.entries(parsed as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string");
     return entries.length > 0 ? Object.fromEntries(entries) : null;
+  } catch {
+    return null;
+  }
+}
+
+function parsePushField(value: string | null): CachedPushField | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const record = parsed as { absent?: unknown; id?: unknown; options?: unknown };
+    if (record.absent === true) return { absent: true };
+    if (typeof record.id !== "string") return null;
+    const options = parseOptions(JSON.stringify(record.options ?? {})) ?? {};
+    return { id: record.id, options };
   } catch {
     return null;
   }
@@ -193,6 +221,7 @@ function defaultSchedulingProject(projectSlug: string): SchedulingProjectRecord 
     pausedDecisionId: null,
     githubStatusFieldId: null,
     githubStatusOptions: null,
+    githubPushField: null,
     lastReconciledAt: null,
     projectionInFlight: false
   };
@@ -241,13 +270,13 @@ export function upsertSchedulingProject(
     `INSERT INTO scheduling_projects (
        project_slug, priority, github_owner, github_project_number, github_project_id, github_repository,
        last_projected_revision, last_projected_order_json, failed_runs, failed_runs_milestone, paused_reason,
-       paused_decision_id, github_status_field_id, github_status_options_json, last_reconciled_at,
-       projection_in_flight, created_at, updated_at
+       paused_decision_id, github_status_field_id, github_status_options_json, github_push_field_json,
+       last_reconciled_at, projection_in_flight, created_at, updated_at
      ) VALUES (
        @project_slug, @priority, @github_owner, @github_project_number, @github_project_id, @github_repository,
        @last_projected_revision, @last_projected_order_json, @failed_runs, @failed_runs_milestone, @paused_reason,
-       @paused_decision_id, @github_status_field_id, @github_status_options_json, @last_reconciled_at,
-       @projection_in_flight, @created_at, @updated_at
+       @paused_decision_id, @github_status_field_id, @github_status_options_json, @github_push_field_json,
+       @last_reconciled_at, @projection_in_flight, @created_at, @updated_at
      )
      ON CONFLICT(project_slug) DO UPDATE SET
        priority = @priority, github_owner = @github_owner, github_project_number = @github_project_number,
@@ -255,8 +284,8 @@ export function upsertSchedulingProject(
        last_projected_revision = @last_projected_revision, last_projected_order_json = @last_projected_order_json,
        failed_runs = @failed_runs, failed_runs_milestone = @failed_runs_milestone, paused_reason = @paused_reason,
        paused_decision_id = @paused_decision_id, github_status_field_id = @github_status_field_id,
-       github_status_options_json = @github_status_options_json, last_reconciled_at = @last_reconciled_at,
-       projection_in_flight = @projection_in_flight, updated_at = @updated_at`
+       github_status_options_json = @github_status_options_json, github_push_field_json = @github_push_field_json,
+       last_reconciled_at = @last_reconciled_at, projection_in_flight = @projection_in_flight, updated_at = @updated_at`
   ).run({
     project_slug: projectSlug,
     priority: next.priority,
@@ -272,6 +301,7 @@ export function upsertSchedulingProject(
     paused_decision_id: next.pausedDecisionId,
     github_status_field_id: next.githubStatusFieldId,
     github_status_options_json: next.githubStatusOptions ? JSON.stringify(next.githubStatusOptions) : null,
+    github_push_field_json: next.githubPushField ? JSON.stringify(next.githubPushField) : null,
     last_reconciled_at: next.lastReconciledAt,
     projection_in_flight: next.projectionInFlight ? 1 : 0,
     created_at: at,

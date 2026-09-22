@@ -97,9 +97,9 @@ interface ActivePlanResolution {
  * documentation authoritative when it disagrees with dispatch metadata, so
  * resolving from anywhere else would defeat the point.
  */
-function resolveActivePlan(repoRoot: string, projectSlug?: string): ActivePlanResolution {
+function resolveActivePlan(repoRoot: string, projectSlug?: string, alreadyRead?: DiscoveryResult): ActivePlanResolution {
   const blockers: DispatchBlocker[] = [];
-  const discovered = discoverDocs(repoRoot);
+  const discovered = alreadyRead ?? discoverDocs(repoRoot);
 
   for (const error of discovered.errors.filter((candidate) => isAuthoritativeControlPath(candidate.relativePath))) {
     blockers.push({
@@ -352,6 +352,7 @@ interface ActionReadinessResult {
   blockers: DispatchBlocker[];
   requiredDecisions: DispatchContext["requiredDecisions"];
   operatorQuestion: string | null;
+  deferringDecisionId: string | null;
 }
 
 /**
@@ -369,6 +370,7 @@ function checkActionReadiness(
   decisionDocs: DecisionDoc[]
 ): ActionReadinessResult {
   const blockers: DispatchBlocker[] = [];
+  let deferringDecisionId: string | null = null;
 
   // A deferred Action was parked by an answered Decision against a named
   // reviving condition (Decision 0057 / Issue #310). It is unfinished but must
@@ -387,6 +389,7 @@ function checkActionReadiness(
     // waiting for a command to be run (Issue #310).
     const deferringDecision = deferringDecisionFor(action.id, decisionDocs);
     if (deferringDecision) {
+      deferringDecisionId = deferringDecision.id;
       blockers.push({
         relativePath: deferringDecision.relativePath,
         field: `actions.${action.id}.status`,
@@ -438,7 +441,8 @@ function checkActionReadiness(
   return {
     blockers,
     requiredDecisions,
-    operatorQuestion: action.clarification === "question_open" ? action.question : null
+    operatorQuestion: action.clarification === "question_open" ? action.question : null,
+    deferringDecisionId
   };
 }
 
@@ -475,6 +479,8 @@ export interface ActionReadiness {
   blockers: DispatchBlocker[];
   operatorQuestion: string | null;
   requiredDecisions: DispatchContext["requiredDecisions"];
+  /** The approved `defer` Decision that parks this Action, when one does. */
+  deferringDecisionId: string | null;
 }
 
 /**
@@ -495,6 +501,22 @@ export function resolveActionReadiness(
   projectSlug: string,
   actionId: string
 ): ActionReadiness {
+  return actionReadinessFrom(discoverDocs(repoRoot), projectSlug, actionId);
+}
+
+/**
+ * The readiness of one Action against documents that have already been read.
+ *
+ * Split out because a caller that asks about many Actions in one project —
+ * `resolveReadySet` does, once per unfinished Action — would otherwise re-scan
+ * and re-parse every document in the repository per Action. Reading documents
+ * is the expensive half; this is the pure half.
+ */
+function actionReadinessFrom(
+  discovered: DiscoveryResult,
+  projectSlug: string,
+  actionId: string
+): ActionReadiness {
   const empty: ActionReadiness = {
     found: false,
     planSlug: null,
@@ -503,10 +525,10 @@ export function resolveActionReadiness(
     action: null,
     blockers: [],
     operatorQuestion: null,
-    requiredDecisions: []
+    requiredDecisions: [],
+    deferringDecisionId: null
   };
 
-  const discovered = discoverDocs(repoRoot);
   const plans = discovered.docs.filter(
     (doc): doc is PlanDoc => doc.type === "plan" && doc.project.toLowerCase() === projectSlug.toLowerCase()
   );
@@ -542,7 +564,11 @@ export function resolveActionReadiness(
     action,
     blockers: [...parseBlockers, ...readiness.blockers],
     operatorQuestion: readiness.operatorQuestion,
-    requiredDecisions: readiness.requiredDecisions
+    requiredDecisions: readiness.requiredDecisions,
+    // Reported separately from the blocker text so a caller that needs the
+    // Decision's id — to link the operator straight to it — does not have to
+    // parse a sentence to recover it.
+    deferringDecisionId: readiness.deferringDecisionId
   };
 }
 
@@ -610,6 +636,38 @@ export interface ReadySetEntry {
   responsibility: string;
 }
 
+/**
+ * The operator gate that stops a batch walk at one Action: the four ways a
+ * dependency-clear Action still refuses to move without a human.
+ *
+ * `capacity_proof_run` is the document-visible proxy for a live proof that
+ * spends provider capacity on the operator's own machine — `requires_review`
+ * responsibility, the one class `AUTHORIZATION` says a coding agent must not
+ * take. The remaining proof Actions in the production Plan are ordinary
+ * `agent` work; only the operator-terminal rehearsal carries this.
+ */
+export type ReadySetGate = "decision" | "deferred" | "question_open" | "capacity_proof_run";
+
+/**
+ * One unfinished Action's place in the ready-set walk, in plan declaration
+ * order — the whole ordered picture `ready` and `nearest` are derived from, so
+ * a caller that needs the Actions *between* ready ones (a batch boundary, say)
+ * does not have to re-resolve the plan or guess at the ordering rule.
+ */
+export interface ReadySetCandidate extends ReadySetEntry {
+  /** A coding agent may start this Action now, from the documents alone. */
+  ready: boolean;
+  /** The operator gate that stops a batch walk here, when one does. */
+  gate: ReadySetGate | null;
+  /** Why it is not ready, verbatim — the same blockers `nearest` reports. */
+  blockers: DispatchBlocker[];
+  operatorQuestion: string | null;
+  /** Set only when an approved `defer` Decision parks this Action. */
+  deferringDecisionId: string | null;
+  /** The first unresolved Decision this Action names, when one holds it. */
+  requiredDecisionId: string | null;
+}
+
 /** The single unfinished Action closest to ready, reported when nothing is. */
 export interface NearestToReady {
   actionId: string;
@@ -621,6 +679,7 @@ export interface NearestToReady {
 
 export interface ReadySetResolution {
   projectSlug: string | null;
+  projectName: string | null;
   planSlug: string | null;
   planPath: string | null;
   planTokenImpact: PlanDoc["tokenImpact"] | null;
@@ -633,6 +692,14 @@ export interface ReadySetResolution {
    *  no unanswered required Decision, no open clarification question, and a
    *  responsibility a coding agent may act on. In plan declaration order. */
   ready: ReadySetEntry[];
+  /** The pointer's current_action, from PROJECT.md or the plan. Null when the
+   *  plan declares none. */
+  currentAction: string | null;
+  /** Every unfinished Action in the plan, in declaration order, with the
+   *  readiness and gate each one carries. `ready` is the subset of this list
+   *  that may start now, and `nearest` is chosen from it — so a caller reading
+   *  the walk and a caller reading the ready set can never disagree. */
+  candidates: ReadySetCandidate[];
   /** A suggestion only — never written. The current current_action if it is
    *  itself ready, otherwise the first ready Action in declaration order, or
    *  null when nothing is ready. */
@@ -666,17 +733,24 @@ export interface ReadySetResolution {
  * unsafe is enabled by reporting what would be ready.
  */
 export function resolveReadySet(repoRoot: string, projectSlug?: string): ReadySetResolution {
-  const { project, plan, blockers } = resolveActivePlan(repoRoot, projectSlug);
+  // Read the repository once and answer every question from that one read:
+  // resolving the active plan and every Action's readiness from separate scans
+  // would re-parse every document in the repository once per unfinished Action.
+  const discovered = discoverDocs(repoRoot);
+  const { project, plan, blockers } = resolveActivePlan(repoRoot, projectSlug, discovered);
 
   if (!project || !plan) {
     return {
       projectSlug: project?.slug ?? projectSlug ?? null,
+      projectName: project?.name ?? null,
       planSlug: null,
       planPath: null,
       planTokenImpact: null,
       planTokenBudget: null,
       blockers,
       ready: [],
+      currentAction: null,
+      candidates: [],
       suggestedCurrentAction: null,
       nearest: null
     };
@@ -687,16 +761,23 @@ export function resolveReadySet(repoRoot: string, projectSlug?: string): ReadySe
   const planPath = plan.relativePath;
   const currentActionId = project.currentAction ?? plan.currentAction;
 
-  const unfinished = plan.actions.filter(
-    (action) => action.status !== "done" && action.status !== "blocked" && action.status !== "deferred"
-  );
+  // Every unfinished Action, so the walk can see the gates themselves (a
+  // deferred or blocked Action is a stop, not an absence). `blocked` and
+  // `deferred` are read but excluded from `ready`/`nearest` below, exactly as
+  // they were before this list existed — a caller that only wants the ready
+  // set sees no change.
+  const evaluatedAll = plan.actions
+    .filter((action) => action.status !== "done")
+    .map((action) => {
+      const readiness = actionReadinessFrom(discovered, resolvedProjectSlug, action.id);
+      const authorized = action.responsibility === "agent" || action.responsibility === "autonomous";
+      const isReady = readiness.blockers.length === 0 && readiness.operatorQuestion === null && authorized;
+      return { action, readiness, isReady };
+    });
 
-  const evaluated = unfinished.map((action) => {
-    const readiness = resolveActionReadiness(repoRoot, resolvedProjectSlug, action.id);
-    const authorized = action.responsibility === "agent" || action.responsibility === "autonomous";
-    const isReady = readiness.blockers.length === 0 && readiness.operatorQuestion === null && authorized;
-    return { action, readiness, isReady };
-  });
+  const evaluated = evaluatedAll.filter(
+    ({ action }) => action.status !== "blocked" && action.status !== "deferred"
+  );
 
   const ready: ReadySetEntry[] = evaluated
     .filter((entry) => entry.isReady)
@@ -705,6 +786,18 @@ export function resolveReadySet(repoRoot: string, projectSlug?: string): ReadySe
       title: entry.action.title,
       responsibility: entry.action.responsibility
     }));
+
+  const candidates: ReadySetCandidate[] = evaluatedAll.map((entry) => ({
+    actionId: entry.action.id,
+    title: entry.action.title,
+    responsibility: entry.action.responsibility,
+    ready: entry.isReady,
+    gate: readySetGateFor(entry.action, entry.readiness),
+    blockers: entry.readiness.blockers,
+    operatorQuestion: entry.readiness.operatorQuestion,
+    deferringDecisionId: entry.readiness.deferringDecisionId,
+    requiredDecisionId: entry.readiness.requiredDecisions.find((decision) => !decision.resolved)?.id ?? null
+  }));
 
   const suggestedCurrentAction = ready.length === 0
     ? null
@@ -735,15 +828,35 @@ export function resolveReadySet(repoRoot: string, projectSlug?: string): ReadySe
 
   return {
     projectSlug: resolvedProjectSlug,
+    projectName: project.name,
     planSlug,
     planPath,
     planTokenImpact: plan.tokenImpact,
     planTokenBudget: plan.tokenBudget,
     blockers: [],
     ready,
+    currentAction: currentActionId,
+    candidates,
     suggestedCurrentAction,
     nearest
   };
+}
+
+/**
+ * Which operator gate stops a batch walk at this Action, or null when none
+ * does.
+ *
+ * Ordered by how directly the document states it: a deferral is a recorded
+ * decision about this Action, an open question is the clarification field, a
+ * required Decision is a named reference, and `requires_review` is the
+ * standing "a coding agent must not implement this" responsibility.
+ */
+function readySetGateFor(action: PlanActionDoc, readiness: ActionReadinessResult): ReadySetGate | null {
+  if (action.status === "deferred" || readiness.deferringDecisionId) return "deferred";
+  if (action.clarification === "question_open") return "question_open";
+  if (readiness.requiredDecisions.some((decision) => !decision.resolved)) return "decision";
+  if (action.responsibility === "requires_review") return "capacity_proof_run";
+  return null;
 }
 
 export type { ArcadiaDoc };

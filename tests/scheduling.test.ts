@@ -6,7 +6,7 @@ import { getProjectBySlug, listActionableReviewItems, updateReviewItemStatus } f
 import { loadActionOrder } from "../src/dispatch/order.js";
 import { ensureCandidatePreservationTable } from "../src/sessions/candidatePreservation.js";
 import { DISCOVERY_LIMITS, recordDiscovery } from "../src/scheduling/discovery.js";
-import { projectScheduleToBoard, reconcileBoard, type BoardItem, type BoardStatus, type SchedulingBoard } from "../src/scheduling/github.js";
+import { projectScheduleToBoard, reconcileBoard, type BoardItem, type BoardPush, type BoardStatus, type SchedulingBoard } from "../src/scheduling/github.js";
 import { buildPortfolioSchedule, buildProjectSchedule, writeProjectOrder } from "../src/scheduling/schedule.js";
 import {
   DEFAULT_BOARD_POLL_INTERVAL_MS,
@@ -39,8 +39,10 @@ class FakeBoard implements SchedulingBoard {
   nextIssue = 100;
   nextItem = 1;
   calls: string[] = [];
+  /** Mirrors the gh-backed board: present by default, so the push projection runs. */
+  pushField: { id: string } | null = { id: "PUSH_FIELD" };
   listItems(): BoardItem[] {
-    return this.items.map(({ itemId, issueNumber, title, status }) => ({ itemId, issueNumber, title, status }));
+    return this.items.map(({ itemId, issueNumber, title, status, push }) => ({ itemId, issueNumber, title, status, push }));
   }
   createIssue(_input: { title: string; body: string }) {
     const number = this.nextIssue++;
@@ -49,13 +51,17 @@ class FakeBoard implements SchedulingBoard {
   }
   addIssue(input: { number: number; url: string }) {
     const itemId = `ITEM_${this.nextItem++}`;
-    this.items.push({ itemId, issueNumber: input.number, title: `#${input.number}`, status: null, url: input.url });
+    this.items.push({ itemId, issueNumber: input.number, title: `#${input.number}`, status: null, push: null, url: input.url });
     this.calls.push(`addIssue:${input.number}`);
     return itemId;
   }
   setStatus(itemId: string, status: BoardStatus) {
     this.items.find((item) => item.itemId === itemId)!.status = status;
     this.calls.push(`setStatus:${itemId}:${status}`);
+  }
+  setPush(itemId: string, push: BoardPush) {
+    this.items.find((item) => item.itemId === itemId)!.push = push;
+    this.calls.push(`setPush:${itemId}:${push}`);
   }
   moveItem(itemId: string, afterItemId: string | null) {
     const item = this.items.find((entry) => entry.itemId === itemId)!;

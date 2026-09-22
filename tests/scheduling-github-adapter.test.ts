@@ -3,10 +3,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { withDatabase } from "../src/db/connection.js";
 import { getProjectBySlug } from "../src/db/repositories.js";
 import {
+  BOARD_PUSHES,
+  BOARD_PUSH_FIELD,
   BOARD_STATUSES,
   BOARD_STATUS_FIELD,
   createGitHubBoard,
-  ensureBoardStatusField,
+  ensureBoardFields,
   projectScheduleToBoard,
   reconcileBoard,
   type CommandRunner
@@ -24,7 +26,9 @@ afterEach(() => {
 
 const PROJECT_ID = "PVT_board1";
 const FIELD_ID = "PVTSSF_status1";
+const PUSH_FIELD_ID = "PVTSSF_push1";
 const OPTION_IDS = new Map(BOARD_STATUSES.map((status, index) => [status, `opt_${index}`]));
+const PUSH_OPTION_IDS = new Map(BOARD_PUSHES.map((push, index) => [push, `push_opt_${index}`]));
 
 interface FakeItem {
   id: string;
@@ -32,6 +36,7 @@ interface FakeItem {
   url: string;
   title: string;
   status: string | null;
+  push: string | null;
 }
 
 /**
@@ -43,14 +48,18 @@ class FakeGh {
   calls: string[][] = [];
   items: FakeItem[] = [];
   hasStatusField: boolean;
+  hasPushField: boolean;
+  /** Simulate a malformed board: the push field exists but lacks this option. */
+  missingPushOption: string | null = null;
   nextIssue = 100;
   nextItem = 1;
   /** Fail this many `moveItem` mutations, to cut a projection in half. */
   failMovesAfter: number | null = null;
   movesSeen = 0;
 
-  constructor(options: { hasStatusField?: boolean } = {}) {
+  constructor(options: { hasStatusField?: boolean; hasPushField?: boolean } = {}) {
     this.hasStatusField = options.hasStatusField ?? true;
+    this.hasPushField = options.hasPushField ?? true;
   }
 
   get runner(): CommandRunner {
@@ -82,17 +91,28 @@ class FakeGh {
           options: BOARD_STATUSES.map((status) => ({ id: OPTION_IDS.get(status)!, name: status }))
         } as never);
       }
+      if (this.hasPushField) {
+        fields.push({
+          id: PUSH_FIELD_ID,
+          name: BOARD_PUSH_FIELD,
+          type: "ProjectV2SingleSelectField",
+          options: BOARD_PUSHES.filter((push) => push !== this.missingPushOption)
+            .map((push) => ({ id: PUSH_OPTION_IDS.get(push)!, name: push }))
+        } as never);
+      }
       return ok(JSON.stringify({ fields }));
     }
     if (args[0] === "project" && args[1] === "field-create") {
-      this.hasStatusField = true;
-      return ok(JSON.stringify({ id: FIELD_ID }));
+      const name = args[args.indexOf("--name") + 1];
+      if (name === BOARD_PUSH_FIELD) this.hasPushField = true;
+      else this.hasStatusField = true;
+      return ok(JSON.stringify({ id: name === BOARD_PUSH_FIELD ? PUSH_FIELD_ID : FIELD_ID }));
     }
     if (args[0] === "issue" && args[1] === "create") {
       const number = this.nextIssue++;
       const title = args[args.indexOf("--title") + 1] ?? "";
       const url = `https://github.com/example/repo/issues/${number}`;
-      this.items.push({ id: "", number, url, title, status: null });
+      this.items.push({ id: "", number, url, title, status: null, push: null });
       return ok(`${url}\n`);
     }
     if (args[0] === "project" && args[1] === "item-add") {
@@ -103,15 +123,19 @@ class FakeGh {
       const id = `PVTI_${this.nextItem++}`;
       const pending = this.items.find((item) => item.url === url && item.id === "");
       if (pending) pending.id = id;
-      else this.items.push({ id, number, url, title: `#${number}`, status: null });
+      else this.items.push({ id, number, url, title: `#${number}`, status: null, push: null });
       return ok(JSON.stringify({ id }));
     }
     if (args[0] === "project" && args[1] === "item-edit") {
       const itemId = args[args.indexOf("--id") + 1];
+      const fieldId = args[args.indexOf("--field-id") + 1];
       const optionId = args[args.indexOf("--single-select-option-id") + 1];
-      const status = [...OPTION_IDS.entries()].find(([, id]) => id === optionId)?.[0] ?? null;
       const item = this.items.find((candidate) => candidate.id === itemId);
-      if (item) item.status = status;
+      if (item && fieldId === PUSH_FIELD_ID) {
+        item.push = [...PUSH_OPTION_IDS.entries()].find(([, id]) => id === optionId)?.[0] ?? null;
+      } else if (item) {
+        item.status = [...OPTION_IDS.entries()].find(([, id]) => id === optionId)?.[0] ?? null;
+      }
       return ok("{}");
     }
     if (args[0] === "api" && args[1] === "graphql") {
@@ -129,8 +153,9 @@ class FakeGh {
         this.items.splice(index, 0, item);
         return ok("{}");
       }
-      // The items query addresses the status field by its exact name.
+      // The items query addresses both fields by their exact names.
       expect(valueOf(args, "status")).toBe(BOARD_STATUS_FIELD);
+      expect(valueOf(args, "push")).toBe(BOARD_PUSH_FIELD);
       return ok(JSON.stringify({
         data: {
           node: {
@@ -139,7 +164,8 @@ class FakeGh {
               nodes: this.items.filter((item) => item.id !== "").map((item) => ({
                 id: item.id,
                 content: { number: item.number, url: item.url, title: item.title },
-                fieldValueByName: item.status === null ? null : { name: item.status }
+                fieldValueByName: item.status === null ? null : { name: item.status },
+                push: this.hasPushField && item.push !== null ? { name: item.push } : null
               }))
             }
           }
@@ -179,6 +205,14 @@ describe("gh-backed board", () => {
       expect(first.issuesCreated).toHaveLength(3);
       expect(first.statusChanges.map((change) => change.to)).toEqual(["Ready", "Blocked", "Ready"]);
       expect(gh.items.map((item) => item.status)).toEqual(["Ready", "Blocked", "Ready"]);
+      // `a` and `c` are ready and share the repository, so the lane is ordered
+      // work; `b` waits on `a`. The push label is written by this same pass.
+      expect(first.pushChanges.map((change) => change.to)).toEqual([
+        "This push · sequence",
+        "Not queued",
+        "This push · sequence"
+      ]);
+      expect(gh.items.map((item) => item.push)).toEqual(["This push · sequence", "Not queued", "This push · sequence"]);
 
       // The second projection reads those same statuses back through
       // `fieldValueByName` and must therefore write nothing at all. Before the
@@ -190,6 +224,20 @@ describe("gh-backed board", () => {
       expect(second.moves).toEqual([]);
       expect(second.changed).toBe(false);
       expect(gh.writeCalls()).toHaveLength(before);
+    });
+  });
+
+  it("opens a board with no Arcadia push field and projects statuses without inventing one", () => {
+    const { workspace, cwd } = workspaceWithProject();
+    const gh = new FakeGh({ hasPushField: false });
+    withDatabase(workspace, (db) => {
+      const project = getProjectBySlug(db, "alpha")!;
+      const board = createGitHubBoard(boardConfig(cwd), gh.runner);
+      expect(board.pushField).toBeNull();
+      const result = projectScheduleToBoard(db, buildProjectSchedule(db, project), board);
+      expect(result.statusChanges.map((change) => change.to)).toEqual(["Ready", "Blocked", "Ready"]);
+      expect(result.pushChanges).toEqual([]);
+      expect(gh.writeCalls().some(([, ...args]) => args.includes("field-create"))).toBe(false);
     });
   });
 
@@ -213,7 +261,7 @@ describe("gh-backed board", () => {
     expect(second.identity).toEqual(first.identity);
 
     // And the cached identity still drives real writes correctly.
-    cachedRun.items.push({ id: "PVTI_1", number: 100, url: "https://github.com/example/repo/issues/100", title: "#100", status: null });
+    cachedRun.items.push({ id: "PVTI_1", number: 100, url: "https://github.com/example/repo/issues/100", title: "#100", status: null, push: null });
     second.setStatus("PVTI_1", "Ready");
     expect(cachedRun.items[0].status).toBe("Ready");
   });
@@ -268,7 +316,7 @@ describe("gh-backed board", () => {
     const { cwd } = workspaceWithProject();
     const gh = new FakeGh();
     const board = createGitHubBoard(boardConfig(cwd), gh.runner);
-    gh.items.push({ id: "PVTI_1", number: 100, url: "https://github.com/example/repo/issues/100", title: "#100", status: null });
+    gh.items.push({ id: "PVTI_1", number: 100, url: "https://github.com/example/repo/issues/100", title: "#100", status: null, push: null });
 
     const itemId = board.addIssue({ number: 100, url: "https://github.com/example/repo/issues/100" });
 
@@ -310,9 +358,9 @@ describe("gh-backed board", () => {
     const board = createGitHubBoard(boardConfig(cwd), gh.runner);
     // A Project can hold Issues from more than one repository, so a same-numbered
     // Issue elsewhere on the board must not be picked up by number alone.
-    gh.items.push({ id: "PVTI_other_repo", number: 100, url: "https://github.com/example/other-repo/issues/100", title: "#100", status: null });
+    gh.items.push({ id: "PVTI_other_repo", number: 100, url: "https://github.com/example/other-repo/issues/100", title: "#100", status: null, push: null });
     // GitHub still refuses the add for our own already-existing item (below).
-    gh.items.push({ id: "PVTI_1", number: 100, url: "https://github.com/example/repo/issues/100", title: "#100", status: null });
+    gh.items.push({ id: "PVTI_1", number: 100, url: "https://github.com/example/repo/issues/100", title: "#100", status: null, push: null });
 
     const itemId = board.addIssue({ number: 100, url: "https://github.com/example/repo/issues/100" });
 
@@ -329,15 +377,44 @@ describe("gh-backed board", () => {
     expect(() => failing.addIssue({ number: 101, url: "https://github.com/example/repo/issues/101" })).toThrow(/rate limit/);
   });
 
-  it("creates the status field only through the explicit link path, and is a no-op when it already exists", () => {
+  it("refuses a push field that is missing an option instead of writing an undefined option id", () => {
     const { cwd } = workspaceWithProject();
-    const missing = new FakeGh({ hasStatusField: false });
-    expect(ensureBoardStatusField(boardConfig(cwd), missing.runner)).toEqual({ created: true });
+    const gh = new FakeGh();
+    gh.missingPushOption = "Review needed";
+    expect(() => createGitHubBoard(boardConfig(cwd), gh.runner)).toThrow(/missing option\(s\): Review needed/);
+    expect(gh.writeCalls()).toEqual([]);
+  });
+
+  it("re-projects a stale push label even though the queue revision has not moved", () => {
+    const { workspace, cwd } = workspaceWithProject();
+    const gh = new FakeGh();
+    withDatabase(workspace, (db) => {
+      const project = getProjectBySlug(db, "alpha")!;
+      const board = createGitHubBoard(boardConfig(cwd), gh.runner);
+      projectScheduleToBoard(db, buildProjectSchedule(db, project), board);
+      // Left behind by an older computation: the queue is untouched, so only
+      // the push label can be what makes this board stale.
+      gh.items[0].push = "Next push";
+
+      const reconcile = reconcileBoard(db, buildProjectSchedule(db, project), board, {
+        requestId: "stale-push",
+        rebuild: () => buildProjectSchedule(db, project)
+      });
+
+      expect(reconcile.projection?.pushChanges).toHaveLength(1);
+      expect(gh.items[0].push).toBe("This push · sequence");
+    });
+  });
+
+  it("creates both board fields only through the explicit link path, and is a no-op when they already exist", () => {
+    const { cwd } = workspaceWithProject();
+    const missing = new FakeGh({ hasStatusField: false, hasPushField: false });
+    expect(ensureBoardFields(boardConfig(cwd), missing.runner)).toEqual({ statusCreated: true, pushCreated: true });
     expect(missing.calls.some(([, ...args]) => args.includes("field-create"))).toBe(true);
     expect(() => createGitHubBoard(boardConfig(cwd), missing.runner)).not.toThrow();
 
     const present = new FakeGh();
-    expect(ensureBoardStatusField(boardConfig(cwd), present.runner)).toEqual({ created: false });
+    expect(ensureBoardFields(boardConfig(cwd), present.runner)).toEqual({ statusCreated: false, pushCreated: false });
     expect(present.writeCalls()).toEqual([]);
   });
 });

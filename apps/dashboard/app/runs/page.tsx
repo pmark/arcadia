@@ -35,6 +35,9 @@ interface OperatorScript {
 
 export default function RunsPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
+  // The push disclosure mirrors Recent history: collapsed until asked for, so
+  // the page leads with the work that is happening now.
+  const [nextPushOpen, setNextPushOpen] = useState(false);
   const [operatorScripts, setOperatorScripts] = useState<OperatorScript[]>([]);
   const [operatorScriptError, setOperatorScriptError] = useState<string | null>(null);
   const [pendingScriptId, setPendingScriptId] = useState<string | null>(null);
@@ -89,6 +92,8 @@ export default function RunsPage() {
         alertsError={control.alertsError}
         toggling={control.toggling}
         onToggle={control.toggle}
+        nextPushOpen={nextPushOpen}
+        onToggleNextPush={() => setNextPushOpen((open) => !open)}
       />
       {operatorScripts.length > 0 || operatorScriptError ? (
         <section className="mb-6" aria-label="Operator script library">
