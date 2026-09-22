@@ -31,7 +31,12 @@ interface OperatorScript {
     exitCode?: number | null;
     message?: string;
   };
+  updatedAt: string;
 }
+
+// Ready-but-unactioned scripts older than this are worth hiding by default;
+// anything running, failed, or freshly added should stay in front of the operator.
+const RECENT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 
 export default function RunsPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -42,6 +47,8 @@ export default function RunsPage() {
   const [operatorScriptError, setOperatorScriptError] = useState<string | null>(null);
   const [pendingScriptId, setPendingScriptId] = useState<string | null>(null);
   const [operatorMessage, setOperatorMessage] = useState<string | null>(null);
+  const [olderReadyOpen, setOlderReadyOpen] = useState(false);
+  const [completedOpen, setCompletedOpen] = useState(false);
   const operatorRefreshSequence = useRef(0);
   const runs = useRuns(historyOpen);
   const control = useProductionControl();
@@ -96,64 +103,122 @@ export default function RunsPage() {
         onToggleNextPush={() => setNextPushOpen((open) => !open)}
       />
       {operatorScripts.length > 0 || operatorScriptError ? (
-        <section className="mb-6" aria-label="Operator script library">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted">Operator actions</h2>
-          <div className="grid gap-3 md:grid-cols-2">
-            {operatorScripts.map((script) => (
-              <article key={script.id} className="rounded-md border border-line bg-panel p-4 shadow-soft">
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="font-semibold">{script.title}</h3>
-                  <span className={`rounded-full px-2 py-1 text-xs font-semibold ${operatorStateClass(script.state.status)}`}>
-                    {operatorStateLabel(script.state.status)}
-                  </span>
+        (() => {
+          const needsAttention = operatorScripts
+            .filter((script) => script.state.status === "running" || script.state.status === "failed")
+            .sort((a, b) => (a.state.status === b.state.status ? b.updatedAt.localeCompare(a.updatedAt) : a.state.status === "failed" ? -1 : 1));
+          const ready = operatorScripts
+            .filter((script) => script.state.status === "available" || (script.state.status === "succeeded" && script.repeatable))
+            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+          const now = Date.now();
+          const recentReady = ready.filter((script) => now - Date.parse(script.updatedAt) <= RECENT_WINDOW_MS);
+          const olderReady = ready.filter((script) => now - Date.parse(script.updatedAt) > RECENT_WINDOW_MS);
+          const completed = operatorScripts
+            .filter((script) => script.state.status === "succeeded" && !script.repeatable)
+            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
+          const runScript = async (script: OperatorScript) => {
+            setPendingScriptId(script.id);
+            setOperatorMessage(null);
+            setOperatorScriptError(null);
+            try {
+              const response = await fetch("/api/operator-script", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: script.id })
+              });
+              const body = await response.json() as { message?: string; error?: string };
+              if (!response.ok) throw new Error(body.error ?? "Could not start the operator action.");
+              setOperatorMessage(body.message ?? `${script.title} started.`);
+              await refreshOperatorScripts();
+            } catch (error) {
+              setOperatorScriptError(error instanceof Error ? error.message : String(error));
+            } finally {
+              setPendingScriptId(null);
+            }
+          };
+
+          return (
+            <section className="mb-6" aria-label="Operator script library">
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted">Operator actions</h2>
+              {needsAttention.length > 0 ? (
+                <div className="mb-4 grid gap-3 md:grid-cols-2">
+                  {needsAttention.map((script) => (
+                    <OperatorScriptCard
+                      key={script.id}
+                      script={script}
+                      emphasized
+                      pending={pendingScriptId === script.id}
+                      disabled={pendingScriptId !== null}
+                      onRun={() => void runScript(script)}
+                    />
+                  ))}
                 </div>
-                <p className="mt-1 text-sm text-muted">{script.desiredEffect}</p>
-                {script.state.status === "failed" ? (
-                  <p className="mt-3 flex items-start gap-2 text-sm text-clay">
-                    <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                    {script.state.message ?? `The last attempt failed${script.state.exitCode == null ? "." : ` with exit code ${script.state.exitCode}.`}`}
-                  </p>
-                ) : null}
-                {script.state.status === "succeeded" ? (
-                  <p className="mt-3 flex items-start gap-2 text-sm text-moss">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                    Completed{script.repeatable ? "; this reusable action remains available." : "; this one-shot action is now disabled."}
-                  </p>
-                ) : null}
-                <button
-                  type="button"
-                  disabled={pendingScriptId !== null || script.state.status === "running" || (script.state.status === "succeeded" && !script.repeatable)}
-                  onClick={async () => {
-                    setPendingScriptId(script.id);
-                    setOperatorMessage(null);
-                    setOperatorScriptError(null);
-                    try {
-                      const response = await fetch("/api/operator-script", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ id: script.id })
-                      });
-                      const body = await response.json() as { message?: string; error?: string };
-                      if (!response.ok) throw new Error(body.error ?? "Could not start the operator action.");
-                      setOperatorMessage(body.message ?? `${script.title} started.`);
-                      await refreshOperatorScripts();
-                    } catch (error) {
-                      setOperatorScriptError(error instanceof Error ? error.message : String(error));
-                    } finally {
-                      setPendingScriptId(null);
-                    }
-                  }}
-                  className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-md bg-steel px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
-                >
-                  {pendingScriptId === script.id || script.state.status === "running" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Play className="h-4 w-4" aria-hidden="true" />}
-                  {pendingScriptId === script.id ? "Starting…" : script.state.status === "running" ? "Running…" : script.state.status === "failed" ? "Retry" : script.state.status === "succeeded" && !script.repeatable ? "Completed" : "Run"}
-                </button>
-              </article>
-            ))}
-          </div>
-          {operatorMessage ? <p className="mt-3 text-sm text-moss">{operatorMessage}</p> : null}
-          {operatorScriptError ? <p className="mt-3 text-sm text-clay">{operatorScriptError}</p> : null}
-        </section>
+              ) : null}
+              {recentReady.length > 0 ? (
+                <div className="mb-4 grid gap-3 md:grid-cols-2">
+                  {recentReady.map((script) => (
+                    <OperatorScriptCard
+                      key={script.id}
+                      script={script}
+                      pending={pendingScriptId === script.id}
+                      disabled={pendingScriptId !== null}
+                      onRun={() => void runScript(script)}
+                    />
+                  ))}
+                </div>
+              ) : needsAttention.length === 0 && operatorScripts.length > 0 ? (
+                <EmptyState text="No operator actions need attention right now." />
+              ) : null}
+              {olderReady.length > 0 ? (
+                <div className="mb-4">
+                  <button
+                    type="button"
+                    aria-expanded={olderReadyOpen}
+                    onClick={() => setOlderReadyOpen((open) => !open)}
+                    className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted hover:text-ink"
+                  >
+                    {olderReadyOpen ? "▾" : "▸"} Older actions ({olderReady.length})
+                  </button>
+                  {olderReadyOpen ? (
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {olderReady.map((script) => (
+                        <OperatorScriptCard
+                          key={script.id}
+                          script={script}
+                          pending={pendingScriptId === script.id}
+                          disabled={pendingScriptId !== null}
+                          onRun={() => void runScript(script)}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {completed.length > 0 ? (
+                <div>
+                  <button
+                    type="button"
+                    aria-expanded={completedOpen}
+                    onClick={() => setCompletedOpen((open) => !open)}
+                    className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted hover:text-ink"
+                  >
+                    {completedOpen ? "▾" : "▸"} Completed ({completed.length})
+                  </button>
+                  {completedOpen ? (
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {completed.map((script) => (
+                        <OperatorScriptCard key={script.id} script={script} pending={false} disabled onRun={() => undefined} />
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {operatorMessage ? <p className="mt-3 text-sm text-moss">{operatorMessage}</p> : null}
+              {operatorScriptError ? <p className="mt-3 text-sm text-clay">{operatorScriptError}</p> : null}
+            </section>
+          );
+        })()
       ) : null}
       {runs.error ? (
         <ErrorState title="Runs unavailable" message={runs.stale ? `${runs.error} Showing the last known state.` : runs.error} />
@@ -215,4 +280,56 @@ function operatorStateClass(status: OperatorScript["state"]["status"]): string {
   if (status === "succeeded") return "bg-moss/10 text-moss";
   if (status === "failed") return "bg-clay/10 text-clay";
   return "bg-line text-muted";
+}
+
+function OperatorScriptCard({
+  script,
+  emphasized = false,
+  pending,
+  disabled,
+  onRun
+}: {
+  script: OperatorScript;
+  emphasized?: boolean;
+  pending: boolean;
+  disabled: boolean;
+  onRun: () => void;
+}) {
+  const isArchived = script.state.status === "succeeded" && !script.repeatable;
+  return (
+    <article
+      className={`rounded-md border p-4 shadow-soft ${emphasized ? "border-clay/60 bg-clay/5" : "border-line bg-panel"}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="font-semibold">{script.title}</h3>
+        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${operatorStateClass(script.state.status)}`}>
+          {operatorStateLabel(script.state.status)}
+        </span>
+      </div>
+      <p className="mt-1 text-sm text-muted">{script.desiredEffect}</p>
+      {script.state.status === "failed" ? (
+        <p className="mt-3 flex items-start gap-2 text-sm text-clay">
+          <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          {script.state.message ?? `The last attempt failed${script.state.exitCode == null ? "." : ` with exit code ${script.state.exitCode}.`}`}
+        </p>
+      ) : null}
+      {script.state.status === "succeeded" ? (
+        <p className="mt-3 flex items-start gap-2 text-sm text-moss">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          Completed{script.repeatable ? "; this reusable action remains available." : "; this one-shot action is now disabled."}
+        </p>
+      ) : null}
+      {isArchived ? null : (
+        <button
+          type="button"
+          disabled={disabled || script.state.status === "running"}
+          onClick={onRun}
+          className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-md bg-steel px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
+        >
+          {pending || script.state.status === "running" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Play className="h-4 w-4" aria-hidden="true" />}
+          {pending ? "Starting…" : script.state.status === "running" ? "Running…" : script.state.status === "failed" ? "Retry" : "Run"}
+        </button>
+      )}
+    </article>
+  );
 }
