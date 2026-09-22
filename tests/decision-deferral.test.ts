@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { devNull, tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runDecisionApproveCommand, runDecisionNewCommand, runDecisionValidateCommand } from "../src/commands/decision.js";
+import { runDecisionApproveCommand, runDecisionNewCommand, runDecisionReverseCommand, runDecisionValidateCommand } from "../src/commands/decision.js";
 import { withDatabase } from "../src/db/connection.js";
 import { discoverDocs } from "../src/docs/discover.js";
 import { resolveDispatch, resolveReadySet } from "../src/docs/dispatch.js";
@@ -429,5 +429,139 @@ describe("apply an answered Decision's consequence", () => {
     const ready = resolveReadySet(repo, "demo");
     expect(ready.ready.map((entry) => entry.actionId)).not.toContain("park-me");
     expect(ready.ready.map((entry) => entry.actionId)).toContain("after");
+  });
+});
+
+describe("reverse an applied Decision deferral", () => {
+  it("re-opens the Decision, restores the Action and the pointer, in one commit", () => {
+    const { workspace, repo, decisionId } = fixture();
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    expect(projectFile(repo)).toContain("current_action: after");
+
+    const result = runDecisionReverseCommand({ workspace, project: "demo", id: decisionId });
+
+    expect(result.data.applied).toBe(true);
+    expect(result.data.receiptId).toBeTruthy();
+    expect(result.data.consequence).toMatchObject({
+      kind: "reverse",
+      actionId: "park-me",
+      actionStatusBefore: "deferred",
+      actionStatusAfter: "open",
+      pointerMoved: true,
+      pointerBefore: "after",
+      pointerAfter: "park-me"
+    });
+    expect(decisionFile(repo)).toContain("status: open");
+    expect(decisionFile(repo)).not.toContain("answer:");
+    expect(decisionFile(repo)).not.toContain("decided:");
+    expect(planFile(repo)).toMatch(/^ {2}- id: park-me[\s\S]*?^ {4}status: open$/m);
+    expect(projectFile(repo)).toContain("current_action: park-me");
+    // Decision, Plan and pointer land in one recoverable commit.
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+    expect(resolveDispatch(repo, "demo").context?.action.id).toBe("park-me");
+  });
+
+  it("previews the reversal under --dry-run, writing nothing", () => {
+    const { workspace, repo, decisionId } = fixture();
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    const planBefore = planFile(repo);
+    const projectBefore = projectFile(repo);
+    const decisionBefore = decisionFile(repo);
+
+    const preview = runDecisionReverseCommand({ workspace, project: "demo", id: decisionId, dryRun: true });
+
+    expect(preview.data.applied).toBe(false);
+    expect(preview.data.receiptId).toBeNull();
+    expect(preview.data.consequence).toMatchObject({
+      kind: "reverse",
+      actionStatusBefore: "deferred",
+      actionStatusAfter: "open",
+      pointerBefore: "after",
+      pointerAfter: "park-me"
+    });
+    expect(planFile(repo)).toBe(planBefore);
+    expect(projectFile(repo)).toBe(projectBefore);
+    expect(decisionFile(repo)).toBe(decisionBefore);
+  });
+
+  it("is idempotent: re-running the reversal returns the recorded receipt with no duplicate effect", () => {
+    const { workspace, repo, decisionId } = fixture();
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    const first = runDecisionReverseCommand({ workspace, project: "demo", id: decisionId });
+    const planAfterFirst = planFile(repo);
+
+    const replay = runDecisionReverseCommand({ workspace, project: "demo", id: decisionId });
+
+    expect(replay.data.applied).toBe(true);
+    expect(replay.data.receiptId).toBe(first.data.receiptId);
+    expect(replay.data.consequence).toEqual(first.data.consequence);
+    expect(planFile(repo)).toBe(planAfterFirst);
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+  });
+
+  it("refuses when no deferral has been applied, leaving everything unchanged", () => {
+    const { workspace, repo, decisionId } = fixture();
+    const planBefore = planFile(repo);
+    const projectBefore = projectFile(repo);
+    const decisionBefore = decisionFile(repo);
+
+    expect(() =>
+      runDecisionReverseCommand({ workspace, project: "demo", id: decisionId })
+    ).toThrow(/no applied deferral to reverse/i);
+
+    expect(planFile(repo)).toBe(planBefore);
+    expect(projectFile(repo)).toBe(projectBefore);
+    expect(decisionFile(repo)).toBe(decisionBefore);
+    expect(resolveDispatch(repo, "demo").context?.action.id).toBe("park-me");
+  });
+
+  it("refuses when the Action has moved on since the deferral, leaving everything unchanged", () => {
+    const { workspace, repo, decisionId } = fixture();
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    // Someone revived the Action by hand after the deferral.
+    writeFileSync(
+      path.join(repo, "docs/plans/defer-plan.md"),
+      planFile(repo).replace(/^ {4}status: deferred$/m, "    status: open"),
+      "utf8"
+    );
+    const planBefore = planFile(repo);
+    const projectBefore = projectFile(repo);
+    const decisionBefore = decisionFile(repo);
+
+    expect(() =>
+      runDecisionReverseCommand({ workspace, project: "demo", id: decisionId })
+    ).toThrow(/status has changed since the deferral/i);
+
+    expect(planFile(repo)).toBe(planBefore);
+    expect(projectFile(repo)).toBe(projectBefore);
+    expect(decisionFile(repo)).toBe(decisionBefore);
+  });
+
+  it("round-trips: after a reversal the Decision can be answered again and re-applies the deferral", () => {
+    const { workspace, repo, decisionId } = fixture();
+    const firstDefer = runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    const reversal = runDecisionReverseCommand({ workspace, project: "demo", id: decisionId });
+    expect(reversal.data.applied).toBe(true);
+
+    const secondDefer = runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+
+    expect(secondDefer.data.applied).toBe(true);
+    expect(secondDefer.data.receiptId).not.toBe(firstDefer.data.receiptId);
+    expect(projectFile(repo)).toContain("current_action: after");
+    expect(planFile(repo)).toMatch(/^ {2}- id: park-me[\s\S]*?^ {4}status: deferred$/m);
+    expect(decisionFile(repo)).toContain("status: approved");
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+    expect(resolveDispatch(repo, "demo").context?.action.id).toBe("after");
+  });
+
+  it("reverses a named deferral receipt instead of the latest", () => {
+    const { workspace, decisionId } = fixture();
+    const first = runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    const firstReceipt = first.data.receiptId!;
+
+    const reversal = runDecisionReverseCommand({ workspace, project: "demo", id: decisionId, receipt: firstReceipt });
+
+    expect(reversal.data.applied).toBe(true);
+    expect(reversal.data.consequence?.reversesReceiptId).toBe(firstReceipt);
   });
 });

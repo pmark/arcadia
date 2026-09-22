@@ -16,7 +16,7 @@ import {
   type DecisionOptionEffect,
   type DocValidationError
 } from "../docs/types.js";
-import { applyDecisionDeferral, type DecisionDeferralConsequence } from "../dispatch/decisionDeferral.js";
+import { applyDecisionDeferral, findAppliedDeferralReceipt, reverseDecisionDeferral, type DecisionDeferralConsequence, type DecisionReversalConsequence } from "../dispatch/decisionDeferral.js";
 import { projectCheckoutFor } from "../git/worktrees.js";
 import { localDateStamp } from "../utils/time.js";
 
@@ -345,6 +345,101 @@ export function runDecisionApproveCommand(options: DecisionApproveOptions): Comm
   });
 }
 
+export interface DecisionReverseOptions {
+  workspace: string;
+  project: string;
+  /** A decision's numeric id, slug, or exact filename. */
+  id: string;
+  /** A specific deferral receipt to reverse; defaults to the latest applied one. */
+  receipt?: string;
+  /** Report the reversal without writing anything. */
+  dryRun?: boolean;
+  /** Idempotency key for the reversal transition; derived when omitted. */
+  requestId?: string;
+}
+
+export interface DecisionReverseData {
+  relativePath: string;
+  absolutePath: string;
+  applied: boolean;
+  /** What reversing changed beyond the Decision file, when it reversed a deferral. */
+  consequence: DecisionReversalConsequence | null;
+  /** The durable reversal receipt id, when the reversal applied. */
+  receiptId: string | null;
+}
+
+/**
+ * Reverse an applied deferral in one governed transition, so a one-command
+ * revival exists instead of restoring the before-state by hand. It re-opens the
+ * Decision, un-parks the Action, and restores the pointer, writing and
+ * committing all of it together. `--dry-run` previews it; a retry on the same
+ * request id returns the recorded receipt; and it refuses, with a named reason
+ * and nothing written, when the Action or pointer has moved on since the
+ * deferral.
+ */
+export function runDecisionReverseCommand(options: DecisionReverseOptions): CommandSuccess<DecisionReverseData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  return withDatabase(workspacePath, (db) => {
+    const repoRoot = resolveProjectRepoFromDb(db, options.project);
+    const decisionsDir = path.join(repoRoot, "docs", "decisions");
+    const absolutePath = findDecisionFile(decisionsDir, options.id);
+    if (!absolutePath) {
+      throw validationError("No decision file matches this id.", {
+        id: options.id,
+        decision: options.id,
+        decisionsDir,
+        remedy: "This item names a Decision document that is not in the repository. Create it, or correct the reference, before reversing it."
+      });
+    }
+
+    const before = readFileSync(absolutePath, "utf8");
+    const relativePath = path.relative(repoRoot, absolutePath);
+    const { doc: parsed } = parseDoc(relativePath, absolutePath, before);
+    const decisionDoc = parsed && parsed.type === "decision" ? parsed : null;
+    if (!decisionDoc) {
+      throw validationError("This file is not a valid Decision document, so its deferral cannot be reversed.", {
+        path: relativePath
+      });
+    }
+
+    const deferral = findAppliedDeferralReceipt(db, decisionDoc.id, options.receipt);
+    if (!deferral) {
+      throw validationError("This Decision has no applied deferral to reverse.", {
+        id: decisionDoc.id,
+        remedy: "Answer the Decision with a deferring option first, or name an applied --receipt."
+      });
+    }
+
+    const requestId = options.requestId ?? `decision-reverse-${deferral.id}`;
+    const decisionAfter = reopenDecision(before);
+    failOnValidationErrors(parseDoc(relativePath, absolutePath, decisionAfter).errors, "updated");
+
+    const result = reverseDecisionDeferral(db, {
+      repoRoot,
+      projectSlug: decisionDoc.project,
+      decisionId: decisionDoc.id,
+      decisionAbsolutePath: absolutePath,
+      decisionRelativePath: relativePath,
+      decisionAfter,
+      deferral,
+      requestId,
+      dryRun: options.dryRun === true
+    });
+
+    return createSuccess({
+      command: "decision.reverse",
+      workspace: workspacePath,
+      data: {
+        relativePath,
+        absolutePath,
+        applied: result.applied,
+        consequence: result.consequence,
+        receiptId: result.receiptId
+      }
+    });
+  });
+}
+
 export interface DecisionValidateOptions {
   workspace: string;
   project: string;
@@ -482,6 +577,32 @@ export function renderDecisionApproveSuccess(response: CommandSuccess<DecisionAp
   return lines;
 }
 
+export function renderDecisionReverseSuccess(response: CommandSuccess<DecisionReverseData>): string[] {
+  const { applied, consequence, receiptId } = response.data;
+  const lines = [
+    applied ? "Decision reversal applied." : "Decision reversal dry run (nothing written).",
+    `Path: ${response.data.relativePath}`
+  ];
+  if (consequence) {
+    lines.push(
+      `${applied ? "Restored" : "Would restore"} Action ${consequence.actionKey}: ` +
+        `status ${consequence.actionStatusBefore} → ${consequence.actionStatusAfter}.`
+    );
+    if (consequence.pointerMoved) {
+      lines.push(
+        `${applied ? "Restored" : "Would restore"} the pointer ` +
+          `${consequence.pointerBefore ?? "none"} → ${consequence.pointerAfter ?? "none"}.`
+      );
+    } else {
+      lines.push("The pointer did not move (the deferred Action was not the current Action).");
+    }
+    if (receiptId) {
+      lines.push(`Receipt: ${receiptId}`);
+    }
+  }
+  return lines;
+}
+
 export function renderDecisionValidateSuccess(response: CommandSuccess<DecisionValidateData>): string[] {
   if (response.data.valid) {
     return [`Valid: ${response.data.relativePath}`];
@@ -533,31 +654,51 @@ function titleFromSlug(slug: string): string {
 }
 
 /**
+ * Re-open an answered Decision: clear the answer and decided date, set status
+ * back to `open`, and refresh `updated`. This is what makes a reversed deferral
+ * stop parking its Action, since dispatch only honors a deferring Decision while
+ * its recorded status is `approved`.
+ */
+function reopenDecision(content: string): string {
+  return setFrontmatterFields(content, { status: "open", updated: localDateStamp() }, ["answer", "decided"]);
+}
+
+/**
  * Targeted field edits on an existing document's frontmatter, rather than a
  * full YAML re-serialize — preserves every field an operator or a prior
  * agent wrote, in the order they wrote it, and only touches the fields this
- * call names. A field not already present is appended.
+ * call names. A field not already present is appended; a field named in
+ * `remove` is deleted.
  */
-function setFrontmatterFields(content: string, fields: Record<string, string>): string {
+function setFrontmatterFields(content: string, fields: Record<string, string>, remove: string[] = []): string {
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(content);
   if (!match) {
     throw validationError("Document has no YAML frontmatter block to edit.");
   }
   const [, frontmatter, body] = match;
   const remaining = new Map(Object.entries(fields));
+  const removed = new Set(remove);
 
-  const nextLines = frontmatter.split(/\r?\n/).map((line) => {
+  const nextLines: string[] = [];
+  for (const line of frontmatter.split(/\r?\n/)) {
     const fieldMatch = /^([a-z_]+):/.exec(line);
+    if (fieldMatch && removed.has(fieldMatch[1])) {
+      continue;
+    }
     if (!fieldMatch || !remaining.has(fieldMatch[1])) {
-      return line;
+      nextLines.push(line);
+      continue;
     }
     const key = fieldMatch[1];
     const value = remaining.get(key)!;
     remaining.delete(key);
-    return `${key}: ${yamlScalar(value)}`;
-  });
+    nextLines.push(`${key}: ${yamlScalar(value)}`);
+  }
 
   for (const [key, value] of remaining) {
+    if (removed.has(key)) {
+      continue;
+    }
     nextLines.push(`${key}: ${yamlScalar(value)}`);
   }
 
