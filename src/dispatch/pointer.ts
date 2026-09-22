@@ -7,6 +7,7 @@ import { discoverDocs } from "../docs/discover.js";
 import { isDispatchable, resolveActionReadiness, resolveDispatch } from "../docs/dispatch.js";
 import type { PlanDoc, ProjectDoc } from "../docs/types.js";
 import { assertClean, commitOnlyPaths, git, tryGit } from "../git/worktrees.js";
+import { assertActionClaimGeneration, releaseActionClaim, type ActionClaimFence } from "../sessions/index.js";
 
 export interface PointerTransitionReceipt {
   id: string;
@@ -41,6 +42,18 @@ export function transitionActionPointer(db: Database.Database, input: {
   requestId: string;
   previewFingerprint?: string;
   apply?: boolean;
+  /**
+   * The Action claim this transition settles against, when a settling worktree
+   * holds one. `actionId` on the fence is the Action *being settled*, which is
+   * not necessarily `input.actionId` -- a completion releases the claim on the
+   * Action it finished while pointing at the next one.
+   *
+   * The generation is verified, and released when `release` is set, inside the
+   * same `db.transaction` as this transition's own writes. That is the whole
+   * point: a check before the transaction opens, followed by a separate write,
+   * leaves exactly the window a reclaim can land in.
+   */
+  claim?: ActionClaimFence & { release?: boolean };
 }): PointerTransitionReceipt {
   const existing = db.prepare("SELECT action_key, queue_revision, receipt_json FROM action_queue_pointer_receipts WHERE request_id = ?")
     .get(input.requestId) as { action_key: string; queue_revision: number; receipt_json: string } | undefined;
@@ -135,6 +148,9 @@ export function transitionActionPointer(db: Database.Database, input: {
   }
   try {
     db.transaction(() => {
+      // First inside the transaction, before anything is written: if this
+      // settlement's claim has been superseded, it writes nothing at all.
+      if (input.claim) assertActionClaimGeneration(db, input.claim);
       writePairAtomically(projectAbsolutePath, projectBefore, projectAfter, planAbsolutePath, planBefore, planAfter);
       const dispatch = resolveDispatch(input.repoRoot, input.projectSlug);
       if (!isDispatchable(dispatch) || dispatch.context?.action.id !== input.actionId) {
@@ -149,6 +165,10 @@ export function transitionActionPointer(db: Database.Database, input: {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(receipt.id, receipt.requestId, receipt.actionKey, previewFingerprint, input.queueRevision,
           input.repoRoot, headBefore, JSON.stringify(receipt), receipt.createdAt);
+      // Release last, still inside the transaction and still fenced on the same
+      // generation, so the claim outlives every write it was guarding and a
+      // rollback takes the release with it.
+      if (input.claim?.release) releaseActionClaim(db, input.claim);
     })();
   } catch (error) {
     restorePair(projectAbsolutePath, projectBefore, planAbsolutePath, planBefore);

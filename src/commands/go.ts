@@ -31,9 +31,11 @@ import {
   type ClutterSummary
 } from "../git/worktrees.js";
 import {
+  getActiveActionClaim,
   getRepositoryLease,
   launchPreparedSession,
   prepareSession,
+  releaseActionClaim,
   reserveAgentWorktree,
   resolveProjectTransition,
   systemTmux,
@@ -374,9 +376,20 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     // takes the write lock at `BEGIN IMMEDIATE`, so a second caller's
     // evaluation blocks until the first caller's write has committed.
     const reservationCommitCleanup: { candidate: GoCommandData["nextWorktree"] } = { candidate: null };
+    // The generation this call claimed, so a preparation that fails after the
+    // claim committed can release it explicitly rather than leaving the Action
+    // blocked for the TTL's full 24 hours over work that never started.
+    const claim: { generation: string | null } = { generation: null };
     try {
       nextWorktree = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
-        const candidate = evaluateExistingCandidate(db, { controlWorktree, actionId, agent: options.agent!, tmux });
+        const candidate = evaluateExistingCandidate(db, {
+          controlWorktree,
+          projectSlug,
+          actionId,
+          agent: options.agent!,
+          tmux,
+          now
+        });
         if (candidate.kind === "refuse") {
           throw validationError(candidate.reason!, candidate.details);
         }
@@ -389,7 +402,14 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
           // second one. No Git write happens here beyond refreshing the
           // handoff reservation so `tidy` does not retire it out from under
           // the resumed Session before it is used.
-          reserveAgentWorktree(db, { repositoryPath: controlWorktree, worktreePath: candidate.path!, branch: candidate.branch!, now });
+          reserveAgentWorktree(db, {
+            repositoryPath: controlWorktree,
+            worktreePath: candidate.path!,
+            branch: candidate.branch!,
+            now,
+            project: projectSlug,
+            actionId
+          });
           return {
             agent: options.agent!,
             path: candidate.path!,
@@ -410,12 +430,14 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
           model,
           effort,
           beforeCreate(prepared) {
-            reserveAgentWorktree(db, {
+            claim.generation = reserveAgentWorktree(db, {
               repositoryPath: controlWorktree,
               worktreePath: prepared.path,
               branch: prepared.branch,
-              now
-            });
+              now,
+              project: projectSlug,
+              actionId
+            }).claim_generation;
           }
         });
         reservationCommitCleanup.candidate = created;
@@ -435,22 +457,38 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     }
 
     if (options.launch && workspacePath) {
-      const prepared = withDatabase(workspacePath, (db) => prepareSession({
-        db,
-        workspace: workspacePath,
-        repoRoot: controlWorktree,
-        dispatch,
-        // The launch guard above requires an explicit adapter before this path.
-        agent: options.agent!,
-        model,
-        effort,
-        baseRevision: git(controlWorktree, ["rev-parse", baseBranch]).trim(),
-        branch: nextWorktree!.branch,
-        worktreePath: nextWorktree!.path,
-        now: options.now ?? new Date(),
-        tmux: options.tmux
-      }));
-      session = withDatabase(workspacePath, (db) => launchPreparedSession(db, prepared, options.tmux, loadModelTierRegistry(workspacePath)));
+      try {
+        const prepared = withDatabase(workspacePath, (db) => prepareSession({
+          db,
+          workspace: workspacePath,
+          repoRoot: controlWorktree,
+          dispatch,
+          // The launch guard above requires an explicit adapter before this path.
+          agent: options.agent!,
+          model,
+          effort,
+          baseRevision: git(controlWorktree, ["rev-parse", baseBranch]).trim(),
+          branch: nextWorktree!.branch,
+          worktreePath: nextWorktree!.path,
+          now: options.now ?? new Date(),
+          tmux: options.tmux
+        }));
+        session = withDatabase(workspacePath, (db) => launchPreparedSession(db, prepared, options.tmux, loadModelTierRegistry(workspacePath)));
+      } catch (error) {
+        // Session preparation failed outright after the claim had committed.
+        // Release it here, fenced on the generation this call made, rather than
+        // leaving the Action claimed by a Session that never started. The
+        // release is a no-op if a later claim has already superseded this one.
+        if (claim.generation) {
+          withDatabase(workspacePath, (db) => writeTransaction(db, () => releaseActionClaim(db, {
+            repositoryPath: controlWorktree,
+            project: projectSlug,
+            actionId,
+            generation: claim.generation!
+          })));
+        }
+        throw error;
+      }
     }
   }
 
@@ -571,7 +609,14 @@ interface CandidateEvaluation {
  */
 function evaluateExistingCandidate(
   db: Database.Database,
-  input: { controlWorktree: string; actionId: string; agent: SessionAgent; tmux: Pick<TmuxAdapter, "hasSession"> }
+  input: {
+    controlWorktree: string;
+    projectSlug: string;
+    actionId: string;
+    agent: SessionAgent;
+    tmux: Pick<TmuxAdapter, "hasSession">;
+    now: Date;
+  }
 ): CandidateEvaluation {
   const handoff = getResumableLeaseHandoff(db, input.controlWorktree);
   if (handoff) {
@@ -645,6 +690,28 @@ function evaluateExistingCandidate(
         worktreePath: orphan.path,
         branch: orphan.branch,
         remedy: "This worktree was never launched through Arcadia, so its exit cannot be proven terminal. Preserve it (commit and push its work, or resume it by hand) or discard it (remove the worktree and branch) before retrying."
+      }
+    };
+  }
+
+  // Nothing in *this* checkout owns the Action. The claim is the cross-checkout
+  // question the checks above cannot answer: the 2026-09-22 collision was two
+  // worktrees under the same control checkout, each of which correctly saw no
+  // Session, no handoff and no orphan of its own. A live claim is a hard
+  // refusal, never an advisory flag a caller can act past -- the whole failure
+  // being fixed is a session reading a clearly-worded brief and starting anyway.
+  const claimed = getActiveActionClaim(db, input.controlWorktree, input.projectSlug, input.actionId, input.now);
+  if (claimed) {
+    return {
+      kind: "refuse",
+      reason: "Another live worktree already claims this Action; Arcadia go will not dispatch it a second time.",
+      details: {
+        actionId: input.actionId,
+        projectSlug: input.projectSlug,
+        claimedByWorktreePath: claimed.worktree_path,
+        claimedByBranch: claimed.branch,
+        claimExpiresAt: claimed.expires_at,
+        remedy: `Finish or retire ${claimed.worktree_path}, or dispatch a different ready Action.`
       }
     };
   }

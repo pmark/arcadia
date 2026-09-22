@@ -105,8 +105,39 @@ export interface AgentWorktreeReservation {
   branch: string;
   created_at: string;
   expires_at: string;
+  /** The Project slug this worktree claims an Action in; null for a reservation made without a claim. */
+  project: string | null;
+  /** The Action this worktree claims; null for a reservation made without a claim. */
+  action_id: string | null;
+  /**
+   * A fresh id per claim, never reused -- the fence a settlement presents to
+   * prove the claim it is settling against is still the one it started with.
+   * An expiry timestamp alone cannot do this: the dangerous case is not a claim
+   * that expired and was correctly refused, it is a claim that expired, was
+   * reclaimed by a second session that did genuinely new work, and is then
+   * settled against by the first session, still alive and merely slow.
+   */
+  claim_generation: string | null;
 }
 
+/** The identity a caller must present to release or settle against a claim. */
+export interface ActionClaimFence {
+  repositoryPath: string;
+  project: string;
+  actionId: string;
+  generation: string;
+}
+
+/**
+ * Fallback cleanup only, never primary.
+ *
+ * A normal completion releases its claim through settlement, and a failed
+ * preparation releases it before returning its error (`releaseActionClaim`).
+ * This TTL exists for the one case neither can cover -- an owning process that
+ * genuinely died mid-work -- because leaning on it for either of the others
+ * would leave a finished or never-started Action wrongly claimed, blocking
+ * legitimate re-dispatch for up to a day.
+ */
 export const AGENT_WORKTREE_RESERVATION_MS = 24 * 60 * 60 * 1000;
 
 export interface TmuxAdapter {
@@ -485,25 +516,141 @@ export function reserveAgentWorktree(db: Database.Database, input: {
   worktreePath: string;
   branch: string;
   now: Date;
+  /** Claim this Action for this worktree. Both must be given, or neither. */
+  project?: string;
+  actionId?: string;
 }): AgentWorktreeReservation {
+  if ((input.project === undefined) !== (input.actionId === undefined)) {
+    throw validationError("An Action claim needs both a Project and an Action id, or neither.", {
+      project: input.project ?? null,
+      actionId: input.actionId ?? null
+    });
+  }
   const createdAt = input.now.toISOString();
+  const repositoryPath = canonicalPath(input.repositoryPath);
+  const worktreePath = canonicalPath(input.worktreePath);
   db.prepare("DELETE FROM agent_worktree_reservations WHERE expires_at <= ?").run(createdAt);
   // A resumed candidate (Decision 0051) reserves the same path a second time
   // to refresh its protection window; replace rather than collide with the
   // still-active row `prepareAgentWorktree`'s first reservation already left.
-  db.prepare("DELETE FROM agent_worktree_reservations WHERE worktree_path = ?").run(canonicalPath(input.worktreePath));
+  db.prepare("DELETE FROM agent_worktree_reservations WHERE worktree_path = ?").run(worktreePath);
+  if (input.project !== undefined && input.actionId !== undefined) {
+    // The expiry-filtered conflict query, not the delete above, is what decides
+    // this: a cleanup path that crashed mid-way could leave a stale row the
+    // delete never reached, and treating that row as live would block
+    // legitimate dispatch for the rest of its TTL.
+    const held = getActiveActionClaim(db, repositoryPath, input.project, input.actionId, input.now);
+    if (held && held.worktree_path !== worktreePath) throw actionAlreadyClaimed(held, input.actionId);
+  }
   const reservation = {
     id: createId("worktreeReservation"),
-    repository_path: canonicalPath(input.repositoryPath),
-    worktree_path: canonicalPath(input.worktreePath),
+    repository_path: repositoryPath,
+    worktree_path: worktreePath,
     branch: input.branch,
     created_at: createdAt,
-    expires_at: new Date(input.now.getTime() + AGENT_WORKTREE_RESERVATION_MS).toISOString()
+    expires_at: new Date(input.now.getTime() + AGENT_WORKTREE_RESERVATION_MS).toISOString(),
+    project: input.project ?? null,
+    action_id: input.actionId ?? null,
+    claim_generation: input.actionId === undefined ? null : createId("worktreeReservation")
   } satisfies AgentWorktreeReservation;
-  db.prepare(`INSERT INTO agent_worktree_reservations (
-    id, repository_path, worktree_path, branch, created_at, expires_at
-  ) VALUES (@id, @repository_path, @worktree_path, @branch, @created_at, @expires_at)`).run(reservation);
+  try {
+    db.prepare(`INSERT INTO agent_worktree_reservations (
+      id, repository_path, worktree_path, branch, created_at, expires_at, project, action_id, claim_generation
+    ) VALUES (@id, @repository_path, @worktree_path, @branch, @created_at, @expires_at, @project, @action_id, @claim_generation)`)
+      .run(reservation);
+  } catch (error) {
+    // The unique index is the backstop behind the query above, for the race the
+    // query cannot see: a second caller that read "clear" and inserted first.
+    // Losing here is the same refusal as losing to a visible claim.
+    if (input.actionId !== undefined && isActionClaimConflict(error)) {
+      const winner = getActiveActionClaim(db, repositoryPath, input.project!, input.actionId, input.now);
+      if (winner) throw actionAlreadyClaimed(winner, input.actionId);
+    }
+    throw error;
+  }
   return reservation;
+}
+
+/**
+ * The live claim on an Action, or null. Expiry is filtered here, in the query,
+ * rather than trusted to the best-effort `DELETE ... WHERE expires_at <= ?`
+ * that runs on each insert -- the same discipline `getActiveWorktreeReservation`
+ * already applies to the worktree-path lookup.
+ */
+export function getActiveActionClaim(
+  db: Database.Database,
+  repositoryPath: string,
+  project: string,
+  actionId: string,
+  now: Date = new Date()
+): AgentWorktreeReservation | null {
+  if (!hasWorktreeReservationTable(db)) return null;
+  return (db.prepare(`SELECT * FROM agent_worktree_reservations
+    WHERE repository_path = ? AND project = ? AND action_id = ? AND expires_at > ?
+    ORDER BY created_at DESC LIMIT 1`).get(
+      canonicalPath(repositoryPath),
+      project,
+      actionId,
+      now.toISOString()
+    ) as AgentWorktreeReservation | undefined) ?? null;
+}
+
+/**
+ * Release a claim, conditioned atomically on the exact generation the caller
+ * believes it holds.
+ *
+ * Returns whether this call was the one that released it. Releasing an
+ * already-released claim, or one whose generation has since moved on to a
+ * different session, is a deliberate no-op rather than an error: a retried
+ * settlement must be able to repeat its release safely, and a slow settlement
+ * or a delayed cleanup must never delete a newer, actively-owned claim out from
+ * under whoever now holds it.
+ */
+export function releaseActionClaim(db: Database.Database, fence: ActionClaimFence): boolean {
+  if (!hasWorktreeReservationTable(db)) return false;
+  const result = db.prepare(`DELETE FROM agent_worktree_reservations
+    WHERE repository_path = ? AND project = ? AND action_id = ? AND claim_generation = ?`)
+    .run(canonicalPath(fence.repositoryPath), fence.project, fence.actionId, fence.generation);
+  return result.changes > 0;
+}
+
+/**
+ * Refuse loudly unless `fence` names the claim that is live right now.
+ *
+ * Callers must run this inside the same transaction as the writes it guards --
+ * a check performed before the transaction opens leaves exactly the window the
+ * generation exists to close.
+ */
+export function assertActionClaimGeneration(db: Database.Database, fence: ActionClaimFence, now: Date = new Date()): void {
+  const held = getActiveActionClaim(db, fence.repositoryPath, fence.project, fence.actionId, now);
+  if (held?.claim_generation === fence.generation) return;
+  throw validationError("This Action's claim is no longer the one this settlement started with, so it may not write.", {
+    project: fence.project,
+    actionId: fence.actionId,
+    presentedGeneration: fence.generation,
+    currentGeneration: held?.claim_generation ?? null,
+    currentWorktreePath: held?.worktree_path ?? null,
+    remedy: held
+      ? "Another session reclaimed this Action. Do not overwrite its work: preserve this worktree's output and reconcile against the claim that now holds it."
+      : "This claim expired or was already released. Re-dispatch this Action to obtain a fresh claim before settling it."
+  });
+}
+
+function actionAlreadyClaimed(held: AgentWorktreeReservation, actionId: string): Error {
+  return validationError("This Action is already claimed by a live worktree; Arcadia will not dispatch it a second time.", {
+    actionId,
+    project: held.project,
+    claimedByWorktreePath: held.worktree_path,
+    claimedByBranch: held.branch,
+    claimExpiresAt: held.expires_at,
+    remedy: `Finish or retire ${held.worktree_path}, or dispatch a different ready Action.`
+  });
+}
+
+function isActionClaimConflict(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("idx_agent_worktree_reservations_action")
+    || (message.includes("UNIQUE constraint failed") && message.includes("action_id"));
 }
 
 export function getActiveWorktreeReservation(

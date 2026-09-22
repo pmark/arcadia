@@ -268,6 +268,30 @@ function ensureAgentSessionsTable(db: Database.Database): void {
   }
 }
 
+/**
+ * One row per prepared agent worktree, carrying *two* independent uniqueness
+ * guarantees that answer two different questions and never substitute for each
+ * other.
+ *
+ * `worktree_path UNIQUE` is the original: one worktree, one reservation, so
+ * cleanup and ownership stay unambiguous. It stops the same path being
+ * reserved twice; it says nothing about which Action that path is working.
+ *
+ * `idx_agent_worktree_reservations_action` is the Action claim added after the
+ * 2026-09-22 collision (PR #487/#496), where two *different* worktree paths
+ * were independently dispatched to the *same* Action about two minutes apart
+ * and the worktree-path constraint -- correctly, for what it guarantees --
+ * had nothing to say. It is partial on `action_id IS NOT NULL` so a
+ * reservation made without a claim (or one written before these columns
+ * existed) neither participates in it nor collides inside it, and so that the
+ * constraint is a genuine second index rather than a widening of the first:
+ * satisfying one cannot be achieved by breaking the other.
+ *
+ * Expiry deliberately does not appear in the index. A SQLite index cannot
+ * express "active as of now", so expiry is filtered in the conflict *query*
+ * (`getActiveActionClaim`), exactly as `getActiveWorktreeReservation` already
+ * does, and the index stands behind that query as the race-proof backstop.
+ */
 function ensureAgentWorktreeReservationsTable(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS agent_worktree_reservations (
@@ -280,6 +304,19 @@ function ensureAgentWorktreeReservationsTable(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_agent_worktree_reservations_repository
       ON agent_worktree_reservations(repository_path, expires_at);
+  `);
+  const existing = new Set(
+    (db.prepare("PRAGMA table_info(agent_worktree_reservations)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  for (const [name, type] of [["project", "TEXT"], ["action_id", "TEXT"], ["claim_generation", "TEXT"]] as const) {
+    if (!existing.has(name)) {
+      db.prepare(`ALTER TABLE agent_worktree_reservations ADD COLUMN ${name} ${type}`).run();
+    }
+  }
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_worktree_reservations_action
+      ON agent_worktree_reservations(repository_path, project, action_id)
+      WHERE action_id IS NOT NULL;
   `);
 }
 
