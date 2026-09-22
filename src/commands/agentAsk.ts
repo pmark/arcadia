@@ -291,6 +291,8 @@ export interface AgentAskContractData {
   authorityBoundary: string[];
   /** A worked `complete` Ask, so an agent never has to hunt for an example outside its worktree. */
   completeExample: Record<string, unknown>;
+  /** target_ref forms complete accepts: the active Plan's Action, and any Plan's, by slug. */
+  completeTargetRefForms: string[];
 }
 
 /**
@@ -330,7 +332,11 @@ export function runAgentAskContractCommand(): CommandSuccess<AgentAskContractDat
         candidate_revision: "<git rev-parse HEAD of the candidate worktree, after the final commit>",
         evidence: [{ criterion: "<acceptance criterion, verbatim and in the plan's order>", status: "met" }],
         desired_result: "Mark <action-id> complete."
-      }
+      },
+      completeTargetRefForms: [
+        "action/<action-id> — the active Plan's Action (the common case).",
+        "plan/<plan-slug>#<action-id> — that Action in the named Plan, active or not. Writes only that Plan's document; PROJECT.md, the active Plan's current_action, and the queue are untouched unless <plan-slug> is itself the active Plan."
+      ]
     }
   });
 }
@@ -349,6 +355,8 @@ export function renderAgentAskContractSuccess(response: CommandSuccess<AgentAskC
     "Authority boundary:",
     ...d.authorityBoundary.map((line) => `  - ${line}`),
     "Complete Ask (one evidence entry per declared acceptance criterion, each verbatim and in order; settle only from your own worktree):",
-    `  ${JSON.stringify(d.completeExample)}`
+    `  ${JSON.stringify(d.completeExample)}`,
+    "Complete target_ref forms:",
+    ...d.completeTargetRefForms.map((line) => `  - ${line}`)
   ];
 }

@@ -1421,7 +1421,7 @@ actions:
     references: []
   - id: plan-scoped-agent-ask-complete
     title: "arcadia agent-ask settle --intent complete accepts target_ref: plan/<plan-slug>#<action-id>, resolving and completing that Action in its own (possibly non-active) plan, writing PROJECT.md and the active plan's current_action only when the completed Action is actually in the active plan."
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: "arcadia agent-ask settle --intent complete accepts target_ref: plan/<plan-slug>#<action-id>, resolving and completing that Action in its own (possibly non-active) plan, writing PROJECT.md and the active plan's current_action only when the completed Action is actually in the active plan."
@@ -1442,7 +1442,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: plan-scoped-agent-ask-complete
+current_action: serialize-current-action-writes
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

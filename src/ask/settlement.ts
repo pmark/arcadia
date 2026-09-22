@@ -556,11 +556,35 @@ export function settleAgentAsk(db: Database.Database, input: {
       case "complete": {
         requireNoQueueOptions(input);
         if (!targetRef) throw validationError("Agent Ask complete requires target_ref naming the Action.");
-        const planBefore = readFileSync(activePlanPath, "utf8");
+        // `plan/<plan-slug>#<action-id>` names an Action in one specific Plan,
+        // which may be an inactive one. A session can finish an Action the
+        // pointer is not on — the Project supports one `active_plan`, not one
+        // piece of work in flight — and the completion record has to be able
+        // to land where the work happened. Plain `action/<id>` keeps meaning
+        // the active Plan's Action, so nothing about the default path moves.
+        const scoped = splitPlanScopedActionRef(targetRef);
+        const targetPlan = scoped
+          ? discovered.docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug
+            && doc.slug === resolveManagedTargetRef(scoped.planRef, "plan", project.slug))
+          : plan;
+        if (!targetPlan) throw validationError("Agent Ask complete names a Plan that was not found in this Project.", { targetRef });
+        const completingActivePlan = targetPlan.slug === plan.slug;
+        const targetPlanPath = path.join(repoRoot, targetPlan.relativePath);
+        const planBefore = readFileSync(targetPlanPath, "utf8");
         const projectBefore = readFileSync(projectPath, "utf8");
-        const actionId = resolveManagedTargetRef(targetRef, "action", project.slug);
-        const action = plan.actions.find((candidate) => candidate.id === actionId);
+        const actionId = resolveManagedTargetRef(scoped?.actionRef ?? targetRef, "action", project.slug);
+        const action = targetPlan.actions.find((candidate) => candidate.id === actionId);
         if (!action) throw validationError("Agent Ask complete target Action was not found.", { targetRef });
+        // Readiness and Decision resolution search every Plan by Action id, so
+        // a duplicated id would let them answer about the wrong Plan's Action.
+        // Activation already refuses an ambiguous id for the same reason.
+        const plansHoldingActionId = discovered.docs.filter((doc): doc is PlanDoc =>
+          doc.type === "plan" && doc.project === project.slug && doc.actions.some((candidate) => candidate.id === actionId));
+        if (plansHoldingActionId.length !== 1) {
+          throw validationError("Agent Ask complete target Action id is not unique across this Project's Plans.", {
+            actionId, plans: plansHoldingActionId.map((doc) => doc.slug)
+          });
+        }
         if (action.status === "done") throw validationError("Action is already done.", { actionId });
         if (action.responsibility !== "agent" && action.responsibility !== "autonomous") {
           throw validationError("Only an agent or autonomous Action can be completed through this routine.", {
@@ -597,25 +621,29 @@ export function settleAgentAsk(db: Database.Database, input: {
         }
 
         const decisionDocsForPlan = discovered.docs.filter((doc): doc is DecisionDoc => doc.type === "decision" && doc.project === project.slug);
-        const nextResolution = selectNextAfterCompletion(plan, actionId, decisionDocsForPlan, queueAfter, project.slug);
+        const nextResolution = selectNextAfterCompletion(targetPlan, actionId, decisionDocsForPlan, queueAfter, project.slug);
         const updated = today();
         let planAfter = markActionDone(planBefore, actionId);
-        let projectAfter: string;
+        effects.push(`Marked Action ${project.slug}/${actionId} done with accepted evidence for all ${declared.length} criteria.`);
         if (nextResolution.kind === "planComplete") {
           planAfter = setTopLevelFields(planAfter, { status: "complete", current_action: null, updated });
-          projectAfter = setTopLevelFields(projectBefore, { current_action: null, updated });
-          effects.push(`Marked Action ${project.slug}/${actionId} done with accepted evidence for all ${declared.length} criteria.`);
-          effects.push(`Plan ${plan.slug} is complete; every Action is done. Select a new active Plan when ready.`);
+          effects.push(`Plan ${targetPlan.slug} is complete; every Action is done.${completingActivePlan ? " Select a new active Plan when ready." : ""}`);
         } else {
           planAfter = setTopLevelFields(planAfter, { current_action: nextResolution.actionId, updated });
-          projectAfter = setTopLevelFields(projectBefore, { current_action: nextResolution.actionId, updated });
-          effects.push(`Marked Action ${project.slug}/${actionId} done with accepted evidence for all ${declared.length} criteria.`);
           effects.push(`${nextResolution.note} Pointer: ${project.slug}/${nextResolution.actionId}.`);
         }
-        fileMutations.push(
-          { path: activePlanPath, before: planBefore, after: planAfter },
-          { path: projectPath, before: projectBefore, after: projectAfter }
-        );
+        fileMutations.push({ path: targetPlanPath, before: planBefore, after: planAfter });
+        // The Project pointer belongs to the active Plan. Completing an Action
+        // in another Plan records that Plan's own progress and leaves
+        // `active_plan`, `current_action`, and the execution queue untouched,
+        // so nothing about automatic dispatch changes for anyone else.
+        if (completingActivePlan) {
+          fileMutations.push({ path: projectPath, before: projectBefore, after: setTopLevelFields(projectBefore, {
+            current_action: nextResolution.kind === "planComplete" ? null : nextResolution.actionId, updated
+          }) });
+        } else {
+          effects.push(`Left Project pointer ${project.slug}/${projectDoc.currentAction ?? "none"} and the active Plan ${plan.slug} untouched; ${targetPlan.slug} is not the active Plan.`);
+        }
         const completionLog = discovered.docs.find((doc): doc is LogDoc => doc.type === "log" && doc.project === project.slug);
         const completionLogPath = path.join(repoRoot, completionLog?.relativePath ?? "MISSION_LOG.md");
         const completionLogBefore = existsSync(completionLogPath) ? readFileSync(completionLogPath, "utf8") : null;
@@ -624,7 +652,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           note: nextResolution.kind === "planComplete" ? "Plan complete; every Action is done." : nextResolution.note
         }) });
         completionActionId = actionId;
-        completionPlanSlug = plan.slug;
+        completionPlanSlug = targetPlan.slug;
         break;
       }
       case "decision": {
@@ -1230,6 +1258,23 @@ function resolveManagedTargetRef(targetRef: string, kind: "action" | "plan", pro
     destinationProject: projectSlug,
     targetRef
   });
+}
+
+/**
+ * Split `plan/<plan-slug>#<action-id>` into its two halves.
+ *
+ * Returns null for every other shape, which is how `action/<id>` keeps
+ * resolving against the active Plan exactly as before.
+ */
+function splitPlanScopedActionRef(targetRef: string): { planRef: string; actionRef: string } | null {
+  const separator = targetRef.indexOf("#");
+  if (separator < 0) return null;
+  const planRef = targetRef.slice(0, separator).trim();
+  const actionRef = targetRef.slice(separator + 1).trim();
+  if (!planRef || !actionRef || actionRef.includes("#")) {
+    throw validationError("A Plan-scoped target_ref must read plan/<plan-slug>#<action-id>.", { targetRef });
+  }
+  return { planRef, actionRef };
 }
 
 function requireNoQueueOptions(input: { responsibility?: AgentAskResponsibility; placement?: AgentAskPlacement; anchor?: string }): void {
