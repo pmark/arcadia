@@ -127,7 +127,7 @@ open.
 | | Item | Why it blocks |
 | --- | --- | --- |
 | ✅ | **Decision 0058** — delegate bounded candidate integration? | Approved (R212, 2026-09-19). `preserve-on-exit-and-integrate` has its authority. |
-| ⬜ | `preserve-on-exit-and-integrate` | Ready, no open prerequisites. It was the dispatch pointer two derivations ago; `self-heal-hung-worker-heartbeat` has since held the pointer and completed. Without this Action every Action needs one operator merge before the next dependent Action can start — the difference between "assisted" and "unattended." |
+| ⬜ | `preserve-on-exit-and-integrate` | Ready, no open prerequisites. It was the dispatch pointer two derivations ago; `self-heal-hung-worker-heartbeat` then held the pointer and completed, advancing it to `surface-batch-readiness-view` on queue order rather than on this list's ranking. Without this Action every Action needs one operator merge before the next dependent Action can start — the difference between "assisted" and "unattended." |
 | ⬜ | `bind-candidate-revision-in-action-settle` | No dependencies; ready. `action settle` derives the wrong revision, so the documented candidate-worktree completion path fails. |
 | ✅ | `approval-must-apply-or-refuse` | Done (PR #447). |
 | ⬜ | `apply-answered-decision-consequences` | No dependencies; ready. An answered Decision does not move the Action it governs, so answering one changes nothing until a human acts on it. |
