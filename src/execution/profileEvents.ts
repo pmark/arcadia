@@ -13,7 +13,21 @@ import { nowIso } from "../utils/time.js";
 export type ExecutionProfileEventType =
   | "coding_agent.profile_selected"
   | "coding_agent.profile_escalated"
-  | "coding_agent.profile_unsatisfied";
+  | "coding_agent.profile_unsatisfied"
+  | "coding_agent.provider_substituted";
+
+/**
+ * Recorded only for a `coding_agent.provider_substituted` event: the operator
+ * needs to see, in aggregate, which provider was intended, which one actually
+ * ran the work, and which closed hard-evidence value (Decision 0063) caused
+ * the difference.
+ */
+export interface RecordedProviderSubstitution {
+  intendedProvider: string;
+  selectedProvider: string;
+  code: string;
+  hardEvidenceReason: string;
+}
 
 export interface RecordExecutionProfileEventInput {
   eventType: ExecutionProfileEventType;
@@ -27,6 +41,9 @@ export interface RecordExecutionProfileEventInput {
   mappingId?: string | null;
   bindingId?: string | null;
   evidence?: string[];
+  /** A short, human-readable line the dashboard's activity feed can show. */
+  summary?: string;
+  providerSubstitution?: RecordedProviderSubstitution | null;
 }
 
 export class ExecutionProfileEscalationRequiredError extends Error {
@@ -72,7 +89,9 @@ export function recordExecutionProfileEvent(
       to: input.to ?? null,
       mappingId: input.mappingId ?? null,
       bindingId: input.bindingId ?? null,
-      evidence: input.evidence ?? []
+      evidence: input.evidence ?? [],
+      summary: input.summary ?? null,
+      providerSubstitution: input.providerSubstitution ?? null
     }),
     created_at: nowIso()
   });

@@ -331,6 +331,11 @@ describe("buildLaunchPreview", () => {
     expect(preview.ready).toBe(true);
     expect(preview.prerequisites).toEqual([]);
     expect(preview.selection?.provider).toBe("codex-cli");
+    // Decision 0063: substitution only ever applies before a packet exists.
+    // This packet is already bound, so no substitution is ever recorded for
+    // it even though a fresh selection ran to validate it against the current
+    // registry.
+    expect(preview.substitution).toBeNull();
   });
 });
 
