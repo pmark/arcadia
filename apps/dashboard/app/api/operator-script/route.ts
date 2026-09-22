@@ -133,13 +133,16 @@ export async function GET() {
         const state = recorded?.status === "running" && !processIsRunning(recorded.pid)
           ? { ...recorded, status: "failed" as const, message: "The launcher stopped before recording a result." }
           : recorded;
+        const descriptorMtime = (await stat(path.join(LIBRARY_PATH, `${id}.json`))).mtime.toISOString();
+        const updatedAt = state?.finishedAt ?? state?.startedAt ?? descriptorMtime;
         return {
           id: descriptor.id,
           title: descriptor.title,
           desiredEffect: descriptor.desired_effect,
           authority: descriptor.authority,
           repeatable: descriptor.repeatable === true,
-          state: state ?? { status: "available" }
+          state: state ?? { status: "available" },
+          updatedAt
         };
       } catch (error) {
         console.error(`Ignoring invalid operator-script library entry ${id}.`, error);
