@@ -161,13 +161,14 @@ describe("Agent Ask complete", () => {
     expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toContain("status: open");
   });
 
-  it("refuses a stale Candidate revision", () => {
+  it("refuses a stale Candidate revision, naming both the Candidate and the checkout's HEAD", () => {
     const { workspace, head } = fixture();
-    const request = completeAsk("complete-stale", "first", head).replace(head, "abadc0de".repeat(5));
+    const stale = "abadc0de".repeat(5);
+    const request = completeAsk("complete-stale", "first", head).replace(head, stale);
     const proposal = runAgentAskPreviewCommand({ workspace, request });
     expect(() => runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-stale", disposition: "accepted"
-    })).toThrow(/does not match the repository's current HEAD/);
+    })).toThrow(new RegExp(`the Candidate names ${stale}.*is at ${head}`, "s"));
   });
 
   it("settles a complete Ask from its own drafted file inside a candidate worktree, with no manual relocation and no commit rewrite", () => {

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -13,6 +13,7 @@ import { initWorkspace } from "../src/workspace/initWorkspace.js";
 const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  delete process.env.ARCADIA_INVOKED_FROM;
 });
 
 describe("arcadia action settle", () => {
@@ -55,6 +56,39 @@ describe("arcadia action settle", () => {
     runActionSettleCommand({ workspace, dryRun: true });
     const applied = runActionSettleCommand({ workspace });
     expect(applied.data.applied).toBe(true);
+  });
+
+  it("completes from a candidate worktree whose branch HEAD differs from the main checkout (Issue #278)", () => {
+    const { workspace, repo, head } = fixture();
+    const candidate = path.join(path.dirname(repo), "candidate-settle");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate-settle", candidate], { cwd: repo });
+    execFileSync("git", ["commit", "-q", "--allow-empty", "-m", "candidate work"], { cwd: candidate });
+    const candidateHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: candidate, encoding: "utf8" }).trim();
+    // The whole bug: the candidate HEAD is not the base HEAD, and `action
+    // settle` used to read the base's.
+    expect(candidateHead).not.toBe(head);
+
+    // The real CLI never passes cwd; the launcher records where the operator
+    // stood as ARCADIA_INVOKED_FROM, and settlement resolves the candidate from
+    // it. `action settle` must bind its candidate revision from the same place.
+    process.env.ARCADIA_INVOKED_FROM = candidate;
+    const result = runActionSettleCommand({ workspace });
+
+    expect(result.data.applied).toBe(true);
+    expect(result.data.plan.candidateRevision).toBe(candidateHead);
+    expect(result.data.plan.checkout).toBe(realpathSync(candidate));
+
+    // The completion landed on the candidate branch; the main checkout is
+    // untouched at its original HEAD.
+    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim()).toBe(head);
+    const plan = discoverDocs(candidate).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
+    expect(plan).toMatchObject({
+      currentAction: "second",
+      actions: [
+        expect.objectContaining({ id: "first", status: "done" }),
+        expect.objectContaining({ id: "second", status: "open" })
+      ]
+    });
   });
 
   it("carries an operator note onto every criterion's evidence", () => {

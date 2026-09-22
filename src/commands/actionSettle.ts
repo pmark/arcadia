@@ -4,12 +4,14 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import { validationError } from "../cli/errors.js";
+import { invocationRoot } from "../cli/invocation.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveProjectReference } from "../ask/rules.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { resolveDispatch } from "../docs/dispatch.js";
+import { projectCheckoutFor } from "../git/worktrees.js";
 import { runAgentAskPreviewCommand, runAgentAskSettleCommand } from "./agentAsk.js";
 
 /**
@@ -54,6 +56,8 @@ export interface ActionSettlePlan {
   actionId: string;
   actionTitle: string;
   repoRoot: string;
+  /** The checkout the candidate revision was read from and settlement will write to. */
+  checkout: string;
   candidateRevision: string;
   criteria: ActionSettleEvidence[];
   proposalRequestId: string;
@@ -162,8 +166,15 @@ function resolveNotes(criteria: string[], options: ActionSettleOptions, candidat
 export function runActionSettleCommand(options: ActionSettleOptions): CommandSuccess<ActionSettleData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const target = resolveTarget(workspacePath, options);
+  // Read HEAD from the same checkout settlement resolves and writes to: inside
+  // a candidate worktree that is the worktree, not the configured main
+  // checkout. Reading the main checkout's HEAD here made completing from a
+  // candidate whose branch HEAD differs from the base refuse its own revision
+  // (Issue #278). Settlement uses `invocationRoot()` for the same resolution,
+  // so both bind the identical commit.
+  const checkout = projectCheckoutFor(target.repoRoot, invocationRoot());
   const candidateRevision = execFileSync("git", ["rev-parse", "HEAD"], {
-    cwd: target.repoRoot,
+    cwd: checkout,
     encoding: "utf8"
   }).trim();
 
@@ -210,6 +221,7 @@ export function runActionSettleCommand(options: ActionSettleOptions): CommandSuc
     actionId: target.actionId,
     actionTitle: target.actionTitle,
     repoRoot: target.repoRoot,
+    checkout,
     candidateRevision,
     criteria: evidence,
     proposalRequestId,
@@ -254,7 +266,7 @@ export function renderActionSettleSuccess(response: CommandSuccess<ActionSettleD
       ? `Settled ${plan.projectSlug}/${plan.actionId} — done.`
       : `Dry run for ${plan.projectSlug}/${plan.actionId} (nothing settled).`,
     `Action: ${plan.actionTitle}`,
-    `Candidate revision: ${plan.candidateRevision.slice(0, 12)} (repo HEAD ${plan.repoRoot})`,
+    `Candidate revision: ${plan.candidateRevision.slice(0, 12)} (HEAD of ${plan.checkout})`,
     `Acceptance criteria: ${plan.criteria.length}, all marked met`,
     `Preview fingerprint: ${plan.previewFingerprint}`
   ];

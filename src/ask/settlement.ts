@@ -623,9 +623,21 @@ export function settleAgentAsk(db: Database.Database, input: {
         const head = git(repoRoot, ["rev-parse", "HEAD"]).trim();
         const candidateRevision = proposal.normalized.candidateRevision!;
         if (head !== candidateRevision && !head.startsWith(candidateRevision)) {
-          throw validationError("Completion Candidate revision does not match the repository's current HEAD; refresh evidence against the current revision.", {
-            expectedHead: head, receivedRevision: candidateRevision
-          });
+          // Name the two revisions rather than telling the operator to "refresh
+          // evidence": the mismatch is between the Candidate and the checkout
+          // this settlement resolved, and the caller has to know both to bind
+          // the right one. Issue #278 was this message sending an operator who
+          // was already standing in the right worktree to redo work that was
+          // already correct.
+          throw validationError(
+            `Completion Candidate revision does not match the repository's current HEAD: the Candidate names ${candidateRevision}, but the checkout this settlement resolved is at ${head}.`,
+            {
+              checkout: repoRoot,
+              currentHead: head,
+              candidateRevision,
+              remedy: `Bind candidate_revision to the revision being completed (${head} at ${repoRoot}) and settle again.`
+            }
+          );
         }
         const declared = action.acceptanceCriteria;
         if (declared.length === 0) throw validationError("Action declares no acceptance criteria to bind completion evidence to.", { actionId });
