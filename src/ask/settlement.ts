@@ -13,11 +13,12 @@ import { syncProjectDocs } from "../docs/sync.js";
 import type { ArcadiaDoc, DecisionDoc, LogDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import { buildAgentQueue, unpositionedCountForProject } from "../dispatch/queue.js";
 import { arrangeActionOrder } from "../dispatch/order.js";
+import type { WorkClassification } from "../domain/constants.js";
 import { assertClean, commitOnlyPaths, git, projectCheckoutFor } from "../git/worktrees.js";
 import { slugify, SLUG_MAX_LENGTH } from "../utils/slug.js";
 
 export type AgentAskDisposition = "accepted" | "rejected";
-export type AgentAskResponsibility = "autonomous" | "agent";
+export type AgentAskResponsibility = WorkClassification;
 export type AgentAskPlacement = "top" | "before" | "after";
 
 /**
