@@ -1319,7 +1319,7 @@ actions:
     references: ["src/commands/agentAsk.ts", "src/ask/settlement.ts", "src/cli.ts", "src/domain/constants.ts", "docs/decisions/0045-agent-ask-can-amend-action-responsibility.md", "docs/decisions/0064-resolve-how-to-handle-prove-zero-prompt-production-loop-being-dispatched-to.md", "tests/agent-ask-settlement.test.ts"]
 questions: []
 decisions: []
-current_action: prove-zero-prompt-production-loop
+current_action: an-agent-ask-action-amendment-can
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
