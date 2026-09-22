@@ -318,14 +318,17 @@ reading (JS only for variant assignment and form enhancement), WCAG 2.2 AA, mobi
 
 ## 11. Registration & Qualification
 
-**DEC — Step 1 (required, ≤4 fields beyond email):**
+**DEC — Step 1 — all four fields are required.** This is the single required-field
+contract referenced by §8, §9, the form validation, the `signup_completed` event, and the
+qualification definition below. `active_projects` in particular cannot be optional, because
+qualification is defined on it.
 
 | Field | Type | Purpose |
 | --- | --- | --- |
-| `email` | email, required | Contact; the only truly required field |
-| `role` | select: indie dev / technical founder / small-team lead / consultant-agency / platform-DevEx / other | Segmentation (H7) |
-| `active_projects` | select: 1 / 2–3 / 4–6 / 7+ | Primary qualification axis (H7) |
-| `agents_used` | multi-select: Claude Code / Codex / Cursor / OpenCode / Copilot / Aider / other / none yet | Integration priority + seriousness proxy |
+| `email` | email, **required** | Contact |
+| `role` | select, **required**: indie dev / technical founder / small-team lead / consultant-agency / platform-DevEx / other | Segmentation (H7) |
+| `active_projects` | select, **required**: 1 / 2–3 / 4–6 / 7+ | Primary qualification axis (H7) |
+| `agents_used` | multi-select, **required** (≥1, "none yet" is a valid answer): Claude Code / Codex / Cursor / OpenCode / Copilot / Aider / other / none yet | Integration priority + seriousness proxy |
 
 **DEC — Step 2 (optional, progressive, skippable at any point):**
 
@@ -348,7 +351,8 @@ A registration is **qualified** when `active_projects ≥ 2` **and** `ai_dev_fre
 weekly` **and** `biggest_problem` is non-empty and substantive. This definition is fixed
 before launch so it cannot be moved to flatter the numbers.
 
-**Anti-friction rules:** no phone, no company name, no required free text in step 1, no
+**Anti-friction rules:** all four required fields are a single tap each — no phone, no
+company name, no required free text in step 1, no
 CAPTCHA unless abuse appears (rate-limit + honeypot first), and step 2 shows progress and an
 explicit "skip — you're already on the list."
 
@@ -398,6 +402,10 @@ That ratio — not the opt-in count — is the real H12 measurement.
 
 ## 13. Messaging Experiments
 
+**DEC — This table is the canonical experiment registry.** Every `EXP-#` used anywhere in
+this document is defined here exactly once, including the three whose detail lives in other
+sections (EXP-6 and EXP-9 in §14, EXP-8 in §25). No identifier is reused.
+
 **DEC** Build the smallest possible experiment mechanism: a variant chosen per-visitor at
 first load from a fixed list, persisted in a first-party cookie for 30 days, stamped onto
 every event and every registration row. **No third-party A/B platform. No feature-flag
@@ -411,11 +419,14 @@ rendered in the HTML.
 | EXP-3 | Audience callout | "for indie builders" vs "for technical founders" vs none | Qualified rate by segment |
 | EXP-4 | CTA wording | "Join the waitlist" vs "Request early access" vs "Help shape it" | CTA click → step-1 completion |
 | EXP-5 | Autonomy promised | "runs while you sleep" vs "never acts without your approval" vs balanced | Qualified conv.; autonomy_comfort mix |
+| EXP-6 | Price credibility (detail in §14) | $29/mo anchor vs $99/mo anchor vs "we don't know yet" | Conv. delta + price-band selection |
 | EXP-7 | Feature emphasis | prioritization-led vs verification-led vs session-management-led | Capability ranking + conv. |
+| EXP-8 | Naming (detail in §25 #1) | "Arcadia Mission Control" vs "MartianRover Arcadia Cloud" | Qualified conv. + delivery_preference mix |
+| EXP-9 | Delivery model (detail in §14) | hosted-led vs "your machine, your repos, your data" | Qualified conv. + delivery_preference mix |
 
 **Honest-statistics constraint (important at our traffic volume):** at a few hundred
-sessions per arm, only *large* effects are detectable. **DEC** We will (a) run at most **two
-concurrent experiments**, (b) require ≥250 sessions and ≥15 qualified registrations per arm
+sessions per arm, only *large* effects are detectable. **DEC** An *arm count* in this document always includes the control arm. We will (a) run at
+most **two concurrent experiments**, (b) require ≥250 sessions and ≥15 qualified registrations per arm
 before reading a result, (c) treat differences under ~50% relative as *not measured*, and
 (d) weight qualitative free-text evidence more heavily than variant deltas until volume
 supports otherwise. A variant test that cannot reach these thresholds is a directional
@@ -445,7 +456,7 @@ missing data point, and attribution coverage should exceed 95%.
 | Onboarding/setup package ($500–2,000) | Monetizes the hardest part first | Repeated "help me set this up" in free text |
 | Founder-assisted program | Highest-touch, highest learning | Interview acceptance + willingness to schedule |
 
-**EXP-5 (delivery model)** — Variant landing copy emphasizing *hosted* vs *your machine,
+**EXP-9 (delivery model)** — Variant landing copy emphasizing *hosted* vs *your machine,
 your repos, your data*. Metric: qualified conversion and `delivery_preference` distribution.
 
 **EXP-6 (price credibility)** — Variant pricing-research card showing a candidate anchor
@@ -643,8 +654,17 @@ enterprise security program. The site will not imply otherwise.
 
 - A short, human-readable privacy page: what we collect (email + your answers + basic
   analytics), why (to decide what to build and who to talk to), how long (until you ask us
-  to delete it), who else sees it (nobody outside MartianRover; named processors listed),
-  and how to get deleted (one email address, honored within 7 days).
+  to delete it), and how to get deleted (one email address, honored within 7 days).
+- **A named processor list is required, not a blanket claim.** Data is seen by MartianRover
+  **and by the named processors below, and nobody else.** The privacy page must name each
+  one and the data it receives, and must be updated whenever §18's stack choices change:
+
+  | Processor | Data it receives |
+  | --- | --- |
+  | Cloudflare (Pages, Workers, D1) | Hosting and storage of every registration row and event; request metadata including IP at the edge |
+  | Transactional email provider (Cloudflare Email Service / Resend / Postmark — whichever §18 selects) | Email address and delivery metadata for the confirmation email only |
+  | Analytics provider (Plausible / Fathom, or self-hosted) | Aggregate, cookieless page and event data; no email address and no free-text answers |
+  | Interview scheduling tool, *if* Open Decision §25 #7 selects one | Name and email of people who book an interview |
 - **No selling, sharing, or enriching data.** Stated plainly.
 - No third-party trackers or ad pixels. Cookieless analytics. The only cookie is the variant
   cookie, and it is first-party and functional.
@@ -768,7 +788,9 @@ The website is done when all of the following are true:
 2. A visitor can complete registration step 1 in under 30 seconds, and step 2 in under 90.
 3. Every registration row carries its variant set, source, and attribution, with >95%
    coverage.
-4. All twelve events in §16 fire correctly and are verifiable in the analytics tool.
+4. All **twelve pre-launch** events in §16 fire correctly and are verifiable in the
+   analytics tool. The thirteenth, `early_access_activated`, is deferred until access opens
+   and is excluded from this count.
 5. A confirmation email arrives within 60 seconds and does not land in spam for the three
    major providers.
 6. The operator can open `/ops`, filter to qualified registrations, read the free-text
@@ -781,7 +803,9 @@ The website is done when all of the following are true:
     claims of results, customers, revenue, adoption, or productivity gains that have not
     occurred. Every forward-looking statement is labelled as such.
 11. The privacy page is accurate about what is actually collected and stored.
-12. Two positioning variants and one CTA variant are live and correctly assigned.
+12. EXP-1 is live with all three of its arms (P1 control, P4, P6) and EXP-4 with all three
+    of its arms, correctly assigned and stamped on every registration. Those two are the
+    maximum concurrent experiments §13 permits.
 13. The whole site deploys from one repository with one command, and all data exports with
     one command.
 
