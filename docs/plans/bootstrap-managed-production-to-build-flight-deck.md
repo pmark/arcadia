@@ -1057,7 +1057,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/272", "https://github.com/pmark/arcadia/issues/273", "docs/decisions/0058-should-the-standing-managed-production-authorization-delegate-a-bounded.md", "src/sessions/preservationTransport.ts", "src/sessions/candidatePreservation.ts", "src/sessions/reconciliation.ts", "src/production/tick.ts", "src/production/policy.ts", "docs/plans/mission-control-view/17-managed-production-contract.md", "docs/working-copy-safety.md"]
   - id: apply-answered-decision-consequences
     title: Apply an answered Decision's consequence to the Action it governs and advance the governed pointer in one transition.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Apply an answered Decision's consequence to the Action it governs and advance the governed pointer in one transition.
@@ -1442,7 +1442,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: apply-answered-decision-consequences
+current_action: make-go-total-across-plans
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

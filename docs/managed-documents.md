@@ -216,9 +216,15 @@ applying twice. If the commit fails, the command fails and says so; the written
 documents and the receipt stay recoverable.
 
 **Reviving a deferred Action.** The deferral's named trigger is the condition
-that ends it. When the trigger fires, answer the same Decision the other way (or
-open a new Decision that names the Action) and clear the deferral — no revival
-is implied by the trigger firing on its own.
+that ends it. When the trigger fires, `arcadia decision reverse <id> --project
+<project>` undoes the applied deferral in one commit: it re-opens the Decision
+(clearing its answer), restores the Action's prior status, and puts the pointer
+back where the deferral found it. `--dry-run` previews it, and a retry with the
+same request id returns the recorded reversal rather than applying twice. It
+refuses, writing nothing, when the Action or the pointer has moved on since the
+deferral, so a reversal never discards newer checked-in truth. (Answering a new
+Decision that names the Action also works, but the trigger firing alone revives
+nothing.)
 
 ## What is enforced, and where
 

@@ -1427,10 +1427,12 @@ pnpm arcadia decision approve 0057 --project arcadia \
 `--dry-run` shows which Action would be parked and where the pointer would land;
 drop it to apply, which sets `status: deferred`, advances the pointer to the next
 eligible queued Action, and lands one recoverable receipt and commit. A deferred
-Action stops dispatching immediately. To revive it once its trigger fires, answer
-the same Decision the other way — the trigger firing alone revives nothing. See
-`docs/COMMANDS.md` and `docs/managed-documents.md` for the fields and the
-commit-failure recovery.
+Action stops dispatching immediately. To revive it once its trigger fires, reverse
+the applied deferral with `pnpm arcadia decision reverse 0057 --project arcadia`,
+which re-opens the Decision, restores the Action, and puts the pointer back — the
+trigger firing alone revives nothing. See `docs/COMMANDS.md` and
+`docs/managed-documents.md` for the fields, the reversal, and the commit-failure
+recovery.
 
 ## Working across many projects without losing the thread
 

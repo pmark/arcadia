@@ -1120,14 +1120,28 @@ pnpm arcadia decision approve 0057 \
 
 A deferred Action is unfinished but never dispatchable: `arcadia next`,
 `advance queue`, and the ready set skip it until its Decision is answered the
-other way.
+other way or its deferral is reversed.
 
 **Recovery and revival.** If the commit fails, `approve` exits with an error and
 names the Git failure rather than reporting a successful deferral; fix it and
 re-run the same command with the same `--request-id`, which retries exactly the
-recorded commit. To revive a deferred Action once its trigger fires, answer the
-same Decision the other way (or open a new one naming the Action) — the trigger
-firing does not revive anything by itself. See
+recorded commit. To revive a deferred Action once its trigger fires, reverse the
+applied deferral:
+
+```sh
+pnpm arcadia decision reverse 0057 \
+  --project arcadia \
+  --dry-run
+```
+
+`decision reverse` re-opens the Decision (clearing its answer), restores the
+Action's prior status, and puts the pointer back where the deferral found it —
+one recoverable commit, no hand-edited field. `--dry-run` previews it and
+`--request-id` keys the retry. It refuses, writing nothing, when the Action or
+the pointer has moved on since the deferral, so a reversal can never silently
+discard newer truth. `--receipt <receipt-id>` reverses a specific applied
+deferral instead of the latest one. The trigger firing does not revive anything
+by itself. See
 [`managed-documents.md`](managed-documents.md#deferring-an-action-and-reviving-it)
 for the Decision fields.
 

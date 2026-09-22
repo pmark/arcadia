@@ -359,9 +359,11 @@ import { renderDocsSyncSuccess, runDocsSyncCommand } from "./commands/docs.js";
 import {
   renderDecisionApproveSuccess,
   renderDecisionNewSuccess,
+  renderDecisionReverseSuccess,
   renderDecisionValidateSuccess,
   runDecisionApproveCommand,
   runDecisionNewCommand,
+  runDecisionReverseCommand,
   runDecisionValidateCommand
 } from "./commands/decision.js";
 import {
@@ -1817,6 +1819,38 @@ export function buildProgram(): Command {
         requestId: options.requestId
       }),
       renderDecisionApproveSuccess
+    )
+  );
+  addJsonOption(
+    decision
+      .command("reverse")
+      .description("Reverse an applied Decision deferral: re-open the Decision, un-park its Action, and restore the pointer in one commit")
+      .argument("<id>", "Decision numeric id, slug, or filename")
+      .requiredOption("--project <project>", "Project id or slug that owns this Decision")
+      .option("--receipt <receipt-id>", "Reverse this specific deferral receipt; defaults to the latest applied one")
+      .option("--dry-run", "Report the reversal without writing anything")
+      .option("--request-id <id>", "Idempotency key for the reversal transition; derived when omitted")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((id: string, options: {
+    workspace: string;
+    project: string;
+    receipt?: string;
+    dryRun?: boolean;
+    requestId?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "decision.reverse",
+      options,
+      () => runDecisionReverseCommand({
+        workspace: options.workspace,
+        project: options.project,
+        id,
+        receipt: options.receipt,
+        dryRun: options.dryRun,
+        requestId: options.requestId
+      }),
+      renderDecisionReverseSuccess
     )
   );
   addJsonOption(
