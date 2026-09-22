@@ -787,6 +787,38 @@ deleting, spending, credentials, production access, and messaging each still
 need their own Decision, and a Plan that is not listed is never activated just
 because it is next on screen.
 
+### Preserve on exit, and integrate only under a separate grant
+
+When a managed-production Session reaches a terminal state, the worker now
+preserves its candidate automatically, using the same host-side objective
+validation the agent-initiated path uses. It refuses to preserve on a failed,
+skipped, or absent check, and it never removes the candidate: a refusal leaves
+every file exactly where it was.
+
+Preservation alone still stops before any merge. To have the host fast-forward
+a finished, validated candidate onto the governed base branch — so the next
+dependent Action launches with no operator merge in between — record Decision
+0058's bounded integration grant in the same activation. The grant is
+deliberately separate from `--transitions`: it names the authorizing Decision
+and an expiry, and it is revoked the moment you switch production Off.
+
+```sh
+pnpm arcadia production activate \
+  --project arcadia --provider claude \
+  --intent "Finish the bootstrap Plan without a per-Action relay." \
+  --integration-grant-decision 0058 \
+  --integration-grant-expires-at 2026-10-01T00:00:00.000Z \
+  --request-id bootstrap-grant-1 --granted-by "$USER" --expect-revision 0
+```
+
+Integration is a fast-forward of the Session's own agent-owned branch into the
+governed base branch, and nothing else. A conflict, a divergent base, a
+non-agent-owned branch, an expired or absent grant, or a candidate outside the
+grant's Actions stops integration and preserves all work; with no valid grant
+the worker reports the exact `git merge --ff-only` command to run instead.
+Deploying, publishing, spending, credentials, messaging, and deletion remain
+separate gates.
+
 ### Provider capacity gates every admission, unless you turn the gate off
 
 Being Active is not enough on its own. Before any Action is admitted, Arcadia

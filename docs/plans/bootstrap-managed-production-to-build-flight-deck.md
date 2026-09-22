@@ -1035,7 +1035,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/292", "src/sessions/index.ts", "src/commands/advance.ts", "src/docs/types.ts", "docs/reports/planning-agent-route-review-2.md"]
   - id: preserve-on-exit-and-integrate
     title: A finished managed-production Session's candidate is preserved and, under an explicit standing grant, integrated into the governed base branch automatically, so the next dependent Action launches with no operator merge between them.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Preserve a finished managed-production Session's candidate on terminal exit and, only under the authority recorded by Decision 0058, integrate it into the governed base branch so the next dependent Action launches with no operator merge.

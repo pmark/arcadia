@@ -11,8 +11,15 @@ disagree with this file, they are right and this file is stale. "Refreshing
 this document" at the bottom says how to re-derive it in about a minute.
 
 Last derived: **2026-09-22**, re-derived while completing
-`self-heal-hung-worker-heartbeat`, which closes the worker-hang defect this
-document filed as Issue #485. The earlier derivation the same day covered
+`preserve-on-exit-and-integrate` (Decision 0058). The worker now preserves a
+terminal managed-production Session's candidate host-side and, only under the
+separately recorded, expiring integration grant, fast-forwards the Session's own
+agent-owned branch onto the governed base branch so the next dependent Action is
+admitted in the same tick — the A-to-B seam this document named as the most
+consequential open question. Absent a valid grant it stops after preservation
+and prints the exact operator merge command. The derivation this one replaces
+covered `self-heal-hung-worker-heartbeat`, which closes the worker-hang defect
+this document filed as Issue #485. The earlier derivation the same day covered
 `formalize-two-phase-planning-process`,
 `refresh-managed-production-readiness-2026-09-22`, the Decision 0064 fix to
 `prove-zero-prompt-production-loop`'s wrongful dispatch to coding agents
@@ -27,6 +34,15 @@ document has to account for, not just describe).
 **The board half is done, Gate 2 is closed, and the worker can no longer hang
 un-owned. The most consequential open question is back to the one this Plan was
 written around: can a finished Session land without an operator?**
+
+**Gate 3's central seam is now closed in code.** `preserve-on-exit-and-integrate`
+(this derivation) makes the worker preserve a terminal Session's candidate
+host-side and, under Decision 0058's separately recorded expiring grant,
+fast-forward the Session's own agent-owned branch onto the governed base branch
+so the next dependent Action is admitted in the same tick — no operator merge
+between them. Absent a valid grant it stops after preservation and prints the
+exact merge command. What remains before the unattended claim is the *proof*
+(Gate 5), not the mechanism.
 
 GitHub Projects is the live surface (Gate 1, unchanged since 2026-09-20).
 Since the last derivation, **Gate 2 fully closed**: the three Actions blocking
@@ -122,12 +138,12 @@ was never a Gate 2 Action; it is listed here only because it was found next to
 Gate 2. See "The worker-hang defect" below for what shipped and what remains
 open.
 
-### Gate 3 — A finished Session lands with no operator ⬜ **open — 3 Actions, all now dependency-clear**
+### Gate 3 — A finished Session lands with no operator ⬜ **open — 2 critical Actions remain, both dependency-clear**
 
 | | Item | Why it blocks |
 | --- | --- | --- |
-| ✅ | **Decision 0058** — delegate bounded candidate integration? | Approved (R212, 2026-09-19). `preserve-on-exit-and-integrate` has its authority. |
-| ⬜ | `preserve-on-exit-and-integrate` | Ready, no open prerequisites. It was the dispatch pointer two derivations ago; `self-heal-hung-worker-heartbeat` then held the pointer and completed, advancing it to `surface-batch-readiness-view` on queue order rather than on this list's ranking. Without this Action every Action needs one operator merge before the next dependent Action can start — the difference between "assisted" and "unattended." |
+| ✅ | **Decision 0058** — delegate bounded candidate integration? | Approved (R212, 2026-09-19). `preserve-on-exit-and-integrate` had its authority. |
+| ✅ | `preserve-on-exit-and-integrate` | **Done (this derivation).** The worker preserves a terminal Session's candidate host-side through the existing machinery and, only under Decision 0058's separately recorded expiring grant, fast-forwards the Session's own agent-owned branch onto the governed base so the next dependent Action is admitted in the same tick. Absent a valid grant it stops after preservation and prints the exact operator merge command; a conflict, divergent base, non-agent branch, or out-of-scope candidate does the same. |
 | ⬜ | `bind-candidate-revision-in-action-settle` | No dependencies; ready. `action settle` derives the wrong revision, so the documented candidate-worktree completion path fails. |
 | ✅ | `approval-must-apply-or-refuse` | Done (PR #447). |
 | ⬜ | `apply-answered-decision-consequences` | No dependencies; ready. An answered Decision does not move the Action it governs, so answering one changes nothing until a human acts on it. |
@@ -237,7 +253,7 @@ so it fails loudly rather than silently leaving the process in place.
 Everything else can wait. This is the shortest honest route from here to
 unattended production on the board.
 
-1. `preserve-on-exit-and-integrate` — ready now, no dependencies
+1. ✅ `preserve-on-exit-and-integrate` — **done**, closing the A-to-B seam
 2. `bind-candidate-revision-in-action-settle` — ready now, no dependencies
 3. `apply-answered-decision-consequences` — ready now, no dependencies
 4. ✅ `self-heal-hung-worker-heartbeat` — **done**, closing the worker-hang
@@ -258,9 +274,9 @@ unattended production on the board.
 **Thirteen numbered entries: 11 filed Action ids and 2 operator steps — 11
 Action-shaped entries in total.**
 
-- **Code sessions, ready today with no blocking dependency (6):** entries
-  1, 2, 3, 4 (done), 9, 10. Entries 1, 2, 3, 9, and 10 are the fastest place to
-  spend a session right now.
+- **Code sessions, ready today with no blocking dependency (4):** entries
+  2, 3, 9, and 10. They are the fastest place to spend a session right now
+  (entries 1 and 4 are already done).
 - **Needs filing first: none.** The worker-hang Action this section used to
   list as unfiled is now filed and done.
 - **Proof and hardening runs (5):** entries 6, 8, 11, 12, 13 (4 open, 1
@@ -320,14 +336,14 @@ trusting further out than a session or two.
 | | Count |
 | --- | --- |
 | Actions in the active Plan | 72 |
-| Done | 48 (`self-heal-hung-worker-heartbeat` completed this derivation) |
-| Open | 23 |
+| Done | 49 (`preserve-on-exit-and-integrate` completed this derivation) |
+| Open | 22 |
 | Deferred | 1 |
-| Unfinished (open + deferred) | 24 |
-| **On the critical path (filed)** | **11** (10 open + 1 deferred) |
+| Unfinished (open + deferred) | 23 |
+| **On the critical path (filed)** | **9** (8 open + 1 deferred) |
 | **On the critical path (not yet filed)** | **0** |
 | **Operator steps on the critical path** | **2** |
-| Unfinished but off the critical path | 13 (24 unfinished − 11 filed on the path) |
+| Unfinished but off the critical path | 14 (23 unfinished − 9 filed on the path) |
 | Open Decisions repo-wide | 2 (0041, 0052) — unrelated to production readiness: 0041 is about reactivating a guided-understanding session; 0052 is about `isolate-agent-asks-from-production-handoff`'s acceptance. Decision 0064 (production-dispatch related) is already answered. |
 
 ---

@@ -60,6 +60,28 @@ export const PRODUCTION_CONTROL_DEADLINES = {
   providerCallDeadlineMs: 120_000
 } as const;
 
+/**
+ * The separately explicit authority a finished, validated Session candidate
+ * needs before the host may integrate its agent-owned branch into the governed
+ * base branch (Decision 0058). It is deliberately not a `MechanicalTransition`:
+ * the policy's validation/acceptance/pointer delegation never implies it, and a
+ * grant is revoked by deactivating production because it lives in the active
+ * scope. It names the Decision that authorized it and an expiry; the Project,
+ * Plan, Action and agent-owned branch are satisfied by the scope plus the
+ * Session lease at integration time.
+ */
+export interface ProductionIntegrationGrant {
+  /** The Decision whose answer authorizes bounded candidate integration. */
+  decisionRef: string;
+  /** ISO instant after which the grant no longer authorizes anything. */
+  expiresAt: string;
+  /**
+   * Ordered `<project-slug>/<action-id>` keys this grant covers. Empty means it
+   * covers exactly the scope's own `actions`.
+   */
+  actions: string[];
+}
+
 export interface ProductionScope {
   /** The operator's whole-Plan intent, carried so routine work needs no relay. */
   intent: string;
@@ -78,6 +100,12 @@ export interface ProductionScope {
    * regardless. See `preserveCandidate`.
    */
   remotePreservation?: boolean;
+  /**
+   * The optional bounded candidate-integration grant (Decision 0058). Absent
+   * means preservation still happens on terminal exit but stops before any
+   * merge, reporting the exact operator merge command instead.
+   */
+  integrationGrant?: ProductionIntegrationGrant;
 }
 
 export interface ProductionAuthorityReceipt {
@@ -281,7 +309,26 @@ export function normalizeProductionScope(input: Partial<ProductionScope>): Produ
 
   const normalized: ProductionScope = { intent, projects, plans, actions, providers, maxConcurrentSessions, mechanicalTransitions };
   if (input.remotePreservation) normalized.remotePreservation = true;
+  if (input.integrationGrant !== undefined) normalized.integrationGrant = normalizeIntegrationGrant(input.integrationGrant);
   return normalized;
+}
+
+/** A grant with no Decision, no expiry, or a malformed expiry is refused rather than silently absent. */
+export function normalizeIntegrationGrant(input: Partial<ProductionIntegrationGrant>): ProductionIntegrationGrant {
+  const decisionRef = (input.decisionRef ?? "").trim();
+  if (!decisionRef) {
+    throw validationError("A candidate-integration grant needs the Decision that authorizes it.", {
+      field: "integrationGrant.decisionRef"
+    });
+  }
+  const expiresAt = (input.expiresAt ?? "").trim();
+  if (!expiresAt || Number.isNaN(Date.parse(expiresAt))) {
+    throw validationError("A candidate-integration grant needs a valid ISO expiry.", {
+      field: "integrationGrant.expiresAt",
+      value: input.expiresAt
+    });
+  }
+  return { decisionRef, expiresAt, actions: dedupePreservingOrder(input.actions ?? []) };
 }
 
 /** Stable fingerprint of exactly what the operator was shown before granting. */
@@ -296,7 +343,12 @@ export function fingerprintProductionScope(scope: ProductionScope): string {
     mechanicalTransitions: scope.mechanicalTransitions,
     // Omitted from the canonical form unless enabled, so scopes that predate
     // remote preservation keep their exact fingerprint.
-    ...(scope.remotePreservation ? { remotePreservation: true } : {})
+    ...(scope.remotePreservation ? { remotePreservation: true } : {}),
+    // Same rule for the integration grant: an absent grant must not change a
+    // pre-existing scope's fingerprint.
+    ...(scope.integrationGrant
+      ? { integrationGrant: { decisionRef: scope.integrationGrant.decisionRef, expiresAt: scope.integrationGrant.expiresAt, actions: scope.integrationGrant.actions } }
+      : {})
   });
   return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
 }
