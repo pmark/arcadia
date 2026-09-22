@@ -177,6 +177,85 @@ export function transitionActionPointer(db: Database.Database, input: {
   return receipt;
 }
 
+export interface PointerPairWriteReceipt {
+  headBefore: string;
+  attempts: number;
+  /** True when a concurrent writer changed a document and this re-read it. */
+  retried: boolean;
+  projectBeforeSha256: string;
+  projectAfterSha256: string;
+  planBeforeSha256: string;
+  planAfterSha256: string;
+}
+
+/**
+ * Write the PROJECT.md + Plan pair atomically, re-reading both documents and
+ * re-applying a pinned change whenever another writer changed either one since
+ * the change was resolved.
+ *
+ * This is `transitionActionPointer`'s compare-and-set discipline — headBefore
+ * plus both documents' content hashes, verified against fresh content at write
+ * time — reused for the settlement path, without its eligibility rules: the
+ * caller has already resolved the target, so a compare-and-set failure retries
+ * against that same target rather than re-deriving one from fresh queue state,
+ * which could silently retarget a different Action.
+ *
+ * `projectAfter`/`planAfter` are idempotent, target-pinned transforms, not the
+ * resolved output: a retry re-reads only the base content for a fresh diff, so
+ * a concurrent writer's unrelated change survives instead of being overwritten
+ * by a stale computed result. `writePairAtomically` still performs the two
+ * renames together, so a retry can never leave the documents pointing at
+ * different Actions.
+ */
+export function writePointerPairWithCompareAndSet(input: {
+  repoRoot: string;
+  projectPath: string;
+  planPath: string;
+  projectBefore: string;
+  planBefore: string;
+  projectAfter: (current: string) => string;
+  planAfter: (current: string) => string;
+  /** Bound on re-reads when another writer keeps changing the documents. */
+  maxAttempts?: number;
+}): PointerPairWriteReceipt {
+  const maxAttempts = input.maxAttempts ?? 5;
+  const headBefore = git(input.repoRoot, ["rev-parse", "HEAD"]).trim();
+  let expectedProject = sha256(input.projectBefore);
+  let expectedPlan = sha256(input.planBefore);
+  for (let attempt = 1; ; attempt += 1) {
+    const projectCurrent = readFileSync(input.projectPath, "utf8");
+    const planCurrent = readFileSync(input.planPath, "utf8");
+    const projectCurrentSha = sha256(projectCurrent);
+    const planCurrentSha = sha256(planCurrent);
+    if (projectCurrentSha === expectedProject && planCurrentSha === expectedPlan) {
+      const projectAfter = input.projectAfter(projectCurrent);
+      const planAfter = input.planAfter(planCurrent);
+      writePairAtomically(input.projectPath, projectCurrent, projectAfter, input.planPath, planCurrent, planAfter);
+      return {
+        headBefore,
+        attempts: attempt,
+        retried: attempt > 1,
+        projectBeforeSha256: projectCurrentSha,
+        projectAfterSha256: sha256(projectAfter),
+        planBeforeSha256: planCurrentSha,
+        planAfterSha256: sha256(planAfter)
+      };
+    }
+    if (attempt >= maxAttempts) {
+      throw validationError("Settlement pointer write kept losing the race to a concurrent writer.", {
+        attempts: attempt,
+        projectPath: input.projectPath,
+        planPath: input.planPath,
+        remedy: "Retry the settlement; the PROJECT.md/Plan pair kept changing underneath it."
+      });
+    }
+    // A concurrent writer moved one of the documents between this settlement's
+    // resolution read and now. Re-read and re-apply the same pinned change.
+    expectedProject = projectCurrentSha;
+    expectedPlan = planCurrentSha;
+  }
+}
+
 /**
  * Commit the pointer documents one transition wrote, on whatever branch the
  * command ran from, and never push. Paths are passed explicitly so nothing
@@ -215,7 +294,7 @@ export function replacePointer(content: string, actionId: string, insertAfterFie
   return content.replace(match[0], `---\n${lines.join("\n")}\n---`);
 }
 
-function writePairAtomically(
+export function writePairAtomically(
   projectPath: string,
   projectBefore: string,
   projectAfter: string,
