@@ -13,6 +13,7 @@ import { syncProjectDocs } from "../docs/sync.js";
 import type { ArcadiaDoc, DecisionDoc, LogDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import { buildAgentQueue, unpositionedCountForProject } from "../dispatch/queue.js";
 import { arrangeActionOrder } from "../dispatch/order.js";
+import { writePointerPairWithCompareAndSet } from "../dispatch/pointer.js";
 import type { WorkClassification } from "../domain/constants.js";
 import { assertClean, commitOnlyPaths, git, projectCheckoutFor } from "../git/worktrees.js";
 import { slugify, SLUG_MAX_LENGTH } from "../utils/slug.js";
@@ -46,7 +47,27 @@ function untrackedDraftAskPaths(repoRoot: string): string[] {
 }
 
 /** `after: null` means this mutation deletes `path` (used to archive a settled Ask's source file). */
-interface FileMutation { path: string; before: string | null; after: string | null; }
+interface FileMutation {
+  path: string;
+  before: string | null;
+  after: string | null;
+  /**
+   * The settlement's pinned change as an idempotent transform of whatever
+   * content is on disk. Present on the PROJECT.md + Plan pair, where a
+   * compare-and-set failure re-reads the base and re-applies the same resolved
+   * target instead of overwriting a concurrent writer with a stale `after`.
+   */
+  retransform?: (current: string) => string;
+  /**
+   * Recompute an append-only shared document (MISSION_LOG.md) from fresh
+   * content. Recomputed under the write interlock, so a concurrent settlement's
+   * entry is preserved instead of being replaced by a stale resolution-time
+   * `after`. `current` is null when the document does not exist yet.
+   */
+  reappend?: (current: string | null) => string;
+  /** Which half of the atomic PROJECT.md + Plan pair this mutation is. */
+  pair?: "project" | "plan";
+}
 
 export interface AgentAskSettlementReceipt {
   id: string;
@@ -92,6 +113,13 @@ export interface AgentAskSettlementRecovery {
  * Production callers pass none.
  */
 export interface AgentAskSettlementTestHooks {
+  /**
+   * Runs after the settlement resolves its document mutations and passes the
+   * preview check, before it writes anything. A test uses it to land a
+   * concurrent settlement's change in that window and prove the pointer pair's
+   * compare-and-set re-reads and re-applies rather than overwriting it.
+   */
+  beforeDocumentWrite?: () => void;
   /** Runs inside the operational-projection transaction, before the sync. */
   beforeOperationalSync?: () => void;
   /**
@@ -400,11 +428,12 @@ export function settleAgentAsk(db: Database.Database, input: {
             const log = discovered.docs.find((doc): doc is LogDoc => doc.type === "log" && doc.project === project.slug);
             const logPath = path.join(repoRoot, log?.relativePath ?? "MISSION_LOG.md");
             const logBefore = existsSync(logPath) ? readFileSync(logPath, "utf8") : null;
-            fileMutations.push({ path: logPath, before: logBefore, after: appendLog(logBefore, project.slug, {
+            const appendActivation = (current: string | null): string => appendLog(current, project.slug, {
               ...proposal.normalized,
               desiredResult: `Activated ${target.slug} at ${selected.id}.`,
               rationale: `Operator-settled Plan transition. Previous Plan ${plan.slug} remains draft with completion state preserved. ${proposal.normalized.rationale ?? ""}`
-            }) });
+            });
+            fileMutations.push({ path: logPath, before: logBefore, after: appendActivation(logBefore), reappend: appendActivation });
             break;
           }
           if (proposedActions.length === 0) {
@@ -623,34 +652,44 @@ export function settleAgentAsk(db: Database.Database, input: {
         const decisionDocsForPlan = discovered.docs.filter((doc): doc is DecisionDoc => doc.type === "decision" && doc.project === project.slug);
         const nextResolution = selectNextAfterCompletion(targetPlan, actionId, decisionDocsForPlan, queueAfter, project.slug);
         const updated = today();
-        let planAfter = markActionDone(planBefore, actionId);
+        const planComplete = nextResolution.kind === "planComplete";
+        // Resolve the pointer target once and pin it. A compare-and-set retry
+        // re-applies these transforms to fresh base content; it never re-derives
+        // current_action from fresh queue state, which could silently retarget a
+        // different Action than the one this settlement resolved and previewed.
+        const planTransform = (current: string): string => setTopLevelFields(markActionDone(current, actionId),
+          planComplete ? { status: "complete", current_action: null, updated } : { current_action: nextResolution.actionId, updated });
+        const projectTransform = (current: string): string => setTopLevelFields(current,
+          { current_action: planComplete ? null : nextResolution.actionId, updated });
         effects.push(`Marked Action ${project.slug}/${actionId} done with accepted evidence for all ${declared.length} criteria.`);
-        if (nextResolution.kind === "planComplete") {
-          planAfter = setTopLevelFields(planAfter, { status: "complete", current_action: null, updated });
+        if (planComplete) {
           effects.push(`Plan ${targetPlan.slug} is complete; every Action is done.${completingActivePlan ? " Select a new active Plan when ready." : ""}`);
         } else {
-          planAfter = setTopLevelFields(planAfter, { current_action: nextResolution.actionId, updated });
           effects.push(`${nextResolution.note} Pointer: ${project.slug}/${nextResolution.actionId}.`);
         }
-        fileMutations.push({ path: targetPlanPath, before: planBefore, after: planAfter });
-        // The Project pointer belongs to the active Plan. Completing an Action
-        // in another Plan records that Plan's own progress and leaves
-        // `active_plan`, `current_action`, and the execution queue untouched,
-        // so nothing about automatic dispatch changes for anyone else.
         if (completingActivePlan) {
-          fileMutations.push({ path: projectPath, before: projectBefore, after: setTopLevelFields(projectBefore, {
-            current_action: nextResolution.kind === "planComplete" ? null : nextResolution.actionId, updated
-          }) });
+          // The Project pointer belongs to the active Plan, so PROJECT.md and the
+          // Plan are written and compared as one atomic pair.
+          fileMutations.push(
+            { path: targetPlanPath, before: planBefore, after: planTransform(planBefore), retransform: planTransform, pair: "plan" },
+            { path: projectPath, before: projectBefore, after: projectTransform(projectBefore), retransform: projectTransform, pair: "project" }
+          );
         } else {
+          // Completing an Action in another Plan records that Plan's own progress
+          // and leaves `active_plan`, `current_action`, and the execution queue
+          // untouched, so nothing about automatic dispatch changes for anyone
+          // else (issue #502).
+          fileMutations.push({ path: targetPlanPath, before: planBefore, after: planTransform(planBefore), retransform: planTransform });
           effects.push(`Left Project pointer ${project.slug}/${projectDoc.currentAction ?? "none"} and the active Plan ${plan.slug} untouched; ${targetPlan.slug} is not the active Plan.`);
         }
         const completionLog = discovered.docs.find((doc): doc is LogDoc => doc.type === "log" && doc.project === project.slug);
         const completionLogPath = path.join(repoRoot, completionLog?.relativePath ?? "MISSION_LOG.md");
         const completionLogBefore = existsSync(completionLogPath) ? readFileSync(completionLogPath, "utf8") : null;
-        fileMutations.push({ path: completionLogPath, before: completionLogBefore, after: appendCompletionLog(completionLogBefore, project.slug, {
+        const appendCompletion = (current: string | null): string => appendCompletionLog(current, project.slug, {
           actionId, candidateRevision: head, evidence, requestId: proposal.normalized.requestId,
           note: nextResolution.kind === "planComplete" ? "Plan complete; every Action is done." : nextResolution.note
-        }) });
+        });
+        fileMutations.push({ path: completionLogPath, before: completionLogBefore, after: appendCompletion(completionLogBefore), reappend: appendCompletion });
         completionActionId = actionId;
         completionPlanSlug = targetPlan.slug;
         break;
@@ -675,7 +714,8 @@ export function settleAgentAsk(db: Database.Database, input: {
         const log = discovered.docs.find((doc): doc is LogDoc => doc.type === "log" && doc.project === project.slug);
         const logPath = path.join(repoRoot, log?.relativePath ?? "MISSION_LOG.md");
         const before = existsSync(logPath) ? readFileSync(logPath, "utf8") : null;
-        fileMutations.push({ path: logPath, before, after: appendLog(before, project.slug, proposal.normalized) });
+        const append = (current: string | null): string => appendLog(current, project.slug, proposal.normalized);
+        fileMutations.push({ path: logPath, before, after: append(before), reappend: append });
         effects.push(`Appended one Project Log entry for Agent Ask ${proposal.normalized.requestId}.`);
         break;
       }
@@ -773,40 +813,87 @@ export function settleAgentAsk(db: Database.Database, input: {
     );
   }
 
+  hooks?.beforeDocumentWrite?.();
   // Phase 1 — write the managed documents and prove the canonical truth they
-  // are supposed to produce. Nothing here touches the database, so any refusal
-  // restores every file and leaves the repository exactly as it was.
-  try {
-    for (const mutation of fileMutations) {
-      if (mutation.after === null) { try { unlinkSync(mutation.path); } catch {} }
-      else writeAtomically(mutation.path, mutation.after);
-    }
-    if (input.activate) {
-      const dispatch = resolveDispatch(repoRoot, project.slug);
-      if (!isDispatchable(dispatch) || dispatch.context?.action.id !== input.action) {
-        throw validationError("Plan activation did not produce dispatchable canonical truth.", { blockers: dispatch.blockers, question: dispatch.operatorQuestion });
-      }
-    }
-    if (completionActionId) {
-      const verified = discoverDocs(repoRoot);
-      const verifiedPlan = verified.docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug && doc.slug === completionPlanSlug);
-      const verifiedAction = verifiedPlan?.actions.find((candidate) => candidate.id === completionActionId);
-      if (!verifiedAction || verifiedAction.status !== "done") {
-        throw validationError("Completion did not produce a done canonical Action.", { actionId: completionActionId });
-      }
-    }
-    for (const actionId of actionIdsToValidate) {
-      const readiness = resolveActionReadiness(repoRoot, project.slug, actionId);
-      const structuralBlockers = readiness.blockers.filter((blocker) => !blocker.field.endsWith(".depends_on"));
-      if (!readiness.found || structuralBlockers.length > 0 || readiness.operatorQuestion) {
-        throw validationError("Accepted Agent Ask did not produce a ready canonical Action.", {
-          actionId,
-          blockers: structuralBlockers,
-          operatorQuestion: readiness.operatorQuestion
+  // are supposed to produce, all inside the workspace database's immediate
+  // transaction — the same interlock `arcadia tidy` uses. Two concurrent
+  // settlements serialize here and each re-reads the other's change instead of
+  // overwriting it. A refusal rolls back exactly the mutations this attempt
+  // wrote, before the interlock is released, so it can never restore stale
+  // content over a concurrent writer.
+  if (fileMutations.length > 0) writeTransaction(db, () => {
+    const applied: FileMutation[] = [];
+    try {
+      // The PROJECT.md + Plan pair is written through the same fingerprint-checked
+      // compare-and-set `arcadia advance queue make-next` uses: a concurrent
+      // settlement that moved the pointer between this settlement's resolution and
+      // now is re-read, and this settlement's pinned change is re-applied on top
+      // of it rather than overwriting it with a stale computed result.
+      const pointerPair = selectPointerPair(fileMutations);
+      if (pointerPair) {
+        const receipt = writePointerPairWithCompareAndSet({
+          repoRoot,
+          projectPath: pointerPair.project.path,
+          planPath: pointerPair.plan.path,
+          projectBefore: pointerPair.project.before!,
+          planBefore: pointerPair.plan.before!,
+          projectAfter: pointerPair.project.retransform!,
+          planAfter: pointerPair.plan.retransform!
         });
+        // Anchor the rollback on the pre-transform content the writer read, not
+        // on its output, so a later refusal undoes exactly this settlement's move.
+        pointerPair.project.before = receipt.projectBefore;
+        pointerPair.project.after = receipt.projectAfter;
+        pointerPair.plan.before = receipt.planBefore;
+        pointerPair.plan.after = receipt.planAfter;
+        applied.push(pointerPair.project, pointerPair.plan);
+        if (receipt.retried) {
+          effects.push("Re-read PROJECT.md and the Plan after a concurrent pointer write and re-applied this settlement's change on top.");
+        }
       }
-    }
-    if (fileMutations.length > 0) {
+      for (const mutation of fileMutations) {
+        if (mutation.pair) continue;
+        // A shared document is recomputed from fresh content under the interlock,
+        // so a concurrent settlement's change or log entry is preserved rather
+        // than replaced by a stale resolution-time `after`.
+        if (mutation.reappend) {
+          const current = existsSync(mutation.path) ? readFileSync(mutation.path, "utf8") : null;
+          mutation.before = current;
+          mutation.after = mutation.reappend(current);
+        } else if (mutation.retransform) {
+          const current = readFileSync(mutation.path, "utf8");
+          mutation.before = current;
+          mutation.after = mutation.retransform(current);
+        }
+        if (mutation.after === null) { try { unlinkSync(mutation.path); } catch {} }
+        else writeAtomically(mutation.path, mutation.after);
+        applied.push(mutation);
+      }
+      if (input.activate) {
+        const dispatch = resolveDispatch(repoRoot, project.slug);
+        if (!isDispatchable(dispatch) || dispatch.context?.action.id !== input.action) {
+          throw validationError("Plan activation did not produce dispatchable canonical truth.", { blockers: dispatch.blockers, question: dispatch.operatorQuestion });
+        }
+      }
+      if (completionActionId) {
+        const verified = discoverDocs(repoRoot);
+        const verifiedPlan = verified.docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug && doc.slug === completionPlanSlug);
+        const verifiedAction = verifiedPlan?.actions.find((candidate) => candidate.id === completionActionId);
+        if (!verifiedAction || verifiedAction.status !== "done") {
+          throw validationError("Completion did not produce a done canonical Action.", { actionId: completionActionId });
+        }
+      }
+      for (const actionId of actionIdsToValidate) {
+        const readiness = resolveActionReadiness(repoRoot, project.slug, actionId);
+        const structuralBlockers = readiness.blockers.filter((blocker) => !blocker.field.endsWith(".depends_on"));
+        if (!readiness.found || structuralBlockers.length > 0 || readiness.operatorQuestion) {
+          throw validationError("Accepted Agent Ask did not produce a ready canonical Action.", {
+            actionId,
+            blockers: structuralBlockers,
+            operatorQuestion: readiness.operatorQuestion
+          });
+        }
+      }
       // A settlement answers for the documents it wrote, and for nothing else.
       // Decision 0044: this check used to refuse on any error anywhere in the
       // corpus, so one stale document from weeks ago permanently blocked every
@@ -836,11 +923,14 @@ export function settleAgentAsk(db: Database.Database, input: {
           unrelatedCorpusErrors: validation.errors.length - blocking.length,
         });
       }
+    } catch (error) {
+      // Roll back exactly what this attempt wrote, inside the interlock, so a
+      // mutation the loop never reached cannot be reverted over a concurrent
+      // writer's content.
+      for (const mutation of [...applied].reverse()) restoreMutation(mutation);
+      throw error;
     }
-  } catch (error) {
-    for (const mutation of [...fileMutations].reverse()) restoreMutation(mutation);
-    throw error;
-  }
+  });
 
   // Phase 2 — commit the authoritative documents before any side effect can run.
   // A settlement's durable output is checked-in managed documents; the database
@@ -1310,9 +1400,10 @@ function setTopLevelFields(content: string, fields: Record<string, string | null
 function addMilestoneMutations(mutations: FileMutation[], projectPath: string, planPath: string, milestone: string): void {
   const projectBefore = readFileSync(projectPath, "utf8");
   const planBefore = readFileSync(planPath, "utf8");
+  const transform = (current: string): string => replaceTopLevelField(current, "milestone", milestone);
   mutations.push(
-    { path: projectPath, before: projectBefore, after: replaceTopLevelField(projectBefore, "milestone", milestone) },
-    { path: planPath, before: planBefore, after: replaceTopLevelField(planBefore, "milestone", milestone) }
+    { path: projectPath, before: projectBefore, after: transform(projectBefore), retransform: transform, pair: "project" },
+    { path: planPath, before: planBefore, after: transform(planBefore), retransform: transform, pair: "plan" }
   );
 }
 
@@ -1654,6 +1745,21 @@ function archiveSettledAskFile(fileMutations: FileMutation[], effects: string[],
   fileMutations.push({ path: archivePath, before: existsSync(archivePath) ? readFileSync(archivePath, "utf8") : null, after: content });
   effects.push(`Archived the settled Ask file to ${path.relative(repoRoot, archivePath)}.`);
   return path.relative(repoRoot, resolved);
+}
+
+/**
+ * The PROJECT.md + Plan pair a settlement is writing, if any. Both halves are
+ * registered together by the writers that produce one, so finding only one is a
+ * programming error rather than a state to guess about.
+ */
+function selectPointerPair(mutations: FileMutation[]): { project: FileMutation; plan: FileMutation } | null {
+  const project = mutations.find((mutation) => mutation.pair === "project");
+  const plan = mutations.find((mutation) => mutation.pair === "plan");
+  if (!project && !plan) return null;
+  if (!project || !plan || project.before === null || plan.before === null || !project.retransform || !plan.retransform) {
+    throw validationError("Settlement registered an incomplete PROJECT.md + Plan pointer pair.");
+  }
+  return { project, plan };
 }
 
 function restoreMutation(mutation: FileMutation): void {

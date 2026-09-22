@@ -324,6 +324,62 @@ describe("Agent Ask complete", () => {
     expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
   });
 
+  it("re-reads and re-applies the pointer pair when a concurrent settlement lands between resolution and write", () => {
+    const { workspace, repo, head } = fixture({ withThird: true });
+    // Settlement A completes `third` (outside pointer order) and resolves the
+    // next pointer to `first`.
+    const askA = completeAsk("concurrent-a", "third", head)
+      .replace('criterion: "First proof exists."', 'criterion: "Third proof exists."');
+    const proposalA = runAgentAskPreviewCommand({ workspace, request: askA });
+    const previewA = runAgentAskSettleCommand({
+      workspace, proposal: proposalA.data.proposal.id, requestId: "settle-concurrent-a", disposition: "accepted"
+    });
+    // Settlement B completes `first` and resolves the next pointer to `second`.
+    const proposalB = runAgentAskPreviewCommand({ workspace, request: completeAsk("concurrent-b", "first", head) });
+    const previewB = runAgentAskSettleCommand({
+      workspace, proposal: proposalB.data.proposal.id, requestId: "settle-concurrent-b", disposition: "accepted"
+    });
+    // Apply B, landing A's already-applied change in the exact window between
+    // B's resolution read and B's document write — the window a plain
+    // readFileSync-then-write would silently overwrite.
+    const appliedB = runAgentAskSettleCommand({
+      workspace, proposal: proposalB.data.proposal.id, requestId: "settle-concurrent-b", disposition: "accepted",
+      preview: previewB.data.receipt.previewFingerprint, apply: true, operator: true,
+      hooks: {
+        beforeDocumentWrite: () => {
+          runAgentAskSettleCommand({
+            workspace, proposal: proposalA.data.proposal.id, requestId: "settle-concurrent-a", disposition: "accepted",
+            preview: previewA.data.receipt.previewFingerprint, apply: true, operator: true
+          });
+        }
+      }
+    });
+    expect(appliedB.data.receipt.applied).toBe(true);
+    expect(appliedB.data.receipt.effects.join(" ")).toContain("Marked Action demo/first done");
+
+    // Neither settlement's completion was discarded: A's `third` stays done, and
+    // B's own `first` completion and pointer move both land on top of it.
+    const plan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
+    expect(plan).toMatchObject({
+      currentAction: "second",
+      actions: [
+        expect.objectContaining({ id: "first", status: "done" }),
+        expect.objectContaining({ id: "second", status: "open" }),
+        expect.objectContaining({ id: "third", status: "done" })
+      ]
+    });
+    expect(discoverDocs(repo).docs.find((doc) => doc.type === "project")).toMatchObject({ currentAction: "second" });
+    // The compare-and-set detected A's change and re-applied B's pinned change
+    // on top of it, rather than writing a stale resolution-time result.
+    expect(appliedB.data.receipt.effects.join(" ")).toContain("Re-read PROJECT.md and the Plan");
+    // The shared completion log kept A's entry as well as B's: neither
+    // settlement's record was silently discarded.
+    const log = readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8");
+    expect(log).toContain("Completed demo/first");
+    expect(log).toContain("Completed demo/third");
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+  });
+
   it("completes an Action in a non-active Plan and leaves the active Plan, its pointer, and the queue untouched", () => {
     const { workspace, repo, head } = fixture({ withInactivePlan: true });
     const request = completeAsk("complete-inactive", "first", head)

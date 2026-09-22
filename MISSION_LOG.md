@@ -509,6 +509,13 @@ updated: 2026-09-22
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-preserve-on-exit-and-integrate-2026-09-22).
 
+## 2026-09-22 — Completed arcadia/serialize-current-action-writes
+
+- **Did:** Completed Action arcadia/serialize-current-action-writes from accepted evidence (Candidate 3ca7fb396cf49694fcbd817bd1b652a8929d54fa).
+- **Result:** Every declared acceptance criterion was accepted as met: "settleAgentAsk's PROJECT.md/Plan pointer write for project_update and complete routes through transitionActionPointer (or reuses its fingerprint discipline: headBefore plus both documents' content hashes, verified fresh at write time) instead of its own independent readFileSync-then-writeFileSync-via-temp-file path."; "The retry rule preserves an explicitly resolved settlement target: project_update and complete can resolve an Action outside queue order, and a compare-and-set failure retries the pointer transition against that same resolved target, re-reading only the base content for a fresh diff -- it never re-derives current_action from fresh queue state, which could silently retarget a different Action."; "A compare-and-set failure retries under the same settlementRequestId, since that id is what the existing duplicate-settlement guard already keys idempotency on."; "writePairAtomically's existing pair-write (PROJECT.md and the Plan document, inside transitionActionPointer's db.transaction) covers the settlement path too, so a retry or a concurrent transition cannot interleave the two documents' renames or leave them pointing at different current_action values."; "A regression test reproduces two concurrent settlements for two different Actions racing to write current_action: the second settlement's compare-and-set fails against the first's already-applied change, retries against fresh state, and both pointer moves are preserved in the correct final order -- neither is silently discarded."; "pnpm test and the core, Discord and Dashboard builds pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-serialize-current-action-writes-2026-09-22).
+
 ## 2026-09-22 — Completed arcadia/plan-scoped-agent-ask-complete
 
 - **Did:** Completed Action arcadia/plan-scoped-agent-ask-complete from accepted evidence (Candidate ea58900c6bce5128bae8efb99133549402f5b122).
